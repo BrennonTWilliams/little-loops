@@ -249,14 +249,18 @@ class TestUnsafeContextInterpolation:
         errors = _validate_unsafe_context_interpolation(fsm)
         assert errors == []
 
-    def test_mr11_does_not_fire_for_epic_context_var(self) -> None:
-        """MR-11 does not flag context.epic (ENH-2660): ``epic`` is outside the
-        user-controlled regex set, so rn-implement's --epic branch can interpolate
-        ``${context.epic}`` bare without needing unsafe_context_interpolation_ok.
-        Locks the regex-bounded scope against a future "tighten MR-11" change."""
+    def test_mr11_fires_for_context_epic_after_widening(self) -> None:
+        """ENH-3342: MR-11 flags ${context.epic} now that the fixed seven-key
+        allowlist is dropped — ``epic`` has no runner-owned trust verdict in
+        ``classify_site()``, so it is untrusted like any other author-authored
+        context key. Supersedes the old regex-bounded exemption this test used
+        to assert; the real corpus site (rn-implement.yaml) was converted to
+        ``:shell`` as part of this issue's corpus triage (step 7)."""
         fsm = self._simple_fsm('EPIC="${context.epic}"; echo "$EPIC"')
         errors = _validate_unsafe_context_interpolation(fsm)
-        assert errors == []
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "${context.epic}" in errors[0].message
 
     def test_mr11_does_not_fire_for_single_quoted_position(self) -> None:
         """MR-11 does not fire when the placeholder sits inside single quotes."""
@@ -346,3 +350,197 @@ class TestUnsafeContextInterpolation:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+
+def _mr11_warnings(fsm: FSMLoop) -> list:
+    return [e for e in _validate_unsafe_context_interpolation(fsm) if "(MR-11)" in e.message]
+
+
+class TestUnsafeContextInterpolationWidening:
+    """ENH-3342: MR-11 widened past the fixed 7-key allowlist — namespace-generic
+    classify_site() lookup, Python-literal-position awareness, and the
+    column-0 heredoc terminator."""
+
+    def _simple_fsm(self, action: str) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(action=action, action_type="shell", on_yes="done", on_no="work"),
+                "done": make_state(terminal=True),
+            },
+        )
+
+    def test_ac1_non_allowlisted_context_key_flagged_inside_python_literal(self) -> None:
+        """A ${context.<key>} outside the old 7-key allowlist is flagged once it
+        reaches a Python string literal inside an embedded python3 heredoc."""
+        fsm = self._simple_fsm("python3 << 'PYEOF'\nx = '${context.max_depth}'\nPYEOF\n")
+        errors = _mr11_warnings(fsm)
+        assert len(errors) == 1
+        assert "${context.max_depth}" in errors[0].message
+
+    def test_ac2_captured_namespace_flagged_inside_python_literal(self) -> None:
+        """${captured.*} — entirely invisible to the old regex — is flagged
+        inside a Python literal (class B is no longer outside MR-11's reach)."""
+        fsm = self._simple_fsm("python3 << 'PYEOF'\nx = '${captured.review.output}'\nPYEOF\n")
+        errors = _mr11_warnings(fsm)
+        assert len(errors) == 1
+        assert "${captured.review.output}" in errors[0].message
+
+    def test_ac2b_prev_output_and_stderr_flagged_at_bash_token_position(self) -> None:
+        """${prev.output} / ${prev.stderr} are flagged at a bash-token position —
+        the live rlhf-svg-evaluate.yaml:517 shape (PREV_OUTPUT="${prev.output}"),
+        a bash position no baseline (ENH-3338) covers."""
+        for key in ("output", "stderr"):
+            fsm = self._simple_fsm(f'PREV_OUTPUT="${{prev.{key}}}"')
+            errors = _mr11_warnings(fsm)
+            assert len(errors) == 1, f"expected a finding for prev.{key}"
+            assert f"${{prev.{key}}}" in errors[0].message
+
+    def test_ac2b_prev_exit_code_not_flagged_at_bash_token_position(self) -> None:
+        """${prev.exit_code} is runner-constructed metadata, not LLM/command
+        output text — classify_site() trusts it (class C)."""
+        fsm = self._simple_fsm('RC="${prev.exit_code}"')
+        assert _mr11_warnings(fsm) == []
+
+    def test_ac3_quoted_heredoc_that_is_a_python_body_is_flagged(self) -> None:
+        """The Python-body side of AC 3: a python3 <<'EOF' heredoc IS flagged —
+        distinct from test_mr11_does_not_fire_inside_quoted_heredoc's `cat`
+        heredoc (a data sink, not a Python body), which correctly stays clean."""
+        fsm = self._simple_fsm("python3 << 'PYEOF'\ngoal = '${context.goal}'\nPYEOF\n")
+        errors = _mr11_warnings(fsm)
+        assert len(errors) == 1
+        assert "${context.goal}" in errors[0].message
+
+    def test_ac4_indented_marker_equal_line_does_not_close_heredoc(self) -> None:
+        """A heredoc terminator must sit at column 0; an indented line equal to
+        the marker text does not end the tracked block, so a raw context value
+        after it is still inside the (still-open) heredoc and stays clean —
+        matching bash's own column-0 terminator semantics."""
+        action = (
+            "cat > \"${context.run_dir}/in.txt\" <<'LL_EOF'\n  LL_EOF\n${context.input}\nLL_EOF\n"
+        )
+        fsm = self._simple_fsm(action)
+        # The bash-token-position scan treats the whole block as heredoc
+        # interior (still open past the indented false terminator), so no
+        # bash-token finding fires here — the heredoc is a `cat` sink, not a
+        # Python body, so the delegated scan doesn't fire either.
+        assert _mr11_warnings(fsm) == []
+
+    def test_ac5b_shell_suffix_flagged_inside_python_body(self) -> None:
+        """:shell is shell-token quoting; inside a Python literal it produces a
+        shell-quoted string that breaks the Python parser instead of
+        protecting it — MR-11 must flag it there, naming the LL_ARG_ hoist."""
+        fsm = self._simple_fsm("python3 << 'PYEOF'\ngoal = '${context.goal:shell}'\nPYEOF\n")
+        errors = _mr11_warnings(fsm)
+        assert len(errors) == 1
+        assert "LL_ARG_" in errors[0].message
+
+    def test_ac5b_shell_suffix_not_flagged_at_bash_token_position(self) -> None:
+        """:shell at a genuine bash-token position is the correct, safe remedy
+        and must not be flagged (unchanged from pre-widening behavior)."""
+        fsm = self._simple_fsm("GOAL=${context.goal:shell}")
+        assert _mr11_warnings(fsm) == []
+
+
+class TestMr11Marker:
+    """ENH-3342: the `# ll-lint: mr11-ok(<namespace>.<key>) <reason>` per-site
+    suppression marker — grammar, both placements, malformed-marker ERROR, and
+    the stale-marker WARNING (constraints 1-7)."""
+
+    def _simple_fsm(self, action: str) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(action=action, action_type="shell", on_yes="done", on_no="work"),
+                "done": make_state(terminal=True),
+            },
+        )
+
+    def test_well_formed_marker_suppresses_its_finding(self) -> None:
+        fsm = self._simple_fsm(
+            'echo "${context.goal}"  # ll-lint: mr11-ok(context.goal) ENH-1234 - reviewed'
+        )
+        errors = _mr11_warnings(fsm)
+        assert errors == []
+
+    def test_marker_exempts_only_the_named_variable(self) -> None:
+        """A sibling untrusted site on the same line still fires — constraint 1
+        (a bare line-level marker would hide the mechanize-skills.yaml:283-286
+        failure shape: one converted binding, one raw sibling)."""
+        fsm = self._simple_fsm(
+            'echo "${context.goal}" "${context.topic}"'
+            "  # ll-lint: mr11-ok(context.goal) ENH-1234 - reviewed"
+        )
+        errors = _mr11_warnings(fsm)
+        assert len(errors) == 1
+        assert "${context.topic}" in errors[0].message
+
+    def test_marker_preceding_line_form_works(self) -> None:
+        """A marker alone on the line immediately above the site also suppresses
+        it (constraint 3's two-line form)."""
+        action = '# ll-lint: mr11-ok(context.goal) ENH-1234 - reviewed\necho "${context.goal}"\n'
+        fsm = self._simple_fsm(action)
+        assert _mr11_warnings(fsm) == []
+
+    def test_ordinary_comment_is_not_mistaken_for_a_marker(self) -> None:
+        fsm = self._simple_fsm(
+            'echo "${context.goal}"  # just a note about this line, nothing more'
+        )
+        errors = _mr11_warnings(fsm)
+        assert len(errors) == 1
+        marker_errors = [e for e in errors if "malformed" in e.message]
+        assert marker_errors == []
+
+    def test_malformed_marker_missing_parens_is_an_error(self) -> None:
+        fsm = self._simple_fsm('echo "${context.goal}"  # ll-lint: mr11-ok reviewed, see ENH-1234')
+        errors = _validate_unsafe_context_interpolation(fsm)
+        malformed = [
+            e for e in errors if e.severity == ValidationSeverity.ERROR and "malformed" in e.message
+        ]
+        assert len(malformed) == 1
+
+    def test_malformed_marker_missing_reason_is_an_error(self) -> None:
+        fsm = self._simple_fsm('echo "${context.goal}"  # ll-lint: mr11-ok(context.goal)')
+        errors = _validate_unsafe_context_interpolation(fsm)
+        malformed = [
+            e for e in errors if e.severity == ValidationSeverity.ERROR and "malformed" in e.message
+        ]
+        assert len(malformed) == 1
+
+    def test_malformed_marker_reason_without_issue_id_is_an_error(self) -> None:
+        fsm = self._simple_fsm(
+            'echo "${context.goal}"  # ll-lint: mr11-ok(context.goal) looks fine to me'
+        )
+        errors = _validate_unsafe_context_interpolation(fsm)
+        malformed = [
+            e for e in errors if e.severity == ValidationSeverity.ERROR and "malformed" in e.message
+        ]
+        assert len(malformed) == 1
+
+    def test_malformed_marker_containing_dollar_brace_is_an_error(self) -> None:
+        """The marker must not quote the token it exempts — the FSM interpolates
+        the whole action string, comments included, so a `${` inside the marker
+        becomes its own live interpolation site (constraint 4)."""
+        fsm = self._simple_fsm(
+            'echo "${context.goal}"  # ll-lint: mr11-ok(context.goal) '
+            "see ${context.goal} in ENH-1234"
+        )
+        errors = _validate_unsafe_context_interpolation(fsm)
+        malformed = [
+            e for e in errors if e.severity == ValidationSeverity.ERROR and "malformed" in e.message
+        ]
+        assert len(malformed) == 1
+
+    def test_stale_marker_matching_no_finding_is_a_warning(self) -> None:
+        """A well-formed marker whose named variable produces no MR-11 finding
+        (the site was converted/removed) is itself a stale-marker WARNING
+        (constraint 7)."""
+        fsm = self._simple_fsm(
+            "echo ${context.goal:shell}  # ll-lint: mr11-ok(context.goal) ENH-1234 - reviewed"
+        )
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "stale" in errors[0].message

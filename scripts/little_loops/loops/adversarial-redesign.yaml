@@ -48,9 +48,9 @@ states:
     # and copy current.svg → prev.svg for the first SVG diff comparison.
     action_type: shell
     action: |
-      RUNDIR="${captured.run_dir.output}"
+      RUNDIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       python scripts/autofigure_wrapper.py \
-        --concept "${context.concept}" \
+        --concept "${context.concept:shell}" \
         --output "$RUNDIR/current.svg" \
         --result-file "$RUNDIR/gen-result.json" 2>&1
       python3 -c "
@@ -103,9 +103,9 @@ states:
     # generated figure addresses all logged complaints. Writes current.svg and gen-result.json.
     action_type: shell
     action: |
-      RUNDIR="${captured.run_dir.output}"
+      RUNDIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       python scripts/autofigure_wrapper.py \
-        --concept "${context.concept}" \
+        --concept "${context.concept:shell}" \
         --output "$RUNDIR/current.svg" \
         --critique-file "$RUNDIR/current-critique.json" \
         --result-file "$RUNDIR/gen-result.json" 2>&1
@@ -123,7 +123,7 @@ states:
     # exits to transcript on stall (score did not increase).
     action_type: shell
     action: |
-      RUNDIR="${captured.run_dir.output}"
+      RUNDIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       NEW_SCORE=$(python3 -c "
       import json
       d = json.load(open('$RUNDIR/gen-result.json'))
@@ -149,7 +149,7 @@ states:
     # and the loop exits. Otherwise routes back to critic for another adversarial round.
     action_type: shell
     action: |
-      RUNDIR="${captured.run_dir.output}"
+      RUNDIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNTER_FILE="$RUNDIR/iter_count.txt"
       ITER=$(cat "$COUNTER_FILE" 2>/dev/null || echo "0")
       ITER=$((ITER + 1))

@@ -19,13 +19,13 @@ states:
     action_type: shell
     action: |
       echo "=== Scratch Dir ==="
-      SCRATCH_SIZE=$(du -sk ${context.scratch_dir} 2>/dev/null | awk '{print $1}' || echo 0)
-      FILE_COUNT=$(find ${context.scratch_dir} -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
+      SCRATCH_SIZE=$(du -sk ${context.scratch_dir} 2>/dev/null | awk '{print $1}' || echo 0)  # ll-lint: mr11-ok(context.scratch_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      FILE_COUNT=$(find ${context.scratch_dir} -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')  # ll-lint: mr11-ok(context.scratch_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "scratch_kb: $SCRATCH_SIZE"
       echo "file_count: $FILE_COUNT"
       TOKENS=$(jq -r '.estimated_tokens // "n/a"' .ll/ll-context-state.json 2>/dev/null || echo "n/a")
       echo "estimated_tokens: $TOKENS"
-      find ${context.scratch_dir} -maxdepth 1 -type f -size +100k -exec du -sk {} \; 2>/dev/null | sort -rn || true
+      find ${context.scratch_dir} -maxdepth 1 -type f -size +100k -exec du -sk {} \; 2>/dev/null | sort -rn || true  # ll-lint: mr11-ok(context.scratch_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     capture: snapshot
     next: self_assess
 
@@ -90,7 +90,7 @@ states:
   verify:
     action_type: shell
     action: |
-      SCRATCH_SIZE=$(du -sk ${context.scratch_dir} 2>/dev/null | awk '{print $1}' || echo 0)
+      SCRATCH_SIZE=$(du -sk ${context.scratch_dir} 2>/dev/null | awk '{print $1}' || echo 0)  # ll-lint: mr11-ok(context.scratch_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "post_remediation_kb: $SCRATCH_SIZE"
     next: assess_context
 

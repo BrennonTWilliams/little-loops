@@ -202,7 +202,7 @@ states:
     # path is unchanged for that case.
     action_type: shell
     action: |
-      if printf '%s' "${captured.gen_eval_events.output}" | grep -q "SUMMARY_EMITTED"; then
+      if printf '%s' "${captured.gen_eval_events.output}" | grep -q "SUMMARY_EMITTED"; then  # ll-lint: mr11-ok(captured.gen_eval_events.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "GEN_EVAL_EXHAUSTED_WITH_OUTPUT"
       else
         echo "GEN_EVAL_ERRORED"
@@ -256,7 +256,7 @@ states:
     # never block a generated image on an optional gate.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       case "$RUN_DIR" in
         /*) ABS_DIR="$RUN_DIR" ;;
         *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
@@ -269,7 +269,7 @@ states:
         echo "VISION_PASS: skipped (no image.png)"; exit 0
       fi
       export ABS_DIR
-      export VISION_THRESHOLD="${context.pass_threshold}"
+      export VISION_THRESHOLD="${context.pass_threshold}"  # ll-lint: mr11-ok(context.pass_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       python3 <<'PY'
       import os, re, sys, json, base64, urllib.request
       abs_dir = os.environ["ABS_DIR"]

@@ -102,7 +102,7 @@ states:
     #   ${captured.run_dir.output} = THIS node's dir (its plan.md/rubric/research)
     action_type: shell
     action: |
-      NODE_DIR="${context.run_dir}/nodes/${context.node_id}"
+      NODE_DIR="${context.run_dir}/nodes/${context.node_id}"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mkdir -p "$NODE_DIR"
       [ -f "$NODE_DIR/plan.md" ] || : > "$NODE_DIR/plan.md"
       : > "$NODE_DIR/plan-rubric.md"
@@ -191,7 +191,7 @@ states:
     # so a later diff can detect a no-op refinement, and increments .node_iter.
     action_type: shell
     action: |
-      NODE_DIR="${captured.run_dir.output}"
+      NODE_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       N=$(cat "$NODE_DIR/.node_iter" 2>/dev/null || echo 0)
       N=$((N + 1))
       echo "$N" > "$NODE_DIR/.node_iter"
@@ -216,7 +216,7 @@ states:
     # cannot spin.
     action_type: shell
     action: |
-      cat "${captured.run_dir.output}/.node_iter" 2>/dev/null || echo 0
+      cat "${captured.run_dir.output}/.node_iter" 2>/dev/null || echo 0  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       type: output_numeric
       operator: lt
@@ -290,7 +290,7 @@ states:
     # rather than risk losing the decision with no outcome token at all.
     action_type: shell
     action: |
-      DEADLINE="${context.deadline_epoch:default=0}"
+      DEADLINE="${context.deadline_epoch:default=0}"  # ll-lint: mr11-ok(context.deadline_epoch) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ "$DEADLINE" -gt 0 ] && [ "$(date +%s)" -ge "$DEADLINE" ]; then
         echo "DEADLINE_PASSED"
       else
@@ -310,9 +310,9 @@ states:
     # tree stays bounded even with an over-eager decomposition classifier.
     action_type: shell
     action: |
-      NEXT_DEPTH=$(( ${context.depth} + 1 ))
-      MAX_DEPTH=${context.max_depth}
-      MAX_NODES=${context.max_nodes}
+      NEXT_DEPTH=$(( ${context.depth} + 1 ))  # ll-lint: mr11-ok(context.depth) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      MAX_DEPTH=${context.max_depth}  # ll-lint: mr11-ok(context.max_depth) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      MAX_NODES=${context.max_nodes}  # ll-lint: mr11-ok(context.max_nodes) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       TOTAL=$(cat "${context.run_dir}/node_counter.txt" 2>/dev/null || echo 1)
       if [ "$NEXT_DEPTH" -gt "$MAX_DEPTH" ]; then
         echo "CAP_DEPTH"
@@ -338,9 +338,9 @@ states:
     action_type: shell
     action: |
       RUN_DIR="${context.run_dir}"
-      PARENT="${context.node_id}"
-      STAGE="${captured.run_dir.output}/children"
-      NEXT_DEPTH=$(( ${context.depth} + 1 ))
+      PARENT="${context.node_id}"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      STAGE="${captured.run_dir.output}/children"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      NEXT_DEPTH=$(( ${context.depth} + 1 ))  # ll-lint: mr11-ok(context.depth) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ ! -d "$STAGE" ] || [ -z "$(ls -A "$STAGE" 2>/dev/null)" ]; then
         echo "NO_CHILDREN"
         exit 0
@@ -378,8 +378,8 @@ states:
   emit_decomposed:
     action_type: shell
     action: |
-      echo "DECOMPOSED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"
-      echo "Node ${context.node_id} decomposed"
+      echo "DECOMPOSED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "Node ${context.node_id} decomposed"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: done
 
   emit_leaf:
@@ -388,10 +388,10 @@ states:
     # directly without an integration pass.
     action_type: shell
     action: |
-      NODE_DIR="${captured.run_dir.output}"
+      NODE_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cp "$NODE_DIR/plan.md" "$NODE_DIR/final.md" 2>/dev/null || true
-      echo "REFINED_LEAF" > "${context.run_dir}/node_outcome_${context.node_id}.txt"
-      echo "Node ${context.node_id} finalized as leaf"
+      echo "REFINED_LEAF" > "${context.run_dir}/node_outcome_${context.node_id}.txt"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "Node ${context.node_id} finalized as leaf"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: done
 
   emit_capped:
@@ -399,18 +399,18 @@ states:
     # record the cap so the parent can report it.
     action_type: shell
     action: |
-      NODE_DIR="${captured.run_dir.output}"
+      NODE_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cp "$NODE_DIR/plan.md" "$NODE_DIR/final.md" 2>/dev/null || true
-      echo "REFINED_CAPPED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"
-      echo "${context.node_id}" >> "${context.run_dir}/capped.txt"
-      echo "Node ${context.node_id} depth/node-budget capped → leaf"
+      echo "REFINED_CAPPED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "${context.node_id}" >> "${context.run_dir}/capped.txt"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "Node ${context.node_id} depth/node-budget capped → leaf"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: done
 
   refine_failed:
     action_type: shell
     action: |
-      echo "REFINE_FAILED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"
-      echo "Node ${context.node_id} refinement failed"
+      echo "REFINE_FAILED" > "${context.run_dir}/node_outcome_${context.node_id}.txt"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "Node ${context.node_id} refinement failed"  # ll-lint: mr11-ok(context.node_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: failed
 
   done:

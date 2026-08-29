@@ -152,9 +152,9 @@ states:
         echo "  or download the GUI installer from openscad.org"
         exit 0
       fi
-      SCAD="${captured.run_dir.output}/model.scad"
-      VIEWS_DIR="${captured.run_dir.output}/views"
-      PRESETS="${context.view_presets}"
+      SCAD="${captured.run_dir.output}/model.scad"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      VIEWS_DIR="${captured.run_dir.output}/views"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      PRESETS="${context.view_presets}"  # ll-lint: mr11-ok(context.view_presets) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mkdir -p "$VIEWS_DIR"
       VIEW_N=0
       for PRESET in $(echo "$PRESETS" | tr ',' ' '); do
@@ -190,7 +190,7 @@ states:
     # aware: handles N rendered PNGs, not just a single screenshot.png.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNTER=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0)
       COUNTER=$((COUNTER + 1))
       echo "$COUNTER" > "$RUN_DIR/.iter_counter"
@@ -281,11 +281,11 @@ states:
     # to done). Skipped on stall-exit path (check_stall.on_no → done directly).
     action_type: shell
     action: |
-      EXPORT="${context.export_stl}"
+      EXPORT="${context.export_stl}"  # ll-lint: mr11-ok(context.export_stl) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ "$EXPORT" = "true" ] && command -v openscad >/dev/null 2>&1; then
-        openscad "${captured.run_dir.output}/model.scad" \
-          -o "${captured.run_dir.output}/model.stl" 2>&1 \
-          && echo "STL_EXPORTED: ${captured.run_dir.output}/model.stl" \
+        openscad "${captured.run_dir.output:shell}/model.scad" \
+          -o "${captured.run_dir.output:shell}/model.stl" 2>&1 \
+          && echo "STL_EXPORTED: ${captured.run_dir.output:shell}/model.stl" \
           || echo "STL_EXPORT_FAILED: continuing without STL"
       else
         echo "STL_SKIP"
@@ -308,7 +308,7 @@ states:
     # Never block a functionally-sound model on an optional gate.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -f .env ]; then set -a; . ./.env; set +a; fi
       if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
         echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0

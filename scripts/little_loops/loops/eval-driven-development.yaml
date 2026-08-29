@@ -72,7 +72,7 @@ states:
   # the project lock, so the child ll-loop run would fail on acquire().
   # Pattern: rl-coding-agent.yaml:37-44
   run_harness:
-    action: ll-loop run --no-lock ${context.harness_name}
+    action: ll-loop run --no-lock ${context.harness_name:shell}
     action_type: shell
     capture: run_harness
     evaluate:

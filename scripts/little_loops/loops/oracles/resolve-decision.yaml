@@ -39,7 +39,7 @@ states:
     # decision_needed, where check-decidable is not the right gate. That
     # binding itself lands with ENH-3075; this sub-loop only needs to expose
     # the branch.
-    action: "[ \"${context.skip_probe}\" = \"true\" ]"
+    action: "[ \"${context.skip_probe:shell}\" = \"true\" ]"
     fragment: shell_exit
     on_yes: run_decide
     on_no: check_decision_decidable
@@ -56,11 +56,12 @@ states:
     # free-form open questions). Extracted from autodev.yaml's
     # check_decision_decidable.
     action: |
-      if [ -f ${context.run_dir}/decide-options-deposited-${context.issue_id} ]; then
+      if [ -f ${context.run_dir}/decide-options-deposited-${context.issue_id} ]; then  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         exit 0
       fi
+      # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues check-open-questions ${context.issue_id} || \
-        ll-issues check-decidable ${context.issue_id}
+        ll-issues check-decidable ${context.issue_id}  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: shell_exit
     on_yes: run_decide
     on_no: deposit_options
@@ -98,7 +99,7 @@ states:
     # deposit_options entirely.
     action_type: shell
     action: |
-      printf '1' > ${context.run_dir}/decide-options-deposited-${context.issue_id}
+      printf '1' > ${context.run_dir}/decide-options-deposited-${context.issue_id}  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: check_open_question_progress
 
   check_open_question_progress:
@@ -113,7 +114,7 @@ states:
     # wrote and the gate was inert (always on_yes, rounds: 0).
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       HISTORY_FILE="$${RUN_DIR}/.open_questions_$${ID}.history"
 
@@ -178,7 +179,7 @@ states:
     # re-hitting the same 429 on the next queued issue. Per-issue and
     # run-dir-scoped, so it needs no explicit clearing.
     action_type: shell
-    action: printf '1' > ${context.run_dir}/decide-rate-limited-${context.issue_id}
+    action: printf '1' > ${context.run_dir}/decide-rate-limited-${context.issue_id:shell}
     next: failed
     on_error: failed
 
@@ -197,7 +198,7 @@ states:
     # implement_current would fail ENH-2825's failure-edge-to-success-terminal
     # gate here): an unverifiable flag state is treated conservatively as
     # unresolved, not silently as cleared.
-    action: "ll-issues check-flag ${context.issue_id} decision_needed"
+    action: "ll-issues check-flag ${context.issue_id:shell} decision_needed"
     fragment: shell_exit
     on_yes: check_residual_decision
     on_no: done
@@ -238,7 +239,7 @@ states:
     # autodev gets exactly one decide pass per dequeue before this state's
     # on_no routes it to human review — bounded by the caller, not by a
     # retry loop here.
-    action: "ll-issues check-unresolved-decisions ${context.issue_id}"
+    action: "ll-issues check-unresolved-decisions ${context.issue_id:shell}"
     fragment: shell_exit
     on_yes: failed
     on_no: done

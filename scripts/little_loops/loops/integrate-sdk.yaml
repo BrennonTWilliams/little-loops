@@ -32,6 +32,8 @@ states:
     action_type: shell
     timeout: 30
     action: |
+      # ll-lint: mr11-ok(context.target) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.target) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       hits=$(grep -rln "import ${context.target}\|from ${context.target}" \
         --include="*.py" --include="*.ts" --include="*.js" \
         . 2>/dev/null | grep -v "\.git" | wc -l | tr -d ' ')
@@ -182,7 +184,7 @@ states:
   verify_scaffold:
     action_type: shell
     timeout: 60
-    action: bash scripts/verify_learning_citations.sh "${context.scaffold_dir}"
+    action: bash scripts/verify_learning_citations.sh "${context.scaffold_dir:shell}"
     capture: verify_result
     evaluate:
       type: exit_code

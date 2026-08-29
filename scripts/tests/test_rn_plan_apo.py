@@ -131,7 +131,7 @@ class TestRunPlannerState:
         the exact no-op this bug fixed.
         """
         action = raw_data["states"]["run_planner"].get("action", "")
-        assert '--context plan_prompt_file="${context.plan_prompt_file}"' in action
+        assert '--context plan_prompt_file="${context.plan_prompt_file:shell}"' in action
 
     def test_on_blocked_done(self, raw_data: dict) -> None:
         state = raw_data["states"]["run_planner"]

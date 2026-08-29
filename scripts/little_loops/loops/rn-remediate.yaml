@@ -112,7 +112,7 @@ states:
     # so shipping the gate cannot mass-block the existing backlog here.
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues format-check "$ID"
     evaluate:
       type: exit_code
@@ -158,7 +158,7 @@ states:
   verify_scores_persisted:
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # BUG-2003: resolve via the shared (type-prefix-tolerant) resolver so a stale
       # type prefix or a file with no priority prefix still locates the issue.
       ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
@@ -179,7 +179,7 @@ states:
       # must be captured here — the only point with the genuine pre-remediation
       # score — into a file the gate can read without it mutating mid-run.
       COMPLEXITY=$(jq -r '.score_complexity // 0' "${context.run_dir}/pre_scores_$${ID}.json" 2>/dev/null || echo 0)
-      if [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ]; then
+      if [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ]; then  # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "ABOVE_MINIMAL" > "${context.run_dir}/complexity_band_$${ID}.txt"
       else
         echo "MINIMAL" > "${context.run_dir}/complexity_band_$${ID}.txt"
@@ -194,12 +194,12 @@ states:
   check_readiness:
     fragment: shell_exit
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # Use the loop-context thresholds so the readiness gate agrees with
       # diagnose / check_convergence under overridden thresholds (ENH-1977 Fix 2).
       ll-issues check-readiness "$ID" \
-        --readiness "${context.readiness_threshold}" \
-        --outcome "${context.outcome_threshold}"
+        --readiness "${context.readiness_threshold:shell}" \
+        --outcome "${context.outcome_threshold}"  # ll-lint: mr11-ok(context.outcome_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     on_yes: check_complexity_pre_implement
     on_no: check_outcome
     on_error: check_outcome
@@ -211,9 +211,9 @@ states:
     # above-minimal issues; --full-rewrite is not warranted for an already-ready issue.
     fragment: shell_exit
     action: |
-      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"
+      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COMPLEXITY=$(jq -r '.score_complexity // 0' "$PRE" 2>/dev/null || echo 0)
-      THRESHOLD="${context.diagnose_complexity_threshold}"
+      THRESHOLD="${context.diagnose_complexity_threshold}"  # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ "$COMPLEXITY" -ge "$THRESHOLD" ] && exit 0 || exit 1
     on_yes: check_wire_pre_implement
     on_no: check_wire_pre_implement
@@ -222,7 +222,7 @@ states:
   check_wire_pre_implement:
     fragment: shell_exit
     action: |
-      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"
+      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CHANGE_SURFACE=$(jq -r '.score_change_surface // 0' "$PRE" 2>/dev/null || echo 0)
       [ "$CHANGE_SURFACE" -eq 0 ] && exit 0 || exit 1
     on_yes: wire
@@ -232,7 +232,7 @@ states:
   check_outcome:
     fragment: shell_exit
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # BUG-2003: resolve via the shared (type-prefix-tolerant) resolver so a stale
       # type prefix or a file with no priority prefix still locates the issue.
       ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
@@ -241,7 +241,7 @@ states:
         exit 1
       fi
       OUTCOME=$(grep '^outcome_confidence:' "$ISSUE_FILE" | head -1 | awk '{print $2}' | tr -d "'\"")
-      THRESHOLD="${context.outcome_threshold}"
+      THRESHOLD="${context.outcome_threshold}"  # ll-lint: mr11-ok(context.outcome_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$OUTCOME" ] && [ "$OUTCOME" -ge "$THRESHOLD" ]; then
         exit 0
       else
@@ -261,7 +261,7 @@ states:
   check_wire_needed_outcome:
     fragment: shell_exit
     action: |
-      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"
+      PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CHANGE_SURFACE=$(jq -r '.score_change_surface // 0' "$PRE" 2>/dev/null || echo 0)
       [ "$CHANGE_SURFACE" -eq 0 ] && exit 0 || exit 1
     on_yes: wire
@@ -273,7 +273,7 @@ states:
 
   check_decision_needed:
     fragment: shell_exit
-    action: "ll-issues check-flag ${context.issue_id} decision_needed"
+    action: "ll-issues check-flag ${context.issue_id:shell} decision_needed"
     on_yes: resolve_decision
     on_no: diagnose
     on_error: diagnose
@@ -332,7 +332,7 @@ states:
     # didn't resolve the flag (or errored for an unrelated reason); fall
     # through to emit_needs_manual_review — the same target the old inline
     # decide.on_no used.
-    action: "[ -f ${context.run_dir}/decide-rate-limited-${context.issue_id} ]"
+    action: "[ -f ${context.run_dir}/decide-rate-limited-${context.issue_id:shell} ]"
     fragment: shell_exit
     on_yes: rate_limit_diagnostic
     on_no: emit_needs_manual_review
@@ -345,10 +345,10 @@ states:
   diagnose:
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
-      READINESS_THRESHOLD="${context.readiness_threshold}"
-      OUTCOME_THRESHOLD="${context.outcome_threshold}"
+      READINESS_THRESHOLD="${context.readiness_threshold}"  # ll-lint: mr11-ok(context.readiness_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      OUTCOME_THRESHOLD="${context.outcome_threshold}"  # ll-lint: mr11-ok(context.outcome_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Fetch scores via ll-issues show --json
       SCORES_JSON=$(ll-issues show "$ID" --json 2>/dev/null)
@@ -381,20 +381,25 @@ states:
         echo "DECIDE"
       elif [ "$MISSING_ARTIFACTS" = "true" ]; then
         echo "WIRE"
+      # ll-lint: mr11-ok(context.diagnose_ambiguity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ] \
           && [ "$CHANGE_SURFACE" -eq 0 ]; then
         # No integration map exists → wiring can fill the ambiguity gap
         echo "WIRE"
-      elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ]; then
+      elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ]; then  # ll-lint: mr11-ok(context.diagnose_ambiguity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         # Integration map exists → residual ambiguity is decision-driven; refine to resolve
         echo "REFINE"
+      # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] \
           && [ "$CHANGE_SURFACE" -eq 0 ]; then
         # High complexity + no integration map → wire before refining
         echo "WIRE"
+      # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.diagnose_confidence_floor) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.outcome_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] || [ "$CONFIDENCE" -lt "${context.diagnose_confidence_floor}" ] || [ "$OUTCOME" -lt "${context.outcome_threshold}" ]; then
         echo "REFINE"
-      elif [ "$CHANGE_SURFACE" -ge "${context.diagnose_change_surface_threshold}" ]; then
+      elif [ "$CHANGE_SURFACE" -ge "${context.diagnose_change_surface_threshold}" ]; then  # ll-lint: mr11-ok(context.diagnose_change_surface_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "DECOMPOSE"
       else
         # ENH-2223: residual minor gaps that don't match any dimensional rule get a
@@ -426,9 +431,9 @@ states:
     # Fail-open: any gate error implements rather than blocking processing.
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
-      if [ "${context.require_refine_and_wire}" != "true" ]; then
+      if [ "${context.require_refine_and_wire}" != "true" ]; then  # ll-lint: mr11-ok(context.require_refine_and_wire) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "IMPLEMENT"
       else
         BAND=$(cat "$RUN_DIR/complexity_band_$${ID}.txt" 2>/dev/null || echo "MINIMAL")
@@ -468,11 +473,11 @@ states:
     action_type: shell
     capture: ll_auto_output
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # Learning-gate skip parity: append --skip-learning-gate when the caller set
       # the skip_learning_gate context (mirrors `ll-auto --skip-learning-gate`).
       SKIP_FLAG=""
-      if [ -n "${context.skip_learning_gate}" ]; then
+      if [ -n "${context.skip_learning_gate}" ]; then  # ll-lint: mr11-ok(context.skip_learning_gate) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         SKIP_FLAG="--skip-learning-gate"
       fi
       # BUG-2594: tee to a run-dir file rather than relying solely on the
@@ -531,7 +536,7 @@ states:
     # noted in FEAT-2552's Additional Findings).
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       # Write the outcome token — parent's classify_remediation reads this
       # via output_contains in the route_rem_* chain.
@@ -556,7 +561,7 @@ states:
     # (where the same crash would recur).
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       # Write the distinct infra-failure token — parent's classify_remediation
       # falls through to record_failure (IMPLEMENT_FAILED) via route_rem_*
@@ -688,7 +693,7 @@ states:
     # decision_needed:true triggers /ll:decide-issue automatically.
     action_type: shell
     action: |
-      echo "1" > "${context.run_dir}/refined_${context.issue_id}.txt"
+      echo "1" > "${context.run_dir}/refined_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: check_decision_needed_post
 
   mark_wired:
@@ -698,7 +703,7 @@ states:
     # decision_needed:true triggers /ll:decide-issue automatically.
     action_type: shell
     action: |
-      echo "1" > "${context.run_dir}/wired_${context.issue_id}.txt"
+      echo "1" > "${context.run_dir}/wired_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: check_decision_needed_post
 
   check_decision_needed_post:
@@ -708,7 +713,7 @@ states:
     # sets decision_needed: true; without this gate the subloop runs another
     # confidence check then blocks for manual review instead.
     fragment: shell_exit
-    action: "ll-issues check-flag ${context.issue_id} decision_needed"
+    action: "ll-issues check-flag ${context.issue_id:shell} decision_needed"
     on_yes: resolve_decision_direct
     on_no: re_assess
     on_error: re_assess
@@ -733,7 +738,7 @@ states:
   verify_re_assess_scores:
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # BUG-2003: resolve via the shared (type-prefix-tolerant) resolver so a stale
       # type prefix or a file with no priority prefix still locates the issue.
       ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
@@ -759,10 +764,10 @@ states:
   check_convergence:
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
-      READINESS_THRESHOLD="${context.readiness_threshold}"
-      OUTCOME_THRESHOLD="${context.outcome_threshold}"
+      READINESS_THRESHOLD="${context.readiness_threshold}"  # ll-lint: mr11-ok(context.readiness_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      OUTCOME_THRESHOLD="${context.outcome_threshold}"  # ll-lint: mr11-ok(context.outcome_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       PRE="$${RUN_DIR}/pre_scores_$${ID}.json"
       POST="$${RUN_DIR}/post_scores_$${ID}.json"
@@ -858,9 +863,9 @@ states:
   check_remediation_budget:
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
-      MAX_PASSES="${context.max_remediation_passes}"
+      MAX_PASSES="${context.max_remediation_passes}"  # ll-lint: mr11-ok(context.max_remediation_passes) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       REM_COUNTER_FILE="$${RUN_DIR}/remediation_count_$${ID}.txt"
       REM_COUNT=$(cat "$REM_COUNTER_FILE" 2>/dev/null || echo 0)
       echo "$REM_COUNT"
@@ -897,7 +902,7 @@ states:
   emit_implemented:
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "IMPLEMENTED" > "${context.run_dir}/subloop_outcome_$ID.txt"
       if ! grep -qxF "$ID" "${context.run_dir}/counted.txt" 2>/dev/null; then
         COUNT=$(cat "${context.run_dir}/implemented_count.txt" 2>/dev/null || echo 0)
@@ -909,7 +914,7 @@ states:
   emit_needs_decompose:
     action_type: shell
     action: |
-      echo "NEEDS_DECOMPOSE" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "NEEDS_DECOMPOSE" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: failed
 
   emit_stalled_needs_decompose:
@@ -921,7 +926,7 @@ states:
     # skip.
     action_type: shell
     action: |
-      echo "STALLED_NEEDS_DECOMPOSE" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "STALLED_NEEDS_DECOMPOSE" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: failed
 
   emit_needs_manual_review:
@@ -948,10 +953,10 @@ states:
     # markdown contents (mirrors cua-agent-desktop.yaml quoted-heredoc pattern).
     action_type: shell
     action: |
-      if [ -f "${context.run_dir}/decide-options-deposited-${context.issue_id}" ]; then
-        echo "MANUAL_REVIEW_RECOMMENDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      if [ -f "${context.run_dir}/decide-options-deposited-${context.issue_id}" ]; then  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        echo "MANUAL_REVIEW_RECOMMENDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       else
-        echo "MANUAL_REVIEW_NEEDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+        echo "MANUAL_REVIEW_NEEDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
 
       LL_ARG_ISSUE_ID=${context.issue_id:shell} python3 << 'PYEOF'
@@ -1089,7 +1094,7 @@ states:
   emit_implement_failed:
     action_type: shell
     action: |
-      echo "IMPLEMENT_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "IMPLEMENT_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: failed
 
   emit_env_not_ready:
@@ -1097,14 +1102,14 @@ states:
     # route_rem_env_not_ready can abort the queue instead of continuing to dequeue.
     action_type: shell
     action: |
-      echo "ENV_NOT_READY" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "ENV_NOT_READY" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "Aborting: host auth not configured — set the host credential or run the host login, then re-run"
     next: failed
 
   emit_scores_missing:
     action_type: shell
     action: |
-      echo "SCORES_MISSING" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "SCORES_MISSING" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: failed
 
   emit_learning_gate_blocked:
@@ -1114,8 +1119,8 @@ states:
     # and surfaces the explore-api remedy to the operator.
     action_type: shell
     action: |
-      echo "LEARNING_GATE_BLOCKED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
-      echo "Learning gate blocked ${context.issue_id}: prove external-API deps with /ll:explore-api, then re-run"
+      echo "LEARNING_GATE_BLOCKED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "Learning gate blocked ${context.issue_id}: prove external-API deps with /ll:explore-api, then re-run"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: failed
 
   emit_gate_infra_failed:
@@ -1127,8 +1132,8 @@ states:
     # implementation was never attempted).
     action_type: shell
     action: |
-      echo "GATE_INFRA_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
-      echo "Learning gate could not run ${context.issue_id}: infra failure (scope-lock contention, missing binary, or wedged child); retry later"
+      echo "GATE_INFRA_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "Learning gate could not run ${context.issue_id}: infra failure (scope-lock contention, missing binary, or wedged child); retry later"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: failed
 
   # =========================================================================

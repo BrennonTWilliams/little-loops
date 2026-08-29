@@ -1,0 +1,11 @@
+{
+  "id": "2571563f-a7ef-4445-a5af-28ed524eeddc",
+  "type": "decision",
+  "timestamp": "2026-08-29T20:38:58Z",
+  "category": "harness-lint",
+  "labels": [],
+  "rationale": "Raising to ERROR would hard-fail ll-loop validate on consuming projects' pre-existing loops at upgrade time, a migration this epic did not scope. The per-site # ll-lint: mr11-ok(<var>) marker's own well-formedness check is a separate, new ERROR (unreachable unless a project writes a marker) and does not change MR-11's finding severity. Reconsider once the idiom is documented and has shipped for a release.",
+  "rule": "MR-11 (unsafe raw interpolation) stays WARNING severity after ENH-3342's widening, not ERROR",
+  "scope": "issue",
+  "issue": "ENH-3342"
+}

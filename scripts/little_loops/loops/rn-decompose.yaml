@@ -56,7 +56,7 @@ states:
   snap_for_size_review:
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
 
       # Capture current scores snapshot
@@ -87,7 +87,7 @@ states:
   detect_children:
     fragment: shell_exit
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       PARENT_DEPTH=$(cat "$${RUN_DIR}/current_depth.txt" 2>/dev/null || echo 0)
 
@@ -135,7 +135,7 @@ states:
   enqueue_children:
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       PARENT_DEPTH=$(cat "$${RUN_DIR}/current_depth.txt" 2>/dev/null || echo 0)
       CHILD_DEPTH=$((PARENT_DEPTH + 1))
@@ -226,7 +226,7 @@ states:
     # Best-effort: a finalize error must not undo the already-enqueued children.
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       echo "DECOMPOSED" > "$RUN_DIR/subloop_outcome_$${ID}.txt"
       ll-issues finalize-decomposition "$ID" \
@@ -245,13 +245,13 @@ states:
   emit_no_children:
     action_type: shell
     action: |
-      echo "NO_CHILDREN" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "NO_CHILDREN" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: done
 
   emit_size_review_failed:
     action_type: shell
     action: |
-      echo "SIZE_REVIEW_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "SIZE_REVIEW_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: failed
 
   # =========================================================================

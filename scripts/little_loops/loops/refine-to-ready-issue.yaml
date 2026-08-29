@@ -166,7 +166,7 @@ states:
     # nothing else ever clears that sentinel, so a stale `infra` from a
     # previous issue in autodev's shared run_dir would otherwise leak into
     # the next issue's skip_inflight classification.
-    action: "[ -n \"${captured.issue_id.output}\" ]"
+    action: "[ -n \"${captured.issue_id.output:shell}\" ]"
     fragment: shell_exit
     on_yes: check_epic_id
     on_no: no_work           # empty backlog → clean no-work exit
@@ -179,7 +179,7 @@ states:
     # context.input, an unfiltered caller) must be decomposed, not refined as a
     # leaf via /ll:refine-issue. Route EPIC ids to breakdown_issue.
     action: |
-      case "${captured.issue_id.output}" in
+      case "${captured.issue_id.output}" in  # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         EPIC-*) exit 0 ;;
         *) exit 1 ;;
       esac
@@ -206,6 +206,7 @@ states:
       )
       [ -z "$MAX_TOTAL" ] && MAX_TOTAL=${context.max_refine_count:shell}
 
+      # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       TOTAL_REFINES=$(ll-issues refine-status "${captured.issue_id.output}" --json 2>/dev/null \
         | python3 -c "
       import json, sys
@@ -280,7 +281,7 @@ states:
     # confidence_check unrun (BUG-3065). Mirrors check_decision_needed
     # (line ~369) pattern; differs only in placement (mid-chain, not
     # end-of-chain). BUG-2528.
-    action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
+    action: "ll-issues check-flag ${captured.issue_id.output:shell} decision_needed"
     fragment: shell_exit
     on_yes: resolve_decision_mid_refine
     on_no: check_wire_done
@@ -332,7 +333,7 @@ states:
     # resolve it inline via the resolve-decision sub-loop and resume the chain
     # at normalize_structure (BUG-3065; was: exit via done and dead-end;
     # ENH-3248: normalize_structure interposed before verify_issue). BUG-2528.
-    action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
+    action: "ll-issues check-flag ${captured.issue_id.output:shell} decision_needed"
     fragment: shell_exit
     on_yes: resolve_decision_mid_wire
     on_no: normalize_structure
@@ -360,7 +361,7 @@ states:
     # a routine post-fix nonzero exit from being misread as a real error.
     # Not load-bearing for any downstream reader (mirrors mark_wire_done's
     # fall-through, not write_broke_down's): on_error equals next.
-    action: ll-issues format-check ${captured.issue_id.output} --fix --apply || true
+    action: ll-issues format-check ${captured.issue_id.output:shell} --fix --apply || true
     action_type: shell
     next: verify_issue
     on_error: verify_issue
@@ -391,7 +392,7 @@ states:
     # code, which never reaches the host CLI's exit status. This gate reads
     # that written artifact — the write-verdict/read-verdict shape used
     # throughout this file (decision_needed / check-flag).
-    action: "ll-issues check-verify-verdict ${captured.issue_id.output}"
+    action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell}"
     fragment: shell_exit
     on_yes: check_hedges                # exit 0 = verdict VALID (or absent, fail-open)
     on_no: check_evidence_unverified    # exit 1 = VERIFY_VERDICT_NON_VALID → BUG-3282: evidence outranks proposal
@@ -419,7 +420,7 @@ states:
     # needed) once precision is measured ≥ 0.30 with recall still 1.00 on
     # labelled true-fabrications. Narrowing the scan surface to .md/issue
     # artifacts (fallback F2) is the most likely way to get there.
-    action: "ll-issues check-verify-verdict ${captured.issue_id.output} --evidence-unverified"
+    action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell} --evidence-unverified"
     fragment: shell_exit
     on_yes: check_proposal_unsound  # F3: advisory — detected and logged, but not routed
     on_no: check_proposal_unsound  # any other non-VALID verdict → today's behaviour, unchanged
@@ -435,7 +436,7 @@ states:
     # scope, not refine_issue's. Every other non-VALID verdict (a false claim
     # about current state) is unaffected and still falls through on_no to
     # today's check_refine_limit target.
-    action: "ll-issues check-verify-verdict ${captured.issue_id.output} --proposal-unsound"
+    action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell} --proposal-unsound"
     fragment: shell_exit
     on_yes: check_reconcile_limit  # verify_verdict == PROPOSAL_UNSOUND → reconcile, not refine
     on_no: check_refine_limit      # any other non-VALID verdict → today's behaviour, unchanged
@@ -446,7 +447,7 @@ states:
     # questions regardless of confidence_score. Widened sections/vocabulary
     # (ENH-3031) so prose deposited by refine/wire's research findings is
     # scanned, not just Edge Cases / Confidence Check Notes / Open Questions.
-    action: "ll-issues check-open-questions ${captured.issue_id.output}"
+    action: "ll-issues check-open-questions ${captured.issue_id.output:shell}"
     fragment: shell_exit
     on_yes: check_placeholders      # exit 0 = no hedges (ENH-3248: via check_placeholders)
     on_no: check_hedge_attempts     # exit 1 = OPEN_QUESTIONS_REMAIN → bound the retry
@@ -491,6 +492,7 @@ states:
     # — cmd_format_check's own exit code is not usable here (it returns 1
     # for ANY gap, not just this class, per normalize_structure's note).
     action: |
+      # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues format-check ${captured.issue_id.output} --format json 2>/dev/null \
         | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('template_placeholders', [])))"
     action_type: shell
@@ -507,7 +509,7 @@ states:
     # well on every confidence-check dimension (specific, unambiguous, small,
     # testable-by-a-human) yet is exactly the decay mode this loop exists to
     # prevent — no rubric axis can see it.
-    action: "ll-issues check-acceptance-criteria ${captured.issue_id.output}"
+    action: "ll-issues check-acceptance-criteria ${captured.issue_id.output:shell}"
     fragment: shell_exit
     on_yes: check_design
     on_no: check_reconcile_limit  # ENH-3248: ACs are inside reconcile's rewrite scope
@@ -519,7 +521,7 @@ states:
     # loop, so an issue with no `## Program Design` section could reach
     # `done`. Pure shell, no new predicate copy: reuses the same CLI the
     # sibling autodev.yaml loop already calls at four sites.
-    action: "ll-issues check-design ${captured.issue_id.output}"
+    action: "ll-issues check-design ${captured.issue_id.output:shell}"
     fragment: shell_exit
     on_yes: confidence_check
     on_no: check_refine_limit  # Decision Rationale: Option B — shares the same 1-loopback-per-run budget as the other refine-triggering gates, rather than bypassing check_refine_limit's counter to reach refine_followup directly.
@@ -690,7 +692,7 @@ states:
     # confidence_check to re-score against the resolved decision (BUG-3065;
     # was: exit via done and dead-end). on_no falls through to
     # check_missing_artifacts before breakdown_issue.
-    action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
+    action: "ll-issues check-flag ${captured.issue_id.output:shell} decision_needed"
     fragment: shell_exit
     on_yes: resolve_decision_pre_breakdown
     on_no: check_spike_needed
@@ -709,7 +711,7 @@ states:
     # spike_attempted guard makes this one-shot: a completed-or-attempted spike
     # never re-fires this gate on a later pass.
     action: |
-      ll-issues show ${captured.issue_id.output} --json | python3 -c "
+      ll-issues show ${captured.issue_id.output} --json | python3 -c "  # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       import json, sys
       d = json.load(sys.stdin)
       sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)"
@@ -763,7 +765,7 @@ states:
     # outer loop's triage_outcome_failure → check_missing_artifacts → run_wire path
     # can handle the repair. Mirrors check_decision_needed above and
     # autodev.yaml's check_missing_artifacts state.
-    action: "ll-issues check-flag ${captured.issue_id.output} missing_artifacts"
+    action: "ll-issues check-flag ${captured.issue_id.output:shell} missing_artifacts"
     fragment: shell_exit
     on_yes: done
     on_no: breakdown_issue
@@ -877,7 +879,7 @@ states:
     # no deferral). Residual (out of scope): autodev's own equivalent halts its
     # queue on 429-exhaustion; this nested path only infra-skips the current
     # issue, so an autodev queue keeps walking into fast infra-skips.
-    action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.issue_id.output} ]"
+    action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.issue_id.output:shell} ]"
     fragment: shell_exit
     on_yes: mark_rate_limit_infra
     on_no: record_decision_unresolved
@@ -904,7 +906,7 @@ states:
     # silent-success bug this issue exists to fix (### refine-to-ready-issue's
     # handling of the failed terminal).
     action: |
-      ID="${captured.issue_id.output}"
+      ID="${captured.issue_id.output}"  # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
       # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
       # raw_status is the lowercase canonical field; the display-cased `status`
@@ -1009,18 +1011,20 @@ states:
       EVIDENCE=${context.run_dir}/refine-failure-evidence.txt
       FAILING_STATE=''; FAILING_EXIT=''
       for pair in \
-        resolve_issue=${captured.issue_id.exit_code?} \
-        check_lifetime_limit=${captured.check_lifetime_limit.exit_code?} \
-        refine_issue=${captured.refine_issue.exit_code?} \
-        refine_followup=${captured.refine_followup.exit_code?} \
-        check_outcome=${captured.check_outcome.exit_code?} \
-        check_refine_limit=${captured.check_refine_limit.exit_code?} \
-        check_scores_from_file=${captured.check_scores_from_file.exit_code?} \
-        breakdown_issue=${captured.breakdown_issue.exit_code?} \
+        resolve_issue=${captured.issue_id.exit_code?:shell} \
+        check_lifetime_limit=${captured.check_lifetime_limit.exit_code?:shell} \
+        refine_issue=${captured.refine_issue.exit_code?:shell} \
+        refine_followup=${captured.refine_followup.exit_code?:shell} \
+        check_outcome=${captured.check_outcome.exit_code?:shell} \
+        check_refine_limit=${captured.check_refine_limit.exit_code?:shell} \
+        check_scores_from_file=${captured.check_scores_from_file.exit_code?:shell} \
+        breakdown_issue=${captured.breakdown_issue.exit_code?:shell} \
       ; do
         s="$${pair%%=*}"; c="$${pair#*=}"
         case "$c" in ''|0) ;; *) FAILING_STATE="$s"; FAILING_EXIT="$c" ;; esac
       done
+      # ll-lint: mr11-ok(captured.confidence_check.failure_terminal) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.confidence_check.terminated_by) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       case "${captured.confidence_check.failure_terminal?}:${captured.confidence_check.terminated_by?}" in
         True:*|*:error|*:timeout|*:max_steps)
           [ -n "$FAILING_STATE" ] || { FAILING_STATE=confidence_check; FAILING_EXIT=sub-loop; } ;;
@@ -1033,16 +1037,16 @@ states:
         printf 'issue: %s\n' '${captured.issue_id.output?}'
         printf 'run_dir: %s\n' '${context.run_dir}'
         printf '\n--- captured exit codes ---\n'
-        printf 'refine_issue: %s\n' '${captured.refine_issue.exit_code?}'
-        printf 'refine_followup: %s\n' '${captured.refine_followup.exit_code?}'
-        printf 'breakdown_issue: %s\n' '${captured.breakdown_issue.exit_code?}'
-        printf 'check_outcome: %s\n' '${captured.check_outcome.exit_code?}'
-        printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.exit_code?}'
+        printf 'refine_issue: %s\n' '${captured.refine_issue.exit_code?:shell}'
+        printf 'refine_followup: %s\n' '${captured.refine_followup.exit_code?:shell}'
+        printf 'breakdown_issue: %s\n' '${captured.breakdown_issue.exit_code?:shell}'
+        printf 'check_outcome: %s\n' '${captured.check_outcome.exit_code?:shell}'
+        printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.exit_code?:shell}'
         printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.exit_code?}'
         printf 'check_reconcile_limit: %s\n' '${captured.check_reconcile_limit.exit_code?}'
-        printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.exit_code?}'
-        printf 'issue_id: %s\n' '${captured.issue_id.exit_code?}'
-        printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.exit_code?}'
+        printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.exit_code?:shell}'
+        printf 'issue_id: %s\n' '${captured.issue_id.exit_code?:shell}'
+        printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.exit_code?:shell}'
         printf '\n--- classify_failure verdicts (BUG-2826) ---\n'
         printf 'refine_issue: %s\n' '${captured.refine_issue.failure_type?}'
         printf 'refine_followup: %s\n' '${captured.refine_followup.failure_type?}'
@@ -1114,12 +1118,28 @@ states:
     # reads refine-terminal-class and routes infra kills to skip_inflight_infra.
     action: |
       CLASS=quality
+      # ll-lint: mr11-ok(captured.refine_issue.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.refine_followup.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.breakdown_issue.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.check_outcome.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.check_refine_limit.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.check_scores_from_file.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.issue_id.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.check_lifetime_limit.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       for c in ${captured.refine_issue.exit_code?} ${captured.refine_followup.exit_code?} ${captured.breakdown_issue.exit_code?} ${captured.check_outcome.exit_code?} ${captured.check_refine_limit.exit_code?} ${captured.check_scores_from_file.exit_code?} ${captured.issue_id.exit_code?} ${captured.check_lifetime_limit.exit_code?}; do
         case "$c" in
           143|137|124) CLASS=infra ;;
           -*) CLASS=infra ;;
         esac
       done
+      # ll-lint: mr11-ok(captured.refine_issue.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.refine_followup.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.breakdown_issue.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.check_outcome.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.check_refine_limit.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.check_scores_from_file.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.issue_id.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.check_lifetime_limit.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       for f in ${captured.refine_issue.failure_type?} ${captured.refine_followup.failure_type?} ${captured.breakdown_issue.failure_type?} ${captured.check_outcome.failure_type?} ${captured.check_refine_limit.failure_type?} ${captured.check_scores_from_file.failure_type?} ${captured.issue_id.failure_type?} ${captured.check_lifetime_limit.failure_type?}; do
         case "$f" in
           transient|non_recoverable|infra_retry) CLASS=infra ;;

@@ -8,6 +8,8 @@ fragments:
       Callers needing $(pwd)/ path expansion (Variant A) must override action: at the call site.
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(context.file_url) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.screenshot_path) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       playwright screenshot --full-page "${context.file_url}" "${context.screenshot_path}" 2>&1 && echo "CAPTURED"
     evaluate:
       type: output_contains

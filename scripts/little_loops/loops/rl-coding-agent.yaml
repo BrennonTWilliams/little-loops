@@ -28,7 +28,7 @@ states:
   # a Claude prompt via claude -p, a patch application, etc.
   act:
     action: |
-      echo "Executing coding strategy on: ${context.target_files:default=<all changed files>}"
+      echo "Executing coding strategy on: ${context.target_files:default=<all changed files>}"  # ll-lint: mr11-ok(context.target_files) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # Replace: run your coding action (/ll:manage-issue skill, claude prompt, patch, etc.)
       echo "strategy_applied"
     action_type: shell
@@ -85,7 +85,7 @@ states:
       fi
 
       # LLM quality score (0.0–1.0): live judge via Claude
-      TARGETS="${context.target_files}"
+      TARGETS="${context.target_files}"  # ll-lint: mr11-ok(context.target_files) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -z "$TARGETS" ] && TARGETS=$(git diff --name-only HEAD 2>/dev/null | tr '\n' ' ' || echo ".")
       LLM_SCORE=$(claude -p "Review $TARGETS for code quality. Rate overall quality (correctness, clarity, test coverage) as a decimal 0.0–1.0. Output ONLY the number." \
         --output-format text --no-session-persistence --dangerously-skip-permissions 2>/dev/null | \
@@ -105,7 +105,7 @@ states:
   score:
     fragment: convergence_gate
     action: |
-      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
+      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'  # ll-lint: mr11-ok(captured.observation.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       target: "${context.reward_target}"
       tolerance: 0.05
@@ -121,8 +121,8 @@ states:
   # adjust target_files, change the approach (e.g., switch from patching to rewriting), etc.
   improve:
     action: |
-      echo "Reward achieved: ${captured.observation.output}"
-      echo "Refine output: ${captured.refine_result.output}"
+      echo "Reward achieved: ${captured.observation.output}"  # ll-lint: mr11-ok(captured.observation.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "Refine output: ${captured.refine_result.output}"  # ll-lint: mr11-ok(captured.refine_result.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # Replace: update strategy file, adjust prompt, change target files, etc.
       echo "Strategy updated based on observations."
     action_type: shell
@@ -132,7 +132,7 @@ states:
   # Emits only the numeric reward so the convergence evaluator can parse it cleanly.
   persist_reward:
     action: |
-      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
+      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'  # ll-lint: mr11-ok(captured.observation.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     action_type: shell
     capture: prev_reward
     next: act

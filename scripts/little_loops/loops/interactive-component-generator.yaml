@@ -158,7 +158,7 @@ states:
     # an empty-from-start queue (planning failure) from a drained queue (build failure).
     fragment: shell_exit
     action: |
-      RD="${captured.run_dir.output}"
+      RD="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       QUEUE="$RD/queue.txt"
       [ -s "$QUEUE" ] || exit 1
       CID="$(head -n1 "$QUEUE")"
@@ -176,8 +176,10 @@ states:
     # into it (generator-evaluator assumes its run_dir already exists).
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.current_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mkdir -p "${captured.run_dir.output}/comp-${captured.current_id.output}"
-      echo "prepared ${captured.current_id.output}"
+      echo "prepared ${captured.current_id.output}"  # ll-lint: mr11-ok(captured.current_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: build_component
 
   build_component:
@@ -272,6 +274,8 @@ states:
     # advertised" real at ~zero extra cost. Result is written to smoke.txt for record.
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.current_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CDIR="${captured.run_dir.output}/comp-${captured.current_id.output}"
       NODE_PATH="$(npm root -g)" node -e "
       const { chromium } = require('@playwright/test');
@@ -320,8 +324,8 @@ states:
     # select_best ranks on, alongside the smoke verdict.
     action_type: shell
     action: |
-      RD="${captured.run_dir.output}"
-      CID="${captured.current_id.output}"
+      RD="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      CID="${captured.current_id.output}"  # ll-lint: mr11-ok(captured.current_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CDIR="$RD/comp-$CID"
       SMOKE="$(grep -oE 'SMOKE_(PASS|FAIL)' "$CDIR/smoke.txt" 2>/dev/null | head -1 || echo SMOKE_FAIL)"
       MINSC="$(grep -oE '[0-9]+/10' "$CDIR/critique.md" 2>/dev/null | grep -oE '^[0-9]+' | sort -n | head -1)"
@@ -335,7 +339,7 @@ states:
     # there is nothing to compose, so route to classify_failure instead of producing a stub.
     fragment: shell_exit
     action: |
-      [ -s "${captured.run_dir.output}/scoreboard.jsonl" ] && exit 0 || exit 1
+      [ -s "${captured.run_dir.output}/scoreboard.jsonl" ] && exit 0 || exit 1  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     on_yes: select_best
     on_no: classify_failure
     on_error: classify_failure
@@ -347,7 +351,7 @@ states:
     # Routes to diagnose with a failure_reason token for targeted operator guidance.
     action_type: shell
     action: |
-      if [ -f "${captured.run_dir.output}/.any_popped" ]; then
+      if [ -f "${captured.run_dir.output}/.any_popped" ]; then  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "BUILD_FAILURE"
       else
         echo "PLANNING_FAILURE"
@@ -444,7 +448,7 @@ states:
     # Also captures screenshot.png for the optional vision_gate.
     action_type: shell
     action: |
-      RD="${captured.run_dir.output}"
+      RD="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ROUNDS="$(cat "$RD/.compose_rounds" 2>/dev/null || echo 0)"
       NODE_PATH="$(npm root -g)" node -e "
       const { chromium } = require('@playwright/test');
@@ -511,7 +515,7 @@ states:
     # iterate, repoint on_no -> compose (the .compose_rounds cap already bounds it).
     action_type: shell
     action: |
-      RD="${captured.run_dir.output}"
+      RD="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       case "$RD" in
         /*) ABS_DIR="$RD" ;;
         *) ABS_DIR="$(pwd)/$RD" ;;

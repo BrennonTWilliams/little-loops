@@ -922,7 +922,7 @@ class TestCliYamlFragments:
 
     def test_ll_loop_run_has_context_interpolation(self) -> None:
         data = self._load_cli_yaml()
-        assert "${context.loop_name}" in data["fragments"]["ll_loop_run"]["action"]
+        assert "${context.loop_name:shell}" in data["fragments"]["ll_loop_run"]["action"]
 
     def test_all_fragments_are_shell_type(self) -> None:
         data = self._load_cli_yaml()

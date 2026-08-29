@@ -92,9 +92,9 @@ states:
     # (upstream init failure, e.g. a doubled/malformed run_dir — BUG-2435).
     fragment: queue_pop
     action: |
-      QUEUE="${captured.run_dir.output}/lenses.txt"
+      QUEUE="${captured.run_dir.output}/lenses.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ ! -f "$QUEUE" ]; then
-        echo "ERROR: lenses.txt missing at ${captured.run_dir.output} (upstream init failure)" >&2
+        echo "ERROR: lenses.txt missing at ${captured.run_dir.output} (upstream init failure)" >&2  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         exit 2
       fi
       ITEM=$(head -1 "$QUEUE" 2>/dev/null)
@@ -159,7 +159,7 @@ states:
     # compile-time SyntaxError that no try/except could catch (BUG-2468).
     fragment: parse_tagged_json
     action: |
-      cat > "${captured.run_dir.output}/round_ideas.txt" << 'RAWEOF'
+      cat > "${captured.run_dir.output}/round_ideas.txt" << 'RAWEOF'  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ${captured.round_ideas.output}
       RAWEOF
       LL_ARG_NOVELTY_THRESHOLD=${context.novelty_threshold:shell} python3 << 'PYEOF'
@@ -241,7 +241,7 @@ states:
     # with the next lens; if at/above, early-exit to cluster.
     action_type: shell
     action: |
-      cat "${captured.run_dir.output}/saturation.txt" 2>/dev/null || echo 0
+      cat "${captured.run_dir.output}/saturation.txt" 2>/dev/null || echo 0  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       type: output_numeric
       operator: lt
@@ -333,7 +333,7 @@ states:
     # Routes to the appropriate sink handler based on context.sink.
     # Uses classify evaluator: reads last non-empty stdout line as the route token.
     action_type: shell
-    action: echo "${context.sink}"
+    action: echo "${context.sink:shell}"
     evaluate:
       type: classify
     route:
@@ -348,8 +348,8 @@ states:
     # Degrades gracefully when output_path is unset.
     fragment: shell_exit
     action: |
-      SRC="${captured.run_dir.output}/brainstorm.md"
-      DEST="${context.output_path}"
+      SRC="${captured.run_dir.output}/brainstorm.md"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      DEST="${context.output_path}"  # ll-lint: mr11-ok(context.output_path) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -z "$DEST" ]; then
         echo "NOTICE: sink=file but output_path is unset — brainstorm.md remains in run_dir only"
         exit 0
@@ -404,7 +404,7 @@ states:
     # dedup_novelty crash emptied the pipeline) — route to failed, not done.
     action_type: shell
     action: |
-      if [ ! -s "${captured.run_dir.output}/brainstorm.md" ]; then
+      if [ ! -s "${captured.run_dir.output}/brainstorm.md" ]; then  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "ERROR: brainstorm.md is empty or missing — loop reached the terminal path without producing artifacts" >&2
         exit 2
       fi

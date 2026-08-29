@@ -3,10 +3,11 @@ id: ENH-3342
 type: ENH
 title: Widen MR-11 lint and document the safe loop-interpolation idiom
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
+completed_at: '2026-08-29T20:58:48Z'
 parent: EPIC-3336
 blocked_by:
 - ENH-3337
@@ -390,6 +391,30 @@ extending the marker to other MR rules; removing or deprecating the loop-level
 `unsafe_context_interpolation_ok` flag.
 
 ## Program Design
+
+### Deviations
+
+- **2026-08-29 — AC 8's "triaged... in this issue" scope, and the corpus-wide
+  triage magnitude.** The design anticipated a modest residual finding count
+  (the issue's own examples name single-digit-to-low-tens counts). Running the
+  widened rule against the actual built-in corpus surfaced 665 findings across
+  60 loop files — the confidence-check history already flagged this as
+  "unbounded by the issue's own admission," but not this large. Per user
+  decision (2026-08-29, mid-implementation), the corpus triage was NOT
+  completed inside this issue: every residual finding was exempted with a
+  well-formed `# ll-lint: mr11-ok(<var>) <reason>` marker citing a new
+  follow-up issue, ENH-3358, which owns the actual conversion work. This
+  deliberately trades away AC 8's "convert it — the default, and always
+  preferred" framing for AC 8's own escape hatch ("mark it... when conversion
+  is genuinely out of this epic's reach") at a larger scale than the issue
+  anticipated when it wrote that clause. The marker mechanism, the enumerated
+  marker-set ratchet (AC 8c), and the corpus-wide zero-live-warning property
+  are all fully implemented and verified as designed; only the count of sites
+  routed through "mark" vs. "convert" departs from what the issue's Impact
+  section implied ("if the residual marker set comes out large, that is a
+  signal to convert more, not to accept it" — this issue explicitly accepted
+  it, once, as a scoping decision, rather than silently absorbing an
+  unbounded amount of additional work into one session).
 
 ### Signatures
 
@@ -1136,6 +1161,7 @@ the heuristic's known inability to distinguish "resolved and cleared" from
   mechanical widening of existing logic.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-29T20:58:23 - `56a8dea0-aa3e-460a-b690-91edf1aee623.jsonl`
 - `/ll:ready-issue` - 2026-08-29T19:21:07 - `095cbd0a-db00-46a3-adc4-bd813f5370ea.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:16:08 - `fedec3ab-76ac-4b03-acac-d98d32d4349a.jsonl`
 - `/ll:refine-issue` - 2026-08-29T18:47:09 - `237f015b-641f-4613-8e7e-3269af82a4c8.jsonl`

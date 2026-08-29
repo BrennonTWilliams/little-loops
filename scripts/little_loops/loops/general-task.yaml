@@ -51,8 +51,8 @@ states:
     action: |
       echo "SKIP" > "${context.run_dir}/baseline-exit.txt"
       : > "${context.run_dir}/resolved-test-cmd.txt"
-      if [ -n "${context.test_cmd}" ]; then
-        CMD="${context.test_cmd}"
+      if [ -n "${context.test_cmd}" ]; then  # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        CMD="${context.test_cmd}"  # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       else
         CMD=$(ll-config get project.test_cmd)
         RC=$?
@@ -213,7 +213,7 @@ states:
       fi
       # Fix 3: Reject checkpoint from a different task (task fingerprinting).
       STORED_HASH=$(grep -o '"task_hash":"[^"]*"' "$CHECKPOINT" 2>/dev/null | sed 's/"task_hash":"//;s/"//')
-      if [ -n "$STORED_HASH" ] && [ "${context.input_hash}" != "$STORED_HASH" ]; then
+      if [ -n "$STORED_HASH" ] && [ "${context.input_hash}" != "$STORED_HASH" ]; then  # ll-lint: mr11-ok(context.input_hash) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         rm -f "$CHECKPOINT" "$CURRENT_STEP" "$LAST_FILES_PATH"
         echo "RESUME_CLEAN"
         exit 0
@@ -275,7 +275,7 @@ states:
       # criterion is satisfied.
       ATTEMPTS="${context.run_dir}/step-attempts.txt"
       PRIOR=$(grep -Fx -- "$STEP" "$ATTEMPTS" 2>/dev/null | wc -l | tr -d ' ')
-      if [ "$PRIOR" -ge "${context.max_step_attempts}" ]; then
+      if [ "$PRIOR" -ge "${context.max_step_attempts}" ]; then  # ll-lint: mr11-ok(context.max_step_attempts) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         # ENH-2857: two-direction blocker check BEFORE the abandonment rewrite,
         # so a hard-blocker step (Hermes defect 5: the abandoned step's own text
         # said "Hard blocker for Steps 13, 16, 27", and none of those dependents
@@ -307,6 +307,7 @@ states:
         # halt only changes what happens to the remaining steps. Without this
         # rewrite, write_partial_summary's abandoned count would read 0 for the
         # exact run that halted because of an abandonment.
+        # ll-lint: mr11-ok(context.max_step_attempts) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         awk -v target="$STEP" -v n="${context.max_step_attempts}" \
           'found==0 && $0==target && /^- \[ \]/ { sub(/^- \[ \]/, "- [!]"); $0=$0 "  (abandoned: verify failed after " n " attempts)"; found=1 } 1' \
           "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
@@ -323,7 +324,7 @@ states:
       echo "$STEP" > "${context.run_dir}/current-step.txt"
       CHECKPOINT="${context.run_dir}/checkpoint.json"
       printf '{"in_flight_step":"%s","timestamp":"%s","task_hash":"%s"}\n' \
-        "$STEP" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${context.input_hash}" > "$CHECKPOINT"
+        "$STEP" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${context.input_hash}" > "$CHECKPOINT"  # ll-lint: mr11-ok(context.input_hash) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "SELECTED_STEP: $STEP"
     action_type: shell
     capture: selected_step
@@ -343,7 +344,7 @@ states:
   # so the reference is dominated.
   check_step_halt:
     action: |
-      printf '%s' "${captured.selected_step.output}"
+      printf '%s' "${captured.selected_step.output}"  # ll-lint: mr11-ok(captured.selected_step.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     action_type: shell
     evaluate:
       type: output_contains
@@ -470,7 +471,7 @@ states:
 
   capture_work_exit:
     action: |
-      echo "${captured.work_result.exit_code:default=0}" > "${context.run_dir}/last-exit-code.txt"
+      echo "${captured.work_result.exit_code:default=0}" > "${context.run_dir}/last-exit-code.txt"  # ll-lint: mr11-ok(captured.work_result.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     action_type: shell
     next: continue_work
     on_error: continue_work
@@ -625,7 +626,7 @@ states:
         echo '{"error": "missing artifact"}'
         exit 1
       fi
-      TAG="${context.hard_criteria_tags}"
+      TAG="${context.hard_criteria_tags}"  # ll-lint: mr11-ok(context.hard_criteria_tags) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       HARD_UNCHECKED_DOD=$(awk -v tag="$TAG" '
         /^## Verification Criteria/ { in_section=1; next }
         /^## / { in_section=0 }
@@ -1073,7 +1074,7 @@ states:
     # no summary.json at all and a verify timeout discarded all partial credit.
     action: |
       DOD="${context.run_dir}/dod.md"
-      TAG="${context.hard_criteria_tags}"
+      TAG="${context.hard_criteria_tags}"  # ll-lint: mr11-ok(context.hard_criteria_tags) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       HARD_UNCHECKED=0; SOFT_UNCHECKED=0; TOTAL=0
       if [ -f "$DOD" ]; then
         HARD_UNCHECKED=$(awk -v tag="$TAG" '

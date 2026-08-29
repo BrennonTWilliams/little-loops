@@ -83,7 +83,7 @@ states:
   route_quality:
     # Extract the numeric score and route: pass → distribution check,
     # fail → fix attempt, error (unparseable) → reject.
-    action: "echo \"${captured.item_score.output}\" | tail -1 | tr -d '[:space:]'"
+    action: "echo \"${captured.item_score.output:shell}\" | tail -1 | tr -d '[:space:]'"
     action_type: shell
     evaluate:
       type: output_numeric

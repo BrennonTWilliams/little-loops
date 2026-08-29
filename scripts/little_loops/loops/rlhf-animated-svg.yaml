@@ -115,16 +115,16 @@ states:
     # incremental fixes that never address a structural root cause.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       STREAK_FILE="$ABS_DIR/.smoke_fail_streak"
       STREAK=$(cat "$STREAK_FILE" 2>/dev/null || echo 0)
       STREAK=$((STREAK + 1))
       echo "$STREAK" > "$STREAK_FILE"
-      if [ "$STREAK" -ge "${context.smoke_fail_streak_max}" ]; then
+      if [ "$STREAK" -ge "${context.smoke_fail_streak_max}" ]; then  # ll-lint: mr11-ok(context.smoke_fail_streak_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "OSCILLATION_DETECTED: $${STREAK} consecutive smoke failures"
         rm -f "$STREAK_FILE"
       else
-        echo "STREAK_NORMAL: $STREAK/${context.smoke_fail_streak_max}"
+        echo "STREAK_NORMAL: $STREAK/${context.smoke_fail_streak_max}"  # ll-lint: mr11-ok(context.smoke_fail_streak_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
       exit 0
     timeout: 30
@@ -163,25 +163,25 @@ states:
     # Pattern ported from p5js-sketch-generator check_score_streak + _streak_route.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       STREAK_FILE="$ABS_DIR/.score_fail_streak"
       REPLAN_COUNT_FILE="$ABS_DIR/.score_replan_count"
       STREAK=$(cat "$STREAK_FILE" 2>/dev/null || echo 0)
       STREAK=$((STREAK + 1))
       echo "$STREAK" > "$STREAK_FILE"
-      if [ "$STREAK" -ge "${context.score_fail_streak_max}" ]; then
+      if [ "$STREAK" -ge "${context.score_fail_streak_max}" ]; then  # ll-lint: mr11-ok(context.score_fail_streak_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         REPLAN_COUNT=$(cat "$REPLAN_COUNT_FILE" 2>/dev/null || echo 0)
         REPLAN_COUNT=$((REPLAN_COUNT + 1))
         echo "$REPLAN_COUNT" > "$REPLAN_COUNT_FILE"
-        if [ "$REPLAN_COUNT" -ge "${context.replan_escalation_threshold}" ]; then
-          echo "CONCEPT_RESET: $REPLAN_COUNT REPLANs exhausted (threshold: ${context.replan_escalation_threshold})"
+        if [ "$REPLAN_COUNT" -ge "${context.replan_escalation_threshold}" ]; then  # ll-lint: mr11-ok(context.replan_escalation_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+          echo "CONCEPT_RESET: $REPLAN_COUNT REPLANs exhausted (threshold: ${context.replan_escalation_threshold})"  # ll-lint: mr11-ok(context.replan_escalation_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
           echo "0" > "$STREAK_FILE"
         else
           echo "REPLAN: $STREAK consecutive score failures (REPLAN #$REPLAN_COUNT)"
           echo "0" > "$STREAK_FILE"
         fi
       else
-        echo "STREAK_NORMAL: $STREAK/${context.score_fail_streak_max}"
+        echo "STREAK_NORMAL: $STREAK/${context.score_fail_streak_max}"  # ll-lint: mr11-ok(context.score_fail_streak_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -253,8 +253,8 @@ states:
     # Routes to plan_animation (replan allowed) or write_final_summary (budget exhausted).
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
-      MAX_REPLANS=${context.max_replans}
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      MAX_REPLANS=${context.max_replans}  # ll-lint: mr11-ok(context.max_replans) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNTER_FILE="$ABS_DIR/.replan_count"
 
       # Read current replan count (default 0)
@@ -423,7 +423,7 @@ states:
     # If no .best_output.html exists (scoring never ran), this is a no-op.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -f "$ABS_DIR/.best_output.html" ]; then
         cp "$ABS_DIR/.best_output.html" "$ABS_DIR/output.html"
         echo "RESTORED_BEST_AT_TERMINATION: .best_output.html -> output.html"

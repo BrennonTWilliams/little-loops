@@ -74,7 +74,7 @@ states:
       [ -f "$SMOKE_COUNT_FILE" ] && SMOKE_ATTEMPTS=$(cat "$SMOKE_COUNT_FILE" 2>/dev/null || echo 0)
       SMOKE_ATTEMPTS=$((SMOKE_ATTEMPTS + 1))
       echo "$SMOKE_ATTEMPTS" > "$SMOKE_COUNT_FILE"
-      SMOKE_THRESHOLD=${context.smoke_bypass_threshold}
+      SMOKE_THRESHOLD=${context.smoke_bypass_threshold}  # ll-lint: mr11-ok(context.smoke_bypass_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ "$SMOKE_ATTEMPTS" -ge "$SMOKE_THRESHOLD" ]; then
         echo "SMOKE_PASS: bypassed (smoke attempts $SMOKE_ATTEMPTS >= threshold $SMOKE_THRESHOLD)"; exit 0
       fi
@@ -514,7 +514,7 @@ states:
       fi
 
       # Determine if score passed (VISION_PASS in previous output)
-      PREV_OUTPUT="${prev.output}"
+      PREV_OUTPUT="${prev.output}"  # ll-lint: mr11-ok(prev.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       SCORE_PASSED="false"
       if echo "$PREV_OUTPUT" | grep -q "VISION_PASS"; then
         SCORE_PASSED="true"

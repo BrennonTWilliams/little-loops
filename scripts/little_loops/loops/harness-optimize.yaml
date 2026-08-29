@@ -40,7 +40,7 @@ states:
     action_type: shell
     action: |
       # Write state queue when loop YAML targets[].states[] is non-empty
-      LOOP_YAML="${context.targets}"
+      LOOP_YAML="${context.targets}"  # ll-lint: mr11-ok(context.targets) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -f "$LOOP_YAML" ]; then
         LOOP_YAML="$LOOP_YAML" python3 << 'PYEOF' 2>/dev/null || true
       import yaml, json, os
@@ -62,7 +62,7 @@ states:
       TRAJ_FILES=$(find ${context.run_dir} -name "trajectory.jsonl" -path "$TRAJ_PATH" 2>/dev/null)
       if [ -n "$TRAJ_FILES" ]; then
         BEST=$(echo "$TRAJ_FILES" | xargs cat 2>/dev/null | jq -r 'select(.accepted==true) | .commit_sha' | tail -1)
-        [ -n "$BEST" ] && git checkout "$BEST" -- ${context.targets}
+        [ -n "$BEST" ] && git checkout "$BEST" -- ${context.targets}  # ll-lint: mr11-ok(context.targets) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
       PROG=.ll/program.md
       if [ -f "$PROG" ]; then
@@ -109,7 +109,7 @@ states:
 
   baseline_score:
     fragment: run_benchmark
-    action: "${context.scorer} ${context.tasks_dir}"
+    action: "${context.scorer:shell} ${context.tasks_dir:shell}"
     capture: baseline
     on_yes: init_prev
     on_no: done
@@ -181,7 +181,7 @@ states:
 
   score:
     fragment: run_benchmark
-    action: "${context.scorer} ${context.tasks_dir}"
+    action: "${context.scorer:shell} ${context.tasks_dir:shell}"
     capture: benchmark_score
     on_yes: gate
     on_no: revert_and_log
@@ -190,7 +190,7 @@ states:
   gate:
     fragment: convergence_gate
     action: |
-      echo "${captured.benchmark_score.output}" | tail -1 | tr -d '[:space:]'
+      echo "${captured.benchmark_score.output}" | tail -1 | tr -d '[:space:]'  # ll-lint: mr11-ok(captured.benchmark_score.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       target: "${context.target_score}"
       tolerance: 0.02
@@ -204,15 +204,15 @@ states:
   commit_and_log:
     action_type: shell
     action: |
-      git add ${context.targets}
-      git commit -m "harness-optimize: iter ${state.iteration}, score ${captured.benchmark_score.output}"
+      git add ${context.targets}  # ll-lint: mr11-ok(context.targets) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      git commit -m "harness-optimize: iter ${state.iteration}, score ${captured.benchmark_score.output}"  # ll-lint: mr11-ok(captured.benchmark_score.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       git rev-parse HEAD
     capture: last_commit
     next: write_trajectory_accepted
 
   revert_and_log:
     action_type: shell
-    action: "git restore ${context.targets}"
+    action: "git restore ${context.targets:shell}"
     next: write_trajectory_rejected
 
   write_trajectory_accepted:
@@ -223,7 +223,7 @@ states:
         TRAJ="${context.run_dir}/states/$${STATE_NAME}/trajectory.jsonl"
         mkdir -p "$(dirname "$TRAJ")"
       else
-        TRAJ="${captured.traj_path.output}"
+        TRAJ="${captured.traj_path.output}"  # ll-lint: mr11-ok(captured.traj_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
       echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":true,"commit_sha":"${captured.last_commit.output}"}' \
         >> "$TRAJ"
@@ -245,7 +245,7 @@ states:
         TRAJ="${context.run_dir}/states/$${STATE_NAME}/trajectory.jsonl"
         mkdir -p "$(dirname "$TRAJ")"
       else
-        TRAJ="${captured.traj_path.output}"
+        TRAJ="${captured.traj_path.output}"  # ll-lint: mr11-ok(captured.traj_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
       echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":false,"commit_sha":""}' \
         >> "$TRAJ"

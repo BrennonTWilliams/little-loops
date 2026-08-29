@@ -78,19 +78,19 @@ states:
     # state lives under the runner-injected ${context.run_dir}.
     action_type: shell
     action: |
-      if [ ! -f "${context.plan_file}" ]; then
-        echo "ERROR: Plan file not found: ${context.plan_file}"
+      if [ ! -f "${context.plan_file}" ]; then  # ll-lint: mr11-ok(context.plan_file) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        echo "ERROR: Plan file not found: ${context.plan_file}"  # ll-lint: mr11-ok(context.plan_file) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         exit 1
       fi
       DIR="${context.run_dir}"
-      RESUME="${context.resume}"
+      RESUME="${context.resume}"  # ll-lint: mr11-ok(context.resume) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ENH-2565: resume path. When --context resume is set AND a prior tree
       # exists under $DIR/nodes, do NOT re-seed — re-seeding would clobber the
       # in-flight decomposition tree. Ensure the source-path record is present
       # (the original run wrote it) and just echo the absolute run dir; check_resume
       # routes straight into bottom-up synthesis.
       if [ -n "$RESUME" ] && [ -d "$DIR/nodes" ]; then
-        [ -s "$DIR/.source-path" ] || realpath "${context.plan_file}" > "$DIR/.source-path"
+        [ -s "$DIR/.source-path" ] || realpath "${context.plan_file}" > "$DIR/.source-path"  # ll-lint: mr11-ok(context.plan_file) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         case "$DIR" in
           /*) echo "$DIR" ;;
           *) echo "$(pwd)/$DIR" ;;
@@ -104,11 +104,11 @@ states:
       else
         mkdir -p "$DIR/nodes/n0"
         # Canonical working copy of the (eventually reassembled) plan + final rubric.
-        cp "${context.plan_file}" "$DIR/plan.md"
+        cp "${context.plan_file}" "$DIR/plan.md"  # ll-lint: mr11-ok(context.plan_file) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         : > "$DIR/plan-rubric.md"
-        realpath "${context.plan_file}" > "$DIR/.source-path"
+        realpath "${context.plan_file}" > "$DIR/.source-path"  # ll-lint: mr11-ok(context.plan_file) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         # Root node working dir: a self-contained mini-plan seeded from the source.
-        cp "${context.plan_file}" "$DIR/nodes/n0/plan.md"
+        cp "${context.plan_file}" "$DIR/nodes/n0/plan.md"  # ll-lint: mr11-ok(context.plan_file) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         : > "$DIR/nodes/n0/plan-rubric.md"
         : > "$DIR/nodes/n0/research.md"
         # Work-tree bookkeeping (shared across all node sub-loops).
@@ -146,9 +146,9 @@ states:
     #   FRESH        — no resume flag / no prior tree -> dequeue_next
     action_type: shell
     action: |
-      RESUME="${context.resume}"
-      RUN_DIR="${captured.run_dir.output}"
-      STEPWISE="${context.stepwise:default=0}"
+      RESUME="${context.resume}"  # ll-lint: mr11-ok(context.resume) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      STEPWISE="${context.stepwise:default=0}"  # ll-lint: mr11-ok(context.stepwise) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$RESUME" ] && [ -d "$RUN_DIR/nodes" ]; then
         QUEUE="$RUN_DIR/queue.txt"
         VISITED="$RUN_DIR/visited.txt"
@@ -219,8 +219,8 @@ states:
     # then clear undrained.txt so this is idempotent on repeated resumes.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      STEPWISE="${context.stepwise:default=0}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      STEPWISE="${context.stepwise:default=0}"  # ll-lint: mr11-ok(context.stepwise) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       QUEUE="$RUN_DIR/queue.txt"
       VISITED="$RUN_DIR/visited.txt"
       UNDRAINED="$RUN_DIR/undrained.txt"
@@ -269,10 +269,12 @@ states:
     # run to be killed by the loop-level `timeout:` with zero deliverable.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       QUEUE="$RUN_DIR/queue.txt"
       if [ -s "$QUEUE" ]; then
         ELAPSED_MS=${loop.elapsed_ms}
+        # ll-lint: mr11-ok(context.timeout_total) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        # ll-lint: mr11-ok(context.synth_reserve) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         BUDGET_MS=$(( (${context.timeout_total:default=21600} - ${context.synth_reserve:default=3600}) * 1000 ))
         if [ "$ELAPSED_MS" -ge "$BUDGET_MS" ]; then
           cp "$QUEUE" "$RUN_DIR/undrained.txt"
@@ -305,7 +307,7 @@ states:
     # Surface the dequeued node's depth as a capture for the sub-loop binding.
     action_type: shell
     action: |
-      cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0
+      cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     capture: current_depth
     next: compute_deadline
     on_error: compute_deadline
@@ -319,6 +321,8 @@ states:
     # carries that information across the with: boundary.
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(context.timeout_total) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.synth_reserve) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       BUDGET_S=$(( ${context.timeout_total:default=21600} - ${context.synth_reserve:default=3600} ))
       ELAPSED_S=$(( ${loop.elapsed_ms} / 1000 ))
       REMAINING_S=$(( BUDGET_S - ELAPSED_S ))
@@ -353,6 +357,8 @@ states:
     # Read the outcome token the oracle wrote for this node and route on it.
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cat "${captured.run_dir.output}/node_outcome_${captured.input.output}.txt" 2>/dev/null \
         || echo "REFINE_FAILED"
     capture: node_outcome
@@ -388,9 +394,11 @@ states:
   record_leaf:
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "${captured.input.output}" >> "${captured.run_dir.output}/leaves.txt"
-      echo "[LEAF] ${captured.input.output}"
-      if [ "${context.stepwise:default=0}" != "0" ]; then
+      echo "[LEAF] ${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      if [ "${context.stepwise:default=0}" != "0" ]; then  # ll-lint: mr11-ok(context.stepwise) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "STEPWISE_ON"
       fi
     evaluate:
@@ -415,10 +423,10 @@ states:
     # first leaf).
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       printf '0' > "$RUN_DIR/leaf-repair-count.txt"
       git rev-parse HEAD > "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || : > "$RUN_DIR/leaf-baseline-commit.txt"
-      rm -f "$RUN_DIR/leaf-deviation-note.txt" "$RUN_DIR/leaf-was-deviated-${captured.input.output}.txt"
+      rm -f "$RUN_DIR/leaf-deviation-note.txt" "$RUN_DIR/leaf-was-deviated-${captured.input.output}.txt"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: implement_leaf
     on_error: revert_leaf_failed
 
@@ -460,8 +468,8 @@ states:
     # through to verification rather than blocking it.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      NID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      NID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       BASELINE=$(cat "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || echo "")
       if [ -n "$BASELINE" ]; then
         git diff --name-only "$BASELINE" -- > "$RUN_DIR/leaf-touched-files-$${NID}.txt" 2>/dev/null || true
@@ -493,11 +501,11 @@ states:
     # increment on each verify_leaf failure, cap at ${context.leaf_repair_budget}.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       N=$(cat "$RUN_DIR/leaf-repair-count.txt" 2>/dev/null || echo 0)
       N=$((N + 1))
       printf '%s' "$N" > "$RUN_DIR/leaf-repair-count.txt"
-      BUDGET="${context.leaf_repair_budget:default=2}"
+      BUDGET="${context.leaf_repair_budget:default=2}"  # ll-lint: mr11-ok(context.leaf_repair_budget) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ "$N" -gt "$BUDGET" ]; then
         echo "BUDGET_EXHAUSTED"
       else
@@ -517,7 +525,7 @@ states:
     # for this leaf's sins (Design Notes: commit-or-revert).
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       BASELINE=$(cat "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || echo "")
       if [ -n "$BASELINE" ]; then
         git reset --hard "$BASELINE"
@@ -527,23 +535,23 @@ states:
       # contain). Normally .loops/runs/ is gitignored so this is a no-op, but
       # recreate unconditionally so the append below cannot fail on layout alone.
       mkdir -p "$RUN_DIR"
-      echo "${captured.input.output} IMPLEMENT_FAILED" >> "$RUN_DIR/failed_nodes.txt"
+      echo "${captured.input.output} IMPLEMENT_FAILED" >> "$RUN_DIR/failed_nodes.txt"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: record_leaf_failed
     on_error: record_leaf_failed
 
   record_leaf_failed:
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      printf 'IMPLEMENT_FAILED' > "$RUN_DIR/leaf_impl_${captured.input.output}.txt"
-      echo "[IMPLEMENT_FAILED] ${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      printf 'IMPLEMENT_FAILED' > "$RUN_DIR/leaf_impl_${captured.input.output}.txt"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "[IMPLEMENT_FAILED] ${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: dequeue_next
     on_error: dequeue_next
 
   check_leaf_deviation:
     action_type: shell
     action: |
-      NOTE="${captured.run_dir.output}/leaf-deviation-note.txt"
+      NOTE="${captured.run_dir.output}/leaf-deviation-note.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -s "$NOTE" ]; then
         echo "DEVIATED"
       else
@@ -564,8 +572,8 @@ states:
     # reopening of already-visited nodes).
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      NID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      NID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       NOTE="$RUN_DIR/leaf-deviation-note.txt"
       {
         echo "## Node $NID"
@@ -598,13 +606,13 @@ states:
     # already captured it for verify_leaf's scoping).
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       git add -A
       if git diff --cached --quiet; then
-        echo "NO_CHANGES ${captured.input.output}"
+        echo "NO_CHANGES ${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       else
-        git commit -m "rn-stepwise: implement leaf ${captured.input.output}"
-        echo "COMMITTED ${captured.input.output}"
+        git commit -m "rn-stepwise: implement leaf ${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        echo "COMMITTED ${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
       git rev-parse HEAD > "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || true
     next: record_leaf_done
@@ -617,8 +625,8 @@ states:
     # node_outcome marker but no leaf_impl marker.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      NID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      NID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       STATUS="verified"
       [ -f "$RUN_DIR/leaf-was-deviated-$${NID}.txt" ] && STATUS="deviated"
       printf '%s' "$STATUS" > "$RUN_DIR/leaf_impl_$${NID}.txt"
@@ -630,24 +638,30 @@ states:
   record_capped:
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "${captured.input.output}" >> "${captured.run_dir.output}/capped.txt"
-      echo "[CAPPED] ${captured.input.output} (refined; decomposition suppressed by cap)"
+      echo "[CAPPED] ${captured.input.output} (refined; decomposition suppressed by cap)"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: dequeue_next
     on_error: dequeue_next
 
   record_failure:
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "${captured.input.output}" >> "${captured.run_dir.output}/failed_nodes.txt"
-      echo "[FAILED] ${captured.input.output}"
+      echo "[FAILED] ${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: dequeue_next
     on_error: dequeue_next
 
   record_node_crash:
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "${captured.input.output} CRASH" >> "${captured.run_dir.output}/failed_nodes.txt"
-      echo "[NODE_CRASH] ${captured.input.output} — sub-loop infrastructure failure"
+      echo "[NODE_CRASH] ${captured.input.output} — sub-loop infrastructure failure"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: dequeue_next
     on_error: dequeue_next
 
@@ -659,7 +673,7 @@ states:
     # are. Also backfill final.md for any non-internal node missing one (defensive).
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       export LL_RUN_DIR="$RUN_DIR"
       python3 << 'PYEOF'
       import os
@@ -718,7 +732,7 @@ states:
     # re-run (idempotent) so any missing leaf final.md is restored first.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       export LL_RUN_DIR="$RUN_DIR"
       python3 << 'PYEOF'
       import os
@@ -781,9 +795,9 @@ states:
     # straight to assemble.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       SQ="$RUN_DIR/synth_queue.txt"
-      WORKERS="${context.synth_workers}"
+      WORKERS="${context.synth_workers}"  # ll-lint: mr11-ok(context.synth_workers) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # grep -c prints the count AND exits 1 when zero, so guard with || true and
       # normalize an empty (missing-file) result rather than relying on exit code.
       QN=$(grep -c '[^[:space:]]' "$SQ" 2>/dev/null || true)
@@ -840,7 +854,7 @@ states:
     # plan-rubric.md.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       FAILED_LOG="$RUN_DIR/failed_integrations/log.txt"
       if [ -s "$FAILED_LOG" ]; then
         NODES=$(tr '\n' ',' < "$FAILED_LOG" | sed 's/,$//')
@@ -859,7 +873,7 @@ states:
     # normal clean pass.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -f "$RUN_DIR/nodes/n0/final.md" ]; then
         cp "$RUN_DIR/nodes/n0/final.md" "$RUN_DIR/plan.md"
       elif [ -f "$RUN_DIR/nodes/n0/plan.md" ]; then
@@ -902,9 +916,9 @@ states:
     # `finalize_aborted` — the source is left untouched.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       SOURCE=$(cat "$RUN_DIR/.source-path" 2>/dev/null || echo "")
-      FLOOR="${context.floor_fraction:default=0.5}"
+      FLOOR="${context.floor_fraction:default=0.5}"  # ll-lint: mr11-ok(context.floor_fraction) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       NEW_LEN=$(wc -c < "$RUN_DIR/plan.md" 2>/dev/null | tr -d ' ' || echo 0)
       if [ -z "$SOURCE" ] || [ ! -f "$SOURCE" ]; then
         echo "INVARIANT_FAIL: MISSING_SOURCE"
@@ -977,8 +991,8 @@ states:
     # commit-or-revert hygiene.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      if [ "${context.stepwise:default=0}" = "0" ]; then
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      if [ "${context.stepwise:default=0}" = "0" ]; then  # ll-lint: mr11-ok(context.stepwise) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         exit 0
       fi
       # Best-effort .ll/ll-config.json read (same source oracles/code-run-gate
@@ -1009,10 +1023,10 @@ states:
     # confirm_overwrite=true / dry_run=true to gate destructive behavior.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       SOURCE=$(cat "$RUN_DIR/.source-path" 2>/dev/null || echo "")
-      DRY_RUN="${context.dry_run:default=false}"
-      CONFIRM="${context.confirm_overwrite:default=false}"
+      DRY_RUN="${context.dry_run:default=false}"  # ll-lint: mr11-ok(context.dry_run) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      CONFIRM="${context.confirm_overwrite:default=false}"  # ll-lint: mr11-ok(context.confirm_overwrite) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ENH-2709: machine-readable run-status artifacts. Every exit branch of
       # this state writes summary.json (+ writeback.json), so an auditor can
       # read run status from the run dir alone instead of parsing events.jsonl.
@@ -1073,7 +1087,7 @@ states:
   record_finalize_aborted:
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ENH-2709: persist the abort status as summary.json (same counters the
       # success path writes) so the run dir is auditable without events.jsonl.
       count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" 2>/dev/null || echo 0; }

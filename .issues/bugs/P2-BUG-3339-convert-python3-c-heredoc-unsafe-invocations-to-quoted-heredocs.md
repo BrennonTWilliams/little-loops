@@ -60,6 +60,7 @@ MR-11 (`_find_unsafe_context_interpolations`,
 `scripts/little_loops/fsm/validation/shell_safety.py:148-188`) treats a
 site as safe once it sits inside a properly `<<'MARKER'`/`<<"MARKER"` quoted
 heredoc (tracked via `_QUOTED_HEREDOC_START_RE`, line 41, closed on
+<!-- ll-evidence-ok: historical Current Behavior snapshot of the pre-ENH-3342 shell_safety.py; ENH-3342 rewrote the heredoc-terminator check (column-0 tightening) and the widened rule no longer uses this exact comparison -->
 `line.strip() == marker`). A bare `python3 -c "…"` body is never in that safe
 position, so every `${context.<sevenkey>}` interpolation inside one is
 flagged today (subject to MR-11's fixed seven-key allowlist and its

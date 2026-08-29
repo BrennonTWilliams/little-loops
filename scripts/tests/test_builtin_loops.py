@@ -1575,7 +1575,8 @@ class TestRefineToReadyIssueSubLoop:
             f"check_hedges.on_error should be 'check_placeholders', got {state.get('on_error')!r}"
         )
         assert (
-            state.get("action") == "ll-issues check-open-questions ${captured.issue_id.output}"
+            state.get("action")
+            == "ll-issues check-open-questions ${captured.issue_id.output:shell}"
         ), f"check_hedges.action should be unchanged, got {state.get('action')!r}"
         assert state.get("fragment") == "shell_exit", (
             f"check_hedges.fragment should be unchanged, got {state.get('fragment')!r}"
@@ -2122,8 +2123,8 @@ class TestRefineToReadyIssueSubLoop:
         assert "FAILING_STATE" in action, (
             "write_failure_evidence must derive the failing state from captures"
         )
-        assert "${captured.refine_issue.exit_code?}" in action
-        assert "${captured.issue_id.exit_code?}" in action
+        assert "${captured.refine_issue.exit_code?:shell}" in action
+        assert "${captured.issue_id.exit_code?:shell}" in action
         # prev is recorded under an honest label, never as the failing state.
         assert "diagnose_prev_state" in action, (
             "the ${prev.state} value must be labelled diagnose_prev_state (prev is "
@@ -2142,10 +2143,10 @@ class TestRefineToReadyIssueSubLoop:
         action = data["states"]["write_failure_evidence"]["action"]
         script = action.replace("${context.run_dir}", str(tmp_path))
         # Populate exactly one failing capture; everything else resolves to ''.
-        script = script.replace("${captured.refine_issue.exit_code?}", "143")
+        script = script.replace("${captured.refine_issue.exit_code?:shell}", shlex.quote("143"))
         script = script.replace("${prev.state}", "diagnose")
         script = script.replace("${prev.exit_code}", "0")
-        script = re.sub(r"\$\{captured\.[^}]+\?\}", "", script)
+        script = re.sub(r"\$\{captured\.[^}]+\?(:shell)?\}", "", script)
         script = re.sub(r"\$\{prev\.[^}]+\?\}", "", script)
         script = script.replace("$${", "${")  # engine escape for literal bash ${
         assert "${captured" not in script and "${prev" not in script
@@ -2168,7 +2169,7 @@ class TestRefineToReadyIssueSubLoop:
         script = script.replace("${captured.confidence_check.terminated_by?}", "terminal")
         script = script.replace("${prev.state}", "diagnose")
         script = script.replace("${prev.exit_code}", "0")
-        script = re.sub(r"\$\{captured\.[^}]+\?\}", "", script)
+        script = re.sub(r"\$\{captured\.[^}]+\?(:shell)?\}", "", script)
         script = re.sub(r"\$\{prev\.[^}]+\?\}", "", script)
         script = script.replace("$${", "${")
         assert "${captured" not in script and "${prev" not in script
@@ -2689,7 +2690,7 @@ class TestRefineToReadyIssueSubLoop:
         state = data["states"].get("check_decide_rate_limited", {})
         assert state, "State 'check_decide_rate_limited' not found"
         action = state.get("action", "")
-        assert "decide-rate-limited-${captured.issue_id.output}" in action, (
+        assert "decide-rate-limited-${captured.issue_id.output:shell}" in action, (
             f"check_decide_rate_limited must probe the per-issue marker, got {action!r}"
         )
         assert state.get("fragment") == "shell_exit"
@@ -3528,7 +3529,9 @@ class TestResolveDecisionOracle:
         retry. Polarity: fsm/evaluators.py's shell_exit fragment maps 0->on_yes,
         1->on_no, 2+->on_error."""
         state = data["states"].get("check_residual_decision", {})
-        assert state.get("action") == "ll-issues check-unresolved-decisions ${context.issue_id}", (
+        assert (
+            state.get("action") == "ll-issues check-unresolved-decisions ${context.issue_id:shell}"
+        ), (
             f"check_residual_decision.action should call check-unresolved-decisions, "
             f"got {state.get('action')!r}"
         )
@@ -3642,7 +3645,7 @@ class TestResolveDecisionOracle:
         test_no_failure_edge_routes_to_a_success_terminal depends on this."""
         state = data["states"].get("mark_decide_rate_limited", {})
         action = state.get("action", "")
-        assert "decide-rate-limited-${context.issue_id}" in action, (
+        assert "decide-rate-limited-${context.issue_id:shell}" in action, (
             f"mark_decide_rate_limited.action should write a per-issue "
             f"decide-rate-limited-<issue_id> marker, got {action!r}"
         )
@@ -18472,13 +18475,22 @@ class TestCheckIntentScopeShellAction:
         subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
         subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True)
 
+    @staticmethod
+    def _substitute(action: str, token: str, value: str) -> str:
+        """Replace both the bare `${token}` and the `:shell`-suffixed
+        `${token:shell}` forms with `value`, shlex-quoting the latter — the
+        same two forms the real FSM interpolator produces for a bash-token-
+        position substitution (interpolation.py's `:shell` suffix)."""
+        action = action.replace(f"${{{token}:shell}}", shlex.quote(value))
+        return action.replace(f"${{{token}}}", value)
+
     def _run_init(
         self, data: dict, repo: Path, run_dir_rel: str, cwd: Path | None = None
     ) -> subprocess.CompletedProcess:
         """Run init's action with ${context.run_dir} substituted to run_dir_rel
         (relative to cwd, mirroring the real runner). Returns the completed
         process; stdout (rstripped) is the captured run_dir string."""
-        action = data["states"]["init"]["action"].replace("${context.run_dir}", run_dir_rel)
+        action = self._substitute(data["states"]["init"]["action"], "context.run_dir", run_dir_rel)
         return subprocess.run(
             ["bash", "-c", action], cwd=cwd or repo, capture_output=True, text=True
         )
@@ -18486,8 +18498,8 @@ class TestCheckIntentScopeShellAction:
     def _run_gate(self, data: dict, run_dir: Path, cwd: Path) -> subprocess.CompletedProcess:
         """Run check_intent_scope's action with ${captured.run_dir.output}
         substituted to the absolute run_dir, from the given cwd."""
-        action = data["states"]["check_intent_scope"]["action"].replace(
-            "${captured.run_dir.output}", str(run_dir)
+        action = self._substitute(
+            data["states"]["check_intent_scope"]["action"], "captured.run_dir.output", str(run_dir)
         )
         return subprocess.run(["bash", "-c", action], cwd=cwd, capture_output=True, text=True)
 
@@ -19316,6 +19328,245 @@ class TestInterpSweepBaseline:
         assert not any(
             s.file == "loops/brainstorm.yaml" and s.var == "captured.round_ideas.output"
             for s in sites
+        )
+
+
+# ENH-3342 AC 8c: the corpus's full `# ll-lint: mr11-ok(<var>) <reason>` marker
+# set, checked in as a set literal and asserted via exact-set equality (the
+# same bidirectional shape as TestValidatorWarningBudget's ALLOWLIST and
+# TestInterpSweepBaseline's JSON baseline above): a new marker fails as
+# unenumerated, a removed/moved one fails as stale. This literal *is* the
+# enumeration — no separate grep transcript is recorded in the issue.
+_MR11_MARKER_RE = re.compile(r"#\s*ll-lint:\s*mr11-ok\(([^)]+)\)\s+.*?(\S+-\d+)")
+
+MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
+    ("loops/adversarial-redesign.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/agent-eval-improve.yaml", "captured.scores.output", "ENH-3358"),
+    ("loops/apply-research.yaml", "context.files", "ENH-3358"),
+    ("loops/auto-refine-and-implement.yaml", "captured.issue_set.output", "ENH-3358"),
+    ("loops/auto-refine-and-implement.yaml", "context.scope", "ENH-3358"),
+    ("loops/autodev.yaml", "captured.dequeue_status.output", "ENH-3358"),
+    ("loops/autodev.yaml", "captured.input.output", "ENH-3358"),
+    ("loops/autodev.yaml", "context.skip_learning_gate", "ENH-3358"),
+    ("loops/brainstorm.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/brainstorm.yaml", "context.output_path", "ENH-3358"),
+    ("loops/canvas-sketch-generator.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/cli-anything-bootstrap.yaml", "captured.cache_path.output", "ENH-3358"),
+    ("loops/cli-anything-bootstrap.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/cli-anything-bootstrap.yaml", "context.cache_dir", "ENH-3358"),
+    ("loops/cli-anything-bootstrap.yaml", "context.force_rebuild", "ENH-3358"),
+    ("loops/cli-anything-bootstrap.yaml", "context.generated_dir", "ENH-3358"),
+    ("loops/cli-anything-bootstrap.yaml", "context.max_refine_cycles", "ENH-3358"),
+    ("loops/cli-anything-bootstrap.yaml", "context.target", "ENH-3358"),
+    ("loops/context-health-monitor.yaml", "context.scratch_dir", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "captured.plan_output.output", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.action_fail_max", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.app_name", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.cc_error_max", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.element_not_found_max", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.judge_error_max", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.judge_retry_max", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.plan_error_max", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.stale_ref_max", "ENH-3358"),
+    ("loops/cua-agent-desktop.yaml", "context.timeout_max", "ENH-3358"),
+    ("loops/docs-sync.yaml", "captured.link_results.exit_code", "ENH-3358"),
+    ("loops/examples-miner.yaml", "context.skill_name", "ENH-3358"),
+    ("loops/flux-image-generator.yaml", "captured.gen_eval_events.output", "ENH-3358"),
+    ("loops/flux-image-generator.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/flux-image-generator.yaml", "context.pass_threshold", "ENH-3358"),
+    ("loops/general-task.yaml", "captured.selected_step.output", "ENH-3358"),
+    ("loops/general-task.yaml", "captured.work_result.exit_code", "ENH-3358"),
+    ("loops/general-task.yaml", "context.hard_criteria_tags", "ENH-3358"),
+    ("loops/general-task.yaml", "context.input_hash", "ENH-3358"),
+    ("loops/general-task.yaml", "context.max_step_attempts", "ENH-3358"),
+    ("loops/general-task.yaml", "context.test_cmd", "ENH-3358"),
+    ("loops/goal-cluster.yaml", "context.auto", "ENH-3358"),
+    ("loops/harness-optimize.yaml", "captured.benchmark_score.output", "ENH-3358"),
+    ("loops/harness-optimize.yaml", "captured.traj_path.output", "ENH-3358"),
+    ("loops/harness-optimize.yaml", "context.targets", "ENH-3358"),
+    ("loops/html-anything.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/html-anything.yaml", "context.artifact_mode", "ENH-3358"),
+    ("loops/incremental-refactor.yaml", "context.test_cmd", "ENH-3358"),
+    ("loops/integrate-sdk.yaml", "context.target", "ENH-3358"),
+    ("loops/interactive-component-generator.yaml", "captured.current_id.output", "ENH-3358"),
+    ("loops/interactive-component-generator.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/issue-staleness-review.yaml", "context.stale_days", "ENH-3358"),
+    ("loops/lib/common.yaml", "context.issue_id", "ENH-3358"),
+    ("loops/lib/harness.yaml", "context.file_url", "ENH-3358"),
+    ("loops/lib/harness.yaml", "context.screenshot_path", "ENH-3358"),
+    ("loops/loop-composer-adaptive.yaml", "context.auto", "ENH-3358"),
+    ("loops/loop-composer.yaml", "context.auto", "ENH-3358"),
+    ("loops/loop-router.yaml", "context.auto_create", "ENH-3358"),
+    ("loops/mechanize-skills.yaml", "captured.baseline_lines.output", "ENH-3358"),
+    ("loops/mechanize-skills.yaml", "captured.current_skill.output", "ENH-3358"),
+    ("loops/mechanize-skills.yaml", "captured.prose_baseline.output", "ENH-3358"),
+    ("loops/mechanize-skills.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/mechanize-skills.yaml", "context.line_cap", "ENH-3358"),
+    ("loops/mechanize-skills.yaml", "context.mode", "ENH-3358"),
+    ("loops/openscad-model-generator.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/openscad-model-generator.yaml", "context.export_stl", "ENH-3358"),
+    ("loops/openscad-model-generator.yaml", "context.view_presets", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.build_cmd", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.health_bound_seconds", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.health_url", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.issue_id", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.lint_cmd", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.project_root", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.run_cmd", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.test_cmd", "ENH-3358"),
+    ("loops/oracles/code-run-gate.yaml", "context.typecheck_cmd", "ENH-3358"),
+    ("loops/oracles/generator-evaluator.yaml", "context.artifact_path", "ENH-3358"),
+    ("loops/oracles/generator-evaluator.yaml", "context.pre_evaluate_cmd", "ENH-3358"),
+    ("loops/oracles/integrate-node.yaml", "captured.popped.output", "ENH-3358"),
+    ("loops/oracles/plan-node-refine.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/oracles/plan-node-refine.yaml", "context.deadline_epoch", "ENH-3358"),
+    ("loops/oracles/plan-node-refine.yaml", "context.depth", "ENH-3358"),
+    ("loops/oracles/plan-node-refine.yaml", "context.max_depth", "ENH-3358"),
+    ("loops/oracles/plan-node-refine.yaml", "context.max_nodes", "ENH-3358"),
+    ("loops/oracles/plan-node-refine.yaml", "context.node_id", "ENH-3358"),
+    ("loops/oracles/resolve-decision.yaml", "context.issue_id", "ENH-3358"),
+    ("loops/prompt-across-issues.yaml", "captured.current_item.output", "ENH-3358"),
+    ("loops/prompt-across-issues.yaml", "context.ids", "ENH-3358"),
+    ("loops/prompt-across-issues.yaml", "context.parent", "ENH-3358"),
+    ("loops/prompt-across-issues.yaml", "context.type", "ENH-3358"),
+    ("loops/recursive-refine.yaml", "captured.input.output", "ENH-3358"),
+    ("loops/recursive-refine.yaml", "context.commit_every", "ENH-3358"),
+    ("loops/recursive-refine.yaml", "context.max_depth", "ENH-3358"),
+    ("loops/recursive-refine.yaml", "context.no_recursion", "ENH-3358"),
+    ("loops/recursive-refine.yaml", "context.order", "ENH-3358"),
+    ("loops/recursive-refine.yaml", "context.tree_summary", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.breakdown_issue.exit_code", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.breakdown_issue.failure_type", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.check_lifetime_limit.exit_code", "ENH-3358"),
+    (
+        "loops/refine-to-ready-issue.yaml",
+        "captured.check_lifetime_limit.failure_type",
+        "ENH-3358",
+    ),
+    ("loops/refine-to-ready-issue.yaml", "captured.check_outcome.exit_code", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.check_outcome.failure_type", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.check_refine_limit.exit_code", "ENH-3358"),
+    (
+        "loops/refine-to-ready-issue.yaml",
+        "captured.check_refine_limit.failure_type",
+        "ENH-3358",
+    ),
+    (
+        "loops/refine-to-ready-issue.yaml",
+        "captured.check_scores_from_file.exit_code",
+        "ENH-3358",
+    ),
+    (
+        "loops/refine-to-ready-issue.yaml",
+        "captured.check_scores_from_file.failure_type",
+        "ENH-3358",
+    ),
+    (
+        "loops/refine-to-ready-issue.yaml",
+        "captured.confidence_check.failure_terminal",
+        "ENH-3358",
+    ),
+    ("loops/refine-to-ready-issue.yaml", "captured.confidence_check.terminated_by", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.issue_id.exit_code", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.issue_id.failure_type", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.issue_id.output", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.refine_followup.exit_code", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.refine_followup.failure_type", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.refine_issue.exit_code", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.refine_issue.failure_type", "ENH-3358"),
+    ("loops/rl-bandit.yaml", "captured.round_result.output", "ENH-3358"),
+    ("loops/rl-coding-agent.yaml", "captured.observation.output", "ENH-3358"),
+    ("loops/rl-coding-agent.yaml", "captured.refine_result.output", "ENH-3358"),
+    ("loops/rl-coding-agent.yaml", "context.target_files", "ENH-3358"),
+    ("loops/rl-policy.yaml", "captured.action_result.output", "ENH-3358"),
+    ("loops/rl-policy.yaml", "captured.observation.output", "ENH-3358"),
+    ("loops/rl-rlhf.yaml", "captured.candidate.output", "ENH-3358"),
+    ("loops/rlhf-animated-svg.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/rlhf-animated-svg.yaml", "context.max_replans", "ENH-3358"),
+    ("loops/rlhf-animated-svg.yaml", "context.replan_escalation_threshold", "ENH-3358"),
+    ("loops/rlhf-animated-svg.yaml", "context.score_fail_streak_max", "ENH-3358"),
+    ("loops/rlhf-animated-svg.yaml", "context.smoke_fail_streak_max", "ENH-3358"),
+    ("loops/rlhf-svg-evaluate.yaml", "context.smoke_bypass_threshold", "ENH-3358"),
+    ("loops/rlhf-svg-evaluate.yaml", "prev.output", "ENH-3358"),
+    ("loops/rn-build.yaml", "captured.epic_id.output", "ENH-3358"),
+    ("loops/rn-build.yaml", "captured.harness_name.output", "ENH-3358"),
+    ("loops/rn-build.yaml", "context.resume_epic", "ENH-3358"),
+    ("loops/rn-build.yaml", "context.resume_harness", "ENH-3358"),
+    ("loops/rn-build.yaml", "context.skip_eval", "ENH-3358"),
+    ("loops/rn-build.yaml", "context.spec", "ENH-3358"),
+    ("loops/rn-decompose.yaml", "context.issue_id", "ENH-3358"),
+    ("loops/rn-implement.yaml", "captured.input.output", "ENH-3358"),
+    ("loops/rn-implement.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/rn-implement.yaml", "context.epic", "ENH-3358"),
+    ("loops/rn-implement.yaml", "context.resume", "ENH-3358"),
+    ("loops/rn-implement.yaml", "context.schedule_mode", "ENH-3358"),
+    ("loops/rn-implement.yaml", "context.skip_learning_gate", "ENH-3358"),
+    ("loops/rn-plan.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/rn-plan.yaml", "context.plan_prompt_file", "ENH-3358"),
+    ("loops/rn-refine.yaml", "captured.input.output", "ENH-3358"),
+    ("loops/rn-refine.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.confirm_overwrite", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.dry_run", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.floor_fraction", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.leaf_repair_budget", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.plan_file", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.resume", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.stepwise", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.synth_reserve", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.synth_workers", "ENH-3358"),
+    ("loops/rn-refine.yaml", "context.timeout_total", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.diagnose_ambiguity_threshold", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.diagnose_change_surface_threshold", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.diagnose_complexity_threshold", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.diagnose_confidence_floor", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.issue_id", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.max_remediation_passes", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.outcome_threshold", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.readiness_threshold", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.require_refine_and_wire", "ENH-3358"),
+    ("loops/rn-remediate.yaml", "context.skip_learning_gate", "ENH-3358"),
+    ("loops/sft-corpus.yaml", "context.max_tokens", "ENH-3358"),
+    ("loops/sft-corpus.yaml", "context.min_tokens", "ENH-3358"),
+    ("loops/sft-corpus.yaml", "context.sft_format", "ENH-3358"),
+    ("loops/sprint-build-and-validate.yaml", "captured.sprint_name.output", "ENH-3358"),
+    ("loops/sprint-build-and-validate.yaml", "context.sprint_name", "ENH-3358"),
+    ("loops/svg-image-generator.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/svg-textgrad.yaml", "captured.gradient.output", "ENH-3358"),
+    ("loops/svg-textgrad.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/svg-textgrad.yaml", "context.min_per_criterion", "ENH-3358"),
+    ("loops/svg-textgrad.yaml", "context.pass_threshold", "ENH-3358"),
+    ("loops/test-coverage-improvement.yaml", "context.coverage_cmd", "ENH-3358"),
+    ("loops/test-coverage-improvement.yaml", "context.focus_dirs", "ENH-3358"),
+    ("loops/test-coverage-improvement.yaml", "context.test_cmd", "ENH-3358"),
+    ("loops/vega-viz.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/vega-viz.yaml", "context.data_path", "ENH-3358"),
+    ("loops/workflow-generator.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/workflow-generator.yaml", "context.auto_promote", "ENH-3358"),
+    ("loops/workflow-generator.yaml", "context.enable_shrink", "ENH-3358"),
+    ("loops/workflow-generator.yaml", "context.loops_dir", "ENH-3358"),
+    ("loops/workflow-generator.yaml", "context.max_emit_retries", "ENH-3358"),
+    ("loops/workflow-generator.yaml", "context.max_intent_retries", "ENH-3358"),
+}
+
+
+class TestMr11MarkerSet:
+    """ENH-3342 AC 8c: the corpus's `# ll-lint: mr11-ok(...)` markers are
+    enumerated, not merely counted — a new marker fails as unenumerated, a
+    removed/moved marker fails as stale, so MR11_MARKER_ALLOWLIST above and
+    the corpus never silently drift apart."""
+
+    def test_marker_set_matches_enumeration(self) -> None:
+        discovered: set[tuple[str, str, str]] = set()
+        for path in sorted(BUILTIN_LOOPS_DIR.rglob("*.yaml")):
+            text = path.read_text()
+            rel = f"loops/{path.relative_to(BUILTIN_LOOPS_DIR)}"
+            for m in _MR11_MARKER_RE.finditer(text):
+                discovered.add((rel, m.group(1), m.group(2)))
+        assert discovered == MR11_MARKER_ALLOWLIST, (
+            f"new unenumerated marker(s): {discovered - MR11_MARKER_ALLOWLIST}; "
+            f"stale allowlist entr(y/ies) no longer in the corpus: "
+            f"{MR11_MARKER_ALLOWLIST - discovered}"
         )
 
 

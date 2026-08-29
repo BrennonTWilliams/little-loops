@@ -194,7 +194,7 @@ states:
     # parse error yields PROCESS so a gate error never blocks the queue.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
         | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
         2>/dev/null || echo "")
@@ -220,12 +220,13 @@ states:
     # Clears autodev-inflight like skip_inflight so BUG-1226's done-state
     # warning is not triggered for an issue that resolved cleanly.
     action: |
+      # ll-lint: mr11-ok(captured.dequeue_status.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       STATUS=$(printf '%s' "${captured.dequeue_status.output}" \
         | awk '/SKIP_CLOSED/ {print $2; exit}')
       [ -n "$STATUS" ] || STATUS=resolved
-      echo "${captured.input.output}  already_$STATUS" >> ${context.run_dir}/autodev-skipped.txt
+      echo "${captured.input.output}  already_$STATUS" >> ${context.run_dir}/autodev-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       rm -f ${context.run_dir}/autodev-inflight
-      echo "[SKIP-CLOSED] ${captured.input.output} already $STATUS; no refinement attempted"
+      echo "[SKIP-CLOSED] ${captured.input.output} already $STATUS; no refinement attempted"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: queue_track
     action_type: shell
     next: dequeue_next
@@ -240,7 +241,7 @@ states:
     # gate enters clean. The existing check_decision_after_refine gate still
     # catches flags added during refinement (defense in depth) on the
     # post-refine path.
-    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    action: "ll-issues check-flag ${captured.input.output:shell} decision_needed"
     fragment: shell_exit
     on_yes: resolve_decision
     on_no: check_blockers_at_dequeue
@@ -267,7 +268,7 @@ states:
     # Processing is never blocked on a gate error.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cat > "${context.run_dir}/check_blockers_at_dequeue-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.input.output}
       LL_RAW_9F3C1A7E_EOF
@@ -369,9 +370,9 @@ states:
     # `open` and will be re-checked on its next dequeue (queue-scheduling
     # changes are out of scope, per the issue's Scope Boundaries).
     action: |
-      echo "${captured.input.output}  blocked_by_unmet" >> ${context.run_dir}/autodev-skipped.txt
+      echo "${captured.input.output}  blocked_by_unmet" >> ${context.run_dir}/autodev-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       rm -f ${context.run_dir}/autodev-inflight
-      echo "[SKIP-BLOCKED] ${captured.input.output} has unmet blocked_by deps; no refinement attempted"
+      echo "[SKIP-BLOCKED] ${captured.input.output} has unmet blocked_by deps; no refinement attempted"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: queue_track
     action_type: shell
     next: dequeue_next
@@ -398,7 +399,7 @@ states:
     # error never blocks the queue.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null || echo "")
       GATED="false"
       if [ -n "$ISSUE_FILE" ] && [ -f "$ISSUE_FILE" ]; then
@@ -450,7 +451,7 @@ states:
     # mark_gate_blocked's deferral-write idiom, including the BUG-2729
     # postmortem guard: never flip an already-resolved issue to deferred.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$ID  blocked_by_gate" >> ${context.run_dir}/autodev-skipped.txt
       rm -f ${context.run_dir}/autodev-inflight
       STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
@@ -529,7 +530,7 @@ states:
       if [ "$CLASS" = infra ]; then
         exit 1
       fi
-      echo "${captured.input.output}  refine_failed" >> ${context.run_dir}/autodev-skipped.txt
+      echo "${captured.input.output}  refine_failed" >> ${context.run_dir}/autodev-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       rm -f ${context.run_dir}/autodev-inflight
     fragment: shell_exit
     action_type: shell
@@ -548,7 +549,7 @@ states:
     # on_error == on_no laundering ENH-1679 left un-fixed). Clears autodev-inflight
     # like skip_inflight so BUG-1226's done-state warning is not triggered.
     action: |
-      echo "${captured.input.output}  refine_failed_infra" >> ${context.run_dir}/autodev-skipped.txt
+      echo "${captured.input.output}  refine_failed_infra" >> ${context.run_dir}/autodev-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       rm -f ${context.run_dir}/autodev-inflight
     fragment: queue_track
     action_type: shell
@@ -588,7 +589,7 @@ states:
     # Check decision_needed immediately after confidence-check (via sub-loop)
     # completes. Runs /ll:decide-issue before score thresholds are evaluated,
     # so an unresolved design decision is resolved on the direct post-refine path.
-    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    action: "ll-issues check-flag ${captured.input.output:shell} decision_needed"
     fragment: shell_exit
     on_yes: resolve_decision
     on_no: check_passed
@@ -603,10 +604,11 @@ states:
     # only those it can verify closed to autodev-passed.txt.
     # and routes to implement_current to interleave implementation.
     action: |
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues check-readiness ${captured.input.output} \
-        --readiness ${context.readiness_threshold} \
-        --outcome ${context.outcome_threshold} \
-        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt
+        --readiness ${context.readiness_threshold:shell} \
+        --outcome ${context.outcome_threshold:shell} \
+        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: shell_exit
     on_yes: implement_current
     on_no: triage_outcome_failure
@@ -623,7 +625,7 @@ states:
       if [ -f ${context.run_dir}/autodev-decide-ran ]; then
         exit 1
       fi
-      ll-issues check-flag ${captured.input.output} decision_needed
+      ll-issues check-flag ${captured.input.output} decision_needed  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: shell_exit
     on_yes: resolve_decision
     on_no: implement_current
@@ -683,7 +685,7 @@ states:
     # walking the rest of the queue into the same exhaustion. Absent: decide
     # genuinely didn't resolve the flag (or errored for an unrelated reason);
     # fall through to record_decision_unresolved as before.
-    action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.input.output} ]"
+    action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.input.output:shell} ]"
     fragment: shell_exit
     on_yes: done
     on_no: record_decision_unresolved
@@ -728,10 +730,11 @@ states:
     # and Change Surface — both decomposable. The decide-ran flag set by
     # mark_decide_ran prevents re-entering decide if size-review routes back.
     action: |
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues check-readiness ${captured.input.output} \
-        --readiness ${context.readiness_threshold} \
-        --outcome ${context.outcome_threshold} \
-        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt
+        --readiness ${context.readiness_threshold:shell} \
+        --outcome ${context.outcome_threshold:shell} \
+        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: shell_exit
     # ENH-3075: assert_decision_cleared (BUG-2595's post-decide flag
     # re-verify) moved into oracles/resolve-decision.yaml, where it now sits
@@ -755,7 +758,7 @@ states:
     # issue leaves active selection and re-surfaces via FEAT-2665's triage
     # surface rather than being retried every run.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
       rm -f ${context.run_dir}/autodev-inflight
       # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
@@ -866,7 +869,7 @@ states:
       # dequeued-but-not-yet-implemented when the previous session was interrupted.
       # The $INFLIGHT != $CURRENT guard makes this a no-op on normal (non-resumed) runs.
       INFLIGHT=$(cat "${context.run_dir}/autodev-inflight" 2>/dev/null | tr -d '[:space:]')
-      CURRENT="${captured.input.output}"
+      CURRENT="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$INFLIGHT" ] && [ "$INFLIGHT" != "$CURRENT" ]; then
         INFLIGHT_FILE=$(ll-issues path "$INFLIGHT" 2>/dev/null)
         STATUS="open"
@@ -882,7 +885,7 @@ states:
       # Learning-gate skip parity: append --skip-learning-gate when the caller set
       # the skip_learning_gate context (mirrors `ll-auto --skip-learning-gate`).
       SKIP_FLAG=""
-      if [ -n "${context.skip_learning_gate}" ]; then
+      if [ -n "${context.skip_learning_gate}" ]; then  # ll-lint: mr11-ok(context.skip_learning_gate) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         SKIP_FLAG="--skip-learning-gate"
       fi
       # BUG-2594: tee to a run-dir file rather than relying solely on the
@@ -918,7 +921,7 @@ states:
     # only on the terminal path.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       if [ -f "${context.run_dir}/autodev-staged.txt" ]; then
         grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
@@ -1008,7 +1011,7 @@ states:
     # transient infra condition) and do NOT burn a remediation cycle. The issue stays
     # in place to be retried on a later run.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$ID" >> ${context.run_dir}/autodev-gate-infra.txt
       rm -f ${context.run_dir}/autodev-inflight
       echo "[GATE_INFRA_FAILED] $ID — learning gate could not run (scope-lock contention, missing binary, or wedged child); retry later"
@@ -1023,7 +1026,7 @@ states:
     # FEAT-2665's triage surface once its external-API deps are proven, rather
     # than being retried every run.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$ID" >> ${context.run_dir}/autodev-gate-blocked.txt
       rm -f ${context.run_dir}/autodev-inflight
       # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
@@ -1086,7 +1089,7 @@ states:
                ${context.run_dir}/autodev-post-ids.txt \
                > ${context.run_dir}/autodev-diff-ids.txt
 
-      PARENT_ID="${captured.input.output}"
+      PARENT_ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       while IFS= read -r child_id; do
         child_file=$(ll-issues path "$child_id" 2>/dev/null)
         # BUG-2729 postmortem: match provenance on frontmatter `parent:` first
@@ -1131,12 +1134,13 @@ states:
       { echo "$CHILDREN"; echo "$EXISTING"; } \
         | grep -v '^[[:space:]]*$' \
         > ${context.run_dir}/autodev-queue.txt
-      echo "${captured.input.output}  decomposed" >> ${context.run_dir}/autodev-skipped.txt
+      echo "${captured.input.output}  decomposed" >> ${context.run_dir}/autodev-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues finalize-decomposition "${captured.input.output}" \
         --children-file ${context.run_dir}/autodev-new-children.txt \
-        || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2
+        || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CHILD_COUNT=$(wc -l < ${context.run_dir}/autodev-new-children.txt | tr -d ' ')
-      echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
+      echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # BUG-1226: parent is resolved (decomposed); clear the in-flight flag
       # so `done` does not warn about it.
       rm -f ${context.run_dir}/autodev-inflight
@@ -1202,6 +1206,7 @@ states:
     # `show --json` reports status capitalized ("Deferred") — lowercase before
     # comparing.
     action: |
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       STATUS=$(ll-issues show ${captured.input.output} --json 2>/dev/null \
         | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
         2>/dev/null || echo "")
@@ -1223,7 +1228,7 @@ states:
     # parent as decomposed (children found) or resolved_by_subloop (none) —
     # never defers it.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues list --json | python3 -c "
       import json, sys
       try:
@@ -1268,7 +1273,7 @@ states:
     # through check_decision_before_size_review down to
     # recheck_after_size_review, which owns the design_gate_failed deferral.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues check-design "$ID"; rc=$?
       # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
       # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
@@ -1276,8 +1281,8 @@ states:
         touch ${context.run_dir}/autodev-design-gate-failed-$ID
       fi
       ll-issues check-readiness "$ID" \
-        --readiness ${context.readiness_threshold} \
-        --outcome ${context.outcome_threshold} \
+        --readiness ${context.readiness_threshold:shell} \
+        --outcome ${context.outcome_threshold:shell} \
         && ll-issues check-design "$ID" \
         && echo "$ID" >> ${context.run_dir}/autodev-staged.txt
     fragment: shell_exit
@@ -1293,7 +1298,7 @@ states:
     # every pre-refine decision_needed:true issue. Mirrors the
     # check_decision_after_refine defense-in-depth precedent. Originally
     # added by BUG-1277; on_error closes the latent dead-end BUG-2519.
-    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    action: "ll-issues check-flag ${captured.input.output:shell} decision_needed"
     fragment: shell_exit
     on_yes: resolve_decision
     on_no: run_size_review
@@ -1311,7 +1316,7 @@ states:
     # an approach.
     # on_error falls back to detect_children safely.
     action: |
-      ll-issues show ${captured.input.output} --json | python3 -c "
+      ll-issues show ${captured.input.output} --json | python3 -c "  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       import json, sys
       d = json.load(sys.stdin)
       sys.exit(0 if (int(d.get('score_ambiguity') or 25) <= 10 or d.get('decision_needed') == 'true') else 1)"
@@ -1337,7 +1342,7 @@ states:
     # downstream check_reconcile_needed gate can detect a "spike ran but Readiness
     # is bit-identical" plateau. Written only on the on_yes (spike) branch.
     action: |
-      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)
+      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF'
       import json, os, sys
       d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
@@ -1405,7 +1410,7 @@ states:
     # absent files and unwired components are resolved before decomposition is
     # attempted. Mirrors check_decision_before_size_review logic; on_no falls
     # through to detect_children (size-review path).
-    action: "ll-issues check-flag ${captured.input.output} missing_artifacts"
+    action: "ll-issues check-flag ${captured.input.output:shell} missing_artifacts"
     fragment: shell_exit
     on_yes: run_wire
     on_no: detect_children
@@ -1470,7 +1475,7 @@ states:
                ${context.run_dir}/autodev-post-ids.txt \
                > ${context.run_dir}/autodev-diff-ids.txt
 
-      PARENT_ID="${captured.input.output}"
+      PARENT_ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       while IFS= read -r child_id; do
         child_file=$(ll-issues path "$child_id" 2>/dev/null)
         # BUG-2729 postmortem: match provenance on frontmatter `parent:` first
@@ -1492,12 +1497,13 @@ states:
         { echo "$CHILDREN"; echo "$EXISTING"; } \
           | grep -v '^[[:space:]]*$' \
           > ${context.run_dir}/autodev-queue.txt
-        echo "${captured.input.output}  decomposed" >> ${context.run_dir}/autodev-skipped.txt
+        echo "${captured.input.output}  decomposed" >> ${context.run_dir}/autodev-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         ll-issues finalize-decomposition "${captured.input.output}" \
           --children-file ${context.run_dir}/autodev-new-children.txt \
-          || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2
+          || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         CHILD_COUNT=$(wc -l < ${context.run_dir}/autodev-new-children.txt | tr -d ' ')
-        echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
+        echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         # BUG-1226: parent resolved by decomposition; clear in-flight flag.
         rm -f ${context.run_dir}/autodev-inflight
         exit 0
@@ -1519,6 +1525,7 @@ states:
     # low_readiness. On unresolved parents, behaviour is unchanged
     # (→ check_spike_needed_before_skip).
     action: |
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       STATUS=$(ll-issues show ${captured.input.output} --json 2>/dev/null \
         | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
         2>/dev/null || echo "")
@@ -1552,7 +1559,7 @@ states:
     # than straight to recheck_after_size_review, so a "spike ran but Readiness is
     # pinned" plateau gets one reconcile pass before the low_readiness deferral.
     action: |
-      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)
+      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF'
       import json, os, sys
       d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
@@ -1622,7 +1629,7 @@ states:
     # single-inline-script shape, matching the GATE_MARKER precedent in
     # recheck_after_size_review.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       FMT_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
       ISSUE_JSON=$(ll-issues show "$ID" --json)
       READINESS_THRESHOLD=${context.readiness_threshold:shell}
@@ -1748,7 +1755,7 @@ states:
     # confidence_score directly from frontmatter instead, mirroring
     # check_spike_needed's inline-Python idiom.
     action: |
-      ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)
+      ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       READINESS_THRESHOLD=${context.readiness_threshold:shell}
       LL_ISSUE_JSON="$ISSUE_JSON" LL_ARG_READINESS_THRESHOLD="$READINESS_THRESHOLD" python3 << 'PYEOF'
       import json, os, sys
@@ -1816,7 +1823,7 @@ states:
     # defers design_gate_failed (never oversized_atomic) if that remedy was
     # already attempted.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues check-design "$ID"; rc=$?
       # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
       # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
@@ -1933,7 +1940,7 @@ states:
     # dequeue_next (clearing it there would let one issue take two refine
     # passes within a single run).
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
       N=$((N + 1))
       printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
@@ -1981,7 +1988,7 @@ states:
     # filename-scoped per issue and so, like autodev-design-remedy-attempted-$ID,
     # is intentionally NOT cleared at dequeue_next.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
       N=$((N + 1))
       printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
@@ -2054,7 +2061,7 @@ states:
     # an `autodev-design-remedy-attempted-$ID` fall-through defers as
     # design_gate_failed, never low_readiness.
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues check-design "$ID"; rc=$?
       # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
       # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
@@ -2298,7 +2305,7 @@ states:
       REMEDY=$(cat ${context.run_dir}/autodev-pre-deferral-remedy.txt 2>/dev/null || echo "")
       rm -f ${context.run_dir}/autodev-pre-deferral-remedy.txt
       if [ "$REMEDY" = "spike" ]; then
-        (ll-issues show ${captured.input.output} --json | python3 -c "
+        (ll-issues show ${captured.input.output} --json | python3 -c "  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       import json, sys
       d = json.load(sys.stdin)
       print(d.get('confidence') or '')" > ${context.run_dir}/autodev-pre-spike-readiness.txt) || true

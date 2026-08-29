@@ -307,7 +307,7 @@ class TestCheckDecideRateLimited:
         data = _load_loop()
         gate = data["states"]["check_decide_rate_limited"]
         assert gate.get("fragment") == "shell_exit"
-        assert "decide-rate-limited-${context.issue_id}" in gate["action"]
+        assert "decide-rate-limited-${context.issue_id:shell}" in gate["action"]
 
     def test_on_yes_routes_to_rate_limit_diagnostic(self) -> None:
         """Present marker (429 budget exhausted) terminates gracefully via this
@@ -1425,7 +1425,7 @@ class TestOutcomeTokenChannel:
     def test_check_readiness_passes_thresholds(self) -> None:
         data = _load_loop()
         action = data["states"]["check_readiness"]["action"]
-        assert "--readiness" in action and "${context.readiness_threshold}" in action
+        assert "--readiness" in action and "${context.readiness_threshold:shell}" in action
         assert "--outcome" in action and "${context.outcome_threshold}" in action
 
     def test_diagnose_routes_missing_artifacts_to_wire(self) -> None:

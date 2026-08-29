@@ -509,7 +509,7 @@ states:
   check_auto_create:
     action_type: shell
     action: |
-      test "${context.auto_create}" = "true" && exit 0 || exit 1
+      test "${context.auto_create}" = "true" && exit 0 || exit 1  # ll-lint: mr11-ok(context.auto_create) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       type: exit_code
     on_yes: invoke_create_loop

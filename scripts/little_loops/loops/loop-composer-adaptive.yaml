@@ -191,7 +191,7 @@ states:
   check_auto_plan:
     action_type: shell
     action: |
-      test "${context.auto}" = "true" && exit 0 || exit 1
+      test "${context.auto}" = "true" && exit 0 || exit 1  # ll-lint: mr11-ok(context.auto) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       type: exit_code
     on_yes: execute_plan

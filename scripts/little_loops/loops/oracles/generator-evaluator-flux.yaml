@@ -77,15 +77,15 @@ states:
         echo "IMAGE_FAIL: IMAGE_BASE_URL is not set. Export it or add it to .env, pointing at your self-hosted FLUX endpoint (e.g. IMAGE_BASE_URL=http://localhost:8000)."
         exit 1
       fi
-      PROMPT_FILE="$ABS_DIR/${context.prompt_file}"
+      PROMPT_FILE="$ABS_DIR/${context.prompt_file:shell}"
       if [ ! -s "$PROMPT_FILE" ]; then
         echo "IMAGE_FAIL: no prompt found at $PROMPT_FILE — the generate state must write the FLUX prompt there."
         exit 1
       fi
       export ABS_DIR PROMPT_FILE
-      export FLUX_STEPS="${context.steps}"
-      export FLUX_BASE_SEED="${context.base_seed}"
-      export FLUX_ARTIFACT="${context.artifact_path}"
+      export FLUX_STEPS="${context.steps:shell}"
+      export FLUX_BASE_SEED="${context.base_seed:shell}"
+      export FLUX_ARTIFACT="${context.artifact_path:shell}"
       python3 <<'PY'
       import base64, hashlib, json, os, sys, urllib.request
 
@@ -198,7 +198,7 @@ states:
         /*) ABS_DIR="$RUN_DIR" ;;
         *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
       esac
-      cp "$ABS_DIR/${context.artifact_path}" "$ABS_DIR/screenshot.png" && echo "CAPTURED"
+      cp "$ABS_DIR/${context.artifact_path:shell}" "$ABS_DIR/screenshot.png" && echo "CAPTURED"
     evaluate:
       type: output_contains
       pattern: "CAPTURED"

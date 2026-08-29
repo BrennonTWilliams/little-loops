@@ -71,14 +71,14 @@ states:
     action_type: shell
     action: |
       INPUT=${context.input:shell}
-      EPIC="${context.epic}"
+      EPIC="${context.epic}"  # ll-lint: mr11-ok(context.epic) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       mkdir -p "$RUN_DIR"
 
       # ENH-1977 Fix 3: resume path — if resume is requested and a non-empty
       # queue survives in the run_dir, preserve queue/visited/depth_map/counters
       # instead of re-seeding and truncating them.
-      RESUME="${context.resume}"
+      RESUME="${context.resume}"  # ll-lint: mr11-ok(context.resume) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$RESUME" ] && [ -s "$RUN_DIR/queue.txt" ]; then
         QUEUE_COUNT=$(wc -l < "$RUN_DIR/queue.txt" | tr -d ' ')
         echo "Resuming run in $RUN_DIR with $QUEUE_COUNT queued issue(s)" >&2
@@ -169,8 +169,8 @@ states:
 
       # Write config snapshot
       printf '{"readiness_threshold":%s,"outcome_threshold":%s,"max_depth":%s,"max_remediation_passes":%s}\n' \
-        "${context.readiness_threshold}" "${context.outcome_threshold}" \
-        "${context.max_depth}" "${context.max_remediation_passes}" \
+        "${context.readiness_threshold:shell}" "${context.outcome_threshold:shell}" \
+        "${context.max_depth:shell}" "${context.max_remediation_passes:shell}" \
         > "$RUN_DIR/config.json"
 
       echo "Queue seeded with $QUEUE_COUNT issue(s)" >&2
@@ -186,7 +186,7 @@ states:
     # the schedule_mode is re-evaluated at every tick.
     action_type: shell
     action: |
-      test "${context.schedule_mode}" = "value_ranked" && exit 0 || exit 1
+      test "${context.schedule_mode}" = "value_ranked" && exit 0 || exit 1  # ll-lint: mr11-ok(context.schedule_mode) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       type: exit_code
     on_yes: select_next
@@ -199,7 +199,7 @@ states:
     # token) and doesn't produce false-positive exit_code!=0 signals in telemetry.
     fragment: queue_pop
     action: |
-      QUEUE="${captured.run_dir.output}/queue.txt"
+      QUEUE="${captured.run_dir.output}/queue.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ ! -f "$QUEUE" ] || [ ! -s "$QUEUE" ]; then
         echo "QUEUE_EMPTY"
         exit 0
@@ -208,17 +208,17 @@ states:
       tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
 
       # Read depth for this issue (from depth_map.txt or default 0)
-      DEPTH_MAP="${captured.run_dir.output}/depth_map.txt"
+      DEPTH_MAP="${captured.run_dir.output}/depth_map.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       DEPTH=$(grep "^$CURRENT " "$DEPTH_MAP" 2>/dev/null | awk '{print $2}')
       DEPTH=$${DEPTH:-0}
-      echo "$DEPTH" > "${captured.run_dir.output}/current_depth.txt"
+      echo "$DEPTH" > "${captured.run_dir.output}/current_depth.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Mark as visited
-      echo "$CURRENT" >> "${captured.run_dir.output}/visited.txt"
+      echo "$CURRENT" >> "${captured.run_dir.output}/visited.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Increment dequeue count
-      COUNT=$(cat "${captured.run_dir.output}/dequeue_count.txt" 2>/dev/null || echo 0)
-      echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"
+      COUNT=$(cat "${captured.run_dir.output}/dequeue_count.txt" 2>/dev/null || echo 0)  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       echo "$CURRENT"
     evaluate:
@@ -239,7 +239,7 @@ states:
     # rather than exit 1, avoiding false-positive telemetry signals.
     fragment: queue_pop
     action: |
-      QUEUE="${captured.run_dir.output}/queue.txt"
+      QUEUE="${captured.run_dir.output}/queue.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ ! -f "$QUEUE" ] || [ ! -s "$QUEUE" ]; then
         echo "QUEUE_EMPTY"
         exit 0
@@ -392,17 +392,17 @@ states:
       grep -vxF "$CHOSEN" "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
 
       # Read depth for chosen issue
-      DEPTH_MAP="${captured.run_dir.output}/depth_map.txt"
+      DEPTH_MAP="${captured.run_dir.output}/depth_map.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       DEPTH=$(grep "^$CHOSEN " "$DEPTH_MAP" 2>/dev/null | awk '{print $2}')
       DEPTH=$${DEPTH:-0}
-      echo "$DEPTH" > "${captured.run_dir.output}/current_depth.txt"
+      echo "$DEPTH" > "${captured.run_dir.output}/current_depth.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Mark as visited
-      echo "$CHOSEN" >> "${captured.run_dir.output}/visited.txt"
+      echo "$CHOSEN" >> "${captured.run_dir.output}/visited.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Increment dequeue count
-      COUNT=$(cat "${captured.run_dir.output}/dequeue_count.txt" 2>/dev/null || echo 0)
-      echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"
+      COUNT=$(cat "${captured.run_dir.output}/dequeue_count.txt" 2>/dev/null || echo 0)  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo $((COUNT + 1)) > "${captured.run_dir.output}/dequeue_count.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       echo "$CHOSEN"
     evaluate:
@@ -436,8 +436,8 @@ states:
     # blocked on a gate error (on_error: check_depth covers shell-level failures too).
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      RUN_DIR="${captured.run_dir.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cat > "${context.run_dir}/check_blocked_by-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.input.output}
       LL_RAW_9F3C1A7E_EOF
@@ -563,12 +563,12 @@ states:
     # failure all yield no unproven targets -> READY -> check_depth.
     action_type: shell
     action: |
-      if [ -n "${context.skip_learning_gate}" ]; then
+      if [ -n "${context.skip_learning_gate}" ]; then  # ll-lint: mr11-ok(context.skip_learning_gate) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "READY"
         exit 0
       fi
-      ID="${captured.input.output}"
-      RUN_DIR="${captured.run_dir.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cat > "${context.run_dir}/check_learning_ready-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.input.output}
       LL_RAW_9F3C1A7E_EOF
@@ -710,7 +710,7 @@ states:
   check_depth:
     action_type: shell
     action: |
-      DEPTH=$(cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0)
+      DEPTH=$(cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0)  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$DEPTH"
     evaluate:
       type: output_numeric
@@ -729,7 +729,7 @@ states:
     # NEEDS_IMPLEMENTATION so processing is never blocked on a gate error.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
       STATUS="open"
       if [ -n "$ISSUE_FILE" ]; then
@@ -750,9 +750,9 @@ states:
   mark_depth_capped:
     action_type: shell
     action: |
-      CURRENT="${captured.input.output}"
-      DEPTH=$(cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0)
-      echo "$CURRENT (depth=$DEPTH)" >> "${captured.run_dir.output}/depth_capped.txt"
+      CURRENT="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      DEPTH=$(cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0)  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$CURRENT (depth=$DEPTH)" >> "${captured.run_dir.output}/depth_capped.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[DEPTH_CAPPED] $CURRENT (depth=$DEPTH)"
     next: dequeue_next
 
@@ -788,6 +788,8 @@ states:
   classify_remediation:
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cat "${captured.run_dir.output}/subloop_outcome_${captured.input.output}.txt" 2>/dev/null \
         || echo "IMPLEMENT_FAILED"
     capture: rem_outcome
@@ -814,7 +816,7 @@ states:
     # deferred.txt (mirrors check_blocked_by fail-open philosophy).
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       DEFERRED="$RUN_DIR/deferred.txt"
       QUEUE="$RUN_DIR/queue.txt"
       if [ ! -s "$DEFERRED" ]; then
@@ -1202,6 +1204,8 @@ states:
   classify_decomposition:
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cat "${captured.run_dir.output}/subloop_outcome_${captured.input.output}.txt" 2>/dev/null \
         || echo "SIZE_REVIEW_FAILED"
     capture: dec_outcome
@@ -1284,8 +1288,8 @@ states:
     # substring tally covers it.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      RUN_DIR="${captured.run_dir.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # FEAT-2552: detect gate code-quality failure in the sidecar and tag it
       # distinctly. Mirrors the SCORES_MISSING / SIZE_REVIEW_FAILED pattern —
       # the [FAILED] bucket stays a clean IMPLEMENT_FAILED default; gate
@@ -1307,8 +1311,8 @@ states:
     # from a clean IMPLEMENT_FAILED / SCORES_MISSING outcome for operator triage.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SUB_LOOP_CRASH" >> "${captured.run_dir.output}/failures.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SUB_LOOP_CRASH" >> "${captured.run_dir.output}/failures.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[SUB_LOOP_CRASH] $ID — sub-loop infrastructure failure (crash/timeout/context error)"
     next: dequeue_next
 
@@ -1319,8 +1323,8 @@ states:
     # it separately and operators can triage scoring errors from real failures.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SCORES_MISSING" >> "${captured.run_dir.output}/failures.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SCORES_MISSING" >> "${captured.run_dir.output}/failures.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[SCORES_MISSING] $ID — scores could not be read after remediation"
     next: dequeue_next
 
@@ -1330,8 +1334,8 @@ states:
     # failure — tag it so report tallies it separately for operator triage.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SIZE_REVIEW_FAILED" >> "${captured.run_dir.output}/failures.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} SIZE_REVIEW_FAILED" >> "${captured.run_dir.output}/failures.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[SIZE_REVIEW_FAILED] $ID — size review errored or was inconclusive"
     next: dequeue_next
 
@@ -1344,8 +1348,8 @@ states:
     # re-surface once its deps are proven.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} LEARNING_GATE_BLOCKED" >> "${captured.run_dir.output}/failures.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} LEARNING_GATE_BLOCKED" >> "${captured.run_dir.output}/failures.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[LEARNING_GATE_BLOCKED] $ID — unproven external-API deps; prove with /ll:explore-api then re-run"
     next: dequeue_next
 
@@ -1358,16 +1362,16 @@ states:
     # place to retry on a later run (infra is transient).
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} GATE_INFRA_FAILED" >> "${captured.run_dir.output}/failures.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} GATE_INFRA_FAILED" >> "${captured.run_dir.output}/failures.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[GATE_INFRA_FAILED] $ID — learning gate could not run (scope-lock contention, missing binary, or wedged child); retry later"
     next: dequeue_next
 
   mark_blocked:
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$ID" >> "${captured.run_dir.output}/blocked.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$ID" >> "${captured.run_dir.output}/blocked.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[BLOCKED] $ID requires human decision before automation can proceed"
     next: dequeue_next
 
@@ -1378,8 +1382,8 @@ states:
     # once and the issue still has no enumerable options to decide between.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$ID" >> "${captured.run_dir.output}/blocked.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$ID" >> "${captured.run_dir.output}/blocked.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[BLOCKED-OPTIONS-MISSING] $ID has decision_needed:true but no enumerable options even after /ll:refine-issue --auto; run /ll:refine-issue $ID manually to deposit options"
     next: dequeue_next
 
@@ -1397,8 +1401,8 @@ states:
     # stall message.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      RUN_DIR="${captured.run_dir.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       UNMET_FILE="$RUN_DIR/blocked_by_unmet_$${ID}.txt"
       if [ -f "$UNMET_FILE" ]; then
         UNMET=$(tr -s ' ' < "$UNMET_FILE" | sed 's/^ *//;s/ *$//')
@@ -1441,8 +1445,8 @@ states:
     # correctly with no report changes required.
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      RUN_DIR="${captured.run_dir.output}"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       UNPROVEN_FILE="$RUN_DIR/learning_unproven_$${ID}.txt"
       if [ -f "$UNPROVEN_FILE" ]; then
         TARGETS=$(tr -s ' ' < "$UNPROVEN_FILE" | sed 's/^ *//;s/ *$//')
@@ -1463,16 +1467,16 @@ states:
   skip_issue:
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$ID" >> "${captured.run_dir.output}/skipped.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$ID" >> "${captured.run_dir.output}/skipped.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[SKIP] $ID"
     next: dequeue_next
 
   rate_limit_diagnostic:
     action_type: shell
     action: |
-      ID="${captured.input.output}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID}" >> "${captured.run_dir.output}/rate_limits.txt"
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID}" >> "${captured.run_dir.output}/rate_limits.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[RATE_LIMIT] Skipping $ID due to rate limit exhaustion"
     next: dequeue_next
 

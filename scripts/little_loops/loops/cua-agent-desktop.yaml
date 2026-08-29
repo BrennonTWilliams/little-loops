@@ -127,7 +127,7 @@ states:
     # Terminal on PERM_DENIED as this cannot be recovered at runtime.
     action_type: shell
     action: |
-      TARGET="${context.app_name}"
+      TARGET="${context.app_name}"  # ll-lint: mr11-ok(context.app_name) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$TARGET" ]; then
         RESULT=$(agent-desktop snapshot --app "$TARGET" -i --compact 2>&1 || true)
       else
@@ -169,7 +169,7 @@ states:
     # Archives each snapshot per-iteration for the evidence trail.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Per-iteration snapshot archival (artifact versioning)
       SNAP_FILE="$ABS_DIR/.snapshot_count"
@@ -178,7 +178,7 @@ states:
       echo "$SNAP" > "$SNAP_FILE"
 
       # Run snapshot
-      TARGET="${context.app_name}"
+      TARGET="${context.app_name}"  # ll-lint: mr11-ok(context.app_name) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$TARGET" ]; then
         SNAPSHOT_OUTPUT=$(agent-desktop snapshot --app "$TARGET" -i --compact 2>&1 || true)
       else
@@ -348,8 +348,8 @@ states:
     # "commands" — so on_error never fires and the loop would retry up to max_steps.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
-      if echo "${captured.plan_output.output}" | grep -qiE '401|403|unauthorized|forbidden'; then
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      if echo "${captured.plan_output.output}" | grep -qiE '401|403|unauthorized|forbidden'; then  # ll-lint: mr11-ok(captured.plan_output.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM auth failure (401/403) at iteration ${state.iteration}" \
           >> "$ABS_DIR/.plan_errors.log"
         echo "AUTH_FAILURE_DETECTED"
@@ -395,8 +395,8 @@ states:
     # from the JSON output and log it, then re-observe the UI state.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
-      REASON=$(echo "${captured.plan_output.output}" | jq -r '.error // "unknown"' 2>/dev/null)
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      REASON=$(echo "${captured.plan_output.output}" | jq -r '.error // "unknown"' 2>/dev/null)  # ll-lint: mr11-ok(captured.plan_output.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "Replan reason: $REASON" > "$ABS_DIR/.replan_reason.txt"
       echo "REPLAN_LOGGED"
     next: observe
@@ -412,7 +412,7 @@ states:
     # signals are emitted for the error recovery states.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Write plan output to file using heredoc with quoted delimiter —
       # prevents ALL shell expansion of nested quotes, backticks, $(),
@@ -541,7 +541,7 @@ states:
     # amplifies this problem (BUG-053).
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Read the plan output to check for completeness signal
       PLAN_DATA=$(cat "$ABS_DIR/.plan_output.txt" 2>/dev/null)
@@ -603,16 +603,16 @@ states:
     # by check_stale_ref_limit, check_enf_limit, and check_timeout_limit.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNTER_FILE="$ABS_DIR/.action_fail_count"
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.action_fail_max}" ]; then
+      if [ "$COUNT" -ge "${context.action_fail_max}" ]; then  # ll-lint: mr11-ok(context.action_fail_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "ACTION_FAIL_LIMIT_EXCEEDED: $COUNT consecutive action failures"
         echo "0" > "$COUNTER_FILE"
       else
-        echo "ACTION_FAIL_RETRY: attempt $COUNT of ${context.action_fail_max}"
+        echo "ACTION_FAIL_RETRY: attempt $COUNT of ${context.action_fail_max}"  # ll-lint: mr11-ok(context.action_fail_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -628,16 +628,16 @@ states:
     # consecutively more than stale_ref_max times, replan instead.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNTER_FILE="$ABS_DIR/.stale_ref_count"
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.stale_ref_max}" ]; then
+      if [ "$COUNT" -ge "${context.stale_ref_max}" ]; then  # ll-lint: mr11-ok(context.stale_ref_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "STALE_REF_LIMIT_EXCEEDED: $COUNT consecutive STALE_REF errors"
         echo "0" > "$COUNTER_FILE"
       else
-        echo "STALE_REF_RETRY: attempt $COUNT of ${context.stale_ref_max}"
+        echo "STALE_REF_RETRY: attempt $COUNT of ${context.stale_ref_max}"  # ll-lint: mr11-ok(context.stale_ref_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -650,16 +650,16 @@ states:
     # current UI. Retry with a fresh snapshot a few times before replanning.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNTER_FILE="$ABS_DIR/.enf_count"
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.element_not_found_max}" ]; then
+      if [ "$COUNT" -ge "${context.element_not_found_max}" ]; then  # ll-lint: mr11-ok(context.element_not_found_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "ENF_LIMIT_EXCEEDED: $COUNT consecutive ELEMENT_NOT_FOUND errors"
         echo "0" > "$COUNTER_FILE"
       else
-        echo "ENF_RETRY: attempt $COUNT of ${context.element_not_found_max}"
+        echo "ENF_RETRY: attempt $COUNT of ${context.element_not_found_max}"  # ll-lint: mr11-ok(context.element_not_found_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -672,16 +672,16 @@ states:
     # internal deadline. This is often transient (busy app, slow rendering).
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNTER_FILE="$ABS_DIR/.timeout_count"
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.timeout_max}" ]; then
+      if [ "$COUNT" -ge "${context.timeout_max}" ]; then  # ll-lint: mr11-ok(context.timeout_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "TIMEOUT_LIMIT_EXCEEDED: $COUNT consecutive TIMEOUT errors"
         echo "0" > "$COUNTER_FILE"
       else
-        echo "TIMEOUT_RETRY: attempt $COUNT of ${context.timeout_max}"
+        echo "TIMEOUT_RETRY: attempt $COUNT of ${context.timeout_max}"  # ll-lint: mr11-ok(context.timeout_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -700,10 +700,10 @@ states:
     # the ground truth.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Post-action snapshot
-      TARGET="${context.app_name}"
+      TARGET="${context.app_name}"  # ll-lint: mr11-ok(context.app_name) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$TARGET" ]; then
         POST_OUTPUT=$(agent-desktop snapshot --app "$TARGET" -i --compact 2>&1 || true)
       else
@@ -800,16 +800,16 @@ states:
     # exhausted.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNTER_FILE="$ABS_DIR/.judge_retry_count"
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.judge_retry_max}" ]; then
+      if [ "$COUNT" -ge "${context.judge_retry_max}" ]; then  # ll-lint: mr11-ok(context.judge_retry_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "0" > "$COUNTER_FILE"
         echo "JUDGE_RETRY_EXCEEDED: $COUNT consecutive LLM API errors — escalating to recovery"
       else
-        echo "JUDGE_RETRY: attempt $COUNT of ${context.judge_retry_max} — transient API error, retrying evaluate"
+        echo "JUDGE_RETRY: attempt $COUNT of ${context.judge_retry_max} — transient API error, retrying evaluate"  # ll-lint: mr11-ok(context.judge_retry_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -825,7 +825,7 @@ states:
     # judge_error_max, replan instead.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # Log the error for post-run diagnostics
       echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] LLM judge API error at iteration ${state.iteration}" \
         >> "$ABS_DIR/.judge_errors.log"
@@ -834,11 +834,11 @@ states:
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.judge_error_max}" ]; then
+      if [ "$COUNT" -ge "${context.judge_error_max}" ]; then  # ll-lint: mr11-ok(context.judge_error_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "JUDGE_ERROR_LIMIT_EXCEEDED: $COUNT consecutive LLM judge errors"
         echo "0" > "$COUNTER_FILE"
       else
-        echo "JUDGE_ERROR_RETRY: attempt $COUNT of ${context.judge_error_max}"
+        echo "JUDGE_ERROR_RETRY: attempt $COUNT of ${context.judge_error_max}"  # ll-lint: mr11-ok(context.judge_error_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -865,10 +865,10 @@ states:
     # "timeout"/"deadline" signature → likely state-level timeout (exit 124).
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # Classify auth failures on the exception/exit-code path as well, routing
       # directly to abort rather than burning retry budget on a non-recoverable error.
-      if echo "${captured.plan_output.output}" | grep -qiE '401|403|unauthorized|forbidden'; then
+      if echo "${captured.plan_output.output}" | grep -qiE '401|403|unauthorized|forbidden'; then  # ll-lint: mr11-ok(captured.plan_output.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Plan LLM auth failure (401/403) at iteration ${state.iteration}" \
           >> "$ABS_DIR/.plan_errors.log"
         echo "PLAN_AUTH_FAILURE_DETECTED"
@@ -880,7 +880,7 @@ states:
       # errors, so we can't rely on exit_code. Heuristic: empty plan output
       # (prompt killed before producing) OR contains "timeout"/"deadline"
       # (truncated response) → classify as timeout.
-      PLAN_OUTPUT="${captured.plan_output.output}"
+      PLAN_OUTPUT="${captured.plan_output.output}"  # ll-lint: mr11-ok(captured.plan_output.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       TIMEOUT_COUNT_FILE="$ABS_DIR/.plan_timeout_count"
       TIMEOUT_COUNT=$(cat "$TIMEOUT_COUNT_FILE" 2>/dev/null || echo 0)
       if [ -z "$PLAN_OUTPUT" ] || echo "$PLAN_OUTPUT" | grep -qiE 'timeout|timed out|deadline'; then
@@ -896,11 +896,11 @@ states:
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.plan_error_max}" ]; then
+      if [ "$COUNT" -ge "${context.plan_error_max}" ]; then  # ll-lint: mr11-ok(context.plan_error_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "PLAN_ERROR_LIMIT_EXCEEDED: $COUNT consecutive plan LLM errors — escalating to diagnose"
         echo "0" > "$COUNTER_FILE"
       else
-        echo "PLAN_ERROR_RETRY: attempt $COUNT of ${context.plan_error_max}"
+        echo "PLAN_ERROR_RETRY: attempt $COUNT of ${context.plan_error_max}"  # ll-lint: mr11-ok(context.plan_error_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -957,18 +957,18 @@ states:
     # after exhausting cc_error_max retries.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Completion check LLM API error at iteration ${state.iteration}" \
         >> "$ABS_DIR/.cc_errors.log"
       COUNTER_FILE="$ABS_DIR/.cc_error_count"
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      if [ "$COUNT" -ge "${context.cc_error_max}" ]; then
+      if [ "$COUNT" -ge "${context.cc_error_max}" ]; then  # ll-lint: mr11-ok(context.cc_error_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "CC_ERROR_LIMIT_EXCEEDED: $COUNT consecutive check_completion LLM errors — escalating to diagnose"
         echo "0" > "$COUNTER_FILE"
       else
-        echo "CC_ERROR_RETRY: attempt $COUNT of ${context.cc_error_max}"
+        echo "CC_ERROR_RETRY: attempt $COUNT of ${context.cc_error_max}"  # ll-lint: mr11-ok(context.cc_error_max) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     evaluate:
       type: output_contains
@@ -987,7 +987,7 @@ states:
     # and cua-agent-desktop check_install output_contains approach.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       TASK=${context.description:shell}
 
       # Extract likely output filename from task description.
@@ -1082,7 +1082,7 @@ states:
     # shell interpretation of the expanded description content.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "=== cua-agent-desktop failure diagnostics ===" > "$DIR/diagnostics.md"
       cat >> "$DIR/diagnostics.md" << 'DIAGEOF'
       Task: ${context.description}
@@ -1123,7 +1123,7 @@ states:
     # reason about formatting — no filesystem operations in the LLM prompt.
     action_type: shell
     action: |
-      ABS_DIR="${captured.run_dir.output}"
+      ABS_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       echo "=== EVIDENCE BUNDLE ==="
       echo ""

@@ -51,7 +51,7 @@ states:
     action: |
       DIR="${context.run_dir}"
       mkdir -p "$DIR"
-      mkdir -p "${context.generated_dir}"
+      mkdir -p "${context.generated_dir}"  # ll-lint: mr11-ok(context.generated_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       case "$DIR" in
         /*) echo "$DIR" ;;
         *) echo "$(pwd)/$DIR" ;;
@@ -65,7 +65,7 @@ states:
     # the cache naturally without needing force_rebuild for routine version bumps.
     action_type: shell
     action: |
-      TARGET="${context.target}"
+      TARGET="${context.target}"  # ll-lint: mr11-ok(context.target) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -z "$TARGET" ]; then
         echo "ERROR: context.target is required" >&2
         exit 1
@@ -80,7 +80,7 @@ states:
         VERSION="$TARGET"
       fi
       HASH=$(printf "%s|%s" "$TARGET" "$VERSION" | shasum -a 256 | cut -c1-12)
-      CACHE_BASE="${context.cache_dir}"
+      CACHE_BASE="${context.cache_dir}"  # ll-lint: mr11-ok(context.cache_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -z "$CACHE_BASE" ] && CACHE_BASE=".loops/cli-anything"
       CACHE_PATH="$(pwd)/$CACHE_BASE/$HASH"
       mkdir -p "$CACHE_BASE"
@@ -94,8 +94,8 @@ states:
     # a prior publish-cache. force_rebuild=true forces re-bootstrap regardless.
     action_type: shell
     action: |
-      FORCE="${context.force_rebuild}"
-      CACHE_PATH="${captured.cache_path.output}"
+      FORCE="${context.force_rebuild}"  # ll-lint: mr11-ok(context.force_rebuild) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      CACHE_PATH="${captured.cache_path.output}"  # ll-lint: mr11-ok(captured.cache_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ "$FORCE" = "true" ]; then
         exit 1
       fi
@@ -210,7 +210,7 @@ states:
     # publish-cache). Loops back to bake-rubric if the file is still unparseable after stripping.
     action_type: shell
     action: |
-      RUBRIC="${captured.run_dir.output}/rubric.yaml"
+      RUBRIC="${captured.run_dir.output}/rubric.yaml"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       sed -i '' '/^```/d' "$RUBRIC"
       python3 -c "
       import yaml
@@ -260,8 +260,8 @@ states:
     # on failure so the iteration decision lives in one place.
     action_type: shell
     action: |
-      CACHE_PATH="${captured.cache_path.output}"
-      RUN_DIR="${captured.run_dir.output}"
+      CACHE_PATH="${captured.cache_path.output}"  # ll-lint: mr11-ok(captured.cache_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       if [ ! -f "$CACHE_PATH/setup.py" ] && [ ! -f "$CACHE_PATH/pyproject.toml" ]; then
         printf "install_rc=99\nhelp_coverage=0.0\nreason=MISSING_SETUP\n" > "$RUN_DIR/verify-cli.txt"
@@ -311,8 +311,8 @@ states:
     # outcome (success or failure) so the iteration decision is centralized.
     action_type: shell
     action: |
-      CACHE_PATH="${captured.cache_path.output}"
-      RUN_DIR="${captured.run_dir.output}"
+      CACHE_PATH="${captured.cache_path.output}"  # ll-lint: mr11-ok(captured.cache_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       VENV="$CACHE_PATH/.venv"
 
       if [ ! -d "$CACHE_PATH/tests" ]; then
@@ -403,7 +403,7 @@ states:
     # entry into the verify→test→score refine cycle when no CLI was produced.
     action_type: shell
     action: |
-      test ! -f "${captured.run_dir.output}/delegate-error.txt"
+      test ! -f "${captured.run_dir.output}/delegate-error.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       type: exit_code
     on_yes: verify-cli
@@ -414,14 +414,14 @@ states:
     # Future check-cache runs detect a valid cache by the presence of manifest.yaml.
     action_type: shell
     action: |
-      CACHE_PATH="${captured.cache_path.output}"
-      RUN_DIR="${captured.run_dir.output}"
+      CACHE_PATH="${captured.cache_path.output}"  # ll-lint: mr11-ok(captured.cache_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cp "$RUN_DIR/classification.yaml" "$CACHE_PATH/classification.yaml"
       cp "$RUN_DIR/rubric.yaml"          "$CACHE_PATH/rubric.yaml"
       cp "$RUN_DIR/critique.md"          "$CACHE_PATH/last-critique.md"
       cat > "$CACHE_PATH/manifest.yaml" <<EOF
       bootstrapped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-      target: ${context.target}
+      target: ${context.target}  # ll-lint: mr11-ok(context.target) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       cache_path: $CACHE_PATH
       EOF
       echo "$CACHE_PATH/manifest.yaml"
@@ -440,9 +440,9 @@ states:
     # since the emitted file IS a harness artifact and would otherwise need a gate.
     action_type: shell
     action: |
-      CACHE_PATH="${captured.cache_path.output}"
-      RUN_DIR="${captured.run_dir.output}"
-      GEN_DIR="${context.generated_dir}"
+      CACHE_PATH="${captured.cache_path.output}"  # ll-lint: mr11-ok(captured.cache_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      GEN_DIR="${context.generated_dir}"  # ll-lint: mr11-ok(context.generated_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mkdir -p "$GEN_DIR"
 
       TARGET_NAME=$(awk -F': *' '/^target_name:/ {print $2}' "$CACHE_PATH/classification.yaml" | tr -d '"')
@@ -493,11 +493,11 @@ states:
     # when stagnation is detected (no ALL_PASS after max_refine_cycles attempts).
     action_type: shell
     action: |
-      COUNTER_FILE="${captured.run_dir.output}/refine_count.txt"
+      COUNTER_FILE="${captured.run_dir.output}/refine_count.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      MAX="${context.max_refine_cycles}"
+      MAX="${context.max_refine_cycles}"  # ll-lint: mr11-ok(context.max_refine_cycles) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -z "$MAX" ] && MAX=5
       [ "$COUNT" -ge "$MAX" ] && exit 1 || exit 0
     evaluate:

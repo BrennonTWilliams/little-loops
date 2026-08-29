@@ -17,7 +17,7 @@ import:
 states:
   find_stale:
     action: |
-      find .issues -maxdepth 2 -name '*.md' -not -path '.issues/completed/*' -not -path '.issues/templates/*' -mtime +${context.stale_days} 2>/dev/null | head -10
+      find .issues -maxdepth 2 -name '*.md' -not -path '.issues/completed/*' -not -path '.issues/templates/*' -mtime +${context.stale_days} 2>/dev/null | head -10  # ll-lint: mr11-ok(context.stale_days) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     action_type: shell
     capture: stale_list
     evaluate:

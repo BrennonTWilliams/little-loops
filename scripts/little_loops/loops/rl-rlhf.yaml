@@ -24,7 +24,7 @@ states:
       # Evaluate the candidate and print a numeric quality score (0–10) on the last line.
       # Replace with your scoring logic.
       echo "Candidate to evaluate:"
-      echo "${captured.candidate.output}"
+      echo "${captured.candidate.output}"  # ll-lint: mr11-ok(captured.candidate.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo ""
       echo "Replace with your scoring logic. Print an integer score 0–10."
       echo "5"
@@ -41,7 +41,7 @@ states:
       # Refine the candidate based on evaluation feedback.
       # Replace with your refinement logic. Print the improved version.
       echo "Previous candidate:"
-      echo "${captured.candidate.output}"
+      echo "${captured.candidate.output}"  # ll-lint: mr11-ok(captured.candidate.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo ""
       echo "Replace with your refinement logic."
     action_type: shell

@@ -63,19 +63,20 @@ states:
         echo "ERROR: input prompt is required. Usage: ll-loop run prompt-across-issues \"<prompt>\""
         exit 1
       fi
-      if [ -n "${context.ids}" ]; then
+      if [ -n "${context.ids}" ]; then  # ll-lint: mr11-ok(context.ids) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         # Explicit ID list overrides type/parent filters (ENH-2658).
+        # ll-lint: mr11-ok(context.ids) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "${context.ids}" | tr ',' '\n' \
           | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
           | grep -v '^$' > "${context.run_dir}/pending.txt"
       else
       TYPE_ARG=""
-      if [ -n "${context.type}" ]; then
-        TYPE_ARG="--type ${context.type}"
+      if [ -n "${context.type}" ]; then  # ll-lint: mr11-ok(context.type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        TYPE_ARG="--type ${context.type}"  # ll-lint: mr11-ok(context.type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
       PARENT_ARG=""
-      if [ -n "${context.parent}" ]; then
-        PARENT_ARG="--parent ${context.parent}"
+      if [ -n "${context.parent}" ]; then  # ll-lint: mr11-ok(context.parent) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        PARENT_ARG="--parent ${context.parent}"  # ll-lint: mr11-ok(context.parent) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
       ll-issues list $TYPE_ARG $PARENT_ARG --json | python3 -c "
       import json, sys
@@ -112,7 +113,7 @@ states:
     # Variables set and used within a single action (ISSUE_ID, PROMPT) do not
     # need the $$ escaping prefix — only shell vars referencing across FSM passes do.
     action: |
-      ISSUE_ID="${captured.current_item.output}"
+      ISSUE_ID="${captured.current_item.output}"  # ll-lint: mr11-ok(captured.current_item.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       PROMPT=${context.input:shell}
       echo "$PROMPT" | sed "s/{issue_id}/$ISSUE_ID/g"
     action_type: shell
@@ -141,7 +142,7 @@ states:
       tail -n +2 "${context.run_dir}/pending.txt" > "$DIR/pending.tmp"
       mv "$DIR/pending.tmp" "${context.run_dir}/pending.txt"
       REMAINING=$(wc -l < "${context.run_dir}/pending.txt" | tr -d ' ')
-      echo "Completed ${captured.current_item.output}"
+      echo "Completed ${captured.current_item.output}"  # ll-lint: mr11-ok(captured.current_item.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "Progress: $REMAINING items remaining"
     action_type: shell
     next: discover

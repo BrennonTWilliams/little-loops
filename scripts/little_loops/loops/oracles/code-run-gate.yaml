@@ -131,7 +131,7 @@ states:
       mkdir -p "$${ABS_DIR}"
 
       # Read .ll/ll-config.json (best-effort — may be absent in unit tests).
-      CONFIG_FILE="${context.project_root:default=$(pwd)}/.ll/ll-config.json"
+      CONFIG_FILE="${context.project_root:default=$(pwd)}/.ll/ll-config.json"  # ll-lint: mr11-ok(context.project_root) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CFG_PROJECT=""
       if [ -f "$CONFIG_FILE" ]; then
         CFG_PROJECT=$(python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get('project',{})))" "$CONFIG_FILE" 2>/dev/null || echo "")
@@ -169,11 +169,23 @@ states:
       # bash && short-circuit only gates runtime execution, not interpolation.
       # (Do not write the brace-substitution form in this comment — it would
       # itself be interpolated and reintroduce the crash.)
+      # ll-lint: mr11-ok(context.build_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.build_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -n "${context.build_cmd:default=}" ] && BUILD_CMD="${context.build_cmd:default=}"
+      # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -n "${context.test_cmd:default=}" ] && TEST_CMD="${context.test_cmd:default=}"
+      # ll-lint: mr11-ok(context.typecheck_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.typecheck_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -n "${context.typecheck_cmd:default=}" ] && TYPECHECK_CMD="${context.typecheck_cmd:default=}"
+      # ll-lint: mr11-ok(context.lint_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.lint_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -n "${context.lint_cmd:default=}" ] && LINT_CMD="${context.lint_cmd:default=}"
+      # ll-lint: mr11-ok(context.run_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.run_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -n "${context.run_cmd:default=}" ] && RUN_CMD="${context.run_cmd:default=}"
+      # ll-lint: mr11-ok(context.health_url) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.health_url) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -n "${context.health_url:default=}" ] && HEALTH_URL="${context.health_url:default=}"
 
       # Write commands.json sidecar (F2a → F2b contract — canonical names only)
@@ -183,7 +195,7 @@ states:
 
       # Write initial subloop_outcome placeholder. aggregate rewrites this
       # with the final GATE_PASS / GATE_FAILED / GATE_SKIP verdict (F2b reader).
-      echo "GATE_PASS" > "$${ABS_DIR}/subloop_outcome_${context.issue_id}.txt"
+      echo "GATE_PASS" > "$${ABS_DIR}/subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       # Chain to run_build (which self-skips if build_cmd is null)
       echo "resolved: build=$BUILD_CMD test=$TEST_CMD typecheck=$TYPECHECK_CMD lint=$LINT_CMD run=$RUN_CMD health=$HEALTH_URL"
@@ -381,7 +393,7 @@ states:
         rm -f "$${ABS_DIR}/service.pid"
       }
       trap cleanup EXIT
-      BOUND="${context.health_bound_seconds}"
+      BOUND="${context.health_bound_seconds}"  # ll-lint: mr11-ok(context.health_bound_seconds) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -z "$BOUND" ] && BOUND=10
       # Poll the health URL (single attempt is sufficient for oracle scope).
       curl --fail --silent --max-time "$BOUND" "$HEALTH_URL" > "$${ABS_DIR}/health.txt" 2>&1
@@ -455,7 +467,7 @@ states:
       fi
 
       # Write final outcome token (F2b's reader — see FEAT-2552).
-      echo "$VERDICT" > "subloop_outcome_${context.issue_id}.txt"
+      echo "$VERDICT" > "subloop_outcome_${context.issue_id}.txt"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$VERDICT"
     capture: gate_verdict
     evaluate:

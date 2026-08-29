@@ -134,6 +134,6 @@ fragments:
       Run a named FSM loop as a sub-process.
       State must supply: context.loop_name (interpolated into action), on_yes, on_no.
     action_type: shell
-    action: "ll-loop run ${context.loop_name}"
+    action: "ll-loop run ${context.loop_name:shell}"
     evaluate:
       type: exit_code

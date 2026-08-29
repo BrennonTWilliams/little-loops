@@ -49,9 +49,10 @@ states:
       OUTPUT="$DIR/raw.jsonl"
       SINCE_ARG=""
       [ -f sft-corpus.last_harvested ] && SINCE_ARG="--since $(cat sft-corpus.last_harvested)"
+      # ll-lint: mr11-ok(context.sft_format) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-messages --sft-format ${context.sft_format} \
         --reader db \
-        --context-window ${context.max_turns} \
+        --context-window ${context.max_turns:shell} \
         $SINCE_ARG \
         --stdout > "$OUTPUT" 2>/dev/null || touch "$OUTPUT"
       echo "$OUTPUT"
@@ -443,6 +444,8 @@ states:
   reject_token_length:
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(context.min_tokens) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(context.max_tokens) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "rejected: all examples outside token length range [${context.min_tokens}, ${context.max_tokens}]"
     next: publish
 

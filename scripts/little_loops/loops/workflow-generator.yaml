@@ -219,7 +219,7 @@ states:
       assert d.get('success_signal'), 'success_signal is empty'
       PYEOF
       RC=$?
-      [ "$RC" -eq 0 ] && : > "${captured.run_dir.output}/.intent_errors.txt"
+      [ "$RC" -eq 0 ] && : > "${captured.run_dir.output}/.intent_errors.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       exit "$RC"
     evaluate:
       type: exit_code
@@ -245,10 +245,10 @@ states:
     action_type: shell
     action: |
       ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
-      BASELINE_REF=$(cat "${captured.run_dir.output}/baseline-ref.txt" 2>/dev/null || echo "")
+      BASELINE_REF=$(cat "${captured.run_dir.output}/baseline-ref.txt" 2>/dev/null || echo "")  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then
         echo "check_intent_scope: SKIPPED (no git repo, or repo has no commits)"
-        : > "${captured.run_dir.output}/.scope_violations.txt"
+        : > "${captured.run_dir.output}/.scope_violations.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         exit 0
       fi
       python3 -c '
@@ -333,10 +333,10 @@ states:
               print(v)
           sys.exit(1)
       sys.exit(0)
-      ' "$ROOT" "$BASELINE_REF" "${captured.run_dir.output}" "${captured.run_dir.output}/baseline-changed-set.json" \
-        > "${captured.run_dir.output}/.scope_violations.txt"
+      ' "$ROOT" "$BASELINE_REF" "${captured.run_dir.output:shell}" "${captured.run_dir.output:shell}/baseline-changed-set.json" \
+        > "${captured.run_dir.output}/.scope_violations.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RC=$?
-      cat "${captured.run_dir.output}/.scope_violations.txt"
+      cat "${captured.run_dir.output}/.scope_violations.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       exit "$RC"
     evaluate:
       type: exit_code
@@ -348,11 +348,11 @@ states:
     # back to capture_intent under the limit, to diagnose once exhausted.
     action_type: shell
     action: |
-      COUNTER_FILE="${captured.run_dir.output}/.intent_retry_count"
+      COUNTER_FILE="${captured.run_dir.output}/.intent_retry_count"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      MAX="${context.max_intent_retries}"
+      MAX="${context.max_intent_retries}"  # ll-lint: mr11-ok(context.max_intent_retries) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -z "$MAX" ] && MAX=3
       [ "$COUNT" -lt "$MAX" ] && exit 0 || exit 1
     evaluate:
@@ -595,10 +595,11 @@ states:
     action_type: shell
     action: |
       set -o pipefail
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-loop validate "${captured.run_dir.output}/workflow.yaml" 2>&1 \
-        | tee "${captured.run_dir.output}/.emit_errors.txt"
+        | tee "${captured.run_dir.output}/.emit_errors.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RC=$?
-      [ "$RC" -eq 0 ] && : > "${captured.run_dir.output}/.emit_errors.txt"
+      [ "$RC" -eq 0 ] && : > "${captured.run_dir.output}/.emit_errors.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       exit "$RC"
     evaluate:
       type: exit_code
@@ -611,11 +612,11 @@ states:
     # to diagnose once exhausted.
     action_type: shell
     action: |
-      COUNTER_FILE="${captured.run_dir.output}/.emit_retry_count"
+      COUNTER_FILE="${captured.run_dir.output}/.emit_retry_count"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$COUNTER_FILE"
-      MAX="${context.max_emit_retries}"
+      MAX="${context.max_emit_retries}"  # ll-lint: mr11-ok(context.max_emit_retries) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -z "$MAX" ] && MAX=3
       [ "$COUNT" -lt "$MAX" ] && exit 0 || exit 1
     evaluate:
@@ -629,7 +630,7 @@ states:
     # off by default.
     action_type: shell
     action: |
-      [ "${context.enable_shrink}" = "true" ] && exit 0 || exit 1
+      [ "${context.enable_shrink}" = "true" ] && exit 0 || exit 1  # ll-lint: mr11-ok(context.enable_shrink) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       type: exit_code
     on_yes: shrink_baseline
@@ -643,7 +644,7 @@ states:
     # still validate); `simulate` makes it behavioral.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       python3 <<'PYEOF'
       import json
       import os
@@ -677,7 +678,7 @@ states:
           json.dump(baseline, f)
       print(f"baseline recorded: {baseline}")
       PYEOF
-      echo "0" > "${captured.run_dir.output}/.shrink_state_index"
+      echo "0" > "${captured.run_dir.output}/.shrink_state_index"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     next: shrink_select_candidate
 
   shrink_select_candidate:
@@ -790,7 +791,7 @@ states:
     # as the new workflow.yaml and advance to the next candidate.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mv "$RUN_DIR/candidate-workflow.yaml" "$RUN_DIR/workflow.yaml"
       IDX=$(cat "$RUN_DIR/.shrink_state_index" 2>/dev/null || echo 0)
       echo "$((IDX + 1))" > "$RUN_DIR/.shrink_state_index"
@@ -805,7 +806,7 @@ states:
     # loop-composer's auto:"false" default.
     action_type: shell
     action: |
-      [ "${context.auto_promote}" = "true" ] && exit 0 || exit 1
+      [ "${context.auto_promote}" = "true" ] && exit 0 || exit 1  # ll-lint: mr11-ok(context.auto_promote) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       type: exit_code
     on_yes: promote
@@ -818,8 +819,8 @@ states:
     # built-in name.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      LOOPS_DIR="${context.loops_dir}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      LOOPS_DIR="${context.loops_dir}"  # ll-lint: mr11-ok(context.loops_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mkdir -p "$LOOPS_DIR"
       NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$RUN_DIR/workflow.yaml'))['name'])")
 

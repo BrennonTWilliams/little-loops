@@ -892,7 +892,13 @@ class TestCaptureReachabilityValidation:
         )
         fsm.capture_reachability_ok = True
         errors = validate_fsm(fsm)
-        capture_warnings = [e for e in errors if "captured.selected" in e.message]
+        # Excludes MR-11 (ENH-3342 widening): capture_reachability_ok only
+        # suppresses capture-reachability's own bypass-path warning, not the
+        # unrelated (and here, incidental) unsafe-raw-interpolation finding
+        # this fixture's bare `${captured.selected.output}` also now trips.
+        capture_warnings = [
+            e for e in errors if "captured.selected" in e.message and "(MR-11)" not in e.message
+        ]
         assert capture_warnings == []
 
     def test_capture_reachability_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:

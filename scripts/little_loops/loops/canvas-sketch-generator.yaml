@@ -301,7 +301,7 @@ states:
     # (regenerate) — a parse failure never falsely passes.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       N=$(cat "$RUN_DIR/.iter_counter" 2>/dev/null || echo 0); N=$((N + 1))
       echo "$N" > "$RUN_DIR/.iter_counter"
       mkdir -p "$RUN_DIR/iter-$N"
@@ -350,7 +350,7 @@ states:
     # exhaustion, so the user always gets the strongest artifact produced.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       BEST=$(sort -k2,2n -k1,1n "$RUN_DIR/scores.tsv" 2>/dev/null | tail -1 | cut -f1)
       if [ -n "$BEST" ] && [ -d "$RUN_DIR/iter-$BEST" ]; then
         cp "$RUN_DIR/iter-$BEST/index.html"   "$RUN_DIR/best.html" 2>/dev/null || true

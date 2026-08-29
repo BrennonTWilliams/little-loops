@@ -54,7 +54,13 @@ def _unguarded_captured_refs(text: str) -> set[tuple[str, ...]]:
     """
     refs: set[tuple[str, ...]] = set()
     for var_name, remainder in _CAPTURED_REF_FULL_RE.findall(text):
-        if ":default=" in remainder or remainder.endswith("?"):
+        # `?` is recognized as nullable at the very end of the suffix chain, or
+        # immediately before a trailing `:shell` (interpolation.py's `...?:shell`
+        # form — ENH-3342's MR-11 remedy for a nullable value at a bash-token
+        # position). `:shell` alone doesn't change whether the value can be
+        # missing, so it must not defeat this guard's recognition.
+        bare_remainder = remainder[: -len(":shell")] if remainder.endswith(":shell") else remainder
+        if ":default=" in remainder or bare_remainder.endswith("?"):
             continue
         extra_segments = [seg for seg in remainder.split(".") if seg]
         refs.add((var_name, *extra_segments))

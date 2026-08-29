@@ -210,7 +210,7 @@ class TestPlanningPromptWiring:
     def test_apo_run_planner_passes_plan_prompt_file(self, apo_data: dict) -> None:
         """rn-plan-apo must forward its plan_prompt_file to each rn-plan run."""
         action = apo_data["states"]["run_planner"].get("action", "")
-        assert '--context plan_prompt_file="${context.plan_prompt_file}"' in action, (
+        assert '--context plan_prompt_file="${context.plan_prompt_file:shell}"' in action, (
             "run_planner must pass plan_prompt_file to ll-loop run rn-plan so the "
             "planner reads the exact file apply_gradient overwrites (BUG-2417)"
         )

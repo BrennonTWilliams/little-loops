@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -1466,18 +1467,20 @@ class TestEpicFlagInit:
         stub.write_text(ll_issues_stub or "#!/bin/sh\nexit 0\n")
         stub.chmod(0o755)
 
+        def sub(text: str, token: str, value: str) -> str:
+            text = text.replace(f"${{{token}:shell}}", shlex.quote(value))
+            return text.replace(f"${{{token}}}", value)
+
         action = _load_loop()["states"]["init"]["action"]
-        action = (
-            action.replace("${context.input:shell}", f"'{input_val}'")
-            .replace("${context.epic}", epic)
-            .replace("${context.resume}", "")
-            .replace("${context.run_dir}", str(run_dir))
-            .replace("${context.readiness_threshold}", "85")
-            .replace("${context.outcome_threshold}", "65")
-            .replace("${context.max_depth}", "3")
-            .replace("${context.max_remediation_passes}", "3")
-            .replace("$$", "$")  # unescape FSM shell-brace guards
-        )
+        action = sub(action, "context.input", input_val)
+        action = sub(action, "context.epic", epic)
+        action = sub(action, "context.resume", "")
+        action = sub(action, "context.run_dir", str(run_dir))
+        action = sub(action, "context.readiness_threshold", "85")
+        action = sub(action, "context.outcome_threshold", "65")
+        action = sub(action, "context.max_depth", "3")
+        action = sub(action, "context.max_remediation_passes", "3")
+        action = action.replace("$$", "$")  # unescape FSM shell-brace guards
         env = dict(os.environ)
         env["PATH"] = f"{bindir}{os.pathsep}{env['PATH']}"
         result = subprocess.run(

@@ -69,14 +69,14 @@ states:
 
       # ENH-2016: resume path — if ${context.resume_epic} is set, skip spec validation
       # and signal the output_contains evaluator to route to the resume state.
-      RESUME_EPIC="${context.resume_epic}"
+      RESUME_EPIC="${context.resume_epic}"  # ll-lint: mr11-ok(context.resume_epic) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$RESUME_EPIC" ]; then
         echo "RESUME_MODE:$RESUME_EPIC"
         exit 0
       fi
 
       # Normal mode: validate and read spec file(s)
-      SPECS="${context.spec}"
+      SPECS="${context.spec}"  # ll-lint: mr11-ok(context.spec) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -z "$SPECS" ]; then
         echo "ERROR: spec context variable is required. Pass --context spec=<path>"
         exit 1
@@ -110,7 +110,7 @@ states:
     action: |
       RUN_DIR="${context.run_dir}"
       mkdir -p "$RUN_DIR"
-      SPECS="${context.spec}"
+      SPECS="${context.spec}"  # ll-lint: mr11-ok(context.spec) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       IFS=',' read -ra SPEC_LIST <<< "$SPECS"
       COMBINED="$RUN_DIR/spec_combined.tmp"
       for S in "$${SPEC_LIST[@]}"; do
@@ -200,8 +200,8 @@ states:
   resume:
     action_type: shell
     action: |
-      EPIC="${context.resume_epic}"
-      HARNESS="${context.resume_harness}"
+      EPIC="${context.resume_epic}"  # ll-lint: mr11-ok(context.resume_epic) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      HARNESS="${context.resume_harness}"  # ll-lint: mr11-ok(context.resume_harness) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       mkdir -p "$RUN_DIR"
       if [ -z "$EPIC" ]; then
@@ -561,7 +561,7 @@ states:
 
   enumerate_epic_children:
     action: |
-      ISSUES=$(ll-issues list --parent "${captured.epic_id.output}" --json | python3 -c "
+      ISSUES=$(ll-issues list --parent "${captured.epic_id.output}" --json | python3 -c "  # ll-lint: mr11-ok(captured.epic_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       import json, sys
       ids = json.load(sys.stdin)
       print(','.join(i['id'] for i in ids))
@@ -735,8 +735,8 @@ states:
   check_harness_name:
     action_type: shell
     action: |
-      NAME="${captured.harness_name.output:default=}"
-      SKIP_EVAL="${context.skip_eval:default=false}"
+      NAME="${captured.harness_name.output:default=}"  # ll-lint: mr11-ok(captured.harness_name.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      SKIP_EVAL="${context.skip_eval:default=false}"  # ll-lint: mr11-ok(context.skip_eval) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -z "$NAME" ]; then
         if [ "$SKIP_EVAL" = "true" ]; then
           echo "no_harness_skip_eval"
@@ -785,8 +785,8 @@ states:
   harness_missing:
     action_type: shell
     action: |
-      NAME="${captured.harness_name.output:default=}"
-      SKIP_EVAL="${context.skip_eval:default=false}"
+      NAME="${captured.harness_name.output:default=}"  # ll-lint: mr11-ok(captured.harness_name.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      SKIP_EVAL="${context.skip_eval:default=false}"  # ll-lint: mr11-ok(context.skip_eval) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -z "$NAME" ] && [ "$SKIP_EVAL" = "true" ]; then
         echo "skip_eval"
         exit 0

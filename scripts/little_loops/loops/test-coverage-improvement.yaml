@@ -35,12 +35,12 @@ states:
     timeout: 600
     action: |
       # Resolve coverage command
-      if [ -n "${context.coverage_cmd}" ]; then
-        COV_CMD="${context.coverage_cmd}"
+      if [ -n "${context.coverage_cmd}" ]; then  # ll-lint: mr11-ok(context.coverage_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        COV_CMD="${context.coverage_cmd}"  # ll-lint: mr11-ok(context.coverage_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       else
         COV_CMD="python -m pytest --cov --cov-report=term-missing"
-        if [ -n "${context.focus_dirs}" ]; then
-          DIRS=$(echo "${context.focus_dirs}" | tr ',' ' ')
+        if [ -n "${context.focus_dirs}" ]; then  # ll-lint: mr11-ok(context.focus_dirs) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+          DIRS=$(echo "${context.focus_dirs}" | tr ',' ' ')  # ll-lint: mr11-ok(context.focus_dirs) ENH-3358 - ENH-3342 widening residual, tracked for conversion
           COV_CMD="python -m pytest --cov=$DIRS --cov-report=term-missing"
         fi
       fi
@@ -141,8 +141,8 @@ states:
     fragment: harness_exit
     timeout: 600
     action: |
-      if [ -n "${context.test_cmd}" ]; then
-        CMD="${context.test_cmd}"
+      if [ -n "${context.test_cmd}" ]; then  # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        CMD="${context.test_cmd}"  # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       else
         CMD=$(ll-config get project.test_cmd)
       fi

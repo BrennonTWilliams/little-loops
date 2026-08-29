@@ -57,7 +57,7 @@ states:
         COUNT=$((COUNT + 1))
         TASK_DIR="$PARENT_DIR/plans/task-$COUNT"
         mkdir -p "$TASK_DIR"
-        ll-loop run rn-plan "$TASK" --context run_dir="$TASK_DIR/" --context plan_prompt_file="${context.plan_prompt_file}" >> "$PARENT_DIR/planner.log" 2>&1 || true
+        ll-loop run rn-plan "$TASK" --context run_dir="$TASK_DIR/" --context plan_prompt_file="${context.plan_prompt_file:shell}" >> "$PARENT_DIR/planner.log" 2>&1 || true
       done < "$PARENT_DIR/tasks.txt"
       case "$PARENT_DIR" in
         /*) echo "$PARENT_DIR" ;;

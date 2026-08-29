@@ -23,13 +23,13 @@ states:
 
   check_issue_file:
     fragment: shell_exit
-    action: test -n "${context.issue_file}" && test -f "${context.issue_file}"
+    action: test -n "${context.issue_file:shell}" && test -f "${context.issue_file:shell}"
     on_yes: check_targets_csv
     on_no: resolve_task
 
   check_targets_csv:
     fragment: shell_exit
-    action: test -n "${context.targets_csv}"
+    action: test -n "${context.targets_csv:shell}"
     on_yes: gate_direct
     on_no: gate
 

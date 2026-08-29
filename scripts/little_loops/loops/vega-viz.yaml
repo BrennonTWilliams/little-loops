@@ -85,8 +85,8 @@ states:
     # object is treated as the row set.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
-      DP="${context.data_path}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      DP="${context.data_path}"  # ll-lint: mr11-ok(context.data_path) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$DP" ] && [ -f "$DP" ]; then
         cp "$DP" "$DIR/data.src"
         python3 - "$DIR/data.src" "$DIR/data.json" "$DIR/schema.txt" <<'PY'
@@ -296,7 +296,7 @@ states:
     # network). Pre-install with `npm i -g vega-cli vega-lite` to skip that.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ERR="$DIR/compile_error.txt"
       : > "$ERR"
       OK=0
@@ -493,7 +493,7 @@ states:
     # than trusting a final stdout token.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CRIT="$DIR/critique.md"
       SCORE=$(grep -oE 'SCORE_TOTAL:[[:space:]]*[0-9]+' "$CRIT" 2>/dev/null | grep -oE '[0-9]+' | head -1)
       [ -z "$SCORE" ] && SCORE=0

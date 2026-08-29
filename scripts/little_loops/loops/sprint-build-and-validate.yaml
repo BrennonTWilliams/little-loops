@@ -20,15 +20,15 @@ import:
 states:
   route_input:
     action: |
-      if [ -z "${context.sprint_name}" ]; then
+      if [ -z "${context.sprint_name}" ]; then  # ll-lint: mr11-ok(context.sprint_name) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         exit 1
       fi
-      SPRINT_FILE=".sprints/${context.sprint_name}.yaml"
+      SPRINT_FILE=".sprints/${context.sprint_name}.yaml"  # ll-lint: mr11-ok(context.sprint_name) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ ! -f "$SPRINT_FILE" ]; then
         echo "ERROR: Sprint '${context.sprint_name}' not found at $SPRINT_FILE" >&2
         exit 2
       fi
-      echo "${context.sprint_name}"
+      echo "${context.sprint_name}"  # ll-lint: mr11-ok(context.sprint_name) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     action_type: shell
     evaluate:
       type: exit_code
@@ -61,7 +61,7 @@ states:
 
   extract_sprint_issues:
     action: |
-      SPRINT_FILE=".sprints/${captured.sprint_name.output}.yaml"
+      SPRINT_FILE=".sprints/${captured.sprint_name.output}.yaml"  # ll-lint: mr11-ok(captured.sprint_name.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ ! -f "$SPRINT_FILE" ]; then
         echo "Sprint file not found: $SPRINT_FILE" >&2
         exit 1
@@ -153,7 +153,7 @@ states:
     next: run_sprint
 
   run_sprint:
-    action: "ll-sprint run ${captured.sprint_name.output}"
+    action: "ll-sprint run ${captured.sprint_name.output:shell}"
     fragment: shell_exit
     timeout: 21600
     on_yes: done

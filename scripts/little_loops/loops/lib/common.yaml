@@ -455,7 +455,7 @@ fragments:
         default: RATE_LIMITED
     action_type: shell
     action: |
-      ID="${context.issue_id}"
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "${param.outcome_token}" > "${context.run_dir}/subloop_outcome_$${ID}.txt"
       echo "[RATE_LIMIT] $${ID} rate-limited during ${param.operation}"
     next: failed

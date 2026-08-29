@@ -35,7 +35,7 @@ states:
     timeout: 120
     action: |
       SINCE_ARG=""; [ -f corpus.last_harvested ] && SINCE_ARG="--since $(cat corpus.last_harvested)"; \
-      ll-messages --skill ${context.skill_name} --examples-format --context-window 3 $SINCE_ARG --stdout
+      ll-messages --skill ${context.skill_name} --examples-format --context-window 3 $SINCE_ARG --stdout  # ll-lint: mr11-ok(context.skill_name) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     capture: harvested_examples
     next: judge
 

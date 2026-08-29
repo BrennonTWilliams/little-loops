@@ -26,7 +26,7 @@ states:
     action: |
       # Observe the environment response to the action and print reward (0.0–1.0) on last line.
       # Replace with your observation and reward computation logic.
-      echo "Action result: ${captured.action_result.output}"
+      echo "Action result: ${captured.action_result.output}"  # ll-lint: mr11-ok(captured.action_result.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "0.0"
     action_type: shell
     capture: observation
@@ -35,7 +35,7 @@ states:
     fragment: convergence_gate
     action: |
       # Extract the numeric reward from the observation for convergence evaluation.
-      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
+      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'  # ll-lint: mr11-ok(captured.observation.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     evaluate:
       target: "${context.reward_target}"
       tolerance: 0.05
@@ -49,7 +49,7 @@ states:
       # Update the policy based on the observed reward.
       # Replace with your policy improvement logic.
       echo "Improving policy based on observation:"
-      echo "${captured.observation.output}"
+      echo "${captured.observation.output}"  # ll-lint: mr11-ok(captured.observation.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     action_type: shell
     next: act
   done:

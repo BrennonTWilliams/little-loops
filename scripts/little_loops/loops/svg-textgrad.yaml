@@ -100,6 +100,8 @@ states:
     # max_iterations. on_no: re-generates from the unchanged brief without scoring.
     action_type: shell
     action: |
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
     evaluate:
       type: output_contains
@@ -115,7 +117,7 @@ states:
     # ↔ generate cycle from burning all 40 iterations when Playwright is unavailable.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       COUNT=$(cat "$DIR/playwright_fails.txt" 2>/dev/null || echo 0)
       COUNT=$((COUNT + 1))
       echo "$COUNT" > "$DIR/playwright_fails.txt"
@@ -171,7 +173,7 @@ states:
     # Decoupling routing from the LLM prompt prevents self-certification inflation.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ITER="${state.iteration}"
       # --- Append scores to history (every iteration, regardless of routing) ---
       grep -E "^(visual_clarity|originality|craft|scalability):" "$DIR/critique.md" \
@@ -183,12 +185,12 @@ states:
       OG=$(grep -E "^originality: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
       CR=$(grep -E "^craft: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
       SC=$(grep -E "^scalability: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
-      MIN="${context.min_per_criterion}"
+      MIN="${context.min_per_criterion}"  # ll-lint: mr11-ok(context.min_per_criterion) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ "$VC" -lt "$MIN" ] || [ "$OG" -lt "$MIN" ] || \
          [ "$CR" -lt "$MIN" ] || [ "$SC" -lt "$MIN" ]; then
         echo "SHELL_ITERATE"; exit 0
       fi
-      THRESH="${context.pass_threshold}"
+      THRESH="${context.pass_threshold}"  # ll-lint: mr11-ok(context.pass_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       WEIGHTED=$((2*VC + 2*OG + CR + SC))
       if [ "$WEIGHTED" -ge "$((THRESH * 6))" ]; then
         echo "SHELL_PASS"
@@ -209,7 +211,7 @@ states:
     # so a single bad generation after a good one does not produce a worse final output.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # --- Best-artifact tracking (weighted sum: 2×vc + 2×orig + craft + scalability, max=60) ---
       VC=$(grep -E "^visual_clarity: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
       OG=$(grep -E "^originality: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
@@ -284,10 +286,10 @@ states:
     # backticks, colons, or other characters that break bash quoting if inlined directly.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ITER="${state.iteration}"
       TS=$(date -u +%Y%m%dT%H%M%SZ)
-      printf '%s\n' "${captured.gradient.output}" > "$DIR/.gradient_tmp.txt"
+      printf '%s\n' "${captured.gradient.output}" > "$DIR/.gradient_tmp.txt"  # ll-lint: mr11-ok(captured.gradient.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       {
         printf '## Iteration %s — %s\n' "$ITER" "$TS"
         cat "$DIR/.gradient_tmp.txt"
@@ -322,7 +324,7 @@ states:
     # including first-pass success where track_best is bypassed.
     action_type: shell
     action: |
-      DIR="${captured.run_dir.output}"
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -f "$DIR/best.svg" ] || cp "$DIR/image.svg" "$DIR/best.svg"
       [ -f "$DIR/best-brief.md" ] || cp "$DIR/brief.md" "$DIR/best-brief.md"
     next: finalize_done

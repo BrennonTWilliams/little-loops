@@ -184,27 +184,6 @@ class TestLoopStructure:
         action = fsm.states["vision_gate"].action
         assert "VISION_PASS: skipped (VISION_* env not configured)" in action
 
-    def test_no_raw_user_input_in_shell_actions(self) -> None:
-        """MR-11: the user prompt never reaches a shell body as a raw token."""
-        for path in (WRAPPER, ORACLE):
-            raw = yaml.safe_load(path.read_text())
-            for name, state in (raw.get("states") or {}).items():
-                if state.get("action_type") != "shell":
-                    continue
-                action = state.get("action", "")
-                for token in (
-                    "${context.input}",
-                    "${context.description}",
-                    "${context.prompt}",
-                    "${context.query}",
-                    "${context.task}",
-                    "${context.goal}",
-                    "${context.topic}",
-                ):
-                    assert token not in action, (
-                        f"{path.name}/{name} splices {token} into a shell body (MR-11)"
-                    )
-
     def test_steps_default_agrees_across_wrapper_and_oracle(self) -> None:
         """ENH-2823: the wrapper's context.steps, the oracle's own context.steps,
         and the FLUX_STEPS fallback literal (both branches) must all agree —

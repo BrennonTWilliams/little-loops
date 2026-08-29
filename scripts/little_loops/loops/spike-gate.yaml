@@ -24,7 +24,7 @@ states:
   # run the impl loop directly (proof-first-task check_issue_file.on_no parity).
   check_issue_file:
     fragment: shell_exit
-    action: test -n "${context.issue_id}"
+    action: test -n "${context.issue_id:shell}"
     on_yes: check_spike_needed
     on_no: run_impl
 
@@ -33,7 +33,7 @@ states:
   # spike to gate on.
   check_spike_needed:
     fragment: shell_exit
-    action: ll-issues check-flag ${context.issue_id} spike_needed
+    action: ll-issues check-flag ${context.issue_id:shell} spike_needed
     on_yes: check_spike_completed
     on_no: run_impl
     on_error: run_impl
@@ -42,7 +42,7 @@ states:
   # the gate — re-running would be wasted work. Otherwise run the check.
   check_spike_completed:
     fragment: shell_exit
-    action: ll-issues check-flag ${context.issue_id} spike_completed
+    action: ll-issues check-flag ${context.issue_id:shell} spike_completed
     on_yes: run_impl
     on_no: gate
     on_error: run_impl

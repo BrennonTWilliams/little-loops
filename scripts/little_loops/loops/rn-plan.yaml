@@ -39,7 +39,7 @@ states:
       : > "$DIR/plan.md"
       : > "$DIR/plan-rubric.md"
       : > "$DIR/research.md"
-      PROMPT_FILE="${context.plan_prompt_file}"
+      PROMPT_FILE="${context.plan_prompt_file}"  # ll-lint: mr11-ok(context.plan_prompt_file) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ ! -f "$PROMPT_FILE" ]; then
         mkdir -p "$(dirname "$PROMPT_FILE")"
         cat > "$PROMPT_FILE" <<'PLANNING_PROMPT_EOF'
@@ -70,7 +70,7 @@ states:
     # so an applied gradient takes effect on the next run_planner iteration.
     action_type: shell
     action: |
-      cat "${context.plan_prompt_file}"
+      cat "${context.plan_prompt_file}"  # ll-lint: mr11-ok(context.plan_prompt_file) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     capture: planning_prompt
     next: generate_rubric
 
@@ -152,7 +152,7 @@ states:
   check_substrate:
     action_type: shell
     action: |
-      cat "${captured.run_dir.output}/plan.md"
+      cat "${captured.run_dir.output}/plan.md"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     capture: plan_for_substrate
     evaluate:
       type: llm_structured
@@ -177,7 +177,7 @@ states:
     action_type: shell
     timeout: 60
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "=== SUBSTRATE PROBE ==="
       echo "--- shell command availability ---"
       for C in git python3 pip node npm gh jq rg curl ll-issues ll-loop claude codex; do

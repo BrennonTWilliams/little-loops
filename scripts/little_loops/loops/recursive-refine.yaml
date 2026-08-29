@@ -52,7 +52,7 @@ states:
     # newline-delimited queue file, and initialise per-run tracking files.
     # In order=next-action mode input is not required; skip queue setup entirely.
     action: |
-      ORDER="${context.order:default=queue}"
+      ORDER="${context.order:default=queue}"  # ll-lint: mr11-ok(context.order) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mkdir -p "${context.run_dir}"
       # Write context.input via a quoted heredoc so shell metacharacters in the
       # value are read literally, not paste-injected into bash (BUG-2622). The
@@ -79,8 +79,8 @@ states:
       if [ "$ORDER" = "next-action" ]; then
         _init_common
         > ${context.run_dir}/recursive-refine-skipped-depth.txt
-        COMMIT_EVERY="${context.commit_every:default=0}"
-        NO_RECURSION="${context.no_recursion:default=false}"
+        COMMIT_EVERY="${context.commit_every:default=0}"  # ll-lint: mr11-ok(context.commit_every) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        NO_RECURSION="${context.no_recursion:default=false}"  # ll-lint: mr11-ok(context.no_recursion) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "Starting next-action mode: commit_every=$${COMMIT_EVERY}, no_recursion=$${NO_RECURSION}"
       else
         if ! grep -q '[^[:space:]]' ${context.run_dir}/recursive-refine-input.txt; then
@@ -115,7 +115,7 @@ states:
     # the refine-to-ready-issue sub-loop as context.input.
     # Exits 1 (→ aggregate_decomposition) when the queue/backlog is empty.
     action: |
-      ORDER="${context.order:default=queue}"
+      ORDER="${context.order:default=queue}"  # ll-lint: mr11-ok(context.order) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       DEQUEUED=$(cat ${context.run_dir}/recursive-refine-dequeued-count.txt 2>/dev/null || echo 0)
       PASSED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-passed.txt 2>/dev/null || true)
       [ -z "$PASSED" ] && PASSED=0
@@ -307,9 +307,9 @@ states:
     # maybe_commit (preserving commit cadence). Otherwise routes to detect_children
     # for the normal recursive decomposition path.
     action: |
-      NO_RECURSION="${context.no_recursion:default=false}"
+      NO_RECURSION="${context.no_recursion:default=false}"  # ll-lint: mr11-ok(context.no_recursion) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ "$NO_RECURSION" = "true" ]; then
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         exit 0
       fi
       exit 1
@@ -323,7 +323,7 @@ states:
     # completions (both pass and no-recursion-skip paths converge here).
     # When commit_every=0 (default) this is a no-op pass-through to dequeue_next.
     action: |
-      COMMIT_EVERY="${context.commit_every:default=0}"
+      COMMIT_EVERY="${context.commit_every:default=0}"  # ll-lint: mr11-ok(context.commit_every) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ "$COMMIT_EVERY" = "0" ]; then
         echo "SKIP"
         exit 0
@@ -366,7 +366,7 @@ states:
                ${context.run_dir}/recursive-refine-post-ids.txt \
                > ${context.run_dir}/recursive-refine-diff-ids.txt
 
-      PARENT_ID="${captured.input.output}"
+      PARENT_ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       while IFS= read -r child_id; do
         child_file=$(ll-issues path "$child_id" 2>/dev/null)
         # BUG-2729 postmortem: match provenance on frontmatter `parent:` first
@@ -428,18 +428,20 @@ states:
         echo "$child $((PARENT_DEPTH + 1))" >> ${context.run_dir}/recursive-refine-depth-map.txt
       done < ${context.run_dir}/recursive-refine-new-children.txt
       CHILD_IDS=$(cat ${context.run_dir}/recursive-refine-new-children.txt | tr '\n' ',' | sed 's/,$//')
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       printf '%s\t%s\t%s\t%s\n' "${captured.input.output}" "$CHILD_IDS" "sub-loop" \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${context.run_dir}/recursive-refine-decomposition.tsv
-      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
-      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decomposed.txt
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decomposed.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # Close the decomposed parent in place (ENH-1418/ENH-2615 convention);
       # never recreate the legacy completed-issues directory.
+      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues finalize-decomposition "${captured.input.output}" 2>/dev/null \
-        || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2
+        || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CHILD_COUNT=$(wc -l < ${context.run_dir}/recursive-refine-new-children.txt | tr -d ' ')
       PREV_TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
       printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > ${context.run_dir}/recursive-refine-total-enqueued.txt
-      echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
+      echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       PEEK_COUNT=5
       QUEUE_LINES=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || true)
       [ -z "$QUEUE_LINES" ] && QUEUE_LINES=0
@@ -559,11 +561,11 @@ states:
       print(cfg.get('commands', {}).get('recursive_refine', {}).get('max_depth', int(os.environ['LL_ARG_MAX_DEPTH'])))
       PYEOF
       )
-      [ -z "$MAX_DEPTH" ] && MAX_DEPTH=${context.max_depth}
+      [ -z "$MAX_DEPTH" ] && MAX_DEPTH=${context.max_depth}  # ll-lint: mr11-ok(context.max_depth) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       CURRENT_DEPTH=$(cat ${context.run_dir}/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
       if [ "$CURRENT_DEPTH" -ge "$MAX_DEPTH" ]; then
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-depth.txt
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-depth.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo 1
       else
         echo 0
@@ -581,10 +583,10 @@ states:
     # Gate: skip the entire issue if decision_needed: true — a competing option
     # must be resolved via /ll:decide-issue before the issue can be refined.
     action: |
-      ISSUE_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
+      ISSUE_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       if [ -n "$ISSUE_FILE" ] && grep -q "decision_needed: true" "$ISSUE_FILE"; then
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decision.txt
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decision.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         exit 1
       fi
       exit 0
@@ -598,7 +600,7 @@ states:
     # caused by absent files/unwired components, not scope. recursive-refine has no
     # wire capability, so skip and let the caller handle repair externally.
     # Mirrors check_decision_needed above and refine-to-ready-issue:check_missing_artifacts.
-    action: "ll-issues check-flag ${captured.input.output} missing_artifacts"
+    action: "ll-issues check-flag ${captured.input.output:shell} missing_artifacts"
     fragment: shell_exit
     on_yes: check_wire_budget
     on_no: run_size_review
@@ -641,9 +643,9 @@ states:
 
   skip_missing_artifacts:
     action: |
-      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-missing-artifacts.txt
-      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
-      echo "Skipped: ${captured.input.output} (missing_artifacts — wire repair attempted but unresolved)"
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-missing-artifacts.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "Skipped: ${captured.input.output} (missing_artifacts — wire repair attempted but unresolved)"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -674,7 +676,7 @@ states:
                ${context.run_dir}/recursive-refine-post-ids.txt \
                > ${context.run_dir}/recursive-refine-diff-ids.txt
 
-      PARENT_ID="${captured.input.output}"
+      PARENT_ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       while IFS= read -r child_id; do
         child_file=$(ll-issues path "$child_id" 2>/dev/null)
         # BUG-2729 postmortem: match provenance on frontmatter `parent:` first
@@ -728,18 +730,20 @@ states:
           echo "$child $((PARENT_DEPTH + 1))" >> ${context.run_dir}/recursive-refine-depth-map.txt
         done < ${context.run_dir}/recursive-refine-new-children.txt
         CHILD_IDS=$(cat ${context.run_dir}/recursive-refine-new-children.txt | tr '\n' ',' | sed 's/,$//')
+        # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         printf '%s\t%s\t%s\t%s\n' "${captured.input.output}" "$CHILD_IDS" "size-review" \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${context.run_dir}/recursive-refine-decomposition.tsv
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decomposed.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decomposed.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         # Close the decomposed parent in place (ENH-1418/ENH-2615 convention);
         # never recreate the legacy completed-issues directory.
+        # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         ll-issues finalize-decomposition "${captured.input.output}" 2>/dev/null \
-          || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2
+          || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         CHILD_COUNT=$(wc -l < ${context.run_dir}/recursive-refine-new-children.txt | tr -d ' ')
         PREV_TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
         printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > ${context.run_dir}/recursive-refine-total-enqueued.txt
-        echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
+        echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         PEEK_COUNT=5
         QUEUE_LINES=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || true)
         [ -z "$QUEUE_LINES" ] && QUEUE_LINES=0
@@ -753,9 +757,9 @@ states:
           fi
         fi
       else
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
-        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-deadend.txt
-        echo "Skipped: ${captured.input.output} (no further decomposition possible)"
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-deadend.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        echo "Skipped: ${captured.input.output} (no further decomposition possible)"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
     action_type: shell
     next: dequeue_next
@@ -865,7 +869,7 @@ states:
       printf 'Budget           (%d): %s\n' "$BUDGET_COUNT"             "$${BUDGET_LIST:-none}"
       printf 'Decision         (%d): %s\n' "$DECISION_COUNT"           "$${DECISION_LIST:-none}"
       printf 'Missing-artifacts(%d): %s\n' "$MISSING_ARTIFACTS_COUNT"  "$${MISSING_ARTIFACTS_LIST:-none}"
-      if [ "${context.tree_summary}" != "false" ]; then
+      if [ "${context.tree_summary}" != "false" ]; then  # ll-lint: mr11-ok(context.tree_summary) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         python3 << 'PYEOF'
       import subprocess, sys, json, os, re
       from pathlib import Path

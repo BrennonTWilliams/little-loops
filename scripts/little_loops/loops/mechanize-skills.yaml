@@ -128,7 +128,7 @@ states:
     # config-first via `ll-config get project.test_cmd`.
     fragment: shell_exit
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       CONV=${context.conventions_file:shell}
       if [ -n "$CONV" ]; then
@@ -178,7 +178,7 @@ states:
     # this state supplies the head-1 pop action itself.
     fragment: queue_pop
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ ! -s "$RUN_DIR/pending.txt" ] && exit 1
       head -1 "$RUN_DIR/pending.txt"
     capture: current_skill
@@ -191,8 +191,8 @@ states:
     # the SKILL.md path that diagnose_skill/apply (the LLM states) target.
     fragment: shell_exit
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      SKILL_FILE="${captured.current_skill.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      SKILL_FILE="${captured.current_skill.output}"  # ll-lint: mr11-ok(captured.current_skill.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       rm -f "$RUN_DIR/diagnosis.json" "$RUN_DIR/apply-manifest.json" "$RUN_DIR/gate-last.txt" "$RUN_DIR/skip-reason.txt"
       rm -f "$RUN_DIR/.diag_retry_count" "$RUN_DIR/.apply_retry_count"
 
@@ -280,7 +280,7 @@ states:
     # caught and swallowed.
     fragment: shell_exit
     action: |
-      SKILL_FILE="${captured.current_skill.output}" python3 << 'PYEOF'
+      SKILL_FILE="${captured.current_skill.output}" python3 << 'PYEOF'  # ll-lint: mr11-ok(captured.current_skill.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       import json, os
       skill_file = os.environ["SKILL_FILE"]
       with open(os.path.join(os.path.abspath("${context.run_dir}"), "diagnosis.json")) as f:
@@ -310,7 +310,7 @@ states:
     # isolation boundary.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "diagnosis-invalid" > "$RUN_DIR/skip-reason.txt"
       FILE="$RUN_DIR/.diag_retry_count"
       N=$(cat "$FILE" 2>/dev/null || echo 0)
@@ -330,7 +330,7 @@ states:
     # of which branch is taken.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "below-threshold" > "$RUN_DIR/skip-reason.txt"
       python3 << 'PYEOF'
       import json, os
@@ -351,7 +351,7 @@ states:
     # here (a bare string comparison), kept only for completeness.
     fragment: shell_exit
     action: |
-      [ "${context.mode}" = "diagnose" ]
+      [ "${context.mode}" = "diagnose" ]  # ll-lint: mr11-ok(context.mode) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     on_yes: record_finding
     on_no: apply
     on_error: apply
@@ -359,9 +359,9 @@ states:
   record_finding:
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mkdir -p "$RUN_DIR/diagnoses"
-      SKILL_NAME=$(basename "$(dirname "${captured.current_skill.output}")")
+      SKILL_NAME=$(basename "$(dirname "${captured.current_skill.output}")")  # ll-lint: mr11-ok(captured.current_skill.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       N=$(ls "$RUN_DIR/diagnoses" 2>/dev/null | wc -l | tr -d ' ')
       N=$((N + 1))
       NUM=$(printf '%03d' "$N")
@@ -426,7 +426,7 @@ states:
     # outright).
     fragment: shell_exit
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       MANIFEST="$RUN_DIR/apply-manifest.json"
       if [ ! -f "$MANIFEST" ]; then
         echo "emission-failed" > "$RUN_DIR/skip-reason.txt"
@@ -444,7 +444,7 @@ states:
       fi
 
       CHANGED="true"
-      cmp -s "${captured.current_skill.output}" "$RUN_DIR/baseline-SKILL.md" && CHANGED="false"
+      cmp -s "${captured.current_skill.output}" "$RUN_DIR/baseline-SKILL.md" && CHANGED="false"  # ll-lint: mr11-ok(captured.current_skill.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
       EMPTY_MANIFEST=$(python3 << 'PYEOF'
       import json, os
@@ -467,7 +467,7 @@ states:
   apply_retry:
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       FILE="$RUN_DIR/.apply_retry_count"
       N=$(cat "$FILE" 2>/dev/null || echo 0)
       N=$((N + 1))
@@ -488,23 +488,23 @@ states:
     fragment: shell_exit
     timeout: 1800
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      SKILL_FILE="${captured.current_skill.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      SKILL_FILE="${captured.current_skill.output}"  # ll-lint: mr11-ok(captured.current_skill.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       REASON=""
 
       LINES=$(wc -l < "$SKILL_FILE" | tr -d ' ')
-      if [ "$LINES" -gt "${captured.baseline_lines.output}" ]; then
+      if [ "$LINES" -gt "${captured.baseline_lines.output}" ]; then  # ll-lint: mr11-ok(captured.baseline_lines.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         REASON="line-growth"
       fi
 
       if [ -z "$REASON" ]; then
         HAVE_VERIFY_SKILLS=$(cat "$RUN_DIR/have-verify-skills.txt" 2>/dev/null || echo false)
         if [ "$HAVE_VERIFY_SKILLS" = "true" ]; then
-          ll-verify-skills --limit ${context.line_cap} > "$RUN_DIR/gate-verify-skills.txt" 2>&1 || REASON="verify-skills"
+          ll-verify-skills --limit ${context.line_cap} > "$RUN_DIR/gate-verify-skills.txt" 2>&1 || REASON="verify-skills"  # ll-lint: mr11-ok(context.line_cap) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         fi
       fi
 
-      if [ -z "$REASON" ] && [ "${captured.prose_baseline.output}" != "-1" ]; then
+      if [ -z "$REASON" ] && [ "${captured.prose_baseline.output}" != "-1" ]; then  # ll-lint: mr11-ok(captured.prose_baseline.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         HAVE_VERIFY_PROSE=$(cat "$RUN_DIR/have-verify-prose.txt" 2>/dev/null || echo false)
         if [ "$HAVE_VERIFY_PROSE" = "true" ]; then
           ll-verify-skill-prose --json > "$RUN_DIR/gate-prose.json" 2>/dev/null
@@ -518,7 +518,7 @@ states:
           print(-1)
       PYEOF
       )
-          if [ "$NEW_COUNT" != "-1" ] && [ "$NEW_COUNT" -gt "${captured.prose_baseline.output}" ]; then
+          if [ "$NEW_COUNT" != "-1" ] && [ "$NEW_COUNT" -gt "${captured.prose_baseline.output}" ]; then  # ll-lint: mr11-ok(captured.prose_baseline.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
             REASON="prose-count"
           fi
         fi
@@ -564,8 +564,8 @@ states:
     # commit_and_log precedent).
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      SKILL_FILE="${captured.current_skill.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      SKILL_FILE="${captured.current_skill.output}"  # ll-lint: mr11-ok(captured.current_skill.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       SKILL_DIR=$(dirname "$SKILL_FILE")
       MANIFEST_PATHS=$(python3 << 'PYEOF'
       import json, os
@@ -603,8 +603,8 @@ states:
     # `git clean`.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      SKILL_FILE="${captured.current_skill.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      SKILL_FILE="${captured.current_skill.output}"  # ll-lint: mr11-ok(captured.current_skill.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       MANIFEST="$RUN_DIR/apply-manifest.json"
 
       if [ -f "$MANIFEST" ]; then
@@ -643,7 +643,7 @@ states:
   record_skip:
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       REASON=$(cat "$RUN_DIR/skip-reason.txt" 2>/dev/null || echo "unknown")
       OUTCOME="skipped"
       case "$REASON" in
@@ -662,7 +662,7 @@ states:
     # instead of `sed -i ''`, which is macOS-only.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       DIR="$(dirname "$RUN_DIR/pending.txt")"
       tail -n +2 "$RUN_DIR/pending.txt" > "$DIR/pending.tmp"
       mv "$DIR/pending.tmp" "$RUN_DIR/pending.txt"

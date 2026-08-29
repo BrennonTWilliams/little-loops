@@ -46,8 +46,8 @@ states:
     # __pycache__) can't trip it.
     fragment: shell_exit
     action: |
-      if [ -n "${context.test_cmd}" ]; then
-        CMD="${context.test_cmd}"
+      if [ -n "${context.test_cmd}" ]; then  # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        CMD="${context.test_cmd}"  # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       else
         CMD=$(ll-config get project.test_cmd)
         RC=$?
@@ -108,8 +108,8 @@ states:
     # loop mid-run).
     fragment: harness_exit
     action: |
-      if [ -n "${context.test_cmd}" ]; then
-        CMD="${context.test_cmd}"
+      if [ -n "${context.test_cmd}" ]; then  # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        CMD="${context.test_cmd}"  # ll-lint: mr11-ok(context.test_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       else
         CMD=$(ll-config get project.test_cmd)
         RC=$?

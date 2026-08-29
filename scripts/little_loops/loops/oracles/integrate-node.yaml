@@ -129,7 +129,7 @@ states:
     action_type: shell
     action: |
       RUN_DIR="${context.run_dir}"
-      NODE="${captured.popped.output}"
+      NODE="${captured.popped.output}"  # ll-lint: mr11-ok(captured.popped.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       python3 -m little_loops.rn_synth_queue mark-complete "$RUN_DIR" "$NODE" || true
       RUN_ID=$(basename "$RUN_DIR")
       mkdir -p .loops/diagnostics
@@ -147,7 +147,7 @@ states:
     action_type: shell
     action: |
       RUN_DIR="${context.run_dir}"
-      NODE="${captured.popped.output}"
+      NODE="${captured.popped.output}"  # ll-lint: mr11-ok(captured.popped.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       mkdir -p "$RUN_DIR/failed_integrations"
       echo "$NODE" >> "$RUN_DIR/failed_integrations/log.txt"
       echo "[INTEGRATE_FAILED] $NODE"

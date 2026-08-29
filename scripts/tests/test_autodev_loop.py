@@ -1024,7 +1024,9 @@ def _run_recheck_scores(project_root: Path, issue_id: str) -> None:
     script = (
         action.replace('ID="${captured.input.output}"', f'ID="{issue_id}"')
         .replace("${context.run_dir}", str(project_root))
+        .replace("${context.readiness_threshold:shell}", "85")
         .replace("${context.readiness_threshold}", "85")
+        .replace("${context.outcome_threshold:shell}", "65")
         .replace("${context.outcome_threshold}", "65")
     )
     subprocess.run(["bash", "-c", script], cwd=str(project_root), check=False)

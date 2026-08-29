@@ -101,7 +101,7 @@ suppressed with a top-level flag when you have a justified reason.
 | **MR-8** | A `check_semantic`/`llm_structured` state whose `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`) may return verdicts without citing output text, defaulting to optimism (SHOR Table 1 — the study cited in [See Also](#see-also): 33–55% accuracy) | Require the LLM to quote specific output text; absent evidence is coerced to `"no"` at the parsing layer (ENH-2342). States with no `evaluate.prompt` (using `DEFAULT_LLM_PROMPT`) are exempt — the contract is injected automatically | WARNING | `evidence_contract_ok: true` |
 | **MR-9** | A shell action string contains `$$(` or `$$VAR` — over-escaped bash. The FSM interpolator only rewrites `$${...}` → `${...}`; bare `$(...)` / `$VAR` doubled with `$$` expand to the runner's PID at runtime, silently corrupting every downstream `${captured.*}` reference | Use single `$` for command substitution and variables; reserve `$$` exclusively for the `$${VAR}` brace form that collides with `${ns.path}` interpolation | **ERROR** | `shell_pid_ok: true` |
 | **MR-10** | A `shell` state whose inline Python calls `json.load`/`json.loads`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and `exit(0)`s without an `on_error:` route | Swallowed parse failures reach the FSM as exit 0 → treated as successful, producing zero results with no log, stderr, or non-zero exit (BUG-2383, observed across three loops). Add an `on_error:` route so parse failures route explicitly | WARNING | `parse_swallow_ok: true` |
-| **MR-11** | A `shell` state pastes a user-controlled `${context.input\|goal\|description\|task\|prompt\|query\|topic}` value raw into the action body, outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix) | `interpolate()` does a bare `str(value)` substitution with no shell escaping; a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing (misrouting the loop) or, from an untrusted source, injects commands (BUG-2622). Wrap the placeholder in single quotes, write it through a quoted heredoc, or use `${context.input:shell}` to shlex-quote it | WARNING | `unsafe_context_interpolation_ok: true` |
+| **MR-11** | An untrusted `${context.*}` / `${captured.*}` / `${prev.output\|stderr}` value reaches a shell body raw, outside a safe position — bash-token position (not single-quoted, no `:shell`), or *inside a Python literal* embedded in the shell body (a quoted heredoc that is a Python body, or a `python3 -c "…"` body) (ENH-3342 widened this from a fixed 7-key `context.*`-only allowlist) | `interpolate()` does a bare `str(value)` substitution with no shell escaping. At a bash token position a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing or injects commands (BUG-2622). A quoted heredoc protects against *bash* re-expansion, but not against breaking a Python string literal once the substituted text lands inside an embedded `python3` body — that inversion is what the widening catches (ENH-3338/ENH-3342). Untrusted-ness comes from `classify_site()`, not a fixed key list: `captured.*` always, `prev.output`/`prev.stderr` always, `context.*` minus `run_dir`/`promoted_artifact`/any `_`-prefixed key | WARNING | `unsafe_context_interpolation_ok: true`, or per-site `# ll-lint: mr11-ok(<namespace>.<key>) <reason>` (see below) |
 | **policy-table** | For any loop with `context.policy_rules`, every predicate dimension must be *scored* — listed in `context.rubric_dimensions` (normalized: lowercase + spaces→hyphens) or written by a shell state as `rubric-dim-<name>.txt` | An unscored dimension is silently inert: `_eval_predicate` returns `True` only for `!=`, so `==`/`>=`/`<=`/`<`/`>` predicates never match and routing always falls to the catch-all (ENH-2309) | WARNING | `policy_dims_scored_ok: true` |
 | **static `loop:` ref** | A state's static (non-`${...}`) `loop:` name must resolve to a `.yaml` file at definition time — use the full relative path incl. any subdir prefix (`loop: oracles/verify-confidence-scores`, not `loop: verify-confidence-scores`) | An unresolvable static ref fails identically every run (`FileNotFoundError`); the validator blocks load so `ll-loop validate` exits 1 and `ll-loop run` refuses to start (BUG-2400). Dynamic `${...}` names are not checked | **ERROR** | — |
 | **MR-12** | Three checks on `pruning_profile:` consistency, resolved as `state.pruning_profile or fsm.pruning_profile` (mirrors `executor.py`'s runtime resolution): (1) a state's own `tools:` allowlist must not exclude a `/ll:<skill>` it invokes via `action:`; (2) a resolved profile with `suppress_catalog: true` on a skill-invoking state is flagged for host-dependent risk; (3) a skill/command-invoking state with **no** resolvable profile at all is flagged as uncovered (ENH-2805) | (1)/(2) catch self-contradictory narrowing that breaks the state's own action at runtime (ENH-2714). (3) surfaces the token-cost lever ENH-2714 shipped but that ENH-2805's audit found zero builtin loops actually use — every uncovered skill/command state pays the full automation-context static prefix (catalog + SessionStart digest + CLAUDE.md) on every invocation, and session-level skill-harness traffic (not the FSM-state-tagged `request_path: sdk` path) is the dominant share of fleet token spend. check (3) no longer exempts `request_path: sdk`/`batch` states (BUG-2831): every state reaching check (3) already invokes a `/ll:` skill, and the executor now force-downgrades a skill-invoking sdk/batch state to `cli` at runtime (`_dispatch_live`'s bare, tool-less single-turn call can't run a skill invocation), so it genuinely reaches `action_runner` and needs pruning guidance like any other skill-invoking state — the old exemption's premise (sdk/batch bypasses `action_runner` entirely) no longer holds for this branch | (1) **ERROR**, (2)/(3) WARNING | `pruning_profile_ok: true` |
@@ -133,6 +133,74 @@ non-LLM evaluator in its routing chain. This matches the
 `harness-single-shot.yaml:check_semantic → check_invariants` pattern — a measurable
 external signal gates entry to the LLM judge. See
 [`loops/loop-composer-adaptive.yaml`](../../scripts/little_loops/loops/loop-composer-adaptive.yaml).
+
+**MR-11's two safe interpolation idioms (ENH-3342).** Once an untrusted value has
+to reach an embedded `python3` body (a heredoc or a `-c "…"` one-liner), neither
+bash-level quoting nor `:shell` protects it — `:shell`'s shlex-quoted output is
+safe as a *shell* token, but it lands inside the Python source as an already-quoted
+string, which just breaks the parser differently. There are two correct ways to get
+the value in:
+
+1. **`LL_ARG_` environment hoist** — bind the value to an env var on the `python3`
+   invocation line, using `:shell` *there* (a real bash token position, where it
+   belongs), and read it back via `os.environ` inside the body:
+
+   ```yaml
+   action: |
+     LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
+     import os
+     goal = os.environ["LL_ARG_GOAL"]
+     ...
+     PYEOF
+   ```
+
+2. **Heredoc-to-file** — write the value to a file at a bash token position
+   (where `:shell` protects it normally), then have the Python body read the file
+   instead of embedding the value as a literal:
+
+   ```yaml
+   action: |
+     printf '%s' "${captured.review.output:shell}" > "${context.run_dir}/review-input.txt"
+     python3 << 'PYEOF'
+     with open("${context.run_dir}/run-dir-is-trusted.txt".rsplit("/", 1)[0] + "/review-input.txt") as fh:
+         review = fh.read()
+     ...
+     PYEOF
+   ```
+
+   In practice, name the file after the state and the captured var it holds
+   (`<state>-<capture>.txt`) so a reader can tell what's in it without opening it.
+
+Prefer idiom 1 for short scalars (a threshold, a flag, an id); prefer idiom 2 when
+the value is long-form text (a plan, a review, an LLM response) that would be
+awkward as a single env var.
+
+**The `# ll-lint: mr11-ok(<namespace>.<key>) <reason>` marker — last resort only.**
+A narrow, per-site, reason-bearing escape hatch for a residual finding that is
+genuinely out of reach of either idiom above (tracked for later conversion, not
+accepted as final). Grammar:
+
+```
+# ll-lint: mr11-ok(<namespace>.<key>) <reason, must cite a tracking issue ID>
+```
+
+- **Placement**: trailing on the site's own line, or alone on the line
+  immediately above it. The two-line form is required for a `python3 -c "…"`
+  one-liner, where a trailing `#` would land inside the Python source and
+  swallow the rest of that line's statements as a comment — put the marker on
+  its own *shell* comment line before the invocation instead. Inside a heredoc
+  Python body, both forms are ordinary Python comments.
+- **Scope**: names the exact `<namespace>.<key>` it exempts — a sibling
+  untrusted value on the same line still fires. Never write `${` inside the
+  marker itself; the FSM interpolates the whole action string, comments
+  included, so a quoted token in the marker becomes its own live
+  interpolation site.
+- **A malformed marker (no reason, no parenthesized variable, or containing
+  `${`) is an ERROR**, not a silently-ignored comment — a lazy blanket marker
+  must fail louder than the warning it tried to silence.
+- **A well-formed marker whose named variable produces no MR-11 finding in its
+  action is a stale-marker WARNING** — remove it once the site it once
+  exempted has been converted or removed.
 
 **Review heuristic — retry reachability (not mechanized).** For each bounded-retry
 edge, ask: can the state it routes to actually repair every fault class that

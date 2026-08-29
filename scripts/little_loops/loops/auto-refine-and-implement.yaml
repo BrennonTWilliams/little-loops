@@ -134,7 +134,7 @@ states:
     # Exits non-zero (→ finalize, a no-op verdict) when the set is empty.
     action: |
       mkdir -p "${context.run_dir}"
-      if [ -n "${context.scope}" ]; then
+      if [ -n "${context.scope}" ]; then  # ll-lint: mr11-ok(context.scope) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         LIST=$(LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
       import os
       import sys
@@ -161,7 +161,7 @@ states:
       else
         LIST=$(ll-issues next-issues 2>/dev/null \
                  | grep -v '^[[:space:]]*$' \
-                 | head -n ${context.max_issues} \
+                 | head -n ${context.max_issues:shell} \
                  | paste -sd ',' -)
       fi
       LIST=$(printf '%s' "$LIST" | tr -d '[:space:]')
@@ -338,7 +338,7 @@ states:
     # only dispatches genuinely new work.
     action: |
       RUN_DIR="${context.run_dir}"
-      SCOPE=$(printf '%s' "${context.scope}" | tr -d '[:space:]')
+      SCOPE=$(printf '%s' "${context.scope}" | tr -d '[:space:]')  # ll-lint: mr11-ok(context.scope) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       printf '%s' "$SCOPE" | grep -qE '^EPIC-[0-9]+$' || exit 1
       N=$(cat "$RUN_DIR/auto-refine-and-implement-recheck-count.txt" 2>/dev/null || echo 0)
       if [ "$N" -ge 5 ]; then
@@ -535,8 +535,8 @@ states:
     # Record the crash so finalize can report partial-with-errors / phantom
     # rather than a silent no-op.
     action: |
-      echo "${captured.issue_set.output}" >> ${context.run_dir}/auto-refine-and-implement-errored.txt
-      echo "ERROR: autodev crashed on set ${captured.issue_set.output} — see events.jsonl"
+      echo "${captured.issue_set.output}" >> ${context.run_dir}/auto-refine-and-implement-errored.txt  # ll-lint: mr11-ok(captured.issue_set.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "ERROR: autodev crashed on set ${captured.issue_set.output} — see events.jsonl"  # ll-lint: mr11-ok(captured.issue_set.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     action_type: shell
     next: finalize
 
@@ -948,6 +948,7 @@ states:
         INPUT_SIZE=$(sort -u "$RUN_DIR/auto-refine-and-implement-dispatched.txt" \
           | grep -c '[^[:space:]]' 2>/dev/null || true)
       else
+        # ll-lint: mr11-ok(captured.issue_set.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         INPUT_SIZE=$(printf '%s' "${captured.issue_set.output}" | tr ',' '\n' \
           | grep -c '[^[:space:]]' 2>/dev/null || true)
       fi

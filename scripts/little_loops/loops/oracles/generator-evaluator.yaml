@@ -85,12 +85,12 @@ states:
     fragment: playwright_screenshot
     timeout: 120
     action: |
-      ${context.pre_evaluate_cmd}
+      ${context.pre_evaluate_cmd}  # ll-lint: mr11-ok(context.pre_evaluate_cmd) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       case "${context.run_dir}" in
         /*) ABS_DIR="${context.run_dir}" ;;
         *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
       esac
-      playwright screenshot --full-page "file://$${ABS_DIR}/${context.artifact_path}" "$${ABS_DIR}/screenshot.png" 2>&1 && echo "CAPTURED"
+      playwright screenshot --full-page "file://$${ABS_DIR}/${context.artifact_path}" "$${ABS_DIR}/screenshot.png" 2>&1 && echo "CAPTURED"  # ll-lint: mr11-ok(context.artifact_path) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     on_yes: snapshot
     on_no: snapshot
     on_error: snapshot
@@ -114,7 +114,9 @@ states:
       mkdir -p "$RUN_DIR/iter-$COUNTER"
 
       MISS=0
-      if cp "$RUN_DIR/${context.artifact_path}" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null; then
+      if cp "$RUN_DIR/${context.artifact_path}" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null; then  # ll-lint: mr11-ok(context.artifact_path) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        # ll-lint: mr11-ok(context.artifact_path) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        # ll-lint: mr11-ok(context.artifact_path) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         ART_MTIME=$(stat -f %m "$RUN_DIR/${context.artifact_path}" 2>/dev/null || stat -c %Y "$RUN_DIR/${context.artifact_path}" 2>/dev/null || echo 0)
       else
         MISS=1
