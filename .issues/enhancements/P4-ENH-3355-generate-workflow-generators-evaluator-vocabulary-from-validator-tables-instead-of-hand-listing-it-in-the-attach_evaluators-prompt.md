@@ -166,7 +166,7 @@ For machine-visibility: `ll-issues check-decidable ENH-3355`'s enumerable-option
 > working 10-type vocabulary, adds only the derived "Do not use" fix
 > (`advisor_consult`), and costs one extra set-difference literal over Option 1.
 
-This decision is recorded by `/ll:decide-issue ENH-3355`, which appends a `> **Selected:**` callout beneath the chosen Option block above — that callout, plus `decision_needed: true` in frontmatter (set by this refine pass), is the concrete mechanism the Acceptance Criteria's "resolved and recorded" bullet resolves through.
+This decision is recorded by `/ll:decide-issue ENH-3355`, which appends a `> **Selected:**` callout beneath the chosen Option block above — that callout, plus `decision_needed: false` in frontmatter (set by `/ll:decide-issue` once it records the callout, per `skills/decide-issue/SKILL.md:275,289,297` — `true` is only the pre-resolution flag `/ll:refine-issue --auto` sets when it deposits an unresolved decision), is the concrete mechanism the Acceptance Criteria's "resolved and recorded" bullet resolves through. **Status as of this pass**: the callout is present above and frontmatter already reads `decision_needed: false` — this bullet is satisfied.
 
 ### Decision Rationale
 
@@ -260,8 +260,11 @@ vocabulary generation failed leaves `diagnose` able to explain it.
 
 Constraint this corrects: every existing `action_type: prompt` state in this
 loop (`capture_intent`, `sketch_state_graph`, `attach_evaluators` itself,
-`resolve_routing`, `emit_artifact`, `await_confirmation`) reads run-dir
-files exclusively via `${captured.run_dir.output}` — never
+`resolve_routing`, `emit_artifact`, `finalize_await_confirmation`, `diagnose`
+— all 7 of the loop's `action_type: prompt` states; `await_confirmation` is
+`terminal: true` with no `action_type` key and reads no files, so it is not
+a member of this list) reads run-dir files exclusively via
+`${captured.run_dir.output}` — never
 `${context.run_dir}`, which appears only inside `init` and inside
 `action_type: shell` `validate_*` states, always wrapped in
 `os.path.abspath(...)` (guarding the double-prefixing hazard `init`'s own
@@ -276,9 +279,13 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 **Correction — diagnose is not reachable from attach_evaluators/validate_evaluators failures.** Verified via grep of every `diagnose:`/`on_no:` reference in `workflow-generator.yaml`: `diagnose` has exactly three inbound edges — `check_intent_scope`'s `on_no` (line 344), `count_intent_retry`'s `on_no` (line 361), and `count_emit_retry`'s `on_no` (line 624). `validate_evaluators`'s `on_no` goes straight back to `attach_evaluators` (line 500) with no bounded counter — the same unbounded one-shot-window retry shape HARNESS_OPTIMIZATION_GUIDE.md already documents for attach_evaluators/sketch_state_graph/resolve_routing. `workflow-generator.yaml` sets no `on_max_steps` (grepped, absent), so an attach_evaluators<->validate_evaluators cycle that never resolves exhausts `max_steps` (45) and the run terminates via `_finish("max_steps")` without ever visiting `diagnose`. Consequence for this issue's Call Path/Acceptance-Criteria claim that extending diagnose's file-inspection list makes a generator-vocabulary failure "visible to the loop's own terminal failure-triage state": that is only true when the failure additionally trips one of the three existing bounded-retry edges above. On its own, an attach_evaluators/validate_evaluators cycle caused by an empty evaluator-vocab.md never reaches diagnose regardless of what diagnose's file list names. Fully closing this (making diagnose actually reachable from this failure) would require adding a new bounded-retry counter mirroring `count_intent_retry`/`count_emit_retry` and routing its `on_no` to `diagnose` — this would widen the current Scope Boundaries (single loop-YAML edit to init/attach_evaluators/diagnose). Absent that addition, the diagnose-extension AC bullet should be read as "diagnose can explain this failure on the runs where it is also reachable via an existing bounded-retry edge," not as a guarantee that every generator-vocabulary failure reaches diagnose.
 
-**Correction — the 6-state prompt-state list in Call Path names the wrong terminal state.** `await_confirmation` (`workflow-generator.yaml:860-864`) is `terminal: true` with no `action_type` key at all — it is not an `action_type: prompt` state and reads no files. The state that is actually `action_type: prompt` and reads `${captured.run_dir.output}/workflow.yaml` (line 851) immediately before `await_confirmation` in the chain is `finalize_await_confirmation` (`workflow-generator.yaml:847-859`), reached via `validate_artifact`'s `on_no` once retries are exhausted (line 812: `on_no: finalize_await_confirmation`) and itself transitioning `next: await_confirmation` (line 858). The Call Path's list of six `action_type: prompt` states reading run-dir files exclusively via `${captured.run_dir.output}` should read `capture_intent, sketch_state_graph, attach_evaluators, resolve_routing, emit_artifact, finalize_await_confirmation` — not `await_confirmation`.
+**Correction — applied.** An earlier draft of Call Path's prompt-state list named the wrong terminal state (`await_confirmation` instead of `finalize_await_confirmation`) and undercounted by one (6 instead of 7, omitting `diagnose`). Both are now fixed directly in the Call Path text above; this paragraph records the verification trail. `await_confirmation` (`workflow-generator.yaml:860-864`) is `terminal: true` with no `action_type` key at all — it is not an `action_type: prompt` state and reads no files. The state that is actually `action_type: prompt` and reads `${captured.run_dir.output}/workflow.yaml` (line 851) immediately before `await_confirmation` in the chain is `finalize_await_confirmation` (`workflow-generator.yaml:847-859`), reached via `promotion_gate`'s `on_no` on the normal success path — once `validate_artifact` has already passed, `check_shrink_enabled` has run, and `auto_promote != "true"` (line 812: `on_no: finalize_await_confirmation`, inside `promotion_gate`, not `validate_artifact` — `validate_artifact`'s own `on_no`, line 606, goes to `count_emit_retry`, whose `on_no`, line 624, goes to `diagnose`; `validate_artifact`'s retry-exhaustion path never reaches `finalize_await_confirmation`) — and itself transitioning `next: await_confirmation` (line 858). `diagnose` (`workflow-generator.yaml:866-889`) is also `action_type: prompt` and also reads run-dir files exclusively via `${captured.run_dir.output}` ("Diagnose by reading whichever of these exist under `${captured.run_dir.output}/`: ...", lines 874-878) — confirmed by grep, there are 7 `action_type: prompt` states in the file (lines 173, 367, 414, 506, 554, 848, 867), not 6. The corrected 7-member list is `capture_intent, sketch_state_graph, attach_evaluators, resolve_routing, emit_artifact, finalize_await_confirmation, diagnose`.
 
-**Residual manual-curation surface, not eliminated by this issue.** The Option-2 generator block's `EXCLUDED = {'open_question_stall', 'harbor_scorer'}` literal (Expected Behavior sketch; also this section's Signatures) is itself a hand-curated vocabulary exclusion set, not derived from any table — narrower than the 10-item hand-list this issue replaces, but the same class of manually-maintained knowledge one level down. If a future evaluator type requiring pipeline infrastructure the generator doesn't produce is added to `EVALUATOR_REQUIRED_FIELDS`, nothing this issue adds detects that the new type needs to join `EXCLUDED` — the same silent-drift failure mode this issue exists to close can recur. This 2-item literal is also silently exempt from `_validate_gate_completeness`'s own restatement lint (`scripts/little_loops/fsm/validation/meta_rules.py:509`: "A literal is flagged only when it has >=3 members") — a coincidence of size, verified in `meta_rules.py`, not a deliberate design choice recorded anywhere else in this issue. This is an accepted trade-off of the Decision Needed's Option 2 selection (a 2-item manual list traded for the 10-item one being replaced), not a defect for this pass to fix; recorded here so a future reader does not read this issue's title ("...instead of hand-listing it") as a claim that all hand-curation of the vocabulary was eliminated.
+**Residual manual-curation surface, not eliminated by this issue.** The Option-2 generator block's `EXCLUDED = {'open_question_stall', 'harbor_scorer'}` literal (Expected Behavior sketch; also this section's Signatures) is itself a hand-curated vocabulary exclusion set, not derived from any table — narrower than the 10-item hand-list this issue replaces, but the same class of manually-maintained knowledge one level down. If a future evaluator type requiring pipeline infrastructure the generator doesn't produce is added to `EVALUATOR_REQUIRED_FIELDS`, nothing this issue adds detects that the new type needs to join `EXCLUDED` — the same silent-drift failure mode this issue exists to close can recur. This 2-item literal is also silently exempt from `_validate_gate_completeness`'s own restatement lint (`scripts/little_loops/fsm/validation/meta_rules.py:509`: "A literal is flagged only when it has >=3 members") — a coincidence of size, verified in `meta_rules.py`, not a deliberate design choice recorded anywhere else in this issue. This is an accepted trade-off of the `Decision Needed` section's Option 2 selection (a 2-item manual list traded for the 10-item one being replaced), not a defect for this pass to fix; recorded here so a future reader does not read this issue's title ("...instead of hand-listing it") as a claim that all hand-curation of the vocabulary was eliminated.
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+**Placement constraint for the new generator block, not previously stated.** `init`'s existing action has three regions: (1) the mkdir/reset block (lines 61-67, unconditional), (2) `ROOT=$(git rev-parse --show-toplevel ...)` followed by `if [ -n "$ROOT" ]; then ... else ... fi` (lines 68-162, git-specific — writes `baseline-ref.txt`/`baseline-changed-set.json` with empty-placeholder fallbacks in the `else` branch for non-repo runs), and (3) the `case`/`echo` stdout block (lines 163-166, must stay last per the stdout-contract comment at lines 54-55). The new vocab-generator block has no dependency on `$ROOT` or git at all, and must NOT be nested inside the `if [ -n "$ROOT" ]`/`else` branches — doing so would make `evaluator-vocab.md` never generate on a non-repo run. It must sit in region (1) or between regions (1) and (2), unconditionally, before the `case`/`echo` block. `workflow-generator` explicitly supports and tests a non-repo run mode (`TestCheckIntentScopeShellAction::test_xiii_init_stdout_exactly_one_line_in_non_repo`, `scripts/tests/test_builtin_loops.py:18748`), but that test only asserts `init`'s stdout is exactly one line — it does not check that `evaluator-vocab.md` exists or is non-empty, so an incorrect placement inside the `if` branch would pass every test currently named in this issue's plan. Closing this requires either a new assertion in that non-repo test (or a sibling test) that `evaluator-vocab.md` exists and is non-empty after a non-repo `init` run, not merely relying on the repo-fixture tests (`_setup`/`_run_init`), which never exercise the non-repo path.
 
 ## Scope Boundaries
 
@@ -292,6 +299,12 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   there — not reopened here); changing `EVALUATOR_REQUIRED_FIELDS`/
   `NON_LLM_EVALUATOR_TYPES` themselves; auditing other loop YAMLs for similar
   hand-listed vocabulary drift (single-loop fix only).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+**Clarification — two changes mandated elsewhere in this issue are not visible in the "In scope" enumeration above, though they are in scope.** Program Design > Call Path, Integration Map > Files to Modify, and an Acceptance Criteria bullet all require extending `diagnose`'s file-inspection list (`workflow-generator.yaml:874-878`) to name `evaluator-vocab.md` and `.evaluator_vocab_errors.txt`; Program Design > Call Path and an Acceptance Criteria bullet also require `init` to reset the new `.evaluator_vocab_errors.txt` alongside its existing `.emit_errors.txt`/`.intent_errors.txt`/`.scope_violations.txt` resets (`workflow-generator.yaml:63-67`). Both are part of the single-loop-YAML fix this issue scopes in ("the `init` generator block and its stdout-contract compliance") and must not be read as excluded because this bullet's enumeration does not name them by file/state.
 
 ## Integration Map
 
@@ -371,7 +384,13 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 **Correction — the prior correction paragraph's line numbers are themselves stale.** Re-verified against the current tree (this pass): `_init_repo` (inside `TestCheckIntentScopeShellAction`) is at line 18466 and `_setup` is at line 18494 — not 18437/18465 as the earlier correction paragraph in this section states. `TestCheckIntentScopeShellAction` runs from line 18452 through line 18814 (immediately before `class TestEnh3347RouterInjection:` at line 18815) — not `18423-18785`. `TestWorkflowGeneratorLoop` starts at line 17928 and ends immediately before `TestCheckIntentScopeShellAction` at 18452, consistent with this section's most recent "re-verified locations" paragraph, which already corrected every other citation in this section but did not revisit this one. Re-verify again before implementing if further commits land on `scripts/tests/test_builtin_loops.py` in the meantime — this is the second time in this section's history that a "re-verify before implementing" note has itself gone stale before being acted on.
 
-**Coupling risk: `test_check_intent_scope_matched_pair_byte_identical` is at risk from this issue's edit to `init`'s action and is not currently listed here.** `scripts/tests/test_builtin_loops.py::TestCheckIntentScopeShellAction::test_check_intent_scope_matched_pair_byte_identical` (line 18075) extracts `init`'s python3 body with `re.compile(r"python3 -c '\n(.*?)\n *' ", re.S)` via `pattern.search(init_action)` — a leftmost match — and asserts it is byte-identical to `check_intent_scope`'s own single-quoted `python3 -c '...'` body (FEAT-3332 requirement (c)). `init` currently contains exactly one `python3 -c '...'` block (the single-quoted baseline changed-set script). Two constraints on the new vocab-generator block follow directly, neither stated elsewhere in this issue: (1) it must use double quotes (`python3 -c "..."`), not single quotes — required regardless of this test, since the generator body itself contains single-quoted Python string literals (`'open_question_stall'`, `'harbor_scorer'`, `'no companion fields'`) that would prematurely terminate a bash single-quoted wrapper; a double-quoted block does not match this test's single-quote-anchored pattern, so the test is unaffected as long as double quotes are used. (2) If the new block were instead single-quoted, `pattern.search`'s leftmost-match semantics mean inserting it before the existing baseline block in `init`'s action string would make the test extract the new block's body instead of the baseline's, silently miscomparing it against `check_intent_scope` and failing this test — so quoting choice and insertion position both matter, not quoting alone.
+**Coupling risk: `test_check_intent_scope_matched_pair_byte_identical` is at risk from this issue's edit to `init`'s action and is not currently listed here.** `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop::test_check_intent_scope_matched_pair_byte_identical` (line 18075 — this test is a method of `TestWorkflowGeneratorLoop`, which spans 17928-18452; the earlier draft of this finding misattributed it to `TestCheckIntentScopeShellAction`, which starts at 18452, immediately after) extracts `init`'s python3 body with `re.compile(r"python3 -c '\n(.*?)\n *' ", re.S)` via `pattern.search(init_action)` — a leftmost match — and asserts it is byte-identical to `check_intent_scope`'s own single-quoted `python3 -c '...'` body (FEAT-3332 requirement (c)). `init` currently contains exactly one `python3 -c '...'` block (the single-quoted baseline changed-set script). Two constraints on the new vocab-generator block follow directly, neither stated elsewhere in this issue: (1) it must use double quotes (`python3 -c "..."`), not single quotes — required regardless of this test, since the generator body itself contains single-quoted Python string literals (`'open_question_stall'`, `'harbor_scorer'`, `'no companion fields'`) that would prematurely terminate a bash single-quoted wrapper; a double-quoted block does not match this test's single-quote-anchored pattern, so the test is unaffected as long as double quotes are used. (2) If the new block were instead single-quoted, `pattern.search`'s leftmost-match semantics mean inserting it before the existing baseline block in `init`'s action string would make the test extract the new block's body instead of the baseline's, silently miscomparing it against `check_intent_scope` and failing this test — so quoting choice and insertion position both matter, not quoting alone.
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+**A second documentation file also needs updating, not only `HARNESS_OPTIMIZATION_GUIDE.md`.** `docs/guides/LOOPS_REFERENCE.md:2659` describes `attach_evaluators` as attaching "a non-LLM evaluator per state, restricted to the same vocabulary `ll-loop validate`'s MR-1 accepts." That claim is already inaccurate today — the hand-listed prompt offers 10 types while `NON_LLM_EVALUATOR_TYPES`/`validate_evaluators`/`ll-loop validate` accept 12 — and this issue's `Decision Needed` section resolves to Option 2 specifically to *keep* that narrower 10-type boundary permanently (excluding `open_question_stall`, `harbor_scorer`), deliberately preserving the mismatch this doc's prose denies. This line should be updated alongside the `HARNESS_OPTIMIZATION_GUIDE.md` cross-reference to state the vocabulary is generated but intentionally narrower than the full validator-accepted set, not merely "restricted to the same vocabulary" the validator accepts.
+
+**No test currently enforces the `diagnose` file-inspection-list extension mandated elsewhere in this issue.** The exact assertion shape already exists in the suite as precedent — `test_diagnose_reads_emit_errors_file` (`scripts/tests/test_builtin_loops.py:18214`), `test_diagnose_mentions_intent_retry_files` (`:18313`), and `test_diagnose_mentions_both_retry_exhaustion_paths` (`:18318`) are each a one-line substring assertion on `diagnose`'s action text for a specific filename — but no sibling assertion for `evaluator-vocab.md`/`.evaluator_vocab_errors.txt` is listed under this issue's Tests. Without one, an implementer can skip editing `diagnose` entirely and no test in this issue's own plan will fail.
 
 ## Acceptance Criteria
 
@@ -393,6 +412,14 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       extended: the prompt no longer hand-lists the required-field table, and
       `init` emits the vocab file under `${context.run_dir}/` (per-run
       artifact isolation, not bare `.loops/tmp/`).
+      > ⚠ Superseded — "extended" must include repointing
+      > `test_attach_evaluators_documents_every_required_field`
+      > (`scripts/tests/test_builtin_loops.py:18147`) at the generated
+      > `evaluator-vocab.md` content; the retained prompt template already
+      > contains enough of the old substrings (`output_json`, `path`,
+      > `operator`, `target`) that this test would keep passing unchanged for
+      > the wrong reason, silently defeating its own regression guard — see
+      > Integration Map's Codebase Research Findings.
 - [ ] A generator-block execution test runs the generator body and asserts
       its output covers every member of `NON_LLM_EVALUATOR_TYPES -
       {open_question_stall, harbor_scorer}` (the curated allowed set per the
@@ -404,14 +431,22 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - [ ] If FEAT-3328's gate-completeness guide entry has landed, its
       cross-reference to this issue in
       `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` is updated to "resolved".
+      > ⚠ Superseded — the condition already holds (FEAT-3328 is
+      > `status: done` and the guide entry exists at
+      > `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:117`) and the bullet is
+      > unconditionally unresolved as of this pass: the entry's
+      > ENH-3355 cross-reference still reads "tracked separately as
+      > ENH-3355" — exactly the pending language this bullet watches for.
+      > Read as: "the cross-reference is updated to 'resolved'", not as
+      > still-conditional. See Codebase Research Findings below.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-- [ ] The concrete mechanism for the first bullet's "resolved and recorded": `ll-issues check-decidable ENH-3355` exits 0 against the machine-visible `**Option 1**`/`**Option 2**` blocks under Decision Needed (added by this pass), `decision_needed: true` is set in frontmatter (set by this pass), and `/ll:decide-issue ENH-3355` has appended a `> **Selected:**` callout beneath the chosen option before the prompt/generator edits land.
+- [ ] The concrete mechanism for the first bullet's "resolved and recorded": `ll-issues check-decidable ENH-3355` exits 0 against the machine-visible `**Option 1**`/`**Option 2**` blocks under Decision Needed, `/ll:decide-issue ENH-3355` has appended a `> **Selected:**` callout beneath the chosen option, and `decision_needed` is `false` in frontmatter (set by `/ll:decide-issue` on resolution — `true` is only the pre-resolution flag a refine pass sets while the decision is still open, per `skills/decide-issue/SKILL.md:275,289,297`). **Status as of this pass**: all three hold — frontmatter reads `decision_needed: false` and the `> **Selected:**` callout is present under Decision Needed — this bullet is satisfied.
 - [ ] The generator's output includes the derived "Do not use" exclusion list — `sorted(EVALUATOR_REQUIRED_FIELDS.keys() - NON_LLM_EVALUATOR_TYPES)` — alongside the allowed-type table, so the current hand-listed line's `advisor_consult` omission (identified in Decision Needed) is closed by construction; this is the concrete check for the third bullet's "stays coherent with the generated list."
-- [ ] If the real generator block interpolates any `${context.*}`/`${captured.*}`/`${prev.*}` var directly into the new `python3 -c` Python body (rather than reusing bash's own already-set `$DIR`), `scripts/tests/data/loop_interpolation_baseline.json` is updated in the same change and `TestInterpSweepBaseline::test_completeness_guard` (`scripts/tests/test_builtin_loops.py:19236`) passes.
+- [ ] If the real generator block interpolates any `${context.*}`/`${captured.*}`/`${prev.*}` var directly into the new `python3 -c` Python body (rather than reusing bash's own already-set `$DIR`), `scripts/tests/data/loop_interpolation_baseline.json` is updated in the same change and `TestInterpSweepBaseline::test_completeness_guard` (`scripts/tests/test_builtin_loops.py:19267` — re-verified this pass; was 19236) passes.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
@@ -433,6 +468,11 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       `.evaluator_vocab_errors.txt`, so a generation-time failure is visible
       to the loop's own terminal failure-triage state, not just written to a
       file nothing reads.
+      > ⚠ Superseded — visibility holds only on runs that also trip one of
+      > `diagnose`'s 3 existing bounded-retry edges (`check_intent_scope`,
+      > `count_intent_retry`, `count_emit_retry`); an attach_evaluators /
+      > validate_evaluators cycle alone never reaches `diagnose` regardless
+      > of its file list — see the "Scope correction" finding below.
 - [ ] The concrete check for the third bullet's "stays coherent with the
       generated list" prose-guidance half: `attach_evaluators`'s action
       string still contains the `output_contains` preference sentence
@@ -442,8 +482,8 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       required-field table is replaced by the generated-file read — a test
       asserts both substrings remain present in `action`, the same
       assertion shape `test_attach_evaluators_documents_every_required_field`
-      (`scripts/tests/test_builtin_loops.py:18118`) already uses for the
-      table this issue removes.
+      (`scripts/tests/test_builtin_loops.py:18147` — re-verified this pass;
+      was 18118) already uses for the table this issue removes.
 - [ ] Concrete redefinition for the seventh bullet (superseded below): as of
       this pass, FEAT-3328 is `status: open` and
       `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` contains no
@@ -490,6 +530,8 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T19:43:51 - `56a8dea0-aa3e-460a-b690-91edf1aee623.jsonl`
+- `/ll:refine-issue` - 2026-08-29T19:34:10 - `095cbd0a-db00-46a3-adc4-bd813f5370ea.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:21:26 - `2c13c55a-19b4-426e-82a9-8daecd5791a5.jsonl`
 - `/ll:verify-issues` - 2026-08-29T19:13:35 - `fedec3ab-76ac-4b03-acac-d98d32d4349a.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:08:20 - `0ffc86a7-1497-4d98-b701-beefa90422f4.jsonl`

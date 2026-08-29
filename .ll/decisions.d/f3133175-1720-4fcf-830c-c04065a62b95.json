@@ -1,0 +1,12 @@
+{
+  "id": "71d75b66-2676-42e7-a4bf-5f170fa30cd5",
+  "type": "decision",
+  "timestamp": "2026-08-29T20:14:08Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the existing _UnionFind clustering (link_epics.py:125-141) which already merges transitively on any shared edge; Option B's majority-overlap threshold has no precedent in this codebase.",
+  "rule": "Option A: any shared member merges the two clusters (union of member sets, LLM cluster's placeholder_title/evidence wins)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: merge only when smaller cluster's members are a majority (>50%) subset of the larger cluster",
+  "issue": "ENH-2979"
+}
