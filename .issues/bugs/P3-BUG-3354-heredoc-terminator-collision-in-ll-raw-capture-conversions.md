@@ -127,12 +127,36 @@ zero.
 
 ### Types
 
-N/A — the guard is a validation/raise path, no new data shape.
+**Decided 2026-08-29 (post-verify redesign)**: one new exception type in
+`interpolation.py`:
+
+- `class HeredocCollisionError(InterpolationError)` — raised only when a
+  substituted value's content collides with the enclosing heredoc's
+  terminator line (the Decision Rules gate below). Nothing else may raise
+  it.
+
+The subclass is the load-bearing design element. The prior plan — raise the
+existing `InterpolationError` and carve *that type* out of `on_error`
+routing — was rejected as PROPOSAL_UNSOUND by `/ll:verify-issues`: base
+`InterpolationError` is already raised for unrelated, legitimate reasons
+(missing variable, malformed `:default=`, bad `namespace.path`), an existing
+test (`scripts/tests/test_fsm_executor.py:4337`,
+`test_interpolation_error_routes_to_on_error_when_set`) locks in
+on_error-catches-`InterpolationError` behavior, and a type-based carve-out
+would silently reverse `on_error` semantics across every loop YAML in the
+repo, contradicting this issue's "Low risk / no breaking change" claim. A
+failure-mode-scoped subclass changes routing for the collision case only;
+all existing `InterpolationError` behavior (including `:4337`) is untouched.
+
+Subclassing `InterpolationError` (rather than a sibling type) is deliberate:
+`run()`'s existing typed handler (`executor.py:876-883`) remains a backstop
+if any path misses the new dedicated handler, and external callers catching
+`InterpolationError` keep working.
 
 ### Signatures
 
-No new public signatures. The existing function that must house (or call
-into) the guard keeps its signature:
+No changed public signatures. The function that houses the guard keeps its
+signature:
 
 - `interpolate(template: str, ctx: InterpolationContext) -> str`
 
@@ -141,17 +165,8 @@ the raw `template` (carrying each heredoc's literal opener and marker
 declaration) and the fully substituted `result` string, before either
 reaches a shell runner. Whatever function performs the collision check, it
 needs both of these values at once; `interpolate()` is where they already
-coexist.
-
-The exception type is also existing:
-
-- `InterpolationError`
-
-`interpolation.py:33-36` — the type every other hard-failure path in this
-module already raises (e.g. the malformed `:default=` check at `:262-265`,
-the `namespace.path` parse check at `:316-318`), and the type
-`FSMExecutor.run()`'s top-level handler (`executor.py:876-883`) already
-expects and converts into a clean halt.
+coexist. It raises `HeredocCollisionError` for the collision case (and base
+`InterpolationError` for all existing cases, unchanged).
 
 ### Call Path
 
@@ -200,13 +215,17 @@ to `FSMExecutor.run()`'s top-level handler (`:876-883`) uniformly:
   `try/except Exception: pass` — a total, silent swallow with no rerouting
   and no signal at all, worse than the on_error case.
 
-This means Implementation Step 1's "should not need new plumbing in
-`executor.py`" does not hold: `_run_action_or_route` and
-`_flush_pending_shell_state` both need an `InterpolationError` carve-out
-(bypass on_error routing / bypass the swallow) for the decided hard-halt
-behavior to actually occur at the sites this issue names, or the issue's
-Expected Behavior needs to be narrowed to acknowledge the on_error/flush
-exception.
+This means Implementation Step 1's original "should not need new plumbing
+in `executor.py`" does not hold: `_run_action_or_route` and
+`_flush_pending_shell_state` both need a carve-out (bypass on_error routing
+/ bypass the swallow) for the decided hard-halt behavior to actually occur
+at the sites this issue names. **Resolved (2026-08-29 redesign): the
+carve-out is keyed on `HeredocCollisionError` only — never on base
+`InterpolationError`** (see Program Design → Types for why a type-based
+carve-out on the base class was rejected as PROPOSAL_UNSOUND). Both sites
+re-raise `HeredocCollisionError` before their generic `except Exception`
+handling; base `InterpolationError` continues to route to `on_error` /
+be swallowed exactly as today.
 
 ### Decision Rules
 
@@ -223,6 +242,12 @@ exception.
   literal text is — not hardcoded to an `LL_RAW_*` prefix. This is required
   by the Scope Widening note below (`LL_STDERR_EOF` sites must be caught by
   the same mechanism).
+- **Routing carve-out scope**: keyed on the `HeredocCollisionError` subclass
+  only. Base `InterpolationError` routing/swallow behavior in
+  `_run_action_or_route`, `_flush_pending_shell_state`, and every other
+  broad handler is byte-for-byte unchanged;
+  `test_fsm_executor.py::test_interpolation_error_routes_to_on_error_when_set`
+  (`:4337`) must pass unmodified.
 - **Escape hatch**: none. Closed decision, not deferred — Option 3 as decided
   (2026-08-28) is an unconditional hard error with no per-site suppression
   flag; unlike MR-9/MR-11's `_ok: true` opt-outs, this issue deliberately
@@ -255,6 +280,11 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   templates these call sites currently interpolate contain heredoc syntax as
   of this pass, so no fix is required now — but an implementer changing
   which templates route through these calls should re-check this list.
+  (2026-08-29 redesign note: since `HeredocCollisionError` subclasses
+  `InterpolationError`, these broad catches *would* absorb it if a
+  heredoc-shaped template ever flowed through them — the conclusion is
+  unchanged because none does today, but the re-check obligation now applies
+  to the subclass specifically.)
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
@@ -315,37 +345,36 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. A rendered action body whose payload collides with its own heredoc
-   terminator (whichever marker string the site declares) is caught before
-   the shell ever sees it: `interpolate()` raises `InterpolationError` for
-   that case instead of returning the colliding string. `FSMExecutor.run()`'s
-   existing top-level handler (`executor.py:876-883`) already converts a
-   raised `InterpolationError` into a clean, attributable `_finish("error",
-   ...)` halt — this path should not need new plumbing in `executor.py`.
-   > ⚠ Superseded — "no new plumbing in executor.py" does not hold; see
-   > Program Design → Call Path correction (remediation pass, 2026-08-29).
-   > `_run_action_or_route` (executor.py:3313-3337) reroutes to `on_error`
-   > for every heredoc site named in this issue, and
-   > `_flush_pending_shell_state` (executor.py:2871-2897) silently swallows
-   > the exception entirely; both need an `InterpolationError` carve-out for
-   > the decided hard-halt to actually occur at these sites.
-2. That existing handler's message is hardcoded to `"Missing context
-   variable in state '...': {exc}."` (`executor.py:880-881`). A
-   terminator-collision error surfacing through that wrapper reads oddly
-   under a "missing context variable" prefix — the operator-facing message
-   must not be actively misleading about what failed. Concrete, checkable
-   bar: the `InterpolationError`'s own message string (the `{exc}` portion —
-   the wrapper prefix at `:880-881` is not itself touched by this issue) must
-   name both the offending terminator marker text and the state whose action
-   collided, and must not describe the failure using "missing"/"undefined"
-   variable language, since it is neither — a unit test in
-   `test_fsm_interpolation.py` should assert the raised message contains the
-   literal terminator string and does not contain the substring "missing".
-   > ⚠ Superseded — passing this AC does not close the gap it names; the
-   > composed operator-facing string still reads "Missing context variable"
-   > regardless of the inner message. See § Codebase Research Findings
-   > under Implementation Steps (remediation pass, 2026-08-29).
-3. `scripts/tests/test_builtin_loops.py::TestEnh3347RouterInjection` (from
+1. **Guard in `interpolation.py`**: add
+   `class HeredocCollisionError(InterpolationError)` (see Program Design →
+   Types). `interpolate()` raises it — instead of returning the colliding
+   string — when a substituted value's content contains a line equal to the
+   enclosing heredoc's terminator, per Decision Rules (regions computed from
+   the RAW template; only substituted values landing inside a region are
+   tested). Its message names the state (if available via ctx) and the
+   literal terminator marker, and uses no "missing"/"undefined" variable
+   language.
+2. **Executor carve-outs, subclass-scoped**:
+   - `_run_action_or_route` (`executor.py:3313-3337`): re-raise
+     `HeredocCollisionError` before the `if state.on_error:` reroute (e.g.
+     an `except HeredocCollisionError: raise` clause ahead of the bare
+     `except Exception`), so it propagates to `run()`'s top-level handling.
+   - `_flush_pending_shell_state` (`executor.py:2871-2897`): re-raise
+     `HeredocCollisionError` instead of the silent `except Exception: pass`
+     swallow.
+   - Base `InterpolationError` behavior is unchanged at both sites;
+     `test_fsm_executor.py:4337`
+     (`test_interpolation_error_routes_to_on_error_when_set`) passes
+     unmodified.
+3. **Dedicated halt message (Step-2 fork resolved as option (a))**: add an
+   `except HeredocCollisionError` clause in `FSMExecutor.run()` *ahead of*
+   the existing `except InterpolationError` clause (`executor.py:876-883`),
+   producing a `_finish("error", ...)` whose message names the state and the
+   terminator marker and does **not** carry the "Missing context variable in
+   state" prefix (that prefix stays as-is for base `InterpolationError`). A
+   test asserts the composed run-result error string contains the literal
+   terminator and does not contain "Missing context variable".
+4. `scripts/tests/test_builtin_loops.py::TestEnh3347RouterInjection` (from
    `:18786`) already runs the `interpolate(action, ctx)` + `bash -c` harness
    against `loop-router.yaml`'s real converted actions, including a BUG-3341
    red/green pair (`test_triple_quote_capture_with_newline_no_longer_crashes`,
@@ -353,12 +382,13 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
    follow: red demonstrates today's silent execution of a payload line equal
    to `LL_RAW_9F3C1A7E_EOF`, green demonstrates `interpolate()` raising before
    `bash -c` ever runs.
-4. `scripts/tests/test_fsm_interpolation.py` holds `interpolate()`'s
+5. `scripts/tests/test_fsm_interpolation.py` holds `interpolate()`'s
    unit-level contract; the new raise path needs direct unit coverage there,
    not only the end-to-end bash harness in `test_builtin_loops.py`.
-5. `python -m pytest scripts/tests/test_fsm_interpolation.py
-   scripts/tests/test_builtin_loops.py -v` passes, including whatever new
-   test(s) cover this gate.
+6. `python -m pytest scripts/tests/test_fsm_interpolation.py
+   scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_executor.py
+   -v` passes, including whatever new test(s) cover this gate and the
+   unmodified `:4337` on_error-routing test.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -386,13 +416,15 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   must reach `FSMExecutor.run()`'s top-level halt handler
   (`executor.py:876-883`) and produce a `_finish("error", ...)` outcome —
   not a reroute to `state.on_error` and not a silent drop. That requires an
-  explicit `InterpolationError` carve-out in both call paths the Call Path
-  correction identified as swallowing it: `_run_action_or_route`
-  (`executor.py:3313-3337`)'s bare `except Exception as exc:` must let
-  `InterpolationError` propagate past the `if state.on_error:` reroute
-  instead of being caught by it, and `_flush_pending_shell_state`
-  (`executor.py:2871-2897`)'s bare `except Exception: pass` must do the
-  same instead of swallowing it. A test exercising each of the six named
+  explicit carve-out — **scoped to the `HeredocCollisionError` subclass, not
+  base `InterpolationError` (2026-08-29 redesign; see Program Design →
+  Types)** — in both call paths the Call Path correction identified as
+  swallowing it: `_run_action_or_route` (`executor.py:3313-3337`)'s bare
+  `except Exception as exc:` must let `HeredocCollisionError` propagate past
+  the `if state.on_error:` reroute instead of being caught by it, and
+  `_flush_pending_shell_state` (`executor.py:2871-2897`)'s bare
+  `except Exception: pass` must do the same instead of swallowing it. A
+  test exercising each of the six named
   sites (or a representative subset reachable via the existing
   `TestEnh3347RouterInjection` harness) with a colliding payload must assert
   the run ends in `_finish("error", ...)`, never at the site's `on_error`
@@ -410,10 +442,11 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   reads "Missing context variable" to the operator. Closing it requires
   either (a) a distinct halt-message path for this guard that bypasses the
   `:880-881` prefix, or (b) accepting the prefix as a known, unresolved
-  wording wart and scoping Step 2's AC to the inner exception message only
-  — whichever direction is taken, the AC must state which of the two it is,
-  since as currently worded it implies the composed message improves when
-  only the inner message does.
+  wording wart and scoping Step 2's AC to the inner exception message only.
+  **Resolved (2026-08-29 redesign): option (a)** — the dedicated
+  `except HeredocCollisionError` clause in `run()` (Implementation Step 3)
+  is that distinct halt-message path; the `:880-881` prefix is untouched and
+  continues to apply to base `InterpolationError` only.
 
 ## Scope Boundaries
 
@@ -500,9 +533,12 @@ territory).
   this issue's runtime guard is the first of its kind rather than a copy of
   either.
 - `InterpolationError` is the established exception type for every hard-
-  failure path already in `interpolation.py` (see Program Design →
-  Signatures above) and is the type `FSMExecutor.run()`'s top-level handler
-  already expects.
+  failure path already in `interpolation.py` and is the type
+  `FSMExecutor.run()`'s top-level handler already expects. This issue's
+  guard raises the new `HeredocCollisionError` subclass (see Program Design
+  → Types) so the collision case is distinguishable from missing-variable
+  failures in routing decisions while still inheriting that handler as a
+  backstop.
 
 ### Tests
 
