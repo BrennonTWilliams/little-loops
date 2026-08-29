@@ -12,12 +12,12 @@ relates_to:
 - BUG-3341
 - ENH-3347
 verify_verdict: PROPOSAL_UNSOUND
-confidence_score: 85
-outcome_confidence: 42
-score_complexity: 14
-score_test_coverage: 18
-score_ambiguity: 10
-score_change_surface: 0
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3354: Heredoc terminator collision in LL_RAW capture conversions
@@ -656,59 +656,21 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 _Added by `/ll:confidence-check` on 2026-08-29_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 42/100 → LOW
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
 
-### Concerns
-- **Superseded** — the Call Path fork this section previously flagged as
-  unresolved ("both need an `InterpolationError` carve-out ... or the issue's
-  Expected Behavior needs to be narrowed") was resolved by the subsequent
-  `/ll:refine-issue` pass (15:39:58): Program Design → Codebase Research
-  Findings now states the fork is "resolved toward closing the routing gap"
-  with a concrete bar naming both call sites
-  (`_run_action_or_route`/`executor.py:3313-3337`,
-  `_flush_pending_shell_state`/`executor.py:2871-2897`) and the required test
-  assertion (`_finish("error", ...)` at all six named sites, never an
-  `on_error` reroute or silent drop).
-- That resolution, however, lives only in a "Codebase Research Findings"
-  prose block appended after Implementation Steps — the numbered
-  Implementation Steps list itself still shows only Step 1 marked
-  "Superseded" with no replacement step added for the two executor.py
-  carve-outs. An implementer reading Implementation Steps in isolation would
-  miss this required work; it is present but only inferable from the research
-  findings, not stated as an actionable step.
-- Step 2's message-wording fork remains genuinely unresolved: "Closing it
-  requires either (a) a distinct halt-message path ... or (b) accepting the
-  prefix as a known, unresolved wording wart ... whichever direction is
-  taken, the AC must state which of the two it is" — no decision has been
-  recorded between (a) and (b).
-- `verify_verdict: PROPOSAL_UNSOUND` (frontmatter, from `/ll:verify-issues` at
-  2026-08-29T15:27:51) predates the Call Path fork's resolution
-  (15:39:58) and has not been re-confirmed by a fresh verify pass against the
-  corrected plan.
-- The guard as decided lives inside `interpolate()` itself (applies to every
-  template it renders, not only `state.action`). The issue's own Codebase
-  Research Findings count 41 total un-analyzed `interpolate()` call sites
-  (33 in `executor.py`, 10 in `evaluators.py`) wrapped in broad
-  `except InterpolationError`/`except Exception` handlers built for
-  missing-variable fallback, explicitly flagged as unaudited for whether they
-  would silently absorb a terminator-collision error the same way (though
-  none currently interpolate heredoc-shaped templates, so no fix is required
-  now).
+Both concerns from the prior pass are now resolved by the 2026-08-29 redesign
+(uncommitted at assessment time): the Call Path fork's executor.py carve-outs
+are a named Implementation Step (Step 2, subclass-scoped to
+`HeredocCollisionError`), and Step 2's message-wording fork is resolved as
+option (a) via Implementation Step 3's dedicated `except HeredocCollisionError`
+clause. `format-check` reports no parity/claim/structure/decision gaps, and no
+`blocked_by` dependencies are outstanding.
 
-### Outcome Risk Factors
-- Moderate cross-cutting complexity beyond the original single-file scope: the
-  executor.py propagation fix (bypassing `on_error` routing and the
-  `_flush_pending_shell_state` swallow) touches shared exception-routing
-  behavior used by many loop states, not a mechanical/local change confined to
-  `interpolation.py`.
-- Broad, unaudited blast radius: `interpolate()` has 41 other call sites with
-  pre-existing broad exception handlers that could silently absorb the new
-  failure mode differently than intended; the issue explicitly flags this as
-  unaudited rather than verified safe.
-- No test coverage yet exists for the executor.py carve-out (direction now
-  decided, but no test authored) — only the interpolation.py-level guard has
-  a clear test story (`test_fsm_interpolation.py`, `test_builtin_loops.py`).
+One residual item outside this issue's scoring: `verify_verdict:
+PROPOSAL_UNSOUND` (frontmatter) was recorded 2026-08-29T15:27:51, before the
+redesign that addressed it — a fresh `/ll:verify-issues` pass would let the
+frontmatter catch up to the current plan.
 
 ## Status
 
@@ -716,6 +678,7 @@ _Added by `/ll:confidence-check` on 2026-08-29_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T16:05:41 - `6fdc2e2c-92d6-4705-9bc4-d9f033068370.jsonl`
 - `/ll:confidence-check` - 2026-08-29T15:54:29 - `e1f51e56-4700-4629-9064-1d81eae9d21d.jsonl`
 - `/ll:refine-issue` - 2026-08-29T15:39:58 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:confidence-check` - 2026-08-29T15:32:50 - `3452bd7a-6500-48f4-9258-6b5f0bb307e9.jsonl`

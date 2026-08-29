@@ -344,17 +344,18 @@ _Formalized from the acceptance prose in Summary and Success Metrics — no new 
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-08-27_
+_Added by `/ll:confidence-check` on 2026-08-27; reconfirmed 2026-08-29 (no material change since prior pass)_
 
 **Readiness Score**: 90/100 → PROCEED
 **Outcome Confidence**: 63/100 → MODERATE
 
 ### Outcome Risk Factors
-- `unapplied_decision` still fires, but on a different pair than the prior run: "Program Design/Implementation Steps/Files to Modify still specifies `_process_issue` (rejected option)". **RESOLVED 2026-08-27 (pre-implementation review): confirmed false positive** — `_process_issue` is the *selected* placement for `worker_started` (the Program Design "Timing decision" explicitly rejects `submit()` in favor of `_process_issue`).
-- `stale_symbol_ref` still flags all six new/existing event names as "claimed in `scripts/little_loops/cli/parallel.py`". **RESOLVED 2026-08-27 (pre-implementation review): confirmed false positive** — grep of `cli/parallel.py` finds no event-name references, and the Integration Map does not cite that file.
+- `unapplied_decision` still fires (unchanged on 2026-08-29's re-check): "Program Design/Files to Modify still specifies `_process_issue` (rejected option)". **RESOLVED 2026-08-27 (pre-implementation review): confirmed false positive** — `_process_issue` is the *selected* placement for `worker_started` (the Program Design "Timing decision" explicitly rejects `submit()` in favor of `_process_issue`). Caps Criterion C at 10 per the skill's CLI-is-source-of-truth rule regardless of this resolution note.
+- `stale_symbol_ref` still flags all six new/existing event names as "claimed in `scripts/little_loops/cli/parallel.py`" (unchanged on 2026-08-29's re-check). **RESOLVED 2026-08-27 (pre-implementation review): confirmed false positive** — grep of `cli/parallel.py` finds no event-name references, and the Integration Map does not cite that file. Caps Criterion 4 at 10 per the same rule. Note: `/ll:verify-issues` on 2026-08-29 recorded `verify_verdict: NON_VALID` — outside this skill's scope to adjudicate, but worth a follow-up look before implementation to confirm it doesn't point at a different, unresolved gap than these two known false positives.
 - Moderate breadth × moderate depth: six new emitters plus `run_id` stamping on two existing ones span 6 source files (orchestrator.py, worker_pool.py, merge_coordinator.py, priority_queue.py, generate_schemas.py, observability/schema.py) and 6 doc/test files, with constructor-signature changes (threading `event_bus` into `IssuePriorityQueue`/`MergeCoordinator`) rather than pure mechanical substitution — expect more iteration than a single-file change.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T16:06:15 - `6fdc2e2c-92d6-4705-9bc4-d9f033068370.jsonl`
 - `/ll:verify-issues` - 2026-08-29T15:57:01 - `c54a423f-c560-4b02-ba94-5edb4f845eaa.jsonl`
 - `/ll:refine-issue` - 2026-08-29T15:47:04 - `e1f51e56-4700-4629-9064-1d81eae9d21d.jsonl`
 - `/ll:refine-issue` - 2026-08-28T03:18:19 - `90104caa-276e-4ccd-9e14-4b75908612aa.jsonl`

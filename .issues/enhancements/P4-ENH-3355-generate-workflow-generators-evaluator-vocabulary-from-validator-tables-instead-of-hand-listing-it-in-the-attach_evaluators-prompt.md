@@ -105,6 +105,39 @@ test ("covers every member of `NON_LLM_EVALUATOR_TYPES`") must match the
 chosen option — under option 2 it asserts coverage of every *non-excluded*
 member instead.
 
+## Program Design
+
+### Types
+
+- `NON_LLM_EVALUATOR_TYPES: set[str]` — existing, `scripts/little_loops/fsm/validation/_base.py`
+- `EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]]` — existing, same module
+
+### Signatures
+
+No new Python functions. The design is a shell `python3 -c` block embedded in
+`init`'s action string: it iterates `sorted(NON_LLM_EVALUATOR_TYPES)` (or the
+curated subset, per the Decision Needed above) and formats each entry against
+`EVALUATOR_REQUIRED_FIELDS[t]`.
+
+### Call Path
+
+`init` -> writes `evaluator-vocab.md` (via a `python3 -c` block reading
+`EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES`) -> `attach_evaluators`
+reads that file from `${context.run_dir}/evaluator-vocab.md`
+
+## Scope Boundaries
+
+- **In scope**: replacing `attach_evaluators`'s hand-listed vocabulary and
+  required-field prose with a generated file sourced from
+  `EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES`; the `init` generator
+  block and its stdout-contract compliance; the workflow-generator test
+  coverage for both.
+- **Out of scope**: extending FEAT-3328's gate-completeness lint to inspect
+  `prompt` actions (FEAT-3328's own settled coverage-gap decision, tracked
+  there — not reopened here); changing `EVALUATOR_REQUIRED_FIELDS`/
+  `NON_LLM_EVALUATOR_TYPES` themselves; auditing other loop YAMLs for similar
+  hand-listed vocabulary drift (single-loop fix only).
+
 ## Integration Map
 
 ### Files to Modify

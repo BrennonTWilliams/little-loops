@@ -199,10 +199,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   extending the ENH-3338 baseline for MR-11 (correct — MR-11 never reads
   it), but it means AC 8c's "checked-in marker count asserted by a test" is
   a weaker shape than either sibling precedent: a bare integer identifies
-  how many markers exist, not which sites they're on or whether a specific
-  marker is stale. The `grep -rn` enumeration AC 8c already requires is the
-  closest existing test only checks a count, not a structured entry set —
-  worth knowing before deciding how far to match the sibling patterns.
+  how many markers exist, not which sites carry them or whether any one of
+  them has gone out of date. The `grep -rn` enumeration AC 8c already
+  requires gets closer to the sibling patterns' per-entry structure than a
+  count alone would — worth weighing before deciding how far to match them.
 - **ERROR severity in this rule family fires in exactly two existing shapes,
   never from unparseable free-text.** Across every current `ERROR` emission
   (`_base.py:34`'s dataclass default, `shell_safety.py:90,143`,
