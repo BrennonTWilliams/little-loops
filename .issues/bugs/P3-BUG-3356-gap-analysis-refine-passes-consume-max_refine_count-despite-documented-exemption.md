@@ -199,6 +199,7 @@ reading of Option 1 over the new-command-name reading of Option 2.
 6. `python -m pytest scripts/tests/` exits 0, including new/extended coverage in `test_session_log.py`, `test_refine_status.py`, `test_program_design_gate.py`, `test_research_triage.py`, `test_next_action.py`, `test_issues_search.py`, and `test_refine_issue_command.py`.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-29T19:22:37 - `cb55c8e1-8f96-41ef-a1ba-fb0ee4198993.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:18:52 - `2c13c55a-19b4-426e-82a9-8daecd5791a5.jsonl`
 - `/ll:verify-issues` - 2026-08-29T19:12:46 - `fedec3ab-76ac-4b03-acac-d98d32d4349a.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:08:43 - `0ffc86a7-1497-4d98-b701-beefa90422f4.jsonl`

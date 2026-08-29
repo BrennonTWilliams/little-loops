@@ -1,0 +1,12 @@
+{
+  "id": "fb370a86-edbe-4358-9a7e-ddcc95b5eb29",
+  "type": "decision",
+  "timestamp": "2026-08-29T19:22:11Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Both discriminator shapes are functionally identical at every downstream count site (refine_status.py refine_count, next_action.py NEEDS_REFINE gate, search.py refinement sort) which exclude a differently-keyed entry by construction; colon suffix reads as a mode of the existing /ll:refine-issue command, consistent with _CMD_ALIASES only ever aliasing bare command names.",
+  "rule": "Discriminator shape: colon suffix (/ll:refine-issue:gap-analysis)",
+  "scope": "issue",
+  "alternatives_rejected": "Dash suffix (/ll:refine-issue-gap-analysis) \u2014 functionally identical everywhere, but reads as a new command name rather than a mode of the existing one.",
+  "issue": "BUG-3356"
+}
