@@ -753,6 +753,12 @@ def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
             folder = get_project_folder(decoded_path)
             if folder is not None:
                 project_items.append((decoded_path, folder))
+            else:
+                logger.warning(f"No session project folder found for: {decoded_path}")
+
+    rows: list[dict] = []
+    skipped: list[str] = []
+    matched_before_filter = 0
 
     for cwd_path, project_folder in project_items:
         slug = cwd_path.resolve().name
@@ -774,7 +780,10 @@ def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
                             session_id = record.get("sessionId", "")
                             buckets.setdefault(session_id, []).append(record)
             except OSError:
+                skipped.append(str(jsonl_file))
                 continue
+
+        matched_before_filter += sum(len(records) for records in buckets.values())
 
         if args.cmd:
             filtered: dict[str, list[dict]] = {}
@@ -784,6 +793,9 @@ def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
                     filtered[session_id] = matching
             buckets = filtered
 
+        if not buckets:
+            continue
+
         out_base = Path.cwd() / "logs" / slug
         for session_id, records in buckets.items():
             out_file = out_base / f"{session_id}.jsonl"
@@ -792,7 +804,62 @@ def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
                 for record in records:
                     f.write(json.dumps(record) + "\n")
 
+        rows.append(
+            {
+                "project": str(cwd_path),
+                "slug": slug,
+                "out_dir": str(out_base),
+                "sessions": len(buckets),
+                "records": sum(len(records) for records in buckets.values()),
+            }
+        )
+
     generate_index(Path.cwd() / "logs")
+
+    total_sessions = sum(row["sessions"] for row in rows)
+    total_records = sum(row["records"] for row in rows)
+    zero_match = bool(args.cmd) and matched_before_filter > 0 and total_records == 0
+
+    if args.json:
+        print_json(
+            {
+                "projects": rows,
+                "totals": {
+                    "projects": len(rows),
+                    "sessions": total_sessions,
+                    "records": total_records,
+                },
+                "skipped": skipped,
+                "cmd_filter": args.cmd,
+                "zero_match": zero_match,
+            }
+        )
+        return 0
+
+    if zero_match:
+        print(f"No records matched --cmd {args.cmd!r}")
+    elif not rows:
+        print("No ll-relevant records found; nothing extracted.")
+    else:
+        for row in rows:
+            print(
+                f"{row['slug']:<15} {row['sessions']:>3,} sessions, "
+                f"{row['records']:>6,} records -> {row['out_dir']}/"
+            )
+        summary = (
+            f"{len(rows)} project{'s' if len(rows) != 1 else ''}, "
+            f"{total_sessions} session{'s' if total_sessions != 1 else ''}, "
+            f"{total_records:,} record{'s' if total_records != 1 else ''} written"
+        )
+        if skipped:
+            summary += (
+                f"; {len(skipped)} file{'s' if len(skipped) != 1 else ''} unreadable (skipped)"
+            )
+        print(summary)
+
+    if skipped and (zero_match or not rows):
+        print(f"{len(skipped)} file{'s' if len(skipped) != 1 else ''} unreadable (skipped)")
+
     return 0
 
 
@@ -2173,6 +2240,7 @@ Examples:
         metavar="TOOL",
         help="Filter to records containing this ll- tool name (e.g. ll-history)",
     )
+    add_json_arg(extract_parser)
 
     sequences_parser = subparsers.add_parser(
         "sequences",

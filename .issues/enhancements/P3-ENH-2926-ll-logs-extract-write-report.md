@@ -2,11 +2,12 @@
 id: ENH-2926
 title: 'll-logs extract: report what was written instead of succeeding silently'
 type: ENH
-status: open
+status: done
 testable: true
 priority: P3
 discovered_date: 2026-07-29
 discovered_by: scope-review
+completed_at: '2026-08-29T23:18:37Z'
 relates_to:
 - ENH-2925
 - BUG-3216
@@ -122,8 +123,6 @@ reporting, not gating.
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
-
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 - **Correction — `extract_parser` construction**: now spans `logs.py:2166-2175` (drifted from the previously-cited `logs.py:2103-2112`). Still no `add_json_arg(extract_parser)` call — confirmed by the full current list of `add_json_arg(` call sites in this file: `logs.py:2149,2204,2218,2257,2282,2294,2328,2362` (`extract_parser` absent).
@@ -165,8 +164,6 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
-
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 - **Correction — Signatures**: `extract_parser` construction now spans `logs.py:2166-2175` (drifted from the previously-cited `logs.py:2103-2112`); `add_json_arg(extract_parser)` is still absent — confirmed against the current full list of `add_json_arg(` call sites (`logs.py:2149,2204,2218,2257,2282,2294,2328,2362`).
@@ -205,27 +202,32 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `ll-logs extract --project DIR` and `--all` print a per-project +
+- [x] `ll-logs extract --project DIR` and `--all` print a per-project +
       totals summary on success.
-- [ ] `-j/--json` emits the same data structurally (per-project rows, totals,
+- [x] `-j/--json` emits the same data structurally (per-project rows, totals,
       `skipped` paths).
-- [ ] Under `-j/--json`, stdout is a single valid JSON document and nothing
+- [x] Under `-j/--json`, stdout is a single valid JSON document and nothing
       else — the text summary is fully suppressed and no `logger` output is
       interleaved into stdout. (`json.loads(stdout)` succeeds. This is the
       actual requirement behind the "scriptable extract-then-analyze pipeline"
       motivation; warnings go to stderr.)
-- [ ] The text summary is written to stdout, not stderr.
-- [ ] Unreadable JSONL files are reported, not silently dropped.
-- [ ] A `--cmd` filter matching zero records says so — in both text and JSON
+- [x] The text summary is written to stdout, not stderr.
+- [x] Unreadable JSONL files are reported, not silently dropped.
+- [x] A `--cmd` filter matching zero records says so — in both text and JSON
       mode (an empty rows array alone does not satisfy this).
-- [ ] Under `--all`, an unresolvable project folder emits a warning.
-- [ ] Exit code remains 0 for a successful-but-empty extraction, and for a run
+- [x] Under `--all`, an unresolvable project folder emits a warning.
+- [x] Exit code remains 0 for a successful-but-empty extraction, and for a run
       with skipped unreadable files. This is a reporting change, not a gating
       one — the loop corpus depends on `extract`'s exit-code semantics (see
       Integration Map).
-- [ ] Tests cover: multi-project summary, JSON shape, zero-match filter,
+- [x] Tests cover: multi-project summary, JSON shape, zero-match filter,
       an unreadable-file skip, and exit-code-0-on-empty.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0 modulo 4 pre-existing failures
+      unrelated to this change (`test_packaging_duplicate_files`,
+      `test_issue_parser::TestBug3293...`, `test_subprocess_utils::...guillatine_prompt`,
+      `test_verify_evidence::TestRepoGate`) — none reference `logs.py`,
+      `_cmd_extract`, or `extract_parser`; verified untouched by this diff.
+      `scripts/tests/test_ll_logs.py` (23 `TestExtract` cases) passes clean.
 
 ## Related Key Documentation
 
@@ -244,6 +246,8 @@ issue is unblocked and its core ask is unchanged.
 - 2026-08-16 (pre-implementation review): citations re-confirmed against `logs.py:740-796` and `logs.py:2103-2112`. Frontmatter `verify_verdict` corrected `NON_VALID` -> `VALID` — it had never been updated after the citation refresh above, and the issue's core claims all hold. The two conventions the refine pass left open (zero-match reporting style; `skipped` in the JSON body vs. stderr) are now decided in place. The `--quiet` observation in the Integration Map was split out as BUG-3216.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-29T23:17:45 - `3877ebdc-d9d3-4449-9bcf-1a7f4ef3ce26.jsonl`
+- `/ll:ready-issue` - 2026-08-29T23:07:06 - `ed9b2f61-6325-4a0c-aa2f-badcd208e1b6.jsonl`
 - `/ll:confidence-check` - 2026-08-29T23:01:50 - `5eb49b5f-91aa-4f15-a849-be73909ec012.jsonl`
 - `/ll:refine-issue` - 2026-08-29T22:57:50 - `aa00f654-f91b-4b9a-bd21-42a5197c668d.jsonl`
 - `/ll:confidence-check` - 2026-08-16T21:37:50 - `1dcb449c-4f4b-4f5f-adf6-409fd8c076d0.jsonl`

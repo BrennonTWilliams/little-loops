@@ -3360,6 +3360,12 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--all` | Extract all projects with ll activity |
 | `--project DIR` | Working directory of the target project |
 | `--cmd TOOL` | Filter to records containing this ll- tool name (e.g. `ll-history`) |
+| `-j`, `--json` | Output as JSON (per-project rows, totals, `skipped`, `cmd_filter`, `zero_match`) |
+
+On success, `extract` prints a per-project + totals summary (sessions/records
+written, output dir) instead of nothing; unreadable JSONL files are reported
+as `skipped` rather than silently dropped, and a `--cmd` filter that matches
+zero records says so explicitly rather than looking like a no-op.
 
 **`sequences` flags:**
 

@@ -42,7 +42,7 @@ from little_loops.cli.logs import (
     main_logs,
 )
 from little_loops.session_store import ensure_db
-from little_loops.user_messages import encode_project_path
+from little_loops.user_messages import encode_project_path, get_project_folder
 
 
 class TestArgumentParsing:
@@ -1852,6 +1852,229 @@ class TestExtract:
             assert result == 0
             logs_dir = output_cwd / "logs"
             assert not logs_dir.exists() or not any(logs_dir.rglob("*.jsonl"))
+
+    def test_extract_multi_project_summary_text(self, capsys) -> None:
+        """extract --all prints a per-project + totals summary on stdout (ENH-2926)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True, exist_ok=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            session_a = "sess-aaa"
+            session_b = "sess-bbb"
+            path_a = self._make_project_dir(
+                claude_projects, home, "proj_a", [self._ll_queue_record(session_a)], session_a
+            )
+            path_b = self._make_project_dir(
+                claude_projects, home, "proj_b", [self._ll_queue_record(session_b)], session_b
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--all"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            out = capsys.readouterr().out
+            assert path_a.name in out
+            assert path_b.name in out
+            assert "2 projects" in out
+            assert "2 sessions" in out
+            assert "1 record" in out or "1 records" in out or "2 records" in out
+
+    def test_extract_json_output_shape(self, capsys) -> None:
+        """extract --json emits per-project rows, totals, skipped, and a zero_match flag."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True, exist_ok=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            session_id = "sess-json"
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [self._ll_queue_record(session_id)],
+                session_id=session_id,
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--project", str(project_path), "--json"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            payload = json.loads(capsys.readouterr().out)
+            assert set(payload.keys()) == {
+                "projects",
+                "totals",
+                "skipped",
+                "cmd_filter",
+                "zero_match",
+            }
+            assert len(payload["projects"]) == 1
+            row = payload["projects"][0]
+            assert set(row.keys()) == {"project", "slug", "out_dir", "sessions", "records"}
+            assert row["slug"] == project_path.name
+            assert row["sessions"] == 1
+            assert row["records"] == 1
+            assert payload["totals"] == {"projects": 1, "sessions": 1, "records": 1}
+            assert payload["skipped"] == []
+            assert payload["cmd_filter"] is None
+            assert payload["zero_match"] is False
+
+    def test_extract_cmd_filter_zero_match_reported(self, capsys) -> None:
+        """A --cmd filter matching zero records says so explicitly, in text and JSON."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True, exist_ok=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            session_id = "sess-nomatch"
+            self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [self._assistant_bash_record("ll-auto --dry-run", session_id)],
+                session_id=session_id,
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--all", "--cmd", "ll-nonexistent"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            out = capsys.readouterr().out
+            assert "ll-nonexistent" in out
+            assert "No records matched" in out
+
+            with (
+                patch(
+                    "sys.argv",
+                    ["ll-logs", "extract", "--all", "--cmd", "ll-nonexistent", "--json"],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            payload = json.loads(capsys.readouterr().out)
+            assert payload["zero_match"] is True
+            assert payload["cmd_filter"] == "ll-nonexistent"
+            assert payload["projects"] == []
+
+    def test_extract_unreadable_file_reported(self, capsys) -> None:
+        """An unreadable JSONL is reported as skipped, not silently dropped."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True, exist_ok=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = home / "myproject"
+            project_path.mkdir(parents=True, exist_ok=True)
+            encoded = encode_project_path(str(project_path.resolve()))
+            proj_dir = claude_projects / encoded
+            proj_dir.mkdir(parents=True, exist_ok=True)
+
+            # A directory named *.jsonl raises IsADirectoryError (an OSError) on open().
+            (proj_dir / "unreadable.jsonl").mkdir()
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--project", str(project_path), "--json"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            payload = json.loads(capsys.readouterr().out)
+            assert len(payload["skipped"]) == 1
+            assert "unreadable.jsonl" in payload["skipped"][0]
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            out = capsys.readouterr().out
+            assert "unreadable" in out
+
+    def test_extract_exit_code_zero_on_empty(self) -> None:
+        """A successful-but-empty extraction still exits 0 (reporting change, not gating)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True, exist_ok=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--all"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+
+    def test_extract_all_unresolvable_project_emits_warning(self, capsys) -> None:
+        """Under --all, a project whose folder does not resolve emits a warning (to stderr)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True, exist_ok=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            session_id = "sess-resolved"
+            self._make_project_dir(
+                claude_projects, home, "resolved_proj", [self._ll_queue_record(session_id)]
+            )
+
+            unresolved_path = home / "unresolved_proj"
+
+            def fake_get_project_folder(cwd_path: Path):
+                if cwd_path == unresolved_path:
+                    return None
+                return get_project_folder(cwd_path)
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--all"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+                patch(
+                    "little_loops.cli.logs.discover_all_projects",
+                    return_value=[unresolved_path, home / "resolved_proj"],
+                ),
+                patch(
+                    "little_loops.cli.logs.get_project_folder", side_effect=fake_get_project_folder
+                ),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            assert str(unresolved_path) in captured.err
+            assert str(unresolved_path) not in captured.out
 
 
 def _populate_skill_events(
