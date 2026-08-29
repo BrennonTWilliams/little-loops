@@ -465,6 +465,67 @@ states:
         data = json.loads(capsys.readouterr().out)
         assert any("MR-13" in v["message"] for v in data["violations"])
 
+    def test_validate_no_json_warns_gate_completeness(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """FEAT-3328: ll-loop validate surfaces the gate-completeness warning
+        (non-JSON path) for a shell gate that hardcodes an unimported literal
+        restatement of NON_LLM_EVALUATOR_TYPES."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "gate-completeness-loop.yaml").write_text(
+            "name: gate-completeness-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action_type: shell\n"
+            "    action: |\n"
+            "      python3 -c \"x = {'exit_code', 'output_json', 'output_numeric'}\"\n"
+            "    terminal: true\n"
+        )
+
+        logger = Logger(use_color=False)
+        with caplog.at_level("WARNING"):
+            result = cmd_validate("gate-completeness-loop", argparse.Namespace(), loops_dir, logger)
+
+        assert result == 0
+        assert "FEAT-3328" in caplog.text
+
+    def test_validate_json_warns_gate_completeness(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """FEAT-3328: the --json path also surfaces the gate-completeness
+        warning for the same unimported literal restatement."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "gate-completeness-loop.yaml").write_text(
+            "name: gate-completeness-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action_type: shell\n"
+            "    action: |\n"
+            "      python3 -c \"x = {'exit_code', 'output_json', 'output_numeric'}\"\n"
+            "    terminal: true\n"
+        )
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+        cmd_validate("gate-completeness-loop", args, loops_dir, logger)
+
+        data = json.loads(capsys.readouterr().out)
+        assert any("FEAT-3328" in v["message"] for v in data["violations"])
+
     def test_validate_json_loop_reference_error(
         self,
         tmp_path: Path,

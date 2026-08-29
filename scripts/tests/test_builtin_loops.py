@@ -29,6 +29,7 @@ from little_loops.fsm.fragments import resolve_fragments
 from little_loops.fsm.interp_sweep import scan_corpus
 from little_loops.fsm.validation import (
     ValidationSeverity,
+    _validate_gate_completeness,
     _validate_generator_fix_discipline,
     _validate_partial_route_dead_end,
     load_and_validate,
@@ -106,6 +107,22 @@ class TestBuiltinLoopFiles:
         assert not offenders, (
             "Failure edges terminating in a success terminal exit 0 and persist as "
             "'completed'. Route them to a `failure: true` terminal:\n  " + "\n  ".join(offenders)
+        )
+
+    def test_no_gate_completeness_violations(self, builtin_loops: list[Path]) -> None:
+        """FEAT-3328 AC #3: the gate-completeness rule ships as a forward guard --
+        zero violations against the current built-in loop set. workflow-generator.yaml's
+        validate_evaluators state (the sole prior offender) now imports the tables it
+        checks against instead of restating them."""
+        offenders: list[str] = []
+        for loop_file in builtin_loops:
+            fsm, _ = load_and_validate(loop_file)
+            for error in _validate_gate_completeness(fsm):
+                offenders.append(f"{loop_file.name}: {error.message}")
+
+        assert not offenders, (
+            "gate-completeness violations found in built-in loops (should be zero):\n  "
+            + "\n  ".join(offenders)
         )
 
     def test_all_have_description_field(self, builtin_loops: list[Path]) -> None:
@@ -1981,9 +1998,7 @@ class TestRefineToReadyIssueSubLoop:
         """no_work is a clean empty-backlog exit: terminal, and NOT a failure terminal
         (callers must not ledger it)."""
         state = data["states"].get("no_work", {})
-        assert state.get("terminal") is True, (
-            f"no_work should be a terminal state, got {state!r}"
-        )
+        assert state.get("terminal") is True, f"no_work should be a terminal state, got {state!r}"
         assert not state.get("failure"), (
             f"no_work must not be a failure terminal, got failure={state.get('failure')!r}"
         )
@@ -2510,7 +2525,9 @@ class TestRefineToReadyIssueSubLoop:
             f"wire_issue.on_error should be 'normalize_structure', got {state.get('on_error')!r}"
         )
 
-    def test_check_wire_done_on_no_and_on_error_route_to_normalize_structure(self, data: dict) -> None:
+    def test_check_wire_done_on_no_and_on_error_route_to_normalize_structure(
+        self, data: dict
+    ) -> None:
         """check_wire_done.on_no/.on_error must route to normalize_structure (ENH-3031; ENH-3248).
 
         This is the loopback-bypass closure: on a gate-forced second pass the
@@ -2736,7 +2753,9 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_success')!r}"
         )
 
-    def test_resolve_decision_mid_wire_on_success_resumes_normalize_structure(self, data: dict) -> None:
+    def test_resolve_decision_mid_wire_on_success_resumes_normalize_structure(
+        self, data: dict
+    ) -> None:
         """resolve_decision_mid_wire.on_success must resume the chain at
         normalize_structure — the same target check_decision_mid_wire.on_no uses
         (ENH-3248: normalize_structure interposed before verify_issue)."""
@@ -3163,7 +3182,9 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_no')!r}"
         )
 
-    def test_check_decision_mid_wire_on_error_routes_to_normalize_structure(self, data: dict) -> None:
+    def test_check_decision_mid_wire_on_error_routes_to_normalize_structure(
+        self, data: dict
+    ) -> None:
         """check_decision_mid_wire.on_error must fall through to normalize_structure (ENH-3031;
         ENH-3248) (a transient check-flag failure should not stall the sub-loop)."""
         state = data["states"].get("check_decision_mid_wire", {})
@@ -6593,7 +6614,9 @@ class TestAutodevLoop:
 
         # done blocker -> READY
         _write_issue("ENH-9100", ["ENH-9001"])
-        script = action.replace("${captured.input.output}", "ENH-9100").replace("${context.run_dir}", str(tmp_path))
+        script = action.replace("${captured.input.output}", "ENH-9100").replace(
+            "${context.run_dir}", str(tmp_path)
+        )
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
         )
@@ -6602,7 +6625,9 @@ class TestAutodevLoop:
 
         # open (unresolved) blocker -> BLOCKED
         _write_issue("ENH-9101", ["ENH-9002"])
-        script = action.replace("${captured.input.output}", "ENH-9101").replace("${context.run_dir}", str(tmp_path))
+        script = action.replace("${captured.input.output}", "ENH-9101").replace(
+            "${context.run_dir}", str(tmp_path)
+        )
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
         )
@@ -6611,7 +6636,9 @@ class TestAutodevLoop:
 
         # no blockers -> READY
         _write_issue("ENH-9102", [])
-        script = action.replace("${captured.input.output}", "ENH-9102").replace("${context.run_dir}", str(tmp_path))
+        script = action.replace("${captured.input.output}", "ENH-9102").replace(
+            "${context.run_dir}", str(tmp_path)
+        )
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
         )
@@ -6641,7 +6668,9 @@ class TestAutodevLoop:
         stub.chmod(0o755)
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
 
-        script = action.replace("${captured.input.output}", "ENH-9200").replace("${context.run_dir}", str(tmp_path))
+        script = action.replace("${captured.input.output}", "ENH-9200").replace(
+            "${context.run_dir}", str(tmp_path)
+        )
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
         )
@@ -14917,12 +14946,12 @@ class TestApplyResearchLoop:
     def test_relevance_threshold_used_in_filter_items(self, data: dict) -> None:
         action = data["states"]["filter_items"].get("action", "")
         assert "${context.relevance_threshold:shell}" in action
-        assert 'os.environ[\'LL_ARG_RELEVANCE_THRESHOLD\']' in action
+        assert "os.environ['LL_ARG_RELEVANCE_THRESHOLD']" in action
 
     def test_max_issues_per_file_used_in_filter_items(self, data: dict) -> None:
         action = data["states"]["filter_items"].get("action", "")
         assert "${context.max_issues_per_file:shell}" in action
-        assert 'os.environ[\'LL_ARG_MAX_ISSUES_PER_FILE\']' in action
+        assert "os.environ['LL_ARG_MAX_ISSUES_PER_FILE']" in action
 
     def test_run_dir_used_throughout(self, data: dict) -> None:
         """All shell states reference run_dir for artifact isolation."""
@@ -18804,7 +18833,9 @@ class TestEnh3347RouterInjection:
         from little_loops.fsm.interpolation import interpolate
 
         rendered = interpolate(action, ctx)
-        return subprocess.run(["bash", "-c", rendered], cwd=tmp_path, capture_output=True, text=True)
+        return subprocess.run(
+            ["bash", "-c", rendered], cwd=tmp_path, capture_output=True, text=True
+        )
 
     def _run_dir(self, tmp_path: Path) -> Path:
         run_dir = tmp_path / "run"

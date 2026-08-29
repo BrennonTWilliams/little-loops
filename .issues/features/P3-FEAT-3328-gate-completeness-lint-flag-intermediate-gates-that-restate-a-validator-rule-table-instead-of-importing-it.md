@@ -4,10 +4,11 @@ type: FEAT
 title: 'Gate-completeness lint: flag intermediate gates that restate a validator rule
   table instead of importing it'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T17:33:30Z'
+completed_at: '2026-08-29T18:41:46Z'
 relates_to:
 - ENH-3355
 parent: EPIC-2087
@@ -944,6 +945,7 @@ Source: `postmortems/workflow-generator-output-json-gate-gap.md` §6.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-29T18:41:22 - `477f6591-ae32-49d7-bc90-ee1e0759ddc3.jsonl`
 - `/ll:confidence-check` - 2026-08-29T18:14:01 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:confidence-check` - 2026-08-29T17:56:13 - `8447b8ae-6392-4778-9269-a7326a6ec15e.jsonl`
 - `/ll:refine-issue` - 2026-08-29T17:52:27 - `b49cfdc1-e799-4d98-aa39-ef2212184ad7.jsonl`

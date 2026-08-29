@@ -7,10 +7,14 @@ partial-route dead-end detection, and hand-patching discipline.
 from __future__ import annotations
 
 import re
+from itertools import chain
 
 from little_loops.fsm.schema import FSMLoop
 from little_loops.fsm.validation._base import (
+    EVALUATOR_REQUIRED_FIELDS,
     NON_LLM_EVALUATOR_TYPES,
+    VALID_OPERATORS,
+    VALID_VISIBILITY,
     ValidationError,
     ValidationSeverity,
     _is_llm_judged,
@@ -421,6 +425,149 @@ def _validate_generator_fix_discipline(fsm: FSMLoop) -> list[ValidationError]:
                         severity=ValidationSeverity.WARNING,
                     )
                 )
+
+    return errors
+
+
+# gate-completeness (FEAT-3328): literal collection displays of string
+# literals -- {...}, [...], (...) -- possibly spanning multiple lines with a
+# trailing comma. The `(` alternative excludes call syntax (a `(` immediately
+# preceded by an identifier character or closing bracket is a function call,
+# not a tuple display).
+_BRACE_DISPLAY_RE = re.compile(r"\{([^{}]*)\}")
+_BRACKET_DISPLAY_RE = re.compile(r"\[([^\[\]]*)\]")
+_PAREN_DISPLAY_RE = re.compile(r"(?<![\w)\]])\(([^()]*)\)")
+
+_STRING_LITERAL_RE = re.compile(r'"([^"\\]*)"|\'([^\'\\]*)\'')
+
+# An `import` statement (bare or `from ... import`), capturing either a
+# parenthesized multi-line group or the rest of the line -- matches the
+# in-repo `from x import (\n    NAME,\n)` shape used by validate_evaluators.
+_IMPORT_BLOCK_RE = re.compile(
+    r"^[ \t]*(?:from[ \t]+\S+[ \t]+)?import[ \t]+(?:\([^)]*\)|[^\n]*)",
+    re.MULTILINE,
+)
+
+# Tables checked smallest-first: NON_LLM_EVALUATOR_TYPES is derived from
+# EVALUATOR_REQUIRED_FIELDS.keys() (a subset of it), so it must be checked
+# first to report the tighter table and avoid a double emission (AC #1a).
+# EVALUATOR_REQUIRED_FIELDS is linted on both its keys (evaluator type names)
+# and its flattened values (field names); the two are disjoint so their
+# relative order does not matter (AC #1c).
+_GATE_COMPLETENESS_TABLES: tuple[tuple[str, frozenset[str]], ...] = (
+    ("VALID_VISIBILITY", VALID_VISIBILITY),
+    ("VALID_OPERATORS", VALID_OPERATORS),
+    ("NON_LLM_EVALUATOR_TYPES", NON_LLM_EVALUATOR_TYPES),
+    ("EVALUATOR_REQUIRED_FIELDS", frozenset(EVALUATOR_REQUIRED_FIELDS.keys())),
+    (
+        "EVALUATOR_REQUIRED_FIELDS",
+        frozenset(chain.from_iterable(EVALUATOR_REQUIRED_FIELDS.values())),
+    ),
+)
+
+
+def _extract_string_literal_members(body: str) -> list[str] | None:
+    """Return the quoted string members of `body`, or None if `body` contains
+    anything besides string literals, commas, and whitespace (e.g. it is not
+    a pure string-literal collection display)."""
+    members = [
+        m.group(1) if m.group(1) is not None else m.group(2)
+        for m in _STRING_LITERAL_RE.finditer(body)
+    ]
+    remainder = _STRING_LITERAL_RE.sub("", body)
+    if remainder.strip(" \t\n,") != "":
+        return None
+    return members
+
+
+def _imports_table(action: str, name: str) -> bool:
+    """Return True if `name` appears on an `import` statement line (or a
+    parenthesized multi-line import block) inside `action` -- a mention
+    inside a comment does not count (AC #1)."""
+    return any(
+        re.search(rf"\b{re.escape(name)}\b", m.group(0)) for m in _IMPORT_BLOCK_RE.finditer(action)
+    )
+
+
+def _validate_gate_completeness(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate the gate-completeness rule (FEAT-3328): an intermediate
+    `shell` gate must not hardcode a literal collection that restates a
+    little-loops validator's exported rule table instead of importing it.
+
+    When the restatement is a proper subset of what the terminal gate
+    checks, it doesn't just miss defects -- it launders them, giving every
+    downstream pass false confidence and pushing detection past the point
+    where the retry topology can repair the mistake.
+
+    Detection is regex-over-raw-string, not `ast.parse`: every other rule in
+    this package (MR-3, MR-5, MR-6, and the shell_safety.py family) works the
+    same way, and safely extracting embedded Python from a `python3 -c`/
+    heredoc shell action would need its own quoting/escaping mini-parser --
+    the cardinality floor below does the false-positive suppression `ast`
+    would otherwise be used for.
+
+    A literal is flagged only when it has >=3 members, every member is in one
+    of the linted tables, and the action does not already import that
+    table's identifier via an `import` statement (a comment mention does not
+    count -- see `_imports_table`). Tables are checked smallest-first so a
+    literal that is a subset of both NON_LLM_EVALUATOR_TYPES and
+    EVALUATOR_REQUIRED_FIELDS.keys() (the former is derived from the latter)
+    is reported once, against the tighter table.
+
+    Known coverage gaps (documented, not fixed here -- AC #5):
+    - only `shell` actions are inspected; a rule table restated in prose
+      inside a `prompt` action is invisible to this rule (tracked separately
+      as ENH-3355).
+    - a full dict-display restatement of EVALUATOR_REQUIRED_FIELDS is not
+      matched as a dict (the detection regex has no dict form); it is caught
+      only indirectly, via any >=3-member nested value list.
+
+    Suppressed by `gate_completeness_ok: true` at the loop top-level.
+    """
+    if fsm.gate_completeness_ok:
+        return []
+
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if state.action_type != "shell" or not state.action:
+            continue
+        action = state.action
+        if "python3" not in action:
+            continue
+
+        for display_re in (_BRACE_DISPLAY_RE, _BRACKET_DISPLAY_RE, _PAREN_DISPLAY_RE):
+            for match in display_re.finditer(action):
+                members = _extract_string_literal_members(match.group(1))
+                if members is None or len(members) < 3:
+                    continue
+                member_set = frozenset(members)
+                # Match against the most specific (smallest, first-listed) table
+                # only -- once found, stop, regardless of that table's import
+                # status. Falling through to a broader table when the specific
+                # one is already imported would double-report against a table
+                # the author never intended to restate (AC #1a).
+                for table_name, table in _GATE_COMPLETENESS_TABLES:
+                    if member_set <= table:
+                        if not _imports_table(action, table_name):
+                            errors.append(
+                                ValidationError(
+                                    message=(
+                                        f"[state: {state_name}] shell gate hardcodes a literal "
+                                        f"{sorted(member_set)!r} that is a subset of "
+                                        f"{table_name}. Import {table_name} from "
+                                        "little_loops.fsm.validation instead of restating it "
+                                        "-- a restated subset can launder defects past this "
+                                        "gate until the terminal validator catches them, too "
+                                        "late for the retry topology to reach the state that "
+                                        "made the mistake. Set `gate_completeness_ok: true` "
+                                        "at the loop top-level to suppress if this is a "
+                                        "deliberate, narrower curated vocabulary. (FEAT-3328)"
+                                    ),
+                                    path=f"states.{state_name}.action",
+                                    severity=ValidationSeverity.WARNING,
+                                )
+                            )
+                        break
 
     return errors
 

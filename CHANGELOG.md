@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat(config): add advisor configuration block (6c29f69c6)
 - feat(skills): distribute the advise skill to all host-CLI configs — gemini, kimi-code, qwen (183481ba5)
 - feat(ENH-230): add `cannot_judge` abstention to `verdict_events` (8da0a754e)
+- **FEAT-3328**: `ll-loop validate` gate-completeness rule — flags an intermediate `shell` gate that hardcodes a literal restatement of a validator's exported rule table (`NON_LLM_EVALUATOR_TYPES`, `EVALUATOR_REQUIRED_FIELDS`, `VALID_OPERATORS`, `VALID_VISIBILITY`) instead of importing it, suppressible via `gate_completeness_ok: true`
 
 ### Fixed
 

@@ -18,6 +18,7 @@ from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_artifact_isolation,
     _validate_artifact_overwrite,
+    _validate_gate_completeness,
     _validate_generator_fix_discipline,
     _validate_harness_multimodal_evaluator_blind_spot,
     _validate_meta_loop_evaluation,
@@ -962,3 +963,223 @@ class TestGeneratorFixDiscipline:
             if e.severity == ValidationSeverity.WARNING and "ENH-2079" in e.message
         ]
         assert len(mr6) == 1
+
+
+class TestGateCompleteness:
+    """gate-completeness (FEAT-3328): a `shell` gate must import a validator's
+    exported rule table instead of hardcoding a literal restatement of it."""
+
+    def _simple_fsm(
+        self,
+        action: str,
+        *,
+        action_type: str | None = "shell",
+        gate_completeness_ok: bool = False,
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(
+                    action=action, action_type=action_type, on_yes="done", on_no="work"
+                ),
+                "done": make_state(terminal=True),
+            },
+            gate_completeness_ok=gate_completeness_ok,
+        )
+
+    def test_fires_for_unimported_subset_of_non_llm_evaluator_types(self) -> None:
+        """A >=3-member literal subset of NON_LLM_EVALUATOR_TYPES with no import triggers
+        a warning naming that table."""
+        fsm = self._simple_fsm("python3 -c \"x = {'exit_code', 'output_json', 'output_numeric'}\"")
+        errors = _validate_gate_completeness(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "NON_LLM_EVALUATOR_TYPES" in errors[0].message
+        assert errors[0].path == "states.work.action"
+
+    def test_does_not_fire_when_table_is_imported(self) -> None:
+        """The same restatement is not flagged when the action imports the table
+        via the parenthesized multi-line import form (the in-repo shape)."""
+        fsm = self._simple_fsm(
+            "python3 << 'PYEOF'\n"
+            "from little_loops.fsm.validation import (\n"
+            "    NON_LLM_EVALUATOR_TYPES,\n"
+            ")\n"
+            "x = {'exit_code', 'output_json', 'output_numeric'}\n"
+            "assert x <= NON_LLM_EVALUATOR_TYPES\n"
+            "PYEOF\n"
+        )
+        errors = _validate_gate_completeness(fsm)
+        assert errors == []
+
+    def test_import_only_in_comment_is_still_flagged(self) -> None:
+        """Naming the table in a comment (not an import statement) does not
+        suppress the warning -- prevents trivial evasion (AC #1)."""
+        fsm = self._simple_fsm(
+            'python3 -c "\n'
+            "# NON_LLM_EVALUATOR_TYPES\n"
+            "x = {'exit_code', 'output_json', 'output_numeric'}\n"
+            '"'
+        )
+        errors = _validate_gate_completeness(fsm)
+        assert len(errors) == 1
+
+    def test_suppressed_by_gate_completeness_ok(self) -> None:
+        """gate_completeness_ok: true suppresses the rule entirely."""
+        fsm = self._simple_fsm(
+            "python3 -c \"x = {'exit_code', 'output_json', 'output_numeric'}\"",
+            gate_completeness_ok=True,
+        )
+        assert _validate_gate_completeness(fsm) == []
+
+    def test_does_not_fire_below_cardinality_floor(self) -> None:
+        """A 2-member literal is not evidence of a restated table."""
+        fsm = self._simple_fsm("python3 -c \"x = {'exit_code', 'output_json'}\"")
+        assert _validate_gate_completeness(fsm) == []
+
+    def test_does_not_fire_with_a_member_outside_the_table(self) -> None:
+        """A literal mixing table members with an unrelated string is not a
+        restated table copy."""
+        fsm = self._simple_fsm("python3 -c \"x = {'exit_code', 'output_json', 'not_a_member'}\"")
+        assert _validate_gate_completeness(fsm) == []
+
+    def test_does_not_fire_for_non_shell_actions(self) -> None:
+        """A prompt action hand-listing the same vocabulary is out of scope
+        (documented coverage gap -- AC #5, tracked separately as ENH-3355)."""
+        fsm = self._simple_fsm(
+            "Use one of: exit_code, output_json, output_numeric.",
+            action_type="prompt",
+        )
+        assert _validate_gate_completeness(fsm) == []
+
+    def test_does_not_fire_without_python3_in_action(self) -> None:
+        """A shell action with a matching literal but no `python3` substring is
+        not a gate this rule inspects."""
+        fsm = self._simple_fsm('echo \'{"exit_code", "output_json", "output_numeric"}\'')
+        assert _validate_gate_completeness(fsm) == []
+
+    def test_single_emission_for_literal_subset_of_both_tables(self) -> None:
+        """A literal that is a subset of both NON_LLM_EVALUATOR_TYPES and
+        EVALUATOR_REQUIRED_FIELDS.keys() (the former is derived from the
+        latter) produces exactly one warning, naming the more specific table
+        (AC #1a)."""
+        fsm = self._simple_fsm("python3 -c \"x = {'exit_code', 'output_json', 'output_numeric'}\"")
+        errors = _validate_gate_completeness(fsm)
+        assert len(errors) == 1
+        assert "NON_LLM_EVALUATOR_TYPES" in errors[0].message
+
+    def test_valid_operators_fires_when_unimported(self) -> None:
+        """A literal operator vocabulary subset with no VALID_OPERATORS import
+        is flagged (AC #1 -- BUG-3326 precedent)."""
+        fsm = self._simple_fsm("python3 -c \"x = {'eq', 'ne', 'lt'}\"")
+        errors = _validate_gate_completeness(fsm)
+        assert len(errors) == 1
+        assert "VALID_OPERATORS" in errors[0].message
+
+    def test_valid_operators_does_not_fire_when_imported(self) -> None:
+        """The same operator literal is not flagged once VALID_OPERATORS is imported."""
+        fsm = self._simple_fsm(
+            "python3 << 'PYEOF'\n"
+            "from little_loops.fsm.validation import (\n"
+            "    VALID_OPERATORS,\n"
+            ")\n"
+            "x = {'eq', 'ne', 'lt'}\n"
+            "assert x <= VALID_OPERATORS\n"
+            "PYEOF\n"
+        )
+        assert _validate_gate_completeness(fsm) == []
+
+    @pytest.mark.parametrize(
+        "literal",
+        [
+            "{'eq', 'ne', 'lt'}",
+            "['eq', 'ne', 'lt']",
+            "('eq', 'ne', 'lt')",
+        ],
+    )
+    def test_fires_for_set_list_and_tuple_displays(self, literal: str) -> None:
+        """Set, list, and tuple displays of the same restated vocabulary are
+        all flagged identically (AC #1b -- a set-only regex would miss the
+        list/tuple shapes actually used in this repo)."""
+        fsm = self._simple_fsm(f'python3 -c "x = {literal}"')
+        errors = _validate_gate_completeness(fsm)
+        assert len(errors) == 1
+        assert "VALID_OPERATORS" in errors[0].message
+
+    def test_fires_for_evaluator_type_names_literal(self) -> None:
+        """A literal of evaluator *type* names outside NON_LLM_EVALUATOR_TYPES
+        (which excludes llm_structured/comparator/contract/advisor_consult) is
+        flagged as the broader EVALUATOR_REQUIRED_FIELDS.keys() table (AC #1c
+        -- pins the keys side of the keys-vs-values distinction)."""
+        fsm = self._simple_fsm("python3 -c \"x = ['llm_structured', 'comparator', 'contract']\"")
+        errors = _validate_gate_completeness(fsm)
+        assert len(errors) == 1
+        assert "EVALUATOR_REQUIRED_FIELDS" in errors[0].message
+
+    def test_fires_for_evaluator_field_names_literal(self) -> None:
+        """A literal of evaluator required-*field* names is also flagged as
+        EVALUATOR_REQUIRED_FIELDS (AC #1c -- pins the values side; a keys-only
+        implementation would miss this since these are not evaluator type names)."""
+        fsm = self._simple_fsm("python3 -c \"x = ['operator', 'target', 'path']\"")
+        errors = _validate_gate_completeness(fsm)
+        assert len(errors) == 1
+        assert "EVALUATOR_REQUIRED_FIELDS" in errors[0].message
+
+    def test_does_not_fire_for_call_syntax(self) -> None:
+        """A function call with >=3 table-member string args is not a collection
+        display and must not be flagged (AC #1b)."""
+        fsm = self._simple_fsm("python3 -c \"check('eq', 'ne', 'lt')\"")
+        assert _validate_gate_completeness(fsm) == []
+
+    def test_fires_for_multiline_display(self) -> None:
+        """A restated table written one member per line with trailing commas
+        is still detected (AC #1b)."""
+        fsm = self._simple_fsm(
+            'python3 -c "\n'
+            "x = {\n"
+            "    'exit_code',\n"
+            "    'output_json',\n"
+            "    'output_numeric',\n"
+            "}\n"
+            '"'
+        )
+        errors = _validate_gate_completeness(fsm)
+        assert len(errors) == 1
+
+    def test_does_not_fire_for_below_floor_done_failed_tuple(self) -> None:
+        """The in-repo `('done', 'failed')` 2-member tuple (workflow-generator.yaml's
+        validate_evaluators/validate_routing states) stays below the floor and unflagged."""
+        fsm = self._simple_fsm("python3 -c \"if name in ('done', 'failed'): pass\"")
+        assert _validate_gate_completeness(fsm) == []
+
+    def test_gate_completeness_runs_via_validate_fsm(self) -> None:
+        """validate_fsm() wires in the gate-completeness rule (end-to-end, not
+        just via direct function call)."""
+        fsm = self._simple_fsm("python3 -c \"x = {'exit_code', 'output_json', 'output_numeric'}\"")
+        errors = validate_fsm(fsm)
+        gc = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "FEAT-3328" in e.message
+        ]
+        assert len(gc) == 1
+
+    def test_gate_completeness_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level gate_completeness_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop with an intentional narrower gate vocabulary\n"
+            "initial: work\n"
+            "gate_completeness_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []

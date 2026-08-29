@@ -53,6 +53,7 @@ from little_loops.fsm.validation.evaluator_rules import (
 from little_loops.fsm.validation.meta_rules import (
     _validate_artifact_isolation,
     _validate_artifact_overwrite,
+    _validate_gate_completeness,
     _validate_generator_fix_discipline,
     _validate_harness_multimodal_evaluator_blind_spot,
     _validate_meta_loop_evaluation,
@@ -1151,6 +1152,8 @@ def validate_fsm(
     errors.extend(_validate_artifact_overwrite(fsm))
 
     errors.extend(_validate_generator_fix_discipline(fsm))
+
+    errors.extend(_validate_gate_completeness(fsm))
 
     errors.extend(_validate_bash_default_interpolation(fsm))
 

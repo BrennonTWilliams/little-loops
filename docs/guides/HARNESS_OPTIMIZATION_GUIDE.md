@@ -114,6 +114,7 @@ suppressed with a top-level flag when you have a justified reason.
 | **capture-reachability** | A `${captured.*}` reference must be reachable from a state that actually captures it — the capturing state must dominate every path that reads the reference, and the reference must name a var some state actually captures | A reference on a path that bypasses its capturing state, or one that names a never-captured var, resolves to empty/undefined at runtime with no load-time error. Nested-path-aware (BUG-2812): distinguishes the correct `${captured.<sub_loop_state_name>.<var>...}` form (a child loop's captures live under the delegating state's own name) from an ERROR-worthy reference to a sub-loop-delegating state's own `capture:` name plus a nested field beyond `.output`/`.exit_code` (that name only ever resolves to the child's event-stream dict) | WARNING (ERROR for the sub-loop nested-field case) | `capture_reachability_ok: true` |
 | **session-mode-eval** | A `check_semantic`/`llm_structured` state (or a state relying on the default LLM-judge prompt) must not resolve to `session_mode: continue`, whether via its own override or the loop's default | `continue` carries forward the same session context across states, which breaks the independent judgment an evaluator is supposed to provide — the judge sees the generator's own reasoning trail instead of assessing the output fresh (FEAT-2711) | WARNING | `session_mode_ok: true` |
 | **abstention-route-ok** | A state that can produce a `cannot_judge` verdict — an explicit `llm_structured` judge, or `evaluate.type: exit_code` with `abstain_on_exit_3: true` — must declare an `on_cannot_judge` route or an `on_error` route | Without either route, the FSM has no defined transition for an abstention verdict, leaving the loop to hold-then-die on "No valid transition" instead of routing to a recovery/probe state (the `on_cannot_judge: probe_substrate` shape) or a terminal failure state (BUG-3227) | WARNING | `abstention_route_ok: true` |
+| **gate-completeness** | An `action_type: shell` state whose `python3` action hardcodes a literal set/list/tuple of ≥3 string literals that is a subset of a validator's exported rule table (`VALID_VISIBILITY`, `VALID_OPERATORS`, `NON_LLM_EVALUATOR_TYPES`, or `EVALUATOR_REQUIRED_FIELDS` on its keys or flattened values) must import that table instead of restating it | A restated literal that is a proper subset of what the terminal gate checks doesn't just miss defects — it launders them, giving every downstream pass false confidence and pushing detection past the point where the retry topology can reach the state that made the mistake. Detection is regex-over-raw-string (like every other rule in this family), scoped to `shell` actions only — a rule table restated in *prose* inside a `prompt` action is invisible to this rule (tracked separately as ENH-3355); a full dict-display restatement is caught only indirectly, via its nested value lists, since the detection regex has no dict form (FEAT-3328) | WARNING | `gate_completeness_ok: true` |
 
 MR-1 is the load-bearing one: an optimizer's self-assessment is no better than a coin
 flip, so pair the LLM judge with something it cannot talk its way around — an exit code, a
@@ -132,6 +133,32 @@ non-LLM evaluator in its routing chain. This matches the
 `harness-single-shot.yaml:check_semantic → check_invariants` pattern — a measurable
 external signal gates entry to the LLM judge. See
 [`loops/loop-composer-adaptive.yaml`](../../scripts/little_loops/loops/loop-composer-adaptive.yaml).
+
+**Review heuristic — retry reachability (not mechanized).** For each bounded-retry
+edge, ask: can the state it routes to actually repair every fault class that
+triggers it? This is real and worth checking manually, but the fault-class-to-state
+mapping is semantic and resists static analysis, so it stays a review heuristic
+rather than a lint (FEAT-3328). Three worked examples:
+
+- **BUG-3326's rejected alternative** — routing an `.evaluate:` fault from
+  `count_emit_retry` back to `attach_evaluators` looks reachable but blames the
+  wrong state and discards two passes; the fix belonged upstream, at the gate
+  that owns the fault.
+- **FEAT-3332's containment gate** (split from BUG-3327) — a scope violation
+  routed to `capture_intent` is *structurally* unrepairable (the out-of-scope
+  file is already written), and the edge is unbounded, so the loop wedges until
+  `max_steps`. "Can this state repair this fault?" catches it; no static rule does.
+- **BUG-3326's operator-check predicate** — the *inverse* case, and the one
+  **gate-completeness** (above) is itself most likely to cause. An intermediate
+  gate written slightly *stricter* than the terminal validator (`'operator' in ev`
+  vs `operator is not None`) rejects artifacts the terminal gate accepts, and an
+  unbounded `on_no` edge back to the generator wedges the loop on a non-defect.
+  The heuristic's second question follows from the first: not only "can this state
+  repair this fault?" but "is this fault real — does the terminal gate agree?"
+  Importing a table (gate-completeness) stops an intermediate gate from checking
+  *less* than the terminal validator; it does nothing to stop one from checking
+  *more*. A subset gate laundering defects and a superset gate wedging on
+  non-defects are the two failure modes of the same move.
 
 ---
 
