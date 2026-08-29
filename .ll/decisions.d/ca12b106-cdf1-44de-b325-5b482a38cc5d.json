@@ -1,0 +1,12 @@
+{
+  "id": "31c3ae03-a5b0-419f-a90a-b815a909ac91",
+  "type": "decision",
+  "timestamp": "2026-08-29T17:56:57Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the status-agnostic single-ID resolution convention already used by every other cli/issues/*.py command with an id-filter branch (check_flag.py, check_design.py, check_verify_verdict.py, and a dozen others), composing existing tested primitives (resolve_issue_path, IssueParser.parse_file) rather than adding a new status-filter code path.",
+  "rule": "Option A \u2014 resolve refine-status's id-filter branch via resolve_issue_path()/_resolve_issue_id() + IssueParser.parse_file(), bypassing find_issues()'s active-only default for that branch",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: keep the id-filter branch on find_issues() but pass an explicit status_filter (mirroring find_issues_for_graph()'s precedent) only when issue_id_filter is set \u2014 smaller diff but leaves the branch's lookup/error-reporting semantics diverging from sibling commands.",
+  "issue": "BUG-3357"
+}

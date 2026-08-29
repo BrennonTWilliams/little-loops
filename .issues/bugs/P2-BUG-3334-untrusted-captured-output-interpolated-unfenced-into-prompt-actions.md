@@ -426,7 +426,7 @@ restate them._
    correctly wired into `dispatch`'s outgoing transitions — checked by the
    interpolation no longer appearing in `review`'s action, by `dispatch`'s
    three transition targets no longer pointing at `review` (Acceptance
-   Criteria item 4's remediation-pass addition — `ll-loop validate` alone does
+   Criteria item 11 — `ll-loop validate` alone does
    not catch a mis-wiring here, see Program Design), and by the new state using
    the combined `:shell:default=` suffix rather than bare `:shell` (Program
    Design → "FSM wiring facts").
@@ -461,6 +461,16 @@ restate them._
 7. `python -m pytest scripts/tests/` and `ll-loop validate` on every modified
    loop YAML both pass, with no new failures beyond this issue's own pre-existing
    baseline exceptions — checked by Acceptance Criteria items 8 and 10.
+
+### Wiring Phase (added by `/ll:wire-issue` — 2026-08-29)
+
+_This touchpoint was identified by wiring analysis and must be included in the
+implementation:_
+
+- Update `skills/create-loop/loop-types.md` (lines 2053-2062) — the `dispatch`
+  state reference snippet's `on_yes`/`on_no`/`on_error: review` no longer
+  matches `loop-router.yaml` once step 2 repoints those transitions to the new
+  intermediate shell state (see Integration Map → Documentation).
 
 ## Acceptance Criteria
 
@@ -545,6 +555,19 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       substring — so a doc/docstring edit made without the other, or skipped
       entirely, fails the suite instead of passing silently.
 - [ ] Full suite (`python -m pytest scripts/tests/`) shows no new failures.
+- [ ] `dispatch`'s three outgoing transitions (`on_yes`/`on_no`/`on_error`,
+      `loop-router.yaml:426-428`) are repointed from `review` to the new
+      intermediate shell state (Program Design → "FSM wiring facts"), not left
+      pointing at `review` — a mis-wiring `ll-loop validate` cannot catch on
+      its own (its unreachable-state check is `ValidationSeverity.WARNING`-only;
+      see Program Design → Codebase Research Findings and this section's own
+      "AC7" finding below). `scripts/tests/test_loop_router.py`'s
+      `TestLoopRouterStructure::test_dispatch_uses_native_loop_field`
+      (lines 202-211), which currently hard-asserts all three transition
+      targets equal `"review"`, is updated to assert they equal the new
+      state's name instead — this is an existing, currently-passing test this
+      issue's own fix would otherwise silently break, not new test
+      infrastructure to add from scratch.
 
 ### Codebase Research Findings
 
@@ -554,6 +577,7 @@ Remediation pass, 2026-08-29 — a concrete regression Acceptance Criteria item 
 
 - **AC4's fix breaks `TestUntrustedOutputSurvey::test_completeness_guard` as currently written.** That test (`scripts/tests/test_builtin_loops.py:19194-19203`) asserts exact set equality: `discovered == UNTRUSTED_OUTPUT_SITES - KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (`:19199-19203`). `UNTRUSTED_OUTPUT_SITES` (opens `:19098`) hardcodes the tuple `("loop-router.yaml", "review", "${captured.sub_loop_output.output}")` at `:19099`, and `_discover_untrusted_output_sites()` (`:19151`) finds that tuple only by regex-matching the literal interpolation string inside `review`'s `action:` text — confirmed still present today at `loop-router.yaml:452`. AC4 as written deletes that interpolation from `review`'s action (replaced by a static path reference), so after the fix the mechanical scan will no longer discover that tuple, `discovered` becomes a strict subset of the still-hardcoded `expected`, and `test_completeness_guard` fails on `expected-but-missing`. Implementing AC4 therefore requires also removing (or otherwise reconciling) the `("loop-router.yaml", "review", "${captured.sub_loop_output.output}")` entry from `UNTRUSTED_OUTPUT_SITES` in the same change — this is not covered by any existing AC or Files-to-Modify entry, and is distinct from the `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES` question AC4's own superseded annotation already resolves (that set is for sites the guard *would* find but is told to exempt; this tuple is a site the guard will no longer find at all once the interpolation is gone, which the equality assertion cannot tolerate either way).
 - **AC7's `ll-loop validate` check does not cover the dispatch-repoint regression this issue's own Program Design section names as the primary risk of the `review`-state change.** Program Design → Codebase Research Findings ("FSM wiring facts") establishes that inserting the new intermediate shell state requires repointing all three of `dispatch`'s transitions (`on_yes`/`on_no`/`on_error`, `loop-router.yaml:426-428`) away from `review`, and warns that leaving even one pointed at `review` bypasses the new state at runtime. The same section's remediation-pass addition establishes that `ll-loop validate`'s unreachable-state check is `ValidationSeverity.WARNING`-only (`structural_rules.py:1123`) and that both `load_and_validate()` and the CLI's `cmd_validate` gate pass/fail on ERROR severity only — so a mis-wiring leaving `dispatch` pointed at `review` still validates clean. AC7 as written ("`ll-loop validate` passes on every modified loop YAML") is satisfied by exactly the regression it exists to catch. Closing this gap needs a test asserting `dispatch`'s three transition targets are not `review` after the change (or equivalently, that they equal the new state's name) — a structural assertion over the loaded loop YAML, not a `ll-loop validate` run.
+  > **RESOLVED** — remediation pass, 2026-08-29: closed by Acceptance Criteria item 11 above, which requires the repoint and requires updating the existing (currently-passing) `test_loop_router.py::test_dispatch_uses_native_loop_field` assertions rather than adding untracked new test infrastructure. See also Files to Modify / Dependent Files / Tests for the `test_loop_router.py` wiring this required.
 
 ## Scope
 
@@ -850,6 +874,16 @@ in place, is additive and carries no parity row._
 ### Files to Modify
 - `scripts/little_loops/loops/loop-router.yaml` — `review` (lines 411-437): ~~fence `${captured.chosen.output}` (line 428) and `${captured.sub_loop_output.output}` (lines 430-431)~~ — **corrected 2026-08-28 to match Scope and the Open Question 2 resolution:** `chosen` is exempt (dropped from tier A, joins `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`); `sub_loop_output` is **not fenced but removed from the prompt entirely** — add a shell state writing it to `${context.run_dir}/sub-loop-events.jsonl` via `:shell` env-var binding and have `review` reference the path; `propose_new_loop` (lines 452-478): fence `${captured.catalog.output}` (line ~469, tier-C, listed not scheduled)
   > ⚠ Superseded — line ranges stale (remediation pass, 2026-08-29). Confirmed current tree: `review` opens `:432`, its body runs `:432-467` (not 411-437); `CHOSEN LOOP` interpolation `:449`; `SUB-LOOP EVENT STREAM` interpolation `:452` (not 430-431); `dispatch`'s `capture: sub_loop_output` is `:425`. `propose_new_loop` opens `:473` (not 452-478); its `${captured.catalog.output}` interpolation is `:490` (not ~469). See Program Design → Codebase Research Findings for the required FSM-wiring detail (new-state insertion, `dispatch`'s three transitions to repoint) this bullet does not itself specify.
+- `scripts/tests/test_loop_router.py` — _added remediation pass, 2026-08-29,
+  closing a completeness gap no prior pass caught (see Acceptance Criteria
+  item 11)._ `TestLoopRouterStructure::test_dispatch_uses_native_loop_field`
+  (lines 202-211) currently asserts `dispatch`'s `on_yes`/`on_no`/`on_error`
+  all equal `"review"` and is passing on the current tree. Once
+  `dispatch`'s three transitions are repointed to the new intermediate shell
+  state (Files to Modify's `loop-router.yaml` entry above, Program Design →
+  "FSM wiring facts"), this is an existing regression test that fails, not
+  new test infrastructure — update its three assertions to the new state's
+  name.
 - `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474)
 - `scripts/little_loops/loops/loop-composer-adaptive.yaml` — `review_chain` (lines 680-709): fence `${captured.step_results_json.output}` (lines 700-701)
 - `scripts/little_loops/fsm/fence.py` — ~~extend `FENCE_ROLES` with new `(loop_file, state_name)` entries for the untrusted-output sites; decide whether the untrusted-output clause (Expected Behavior) joins `FENCE_CORE` or a new `FENCE_CORE_UNTRUSTED_OUTPUT` sibling constant (Open Questions)~~ — **corrected by review pass, 2026-08-27.** `FENCE_ROLES` **cannot** be extended for the three primary sites: `loop-router.yaml::review` (`fence.py:118`), `loop-composer.yaml::review_chain` (`:101`), and `loop-composer-adaptive.yaml::review_chain` (`:113`) are already keys in it, and each needs a *second* fence. The actual work is:
@@ -873,6 +907,7 @@ _Added 2026-08-28 (was declared in scope by the restated Decision Rule but missi
 - `scripts/little_loops/loops/eval-driven-development.yaml` — fence `${captured.run_harness.output}` in `diagnose` (`action_type: prompt`, ~line 152) — the hand-classified shell-capture tier-A site
 
 ### Dependent Files (Callers/Importers)
+- `scripts/tests/test_loop_router.py::TestLoopRouterStructure::test_dispatch_uses_native_loop_field` (lines 202-211) — loads `loop-router.yaml` and hard-asserts `dispatch`'s `on_yes`/`on_no`/`on_error` all equal `"review"`; this issue's own dispatch-repoint fix (Files to Modify, Acceptance Criteria item 11) breaks this assertion, so it is a dependent that must be updated, not merely left passing incidentally
 - `scripts/tests/test_builtin_loops.py::TestBriefFencing` (lines 18611-18701) — imports `FENCE_CORE`, `FENCE_ROLES`, `FENCED_BRIEF_SITES`, `KNOWN_UNFENCED_PROMPT_SITES`, `render_fence`, `normalize_fence_text` from `fence.py`; the `test_completeness_guard` test (line 18666) independently discovers every `action_type: prompt` state referencing a loop's input var and will need its discovery predicate extended (or a parallel guard added) to cover `${captured.*.output}` vars, or new fenced sites will silently fall outside both `FENCED_BRIEF_SITES` and `KNOWN_UNFENCED_PROMPT_SITES` with no test catching the gap
 - `scripts/little_loops/fsm/interpolation.py` (`interpolate()`, `InterpolationContext.resolve()`) — the runtime resolver for `${captured.*.output}`; not modified by this fix (fencing is authoring-time hand-pasted text, not a runtime wrapping capability — see Root Cause), but is the reason no length bound or escaping exists today
 - `scripts/little_loops/fsm/executor.py:1046-1053` — populates `self.captured[state.capture]["output"]` with the unbounded, newline-joined sub-loop event stream this issue's fencing wraps
@@ -883,6 +918,7 @@ _Added 2026-08-28 (was declared in scope by the restated Decision Rule but missi
 - Truncation lengths are local per-site literals, never a shared named constant — evidence: `loop-router.yaml:68` (200 chars), `loop-composer.yaml:329` (500 chars), `loop-composer.yaml:148` (120 chars)
 
 ### Tests
+- `scripts/tests/test_loop_router.py::TestLoopRouterStructure::test_dispatch_uses_native_loop_field` (lines 202-211) — currently-passing test asserting `dispatch`'s `on_yes`/`on_no`/`on_error` all equal `"review"`; must be updated to assert the new intermediate shell state's name once `dispatch` is repointed (Acceptance Criteria item 11), or this fix breaks an existing regression test
 - `scripts/tests/test_builtin_loops.py::TestBriefFencing` — the only existing test class covering fence presence/placement; new untrusted-output fence sites need parametrized entries here (or a sibling `TestUntrustedOutputFencing` class) following the same three-property pattern
 - No existing test covers `${captured.*.output}` fencing at any site — confirmed 0 hits for `<<<` markers co-occurring with `captured\.` in any loop YAML
 
@@ -902,6 +938,9 @@ _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
 
 _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (§ "Fencing a User-Authored Brief/Goal", ~lines 641-722) — the section's three-class taxonomy (class 1 instruction surface / class 2 code literal / class 3 display text) does not have a slot for this issue's shape (untrusted sub-loop/model output framed as a record, not a brief); its closing line naming "the 13 sites in `FENCE_ROLES`" goes stale once this issue adds entries; and if Open Question 1 resolves toward folding the untrusted-output clause into `FENCE_CORE` itself (rather than a sibling constant), the section's claim that `FENCE_CORE` is byte-identical across all sites needs re-verification for the 13 existing sites too, not just the new ones. `fence.py`'s own module docstring (lines 15-18) names this guide section as a canonical consumer that must track `fence.py`, establishing the update obligation runs from code to doc.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-29:_
+- `skills/create-loop/loop-types.md` (§ "Orch Router Questions" → "Orch Router YAML Generation", lines 2053-2062) — reproduces `loop-router.yaml`'s `dispatch` state verbatim as the reference snippet for users cloning `loop-router` to author a similar router loop (`capture: sub_loop_output` at :2058, `on_yes: review` / `on_no: review` / `on_error: review` at :2059-2061). This issue's Acceptance Criteria item 11 repoints all three of `dispatch`'s transitions from `review` to the new intermediate shell state (Program Design → "FSM wiring facts"), which this snippet does not reflect — confirmed via `grep -n "on_yes: review"` across `skills/`/`docs/`/`commands/`, the only hit. Not previously listed under Documentation; found by tracing callers of `sub_loop_output`/`review_chain` beyond the loop YAMLs and tests already cited.
 
 ## Program Design
 
@@ -1271,6 +1310,8 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue also adds substantial new test content to `scripts/tests/test_builtin_loops.py` (a `TestUntrustedOutputFencing` class), the same file ENH-3347 extends with four behavioral injection/quote-breaking cases. No blocked_by/blocks edge exists between them (unlike the existing ENH-3342/ENH-3347 coordination note for the same file) — each owns disjoint test classes; coordinate landing order to avoid merge friction.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-29T17:52:40 - `b49cfdc1-e799-4d98-aa39-ef2212184ad7.jsonl`
+- `/ll:refine-issue` - 2026-08-29T17:46:39 - `b49cfdc1-e799-4d98-aa39-ef2212184ad7.jsonl`
 - `/ll:confidence-check` - 2026-08-29T17:25:40 - `c3e9e317-4789-4436-bd68-830408d594dc.jsonl`
 - `/ll:refine-issue` - 2026-08-29T17:12:19 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
 - `/ll:confidence-check` - 2026-08-29T17:03:17 - `349c7330-13ab-43c2-bdc2-9bd5e349f81e.jsonl`

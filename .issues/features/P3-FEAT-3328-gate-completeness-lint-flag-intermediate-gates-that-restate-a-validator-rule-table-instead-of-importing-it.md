@@ -11,11 +11,11 @@ captured_at: '2026-08-26T17:33:30Z'
 relates_to:
 - ENH-3355
 parent: EPIC-2087
-confidence_score: 95
-outcome_confidence: 82
+confidence_score: 100
+outcome_confidence: 89
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -675,6 +675,15 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 - **Insertion-point claim corrected**: the Wiring Phase's "immediately after `errors.extend(_validate_missing_scope(fsm))`, before `errors.extend(_validate_bash_default_interpolation(fsm))`" is not literal adjacency. Current sequence in `structural_rules.py` (`validate_fsm()`, calls at lines 1139-1155): `_validate_meta_loop_evaluation` (1139) → `_validate_input_key_without_guard` (1141) → `_validate_missing_scope` (1143) → `_validate_artifact_isolation` (1145) → `_validate_harness_multimodal_evaluator_blind_spot` (1147) → `_validate_partial_route_dead_end` (1149) → `_validate_artifact_overwrite` (1151) → `_validate_generator_fix_discipline` (1153) → `_validate_bash_default_interpolation` (1155). Five other rule calls sit between the two named anchors. The new call can go anywhere in this MR block (1139-1155) — precise adjacency to `_validate_missing_scope` is not required or accurate as stated.
 - **`--json` vs plain-text warning exposure are two separate code paths, not one shared line.** `load_and_validate()` (`structural_rules.py:1736-1850`) branches on `raise_on_error`: when `False` (the `--json` case), it returns `error_list + all_warnings` at line 1840 *before* ever reaching the `logger.warning(...)` calls at lines 1847-1848 — those lines are plain-text-only. The `--json` path is wired instead through `cmd_validate()` in `scripts/little_loops/cli/loop/config_cmds.py` (starts line 14): `as_json = getattr(args, "json", False)` (line 24) sets `raise_on_error=not as_json` (line 35), and the returned violations are serialized via `print_json(...)` (~line 69-74). Both paths do expose WARNING-severity `ValidationError`s end-to-end with no new plumbing needed — the existing finding's conclusion holds — but citing `structural_rules.py:1848` as covering both paths is inaccurate; the `--json` path's actual site is `cmd_validate()` in `config_cmds.py`.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Correction**: `docs/reference/CLI.md` (lines 862-885) and `docs/reference/API.md` (lines 6406-6419, 5558-5574) already fully enumerate MR-1 through MR-14 with their suppression flags — both are current, not stale, contradicting the earlier Documentation note that both were "already stale ... missing several already-shipped unnumbered rules". The "optional, not required" call for updating these two files can stand, but not on an "inconsistent precedent" rationale — if strict parity is wanted, adding the new rule there is a straightforward addition to an already-current table, not a catch-up fix.
+- A sibling rule-family module, `scripts/little_loops/fsm/validation/evaluator_rules.py`, exists and is not referenced anywhere in this issue's Integration Map or Similar Patterns. It houses MR-8/10/12/13 and other rules (`_validate_terminal_action_ok`, `_validate_parse_swallow`, `_validate_abandonment_verdict`, `_validate_pruning_profile`, `_validate_tamper_guard`, `_validate_prepatch_check`, `_validate_llm_evidence_contract`, `_validate_haiku_pinned_generator`, `_validate_session_mode_evaluator_inheritance`, `_validate_classify_route_default`). Its MR-13 detector (`_HARDCODE_VERDICT_SUCCESS_RE`) is the closest sibling precedent for "scan a `python3` shell body for a literal instead of an import", though it targets a single verdict string rather than a rule-table collection — `_validate_artifact_isolation` (MR-3), already cited, remains the closer structural match.
+- Confirmed no existing rule anywhere in `fsm/validation` regex-matches a Python `import` statement (searched unfiltered for `import\s*\(` and equivalents — zero hits in any `.py` rule file). AC #1's `_IMPORT_BLOCK_RE` sketch is genuinely novel; there is no existing in-repo pattern to adapt for it.
+- The escape-hatch flag convention is five touchpoints, not four as currently tallied: `KNOWN_TOP_LEVEL_KEYS` (`_base.py`) + `FSMLoop` field + `to_dict` + `from_dict` (`schema.py`, three sites) + the rule function's own `if fsm.<flag>: return []` guard clause (confirmed via `abstention_route_ok` at `structural_rules.py:1577`, and `partial_route_ok` at `meta_rules.py:235` and independently at `evaluator_rules.py:616`). The guard is already implied by the Proposed Solution's detection sketch ("Skip entirely if fsm.gate_completeness_ok") but was never counted as a distinct site in the "four total sites" tally.
+- Confirmed `errors.extend(...)` call position inside `validate_fsm()`'s MR block is inert for correctness beyond same-severity ordering: `load_and_validate()` (`structural_rules.py:1836-1838`) buckets the flat `errors` list into `error_list` (severity==ERROR) and `all_warnings` (severity==WARNING) downstream, always placing all ERRORs before all WARNINGs in the final `--json` output regardless of `errors.extend(...)` call order. This corroborates the existing "the new call can go anywhere in this MR block" finding with the actual mechanism.
+- New edge case for CLI-level test design: the plain-text `ll-loop validate` path suppresses **all** WARNINGs whenever the loop also has any ERROR-severity violation — `load_and_validate()` raises `ValueError` from `error_list` alone (`structural_rules.py` ~line 1843-1845) before ever reaching the `logger.warning(...)` loop. A CLI-level plain-text test for the new rule's WARNING (mirroring `test_validate_no_json_warns_mr13_hardcoded_success_verdict`) must use a fixture loop with zero ERROR-severity violations, or the warning will not appear in that output. The `--json` path is unaffected (returns `error_list + all_warnings` unconditionally).
+
 ## Program Design
 
 ### Types
@@ -884,6 +893,9 @@ Source: `postmortems/workflow-generator-output-json-gate-gap.md` §6.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T17:56:13 - `8447b8ae-6392-4778-9269-a7326a6ec15e.jsonl`
+- `/ll:refine-issue` - 2026-08-29T17:52:27 - `b49cfdc1-e799-4d98-aa39-ef2212184ad7.jsonl`
+- `/ll:refine-issue` - 2026-08-29T17:52:13 - `b49cfdc1-e799-4d98-aa39-ef2212184ad7.jsonl`
 - `/ll:wire-issue` - 2026-08-27T15:27:35 - `2ab74eb6-4b00-4645-8ae0-d69b8041979f.jsonl`
 - `/ll:refine-issue` - 2026-08-27T15:14:46 - `a812da17-9f21-4c2c-ad6d-806ac51d6467.jsonl`
 - `/ll:refine-issue` - 2026-08-27T15:14:37 - `a812da17-9f21-4c2c-ad6d-806ac51d6467.jsonl`

@@ -60,7 +60,11 @@ pattern FEAT-3328's Summary describes.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-The fallback pattern this issue mandates for the generator command's redirect (`> "$DIR/evaluator-vocab.md" 2>/dev/null`, with a fallback write mirroring `baseline-ref.txt`'s `|| : > "$DIR/evaluator-vocab.md"`, per this section's redirect finding above) makes any generation-time failure (e.g. an import error inside the `python3 -c` body) produce a silently EMPTY `evaluator-vocab.md` — the exception itself is discarded by `2>/dev/null` and nothing else records that generation failed. This loop already has a diagnosability sink built for exactly this failure shape: `init` resets `.emit_errors.txt` at the top of its action (`scripts/little_loops/loops/workflow-generator.yaml:63`), and `emit_artifact`'s shell action tees its own command's failures into that same file, clearing it only on success (`scripts/little_loops/loops/workflow-generator.yaml:559,599-601`). Nothing in this issue routes the generator block's failure through `.emit_errors.txt` or any other diagnosable signal — as specified, a generation failure makes `attach_evaluators` run with zero evaluator-vocabulary guidance and no error trail anywhere in the run's artifacts, which is strictly less diagnosable than today's hand-listed prompt text (which can never be blank).
+The fallback pattern this issue mandates for the generator command's redirect (`> "$DIR/evaluator-vocab.md"`, with a fallback write mirroring `baseline-ref.txt`'s `|| : > "$DIR/evaluator-vocab.md"`, per this section's redirect finding above) makes any generation-time failure (e.g. an import error inside the `python3 -c` body) produce a silently EMPTY `evaluator-vocab.md` unless its stderr is captured somewhere diagnosable.
+
+**Correction (adversarial-review pass):** an earlier draft of this finding proposed routing that failure through this loop's existing `.emit_errors.txt` sink, attributing its write to `emit_artifact`. That attribution was wrong, and the reuse is unsafe. `init` does reset `.emit_errors.txt` at the top of its action (`scripts/little_loops/loops/workflow-generator.yaml:63`), but the file is written by the *next* state, `validate_artifact` — an `action_type: shell` state that tees `ll-loop validate`'s output into it and clears it only on success (`scripts/little_loops/loops/workflow-generator.yaml:598-601`). `emit_artifact` itself is `action_type: prompt` and has no shell action; it only *reads* `.emit_errors.txt` (`:559-561`, "If ... exists and is non-empty, read it first — treat it as the errors from your previous attempt [at emit_artifact] and fix every listed error"). `.emit_errors.txt` is therefore a single-purpose retry-communication channel between `validate_artifact` and `emit_artifact`, and the terminal `diagnose` state reads it under that same attribution (`:880-881`, "emit_artifact could not produce a workflow.yaml that passes ll-loop validate"). Reusing it for a generator-vocabulary failure — which happens in `init`, several states upstream of `emit_artifact` — would leave it non-empty from `init` through every intermediate state until `emit_artifact`'s first invocation, where the prompt would misread an unrelated vocab-generation traceback as its own prior-attempt error on an attempt that never happened, and `diagnose` would misdiagnose the run as an `emit_artifact` failure.
+
+The generator block's failure path must use a dedicated, collision-free signal instead: a new `.evaluator_vocab_errors.txt`, reset by `init` alongside its existing `.emit_errors.txt`/`.intent_errors.txt`/`.scope_violations.txt` resets (`:63-67`) and written only by the generator command's own stderr redirect — never touched by `emit_artifact` or `validate_artifact`. `attach_evaluators` and `diagnose` can then read it without any risk of cross-attribution with the emit/validate retry loop.
 
 ## Expected Behavior
 
@@ -68,16 +72,25 @@ The vocabulary the prompt presents is generated from the validator's own
 exported tables at run time, so it cannot drift. Per FEAT-3328's option (c)
 sketch:
 
-- `init` gains a `python3 -c` block that emits the vocabulary from the tables:
+- `init` gains a `python3 -c` block that emits the vocabulary from the tables.
+  This sketch reflects the resolved Decision Needed below (Option 2: curated
+  exclusion set) and emits BOTH the allowed-type table and the derived
+  "Do not use" exclusion list — not the allowed-type table alone:
 
   ```yaml
   # in init, alongside the existing mkdir/echo block
   python3 -c "
   from little_loops.fsm.validation import EVALUATOR_REQUIRED_FIELDS, NON_LLM_EVALUATOR_TYPES
-  for t in sorted(NON_LLM_EVALUATOR_TYPES):
+  EXCLUDED = {'open_question_stall', 'harbor_scorer'}
+  for t in sorted(NON_LLM_EVALUATOR_TYPES - EXCLUDED):
       req = EVALUATOR_REQUIRED_FIELDS[t]
       print(f'- {t} — ' + ('no companion fields' if not req else 'requires ' + ', '.join(req)))
-  " > "$DIR/evaluator-vocab.md"
+  print()
+  print('Do not use:')
+  for t in sorted(set(EVALUATOR_REQUIRED_FIELDS) - NON_LLM_EVALUATOR_TYPES):
+      print(f'- {t}')
+  " > "$DIR/evaluator-vocab.md" 2> "$DIR/.evaluator_vocab_errors.txt" \
+    || : > "$DIR/evaluator-vocab.md"
   ```
 
 - `attach_evaluators`'s prompt reads `evaluator-vocab.md` (via the run-dir
@@ -98,7 +111,7 @@ time.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-The sketch's `python3 -c "..." > "$DIR/evaluator-vocab.md"` redirect above only redirects stdout. `init`'s own header comment (`scripts/little_loops/loops/workflow-generator.yaml:54-55`) states the actual convention every other command in that block follows: "Every new command below redirects stdout to a file (or $(...)) and stderr to /dev/null so init's stdout stays exactly one line." Without a matching `2>/dev/null` on the new command, a Python exception at generation time (e.g. an import failure) leaks a traceback onto init's stderr — not its stdout-contract-violating stdout, but still a deviation from the documented per-command convention every other addition to this block follows. The real implementation's redirect must carry both `> "$DIR/evaluator-vocab.md" 2>/dev/null` (with a fallback write, mirroring how every existing command in this block degrades — e.g. `git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt" 2>/dev/null || : > "$DIR/baseline-ref.txt"`, same file, line 70), not stdout redirection alone.
+The sketch's `python3 -c "..." > "$DIR/evaluator-vocab.md"` redirect above only redirects stdout. `init`'s own header comment (`scripts/little_loops/loops/workflow-generator.yaml:54-55`) states the actual convention every other command in that block follows: "Every new command below redirects stdout to a file (or $(...)) and stderr to /dev/null so init's stdout stays exactly one line." That convention's load-bearing requirement is only that stderr never leaks onto init's own stdout (constraint (b): "init's stdout stays exactly one line") — it does not require discarding stderr to `/dev/null` specifically. Per the diagnosability finding in Current Behavior's Codebase Research Findings above, discarding it to `/dev/null` would make a generation-time failure silently invisible, so the real implementation instead redirects stderr to a dedicated file, `$DIR/.evaluator_vocab_errors.txt` (reset by `init` alongside its existing `.emit_errors.txt`/`.intent_errors.txt`/`.scope_violations.txt` resets), with a fallback write mirroring how every existing command in this block degrades — e.g. `git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt" 2>/dev/null || : > "$DIR/baseline-ref.txt"`, same file, line 70. This still satisfies the per-command convention (stdout stays exactly one line; stderr never reaches it) while keeping the failure diagnosable instead of discarding it.
 
 The vocabulary that must stop drifting is not only the allowed-type table — it is also the "Do not use" exclusion line, whose current omission of `advisor_consult` the Decision Needed section identifies as a live inaccuracy. That line is generatable from the same import with no new judgment call: `sorted(EVALUATOR_REQUIRED_FIELDS.keys() - NON_LLM_EVALUATOR_TYPES)` evaluates to exactly `advisor_consult`, `comparator`, `contract`, `llm_structured` today (verified against `scripts/little_loops/fsm/validation/_base.py:45-71`), because `NON_LLM_EVALUATOR_TYPES` is itself defined as that same set difference in reverse. The generator block's output must include this derived exclusion list alongside the allowed-type table, so the `advisor_consult` omission is closed by construction rather than needing a hand-fix that could drift again the same way the original list did.
 
@@ -234,8 +247,16 @@ construction."
 `EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES` and redirected using
 bash's own already-set `$DIR` var — the same variable the existing
 mkdir/echo block in `init` uses — never a raw `${context.run_dir}`
-interpolation inside the new Python body) -> `attach_evaluators` reads that
-file via `${captured.run_dir.output}/evaluator-vocab.md`.
+interpolation inside the new Python body), also resetting and redirecting
+the generator command's stderr to a new dedicated `.evaluator_vocab_errors.txt`
+(never `.emit_errors.txt` — see Current Behavior's Codebase Research
+Findings for why that file is reserved for the `validate_artifact`<->
+`emit_artifact` retry loop) -> `attach_evaluators` reads
+`evaluator-vocab.md` via `${captured.run_dir.output}/evaluator-vocab.md`.
+The terminal `diagnose` state's file-inspection list (`workflow-generator.yaml:874-878`)
+must also be extended to name `evaluator-vocab.md` and
+`.evaluator_vocab_errors.txt`, so a run that fails specifically because
+vocabulary generation failed leaves `diagnose` able to explain it.
 
 Constraint this corrects: every existing `action_type: prompt` state in this
 loop (`capture_intent`, `sketch_state_graph`, `attach_evaluators` itself,
@@ -266,10 +287,14 @@ established variable, not `${context.run_dir}`.
 
 ### Files to Modify
 - `scripts/little_loops/loops/workflow-generator.yaml` — `init` (generator
-  block writing `evaluator-vocab.md` into the run dir via bash's own
-  already-set `$DIR` var, per Program Design > Call Path) and
-  `attach_evaluators` (prompt reads the file via
-  `${captured.run_dir.output}/evaluator-vocab.md` instead of hand-listing)
+  block writing `evaluator-vocab.md` and, on failure, `.evaluator_vocab_errors.txt`
+  into the run dir via bash's own already-set `$DIR` var, per Program Design
+  > Call Path), `attach_evaluators` (prompt reads the file via
+  `${captured.run_dir.output}/evaluator-vocab.md` instead of hand-listing),
+  and `diagnose` (add `evaluator-vocab.md` and `.evaluator_vocab_errors.txt`
+  to its existing file-inspection list, `:874-878`, so a generator-vocabulary
+  failure is diagnosable at the terminal state, not just an unattributed
+  silent gap)
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop` — extend to
@@ -327,10 +352,11 @@ Correction to the wire-issue findings above: `_run_init` (line 18446), `test_xii
       edits land.
 - [ ] `init` gains a generator block that writes
       `${context.run_dir}/evaluator-vocab.md` derived from
-      `NON_LLM_EVALUATOR_TYPES` / `EVALUATOR_REQUIRED_FIELDS` (minus the
-      curated exclusions, if option 2 is chosen), respecting the `init`
-      stdout contract (write to a file; `case`/`echo` block stays last) and
-      escaping bash interpolation as `$${...}`.
+      `NON_LLM_EVALUATOR_TYPES` / `EVALUATOR_REQUIRED_FIELDS`, minus the
+      curated exclusion set `{open_question_stall, harbor_scorer}` per the
+      recorded Option 2 decision, respecting the `init` stdout contract
+      (write to a file; `case`/`echo` block stays last) and escaping bash
+      interpolation as `$${...}`.
 - [ ] `attach_evaluators`'s prompt reads the generated vocab file instead of
       hand-listing the type/required-field table, and its remaining prose
       guidance (prefer `output_contains`; `output_json` field warnings) stays
@@ -340,8 +366,11 @@ Correction to the wire-issue findings above: `_run_init` (line 18446), `test_xii
       `init` emits the vocab file under `${context.run_dir}/` (per-run
       artifact isolation, not bare `.loops/tmp/`).
 - [ ] A generator-block execution test runs the generator body and asserts
-      its output covers every member of `NON_LLM_EVALUATOR_TYPES` (option 1)
-      or every non-excluded member (option 2), per the recorded decision.
+      its output covers every member of `NON_LLM_EVALUATOR_TYPES -
+      {open_question_stall, harbor_scorer}` (the curated allowed set per the
+      recorded Option 2 decision) and also covers the derived "Do not use"
+      exclusion list (`advisor_consult`, `comparator`, `contract`,
+      `llm_structured`).
 - [ ] `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
       passes with no new violations.
 - [ ] If FEAT-3328's gate-completeness guide entry has landed, its
@@ -361,14 +390,22 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 - [ ] The generator block's failure path is diagnosable, not silent: on a
       generation-time failure (e.g. an import error in the `python3 -c`
-      body), the run surfaces that failure somewhere diagnosable — e.g. this
-      loop's existing `.emit_errors.txt` sink, reset by `init`
-      (`scripts/little_loops/loops/workflow-generator.yaml:63`) and already
-      used by `emit_artifact` for its own command failures (`:559,599-601`)
-      — rather than only falling back to a silently empty
-      `evaluator-vocab.md`; a test exercises the failure path and asserts a
-      diagnosable signal is left behind. See Current Behavior's Codebase
-      Research Findings for the concrete gap this closes.
+      body), the run surfaces that failure in a dedicated
+      `.evaluator_vocab_errors.txt` file, reset by `init` alongside its
+      existing `.emit_errors.txt`/`.intent_errors.txt`/`.scope_violations.txt`
+      resets and written only by the generator command's own stderr
+      redirect — never `.emit_errors.txt` itself, which is reserved for the
+      `validate_artifact`<->`emit_artifact` retry loop (see Current
+      Behavior's Codebase Research Findings for why reusing it would be
+      unsafe) — rather than only falling back to a silently empty
+      `evaluator-vocab.md`; a test exercises the failure path and asserts
+      `.evaluator_vocab_errors.txt` is left non-empty.
+- [ ] `diagnose`'s file-inspection list
+      (`scripts/little_loops/loops/workflow-generator.yaml:874-878`) is
+      extended to name `evaluator-vocab.md` and
+      `.evaluator_vocab_errors.txt`, so a generation-time failure is visible
+      to the loop's own terminal failure-triage state, not just written to a
+      file nothing reads.
 - [ ] The concrete check for the third bullet's "stays coherent with the
       generated list" prose-guidance half: `attach_evaluators`'s action
       string still contains the `output_contains` preference sentence
