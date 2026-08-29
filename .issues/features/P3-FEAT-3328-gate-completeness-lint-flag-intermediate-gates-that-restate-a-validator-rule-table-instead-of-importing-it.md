@@ -57,8 +57,7 @@ downstream at `validate_artifact` instead.
 ## Expected Behavior
 
 `fsm/validation` gains a meta-rule (alongside MR-1..MR-6 in
-`scripts/little_loops/fsm/validation/meta_rules.py`) that, for a loop whose
-terminal gate is a little-loops validator, flags any intermediate
+`scripts/little_loops/fsm/validation/meta_rules.py`) that flags any
 `action_type: shell` state whose action contains `python3` and hardcodes a
 literal set/frozenset of values that is a subset of a known exported table's
 keys (e.g. a literal evaluator-type set instead of importing
@@ -68,6 +67,19 @@ keys (e.g. a literal evaluator-type set instead of importing
 `warning` — a restatement can be a
 deliberate, narrower curated vocabulary — suppressible via a
 `gate_completeness_ok` top-level flag (see Escape hatch below).
+
+### Scoping — resolved: unconditional, no terminal-gate precondition
+
+Earlier drafts (and the Proposed Rule section) framed the rule as applying
+"for a loop whose terminal gate is a little-loops validator," while AC #1 and
+the detection sketch apply it unconditionally to every `shell` state
+containing `python3`. Nothing anywhere defined how to detect "terminal gate
+is a validator," so the qualifier was an unimplementable precondition.
+**Resolved: the rule is unconditional.** A restated table is drift regardless
+of what the terminal gate is; the ≥3-member / no-outside-members floor
+(AC #1) already does the noise suppression the qualifier was gesturing at.
+The terminal-gate framing survives only as motivation prose, never as a
+detection condition.
 
 ### Escape hatch — resolved
 
@@ -183,6 +195,22 @@ happened once.
    choosing a different bracket. Note the existing 2-member `('done', 'failed')`
    tuples stay below the floor and remain unflagged.
 
+   **Exclude call syntax from the paren class.** A regex for "parenthesized
+   string literals" also matches **function calls** with ≥3 string-literal
+   arguments — `print("operator", "target", "path")`,
+   `check("eq", "ne", "lt")` — which are not collection displays. Require
+   that the opening `(` not be immediately preceded by an identifier
+   character or closing bracket: `(?<![\w)\]])\(`. Tuple displays still
+   match (`in ('a', 'b', 'c')` — the `(` follows a space), calls do not.
+   `frozenset({...})` is still caught via its inner brace display. Add a
+   negative test: a call with 3 table-member string args is not flagged.
+
+   **Displays may span lines.** A restated ≥3-member table is plausibly
+   written one member per line with trailing commas. The display regex must
+   tolerate newlines and a trailing comma inside the brackets — the same
+   single-line-only failure mode AC #1's import-region pattern already
+   guards against. Add a positive test with a multi-line literal.
+
    **Linted tables.** All are exported from
    `scripts/little_loops/fsm/validation/__init__.py`:
    - `EVALUATOR_REQUIRED_FIELDS` (**keys** — the evaluator *type* names:
@@ -207,10 +235,10 @@ happened once.
      new rule and makes the three linted tables uniform. Grep first: it is
      re-exported from `fsm/validation/__init__.py:51,168`, so confirm no caller
      mutates it (none should — it is a vocabulary constant).
-   - `VALID_VISIBILITY` (`_base.py:78`) — optional; three members total
-     (`public`, `internal`, `example`), so any subset meeting the ≥3 floor is
-     the *entire* table, which makes it a high-signal, zero-ambiguity case.
-     Include unless it proves noisy.
+   - `VALID_VISIBILITY` (`_base.py:78`) — **included** (hedge dropped: with
+     the call-syntax exclusion in AC #1b, the noise concern is gone). Three
+     members total (`public`, `internal`, `example`), so any subset meeting
+     the ≥3 floor is the *entire* table — a high-signal, zero-ambiguity case.
 
 1c. **Keys vs. values — the required-field table must be linted on both.**
    Earlier drafts listed only `EVALUATOR_REQUIRED_FIELDS.keys()` among the
@@ -290,9 +318,19 @@ happened once.
    would force four renumbering touchpoints — including the section heading
    (which drives the GFM anchor) and `.claude/CLAUDE.md`'s prose *and* link to
    `#the-design-rules-mr-1mr-14` — for no analytic benefit.
-5. The rule's known coverage limit is documented alongside it: it inspects
-   `shell` actions only, so a rule table restated in **prose inside a `prompt`
-   action** is not detected. See Known coverage gap below.
+5. The rule's known coverage limits are documented alongside it (both in the
+   rule docstring and the guide entry):
+   - it inspects `shell` actions only, so a rule table restated in **prose
+     inside a `prompt` action** is not detected (see Known coverage gap
+     below);
+   - a **dict-display restatement** — the likeliest *full* copy of
+     `EVALUATOR_REQUIRED_FIELDS`, e.g. `{"exit_code": [], "output_json":
+     ["path", "operator", "target"], ...}` — is not matched as a dict (the
+     string-collection regex has no dict form); it is caught only
+     *indirectly*, via any ≥3-member nested value list. Accepted
+     deliberately: mechanizing dict parsing re-opens the embedded-body
+     parsing problem the Detection section closed. Documenting both gaps
+     keeps AC #3's "zero violations" from being over-read.
 
 ## Motivation
 
@@ -316,7 +354,9 @@ the existing `_validate_*` MR functions there (e.g.
 # Skip entirely if fsm.gate_completeness_ok
 # For each state with action_type == "shell" whose action contains "python3":
 #   find literal collection displays — {...}, [...], and (...) of string
-#   literals, single- or double-quoted — by regex over the raw action string
+#   literals, single- or double-quoted, possibly spanning lines — by regex
+#   over the raw action string; the ( case uses a lookbehind (?<![\w)\]])
+#   so function calls with string args don't match (AC #1b)
 #   (AC #1b: sets alone would miss the list/tuple shapes actually used)
 #   for each literal:
 #     if len(members) < 3: skip
@@ -377,7 +417,10 @@ copy of the `EVALUATOR_REQUIRED_FIELDS` table:
 ```
 
 That table drifts silently the moment `EVALUATOR_REQUIRED_FIELDS` changes, and
-a shell-only lint will never see it. This matters for AC #3: "zero violations
+a shell-only lint will never see it. (A second, smaller gap — a full
+dict-display restatement of `EVALUATOR_REQUIRED_FIELDS` inside a shell gate is
+caught only via its ≥3-member nested value lists, not as a dict — is
+documented in AC #5.) This matters for AC #3: "zero violations
 post-fix" is true, but it is true partly because the surviving restatement
 lives where the rule does not look — not because the loop stopped restating.
 (Note: the `attach_evaluators` citation above refreshed to `:409-465` after
@@ -540,6 +583,12 @@ _Wiring pass added by `/ll:wire-issue`:_
     each names the correct table in its message. This pair is what pins the
     keys/values distinction; a keys-only implementation passes the first and
     fails the second.
+  - **call-syntax exclusion** (AC #1b): a function call with ≥3 table-member
+    string args (`check("eq", "ne", "lt")`) is **not** flagged — pins the
+    `(?<![\w)\]])` lookbehind.
+  - **multi-line display** (AC #1b): a ≥3-member restatement written one
+    member per line with a trailing comma is flagged — pins
+    newline-tolerance inside the brackets.
   - **below-floor tuple stays clean**: the in-repo `('done', 'failed')` literal
     (`workflow-generator.yaml:486`, `validate_evaluators` state) is **not** flagged — the 2-member case that
     keeps AC #3 at zero violations once lists and tuples are in scope.
@@ -800,16 +849,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Proposed Rule
 
-**gate-completeness** (unnumbered named rule, per AC #4). For a loop whose
-terminal gate is a little-loops validator, flag any intermediate `shell` gate that
-hardcodes a literal set of values which the validator exposes as an importable
-table — e.g. a literal evaluator-type set instead of `NON_LLM_EVALUATOR_TYPES`, or
+**gate-completeness** (unnumbered named rule, per AC #4). Flag any `shell`
+gate that hardcodes a literal set of values which a little-loops validator
+exposes as an importable table — e.g. a literal evaluator-type set instead of `NON_LLM_EVALUATOR_TYPES`, or
 literal required-field lists instead of `EVALUATOR_REQUIRED_FIELDS`. Where the
 terminal gate exposes its rules as data, import rather than restate.
 
 Detection: in `fsm/validation`, for each `action_type: shell` state whose action
-contains `python3`, look for a literal collection display — set, frozenset,
-list, or tuple of string literals — of **≥3 members, all of them**
+contains `python3` (unconditionally — no terminal-gate precondition, see
+Scoping above), look for a literal collection display — set, frozenset,
+list, or tuple of string literals; possibly multi-line; a `(` preceded by an
+identifier character is call syntax, not a display (AC #1b) — of
+**≥3 members, all of them**
 members of a known exported table (`EVALUATOR_REQUIRED_FIELDS` **keys**,
 `EVALUATOR_REQUIRED_FIELDS` **flattened values**, `NON_LLM_EVALUATOR_TYPES`,
 `VALID_OPERATORS`, optionally `VALID_VISIBILITY`), in
