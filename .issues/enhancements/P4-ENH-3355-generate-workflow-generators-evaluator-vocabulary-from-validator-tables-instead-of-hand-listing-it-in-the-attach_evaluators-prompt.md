@@ -17,7 +17,7 @@ relates_to:
 - FEAT-3328
 confidence_score: 95
 outcome_confidence: 78
-decision_needed: true
+decision_needed: false
 score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 10
@@ -176,16 +176,18 @@ the required-field prose from the shared table, closing the `advisor_consult`
 | Option 2 (curated exclusion) | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
 
 **Key evidence**:
-- Option 1: Matches `NON_LLM_EVALUATOR_TYPES` and `validate_evaluators`
-  exactly with the simplest possible generator body (`sorted(NON_LLM_EVALUATOR_TYPES)`,
-  no exclusion literal), but reintroduces two types (`open_question_stall`,
-  `harbor_scorer`) whose evaluators expect pipeline output the generator does
-  not produce (`fsm/evaluators.py:736-770,1008`) — structurally valid,
-  functionally broken if selected.
-- Option 2: One extra set-difference literal over Option 1, but preserves the
-  vocabulary boundary the current hand-list already enforces (10 types) and
-  avoids the same functional landmine, while still closing the
-  `advisor_consult` exclusion-line gap via the shared table.
+- Accept-the-widening (Option 1): matches `NON_LLM_EVALUATOR_TYPES` and
+  `validate_evaluators` exactly with the simplest possible generator body
+  (`sorted(NON_LLM_EVALUATOR_TYPES)`, no exclusion literal), but reintroduces
+  two types (`open_question_stall`, `harbor_scorer`) whose evaluators expect
+  pipeline output the generator does not produce
+  (`fsm/evaluators.py:736-770,1008`) — structurally valid, functionally
+  broken if selected.
+- Curated-exclusion (Option 2): one extra set-difference literal over the
+  widening approach, but preserves the vocabulary boundary the current
+  hand-list already enforces (10 types) and avoids the same functional
+  landmine, while still closing the `advisor_consult` exclusion-line gap via
+  the shared table.
 
 ## Program Design
 
@@ -356,6 +358,7 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-29T16:53:52 - `349c7330-13ab-43c2-bdc2-9bd5e349f81e.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:48:50 - `1a3ef653-fb3c-418b-9f59-cf436fe3c24c.jsonl`
 - `/ll:verify-issues` - 2026-08-29T16:44:28 - `8cef6ec1-5cb0-4cb4-8f7b-ed8c1bc53873.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:39:19 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`

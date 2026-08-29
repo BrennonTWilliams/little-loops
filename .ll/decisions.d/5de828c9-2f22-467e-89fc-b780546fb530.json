@@ -1,0 +1,12 @@
+{
+  "id": "8f8032c5-e7c2-43cc-9c81-9ac0c6631caf",
+  "type": "decision",
+  "timestamp": "2026-08-29T16:53:32Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Both types pass validate_evaluators structurally (no required companion fields) but require pipeline infrastructure (a maintained open-question-count history file; an actual Harbor benchmark scorer) that a generically-sketched state never produces, so widening to all 12 members of NON_LLM_EVALUATOR_TYPES would offer two types that are structurally valid but functionally broken if selected.",
+  "rule": "Curated exclusion set \u2014 exclude open_question_stall and harbor_scorer from the generated evaluator vocabulary",
+  "scope": "issue",
+  "alternatives_rejected": "Accept the widening (generate all 12 members of NON_LLM_EVALUATOR_TYPES) \u2014 simpler generator body but reintroduces the two infra-dependent types as a functional landmine.",
+  "issue": "ENH-3355"
+}

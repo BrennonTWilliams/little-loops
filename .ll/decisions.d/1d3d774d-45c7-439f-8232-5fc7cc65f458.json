@@ -1,0 +1,12 @@
+{
+  "id": "ba668bca-f15e-4dd2-a837-b5fb7707d85e",
+  "type": "decision",
+  "timestamp": "2026-08-29T16:58:25Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Mirrors add()'s existing -> bool contract on the same class (identical duplicate-guard shape); requeue()'s return value is unused today so widening it is purely additive; single production caller at orchestrator.py:1312.",
+  "rule": "requeue() returns bool (True=success, False=no-op) to signal success to its caller",
+  "scope": "issue",
+  "alternatives_rejected": "Caller snapshots queue._queued membership before/after calling requeue() \u2014 rejected: requires reaching into a private, lock-protected set from outside the class (no precedent in this codebase) and is race-prone if read unlocked.",
+  "issue": "ENH-3346"
+}

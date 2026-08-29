@@ -22,6 +22,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 0
+reconcile_attempted: true
 ---
 
 # ENH-3342: Widen MR-11 lint and document the safe loop-interpolation idiom
@@ -122,24 +123,22 @@ loop — including loops in consuming projects, which no baseline covers.
 ### Files to Modify
 
 - `scripts/little_loops/fsm/validation/shell_safety.py`
-  - `:33-35` — `_UNSAFE_CONTEXT_INTERP_RE`: drop the key allowlist, add the
+  - `:34-36` — `_UNSAFE_CONTEXT_INTERP_RE`: drop the key allowlist, add the
     `captured` and `prev` namespaces, or replace the regex entirely with a call
     into ENH-3338's scanner
-  - `:183` — `token.endswith(":shell}")`: this must become position-aware, not
-    merely suffix-chain-aware. ENH-3337 fixes *where* the suffix is recognized;
-    this issue fixes *whether recognizing it clears the site* (it does not,
-    inside a Python body)
-    > ⚠ Superseded — dead citation; current `:183` is `for match in _UNSAFE_CONTEXT_INTERP_RE.finditer(line):`. ENH-3337 already removed `token.endswith(":shell}")` and replaced it with `parse_interpolation_suffixes(raw)` → `shell_quote`, unconditionally cleared at `if shell_quote: continue` (current `:190-193`) — that is the line needing the position-aware fix
-  - `:41` — `_QUOTED_HEREDOC_START_RE` and the terminator check at `:173`:
+  - `:190-193` — `if shell_quote: continue`: this must become position-aware,
+    not merely suffix-chain-aware. ENH-3337 already relocated the `:shell`
+    check to here, replacing the old `token.endswith(":shell}")` test with
+    `parse_interpolation_suffixes(raw)` → `shell_quote`; this issue fixes
+    *whether* recognizing it clears the site (it does not, inside a Python
+    body)
+  - `:41` — `_QUOTED_HEREDOC_START_RE` and the terminator check at `:175`:
     column-0 semantics
-    > ⚠ Superseded — terminator check is at current `:175`, not `:173`
-  - `:148-188` — `_find_unsafe_context_interpolations`: the Python-literal
+  - `:149-198` — `_find_unsafe_context_interpolations`: the Python-literal
     position distinction and the `-c "` host shape
-    > ⚠ Superseded — current span is `:149-198`, not `:148-188`
-  - `:191-227` — the validator's message text (see below), plus the marker's
+  - `:201-237` — the validator's message text (see below), plus the marker's
     own well-formedness check, which emits `ValidationSeverity.ERROR` (not
     WARNING) for a malformed or reasonless marker
-    > ⚠ Superseded — current span is `:201-237`, not `:191-227`
   - **new** — marker parsing: grammar, per-variable matching, placement
     (trailing or preceding-line), and the `${`-rejection guard. Note the
     existing scanner `continue`s on any line whose `stripped.startswith("#")`
@@ -169,9 +168,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/fsm/validation/__init__.py` — rule registration; no
-  change expected unless the rule is split.
-- Every loop in `scripts/little_loops/loops/**` is subject to the widened rule.
+- `scripts/little_loops/fsm/validation/__init__.py` — imports and re-exports
+  `_UNSAFE_CONTEXT_INTERP_RE`, `_QUOTED_HEREDOC_START_RE`, and
+  `_find_unsafe_context_interpolations` by literal name, both in its
+  `from shell_safety import (...)` block and its `__all__` list. If any of the
+  three is removed or renamed while delegating to
+  `interp_sweep.scan_action()`/`classify_site()`, this file's import block and
+  `__all__` must be updated in the same change or the package fails to import
+  (`ImportError`) — not contingent on "splitting the rule."
+- Every loop in `scripts/little_loops/loops/**` is subject to the widened
+  rule. This is not the whole blast radius: `validate_fsm()` also runs over
+  inline FSM YAML fixtures embedded directly in test files outside that
+  glob — `test_builtin_loops.py`, `test_create_loop.py`,
+  `test_enh2892_subloop_failure_dispatch.py`, `test_fsm_executor.py`,
+  `test_fsm_fragments.py`, `test_interp_sweep.py`, `test_ll_loop_commands.py`,
+  `test_rn_implement.py`, `test_rn_remediate.py`, and
+  `test_verify_issue_loop.py`. Any such fixture using a non-allowlisted
+  context key (or `captured`/`prev` namespace) in a shell action begins
+  emitting a new MR-11 WARNING post-widening and needs the same triage
+  (convert or mark) as corpus loops (see Implementation Steps step 7).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/validation/structural_rules.py:68-71,1165` — the
@@ -205,7 +220,16 @@ _Wiring pass added by `/ll:wire-issue`:_
   (`:276`). **`test_mr11_does_not_fire_inside_quoted_heredoc` asserts the exact
   behavior item 3 above says is wrong** — it must be revised, not merely kept
   green. Record the revision explicitly; a silently rewritten assertion is how
-  this rule got narrow in the first place.
+  this rule got narrow in the first place. Also needs new cases, one per
+  acceptance criterion, distinct from the marker tests below: a
+  `${context.<key>}` outside the old seven-key allowlist inside a Python
+  literal (AC 1); `${captured.*}` inside a Python literal (AC 2);
+  `${prev.output}`/`${prev.stderr}` flagged and `${prev.exit_code}` clean at a
+  bash-token position (AC 2b); a quoted-heredoc-as-Python-body case flagged
+  vs. quoted-heredoc-as-non-Python-body clean (AC 3); an indented
+  marker-equal line not closing the tracked heredoc block (AC 4); and
+  `:shell` flagged inside a Python body but clean at a bash-token position,
+  with the Python-body message naming the `LL_ARG_` hoist remedy (AC 5b).
 - `scripts/tests/test_builtin_loops.py` — ENH-3338's baseline test stays green;
   plus the marker-count ratchet assertion (AC 8c), which belongs here beside the
   other corpus-wide guards rather than in the MR-11 unit suite.
@@ -497,32 +521,50 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Replace MR-11's regex-based detection with a call into ENH-3338's scanner,
-   keeping MR-11's per-state / `action_type` / suppression-flag scaffolding.
-   > ⚠ Superseded — full delegation misses AC 2b's bash-position case; see § Program Design Codebase Research Findings
-2. Add the Python-literal-position distinction and the `-c "` host shape.
+1. Replace the bash-token-position scan's fixed seven-key regex match with a
+   namespace-generic lookup through `classify_site()` (covering `context.*`
+   beyond the old allowlist plus the `captured` and `prev` namespaces),
+   keeping the existing single-quote / `:shell`-position clearing rules
+   unchanged at that position. Add a second, independent scan path that
+   delegates to `interp_sweep.scan_action()` for the Python-literal-position
+   half (a quoted heredoc that is a Python body, or a `python3 -c "…"` body).
+   Both paths share `classify_site()` as the single untrusted-key classifier.
+   `scan_action()` alone cannot produce AC 2b's bash-token-position finding —
+   its docstring scopes it to Python-body sites only — so the bash-token-
+   position scan must stay independent, not be replaced by delegation. Keep
+   MR-11's per-state / `action_type` / suppression-flag scaffolding.
+2. Add the Python-literal-position distinction and the `-c "` host shape to
+   the `scan_action()`-delegated path.
 3. Tighten the heredoc terminator to column 0.
-4. Revise `test_mr11_does_not_fire_inside_quoted_heredoc` to assert the corrected
-   semantics, and record why the old assertion was wrong.
+4. Revise `test_mr11_does_not_fire_inside_quoted_heredoc` to assert the
+   corrected semantics, and record why the old assertion was wrong. Add new
+   unit test cases for AC 1, 2, 2b, 3, 4, and 5b — each needs its own case (a
+   non-allowlisted `context.*` key, `captured.*`, `prev.output`/`prev.stderr`
+   vs. `prev.exit_code`, the two heredoc-body cases, the column-0 terminator
+   case, and the `:shell`-inside-a-Python-body vs.
+   `:shell`-at-bash-token-position cases) — distinct from the
+   marker-constraint tests in step 5.
 5. Implement the `# ll-lint: mr11-ok(<var>) <reason>` marker: grammar, per-
    variable matching, both placements, the `${`-rejection guard, the
    malformed-marker ERROR, and the checked-in marker-count ratchet. Do this
-   **before** step 6 — triaging without the mechanism is what forced the earlier
-   draft's contradiction.
-   > ⚠ Superseded — "step 6" is ambiguous below (two consecutive steps are both numbered 6); run `/ll:reconcile-issue` to renumber
-6. Run `ll-loop validate` across the corpus; triage every newly surfaced finding
-   — convert it, or mark it with a reason citing a tracking issue. Do not set
-   `unsafe_context_interpolation_ok`, do not re-narrow the pattern, and do not
-   baseline (MR-11 does not read ENH-3338's baseline).
-   > ⚠ Superseded — duplicate step number; this is the corpus-triage step and should run after the validator-message-update step immediately below, not before it (triage should surface findings against the final message text) — see next marker
+   **before** the corpus-triage step (step 7 below) — triaging without the
+   mechanism is what forced the earlier draft's contradiction.
 6. Update the validator's message to name both remedies concretely — the
    `LL_ARG_X=${context.x:shell}` + `os.environ` idiom and the
    `LL_RAW_9F3C1A7E_EOF` heredoc-to-file idiom — and link the guide section.
-   > ⚠ Superseded — duplicate step number; this message-update step should be sequenced before the corpus-triage step above, not after it
-7. Document both idioms in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` with the
+   Sequenced before the corpus-triage step so triage surfaces findings against
+   the final message text.
+7. Run `ll-loop validate` across the corpus; triage every newly surfaced
+   finding — convert it, or mark it with a reason citing a tracking issue.
+   This includes findings from the inline FSM YAML test fixtures outside
+   `scripts/little_loops/loops/**` (see Integration Map § Dependent Files),
+   not only built-in loops. Do not set `unsafe_context_interpolation_ok`, do
+   not re-narrow the pattern, and do not baseline (MR-11 does not read
+   ENH-3338's baseline).
+8. Document both idioms in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` with the
    canonical copy-pasteable blocks, including the column-0 hoisting rule and the
    `<state>-<capture>.txt` naming rule.
-8. Record the WARNING-vs-ERROR severity decision.
+9. Record the WARNING-vs-ERROR severity decision.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -713,6 +755,7 @@ below — this run incorporates both._
   stated resolution.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-08-29T16:58:40 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:51:34 - `58d393ce-925a-4f28-b052-80c8ddfba7fe.jsonl`
 - `/ll:verify-issues` - 2026-08-29T16:43:36 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:34:32 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`

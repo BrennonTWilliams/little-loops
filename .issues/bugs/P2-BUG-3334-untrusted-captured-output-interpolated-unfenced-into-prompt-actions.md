@@ -7,7 +7,7 @@ status: open
 discovered_by: split-from-BUG-3327
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
-verify_verdict: VALID
+verify_verdict: NON_VALID
 confidence_score: 100
 outcome_confidence: 78
 score_complexity: 14
