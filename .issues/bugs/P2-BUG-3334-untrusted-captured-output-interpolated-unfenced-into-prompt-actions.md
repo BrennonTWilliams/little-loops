@@ -431,20 +431,26 @@ restate them._
    interpolation no longer appearing in `review`'s action, by `dispatch`'s
    three transition targets no longer pointing at `review` (Acceptance
    Criteria item 11 — `ll-loop validate` alone does
-   not catch a mis-wiring here, see Program Design), and by the new state using
-   the combined `:shell:default=` suffix rather than bare `:shell` (Program
-   Design → "FSM wiring facts").
+   not catch a mis-wiring here, see Program Design), by the new state's own
+   `on_error`/`next` routing to `review` (Acceptance Criteria item 12), and by
+   the new state using the combined `:shell:default=` suffix rather than bare
+   `:shell` (Program Design → "FSM wiring facts").
 3. Every other confirmed untrusted-output site — the 13-entry
-   `UNTRUSTED_OUTPUT_SITES` table minus `loop-router.yaml::review`, plus both
-   `eval-driven-development.yaml::capture_issues` and `::diagnose` (14 sites
-   total; see Scope and Acceptance Criteria item 5's remediation-pass
-   correction) — carries a hand-pasted fence built from
+   `UNTRUSTED_OUTPUT_SITES` table minus `loop-router.yaml::review`, plus
+   `eval-driven-development.yaml::capture_issues`/`::diagnose` and both
+   composer files' `plan_display` (16 sites total; see Scope and Acceptance
+   Criteria item 5) — carries a hand-pasted fence built from
    `UNTRUSTED_OUTPUT_ROLES`, with a per-site literal nonce-suffixed marker so
    the fence survives material that itself contains fence-shaped text (Expected
    Behavior → "Requirement: markers must survive appearing inside their own
-   material"). A dual-fenced state (GOAL plus untrusted-output in one action)
-   uses two distinct nouns so the between-markers test can't confuse them —
-   checked by Acceptance Criteria items 3, 5, and 7.
+   material"). Each dual/triple-fenced state (GOAL plus one or two
+   untrusted-output fences in one action) uses a distinct noun per fence so
+   the between-markers test can't confuse them — checked by Acceptance
+   Criteria items 3, 5, and 7. The two `eval-driven-development.yaml` sites
+   and both composer files' `plan_display` also need `UNTRUSTED_OUTPUT_SITES`/
+   `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` entries added in
+   `scripts/tests/test_builtin_loops.py` (Files to Modify), since none is
+   `loop:`-dispatch discoverable.
 4. `UNTRUSTED_OUTPUT_SITES`'s hardcoded entry for `loop-router.yaml::review`'s
    `${captured.sub_loop_output.output}` is reconciled with step 2's removal of
    that interpolation, so `TestUntrustedOutputSurvey::test_completeness_guard`'s
@@ -499,21 +505,35 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       `${context.run_dir}/sub-loop-events.jsonl` via `:shell:default=` env-var
       binding (never a raw literal, and never bare `:shell`, which raises
       `InterpolationError` on a missing capture — see Program Design), and the
-      prompt references the path.
-      `${captured.chosen.output}` stays unfenced and both are recorded in
-      `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES` with reason comments.
-      > ⚠ Superseded — the "both are recorded in `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`" instruction is wrong for both vars, refuted by tracing this issue's own completeness-guard contract (mirrored from `TestBriefFencing::test_completeness_guard`, which asserts `discovered == fenced ∪ exempt`, exact equality — see Program Design → Codebase Research Findings, "FENCE_ROLES is not extended..." row, and Acceptance Criteria item 6 below). (1) `sub_loop_output`: this AC's own fix REMOVES the `${captured.sub_loop_output.output}` interpolation from `review` entirely (replaced by a static path reference) — a post-fix discovery scan will never find that string again, so recording it in the exempt set makes `expected` a strict superset of `discovered` and breaks the guard's equality assertion. Document the path-reference decision via a YAML comment at the new state and at `review` instead — not via a set entry. (2) `chosen`: it is captured by `apply_user_choice`, an `action_type: shell` state, never a `loop:` dispatch state — the mechanical discovery predicate's `loop:`-state origin scoping excludes it structurally, exactly as already established for `catalog` elsewhere in this issue (Proposed Solution → "Complete the survey mechanically": "`chosen` ... need[s] no explicit exemption entries ... captured by an `action_type: shell` state, never a `loop:` state"). It needs no exemption entry either. Neither var belongs in `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`.
+      prompt references the path. `${captured.chosen.output}` stays unfenced;
+      **neither var is recorded in `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`**
+      — the set stays seeded empty. `sub_loop_output`'s interpolation is
+      removed from `review` entirely (not merely exempted), so a post-fix
+      discovery scan will never find that string again; recording it in the
+      exempt set would make `expected` a strict superset of `discovered` and
+      break `TestUntrustedOutputSurvey::test_completeness_guard`'s
+      exact-equality assertion (`discovered == fenced ∪ exempt`, mirrored from
+      `TestBriefFencing::test_completeness_guard`; Acceptance Criteria item 6).
+      Document the path-reference decision via a YAML comment at the new
+      state and at `review` instead. `chosen` is captured by
+      `apply_user_choice`, an `action_type: shell` state, never a `loop:`
+      dispatch state, so the mechanical discovery predicate's `loop:`-state
+      origin scoping excludes it structurally (exactly as already established
+      for `catalog` elsewhere in this issue) — it needs no exemption entry
+      either.
 - [ ] Every non-exempt site in the 13-entry `UNTRUSTED_OUTPUT_SITES` table
       (11 mechanically-discovered dispatch-provenance sites plus the two
       hand-classified indirect sites,
-      `loop-composer{,-adaptive}.yaml::review_chain`), plus the one
-      hand-classified shell-capture site
-      (`eval-driven-development.yaml::diagnose`), carries a hand-pasted
+      `loop-composer{,-adaptive}.yaml::review_chain`'s `step_results_json`),
+      plus the hand-classified shell-capture/indirect sites added by this
+      issue — `eval-driven-development.yaml::capture_issues` and `::diagnose`,
+      and `loop-composer.yaml`/`loop-composer-adaptive.yaml::review_chain`'s
+      `plan_display` (Scope's `plan_display` finding) — carries a hand-pasted
       `render_fence(..., core=FENCE_CORE_UNTRUSTED_OUTPUT)` fence. Final
-      fenced-site count: **13** — the 13-entry table minus
+      fenced-site count: **16** — the 13-entry table minus
       `loop-router.yaml::review` (path-referenced, exempt), plus
-      `eval-driven-development.yaml::diagnose`.
-      > ⚠ Superseded — the "13" count and "the one hand-classified shell-capture site" framing are both stale (remediation pass, 2026-08-29; see Scope → Codebase Research Findings). `eval-driven-development.yaml` has **two** hand-classified shell-capture sites reaching the same captured value: `capture_issues` (`action_type: prompt`, opens :84, interpolates `${captured.run_harness.output}` at :89, reached via `run_harness`'s `on_yes: capture_issues` at :80) and `diagnose` (unchanged). Corrected final fenced-site count: **14** — the 13-entry `UNTRUSTED_OUTPUT_SITES` table minus `loop-router.yaml::review` (path-referenced, exempt), plus both `eval-driven-development.yaml::capture_issues` and `::diagnose`.
+      `eval-driven-development.yaml::capture_issues`, `::diagnose`, and both
+      composer files' `plan_display`.
 - [ ] A `TestUntrustedOutputFencing` class pins each fenced site with the
       three-property contract (rendered-substring via `normalize_fence_text`,
       interpolation-between-markers, per-var exactly-once), plus a
@@ -524,12 +544,15 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       This classification guard's "discovered site set" is structurally
       limited to the mechanically-discoverable dispatch-provenance sites
       (`_discover_untrusted_output_sites`, dispatch-only per Proposed
-      Solution). It cannot see either `loop-composer{,-adaptive}.yaml`'s
-      `review_chain` sites (checkpoint-relay, not a textual
-      `${captured...}` chain) or `eval-driven-development.yaml`'s
+      Solution). It cannot see `loop-composer{,-adaptive}.yaml`'s
+      `review_chain` sites (checkpoint-relay/shell-capture, not a textual
+      `${captured...}` chain — this covers both `step_results_json` and
+      `plan_display`) or `eval-driven-development.yaml`'s
       `capture_issues`/`diagnose` pair (shell-capture, not dispatch). The
       composer sites already have a bespoke structural sentinel
-      (`test_known_indirect_sites_chain_still_present`). Add an equivalent
+      (`test_known_indirect_sites_chain_still_present`) — extend it to also
+      pin `parse_plan` still feeding `plan_display` into `review_chain`,
+      alongside `read_checkpoints`/`step_results_json`. Add an equivalent
       structural sentinel for the `eval-driven-development.yaml` chain —
       asserting `run_harness` (`action_type: shell`, `capture: run_harness`)
       still feeds `capture_issues` and `diagnose` (both `action_type:
@@ -537,8 +560,11 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       or removal (the kind of drift this issue's own line-anchors
       repeatedly document) does not silently go unfenced with no test
       noticing the tier-A classification has gone stale.
-- [ ] Dual-fence sites (GOAL + untrusted-output in one action) use distinct
-      nouns and each var passes the exactly-once/between-markers properties
+- [ ] Dual/triple-fence sites (GOAL plus one or two untrusted-output fences
+      in one action — `loop-router.yaml::review` carries GOAL only after the
+      path-reference change; both composer `review_chain` states carry GOAL
+      plus STEP_RESULTS plus PLAN_DISPLAY) use a distinct noun per fence and
+      each var passes the exactly-once/between-markers properties
       independently.
 - [ ] `ll-loop validate` passes on every modified loop YAML.
 - [ ] `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § fencing gains the
@@ -551,14 +577,21 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       Codebase Research Findings: any new fence-related table "should follow
       that same three-part contract ... rather than a weaker spot-check").
       Pair it with a mechanical assertion, mirroring how `TestBriefFencing`
-      pins `FENCE_CORE`'s text rather than trusting prose review: a test
-      asserting `fence.py`'s module docstring contains a substring naming
-      the untrusted-output class (e.g. `"BUG-3334"` or
-      `"FENCE_CORE_UNTRUSTED_OUTPUT"`), and a test asserting
-      `HARNESS_OPTIMIZATION_GUIDE.md`'s fencing section contains a matching
-      substring — so a doc/docstring edit made without the other, or skipped
-      entirely, fails the suite instead of passing silently.
-      > ⚠ Superseded — pin one exact shared substring, not either-or; see § Codebase Research Findings under Acceptance Criteria
+      pins `FENCE_CORE`'s text rather than trusting prose review, and how
+      `test_audit_loop_run_skill.py::test_shallow_iteration_guide_documents_pattern`
+      (`scripts/tests/test_audit_loop_run_skill.py:522-533`) already reads
+      `HARNESS_OPTIMIZATION_GUIDE.md` and asserts a substring — the directly
+      reusable precedent for this criterion's second half. Add two new tests
+      to `TestUntrustedOutputFencing` (`scripts/tests/test_builtin_loops.py`):
+      `test_docstring_names_untrusted_output_class` (reads `fence.py`, asserts
+      it contains `"FENCE_CORE_UNTRUSTED_OUTPUT"`) and
+      `test_guide_names_untrusted_output_class` (reads
+      `HARNESS_OPTIMIZATION_GUIDE.md`'s fencing section, asserts the same
+      literal `"FENCE_CORE_UNTRUSTED_OUTPUT"` substring — a symbol name that
+      exists verbatim in the codebase once item 1 lands, not issue-tracker
+      metadata like `"BUG-3334"`) — pinning one exact shared substring, not
+      either option, so a doc/docstring edit made without the other, or
+      skipped entirely, fails the suite instead of passing silently.
 - [ ] Full suite (`python -m pytest scripts/tests/`) shows no new failures.
 - [ ] `dispatch`'s three outgoing transitions (`on_yes`/`on_no`/`on_error`,
       `loop-router.yaml:426-428`) are repointed from `review` to the new
@@ -573,6 +606,15 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       state's name instead — this is an existing, currently-passing test this
       issue's own fix would otherwise silently break, not new test
       infrastructure to add from scratch.
+- [ ] The new intermediate shell state's own `on_error`/`next` transitions
+      route to `review` (Program Design → "FSM wiring facts" item 3),
+      mirroring `apply_user_choice`'s (`loop-router.yaml:382-409`) and
+      `refresh_input`'s (`:411-417`) degrade-forward convention rather than
+      dead-ending. `ll-loop validate`'s reachability check cannot catch a
+      state that exists and is reachable but has no outgoing edge of its
+      own (or one pointing somewhere other than `review`) — checked by the
+      same `test_loop_router.py` update as item 11 above, extended to also
+      assert the new state's `on_error`/`next` both equal `"review"`.
 
 ### Codebase Research Findings
 
@@ -598,6 +640,8 @@ captured value is a sub-loop event stream or aggregated step output:
 | `loop-router.yaml` | 389 | `review` | `sub_loop_output` | full JSONL event stream of a runtime-selected sub-loop (`dispatch`, line 369) |
 | `loop-composer.yaml` | ~456 | `review_chain` | `step_results_json` | concatenated `checkpoints/step-*.json` (`read_checkpoints`, lines 421-441) |
 | `loop-composer-adaptive.yaml` | ~683 | `review_chain` | `step_results_json` | same shape |
+| `loop-composer.yaml` | 471 | `review_chain` | `plan_display` | `parse_plan` (shell state, opens :96) formats `decompose_goal`'s LLM-generated plan JSON — `step_id`/`loop_name`/`input` values the model itself invented — into a 120-char-truncated per-step display, `capture: plan_display` at :153 |
+| `loop-composer-adaptive.yaml` | 698 | `review_chain` | `plan_display` | same shape, `parse_plan` opens :98, `capture: plan_display` at :161 |
 | ~~`loop-router.yaml`~~ | ~~385-390~~ | ~~`review`~~ | ~~`chosen`~~ | **dropped from tier A — review pass, 2026-08-27** |
 
 _Review pass — 2026-08-27:_ `chosen` is **removed from scope** and belongs in the
@@ -678,6 +722,10 @@ Additional confirmed hand-classified shell-capture tier-A site (remediation pass
 Consequence for the Acceptance Criteria: `eval-driven-development.yaml` contributes **two** hand-classified shell-capture sites (`capture_issues` and `diagnose`), not one — see the superseded annotation on Acceptance Criteria item 5 below.
 
 A third reference to the same capture exists at `route_eval`'s `evaluate.source: "${captured.run_harness.output}"` (:113), but it is NOT in scope under the current Decision Rule text: it feeds an `evaluate:` block's `llm_structured` classification, not an `action_type: prompt` action's `action:` text. Flagged here so a future pass does not have to re-derive why it is excluded, not because it needs fencing.
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+**A second in-scope var was missed at the two sites this issue already edits for `step_results_json`.** `loop-composer.yaml::review_chain` (action opens :453) and `loop-composer-adaptive.yaml::review_chain` also interpolate `${captured.plan_display.output}` (:471 / :698) in the same action. `plan_display` is captured by `parse_plan`, an `action_type: shell` state (`loop-composer.yaml:96-153`, `loop-composer-adaptive.yaml:98-161`) that formats `decompose_goal`'s LLM-generated plan JSON — `step_id`/`loop_name`/`input` values the model itself invented — into a display string, truncating each step's `input` to 120 chars. This meets the restated Decision Rule verbatim (model/tool output reaching an `action_type: prompt` action). Because `parse_plan` is a shell state, not a `loop:` dispatch state, `_discover_untrusted_output_sites`'s origin-scoping structurally cannot see it — the same shell-capture blind spot already resolved for `eval-driven-development.yaml::run_harness` above. Hand-classified into Scope's tier-A table and Files to Modify; added to `UNTRUSTED_OUTPUT_SITES`/`KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` alongside the `review_chain`/`capture_issues`/`diagnose` entries (Acceptance Criteria item 5). Final fenced-site count is **16**, not 14: the 13-entry `UNTRUSTED_OUTPUT_SITES` table minus `loop-router.yaml::review` (path-referenced, exempt), plus `eval-driven-development.yaml::capture_issues` and `::diagnose`, plus `loop-composer.yaml::review_chain`'s and `loop-composer-adaptive.yaml::review_chain`'s `plan_display` (each state now carries three fences total: the pre-existing untouched GOAL fence from `FENCE_ROLES`, plus two new `UNTRUSTED_OUTPUT_ROLES` fences — STEP_RESULTS and PLAN_DISPLAY — each needing its own distinct nonce-suffixed noun so the between-markers test can't confuse them).
 
 ### Wiring Pass Findings
 
@@ -853,7 +901,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 Line-citation corrections, remediation pass 2026-08-29 (all confirmed against the current working tree):
 
 - The sub-loop dispatch capture join this issue's fencing wraps (cited elsewhere in this issue as `executor.py:1046-1053`, and separately at the top-of-file line-anchor note as `executor.py:1107`) has drifted further: it is now at `executor.py:1114-1117` — `self.captured[state.capture] = {` at :1114, the `"\n".join(...)` join expression itself at :1115, `"exit_code": None` at :1116. Two different, now-both-stale citations for the identical construct existed in this issue simultaneously before this correction.
-- The `PROMPT_SIZE_WARN_EVENT`/`compress_action_text` safety-layer citation (this Integration Map's own 2026-08-27 addition cites `executor.py:2160-2199`) is stale: the guard block is now at `:2209-2230` (`guard = self.fsm.prompt_size_guard` at :2213) and the `compress_action_text` call at `:2237-2248` (`cc = self.compression_config` at :2237). Same correction as filed under Program Design → Codebase Research Findings, repeated here since the citation appears independently in this section too.
+- The `PROMPT_SIZE_WARN_EVENT`/`compress_action_text` safety-layer citation (this Integration Map's own 2026-08-27 addition cites `executor.py:2160-2199`) has drifted: the guard block is now at `:2209-2230` (`guard = self.fsm.prompt_size_guard` at :2213) and the `compress_action_text` call at `:2237-2248` (`cc = self.compression_config` at :2237). Same correction as filed under Program Design → Codebase Research Findings, repeated here since the citation appears independently in this section too.
 - `scripts/little_loops/fsm/fence.py` is confirmed at **164** lines (not 165, as this section's 2026-08-28 addition states) — `wc -l scripts/little_loops/fsm/fence.py`. The substantive claim that 2026-08-28 addition makes (no `FENCE_CORE_UNTRUSTED_OUTPUT`/`UNTRUSTED_OUTPUT_ROLES` symbol exists yet) remains accurate; only the line-count figure was off by one.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
@@ -861,8 +909,8 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 Remediation pass, 2026-08-29 (second pass — corrects this section's own prior 2026-08-29 additions, which drifted or mis-cited on arrival):
 
 - Files to Modify's `eval-driven-development.yaml` entry (added 2026-08-28) names only `diagnose` as a fencing target. It is incomplete: Scope → Codebase Research Findings (2026-08-29) and the superseded annotation on Acceptance Criteria item 5 both establish that `eval-driven-development.yaml` has **two** hand-classified shell-capture sites sharing the identical `${captured.run_harness.output}` value — `capture_issues` (`action_type: prompt`, opens `:84`, interpolates `:89`, reached via `run_harness`'s `on_yes: capture_issues` at `:80`) and `diagnose` (`:144`/`:152`, reached via `on_no: diagnose` at `:81`). Both are required for the corrected 14-site count (13-entry `UNTRUSTED_OUTPUT_SITES` table minus `loop-router.yaml::review`, plus both `eval-driven-development.yaml::capture_issues` and `::diagnose`) and for Acceptance Criteria item 6's structural sentinel, which explicitly requires asserting `run_harness` feeds both `capture_issues` and `diagnose`. `capture_issues` is therefore an in-scope Files-to-Modify target equal in kind to `diagnose`, not an incidental mention.
-- Correcting this section's own 2026-08-29 citation for the sub-loop dispatch capture join: `executor.py:1114-1117` is stale by 2 lines. Confirmed current tree: `self.captured[state.capture] = {` at `:1112`, the join expression at `:1113`, `"exit_code": None` at `:1114`. Same correction filed against Root Cause's independent copy.
-- Correcting this section's own 2026-08-29 citation for the `PROMPT_SIZE_WARN_EVENT`/`compress_action_text` safety layer: `:2209-2230`/`:2237-2248` is stale by 2 lines. Confirmed current tree: `guard = self.fsm.prompt_size_guard` at `:2211`, `cc = self.compression_config` at `:2235`, the `compress_action_text(...)` call spans `:2239-2246`. Same correction filed against Program Design's independent copy.
+- Correcting this section's own 2026-08-29 citation for the sub-loop dispatch capture join: `executor.py:1114-1117` has drifted by 2 lines. Confirmed current tree: `self.captured[state.capture] = {` at `:1112`, the join expression at `:1113`, `"exit_code": None` at `:1114`. Same correction filed against Root Cause's independent copy.
+- Correcting this section's own 2026-08-29 citation for the `PROMPT_SIZE_WARN_EVENT`/`compress_action_text` safety layer: `:2209-2230`/`:2237-2248` has drifted by 2 lines. Confirmed current tree: `guard = self.fsm.prompt_size_guard` at `:2211`, `cc = self.compression_config` at `:2235`, the `compress_action_text(...)` call spans `:2239-2246`. Same correction filed against Program Design's independent copy.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
@@ -881,7 +929,7 @@ Remediation pass, 2026-08-29 (fourth pass) — closing four gaps found by advers
 - **Files to Modify's `eval-driven-development.yaml` entry named only `diagnose`.** Confirmed via `grep -n "captured.run_harness\|action_type" scripts/little_loops/loops/eval-driven-development.yaml`: `run_harness` (`action_type: shell`, `capture: run_harness`, :74-77) has `on_yes: capture_issues` (:80) and `on_no: diagnose` (:81). `capture_issues` (`action_type: prompt`, opens :84) interpolates `${captured.run_harness.output}` at :89 — the identical capture `diagnose` (opens :144, interpolation :152) also interpolates. A `⚠ Superseded` annotation has been added directly under the Files to Modify bullet naming both sites as required.
 - **Neither `UNTRUSTED_OUTPUT_SITES` nor `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (`test_builtin_loops.py`, now :19129/:19164, 13/2 entries respectively — re-confirmed by direct read) carries an `eval-driven-development.yaml` tuple.** These two sets are the only enumeration surface a `TestUntrustedOutputFencing`-style parametrization (Acceptance Criteria item 5) can iterate. `capture_issues`/`diagnose` are shell-capture provenance, not dispatch — exactly like the composer `review_chain` sites — so the only precedent this issue itself sets for surfacing a non-discoverable site is the composer pattern: add both `("eval-driven-development.yaml", "capture_issues", "${captured.run_harness.output}")` and `("eval-driven-development.yaml", "diagnose", "${captured.run_harness.output}")` to `UNTRUSTED_OUTPUT_SITES`, and to `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (both are reached via shell-capture relay, not a `loop:`-state dispatch, so `_discover_untrusted_output_sites` will never find them — the indirect set exists precisely for sites the guard cannot discover but that still need a slot in `expected`). Without this extension, the 14-site final count (Acceptance Criteria item 5) has no wiring path for two of its fourteen sites. This gap is closed in `scripts/tests/test_builtin_loops.py` itself, not by a new Files-to-Modify bullet (the carve-out that lets this pass touch directive sections is annotation-only, not addition).
 - **`fence.py`'s `FENCE_ROLES` key-line citations for the composer sites are themselves off by one.** Confirmed via `grep -n` against the current working tree: `("loop-composer.yaml", "review_chain")` opens at `fence.py:100` (the dict-key line); `:101` is the first *value* line inside the tuple (the string `"GOAL"`), not the key line. Likewise `("loop-composer-adaptive.yaml", "review_chain")` opens at `:112`, not `:113`. Two prior remediation-pass notes (Proposed Solution → Codebase Research Findings' 2026-08-29 citation-correction note, and this section's own `⚠ Superseded` annotation on the `fence.py` Files-to-Modify bullet) both re-cited `:101`/`:113` as "exact matches, unaffected" — that re-verification pass itself introduced and certified the off-by-one. Correct citations: `fence.py:100` / `fence.py:112`.
-- **`TestLoopComposerFunnelConsistency` does not exist.** Confirmed via `grep -n '^class Test' scripts/tests/test_loop_composer.py`: the only classes are `TestLoopComposerFile`, `TestLoopComposerStates` (opens :96), `TestComposerLibFragment`, `TestCatalogExclusivity`, `TestValidatePlanFragmentExecution`, `TestLoopComposerLive`. The `review_chain` funnel-consistency assertion this section's third-pass addition cited (`test_review_chain_cannot_judge_follows_funnel`, :207-209) is real and at the cited lines, but lives inside `TestLoopComposerStates`, not a class of the cited name — the correct class name is `TestLoopComposerStates`. Separately, `scripts/tests/test_loop_composer_adaptive.py` has no equivalent funnel-consistency assertion: `review_chain` occurs exactly once in that file (line 47), as a member of an expected-states list, not inside any test method. See the correction appended to Dependent Files (Callers/Importers) above.
+- **`TestLoopComposerFunnelConsistency` is not a real class name.** Confirmed via `grep -n '^class Test' scripts/tests/test_loop_composer.py`: the only classes are `TestLoopComposerFile`, `TestLoopComposerStates` (opens :96), `TestComposerLibFragment`, `TestCatalogExclusivity`, `TestValidatePlanFragmentExecution`, `TestLoopComposerLive`. The `review_chain` funnel-consistency assertion this section's third-pass addition cited (`test_review_chain_cannot_judge_follows_funnel`, :207-209) is real and at the cited lines, but lives inside `TestLoopComposerStates`, not a class of the cited name — the correct class name is `TestLoopComposerStates`. Separately, `scripts/tests/test_loop_composer_adaptive.py` has no equivalent funnel-consistency assertion: `review_chain` occurs exactly once in that file (line 47), as a member of an expected-states list, not inside any test method. See the correction appended to Dependent Files (Callers/Importers) above.
 
 ### Behavior Parity
 
@@ -900,8 +948,7 @@ in place, is additive and carries no parity row._
 | `loop-composer.yaml::review_chain` / `loop-composer-adaptive.yaml::review_chain` — `${captured.step_results_json.output}` | Interpolated raw | CHANGED | Fenced in place with `render_fence(..., core=FENCE_CORE_UNTRUSTED_OUTPUT)` and a nonce-suffixed marker — content and delivery mechanism unchanged, only the surrounding marker text is added. Not a DROPPED/replaced case like `sub_loop_output`, since these sites are pre-bounded at 500 chars/step and were not selected for the path-reference treatment. |
 
 ### Files to Modify
-- `scripts/little_loops/loops/loop-router.yaml` — `review` (lines 411-437): ~~fence `${captured.chosen.output}` (line 428) and `${captured.sub_loop_output.output}` (lines 430-431)~~ — **corrected 2026-08-28 to match Scope and the Open Question 2 resolution:** `chosen` is exempt (dropped from tier A, joins `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`); `sub_loop_output` is **not fenced but removed from the prompt entirely** — add a shell state writing it to `${context.run_dir}/sub-loop-events.jsonl` via `:shell` env-var binding and have `review` reference the path; `propose_new_loop` (lines 452-478): fence `${captured.catalog.output}` (line ~469, tier-C, listed not scheduled)
-  > ⚠ Superseded — line ranges stale (remediation pass, 2026-08-29). Confirmed current tree: `review` opens `:432`, its body runs `:432-467` (not 411-437); `CHOSEN LOOP` interpolation `:449`; `SUB-LOOP EVENT STREAM` interpolation `:452` (not 430-431); `dispatch`'s `capture: sub_loop_output` is `:425`. `propose_new_loop` opens `:473` (not 452-478); its `${captured.catalog.output}` interpolation is `:490` (not ~469). See Program Design → Codebase Research Findings for the required FSM-wiring detail (new-state insertion, `dispatch`'s three transitions to repoint) this bullet does not itself specify.
+- `scripts/little_loops/loops/loop-router.yaml` — `review` opens `:432`, body runs `:432-469`; `CHOSEN LOOP` interpolation `:449`; `SUB-LOOP EVENT STREAM` interpolation (`${captured.sub_loop_output.output}`) `:452`; `dispatch`'s `capture: sub_loop_output` is `:425`. `chosen` is exempt (dropped from tier A, needs no `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES` entry — see Acceptance Criteria item 4); `sub_loop_output` is **not fenced but removed from the prompt entirely** — add a new intermediate shell state (Program Design → "FSM wiring facts") that writes it to `${context.run_dir}/sub-loop-events.jsonl` via the combined `:shell:default=` suffix (never bare `:shell`, which raises on a missing capture), repoint all three of `dispatch`'s transitions (`on_yes`/`on_no`/`on_error`, currently `:426-428`) from `review` to the new state (Acceptance Criteria item 11), give the new state's own `on_error`/`next` a route to `review` mirroring `apply_user_choice`/`refresh_input`'s degrade-forward convention (Acceptance Criteria item 12), and have `review`'s prompt reference the path instead of the raw interpolation. `propose_new_loop` opens `:473`; fence `${captured.catalog.output}` (`:490`, tier-C, listed not scheduled).
 - `scripts/tests/test_loop_router.py` — _added remediation pass, 2026-08-29,
   closing a completeness gap no prior pass caught (see Acceptance Criteria
   item 11)._ `TestLoopRouterStructure::test_dispatch_uses_native_loop_field`
@@ -912,31 +959,25 @@ in place, is additive and carries no parity row._
   "FSM wiring facts"), this is an existing regression test that fails, not
   new test infrastructure — update its three assertions to the new state's
   name.
-- `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474)
-- `scripts/little_loops/loops/loop-composer-adaptive.yaml` — `review_chain` (lines 680-709): fence `${captured.step_results_json.output}` (lines 700-701)
-- `scripts/little_loops/fsm/fence.py` — ~~extend `FENCE_ROLES` with new `(loop_file, state_name)` entries for the untrusted-output sites; decide whether the untrusted-output clause (Expected Behavior) joins `FENCE_CORE` or a new `FENCE_CORE_UNTRUSTED_OUTPUT` sibling constant (Open Questions)~~ — **corrected by review pass, 2026-08-27.** `FENCE_ROLES` **cannot** be extended for the three primary sites: `loop-router.yaml::review` (`fence.py:118`), `loop-composer.yaml::review_chain` (`:101`), and `loop-composer-adaptive.yaml::review_chain` (`:113`) are already keys in it, and each needs a *second* fence. The actual work is:
-  > ⚠ Superseded — the "(Open Questions)" clause in the struck text above is **RESOLVED**: the untrusted-output clause fork closed 2026-08-28 to Option B (sibling `FENCE_CORE_UNTRUSTED_OUTPUT`), forced per Decision Rationale. Also stale: `fence.py:118` is not `review`'s key line — confirmed current tree, `review`'s `FENCE_ROLES` key is at `fence.py:142` (first value line `:143`); the composer/composer-adaptive citations (`:101`/`:113`) are exact matches, unaffected.
-  - add `FENCE_CORE_UNTRUSTED_OUTPUT` (the "record, not a message to you" clause, plus the marker-collision remedy from Expected Behavior)
-  - add a sibling `UNTRUSTED_OUTPUT_ROLES` dict, same `(loop_file, state_name) -> (noun, role, verbs, var)` shape, in its own key namespace so the collision cannot arise
-    > ⚠ Superseded — 2-tuple key shape is wrong; see Program Design → Codebase Research Findings. `UNTRUSTED_OUTPUT_SITES` (`test_builtin_loops.py:19098-19124`) has TWO entries for `rn-build.yaml::synthesize_result` (`eval_result` and `cluster_result`) and TWO for `integrate-sdk.yaml::diagnose_and_block` (`prove.targets` and `prove.enumeration`) — a `(loop_file, state_name)` key can hold only one `(noun, role, verbs, var)` tuple, so the second fence at each of these two states has no slot. `UNTRUSTED_OUTPUT_ROLES` must key on the same 3-element shape `UNTRUSTED_OUTPUT_SITES` already uses — `(loop_file, state_name, matched_interpolation_string)` — not the 2-tuple this bullet specifies.
+- `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474) and `${captured.plan_display.output}` (line 471), each with its own distinct nonce-suffixed noun (Scope's `plan_display` finding)
+- `scripts/little_loops/loops/loop-composer-adaptive.yaml` — `review_chain` (lines 680-709): fence `${captured.step_results_json.output}` (lines 700-701) and `${captured.plan_display.output}` (line 698), each with its own distinct nonce-suffixed noun
+- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` **cannot** be extended for the three primary sites: `loop-router.yaml::review` (`FENCE_ROLES` key at `fence.py:142`, first value line `:143`), `loop-composer.yaml::review_chain` (`:100`, first value line `:101`), and `loop-composer-adaptive.yaml::review_chain` (`:112`, first value line `:113`) are already keys in it, and each needs additional fences. The actual work:
+  - add `FENCE_CORE_UNTRUSTED_OUTPUT` (the "record, not a message to you" clause from Expected Behavior; per the decided Option B nonce-suffix form, no marker-collision text belongs in this constant — `render_fence()` needs no marker-construction change, see Program Design → Signatures)
+  - add a sibling `UNTRUSTED_OUTPUT_ROLES` dict keyed on the same 3-element shape `UNTRUSTED_OUTPUT_SITES` already uses — `(loop_file, state_name, matched_interpolation_string) -> (noun, role, verbs, var)`, not a 2-tuple key — since `rn-build.yaml::synthesize_result`, `integrate-sdk.yaml::diagnose_and_block`, and both composer `review_chain` states each need more than one fence at the same state
   - give `render_fence()` a `core: str = FENCE_CORE` parameter, or add a sibling renderer — `render_fence` hardcodes `core=FENCE_CORE` at `fence.py:57`
-  - add the new-noun equivalent of `KNOWN_UNFENCED_PROMPT_SITES`, seeded with `("loop-router.yaml", "review")` for the dropped `${captured.chosen.output}` site (see Scope)
-    > ⚠ Superseded — wrong per Acceptance Criteria item 4's own correction (see the `⚠ Superseded` note there): `chosen` is captured by `apply_user_choice`, an `action_type: shell` state, so it is structurally excluded from `_discover_untrusted_output_sites` and never appears in `discovered` — seeding it into `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES` makes `expected` a strict superset of `discovered` and breaks the exact-equality completeness-guard assertion (Acceptance Criteria item 6). `chosen` needs no exemption entry at all, exactly as already established for `catalog` elsewhere in this issue.
-  - update the module docstring: it currently scopes the module to BUG-3327 and to briefs/goals only (`fence.py:1-19`), and names `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` as a consumer that must track it
+  - add `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`, seeded empty at this issue's scope — `chosen` is captured by `apply_user_choice` (an `action_type: shell` state, never a `loop:` dispatch state) so it is structurally excluded from `_discover_untrusted_output_sites` and needs no exemption entry (Acceptance Criteria item 4); `sub_loop_output`'s path-reference decision is documented via a YAML comment at the new shell state and at `review` instead of a set entry
+  - update the module docstring: it currently scopes the module to BUG-3327 and to briefs/goals only (`fence.py:1-19`), and names `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` as a consumer that must track it; per Acceptance Criteria's doc-pairing item, the docstring must also contain the literal substring `"FENCE_CORE_UNTRUSTED_OUTPUT"`, asserted by `TestUntrustedOutputFencing::test_docstring_names_untrusted_output_class` (new, `scripts/tests/test_builtin_loops.py`)
 
 _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_ the following confirmed tier-A sites (Scope's Codebase Research Findings and Wiring Pass Findings) are not yet reflected above:
-- `scripts/little_loops/loops/rn-build.yaml` — fence `${captured.eval_result.output}` in `capture_eval_failures` (~line 858) and `synthesize_result` (~line 1255); fence `${captured.cluster_result.output}` in `synthesize_result` (~line 1254)
-  > ⚠ Superseded — line numbers stale by exactly 10 (remediation pass, 2026-08-29). Confirmed current tree: `capture_eval_failures` opens `:859`, its interpolation is `:868` (not 858); `synthesize_result` opens `:1257`, `EVAL RESULT: ${captured.eval_result.output:default=not run}` is `:1265` (not 1255), `CLUSTER RESULT: ${captured.cluster_result.output}` is `:1264` (not 1254).
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — fence `${captured.confidence_check.output}` in `diagnose` (~line 859)
-  > ⚠ Superseded — capture renamed `confidence_check_events`; now line ~970
-- `scripts/little_loops/loops/examples-miner.yaml` — fence `${captured.run_optimizer.gradient}` in `synthesize` (line 156)
-  > ⚠ Superseded — var name incomplete (remediation pass, 2026-08-29). Confirmed current tree: line 156's interpolation is `${captured.run_optimizer.gradient.output}` (trailing `.output` missing above), matching `UNTRUSTED_OUTPUT_SITES`'s own entry for this site (`test_builtin_loops.py:19106`).
-- `scripts/little_loops/loops/integrate-sdk.yaml` — fence `${captured.prove.targets}`/`${captured.prove.enumeration}` in `scaffold_integration` (line 147) and `diagnose_and_block` (lines 204-205)
-- `scripts/little_loops/loops/adopt-third-party-api.yaml` — fence `${captured.prove.enumeration}` in `build_playbook` (line 80) and `build_playbook_partial` (line 109)
+- `scripts/little_loops/loops/rn-build.yaml` — `capture_eval_failures` opens `:859`, fence `${captured.eval_result.output}` at its interpolation `:868`; `synthesize_result` opens `:1257`, fence `${captured.cluster_result.output}` at `:1264` and `${captured.eval_result.output:default=not run}` at `:1265`
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — the sub-loop dispatch capture was renamed to `confidence_check_events` (`refine-to-ready-issue.yaml:586`, commit `8060f8ccc`); fence `${captured.confidence_check_events.output?}` in `diagnose` (line `:970`) — the nullable `?` suffix is already present (`diagnose`'s own comment at `:939-941` explains every ref there is nullable, since only the failing state's capture is populated on a given run)
+- `scripts/little_loops/loops/examples-miner.yaml` — fence `${captured.run_optimizer.gradient.output}` in `synthesize` (line 156)
+- `scripts/little_loops/loops/integrate-sdk.yaml` — fence `${captured.prove.targets.output}` in `scaffold_integration` (line 147) and `${captured.prove.enumeration.output:default=not-reached}`/`${captured.prove.targets.output:default=not-reached}` in `diagnose_and_block` (lines 204-205)
+- `scripts/little_loops/loops/adopt-third-party-api.yaml` — fence `${captured.prove.enumeration.output}` in `build_playbook` (line 80) and `build_playbook_partial` (line 109)
 
 _Added 2026-08-28 (was declared in scope by the restated Decision Rule but missing from this list):_
-- `scripts/little_loops/loops/eval-driven-development.yaml` — fence `${captured.run_harness.output}` in `diagnose` (`action_type: prompt`, ~line 152) — the hand-classified shell-capture tier-A site
-  > ⚠ Superseded — also fence `capture_issues` (`:84-89`), equal in kind to `diagnose`; see § Codebase Research Findings
+- `scripts/little_loops/loops/eval-driven-development.yaml` — `run_harness` (`action_type: shell`, `capture: run_harness`, :74-77) feeds two hand-classified shell-capture tier-A sites via the identical `${captured.run_harness.output}` value: `capture_issues` (`action_type: prompt`, opens `:84`, interpolation `:89`, reached via `on_yes: capture_issues` at `:80`) and `diagnose` (opens `:144`, interpolation `:152`, reached via `on_no: diagnose` at `:81`) — fence both. Also add both `("eval-driven-development.yaml", "capture_issues", "${captured.run_harness.output}")` and `("eval-driven-development.yaml", "diagnose", "${captured.run_harness.output}")` to `UNTRUSTED_OUTPUT_SITES` and `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` in `scripts/tests/test_builtin_loops.py` (mirroring `loop-composer{,-adaptive}.yaml::review_chain`'s existing entries), since both are shell-capture relay, not `loop:`-dispatch, and `_discover_untrusted_output_sites` will never find them.
+- `scripts/little_loops/loops/loop-composer.yaml` / `loop-composer-adaptive.yaml` — add `("loop-composer.yaml", "review_chain", "${captured.plan_display.output}")` and `("loop-composer-adaptive.yaml", "review_chain", "${captured.plan_display.output}")` to `UNTRUSTED_OUTPUT_SITES` and `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` in `scripts/tests/test_builtin_loops.py`, alongside those files' existing `step_results_json` entries — `plan_display` is shell-capture relay via `parse_plan`, not `loop:`-dispatch, so `_discover_untrusted_output_sites` will never find it either (Scope's `plan_display` finding).
 
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_loop_router.py::TestLoopRouterStructure::test_dispatch_uses_native_loop_field` (lines 202-211) — loads `loop-router.yaml` and hard-asserts `dispatch`'s `on_yes`/`on_no`/`on_error` all equal `"review"`; this issue's own dispatch-repoint fix (Files to Modify, Acceptance Criteria item 11) breaks this assertion, so it is a dependent that must be updated, not merely left passing incidentally
@@ -996,7 +1037,7 @@ Also reconfirmed: `scripts/little_loops/fsm/fence.py` is still unchanged (no `FE
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-Confirmed against the working tree (2026-08-29, post-ENH-3337/commit `4ca5cbb91`, "make :shell interpolation suffix compose with :default= and ?"): `interpolation.py`'s suffix parsing was extracted out of `interpolate()` into a new `parse_interpolation_suffixes()` helper at `:209-271`; `interpolate()` itself is now at `:274-341`. The prior Program Design citation (`interpolate() lines 209-293`) is stale by this split — the substance it described is unchanged. Re-confirmed: bare `:shell` (no `:default=`, no `?`) on a missing path still raises `InterpolationError` (now at `:329`; `test_bare_shell_on_missing_path_still_raises`, `test_fsm_interpolation.py:905`) — the combined `:shell:default=` form the decided path-reference mechanism relies on is still required for a nullable-safe `:shell` binding with a literal fallback. Its tests are unmoved in substance, only by a couple of lines (`test_shell_default_combined_missing_path_emits_quoted_fallback`/`::_present_path_emits_quoted_value`, now `:889`/`:899`, was cited `:886`/`:898`).
+Confirmed against the working tree (2026-08-29, post-ENH-3337/commit `4ca5cbb91`, "make :shell interpolation suffix compose with :default= and ?"): `interpolation.py`'s suffix parsing was extracted out of `interpolate()` into a new `parse_interpolation_suffixes()` helper at `:209-271`; `interpolate()` itself is now at `:274-341`. The prior Program Design citation (`interpolate() lines 209-293`) has drifted from this split — the substance it described is unchanged. Re-confirmed: bare `:shell` (no `:default=`, no `?`) on a missing path still raises `InterpolationError` (now at `:329`; `test_bare_shell_on_missing_path_still_raises`, `test_fsm_interpolation.py:905`) — the combined `:shell:default=` form the decided path-reference mechanism relies on is still required for a nullable-safe `:shell` binding with a literal fallback. Its tests are unmoved in substance, only by a couple of lines (`test_shell_default_combined_missing_path_emits_quoted_fallback`/`::_present_path_emits_quoted_value`, now `:889`/`:899`, was cited `:886`/`:898`).
 
 New in this commit: `:shell` now also composes with `?` (`:shell?`, order-independent per `parse_interpolation_suffixes`) — a missing path under `${x:shell?}` resolves to a shlex-quoted empty string instead of raising (`test_shell_before_nullable_resolves_correct_path`/`::_quotes_present_value`, `test_fsm_interpolation.py:956,963`). This is a second escape hatch to the same effect as `:shell:default=` for a shell binding that must tolerate a missing capture — worth recording since the decided Open Question 2 mechanism (writing `sub_loop_output` to `${context.run_dir}/sub-loop-events.jsonl` via a `:shell`-bound env var) could use either form; `:shell:default=` remains preferable only when a non-empty literal fallback (rather than an empty string) is wanted on a missing capture.
 
@@ -1018,15 +1059,15 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 Remediation pass, 2026-08-29 (second pass — corrects this section's own prior 2026-08-29 additions):
 
-- The `PROMPT_SIZE_WARN_EVENT`/`compress_action_text` citation (`:2209-2230`/`:2237-2248`) is stale by 2 lines. Confirmed current tree: `guard = self.fsm.prompt_size_guard` at `executor.py:2211`, `cc = self.compression_config` at `:2235`, the `compress_action_text(...)` call spans `:2239-2246`.
-- The `test_builtin_loops.py` symbol table (`_FENCE_LOOP_INPUT_VARS` etc., cited "file now 19371 lines") is stale throughout, uniformly off by 2 lines, and the line count itself is wrong. Confirmed current tree: file is **19369** lines (not 19371). `_FENCE_LOOP_INPUT_VARS` `:18985` (not 18987), `class TestBriefFencing` `:18994` (not 18996, its own `test_completeness_guard` `:19049` not 19051), `UNTRUSTED_OUTPUT_SITES` `:19098` (not 19100, and confirmed it still opens with `("loop-router.yaml", "review", "${captured.sub_loop_output.output}")` as its first entry, line `:19099`), `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` `:19133` (not 19135), `_direct_ref_pattern` `:19139` (not 19141), `_merge_ref_pattern` `:19143` (not 19145), `_discover_untrusted_output_sites` `:19151` (not 19153), `class TestUntrustedOutputSurvey` `:19179` (not 19181, its own `test_completeness_guard` `:19194` not 19196, `test_known_indirect_sites_chain_still_present` `:19205` not 19207).
+- The `PROMPT_SIZE_WARN_EVENT`/`compress_action_text` citation (`:2209-2230`/`:2237-2248`) has drifted by 2 lines. Confirmed current tree: `guard = self.fsm.prompt_size_guard` at `executor.py:2211`, `cc = self.compression_config` at `:2235`, the `compress_action_text(...)` call spans `:2239-2246`.
+- The `test_builtin_loops.py` symbol table (`_FENCE_LOOP_INPUT_VARS` etc., cited "file now 19371 lines") has drifted throughout, uniformly off by 2 lines, and the line count itself is inaccurate. Confirmed current tree: file is **19369** lines (not 19371). `_FENCE_LOOP_INPUT_VARS` `:18985` (not 18987), `class TestBriefFencing` `:18994` (not 18996, its own `test_completeness_guard` `:19049` not 19051), `UNTRUSTED_OUTPUT_SITES` `:19098` (not 19100, and confirmed it still opens with `("loop-router.yaml", "review", "${captured.sub_loop_output.output}")` as its first entry, line `:19099`), `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` `:19133` (not 19135), `_direct_ref_pattern` `:19139` (not 19141), `_merge_ref_pattern` `:19143` (not 19145), `_discover_untrusted_output_sites` `:19151` (not 19153), `class TestUntrustedOutputSurvey` `:19179` (not 19181, its own `test_completeness_guard` `:19194` not 19196, `test_known_indirect_sites_chain_still_present` `:19205` not 19207).
 - The "FSM wiring facts" paragraph's `apply_user_choice`/`refresh_input` citations are stale. Confirmed current tree: `apply_user_choice` opens `loop-router.yaml:382` (not 379) and runs through `:409` (not 410) — its `on_error: finalize_present_result` is at `:408`, `next: refresh_input` at `:409`. `refresh_input` opens `:411` (not 415) and runs through `:417` — its `on_error: dispatch` is at `:416`, `next: dispatch` at `:417`. The adjacent `dispatch` (`:421-428`) and `review` (opens `:432`) citations in the same paragraph are exact matches and needed no correction.
 - The ENH-3337 addition's test citations are each off by 1 line. Confirmed current tree: `test_shell_default_combined_missing_path_emits_quoted_fallback` `test_fsm_interpolation.py:890` (not 889), `::test_shell_default_combined_present_path_emits_quoted_value` `:900` (not 899), `test_bare_shell_on_missing_path_still_raises` `:906` (not 905), `test_shell_before_nullable_resolves_correct_path` `:957` (not 956), `::test_shell_before_nullable_quotes_present_value` `:964` (not 963). Separately, the "`:329`" citation for where bare `:shell` "still raises" does not name a distinct raise site for that behavior: `interpolation.py:328` and `:332` are `raise InterpolationError` sites inside `parse_interpolation_suffixes()` for the unrelated ambiguous-`?`-plus-`:default=`-suffix case and the `'{' `-in-default-value case — confirmed by reading `:315-334`. The bare-`:shell`-on-missing-path error is not raised at a dedicated line at all: it is `ctx.resolve()`'s `InterpolationError` propagating unhandled through `interpolate()`'s `try`/`except` at `:395-397` (`try:` `:395`, `value = ctx.resolve(namespace, path)` `:396`, `except InterpolationError:` `:397`) — no `default_value`/`nullable` branch applies when neither `:default=` nor `?` was present, so the exception surfaces as-is.
 
 Two new facts bearing on this issue's remaining open work (Acceptance Criteria items 4 and 7):
 
 - **`ll-loop validate` cannot catch a dispatch mis-wiring at the new intermediate shell state.** The unreachable-state check (`scripts/little_loops/fsm/validation/structural_rules.py`, "Check for unreachable states (warning only)" at `:1123`, loop body `:1124-1133`) emits `ValidationSeverity.WARNING`, never `ERROR`. Both consumers gate on ERROR only: `load_and_validate()`'s `raise_on_error` path (`structural_rules.py:1736-1840`) raises solely on ERROR-severity violations, and the CLI's `cmd_validate` (`scripts/little_loops/cli/loop/config_cmds.py:14-84`) computes `has_errors = any(v.severity == ValidationSeverity.ERROR for v in violations)` (`:73`) and returns `1 if has_errors else 0` (`:84`) / sets JSON `"valid": not has_errors` (`:77`). So if the new shell state is inserted but `dispatch`'s `on_yes`/`on_no`/`on_error` (`:426-428`) are left pointing at `review` instead of being repointed to the new state — orphaning it exactly as this section's own "FSM wiring facts" paragraph warns — `ll-loop validate` still exits 0 and reports the loop valid; the new state merely becomes an unreachable-state WARNING that nothing gates on. Acceptance Criteria item 7's "`ll-loop validate` passes" is therefore necessary but not sufficient for this specific regression: verifying the repoint needs a dedicated assertion (e.g. parsing `dispatch`'s three transition targets out of the loaded loop YAML and asserting none equals `"review"`), not just a clean `ll-loop validate` run.
-- **The path-reference mechanism does not remove the length ceiling — it relocates it.** `scripts/little_loops/fsm/runners.py:297` shows every `action_type: shell` state executes as `cmd = ["bash", "-c", action]` — the fully-interpolated `action` string becomes a single argv element passed through `execve()`, still bounded by the OS `ARG_MAX`. The new shell state's own action must interpolate `${captured.sub_loop_output.output:shell:default=}` into its shell-script text to write the stream to `${context.run_dir}/sub-loop-events.jsonl`, so the value this issue's own Root Cause calls "unbounded" is still embedded in that one `bash -c` argv string before it ever reaches the filesystem. The "no interpolated text means no length ceiling" framing per Open Questions' resolved hybrid answer holds for `review`'s prompt (correct — the prompt itself no longer carries the stream) but not for the new shell state's own action construction, which is a separate step with its own bound. Not a blocker — `ARG_MAX` (typically ~2MB on Linux, ~1MB on macOS) is far larger than the 50KB `PROMPT_SIZE_WARN_EVENT` threshold this same section's guard-block citation concerns — but it is a real, smaller ceiling this issue's own text claims does not exist, worth naming so the new state's action isn't written assuming an unbounded write path.
+- **The path-reference mechanism does not remove the length ceiling — it relocates it.** `scripts/little_loops/fsm/runners.py:297` shows every `action_type: shell` state executes as `cmd = ["bash", "-c", action]` — the fully-interpolated `action` string becomes a single argv element passed through `execve()`, still bounded by the OS `ARG_MAX`. The new shell state's own action must interpolate `${captured.sub_loop_output.output:shell:default=}` into its shell-script text to write the stream to `${context.run_dir}/sub-loop-events.jsonl`, so the value this issue's own Root Cause calls "unbounded" is still embedded in that one `bash -c` argv string before it ever reaches the filesystem. The "no interpolated text means no length ceiling" framing per Open Questions' resolved hybrid answer holds for `review`'s prompt (correct — the prompt itself no longer carries the stream) but not for the new shell state's own action construction, which is a separate step with its own bound. Not a blocker — `ARG_MAX` (typically ~2MB on Linux, ~1MB on macOS) is far larger than the 50KB `PROMPT_SIZE_WARN_EVENT` threshold this same section's guard-block citation concerns — but it is a real, smaller ceiling this issue's own text claims is absent, worth naming so the new state's action isn't written assuming an unbounded write path.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
@@ -1207,7 +1248,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 Line-citation correction, remediation pass 2026-08-29 (second pass — the 2026-08-29 addition above was itself stale on arrival). Re-verified against the current working tree:
 
 - `interpolate()`'s current-tree location is `interpolation.py:344-419` — not `:274-341` as the prior addition claimed. `InterpolationContext.resolve()` is at `:148-188` and `_get_nested()` at `:189-212` — **both have moved** from the `:78-117`/`:119-141` this issue originally cited; the prior addition's "unaffected — neither moved" claim is itself wrong. `parse_interpolation_suffixes()` is at `:279-343` (confirmed exact match to the prior addition's `:209-271` claim being stale by ~70 lines in the other direction — the actual range is 279-343, not 209-271). Current exact symbol table (`grep -n "^class \|^def \|    def " interpolation.py`): `InterpolationError` class `:41`, `HeredocCollisionError` `:47`, `_check_heredoc_collisions` `:62`, `InterpolationContext` class `:110`, `resolve` `:148`, `_get_nested` `:189`, `_get_state_value` `:213`, `_get_messages_value` `:232`, `_get_loop_value` `:255`, `parse_interpolation_suffixes` `:279`, `interpolate` `:344`, `interpolate_dict` `:420`. The behavioral claim these citations support (plain dict/dot-path traversal, `str(value)`, no fencing/wrapping/size-limit at the interpolation layer) remains correct — only every one of this section's own line numbers needed re-verifying, again.
-- The sub-loop dispatch capture join (this section's own 2026-08-29 addition cites `executor.py:1114-1117`) is stale by exactly 2 lines: confirmed current tree, `self.captured[state.capture] = {` is at `:1112`, the `"\n".join(...)` join expression at `:1113`, `"exit_code": None` at `:1114` — not 1114/1115/1116. Same correction filed against Integration Map's independent copy of this citation.
+- The sub-loop dispatch capture join (this section's own 2026-08-29 addition cites `executor.py:1114-1117`) has drifted by exactly 2 lines: confirmed current tree, `self.captured[state.capture] = {` is at `:1112`, the `"\n".join(...)` join expression at `:1113`, `"exit_code": None` at `:1114` — not 1114/1115/1116. Same correction filed against Integration Map's independent copy of this citation.
 
 ## Confidence Check Notes
 

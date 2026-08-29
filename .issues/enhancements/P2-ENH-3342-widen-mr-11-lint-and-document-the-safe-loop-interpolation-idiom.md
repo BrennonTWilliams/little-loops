@@ -235,11 +235,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   clean at a bash-token position, with the Python-body message naming the
   `LL_ARG_` hoist remedy (AC 5b).
 - `scripts/tests/test_builtin_loops.py` — ENH-3338's baseline test stays green;
-  plus the marker-count ratchet assertion (AC 8c), which belongs here beside the
+  plus the enumerated marker-set assertion (AC 8c — exact-set equality over
+  `(loop_path, var, cited_issue_id)` tuples), which belongs here beside the
   other corpus-wide guards rather than in the MR-11 unit suite.
 - `scripts/tests/test_fsm_validation_shell_safety.py` — the marker unit tests
   (AC 8b): per-variable exemption, both placements, each malformed form → ERROR,
-  `${`-bearing marker → ERROR, ordinary comment → not a marker.
+  `${`-bearing marker → ERROR, ordinary comment → not a marker, and a
+  well-formed marker matching no finding in its action → stale-marker WARNING.
 - `ll-loop validate` across the whole corpus must be clean **after** the widening.
 
 ### Documentation
@@ -376,9 +378,9 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 **In scope:** MR-11's matcher width, namespace coverage, Python-literal position
 awareness, and column-0 terminator; the validator's message text; the
-`# ll-lint: mr11-ok(<var>)` marker (grammar, parsing, well-formedness ERROR, and
-the marker-count ratchet); the guide's idiom documentation; triage of findings
-the widening surfaces.
+`# ll-lint: mr11-ok(<var>)` marker (grammar, parsing, well-formedness ERROR,
+stale-marker WARNING, and the enumerated marker-set ratchet); the guide's idiom
+documentation; triage of findings the widening surfaces.
 
 **Out of scope:** the suffix grammar (ENH-3337); the sweep and its baseline
 (ENH-3338); converting the 145 epic sites (BUG-3339/3340/3341); raising MR-11's
@@ -430,8 +432,9 @@ The rule MR-11 enforces after widening:
 | inside a quoted heredoc that **is** a Python body, carrying `:shell` | **flag (new)** — see below |
 | inside a `python3 -c "…"` body | **flag (new)** |
 | trusted key (`run_dir`, `promoted_artifact`, `_`-prefixed), `prev.exit_code`/`state`/`timeout_kind`, or `${loop.*}` | clean |
-| carries a well-formed `# ll-lint: mr11-ok(<this var>) <reason>` marker | clean, and counted against the marker ratchet |
+| carries a well-formed `# ll-lint: mr11-ok(<this var>) <reason>` marker | clean, and enumerated in the marker-set ratchet |
 | carries a malformed / reasonless / `${`-bearing marker | **ERROR** (louder than the warning it tried to silence) |
+| well-formed marker whose named variable produces **no** finding in its action | **WARNING** (stale marker — see marker constraint 7) |
 
 Untrusted-ness comes from `classify_site()`: `captured.*` always,
 `prev.output`/`prev.stderr` always, `context.*` minus the enumerated trusted set.
@@ -543,10 +546,18 @@ place:
    `# ll-lint: mr11-ok(context.goal) — see ${context.goal}` makes the comment its
    own live interpolation site. The grammar's `<namespace>.<key>` is bare text
    with no `${`, which is what keeps it inert; reject a marker containing `${`.
-5. **Markers are counted.** A test asserts the total marker count in the corpus
-   against a checked-in integer, so adding one is a deliberate, reviewed act
-   rather than a quiet edit. Removing one needs no ceremony — the count only
-   ratchets down.
+5. **Markers are enumerated, not merely counted.** A test in
+   `test_builtin_loops.py` asserts the corpus's full marker set —
+   `{(loop_path, <namespace>.<key>, cited_issue_id)}` — against a checked-in
+   set literal via exact-set equality, the same bidirectional shape as both
+   sibling precedents (the ratcheted-category ALLOWLIST and ENH-3338's
+   baseline; see the Codebase Research Finding that flagged the earlier
+   bare-integer count as weaker than either). Adding a marker is a deliberate,
+   reviewed act that edits the literal; a removed or moved marker fails the
+   same assertion as stale. This also makes a separately-maintained grep
+   transcript in this issue redundant — the test literal *is* the enumeration
+   and cannot go stale. (Decided 2026-08-29, superseding the earlier
+   bare-count design.)
 6. **For the Python-body (delegated) half, a marker exempts the named variable
    for the whole action, not per-line.** `scan_action()` merges duplicate sites
    by `(file, state, var, cls)` (`interp_sweep.py` `_merge_counts()`), keeping
@@ -557,6 +568,24 @@ place:
    per-variable matching); the bash-token-position half, which scans line by
    line, keeps per-line placement semantics as written in constraint 3. Do not
    attempt per-line matching against merged `scan_action()` output.
+7. **A marker that suppresses nothing is itself a finding.** A well-formed
+   marker whose named variable produces no MR-11 finding in its action emits a
+   `WARNING` ("stale marker"). Without this, a leftover marker from a
+   since-converted site is worse than dead annotation: because exemption is
+   per-variable and action-scoped (constraint 6), it would silently
+   pre-suppress a future *reintroduction* of that exact variable in that
+   action — defeating the ratchet for precisely the site it once covered. Both
+   sibling precedents are bidirectional (a stale ALLOWLIST entry and a stale
+   baseline entry both fail their tests); the marker mechanism must be too,
+   from both sides — the enumerated-set test (constraint 5) catches a marker
+   removed from the corpus but not the literal, and this check catches a
+   marker left in the corpus after its site was converted. Implementation is a
+   cheap set-difference: the validator already tracks which markers it
+   consumed during the action scan. `WARNING`, not `ERROR`, deliberately — a
+   stale marker can transiently appear in a consuming project mid-refactor and
+   must not hard-fail `ll-loop validate` at upgrade time (same reasoning as
+   § Severity), and unlike the malformed-marker case it is not actively
+   suppressing a live finding.
 
 The loop-level `unsafe_context_interpolation_ok` flag is **not** removed or
 deprecated here (that is a migration this epic did not scope), but no loop in the
@@ -614,7 +643,11 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
    distinct from the marker-constraint tests in step 5.
 5. Implement the `# ll-lint: mr11-ok(<var>) <reason>` marker: grammar, per-
    variable matching, both placements, the `${`-rejection guard, the
-   malformed-marker ERROR, and the checked-in marker-count ratchet. Do this
+   malformed-marker ERROR, the stale-marker WARNING (a well-formed marker
+   whose named variable matched no finding in its action — marker
+   constraint 7), and the checked-in enumerated marker-set assertion
+   (exact-set equality over `(loop_path, <namespace>.<key>, cited_issue_id)`
+   tuples in `test_builtin_loops.py` — marker constraint 5). Do this
    **before** the corpus-triage step (step 7 below) — triaging without the
    mechanism is what forced the earlier draft's contradiction.
 6. Update the validator's message to name both remedies concretely — the
@@ -635,25 +668,26 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
    `scripts/little_loops/loops/**` (see Integration Map § Dependent Files),
    not only built-in loops — but test fixtures are **convert-only**: they are
    synthetic and freely editable, and a marker placed in one would fall outside
-   AC 8c's `scripts/little_loops/loops/` grep scope and count ratchet, leaving
-   it uncounted and unenumerated. Markers are for `scripts/little_loops/loops/**`
+   AC 8c's `scripts/little_loops/loops/**` scope and enumerated marker-set
+   ratchet, leaving it unenumerated. Markers are for `scripts/little_loops/loops/**`
    only. While in `test_flux_image_generator.py`, also retire or align
    `test_no_raw_user_input_in_shell_actions` (`:187-206`), which hand-duplicates
    the exact old seven-key list this issue drops — either delete it as redundant
    with the widened MR-11 or reword it to stop restating the allowlist. Do not
    set `unsafe_context_interpolation_ok`, do
    not re-narrow the pattern, and do not baseline (MR-11 does not read
-   ENH-3338's baseline). After triage, run
-   `grep -rn "ll-lint: mr11-ok" scripts/little_loops/loops/` and record its
-   output in this issue (under Acceptance Criteria 8c), or "none" if the
-   residual set is empty, so the marker set stays visible rather than diffuse.
+   ENH-3338's baseline). After triage, update the checked-in marker-set
+   literal (AC 8c) to match the surviving markers — the test's exact-set
+   assertion is the durable enumeration, so no separate grep transcript needs
+   to be recorded in this issue.
 8. Document both interpolation idioms in
    `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` with the canonical
    copy-pasteable blocks, including the column-0 hoisting rule and the
    `<state>-<capture>.txt` naming rule. Also document the
    `# ll-lint: mr11-ok(...)` marker in the same section: its grammar, both
-   placement rules, that it is a last resort, and that it must not quote the
-   token it exempts.
+   placement rules, that it is a last resort, that it must not quote the
+   token it exempts, and that a marker matching no finding is itself flagged
+   as stale.
 9. Record the WARNING-vs-ERROR severity decision via `ll-issues decisions add
    --type decision --category <cat> --rule "<text>" --rationale "<why>"
    --issue ENH-3342`, which writes to `.ll/decisions.yaml` /
@@ -734,17 +768,25 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
    unit test for each constraint: it exempts only the named variable (a sibling
    site on the same line still fires); a marker with no reason, no parenthesized
    variable, or a `${` in it is an **ERROR**; both placements work, including the
-   preceding-line form for a `python3 -c "…"` one-liner; and an ordinary comment
-   is not mistaken for a marker.
-8c. The corpus's marker count is checked in and asserted by a test. Every marker
-   present at close carries a reason naming a tracking issue —
-   `grep -rn "ll-lint: mr11-ok" scripts/little_loops/loops/` enumerates them, and
-   the enumeration is recorded in this issue so the residual set is visible
-   rather than diffuse.
+   preceding-line form for a `python3 -c "…"` one-liner; an ordinary comment
+   is not mistaken for a marker; and a well-formed marker whose named variable
+   produces no finding in its action emits the stale-marker **WARNING**
+   (marker constraint 7).
+8c. The corpus's full marker set — `(loop_path, <namespace>.<key>,
+   cited_issue_id)` per marker — is checked in as a set literal in
+   `test_builtin_loops.py` and asserted via exact-set equality (the same
+   bidirectional shape as the ratcheted-category ALLOWLIST and ENH-3338's
+   baseline): a new marker fails as unenumerated, a removed or moved one fails
+   as stale. Every entry's reason names a tracking issue. Markers exist only
+   under `scripts/little_loops/loops/**`; test-fixture findings are converted,
+   never marked (see step 7), so the enumerated set covers the complete marker
+   set by construction. No separate grep transcript is recorded in this
+   issue — the test literal is the enumeration and cannot go stale.
 9. `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` documents both idioms with
    copy-pasteable blocks, the column-0 hoist rule, the `<state>-<capture>.txt`
    naming rule, and the marker's grammar and placement rules — including that it
-   is a last resort and must not quote the token it exempts.
+   is a last resort, must not quote the token it exempts, and is flagged as
+   stale when it matches no finding.
 10. The WARNING-vs-ERROR severity decision is recorded with its rationale.
 11. `python -m pytest scripts/tests/` exits 0.
 
@@ -763,9 +805,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   implementer under time pressure re-narrows the pattern or sets the loop-level
   flag to make `ll-loop validate` green — AC 8 exists to make that visible.
   Second, and new: **the marker becomes the path of least resistance** and the
-  triage turns into a marking exercise. The count ratchet (AC 8c) and the
-  mandatory issue-citing reason are the countermeasures; if the residual marker
-  count comes out large, that is a signal to convert more, not to accept it.
+  triage turns into a marking exercise. The enumerated marker-set ratchet
+  (AC 8c) and the mandatory issue-citing reason are the countermeasures; if the
+  residual marker set comes out large, that is a signal to convert more, not to
+  accept it.
 - **Breaking Change**: No. MR-11 findings stay at `WARNING`, so consuming
   projects see new warnings, not failures. The marker's well-formedness check is
   an `ERROR`, but it is unreachable for any project that does not write a marker.
