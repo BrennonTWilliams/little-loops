@@ -63,6 +63,12 @@ The orchestrator, worker pool, priority queue, and merge coordinator emit `paral
 
 The `parallel.*` namespace is documented in `docs/reference/EVENT-SCHEMA.md` as a first-class subsystem but is effectively write-only for terminal accounting today. That makes a wedged worker invisible — the single failure mode most worth watching (one worker stuck while the rest sail) produces no event at all until timeout — and makes any live dashboard/visualizer of an in-progress run impossible to build.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Scope correction**: "one worker stuck while the rest sail... produces no event at all until timeout" is only fully addressed for the pre-dispatch overlap-deferral case. This issue's `worker_blocked`/`worker_unblocked` pair (`WorkerBlockedReason: Literal["overlap"]`) does not instrument an already-dispatched worker that hangs mid-execution until `parallel_config.timeout_per_issue` fires (`worker_pool.py:964`, `orchestrator.py:1013`) — no code path in `parallel/` transitions an in-flight worker into a blocked state (confirmed: zero hits for wedged/heartbeat/stuck detection). See the corrected Acceptance Criteria and the matching Scope Boundaries addition.
+
 ## Proposed Solution
 
 Add six new event emissions alongside the existing two, at the orchestrator/worker-pool call sites that already own each state transition:
@@ -293,9 +299,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 A `parallel.*` subscriber can render active-worker count, per-worker status, and merge outcome for an in-progress run without polling `.issues/` or the filesystem; a worker stuck for its full timeout produces at least one `parallel.worker_blocked` event before that timeout fires.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Scope correction (mirrors the Acceptance Criteria superseded-marker)**: "a worker stuck for its full timeout produces at least one `parallel.worker_blocked` event before that timeout fires" describes a capability this issue does not implement. `worker_blocked` fires only at the overlap-deferral point (`ParallelOrchestrator._process_parallel`, before dispatch); a worker already dispatched and wedged until `timeout_per_issue` produces no `worker_blocked` event under this design. The metric holds only for the overlap-deferral case; detecting an in-flight wedged worker is a distinct, unimplemented capability (see Scope Boundaries).
+
 ## Scope Boundaries
 
 Out of scope: building the dashboard/visualizer consumer itself (this issue only adds the emitters); changing existing fields or the emission point of the existing `parallel.worker_completed`/`parallel.epic_branch_stale` events (the additive `run_id` stamp on both IS in scope — see API/Interface); adding lifecycle events outside the `parallel.*` namespace (e.g. FSM state-transition events); retrofitting historical runs with these events after the fact; **fixing the sequential-mode `worker_completed` gap** — `_process_sequential` submits without a callback (`orchestrator.py:1008`) so sequential/P0 issues never reach the sole `worker_completed` emitter in `_on_worker_complete` (`:1285`); this is a pre-existing asymmetry (sequential issues DO get the new `worker_started`, merge, and `queue_changed` events), left for a follow-up issue rather than adding an emission to `_process_sequential`/`_merge_sequential` here.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Out of scope (new, matches the Acceptance Criteria correction above)**: detecting an already-dispatched worker wedged mid-execution until `parallel_config.timeout_per_issue`/`idle_timeout_per_issue` fires (`worker_pool.py:964`, `orchestrator.py:1013`). No code path in `parallel/` transitions an in-flight worker into a blocked state (confirmed by repo grep — zero hits for wedged/heartbeat/stuck detection). `worker_blocked`/`worker_unblocked` as implemented by this issue cover only pre-dispatch overlap-deferral (`WorkerBlockedReason: Literal["overlap"]`), which is a distinct transition from a hung in-flight worker. Left for a follow-up issue, same as the sequential-mode `worker_completed` gap noted above.
 
 ## API/Interface
 
