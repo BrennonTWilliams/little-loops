@@ -1462,7 +1462,7 @@ Show refinement depth table sorted by commands touched. Columns: ID, Pri, size, 
 
 | Argument/Flag | Description |
 |---------------|-------------|
-| `ISSUE-ID` | (Optional) Filter to a single issue by ID (e.g. `FEAT-873`, `BUG-525`). Ignores `--type` when set. Exits 1 if the issue is not found. |
+| `ISSUE-ID` | (Optional) Filter to a single issue by ID (e.g. `FEAT-873`, `BUG-525`, or a bare number like `873`), resolved regardless of status (`open`, `deferred`, `done`, `cancelled`, etc). Ignores `--type` when set. Prints `Error: Issue '<id>' not found.` to stderr and exits 1 if the issue is not found. |
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` (ignored when `ISSUE-ID` is provided) |
 | `--format` | Output format: `table` (default), `json` (NDJSON) |
 | `--json` / `-j` | Output as JSON array; with `ISSUE-ID` outputs a single JSON object instead |

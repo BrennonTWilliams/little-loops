@@ -4,10 +4,11 @@ type: BUG
 title: refine-status resolves active issues only, so lifetime cap reads 0 for deferred
   issues
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T23:26:59Z'
+completed_at: '2026-08-29T23:33:42Z'
 decision_needed: false
 verify_verdict: VALID
 confidence_score: 100
@@ -195,6 +196,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis (fold
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-29T23:33:17 - `8d7bb2d0-d27b-4d28-89fe-e2d8b28cb272.jsonl`
 - `/ll:ready-issue` - 2026-08-29T19:44:39 - `5b08caaf-d6d9-41cd-a302-ae95669f4151.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:34:20 - `095cbd0a-db00-46a3-adc4-bd813f5370ea.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:27:19 - `b3d7ed27-fb20-4642-89b3-c49ed044082a.jsonl`

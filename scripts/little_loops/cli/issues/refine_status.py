@@ -274,19 +274,25 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success).
     """
-    from little_loops.issue_parser import find_issues, is_formatted, is_normalized
+    import sys
+
+    from little_loops.issue_parser import IssueParser, find_issues, is_formatted, is_normalized
 
     issue_id_filter = getattr(args, "issue_id", None)
-    type_prefixes = {args.type} if (not issue_id_filter and getattr(args, "type", None)) else None
-    issues = find_issues(config, type_prefixes=type_prefixes)
 
     if issue_id_filter:
-        issues = [i for i in issues if i.issue_id == issue_id_filter]
+        from little_loops.cli.issues.show import _resolve_issue_id
+
+        path = _resolve_issue_id(config, issue_id_filter)
+        if path is None:
+            print(f"Error: Issue '{issue_id_filter}' not found.", file=sys.stderr)
+            return 1
+        issues = [IssueParser(config).parse_file(path)]
+    else:
+        type_prefixes = {args.type} if getattr(args, "type", None) else None
+        issues = find_issues(config, type_prefixes=type_prefixes)
 
     if not issues:
-        if issue_id_filter:
-            print(f"Error: issue '{issue_id_filter}' not found in active issues.")
-            return 1
         print("No active issues found.")
         return 0
 

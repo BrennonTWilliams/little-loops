@@ -1624,7 +1624,7 @@ class TestFindIssues:
             ("set_status:75", {}),
             # cli/issues/next_action.py:30 — cmd_next_action
             ("next_action:30", {"skip_ids": None}),
-            # cli/issues/refine_status.py:281 — cmd_refine_status
+            # cli/issues/refine_status.py:293 — cmd_refine_status
             (
                 "refine_status:281",
                 {"type_prefixes": {"BUG", "FEAT", "ENH"}},
@@ -4830,7 +4830,7 @@ class TestPriorityRegexCompletenessAllowlist:
             61: "docstring for _priority_prefix_re",
         },
         "cli/issues/refine_status.py": {
-            533: "normalized-filename convention check help text",
+            539: "normalized-filename convention check help text",
         },
         "cli/issues/search.py": {
             109: "--priority P1-P3 range argument parser, not a filename regex",

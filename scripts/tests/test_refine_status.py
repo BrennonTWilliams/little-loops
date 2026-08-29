@@ -29,9 +29,12 @@ def _make_issue(
     score_change_surface: int | None = None,
     session_commands: list[str] | None = None,
     size: str | None = None,
+    status: str | None = None,
 ) -> None:
     """Write a minimal issue file with optional frontmatter and Session Log."""
     frontmatter_lines: list[str] = []
+    if status is not None:
+        frontmatter_lines.append(f"status: {status}")
     if confidence_score is not None:
         frontmatter_lines.append(f"confidence_score: {confidence_score}")
     if outcome_confidence is not None:
@@ -2062,7 +2065,7 @@ class TestRefineStatusSingleIssue:
         sample_config: dict[str, Any],
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """refine-status with a non-existent ID prints error and exits 1."""
+        """refine-status with a non-existent ID prints error to stderr and exits 1."""
         features_dir = self._setup_dir(temp_project_dir, sample_config)
         _make_issue(features_dir, "P3-FEAT-873-test-issue.md", "Test Feature Issue")
 
@@ -2076,9 +2079,71 @@ class TestRefineStatusSingleIssue:
             result = main_issues()
 
         assert result == 1
-        out = capsys.readouterr().out
-        assert "not found" in out, f"Expected 'not found' in output: {out!r}"
-        assert "FEAT-999" in out, f"Expected issue ID in error message: {out!r}"
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == "Error: Issue 'FEAT-999' not found.\n"
+
+    @pytest.mark.parametrize("status", ["deferred", "done", "cancelled"])
+    def test_single_issue_resolves_non_active_status(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+        status: str,
+    ) -> None:
+        """refine-status resolves deferred/done/cancelled issues with their real refine_count."""
+        features_dir = self._setup_dir(temp_project_dir, sample_config)
+        _make_issue(
+            features_dir,
+            "P3-FEAT-873-test-issue.md",
+            "Test Feature Issue",
+            status=status,
+            session_commands=["/ll:refine-issue", "/ll:refine-issue", "/ll:verify-issues"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "refine-status",
+                "FEAT-873",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["id"] == "FEAT-873"
+        assert data["refine_count"] == 2
+
+    def test_single_issue_bare_numeric_id_resolves(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """refine-status accepts a bare numeric ID, matching sibling single-ID commands."""
+        features_dir = self._setup_dir(temp_project_dir, sample_config)
+        _make_issue(features_dir, "P3-FEAT-873-test-issue.md", "Test Feature Issue")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "873", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["id"] == "FEAT-873"
 
     def test_single_issue_json_flag(
         self,
