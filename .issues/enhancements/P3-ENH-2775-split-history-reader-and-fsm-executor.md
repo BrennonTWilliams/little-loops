@@ -4,7 +4,7 @@ status: open
 priority: P3
 discovered_commit: fb5673902939bbf5a17bc7afe61317982d40bfd2
 discovered_branch: main
-discovered_date: 2026-07-24T22:31:26Z
+discovered_date: 2026-07-24 22:31:26+00:00
 discovered_by: audit-architecture
 focus_area: large-files
 labels:
@@ -13,7 +13,13 @@ labels:
 - refactoring
 - auto-generated
 parent: EPIC-2789
-verify_verdict: VALID
+verify_verdict: NON_VALID
+confidence_score: 90
+outcome_confidence: 33
+score_complexity: 5
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 0
 ---
 
 # ENH-2775: Split history_reader.py and fsm/executor.py along concern boundaries
@@ -160,7 +166,21 @@ N/A — no new decision logic; this issue is a structural module split introduci
   `fsm/executor.py` is now 3,758 lines (was 2,915). Verdict: OUTDATED (line
   counts updated above).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-29_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 33/100 → VERY LOW
+
+### Outcome Risk Factors
+- Deep per-site complexity risk: the `fsm/executor.py` half has no established target shape (subpackage vs. flat file) and two newly-identified method groups (`_prepatch_*`, `_tamper_guard_*`) need new collaborator modules with no naming precedent; `extension.py:wire_extensions()` also reaches into `FSMExecutor` private attributes directly, so their names must survive the split unchanged.
+- Broad blast radius: combined direct/transitive importers across both files (8+16 for `history_reader`, 13+31 for `fsm/executor`) land well past the "very wide blast radius" band — re-exports are intended to keep call sites unchanged, but any re-export gap breaks a large caller set silently across two subsystems.
+- `fsm/executor.py`'s 13,256-line test file has no existing per-concern class boundary (unlike `history_reader`'s already-organized 25 domain classes), so a matching test-file split is itself undecided work, not a mechanical mirror of the ENH-2772/ENH-2774 precedent.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T23:32:17 - `8d7bb2d0-d27b-4d28-89fe-e2d8b28cb272.jsonl`
+- `/ll:verify-issues` - 2026-08-29T23:27:10 - `8d7bb2d0-d27b-4d28-89fe-e2d8b28cb272.jsonl`
 - `/ll:wire-issue` - 2026-08-29T23:19:32 - `3877ebdc-d9d3-4449-9bcf-1a7f4ef3ce26.jsonl`
 - `/ll:refine-issue` - 2026-08-29T23:06:34 - `ed9b2f61-6325-4a0c-aa2f-badcd208e1b6.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:49 - `6160b806-1147-4cb9-be05-f6b3edf1653b.jsonl`
