@@ -345,6 +345,18 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 Correction to the wire-issue findings above: `_run_init` (line 18446), `test_xiii_init_stdout_exactly_one_line_in_repo` (line 18710), and `test_xiii_init_stdout_exactly_one_line_in_non_repo` (line 18719) are methods of `TestCheckIntentScopeShellAction` (`scripts/tests/test_builtin_loops.py:18423-18785`; FEAT-3332's `check_intent_scope`-gate test class, which sets `LOOP_FILE = BUILTIN_LOOPS_DIR / "workflow-generator.yaml"` and drives `init`'s full action through that same `_run_init` helper) — not `TestWorkflowGeneratorLoop` (`scripts/tests/test_builtin_loops.py:17899-18422`). Only `test_init_resets_emit_errors_and_retry_count` (line 18225) is correctly attributed to `TestWorkflowGeneratorLoop`; verified directly: `grep -n "^class Test" scripts/tests/test_builtin_loops.py` shows `TestWorkflowGeneratorLoop` ending at line 18422, immediately followed by `class TestCheckIntentScopeShellAction:` at 18423. An implementer following the wiring bullets literally would look for `_run_init` inside `TestWorkflowGeneratorLoop` and not find it; `TestCheckIntentScopeShellAction` also carries the `_init_repo`/`_setup` git-fixture helpers (lines 18437, 18465) the proposed generator-block execution test would need alongside `_run_init`.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- Line numbers cited in this section's Tests/wiring bullets have drifted since the prior refine pass, due to FEAT-3328 landing (commit `1445fd3e4`) and inserting its own gate-completeness lint tests earlier in the same file. Current, re-verified locations in `scripts/tests/test_builtin_loops.py`:
+  - `class TestWorkflowGeneratorLoop:` now starts at line 17928 (was 17899) and still ends immediately before `class TestCheckIntentScopeShellAction:`, now at line 18452 (was 18423) — the class-attribution correction from the earlier wiring pass (`_run_init`, the two `test_xiii_init_stdout_exactly_one_line_in_*` tests belong to `TestCheckIntentScopeShellAction`, not `TestWorkflowGeneratorLoop`) still holds.
+  - `test_attach_evaluators_documents_every_required_field` — now at line 18147 (was 18118); content unchanged, still asserts every offered type's required fields are named as substrings of `attach_evaluators`'s `action` string.
+  - `test_init_resets_emit_errors_and_retry_count` — now at line 18254 (was 18225).
+  - `_run_init` — now at line 18475 (was 18446), still inside `TestCheckIntentScopeShellAction`.
+  - `test_xiii_init_stdout_exactly_one_line_in_repo` — now at line 18739 (was 18710).
+  - `test_xiii_init_stdout_exactly_one_line_in_non_repo` — now at line 18748 (was 18719).
+  - `TestInterpSweepBaseline::test_completeness_guard` — now at line 19267 (was 19236).
+  None of these tests' bodies changed in a way that affects this issue's plan — only their line offsets moved. Re-verify line numbers again before implementing if further commits land on `scripts/tests/test_builtin_loops.py` in the meantime.
+
 ## Acceptance Criteria
 
 - [ ] The Decision Needed above is resolved and recorded in this issue
@@ -376,7 +388,6 @@ Correction to the wire-issue findings above: `_run_init` (line 18446), `test_xii
 - [ ] If FEAT-3328's gate-completeness guide entry has landed, its
       cross-reference to this issue in
       `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` is updated to "resolved".
-      > ⚠ Superseded — FEAT-3328 open, no guide entry exists yet
 
 ### Codebase Research Findings
 
@@ -429,6 +440,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       carries open/pending/tracked language — the concrete marker to check
       for, once the entry exists.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- The seventh bullet's premise has changed since the last pass: FEAT-3328 is now `status: done` (commit `1445fd3e4`, "feat(fsm): gate-completeness lint for restated validator rule tables" — `_validate_gate_completeness` landed in `scripts/little_loops/fsm/validation/meta_rules.py`), and `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` now carries a **gate-completeness** guide-rule row (currently an uncommitted working-tree change) whose Symptom cell states: "a rule table restated in *prose* inside a `prompt` action is invisible to this rule (tracked separately as ENH-3355)". The bullet's "not-yet-checkable until FEAT-3328 lands a guide entry" precondition from the prior pass no longer holds — it is now checkable, and the check result is that the bullet is still **unresolved**: "tracked separately as ENH-3355" is exactly the pending/tracked language the bullet is watching for, not "resolved". The annotation that previously stood beneath this bullet (noting FEAT-3328 was still open and no guide entry existed) has been removed as no longer accurate (this pass's bounded marker-removal right) rather than left standing on a now-false premise.
+
 ## Impact
 
 - **Priority**: P4 — no current mismatch between prompt and tables; this
@@ -455,6 +470,7 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-29T18:45:12 - `237f015b-641f-4613-8e7e-3269af82a4c8.jsonl`
 - `/ll:confidence-check` - 2026-08-29T17:12:27 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
 - `/ll:verify-issues` - 2026-08-29T17:08:23 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
 - `/ll:refine-issue` - 2026-08-29T17:03:11 - `349c7330-13ab-43c2-bdc2-9bd5e349f81e.jsonl`

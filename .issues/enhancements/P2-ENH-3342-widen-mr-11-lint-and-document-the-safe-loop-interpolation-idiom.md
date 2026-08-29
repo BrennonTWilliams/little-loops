@@ -366,6 +366,12 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 - **`test_mr11_does_not_fire_inside_quoted_heredoc` (`test_fsm_validation_shell_safety.py:267-273`) already asserts the correct behavior after widening — it is not the fixture item 3 above says is wrong.** Verified against the current tree: the fixture's action is `cat > "${context.run_dir}/in.txt" <<'LL_EOF'\n${context.input}\nLL_EOF\n` — a `cat` heredoc (a data sink writing `${context.input}` to a file), not a Python body. Under this issue's own § Program Design Decision Rules table ("inside a quoted heredoc that is **not** a Python body -> clean (unchanged)") and per `interp_sweep.py`'s `heredoc_is_python` gate (only true when `python3` appears before the `<<` on the opener line), this exact scenario stays correctly unflagged post-widening — `errors == []` remains the right assertion, unchanged. What AC 3's "unit test for each side" actually requires is a **new**, separate fixture using a `python3 <<'EOF'` heredoc that **is** flagged (the Python-body side of the distinction); the existing `cat`-heredoc fixture is the already-correct "not a Python body -> clean" side and should be left standing, not revised.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Correction to two `structural_rules.py` line citations in Integration Map → Wiring Phase: both drifted by FEAT-3328's insertion of a new validator call.** Commit `1445fd3e4` (2026-08-29T13:42:07-05:00, FEAT-3328 "gate-completeness lint") added `errors.extend(_validate_gate_completeness(fsm))` immediately upstream of the MR-7/MR-9/MR-11 shell-safety calls in `structural_rules.py`, shifting everything below it. Verified against the current tree: `def validate_fsm(` is now at `:984` (not `:983` as cited), and the actual call site `errors.extend(_validate_unsafe_context_interpolation(fsm))` is now at `:1168` (not `:1165` as cited in `structural_rules.py:68-71,1165`). The `:68-71` import-block citation on the same bullet (`_validate_bash_default_interpolation`, `_validate_overescaped_shell`, `_validate_unsafe_context_interpolation` imported from `shell_safety`) is unaffected and still correct.
+- **Correction to the `validation/__init__.py` `__all__`-list range citation: `:184-217` is now one line short.** Same root cause — FEAT-3328 added a `_validate_gate_completeness` entry to this file's `__all__` list (confirmed at `:97` import / `:244` in `__all__`), shifting the alphabetized entries below it by one line. `_find_unsafe_context_interpolations` — the last of the three re-exports this bullet names — is now at `:218`, just outside the cited `184-217` range. The `from shell_safety import (...)` block citation (`:118-126`) is unaffected and still correct: `_QUOTED_HEREDOC_START_RE` (`:121`), `_UNSAFE_CONTEXT_INTERP_RE` (`:122`), `_find_unsafe_context_interpolations` (`:124`) all match.
+- **Confirmed unaffected: `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`'s own citations.** FEAT-3328's new `gate-completeness` row lands at `:117`, well after the header (`:92`) and MR-11's own row (`:104`) this issue cites — neither shifts. `docs/reference/CLI.md:872`, `docs/reference/API.md:6309,6322,6416`, and `skills/review-loop/reference.md:50` were also re-checked and remain exactly as cited, still stale in the way this issue's Integration Map already flags for revision (unchanged, no new drift).
+
 ## Scope Boundaries
 
 **In scope:** MR-11's matcher width, namespace coverage, Python-literal position
@@ -1015,6 +1021,7 @@ already retired that risk)._
   implementer must make in step 1/2.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-29T18:47:09 - `237f015b-641f-4613-8e7e-3269af82a4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-29T18:14:01 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:confidence-check` - 2026-08-29T18:02:56 - `7123d651-4594-4bf8-9409-d68bea464210.jsonl`
 - `/ll:reconcile-issue` - 2026-08-29T17:55:42 - `7123d651-4594-4bf8-9409-d68bea464210.jsonl`
