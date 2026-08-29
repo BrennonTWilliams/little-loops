@@ -547,6 +547,16 @@ place:
    against a checked-in integer, so adding one is a deliberate, reviewed act
    rather than a quiet edit. Removing one needs no ceremony — the count only
    ratchets down.
+6. **For the Python-body (delegated) half, a marker exempts the named variable
+   for the whole action, not per-line.** `scan_action()` merges duplicate sites
+   by `(file, state, var, cls)` (`interp_sweep.py` `_merge_counts()`), keeping
+   only the first line number — so if the same variable appears twice in one
+   state's Python body, the merged `InterpSite` cannot distinguish a marked
+   occurrence from an unmarked one. Per-variable, action-scoped exemption is
+   therefore the defined semantics for that half (consistent with constraint 1's
+   per-variable matching); the bash-token-position half, which scans line by
+   line, keeps per-line placement semantics as written in constraint 3. Do not
+   attempt per-line matching against merged `scan_action()` output.
 
 The loop-level `unsafe_context_interpolation_ok` flag is **not** removed or
 deprecated here (that is a migration this epic did not scope), but no loop in the
@@ -623,7 +633,15 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
    finding — convert it, or mark it with a reason citing a tracking issue.
    This includes findings from the inline FSM YAML test fixtures outside
    `scripts/little_loops/loops/**` (see Integration Map § Dependent Files),
-   not only built-in loops. Do not set `unsafe_context_interpolation_ok`, do
+   not only built-in loops — but test fixtures are **convert-only**: they are
+   synthetic and freely editable, and a marker placed in one would fall outside
+   AC 8c's `scripts/little_loops/loops/` grep scope and count ratchet, leaving
+   it uncounted and unenumerated. Markers are for `scripts/little_loops/loops/**`
+   only. While in `test_flux_image_generator.py`, also retire or align
+   `test_no_raw_user_input_in_shell_actions` (`:187-206`), which hand-duplicates
+   the exact old seven-key list this issue drops — either delete it as redundant
+   with the widened MR-11 or reword it to stop restating the allowlist. Do not
+   set `unsafe_context_interpolation_ok`, do
    not re-narrow the pattern, and do not baseline (MR-11 does not read
    ENH-3338's baseline). After triage, run
    `grep -rn "ll-lint: mr11-ok" scripts/little_loops/loops/` and record its
