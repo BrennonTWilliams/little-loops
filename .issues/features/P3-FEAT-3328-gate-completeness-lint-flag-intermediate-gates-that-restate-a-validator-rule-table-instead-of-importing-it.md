@@ -944,6 +944,7 @@ Source: `postmortems/workflow-generator-output-json-gate-gap.md` §6.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T18:14:01 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:confidence-check` - 2026-08-29T17:56:13 - `8447b8ae-6392-4778-9269-a7326a6ec15e.jsonl`
 - `/ll:refine-issue` - 2026-08-29T17:52:27 - `b49cfdc1-e799-4d98-aa39-ef2212184ad7.jsonl`
 - `/ll:refine-issue` - 2026-08-29T17:52:13 - `b49cfdc1-e799-4d98-aa39-ef2212184ad7.jsonl`

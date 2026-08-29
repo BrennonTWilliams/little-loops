@@ -10,6 +10,12 @@ discovered_date: '2026-08-28'
 captured_at: '2026-08-28T23:26:59Z'
 decision_needed: false
 verify_verdict: VALID
+confidence_score: 90
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # BUG-3357: refine-status resolves active issues only, so lifetime cap reads 0 for deferred issues
@@ -151,6 +157,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T18:16:14 - `705df646-68fd-4942-88f0-15c172537d74.jsonl`
 - `/ll:verify-issues` - 2026-08-29T18:09:44 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:wire-issue` - 2026-08-29T18:04:00 - `7123d651-4594-4bf8-9409-d68bea464210.jsonl`
 - `/ll:decide-issue` - 2026-08-29T17:57:49 - `7123d651-4594-4bf8-9409-d68bea464210.jsonl`
