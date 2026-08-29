@@ -162,6 +162,26 @@ reads that file from `${context.run_dir}/evaluator-vocab.md`
 - A generator-block execution test: run the `python3 -c` body and assert its
   output covers every member of `NON_LLM_EVALUATOR_TYPES`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop::test_xiii_init_stdout_exactly_one_line_in_repo`
+  (line 18710) — existing behavioral test that runs `init`'s full action
+  end-to-end via `_run_init` and asserts stdout is exactly one line equal to
+  the resolved run_dir path; the new generator block must write only to
+  `evaluator-vocab.md` (redirected, per the `init` stdout contract), never to
+  stdout, or this test starts failing [Agent finding]
+- `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop::test_xiii_init_stdout_exactly_one_line_in_non_repo`
+  (line 18719) — same stdout-contract assertion, non-repo case [Agent finding]
+- `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop::test_init_resets_emit_errors_and_retry_count`
+  (line 18225) — another existing behavioral test that runs `init`'s full
+  action and asserts `result.stdout.strip() == str(tmp_path)`; also at risk if
+  the generator block leaks any output to stdout [Agent finding]
+- `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop::_run_init`
+  (line 18446) — the existing helper for invoking `init`'s action via
+  `subprocess.run(["bash", "-c", action], ...)` with `${context.run_dir}`
+  substituted; the proposed "generator-block execution test" (Acceptance
+  Criteria) should reuse this helper rather than reinventing action-invocation
+  plumbing [Agent finding]
+
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the gate-completeness rule
   entry (added by FEAT-3328) cites this issue as the tracked remedy for its
@@ -229,5 +249,6 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-29T16:21:14 - `7e3e461d-c448-4f5e-b605-da4742b390e0.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:14:49 - `b7bcafc8-2a6b-479f-8e57-018d577b3945.jsonl`
 - `/ll:format-issue` - 2026-08-29T16:07:26 - `980cbc7a-2998-4ff5-83ab-7e00435d03b9.jsonl`

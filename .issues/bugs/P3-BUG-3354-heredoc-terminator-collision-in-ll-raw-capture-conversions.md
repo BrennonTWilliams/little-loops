@@ -238,6 +238,29 @@ be swallowed exactly as today.
   opener; unstripped for plain `<<`) equals MARKER. This is the same
   open/close shape already implemented twice in this codebase as static
   scanners — see Integration Map → Conventions in Force.
+- **Gate refinement (2026-08-29 pre-implementation review)**: the check
+  tests **composed rendered lines of the region body**, not bare
+  substituted-value lines. Region boundaries stay raw-template-computed (per
+  the remediation-pass clarification below — this does not reintroduce the
+  rejected rendered-scan approach), but within a region the gate renders the
+  raw body lines with their tokens substituted and asks whether any
+  *composed* line equals MARKER. Value-line-only checking is wrong in both
+  directions when a `${...}` token shares its line with literal template
+  text: a value fragment can combine with adjacent literal text to form the
+  marker line (missed), and a value line exactly equal to MARKER is harmless
+  behind a literal prefix (false positive). The region's legitimate close
+  line is a boundary, not body, so it is never tested. All six named sites
+  have tokens alone on their lines today, but the guard is engine-wide and
+  must be correct for composite positions.
+- **Implementation notes**: (a) `VARIABLE_PATTERN.sub` runs over the
+  post-`$${...}`-escape string (`interpolation.py:301`, `:336`), so match
+  offsets map to the escaped text, not `template` — compute regions against
+  the escaped string (or work in line space, which the Verification Notes
+  already establish stays aligned since the placeholder has no newlines).
+  (b) Add a `"<<" not in template` fast path so the region scan skips the
+  ~40 non-heredoc `interpolate()` call sites entirely; this also moots most
+  of the broad-`except InterpolationError` absorb risk inventoried under
+  Codebase Research Findings.
 - **Marker scope**: keyed on the site's own terminator string, whatever the
   literal text is — not hardcoded to an `LL_RAW_*` prefix. This is required
   by the Scope Widening note below (`LL_STDERR_EOF` sites must be caught by
@@ -384,7 +407,12 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
    `bash -c` ever runs.
 5. `scripts/tests/test_fsm_interpolation.py` holds `interpolate()`'s
    unit-level contract; the new raise path needs direct unit coverage there,
-   not only the end-to-end bash harness in `test_builtin_loops.py`.
+   not only the end-to-end bash harness in `test_builtin_loops.py`. Include
+   composite-line fixtures per Decision Rules → Gate refinement: (a) a
+   token sharing its line with literal text whose fragment composes the
+   marker line → raises; (b) a value line equal to MARKER behind a literal
+   prefix on the template line → does NOT raise; (c) the region's own
+   legitimate close line → never flagged.
 6. `python -m pytest scripts/tests/test_fsm_interpolation.py
    scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_executor.py
    -v` passes, including whatever new test(s) cover this gate and the
@@ -729,6 +757,7 @@ this issue's own Confidence Check Notes) to `VALID`.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T16:19:29 - `7e3e461d-c448-4f5e-b605-da4742b390e0.jsonl`
 - `/ll:verify-issues` - 2026-08-29T16:10:26 - `d066a1db-8c85-4efb-8d7e-f8a88f18b677.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:05:41 - `6fdc2e2c-92d6-4705-9bc4-d9f033068370.jsonl`
 - `/ll:confidence-check` - 2026-08-29T15:54:29 - `e1f51e56-4700-4629-9064-1d81eae9d21d.jsonl`
