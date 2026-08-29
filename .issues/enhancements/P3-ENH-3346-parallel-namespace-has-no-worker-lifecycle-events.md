@@ -15,6 +15,7 @@ relates_to:
 decision_needed: false
 reconcile_attempted: true
 confidence_score: 90
+verify_verdict: NON_VALID
 outcome_confidence: 63
 score_complexity: 10
 score_test_coverage: 25
@@ -354,6 +355,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 - Moderate breadth × moderate depth: six new emitters plus `run_id` stamping on two existing ones span 6 source files (orchestrator.py, worker_pool.py, merge_coordinator.py, priority_queue.py, generate_schemas.py, observability/schema.py) and 6 doc/test files, with constructor-signature changes (threading `event_bus` into `IssuePriorityQueue`/`MergeCoordinator`) rather than pure mechanical substitution — expect more iteration than a single-file change.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-29T15:57:01 - `c54a423f-c560-4b02-ba94-5edb4f845eaa.jsonl`
 - `/ll:refine-issue` - 2026-08-29T15:47:04 - `e1f51e56-4700-4629-9064-1d81eae9d21d.jsonl`
 - `/ll:refine-issue` - 2026-08-28T03:18:19 - `90104caa-276e-4ccd-9e14-4b75908612aa.jsonl`
 - `/ll:confidence-check` - 2026-08-27T23:52:49 - `669eb13b-852d-427b-9f5f-ccf15758ffa9.jsonl`
