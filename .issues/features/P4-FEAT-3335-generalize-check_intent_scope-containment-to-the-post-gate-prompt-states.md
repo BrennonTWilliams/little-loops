@@ -200,6 +200,30 @@ defined-once AC) or converges on B's fragment anyway.
   window" caveat with the actual coverage
 - `docs/reference/loops.md` — the `workflow-generator` `### State Graph` diagram
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/data/loop_interpolation_baseline.json` — the ENH-3338
+  ratcheting baseline of embedded-Python interpolation sites; must change in
+  the same commit if the gate factoring adds, moves, or renames any
+  `${context.*}`/`${captured.*}` reference inside a `python3 -c`/heredoc
+  Python body (see Tests below — both directions of the ratchet fail)
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/interp_sweep.py` — `scan_corpus()` walks BOTH
+  top-level `states:` AND `fragments:` keys of every loop YAML under
+  `BUILTIN_LOOPS_DIR` recursively (`interp_sweep.py:232-246`, including
+  `lib/*.yaml`), so the new gate body is swept wherever the fragment lives
+  (loop-local block or lib file). Consumer only — no edit needed here.
+- Conditional branch (fragment location, ENH-3050): the research findings
+  recommend a loop-local `fragments:` block (zero new files), but Proposed
+  Solution candidate (a) names a shared fragment under
+  `scripts/little_loops/loops/lib/` — if that route is chosen instead,
+  `scripts/little_loops/loops/lib/common.yaml` (or a new lib file) enters
+  Files to Modify and workflow-generator.yaml additionally gains an
+  `import:` key (precedent: `autodev.yaml:43`); `scan_corpus` sweeps lib
+  fragments identically.
+
 ### Tests
 - `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop` — extend
   `test_pipeline_states_exist`, `test_validation_gates_are_exit_code`, and
@@ -212,6 +236,45 @@ defined-once AC) or converges on B's fragment anyway.
 - `TestValidatorWarningBudget.test_deterministic_warning_categories_do_not_regrow`
   — watch for new WARNING categories from the added states
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestInterpSweepBaseline.test_completeness_guard`
+  (`:19194`, class at `:19183`) — both-directions ratchet against
+  `scripts/tests/data/loop_interpolation_baseline.json`: a new unbaselined
+  embedded-Python interpolation site fails, and a baseline entry that no
+  longer scans fails. workflow-generator already carries 8 class-C heredoc
+  entries keyed by state name (`validate_intent`, `validate_sketch`,
+  `validate_evaluators`, `validate_routing`, `shrink_baseline`,
+  `shrink_select_candidate`, `shrink_try_remove`, `shrink_probe_candidate`);
+  factoring that moves a body into a fragment re-keys its site tuple to the
+  fragment entry name — update the baseline JSON in the same commit
+- `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop.test_max_steps_is_45`
+  (`:18266`) pins `max_steps == 45` exactly (plus `test_max_steps_is_at_least_40`
+  at `:18171`). The Option B analysis keeps 45 (happy path 16→22); if the
+  implementation instead raises `max_steps` for headroom, this pin must be
+  updated deliberately in the same change
+- `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop.test_shrink_gated_by_context_flag`
+  (`:17976`) asserts `check_shrink_enabled.on_no == "promotion_gate"` — a
+  placement constraint: the shrink-window gate belongs on
+  `shrink_select_candidate.on_no` (as the insertion-edge list already says),
+  NOT on `check_shrink_enabled.on_no`. Note the shrink-disabled default path
+  (`check_shrink_enabled.on_no → promotion_gate`) therefore bypasses the
+  shrink-window gate; the `validate_artifact.on_yes` gate is the last
+  assertion before promotion on that path
+- Edge-pin survey (verified by grep over `TestWorkflowGeneratorLoop`,
+  `:17899-18600`): NO existing test asserts the current target of any of the
+  six insertion edges (`validate_sketch.on_yes`, `validate_evaluators.on_yes`,
+  `validate_routing.on_yes`, `validate_artifact.on_yes`,
+  `shrink_select_candidate.on_no`, `promote.next`) — the pinned edges are
+  `check_intent_scope.on_yes` (`:18044`), `count_emit_retry.on_yes` (`:18164`),
+  `count_intent_retry.on_yes` (`:18250`), `promotion_gate.on_yes/on_no`
+  (`:17986-17989`), and `check_shrink_enabled.on_no` (`:17981`), none of which
+  the plan re-targets — so the insertions break no existing edge assertion
+- Raw-fixture precedent for fragment-ref states: structural tests may assert
+  `state.get("fragment") == "<name>"` directly on the raw YAML
+  (`test_builtin_loops.py:2585`, `:2678`, `:2783` assert
+  `fragment == "shell_exit"`), complementing the resolved-fixture route the
+  research findings describe for `action`/`evaluate` assertions
+
 ### Behavior Parity
 
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the "one-shot window" caveat
@@ -223,6 +286,18 @@ defined-once AC) or converges on B's fragment anyway.
 
 ### Documentation
 - Both files above
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — advisory only: the catalog row (`:1504`)
+  and `### workflow-generator` section (`:2657`) describe the pass/gate
+  pipeline and the Promotion window but do not mention the FEAT-3332
+  containment gate today, so they do not go stale; update the Technique
+  paragraph only if per-window containment coverage should be
+  operator-visible at this doc's level
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:1205` checked and deliberately
+  NOT added: its one-line catalog description ("six sequential passes, each
+  LLM pass paired with a non-LLM `exit_code` gate") remains accurate after
+  this change
 
 ### Configuration
 - N/A
@@ -307,6 +382,26 @@ validate` see ordinary shell states.
    FEAT-3332's gate cannot see this class of write.
 7. Update both docs, removing the one-shot caveat.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/data/loop_interpolation_baseline.json` in the same
+  commit as the factoring if any embedded-Python interpolation site is added,
+  moved, or re-keyed (the ENH-3338 ratchet fails in both directions;
+  `scan_corpus` walks `states:` AND `fragments:`, `interp_sweep.py:232-246`)
+- Keep `max_steps: 45`, or update
+  `TestWorkflowGeneratorLoop.test_max_steps_is_45`
+  (`scripts/tests/test_builtin_loops.py:18266`) deliberately in the same
+  change if headroom is raised
+- Place the shrink-window gate on `shrink_select_candidate.on_no` (not
+  `check_shrink_enabled.on_no`, which `test_shrink_gated_by_context_flag`
+  at `:17976` pins to `promotion_gate`)
+- If the shared-lib fragment route is chosen over a loop-local `fragments:`
+  block: add the fragment to `scripts/little_loops/loops/lib/common.yaml`
+  (or a new lib file) and an `import:` key to `workflow-generator.yaml`
+  (precedent: `autodev.yaml:43`)
+
 ## Acceptance Criteria
 
 - [ ] Every prompt state after FEAT-3332's gate (`sketch_state_graph`,
@@ -377,6 +472,7 @@ Original incident: the workflow-generator output-JSON gate-gap postmortem
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-28T23:41:12 - `425908b6-e1d5-4f67-8fd1-7db76f87cdd4.jsonl`
 - `/ll:decide-issue` - 2026-08-28T23:33:08 - `9f949531-f7bd-43e0-816a-3a64d73b2bba.jsonl`
 - `/ll:refine-issue` - 2026-08-28T23:25:14 - `425908b6-e1d5-4f67-8fd1-7db76f87cdd4.jsonl`
 - `/ll:format-issue` - 2026-08-28T23:13:29 - `425908b6-e1d5-4f67-8fd1-7db76f87cdd4.jsonl`
