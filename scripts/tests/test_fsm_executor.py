@@ -4358,6 +4358,47 @@ class TestActionExceptionRouting:
         # The friendly --context message must NOT be emitted when routed
         assert "--context" not in (result.error or "")
 
+    def test_heredoc_collision_halts_run_even_with_on_error_set(self) -> None:
+        """BUG-3354: HeredocCollisionError must NOT be rerouted to on_error
+        (unlike base InterpolationError, per the test directly above) — it
+        must reach run()'s top-level halt handler and end in a hard error,
+        because on_error's own semantics for base InterpolationError are the
+        control the Program Design deliberately does not reuse here."""
+        fsm = FSMLoop(
+            name="test",
+            initial="capture_step",
+            states={
+                "capture_step": StateConfig(
+                    action="produce.sh",
+                    capture="foo",
+                    next="render",
+                ),
+                "render": StateConfig(
+                    action=(
+                        "cat > out.txt << 'LL_RAW_9F3C1A7E_EOF'\n"
+                        "${captured.foo.output}\n"
+                        "LL_RAW_9F3C1A7E_EOF\n"
+                    ),
+                    action_type="prompt",
+                    on_yes="done",
+                    on_error="recover",
+                ),
+                "done": StateConfig(terminal=True),
+                "recover": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result(
+            "produce.sh", output="hello\nLL_RAW_9F3C1A7E_EOF\nrm -rf /", exit_code=0
+        )
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state != "recover", "must not be rerouted to on_error"
+        assert result.terminated_by == "error"
+        assert "LL_RAW_9F3C1A7E_EOF" in (result.error or "")
+        assert "Missing context variable" not in (result.error or "")
+
     def test_on_error_template_interpolated(self) -> None:
         """on_error target can itself be an interpolation template."""
         fsm = FSMLoop(

@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from little_loops.fsm.interpolation import (
+    HeredocCollisionError,
     InterpolationContext,
     InterpolationError,
     _format_duration,
@@ -999,3 +1000,126 @@ class TestShellSuffixComposition:
         )
         assert parse_interpolation_suffixes("x?:shell") == ("x", None, True, True)
         assert parse_interpolation_suffixes("x:shell?") == ("x", None, True, True)
+
+
+class TestHeredocCollision:
+    """BUG-3354: a captured/interpolated value whose content contains a line
+    exactly equal to the enclosing heredoc's own terminator must raise
+    HeredocCollisionError instead of silently truncating the heredoc when
+    handed to a shell runner."""
+
+    def test_captured_output_containing_terminator_line_raises(self) -> None:
+        """Red/green companion: a payload line equal to the quoted
+        terminator is caught before the shell ever sees it."""
+        template = (
+            "cat > out.txt << 'LL_RAW_9F3C1A7E_EOF'\n${captured.foo.output}\nLL_RAW_9F3C1A7E_EOF\n"
+        )
+        ctx = InterpolationContext(
+            captured={"foo": {"output": "hello\nLL_RAW_9F3C1A7E_EOF\nrm -rf /"}},
+            state_name="parse_project_score",
+        )
+        with pytest.raises(HeredocCollisionError, match="LL_RAW_9F3C1A7E_EOF"):
+            interpolate(template, ctx)
+
+    def test_heredoc_collision_error_is_interpolation_error_subclass(self) -> None:
+        """HeredocCollisionError must remain catchable by existing
+        `except InterpolationError` handlers as a backstop."""
+        assert issubclass(HeredocCollisionError, InterpolationError)
+
+    def test_benign_captured_output_does_not_raise(self) -> None:
+        """A payload with no line equal to the terminator interpolates
+        normally, unaffected by the new guard."""
+        template = (
+            "cat > out.txt << 'LL_RAW_9F3C1A7E_EOF'\n${captured.foo.output}\nLL_RAW_9F3C1A7E_EOF\n"
+        )
+        ctx = InterpolationContext(captured={"foo": {"output": "just some normal text"}})
+        result = interpolate(template, ctx)
+        assert "just some normal text" in result
+
+    def test_no_heredoc_in_template_skips_guard_entirely(self) -> None:
+        """The `'<<' not in template` fast path means ordinary non-heredoc
+        interpolation is unaffected, including values that happen to equal
+        some arbitrary string."""
+        ctx = InterpolationContext(context={"x": "LL_RAW_9F3C1A7E_EOF"})
+        result = interpolate("echo ${context.x}", ctx)
+        assert result == "echo LL_RAW_9F3C1A7E_EOF"
+
+    def test_composite_line_token_plus_literal_composes_marker_raises(self) -> None:
+        """Decision Rules gate refinement (a): a token sharing its line with
+        literal text whose composed fragment equals the marker must raise,
+        even though the substituted value alone ('RAW_9F3C1A7E_EOF') is not
+        the marker."""
+        template = (
+            "cat > out.txt << 'LL_RAW_9F3C1A7E_EOF'\n"
+            "${context.prefix}RAW_9F3C1A7E_EOF\n"
+            "LL_RAW_9F3C1A7E_EOF\n"
+        )
+        ctx = InterpolationContext(context={"prefix": "LL_"}, state_name="s")
+        with pytest.raises(HeredocCollisionError):
+            interpolate(template, ctx)
+
+    def test_marker_value_behind_literal_prefix_does_not_raise(self) -> None:
+        """Decision Rules gate refinement (b): a substituted value equal to
+        the marker is harmless — and must NOT raise — when a literal prefix
+        on the same template line means the composed line never equals the
+        bare marker."""
+        template = (
+            "cat > out.txt << 'LL_RAW_9F3C1A7E_EOF'\n"
+            "PREFIX${captured.foo.output}\n"
+            "LL_RAW_9F3C1A7E_EOF\n"
+        )
+        ctx = InterpolationContext(captured={"foo": {"output": "LL_RAW_9F3C1A7E_EOF"}})
+        result = interpolate(template, ctx)
+        assert "PREFIXLL_RAW_9F3C1A7E_EOF" in result
+
+    def test_legitimate_close_line_never_flagged(self) -> None:
+        """Decision Rules gate refinement (c): the region's own legitimate
+        close line is a boundary, not body content, and is never tested —
+        a captured value equal to the marker used as the LAST body line
+        does not falsely appear to be the close line for a subsequent
+        real close."""
+        template = (
+            "cat > out.txt << 'LL_RAW_9F3C1A7E_EOF'\n"
+            "before\n"
+            "${captured.foo.output}\n"
+            "after\n"
+            "LL_RAW_9F3C1A7E_EOF\n"
+        )
+        ctx = InterpolationContext(captured={"foo": {"output": "middle text"}})
+        result = interpolate(template, ctx)
+        assert "before" in result and "after" in result
+
+    def test_unquoted_heredoc_terminator_collision_raises(self) -> None:
+        """The unquoted `<<MARKER` opener form is covered too, not only the
+        quoted `<<'MARKER'` form."""
+        template = "cat > out.txt << EOF\n${captured.foo.output}\nEOF\n"
+        ctx = InterpolationContext(captured={"foo": {"output": "x\nEOF\ny"}})
+        with pytest.raises(HeredocCollisionError):
+            interpolate(template, ctx)
+
+    def test_dash_heredoc_terminator_collision_raises(self) -> None:
+        """The `<<-'MARKER'` opener form (tab-stripped close line) is
+        covered, including a tab-indented legitimate close line."""
+        template = "cat > out.txt <<-'EOF'\n${captured.foo.output}\n\tEOF\n"
+        ctx = InterpolationContext(captured={"foo": {"output": "x\nEOF\ny"}})
+        with pytest.raises(HeredocCollisionError):
+            interpolate(template, ctx)
+
+    def test_marker_agnostic_ll_stderr_family(self) -> None:
+        """Scope Widening: the guard keys on the site's own terminator
+        string, not an `LL_RAW_*` prefix — LL_STDERR_EOF sites are caught
+        by the same mechanism with no special-casing."""
+        template = "cat > err.txt << 'LL_STDERR_EOF'\n${captured.foo.stderr}\nLL_STDERR_EOF\n"
+        ctx = InterpolationContext(captured={"foo": {"stderr": "boom\nLL_STDERR_EOF\nrm -rf /"}})
+        with pytest.raises(HeredocCollisionError, match="LL_STDERR_EOF"):
+            interpolate(template, ctx)
+
+    def test_marker_agnostic_ll_input_family(self) -> None:
+        """Wiring Phase: LL_INPUT_EOF sites render `${context.input}`
+        (CLI-supplied user text) — the most directly attacker-controlled of
+        the three families — and are covered by the same marker-agnostic
+        guard."""
+        template = "cat > in.txt << 'LL_INPUT_EOF'\n${context.input}\nLL_INPUT_EOF\n"
+        ctx = InterpolationContext(context={"input": "hi\nLL_INPUT_EOF\nrm -rf /"})
+        with pytest.raises(HeredocCollisionError, match="LL_INPUT_EOF"):
+            interpolate(template, ctx)

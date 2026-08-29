@@ -3,10 +3,11 @@ id: BUG-3354
 type: BUG
 title: Heredoc terminator collision in LL_RAW capture conversions
 priority: P3
-status: open
+status: done
 discovered_by: manual-review
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T00:00:00Z'
+completed_at: '2026-08-29T16:43:39Z'
 parent: EPIC-3336
 relates_to:
 - BUG-3341
@@ -757,6 +758,7 @@ this issue's own Confidence Check Notes) to `VALID`.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-29T16:43:18 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
 - `/ll:ready-issue` - 2026-08-29T16:24:35 - `0760605b-00f3-4a16-a773-4d81447012e9.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:19:29 - `7e3e461d-c448-4f5e-b605-da4742b390e0.jsonl`
 - `/ll:verify-issues` - 2026-08-29T16:10:26 - `d066a1db-8c85-4efb-8d7e-f8a88f18b677.jsonl`

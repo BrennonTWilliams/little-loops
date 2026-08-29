@@ -48,6 +48,7 @@ from little_loops.fsm.host_guard import (
     RssSampler,
 )
 from little_loops.fsm.interpolation import (
+    HeredocCollisionError,
     InterpolationContext,
     InterpolationError,
     interpolate,
@@ -873,6 +874,11 @@ class FSMExecutor:
                             break
                         time.sleep(min(0.1, deadline - time.time()))
 
+        except HeredocCollisionError as exc:
+            return self._finish(
+                "error",
+                error=(f"Heredoc terminator collision in state '{self.current_state}': {exc}"),
+            )
         except InterpolationError as exc:
             return self._finish(
                 "error",
@@ -2891,6 +2897,10 @@ class FSMExecutor:
         ctx = self._build_context()
         try:
             self._run_action(state.action, state, ctx)
+        except HeredocCollisionError:
+            # BUG-3354: never silently swallow a terminator-collision halt —
+            # let it propagate to run()'s top-level handler.
+            raise
         except Exception:
             # Deliberately swallow — the timeout is being honored regardless
             # of whether the flushed action succeeded.
@@ -3323,6 +3333,10 @@ class FSMExecutor:
         assert state.action is not None  # caller-guarded
         try:
             return self._run_action(state.action, state, ctx), None
+        except HeredocCollisionError:
+            # BUG-3354: never reroute a terminator-collision halt to
+            # on_error — it must reach run()'s top-level handler.
+            raise
         except Exception as exc:
             if state.on_error:
                 self._emit(

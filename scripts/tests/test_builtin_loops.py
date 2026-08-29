@@ -18936,6 +18936,48 @@ class TestEnh3347RouterInjection:
         self._run(action, ctx, tmp_path)
         assert not sentinel.exists(), "include payload must not execute as shell code"
 
+    def test_terminator_collision_raises_before_bash_runs(self, data: dict, tmp_path: Path) -> None:
+        """BUG-3354: the BUG-3341 fix's own heredoc terminator
+        (`LL_RAW_9F3C1A7E_EOF`) is a fixed, public string. A captured output
+        containing that exact line used to close the heredoc early and run
+        the remainder of the payload as shell — the same injection class
+        BUG-3341 fixed, surviving through the fix's own delimiter.
+
+        Red (pre-BUG-3354 `interpolate()`): the terminator-colliding payload
+        below rendered unexamined into the heredoc body, and `bash -c` would
+        close it at the injected line, letting `touch <sentinel>` — spliced
+        in as the "remainder" of the captured payload — run as a real shell
+        command outside the heredoc.
+        Green (current `interpolate()`): `HeredocCollisionError` is raised
+        before the rendered action ever reaches `bash -c`, so this test
+        asserts the raise happens at the `interpolate()` call itself,
+        never reaching `subprocess.run`.
+        """
+        from little_loops.fsm.interpolation import HeredocCollisionError, InterpolationContext
+
+        run_dir = self._run_dir(tmp_path)
+        sentinel = tmp_path / "pwned"
+        action = data["states"]["parse_project_score"]["action"]
+        colliding_payload = (
+            f"CHOSEN_LOOP:foo\nLL_RAW_9F3C1A7E_EOF\ntouch {sentinel}\nCONFIDENCE:0.9\n"
+        )
+        ctx = InterpolationContext(
+            context={"goal": "ordinary goal", "run_dir": str(run_dir)},
+            captured={
+                "project_score": {
+                    "output": colliding_payload,
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            },
+            state_name="parse_project_score",
+        )
+        from little_loops.fsm.interpolation import interpolate
+
+        with pytest.raises(HeredocCollisionError, match="LL_RAW_9F3C1A7E_EOF"):
+            interpolate(action, ctx)
+        assert not sentinel.exists(), "guard must fire before bash ever runs the payload"
+
 
 # The raw ${context.*} interpolation var each fenced loop's input_key resolves
 # to. Used only by the completeness guard to discover every prompt state that

@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,11 +30,80 @@ VARIABLE_PATTERN = re.compile(r"\$\{([^}]+)\}")
 ESCAPED_PATTERN = re.compile(r"\$\$\{")
 ESCAPED_PLACEHOLDER = "\x00ESCAPED\x00"
 
+# Matches a heredoc opener, quoted (`<<'MARKER'`, `<<-"MARKER"`) or unquoted
+# (`<<MARKER`, `<<-MARKER`). Mirrors interp_sweep.py's `_HEREDOC_OPEN_RE`
+# (kept as a separate copy rather than a shared import — this one runs on
+# every heredoc-bearing action at execution time, that one is an offline
+# static sweep).
+_HEREDOC_OPEN_RE = re.compile(r"(?<!<)<<(?!<)(-)?\s*(?:['\"](\w+)['\"]|(\w+))")
+
 
 class InterpolationError(Exception):
     """Raised when variable interpolation fails."""
 
     pass
+
+
+class HeredocCollisionError(InterpolationError):
+    """Raised when a substituted value's content contains a line exactly
+    equal to the enclosing heredoc's own terminator marker (BUG-3354).
+
+    Such a value would silently close the heredoc early when handed to a
+    shell runner, letting the remainder of the payload execute as shell
+    instead of being written to the intended capture. This is the only
+    condition that may raise this subclass; it is never raised for a
+    missing variable or malformed path (those stay plain
+    `InterpolationError`).
+    """
+
+    pass
+
+
+def _check_heredoc_collisions(
+    escaped_template: str,
+    replace_var: Callable[[re.Match[str]], str],
+    state_name: str,
+) -> None:
+    """Raise `HeredocCollisionError` if a substituted value inside a heredoc
+    body collides with that heredoc's own terminator line.
+
+    Region boundaries (opener, closing marker line) are computed from the
+    raw (escaped-but-unsubstituted) template, where every terminator
+    declaration is literal YAML text with no attacker-controlled content.
+    Within each region, raw body lines are individually re-rendered via
+    ``replace_var`` and each line of the *composed* result is compared to
+    the marker — not the bare substituted value, and not the composed
+    text as one unbroken unit — so a token that shares its line with
+    literal text is judged correctly in both directions, and a
+    substituted value that itself spans multiple lines (the actual
+    injection vector) is caught line-by-line.
+    """
+    lines = escaped_template.split("\n")
+    marker: str | None = None
+    indented = False
+    body_start = 0
+
+    for i, line in enumerate(lines):
+        if marker is not None:
+            terminator = line.lstrip("\t") if indented else line
+            if terminator == marker:
+                for body_line in lines[body_start:i]:
+                    composed = VARIABLE_PATTERN.sub(replace_var, body_line)
+                    if marker in composed.split("\n"):
+                        raise HeredocCollisionError(
+                            f"Heredoc terminator collision in state '{state_name}': "
+                            f"an interpolated value contains a line exactly equal to "
+                            f"the heredoc terminator {marker!r}, which would silently "
+                            f"close the heredoc early and execute the remainder of "
+                            f"the payload as shell."
+                        )
+                marker = None
+            continue
+        match = _HEREDOC_OPEN_RE.search(line)
+        if match:
+            indented = match.group(1) is not None
+            marker = match.group(2) or match.group(3)
+            body_start = i + 1
 
 
 @dataclass
@@ -296,6 +366,9 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
 
     Raises:
         InterpolationError: If variable format invalid or value not found
+        HeredocCollisionError: If a substituted value's content contains a
+            line exactly equal to the terminator of the heredoc it lands
+            inside (BUG-3354) — a subclass of InterpolationError.
     """
     # Replace escaped sequences with placeholder
     result = ESCAPED_PATTERN.sub(ESCAPED_PLACEHOLDER, template)
@@ -332,6 +405,9 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
         if shell_quote:
             return shlex.quote(str(value))
         return str(value)
+
+    if "<<" in template:
+        _check_heredoc_collisions(result, replace_var, ctx.state_name)
 
     result = VARIABLE_PATTERN.sub(replace_var, result)
 
