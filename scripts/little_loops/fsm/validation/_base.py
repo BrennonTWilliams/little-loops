@@ -71,7 +71,7 @@ NON_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset(EVALUATOR_REQUIRED_FIELDS.ke
 }
 
 # Valid comparison operators
-VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
+VALID_OPERATORS: frozenset[str] = frozenset({"eq", "ne", "lt", "le", "gt", "ge"})
 
 # Valid values for the top-level `visibility:` field (audience axis for
 # `ll-loop list` filtering). "public" is the default when the field is absent.
