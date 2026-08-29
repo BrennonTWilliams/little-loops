@@ -11,7 +11,7 @@ parent: EPIC-3336
 relates_to:
 - BUG-3341
 - ENH-3347
-verify_verdict: PROPOSAL_UNSOUND
+verify_verdict: VALID
 confidence_score: 95
 outcome_confidence: 86
 score_complexity: 18
@@ -672,12 +672,64 @@ PROPOSAL_UNSOUND` (frontmatter) was recorded 2026-08-29T15:27:51, before the
 redesign that addressed it — a fresh `/ll:verify-issues` pass would let the
 frontmatter catch up to the current plan.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-08-29._
+
+Verdict: **VALID**. Spot-checked 30+ file:line citations against current
+`main` — all exact matches, no drift:
+
+- `interpolate()` (`interpolation.py:274`), the whole-template
+  `VARIABLE_PATTERN.sub` at `:336`, and `InterpolationError` at `:33` (no
+  `HeredocCollisionError` exists yet anywhere in `scripts/`, consistent with
+  this being unimplemented).
+- Both `interpolate()` call sites (`executor.py:2171`, `:3160`) and the
+  `run()` top-level handler (`:876-883`).
+- Both silent-swallow sites verified byte-for-byte:
+  `_run_action_or_route` (`:3313-3337`, bare `except Exception as exc:` +
+  `if state.on_error:` reroute) and `_flush_pending_shell_state`
+  (`:2871-2897`, bare `except Exception: pass`).
+- All six named heredoc sites' `on_error` targets confirmed against their
+  actual YAML blocks: `loop-router.yaml` `parse_project_score` →
+  `finalize_failed`; `autodev.yaml` `init` → `finalize_done`;
+  `prompt-across-issues.yaml` `init` → `diagnose_error`;
+  `recursive-refine.yaml` `parse_input` → `diagnose`;
+  `rlhf-animated-svg.yaml` `validate_input` → `input_missing`;
+  `refine-to-ready-issue.yaml` `write_failure_evidence` →
+  `classify_terminal`.
+- The 7 additional fixed-terminator families from the remediation-pass note
+  (`LL_PLAN_RAW_EOF`, `LL_STEP_OUTPUT_EOF`, `LL_REASSESS_EOF`, `RAWEOF`,
+  `PLANEOF`, `DIAGEOF`, `__END_CUA_DESCRIPTION__`) all confirmed present at
+  their cited lines.
+- The two corrected AST claims (`executor.py:1807` inside its own except
+  body, not caught by it; `:1888` has no enclosing try) both confirmed by
+  direct read.
+- Test citations (`test_fsm_executor.py:4337`, `test_builtin_loops.py:18786`
+  and `:18842`) and doc citations (`shell_safety.py:42`, `interp_sweep.py:37`,
+  `docs/reference/API.md:6287`) all confirmed.
+- `ll-verify-evidence --json` → clean (`"ok": true`, 0 findings).
+- No active required decision rules to check against
+  (`ll-issues decisions list --type rule --enforcement required
+  --active-only` → empty).
+- `parent: EPIC-3336` and `relates_to: [BUG-3341, ENH-3347]` all resolve.
+- Proposal soundness re-checked against current code post the 2026-08-29
+  redesign (subclass-scoped `HeredocCollisionError` carve-out, resolved
+  Call Path fork, resolved message-wording fork): no new soundness defect
+  found. The `$${...}` → placeholder escape substitution in `interpolate()`
+  (`:29-30`, 3 chars → 10 chars) does not desync raw-template line numbers
+  from the region check, since the placeholder contains no newlines.
+
+`verify_verdict` frontmatter updated from the stale `PROPOSAL_UNSOUND`
+(recorded 2026-08-29T15:27:51, before the redesign that addressed it — per
+this issue's own Confidence Check Notes) to `VALID`.
+
 ## Status
 
 **Open** | Created: 2026-08-28 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-29T16:10:26 - `d066a1db-8c85-4efb-8d7e-f8a88f18b677.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:05:41 - `6fdc2e2c-92d6-4705-9bc4-d9f033068370.jsonl`
 - `/ll:confidence-check` - 2026-08-29T15:54:29 - `e1f51e56-4700-4629-9064-1d81eae9d21d.jsonl`
 - `/ll:refine-issue` - 2026-08-29T15:39:58 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`

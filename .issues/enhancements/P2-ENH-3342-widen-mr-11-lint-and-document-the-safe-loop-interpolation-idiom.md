@@ -129,11 +129,50 @@ loop — including loops in consuming projects, which no baseline covers.
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the two idioms, in or beside
   §The Design Rules where the MR table lives.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation/__init__.py:118-126,184-217` — imports
+  and re-exports `_UNSAFE_CONTEXT_INTERP_RE`, `_QUOTED_HEREDOC_START_RE`, and
+  `_find_unsafe_context_interpolations` by literal name (both in its `from
+  shell_safety import (...)` block and its `__all__` list). Confirmed via
+  `ll-code importers-of` + grep: these are the exact symbols step 1's regex
+  removal/replacement targets. If any of the three is removed or renamed
+  while delegating to `interp_sweep.scan_action()`/`classify_site()`, this
+  file's import block and `__all__` must be updated in the same change or the
+  package fails to import (`ImportError`) — this supersedes the existing
+  Dependent Files bullet below, which characterizes the risk as "no change
+  expected unless the rule is split." It is not about splitting the rule; it
+  is about `__init__.py` importing constants by name that this issue may
+  remove.
+
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/fsm/validation/__init__.py` — rule registration; no
   change expected unless the rule is split.
 - Every loop in `scripts/little_loops/loops/**` is subject to the widened rule.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation/structural_rules.py:68-71,1165` — the
+  actual call site of `_validate_unsafe_context_interpolation(fsm)` (confirmed
+  via `ll-code callers-of`), invoked from `validate_fsm()` (`:983`) alongside
+  `_validate_bash_default_interpolation` and `_validate_overescaped_shell`,
+  which it also imports from `shell_safety.py`. This corrects/completes the §
+  Call Path description above — the dispatcher is `structural_rules.py`'s
+  `validate_fsm()`, not `validation/__init__.py` (which only re-exports).
+  Signature is unchanged per § Program Design, so no edit is expected here,
+  but this is the file to check first if `ll-loop validate` stops calling
+  MR-11 after the refactor.
+- `scripts/tests/test_fsm_validation_shell_safety.py:14-19` — imports
+  `_validate_unsafe_context_interpolation` and friends from
+  `little_loops.fsm.validation` (the `__init__.py` re-export), not directly
+  from `shell_safety.py` — a second, test-side consumer of the re-export risk
+  noted above.
+- `scripts/tests/test_interp_sweep.py` — ENH-3338's own unit suite for
+  `classify_site()` / `scan_action()` (confirmed via `ll-code importers-of`),
+  already covering the column-0 heredoc-terminator distinction
+  (`TestScanActionHeredoc::test_heredoc_terminator_must_be_column_zero`) and
+  Python-body classification that this issue's delegation consumes. Not
+  currently listed anywhere in this issue; keep green — it is the existing
+  coverage for behavior step 1 delegates to, not new coverage to write.
 
 ### Tests
 
@@ -157,6 +196,30 @@ loop — including loops in consuming projects, which no baseline covers.
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — required.
 - `.claude/CLAUDE.md` §Loop Authoring references the guide's rule table; check
   whether the widened rule needs a line there.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:872` — describes MR-11 with the exact old seven-key
+  allowlist (`${context.input|goal|description|task|prompt|query|topic}`) and
+  states "single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell`
+  suffix" are unconditionally safe positions. Both claims are contradicted by
+  the widened § Decision Rules table (quoted-heredoc-as-Python-body and
+  `:shell`-inside-a-Python-body are now flagged, not clean). Needs revision in
+  the same change.
+- `docs/reference/API.md:6416` — the near-identical duplicate of the CLI.md
+  passage above; same stale allowlist and same "always-safe" claim, needs the
+  same fix. Also `:6309` ("a distinct hazard from the bash-position risk MR-11
+  ... checks") describes MR-11 and `interp_sweep` as covering disjoint
+  hazards; after this issue MR-11 delegates to `interp_sweep` for the
+  Python-body hazard too, so this line is worth a wording pass (lower
+  priority than `:6416`). `:6322` already names this issue by ID
+  ("ENH-3342 imports it to widen MR-11") and needs no change.
+- `skills/review-loop/reference.md:50` — a third near-duplicate copy of the
+  same stale allowlist + "quoted heredoc is safe" text, in a rule-summary
+  table row. Needs the same correction as the two docs above.
+- `docs/guides/LOOPS_REFERENCE.md:1831` — checked, no correction needed: it
+  describes `flux-image-generator`'s prompt as read from a *file* inside the
+  heredoc (the safe heredoc-to-file idiom this issue documents), not a raw
+  `${context.*}` interpolation into the heredoc body.
 
 ### Configuration
 
@@ -415,6 +478,24 @@ No runtime path — validation only.
    `<state>-<capture>.txt` naming rule.
 8. Record the WARNING-vs-ERROR severity decision.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/fsm/validation/__init__.py` — keep its
+  `from shell_safety import (...)` block and `__all__` list in sync with
+  whatever `_UNSAFE_CONTEXT_INTERP_RE` / `_QUOTED_HEREDOC_START_RE` /
+  `_find_unsafe_context_interpolations` become; a removed or renamed symbol
+  that is still imported here breaks the package at import time.
+- Update `docs/reference/CLI.md:872` and `docs/reference/API.md:6416` — both
+  state the old seven-key allowlist and "quoted heredoc / `:shell` is always
+  safe" as fact; revise to match the widened § Decision Rules table.
+- Update `skills/review-loop/reference.md:50` — same stale MR-11 summary row,
+  same fix.
+- Verify `scripts/tests/test_interp_sweep.py` stays green — it is the
+  existing unit coverage for the `classify_site()`/`scan_action()` behavior
+  step 1 delegates to; no new test file is needed there, only confirmation.
+
 ## Acceptance Criteria
 
 1. MR-11 flags an untrusted `${context.<any-key>}` — not only the seven
@@ -506,6 +587,7 @@ green. The existing `blocked_by`/`blocks` edge (ENH-3347 blocks this issue)
 already sequences the edits — land in that order.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-29T16:12:58 - `d066a1db-8c85-4efb-8d7e-f8a88f18b677.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:03:29 - `c54a423f-c560-4b02-ba94-5edb4f845eaa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T02:22:57 - `bd65b096-20a2-4a7e-b430-c4b13ac5b81d.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`
