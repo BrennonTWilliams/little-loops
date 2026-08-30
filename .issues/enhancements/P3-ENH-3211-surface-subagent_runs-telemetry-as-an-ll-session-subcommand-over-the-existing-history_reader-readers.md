@@ -4,7 +4,7 @@ type: ENH
 title: Surface subagent_runs telemetry as an ll-session subcommand over the existing
   history_reader readers
 priority: P3
-status: blocked
+status: open
 parent: EPIC-3214
 epic: EPIC-3214
 testable: true
@@ -16,8 +16,7 @@ relates_to:
 - FEAT-3183
 depends_on:
 - ENH-3210
-blocked_by:
-- FEAT-3183
+blocked_by: []
 confidence_score: 70
 outcome_confidence: 89
 score_complexity: 21
@@ -157,6 +156,12 @@ subcommand, `cli/history.py`'s `sessions` subcommand), in the exact two-part tem
 `print(f"No {noun} found for {id}.")` — so `"No subagent runs found for {session_id}."`,
 with the `for …` suffix, not the bare string from the capture-time sketch.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- **New CLI convention observed (FEAT-3183), noted for completeness — does not change this issue's settled `--json` choice.** `cli/history.py`'s `quality` subcommand (and its siblings `analyze`/`rework`) use a `-f/--format {text,json,markdown,yaml}` choice flag routed to dedicated `format_*_text/json/markdown/yaml()` functions, instead of the boolean `--json`/`-j` via `add_json_arg()`. This convention is confined to `ll-history`'s multi-format issue-analytics reports; every subcommand in `cli/session.py` (the settled host for this issue, per the Summary's own decision) still uses the boolean `--json`/`-j` via `add_json_arg()` — `related`, `recent`, `rebuild`, `compact`, `grep`, `expand`, `describe`, `skill-stats`, `prune`, `recompress` all confirm this. The two conventions coexist and disagree across the two CLIs; nothing here reopens the Argument shape decision already settled in the Summary.
+
 ## Integration Map
 
 ### Files to Modify
@@ -266,6 +271,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 - N/A — read-only surface, no config knob
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- **Line numbers re-verified 2026-08-29** (drift from the 2026-08-15 citations, all readers/docs still current and unmodified otherwise):
+  - `subagent_tree`/`subagent_retries`/`subagent_budget` now at `history_reader.py:1585`/`:1616`/`:1650` (was `:1573`/`:1604`/`:1638`, +12 lines each)
+  - `docs/reference/CLI.md`: `### ll-session` header now at `:3561` (was cited `:3294-3482`); `### ll-history` header now at `:2946` (was cited `:2752-2896`); `### ll-logs` header now at `:3372` (was cited `:3113-3292`)
+  - `docs/reference/API.md`: the three reader signatures now documented at `:8083-8085` (was cited `:7825-7846`)
+  - `cli/logs.py`: `main_logs()` def now at `:2440`, dispatch branches now start `:2470+` (was cited `:2065`/`:2295-2351`)
+  - `cli/session.py`'s `related`/`recent` subparser and dispatch citations are unchanged and confirmed current: `related_parser` `:158-163`, dispatch `:445-462`; `recent_parser` `:120-156`, dispatch `:464-516`
+
 ## Program Design
 
 ### Types
@@ -310,8 +326,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Blocked** | Created: 2026-08-16 | Priority: P3 | Blocked on: FEAT-3183 (overlap call);
-depends on ENH-3210 (`orphaned` status must exist first)
+**Open** | Created: 2026-08-16 | Priority: P3 | Unblocked 2026-08-29: FEAT-3183 landed
+and its shipped report does not touch `subagent_runs` — Option 1 applies, see Scope
+Boundaries. `depends_on: ENH-3210` already satisfied (ENH-3210 is `done`).
 
 ## Current Pain Point
 
@@ -364,6 +381,13 @@ is a **scheduling** block (nothing here needs FEAT-3183's code), while
 `depends_on: ENH-3210` is a **technical** one (the `orphaned` status must exist, and step 4's
 excluded-count display is written against ENH-3210's under-reconciliation semantics). If
 option 1 is chosen, ENH-3210 must still land first.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- **Resolved 2026-08-29 — FEAT-3183 has landed (commit `007ececdf`).** Its shipped `ll-history quality` subcommand (`cli/history.py:250-270` parser, `:470-498` dispatch) calls `analyze_agent_quality()` (`scripts/little_loops/issue_history/agent_quality.py:462`), which computes `fix_rate`/`correction_rate`/`cost_per_issue`/`tokens_per_issue` from `issue_events`/`issue_sessions`/`user_corrections`/`usage_events`/`correction_retirements`, and its "retry inflation" signal (`_compute_retry_windows()`, `agent_quality.py:417-459`) from the **`loop_runs`** table (`iterations` column) — a distinct table from `subagent_runs`. Confirmed by exhaustive grep: zero references to `subagent`/`SubagentRun`/`subagent_runs` anywhere in `scripts/little_loops/issue_history/` (the whole module FEAT-3183's report lives in) or in `cli/history.py`'s `quality` dispatch branch. FEAT-3183's report does **not** answer "how many subagents did session X spawn, and did they all finish?" — that data remains reachable only via a manual `sqlite3` query or the raw, unscoped `ll-session recent --kind subagent_run` dump.
+- **Option 1 applies.** Ship ENH-3211 as the low-level per-session inspector; FEAT-3183 remains the aggregate quality report — both survive, with this issue explicitly not doing rollup analytics (per the Summary's own scope note). The `blocked_by: FEAT-3183` scheduling block is resolved: FEAT-3183 is `done` and its shipped surface does not subsume this issue's scope, so option 2 (fold into FEAT-3183 and cancel) does not apply.
 
 ## Backwards Compatibility
 
@@ -442,6 +466,7 @@ _Added by `/ll:confidence-check` on 2026-08-16_
 - 2026-08-16: `blocked_by: [FEAT-3183]` is still open (real scheduling blocker), but `depends_on: [ENH-3210]` — ENH-3210 has now landed (status: done), so that technical dependency is satisfied; the issue remains correctly `status: blocked` on FEAT-3183 alone. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-30T00:53:33 - `9f6f7aba-c836-405c-b13b-dc8c341edd68.jsonl`
 - `/ll:refine-issue` - 2026-08-29T23:56:27 - `7980fc82-226c-49c8-b164-01ae9e6c8314.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:confidence-check` - 2026-08-16T05:32:12 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
