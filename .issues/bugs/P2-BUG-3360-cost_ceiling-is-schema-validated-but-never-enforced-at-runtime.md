@@ -86,6 +86,36 @@ Two aggravating details:
 `fsm/persistence.py:637-655`; the real site is `:1008-1036`. Worth refreshing
 while in the area.)
 
+## Steps to Reproduce
+
+1. Write a loop YAML declaring a per-state ceiling on any state:
+
+   ```yaml
+   name: cc-probe
+   description: probe whether cost_ceiling is enforced
+   initial: work
+   states:
+     work:
+       action: "echo hi"
+       action_type: shell
+       cost_ceiling:
+         cost_ceiling_per_state: 1.0
+         cost_warn_at: 0.5
+       next: done
+     done:
+       terminal: true
+   ```
+
+2. `ll-loop validate cc-probe.yaml` → `cc-probe.yaml is valid`. No warning that
+   the declared ceiling has no effect. (Confirmed 2026-08-30; the only emitted
+   warning is the unrelated missing-`scope:` one.)
+
+3. `grep -n "cost_ceiling" scripts/little_loops/fsm/executor.py` → no matches.
+   The run never reads the value.
+
+**Expected at step 2 or 3:** either the ceiling is enforced during the run, or
+validation rejects/warns on a key nothing consumes.
+
 ## Expected Behavior
 
 One of:
@@ -108,6 +138,60 @@ cap. If enforcement is chosen, settle the naming collision flagged on
 EPIC-3022 first: EPIC-3041's FEAT-3038/FEAT-3039 independently add a second
 "route on running out of X" shape to the same FSM layer, and
 `fsm-loop-schema.json` should not grow two divergent conventions.
+
+## Program Design
+
+Designed for the **enforce** path. If the removal path is chosen instead, this
+section is N/A — that variant is a deletion across the five sites named in the
+Integration Map with no new types, signatures, or call path.
+
+### Types
+
+- `CostCeilingConfig` (`fsm/schema.py:397-434`) — no new field. The existing
+  `cost_ceiling_per_state: float | None` and `cost_warn_at: float | None` are
+  the whole declarative surface; this issue adds only readers.
+- `PerStateCost` (`fsm/cost_graph.py:42-71`) — no new field. Its `cost_usd` is
+  the quantity compared against the ceiling, and its `has_unknown_model` flag
+  is the documented "cost is 0 because the model could not be priced" signal
+  the check must treat as *unknown*, never as *under budget*.
+
+### Signatures
+
+- `FSMExecutor._check_cost_ceiling(self, state: StateConfig) -> str | None` — new; returns a next-state name on breach, `None` otherwise. Mirrors the arity and return contract of the adjacent `_check_host_guard` (`fsm/executor.py:3506`) so it can be called from the same site with the same routing convention.
+- `CostReport.from_usage_jsonl(cls, path: Path) -> CostReport` — existing classmethod (`fsm/cost_graph.py:185`); the check reuses it to read the live `<run_dir>/usage.jsonl` rather than adding a second accumulator.
+- `estimate_cost_usd(model: str, input_tokens: int, output_tokens: int, cache_read_tokens: int = 0, cache_creation_tokens: int = 0, is_batch: bool = False)` — existing (`little_loops/pricing.py:113-119`); already the pricing primitive behind `PerStateCost.cost_usd`, unchanged here.
+
+### Call Path
+
+`FSMExecutor._execute_state` (`fsm/executor.py:1795`) → `_run_action_or_route`
+(`fsm/executor.py:3323`) → [action completes; `PersistentExecutor._handle_event`
+(`fsm/persistence.py:998`) appends the `action_complete` row to
+`<run_dir>/usage.jsonl` at `:1008-1036`] → new `_check_cost_ceiling` →
+`CostReport.from_usage_jsonl` → compare this state's `PerStateCost.cost_usd`
+against `state.cost_ceiling.cost_ceiling_per_state` → route, mirroring the
+`_check_host_guard` breach branch at `fsm/executor.py:795-800`.
+
+The check must sit **after** the event is appended, not before, since the row
+carrying this visit's tokens is written by the event handler.
+
+### Decision Rules
+
+- **Warn vs. breach.** `cost_warn_at` logs only (no route) — it is documented
+  as "a warning-only threshold for visible spend, not a hard cap"
+  (`fsm/schema.py:404-405`). Only `cost_ceiling_per_state` routes.
+- **Unpriceable models.** When `PerStateCost.has_unknown_model` is true,
+  `cost_usd` is left at 0 by design. Treat this as *unknown*, not *under
+  budget*: do not route, and log that the ceiling could not be evaluated.
+  Silently reading 0 would make the ceiling inert for exactly the unpriced
+  models most likely to be new and expensive.
+- **Grain.** The ceiling is per *state*, matching `cost_ceiling_per_state`'s
+  name and `PerStateCost`'s existing aggregation grain (which sums across a
+  state's visits). Per-visit grain would need a new aggregation and is out of
+  scope.
+- **Route target.** Reuse `host_guard.py`'s existing
+  `on_budget_exceeded`/`budget_state` naming (`fsm/host_guard.py:81-82`)
+  rather than inventing a third convention — see the EPIC-3041 collision note
+  under Expected Behavior.
 
 ## Integration Map
 
