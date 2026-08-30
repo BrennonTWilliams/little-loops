@@ -3,10 +3,11 @@ id: BUG-3362
 type: BUG
 title: ll-deps tree --epic leaks sibling EPIC ids via unfiltered relates_to union
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-30'
 captured_at: '2026-08-30T18:53:49Z'
+completed_at: '2026-08-30T19:29:00Z'
 relates_to:
 - BUG-3361
 confidence_score: 100
@@ -116,9 +117,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `ll-deps tree --epic EPIC-NNN` (text and `-f json` output) never includes an `EPIC-*` id in the rendered child set when that id only appears via a sibling-EPIC `relates_to:` cross-reference
-- [ ] A regression test in `scripts/tests/test_deps_cli.py` covers a sibling-EPIC `relates_to` entry
-- [ ] `python -m pytest scripts/tests/` passes
+- [x] `ll-deps tree --epic EPIC-NNN` (text and `-f json` output) never includes an `EPIC-*` id in the rendered child set when that id only appears via a sibling-EPIC `relates_to:` cross-reference
+- [x] A regression test in `scripts/tests/test_deps_cli.py` covers a sibling-EPIC `relates_to` entry
+- [x] `python -m pytest scripts/tests/` passes
 
 ## Related Key Documentation
 
@@ -134,6 +135,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T19:28:43 - `390f8aaf-8222-4dbe-8e82-f63fc252fee9.jsonl`
 - `/ll:confidence-check` - 2026-08-30T19:19:32 - `48d40a53-93a6-4504-86d8-4f8fd5b34143.jsonl`
 - `/ll:wire-issue` - 2026-08-30T19:07:21 - `3e336bf1-dd8f-4ab7-b5d8-b5bf4adff8fb.jsonl`
 - `/ll:refine-issue` - 2026-08-30T18:58:55 - `12d26f9a-ed28-4a88-a053-f90953905374.jsonl`

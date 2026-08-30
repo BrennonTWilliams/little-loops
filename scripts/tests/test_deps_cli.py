@@ -155,3 +155,69 @@ class TestDepsTree:
         assert "FEAT-001" in node_ids
         assert "FEAT-002" in node_ids
         assert "edges" in data
+
+    def test_tree_excludes_sibling_epic_relates_to(self, tmp_path: Path, capsys: object) -> None:
+        """A sibling EPIC referenced only via relates_to is not rendered as a child."""
+        issues_dir = _setup_project(tmp_path)
+        _write_issue(
+            issues_dir / "epics",
+            "EPIC-001",
+            title="Real epic",
+            relates_to=["EPIC-002", "FEAT-001"],
+        )
+        _write_issue(issues_dir / "epics", "EPIC-002", title="Sibling epic")
+        _write_issue(issues_dir / "features", "FEAT-001", title="Real child", parent="EPIC-001")
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]
+        ):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "FEAT-001" in captured.out
+        assert "EPIC-002" not in captured.out
+
+    def test_tree_excludes_sibling_epic_relates_to_json(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
+        """-f json output also excludes a sibling EPIC referenced via relates_to."""
+        issues_dir = _setup_project(tmp_path)
+        _write_issue(
+            issues_dir / "epics",
+            "EPIC-001",
+            title="Real epic",
+            relates_to=["EPIC-002", "FEAT-001"],
+        )
+        _write_issue(issues_dir / "epics", "EPIC-002", title="Sibling epic")
+        _write_issue(issues_dir / "features", "FEAT-001", title="Real child", parent="EPIC-001")
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001", "-f", "json"],
+        ):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        data = json.loads(captured.out)
+        node_ids = {n["id"] for n in data["nodes"]}
+        assert "FEAT-001" in node_ids
+        assert "EPIC-002" not in node_ids
+
+    def test_tree_only_sibling_epic_relates_to_yields_no_children(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
+        """An EPIC whose only relates_to entries are EPIC-shaped hits the no-children sentinel."""
+        issues_dir = _setup_project(tmp_path)
+        _write_issue(
+            issues_dir / "epics",
+            "EPIC-001",
+            title="Real epic",
+            relates_to=["EPIC-002"],
+        )
+        _write_issue(issues_dir / "epics", "EPIC-002", title="Sibling epic")
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]
+        ):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "no children" in captured.out

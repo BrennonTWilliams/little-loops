@@ -269,6 +269,7 @@ Examples:
             from little_loops.config import BRConfig as _BRConfig
             from little_loops.dependency_graph import DependencyGraph as _DG
             from little_loops.issue_parser import find_issues as _find_issues
+            from little_loops.sprint import _EPIC_ID_RE
 
             project_root = issues_dir.resolve().parent
             if issues_dir.name != ".issues":
@@ -285,7 +286,9 @@ Examples:
                 return 1
             epic_info = epic_matches[0]
 
-            forward_ids: set[str] = set(epic_info.relates_to)
+            forward_ids: set[str] = {
+                i for i in epic_info.relates_to if not _EPIC_ID_RE.match(i)
+            }
             backward_ids: set[str] = {i.issue_id for i in all_issues if i.parent == epic_id}
             all_child_ids = forward_ids | backward_ids
 
