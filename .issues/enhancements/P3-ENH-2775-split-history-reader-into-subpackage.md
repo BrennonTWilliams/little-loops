@@ -171,9 +171,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-- `search(query: str) -> list[SearchResult]` (`scripts/little_loops/history_reader.py:529`) — FTS5 full-text query entry point, representative of the Query API surface the split relocates unchanged.
-- `find_user_corrections(topic: str) -> list[UserCorrection]` (`scripts/little_loops/history_reader.py:461`) — corrections query, same relocation-only disposition.
-- `cost_attribution(group_by: str) -> list[dict]` (`scripts/little_loops/history_reader.py:924`) — cost/waste-attribution domain exemplar.
+- `search()` (`scripts/little_loops/history_reader.py:529`, first param `query: str`, returns `list[SearchResult]`) — FTS5 full-text query entry point, representative of the Query API surface the split relocates unchanged.
+- `find_user_corrections()` (`scripts/little_loops/history_reader.py:461`, first param `topic: str`, returns `list[UserCorrection]`) — corrections query, same relocation-only disposition.
+- `cost_attribution()` (`scripts/little_loops/history_reader.py:924`, first param `group_by: str`, returns `list[dict]`) — cost/waste-attribution domain exemplar.
 
 ### Types
 - No new data shape is introduced. The 27 dataclasses in `history_reader.py`
@@ -191,9 +191,6 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   effort/velocity, session metadata, and grep/search formatting
   (`ll_grep`/`ll_expand`/`ll_describe`) — finer-grained than a single
   `queries.py` module would comfortably hold.
-- `search(query: str) -> list[SearchResult]` (`scripts/little_loops/history_reader.py:529`) — FTS5 full-text query entry point, representative of the Query API surface the split relocates unchanged.
-- `find_user_corrections(topic: str) -> list[UserCorrection]` (`scripts/little_loops/history_reader.py:461`) — corrections query, same relocation-only disposition.
-- `cost_attribution(group_by: str) -> list[dict]` (`scripts/little_loops/history_reader.py:924`) — cost/waste-attribution domain exemplar.
 
 ### Call Path
 - `cli/session.py:44` -> `history_reader.search()` (`scripts/little_loops/history_reader.py:529`) — representative importer path; after the split this resolves through `history_reader/__init__.py` re-exports with the import line unchanged.

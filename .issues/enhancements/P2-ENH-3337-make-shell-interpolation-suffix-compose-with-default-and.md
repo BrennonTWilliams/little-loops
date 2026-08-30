@@ -78,7 +78,7 @@ written when the suffix could not compose, and both break under it:
 - `scripts/little_loops/cli/loop/run.py:298-300` — the missing-context
   pre-flight. `raw.endswith(":shell")` strips only a trailing suffix. Verified:
   `${context.x?:shell}` yields `raw = "x?"`, which is not in `fsm.context`, so
-  the CLI reports `Missing required context variable: 'x?'` and `return 1`
+  the CLI reports `Missing required context variable: 'x?'` and `return 1` <!-- ll-evidence-ok: pre-fix behavior; superseded by the parse_interpolation_suffixes() rewrite this issue shipped -->
   before the loop starts.
 - `scripts/little_loops/fsm/validation/shell_safety.py:183` — MR-11's
   safe-position check, `token.endswith(":shell}")`. Verified:

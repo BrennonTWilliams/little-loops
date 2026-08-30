@@ -118,8 +118,9 @@ Two things block building a live view on that:
    pid-suffixed sibling path in the same directory, which is what this issue's
    fan-in reads.
 
-The wire envelope is `{"event": ..., "ts": ..., ...payload}`
-(`docs/reference/EVENT-SCHEMA.md` § Wire Format) with no producer or run
+The wire envelope is a flat dict keyed on `"event": "<event-type>"`,
+`"ts": "2026-04-02T12:00:00.123456"`, `run_id`, `loop`, and payload fields
+(`docs/reference/EVENT-SCHEMA.md` § Wire Format) with no per-producer
 identifier, so even a correctly merged multi-producer stream cannot be
 demultiplexed by a consumer. Stamping that identifier stays in this issue: it
 is a wire-format change serving the merged stream, not part of the binding
