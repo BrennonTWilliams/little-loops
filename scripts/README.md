@@ -34,7 +34,7 @@ ll-init                                            # detects your stack, writes 
 ll-loop run general-task "fix the lint warnings"   # your first self-verifying loop
 ```
 
-Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), with a host adapter for Codex; OpenCode and Pi adapters are not yet available. MIT-licensed.
+Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), with host adapters for Codex, Kimi Code, and Qwen Code; OpenCode and Pi adapters are not yet available. MIT-licensed.
 
 ## 1. Run agents until done
 
