@@ -37,6 +37,7 @@ from little_loops.host_runner import (
     HostRunner,
     KimiRunner,
     OmpRunner,
+    OpenAIGenericRunner,
     OpenCodeRunner,
     PiRunner,
     QwenRunner,
@@ -2048,7 +2049,7 @@ class TestHostBinaryNames:
         }
         assert hr.HOST_BINARY_NAMES == expected
 
-    def test_has_all_eight_known_binaries(self) -> None:
+    def test_has_all_nine_known_binaries(self) -> None:
         from little_loops.host_runner import HOST_BINARY_NAMES
 
         assert HOST_BINARY_NAMES == {
@@ -2060,4 +2061,59 @@ class TestHostBinaryNames:
             "omp",
             "kimi",
             "qwen",
+            "openai",
         }
+
+
+class TestOpenAIGenericRunner:
+    """OpenAIGenericRunner: config-driven OpenAI-compatible advisor host."""
+
+    def test_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "openai" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["openai"] is OpenAIGenericRunner
+
+    def test_not_in_probe_order(self) -> None:
+        """Config-driven, not PATH-detected, so absent from _PROBE_ORDER."""
+        from little_loops import host_runner as hr
+
+        assert "openai" not in {name for name, _ in hr._PROBE_ORDER}
+
+    def test_build_blocking_json_requires_base_url(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        with pytest.raises(HostNotConfigured, match="OPENAI_BASE_URL"):
+            OpenAIGenericRunner().build_blocking_json(prompt="hi")
+
+    def test_build_blocking_json_builds_invocation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        inv = OpenAIGenericRunner().build_blocking_json(
+            prompt="hello",
+            model="deepseek-v4-pro",
+            json_schema={"type": "object", "properties": {"recommendation": {"type": "string"}}},
+        )
+        assert inv.args[0].endswith("_openai_compat_client.py")
+        assert inv.args[1] == "https://api.deepseek.com/v1"
+        assert inv.args[2] == "deepseek-v4-pro"
+        assert "Respond with a single JSON object" in inv.args[3]
+        assert "recommendation" in inv.args[3]
+        assert inv.env["OPENAI_API_KEY"] == "sk-test"
+        assert inv.capabilities.streaming is False
+
+    def test_schema_instruction_omitted_without_schema(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
+        inv = OpenAIGenericRunner().build_blocking_json(prompt="hello", model="m")
+        assert inv.args[3] == "hello"
+
+    def test_streaming_raises(self) -> None:
+        with pytest.raises(HostNotConfigured, match="blocking-only"):
+            OpenAIGenericRunner().build_streaming(prompt="hi")
+
+    def test_detached_raises(self) -> None:
+        with pytest.raises(HostNotConfigured, match="blocking-only"):
+            OpenAIGenericRunner().build_detached(prompt="hi")

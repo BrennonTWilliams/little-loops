@@ -265,6 +265,17 @@ def consult(
         print(f"advisor: {floor.status} — {floor.detail}", file=sys.stderr)
 
     runner = resolve_host_named(advisor_host)
+
+    # Export the openai runner's connection details to the ambient env it reads
+    # (OPENAI_BASE_URL / OPENAI_API_KEY). setdefault so an explicit env var
+    # wins over the config value; other runners ignore these vars entirely.
+    import os
+
+    if config.advisor.base_url:
+        os.environ.setdefault("OPENAI_BASE_URL", config.advisor.base_url)
+    if config.advisor.api_key:
+        os.environ.setdefault("OPENAI_API_KEY", config.advisor.api_key)
+
     prompt = f"{question}\n\nContext:\n{context}" if context else question
     invocation = runner.build_blocking_json(
         prompt=prompt, model=advisor_model, json_schema=_VERDICT_SCHEMA
