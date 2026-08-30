@@ -6,9 +6,19 @@
 per-agent output schema. omp natively spawns real subagents from these
 files (``subagents="native"``), the same shape as ``KimiEmitter.emit_agent``
 — this is a verbatim copy with ``name:`` injected when absent, not a
-degraded-mode emission. ``frontmatter_fields_read`` carries ``output:``
-through unmodified when a source agent defines one (none currently do; ll
-agent definitions have no schema to express yet).
+degraded-mode emission.
+
+FEAT-2797 corrected a prior claim here: ``output:`` does survive
+``emit_agent`` unmodified, but not because ``frontmatter_fields_read``
+names it — ``_select_frontmatter_fields()`` only branches on ``"name"``
+and ``"metadata.short-description"``; every other key, ``output:``
+included, passes through untouched regardless of what
+``frontmatter_fields_read`` contains. The passthrough is a byproduct of
+that function's narrow scope, not a dedicated ``output``-handling path.
+Proven end-to-end by the FEAT-2797 spike
+(``scripts/tests/spike/omp_agent_output_frontmatter_passthrough/``); no
+real ll agent definition has an ``output:`` schema to exercise this with
+yet.
 
 ``emit_skill``/``emit_command`` are real as of FEAT-3105, against the
 native discovery format FEAT-3103's research spike documented in

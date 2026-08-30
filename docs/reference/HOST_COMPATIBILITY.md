@@ -243,7 +243,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] | ✗ — subagents spawn in-session; no `--agent` flag[^omp] | partial (native `--agent`; rejected with `--continue` — dropped with warning on resume)[^kimi] | ✗ — no `--agent` flag (documented upstream as planned future work); parameter dropped with `CapabilityNotSupported` warning[^qwen] |
 | Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   | ✗ — no `--tools` flag; tool policy via agent files / global `[tools]` config[^kimi] | ✗ — `--exclude-tools` is a denylist, not allowlist semantics[^qwen] |
 | `json_schema`    | ✓[^schema]  | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            | ✗[^kimi] | ✓ — inline `--json-schema` flag; Ajv-validated synthetic `structured_output` tool (live-verified)[^qwen] |
-| `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct] — no single-blob JSON mode; blocking consumers take the final assistant stream event[^kimi] | ✓ — **second host ever**; evaluators append `--json-schema` + `--chat-recording false` and parse the validated JSON string from the final envelope's `result` field[^qwen] |
+| `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct][^omp]                   | ✗[^struct] — no single-blob JSON mode; blocking consumers take the final assistant stream event[^kimi] | ✓ — **second host ever**; evaluators append `--json-schema` + `--chat-recording false` and parse the validated JSON string from the final envelope's `result` field[^qwen] |
 | Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         | ✗[^omp]                            | ✗ — no usage events in stream-json (0.30.0)[^kimi] | ✓ — `usage` (incl. `total_tokens`) on assistant messages and the final `result` envelope[^qwen] |
 | `disable_background_tasks` | ✓ (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`)[^bgtasks] | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) |
 
@@ -257,6 +257,22 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     single-blob JSON mode: `--mode json` emits a JSONL event stream (same
     consume-the-final-event contract as Codex `--json`). Audit artifact:
     `thoughts/research/omp-headless-flags.md`.
+
+    **`json_schema`/`structured_output` (FEAT-2797):** both `✗` at the CLI
+    level because `packages/coding-agent/src/cli/args.ts` defines no
+    schema/response-format flag — `--mode` is `text|json|rpc|acp|rpc-ui`,
+    nothing schema-shaped. This does not mean omp cannot do structured
+    output at all: a real mechanism exists off the CLI path that ll does not
+    use — task-agent frontmatter `output:` (a per-agent output schema on
+    `.omp/agents/*.md`, read natively by omp and carried through unmodified
+    by `OmpEmitter.emit_agent`) and the SDK/RPC surface
+    (`createAgentSession({outputSchema, requireYieldTool})`, and `--mode
+    rpc`'s JSON-RPC protocol with its own response schema). FEAT-2797
+    evaluated wiring the RPC path into `OmpRunner.build_blocking_json` and
+    chose to stay on prompt-and-parse instead — reusing the existing
+    BUG-2626 `<StructuredOutput>` tag fallback, the same posture as every
+    other non-Anthropic/non-qwen host — since the RPC path is a structurally
+    different, session-based mechanism with no precedent in `HostRunner`.
 
 [^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is tracked by **FEAT-2123**. Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output. Qwen and Claude both carry `usage` in-stream.
 
@@ -351,9 +367,12 @@ discovers agents via a native `.omp/agents/` scan dir (not a reused
 `.claude/agents`/`.codex/agents` path) with a frontmatter `output:` key for
 an optional per-agent output schema, and spawns real subagents from these
 files — the same native shape as `kimi-code`'s emitter, hence
-`subagents: native` and a real `agent_output_format`. It is explicitly
-excluded from ENH-2874's degraded-emission coverage because it never needed
-that path — it emits natively, not via the degraded fallback.
+`subagents: native` and a real `agent_output_format`. The FEAT-2797 spike
+proved `output:` survives `emit_agent` unmodified (byte-for-byte-equivalent
+round trip); no real ll agent definition has an `output:` schema to
+populate it with yet. It is explicitly excluded from ENH-2874's
+degraded-emission coverage because it never needed that path — it emits
+natively, not via the degraded fallback.
 
 Gemini has no native subagent-spawning support (`subagents: none`), so
 `GeminiEmitter.emit_agent` produces the degraded-mode file described above

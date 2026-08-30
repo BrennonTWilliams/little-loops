@@ -1250,6 +1250,10 @@ class OmpRunner:
         permission_skip=True,
         agent_select=False,
         tool_allowlist=True,
+        # FEAT-2797: explicit, not inherited from the dataclass default —
+        # no CLI schema/response-format flag exists (--mode is
+        # text|json|rpc|acp|rpc-ui); see describe_capabilities() below.
+        structured_output=False,
     )
 
     def detect(self) -> bool:
