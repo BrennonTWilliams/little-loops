@@ -135,6 +135,16 @@ rather than "impossible".
   consumes this audit's mapping; the dependency is satisfied and this audit is
   unblocked.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- `_dispatch_table()` (`scripts/little_loops/hooks/__init__.py`) currently wires **11** intents total (`pre_compact`, `pre_compact_handoff`, `session_start`, `session_end`, `drift_check`, `user_prompt_submit`, `post_tool_use`, `pre_tool_use`, `edit_batch_nudge`, `subagent_start`, `subagent_stop`, `pre_done`). The "canonical 7" this issue names is a deliberate audit-scope subset, not the complete registered set — worth stating explicitly so a reader doesn't read "these seven are the complete set" as "all ll intents."
+- There is no ll intent literally named `stop`. Claude Code's `Stop` host event maps to the `pre_done` intent, not `session_end` — `session_end` is instead dispatched from the `SessionStart` host event via `sweep_stale_refs.handle` (see the `[^ssend]` inline footnote on Claude Code's own `session_end` cell, `HOST_COMPATIBILITY.md:74`). When writing the omp `session_end` cell, cross-reference `[^ssend]`'s convention rather than assuming a `Stop`-equivalent event is the target.
+- `pre_compact_handoff` has **no row at all** in `HOST_COMPATIBILITY.md`'s `## Hook intents` table today, for any host (confirmed by reading the full table, `HOST_COMPATIBILITY.md:67-76` — existing rows are `session_start`, `pre_compact`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, `session_end`, `post_compact`, `permission_request`). Populating omp's `pre_compact_handoff` cell requires **adding a new row to the table**, not just a new column cell in an existing row.
+- The `[^omp]` footnote already exists (`HOST_COMPATIBILITY.md:252-259`) but is currently anchored only to the "Runner Capabilities" table (its `Streaming` row). It reads in part: "the hook adapter (FEAT-2261) and hook-event parity audit (FEAT-2263) are pending — hook-intent cells for omp are not tracked in the matrix until FEAT-2261 lands." Since this audit (FEAT-2263) is unblocked and populates the Hook-intents omp column *before* FEAT-2261 lands (FEAT-2261 is `blocked_by: FEAT-2263`), that sentence goes stale the moment this issue's edit lands — the footnote must be **extended** (referenced from the new Hook-intents cells too, per the Scope Boundary note shared with FEAT-2797) and that stale sentence corrected, not left standing.
+- No reusable script exists in this repo for auditing an upstream host's surface against its source (searched for `contents API`/`raw.githubusercontent`/`api.github.com` — no implementation hits, only issue prose). Three manual methods precede this audit and are all viable for enumerating omp's native hook-event names: reading a locally installed Bun package's TS source directly (`thoughts/research/omp-skill-command-surface.md`'s method, e.g. `src/discovery/builtin.ts`), the GitHub contents API against `can1357/oh-my-pi@main` (FEAT-2797's method), or upstream README/docs (`omp-headless-flags.md`'s method). FEAT-2797's Notes section separately points at `docs/hooks.md` in the upstream oh-my-pi repo as documenting "session, agent/context, tool pre/post" event surfaces plus mutation semantics and ordering — the most direct candidate source for this audit's event enumeration.
+
 ## Implementation Steps
 
 _Added by `/ll:refine-issue` — concrete steps grounded in actual file references._
@@ -204,6 +214,7 @@ gap remains valid: `HOST_COMPATIBILITY.md` still has no omp column and
 `hooks/adapters/omp/README.md` still doesn't exist.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-30T17:28:31 - `1854d5ae-85d4-485b-ae33-828a3400cc7b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:59 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

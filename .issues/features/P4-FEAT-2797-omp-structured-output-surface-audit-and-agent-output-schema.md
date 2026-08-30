@@ -17,6 +17,8 @@ labels:
 - structured-output
 - docs
 - adapters
+unproven_mechanism: true
+decision_needed: true
 ---
 
 # FEAT-2797: omp structured-output surface — audit findings, matrix correction, and agent `output:` schema wiring
@@ -121,6 +123,171 @@ discovery after writing the emitter means rewriting it.
   `<StructuredOutput>` tag fallback. Recording "no, prompt-and-parse" with a
   rationale satisfies this.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- No existing usage site exercises the combination AC4 depends on — no `agents/*.md` file in this repo defines a schema-shaped frontmatter field, and no adapter's `emit_agent` (including omp's) has ever populated an output-schema frontmatter key from one. `_select_frontmatter_fields()` passes unrecognized keys through untouched regardless of `frontmatter_fields_read` contents, so the `omp.py` docstring's "carries `output:` through unmodified" claim is asserted but has never been exercised end-to-end — there is no direct precedent confirming the combination (a real ll agent schema flowing through `emit_agent` into `.omp/agents/<name>.md` frontmatter) works.
+  > ⚠ Unproven mechanism — no ll agent definition has a schema to test with
+
+## Integration Map
+
+_Added by `/ll:refine-issue` — based on codebase analysis._
+
+### Files to Modify
+
+- `scripts/little_loops/host_runner.py` — `OmpRunner.capabilities` (the
+  `HostCapabilities(...)` construction block, currently omitting
+  `structured_output` entirely so it falls through to the dataclass default
+  `False`) gains an explicit `structured_output=False,  # <comment>` line. The
+  correct reasoning text already exists one method away, in
+  `OmpRunner.describe_capabilities()`'s own `CapabilityEntry("structured_output",
+  "unsupported", "omp has no inline --json-schema flag; FSM evaluators fall back
+  to prompt-and-parse")` — reuse that wording rather than inventing new text.
+  **No other host's `capabilities = HostCapabilities(...)` construction site
+  sets any flag to `False` explicitly with a comment today** (every unsupported
+  flag is achieved by omitting the kwarg) — this AC establishes a new
+  convention at that specific call site, not an existing one to copy.
+- `thoughts/research/omp-headless-flags.md` — gains a new "Structured output"
+  section (the file's `## HostCapabilities values` code block currently lists
+  only `streaming`/`permission_skip`/`agent_select`/`tool_allowlist`, no
+  `structured_output` line, and the file has zero mentions of schema/structured
+  output anywhere — confirmed by direct search).
+- `docs/reference/HOST_COMPATIBILITY.md` — the `[^omp]` footnote (currently
+  anchored only to the "Runner Capabilities" table's `Streaming` row) must be
+  *extended* to also explain the `json_schema`/`structured_output` `✗` cells
+  and the agent-frontmatter/`SDK outputSchema` path. Per this issue's own Scope
+  Boundary note, FEAT-2263 wants to extend the same footnote for hook-intent
+  tracking — whichever issue lands first must append to it, not overwrite.
+
+### Files Requiring Correction, Not Just Extension
+
+- `scripts/little_loops/adapters/omp.py` — the module docstring's claim that
+  `frontmatter_fields_read` "carries `output:` through unmodified when a source
+  agent defines one" is not backed by any `output`-specific code path.
+  `_select_frontmatter_fields()` (`scripts/little_loops/adapters/core.py:119-182`)
+  only has explicit handling for `"name"` and `"metadata.short-description"`;
+  any other key (including a hypothetical `output:`) passes through untouched
+  regardless of whether it appears in `frontmatter_fields_read` at all. The
+  docstring's causal claim is currently untested and inaccurate — no source
+  agent file has an `output:` key, so this behavior has never actually been
+  exercised.
+- `scripts/little_loops/adapters/capabilities.py` — `HOST_CAPABILITIES["omp"].frontmatter_fields_read`
+  is `("description", "name")` (line 120); it does not literally include
+  `"output"`, contradicting the `omp.py` docstring's claim.
+
+### No Existing Precedent for Schema-Driven Frontmatter Emission
+
+- Zero `agents/*.md` files in this repo define a schema-shaped frontmatter
+  field of any kind (searched directly — no hits).
+- No other adapter's `emit_agent` (`codex.py`, `gemini.py`, `kimi.py`, `qwen.py`)
+  populates an output-schema-like frontmatter field either — Codex's own
+  `emit_agent` derives `sandbox_mode`/`mcp_servers` from `tools`, not a schema.
+- Consequence: AC4 ("populates frontmatter `output:` where the ll agent
+  definition has a schema to express") currently has no schema source to draw
+  from anywhere in this codebase — no ll agent definition format has a schema
+  field, so there is nothing yet for `emit_agent` to read and forward. The
+  omp.py docstring's own parenthetical already concedes this ("none currently
+  do; ll agent definitions have no schema to express yet").
+
+### BUG-2626 Tag-Fallback Coverage Is Partial
+
+- `_extract_tagged_structured_output()` (`host_runner.py:2066-2111`) is invoked
+  only from `run_blocking_json()`'s `JSONDecodeError` branch, which backs
+  `evaluate_llm_structured()` (`fsm/evaluators.py`). `evaluate_blind_comparator`
+  and `evaluate_contract` build their own `subprocess.run` calls and parse with
+  a bare `json.loads()` — no tag-recovery fallback at those two sites. Relevant
+  context for AC5's "stay on prompt-and-parse" framing: the fallback safety net
+  is narrower than "every FSM evaluator," should that matter to the recorded
+  rationale.
+
+## Proposed Solution
+
+_Added by `/ll:refine-issue` — decision point for AC5, formatted per the
+Decision-Point Formatting convention._
+
+**Option A**: Wire the RPC/`outputSchema` path — implement `--mode rpc`'s
+`createAgentSession({outputSchema, requireYieldTool})` (or the per-item
+`schemaMode` override) so FSM evaluators get native structured output on omp,
+closing the gap `structured_output: False` currently encodes as "omp can't do
+it" when it in fact can, just not via the `--mode json` CLI path evaluators use
+today. This is a structurally new mechanism — no other host's `structured_output`
+support works via an RPC protocol rather than an inline CLI flag — so it would
+need its own design, not a fold-in to `OmpRunner.build_blocking_json`.
+
+**Option B**: Stay on prompt-and-parse — keep `structured_output=False` for
+omp's CLI path (`--mode json`), rely on prompt text plus the existing BUG-2626
+`<StructuredOutput>` tag-fallback (`_extract_tagged_structured_output`,
+`host_runner.py:2066`) as the safety net, same as every non-Anthropic/non-qwen
+host today. Zero new runner code.
+
+**Recommended**: Option B for now — this issue's own Impact section already
+scopes the RPC-path work as "should be its own issue," the fallback in Option B
+already exists and is exercised for `evaluate_llm_structured` (see the coverage
+caveat above), and no host besides `claude`/`qwen` gets inline schema support
+today — omp would be the first to get it through a structurally different
+mechanism (RPC vs. CLI flag), which warrants dedicated design rather than a
+correction-scoped issue like this one.
+
+## Program Design
+
+_Added by `/ll:refine-issue` — populated from analyzer findings._
+
+### Types
+
+N/A — no new data shape; `HostCapabilities.structured_output` already exists as
+a `bool` field (`host_runner.py`), and this issue only makes an existing
+implicit `False` explicit at one construction site.
+
+### Signatures
+
+- `HostCapabilities(..., structured_output: bool = False, ...)` (`host_runner.py`)
+  — existing dataclass; `OmpRunner.capabilities` gains an explicit
+  `structured_output=False` argument to this existing constructor, no signature
+  change.
+- `OmpRunner.describe_capabilities()` (`host_runner.py`, ~line 1351) — existing
+  method already correctly reports the `structured_output` reason string; no
+  change needed, only reuse of its wording at the `capabilities=` site.
+
+### Call Path
+
+`OmpRunner.capabilities` (a class attribute built at class-definition time from
+`HostCapabilities(...)`) -> read by `_structured_output_args()` (`host_runner.py:2045`)
+via `getattr(invocation.capabilities, "structured_output", False)` -> gates
+whether `run_blocking_json()` appends `--json-schema` before invoking `omp`.
+Making the `False` explicit at the `HostCapabilities(...)` call site changes
+no runtime behavior in this path — the value read is identical either way.
+
+### Decision Rules
+
+- AC5 introduces a genuine decision point (RPC/`outputSchema` path vs.
+  prompt-and-parse) — see the `## Proposed Solution` Option A/B block above for
+  the exact inputs and the recommended resolution.
+
+## Implementation Steps
+
+_Added by `/ll:refine-issue` — outcome-phrased, concrete references._
+
+1. `OmpRunner.capabilities` (`host_runner.py`) explicitly states
+   `structured_output=False` with a comment reusing the reasoning already
+   present in `OmpRunner.describe_capabilities()`.
+2. `thoughts/research/omp-headless-flags.md` carries a "Structured output"
+   section stating the audit findings above (no CLI schema flag; the
+   agent-frontmatter/SDK `outputSchema`/`--mode rpc` path exists but is unused).
+3. `docs/reference/HOST_COMPATIBILITY.md`'s `[^omp]` footnote is extended (not
+   overwritten — coordinate with FEAT-2263's own edit to the same footnote) to
+   explain the `json_schema`/`structured_output` `✗` cells and name the unused
+   `output:`/`outputSchema` path.
+4. The RPC-vs-prompt-and-parse decision from `## Proposed Solution` above is
+   applied: `decision_needed` reflects whether Option A or B is selected.
+5. Given the Unproven Mechanism finding above (no ll agent definition has a
+   schema to test AC4's `output:` passthrough against), AC4 should be
+   satisfied by making the passthrough mechanism correct and documented for
+   when a schema does appear (correcting `omp.py`'s docstring and, if desired,
+   adding `"output"` to `HOST_CAPABILITIES["omp"].frontmatter_fields_read`),
+   rather than by fabricating a schema to test against.
+6. Verify: `python -m pytest scripts/tests/test_host_runner.py scripts/tests/test_adapters.py -v` passes.
+
 ## Impact
 
 - **Priority**: P4 — same tier as the parent epic.
@@ -171,6 +338,7 @@ gaps from the 2026-08-10 pass are unchanged and still outstanding.
 - 2026-08-16: Remaining gaps still live (no explanation of why `json_schema`/`structured_output` are ✗ for omp in HOST_COMPATIBILITY.md, no structured-output mention in `thoughts/research/omp-headless-flags.md`). Per this issue's own 2026-08-10 note, the `emit_agent` → `.omp/agents/` acceptance criterion is already implemented (`scripts/little_loops/adapters/omp.py`) — that AC should be checked off and the issue's scope trimmed to the remaining unimplemented ACs. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-30T17:33:54 - `1854d5ae-85d4-485b-ae33-828a3400cc7b.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
