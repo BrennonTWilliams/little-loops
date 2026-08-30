@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-08-30
 completed_at: '2026-08-30T19:12:47Z'
+priority: P2
 discovered_by: debug-loop-run
 source_loop: sprint-refine-and-implement
 source_state: resolve_set
