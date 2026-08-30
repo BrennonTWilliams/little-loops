@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.159.0] - 2026-08-30
+
+### Added
+
+- **FEAT-3329**: Add conftest guards that fail the suite on a live host-CLI spawn and on an unpatched rate-limit ladder
+- **FEAT-3183**: Local agent-quality report over `history.db`
+- **FEAT-3332**: `check_intent_scope` — runtime containment gate asserting workflow-generator writes stay under `run_dir`
+- **FEAT-3343**: Add `ll-queue` tools to `ll-mcp`
+- **FEAT-3352**: Add `loop_list` catalog tool to `ll-mcp`
+- **FEAT-3335**: Generalize the `check_intent_scope` containment gate to workflow-generator's post-gate prompt states
+
+### Fixed
+
+- **BUG-3325**: Three `TestRateLimitCircuitIntegration` tests invoke the live host CLI on every suite run; one also wedges its xdist worker
+- **BUG-3326**: workflow-generator `emit_artifact` retries cannot converge — validator errors never reach the generator
+- **BUG-3327**: Unfenced brief interpolation makes `capture_intent` execute the object-level task
+- **BUG-3330**: codebase-locator agent claims verified zero-hit grep for symbols that exist
+- **BUG-3334**: Untrusted captured output is interpolated unfenced into prompt actions
+- **BUG-3339**: Convert `python3 -c` heredoc-unsafe invocations to quoted heredocs
+- **BUG-3340**: Convert class-A scalar interpolations to `:shell` env-var binding
+- **BUG-3341**: Convert class-B LLM-output interpolations to heredoc-to-file
+- **BUG-3348**: `_requeue_deferred_issues` silently drops issues — `queue.add()` rejects `in_progress` ids
+- **BUG-3349**: loop-router `finalize_present_result` parses model output unanchored and interpolates it into Python literals
+- **BUG-3324**: Concurrent producers evict each other from the shared events socket
+- **BUG-3333**: Port Searched-No-Hits evidence contract to codebase-analyzer and codebase-pattern-finder
+- **BUG-3344**: Port Searched-No-Hits evidence contract to consistency-checker
+- **BUG-3354**: Heredoc terminator collision in `LL_RAW` capture conversions
+- **BUG-3356**: gap-analysis refine passes consume `max_refine_count` despite documented exemption
+- **BUG-3357**: `refine-status` resolves active issues only, so lifetime cap reads 0 for deferred issues
+- fix: fix subprocess process-group kill bugs during rate-limit circuit interruption (BUG-3208, #15, #17)
+
+### Changed
+
+- **ENH-3337**: Make `:shell` interpolation suffix compose with `:default=` and `?`
+- **ENH-3338**: Add static sweep detecting unsafe context/captured interpolation in loop YAMLs
+- **ENH-3342**: Widen MR-11 lint and document the safe loop-interpolation idiom
+- **ENH-3345**: Stamp `run_id` and `loop` on every emitted FSM event
+- **ENH-3347**: Add behavioral tests for loop interpolation injection and quote-breaking
+- **ENH-3351**: Add `ll-loop run --serve` — a Level-3 loopback SSE bridge for live FSM dashboards
+- **ENH-2926**: `ll-logs extract` — report what was written instead of succeeding silently
+- **ENH-3211**: Surface `subagent_runs` telemetry as an `ll-session` subcommand over the existing `history_reader` readers
+- **ENH-3346**: `parallel` namespace has no worker lifecycle events
+- **ENH-3350**: Escalate no-precedent mechanism findings from refine-issue and discount them in confidence-check
+- **ENH-3358**: Convert MR-11-marked interpolation sites to safe forms (ENH-3342 corpus triage)
+- **ENH-2977**: Add a `--timeout` CLI flag to `ll-auto`, matching the existing `--idle-timeout`
+- **ENH-3353**: Document stdio stdout JSON-RPC frame constraint in MCP server guide
+- **ENH-3355**: Generate workflow-generator's evaluator vocabulary from validator tables instead of hand-listing it in the `attach_evaluators` prompt
+- refactor(fsm): tighten `VALID_OPERATORS` to `frozenset[str]` (e8d6eec6)
+
+### Documentation
+
+- docs: list Kimi Code and Qwen Code as host adapters in README intro (408a7eb4)
+- docs: re-sync scripts/README.md skill count with root README (0517c274)
+- docs(create-loop): document BUG-3334 sub-loop output spill pattern (504d02c6)
+
+### Maintenance
+
+- chore: fix lint, format, and mypy exception-shadowing issues (92ff4a24)
+- chore: untrack `.claude/workflows/feat-1680.js` (8c25dc7f)
+- chore: ignore `.claude/workflows/` directory (ca71da9d)
+
 ## [1.158.0] - 2026-08-25
 
 ### Added
@@ -1218,6 +1279,7 @@ beside a silently truncated list (BUG-3055).
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.159.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.158.0...v1.159.0
 [1.158.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.157.0...v1.158.0
 [1.157.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.156.0...v1.157.0
 [1.156.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.155.0...v1.156.0
