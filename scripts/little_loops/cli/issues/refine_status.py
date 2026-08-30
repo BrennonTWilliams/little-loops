@@ -43,6 +43,7 @@ _CANONICAL_CMD_ORDER = [
     "/ll:format-issue",
     "/ll:verify-issues",
     "/ll:refine-issue",
+    "/ll:refine-issue:gap-analysis",
     "/ll:tradeoff-review-issues",
     "/ll:map-dependencies",
 ]
@@ -54,6 +55,7 @@ _CMD_ALIASES: dict[str, str] = {
     "/ll:format-issue": "format",
     "/ll:verify-issues": "verify",
     "/ll:refine-issue": "refine",
+    "/ll:refine-issue:gap-analysis": "gap",
     "/ll:tradeoff-review-issues": "tradeoff",
     "/ll:map-dependencies": "map",
 }

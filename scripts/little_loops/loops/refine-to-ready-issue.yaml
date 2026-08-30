@@ -260,9 +260,9 @@ states:
     # Retry refine (entered from check_refine_limit). ENH-2247: a refine pass already
     # ran this run, so patch remaining gaps additively (--auto --gap-analysis) instead
     # of re-running a destructive rewrite over the first pass. Gap-analysis is
-    # additive-only (never removes content). NOTE: the intended gap-analysis
-    # exemption from max_refine_count is not implemented — append-log has no
-    # mode discriminator, so refine-status counts these passes too (BUG-3356).
+    # additive-only (never removes content), and is exempt from max_refine_count:
+    # it logs a discriminated Session Log entry (/ll:refine-issue:gap-analysis,
+    # GAP_REFINE_COMMAND) that refine-status excludes from refine_count (BUG-3356).
     action: "/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis"
     action_type: slash_command
     pruning_profile:

@@ -264,6 +264,48 @@ class TestIssuesCLINextAction:
         assert result == 0
         assert "ALL_DONE" in out
 
+    def test_gap_analysis_entries_do_not_count_toward_refine_cap(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3356: --gap-analysis passes are exempt from the refine cap, so an issue
+        with only 4 full-rewrite refines (plus any number of gap-analysis passes) still
+        needs refinement rather than graduating early."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(
+            bugs_dir,
+            "P3-BUG-001-test.md",
+            "BUG-001: Test issue",
+            confidence_score=50,
+            outcome_confidence=50,
+            session_commands=[
+                "/ll:format-issue",
+                "/ll:verify-issues",
+                "/ll:refine-issue",
+                "/ll:refine-issue",
+                "/ll:refine-issue",
+                "/ll:refine-issue",
+                "/ll:refine-issue:gap-analysis",
+                "/ll:refine-issue:gap-analysis",
+                "/ll:refine-issue:gap-analysis",
+            ],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-action", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 1
+        assert "NEEDS_REFINE BUG-001" in out
+
     def test_custom_thresholds(
         self,
         temp_project_dir: Path,

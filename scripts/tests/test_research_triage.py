@@ -79,6 +79,11 @@ def _session_log(when: datetime | None) -> str:
     return f"\n## Session Log\n- `/ll:refine-issue` - {stamp} - `abc.jsonl`\n"
 
 
+def _gap_analysis_session_log(when: datetime) -> str:
+    stamp = when.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    return f"\n## Session Log\n- `/ll:refine-issue:gap-analysis` - {stamp} - `abc.jsonl`\n"
+
+
 # ---------------------------------------------------------------------------
 # TestSparseIssue
 # ---------------------------------------------------------------------------
@@ -351,6 +356,25 @@ class TestStalenessCheck:
         os.utime(root / "pkg" / "mod.py", (now, now))
 
         assert _by_axis(triage_research_axes(issue, root))["locator"].covered is True
+
+    def test_gap_analysis_entry_counts_toward_staleness_check(self, tmp_path: Path) -> None:
+        """BUG-3356: a --gap-analysis pass is still recent refine activity for the
+        Step 3.0 staleness check, even though it's exempt from max_refine_count."""
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        past = datetime.now(UTC) - timedelta(days=2)
+        issue = _write_issue(
+            root,
+            "# ENH-1\n\n## Integration Map\n\n- `pkg/mod.py`\n" + _gap_analysis_session_log(past),
+        )
+        (root / "pkg" / "mod.py").write_text(SOURCE + "# edited\n", encoding="utf-8")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "change")
+        old = (datetime.now(UTC) - timedelta(days=5)).timestamp()
+        os.utime(root / "pkg" / "mod.py", (old, old))
+
+        locator = _by_axis(triage_research_axes(issue, root))["locator"]
+        assert locator.covered is False
+        assert "stale" in locator.evidence
 
 
 # ---------------------------------------------------------------------------

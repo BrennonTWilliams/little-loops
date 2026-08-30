@@ -750,6 +750,54 @@ class TestSearchSorting:
         assert lines.index("FEAT-011") < lines.index("BUG-001")
 
 
+class TestSearchSortRefinement:
+    """--sort refinement sums a fixed set of session-log command counts (BUG-3356)."""
+
+    @pytest.fixture
+    def refinement_issues_dir(self, temp_project_dir: Path, sample_config: dict) -> Path:
+        import json
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config, indent=2))
+
+        issues_base = temp_project_dir / ".issues"
+        bugs_dir = issues_base / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        # One real refine-issue entry -> refinement score 1
+        (bugs_dir / "P2-BUG-100-one-refine.md").write_text(
+            "---\ndiscovered_date: 2026-01-01T00:00:00Z\n---\n"
+            "# BUG-100: One refine entry\n\n## Summary\nBug.\n\n"
+            "## Session Log\n"
+            "- `/ll:refine-issue` - 2026-01-02T00:00:00 - `a.jsonl`\n"
+        )
+
+        # Zero real refine entries, but three gap-analysis entries -> refinement score
+        # must stay 0 (BUG-3356: gap-analysis is exempt from the refinement sort sum too)
+        (bugs_dir / "P2-BUG-101-only-gap-analysis.md").write_text(
+            "---\ndiscovered_date: 2026-01-01T00:00:00Z\n---\n"
+            "# BUG-101: Only gap-analysis entries\n\n## Summary\nBug.\n\n"
+            "## Session Log\n"
+            "- `/ll:refine-issue:gap-analysis` - 2026-01-02T00:00:00 - `a.jsonl`\n"
+            "- `/ll:refine-issue:gap-analysis` - 2026-01-03T00:00:00 - `b.jsonl`\n"
+            "- `/ll:refine-issue:gap-analysis` - 2026-01-04T00:00:00 - `c.jsonl`\n"
+        )
+
+        return issues_base
+
+    def test_gap_analysis_entries_excluded_from_refinement_sort(
+        self, temp_project_dir: Path, refinement_issues_dir: Path
+    ) -> None:
+        code, out = _run_search(
+            temp_project_dir, "--sort", "refinement", "--desc", "--format", "ids"
+        )
+        assert code == 0
+        lines = [line for line in out.strip().splitlines() if line.strip()]
+        # BUG-100 (1 real refine) outranks BUG-101 (0 real refines, only exempt
+        # gap-analysis entries) under a descending refinement sort.
+        assert lines.index("BUG-100") < lines.index("BUG-101")
+
+
 # ---------------------------------------------------------------------------
 # Output formats
 # ---------------------------------------------------------------------------

@@ -781,6 +781,24 @@ class TestIssueTimestamp:
 
         assert stamp is not None and stamp.isoformat() == "2026-08-02", "latest refine wins"
 
+    def test_gap_analysis_entry_counts_as_refine_activity(self) -> None:
+        """BUG-3356: a --gap-analysis pass still advances the gate-arming clock,
+        even though it's exempt from max_refine_count."""
+        from little_loops.issues.program_design import issue_design_timestamp
+
+        content = (
+            "---\nid: BUG-1\ndiscovered_date: 2026-07-20\n---\n\n"
+            "## Session Log\n"
+            "- `/ll:refine-issue` - 2026-07-21T10:00:00 - `a.jsonl`\n"
+            "- `/ll:refine-issue:gap-analysis` - 2026-08-05T10:00:00 - `b.jsonl`\n"
+        )
+
+        stamp = issue_design_timestamp(content)
+
+        assert stamp is not None and stamp.isoformat() == "2026-08-05", (
+            "gap-analysis entry must count as refine activity for gate-arming purposes"
+        )
+
     def test_unparseable_refine_entry_falls_back_to_discovered_date(self) -> None:
         from little_loops.issues.program_design import issue_design_timestamp
 

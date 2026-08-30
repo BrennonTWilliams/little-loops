@@ -127,8 +127,12 @@ _IDENT = re.compile(r"^[A-Za-z_][\w.]*$")
 _CHAIN_SPLIT = re.compile(r"->|→|=>")
 
 # `- `/ll:refine-issue` - 2026-07-27T16:20:16 - `abc.jsonl``
+# Also matches the discriminated `/ll:refine-issue:gap-analysis` entry
+# (BUG-3356, GAP_REFINE_COMMAND) — a gap-analysis pass is still refine
+# activity for gate-arming purposes, even though it's exempt from
+# commands.max_refine_count.
 _REFINE_ENTRY = re.compile(
-    r"`/ll:refine-issue`[^\n]*?(?P<ts>\d{4}-\d{2}-\d{2})(?:[T ][\d:]+)?",
+    r"`/ll:refine-issue(?::gap-analysis)?`[^\n]*?(?P<ts>\d{4}-\d{2}-\d{2})(?:[T ][\d:]+)?",
 )
 
 

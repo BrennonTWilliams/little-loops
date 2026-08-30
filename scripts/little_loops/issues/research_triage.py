@@ -43,7 +43,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from little_loops.session_log import last_command_timestamp
+from little_loops.session_log import GAP_REFINE_COMMAND, last_command_timestamp
 from little_loops.text_utils import (
     SOURCE_EXTENSIONS,
     RefIndex,
@@ -316,7 +316,13 @@ def triage_research_axes(
     if index is None:
         index = build_ref_index(root)
 
-    refined_at = last_command_timestamp(content, REFINE_COMMAND) if check_staleness else None
+    if check_staleness:
+        refined_at_full = last_command_timestamp(content, REFINE_COMMAND)
+        refined_at_gap = last_command_timestamp(content, GAP_REFINE_COMMAND)
+        candidates = [t for t in (refined_at_full, refined_at_gap) if t is not None]
+        refined_at = max(candidates) if candidates else None
+    else:
+        refined_at = None
     if refined_at is not None and (
         change_times is None or (change_times.floor is not None and change_times.floor > refined_at)
     ):

@@ -23,6 +23,12 @@ _SESSION_LOG_HEADING_RE = re.compile(r"^## Session Log\s*$", re.MULTILINE)
 _SESSION_LOG_TERMINATOR_RE = re.compile(r"\n(?:##|---)")
 # Regex to extract backtick-quoted /ll:* command names from session log entries
 _COMMAND_RE = re.compile(r"`(/[\w:-]+)`")
+# Discriminated Session Log command string for a --gap-analysis refine pass
+# (BUG-3356): exempt from commands.max_refine_count, unlike the bare
+# "/ll:refine-issue" full-rewrite entry. Single source of truth — readers
+# (program_design.py's _REFINE_ENTRY, research_triage.py's staleness check)
+# import this rather than hardcoding the literal.
+GAP_REFINE_COMMAND = "/ll:refine-issue:gap-analysis"
 # Same, but capturing the entry's ISO timestamp (ENH-2971). The time portion is
 # optional: the oldest entries carry a bare date.
 _TIMESTAMPED_ENTRY_RE = re.compile(

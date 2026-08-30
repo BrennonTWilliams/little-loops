@@ -931,7 +931,7 @@ For each approved gap, use the Edit tool with append-only changes:
 3. **Do NOT** replace any existing text block with more than 2 meaningful lines
 4. **Do NOT** remove any existing content under any circumstance
 
-**Gap-analysis and max_refine_count**: Gap-analysis runs (`--gap-analysis`) do NOT count against `max_refine_count` — they are additive-only, non-destructive, and designed for repeated iterative use. Only full-rewrite passes (`--full-rewrite` or the default non-flag mode) consume the refinement budget.
+**Gap-analysis and max_refine_count**: Gap-analysis runs (`--gap-analysis`) do NOT count against `max_refine_count` — they are additive-only, non-destructive, and designed for repeated iterative use. Only full-rewrite passes (`--full-rewrite` or the default non-flag mode) consume the refinement budget. This exemption is implemented via a discriminated Session Log command string, `GAP_REFINE_COMMAND` (`/ll:refine-issue:gap-analysis`, defined in `scripts/little_loops/session_log.py`) — see Step 6.5.
 
 #### 6. Gap-Analysis Output
 
@@ -982,11 +982,19 @@ would read a grandfathered issue as still grandfathered and declare success
 without ever having written a design — the exact bug this ordering exists to
 prevent. Do not move this append back below the gate check.
 
+On a `--gap-analysis` run, write the discriminated `GAP_REFINE_COMMAND` string
+(`/ll:refine-issue:gap-analysis`) so it is exempt from `max_refine_count`; on a
+full-rewrite/default run, write the bare `/ll:refine-issue` string:
+
 ```bash
-ll-issues append-log <path-to-issue-file> /ll:refine-issue
+if [[ "$GAP_ANALYSIS" == "true" ]]; then
+  ll-issues append-log <path-to-issue-file> /ll:refine-issue:gap-analysis
+else
+  ll-issues append-log <path-to-issue-file> /ll:refine-issue
+fi
 ```
 
-If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required) — use the same `/ll:refine-issue:gap-analysis` vs. `/ll:refine-issue` command string based on `$GAP_ANALYSIS`:
 
 ```
 - `/ll:refine-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`

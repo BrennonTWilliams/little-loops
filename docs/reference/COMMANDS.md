@@ -14,7 +14,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
 | `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
 | `--auto` | Non-interactive mode (no prompts). Also activated independently by the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` env var, or by `--dangerously-skip-permissions` | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `spike`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics`, `audit-loop-run`, `debug-loop-run`, `explore-api`, `decide-issue`, `wire-issue`, `go-no-go`, `scope-epic`, `review-loop`, `simplify-loop` |
-| `--gap-analysis` | Additive-only enrichment: fill gaps, never remove content; exempt from `max_refine_count` | `refine-issue` |
+| `--gap-analysis` | Additive-only enrichment: fill gaps, never remove content; exempt from `max_refine_count` via a discriminated Session Log entry (`/ll:refine-issue:gap-analysis`) | `refine-issue` |
 | `--full-rewrite` | Full-rewrite mode (legacy): overwrites sections with research findings | `refine-issue` |
 | `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go`, `spike` |
 | `--verbose` | Include detailed output | `align-issues` |
@@ -238,7 +238,7 @@ Refine issue files with codebase-driven research to fill knowledge gaps needed f
 
 **Arguments:**
 - `issue_id` (required): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
-- `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview), `--gap-analysis` (additive-only gap fill, does not count toward `max_refine_count`), `--full-rewrite` (legacy full-rewrite mode)
+- `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview), `--gap-analysis` (additive-only gap fill, logs `/ll:refine-issue:gap-analysis` and does not count toward `max_refine_count`), `--full-rewrite` (legacy full-rewrite mode)
 
 **Frontmatter write-back**: After detecting 2+ implementation options deposited into `Proposed Solution` in `--auto` mode, the command sets `decision_needed: true` in the issue's YAML frontmatter. If fewer than 2 options are deposited, the flag is cleared to `false` (or left absent if never set). This is skipped in `--dry-run` mode. Note: `/ll:confidence-check` can also set `decision_needed: true` independently when it detects an unresolved decision in Outcome Risk Factors.
 

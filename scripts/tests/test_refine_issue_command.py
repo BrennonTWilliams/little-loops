@@ -201,6 +201,25 @@ class TestGapAnalysisMode:
         assert "max_refine_count" in text, (
             "Section 5c must document that gap-analysis runs are exempt from max_refine_count"
         )
+        assert "/ll:refine-issue:gap-analysis" in text, (
+            "Section 5c must name the GAP_REFINE_COMMAND discriminator that implements "
+            "the exemption (BUG-3356)"
+        )
+
+    def test_max_refine_count_exemption_pinned_in_config_schema(self) -> None:
+        schema_path = PROJECT_ROOT / "scripts" / "little_loops" / "config-schema.json"
+        text = schema_path.read_text()
+        assert "/ll:refine-issue:gap-analysis" in text, (
+            "config-schema.json's max_refine_count description must name the "
+            "GAP_REFINE_COMMAND discriminator that implements the exemption (BUG-3356)"
+        )
+
+    def test_max_refine_count_exemption_pinned_in_commands_reference(self) -> None:
+        text = COMMANDS_REF.read_text()
+        assert "/ll:refine-issue:gap-analysis" in text, (
+            "docs/reference/COMMANDS.md must name the GAP_REFINE_COMMAND discriminator "
+            "that implements the --gap-analysis max_refine_count exemption (BUG-3356)"
+        )
 
     def test_gap_analysis_in_examples(self) -> None:
         content = COMMAND_FILE.read_text()

@@ -950,6 +950,46 @@ class TestRefineStatusJson:
         assert record["refine_count"] == 1
         assert record["size"] is None
 
+    def test_json_gap_analysis_entry_excluded_from_refine_count(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3356: a --gap-analysis pass logs a discriminated entry that refine_count
+        excludes; only a full-rewrite /ll:refine-issue entry increments it."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P1-BUG-051-gap-analysis-test.md",
+            "BUG-051: gap-analysis exemption test issue",
+            confidence_score=90,
+            outcome_confidence=80,
+            session_commands=[
+                "/ll:refine-issue",
+                "/ll:refine-issue:gap-analysis",
+                "/ll:refine-issue:gap-analysis",
+            ],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        record = json.loads(capsys.readouterr().out.strip())
+        assert record["refine_count"] == 1
+
     def test_json_missing_scores_are_null(
         self,
         temp_project_dir: Path,
