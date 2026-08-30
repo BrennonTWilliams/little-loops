@@ -12,6 +12,8 @@ depends_on: [FEAT-3332]
 decision_needed: false
 learning_tests_required: [pyyaml]
 unproven_mechanism: true
+spike_completed: true
+spike_attempted: true
 ---
 
 # FEAT-3335: Generalize the check_intent_scope containment gate to workflow-generator's post-gate prompt states
@@ -491,12 +493,31 @@ Original incident: the workflow-generator output-JSON gate-gap postmortem
 - `docs/reference/loops.md` — § `workflow-generator` (~:132) documents the
   loop, including the `### State Graph` diagram the new gates change.
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-08-29_
+
+**Retired risks**
+
+| Risk (from Decision Rationale / Codebase Research Findings) | Proven by | Result |
+|---------------------------------------------------------------|-----------|--------|
+| Rolling-baseline diff pattern has no in-repo precedent | `TestRollingBaselineGate::test_gate_passes_and_advances_baseline` | ✓ pass |
+| Baseline advancement on failure could corrupt window boundaries | `TestRollingBaselineGate::test_gate_fails_and_leaves_baseline_untouched` | ✓ pass |
+| Per-window attribution (Option B's core claim) is unproven across a multi-gate chain | `TestRollingBaselineGate::test_sequential_windows_attribute_violation_to_correct_gate` | ✓ pass |
+| Advance-on-pass could mask a same-pass violation into the next window | `TestRollingBaselineGate::test_advance_does_not_mask_a_violation_in_the_same_pass` | ✓ pass |
+| Isolation guard (spike stays standalone, not a production wrapper) | `TestIsolationGuard::test_rolling_gate_module_has_no_production_imports` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/rolling_scope_gate/`
+**Verification**: 5 spike tests pass, plus the 25-test `TestCheckIntentScopeShellAction` regression suite pass unmodified (30 tests across 2 commands).
+**Promotion**: move `rolling_gate.py`'s `run_gate`/`changed_set` shape into the actual FSM fragment body in `scripts/little_loops/loops/workflow-generator.yaml` (or `scripts/little_loops/loops/lib/common.yaml`, per the fragment-location decision) in a separate PR.
+
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P4
 
 
 ## Session Log
+- `/ll:spike` - 2026-08-30T04:18:09 - `ff699041-98cb-4619-b0e1-ea29f873929f.jsonl`
 - `/ll:refine-issue` - 2026-08-30T03:54:52 - `60f4b2a5-6804-4c4a-8095-0f67f3431a09.jsonl`
 - `/ll:wire-issue` - 2026-08-28T23:41:12 - `425908b6-e1d5-4f67-8fd1-7db76f87cdd4.jsonl`
 - `/ll:decide-issue` - 2026-08-28T23:33:08 - `9f949531-f7bd-43e0-816a-3a64d73b2bba.jsonl`
