@@ -4,6 +4,12 @@ discovered_by: debug-loop-run
 source_loop: sprint-refine-and-implement
 source_state: resolve_set
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3361: SprintManager.load_or_resolve unions relates_to sibling-EPIC ids into an EPIC's dispatch set
@@ -277,6 +283,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T19:02:12 - `23dfebb9-a2c6-4ea0-af1c-820007a2d67b.jsonl`
 - `/ll:wire-issue` - 2026-08-30T18:50:09 - `00726072-62d6-4f81-b684-ed899628cec1.jsonl`
 - `/ll:decide-issue` - 2026-08-30T18:42:34 - `485b5d3f-a476-487f-b5bc-30b3083dcc2d.jsonl`
 - `/ll:refine-issue` - 2026-08-30T18:36:06 - `3caa0a54-1798-44b0-ac84-0105003d8212.jsonl`
