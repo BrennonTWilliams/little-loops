@@ -2056,9 +2056,23 @@ dispatch:
   with:
     input: "${captured.derived_params.output}"
   capture: sub_loop_output
-  on_yes: review
-  on_no: review
+  on_yes: write_sub_loop_output
+  on_no: write_sub_loop_output
+  on_error: write_sub_loop_output
+```
+
+The sub-loop's captured event stream is unbounded, so route through an
+intermediate shell state that spills it to a file (via the combined
+`:shell:default=` suffix) rather than interpolating it into `review`'s prompt
+directly — `review` then references the path instead (BUG-3334):
+```yaml
+write_sub_loop_output:
+  action_type: shell
+  action: |
+    SUB_LOOP_OUTPUT=${captured.sub_loop_output.output:shell:default=}
+    printf '%s' "$SUB_LOOP_OUTPUT" > "${context.run_dir}/sub-loop-events.jsonl"
   on_error: review
+  next: review
 ```
 
 ### Orch Composer

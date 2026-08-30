@@ -1126,7 +1126,7 @@ Sub-loops: lint-fix, test-suite
 
 ### Orchestration (Router)
 ```
-States: classify, score, dispatch, review, done
+States: classify, score, dispatch, write_sub_loop_output, review, done
 Initial: classify
 
 Transitions:
@@ -1137,9 +1137,12 @@ Transitions:
   score:
     - next -> dispatch
   dispatch:
-    - on_yes -> review
-    - on_no -> review
+    - on_yes -> write_sub_loop_output
+    - on_no -> write_sub_loop_output
+    - on_error -> write_sub_loop_output
+  write_sub_loop_output:
     - on_error -> review
+    - next -> review
   review:
     - on_yes -> done
     - on_no -> classify
