@@ -1,0 +1,12 @@
+{
+  "id": "9e87e055-c0af-41e6-822c-75342c5142a0",
+  "type": "decision",
+  "timestamp": "2026-08-30T17:39:08Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Zero new runner code; reuses already-tested BUG-2626 tag fallback and the majority HostCapabilities(structured_output=...) convention (4 of 6 hosts). RPC/outputSchema path (Option A) needs a session-based abstraction with no precedent in HostRunner/HostInvocation and touches 3 evaluators, 2 of which bypass the shared helper today; scoped as its own issue if pursued.",
+  "rule": "Option B \u2014 Stay on prompt-and-parse for omp structured output",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: Wire the RPC/outputSchema path (--mode rpc, createAgentSession)",
+  "issue": "FEAT-2797"
+}

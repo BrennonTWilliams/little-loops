@@ -18,7 +18,7 @@ labels:
 - docs
 - adapters
 unproven_mechanism: true
-decision_needed: true
+decision_needed: false
 ---
 
 # FEAT-2797: omp structured-output surface — audit findings, matrix correction, and agent `output:` schema wiring
@@ -221,6 +221,11 @@ omp's CLI path (`--mode json`), rely on prompt text plus the existing BUG-2626
 `host_runner.py:2066`) as the safety net, same as every non-Anthropic/non-qwen
 host today. Zero new runner code.
 
+> **Selected:** Option B — stays on prompt-and-parse, reusing the existing,
+> already-tested BUG-2626 tag fallback and `HostCapabilities.structured_output`
+> convention with zero new runner code (score 12/12 vs. Option A's 2/12; see
+> Decision Rationale below).
+
 **Recommended**: Option B for now — this issue's own Impact section already
 scopes the RPC-path work as "should be its own issue," the fallback in Option B
 already exists and is exercised for `evaluate_llm_structured` (see the coverage
@@ -228,6 +233,25 @@ caveat above), and no host besides `claude`/`qwen` gets inline schema support
 today — omp would be the first to get it through a structurally different
 mechanism (RPC vs. CLI flag), which warrants dedicated design rather than a
 correction-scoped issue like this one.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-30.
+
+**Selected**: Option B — Stay on prompt-and-parse
+
+**Reasoning**: Option B changes zero runtime behavior — `OmpRunner().capabilities.structured_output is False` is already pinned by `test_host_runner.py:1752` — and reuses `_extract_tagged_structured_output`, `run_blocking_json`, and `_structured_output_args` verbatim, matching the "omit the kwarg" convention already followed by 4 of 6 registered hosts (codex, gemini, omp, kimi). Option A would require a session-based RPC client with no precedent in `HostRunner`/`HostInvocation` (both are structurally one-shot-argv, per `host_runner.py:155-173` and `2120-2134`), and would touch three FSM evaluators, two of which (`evaluate_blind_comparator`, `evaluate_contract`) don't even share the `run_blocking_json()` helper today — high complexity and risk for a mechanism the issue's own Impact section already scopes as "should be its own issue."
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| Option A (RPC/outputSchema) | 1/3 | 0/3 | 1/3 | 0/3 | 2/12 |
+| Option B (prompt-and-parse) | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+
+**Key evidence**:
+- The rejected RPC approach's only reusable precedent is `mcp_call.py`'s JSON-RPC-over-subprocess client (transport shell only, MCP-protocol-specific, not omp's RPC schema); `HostRunner`/`HostInvocation` has no session concept anywhere in the codebase.
+- The selected prompt-and-parse approach's `_extract_tagged_structured_output` (`host_runner.py:2066-2111`) is an already-implemented, already-tested (`test_host_runner.py:2003-2019`) fallback that 4 of 6 hosts already rely on via the identical construction-site convention this AC makes explicit for omp.
 
 ## Program Design
 
@@ -260,9 +284,9 @@ no runtime behavior in this path — the value read is identical either way.
 
 ### Decision Rules
 
-- AC5 introduces a genuine decision point (RPC/`outputSchema` path vs.
-  prompt-and-parse) — see the `## Proposed Solution` Option A/B block above for
-  the exact inputs and the recommended resolution.
+- AC5's decision point (RPC/`outputSchema` path vs. prompt-and-parse) is
+  resolved: Option B (prompt-and-parse) selected — see the `### Decision
+  Rationale` subsection under `## Proposed Solution` above.
 
 ## Implementation Steps
 
@@ -278,8 +302,9 @@ _Added by `/ll:refine-issue` — outcome-phrased, concrete references._
    overwritten — coordinate with FEAT-2263's own edit to the same footnote) to
    explain the `json_schema`/`structured_output` `✗` cells and name the unused
    `output:`/`outputSchema` path.
-4. The RPC-vs-prompt-and-parse decision from `## Proposed Solution` above is
-   applied: `decision_needed` reflects whether Option A or B is selected.
+4. The RPC-vs-prompt-and-parse decision is applied: Option B (prompt-and-parse)
+   was selected — no RPC/`outputSchema` implementation work is in scope for
+   this issue; `decision_needed` is set to `false`.
 5. Given the Unproven Mechanism finding above (no ll agent definition has a
    schema to test AC4's `output:` passthrough against), AC4 should be
    satisfied by making the passthrough mechanism correct and documented for
@@ -338,6 +363,7 @@ gaps from the 2026-08-10 pass are unchanged and still outstanding.
 - 2026-08-16: Remaining gaps still live (no explanation of why `json_schema`/`structured_output` are ✗ for omp in HOST_COMPATIBILITY.md, no structured-output mention in `thoughts/research/omp-headless-flags.md`). Per this issue's own 2026-08-10 note, the `emit_agent` → `.omp/agents/` acceptance criterion is already implemented (`scripts/little_loops/adapters/omp.py`) — that AC should be checked off and the issue's scope trimmed to the remaining unimplemented ACs. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-30T17:40:37 - `7e67aae2-54d5-4a0a-8c77-37f505746bdf.jsonl`
 - `/ll:refine-issue` - 2026-08-30T17:33:54 - `1854d5ae-85d4-485b-ae33-828a3400cc7b.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
