@@ -2,7 +2,7 @@
 id: BUG-3360
 type: BUG
 title: cost_ceiling is schema-validated but never enforced at runtime
-priority: P2
+priority: P4
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-30'
@@ -211,7 +211,7 @@ carrying this visit's tokens is written by the event handler.
 
 ## Impact
 
-- **Priority**: P2 — no crash or data loss, but a safety knob that reports
+- **Priority**: P4 — no crash or data loss, but a safety knob that reports
   valid and does nothing is worse than an absent one: an author who sets
   `cost_ceiling_per_state: 5.0` on an expensive state reasonably believes spend
   is bounded, and it is not.
@@ -235,4 +235,4 @@ error, and the validation tests pass regardless.
 
 ## Status
 
-**Open** | Created: 2026-08-30 | Priority: P2
+**Open** | Created: 2026-08-30 | Priority: P4
