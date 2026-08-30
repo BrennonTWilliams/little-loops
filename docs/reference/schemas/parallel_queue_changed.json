@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-parallel.queue_changed.json",
+  "title": "Parallel: Queue Changed",
+  "description": "Emitted from inside IssuePriorityQueue's mutators after every counter-changing operation; consumers apply last-writer-wins by seq, not arrival order (ENH-3346).",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "seq",
+    "pending",
+    "active",
+    "completed",
+    "failed",
+    "skipped",
+    "run_id"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every parallel.* emitter (ENH-3346); required on all parallel.* events, optional elsewhere."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
+    "seq": {
+      "type": "integer",
+      "description": "Monotonic counter incremented under the queue's lock alongside the counter snapshot; emit() runs after the lock is released, so consumers apply last-writer-wins by seq rather than arrival order"
+    },
+    "pending": {
+      "type": "integer",
+      "description": "Issues waiting in the queue (qsize())"
+    },
+    "active": {
+      "type": "integer",
+      "description": "Issues currently in progress"
+    },
+    "completed": {
+      "type": "integer",
+      "description": "Issues completed successfully"
+    },
+    "failed": {
+      "type": "integer",
+      "description": "Issues that failed"
+    },
+    "skipped": {
+      "type": "integer",
+      "description": "Issues skipped"
+    }
+  },
+  "additionalProperties": true
+}

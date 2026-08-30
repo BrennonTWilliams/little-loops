@@ -339,6 +339,32 @@ class WorkerPool:
             with self._callback_lock:
                 self._pending_callbacks.discard(issue_id)
 
+    def _emit_worker_started(self, issue_id: str, worktree_path: Path, branch: str) -> None:
+        """Emit ``parallel.worker_started`` (ENH-3346).
+
+        Called from ``_process_issue`` immediately after worktree creation —
+        not from ``submit()`` at dispatch time — because the payload needs
+        ``worktree_path``/``branch``, which don't exist until then.
+
+        Args:
+            issue_id: The issue this worker is processing (also stamped as
+                ``worker_id``)
+            worktree_path: Path to the worker's newly created git worktree
+            branch: Git branch created for this worker
+        """
+        if self._event_bus:
+            self._event_bus.emit(
+                {
+                    "event": "parallel.worker_started",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "run_id": self.run_id,
+                    "worker_id": issue_id,
+                    "issue_id": issue_id,
+                    "worktree_path": str(worktree_path),
+                    "branch": branch,
+                }
+            )
+
     def _process_issue(self, issue: IssueInfo) -> WorkerResult:
         """Process a single issue in an isolated worktree.
 
@@ -426,6 +452,7 @@ class WorkerPool:
                     else None
                 ),
             )
+            self._emit_worker_started(issue.issue_id, worktree_path, branch_name)
             with suppress(Exception):
                 record_session_lifecycle_event(
                     resolve_history_db(),
@@ -1980,6 +2007,7 @@ class WorkerPool:
                 {
                     "event": "parallel.epic_branch_stale",
                     "ts": datetime.now(UTC).isoformat(),
+                    "run_id": self.run_id,
                     "branch": status.branch,
                     "base": status.base,
                     "commits_behind": status.commits_behind,

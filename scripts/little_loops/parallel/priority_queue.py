@@ -7,6 +7,7 @@ Provides a priority queue implementation that orders issues by priority level
 from __future__ import annotations
 
 import threading
+from datetime import UTC, datetime
 from queue import Empty, PriorityQueue
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from little_loops.config import BRConfig
+    from little_loops.events import EventBus
 
 
 class IssuePriorityQueue:
@@ -37,8 +39,20 @@ class IssuePriorityQueue:
     # Default priority ordering (P0 highest)
     DEFAULT_PRIORITIES = ["P0", "P1", "P2", "P3", "P4", "P5"]
 
-    def __init__(self) -> None:
-        """Initialize the priority queue."""
+    def __init__(
+        self,
+        event_bus: EventBus | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        """Initialize the priority queue.
+
+        Args:
+            event_bus: Optional EventBus for emitting ``parallel.queue_changed``
+                events on every mutation (ENH-3346).
+            run_id: Opaque ID shared by every issue in the top-level run this
+                queue belongs to; stamped onto ``parallel.queue_changed``
+                events (ENH-3346).
+        """
         self._queue: PriorityQueue[QueuedIssue] = PriorityQueue()
         self._lock = threading.Lock()
         self._queued: set[str] = set()  # Issues currently in queue
@@ -46,12 +60,44 @@ class IssuePriorityQueue:
         self._completed: set[str] = set()
         self._failed: set[str] = set()
         self._skipped: set[str] = set()
+        self._event_bus = event_bus
+        self.run_id = run_id
+        self._seq: int = 0
 
-    def add(self, issue: IssueInfo) -> bool:
+    def _emit_queue_changed(self) -> None:
+        """Emit a ``parallel.queue_changed`` snapshot of the queue counters.
+
+        Builds the counter snapshot (and increments the monotonic ``seq``)
+        under ``self._lock``, then calls ``emit()`` after releasing it so a
+        re-entrant observer cannot deadlock. Must NOT be called via the
+        ``*_count`` properties, which each independently acquire the same
+        non-reentrant lock.
+        """
+        if self._event_bus is None:
+            return
+        with self._lock:
+            self._seq += 1
+            payload = {
+                "event": "parallel.queue_changed",
+                "ts": datetime.now(UTC).isoformat(),
+                "run_id": self.run_id,
+                "seq": self._seq,
+                "pending": self._queue.qsize(),
+                "active": len(self._in_progress),
+                "completed": len(self._completed),
+                "failed": len(self._failed),
+                "skipped": len(self._skipped),
+            }
+        self._event_bus.emit(payload)
+
+    def add(self, issue: IssueInfo, *, _suppress_emit: bool = False) -> bool:
         """Add an issue to the queue if not already processed.
 
         Args:
             issue: Issue information to queue
+            _suppress_emit: Internal flag used by ``add_many`` to batch a
+                single ``queue_changed`` emission after the whole loop
+                instead of firing once per item (ENH-3346).
 
         Returns:
             True if issue was added, False if already queued/in_progress/completed
@@ -72,10 +118,15 @@ class IssuePriorityQueue:
             )
             self._queue.put(queued)
             self._queued.add(issue.issue_id)
-            return True
+        if not _suppress_emit:
+            self._emit_queue_changed()
+        return True
 
     def add_many(self, issues: Iterable[IssueInfo]) -> int:
         """Add multiple issues to the queue.
+
+        Emits exactly one ``parallel.queue_changed`` event after the whole
+        batch, not once per item (ENH-3346).
 
         Args:
             issues: Iterable of issue information
@@ -85,8 +136,10 @@ class IssuePriorityQueue:
         """
         added = 0
         for issue in issues:
-            if self.add(issue):
+            if self.add(issue, _suppress_emit=True):
                 added += 1
+        if added:
+            self._emit_queue_changed()
         return added
 
     def get(self, block: bool = True, timeout: float | None = None) -> QueuedIssue | None:
@@ -104,6 +157,7 @@ class IssuePriorityQueue:
             with self._lock:
                 self._queued.discard(queued.issue_info.issue_id)
                 self._in_progress.add(queued.issue_info.issue_id)
+            self._emit_queue_changed()
             return queued
         except Empty:
             return None
@@ -117,6 +171,7 @@ class IssuePriorityQueue:
         with self._lock:
             self._in_progress.discard(issue_id)
             self._completed.add(issue_id)
+        self._emit_queue_changed()
 
     def mark_failed(self, issue_id: str) -> None:
         """Mark an issue as failed.
@@ -127,6 +182,7 @@ class IssuePriorityQueue:
         with self._lock:
             self._in_progress.discard(issue_id)
             self._failed.add(issue_id)
+        self._emit_queue_changed()
 
     def mark_skipped(self, issue_id: str) -> None:
         """Mark an issue as skipped (e.g., blocked on an open dependency).
@@ -142,17 +198,23 @@ class IssuePriorityQueue:
         with self._lock:
             self._in_progress.discard(issue_id)
             self._skipped.add(issue_id)
+        self._emit_queue_changed()
 
-    def requeue(self, issue: IssueInfo, demote_priority: bool = False) -> None:
+    def requeue(self, issue: IssueInfo, demote_priority: bool = False) -> bool:
         """Requeue an issue (e.g., after merge conflict).
 
         Args:
             issue: Issue to requeue
             demote_priority: Whether to lower the priority by one level
+
+        Returns:
+            True if the issue was requeued, False if it was already queued
+            (no-op duplicate guard) — mirrors ``add()``'s ``-> bool`` contract
+            (ENH-3346, resolving BUG-3348's silent-drop caller ambiguity).
         """
         with self._lock:
             if issue.issue_id in self._queued:
-                return
+                return False
 
             self._in_progress.discard(issue.issue_id)
             self._failed.discard(issue.issue_id)
@@ -168,6 +230,8 @@ class IssuePriorityQueue:
             )
             self._queue.put(queued)
             self._queued.add(issue.issue_id)
+        self._emit_queue_changed()
+        return True
 
     def empty(self) -> bool:
         """Check if the queue is empty."""
@@ -228,20 +292,28 @@ class IssuePriorityQueue:
     def load_completed(self, completed: Iterable[str]) -> None:
         """Load previously completed issues (for resume).
 
+        Emits one ``parallel.queue_changed`` event after the batch update so
+        post-resume counters are truthful from the first event (ENH-3346).
+
         Args:
             completed: Issue IDs that were already completed
         """
         with self._lock:
             self._completed.update(completed)
+        self._emit_queue_changed()
 
     def load_failed(self, failed: Iterable[str]) -> None:
         """Load previously failed issues (for resume).
+
+        Emits one ``parallel.queue_changed`` event after the batch update so
+        post-resume counters are truthful from the first event (ENH-3346).
 
         Args:
             failed: Issue IDs that previously failed
         """
         with self._lock:
             self._failed.update(failed)
+        self._emit_queue_changed()
 
     @staticmethod
     def scan_issues(

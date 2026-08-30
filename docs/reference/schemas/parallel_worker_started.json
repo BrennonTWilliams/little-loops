@@ -1,15 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "little-loops://event-handoff_detected.json",
-  "title": "Handoff Detected",
-  "description": "Emitted when a context-limit handoff is detected in a prompt action.",
+  "$id": "little-loops://event-parallel.worker_started.json",
+  "title": "Parallel: Worker Started",
+  "description": "Emitted by WorkerPool._process_issue immediately after worktree creation, when a worker begins processing an issue (ENH-3346).",
   "type": "object",
   "required": [
     "event",
     "ts",
-    "state",
-    "iteration",
-    "continuation"
+    "worker_id",
+    "issue_id",
+    "worktree_path",
+    "branch",
+    "run_id"
   ],
   "properties": {
     "event": {
@@ -29,17 +31,21 @@
       "type": "string",
       "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
     },
-    "state": {
+    "worker_id": {
       "type": "string",
-      "description": "State name where handoff was detected"
+      "description": "Worker identifier, aliased to issue_id (stable for the worker's lifetime)"
     },
-    "iteration": {
-      "type": "integer",
-      "description": "Iteration count at handoff"
-    },
-    "continuation": {
+    "issue_id": {
       "type": "string",
-      "description": "Continuation prompt text"
+      "description": "Issue identifier this worker is processing"
+    },
+    "worktree_path": {
+      "type": "string",
+      "description": "Filesystem path to the worker's git worktree"
+    },
+    "branch": {
+      "type": "string",
+      "description": "Git branch created for this worker"
     }
   },
   "additionalProperties": true

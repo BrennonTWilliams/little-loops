@@ -1660,7 +1660,14 @@ class TestCircuitBreaker:
         temp_git_repo: Path,
     ) -> None:
         """When paused, should skip merge requests with circuit breaker error."""
-        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        coordinator = MergeCoordinator(
+            default_config, mock_logger, temp_git_repo, event_bus=bus, run_id="run-cb1"
+        )
 
         # Set paused state
         coordinator._paused = True
@@ -1681,6 +1688,23 @@ class TestCircuitBreaker:
 
         assert request.status == MergeStatus.FAILED
         assert "circuit breaker" in request.error.lower()
+
+        # ENH-3346: the paused-skip path calls _handle_failure before
+        # MergeStatus.IN_PROGRESS is ever set — merge_started must still be
+        # emitted (from the top of _process_merge), and merge_completed(failed)
+        # must still follow it, so the pair holds even on this early-exit path.
+        started = [e for e in received if e["event"] == "parallel.merge_started"]
+        completed = [e for e in received if e["event"] == "parallel.merge_completed"]
+        assert len(started) == 1
+        assert len(completed) == 1
+        assert started[0]["run_id"] == "run-cb1"
+        assert started[0]["worker_id"] == "TEST-001"
+        assert started[0]["issue_id"] == "TEST-001"
+        assert started[0]["branch"] == "parallel/test"
+        assert completed[0]["run_id"] == "run-cb1"
+        assert completed[0]["outcome"] == "failed"
+        assert completed[0]["error"] is not None
+        assert "circuit breaker" in completed[0]["error"].lower()
 
     def test_pause_early_return_clears_current_issue_id(
         self,
@@ -1848,6 +1872,164 @@ class TestCircuitBreaker:
         assert result is True
         # File should be reverted to committed state
         assert test_file.read_text() == "initial content"
+
+
+class TestMergeLifecycleEvents:
+    """Tests for parallel.merge_started/merge_completed emission (ENH-3346).
+
+    Modeled on test_worker_pool.py's TestEnsureEpicBranchEventEmission — real
+    EventBus, list-appending observer, assert on the captured dict.
+    """
+
+    def test_process_merge_emits_started_and_completed_merged(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """A real, successful _process_merge run pairs merge_started with merge_completed(merged)."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        coordinator = MergeCoordinator(
+            default_config, mock_logger, temp_git_repo, event_bus=bus, run_id="run-1"
+        )
+
+        # Real feature branch with a genuine, cleanly-mergeable commit.
+        subprocess.run(
+            ["git", "checkout", "-b", "parallel/bug-001"],
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        feature_file = temp_git_repo / "feature.txt"
+        feature_file.write_text("feature content")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add feature"], cwd=temp_git_repo, capture_output=True
+        )
+        subprocess.run(
+            ["git", "checkout", default_config.base_branch], cwd=temp_git_repo, capture_output=True
+        )
+
+        fake_worktree = temp_git_repo / ".worktrees" / "worker-bug-001"
+        fake_worktree.mkdir(parents=True)
+        worker_result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=fake_worktree,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        coordinator._process_merge(request)
+
+        assert request.status == MergeStatus.SUCCESS
+        started = [e for e in received if e["event"] == "parallel.merge_started"]
+        completed = [e for e in received if e["event"] == "parallel.merge_completed"]
+        assert len(started) == 1
+        assert len(completed) == 1
+        assert started[0]["run_id"] == "run-1"
+        assert started[0]["worker_id"] == "BUG-001"
+        assert started[0]["issue_id"] == "BUG-001"
+        assert started[0]["branch"] == "parallel/bug-001"
+        assert completed[0]["run_id"] == "run-1"
+        assert completed[0]["worker_id"] == "BUG-001"
+        assert completed[0]["issue_id"] == "BUG-001"
+        assert completed[0]["outcome"] == "merged"
+        assert completed[0]["error"] is None
+
+    def test_process_merge_emits_started_once_on_retry(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """A RETRYING re-entry of the same request does NOT re-emit merge_started."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        coordinator = MergeCoordinator(
+            default_config, mock_logger, temp_git_repo, event_bus=bus, run_id="run-2"
+        )
+        worktree_path = temp_git_repo / ".worktrees" / "test"
+        worktree_path.mkdir(parents=True)
+        worker_result = WorkerResult(
+            issue_id="TEST-002",
+            branch_name="parallel/test",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        # First attempt: retry_count == 0 -> merge_started fires.
+        coordinator._paused = True
+        coordinator._process_merge(request)
+
+        # Simulate a RETRYING re-entry of the SAME request object (as real
+        # retry call sites do — e.g. merge_coordinator.py's :886/:1038
+        # `request.retry_count += 1` before re-queuing).
+        request.retry_count += 1
+        received.clear()
+        coordinator._process_merge(request)
+
+        started = [e for e in received if e["event"] == "parallel.merge_started"]
+        assert started == []
+
+    def test_process_merge_completed_fires_exactly_once(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """_handle_failure is terminal — merge_completed fires exactly once per request."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        coordinator = MergeCoordinator(
+            default_config, mock_logger, temp_git_repo, event_bus=bus, run_id="run-3"
+        )
+        coordinator._paused = True
+        worktree_path = temp_git_repo / ".worktrees" / "test"
+        worktree_path.mkdir(parents=True)
+        worker_result = WorkerResult(
+            issue_id="TEST-003",
+            branch_name="parallel/test",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        coordinator._process_merge(request)
+
+        completed = [e for e in received if e["event"] == "parallel.merge_completed"]
+        assert len(completed) == 1
+
+    def test_no_emission_without_event_bus(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Backward compat: no event_bus attached -> no error, no emission attempted."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        coordinator._paused = True
+        worktree_path = temp_git_repo / ".worktrees" / "test"
+        worktree_path.mkdir(parents=True)
+        worker_result = WorkerResult(
+            issue_id="TEST-004",
+            branch_name="parallel/test",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        coordinator._process_merge(request)  # must not raise
 
 
 class TestStashPopConflictCleanup:

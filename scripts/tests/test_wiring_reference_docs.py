@@ -212,6 +212,14 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "Artifact Control Layer", "ENH-3307"),
     ("docs/guides/MCP_SERVER_GUIDE.md", "ARTIFACT_CONTROL_LEVELS.md", "ENH-3307"),
     ("docs/reference/CLI.md", "unproven_mechanism", "ENH-3350"),
+    ("docs/reference/EVENT-SCHEMA.md", "### `parallel.worker_started`", "ENH-3346"),
+    ("docs/reference/EVENT-SCHEMA.md", "### `parallel.worker_blocked`", "ENH-3346"),
+    ("docs/reference/EVENT-SCHEMA.md", "### `parallel.worker_unblocked`", "ENH-3346"),
+    ("docs/reference/EVENT-SCHEMA.md", "### `parallel.merge_started`", "ENH-3346"),
+    ("docs/reference/EVENT-SCHEMA.md", "### `parallel.merge_completed`", "ENH-3346"),
+    ("docs/reference/EVENT-SCHEMA.md", "### `parallel.queue_changed`", "ENH-3346"),
+    ("docs/reference/API.md", "#### WorkerBlockedReason", "ENH-3346"),
+    ("docs/reference/API.md", "#### MergeOutcome", "ENH-3346"),
 ]
 
 

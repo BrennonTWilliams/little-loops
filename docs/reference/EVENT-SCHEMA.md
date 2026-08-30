@@ -26,7 +26,7 @@ All events are emitted as flat Python dicts and serialized to JSON:
 |-----|------|-------------|
 | `event` | `str` | Event type identifier (see tables below) |
 | `ts` | `str` | ISO 8601 timestamp, UTC |
-| `run_id` | `str` | Run-scoped identity, stable across a run (including pause/resume). Present on every event emitted through `FSMExecutor._emit()` (ENH-3345); **not required** in the schema because `parallel.*`/`issue.*` emitters don't yet stamp it (tracked in ENH-3346). Derived once per run from `started_at` + `loop` name (see below) — **cannot be split on `-`**: the date portion keeps its own `-` separators and loop names may themselves contain dashes, so consumers must group on the full string. **Known limitation:** two concurrent runs of the *same loop* started in the same second collide (the derivation truncates to second precision); this is an accepted limitation also present in `.history/<run_id>-<loop>` archive folder naming. |
+| `run_id` | `str` | Run-scoped identity, stable across a run (including pause/resume). Present on every event emitted through `FSMExecutor._emit()` (ENH-3345) and, additively, on every `parallel.*` event (ENH-3346) — **required** in the schema for the `parallel.*` namespace specifically; `issue.*` emitters don't yet stamp it. For FSM-path events, derived once per run from `started_at` + `loop` name (see below) — **cannot be split on `-`**: the date portion keeps its own `-` separators and loop names may themselves contain dashes, so consumers must group on the full string. **Known limitation:** two concurrent runs of the *same loop* started in the same second collide (the derivation truncates to second precision); this is an accepted limitation also present in `.history/<run_id>-<loop>` archive folder naming. `parallel.*`'s `run_id` is `ParallelOrchestrator.run_id` (a `uuid4().hex` by default), a distinct derivation from the FSM path's. |
 | `loop` | `str` | Loop name. Same presence/requiredness caveat as `run_id`. |
 | *(payload fields)* | varies | Type-specific fields documented per event |
 
@@ -1182,16 +1182,25 @@ Emitted when a parallel worker finishes processing an issue in its isolated git 
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `run_id` | `str` | Opaque ID shared by every issue in this top-level run (ENH-3346) |
 | `issue_id` | `str` | Issue identifier processed by this worker |
 | `worker_name` | `str` | Name of the git worktree directory used by this worker |
 | `status` | `str` | `"success"` if the worker succeeded, `"failure"` otherwise |
 | `duration_seconds` | `float` | Wall-clock time in seconds for the entire worker run |
+
+**Pairing caveat:** `parallel.worker_completed` can arrive with **no preceding**
+`parallel.worker_started` — `worker_started` fires after worktree creation
+inside `WorkerPool._process_issue`, but `_on_worker_complete` emits
+`worker_completed` on failure too, including a worktree-setup failure that
+never reached the `worker_started` emission point. Consumers must tolerate a
+completed event with no matching started event.
 
 **Example:**
 ```json
 {
   "event": "parallel.worker_completed",
   "ts": "...",
+  "run_id": "3f9c2a1e8b7d4c6a9f0e1d2c3b4a5968",
   "issue_id": "BUG-007",
   "worker_name": "ll-worker-BUG-007-abc123",
   "status": "success",
@@ -1210,6 +1219,7 @@ writes `${context.run_dir}/epic-branch-stale.txt` with the same fields instead.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `run_id` | `str` | Opaque ID shared by every issue in this top-level run (ENH-3346) |
 | `branch` | `str` | EPIC integration branch name |
 | `base` | `str` | Resolved fork base the branch was measured/merged against |
 | `commits_behind` | `int` | `git rev-list --count <branch>..<base>` — commits `base` has that `branch` lacks |
@@ -1221,11 +1231,205 @@ writes `${context.run_dir}/epic-branch-stale.txt` with the same fields instead.
 {
   "event": "parallel.epic_branch_stale",
   "ts": "...",
+  "run_id": "3f9c2a1e8b7d4c6a9f0e1d2c3b4a5968",
   "branch": "epic/epic-3041-host-agnostic-advisor",
   "base": "main",
   "commits_behind": 448,
   "mode": "merge",
   "action": "merged"
+}
+```
+
+### `parallel.worker_started`
+
+_Added in ENH-3346._ Emitted by `WorkerPool._process_issue` immediately after
+worktree creation, when a worker begins processing an issue. Not emitted from
+`submit()` at dispatch time, because `worktree_path`/`branch` don't exist
+until worktree creation completes — "claimed but not yet running" is already
+visible via `parallel.queue_changed`'s `pending`/`active` counts.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_id` | `str` | Opaque ID shared by every issue in this top-level run |
+| `worker_id` | `str` | Worker identifier, aliased to `issue_id` (stable for the worker's lifetime) |
+| `issue_id` | `str` | Issue identifier this worker is processing |
+| `worktree_path` | `str` | Filesystem path to the worker's git worktree |
+| `branch` | `str` | Git branch created for this worker |
+
+**Example:**
+```json
+{
+  "event": "parallel.worker_started",
+  "ts": "...",
+  "run_id": "3f9c2a1e8b7d4c6a9f0e1d2c3b4a5968",
+  "worker_id": "BUG-007",
+  "issue_id": "BUG-007",
+  "worktree_path": "/repo/.worktrees/worker-bug-007-20260829-120000",
+  "branch": "parallel/bug-007-20260829-120000"
+}
+```
+
+### `parallel.worker_blocked`
+
+_Added in ENH-3346._ Emitted by `ParallelOrchestrator._process_parallel` when
+an issue is deferred to `_deferred_issues` on an overlap conflict, before any
+worktree exists for it — the only real blocked transition in `parallel/`
+today. Does **not** cover an already-dispatched worker wedged mid-execution
+(no code path in `parallel/` detects that; see Scope Boundaries in ENH-3346).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_id` | `str` | Opaque ID shared by every issue in this top-level run |
+| `worker_id` | `str` | Worker identifier, aliased to `issue_id` |
+| `issue_id` | `str` | Issue identifier that was deferred |
+| `reason` | `str` | Why the issue was blocked; `"overlap"` today (`WorkerBlockedReason`, extensible) |
+
+**Example:**
+```json
+{
+  "event": "parallel.worker_blocked",
+  "ts": "...",
+  "run_id": "3f9c2a1e8b7d4c6a9f0e1d2c3b4a5968",
+  "worker_id": "BUG-008",
+  "issue_id": "BUG-008",
+  "reason": "overlap"
+}
+```
+
+### `parallel.worker_unblocked`
+
+_Added in ENH-3346._ Paired resume for `parallel.worker_blocked`, emitted by
+`ParallelOrchestrator._requeue_deferred_issues` **only when the deferred issue
+is successfully re-queued** (`IssuePriorityQueue.requeue()` returns `True`) —
+never on a rejected/no-op re-add.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_id` | `str` | Opaque ID shared by every issue in this top-level run |
+| `worker_id` | `str` | Worker identifier, aliased to `issue_id` |
+| `issue_id` | `str` | Issue identifier that was re-queued |
+
+**Example:**
+```json
+{
+  "event": "parallel.worker_unblocked",
+  "ts": "...",
+  "run_id": "3f9c2a1e8b7d4c6a9f0e1d2c3b4a5968",
+  "worker_id": "BUG-008",
+  "issue_id": "BUG-008"
+}
+```
+
+### `parallel.merge_started`
+
+_Added in ENH-3346._ Emitted by `MergeCoordinator._process_merge` at the very
+top of the method, before the circuit-breaker check — not at the
+`MergeStatus.IN_PROGRESS` assignment, because the paused-circuit-breaker path
+calls `_handle_failure` before `IN_PROGRESS` is ever set, which would break
+1:1 pairing with `parallel.merge_completed` on that path. Gated on
+`request.retry_count == 0`, so a `MergeStatus.RETRYING` re-entry of the same
+request does not re-emit.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_id` | `str` | Opaque ID shared by every issue in this top-level run |
+| `worker_id` | `str` | Worker identifier, aliased to `issue_id` |
+| `issue_id` | `str` | Issue identifier whose merge is starting |
+| `branch` | `str` | Worker branch being merged |
+
+**Example:**
+```json
+{
+  "event": "parallel.merge_started",
+  "ts": "...",
+  "run_id": "3f9c2a1e8b7d4c6a9f0e1d2c3b4a5968",
+  "worker_id": "BUG-007",
+  "issue_id": "BUG-007",
+  "branch": "parallel/bug-007-20260829-120000"
+}
+```
+
+### `parallel.merge_completed`
+
+_Added in ENH-3346._ Emitted by `MergeCoordinator._finalize_merge` (success)
+or `_handle_failure` (failure/conflict/circuit-breaker skip). `_handle_failure`
+is terminal — it fires at most once per request — so `parallel.merge_completed`
+fires exactly once per merge request, always paired 1:1 with a preceding
+`parallel.merge_started`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_id` | `str` | Opaque ID shared by every issue in this top-level run |
+| `worker_id` | `str` | Worker identifier, aliased to `issue_id` |
+| `issue_id` | `str` | Issue identifier whose merge finished |
+| `outcome` | `str` | `"merged"` \| `"failed"` (`MergeOutcome`) |
+| `error` | `str \| null` | Failure detail; `null` when `outcome == "merged"` |
+
+**Example:**
+```json
+{
+  "event": "parallel.merge_completed",
+  "ts": "...",
+  "run_id": "3f9c2a1e8b7d4c6a9f0e1d2c3b4a5968",
+  "worker_id": "BUG-007",
+  "issue_id": "BUG-007",
+  "outcome": "merged",
+  "error": null
+}
+```
+
+### `parallel.queue_changed`
+
+_Added in ENH-3346._ Emitted from inside `IssuePriorityQueue`'s mutators
+(`add`, `get`, `mark_completed`, `mark_failed`, `mark_skipped`, `requeue`,
+plus `load_completed`/`load_failed`) after every counter-changing operation —
+not from orchestrator call sites, so both the parallel and sequential
+dispatch paths are covered from a single choke point. Run-scoped, not
+worker-scoped: no `worker_id`/`issue_id` field, matching
+`parallel.epic_branch_stale`'s existing precedent.
+
+Conditional-emit rules: `get()` emits only on a successful dequeue (the main
+loop polls `get(block=False)` every iteration — an unconditional emit would
+flood the bus); `add()` only when it returns `True` (a rejected duplicate
+changes no counter); `add_many()` and the two resume-path bulk loaders
+(`load_completed`/`load_failed`) each emit **once** per batch, not once per
+item; `requeue()` only when it returns `True` (no emission on a rejected/no-op
+re-add).
+
+**Ordering:** the payload carries a monotonic `seq: int`, incremented under
+the queue's internal lock alongside the counter snapshot. Because `emit()`
+runs *after* the lock is released, concurrent mutators (orchestrator main
+loop, merge-coordinator thread, worker threads) can deliver their snapshots
+out of order — consumers must apply **last-writer-wins by `seq`**, not
+arrival order.
+
+**Not exhaustive:** overlap-deferred issues live in the orchestrator's
+`_deferred_issues` list, outside the queue, and are not reflected by these
+counters — reconstruct the blocked set from `parallel.worker_blocked`/
+`parallel.worker_unblocked` events instead.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_id` | `str` | Opaque ID shared by every issue in this top-level run |
+| `seq` | `int` | Monotonic counter incremented under the queue's lock alongside the snapshot |
+| `pending` | `int` | Issues waiting in the queue (`qsize()`) |
+| `active` | `int` | Issues currently in progress |
+| `completed` | `int` | Issues completed successfully |
+| `failed` | `int` | Issues that failed |
+| `skipped` | `int` | Issues skipped |
+
+**Example:**
+```json
+{
+  "event": "parallel.queue_changed",
+  "ts": "...",
+  "run_id": "3f9c2a1e8b7d4c6a9f0e1d2c3b4a5968",
+  "seq": 42,
+  "pending": 3,
+  "active": 2,
+  "completed": 10,
+  "failed": 1,
+  "skipped": 0
 }
 ```
 
@@ -1413,7 +1617,13 @@ docs/reference/schemas/
 ├── max_iterations_reached_summary.json
 ├── max_steps_summary.json
 ├── parallel_epic_branch_stale.json
+├── parallel_merge_completed.json
+├── parallel_merge_started.json
+├── parallel_queue_changed.json
+├── parallel_worker_blocked.json
 ├── parallel_worker_completed.json
+├── parallel_worker_started.json
+├── parallel_worker_unblocked.json
 ├── rate_limit_exhausted.json
 ├── prompt_size_warn.json
 ├── rate_limit_storm.json
@@ -1440,6 +1650,12 @@ Event type identifiers map to filenames by replacing dots with underscores:
 | `state.issue_completed` | `state_issue_completed.json` |
 | `parallel.worker_completed` | `parallel_worker_completed.json` |
 | `parallel.epic_branch_stale` | `parallel_epic_branch_stale.json` |
+| `parallel.worker_started` | `parallel_worker_started.json` |
+| `parallel.worker_blocked` | `parallel_worker_blocked.json` |
+| `parallel.worker_unblocked` | `parallel_worker_unblocked.json` |
+| `parallel.merge_started` | `parallel_merge_started.json` |
+| `parallel.merge_completed` | `parallel_merge_completed.json` |
+| `parallel.queue_changed` | `parallel_queue_changed.json` |
 
 ### Schema Format
 
@@ -1552,6 +1768,12 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `issue.started` | Issue Lifecycle | `issue_lifecycle.py` |
 | `parallel.worker_completed` | Parallel | `parallel/orchestrator.py` |
 | `parallel.epic_branch_stale` | Parallel | `parallel/worker_pool.py` |
+| `parallel.worker_started` | Parallel | `parallel/worker_pool.py` |
+| `parallel.worker_blocked` | Parallel | `parallel/orchestrator.py` |
+| `parallel.worker_unblocked` | Parallel | `parallel/orchestrator.py` |
+| `parallel.merge_started` | Parallel | `parallel/merge_coordinator.py` |
+| `parallel.merge_completed` | Parallel | `parallel/merge_coordinator.py` |
+| `parallel.queue_changed` | Parallel | `parallel/priority_queue.py` |
 | `state_change` | Socket seed (not on the EventBus) | `transport.py` |
 
 ---

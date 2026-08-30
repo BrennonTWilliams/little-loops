@@ -4149,6 +4149,7 @@ class TestEnsureEpicBranchEventEmission:
         temp_repo_with_config: Path,
         mock_git_lock: GitLock,
         event_bus: Any = None,
+        run_id: str | None = None,
     ) -> WorkerPool:
         cfg = ParallelConfig(**{**default_parallel_config.to_dict()})
         cfg.epic_branches.enabled = True
@@ -4159,6 +4160,7 @@ class TestEnsureEpicBranchEventEmission:
             repo_path=temp_repo_with_config,
             git_lock=mock_git_lock,
             event_bus=event_bus,
+            run_id=run_id,
         )
 
     @pytest.mark.parametrize("action", ["warned", "merged", "merge_conflict"])
@@ -4184,6 +4186,7 @@ class TestEnsureEpicBranchEventEmission:
             temp_repo_with_config,
             mock_git_lock,
             event_bus=bus,
+            run_id="run-abc123",
         )
 
         status = EpicBranchStatus(
@@ -4208,6 +4211,8 @@ class TestEnsureEpicBranchEventEmission:
         assert event["mode"] == "merge"  # default refresh_on_reuse
         assert event["action"] == action
         assert "ts" in event
+        # ENH-3346: run_id additively stamped alongside the pre-existing fields
+        assert event["run_id"] == "run-abc123"
 
     @pytest.mark.parametrize("action", ["fresh", "off", "created"])
     def test_no_emission_for_non_staleness_actions(
@@ -4275,6 +4280,100 @@ class TestEnsureEpicBranchEventEmission:
         )
         with patch("little_loops.worktree_utils.ensure_epic_branch", return_value=status):
             pool._ensure_epic_branch("epic/epic-1-integration", "main")  # must not raise
+
+
+class TestWorkerStartedEventEmission:
+    """WorkerPool._process_issue emits parallel.worker_started (ENH-3346).
+
+    Modeled on TestEnsureEpicBranchEventEmission — real EventBus, list-
+    appending observer, assert on the captured dict. worker_started fires
+    from _process_issue immediately after worktree creation (not from
+    submit(), which runs before worktree_path/branch exist).
+    """
+
+    def _make_pool_with_bus(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+        event_bus: Any,
+        run_id: str | None = None,
+    ) -> WorkerPool:
+        return WorkerPool(
+            parallel_config=default_parallel_config,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=temp_repo_with_config,
+            git_lock=mock_git_lock,
+            event_bus=event_bus,
+            run_id=run_id,
+        )
+
+    def test_emits_after_worktree_creation(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+        mock_issue: MagicMock,
+    ) -> None:
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        pool = self._make_pool_with_bus(
+            default_parallel_config,
+            br_config,
+            mock_logger,
+            temp_repo_with_config,
+            mock_git_lock,
+            event_bus=bus,
+            run_id="run-xyz789",
+        )
+
+        setup_calls: list[tuple[Any, ...]] = []
+
+        def fake_setup_worktree(worktree_path: Path, branch_name: str, **kwargs: Any) -> None:
+            setup_calls.append((worktree_path, branch_name))
+
+        with patch.object(pool, "_setup_worktree", side_effect=fake_setup_worktree):
+            with patch.object(pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(pool, "_run_claude_command") as mock_run:
+                    mock_run.return_value = subprocess.CompletedProcess(
+                        [], 1, "", "ready-issue failed"
+                    )
+                    pool._process_issue(mock_issue)
+
+        assert len(setup_calls) == 1
+        worktree_path, branch_name = setup_calls[0]
+
+        started = [e for e in received if e["event"] == "parallel.worker_started"]
+        assert len(started) == 1
+        event = started[0]
+        assert event["run_id"] == "run-xyz789"
+        assert event["worker_id"] == mock_issue.issue_id
+        assert event["issue_id"] == mock_issue.issue_id
+        assert event["worktree_path"] == str(worktree_path)
+        assert event["branch"] == branch_name
+        assert "ts" in event
+
+    def test_no_emission_without_event_bus(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+    ) -> None:
+        """Backward compat: no event_bus attached -> no error, no emission attempted."""
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command") as mock_run:
+                    mock_run.return_value = subprocess.CompletedProcess(
+                        [], 1, "", "ready-issue failed"
+                    )
+                    worker_pool._process_issue(mock_issue)  # must not raise
 
 
 class TestWorkerPoolBaseStateStamp:

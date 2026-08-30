@@ -1,15 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "little-loops://event-handoff_detected.json",
-  "title": "Handoff Detected",
-  "description": "Emitted when a context-limit handoff is detected in a prompt action.",
+  "$id": "little-loops://event-parallel.merge_completed.json",
+  "title": "Parallel: Merge Completed",
+  "description": "Emitted by MergeCoordinator._finalize_merge (outcome=merged) or _handle_failure (outcome=failed); fires exactly once per merge request (ENH-3346).",
   "type": "object",
   "required": [
     "event",
     "ts",
-    "state",
-    "iteration",
-    "continuation"
+    "worker_id",
+    "issue_id",
+    "outcome",
+    "error",
+    "run_id"
   ],
   "properties": {
     "event": {
@@ -29,17 +31,24 @@
       "type": "string",
       "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
     },
-    "state": {
+    "worker_id": {
       "type": "string",
-      "description": "State name where handoff was detected"
+      "description": "Worker identifier, aliased to issue_id"
     },
-    "iteration": {
-      "type": "integer",
-      "description": "Iteration count at handoff"
-    },
-    "continuation": {
+    "issue_id": {
       "type": "string",
-      "description": "Continuation prompt text"
+      "description": "Issue identifier whose merge finished"
+    },
+    "outcome": {
+      "type": "string",
+      "description": "merged | failed"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Failure detail; null when outcome == 'merged'"
     }
   },
   "additionalProperties": true

@@ -2,9 +2,9 @@
 
 # DES Variant Registry
 
-Generated: 2026-07-07T04:19:44Z
+Generated: 2026-08-30T02:33:20Z
 
-Total variants: **65**
+Total variants: **83**
 
 Every event type currently emitted to `.ll/history.db` (Channel A direct
 writers + Channel B EventBus emits) is registered here as a frozen dataclass
@@ -32,11 +32,17 @@ walks the source tree to verify every emit site maps to a registered variant.
 | `LearningTargetRefutedVariant` | `learning_target_refuted` |
 | `LearningTargetProvenVariant` | `learning_target_proven` |
 | `LearningCompleteVariant` | `learning_complete` |
+| `ArtifactInteractionVariant` | `artifact_interaction` |
+| `RequestPathDowngradeVariant` | `request_path_downgrade` |
 | `ThrottleWarnVariant` | `throttle_warn` |
 | `ThrottleHardVariant` | `throttle_hard` |
 | `ThrottleStopVariant` | `throttle_stop` |
 | `StallDetectedVariant` | `stall_detected` |
 | `PromptSizeWarnVariant` | `prompt_size_warn` |
+| `PrePatchCheckFlaggedVariant` | `prepatch_check_flagged` |
+| `SubLoopWorktreeAttachedVariant` | `sub_loop_worktree_attached` |
+| `SubLoopWorktreeDetachedVariant` | `sub_loop_worktree_detached` |
+| `SubLoopWorktreeErrorVariant` | `sub_loop_worktree_error` |
 | `ActionStartVariant` | `action_start` |
 | `ActionOutputVariant` | `action_output` |
 | `ActionCompleteVariant` | `action_complete` |
@@ -62,6 +68,7 @@ walks the source tree to verify every emit site maps to a registered variant.
 | `HandoffSpawnedVariant` | `handoff_spawned` |
 | `StateIssueCompletedVariant` | `state.issue_completed` |
 | `StateIssueFailedVariant` | `state.issue_failed` |
+| `StateIssueSkippedVariant` | `state.issue_skipped` |
 | `IssueFailureCapturedVariant` | `issue.failure_captured` |
 | `IssueClosedVariant` | `issue.closed` |
 | `IssueCompletedVariant` | `issue.completed` |
@@ -69,6 +76,13 @@ walks the source tree to verify every emit site maps to a registered variant.
 | `IssueSkippedVariant` | `issue.skipped` |
 | `IssueStartedVariant` | `issue.started` |
 | `ParallelWorkerCompletedVariant` | `parallel.worker_completed` |
+| `ParallelEpicBranchStaleVariant` | `parallel.epic_branch_stale` |
+| `ParallelWorkerStartedVariant` | `parallel.worker_started` |
+| `ParallelWorkerBlockedVariant` | `parallel.worker_blocked` |
+| `ParallelWorkerUnblockedVariant` | `parallel.worker_unblocked` |
+| `ParallelMergeStartedVariant` | `parallel.merge_started` |
+| `ParallelMergeCompletedVariant` | `parallel.merge_completed` |
+| `ParallelQueueChangedVariant` | `parallel.queue_changed` |
 | `ToolEventVariant` | `tool_event` |
 | `FileEventVariant` | `file_event` |
 | `UserCorrectionVariant` | `user_correction` |
@@ -76,6 +90,8 @@ walks the source tree to verify every emit site maps to a registered variant.
 | `IssueSnapshotVariant` | `issue_snapshot` |
 | `CommitEventVariant` | `commit_event` |
 | `TestRunEventVariant` | `test_run_event` |
+| `HarnessEventVariant` | `harness_event` |
+| `SubagentRunVariant` | `subagent_run` |
 | `CliEventVariant` | `cli_event` |
 | `LoopEventBackfillVariant` | `loop_event_backfill` |
 | `MessageEventVariant` | `message_event` |
@@ -89,4 +105,3 @@ walks the source tree to verify every emit site maps to a registered variant.
 - `@dataclass(frozen=True)` - `scripts/little_loops/host_runner.py:101-104` convention
 - `type: Literal[...]` - `scripts/little_loops/fsm/schema.py:63-78` precedent
 - Audit walker - `scripts/little_loops/observability/audit.py`
-

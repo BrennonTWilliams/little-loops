@@ -796,6 +796,7 @@ When adding a new `LLEvent` type or changing payload fields:
    ```
 
 4. Commit the updated `.json` files in `docs/reference/schemas/` alongside the source change.
+5. Add or update the matching `DESVariant` entry in `DES_VARIANTS`, `scripts/little_loops/observability/schema.py`, and confirm `python -m pytest scripts/tests/test_des_schema.py` passes.
 
 **Note on `LLHookEvent` / `LLHookResult`:** these are a sibling request/response wire format used by `LLHookIntentExtension` handlers — not pub/sub events on the `EventBus`. They do **not** participate in the JSON Schema regeneration flow above. See [`docs/reference/EVENT-SCHEMA.md`](docs/reference/EVENT-SCHEMA.md) and `scripts/little_loops/hooks/types.py` for the type definitions.
 

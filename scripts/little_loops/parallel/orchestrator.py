@@ -34,6 +34,7 @@ from little_loops.parallel.types import (
     OrchestratorState,
     ParallelConfig,
     PendingWorktreeInfo,
+    WorkerBlockedReason,
     WorkerResult,
 )
 from little_loops.parallel.worker_pool import WorkerPool
@@ -129,7 +130,7 @@ class ParallelOrchestrator:
         self._git_lock = GitLock(self.logger)
 
         # Initialize components with shared git lock
-        self.queue = IssuePriorityQueue()
+        self.queue = IssuePriorityQueue(event_bus=self._event_bus, run_id=self.run_id)
         self.worker_pool = WorkerPool(
             parallel_config,
             br_config,
@@ -145,7 +146,14 @@ class ParallelOrchestrator:
             event_bus=self._event_bus,
         )
         self.merge_coordinator = MergeCoordinator(
-            parallel_config, self.logger, self.repo_path, self._git_lock
+            parallel_config,
+            self.logger,
+            self.repo_path,
+            self._git_lock,
+            # ENH-3346: so parallel.merge_started/merge_completed reach the
+            # same bus/transports as parallel.worker_completed.
+            event_bus=self._event_bus,
+            run_id=self.run_id,
         )
 
         # State management
@@ -1018,6 +1026,42 @@ class ParallelOrchestrator:
             self.logger.error(f"Sequential processing failed: {e}")
             self.queue.mark_failed(issue.issue_id)
 
+    def _emit_worker_blocked(self, issue_id: str, reason: WorkerBlockedReason) -> None:
+        """Emit ``parallel.worker_blocked`` (ENH-3346).
+
+        Args:
+            issue_id: The deferred issue's ID (also stamped as ``worker_id``)
+            reason: Why the issue was blocked (only ``"overlap"`` today)
+        """
+        if self._event_bus:
+            self._event_bus.emit(
+                {
+                    "event": "parallel.worker_blocked",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "run_id": self.run_id,
+                    "worker_id": issue_id,
+                    "issue_id": issue_id,
+                    "reason": reason,
+                }
+            )
+
+    def _emit_worker_unblocked(self, issue_id: str) -> None:
+        """Emit ``parallel.worker_unblocked`` (ENH-3346).
+
+        Args:
+            issue_id: The re-queued issue's ID (also stamped as ``worker_id``)
+        """
+        if self._event_bus:
+            self._event_bus.emit(
+                {
+                    "event": "parallel.worker_unblocked",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "run_id": self.run_id,
+                    "worker_id": issue_id,
+                    "issue_id": issue_id,
+                }
+            )
+
     def _process_parallel(self, issue: IssueInfo) -> None:
         """Process an issue in parallel (non-blocking).
 
@@ -1034,6 +1078,7 @@ class ParallelOrchestrator:
                     )
                     # Track for re-check when active issues complete
                     self._deferred_issues.append(issue)
+                    self._emit_worker_blocked(issue.issue_id, "overlap")
                     return
                 else:
                     self.logger.warning(
@@ -1286,6 +1331,7 @@ class ParallelOrchestrator:
                 {
                     "event": "parallel.worker_completed",
                     "ts": datetime.now(UTC).isoformat(),
+                    "run_id": self.run_id,
                     "issue_id": result.issue_id,
                     "worker_name": result.worktree_path.name,
                     "status": "success" if result.success else "failure",
@@ -1309,7 +1355,8 @@ class ParallelOrchestrator:
                 else:
                     # No more overlaps, add back to queue
                     self.logger.info(f"Re-queuing {issue.issue_id} - no longer overlapping")
-                    self.queue.requeue(issue)
+                    if self.queue.requeue(issue):
+                        self._emit_worker_unblocked(issue.issue_id)
 
         self._deferred_issues = still_deferred
 

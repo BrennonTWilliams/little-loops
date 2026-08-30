@@ -522,6 +522,70 @@ class ParallelEpicBranchStaleVariant(DESVariant):
     action: str = ""
 
 
+@dataclass(frozen=True)
+class ParallelWorkerStartedVariant(DESVariant):
+    """WorkerPool._process_issue emits 'parallel.worker_started' after worktree creation (ENH-3346)."""
+
+    type: Literal["parallel.worker_started"] = "parallel.worker_started"
+    worker_id: str = ""
+    issue_id: str = ""
+    worktree_path: str = ""
+    branch: str = ""
+
+
+@dataclass(frozen=True)
+class ParallelWorkerBlockedVariant(DESVariant):
+    """ParallelOrchestrator._process_parallel emits 'parallel.worker_blocked' on overlap deferral (ENH-3346)."""
+
+    type: Literal["parallel.worker_blocked"] = "parallel.worker_blocked"
+    worker_id: str = ""
+    issue_id: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class ParallelWorkerUnblockedVariant(DESVariant):
+    """ParallelOrchestrator._requeue_deferred_issues emits 'parallel.worker_unblocked' on successful requeue (ENH-3346)."""
+
+    type: Literal["parallel.worker_unblocked"] = "parallel.worker_unblocked"
+    worker_id: str = ""
+    issue_id: str = ""
+
+
+@dataclass(frozen=True)
+class ParallelMergeStartedVariant(DESVariant):
+    """MergeCoordinator._process_merge emits 'parallel.merge_started' at the top of the method (ENH-3346)."""
+
+    type: Literal["parallel.merge_started"] = "parallel.merge_started"
+    worker_id: str = ""
+    issue_id: str = ""
+    branch: str = ""
+
+
+@dataclass(frozen=True)
+class ParallelMergeCompletedVariant(DESVariant):
+    """MergeCoordinator._finalize_merge/_handle_failure emits 'parallel.merge_completed' (ENH-3346)."""
+
+    type: Literal["parallel.merge_completed"] = "parallel.merge_completed"
+    worker_id: str = ""
+    issue_id: str = ""
+    outcome: str = ""
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class ParallelQueueChangedVariant(DESVariant):
+    """IssuePriorityQueue mutators emit 'parallel.queue_changed' on every counter change (ENH-3346)."""
+
+    type: Literal["parallel.queue_changed"] = "parallel.queue_changed"
+    seq: int = 0
+    pending: int = 0
+    active: int = 0
+    completed: int = 0
+    failed: int = 0
+    skipped: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Channel A: Direct writers to .ll/history.db (target-table representation)
 # ---------------------------------------------------------------------------
@@ -717,6 +781,12 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     IssueStartedVariant,
     ParallelWorkerCompletedVariant,
     ParallelEpicBranchStaleVariant,
+    ParallelWorkerStartedVariant,
+    ParallelWorkerBlockedVariant,
+    ParallelWorkerUnblockedVariant,
+    ParallelMergeStartedVariant,
+    ParallelMergeCompletedVariant,
+    ParallelQueueChangedVariant,
     # --- Channel A: Direct writers ---
     ToolEventVariant,
     FileEventVariant,

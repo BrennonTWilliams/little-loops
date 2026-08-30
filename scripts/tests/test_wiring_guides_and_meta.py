@@ -244,6 +244,11 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
         "pre_compact_handoff",
         "FEAT-1158",
     ),
+    (
+        "CONTRIBUTING.md",
+        "Add or update the matching `DESVariant` entry in `DES_VARIANTS`",
+        "ENH-3346",
+    ),
 ]
 
 

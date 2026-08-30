@@ -2733,6 +2733,8 @@ class TestOnWorkerComplete:
         assert event["status"] == "success"
         assert event["duration_seconds"] == 12.5
         assert "ts" in event
+        # ENH-3346: run_id additively stamped alongside the pre-existing fields
+        assert event["run_id"] == orchestrator.run_id
 
     def test_on_worker_complete_emits_event_on_failure(
         self,
@@ -4492,6 +4494,61 @@ class TestOverlapDetection:
         orchestrator.worker_pool.submit.assert_not_called()  # type: ignore[attr-defined]
         assert len(orchestrator._deferred_issues) == 1
 
+    def test_process_parallel_defers_overlapping_issues_emits_worker_blocked(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_process_parallel emits parallel.worker_blocked at the overlap-deferral point (ENH-3346)."""
+        from little_loops.events import EventBus
+        from little_loops.parallel.overlap_detector import OverlapResult
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        orchestrator._event_bus = bus
+
+        orchestrator.parallel_config.overlap_detection = True
+        orchestrator.parallel_config.serialize_overlapping = True
+
+        mock_detector = MagicMock()
+        mock_detector.check_overlap.return_value = OverlapResult(
+            has_overlap=True, overlapping_issues=["BUG-001"]
+        )
+        orchestrator.overlap_detector = mock_detector
+
+        orchestrator._process_parallel(mock_issue)
+
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "parallel.worker_blocked"
+        assert event["run_id"] == orchestrator.run_id
+        assert event["worker_id"] == mock_issue.issue_id
+        assert event["issue_id"] == mock_issue.issue_id
+        assert event["reason"] == "overlap"
+        assert "ts" in event
+
+    def test_process_parallel_no_overlap_emits_no_worker_blocked(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """No overlap -> no parallel.worker_blocked emission (ENH-3346)."""
+        from little_loops.events import EventBus
+        from little_loops.parallel.overlap_detector import OverlapResult
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        orchestrator._event_bus = bus
+
+        orchestrator.parallel_config.overlap_detection = True
+        orchestrator.parallel_config.serialize_overlapping = True
+
+        mock_detector = MagicMock()
+        mock_detector.check_overlap.return_value = OverlapResult(has_overlap=False)
+        orchestrator.overlap_detector = mock_detector
+
+        orchestrator._process_parallel(mock_issue)
+
+        assert [e for e in received if e["event"] == "parallel.worker_blocked"] == []
+
     def test_process_parallel_registers_with_detector(
         self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
     ) -> None:
@@ -4568,7 +4625,13 @@ class TestOverlapDetection:
         once the overlap clears, and in_progress_count returns to 0 — using
         a real (unmocked) IssuePriorityQueue rather than the fixture's
         MagicMock, which would hide the add()-rejects-in_progress-ids defect.
+
+        Also covers ENH-3346: parallel.worker_unblocked fires exactly once,
+        gated on IssuePriorityQueue.requeue() actually returning True — this
+        rides on the same real (unmocked) queue so the BUG-3348 fix and the
+        worker_unblocked gate are exercised together.
         """
+        from little_loops.events import EventBus
         from little_loops.parallel.overlap_detector import OverlapResult
         from little_loops.parallel.priority_queue import IssuePriorityQueue
 
@@ -4589,6 +4652,11 @@ class TestOverlapDetection:
         orchestrator.queue = real_queue
         orchestrator._deferred_issues = [real_issue]
 
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        orchestrator._event_bus = bus
+
         mock_detector = MagicMock()
         mock_detector.check_overlap.return_value = OverlapResult(has_overlap=False)
         orchestrator.overlap_detector = mock_detector
@@ -4600,6 +4668,49 @@ class TestOverlapDetection:
         requeued = real_queue.get(block=False)
         assert requeued is not None
         assert requeued.issue_info.issue_id == "BUG-002"
+
+        unblocked = [e for e in received if e["event"] == "parallel.worker_unblocked"]
+        assert len(unblocked) == 1
+        event = unblocked[0]
+        assert event["run_id"] == orchestrator.run_id
+        assert event["worker_id"] == "BUG-002"
+        assert event["issue_id"] == "BUG-002"
+        assert "ts" in event
+
+    def test_requeue_deferred_issues_no_emission_when_requeue_rejected(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """No parallel.worker_unblocked when requeue() is a no-op (still queued) (ENH-3346)."""
+        from little_loops.events import EventBus
+        from little_loops.parallel.overlap_detector import OverlapResult
+        from little_loops.parallel.priority_queue import IssuePriorityQueue
+
+        real_issue = IssueInfo(
+            path=Path(".issues/bugs/P1-BUG-003-deferred.md"),
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-003",
+            title="Deferred Bug",
+        )
+
+        real_queue = IssuePriorityQueue()
+        real_queue.add(real_issue)  # Still in _queued -> requeue() is a no-op
+
+        orchestrator.queue = real_queue
+        orchestrator._deferred_issues = [real_issue]
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        orchestrator._event_bus = bus
+
+        mock_detector = MagicMock()
+        mock_detector.check_overlap.return_value = OverlapResult(has_overlap=False)
+        orchestrator.overlap_detector = mock_detector
+
+        orchestrator._requeue_deferred_issues()
+
+        assert [e for e in received if e["event"] == "parallel.worker_unblocked"] == []
 
 
 class TestInterruptedWorkers:

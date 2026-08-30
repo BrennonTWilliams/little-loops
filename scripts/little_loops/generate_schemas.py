@@ -1,4 +1,4 @@
-"""JSON Schema generation for all 42 LLEvent types.
+"""JSON Schema generation for all 48 LLEvent types.
 
 Generates one JSON Schema (draft-07) file per event type to docs/reference/schemas/.
 Schemas validate the flat wire format: {"event": type, "ts": timestamp, ...payload}.
@@ -29,8 +29,9 @@ _BASE_PROPS: dict[str, Any] = {
         "type": "string",
         "description": (
             "Run-scoped identity, stable across a run (including pause/resume). "
-            "Not required: only FSMExecutor._emit()-routed events stamp it today "
-            "(ENH-3345); parallel.*/issue.* emitters don't yet (ENH-3346)."
+            "Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every "
+            "parallel.* emitter (ENH-3346); required on all parallel.* events, "
+            "optional elsewhere."
         ),
     },
     "loop": {
@@ -611,7 +612,7 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["issue_id", "file_path", "reason"],
     ),
-    # Parallel Orchestrator (2 types)
+    # Parallel Orchestrator (8 types)
     "parallel.worker_completed": _schema(
         "parallel.worker_completed",
         "Parallel: Worker Completed",
@@ -622,7 +623,7 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "status": _str("Completion status (e.g. completed, failed, deferred)"),
             "duration_seconds": {"type": "number", "description": "Wall-clock time in seconds"},
         },
-        ["issue_id", "worker_name", "status", "duration_seconds"],
+        ["issue_id", "worker_name", "status", "duration_seconds", "run_id"],
     ),
     "parallel.epic_branch_stale": _schema(
         "parallel.epic_branch_stale",
@@ -639,7 +640,92 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "mode": _str("Configured parallel.epic_branches.refresh_on_reuse value"),
             "action": _str("warned | merged | merge_conflict"),
         },
-        ["branch", "base", "commits_behind", "mode", "action"],
+        ["branch", "base", "commits_behind", "mode", "action", "run_id"],
+    ),
+    "parallel.worker_started": _schema(
+        "parallel.worker_started",
+        "Parallel: Worker Started",
+        "Emitted by WorkerPool._process_issue immediately after worktree creation, when "
+        "a worker begins processing an issue (ENH-3346).",
+        {
+            "worker_id": _str(
+                "Worker identifier, aliased to issue_id (stable for the worker's lifetime)"
+            ),
+            "issue_id": _str("Issue identifier this worker is processing"),
+            "worktree_path": _str("Filesystem path to the worker's git worktree"),
+            "branch": _str("Git branch created for this worker"),
+        },
+        ["worker_id", "issue_id", "worktree_path", "branch", "run_id"],
+    ),
+    "parallel.worker_blocked": _schema(
+        "parallel.worker_blocked",
+        "Parallel: Worker Blocked",
+        "Emitted by ParallelOrchestrator._process_parallel when an issue is deferred on "
+        "an overlap conflict, before any worktree exists for it (ENH-3346).",
+        {
+            "worker_id": _str("Worker identifier, aliased to issue_id"),
+            "issue_id": _str("Issue identifier that was deferred"),
+            "reason": _str("Why the issue was blocked (currently only 'overlap')"),
+        },
+        ["worker_id", "issue_id", "reason", "run_id"],
+    ),
+    "parallel.worker_unblocked": _schema(
+        "parallel.worker_unblocked",
+        "Parallel: Worker Unblocked",
+        "Emitted by ParallelOrchestrator._requeue_deferred_issues when a previously "
+        "deferred issue is successfully re-queued (ENH-3346).",
+        {
+            "worker_id": _str("Worker identifier, aliased to issue_id"),
+            "issue_id": _str("Issue identifier that was re-queued"),
+        },
+        ["worker_id", "issue_id", "run_id"],
+    ),
+    "parallel.merge_started": _schema(
+        "parallel.merge_started",
+        "Parallel: Merge Started",
+        "Emitted at the top of MergeCoordinator._process_merge, before the circuit-"
+        "breaker check, gated on retry_count == 0 (ENH-3346).",
+        {
+            "worker_id": _str("Worker identifier, aliased to issue_id"),
+            "issue_id": _str("Issue identifier whose merge is starting"),
+            "branch": _str("Worker branch being merged"),
+        },
+        ["worker_id", "issue_id", "branch", "run_id"],
+    ),
+    "parallel.merge_completed": _schema(
+        "parallel.merge_completed",
+        "Parallel: Merge Completed",
+        "Emitted by MergeCoordinator._finalize_merge (outcome=merged) or "
+        "_handle_failure (outcome=failed); fires exactly once per merge request "
+        "(ENH-3346).",
+        {
+            "worker_id": _str("Worker identifier, aliased to issue_id"),
+            "issue_id": _str("Issue identifier whose merge finished"),
+            "outcome": _str("merged | failed"),
+            "error": _nullable_str("Failure detail; null when outcome == 'merged'"),
+        },
+        ["worker_id", "issue_id", "outcome", "error", "run_id"],
+    ),
+    "parallel.queue_changed": _schema(
+        "parallel.queue_changed",
+        "Parallel: Queue Changed",
+        "Emitted from inside IssuePriorityQueue's mutators after every counter-"
+        "changing operation; consumers apply last-writer-wins by seq, not arrival "
+        "order (ENH-3346).",
+        {
+            "seq": {
+                "type": "integer",
+                "description": "Monotonic counter incremented under the queue's lock alongside "
+                "the counter snapshot; emit() runs after the lock is released, so consumers "
+                "apply last-writer-wins by seq rather than arrival order",
+            },
+            "pending": _int("Issues waiting in the queue (qsize())"),
+            "active": _int("Issues currently in progress"),
+            "completed": _int("Issues completed successfully"),
+            "failed": _int("Issues that failed"),
+            "skipped": _int("Issues skipped"),
+        },
+        ["seq", "pending", "active", "completed", "failed", "skipped", "run_id"],
     ),
 }
 

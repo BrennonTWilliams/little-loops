@@ -24,7 +24,7 @@
     },
     "run_id": {
       "type": "string",
-      "description": "Run-scoped identity, stable across a run (including pause/resume). Not required: only FSMExecutor._emit()-routed events stamp it today (ENH-3345); parallel.*/issue.* emitters don't yet (ENH-3346)."
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every parallel.* emitter (ENH-3346); required on all parallel.* events, optional elsewhere."
     },
     "loop": {
       "type": "string",

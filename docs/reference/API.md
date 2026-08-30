@@ -3874,6 +3874,9 @@ MergeCoordinator(
     config: ParallelConfig,
     logger: Logger,
     repo_path: Path | None = None,
+    git_lock: GitLock | None = None,
+    event_bus: EventBus | None = None,  # ENH-3346: emits parallel.merge_started/merge_completed
+    run_id: str | None = None,          # ENH-3346: stamped onto those events
 )
 ```
 
@@ -4099,7 +4102,9 @@ Priority queue for issue processing. Located at `little_loops.parallel.priority_
 ```python
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 
-queue = IssuePriorityQueue()
+# event_bus/run_id are optional (ENH-3346) — when provided, every mutator emits
+# parallel.queue_changed after the counters it just changed.
+queue = IssuePriorityQueue(event_bus=event_bus, run_id=run_id)
 added = queue.add_many(issues)
 queued_issue = queue.get(block=False)
 queue.mark_completed(issue_id)
@@ -4117,7 +4122,7 @@ queue.mark_skipped(issue_id)
 | `mark_completed(issue_id)` | Mark issue as completed |
 | `mark_failed(issue_id)` | Mark issue as failed |
 | `mark_skipped(issue_id)` | Mark issue as skipped, e.g. BLOCKED on an open dependency (BUG-3254) |
-| `requeue(issue_info, demote_priority=False)` | Requeue an issue; clears it from the in-progress, failed, and skipped buckets |
+| `requeue(issue_info, demote_priority=False) -> bool` | Requeue an issue; clears it from the in-progress, failed, and skipped buckets. Returns `True` on a successful re-add, `False` on the duplicate-guard no-op (already queued) — mirrors `add()`'s `-> bool` contract (ENH-3346, resolving BUG-3348's silent-drop ambiguity) |
 | `qsize() -> int` | Count of issues currently in queue |
 | `in_progress_count() -> int` | Count of issues currently being processed |
 | `completed_count() -> int` | Count of completed issues |
@@ -4176,6 +4181,19 @@ class MergeStatus(Enum):
     RETRYING = "retrying"
 ```
 
+#### MergeOutcome
+
+```python
+MergeOutcome = Literal["merged", "failed"]
+```
+
+Discriminator for `parallel.merge_completed`'s `outcome` field (ENH-3346).
+Every non-success merge ending funnels through `MergeCoordinator._handle_failure`
+— including the circuit-breaker skip and non-conflict failures — with no
+structured discriminator beyond a free-text `error` string, so v1 collapses
+every failure mode to `"failed"` plus that `error` detail rather than
+introducing an unparseable `conflict`/`skipped` split.
+
 #### MergeRequest
 
 ```python
@@ -4217,6 +4235,19 @@ class WorkerStage(Enum):
     FAILED = "failed"              # Failed at some stage
     INTERRUPTED = "interrupted"    # Interrupted during shutdown
 ```
+
+#### WorkerBlockedReason
+
+```python
+WorkerBlockedReason = Literal["overlap"]
+```
+
+Discriminator for `parallel.worker_blocked`'s `reason` field (ENH-3346). The
+only real blocked transition in `parallel/` today is overlap deferral
+(`ParallelOrchestrator._process_parallel` → `_deferred_issues`); the `Literal`
+keeps the field extensible if lock-wait or rate-limit blocking ever moves into
+this package (rate-limit handling currently lives in the FSM executor, not
+`parallel/`).
 
 Located at `little_loops.parallel.types`.
 
@@ -7973,7 +8004,7 @@ bus.register(my_callback)
 **Event namespace conventions:**
 - `issue.*` — issue lifecycle events (`issue.closed`, `issue.completed`, etc.)
 - `state.*` — state manager events (`state.issue_completed`, `state.issue_failed`)
-- `parallel.*` — parallel orchestrator events (`parallel.worker_completed`, `parallel.epic_branch_stale`)
+- `parallel.*` — parallel orchestrator events (`parallel.worker_completed`, `parallel.epic_branch_stale`, `parallel.worker_started`, `parallel.worker_blocked`, `parallel.worker_unblocked`, `parallel.merge_started`, `parallel.merge_completed`, `parallel.queue_changed` — ENH-3346)
 - Bare names — FSM executor events (`state_enter`, `loop_start`, `action_start`, etc.)
 
 ---

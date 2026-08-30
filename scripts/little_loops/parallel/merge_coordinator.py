@@ -11,6 +11,7 @@ import subprocess
 import threading
 import time
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from queue import Empty, Queue
 from typing import TYPE_CHECKING
@@ -18,6 +19,7 @@ from typing import TYPE_CHECKING
 from little_loops.git_operations import preserve_before_teardown
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import (
+    MergeOutcome,
     MergeRequest,
     MergeStatus,
     ParallelConfig,
@@ -26,6 +28,7 @@ from little_loops.parallel.types import (
 from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
 
 if TYPE_CHECKING:
+    from little_loops.events import EventBus
     from little_loops.logger import Logger
 
 
@@ -50,6 +53,8 @@ class MergeCoordinator:
         logger: Logger,
         repo_path: Path | None = None,
         git_lock: GitLock | None = None,
+        event_bus: EventBus | None = None,
+        run_id: str | None = None,
     ) -> None:
         """Initialize the merge coordinator.
 
@@ -58,11 +63,18 @@ class MergeCoordinator:
             logger: Logger for merge output
             repo_path: Path to the git repository (default: current directory)
             git_lock: Shared lock for git operations (created if not provided)
+            event_bus: Optional EventBus for emitting
+                ``parallel.merge_started``/``parallel.merge_completed`` events
+                (ENH-3346)
+            run_id: Opaque ID shared by every issue in the top-level run this
+                coordinator belongs to; stamped onto merge events (ENH-3346)
         """
         self.config = config
         self.logger = logger
         self.repo_path = repo_path or Path.cwd()
         self._git_lock = git_lock or GitLock(logger)
+        self._event_bus = event_bus
+        self.run_id = run_id
         self._queue: Queue[MergeRequest] = Queue()
         self._thread: threading.Thread | None = None
         self._shutdown_event = threading.Event()
@@ -577,6 +589,50 @@ class MergeCoordinator:
                 self.logger.error(f"Merge loop error: {e}")
                 time.sleep(1.0)
 
+    def _emit_merge_started(self, issue_id: str, branch: str) -> None:
+        """Emit ``parallel.merge_started`` (ENH-3346).
+
+        Args:
+            issue_id: The issue whose merge is starting (also stamped as
+                ``worker_id``)
+            branch: The worker's branch being merged
+        """
+        if self._event_bus:
+            self._event_bus.emit(
+                {
+                    "event": "parallel.merge_started",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "run_id": self.run_id,
+                    "worker_id": issue_id,
+                    "issue_id": issue_id,
+                    "branch": branch,
+                }
+            )
+
+    def _emit_merge_completed(
+        self, issue_id: str, outcome: MergeOutcome, error: str | None = None
+    ) -> None:
+        """Emit ``parallel.merge_completed`` (ENH-3346).
+
+        Args:
+            issue_id: The issue whose merge finished (also stamped as
+                ``worker_id``)
+            outcome: ``"merged"`` or ``"failed"``
+            error: Failure detail; ``None`` when ``outcome == "merged"``
+        """
+        if self._event_bus:
+            self._event_bus.emit(
+                {
+                    "event": "parallel.merge_completed",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "run_id": self.run_id,
+                    "worker_id": issue_id,
+                    "issue_id": issue_id,
+                    "outcome": outcome,
+                    "error": error,
+                }
+            )
+
     def _process_merge(self, request: MergeRequest) -> None:
         """Process a single merge request.
 
@@ -591,6 +647,14 @@ class MergeCoordinator:
             self._current_issue_id = result.issue_id
         self.logger.info(f"Processing merge for {result.issue_id}")
         had_local_changes = False
+
+        # ENH-3346: emit at the TOP of _process_merge, before the circuit-
+        # breaker check — the paused path below calls _handle_failure before
+        # MergeStatus.IN_PROGRESS is ever set, which would break 1:1 pairing
+        # if this were anchored there instead. Gated on retry_count == 0 so
+        # RETRYING re-entries of the same request don't re-emit.
+        if request.retry_count == 0:
+            self._emit_merge_started(result.issue_id, result.branch_name)
 
         try:
             # Circuit breaker check
@@ -1062,6 +1126,7 @@ class MergeCoordinator:
         self._cleanup_worktree(result.worktree_path, result.branch_name)
 
         self.logger.success(f"Merged {result.issue_id} successfully")
+        self._emit_merge_completed(result.issue_id, "merged")
 
     def _handle_failure(self, request: MergeRequest, error: str) -> None:
         """Handle a merge failure.
@@ -1078,6 +1143,7 @@ class MergeCoordinator:
             self._failed[result.issue_id] = error
 
         self.logger.error(f"Merge failed for {result.issue_id}: {error}")
+        self._emit_merge_completed(result.issue_id, "failed", error=error)
 
     def _cleanup_worktree(self, worktree_path: Path, branch_name: str) -> None:
         """Clean up a merged worktree and its branch.

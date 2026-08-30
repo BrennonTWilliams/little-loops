@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from little_loops.events import EventBus
 from little_loops.issue_parser import IssueInfo
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 
@@ -32,6 +33,26 @@ from little_loops.parallel.priority_queue import IssuePriorityQueue
 def queue() -> IssuePriorityQueue:
     """Fresh IssuePriorityQueue instance."""
     return IssuePriorityQueue()
+
+
+@pytest.fixture
+def event_bus() -> EventBus:
+    """Fresh EventBus for queue_changed emission tests (ENH-3346)."""
+    return EventBus()
+
+
+@pytest.fixture
+def received_events(event_bus: EventBus) -> list[dict]:
+    """List-appending observer registered on ``event_bus``."""
+    received: list[dict] = []
+    event_bus.register(lambda e: received.append(e))
+    return received
+
+
+@pytest.fixture
+def bus_queue(event_bus: EventBus) -> IssuePriorityQueue:
+    """IssuePriorityQueue wired to ``event_bus`` with a fixed run_id (ENH-3346)."""
+    return IssuePriorityQueue(event_bus=event_bus, run_id="run-pq-1")
 
 
 @pytest.fixture
@@ -833,3 +854,176 @@ class TestIssuePriorityQueueEdgeCases:
         with patch.object(queue._queue, "get", return_value=bad_item):
             with pytest.raises(AttributeError):
                 queue.get(block=False)
+
+
+# =============================================================================
+# TestIssuePriorityQueueEvents (ENH-3346)
+# =============================================================================
+
+
+class TestIssuePriorityQueueEvents:
+    """Tests for parallel.queue_changed emission from IssuePriorityQueue's mutators.
+
+    Modeled on test_worker_pool.py's TestEnsureEpicBranchEventEmission — real
+    EventBus, list-appending observer, assert on the captured dict.
+    """
+
+    def test_get_empty_queue_emits_nothing(
+        self, bus_queue: IssuePriorityQueue, received_events: list[dict]
+    ) -> None:
+        """get(block=False) on an empty queue (main-loop polling) emits nothing."""
+        result = bus_queue.get(block=False)
+        assert result is None
+        assert received_events == []
+
+    def test_rejected_add_emits_nothing(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        """A duplicate add() that returns False emits no queue_changed."""
+        assert bus_queue.add(sample_issue) is True
+        received_events.clear()
+        assert bus_queue.add(sample_issue) is False  # already queued -> no-op
+        assert received_events == []
+
+    def test_add_emits_queue_changed(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        """A successful add() emits one queue_changed with correct counters."""
+        bus_queue.add(sample_issue)
+        assert len(received_events) == 1
+        event = received_events[0]
+        assert event["event"] == "parallel.queue_changed"
+        assert event["run_id"] == "run-pq-1"
+        assert event["seq"] == 1
+        assert event["pending"] == 1
+        assert event["active"] == 0
+        assert event["completed"] == 0
+        assert event["failed"] == 0
+        assert event["skipped"] == 0
+        assert "ts" in event
+
+    def test_get_success_emits_queue_changed(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        """A successful dequeue emits one queue_changed reflecting active/pending."""
+        bus_queue.add(sample_issue)
+        received_events.clear()
+        queued = bus_queue.get()
+        assert queued is not None
+        assert len(received_events) == 1
+        event = received_events[0]
+        assert event["pending"] == 0
+        assert event["active"] == 1
+
+    def test_mark_completed_emits_queue_changed(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        bus_queue.add(sample_issue)
+        bus_queue.get()
+        received_events.clear()
+        bus_queue.mark_completed(sample_issue.issue_id)
+        assert len(received_events) == 1
+        assert received_events[0]["completed"] == 1
+        assert received_events[0]["active"] == 0
+
+    def test_mark_failed_emits_queue_changed(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        bus_queue.add(sample_issue)
+        bus_queue.get()
+        received_events.clear()
+        bus_queue.mark_failed(sample_issue.issue_id)
+        assert len(received_events) == 1
+        assert received_events[0]["failed"] == 1
+
+    def test_mark_skipped_emits_queue_changed(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        bus_queue.add(sample_issue)
+        bus_queue.get()
+        received_events.clear()
+        bus_queue.mark_skipped(sample_issue.issue_id)
+        assert len(received_events) == 1
+        assert received_events[0]["skipped"] == 1
+
+    def test_requeue_success_emits_queue_changed(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        bus_queue.add(sample_issue)
+        bus_queue.get()
+        received_events.clear()
+        assert bus_queue.requeue(sample_issue) is True
+        assert len(received_events) == 1
+        assert received_events[0]["pending"] == 1
+        assert received_events[0]["active"] == 0
+
+    def test_requeue_no_op_emits_nothing(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        """requeue() on an already-queued id is a no-op (BUG-3348) and returns False."""
+        bus_queue.add(sample_issue)
+        received_events.clear()
+        assert bus_queue.requeue(sample_issue) is False
+        assert received_events == []
+
+    def test_add_many_emits_exactly_once(
+        self,
+        bus_queue: IssuePriorityQueue,
+        p0_issue: IssueInfo,
+        p1_issue: IssueInfo,
+        p2_issue: IssueInfo,
+        received_events: list[dict],
+    ) -> None:
+        """add_many() batches to a single queue_changed, not one per item."""
+        added = bus_queue.add_many([p0_issue, p1_issue, p2_issue])
+        assert added == 3
+        assert len(received_events) == 1
+        assert received_events[0]["pending"] == 3
+
+    def test_add_many_empty_result_emits_nothing(
+        self, bus_queue: IssuePriorityQueue, sample_issue: IssueInfo, received_events: list[dict]
+    ) -> None:
+        """add_many() where every item is rejected emits nothing."""
+        bus_queue.add(sample_issue)
+        received_events.clear()
+        added = bus_queue.add_many([sample_issue])  # already queued -> 0 added
+        assert added == 0
+        assert received_events == []
+
+    def test_load_completed_emits_once_per_batch(
+        self, bus_queue: IssuePriorityQueue, received_events: list[dict]
+    ) -> None:
+        bus_queue.load_completed(["BUG-100", "BUG-101"])
+        assert len(received_events) == 1
+        assert received_events[0]["completed"] == 2
+
+    def test_load_failed_emits_once_per_batch(
+        self, bus_queue: IssuePriorityQueue, received_events: list[dict]
+    ) -> None:
+        bus_queue.load_failed(["BUG-200", "BUG-201"])
+        assert len(received_events) == 1
+        assert received_events[0]["failed"] == 2
+
+    def test_seq_monotonically_increases(
+        self, bus_queue: IssuePriorityQueue, p0_issue: IssueInfo, p1_issue: IssueInfo
+    ) -> None:
+        """seq increments under the lock on every emitted queue_changed."""
+        received: list[dict] = []
+        bus_queue._event_bus.register(lambda e: received.append(e))  # type: ignore[union-attr]
+        bus_queue.add(p0_issue)
+        bus_queue.add(p1_issue)
+        bus_queue.get()
+        seqs = [e["seq"] for e in received]
+        assert seqs == sorted(seqs)
+        assert len(set(seqs)) == len(seqs)  # strictly increasing, no repeats
+
+    def test_no_emission_without_event_bus(
+        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
+    ) -> None:
+        """Backward compat: no event_bus attached -> no error, no emission attempted."""
+        queue.add(sample_issue)
+        queue.get()
+        queue.mark_completed(sample_issue.issue_id)  # must not raise
+        assert queue.add_many([]) == 0
+        queue.load_completed(["X-1"])  # must not raise
+        queue.load_failed(["X-2"])  # must not raise

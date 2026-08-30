@@ -15,11 +15,11 @@ class TestSchemaDefinitions:
     """Tests for the SCHEMA_DEFINITIONS catalog."""
 
     def test_all_41_event_types_defined(self) -> None:
-        """All 42 LLEvent types must be defined (ENH-3302: added parallel.epic_branch_stale)."""
-        assert len(SCHEMA_DEFINITIONS) == 42
+        """All 48 LLEvent types must be defined (ENH-3346: added six parallel.* lifecycle events)."""
+        assert len(SCHEMA_DEFINITIONS) == 48
 
     def test_expected_event_types_present(self) -> None:
-        """Each of the 42 known event types must appear in catalog."""
+        """Each of the 48 known event types must appear in catalog."""
         expected = {
             "loop_start",
             "state_enter",
@@ -55,6 +55,12 @@ class TestSchemaDefinitions:
             "issue.started",
             "parallel.worker_completed",
             "parallel.epic_branch_stale",
+            "parallel.worker_started",
+            "parallel.worker_blocked",
+            "parallel.worker_unblocked",
+            "parallel.merge_started",
+            "parallel.merge_completed",
+            "parallel.queue_changed",
             "learning_blocked",
             "learning_complete",
             "learning_explore_invoked",
@@ -66,22 +72,41 @@ class TestSchemaDefinitions:
         }
         assert set(SCHEMA_DEFINITIONS.keys()) == expected
 
+    def test_all_parallel_events_require_run_id(self) -> None:
+        """Every parallel.* event (2 existing + 6 new) marks run_id required (ENH-3346).
+
+        _schema()'s extra_required mechanism is what makes a field required in
+        the generated JSON Schema (_BASE_REQUIRED only covers event/ts) — this
+        guards against shipping the six new entries without also adding
+        "run_id" to extra_required for all eight parallel.* entries.
+        """
+        parallel_events = {k: v for k, v in SCHEMA_DEFINITIONS.items() if k.startswith("parallel.")}
+        assert len(parallel_events) == 8
+        for event_type, schema in parallel_events.items():
+            assert "run_id" in schema["required"], f"{event_type} missing run_id in required"
+
+    def test_queue_changed_requires_seq(self) -> None:
+        """parallel.queue_changed's required list includes seq alongside the five counters."""
+        schema = SCHEMA_DEFINITIONS["parallel.queue_changed"]
+        for field in ("seq", "pending", "active", "completed", "failed", "skipped"):
+            assert field in schema["required"]
+
 
 class TestGenerateSchemas:
     """Tests for generate_schemas() output."""
 
     def test_creates_41_files(self, tmp_path: Path) -> None:
-        """Generates exactly 42 schema files (ENH-3302: added parallel.epic_branch_stale)."""
+        """Generates exactly 48 schema files (ENH-3346: added six parallel.* lifecycle events)."""
         generate_schemas(tmp_path)
         files = list(tmp_path.glob("*.json"))
-        assert len(files) == 42
+        assert len(files) == 48
 
     def test_creates_output_dir_if_missing(self, tmp_path: Path) -> None:
         """Creates the output directory if it doesn't exist."""
         output_dir = tmp_path / "nested" / "schemas"
         generate_schemas(output_dir)
         assert output_dir.exists()
-        assert len(list(output_dir.glob("*.json"))) == 42
+        assert len(list(output_dir.glob("*.json"))) == 48
 
     def test_all_files_are_valid_json(self, tmp_path: Path) -> None:
         """Every generated file contains valid JSON."""
@@ -205,12 +230,12 @@ class TestGenerateSchemasCLI:
         assert result == 0
 
     def test_cli_creates_files(self, tmp_path: Path) -> None:
-        """CLI generates 42 schema files in the specified output directory (ENH-3302)."""
+        """CLI generates 48 schema files in the specified output directory (ENH-3346)."""
         from little_loops.cli.schemas import main_generate_schemas
 
         with patch("sys.argv", ["ll-generate-schemas", "--output", str(tmp_path)]):
             main_generate_schemas()
-        assert len(list(tmp_path.glob("*.json"))) == 42
+        assert len(list(tmp_path.glob("*.json"))) == 48
 
     def test_cli_default_output_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """CLI defaults to docs/reference/schemas/ relative to cwd."""

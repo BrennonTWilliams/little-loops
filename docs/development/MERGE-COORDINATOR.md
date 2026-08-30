@@ -56,7 +56,7 @@ The merge coordinator shares a `GitLock` with the orchestrator to serialize oper
 # Shared lock prevents index.lock race conditions
 git_lock = GitLock(logger)
 orchestrator = ParallelOrchestrator(..., git_lock=git_lock)
-merge_coordinator = MergeCoordinator(..., git_lock=git_lock)
+merge_coordinator = MergeCoordinator(..., git_lock=git_lock, event_bus=event_bus, run_id=run_id)
 ```
 
 This prevents scenarios like:
@@ -71,7 +71,7 @@ This prevents scenarios like:
 Issues are merged one at a time to avoid conflicts:
 
 ```python
-coordinator = MergeCoordinator(config, logger, repo_path)
+coordinator = MergeCoordinator(config, logger, repo_path, event_bus=event_bus, run_id=run_id)
 coordinator.start()  # Start background thread
 
 # Queue merges (non-blocking)
@@ -376,6 +376,8 @@ MergeCoordinator(
     logger: Logger,
     repo_path: Path | None = None,
     git_lock: GitLock | None = None,
+    event_bus: EventBus | None = None,
+    run_id: str | None = None,
 )
 ```
 
@@ -384,6 +386,8 @@ MergeCoordinator(
 - `logger`: Logger instance for output
 - `repo_path`: Path to git repository (default: current directory)
 - `git_lock`: Shared lock for git operations (created if not provided)
+- `event_bus`: Optional `EventBus` for emitting `parallel.merge_started`/`parallel.merge_completed` events (ENH-3346)
+- `run_id`: Opaque ID shared by every issue in the top-level run this coordinator belongs to; stamped onto merge events (ENH-3346)
 
 ## API Reference
 
@@ -425,7 +429,7 @@ from little_loops.logger import Logger
 config = ParallelConfig(max_merge_retries=3)
 logger = Logger(verbose=True)
 
-coordinator = MergeCoordinator(config, logger)
+coordinator = MergeCoordinator(config, logger, event_bus=event_bus, run_id=run_id)
 coordinator.start()
 
 # Process worker results

@@ -10,10 +10,18 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from little_loops.issue_parser import IssueInfo
+
+# ENH-3346: worker/merge lifecycle event discriminators for the parallel.* namespace.
+# WorkerBlockedReason covers the only real blocked transition in parallel/ today
+# (pre-dispatch overlap deferral); MergeOutcome covers MergeCoordinator._handle_failure's
+# terminal outcomes. Both are Literal (not Enum) to keep them lightweight event-payload
+# discriminators, extensible without a migration if new reasons/outcomes are added later.
+WorkerBlockedReason = Literal["overlap"]
+MergeOutcome = Literal["merged", "failed"]
 
 
 @dataclass

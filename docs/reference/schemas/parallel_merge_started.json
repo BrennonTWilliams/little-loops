@@ -1,15 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "little-loops://event-handoff_detected.json",
-  "title": "Handoff Detected",
-  "description": "Emitted when a context-limit handoff is detected in a prompt action.",
+  "$id": "little-loops://event-parallel.merge_started.json",
+  "title": "Parallel: Merge Started",
+  "description": "Emitted at the top of MergeCoordinator._process_merge, before the circuit-breaker check, gated on retry_count == 0 (ENH-3346).",
   "type": "object",
   "required": [
     "event",
     "ts",
-    "state",
-    "iteration",
-    "continuation"
+    "worker_id",
+    "issue_id",
+    "branch",
+    "run_id"
   ],
   "properties": {
     "event": {
@@ -29,17 +30,17 @@
       "type": "string",
       "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
     },
-    "state": {
+    "worker_id": {
       "type": "string",
-      "description": "State name where handoff was detected"
+      "description": "Worker identifier, aliased to issue_id"
     },
-    "iteration": {
-      "type": "integer",
-      "description": "Iteration count at handoff"
-    },
-    "continuation": {
+    "issue_id": {
       "type": "string",
-      "description": "Continuation prompt text"
+      "description": "Issue identifier whose merge is starting"
+    },
+    "branch": {
+      "type": "string",
+      "description": "Worker branch being merged"
     }
   },
   "additionalProperties": true

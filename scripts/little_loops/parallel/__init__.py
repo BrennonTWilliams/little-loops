@@ -21,12 +21,14 @@ from little_loops.parallel.overlap_detector import OverlapDetector, OverlapResul
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 from little_loops.parallel.types import (
     EpicBranchesConfig,
+    MergeOutcome,
     MergeRequest,
     MergeStatus,
     OrchestratorState,
     ParallelConfig,
     QueuedIssue,
     SprintWorkerContext,
+    WorkerBlockedReason,
     WorkerResult,
     WorkerStage,
 )
@@ -38,6 +40,7 @@ __all__ = [
     "GitLock",
     "IssuePriorityQueue",
     "MergeCoordinator",
+    "MergeOutcome",
     "MergeRequest",
     "MergeStatus",
     "OrchestratorState",
@@ -47,6 +50,7 @@ __all__ = [
     "ParallelOrchestrator",
     "QueuedIssue",
     "SprintWorkerContext",
+    "WorkerBlockedReason",
     "WorkerPool",
     "WorkerResult",
     "WorkerStage",
