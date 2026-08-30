@@ -11,7 +11,7 @@ captured_at: '2026-08-26T00:00:00Z'
 depends_on: [FEAT-3332]
 decision_needed: false
 learning_tests_required: [pyyaml]
-unproven_mechanism: true
+unproven_mechanism: false  # rolling baseline retired by spike 2026-08-29 (see Spike Results)
 spike_completed: true
 spike_attempted: true
 ---
@@ -31,17 +31,16 @@ incident (`2026-08-26T171218-workflow-generator`, `capture_intent` writing
 `shrink`/`await_confirmation`/`promote` all run *after* the gate and are equally
 capable of writing outside `run_dir`. This issue closes the rest of the pipeline.
 
-> **Correction (2026-08-28) — state inventory is stale.** The "twelve-state
-> pipeline" framing above (and the single `shrink` state this issue lists
-> throughout) no longer matches the tree: the loop now has **27 states**.
-> `shrink` is a 6-state family (`check_shrink_enabled`, `shrink_baseline`,
-> `shrink_select_candidate`, `shrink_try_remove`, `shrink_probe_candidate`,
-> `shrink_apply`), and `promotion_gate` and `finalize_await_confirmation`
-> also exist. AC #1's covered-state list and the open placement-count design
-> question (Expected Behavior #1) must be **re-evaluated against the
-> 27-state graph and `max_steps: 45`**. The two open design decisions
-> (placement count, late-violation routing) remain unresolved and still
-> require a decide pass before this issue is implementation-ready.
+> **Correction (2026-08-28, resolved 2026-08-30) — state inventory was stale.**
+> The "twelve-state pipeline" framing above predates the current tree: the loop
+> now has **27 states** (`shrink` is a 6-state family; `promotion_gate` and
+> `finalize_await_confirmation` also exist). The re-evaluation this correction
+> demanded has since happened: the 2026-08-28/30 research findings below are
+> against the 27-state graph and `max_steps: 45`, and **both design decisions
+> are now recorded** — placement (Option B, per-pass gates; see Decision
+> Rationale) and late-violation routing (warn-and-continue via
+> `finalize_await_confirmation`; see Routing Decision). Everything below this
+> block is current; only the Summary's original framing above is historical.
 
 ## Current Behavior
 
@@ -82,9 +81,10 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 Containment is asserted across the whole pipeline, not just its first window,
 without multiplying near-duplicate state definitions.
 
-Two open design questions this issue must settle before implementing (question
-1 is now formatted as the Option A/B decision under Proposed Solution →
-Codebase Research Findings, with the step budget in hand):
+Two design questions this issue had to settle before implementing — **both now
+decided** (question 1: Option B per-pass gates, see Decision Rationale under
+Proposed Solution; question 2: warn-and-continue, see Routing Decision).
+Retained for context:
 
 1. **Gate placement — one re-check or several?** A single re-check just before
    `emit_artifact` covers the lowering passes cheaply but reports a violation long
@@ -163,7 +163,8 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 
 - Reconfirmed (2026-08-30, independent repo-wide search): no loop or Python module anywhere in the tree implements a per-pass rolling-baseline diff pattern — searching for `rolling baseline`/`rolling_baseline` as a mechanism name found no hits outside this issue's own text and its decision record. The closest analog, `diff_stall_gate`'s `evaluate.previous`-style comparison, is LLM-loop convergence detection across iterations, a different mechanism (stall detection, not containment attribution). The selected Option B depends on this mechanism for its per-window attribution claim.
-  ⚠ Unproven mechanism — rolling baseline has no in-repo precedent
+  ~~⚠ Unproven mechanism — rolling baseline has no in-repo precedent~~
+  **Retired 2026-08-29** by the spike (`scripts/tests/spike/rolling_scope_gate/`, 5/5 tests pass — see Spike Results).
 
 ### Decision Rationale
 
@@ -464,10 +465,13 @@ validate` see ordinary shell states.
   zero-byte, or unparseable baseline file → same skip; a baseline parsing to
   `{}` gates normally. Gitignored writes (`--exclude-standard`) remain
   invisible — accepted limit, not closed by this issue.
-- Routing on violation: exit non-zero → `on_no` edge; destination for
-  post-`emit_artifact` gates (fail via `diagnose` vs warn-and-continue via
-  `finalize_await_confirmation`) is Expected Behavior question 2, to be
-  recorded by /ll:decide-issue.
+- Routing on violation: exit non-zero → `on_no` edge. Decided (Routing
+  Decision, 2026-08-30): gates at or before the `validate_artifact.on_yes`
+  edge route `on_no: diagnose` (matching FEAT-3332); post-`emit_artifact`
+  gates (`shrink_select_candidate.on_no` window, `promote.next`) route
+  warn-and-continue to `finalize_await_confirmation`, surfacing
+  `.scope_violations.txt` in the confirmation text. The `promote.next` gate
+  needs its own conditional wording — "has NOT been promoted" is false there.
 
 ### Codebase Research Findings
 
@@ -479,12 +483,25 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Settle the two design questions in Expected Behavior (placement count,
-   late-violation routing) against the current `max_steps` budget.
-2. Factor the containment check so it is defined once.
+1. ~~Settle the two design questions~~ Done — placement: Option B per-pass
+   gates (Decision Rationale, 2026-08-28); routing: warn-and-continue for
+   post-`emit_artifact` gates (Routing Decision, 2026-08-30).
+2. Factor the containment check so it is defined once — and **convert the
+   existing `check_intent_scope` gate and `init`'s snapshot-writer to the
+   shared body** in the same change: the "no near-duplicate shell blocks" AC
+   covers the landed FEAT-3332 copies too (the fragment gains a snapshot mode
+   for `init`, and `check_intent_scope` advances the rolling baseline on pass
+   like every other gate). This retires the byte-identical-pair invariant:
+   replace `test_check_intent_scope_matched_pair_byte_identical`
+   (`test_builtin_loops.py:18082`) with an equivalent single-definition
+   assertion over the fragment (e.g. all gate states reference the same
+   fragment name, per the raw-fixture `fragment ==` precedent in Tests).
 3. Add `${context.loops_dir}` to the allowed set for any gate at or after
    `promote`.
-4. Place the gates.
+4. Place the gates, wiring `on_no` per the Routing Decision (early gates →
+   `diagnose`; post-`emit_artifact` gates → `finalize_await_confirmation`
+   with the violation surfaced, conditional wording on the `promote.next`
+   gate).
 5. Add the tests, including the `promote`/`loops_dir` false-positive guard.
 6. Verify with `ll-loop validate` and a live run with a deliberately planted
    out-of-scope write from a *post-gate* state — **a green gate proves nothing
@@ -514,12 +531,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Every prompt state after FEAT-3332's gate (`sketch_state_graph`,
-      `attach_evaluators`, `resolve_routing`, `emit_artifact`, `shrink`,
-      `promote`) is covered by a containment assertion, per the placement
-      decision recorded in this issue.
+- [ ] Every post-gate *window* after FEAT-3332's gate — the four lowering
+      prompt states (`sketch_state_graph`, `attach_evaluators`,
+      `resolve_routing`, `emit_artifact`) plus the shrink and promote shell
+      windows — is covered by a containment assertion at the six insertion
+      edges recorded in this issue (Option B).
 - [ ] The gate body is defined once (fragment, rolling snapshot, or
-      parameterized state) — no near-duplicate shell blocks per insertion point.
+      parameterized state) — no near-duplicate shell blocks per insertion
+      point, **including** the landed `check_intent_scope`/`init` copies,
+      which convert to the shared body (Implementation Step 2).
 - [ ] `${context.loops_dir}` is in the allowed set for any gate at or after
       `promote`; a legitimate `auto_promote: true` write there does not trip
       the gate (test-guarded).
