@@ -82,17 +82,31 @@ session's backgrounded, scratch-pad-redirected command is still writing.
 - `hooks/scripts/scratch-cleanup.sh` — update the header comment describing
   it as a "SessionEnd hook" once re-homed.
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `hooks/hooks.json` — also move (rewrite) the paired telemetry entry
+_Wiring pass added by `/ll:wire-issue`; decisions resolved in review 2026-08-30:_
+- `hooks/hooks.json` — **drop** (do not move) the paired telemetry entry
   `record-hook-event.sh SessionEnd hooks/scripts/scratch-cleanup.sh`
-  (`hooks/hooks.json:253-260`) to `record-hook-event.sh SessionStart
-  hooks/scripts/scratch-cleanup.sh`. `record-hook-event.sh` treats its event
-  name as an opaque label argument (`hooks/scripts/record-hook-event.sh:23`)
-  with no event-specific logic, so nothing blocks moving it — but leaving it
-  behind orphans the pairing and leaves a stale `SessionEnd` label for what
-  is now a `SessionStart` action. Moving both groups also leaves
-  `hooks.json`'s `SessionEnd` array empty; decide whether to drop the
-  `SessionEnd` key entirely or leave `"SessionEnd": []`.
+  (`hooks/hooks.json:253-260`). The shim's documented purpose is covering
+  *bash-only* events with no Python dispatch (`Stop`/`SessionEnd`,
+  `docs/guides/BUILTIN_HOOKS_GUIDE.md:422-435`); `SessionStart` already flows
+  through `session-start.sh` → Python dispatch, and BUG-2483's own precedent
+  left no `record-hook-event` pairing behind when `session-end.sh` moved to
+  `SessionStart`. Moving the shim would also add a third startup
+  `statusMessage`; dropping it matches precedent and keeps startup lean.
+- `hooks/hooks.json` — with both groups gone, **drop the `SessionEnd` key
+  entirely** (decided; do not leave `"SessionEnd": []`, which invites
+  confusion about accidental removal). The docs updates below already assume
+  the zero-hooks outcome — TROUBLESHOOTING/ARCHITECTURE prose becomes "the
+  shim is needed for `Stop` only."
+- The moved command group keeps `"matcher": "*"` per `SessionStart`
+  convention. Note the semantics: `SessionStart` with `*` fires on startup,
+  `/clear`, resume, and post-compact — the sweep runs *more* often than once
+  per session, not less. That's harmless (the `kill -0` PID-liveness guard
+  protects live writers, including the current session's own backgrounded
+  redirects) and improves cleanup frequency. Do **not** narrow the matcher to
+  `"startup"` thinking it's more faithful to "run at next session start."
+- The moved entry's `statusMessage` ("Cleaning up scratch pad...") will flash
+  at session start alongside "Loading ll config..." — acceptable as-is now
+  that the telemetry shim (a third message) is dropped rather than moved.
 - `hooks/scripts/session-cleanup.sh` — line 19 comment ("Scratch cleanup now
   lives in scratch-cleanup.sh, wired to SessionEnd.") needs updating to say
   SessionStart.
@@ -140,8 +154,8 @@ _Wiring pass added by `/ll:wire-issue`:_
   absence(`SessionEnd`) pair mirroring
   `test_claude_code_adapter.py:92-147`'s pattern for `session-end.sh`.
 - New test needed: assert the `record-hook-event.sh` telemetry-pairing
-  entry's event-name arg is updated to `SessionStart` (or the entry is gone
-  from `SessionEnd`) alongside the command-group move.
+  entry is gone (dropped, not moved — see Files to Modify) and that
+  `hooks.json` no longer has a `SessionEnd` key.
 
 ### Documentation
 - Any doc referencing `scratch-cleanup.sh` as a `SessionEnd` hook (e.g.
@@ -153,12 +167,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   - Lifecycle table rows for `scratch-cleanup` and `record-hook-event`
     (lines 73-74) move up into the `SessionStart` rows (lines 52-54).
   - The `## SessionEnd` section (lines 460-475) documents only these two
-    hooks; if both move off `SessionEnd`, relocate its `### Scratch-pad
-    cleanup` and `### Hook-event telemetry shim` subsections under
+    hooks. Relocate its `### Scratch-pad cleanup` subsection under
     `## SessionStart` (mirroring the `### Sweep stale cross-issue
-    references` subsection BUG-2483 added there, lines 157-170) and remove
-    or repurpose the now-orphaned `## SessionEnd` heading and its deadline
-    warning (line 474).
+    references` subsection BUG-2483 added there, lines 157-170); the
+    `### Hook-event telemetry shim` subsection for this pairing is removed
+    (the shim entry is dropped, not moved). Remove or repurpose the
+    now-orphaned `## SessionEnd` heading and its deadline warning (line
+    474).
   - The "Session from Hook's Perspective" ASCII diagram shows scratch
     cleanup under the "Session ends" block (lines 116-118); move it to the
     "You start a session" block (lines 87-90).
@@ -225,22 +240,28 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 4. Update `test_claude_code_adapter.py` and
    `test_hooks_integration.py::TestScratchCleanupSessionEnd` event-binding
    assertions to match the new `SessionStart` wiring.
-5. Verify by exiting a session repeatedly (Ctrl+C, Ctrl+D, `/exit`) and
-   confirming no `Hook cancelled` message appears, and that scratch pruning
-   still runs on the next session start.
+5. Verify structurally, not by chasing an intermittent symptom: the gate is
+   the test assertions that `hooks.json` registers `scratch-cleanup.sh`
+   under `SessionStart` and has no `SessionEnd` key — with zero hooks on
+   `SessionEnd`, nothing can be cancelled. Then smoke-check: (a) a few
+   manual exits (Ctrl+C, Ctrl+D, `/exit`) print no hook-failure message;
+   (b) pruning fires on next start — plant a stale PID-suffixed file in
+   `.loops/tmp/scratch/` (dead PID), start a session, confirm it's gone.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Decide and implement: move the paired `record-hook-event.sh SessionEnd
-  hooks/scripts/scratch-cleanup.sh` telemetry entry to `SessionStart`
-  alongside the command group, and decide whether the resulting empty
-  `SessionEnd` array is dropped or left as `"SessionEnd": []`.
+- Drop the paired `record-hook-event.sh SessionEnd
+  hooks/scripts/scratch-cleanup.sh` telemetry entry (decided — see Files to
+  Modify: shim exists for bash-only events; `SessionStart` has Python
+  dispatch, and BUG-2483 left no pairing behind), and drop the `SessionEnd`
+  key entirely from `hooks.json` (decided — no empty `"SessionEnd": []`).
 - Update `hooks/scripts/session-cleanup.sh:19` comment.
 - Update `.claude/CLAUDE.md:218`.
 - Update `docs/development/TROUBLESHOOTING.md:1041-1043` and
-  `docs/ARCHITECTURE.md:656` if `SessionEnd` ends up with zero hooks.
+  `docs/ARCHITECTURE.md:656` — `SessionEnd` now has zero hooks, so the
+  shim claim becomes "`Stop` only".
 - Restructure `docs/guides/BUILTIN_HOOKS_GUIDE.md`'s `## SessionEnd`
   section, lifecycle table, ASCII diagram, and `Stop`-section prose per the
   specifics in Documentation above.
