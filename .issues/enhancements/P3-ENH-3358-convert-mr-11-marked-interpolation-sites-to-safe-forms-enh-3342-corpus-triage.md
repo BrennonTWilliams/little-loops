@@ -28,7 +28,8 @@ production automation loops. Per ENH-3342's `# ll-lint: mr11-ok(<var>)
 <reason>` marker mechanism (added for exactly this situation), every one of
 those 665 sites was marked with a well-formed marker citing this issue, so
 the corpus stays `ll-loop validate`-clean while the actual conversion work is
-tracked here.
+tracked here. (Current corpus is 585 markers / 55 files — see Codebase
+Research Findings under Current Behavior.)
 
 ## Current Behavior
 
@@ -100,7 +101,7 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 - The full, current file set is not hand-enumerated here because it shrinks with each conversion pass (a static list would go stale the moment one file is done). Enumerate live with `grep -rln "ll-lint: mr11-ok" scripts/little_loops/loops/` (55 files as of this refine) or `grep -rn "ll-lint: mr11-ok" scripts/little_loops/loops/` for per-site detail (585 lines).
 - Highest-concentration files, worth converting first: `loops/rn-refine.yaml` (67 markers), `loops/rn-implement.yaml` (54), `loops/rn-remediate.yaml` (48), `loops/autodev.yaml` (46), `loops/cua-agent-desktop.yaml` (40), `loops/recursive-refine.yaml` (34), `loops/mechanize-skills.yaml` (25), `loops/refine-to-ready-issue.yaml` (23), `loops/oracles/plan-node-refine.yaml` (21), `loops/workflow-generator.yaml` / `loops/cli-anything-bootstrap.yaml` (19 each).
 - `scripts/tests/test_builtin_loops.py` (`MR11_MARKER_ALLOWLIST`, `scripts/tests/test_builtin_loops.py:19645-19852`) must be edited in lockstep with every marker removal — the allowlist is a set literal enumerating every `(file, namespace.key, "ENH-3358")` tuple; removing a corpus marker without removing its matching tuple fails `TestMr11MarkerSet::test_marker_set_matches_enumeration` as a stale allowlist entry.
-- `scripts/tests/test_builtin_loops.py` also gains two new tests from this issue: the `unsafe_context_interpolation_ok` zero-occurrence guard (Implementation Steps step 6) and the idiom-2 round-trip proof (step 7).
+- `scripts/tests/test_builtin_loops.py` also gains three new gates from this issue: the `unsafe_context_interpolation_ok` zero-occurrence guard (Implementation Steps step 6), the idiom-2 round-trip proof (step 7), and a `stale-mr11-marker` category in `TestValidatorWarningBudget.CATEGORY_PATTERNS` (step 8).
 
 ### Conventions in Force
 - Every marked site follows one convention today: the generic reason text `ENH-3358 - ENH-3342 widening residual, tracked for conversion` (e.g. `loops/autodev.yaml:197,223,227,229,271`) — none of the 585 markers carry a site-specific reason distinguishing which safe form applies, so that classification is this issue's own work, not something recoverable from the marker text.
@@ -111,7 +112,7 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 - `ll-loop validate <loop-file>` re-runs the live MR-11 scan per file and is the fastest per-site feedback loop while converting one file at a time (per `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:414,427`).
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_builtin_loops.py::TestValidatorWarningBudget::test_deterministic_warning_categories_do_not_regrow` (class at line 16346) is a second, independent corpus-wide gate: it runs `load_and_validate()` over every builtin loop and fails on any WARNING whose message matches `"interpolates user-controlled context raw into a shell body"` (the `unsafe-context-interp` category) that isn't in its own `ALLOWLIST`. That category currently has zero `ALLOWLIST` entries because every real MR-11 finding today is marker-suppressed; if a conversion removes a marker without actually fixing the site (or fixes it incorrectly), `_scan_state_for_mr11` emits a live MR-11 finding whose message this test's pattern catches — a safety net on top of, not a replacement for, `ll-loop validate` and `TestMr11MarkerSet`. No `ALLOWLIST` entry should ever be added here for this issue's work; a hit means the conversion at that site is wrong, not that it needs allowlisting.
+- `scripts/tests/test_builtin_loops.py::TestValidatorWarningBudget::test_deterministic_warning_categories_do_not_regrow` (class at line 16346) is a second, independent corpus-wide gate: it runs `load_and_validate()` over every builtin loop and fails on any WARNING whose message matches `"interpolates user-controlled context raw into a shell body"` (the `unsafe-context-interp` category) that isn't in its own `ALLOWLIST`. That category currently has zero `ALLOWLIST` entries because every real MR-11 finding today is marker-suppressed; if a conversion removes a marker without actually fixing the site (or fixes it incorrectly), `_scan_state_for_mr11` emits a live MR-11 finding whose message this test's pattern catches — a safety net on top of, not a replacement for, `ll-loop validate` and `TestMr11MarkerSet`. No `ALLOWLIST` entry should ever be added here for this issue's work; a hit means the conversion at that site is wrong, not that it needs allowlisting. Note this pattern catches only *live*-finding messages — the stale-marker WARNING has different text and is covered separately by the step-8 `stale-mr11-marker` category.
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:104` (MR-11 row) and `:137-215` ("MR-11's two safe interpolation idioms" through the marker-grammar subsection) is the authoritative source for both safe forms and the marker escape hatch — this issue converts markers away, it does not change this documentation.
@@ -152,7 +153,8 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 4. `python -m pytest scripts/tests/test_builtin_loops.py -k TestMr11MarkerSet` passes once the converted sites' markers and allowlist entries are both removed; it fails loudly (naming the drifted tuples) if only one side was updated.
 5. When the corpus's marker count reaches zero, `MR11_MARKER_ALLOWLIST` is an empty set and `Expected Behavior`'s "zero markers" criterion is met.
 6. A guard test is added to `scripts/tests/test_builtin_loops.py` asserting zero occurrences of `unsafe_context_interpolation_ok` in `scripts/little_loops/loops/**` — closing the loop-wide escape hatch identified under Expected Behavior. This test lands with the *first* conversion pass, not the last, so the loophole is sealed for the entire duration of the work.
-7. Before the first idiom-2 (heredoc-to-file) conversion — which has zero corpus precedent — the pattern is proven with a small unit test (or spike per `/ll:spike`): `printf '%s' "<value>" > file` + Python `open(...).read()` must round-trip newlines, single/double quotes, empty values, and `$(...)`-shaped text intact. This test stays in the suite as the runtime backstop for all subsequent idiom-2 conversions.
+7. Before the first idiom-2 (heredoc-to-file) conversion — which has zero corpus precedent — the pattern is proven with a small unit test (or spike per `/ll:spike`): `printf '%s' "<value>" > file` + Python `open(...).read()` must round-trip newlines, single/double quotes, empty values, `$(...)`-shaped text, and `%`- and backslash-containing values intact (the last two are safe under `printf '%s'` — the value lands in the argument position, not the format string — but that is exactly what this test exists to prove). This test stays in the suite as the runtime backstop for all subsequent idiom-2 conversions.
+8. A `"stale-mr11-marker": "marker matches no MR-11 finding"` category is added to `TestValidatorWarningBudget.CATEGORY_PATTERNS` (`scripts/tests/test_builtin_loops.py:16356`) with an empty allowlist, landing with the first conversion pass alongside step 6. Without it, a "converted but marker left behind" mistake (site fixed, marker line + allowlist tuple both retained) evades every automated gate: `TestMr11MarkerSet` passes because the marker set is unchanged, the warning budget's existing `unsafe-context-interp` pattern matches only live-finding text (not the stale-marker message at `shell_safety.py:430`), and `ll-loop validate` exits 0 on warnings-only (see per-pass model note below).
 
 ### Per-pass completion model
 
@@ -165,6 +167,13 @@ committable stopping point:
 3. `ll-loop validate <file>` (or the importing loop) returns clean.
 4. `python -m pytest scripts/tests/test_builtin_loops.py -k "TestMr11MarkerSet or TestValidatorWarningBudget" -q` passes.
 5. Commit.
+
+**`ll-loop validate`'s exit code does not fail on WARNINGs** — `has_errors`
+only counts `ValidationSeverity.ERROR` (`scripts/little_loops/cli/loop/config_cmds.py:73`),
+so a live MR-11 WARNING or stale-marker WARNING still exits 0. Step 3's
+"returns clean" means reading the output, and validate is the per-site
+iteration feedback tool only; the pytest gates in step 4 (including the
+step-8 stale-marker category once landed) are the enforcement.
 
 The `TestMr11MarkerSet` ratchet keeps marker/allowlist lockstep at every
 intermediate state, so partial progress never leaves the repo inconsistent.
