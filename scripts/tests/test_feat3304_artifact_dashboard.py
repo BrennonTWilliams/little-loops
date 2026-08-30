@@ -890,7 +890,15 @@ class TestServeModeBuildDashboardHtml:
         assert "var htmx" in result.html  # vendored bundle inlined verbatim
 
     def test_gzip_snapshot_is_reproducible_across_renders(self, project: Path) -> None:
-        """mtime=0 makes two renders of identical input byte-identical (ENH-3351)."""
+        """mtime=0 makes two renders of identical input byte-identical (ENH-3351).
+
+        ``exported_at`` is stamped from wall-clock ``datetime.now(UTC)``, which
+        is real, desired behavior for a live render but would make this
+        reproducibility check itself flaky across a wall-clock second
+        boundary — so the clock is frozen for the duration of the test.
+        """
+        from datetime import UTC, datetime
+
         from little_loops.config.core import BRConfig
 
         config = BRConfig(project)
@@ -902,8 +910,11 @@ class TestServeModeBuildDashboardHtml:
             "mode": "shareable",
             "serve_context": None,
         }
-        first = build_dashboard_html(**kwargs)
-        second = build_dashboard_html(**kwargs)
+        frozen = datetime(2026, 7, 1, tzinfo=UTC)
+        with patch("little_loops.cli.artifact.dashboard.datetime") as mock_datetime:
+            mock_datetime.now.return_value = frozen
+            first = build_dashboard_html(**kwargs)
+            second = build_dashboard_html(**kwargs)
         assert first.html == second.html
 
 
