@@ -193,6 +193,14 @@ Two viable filter primitives for excluding EPIC-typed ids from `forward_ids`:
 - `scripts/little_loops/cli/sprint/run.py:380` — `manager.load_or_resolve(args.sprint)`
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml:146,356` — `resolve_set` state builds `SprintManager(...).load_or_resolve(arg)`, the loop-context call site this issue's Summary traces the leak through
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/goal-cluster.yaml:110` — `sm.load_or_resolve(stripped)` inside an inline `subprocess` Python block; guarded by `not re.match(r'^(EPIC-\d+|\[)', stripped, re.IGNORECASE)` at line 105 so an EPIC-shaped `arg` never reaches this call site — unaffected by the leak scenario itself, but still a live caller of the function being changed
+
+### Related Findings (Out of Scope)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/deps.py:288-290` (`main_deps()`, the `ll-deps tree --epic` branch) contains an **independent, unfixed reimplementation of the identical bug**: `forward_ids: set[str] = set(epic_info.relates_to)` unioned with `backward_ids` with no EPIC-shape filter. It does not call into `sprint.py` and is untouched by this fix — `ll-deps tree --epic EPIC-2258` would still render sibling EPIC ids as children after this issue ships. No existing test (`scripts/tests/test_deps_cli.py`) covers an EPIC-shaped `relates_to` entry for this branch either. Recommend filing as a separate bug rather than expanding this issue's scope, since Decision Rationale above selected a `sprint.py`-only fix.
+
 ### Conventions in Force
 - EPIC-typed ids are excluded from implementable/dispatch sets by matching on the candidate's own id shape, not by a separate config flag — evidence: `scripts/little_loops/cli/issues/next_issues.py:52,83,86` (`not i.issue_id.startswith("EPIC-")`, BUG-2638)
 - A sibling subsystem treats `relates_to:` as a non-child cross-reference and excludes it entirely from its own child-resolution logic, rather than filtering by type — evidence: `scripts/little_loops/issue_progress.py:120-132`, `compute_epic_progress()` docstring: "`relates_to:` is a cross-reference field (siblings, dependencies) and is intentionally excluded to avoid inflating counts with non-child references"
@@ -244,6 +252,7 @@ Two viable filter primitives for excluding EPIC-typed ids from `forward_ids`:
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-30T18:50:09 - `00726072-62d6-4f81-b684-ed899628cec1.jsonl`
 - `/ll:decide-issue` - 2026-08-30T18:42:34 - `485b5d3f-a476-487f-b5bc-30b3083dcc2d.jsonl`
 - `/ll:refine-issue` - 2026-08-30T18:36:06 - `3caa0a54-1798-44b0-ac84-0105003d8212.jsonl`
 - `/ll:format-issue` - 2026-08-30T18:30:07 - `94b795f5-375b-4a55-9190-f07c0af5f00b.jsonl`
