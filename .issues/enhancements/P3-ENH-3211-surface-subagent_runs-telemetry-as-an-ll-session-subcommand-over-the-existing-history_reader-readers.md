@@ -4,13 +4,14 @@ type: ENH
 title: Surface subagent_runs telemetry as an ll-session subcommand over the existing
   history_reader readers
 priority: P3
-status: open
+status: done
 parent: EPIC-3214
 epic: EPIC-3214
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T02:10:42Z'
+completed_at: '2026-08-30T01:17:39Z'
 relates_to:
 - ENH-3210
 - FEAT-3183
@@ -49,7 +50,7 @@ existing `ll-logs` subcommand aggregates a JSONL corpus over `--all`/`--project`
 `--window-days`, so a single-session SQL lookup would break its flag convention. Neither
 imports `history_reader.py` at all. `ll-session` (`cli/session.py`) is the only CLI that
 wraps `history_reader.py` readers end-to-end, and it already exposes raw rows from this
-very table via `ll-session recent --kind subagent_run` (`docs/reference/CLI.md:3359,3441`).
+very table via `ll-session recent --kind subagent_run` (`docs/reference/CLI.md:3708`).
 Leaving the host open adds review risk with no upside — it is fixed here.
 
 **Argument shape — settled: positional, not `--session`/`--agent` flags.** This codebase
@@ -187,8 +188,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli_args.py` — `add_json_arg()` (:324), `add_window_args()`
   (:289) — shared flag-registration helpers used across both `ll-logs` and `ll-history`
 - `scripts/little_loops/cli/output.py` — `print_json()` (:227), `table()` (:299)
-- `scripts/pyproject.toml` — entry-point registrations: `ll-history` (:79), `ll-logs`
-  (:95)
+- `scripts/pyproject.toml` — entry-point registrations: `ll-history` (:87), `ll-logs`
+  (:103)
 
 ### Conventions in Force
 - `--json`/`-j` is added via the shared `add_json_arg()` helper on every subcommand that
@@ -224,14 +225,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_session.py` — the actual closest test file if `cli/session.py`
   is the chosen host (more likely than `ll-history`/`ll-logs` per the issue's own refined
-  analysis): `TestArgumentParsing::test_related_arg_parsing` (:446, argparse-only) and
+  analysis): `TestArgumentParsing::test_related_arg_parsing` (:461, argparse-only) and
   `TestMainSession::test_related_outputs_events`/`test_related_no_match`/
-  `test_related_json_output` (:452/:464/:471, integration via `patch("sys.argv", ...)` +
+  `test_related_json_output` (:467/:479/:486, integration via `patch("sys.argv", ...)` +
   `capsys`) are the exact shape to mirror for a new `subagent`-style subcommand
   [Agent 3 finding]
 - Exact empty-result convention confirmed: `print(f"No {noun} found for {id}.")` —
   e.g. `cli/session.py:476` (`"No sessions found for {issue_filter}."`),
-  `cli/history.py:412` (`"No sessions found for {args.issue_id}."`); the issue's own
+  `cli/history.py:538` (`"No sessions found for {args.issue_id}."`); the issue's own
   Proposed Solution sketch ("No subagent runs found") needs the `for {session_id}` suffix
   to match this established two-part template [Agent 2 + Agent 3 finding]
 - Confirmed no test in `test_cli_history.py`, `test_ll_logs.py`, or `test_ll_session.py`
@@ -466,9 +467,41 @@ _Added by `/ll:confidence-check` on 2026-08-16_
 - 2026-08-16: `blocked_by: [FEAT-3183]` is still open (real scheduling blocker), but `depends_on: [ENH-3210]` — ENH-3210 has now landed (status: done), so that technical dependency is satisfied; the issue remains correctly `status: blocked` on FEAT-3183 alone. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T01:16:39 - `3499c104-ffd5-41f2-8214-4682fd56a8f7.jsonl`
+- `/ll:ready-issue` - 2026-08-30T01:05:24 - `8a4b9359-4cc2-46f0-a35b-c6aa2620fa08.jsonl`
 - `/ll:confidence-check` - 2026-08-30T01:01:17 - `e512278b-6b0b-40b4-a669-9e7c95e260e7.jsonl`
 - `/ll:confidence-check` - 2026-08-30T00:58:27 - `35a2908c-9863-484b-89f4-e9eb631d464c.jsonl`
 - `/ll:refine-issue` - 2026-08-30T00:53:33 - `9f6f7aba-c836-405c-b13b-dc8c341edd68.jsonl`
 - `/ll:refine-issue` - 2026-08-29T23:56:27 - `7980fc82-226c-49c8-b164-01ae9e6c8314.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:confidence-check` - 2026-08-16T05:32:12 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-30
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/session.py`: added `subagents SESSION_ID [--budget]` and
+  `subagent-retries AGENT_TYPE [--since DATE]` subcommands wrapping `subagent_tree`/
+  `subagent_budget`/`subagent_retries` unmodified; `--budget` derives the excluded-row
+  count (split `running`/`orphaned`) from `subagent_tree` since `subagent_budget`'s
+  return shape carries no such field (Implementation Step 4)
+- `scripts/tests/test_ll_session.py`: added `TestSubagentsSubcommand` (12 tests —
+  argparse, empty-result, tree/budget/retries text and `--json` output, excluded-count
+  display)
+- `docs/reference/CLI.md`: subcommand table rows, `subagents`/`subagent-retries` flags
+  tables, examples
+- `docs/reference/API.md`: one-line cross-reference to the new CLI consumer
+
+### Verification Results
+- Tests: PASS (117/117 in `test_ll_session.py`; full suite 22107 passed / 4 pre-existing
+  unrelated failures — README drift BUG-3179, evidence-gate, decision-rules corpus,
+  subprocess_utils guillotine prompt — none touch `session.py`/`history_reader.py`)
+- Lint: PASS
+- Types: PASS (`mypy scripts/little_loops/cli/session.py`)
+- Run: PASS (manual smoke test against a seeded `history.db` — tree, `--budget`,
+  `--json`, `subagent-retries`, and the no-match path all produced expected output)

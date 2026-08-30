@@ -1515,3 +1515,189 @@ class TestSkillStatsAndNewKinds:
         exported = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
         row = next(item for item in exported if item["type"] == "orchestration_run")
         assert row["issue_id"] == "ENH-2492"
+
+
+class TestSubagentsSubcommand:
+    """ENH-3211: ll-session subagents/subagent-retries over history_reader's
+    subagent_tree/subagent_retries/subagent_budget readers (ENH-2505)."""
+
+    def test_subagents_arg_parsing(self) -> None:
+        with patch("sys.argv", ["ll-session", "subagents", "parent-1"]):
+            args = _parse_args()
+        assert args.command == "subagents"
+        assert args.session_id == "parent-1"
+        assert args.budget is False
+
+    def test_subagents_budget_arg_parsing(self) -> None:
+        with patch("sys.argv", ["ll-session", "subagents", "parent-1", "--budget"]):
+            args = _parse_args()
+        assert args.budget is True
+
+    def test_subagent_retries_arg_parsing(self) -> None:
+        with patch(
+            "sys.argv", ["ll-session", "subagent-retries", "Explore", "--since", "2026-01-01"]
+        ):
+            args = _parse_args()
+        assert args.command == "subagent-retries"
+        assert args.agent_type == "Explore"
+        assert args.since == "2026-01-01"
+
+    def test_subagents_no_match(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "subagents", "nobody"]):
+            assert main_session() == 0
+        assert "No subagent runs found for nobody." in capsys.readouterr().out
+
+    def test_subagents_outputs_tree(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_subagent_run_start, record_subagent_run_stop
+
+        db = tmp_path / "history.db"
+        record_subagent_run_start(
+            db,
+            parent_session_id="parent-1",
+            agent_id="agent-a",
+            agent_type="Explore",
+            started_at="2026-07-20T00:00:00Z",
+        )
+        record_subagent_run_stop(
+            db, parent_session_id="parent-1", agent_id="agent-a", ended_at="2026-07-20T00:01:00Z"
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(db), "subagents", "parent-1"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "agent_type=Explore" in out
+        assert "status=completed" in out
+
+    def test_subagents_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_subagent_run_start
+
+        db = tmp_path / "history.db"
+        record_subagent_run_start(
+            db, parent_session_id="parent-1", agent_id="agent-a", agent_type="Explore"
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(db), "subagents", "parent-1", "--json"]):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert data[0]["agent_id"] == "agent-a"
+
+    def test_subagents_budget_no_match(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "subagents", "nobody", "--budget"]):
+            assert main_session() == 0
+        assert "No subagent runs found for nobody." in capsys.readouterr().out
+
+    def test_subagents_budget_shows_excluded_count(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_subagent_run_start, record_subagent_run_stop
+
+        db = tmp_path / "history.db"
+        record_subagent_run_start(
+            db,
+            parent_session_id="parent-1",
+            agent_id="agent-a",
+            agent_type="Explore",
+            started_at="2026-07-20T00:00:00Z",
+        )
+        record_subagent_run_stop(
+            db, parent_session_id="parent-1", agent_id="agent-a", ended_at="2026-07-20T00:01:00Z"
+        )
+        # Still-running row: no ended_at, excluded from total_duration_s.
+        record_subagent_run_start(
+            db,
+            parent_session_id="parent-1",
+            agent_id="agent-b",
+            agent_type="Explore",
+            started_at="2026-07-20T00:02:00Z",
+        )
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "subagents", "parent-1", "--budget"]
+        ):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "spawn_count=2" in out
+        assert "total_duration_s=60.0" in out
+        assert "1 rows excluded" in out
+        assert "1 running" in out
+        assert "orphaned" not in out.split("excluded")[0]
+
+    def test_subagents_budget_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_subagent_run_start, record_subagent_run_stop
+
+        db = tmp_path / "history.db"
+        record_subagent_run_start(
+            db,
+            parent_session_id="parent-1",
+            agent_id="agent-a",
+            agent_type="Explore",
+            started_at="2026-07-20T00:00:00Z",
+        )
+        record_subagent_run_stop(
+            db, parent_session_id="parent-1", agent_id="agent-a", ended_at="2026-07-20T00:01:00Z"
+        )
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "subagents", "parent-1", "--budget", "--json"],
+        ):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["spawn_count"] == 1
+        assert data["excluded_count"] == 0
+
+    def test_subagent_retries_no_match(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "subagent-retries", "Explore"]):
+            assert main_session() == 0
+        assert "No subagent runs found for Explore." in capsys.readouterr().out
+
+    def test_subagent_retries_outputs_rollup(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_subagent_run_start
+
+        db = tmp_path / "history.db"
+        record_subagent_run_start(
+            db, parent_session_id="parent-1", agent_id="agent-a", agent_type="Explore"
+        )
+        record_subagent_run_start(
+            db, parent_session_id="parent-1", agent_id="agent-b", agent_type="Explore"
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(db), "subagent-retries", "Explore"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "parent_session_id=parent-1" in out
+        assert "spawn_count=2" in out
+
+    def test_subagent_retries_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_subagent_run_start
+
+        db = tmp_path / "history.db"
+        record_subagent_run_start(
+            db, parent_session_id="parent-1", agent_id="agent-a", agent_type="Explore"
+        )
+        record_subagent_run_start(
+            db, parent_session_id="parent-1", agent_id="agent-b", agent_type="Explore"
+        )
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "subagent-retries", "Explore", "--json"]
+        ):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data[0]["parent_session_id"] == "parent-1"
+        assert data[0]["spawn_count"] == 2

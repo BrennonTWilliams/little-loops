@@ -8087,6 +8087,8 @@ def subagent_budget(session_id: str, *, db: Path | str = DEFAULT_DB_PATH) -> dic
 
 `subagent_tree()` returns the direct `agent_id` spawns for a parent session (no grandchild recursion — that requires re-parsing each `agent_transcript_path`, not a SQL join). `subagent_retries()` returns per-parent re-spawn counts for a given `agent_type`, restricted to parents that spawned it more than once (the "oscillation" signal). `subagent_budget()` returns `{"spawn_count", "total_duration_s"}` for a parent session (the "burn budget" signal), or `None` when no rows exist.
 
+All three are surfaced via `ll-session subagents SESSION_ID [--budget]` / `ll-session subagent-retries AGENT_TYPE` (ENH-3211) — see [CLI.md](CLI.md#ll-session).
+
 ### UserCorrection
 
 Dataclass for user correction rows from the `user_corrections` table.

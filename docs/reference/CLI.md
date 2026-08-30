@@ -3578,6 +3578,8 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830); `--snapshots` seeds the `issue_snapshots` table from `.issues/` files (ENH-2151); `--extract-decisions` runs `extract-from-completed` after backfill (ENH-2152); `--max-sessions N` caps how many sessions are compacted in this run (newest first, useful for large DBs) (ENH-2252) |
 | `export` | Dump selected history tables as JSONL to stdout or a file — for visualization, external tooling, or backup (ENH-2252) |
 | `related` | Issue events for a given issue ID |
+| `subagents SESSION_ID` | Subagent spawn tree for a session, or `--budget` for a spawn-count/duration rollup (ENH-3211) |
+| `subagent-retries AGENT_TYPE` | Sessions that re-spawned `AGENT_TYPE` more than once; `--since DATE` bounds the window (ENH-3211) |
 | `path` | Resolve the JSONL file path for a session ID |
 | `grep` | Regex search over `message_events` with optional summary-node scope filtering; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
 | `expand` | Return all `message_events` covered by a given summary node ID; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
@@ -3628,6 +3630,22 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `--mcp-server NAME` / `--mcp-tool NAME` / `--mcp-outcome {success,error,timeout}` | With `--kind tool`, filter to MCP tool-call rows by server/tool/outcome (`tool_events.mcp_server`/`mcp_tool`/`mcp_outcome`, ENH-2511). Ignored for other `--kind` values. |
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |
+
+**`subagents` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `SESSION_ID` | Parent session ID to look up (required, positional) |
+| `--budget` | Show spawn count + total duration (`subagent_budget`) instead of the per-row tree; also reports rows excluded from the duration total (no `ended_at`), split into `running`/`orphaned` counts so a still-in-flight spawn is never mislabeled as orphaned |
+| `--json` / `-j` | Output as JSON |
+
+**`subagent-retries` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `AGENT_TYPE` | Agent type to check for repeat spawns (required, positional) |
+| `--since DATE` | Only count spawns at or after this ISO 8601 date/datetime |
+| `--json` / `-j` | Output as JSON |
 
 **`backfill` flags:**
 
@@ -3716,6 +3734,9 @@ ll-session recent --kind tool --mcp-server pencil --mcp-outcome error  # MCP fai
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)
 ll-session recent --issue ENH-1710              # Sessions that touched ENH-1710
 ll-session recent --kind message --issue ENH-1710  # Messages from those sessions
+ll-session subagents <session_id>               # Subagent spawn tree for a session (ENH-3211)
+ll-session subagents <session_id> --budget      # Spawn count + total duration, with excluded-row count (ENH-3211)
+ll-session subagent-retries Explore             # Sessions that re-spawned Explore more than once (ENH-3211)
 ll-session backfill                             # Ingest on-disk sources (raw_events + issues/loops/commits)
 ll-session backfill --rebuild                   # Ingest, then materialize cache tables in one call
 ll-session backfill --since 2026-01-01          # Incremental JSONL backfill since date

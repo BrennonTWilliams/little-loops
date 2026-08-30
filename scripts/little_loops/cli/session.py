@@ -14,6 +14,8 @@ Subcommands:
     rebuild  wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)
     compact  sweep old raw_events into per-session retention summaries (ENH-2581)
     related  issue events for a given issue ID
+    subagents subagent spawn tree (or --budget rollup) for a session (ENH-3211)
+    subagent-retries repeat-spawn rollup for an agent type (ENH-3211)
     path     resolve JSONL file path for a session ID
     grep     regex search over message_events with covering summary node context
     expand   return message_events covered by a summary node
@@ -29,6 +31,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +43,9 @@ from little_loops.history_reader import (
     ll_grep,
     related_issue_events,
     sessions_for_issue,
+    subagent_budget,
+    subagent_retries,
+    subagent_tree,
 )
 from little_loops.history_reader import search as history_search
 from little_loops.logger import Logger
@@ -79,6 +85,9 @@ Examples:
   %(prog)s recent --kind verdict                  # Recent verifier verdicts
   %(prog)s recent --kind context_pressure         # Recent context-pressure samples
   %(prog)s related BUG-1759                       # Events for a specific issue
+  %(prog)s subagents SESSION_ID                    # Subagent spawn tree for a session
+  %(prog)s subagents SESSION_ID --budget           # Spawn count + total duration
+  %(prog)s subagent-retries Explore                # Sessions that re-spawned Explore
   %(prog)s backfill                               # Ingest on-disk sources (raw_events + issues/loops/commits)
   %(prog)s backfill --rebuild                     # Ingest, then materialize cache tables in one call
   %(prog)s rebuild                                # Re-derive cache tables from raw_events
@@ -161,6 +170,34 @@ Examples:
         "--limit", type=int, default=20, metavar="N", help="Maximum results (default: 20)"
     )
     add_json_arg(related_parser)
+
+    subagents_parser = subparsers.add_parser(
+        "subagents", help="Subagent spawn tree for a session (ENH-2505)"
+    )
+    subagents_parser.add_argument(
+        "session_id", metavar="SESSION_ID", help="Parent session ID to look up"
+    )
+    subagents_parser.add_argument(
+        "--budget",
+        action="store_true",
+        default=False,
+        help="Show spawn count + total duration instead of the per-row tree",
+    )
+    add_json_arg(subagents_parser)
+
+    subagent_retries_parser = subparsers.add_parser(
+        "subagent-retries", help="Repeat-spawn rollup for an agent type (ENH-2505)"
+    )
+    subagent_retries_parser.add_argument(
+        "agent_type", metavar="AGENT_TYPE", help="Agent type to check for repeat spawns"
+    )
+    subagent_retries_parser.add_argument(
+        "--since",
+        default=None,
+        metavar="DATE",
+        help="Only count spawns at or after this ISO 8601 date/datetime",
+    )
+    add_json_arg(subagent_retries_parser)
 
     backfill_parser = subparsers.add_parser(
         "backfill", help="Seed the database from existing on-disk sources"
@@ -461,6 +498,79 @@ def main_session() -> int:
                 print(fields)
             return 0
 
+        if args.command == "subagents":
+            if args.budget:
+                budget = subagent_budget(args.session_id, db=args.db)
+                if budget is None:
+                    if args.json:
+                        print_json(None)
+                        return 0
+                    print(f"No subagent runs found for {args.session_id}.")
+                    return 0
+                tree = subagent_tree(args.session_id, db=args.db)
+                excluded = [run for run in tree if run.ended_at is None]
+                excluded_running = sum(1 for run in excluded if run.status == "running")
+                excluded_orphaned = sum(1 for run in excluded if run.status == "orphaned")
+                if args.json:
+                    print_json(
+                        {
+                            **budget,
+                            "excluded_count": len(excluded),
+                            "excluded_running": excluded_running,
+                            "excluded_orphaned": excluded_orphaned,
+                        }
+                    )
+                    return 0
+                excluded_note = ""
+                if excluded:
+                    excluded_note = (
+                        f"  ({len(excluded)} rows excluded: no ended_at"
+                        f" — {excluded_running} running, {excluded_orphaned} orphaned)"
+                    )
+                print(
+                    f"spawn_count={budget['spawn_count']}  "
+                    f"total_duration_s={budget['total_duration_s']:.1f}{excluded_note}"
+                )
+                return 0
+
+            tree = subagent_tree(args.session_id, db=args.db)
+            if args.json:
+                from dataclasses import asdict
+
+                print_json([asdict(run) for run in tree])
+                return 0
+            if not tree:
+                print(f"No subagent runs found for {args.session_id}.")
+                return 0
+            for run in tree:
+                duration = "n/a"
+                if run.started_at and run.ended_at:
+                    try:
+                        start = datetime.fromisoformat(run.started_at.replace("Z", "+00:00"))
+                        end = datetime.fromisoformat(run.ended_at.replace("Z", "+00:00"))
+                        duration = f"{(end - start).total_seconds():.1f}s"
+                    except ValueError:
+                        duration = "n/a"
+                print(
+                    f"agent_id={run.agent_id}  agent_type={run.agent_type}  "
+                    f"status={run.status}  duration={duration}"
+                )
+            return 0
+
+        if args.command == "subagent-retries":
+            rows = subagent_retries(args.agent_type, since=args.since, db=args.db)
+            if args.json:
+                print_json(rows)
+                return 0
+            if not rows:
+                print(f"No subagent runs found for {args.agent_type}.")
+                return 0
+            for row in rows:
+                print(
+                    f"parent_session_id={row['parent_session_id']}  spawn_count={row['spawn_count']}"
+                )
+            return 0
+
         if args.command == "recent":
             issue_filter = getattr(args, "issue", None)
 
@@ -542,8 +652,6 @@ def main_session() -> int:
             max_sessions = getattr(args, "max_sessions", None)
             since_flag = getattr(args, "since", None)
             if since_flag is not None:
-                from datetime import datetime
-
                 try:
                     try:
                         dt = datetime.fromisoformat(since_flag.replace("Z", "+00:00"))
