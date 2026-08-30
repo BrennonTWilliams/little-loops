@@ -9,7 +9,7 @@ discovered_by: review-of-FEAT-3332
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T00:00:00Z'
 depends_on: [FEAT-3332]
-decision_needed: false
+decision_needed: true
 learning_tests_required: [pyyaml]
 unproven_mechanism: true
 spike_completed: true
@@ -205,6 +205,23 @@ defined-once AC) or converges on B's fragment anyway.
   edges; the rolling baseline is a mechanical extra mode of the existing comparison
   script, with the byte-identical-pair constraint (`test_builtin_loops.py:18046`) and
   the resolved-fragments test fixture as the known costs.
+
+### Routing Decision (Expected Behavior Question 2 — Unresolved)
+
+Late-violation routing is not yet decided. Two concrete alternatives, no stated
+preference — decide before implementation:
+
+### Option A
+
+Fail the run — route post-`emit_artifact` violations to `diagnose`, matching
+FEAT-3332's existing routing for the intent-window gate.
+
+### Option B
+
+Warn-and-continue — route post-`emit_artifact` violations to
+`finalize_await_confirmation`, surfacing the violation in the confirmation text
+so the operator sees it without discarding the valid `workflow.yaml` artifact
+that already exists at that point.
 
 ## Integration Map
 
@@ -517,6 +534,7 @@ _Added by `/ll:spike` on 2026-08-29_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-30T04:33:44 - `71bd91ab-afc2-49d1-b813-807e5cd751b0.jsonl`
 - `/ll:refine-issue` - 2026-08-30T04:22:25 - `afda9a92-b08f-49bc-af59-b238d6180c39.jsonl`
 - `/ll:spike` - 2026-08-30T04:18:09 - `ff699041-98cb-4619-b0e1-ea29f873929f.jsonl`
 - `/ll:refine-issue` - 2026-08-30T03:54:52 - `60f4b2a5-6804-4c4a-8095-0f67f3431a09.jsonl`

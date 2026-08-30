@@ -1,10 +1,10 @@
 ---
 id: ENH-3129
-status: open
+status: cancelled
 priority: P3
 parent: EPIC-3213
 epic: EPIC-3213
-captured_at: "2026-08-09T05:58:12Z"
+captured_at: '2026-08-09T05:58:12Z'
 discovered_date: 2026-08-09
 discovered_by: capture-issue
 verify_verdict: NON_VALID
@@ -166,8 +166,33 @@ up to one `timeout_seconds`.
 
 ## Status
 
-- **Current**: open
+- **Current**: cancelled
 - **Blockers**: None
+
+### Cancellation Rationale (2026-08-29)
+
+Cancelled deliberately: timeout-mechanism proliferation outweighs the marginal
+safety this adds. `ll-auto` already carries two independent kill paths —
+`automation.timeout_seconds` (per-invocation, default 7200,
+`config/automation.py:21`) and `automation.idle_timeout_seconds`
+(no-output kill, `config/automation.py:22`) — and the sprint driver has its own
+per-issue ceiling (`sprints.max_issue_wall_clock_time`,
+`config/features.py:451`, enforced at `cli/sprint/run.py:49,689`). Adding a
+fourth knob with its own interaction rules and a distinct failure reason is
+config surface and a second kill path to reason about, not a clear win.
+
+Supporting facts:
+- `verify_verdict: NON_VALID` — the "raise the default" half of the ask was
+  already satisfied by commit `c4a6ef10` (7200, not the proposed 5400).
+- The remaining design question (interrupt in-flight phase vs. gate the next
+  one) was never resolved, and the "gate the next phase" answer overshoots by
+  up to one full `timeout_seconds` — i.e. a weak ceiling.
+- Nothing depends on this: BUG-3131 and the completed ENH-3130 reference it via
+  `relates_to` only; no `blocked_by`/`depends_on` edges.
+
+Revisit trigger: an actual unattended `ll-auto` run where a single issue
+consumes the window despite both existing timeouts. Absent that evidence, use
+`ll-sprint` (which already has the ceiling) for bounded overnight runs.
 
 ## Verification Notes
 
