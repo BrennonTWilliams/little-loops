@@ -11,6 +11,7 @@ captured_at: '2026-08-26T00:00:00Z'
 depends_on: [FEAT-3332]
 decision_needed: false
 learning_tests_required: [pyyaml]
+unproven_mechanism: true
 ---
 
 # FEAT-3335: Generalize the check_intent_scope containment gate to workflow-generator's post-gate prompt states
@@ -66,6 +67,13 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - Step-budget ground truth (`max_steps: 45`): the default happy path (no shrink, no promote) visits ~16 states. `count_intent_retry`/`count_emit_retry` bound their loops at 3 attempts (~3 steps per retry cycle, up to +12 combined), but the `validate_sketch`→`sketch_state_graph`, `validate_evaluators`→`attach_evaluators`, and `validate_routing`→`resolve_routing` failure bounces have NO counter — they are unbounded 2-step cycles limited only by `max_steps`, and are the real headroom competitor. The shrink pass (off by default) consumes 1 + ~3-4 steps per candidate state of the generated workflow.
 - Gate insertion edges, concretely: per-pass gates would sit on `validate_sketch.on_yes→attach_evaluators`, `validate_evaluators.on_yes→resolve_routing`, `validate_routing.on_yes→emit_artifact`, `validate_artifact.on_yes→check_shrink_enabled`, `shrink_select_candidate.on_no→promotion_gate`, and `promote.next→done`. Because every insertion point is on an on_yes/exit edge, retry loops never re-cross a gate — each gate costs exactly +1 step per traversal (+6 total for full coverage; happy path 16→22 of 45).
 - Violation-reporting plumbing: the gate writes violations to `${run_dir}/.scope_violations.txt` (truncated at `init`), and `diagnose`'s prompt (`workflow-generator.yaml:866-889`) reads it — but that prompt's text describes only the intent-window failure ("check_intent_scope found..."). Late gates routing to `diagnose` need that text generalized; a warn-and-continue route needs `finalize_await_confirmation`'s prompt (lines 847-859) to surface the violation text instead.
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- Anchor refresh (2026-08-30, re-verified against current tree): every citation below now resolves at a different line than stated above, but the substantive claim at each is unchanged. `check_intent_scope` now spans `workflow-generator.yaml:248-363` (`on_yes` at line 362, `on_no` at 363), not `:229-344`. `init` now spans `:44-187` (`next: capture_intent` at 187), not `:44-168`. The six insertion edges now sit at `validate_sketch.on_yes:425`, `validate_evaluators.on_yes:507`, `validate_routing.on_yes:555`, `validate_artifact.on_yes:614`, `shrink_select_candidate.on_no:713`, `promote.next:854`. `diagnose`'s prompt is now at `:875-899`; `finalize_await_confirmation`'s is now at `:856-868`. `fence.py`'s `("workflow-generator.yaml", "capture_intent")` fence-site tuple is now at line 90, not `:76`.
+- Drift root cause: the ~19-line shift traces to an unrelated ENH-3355 block (lines 69-86 of `init`) that generates `evaluator-vocab.md` from `little_loops.fsm.validation`'s own tables — landed after this issue's 2026-08-28 refine pass, no relation to FEAT-3332/3335 containment logic. No state was renamed, removed, or rerouted.
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` anchors also moved: `## Runtime Containment Gates` heading now at `:792` (was `~:679`), limit #1 ("One-shot window...FEAT-3335") now at `:830-837` (was `:714-723`), limit #4 (`.loops`/`.ll` exclusion) now at `:848-852` (was `:735`).
+- New gap in that doc, found this pass: limit #1's own enumeration of unaudited states (`sketch_state_graph`, `attach_evaluators`, `resolve_routing`, `emit_artifact`, `diagnose`) omits `finalize_await_confirmation`, even though it is a reachable `action_type: prompt` state (line 856) on the `promotion_gate.on_no` branch. Implementation Step 7's doc update should add it to that enumeration, not just replace the one-shot caveat.
 
 ## Expected Behavior
 
@@ -149,6 +157,11 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 > **Selected:** Option B — only shape satisfying all ACs as written (full coverage incl. shrink/promote windows, gate body defined once, per-window attribution); fragment machinery is precedented and the +6 step cost is deterministic against `max_steps: 45`.
 
 **Recommended**: Option B — the step budget affords +6 (the unbounded validate-bounce loops and the off-by-default shrink pass are the only real competitors for the remaining ~23 steps), the fragment facility makes N insertions a single definition (satisfying the "defined once" AC), and per-window attribution is this issue's stated point (Use Case: "the violation is attributed to the offending state (or window)"). The late-violation routing question (Expected Behavior question 2: fail vs warn-and-continue after `emit_artifact` has produced a valid artifact) is NOT settled by this research — both routes are wireable (see the violation-reporting plumbing finding under Current Behavior) and the choice is an operator-preference call to record via /ll:decide-issue alongside this option selection.
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- Reconfirmed (2026-08-30, independent repo-wide search): no loop or Python module anywhere in the tree implements a per-pass rolling-baseline diff pattern — searching for `rolling baseline`/`rolling_baseline` as a mechanism name found no hits outside this issue's own text and its decision record. The closest analog, `diff_stall_gate`'s `evaluate.previous`-style comparison, is LLM-loop convergence detection across iterations, a different mechanism (stall detection, not containment attribution). The selected Option B depends on this mechanism for its per-window attribution claim.
+  ⚠ Unproven mechanism — rolling baseline has no in-repo precedent
 
 ### Decision Rationale
 
@@ -312,6 +325,10 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - Docs anchors, current: the "one-shot window" caveat to replace is limit #1 of "Five limits" in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:714-723` (it names FEAT-3335 explicitly); the wholesale `.loops/`/`.ll/` exclusion is limit #4 (line 735). The state-graph diagram to update is `docs/reference/loops.md:157-176`; that file's Context Variables table (lines 147-153) also omits `max_intent_retries` — a pre-existing gap adjacent to the edit, not caused by it.
 - `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml` currently passes clean (27 states, max_steps 45) — the no-new-WARNING-categories AC baselines against `TestValidatorWarningBudget.test_deterministic_warning_categories_do_not_regrow` (`scripts/tests/test_builtin_loops.py:16221`, class at 16119; both resolve).
 
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- HARNESS_OPTIMIZATION_GUIDE.md scope addition, found this pass: limit #1's enumeration of unaudited states (currently `sketch_state_graph`, `attach_evaluators`, `resolve_routing`, `emit_artifact`, `diagnose`) omits `finalize_await_confirmation` — a reachable `action_type: prompt` state on the `promotion_gate.on_no` branch. The doc-update Files-to-Modify entry should add this state to the enumeration being replaced, not just swap out the one-shot caveat text.
+
 ## Program Design
 
 ### Signatures
@@ -366,6 +383,14 @@ validate` see ordinary shell states.
   post-`emit_artifact` gates (fail via `diagnose` vs warn-and-continue via
   `finalize_await_confirmation`) is Expected Behavior question 2, to be
   recorded by /ll:decide-issue.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- No `parameters:`/`with:` binding is actually required for the factored fragment: the shared shell body only ever references `${context.run_dir}`, `${captured.run_dir.output}`, and `${captured.run_dir.output:shell}`, all already resolvable at any state in this loop without a fragment binding. A factored fragment can supply the full literal `action:` body with zero declared `parameters:` — mirroring `lib/common.yaml`'s `loop_failure_diagnose` (full literal body + fixed routing, no required `with:`), not `snapshot_artifact` (which does take a `with:`-bound `run_dir`). Each of the six insertion states then supplies only `fragment: <name>` plus its own `on_yes`/`on_no`.
+- Call Path edges, current line numbers (2026-08-30): `validate_sketch.on_yes:425`, `validate_evaluators.on_yes:507`, `validate_routing.on_yes:555`, `validate_artifact.on_yes:614`, `shrink_select_candidate.on_no:713`, `promote.next:854` (all confirmed still on_yes/exit edges, none re-targeted).
+- Related convention, evidence only: `mechanize-skills.yaml:307-311`'s `diagnosis_retry` state explicitly declines the existing `retry_counter` fragment in favor of hand-rolled logic, because that fragment's baked-in path (`.loops/tmp/`) conflicts with per-run isolation. This codebase does have precedent for opting out of an otherwise-applicable fragment when its hardcoded path assumption doesn't fit — worth checking against if the rolling-baseline fragment ends up encoding a path assumption of its own.
 
 ## Implementation Steps
 
@@ -472,7 +497,17 @@ Original incident: the workflow-generator output-JSON gate-gap postmortem
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-30T03:54:52 - `60f4b2a5-6804-4c4a-8095-0f67f3431a09.jsonl`
 - `/ll:wire-issue` - 2026-08-28T23:41:12 - `425908b6-e1d5-4f67-8fd1-7db76f87cdd4.jsonl`
 - `/ll:decide-issue` - 2026-08-28T23:33:08 - `9f949531-f7bd-43e0-816a-3a64d73b2bba.jsonl`
 - `/ll:refine-issue` - 2026-08-28T23:25:14 - `425908b6-e1d5-4f67-8fd1-7db76f87cdd4.jsonl`
 - `/ll:format-issue` - 2026-08-28T23:13:29 - `425908b6-e1d5-4f67-8fd1-7db76f87cdd4.jsonl`
+
+## Tests
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- Anchor refresh (2026-08-30, test file grew between 2026-08-28 and now — content of every cited test unchanged, only line numbers moved): `class TestWorkflowGeneratorLoop` now at `:17935` (its raw `data` fixture at `:17945-17948`, still raw-only, no `resolve_fragments()` call — confirmed); `test_validation_gates_are_exit_code` now at `:18038`; `test_run_dir_used_throughout` now at `:18058`; `test_check_intent_scope_matched_pair_byte_identical` now at `:18082`; `test_shrink_gated_by_context_flag` now at `:18012` (its `check_shrink_enabled.on_no == "promotion_gate"` assertion still confirmed present, adjacent at `:18017`); `TestCheckIntentScopeShellAction` now at `:18544`, its parent `TestGeneralTaskFinalVerifySpinGateShellAction` now at `:3216`; `test_max_steps_is_45` now at `:18387`, `test_max_steps_is_at_least_40` now at `:18292`; `TestInterpSweepBaseline`/`test_completeness_guard` now at `:19572`/`:19583`; `TestValidatorWarningBudget`/`test_deterministic_warning_categories_do_not_regrow` now at `:16346`/`:16449`. No edge-pin test was found to assert any of the six insertion-edge targets — the earlier edge-pin survey's conclusion still holds under the refreshed line numbers.
+- Additional structural-test precedent for the fragment route (`fragment:`/`with:` on the raw dict, no `resolve_fragments()` call): `test_rn_decompose.py:489-497` asserts `state.get("fragment") == "subloop_rate_limit_diagnostic"` and `state.get("with", {}).get("operation") == "decomposition"` directly on `yaml.safe_load()` output — the same raw-fixture shape already cited, with a second concrete example.
