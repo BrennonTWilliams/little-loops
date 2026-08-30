@@ -3,7 +3,7 @@ id: EPIC-3022
 title: FSM sub-loop outcome and budget routing primitives
 type: EPIC
 priority: P3
-status: open
+status: done
 verify_verdict: VALID
 discovered_by: capture-issue
 discovered_date: 2026-08-02
@@ -43,14 +43,18 @@ instead of losing partial work behind a hard failure terminal.
 
 ## Children
 
-- **ENH-3019** (P2) — `on_timeout` route + `terminated_by` context exposure for
-  `loop:` sub-states, distinguishing timeout/max_iterations/signal from a
-  genuine `on_no`.
-- **ENH-3020** (P3) — optional per-state/iteration token/wall-clock budget
-  config + a routing hook analogous to `host_guard.py`'s `on_budget_exceeded`.
-
-Both are independent and can land in either order; no dependency edge between
-them.
+- **ENH-3019** (P2) — **done** (2026-08-04). `on_timeout` route +
+  `terminated_by` context exposure for `loop:` sub-states, distinguishing
+  timeout/max_iterations/signal from a genuine `on_no`. Also clamps a child
+  sub-loop's timeout to the parent's remaining wall-clock budget
+  (`fsm/executor.py:1089-1099`) so an `on_timeout` salvage state has headroom
+  to run.
+- **ENH-3020** (P3) — **cancelled** (2026-08-29). Both halves of the ask
+  already existed: the wall-clock half is `StateConfig.timeout`/`idle_timeout`
+  plus ENH-3019's routing, and the token half is `StateConfig.cost_ceiling`
+  (ENH-2477) — which turned out to be schema-validated but never enforced at
+  runtime. That defect is re-filed as **BUG-3360**; see ENH-3020's
+  Cancellation Rationale for the full evidence.
 
 ## Integration Map
 
@@ -97,17 +101,23 @@ branches, and the context/counter plumbing each needs. Out of scope: changing
 
 ## Status
 
-**Open** | Created: 2026-08-03 | Priority: P3
+**Done** | Created: 2026-08-03 | Closed: 2026-08-29 | Priority: P3
+
+Closed with ENH-3019 done and ENH-3020 cancelled. The remaining work the epic
+would have covered is a defect, not a primitive, and is tracked on BUG-3360.
 
 ## Success Criteria
 
-- [ ] `on_timeout` is a valid per-state route in the FSM schema, falls back to
+- [x] `on_timeout` is a valid per-state route in the FSM schema, falls back to
       `on_no` when unset, and `terminated_by` is exposed on parent `context`
       after a `loop:` state resolves (ENH-3019)
-- [ ] An optional per-state/iteration token/wall-clock budget can be
+- [x] An optional per-state/iteration token/wall-clock budget can be
       configured and routed on, with no behavior change for loops that don't
-      configure it (ENH-3020)
-- [ ] `python -m pytest scripts/tests/` covers both new routing paths
+      configure it — **withdrawn**: the wall-clock half already existed as
+      `StateConfig.timeout`/`idle_timeout` + ENH-3019's routing, and the cost
+      half already existed as declarative schema (`StateConfig.cost_ceiling`,
+      ENH-2477). Its missing enforcement is BUG-3360.
+- [x] `python -m pytest scripts/tests/` covers the ENH-3019 routing paths
 
 ## Related Key Documentation
 

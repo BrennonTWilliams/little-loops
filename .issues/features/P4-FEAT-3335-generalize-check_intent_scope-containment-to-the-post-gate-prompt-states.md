@@ -8,12 +8,20 @@ status: open
 discovered_by: review-of-FEAT-3332
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T00:00:00Z'
-depends_on: [FEAT-3332]
+depends_on:
+- FEAT-3332
 decision_needed: false
-learning_tests_required: [pyyaml]
-unproven_mechanism: false  # rolling baseline retired by spike 2026-08-29 (see Spike Results)
+learning_tests_required:
+- pyyaml
+unproven_mechanism: false
 spike_completed: true
 spike_attempted: true
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # FEAT-3335: Generalize the check_intent_scope containment gate to workflow-generator's post-gate prompt states
@@ -620,6 +628,7 @@ _Added by `/ll:spike` on 2026-08-29_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T04:54:43 - `9f92bbe1-ed2c-486d-a339-d426ab741e3f.jsonl`
 - `/ll:decide-issue` - 2026-08-30T04:43:20 - `b8abac66-e634-410f-b256-f5d2ac362d82.jsonl`
 - `/ll:decide-issue` - 2026-08-30T04:33:44 - `71bd91ab-afc2-49d1-b813-807e5cd751b0.jsonl`
 - `/ll:refine-issue` - 2026-08-30T04:22:25 - `afda9a92-b08f-49bc-af59-b238d6180c39.jsonl`

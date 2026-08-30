@@ -2,13 +2,15 @@
 id: ENH-3020
 title: No per-state/iteration token or wall-clock budget routing primitive in FSM loops
 type: enhancement
-status: open
+status: cancelled
 captured_at: "2026-08-02T00:00:00Z"
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 parent: EPIC-3022
-verify_verdict: VALID
+verify_verdict: NON_VALID
 priority: P3
+relates_to:
+- BUG-3360
 ---
 
 # No per-state/iteration token or wall-clock budget routing primitive in FSM loops
@@ -47,6 +49,72 @@ Without this, the only cost control is a single global timeout that fires blind 
 - **Risk**: Low — additive/optional, no change to existing loop behavior when unset.
 - **Breaking Change**: No.
 
+## Cancellation Rationale (2026-08-29)
+
+Cancelled deliberately: **both halves of this ask already exist**, and the one
+genuinely broken thing underneath is a dead-knob defect, not a new primitive.
+Re-filed as **BUG-3360**.
+
+### The wall-clock half is shipped
+
+`max_seconds_per_state` is a rename of `StateConfig.timeout`, which has existed
+alongside `idle_timeout`, and the loop-level `default_timeout` /
+`default_idle_timeout` (`fsm/schema.py:708-709,1395-1397`). The routing this
+issue asks for landed with **ENH-3019** (done, 2026-08-04):
+
+- `fsm/executor.py:1089-1099` — a sub-loop's timeout is clamped to the parent's
+  *remaining* wall-clock budget, with the code comment stating the intent
+  verbatim: "leaving wall-clock headroom for an `on_timeout` salvage state."
+- `fsm/executor.py:1162-1174` — `on_timeout` route fires on
+  timeout / `max_steps` / `max_iterations_reached`.
+- `${prev.timeout_kind}` (`"idle"` / `"wall"`, `fsm/interpolation.py:119-124`)
+  is interpolation-accessible, so non-sub-loop states can guard-route on
+  *why* they were killed.
+
+That is the "route to salvage before the global timeout forces a hard stop"
+scenario in the Motivation, already available to authors.
+
+### The token half is declared but inert
+
+**ENH-2477** (done, 2026-07-07) already added `StateConfig.cost_ceiling` —
+`cost_ceiling_per_state` (USD) and `cost_warn_at` — with full
+`to_dict`/`from_dict` (`fsm/schema.py:397-434,735,846-847,888-890,960`) and
+validation (`fsm/validation/structural_rules.py:755-831`). But it has **no
+runtime consumer**: `grep -n "cost_ceiling" fsm/executor.py` returns nothing,
+and the only other references anywhere are validation tests. Its documented
+companion, FEAT-2476's global `--max-cost`, was cancelled.
+
+So the schema already carries a per-state spend cap that `ll-loop validate`
+accepts and the executor ignores. Building `max_tokens_per_iteration` on top
+would add a *second* declarative spend cap beside an inert first one.
+
+### Proliferation
+
+Time-based knobs already in this layer: loop `timeout`, `default_timeout`,
+`default_idle_timeout`, state `timeout`, state `idle_timeout`, advisor
+`timeout`, llm `timeout`, `rate_limit_max_wait_seconds`,
+`rate_limit_backoff_base_seconds`, `rate_limit_long_wait_ladder` — plus
+`stall_detector`, `rate_limit_circuit`, and `host_guard`'s memory budget.
+`max_seconds_per_state` would be the eleventh and a synonym for the fourth.
+Same reasoning that cancelled ENH-3129.
+
+### Supporting facts
+
+- The originating evidence is a single `deep-research` run
+  (`deep-research-loop-analysis-2026-08-03.md`), whose specific failure — a
+  sub-loop consuming the global budget — is exactly what ENH-3019's clamp
+  fixed.
+- The Scope Boundary note on EPIC-3022 (added by `/ll:audit-issue-conflicts`)
+  flagged an unresolved collision with EPIC-3041's FEAT-3038/FEAT-3039, which
+  independently add a second "route on running out of X" shape to the same
+  layer. That question was never answered and is now carried on BUG-3360.
+- No dependency edges: nothing declares `blocked_by`/`depends_on` against this.
+
+**Revisit trigger:** a real run where a state burns a material amount of spend
+*inside* its wall-clock timeout (e.g. parallel subagents) and BUG-3360's
+resolution proves insufficient. Absent that, per-state cost stays observable
+after the fact via `fsm/cost_graph.py` and `/ll:debug-loop-run`.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -59,4 +127,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-08-02 | Priority: P3
+**Cancelled** | Created: 2026-08-02 | Cancelled: 2026-08-29 | Priority: P3
+
+Superseded in substance by ENH-3019 (wall-clock half, done) and BUG-3360
+(token/cost half, re-filed as a dead-knob defect).
