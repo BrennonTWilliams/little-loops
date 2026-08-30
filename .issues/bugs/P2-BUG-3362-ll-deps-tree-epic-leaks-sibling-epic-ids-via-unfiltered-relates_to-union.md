@@ -9,6 +9,12 @@ discovered_date: '2026-08-30'
 captured_at: '2026-08-30T18:53:49Z'
 relates_to:
 - BUG-3361
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 25
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3362: ll-deps tree --epic leaks sibling EPIC ids via unfiltered relates_to union
@@ -128,6 +134,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T19:19:32 - `48d40a53-93a6-4504-86d8-4f8fd5b34143.jsonl`
 - `/ll:wire-issue` - 2026-08-30T19:07:21 - `3e336bf1-dd8f-4ab7-b5d8-b5bf4adff8fb.jsonl`
 - `/ll:refine-issue` - 2026-08-30T18:58:55 - `12d26f9a-ed28-4a88-a053-f90953905374.jsonl`
 - `/ll:format-issue` - 2026-08-30T18:57:02 - `9bc3b2e3-2cf2-4efa-91d3-ec380f6bfaf0.jsonl`
