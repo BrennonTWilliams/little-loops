@@ -39,6 +39,52 @@ after FEAT-3343 — the tier-1 read surface is now eight tools (the mutating tie
 surface is the seven), and the inventory table at lines 32-33 already lists all
 eight. The walkthrough below the heading still covers five.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- The tier-2 comment block actually spans `tools.py:235-251` (not just 236-244): a
+  second paragraph (post-244) documents "Guard 1" (the `apply` required-keyword
+  dry-run enforcement) as a related but separate concern from the printing rule —
+  the new doc section should not conflate the two.
+- Confirmed by repo-wide grep: `cmd_set_status`, `cmd_link`, and `cmd_run` have zero
+  import or call sites anywhere in `scripts/little_loops/mcp_server/` — only
+  comment/docstring mentions (`tools.py:240`, `tools.py:664`). `_tool_issue_set_status`
+  (tools.py:317-370) and `_tool_issue_link` (tools.py:373-420) call
+  `apply_status_transition`/`apply_link` directly.
+- `_tool_loop_start`'s `redirect_stdout`/`redirect_stderr` wrap (`tools.py:699-705`)
+  captures both streams into `io.StringIO()` buffers; `stdout_buf` is captured but
+  never read (its only purpose is suppressing the success-path prints), while
+  `stderr_buf` is read back to build the raised `ValueError` message on non-zero
+  `run_background()` return. `run_background` itself lives at
+  `scripts/little_loops/cli/loop/_helpers.py:1548` and prints on both its success
+  path (1711-1716) and its pre-flight failure path (1579, 1597-1599).
+- Repo-wide grep for `redirect_stdout`/`redirect_stderr` across all of
+  `scripts/little_loops/` returns only the one occurrence at `tools.py:700` — the two
+  mitigations named in this issue (extract a non-printing library function;
+  `redirect_stdout`/`redirect_stderr` wrap) are the only two mitigation shapes that
+  exist in the codebase today, there is no third pattern to also document.
+- `handle_list_tools`'s own docstring (`tools.py:1190-1203`) already states "the
+  fixed sixteen-tool catalog in source order" (8 read + 7 tier-2 write + 1 tier-3
+  `loop_start` = 16) — a concrete total the refreshed heading/walkthrough can cite.
+- `### The five tools, end to end` (line 203) walks through exactly 5 of the 8 read
+  tools (`issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`);
+  `queue_list`, `queue_get`, and `loop_list` have no `mcp-call` walkthrough anywhere
+  in that section. `FEAT-3352` (which added `loop_list`) is the change that made this
+  heading stale.
+- `docs/guides/MCP_SERVER_GUIDE.md` is cross-referenced from `docs/reference/API.md:103`,
+  `docs/reference/CLI.md:5145`, `docs/reference/ARTIFACT_CONTROL_LEVELS.md:14`,
+  `docs/index.md:47`, and `mkdocs.yml:84`. `scripts/tests/test_wiring_reference_docs.py:213`
+  asserts a specific wiring cross-link between this guide and
+  `ARTIFACT_CONTROL_LEVELS.md` (ENH-3307) — an existing test that touches this file
+  and must keep passing after the edit.
+- No test asserts `_TOOL_HANDLERS.keys()` parity against `_TOOLS` tool names (dispatch
+  map vs. advertised catalog). `test_no_unguarded_mutating_tool_is_advertised`
+  (`scripts/tests/test_mcp_server.py:277-320`) only checks that every advertised
+  non-read-only tool name is in `MUTATING_TOOLS` or `TASK_STARTING_TOOLS` — a tool
+  added to `_TOOLS` but omitted from `_TOOL_HANDLERS` fails only indirectly (as an
+  "Unknown tool" `is_error=True` result) if and when some test happens to call it.
+
 ## Expected Behavior
 
 A contributor opening `docs/guides/MCP_SERVER_GUIDE.md` to add a tool finds a short
@@ -78,6 +124,28 @@ no code change.
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- Two structurally coherent placements exist for the new "Adding a tool" `##`
+  section, given the guide's current heading order (`## Verifying with mcp-call` →
+  `### The five tools, end to end` at 203, then `## The Mutation Surface and Its
+  Guards` at 405, then `## Starting, Polling, and Stopping a Run` at 492): before
+  "The Mutation Surface and Its Guards" (that section already documents the guard
+  mechanics — Guard 1 dry-run, Guard 2 per-transport policy — a new tool must plug
+  into), or after it and before "Starting, Polling, and Stopping a Run" (that
+  section already discusses `loop_start` in detail, the tool whose
+  `redirect_stdout` mitigation the new section must cite). Neither placement is
+  forced by any existing anchor or cross-reference.
+- The registration checklist should not overclaim safety: no existing test asserts
+  `_TOOL_HANDLERS`/`_TOOLS` parity (see Current Behavior findings) — a tool
+  registered in `_TOOLS` but missed in `_TOOL_HANDLERS` is only caught if some test
+  happens to call it, not by any dedicated gate.
+- `scripts/tests/test_wiring_reference_docs.py:213` asserts a specific cross-link
+  between this guide and `ARTIFACT_CONTROL_LEVELS.md` (ENH-3307) — the new section
+  must not disturb that existing anchor/link.
 
 ## Implementation Steps
 
@@ -122,4 +190,5 @@ no code change.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-30T03:52:40 - `ed7f738d-23a1-4ebc-8ac8-c914ef582fa7.jsonl`
 - `/ll:capture-issue` - 2026-08-28T18:43:17 - `51a7dd65-db46-4ad2-be82-40e74f2445d1.jsonl`
