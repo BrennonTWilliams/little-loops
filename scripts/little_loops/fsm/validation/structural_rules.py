@@ -834,6 +834,22 @@ def _validate_state_cost_ceiling(
             )
         )
 
+    # BUG-3360: only prompt/slash_command actions ever write usage.jsonl rows
+    # (fsm/persistence.py:1008-1010) — shell/mcp_tool/contract states can never
+    # accrue cost, so a declared ceiling on one of them can never trip.
+    if state.action_type not in ("prompt", "slash_command", None):
+        errors.append(
+            ValidationError(
+                message=(
+                    "'cost_ceiling' is inert on this state: action_type "
+                    f"'{state.action_type}' never produces token usage, so its cost "
+                    "is always 0 and the ceiling can never be enforced"
+                ),
+                path=path,
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
     return errors
 
 

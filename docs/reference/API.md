@@ -5752,7 +5752,7 @@ class StateConfig:
     throttle: ThrottleConfig | None = None           # Per-state progressive tool-call throttling
     on_throttle_hard: str | None = None              # Target state when hard_max is reached (or hard-stop if unset)
     learning: LearningConfig | None = None           # FEAT-1283: type=learning state targets + retry budget
-    cost_ceiling: CostCeilingConfig | None = None    # Per-state USD limit for LLM actions; routes on cost ceiling trip
+    cost_ceiling: CostCeilingConfig | None = None    # Per-state USD limit for LLM actions; aborts on cost ceiling trip
 ```
 
 #### ThrottleConfig

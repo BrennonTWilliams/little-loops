@@ -5,7 +5,7 @@ serialization layer with no I/O in the core, plus thin write/read
 helpers at the module boundary. The on-disk data source is
 ``<run_dir>/usage.jsonl`` (one row per ``action_complete`` event),
 written by ``PersistentExecutor._handle_event()`` at
-``fsm/persistence.py:637-655``.
+``fsm/persistence.py:1008-1036``.
 
 This module is the *live* per-state cost path and stays sourced from
 ``usage.jsonl`` (which carries FSM ``state``). A history-DB-backed per-state

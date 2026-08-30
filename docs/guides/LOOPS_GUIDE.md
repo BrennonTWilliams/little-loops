@@ -201,7 +201,7 @@ the guard never blocks a loop on an unreadable host.
 
 ### Per-State Cost Ceiling (`cost_ceiling:`)
 
-A loop where one or two states account for the bulk of spend (e.g. an `execute` state that fans out 30 LLM invocations) needs a tighter cap than the loop-wide `--max-cost` ceiling. The `cost_ceiling:` block (ENH-2477) lives **per state** and trips when a single state visit's USD cost crosses the threshold:
+A loop where one or two states account for the bulk of spend (e.g. an `execute` state that fans out 30 LLM invocations) needs a tighter cap than the loop-wide `--max-cost` ceiling. The `cost_ceiling:` block (ENH-2477, enforced by BUG-3360) lives **per state** and aborts the run when a state's cumulative USD cost across all its visits crosses the threshold:
 
 ```yaml
 states:
@@ -211,17 +211,22 @@ states:
       prompt: |
         ...
     cost_ceiling:
-      cost_ceiling_per_state: 1.50   # hard cap; routes/aborts when exceeded
+      cost_ceiling_per_state: 1.50   # hard cap; aborts the run when exceeded
       cost_warn_at: 0.50            # optional warn-only threshold (visible spend)
     # ... other state fields ...
 ```
 
 | Field | Default | Behavior |
 |-------|---------|----------|
-| `cost_ceiling_per_state` | `null` (no cap) | When a state visit's USD cost exceeds this value, the run routes per `on_no`/`on_error` (no dedicated `on_ceiling_exceeded` key exists in the schema). Validator rejects negative values. |
-| `cost_warn_at` | `null` (no warn) | Warning-only — emits a `cost_warn` event when crossed but does not block. Validator **rejects** (error) when `cost_warn_at > cost_ceiling_per_state` (a logically inconsistent config). |
+| `cost_ceiling_per_state` | `null` (no cap) | When this state's aggregated USD cost (summed across all its visits) exceeds this value, the run **aborts** with `terminated_by="cost_ceiling_exceeded"` — there is no route target; this is abort-only, unlike the host-guard budgets above. Validator rejects negative values. |
+| `cost_warn_at` | `null` (no warn) | Warning-only — emits a `cost_ceiling_warn` event once per state when crossed but never aborts. Validator **rejects** (error) when `cost_warn_at > cost_ceiling_per_state` (a logically inconsistent config). |
 
-The validator at `fsm/validation/structural_rules.py:_validate_state_cost_ceiling` enforces both the negative-value rejection and the `warn_at > ceiling` rejection. Per-state cost attribution is independent; a global `--max-cost` loop-level ceiling was tracked separately by FEAT-2476 (cancelled 2026-07-10) and is not currently shipped.
+Two inertness traps to know about:
+
+- **Only `prompt`/`slash_command` states can trip a ceiling.** Cost is derived from `usage.jsonl`, which only gets a row for LLM-invoking actions — `shell` and `mcp_tool` actions never produce token data, so their cost is always 0 and a declared ceiling can never fire. The validator emits a warning (not an error) when `cost_ceiling` is declared on such a state.
+- **The ceiling needs a persistent run.** Cost is read live from `<run_dir>/usage.jsonl`, which only exists under `PersistentExecutor` (i.e. a real `ll-loop run`, not a bare in-process `FSMExecutor.run()`). Without it, the check logs a one-time "cost_ceiling_unknown" notice per state and does not abort — unknown cost is never treated as under budget.
+
+The validator at `fsm/validation/structural_rules.py:_validate_state_cost_ceiling` enforces the negative-value rejection, the `warn_at > ceiling` rejection, and the inert-action-type warning. Per-state cost attribution is independent; a global `--max-cost` loop-level ceiling was tracked separately by FEAT-2476 (cancelled 2026-07-10) and is not currently shipped.
 
 ### Prompt-Size Guard (prompt_size_guard)
 

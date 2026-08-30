@@ -3,10 +3,11 @@ id: BUG-3360
 type: BUG
 title: cost_ceiling is schema-validated but never enforced at runtime
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-30'
 captured_at: '2026-08-30T04:51:19Z'
+completed_at: '2026-08-30T20:45:57Z'
 labels:
 - fsm
 - loops
@@ -407,6 +408,8 @@ _Added by `/ll:confidence-check` on 2026-08-30_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T20:45:30 - `f157be7e-42d9-436b-aab4-68974045eabd.jsonl`
+- `/ll:ready-issue` - 2026-08-30T20:25:13 - `44e1503d-5bf7-4123-bd76-091b111a37b2.jsonl`
 - `/ll:confidence-check` - 2026-08-30T20:21:21 - `2728ce43-8a34-4c85-a85c-d62c320e9372.jsonl`
 - `/ll:confidence-check` - 2026-08-30T20:12:02 - `0689d759-b3b6-42ca-983c-618fccd6cc96.jsonl`
 - `/ll:verify-issues` - 2026-08-30T20:06:44 - `a1ad8a57-f920-432c-8aa4-c8eaf847f8b7.jsonl`

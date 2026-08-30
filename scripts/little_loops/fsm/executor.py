@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from little_loops.fsm.continuity import summarize_completed_state
+from little_loops.fsm.cost_graph import CostReport
 from little_loops.fsm.evaluators import (
     EvaluationResult,
     evaluate,
@@ -430,6 +431,12 @@ class FSMExecutor:
         # Set by _run_action when the cumulative RSS sum first crosses the budget.
         self._pending_host_budget_exceeded: bool = False
 
+        # BUG-3360: per-state cost_ceiling enforcement. Tracks which states have
+        # already logged a cost_warn_at warning or an "unknown" (unpriceable
+        # model / no usage.jsonl) notice, so each fires at most once per state.
+        self._cost_ceiling_warned_states: set[str] = set()
+        self._cost_ceiling_unknown_logged_states: set[str] = set()
+
         # Stall detector for repeated (state, exit_code, verdict) triples.
         # Enabled via fsm.circuit.repeated_failure (FEAT-1637); None when not configured.
         self._stall_detector: StallDetector | None = None
@@ -811,6 +818,20 @@ class FSMExecutor:
                                 f"budget of {_hg_cfg.max_cumulative_subproc_mb} MB"
                             ),
                         )
+
+                # BUG-3360: per-state cost_ceiling enforcement. Checked after the
+                # state's own action has completed (and its usage.jsonl row, if
+                # any, has been appended) — abort-only, no route target.
+                if self._check_cost_ceiling(state_config):
+                    _ceiling = state_config.cost_ceiling
+                    assert _ceiling is not None  # only True when a ceiling is declared
+                    return self._finish(
+                        "cost_ceiling_exceeded",
+                        error=(
+                            f"State '{self.current_state}' cost exceeded ceiling of "
+                            f"${_ceiling.cost_ceiling_per_state:.4f}"
+                        ),
+                    )
 
                 # Handle maintain mode
                 if next_state is None and self.fsm.maintain:
@@ -3578,6 +3599,87 @@ class FSMExecutor:
             return None
 
         return None
+
+    def _check_cost_ceiling(self, state: StateConfig) -> bool:
+        """Post-action per-state cost-ceiling check (BUG-3360).
+
+        Called once per state visit, after the action's ``usage.jsonl`` row
+        (if any) has been appended synchronously by the ``action_complete``
+        event handler. Sums this state's cost from the live file via
+        ``CostReport.from_usage_jsonl`` and compares it against
+        ``state.cost_ceiling.cost_ceiling_per_state``.
+
+        Returns:
+            True when the hard ceiling is breached — the caller finishes the
+            run via ``self._finish("cost_ceiling_exceeded", ...)``, mirroring
+            the abort branch of the host-budget handling at
+            :data:`HOST_BUDGET_EXCEEDED_EVENT`. False in every other case,
+            including all "unknown" cases (unpriceable model, missing/empty
+            usage.jsonl, or a state that simply produced no usage rows) —
+            unknown cost is never treated as under budget.
+        """
+        ceiling = state.cost_ceiling
+        if ceiling is None:
+            return False
+
+        state_name = self.current_state
+        run_dir = self.fsm.context.get("run_dir", "")
+        report = CostReport.from_usage_jsonl(Path(run_dir) / "usage.jsonl") if run_dir else None
+
+        if report is None or not report.states:
+            # Missing/empty usage.jsonl, or no run_dir at all (bare
+            # FSMExecutor.run() outside PersistentExecutor) — the ceiling
+            # cannot be evaluated. Log once; never abort on unknown cost.
+            if state_name not in self._cost_ceiling_unknown_logged_states:
+                self._cost_ceiling_unknown_logged_states.add(state_name)
+                self._emit(
+                    "cost_ceiling_unknown",
+                    {"state": state_name, "reason": "usage.jsonl unavailable"},
+                )
+            return False
+
+        bucket = next((s for s in report.states if s.state == state_name), None)
+        if bucket is None:
+            # This state produced no usage.jsonl rows this run (e.g. a
+            # shell/mcp_tool action) — genuinely 0 cost, not unknown.
+            return False
+
+        if bucket.has_unknown_model:
+            if state_name not in self._cost_ceiling_unknown_logged_states:
+                self._cost_ceiling_unknown_logged_states.add(state_name)
+                self._emit(
+                    "cost_ceiling_unknown",
+                    {"state": state_name, "reason": "unpriceable model"},
+                )
+            return False
+
+        cost_usd = bucket.cost_usd
+
+        if ceiling.cost_warn_at is not None and cost_usd >= ceiling.cost_warn_at:
+            if state_name not in self._cost_ceiling_warned_states:
+                self._cost_ceiling_warned_states.add(state_name)
+                self._emit(
+                    "cost_ceiling_warn",
+                    {
+                        "state": state_name,
+                        "cost_usd": round(cost_usd, 4),
+                        "cost_warn_at": ceiling.cost_warn_at,
+                    },
+                )
+
+        if ceiling.cost_ceiling_per_state is not None and cost_usd > ceiling.cost_ceiling_per_state:
+            self._emit(
+                "cost_ceiling_exceeded",
+                {
+                    "state": state_name,
+                    "cost_usd": round(cost_usd, 4),
+                    "cost_ceiling_per_state": ceiling.cost_ceiling_per_state,
+                    "action": "abort",
+                },
+            )
+            return True
+
+        return False
 
     def _maybe_wait_for_circuit(self, state: StateConfig) -> None:
         """Pre-action circuit-breaker check: sleep until shared 429 recovery.

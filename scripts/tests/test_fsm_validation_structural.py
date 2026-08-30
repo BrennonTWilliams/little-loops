@@ -770,6 +770,56 @@ class TestCostCeilingValidation:
         ]
         assert ceiling_errors == []
 
+    def _make_fsm_with_action_type(
+        self, ceiling: CostCeilingConfig | None, action_type: str | None
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="run.sh",
+                    action_type=action_type,
+                    on_yes="done",
+                    cost_ceiling=ceiling,
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_shell_action_type_warns_inert(self) -> None:
+        """BUG-3360: shell states never write usage.jsonl rows, so a ceiling on
+        one can never be enforced — validation should warn, not silently pass."""
+        fsm = self._make_fsm_with_action_type(
+            CostCeilingConfig(cost_ceiling_per_state=1.0), action_type="shell"
+        )
+        errors = validate_fsm(fsm)
+        assert any("inert" in e.message.lower() for e in errors)
+
+    def test_mcp_tool_action_type_warns_inert(self) -> None:
+        fsm = self._make_fsm_with_action_type(
+            CostCeilingConfig(cost_ceiling_per_state=1.0), action_type="mcp_tool"
+        )
+        errors = validate_fsm(fsm)
+        assert any("inert" in e.message.lower() for e in errors)
+
+    def test_prompt_action_type_no_inert_warning(self) -> None:
+        fsm = self._make_fsm_with_action_type(
+            CostCeilingConfig(cost_ceiling_per_state=1.0), action_type="prompt"
+        )
+        errors = validate_fsm(fsm)
+        assert not any("inert" in e.message.lower() for e in errors)
+
+    def test_unset_action_type_no_inert_warning(self) -> None:
+        """action_type=None is ambiguous (could resolve to prompt at runtime via
+        the '/' heuristic) — matches the existing model:/effort: convention of
+        not warning on None."""
+        fsm = self._make_fsm_with_action_type(
+            CostCeilingConfig(cost_ceiling_per_state=1.0), action_type=None
+        )
+        errors = validate_fsm(fsm)
+        assert not any("inert" in e.message.lower() for e in errors)
+
 
 class TestPromptSizeGuardValidation:
     """Tests for prompt_size_guard validation (ENH-2486)."""

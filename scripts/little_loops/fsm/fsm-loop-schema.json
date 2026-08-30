@@ -681,6 +681,23 @@
         "on_throttle_hard": {
           "type": "string",
           "description": "State to transition to when throttle.hard_max consecutive tool calls are made in a single state visit. If not set, falls back to on_error."
+        },
+        "cost_ceiling": {
+          "type": "object",
+          "description": "Per-state cost / token-spend ceiling (ENH-2477, enforced by BUG-3360). After each visit, the state's aggregated cost (summed from usage.jsonl) is compared against cost_ceiling_per_state; a breach aborts the run with terminated_by='cost_ceiling_exceeded'. Both fields optional; only prompt/slash_command actions can accrue cost, so declaring this on a shell/mcp_tool state is inert (validation warns).",
+          "properties": {
+            "cost_ceiling_per_state": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Hard USD cap on this state's aggregated cost across all visits. Breach aborts the run."
+            },
+            "cost_warn_at": {
+              "type": "number",
+              "minimum": 0,
+              "description": "USD threshold that logs a once-per-state warning. Warning-only; never aborts. Must not exceed cost_ceiling_per_state when both are set."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "patternProperties": {

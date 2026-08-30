@@ -82,6 +82,28 @@ session's backgrounded, scratch-pad-redirected command is still writing.
 - `hooks/scripts/scratch-cleanup.sh` — update the header comment describing
   it as a "SessionEnd hook" once re-homed.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `hooks/hooks.json` — also move (rewrite) the paired telemetry entry
+  `record-hook-event.sh SessionEnd hooks/scripts/scratch-cleanup.sh`
+  (`hooks/hooks.json:253-260`) to `record-hook-event.sh SessionStart
+  hooks/scripts/scratch-cleanup.sh`. `record-hook-event.sh` treats its event
+  name as an opaque label argument (`hooks/scripts/record-hook-event.sh:23`)
+  with no event-specific logic, so nothing blocks moving it — but leaving it
+  behind orphans the pairing and leaves a stale `SessionEnd` label for what
+  is now a `SessionStart` action. Moving both groups also leaves
+  `hooks.json`'s `SessionEnd` array empty; decide whether to drop the
+  `SessionEnd` key entirely or leave `"SessionEnd": []`.
+- `hooks/scripts/session-cleanup.sh` — line 19 comment ("Scratch cleanup now
+  lives in scratch-cleanup.sh, wired to SessionEnd.") needs updating to say
+  SessionStart.
+- `.claude/CLAUDE.md` — line 218 states "`SessionEnd` `scratch-cleanup.sh`
+  only prunes files..."; update to SessionStart.
+- `docs/development/TROUBLESHOOTING.md` — lines 1041-1043 claim `Stop`/
+  `SessionEnd` are the bash-only events needing the `record-hook-event.sh`
+  shim; stale once `SessionEnd` ends up with zero registered hooks.
+- `docs/ARCHITECTURE.md` — line 656 (`v30 hook_events` schema table row)
+  makes the same `Stop`/`SessionEnd` claim; same staleness risk.
+
 ### Dependent Files (Callers/Importers)
 - `hooks/adapters/claude-code/session-start.sh` — already runs at
   `SessionStart`; the new binding runs alongside it as its own hook entry,
@@ -103,10 +125,51 @@ session's backgrounded, scratch-pad-redirected command is still writing.
   ownership, no blind `rm -rf`) are unaffected by which event triggers the
   script.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_claude_code_adapter.py:130-147`
+  (`test_hooks_json_session_end_no_longer_references_sweep`) — its docstring
+  (line 134) reads "The other SessionEnd handler (scratch-cleanup.sh)
+  remains untouched." This won't fail the assertion but becomes stale prose
+  once `scratch-cleanup.sh` also moves; update it.
+- `scripts/tests/test_claude_code_adapter.py:92-114`
+  (`test_hooks_json_registers_sweep_under_session_start`) — exact template
+  to mirror for a new `test_hooks_json_registers_scratch_cleanup_under_session_start`.
+- `scripts/tests/test_hooks_integration.py:2975-2986`
+  (`test_hooks_json_registers_session_end_scratch_cleanup`) — confirmed
+  exact current assertion; convert to a presence(`SessionStart`) +
+  absence(`SessionEnd`) pair mirroring
+  `test_claude_code_adapter.py:92-147`'s pattern for `session-end.sh`.
+- New test needed: assert the `record-hook-event.sh` telemetry-pairing
+  entry's event-name arg is updated to `SessionStart` (or the entry is gone
+  from `SessionEnd`) alongside the command-group move.
+
 ### Documentation
 - Any doc referencing `scratch-cleanup.sh` as a `SessionEnd` hook (e.g.
   `docs/guides/BUILTIN_HOOKS_GUIDE.md`) needs updating to reflect the new
   binding.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — this touches more than one mention:
+  - Lifecycle table rows for `scratch-cleanup` and `record-hook-event`
+    (lines 73-74) move up into the `SessionStart` rows (lines 52-54).
+  - The `## SessionEnd` section (lines 460-475) documents only these two
+    hooks; if both move off `SessionEnd`, relocate its `### Scratch-pad
+    cleanup` and `### Hook-event telemetry shim` subsections under
+    `## SessionStart` (mirroring the `### Sweep stale cross-issue
+    references` subsection BUG-2483 added there, lines 157-170) and remove
+    or repurpose the now-orphaned `## SessionEnd` heading and its deadline
+    warning (line 474).
+  - The "Session from Hook's Perspective" ASCII diagram shows scratch
+    cleanup under the "Session ends" block (lines 116-118); move it to the
+    "You start a session" block (lines 87-90).
+  - The `Stop` section's parenthetical (line 420: "Scratch cleanup now
+    lives in `scratch-cleanup.sh` on SessionEnd") and its telemetry writeup
+    (lines 426-431: "Registered on `Stop` and `SessionEnd` only...") both
+    need updating to say `SessionStart`.
+- `hooks/scripts/session-cleanup.sh:19` — see Files to Modify.
+- `.claude/CLAUDE.md:218` — see Files to Modify.
+- `docs/development/TROUBLESHOOTING.md:1041-1043`,
+  `docs/ARCHITECTURE.md:656` — see Files to Modify.
 
 ### Configuration
 - `hooks/hooks.json` (see Files to Modify above).
@@ -166,6 +229,26 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
    confirming no `Hook cancelled` message appears, and that scratch pruning
    still runs on the next session start.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Decide and implement: move the paired `record-hook-event.sh SessionEnd
+  hooks/scripts/scratch-cleanup.sh` telemetry entry to `SessionStart`
+  alongside the command group, and decide whether the resulting empty
+  `SessionEnd` array is dropped or left as `"SessionEnd": []`.
+- Update `hooks/scripts/session-cleanup.sh:19` comment.
+- Update `.claude/CLAUDE.md:218`.
+- Update `docs/development/TROUBLESHOOTING.md:1041-1043` and
+  `docs/ARCHITECTURE.md:656` if `SessionEnd` ends up with zero hooks.
+- Restructure `docs/guides/BUILTIN_HOOKS_GUIDE.md`'s `## SessionEnd`
+  section, lifecycle table, ASCII diagram, and `Stop`-section prose per the
+  specifics in Documentation above.
+- Add new tests mirroring `test_claude_code_adapter.py:92-147`'s
+  presence/absence pattern for `scratch-cleanup.sh`, update
+  `test_hooks_integration.py:2975-2986`, and fix the stale docstring at
+  `test_claude_code_adapter.py:134`.
+
 ## Impact
 
 - **Priority**: P4 — purely cosmetic. The script always `exit 0`s and only
@@ -199,6 +282,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-30T20:27:44 - `f157be7e-42d9-436b-aab4-68974045eabd.jsonl`
 - `/ll:refine-issue` - 2026-08-30T20:16:05 - `0689d759-b3b6-42ca-983c-618fccd6cc96.jsonl`
 - `/ll:format-issue` - 2026-08-30T19:53:31 - `a1ad8a57-f920-432c-8aa4-c8eaf847f8b7.jsonl`
 - `/ll:capture-issue` - 2026-08-30T19:48:45 - `4bd95ca5-4fb0-45b7-a04a-49fb27f13423.jsonl`

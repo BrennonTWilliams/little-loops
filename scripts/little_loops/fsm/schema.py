@@ -396,11 +396,11 @@ class ThrottleConfig:
 
 @dataclass
 class CostCeilingConfig:
-    """Per-state cost / token-spend ceilings (ENH-2477).
+    """Per-state cost / token-spend ceilings (ENH-2477, enforced by BUG-3360).
 
-    Composes with FEAT-2476's global ``--max-cost`` ceiling: when a
-    state visit's cost exceeds ``cost_ceiling_per_state`` USD, the
-    run routes to a ceiling-exhausted target. ``cost_warn_at`` is a
+    When a state visit's aggregated cost (summed from ``usage.jsonl``)
+    exceeds ``cost_ceiling_per_state`` USD, the run aborts with
+    ``terminated_by="cost_ceiling_exceeded"``. ``cost_warn_at`` is a
     warning-only threshold for visible spend, not a hard cap.
 
     Both fields are optional and default to ``None`` (no cap, no
