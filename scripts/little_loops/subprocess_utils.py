@@ -110,6 +110,10 @@ SENTINEL_PATH = Path(".ll/ll-context-handoff-needed")
 _GUILLOTINE_TAIL_CHARS = 12_000
 # Lines of original_command to include for task intent.
 _GUILLOTINE_MAX_TASK_LINES = 20
+# Max scratch-pad files to list; the dir can accumulate thousands over a long
+# automation run and an unbounded listing would blow up the prompt size the
+# guillotine exists to cap.
+_GUILLOTINE_MAX_SCRATCH_FILES = 30
 
 
 def detect_context_handoff(output: str) -> bool:
@@ -294,16 +298,20 @@ def _list_scratch_files() -> str:
     if not scratch_dir.exists():
         return "None"
     try:
-        files = sorted(scratch_dir.iterdir())
+        files = sorted(scratch_dir.iterdir(), key=lambda f: f.stat().st_mtime, reverse=True)
         if not files:
             return "None"
+        shown = files[:_GUILLOTINE_MAX_SCRATCH_FILES]
         lines = []
-        for f in files:
+        for f in shown:
             try:
                 size_kb = f.stat().st_size // 1024
                 lines.append(f"  {f.name} ({size_kb}KB)")
             except Exception:
                 lines.append(f"  {f.name}")
+        remaining = len(files) - len(shown)
+        if remaining > 0:
+            lines.append(f"  ... and {remaining} more file(s)")
         return "\n".join(lines)
     except Exception:
         return "None"
