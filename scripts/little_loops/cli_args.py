@@ -523,7 +523,7 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to ll-auto command.
 
     Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --priority,
-          --label, --config, --idle-timeout, --handoff-threshold, --context-limit
+          --label, --config, --timeout, --idle-timeout, --handoff-threshold, --context-limit
     """
     add_resume_arg(parser)
     add_dry_run_arg(parser)
@@ -535,6 +535,7 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     add_priority_arg(parser)
     add_label_arg(parser)
     add_config_arg(parser)
+    add_timeout_arg(parser)
     add_idle_timeout_arg(parser)
     add_handoff_threshold_arg(parser)
     add_context_limit_arg(parser)

@@ -3,11 +3,12 @@ id: ENH-2977
 title: Add a --timeout CLI flag to ll-auto, matching the existing --idle-timeout
 type: ENH
 priority: P4
-status: open
+status: done
 parent: EPIC-3213
 epic: EPIC-3213
 discovered_date: 2026-08-01
 discovered_by: human
+completed_at: '2026-08-30T04:51:00Z'
 relates_to:
 - BUG-2976
 - FEAT-488
@@ -270,6 +271,7 @@ lowered P3 → P4.
   `<cmd> --help` winning over any prose.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T04:50:35 - `2bacf986-2318-4058-944b-2e7185d8ee77.jsonl`
 - `/ll:confidence-check` - 2026-08-30T04:40:55 - `0d08a078-6a53-4f72-959b-ecc948902882.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-01T20:18:53 - `52bc5a67-0032-4383-ae03-a6de98447a01.jsonl`

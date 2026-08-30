@@ -459,6 +459,19 @@ class TestMainAutoIntegration:
                 main_auto()
             assert exc_info.value.code == 2
 
+    def test_main_auto_negative_timeout_exits(self, temp_project: Path) -> None:
+        """main_auto exits with code 2 on a negative --timeout value (ENH-2977)."""
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-auto", "--timeout", "-1", "--config", str(temp_project)],
+        ):
+            from little_loops.cli import main_auto
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_auto()
+            assert exc_info.value.code == 2
+
     def test_main_auto_verbose_short_flag(self, temp_project: Path) -> None:
         """-v is accepted as --verbose in ll-auto and sets verbose=True (ENH-910)."""
         with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:

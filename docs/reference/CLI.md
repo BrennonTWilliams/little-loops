@@ -427,6 +427,7 @@ Process all backlog issues sequentially in priority order. On startup, `ll-auto`
 | `--priority` | `-p` | Comma-separated priority levels to process (e.g., `P1,P2`) |
 | `--label` | | Comma-separated labels to process (e.g., `fsm,cli,quick-win`); matches issues with `labels:` frontmatter containing any of the specified values |
 | `--verbose` | `-v` | Show full prompt text; default shows abbreviated 5-line preview |
+| `--timeout` | `-t` | Timeout in seconds for the run; `0` disables it (pair with `--idle-timeout` to still bound hung workers); negative values are rejected |
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |

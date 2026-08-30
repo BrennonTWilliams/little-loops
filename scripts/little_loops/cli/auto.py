@@ -77,6 +77,11 @@ Examples:
         config = BRConfig(project_root)
         configure_output(config.cli)
 
+        if args.timeout is not None:
+            if args.timeout < 0:
+                parser.error("--timeout must be non-negative")
+            config.automation.timeout_seconds = args.timeout
+
         if args.idle_timeout is not None:
             config.automation.idle_timeout_seconds = args.idle_timeout
 

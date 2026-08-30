@@ -779,7 +779,7 @@ class TestAddCommonAutoArgs:
     """Tests for add_common_auto_args() function."""
 
     def test_adds_all_expected_arguments(self) -> None:
-        """Adds resume, dry-run, max-issues, only, skip, type, priority, label, config, idle-timeout, handoff-threshold."""
+        """Adds resume, dry-run, max-issues, only, skip, type, priority, label, config, timeout, idle-timeout, handoff-threshold."""
         parser = argparse.ArgumentParser()
         add_common_auto_args(parser)
         args = parser.parse_args(
@@ -800,6 +800,8 @@ class TestAddCommonAutoArgs:
                 "fsm,cli",
                 "--config",
                 "/path",
+                "--timeout",
+                "1800",
                 "--idle-timeout",
                 "300",
                 "--handoff-threshold",
@@ -815,8 +817,16 @@ class TestAddCommonAutoArgs:
         assert args.priority == "P1,P2"
         assert args.label == "fsm,cli"
         assert args.config is not None
+        assert args.timeout == 1800
         assert args.idle_timeout == 300
         assert args.handoff_threshold == 40
+
+    def test_timeout_zero_parses_as_zero(self) -> None:
+        """--timeout 0 parses to 0, not None (ENH-2977: 0 disables the timeout)."""
+        parser = argparse.ArgumentParser()
+        add_common_auto_args(parser)
+        args = parser.parse_args(["--timeout", "0"])
+        assert args.timeout == 0
 
 
 class TestAddCommonParallelArgs:
