@@ -228,6 +228,43 @@ class PrePatchCheckFlaggedVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class CostCeilingExceededVariant(DESVariant):
+    """FSMExecutor._emit('cost_ceiling_exceeded') — a state's per-visit spend
+    exceeded its declared ``cost_ceiling.cost_ceiling_per_state`` (BUG-3360);
+    the run aborts via ``_finish("cost_ceiling_exceeded", ...)``."""
+
+    type: Literal["cost_ceiling_exceeded"] = "cost_ceiling_exceeded"
+    state: str = ""
+    cost_usd: float = 0.0
+    cost_ceiling_per_state: float = 0.0
+    action: str = ""
+
+
+@dataclass(frozen=True)
+class CostCeilingWarnVariant(DESVariant):
+    """FSMExecutor._emit('cost_ceiling_warn') — a state's spend crossed its
+    declared ``cost_ceiling.cost_warn_at`` threshold without breaching the
+    hard ceiling (BUG-3360)."""
+
+    type: Literal["cost_ceiling_warn"] = "cost_ceiling_warn"
+    state: str = ""
+    cost_usd: float = 0.0
+    cost_warn_at: float = 0.0
+
+
+@dataclass(frozen=True)
+class CostCeilingUnknownVariant(DESVariant):
+    """FSMExecutor._emit('cost_ceiling_unknown') — a state declares a
+    ``cost_ceiling`` but its spend could not be determined this visit
+    (``usage.jsonl`` unavailable or an unpriceable model); logged once per
+    state, never treated as under budget (BUG-3360)."""
+
+    type: Literal["cost_ceiling_unknown"] = "cost_ceiling_unknown"
+    state: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class SubLoopWorktreeAttachedVariant(DESVariant):
     """FSMExecutor._emit('sub_loop_worktree_attached') — scratch worktree attached for a worktree: sub-loop state (ENH-2609)."""
 
@@ -744,6 +781,9 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     StallDetectedVariant,
     PromptSizeWarnVariant,
     PrePatchCheckFlaggedVariant,
+    CostCeilingExceededVariant,
+    CostCeilingWarnVariant,
+    CostCeilingUnknownVariant,
     SubLoopWorktreeAttachedVariant,
     SubLoopWorktreeDetachedVariant,
     SubLoopWorktreeErrorVariant,
