@@ -38,7 +38,12 @@ all_child_ids = forward_ids | backward_ids
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Automation and humans both use `ll-deps tree --epic` to reason about EPIC
+decomposition (e.g. `/ll:review-epic`); a sibling EPIC id leaking into the
+child listing produces a misleading dependency tree that can misdirect
+review/audit tooling into treating an unrelated EPIC as part of this EPIC's
+scope. No data corruption, but it erodes trust in the tree output and wastes
+review time chasing a phantom parent/child relationship.
 
 ## Proposed Solution
 
@@ -63,9 +68,19 @@ forward_ids: set[str] = {
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add the `forward_ids` filter in `scripts/little_loops/cli/deps.py`'s `ll-deps tree --epic` branch (lines 288-290), reusing (or extracting to a shared helper) the `_EPIC_ID_RE` primitive from `scripts/little_loops/sprint.py:14`.
+2. Add a regression test in `scripts/tests/test_deps_cli.py` covering a sibling-EPIC `relates_to` entry, mirroring BUG-3361's AC.
+3. Run `python -m pytest scripts/tests/` to verify the new test and existing `test_deps_cli.py` coverage pass.
+
+## Program Design
+
+### Signatures
+
+- `main_deps() -> int` — signature unchanged; only the `forward_ids` computation inside the `ll-deps tree --epic` branch changes
+
+### Call Path
+
+`main_deps()` (`ll-deps tree --epic` branch) -> filtered `forward_ids` (excludes `EPIC-`-prefixed ids) -> unioned with `backward_ids` into `all_child_ids` (`deps.py:290`)
 
 ## Impact
 
@@ -102,4 +117,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-30T18:58:55 - `12d26f9a-ed28-4a88-a053-f90953905374.jsonl`
+- `/ll:format-issue` - 2026-08-30T18:57:02 - `9bc3b2e3-2cf2-4efa-91d3-ec380f6bfaf0.jsonl`
 - `/ll:capture-issue` - 2026-08-30T18:54:08 - `00726072-62d6-4f81-b684-ed899628cec1.jsonl`

@@ -120,17 +120,28 @@ relates_to:
 
 ## Expected Behavior
 
-`SprintManager.load_or_resolve()` should never place an EPIC-type id into an
-EPIC's own dispatch set. `relates_to:` on an EPIC is a documentation
-cross-reference to sibling/related epics, not a decomposition edge, and should
-either be excluded entirely from `forward_ids`, or filtered the same way
-`next_issues.py` filters `find_issues()` results for BUG-2638
-(`not info.issue_id.startswith("EPIC-")`).
+`SprintManager.load_or_resolve()` should never place a `relates_to`-sourced
+EPIC-type id into an EPIC's own dispatch set. `relates_to:` on an EPIC is a
+documentation cross-reference to sibling/related epics, not a decomposition
+edge, and EPIC-shaped entries should be filtered out of `forward_ids` the same
+way `next_issues.py` filters `find_issues()` results for BUG-2638.
+
+**Scope note — backward path is intentionally untouched.** A genuine sub-EPIC
+reached via the backward `parent:` chain (e.g. `parent: EPIC-A` on `EPIC-B`)
+IS deliberately included in the dispatch set — ENH-2615 aligned this with
+`compute_epic_progress()` so run construction and the EPIC-completion gate
+agree on membership, and `test_load_or_resolve_nested_epic_grandchild_transitive`
+(`scripts/tests/test_sprint.py:2884`) asserts `EPIC-801 in result.issues` for
+exactly that case. This fix must not change backward-path semantics; only the
+forward/`relates_to` path is filtered.
 
 ## Proposed Solution
 
-In `scripts/little_loops/sprint.py`, filter `forward_ids` (and/or the final
-`child_ids` union) to exclude EPIC-shaped ids, reusing the module's existing
+In `scripts/little_loops/sprint.py`, filter `forward_ids` **only** (NOT the
+final `child_ids` union — filtering the union would break
+`test_load_or_resolve_nested_epic_grandchild_transitive` and silently change
+the ENH-2615 backward-path sub-EPIC semantics; see Expected Behavior scope
+note) to exclude EPIC-shaped ids, reusing the module's existing
 case-insensitive `_EPIC_ID_RE` primitive (see Decision Rationale below for why
 this is selected over a literal `.startswith("EPIC-")` check):
 
@@ -141,11 +152,15 @@ forward_ids: set[str] = {
 }
 ```
 
-As defense in depth, consider also hardening `implement_current` in
-`autodev.yaml` to refuse (or redirect to the EPIC's own
-confidence-check-identified next child) when `$CURRENT` matches
-`^EPIC-\d+$`, so a future leak from any resolution path can't reach
-`ll-auto --only` on an EPIC id.
+**Out of scope — backward-path sub-EPIC dispatch (file separately).** Even
+with this fix, a legitimate sub-EPIC included via the backward `parent:` chain
+is still dispatched as a raw `EPIC-*` id and will hit the same
+`ll-auto --only EPIC-*` misroute in autodev. The fix for that path is defense
+in depth in `autodev.yaml`: harden `implement_current` to refuse (or redirect
+to the EPIC's own confidence-check-identified next child) when `$CURRENT`
+matches `^EPIC-\d+$`. This belongs in a separate issue (mirroring the
+BUG-3362 split for the `deps.py` duplicate), since it is a loop-YAML change
+with different testing needs than this `sprint.py` filter.
 
 ### Codebase Research Findings
 
@@ -178,6 +193,8 @@ Two viable filter primitives for excluding EPIC-typed ids from `forward_ids`:
 - `relates_to` entries are unnormalized free text (`issue_parser.py:3624-3671`) — no upstream uppercasing to rely on.
 - No real EPIC id in `.issues/epics/*.md` deviates from the `EPIC-\d+` shape, so `_EPIC_ID_RE` has full coverage with no over/under-matching risk.
 - Existing test `test_load_or_resolve_epic_id_case_insensitive` (`test_sprint.py:2841`) covers case-insensitivity only for the `arg` parameter, not for a `relates_to` entry — the regression test this issue's Acceptance Criteria calls for is new coverage, not inherited from that test.
+
+**Rationale precision — the case-insensitivity argument is about convention/robustness, not an observable leak today.** A lowercase `relates_to: [epic-2178]` entry never leaks even without this fix: `child_ids = (forward_ids | backward_ids) & active_ids_set` (`sprint.py:367`) intersects against canonical uppercase ids from `find_issues()`, so the lowercase string is dropped by the intersection regardless. Option B is still correct (matches the module's convention; stays safe if the intersection ever changes), but the regression test's must-fail-before-fix case is the **uppercase** sibling-EPIC repro — a lowercase-entry test passes trivially both before and after and may be added only as a secondary safety assertion.
 
 ## Integration Map
 
@@ -237,9 +254,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - [ ] `SprintManager.load_or_resolve("EPIC-2258")` (or an equivalent unit
       test fixture with a `relates_to:` pointing at another EPIC) never
-      includes an `EPIC-*` id in the returned `Sprint.issues`
+      includes a `relates_to`-sourced `EPIC-*` id in the returned
+      `Sprint.issues` (backward-path sub-EPICs via `parent:` chains remain
+      included per ENH-2615 — see Expected Behavior scope note)
 - [ ] A regression test mirrors BUG-2638's coverage but targets
-      `sprint.py`'s forward/`relates_to` path specifically
+      `sprint.py`'s forward/`relates_to` path specifically, using an
+      uppercase sibling-EPIC entry as the must-fail-before-fix repro
+- [ ] `test_load_or_resolve_nested_epic_grandchild_transitive`
+      (`test_sprint.py:2884`) still passes unmodified — backward-path
+      sub-EPIC inclusion is unchanged
+- [ ] `docs/reference/API.md:6980` and `docs/reference/CLI.md:563,580` updated
+      to note forward/`relates_to` resolution excludes EPIC-typed ids
 - [ ] `python -m pytest scripts/tests/` passes
 
 ## Labels
