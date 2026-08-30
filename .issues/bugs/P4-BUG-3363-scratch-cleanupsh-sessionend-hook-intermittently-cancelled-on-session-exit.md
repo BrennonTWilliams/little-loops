@@ -1,0 +1,204 @@
+---
+id: BUG-3363
+type: BUG
+title: scratch-cleanup.sh SessionEnd hook intermittently cancelled on session exit
+priority: P4
+status: open
+discovered_by: ll-issues-create
+discovered_date: '2026-08-30'
+captured_at: '2026-08-30T19:48:39Z'
+program_design_not_applicable: true
+---
+
+# BUG-3363: scratch-cleanup.sh SessionEnd hook intermittently cancelled on session exit
+
+## Summary
+
+Every so often, exiting a Claude Code session in this repo (Ctrl+C, Ctrl+D, or
+`/exit`) prints:
+
+```
+SessionEnd hook [bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/scratch-cleanup.sh] failed: Hook cancelled
+```
+
+This is the same class of upstream Claude Code bug documented in BUG-2483
+(anthropics/claude-code#32712, #41577: `SessionEnd` hooks get forcibly killed
+around a ~1.5s ceiling regardless of configured `timeout`, independent of
+interrupt vs. clean exit). BUG-2483 fixed this for `session-end.sh` (the
+stale-cross-issue-ref sweep, ~1.6s runtime) by re-homing it to `SessionStart`,
+but deliberately left `scratch-cleanup.sh` on `SessionEnd` because its own
+runtime (~0.07s) sits nowhere near that ceiling.
+
+`scratch-cleanup.sh` being cancelled anyway suggests the kill isn't purely a
+function of the hook's own wall-clock cost — process-teardown timing on
+interrupt-style exits (Ctrl+C/Ctrl+D) appears able to trip the same ceiling
+even for a fast hook, likely because multiple `SessionEnd` hooks queue behind
+each other and/or session teardown itself competes for the deadline window.
+
+## Current Behavior
+
+`hooks/hooks.json` binds `scratch-cleanup.sh` to `SessionEnd`. On exit, the
+hook is occasionally killed before completion, printing "Hook cancelled" to
+the terminal.
+
+## Expected Behavior
+
+Session exit should not print a hook-failure error on ordinary use.
+
+## Steps to Reproduce
+
+1. Start a Claude Code session in this repo (with `scratch-cleanup.sh` wired
+   to `SessionEnd` per `hooks/hooks.json`).
+2. End the session via Ctrl+C, Ctrl+D, or `/exit`.
+3. Observe (intermittently, not on every exit): `SessionEnd hook [bash
+   ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/scratch-cleanup.sh] failed: Hook
+   cancelled` printed to the terminal.
+
+## Motivation
+
+Purely cosmetic, but it erodes trust in the hook system: a user seeing a
+`failed` message for a hook that always `exit 0`s and only prunes files it
+owns (BUG-2525) has no way to distinguish this from a real failure without
+digging into the issue tracker. Fixing it removes a recurring, unexplained
+warning from ordinary session exits in this repo and its `local-editable`
+consumers.
+
+## Proposed Solution
+
+Apply the same pattern as BUG-2483: move `scratch-cleanup.sh`'s sweep off the
+`SessionEnd` event (e.g., run it at the next `SessionStart` instead, alongside
+`session-start.sh`) so it no longer races session-exit teardown. Needs
+confirmation this doesn't reintroduce the concurrent-session race
+`scratch-cleanup.sh`'s own header docs warn about for `Stop`-based cleanup
+(BUG-2420) — `SessionStart` for one session could run while another
+session's backgrounded, scratch-pad-redirected command is still writing.
+
+## Integration Map
+
+### Files to Modify
+- `hooks/hooks.json` — move the `scratch-cleanup.sh` command entry from the
+  `SessionEnd` array to the `SessionStart` array (mirroring the
+  `session-end.sh` entry already re-homed there for BUG-2483).
+- `hooks/scripts/scratch-cleanup.sh` — update the header comment describing
+  it as a "SessionEnd hook" once re-homed.
+
+### Dependent Files (Callers/Importers)
+- `hooks/adapters/claude-code/session-start.sh` — already runs at
+  `SessionStart`; the new binding runs alongside it as its own hook entry,
+  not by editing this script.
+
+### Similar Patterns
+- BUG-2483 (`1f788f51b`) re-homed `session-end.sh`'s sweep from `SessionEnd`
+  to `SessionStart` in `hooks/hooks.json` for the identical upstream-deadline
+  reason; this issue applies the same rebinding pattern to
+  `scratch-cleanup.sh`.
+
+### Tests
+- `scripts/tests/test_claude_code_adapter.py` — asserts `scratch-cleanup.sh`
+  stays on `SessionEnd` (written for BUG-2483's `session-end.sh` move); needs
+  updating once this hook also moves.
+- `scripts/tests/test_hooks_integration.py::TestScratchCleanupSessionEnd` —
+  BUG-2420 tests currently assume `SessionEnd` binding; assertions about
+  *event binding* need updating, execution-behavior assertions (PID-suffix
+  ownership, no blind `rm -rf`) are unaffected by which event triggers the
+  script.
+
+### Documentation
+- Any doc referencing `scratch-cleanup.sh` as a `SessionEnd` hook (e.g.
+  `docs/guides/BUILTIN_HOOKS_GUIDE.md`) needs updating to reflect the new
+  binding.
+
+### Configuration
+- `hooks/hooks.json` (see Files to Modify above).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- BUG-2483's `hooks.json` move added a `"matcher": "*"` key to the relocated
+  group (every `SessionStart` group carries one). The current `scratch-cleanup.sh`
+  group under `SessionEnd` (`hooks/hooks.json:242-263`) lacks a `"matcher"` key —
+  the move needs to add one to match the target array's convention.
+- `hooks/hooks.json:257` binds a second `SessionEnd` group:
+  `record-hook-event.sh SessionEnd hooks/scripts/scratch-cleanup.sh`.
+  `record-hook-event.sh` is paired only with pure-bash `SessionEnd`/`Stop`
+  handlers (`docs/guides/BUILTIN_HOOKS_GUIDE.md:422-435`); BUG-2483's
+  precedent did not carry the analogous telemetry pairing into the
+  `SessionStart` array when `session-end.sh` was re-homed. This issue's Files
+  to Modify does not yet say what happens to this second `SessionEnd` group.
+- BUG-2483's changed-file set beyond `hooks.json` and the two test files
+  already listed here also included `docs/reference/HOST_COMPATIBILITY.md`
+  (updated a `session_end` parity row/footnote) — worth checking for an
+  analogous `scratch-cleanup.sh` row. `.ll/decisions.yaml` rule `ARCH-174`
+  already records the general "don't bind expensive work to SessionEnd" rule
+  from BUG-2483 and needs no new per-hook entry.
+- `scratch-cleanup.sh` (`hooks/scripts/scratch-cleanup.sh:38-54`) does not use
+  `flock`/`acquire_lock` (the `lib/common.sh:5-54` convention used by
+  `context-monitor.sh`, `session-capture.sh`, `check-duplicate-issue-id.sh`,
+  `precompact-state.sh`). Its BUG-2420 race protection is a per-file `kill -0`
+  PID-liveness check, which is independent of which event triggers the sweep —
+  this is the existing answer to Implementation Steps item 1's open
+  confirmation: the guard already generalizes to a `SessionStart` trigger
+  since it checks the writing process's liveness, not the triggering event.
+- Test convention for hook-to-event binding (`test_claude_code_adapter.py:92-147`,
+  BUG-2483's `session-end.sh` precedent): a presence assertion in the new
+  event's array is paired with an absence/regression assertion in the old
+  event's array, both matching substring-in-command filtered to
+  `type == "command"`. `test_hooks_integration.py::TestScratchCleanupSessionEnd`'s
+  current `SessionEnd`-binding assertion (`test_hooks_json_registers_session_end_scratch_cleanup`,
+  lines 2975-2986) would need to mirror this presence+absence shape; the
+  class's other 5 tests (lines 2881-2974) invoke the script directly and
+  assert on filesystem state, unaffected by which event triggers it.
+
+## Implementation Steps
+
+1. Confirm re-homing to `SessionStart` doesn't reintroduce the BUG-2420
+   concurrent-session race (a `SessionStart` sweep running while another
+   session's backgrounded, scratch-pad-redirected write is still in flight).
+2. Move the `scratch-cleanup.sh` command entry in `hooks/hooks.json` from
+   `SessionEnd` to `SessionStart`, alongside `session-start.sh`.
+3. Update `scratch-cleanup.sh`'s header comment and any docs describing it as
+   a `SessionEnd` hook.
+4. Update `test_claude_code_adapter.py` and
+   `test_hooks_integration.py::TestScratchCleanupSessionEnd` event-binding
+   assertions to match the new `SessionStart` wiring.
+5. Verify by exiting a session repeatedly (Ctrl+C, Ctrl+D, `/exit`) and
+   confirming no `Hook cancelled` message appears, and that scratch pruning
+   still runs on the next session start.
+
+## Impact
+
+- **Priority**: P4 — purely cosmetic. The script always `exit 0`s and only
+  prunes scratch files it owns (PID-suffixed, per the BUG-2525 contract);
+  being cancelled mid-sweep just means some stale files linger for the next
+  session's cleanup pass, not a correctness or data-loss issue.
+- Noisy on exit, which is the sole reported symptom (analogous to BUG-2483
+  before its fix).
+
+## Out of Scope
+
+- Fixing the upstream Claude Code `SessionEnd` hard-deadline bug itself
+  (tracked upstream at anthropics/claude-code#32712 / #41577).
+
+## Related Issues
+
+- **BUG-2483** — first observed and fixed this class of bug for
+  `session-end.sh`; this issue is the analogous case for `scratch-cleanup.sh`.
+- **BUG-2420** — established `scratch-cleanup.sh`'s `SessionEnd` binding and
+  the concurrent-session race rationale for staying off `Stop`.
+- **BUG-2525** — the PID-suffix ownership contract `scratch-cleanup.sh`
+  enforces, relevant to any re-homing fix.
+
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Status
+
+**Open** | Created: 2026-08-30 | Priority: P4
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-30T20:16:05 - `0689d759-b3b6-42ca-983c-618fccd6cc96.jsonl`
+- `/ll:format-issue` - 2026-08-30T19:53:31 - `a1ad8a57-f920-432c-8aa4-c8eaf847f8b7.jsonl`
+- `/ll:capture-issue` - 2026-08-30T19:48:45 - `4bd95ca5-4fb0-45b7-a04a-49fb27f13423.jsonl`
