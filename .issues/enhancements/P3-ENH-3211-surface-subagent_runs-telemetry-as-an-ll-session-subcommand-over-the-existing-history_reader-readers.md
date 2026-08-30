@@ -17,11 +17,11 @@ relates_to:
 depends_on:
 - ENH-3210
 blocked_by: []
-confidence_score: 70
-outcome_confidence: 89
-score_complexity: 21
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -48,8 +48,8 @@ issue-analytics domain (`issue_history` functions), unrelated to session telemet
 existing `ll-logs` subcommand aggregates a JSONL corpus over `--all`/`--project`/
 `--window-days`, so a single-session SQL lookup would break its flag convention. Neither
 imports `history_reader.py` at all. `ll-session` (`cli/session.py`) is the only CLI that
-wraps `history_reader` readers end-to-end, and it already exposes raw rows from this very
-table via `ll-session recent --kind subagent_run` (`docs/reference/CLI.md:3359,3441`).
+wraps `history_reader.py` readers end-to-end, and it already exposes raw rows from this
+very table via `ll-session recent --kind subagent_run` (`docs/reference/CLI.md:3359,3441`).
 Leaving the host open adds review risk with no upside — it is fixed here.
 
 **Argument shape — settled: positional, not `--session`/`--agent` flags.** This codebase
@@ -466,6 +466,8 @@ _Added by `/ll:confidence-check` on 2026-08-16_
 - 2026-08-16: `blocked_by: [FEAT-3183]` is still open (real scheduling blocker), but `depends_on: [ENH-3210]` — ENH-3210 has now landed (status: done), so that technical dependency is satisfied; the issue remains correctly `status: blocked` on FEAT-3183 alone. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T01:01:17 - `e512278b-6b0b-40b4-a669-9e7c95e260e7.jsonl`
+- `/ll:confidence-check` - 2026-08-30T00:58:27 - `35a2908c-9863-484b-89f4-e9eb631d464c.jsonl`
 - `/ll:refine-issue` - 2026-08-30T00:53:33 - `9f6f7aba-c836-405c-b13b-dc8c341edd68.jsonl`
 - `/ll:refine-issue` - 2026-08-29T23:56:27 - `7980fc82-226c-49c8-b164-01ae9e6c8314.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`

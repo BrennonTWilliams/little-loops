@@ -235,6 +235,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   > **Resolved (pre-implementation review, 2026-08-29)**: Implementation Step 7a gives AC5 a machine check by inverting the existing doc-pin pattern — `test_max_refine_count_exemption_documented` is reconciled to assert the post-fix wording, with companion assertions pinning the `config-schema.json` description and both `docs/reference/COMMANDS.md` rows. AC5's text now references that step. The remaining prose locations (`CONFIGURATION.md`, loop YAML comments) stay human-audited — acceptable, since the schema description and command doc are the authoritative claims.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T01:00:27 - `e1bcaf81-1e43-4f60-9b38-b721dddcaed7.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:37:06 - `5b08caaf-d6d9-41cd-a302-ae95669f4151.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:27:07 - `b3d7ed27-fb20-4642-89b3-c49ed044082a.jsonl`
 - `/ll:decide-issue` - 2026-08-29T19:22:37 - `cb55c8e1-8f96-41ef-a1ba-fb0ee4198993.jsonl`
