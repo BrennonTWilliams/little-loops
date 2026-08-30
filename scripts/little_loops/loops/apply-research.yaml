@@ -37,7 +37,7 @@ states:
       echo "0" > "$DIR/total-extracted.txt"
       echo "0" > "$DIR/total-filtered.txt"
       echo "0" > "$DIR/total-captured.txt"
-      FILES="${context.files}"  # ll-lint: mr11-ok(context.files) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      FILES="${context.files:shell}"
       if [ -z "$FILES" ]; then
         echo "ERROR: no files provided. Pass paths as positional arg." >&2
         exit 1

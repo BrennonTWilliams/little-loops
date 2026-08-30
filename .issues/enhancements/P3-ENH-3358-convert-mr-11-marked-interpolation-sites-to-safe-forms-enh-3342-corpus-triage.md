@@ -3,7 +3,7 @@ id: ENH-3358
 type: ENH
 title: Convert MR-11-marked interpolation sites to safe forms (ENH-3342 corpus triage)
 priority: P3
-status: open
+status: in_progress
 discovered_by: ll-issues-create
 discovered_date: '2026-08-29'
 captured_at: '2026-08-29T19:44:17Z'
@@ -35,6 +35,26 @@ Research Findings under Current Behavior.)
 
 665 `# ll-lint: mr11-ok(...)` markers across 60 files, citing this issue
 (ENH-3358), each suppressing one otherwise-live MR-11 WARNING.
+
+**Progress (`/ll:manage-issue` pass, 2026-08-29):** First conversion pass
+landed. 11 single-marker files converted to the `:shell`/`:shell:default=`
+bash-token-position safe form (`agent-eval-improve.yaml`,
+`apply-research.yaml`, `docs-sync.yaml`, `examples-miner.yaml`,
+`goal-cluster.yaml`, `issue-staleness-review.yaml`,
+`loop-composer-adaptive.yaml`, `loop-composer.yaml`, `loop-router.yaml`,
+`rl-bandit.yaml`, `svg-image-generator.yaml`); their `MR11_MARKER_ALLOWLIST`
+tuples were removed in lockstep and each file re-validated clean via
+`ll-loop validate`. The two corpus-wide guard tests required to land with the
+first pass (Implementation Steps 6 and 8) were also added:
+`TestMr11MarkerSet::test_no_loop_wide_escape_hatch` (zero
+`unsafe_context_interpolation_ok` occurrences) and a `"stale-mr11-marker"`
+category on `TestValidatorWarningBudget.CATEGORY_PATTERNS` (empty allowlist).
+Corpus is now **574 markers / 44 files** (was 585/55). Remaining work is
+unchanged in kind — continue file-by-file per the Per-pass completion model,
+highest-concentration files first (`rn-refine.yaml` 67 markers still the top
+target; none of the 11 converted this pass were bash-token idiom-2
+candidates, so step 7's heredoc-to-file round-trip proof is still pending the
+first idiom-2 site).
 
 ### Codebase Research Findings
 
@@ -228,12 +248,38 @@ reaches zero, `test_builtin_loops.py`'s enumerated marker-set assertion
 corresponding literal-set update fails that test, keeping this issue's
 progress and the checked-in enumeration in lockstep.
 
+## Scope Boundaries
+
+Explicitly out of scope for this issue:
+
+- **`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` is not modified.** It is the
+  authoritative source for the two safe idioms and the marker escape hatch
+  (see Integration Map → Documentation); this issue converts sites away from
+  the marker, it does not change the guide.
+- **No new decision logic, gap kind, gate, threshold, or classification
+  rule is introduced** (see Program Design → Decision Rules). Every
+  conversion targets one of the two already-documented safe forms; if a site
+  doesn't fit either, that is a signal to raise a follow-up issue, not to
+  invent a third form here.
+- **`classify_site()` and `scan_action()` are unchanged** (see Program Design
+  → Signatures) — this issue converts call sites, not the classifier they are
+  scanned by.
+- **No batch/automatable conversion tooling is written.** Per Impact →
+  Effort, each site is classified and converted by hand, one file (or
+  importing loop, for the 2 `loops/lib/` fragments) at a time; a
+  script/codemod that bulk-rewrites sites is out of scope.
+- **No CLI flag, config schema, issue schema, or external API surface
+  changes** (see Impact → Breaking Change). This is a corpus-internal rewrite
+  of loop YAML action bodies only.
+
 ## Status
 
 **Open** | Created: 2026-08-29 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T03:27:15 - `3954d634-f7fa-4367-b087-758ad458f012.jsonl`
+- `/ll:ready-issue` - 2026-08-30T03:05:39 - `331c980f-f81b-4ffd-aa21-97063786a71d.jsonl`
 - `/ll:confidence-check` - 2026-08-30T03:02:07 - `03107e30-2c48-46f8-bca3-62c49ee24e4f.jsonl`
 - `/ll:confidence-check` - 2026-08-30T02:30:46 - `2ccfc427-71e0-4829-bf66-b023da97bae4.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-08-30T02:19:05 - `b21d1213-6d66-4564-b8d2-88ca246f8982.jsonl`

@@ -63,7 +63,7 @@ states:
       except Exception:
           print(0)
       ")
-      LINK_EXIT=${captured.link_results.exit_code:default=0}  # ll-lint: mr11-ok(captured.link_results.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      LINK_EXIT=${captured.link_results.exit_code:shell:default=0}
       echo "remaining_findings=$((NON_AUTO + LINK_EXIT))"
     capture: remaining_findings
     evaluate:

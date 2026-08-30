@@ -34,7 +34,7 @@ states:
   reward:
     action: |
       # Extract the numeric reward from the last round and emit it for evaluation.
-      echo "${captured.round_result.output}" | tail -1 | tr -d '[:space:]'  # ll-lint: mr11-ok(captured.round_result.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "${captured.round_result.output:shell}" | tail -1 | tr -d '[:space:]'
     action_type: shell
     evaluate:
       type: convergence

@@ -75,7 +75,7 @@ states:
   route_quality:
     fragment: convergence_gate
     action: |
-      echo "${captured.scores.output}" | tail -1 | tr -d '[:space:]'  # ll-lint: mr11-ok(captured.scores.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "${captured.scores.output:shell}" | tail -1 | tr -d '[:space:]'
     evaluate:
       target: "${context.quality_target}"
       tolerance: 0.03

@@ -14947,7 +14947,7 @@ class TestApplyResearchLoop:
 
     def test_context_files_referenced_in_init(self, data: dict) -> None:
         action = data["states"]["init"].get("action", "")
-        assert "${context.files}" in action
+        assert "${context.files:shell}" in action
 
     def test_relevance_threshold_used_in_filter_items(self, data: dict) -> None:
         action = data["states"]["filter_items"].get("action", "")
@@ -16364,6 +16364,7 @@ class TestValidatorWarningBudget:
         "loop-reference": "does not resolve to any file",
         "unsafe-context-interp": "interpolates user-controlled context raw into a shell body",
         "no-scope": "declares no 'scope:'",
+        "stale-mr11-marker": "marker matches no MR-11 finding",
     }
 
     # (loop stem, category) -> allowed warning paths.
@@ -19644,8 +19645,6 @@ _MR11_MARKER_RE = re.compile(r"#\s*ll-lint:\s*mr11-ok\(([^)]+)\)\s+.*?(\S+-\d+)"
 
 MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/adversarial-redesign.yaml", "captured.run_dir.output", "ENH-3358"),
-    ("loops/agent-eval-improve.yaml", "captured.scores.output", "ENH-3358"),
-    ("loops/apply-research.yaml", "context.files", "ENH-3358"),
     ("loops/auto-refine-and-implement.yaml", "captured.issue_set.output", "ENH-3358"),
     ("loops/auto-refine-and-implement.yaml", "context.scope", "ENH-3358"),
     ("loops/autodev.yaml", "captured.dequeue_status.output", "ENH-3358"),
@@ -19673,8 +19672,6 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/cua-agent-desktop.yaml", "context.plan_error_max", "ENH-3358"),
     ("loops/cua-agent-desktop.yaml", "context.stale_ref_max", "ENH-3358"),
     ("loops/cua-agent-desktop.yaml", "context.timeout_max", "ENH-3358"),
-    ("loops/docs-sync.yaml", "captured.link_results.exit_code", "ENH-3358"),
-    ("loops/examples-miner.yaml", "context.skill_name", "ENH-3358"),
     ("loops/flux-image-generator.yaml", "captured.gen_eval_events.output", "ENH-3358"),
     ("loops/flux-image-generator.yaml", "captured.run_dir.output", "ENH-3358"),
     ("loops/flux-image-generator.yaml", "context.pass_threshold", "ENH-3358"),
@@ -19684,7 +19681,6 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/general-task.yaml", "context.input_hash", "ENH-3358"),
     ("loops/general-task.yaml", "context.max_step_attempts", "ENH-3358"),
     ("loops/general-task.yaml", "context.test_cmd", "ENH-3358"),
-    ("loops/goal-cluster.yaml", "context.auto", "ENH-3358"),
     ("loops/harness-optimize.yaml", "captured.benchmark_score.output", "ENH-3358"),
     ("loops/harness-optimize.yaml", "captured.traj_path.output", "ENH-3358"),
     ("loops/harness-optimize.yaml", "context.targets", "ENH-3358"),
@@ -19694,13 +19690,9 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/integrate-sdk.yaml", "context.target", "ENH-3358"),
     ("loops/interactive-component-generator.yaml", "captured.current_id.output", "ENH-3358"),
     ("loops/interactive-component-generator.yaml", "captured.run_dir.output", "ENH-3358"),
-    ("loops/issue-staleness-review.yaml", "context.stale_days", "ENH-3358"),
     ("loops/lib/common.yaml", "context.issue_id", "ENH-3358"),
     ("loops/lib/harness.yaml", "context.file_url", "ENH-3358"),
     ("loops/lib/harness.yaml", "context.screenshot_path", "ENH-3358"),
-    ("loops/loop-composer-adaptive.yaml", "context.auto", "ENH-3358"),
-    ("loops/loop-composer.yaml", "context.auto", "ENH-3358"),
-    ("loops/loop-router.yaml", "context.auto_create", "ENH-3358"),
     ("loops/mechanize-skills.yaml", "captured.baseline_lines.output", "ENH-3358"),
     ("loops/mechanize-skills.yaml", "captured.current_skill.output", "ENH-3358"),
     ("loops/mechanize-skills.yaml", "captured.prose_baseline.output", "ENH-3358"),
@@ -19778,7 +19770,6 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/refine-to-ready-issue.yaml", "captured.refine_followup.failure_type", "ENH-3358"),
     ("loops/refine-to-ready-issue.yaml", "captured.refine_issue.exit_code", "ENH-3358"),
     ("loops/refine-to-ready-issue.yaml", "captured.refine_issue.failure_type", "ENH-3358"),
-    ("loops/rl-bandit.yaml", "captured.round_result.output", "ENH-3358"),
     ("loops/rl-coding-agent.yaml", "captured.observation.output", "ENH-3358"),
     ("loops/rl-coding-agent.yaml", "captured.refine_result.output", "ENH-3358"),
     ("loops/rl-coding-agent.yaml", "context.target_files", "ENH-3358"),
@@ -19834,7 +19825,6 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/sft-corpus.yaml", "context.sft_format", "ENH-3358"),
     ("loops/sprint-build-and-validate.yaml", "captured.sprint_name.output", "ENH-3358"),
     ("loops/sprint-build-and-validate.yaml", "context.sprint_name", "ENH-3358"),
-    ("loops/svg-image-generator.yaml", "captured.run_dir.output", "ENH-3358"),
     ("loops/svg-textgrad.yaml", "captured.gradient.output", "ENH-3358"),
     ("loops/svg-textgrad.yaml", "captured.run_dir.output", "ENH-3358"),
     ("loops/svg-textgrad.yaml", "context.min_per_criterion", "ENH-3358"),
@@ -19871,6 +19861,18 @@ class TestMr11MarkerSet:
             f"stale allowlist entr(y/ies) no longer in the corpus: "
             f"{MR11_MARKER_ALLOWLIST - discovered}"
         )
+
+    def test_no_loop_wide_escape_hatch(self) -> None:
+        """ENH-3358: `unsafe_context_interpolation_ok: true` skips MR-11 scanning for
+        an entire file, not one site. Zero builtin loops may use it as a substitute
+        for per-site conversion — a per-site `# ll-lint: mr11-ok(...)` marker (tracked
+        above) is the only sanctioned escape hatch."""
+        offenders = [
+            f"loops/{path.relative_to(BUILTIN_LOOPS_DIR)}"
+            for path in sorted(BUILTIN_LOOPS_DIR.rglob("*.yaml"))
+            if "unsafe_context_interpolation_ok" in path.read_text()
+        ]
+        assert not offenders, f"loop-wide MR-11 escape hatch used in: {offenders}"
 
 
 class TestConfidenceGateThresholdsNotHardcoded:

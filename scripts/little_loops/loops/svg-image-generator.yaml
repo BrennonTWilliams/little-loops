@@ -144,7 +144,7 @@ states:
     # also pass — never block a functionally-sound artifact on an optional gate.
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${captured.run_dir.output:shell}"
       case "$RUN_DIR" in
         /*) ABS_DIR="$RUN_DIR" ;;
         *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
