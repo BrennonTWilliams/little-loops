@@ -68,6 +68,8 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 
+- Findings below cover the files to touch, the enforced marker/finding convention, test coverage, and the documentation that defines the safe forms.
+
 ### Files to Modify
 - The full, current file set is not hand-enumerated here because it shrinks with each conversion pass (a static list would go stale the moment one file is done). Enumerate live with `grep -rln "ll-lint: mr11-ok" scripts/little_loops/loops/` (55 files as of this refine) or `grep -rn "ll-lint: mr11-ok" scripts/little_loops/loops/` for per-site detail (585 lines).
 - Highest-concentration files, worth converting first: `loops/rn-refine.yaml` (67 markers), `loops/rn-implement.yaml` (54), `loops/rn-remediate.yaml` (48), `loops/autodev.yaml` (46), `loops/cua-agent-desktop.yaml` (40), `loops/recursive-refine.yaml` (34), `loops/mechanize-skills.yaml` (25), `loops/refine-to-ready-issue.yaml` (23), `loops/oracles/plan-node-refine.yaml` (21), `loops/workflow-generator.yaml` / `loops/cli-anything-bootstrap.yaml` (19 each).
@@ -90,6 +92,8 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 
+- Findings below cover the concrete signatures a converted site must still classify correctly under, the validation call path `ll-loop validate` runs, and why no new decision logic applies.
+
 ### Signatures
 - `classify_site(namespace: str, key: str) -> str` (`scripts/little_loops/fsm/interp_sweep.py:59`) — returns the trust class (`"A"`/`"B"`/`"C"`) that both scan paths key off of; unchanged by this issue, cited here because it is what a converted site must still classify correctly under.
 - `scan_action(action: str, state: str, file: str) -> list[InterpSite]` (`scripts/little_loops/fsm/interp_sweep.py:128`) — the delegated Python-literal-position scan; a converted heredoc/`-c` site must produce zero live `InterpSite` findings (or a well-formed, still-justified marker — not applicable here since the goal is zero markers).
@@ -100,6 +104,18 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 
 ### Decision Rules
 N/A — no new decision logic. This issue converts existing sites to two already-documented safe forms (`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:137-171`); it does not introduce a new gap kind, gate, threshold, or classification rule.
+
+## Implementation Steps
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+1. Every site under `scripts/little_loops/loops/` matching `# ll-lint: mr11-ok(...)` (585 lines / 55 files as of this refine, enumerable via `grep -rn "ll-lint: mr11-ok" scripts/little_loops/loops/`) converts to one of three safe forms depending on the site's position — `:shell`-in-place / single-quoting for a bare bash-token site, the `LL_ARG_` env hoist for a short scalar inside a Python literal, or heredoc-to-file for long-form text inside a Python literal (see Proposed Solution, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:104,137-171`) — and its marker line is removed.
+2. Each removed marker's matching `(file, namespace.key, "ENH-3358")` tuple is removed from `MR11_MARKER_ALLOWLIST` (`scripts/tests/test_builtin_loops.py:19645-19852`) in the same pass — the two must move together or `TestMr11MarkerSet::test_marker_set_matches_enumeration` fails on the drift, not just at the end.
+3. `ll-loop validate <file>` on each touched file returns clean (no MR-11 WARNING, no malformed/stale-marker ERROR) before moving to the next file.
+4. `python -m pytest scripts/tests/test_builtin_loops.py -k TestMr11MarkerSet` passes once the converted sites' markers and allowlist entries are both removed; it fails loudly (naming the drifted tuples) if only one side was updated.
+5. When the corpus's marker count reaches zero, `MR11_MARKER_ALLOWLIST` is an empty set and `Expected Behavior`'s "zero markers" criterion is met.
 
 ## Impact
 
@@ -136,3 +152,7 @@ progress and the checked-in enumeration in lockstep.
 ## Status
 
 **Open** | Created: 2026-08-29 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-30T01:53:34 - `543d94ed-e5f6-4375-8dca-4a4196321654.jsonl`
