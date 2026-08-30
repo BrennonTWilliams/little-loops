@@ -751,7 +751,7 @@ automate this" is false at 12 of the 13 sites. `FENCE_ROLES` in `fence.py` holds
 `scripts/tests/test_builtin_loops.py::TestBriefFencing` pins the rendered form at every
 entry so the copies cannot drift silently.
 
-**Three site classes — only one is a fencing target:**
+**Four site classes — classes 1 and 4 are fencing targets:**
 
 1. **Instruction surface** (fencing target) — the brief/goal is interpolated into a
    `prompt` action that asks the model to act on it. These are the 13 sites in
@@ -765,6 +765,24 @@ entry so the copies cannot drift silently.
    document heading would be actively worse. `KNOWN_UNFENCED_PROMPT_SITES` in `fence.py`
    names these explicitly so a completeness-guard test doesn't mistake them for
    unclassified gaps.
+4. **Untrusted output** (fencing target) — a sub-loop's event stream, another loop's
+   aggregated step results, or model/tool output relayed through a shell-capture state,
+   interpolated into a `prompt` action (BUG-3334). Unlike classes 1-3 above, the fenced
+   material is not user-authored — it is arbitrary model/tool output, so this section's
+   "User-Authored" title should not be read as excluding it; it shares the same
+   mechanical `render_fence()` convention. Rendered with
+   `render_fence(..., core=FENCE_CORE_UNTRUSTED_OUTPUT)` instead of the default
+   `FENCE_CORE`, and each marker noun carries a per-site literal nonce suffix (e.g.
+   `STEP_RESULTS_9K2F`) so a marker occurring inside the fenced material itself — a
+   nested sub-loop's own fenced output, for instance — cannot terminate the fence early.
+   `UNTRUSTED_OUTPUT_ROLES` in `fence.py` holds the 16-entry
+   `(loop_file, state, matched_var) -> (noun, role, verbs, var)` table (3-element key,
+   not `FENCE_ROLES`'s 2-element key, since one state can host more than one
+   untrusted-output var); `TestUntrustedOutputFencing` pins it the same way
+   `TestBriefFencing` pins `FENCE_ROLES`. `loop-router.yaml::review`'s sub-loop event
+   stream is the one exception: it is unbounded and untruncated, so it is not fenced in
+   place at all — a shell state writes it to `${context.run_dir}/sub-loop-events.jsonl`
+   and `review`'s prompt references the path instead.
 
 Whether this convention also earns a dedicated `ll-loop validate` lint rule is a
 separate question (see FEAT-3328); today it is enforced only by the test suite.

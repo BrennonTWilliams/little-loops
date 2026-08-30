@@ -3,7 +3,8 @@ id: BUG-3334
 type: BUG
 title: Untrusted captured output is interpolated unfenced into prompt actions
 priority: P2
-status: open
+status: done
+completed_at: '2026-08-29T00:00:00Z'
 discovered_by: split-from-BUG-3327
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
@@ -1697,6 +1698,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue also adds substantial new test content to `scripts/tests/test_builtin_loops.py` (a `TestUntrustedOutputFencing` class), the same file ENH-3347 extends with four behavioral injection/quote-breaking cases. No blocked_by/blocks edge exists between them (unlike the existing ENH-3342/ENH-3347 coordination note for the same file) — each owns disjoint test classes; coordinate landing order to avoid merge friction.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-29T23:48:37 - `f07ad83d-593f-4ba1-aba1-67baa08aa529.jsonl`
 - `/ll:confidence-check` - 2026-08-29T21:54:33 - `50c46bf0-423e-4388-a12d-c46c8485daa9.jsonl`
 - `/ll:verify-issues` - 2026-08-29T21:45:25 - `e192d75f-f3ee-4b3c-a103-ff7462b261c5.jsonl`
 - `/ll:verify-issues` - 2026-08-29T21:44:41 - `1f91fe13-2f6b-4ac1-a3cc-cd7be0cd3fa1.jsonl`

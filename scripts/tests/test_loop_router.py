@@ -206,9 +206,64 @@ class TestLoopRouterStates:
             "dispatch loop: field must reference captured.chosen.output"
         )
         assert state.get("capture") == "sub_loop_output"
-        assert state.get("on_yes") == "review"
-        assert state.get("on_no") == "review"
+        # BUG-3334: dispatch no longer routes directly to review — it routes
+        # through write_sub_loop_output, which spills the unbounded sub-loop
+        # event stream to a file before review's prompt ever sees it.
+        assert state.get("on_yes") == "write_sub_loop_output"
+        assert state.get("on_no") == "write_sub_loop_output"
+        assert state.get("on_error") == "write_sub_loop_output"
+
+    def test_write_sub_loop_output_wiring(self, loop_data: dict) -> None:
+        """BUG-3334 AC4/AC12: the intermediate shell state must write
+        sub_loop_output to the deterministic path via the combined
+        :shell:default= suffix (never bare :shell, which raises on a missing
+        capture), and its own on_error/next must both degrade forward to
+        review (refresh_input's convention), not dead-end."""
+        state = loop_data["states"]["write_sub_loop_output"]
+        assert state.get("action_type") == "shell"
+        action = state.get("action", "") or ""
+        assert "${captured.sub_loop_output.output:shell:default=}" in action
+        assert "${context.run_dir}/sub-loop-events.jsonl" in action
         assert state.get("on_error") == "review"
+        assert state.get("next") == "review"
+
+        review_action = loop_data["states"]["review"].get("action", "") or ""
+        assert "${context.run_dir}/sub-loop-events.jsonl" in review_action
+        assert "${captured.sub_loop_output.output}" not in review_action
+
+    def test_write_sub_loop_output_survives_oversized_stream(
+        self, loop_data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3334 AC14: a large, quote-dense sub_loop_output must not crash
+        the write step with an uncaught E2BIG/OSError. The write action is
+        rendered through the real interpolate() (so :shell's shlex.quote()
+        expansion is actually exercised) and executed via subprocess, mirroring
+        TestFinalizePresentResult's substitute-then-execute-then-assert shape.
+        executor.py's _run_action_or_route already converts any exception from
+        a shell state's subprocess call into a graceful on_error route when
+        on_error is set (as it is here), so this pins that no *lower-level*
+        crash escapes the subprocess call itself for a large, quote-heavy
+        payload sized well under the real OS ARG_MAX."""
+        from little_loops.fsm.interpolation import InterpolationContext, interpolate
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        # Quote-dense filler so shlex.quote()'s ~4x expansion on embedded
+        # single quotes is actually exercised, not just the pre-quoting length.
+        big_stream = "{\"event\": \"it's a test, it's fine\"}\n" * 6000  # ~230KB raw
+        action = loop_data["states"]["write_sub_loop_output"]["action"]
+        ctx = InterpolationContext(
+            context={"run_dir": str(run_dir)},
+            captured={"sub_loop_output": {"output": big_stream, "stderr": "", "exit_code": 0}},
+            state_name="write_sub_loop_output",
+        )
+        rendered = interpolate(action, ctx)
+        result = subprocess.run(
+            ["bash", "-c", rendered], capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        written = (run_dir / "sub-loop-events.jsonl").read_text()
+        assert written == big_stream
 
     def test_dispatch_with_binding_references_derived_params(self, loop_data: dict) -> None:
         state = loop_data["states"]["dispatch"]

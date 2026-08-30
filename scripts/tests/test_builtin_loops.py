@@ -19,9 +19,12 @@ import yaml
 from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.fence import (
     FENCE_CORE,
+    FENCE_CORE_UNTRUSTED_OUTPUT,
     FENCE_ROLES,
     FENCED_BRIEF_SITES,
     KNOWN_UNFENCED_PROMPT_SITES,
+    KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES,
+    UNTRUSTED_OUTPUT_ROLES,
     normalize_fence_text,
     render_fence,
 )
@@ -19231,7 +19234,14 @@ class TestBriefFencing:
 # FENCE_CORE_UNTRUSTED_OUTPUT / UNTRUSTED_OUTPUT_ROLES when fencing is
 # implemented for these sites.
 UNTRUSTED_OUTPUT_SITES: set[tuple[str, str, str]] = {
-    ("loop-router.yaml", "review", "${captured.sub_loop_output.output}"),
+    # BUG-3334: loop-router.yaml::review's sub_loop_output is deliberately
+    # NOT here — the raw interpolation was removed entirely (not fenced or
+    # exempted) in favor of a path-reference (write_sub_loop_output writes it
+    # to ${context.run_dir}/sub-loop-events.jsonl; review reads the path).
+    # Recording it here or in KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES would make
+    # `expected` a strict superset of `discovered` (which can never find a
+    # string that no longer exists), breaking test_completeness_guard's
+    # exact-equality assertion below.
     ("loop-composer.yaml", "review_chain", "${captured.step_results_json.output}"),
     ("loop-composer-adaptive.yaml", "review_chain", "${captured.step_results_json.output}"),
     ("rn-build.yaml", "capture_eval_failures", "${captured.eval_result.output}"),
@@ -19256,6 +19266,16 @@ UNTRUSTED_OUTPUT_SITES: set[tuple[str, str, str]] = {
         "build_playbook_partial",
         "${captured.prove.enumeration.output}",
     ),
+    # BUG-3334: shell-capture relay (parse_plan is action_type: shell, not a
+    # `loop:` dispatch state) — not discoverable by
+    # _discover_untrusted_output_sites, hand-classified like step_results_json.
+    ("loop-composer.yaml", "review_chain", "${captured.plan_display.output}"),
+    ("loop-composer-adaptive.yaml", "review_chain", "${captured.plan_display.output}"),
+    # BUG-3334: run_harness is action_type: shell (capture: run_harness), not
+    # a `loop:` dispatch state — both capture_issues and diagnose relay its
+    # output to a prompt via shell-capture, hand-classified.
+    ("eval-driven-development.yaml", "capture_issues", "${captured.run_harness.output}"),
+    ("eval-driven-development.yaml", "diagnose", "${captured.run_harness.output}"),
 }
 
 # Sites where untrusted output reaches a prompt via an on-disk relay
@@ -19268,6 +19288,10 @@ UNTRUSTED_OUTPUT_SITES: set[tuple[str, str, str]] = {
 KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES: set[tuple[str, str, str]] = {
     ("loop-composer.yaml", "review_chain", "${captured.step_results_json.output}"),
     ("loop-composer-adaptive.yaml", "review_chain", "${captured.step_results_json.output}"),
+    ("loop-composer.yaml", "review_chain", "${captured.plan_display.output}"),
+    ("loop-composer-adaptive.yaml", "review_chain", "${captured.plan_display.output}"),
+    ("eval-driven-development.yaml", "capture_issues", "${captured.run_harness.output}"),
+    ("eval-driven-development.yaml", "diagnose", "${captured.run_harness.output}"),
 }
 
 
@@ -19342,8 +19366,10 @@ class TestUntrustedOutputSurvey:
         dispatch_step (capture: step_output) -> write_step_success/failed
         (embeds ${captured.step_output.output}, writes checkpoints/*.json)
         -> read_checkpoints (globs checkpoints, capture: step_results_json)
-        -> review_chain (${captured.step_results_json.output}). If any link
-        breaks, this fails loudly instead of silently losing coverage."""
+        -> review_chain (${captured.step_results_json.output}), and
+        parse_plan (action_type: shell, capture: plan_display) still feeding
+        review_chain (${captured.plan_display.output}). If any link breaks,
+        this fails loudly instead of silently losing coverage."""
         for loop_file in ("loop-composer.yaml", "loop-composer-adaptive.yaml"):
             data = _load_builtin_loop(loop_file)
             states = data["states"]
@@ -19355,6 +19381,191 @@ class TestUntrustedOutputSurvey:
             assert "checkpoints" in read_ckpt_action
             review_action = states["review_chain"].get("action", "") or ""
             assert "${captured.step_results_json.output}" in review_action
+            assert states["parse_plan"].get("action_type") == "shell"
+            assert states["parse_plan"].get("capture") == "plan_display"
+            assert "${captured.plan_display.output}" in review_action
+
+    def test_eval_driven_development_run_harness_chain_still_present(self) -> None:
+        """Sentinel for the shell-capture relay the mechanical guard can't
+        see: run_harness (action_type: shell, capture: run_harness) still
+        feeds both capture_issues (on_yes) and diagnose (on_no), both
+        action_type: prompt, via the identical ${captured.run_harness.output}
+        value."""
+        data = _load_builtin_loop("eval-driven-development.yaml")
+        states = data["states"]
+        run_harness = states["run_harness"]
+        assert run_harness.get("action_type") == "shell"
+        assert run_harness.get("capture") == "run_harness"
+        assert run_harness.get("on_yes") == "capture_issues"
+        assert run_harness.get("on_no") == "diagnose"
+        capture_issues_action = states["capture_issues"].get("action", "") or ""
+        diagnose_action = states["diagnose"].get("action", "") or ""
+        assert "${captured.run_harness.output}" in capture_issues_action
+        assert "${captured.run_harness.output}" in diagnose_action
+
+
+class TestUntrustedOutputFencing:
+    """BUG-3334 item 2: class-(4) sites (untrusted sub-loop/model output,
+    as opposed to a user-authored brief) must fence the interpolated output
+    with `render_fence(..., core=FENCE_CORE_UNTRUSTED_OUTPUT)`, using a
+    per-site literal nonce-suffixed noun so the marker survives appearing
+    inside its own material (a nested router run's own fenced output, for
+    example — see BUG-3334 Expected Behavior).
+
+    Mirrors TestBriefFencing's three-property contract (rendered-substring,
+    between-markers, exactly-once) plus a classification guard and negative
+    control, extended for the 3-element (loop_file, state, matched_var) key
+    shape UNTRUSTED_OUTPUT_ROLES uses (a single state can host more than one
+    distinct untrusted-output var).
+    """
+
+    @pytest.mark.parametrize(
+        "site", UNTRUSTED_OUTPUT_ROLES, ids=lambda s: f"{s[0]}::{s[1]}::{s[2]}"
+    )
+    def test_rendered_fence_present(self, site: tuple[str, str, str]) -> None:
+        loop_file, state_name, _var = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        expected = render_fence(*UNTRUSTED_OUTPUT_ROLES[site], core=FENCE_CORE_UNTRUSTED_OUTPUT)
+        assert normalize_fence_text(expected) in normalize_fence_text(action), (
+            f"{site}: rendered fence text not found (or diverged) in action"
+        )
+
+    @pytest.mark.parametrize(
+        "site", UNTRUSTED_OUTPUT_ROLES, ids=lambda s: f"{s[0]}::{s[1]}::{s[2]}"
+    )
+    def test_fence_core_present(self, site: tuple[str, str, str]) -> None:
+        loop_file, state_name, _var = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        assert normalize_fence_text(FENCE_CORE_UNTRUSTED_OUTPUT) in normalize_fence_text(action)
+
+    @pytest.mark.parametrize(
+        "site", UNTRUSTED_OUTPUT_ROLES, ids=lambda s: f"{s[0]}::{s[1]}::{s[2]}"
+    )
+    def test_interpolation_sits_between_markers(self, site: tuple[str, str, str]) -> None:
+        loop_file, state_name, _var = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        noun, _role, _verbs, var = UNTRUSTED_OUTPUT_ROLES[site]
+        open_marker = f"<<<{noun}"
+        close_marker = f"{noun}>>>"
+        assert open_marker in action, f"{site}: missing opening marker {open_marker!r}"
+        assert close_marker in action, f"{site}: missing closing marker {close_marker!r}"
+        assert var in action, f"{site}: missing interpolation {var!r}"
+        assert action.index(open_marker) < action.index(var) < action.index(close_marker), (
+            f"{site}: interpolation must sit between the markers, in order"
+        )
+
+    @pytest.mark.parametrize(
+        "site", UNTRUSTED_OUTPUT_ROLES, ids=lambda s: f"{s[0]}::{s[1]}::{s[2]}"
+    )
+    def test_var_appears_exactly_once(self, site: tuple[str, str, str]) -> None:
+        """No second, unfenced occurrence of the same var — otherwise a state
+        can fence one copy and leave another loose. Distinct nouns per fence
+        (checked below) are what keep this true independently for multi-fence
+        states."""
+        loop_file, state_name, _var = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        var = UNTRUSTED_OUTPUT_ROLES[site][3]
+        assert action.count(var) == 1, (
+            f"{site}: expected exactly one occurrence of {var!r}, found {action.count(var)}"
+        )
+
+    def test_nouns_are_nonce_suffixed_and_distinct(self) -> None:
+        """AC3: every noun carries a per-site literal suffix distinct across
+        the whole dict, and no bare unsuffixed marker (e.g. exactly
+        "EVENT_STREAM" or "STEP_RESULTS") renders in any modified loop YAML —
+        otherwise a marker occurring inside the fenced material itself (a
+        nested sub-loop's own fenced output) could terminate the fence early.
+        """
+        suffix_pattern = re.compile(r"_[A-Z0-9]{3,}$")
+        nouns = [args[0] for args in UNTRUSTED_OUTPUT_ROLES.values()]
+        assert len(nouns) == len(set(nouns)), "duplicate noun across UNTRUSTED_OUTPUT_ROLES"
+        for noun in nouns:
+            assert suffix_pattern.search(noun), f"{noun!r}: missing a nonce suffix"
+            bare = suffix_pattern.sub("", noun)
+            assert noun != bare, f"{noun!r}: suffix stripped to itself"
+
+        loop_files = {site[0] for site in UNTRUSTED_OUTPUT_ROLES}
+        for loop_file in loop_files:
+            data = _load_builtin_loop(loop_file)
+            for state_name, state in data["states"].items():
+                if not isinstance(state, dict) or state.get("action_type") != "prompt":
+                    continue
+                action = state.get("action", "") or ""
+                for bare_noun in ("EVENT_STREAM", "STEP_RESULTS", "PLAN_DISPLAY"):
+                    assert f"<<<{bare_noun}\n" not in action, (
+                        f"{loop_file}::{state_name}: bare unsuffixed marker <<<{bare_noun}"
+                    )
+
+    def test_completeness_guard(self) -> None:
+        """Mirrors TestUntrustedOutputSurvey's own shape exactly:
+        UNTRUSTED_OUTPUT_ROLES has no origin tag, so `expected` is
+        `UNTRUSTED_OUTPUT_ROLES` sites minus the indirect ones (which the
+        dispatch-only discovery predicate structurally cannot see), and only
+        then compared for exact equality against `discovered`. Asserting
+        `discovered == fenced ∪ exempt` directly against the full 16-entry
+        dict would fail on the 6 indirect sites, which `discovered` can never
+        contain (`loop-composer{,-adaptive}.yaml::review_chain`'s pair,
+        `eval-driven-development.yaml`'s pair — all shell-capture relay, not
+        dispatch).
+        """
+        discovered: set[tuple[str, str, str]] = set()
+        files = sorted(p for p in BUILTIN_LOOPS_DIR.rglob("*.yaml") if is_runnable_loop(p))
+        for path in files:
+            discovered |= _discover_untrusted_output_sites(str(path.relative_to(BUILTIN_LOOPS_DIR)))
+        expected = set(UNTRUSTED_OUTPUT_ROLES) - KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES
+        assert discovered == expected, (
+            f"discovered {discovered - expected} not classified; "
+            f"expected-but-missing {expected - discovered}"
+        )
+
+    @pytest.mark.parametrize(
+        "site", sorted(KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES), ids=lambda s: f"{s[0]}::{s[1]}::{s[2]}"
+    )
+    def test_known_unfenced_sites_stay_unfenced(self, site: tuple[str, str, str]) -> None:
+        """Negative control mirroring TestBriefFencing's own — currently
+        vacuous since KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES is seeded empty
+        (BUG-3334's scope), but present so a future exemption is pinned in
+        both directions rather than only added to the allow side."""
+        loop_file, state_name, var = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        assert var not in action or "<<<" not in action
+
+    def test_docstring_names_untrusted_output_class(self) -> None:
+        """AC9: fence.py's module docstring must name the class-(4) constant,
+        so a docstring edit made without the matching guide edit (or vice
+        versa) fails the suite instead of passing silently."""
+        fence_src = (
+            Path(__file__).parent.parent / "little_loops" / "fsm" / "fence.py"
+        ).read_text()
+        assert "FENCE_CORE_UNTRUSTED_OUTPUT" in fence_src.split('"""', 2)[1]
+
+    def test_guide_names_untrusted_output_class(self) -> None:
+        """AC9: the HARNESS_OPTIMIZATION_GUIDE.md fencing section must both
+        name FENCE_CORE_UNTRUSTED_OUTPUT and extend its "Three site classes"
+        taxonomy to four entries — a bare substring mention elsewhere in the
+        file (e.g. a footnote) must not be sufficient."""
+        guide_path = (
+            Path(__file__).parent.parent.parent
+            / "docs"
+            / "guides"
+            / "HARNESS_OPTIMIZATION_GUIDE.md"
+        )
+        guide_text = guide_path.read_text()
+        heading = "## Fencing a User-Authored Brief/Goal"
+        start = guide_text.index(heading)
+        rest = guide_text[start + len(heading) :]
+        next_heading = re.search(r"^## ", rest, re.MULTILINE)
+        section = rest[: next_heading.start()] if next_heading else rest
+        assert "FENCE_CORE_UNTRUSTED_OUTPUT" in section
+        class_lines = re.findall(r"^\d+\.\s+\*\*", section, re.MULTILINE)
+        assert len(class_lines) == 4, (
+            f"expected 4 site-class entries in the fencing section, found {len(class_lines)}"
+        )
 
 
 class TestInterpSweepBaseline:
