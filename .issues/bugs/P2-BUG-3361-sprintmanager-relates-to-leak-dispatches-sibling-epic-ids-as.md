@@ -3,7 +3,7 @@ discovered_date: 2026-08-30
 discovered_by: debug-loop-run
 source_loop: sprint-refine-and-implement
 source_state: resolve_set
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3361: SprintManager.load_or_resolve unions relates_to sibling-EPIC ids into an EPIC's dispatch set
@@ -130,14 +130,14 @@ either be excluded entirely from `forward_ids`, or filtered the same way
 ## Proposed Solution
 
 In `scripts/little_loops/sprint.py`, filter `forward_ids` (and/or the final
-`child_ids` union) to exclude ids starting with `EPIC-`, mirroring the
-`not i.issue_id.startswith("EPIC-")` guard already used in
-`cli/issues/next_issues.py` (BUG-2638):
+`child_ids` union) to exclude EPIC-shaped ids, reusing the module's existing
+case-insensitive `_EPIC_ID_RE` primitive (see Decision Rationale below for why
+this is selected over a literal `.startswith("EPIC-")` check):
 
 ```python
 # scripts/little_loops/sprint.py, SprintManager.load_or_resolve()
 forward_ids: set[str] = {
-    i for i in epic_info.relates_to if not i.startswith("EPIC-")
+    i for i in epic_info.relates_to if not _EPIC_ID_RE.match(i)
 }
 ```
 
@@ -157,7 +157,27 @@ Two viable filter primitives for excluding EPIC-typed ids from `forward_ids`:
 
 **Option B**: `{i for i in epic_info.relates_to if not _EPIC_ID_RE.match(i)}` — reuses the module's existing EPIC-id-shape primitive (`_EPIC_ID_RE = re.compile(r"^EPIC-\d+$", re.IGNORECASE)`, `sprint.py:14`), already applied case-insensitively at `sprint.py:319` for the `arg` parameter and exercised by `test_load_or_resolve_epic_id_case_insensitive` (`test_sprint.py:2841`) for that same input path.
 
+> **Selected:** Option B — reuses the module's existing case-insensitive `_EPIC_ID_RE` primitive, avoiding the case-sensitivity regression Option A would leave open on a lowercase/mixed-case sibling-EPIC `relates_to` entry.
+
 **Recommended**: Option B — `relates_to` entries are unnormalized free text, and the module already holds a case-insensitive EPIC-id convention for exactly this shape of check; Option A silently regresses on a lowercase or mixed-case sibling-EPIC reference.
+
+### Decision Rationale
+
+**Selected**: Option B — `{i for i in epic_info.relates_to if not _EPIC_ID_RE.match(i)}`
+
+**Reasoning**: `epic_info.relates_to` is parsed verbatim from frontmatter with no case normalization (`issue_parser.py:3624-3671`), so a case-sensitive `.startswith("EPIC-")` filter (Option A) would silently fail to exclude a sibling-EPIC id written as `epic-2178` or `Epic-2178`, leaving the exact bug this issue reports open under a different casing. `sprint.py` already establishes case-insensitive EPIC-id-shape detection as its local convention — `_EPIC_ID_RE = re.compile(r"^EPIC-\d+$", re.IGNORECASE)` (`sprint.py:14`), used at `sprint.py:319` together with an `.upper()` normalization step (`sprint.py:322`) — and Option B is the only option consistent with that existing convention.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|:-:|:-:|:-:|:-:|:-:|
+| A — `.startswith("EPIC-")` | 2 | 3 | 3 | 1 | 9/12 |
+| B — `_EPIC_ID_RE.match(...)` | 3 | 3 | 3 | 3 | **12/12** |
+
+**Key evidence**:
+- `_EPIC_ID_RE` already defined and used case-insensitively in this same module: `sprint.py:14`, `sprint.py:319`, `sprint.py:322`.
+- An identically-shaped case-insensitive regex exists in a sibling module (`recursive_finalize.py:35`), confirming this is the established codebase-wide convention for EPIC-id-shape checks, not a one-off.
+- `relates_to` entries are unnormalized free text (`issue_parser.py:3624-3671`) — no upstream uppercasing to rely on.
+- No real EPIC id in `.issues/epics/*.md` deviates from the `EPIC-\d+` shape, so `_EPIC_ID_RE` has full coverage with no over/under-matching risk.
+- Existing test `test_load_or_resolve_epic_id_case_insensitive` (`test_sprint.py:2841`) covers case-insensitivity only for the `arg` parameter, not for a `relates_to` entry — the regression test this issue's Acceptance Criteria calls for is new coverage, not inherited from that test.
 
 ## Integration Map
 
@@ -224,5 +244,6 @@ Two viable filter primitives for excluding EPIC-typed ids from `forward_ids`:
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-30T18:42:34 - `485b5d3f-a476-487f-b5bc-30b3083dcc2d.jsonl`
 - `/ll:refine-issue` - 2026-08-30T18:36:06 - `3caa0a54-1798-44b0-ac84-0105003d8212.jsonl`
 - `/ll:format-issue` - 2026-08-30T18:30:07 - `94b795f5-375b-4a55-9190-f07c0af5f00b.jsonl`

@@ -1,0 +1,12 @@
+{
+  "id": "6e71ffe8-9403-4d55-9440-3d51f8e6b9d0",
+  "type": "decision",
+  "timestamp": "2026-08-30T18:41:51Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "relates_to entries are unnormalized free text with no case-normalization upstream; sprint.py already establishes case-insensitive EPIC-id-shape detection via _EPIC_ID_RE (sprint.py:14,319,322), so reusing it avoids a case-sensitivity regression that a plain startswith check would leave open",
+  "rule": "Filter forward_ids via _EPIC_ID_RE.match() (case-insensitive), not a literal .startswith(\"EPIC-\") check",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: {i for i in epic_info.relates_to if not i.startswith(\"EPIC-\")} \u2014 mirrors BUG-2638's next_issues.py pattern but is case-sensitive and would miss a lowercase/mixed-case sibling-EPIC relates_to entry",
+  "issue": "BUG-3361"
+}
