@@ -8,7 +8,8 @@ testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T18:42:53Z'
-confidence_score: 90
+program_design_not_applicable: true
+confidence_score: 100
 outcome_confidence: 86
 score_complexity: 25
 score_test_coverage: 18
@@ -59,6 +60,7 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
   (tools.py:317-370) and `_tool_issue_link` (tools.py:373-420) call
   `apply_status_transition`/`apply_link` directly.
 - `_tool_loop_start`'s `redirect_stdout`/`redirect_stderr` wrap (`tools.py:699-705`)
+  <!-- ll-prose-ok: stdlib io module's StringIO, not scripts/little_loops/workflow_sequence/io.py -->
   captures both streams into `io.StringIO()` buffers; `stdout_buf` is captured but
   never read (its only purpose is suppressing the success-path prints), while
   `stderr_buf` is read back to build the raised `ValueError` message on non-zero
@@ -104,6 +106,13 @@ The failure mode is silent and confusing: a handler that wraps a printing `cmd_*
 corrupts the JSON-RPC frame, and the client reports a parse error that points nowhere
 near the offending tool. It is the single most likely defect when adding a tool, and
 the guidance exists but is not discoverable from the docs.
+
+## Scope Boundaries
+
+- No code changes: `tools.py`'s comment, guards, and mitigations (`apply_status_transition`/`apply_link` extraction, the `_tool_loop_start` `redirect_stdout`/`redirect_stderr` wrap) stay as-is — this issue documents them, it does not refactor them.
+- No new tests: the existing docs-wiring/anchor gates in `python -m pytest scripts/tests/` are the only coverage; this issue adds no test.
+- No full per-tool walkthrough rewrite: the stale-heading fix extends/re-scopes `### The five tools, end to end` to match the current eight-tool tier-1 surface, but does not restructure the rest of the guide (mutation guards, `tasks/*` sections) beyond that heading and its immediate walkthrough.
+- No third mitigation pattern invented: only the two mitigations that already exist in the codebase (extracted non-printing library function; `redirect_stdout`/`redirect_stderr` wrap) are documented — see Codebase Research Findings.
 
 ## Proposed Solution
 
@@ -192,25 +201,29 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-08-29_
+_Added by `/ll:confidence-check` on 2026-08-29; gaps addressed same day._
 
-**Readiness Score**: 90/100 → STOP — ADDRESS GAPS (Program Design hard override)
+**Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 86/100 → HIGH CONFIDENCE
 
-### Gaps to Address
-- Program Design hard override (ENH-2852/ENH-2967): `## Program Design` is missing
-  entirely (format-check `missing`: "Program Design", "Scope Boundaries" — the gate
-  is armed via `.ll/program-design-cutover.json`). Remedy: populate `## Program
-  Design` with the concrete section/heading structure and call path via
-  `/ll:refine-issue` or `/ll:reconcile-issue`, or set `program_design_not_applicable:
-  true` in frontmatter — a reasonable candidate here since this is a docs-only
-  change with no code paths touched.
-- Advisory claim gap (caps Criterion 4 at 10, does not itself force STOP):
-  format-check's `stale_symbol_ref` flagged `StringIO (claimed in
-  scripts/little_loops/workflow_sequence/io.py)`. This resolves to the `io.StringIO()`
-  mention in the Codebase Research Findings, which refers to the stdlib `io` module,
-  not a local `workflow_sequence/io.py` module — likely a resolver false positive,
-  but listed per the gate's own output rather than re-judged here.
+Both gaps from the initial pass are resolved:
+- Program Design hard override: set `program_design_not_applicable: true` in
+  frontmatter — this is a docs-only change with no code paths touched, the
+  sanctioned exemption case per `enh-sections.json`'s own guidance ("Set
+  `program_design_not_applicable: true` ... for trivial issues (one-line config
+  change, docs fix)"). `ll-issues check-design ENH-3353` now passes.
+- Advisory claim gap: the `stale_symbol_ref` hit on `StringIO` was a resolver
+  false positive — `` `io.StringIO()` `` parses as a `module.symbol` claim and
+  resolves the bare `io` prefix to the only tracked `io.py` in the repo
+  (`scripts/little_loops/workflow_sequence/io.py`), not the stdlib `io` module
+  actually meant. Suppressed in place with an `<!-- ll-prose-ok: ... -->` marker
+  on the line immediately preceding the claim (the sanctioned suppression
+  convention, `symbol_claims.py::_SUPPRESS_RE`).
+- Also added the `## Scope Boundaries` section format-check flagged as missing
+  (unrelated to either hard-override gap, but cheap to close in the same pass).
+
+`ll-issues format-check ENH-3353 --format json` now reports no gaps in any
+category.
 
 ## Status
 
