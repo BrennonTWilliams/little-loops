@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-30'
 captured_at: '2026-08-30T19:48:39Z'
 program_design_not_applicable: true
+confidence_score: 98
+outcome_confidence: 87
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 20
 ---
 
 # BUG-3363: scratch-cleanup.sh SessionEnd hook intermittently cancelled on session exit
@@ -303,6 +309,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T20:51:16 - `c0383600-4aba-41a2-bb58-b8d027178e96.jsonl`
 - `/ll:wire-issue` - 2026-08-30T20:27:44 - `f157be7e-42d9-436b-aab4-68974045eabd.jsonl`
 - `/ll:refine-issue` - 2026-08-30T20:16:05 - `0689d759-b3b6-42ca-983c-618fccd6cc96.jsonl`
 - `/ll:format-issue` - 2026-08-30T19:53:31 - `a1ad8a57-f920-432c-8aa4-c8eaf847f8b7.jsonl`
