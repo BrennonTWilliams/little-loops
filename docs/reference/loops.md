@@ -150,30 +150,55 @@ ll-loop run workflow-generator "triage a new bug report: read it, grep for the o
 | `enable_shrink` | `"false"` | Gate for the adversarial minimum-coupling shrink pass — off by default (no in-repo precedent, most outcome risk of the six passes). |
 | `auto_promote` | `"false"` | Gate for the HITL promotion step — without it, the run stops at `await_confirmation` with the validated draft's path. |
 | `max_emit_retries` | `"3"` | Bound on `emit_artifact` retries before routing to `diagnose`. |
-| `loops_dir` | `".ll/loops"` | Promotion target directory. |
+| `max_intent_retries` | `"3"` | Bound on `capture_intent` retries before routing to `diagnose`. |
+| `loops_dir` | `".ll/loops"` | Promotion target directory. Also the one entry in the containment gates' allowed set beyond `run_dir` — only for the gate at or after `promote` (see State Graph). |
 
 ### State Graph
 
+FEAT-3335 generalized FEAT-3332's containment gate from a single check at the
+intent window to seven gates covering the whole pipeline, all sharing one
+`scope_containment_gate` fragment body with a rolling baseline (each gate's
+window is "since the previous gate," not "since init" — see
+[HARNESS_OPTIMIZATION_GUIDE.md § Runtime Containment Gates](../guides/HARNESS_OPTIMIZATION_GUIDE.md#runtime-containment-gates)
+for the mechanism). Early gates (through `check_artifact_scope`) route a
+violation to `diagnose` — not retryable, since the out-of-scope file is
+already written. The two post-`emit_artifact` gates warn-and-continue to
+`finalize_await_confirmation` instead, since a valid `workflow.yaml` already
+exists by that point.
+
 ```
-init → capture_intent → validate_intent (loops back on fail)
-     → check_intent_scope (containment gate: changed-file set since init ⊆ run_dir)
+init → snapshot_scope_baseline (one-time baseline snapshot) → capture_intent
+     → validate_intent (loops back on fail)
+     → check_intent_scope (containment gate: changed-file set since baseline ⊆ run_dir)
          on_no  → diagnose (not retryable — the out-of-scope file is already written)
          on_yes → sketch_state_graph
      → sketch_state_graph → validate_sketch (loops back on fail)
+     → check_sketch_scope (containment gate)
+         on_no → diagnose / on_yes → attach_evaluators
      → attach_evaluators → validate_evaluators (loops back on fail)
+     → check_evaluators_scope (containment gate)
+         on_no → diagnose / on_yes → resolve_routing
      → resolve_routing → validate_routing (loops back on fail)
+     → check_routing_scope (containment gate)
+         on_no → diagnose / on_yes → emit_artifact
      → emit_artifact → validate_artifact (`ll-loop validate`)
          on_no → count_emit_retry → emit_artifact (under limit) / diagnose (exhausted)
-         on_yes → check_shrink_enabled
+         on_yes → check_artifact_scope (containment gate)
+             on_no → diagnose / on_yes → check_shrink_enabled
              on_no  → promotion_gate
              on_yes → shrink_baseline → shrink_select_candidate
                         → shrink_try_remove → shrink_probe_candidate
                             on_yes (outcome-neutral) → shrink_apply → shrink_select_candidate
                             on_no  (outcome changed) → shrink_select_candidate (try next)
-                        (no candidates left) → promotion_gate
+                        (no candidates left) → check_shrink_scope (containment gate)
+                            on_no  → finalize_await_confirmation (warn-and-continue)
+                            on_yes → promotion_gate
      → promotion_gate
-         on_yes (auto_promote) → promote → done
-         on_no  → await_confirmation (terminal)
+         on_yes (auto_promote) → promote → check_promote_scope (containment gate;
+                    the only gate with loops_dir in its allowed set)
+             on_no  → finalize_await_confirmation (warn-and-continue; promote already ran)
+             on_yes → done
+         on_no  → finalize_await_confirmation → await_confirmation (terminal)
 diagnose → failed
 ```
 

@@ -17947,6 +17947,16 @@ class TestWorkflowGeneratorLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
+    @pytest.fixture
+    def resolved_data(self) -> dict:
+        """FEAT-3335: fragment-referencing states (the scope_containment_gate
+        consumers) carry no action/action_type in the raw dict -- only a
+        fragment: name. Structural assertions about actual action text must
+        go through resolve_fragments(), per the raw-fixture precedent this
+        file already uses elsewhere (test_builtin_loops.py:536, :12772)."""
+        raw = yaml.safe_load(self.LOOP_FILE.read_text())
+        return resolve_fragments(raw, self.LOOP_FILE.parent)
+
     def test_required_top_level_fields(self, data: dict) -> None:
         assert data.get("name") == "workflow-generator"
         assert data.get("initial") == "init"
@@ -17976,17 +17986,22 @@ class TestWorkflowGeneratorLoop:
     def test_pipeline_states_exist(self, data: dict) -> None:
         required = {
             "init",
+            "snapshot_scope_baseline",
             "capture_intent",
             "validate_intent",
             "check_intent_scope",
             "sketch_state_graph",
             "validate_sketch",
+            "check_sketch_scope",
             "attach_evaluators",
             "validate_evaluators",
+            "check_evaluators_scope",
             "resolve_routing",
             "validate_routing",
+            "check_routing_scope",
             "emit_artifact",
             "validate_artifact",
+            "check_artifact_scope",
             "count_emit_retry",
             "count_intent_retry",
             "check_shrink_enabled",
@@ -17995,9 +18010,11 @@ class TestWorkflowGeneratorLoop:
             "shrink_try_remove",
             "shrink_probe_candidate",
             "shrink_apply",
+            "check_shrink_scope",
             "promotion_gate",
             "await_confirmation",
             "promote",
+            "check_promote_scope",
             "diagnose",
             "done",
             "failed",
@@ -18033,13 +18050,62 @@ class TestWorkflowGeneratorLoop:
             "validate_evaluators",
             "validate_routing",
             "validate_artifact",
+            "check_sketch_scope",
+            "check_evaluators_scope",
+            "check_routing_scope",
+            "check_artifact_scope",
+            "check_shrink_scope",
+            "check_promote_scope",
         ],
     )
-    def test_validation_gates_are_exit_code(self, data: dict, state_name: str) -> None:
-        """Every lowering-pass gate is a non-LLM exit_code evaluator (MR-1)."""
-        state = data["states"][state_name]
+    def test_validation_gates_are_exit_code(self, resolved_data: dict, state_name: str) -> None:
+        """Every lowering-pass gate, and every FEAT-3335 scope_containment_gate
+        consumer, is a non-LLM exit_code evaluator (MR-1). Resolved fixture
+        because the six new gates and check_intent_scope carry only a
+        fragment: reference in the raw dict, not action/action_type directly."""
+        state = resolved_data["states"][state_name]
         assert state.get("action_type") == "shell"
         assert state.get("evaluate", {}).get("type") == "exit_code"
+
+    def test_scope_containment_gate_states_reference_shared_fragment(self, data: dict) -> None:
+        """FEAT-3335 Implementation Step 2: replaces the retired
+        test_check_intent_scope_matched_pair_byte_identical. Every windowed
+        scope check -- including the converted check_intent_scope/init
+        (init's half is now snapshot_scope_baseline) -- must reference the
+        one shared fragment name, not a near-duplicate inline shell body
+        (the raw-fixture `fragment ==` precedent: test_builtin_loops.py:2585,
+        :2678, :2783, and test_rn_decompose.py:489-497)."""
+        gate_states = {
+            "snapshot_scope_baseline",
+            "check_intent_scope",
+            "check_sketch_scope",
+            "check_evaluators_scope",
+            "check_routing_scope",
+            "check_artifact_scope",
+            "check_shrink_scope",
+            "check_promote_scope",
+        }
+        for name in gate_states:
+            state = data["states"][name]
+            assert state.get("fragment") == "scope_containment_gate", (
+                f"{name} must reference the scope_containment_gate fragment, "
+                f"got fragment={state.get('fragment')!r}"
+            )
+            assert "action" not in state, (
+                f"{name} must not carry its own action -- that would be a "
+                "near-duplicate of the shared fragment body"
+            )
+
+    def test_scope_containment_fragment_defined_once(self, data: dict) -> None:
+        fragments = data.get("fragments") or {}
+        assert "scope_containment_gate" in fragments
+        frag = fragments["scope_containment_gate"]
+        assert frag.get("action_type") == "shell"
+        action = frag.get("action", "")
+        assert action.count("python3 -c '") == 1, (
+            "the embedded changed_set/gate Python body must appear exactly "
+            "once in the fragment (defined-once AC)"
+        )
 
     def test_validate_artifact_invokes_ll_loop_validate(self, data: dict) -> None:
         state = data["states"]["validate_artifact"]
@@ -18055,16 +18121,33 @@ class TestWorkflowGeneratorLoop:
             action = state.get("action", "") or ""
             assert ".loops/tmp/" not in action, f"{name} writes to shared .loops/tmp/"
 
-    def test_run_dir_used_throughout(self, data: dict) -> None:
+    def test_run_dir_used_throughout(self, data: dict, resolved_data: dict) -> None:
         for name in (
             "capture_intent",
             "validate_intent",
-            "check_intent_scope",
             "sketch_state_graph",
             "emit_artifact",
             "validate_artifact",
         ):
             action = data["states"][name].get("action", "") or ""
+            assert "run_dir" in action, f"{name} must reference run_dir"
+        # check_intent_scope's action lives in the shared fragment now
+        # (resolved fixture required) -- see test_run_dir_used_throughout's
+        # sibling assertion below for the other scope_containment_gate states.
+        gate_action = resolved_data["states"]["check_intent_scope"].get("action", "") or ""
+        assert "run_dir" in gate_action
+
+    def test_scope_containment_gates_reference_run_dir(self, resolved_data: dict) -> None:
+        for name in (
+            "snapshot_scope_baseline",
+            "check_sketch_scope",
+            "check_evaluators_scope",
+            "check_routing_scope",
+            "check_artifact_scope",
+            "check_shrink_scope",
+            "check_promote_scope",
+        ):
+            action = resolved_data["states"][name].get("action", "") or ""
             assert "run_dir" in action, f"{name} must reference run_dir"
 
     def test_check_intent_scope_routing_edge(self, data: dict) -> None:
@@ -18079,26 +18162,104 @@ class TestWorkflowGeneratorLoop:
         )
         assert state.get("on_yes") == "sketch_state_graph"
 
-    def test_check_intent_scope_matched_pair_byte_identical(self, data: dict) -> None:
-        """FEAT-3332 requirement (c): init's baseline capture and
-        check_intent_scope's current-set capture must embed the identical
-        single-quoted python3 -c body (differing only in argv), or the two
-        changed_set computations can silently drift apart."""
-        pattern = re.compile(r"python3 -c '\n(.*?)\n *' ", re.S)
+    # --- FEAT-3335: the six new post-window gates, their insertion edges,
+    # and the Routing Decision (early gates -> diagnose; post-emit_artifact
+    # gates -> finalize_await_confirmation, warn-and-continue).
 
-        init_action = data["states"]["init"].get("action", "") or ""
-        gate_action = data["states"]["check_intent_scope"].get("action", "") or ""
+    @pytest.mark.parametrize(
+        "validator_state,gate_state,resume_target",
+        [
+            ("validate_sketch", "check_sketch_scope", "attach_evaluators"),
+            ("validate_evaluators", "check_evaluators_scope", "resolve_routing"),
+            ("validate_routing", "check_routing_scope", "emit_artifact"),
+            ("validate_artifact", "check_artifact_scope", "check_shrink_enabled"),
+        ],
+    )
+    def test_early_scope_gate_insertion_edges(
+        self, data: dict, validator_state: str, gate_state: str, resume_target: str
+    ) -> None:
+        """Each of the four lowering-pass validators now routes its on_yes
+        edge through a scope gate before the next pass, not directly to it.
+        The gate itself is not retryable -- a scope violation is not fixed
+        by retrying the pass that already ran -- so its on_no is diagnose,
+        matching check_intent_scope's precedent."""
+        assert data["states"][validator_state].get("on_yes") == gate_state, (
+            f"{validator_state}.on_yes must be {gate_state!r} "
+            f"(FEAT-3335 gate insertion), got {data['states'][validator_state].get('on_yes')!r}"
+        )
+        gate = data["states"][gate_state]
+        assert gate.get("on_yes") == resume_target
+        assert gate.get("on_no") == "diagnose"
 
-        init_match = pattern.search(init_action)
-        gate_match = pattern.search(gate_action)
-        assert init_match, "init action does not contain a single-quoted python3 -c body"
-        assert gate_match, (
-            "check_intent_scope action does not contain a single-quoted python3 -c body"
+    def test_shrink_window_scope_gate_insertion_edge(self, data: dict) -> None:
+        """shrink_select_candidate's on_no (candidates exhausted) now routes
+        through check_shrink_scope before promotion_gate. Per the Routing
+        Decision, a violation here is warn-and-continue (finalize_await_
+        confirmation), not diagnose: emit_artifact already produced a valid
+        workflow.yaml by this point, and diagnose has no artifact-preserving
+        path."""
+        assert data["states"]["shrink_select_candidate"].get("on_no") == "check_shrink_scope"
+        gate = data["states"]["check_shrink_scope"]
+        assert gate.get("on_yes") == "promotion_gate"
+        assert gate.get("on_no") == "finalize_await_confirmation"
+
+    def test_promote_window_scope_gate_insertion_edge(self, data: dict) -> None:
+        """promote's next now routes through check_promote_scope before
+        done. Warn-and-continue on violation (same reasoning as
+        check_shrink_scope) -- promote has already run by the time this
+        fires."""
+        assert data["states"]["promote"].get("next") == "check_promote_scope"
+        gate = data["states"]["check_promote_scope"]
+        assert gate.get("on_yes") == "done"
+        assert gate.get("on_no") == "finalize_await_confirmation"
+
+    def test_only_promote_gate_allows_loops_dir(self, data: dict) -> None:
+        """requirement (h): ${context.loops_dir} is only in the allowed set
+        for the gate at or after promote -- every other gate must NOT set
+        allow_loops_dir, or a stray write to loops_dir would silently pass
+        everywhere instead of only where promote legitimately writes there."""
+        for name in (
+            "snapshot_scope_baseline",
+            "check_intent_scope",
+            "check_sketch_scope",
+            "check_evaluators_scope",
+            "check_routing_scope",
+            "check_artifact_scope",
+            "check_shrink_scope",
+        ):
+            state = data["states"][name]
+            allow = (state.get("with") or {}).get("allow_loops_dir")
+            assert allow in (None, "false"), f"{name} must not allow loops_dir, got {allow!r}"
+        assert data["states"]["check_promote_scope"].get("with", {}).get(
+            "allow_loops_dir"
+        ) == "true"
+
+    def test_snapshot_scope_baseline_uses_snapshot_mode_and_no_evaluator(
+        self, data: dict
+    ) -> None:
+        state = data["states"]["snapshot_scope_baseline"]
+        assert state.get("with", {}).get("mode") == "snapshot"
+        assert "evaluate" not in state, (
+            "snapshot mode never fails the run -- an evaluate key would make "
+            "the executor treat a non-zero exit as a real gate outcome"
         )
-        assert init_match.group(1) == gate_match.group(1), (
-            "init and check_intent_scope's python3 -c bodies have drifted apart "
-            "(requirement (c) demands byte-identical text, argv-only difference)"
-        )
+        assert state.get("next") == "capture_intent"
+
+    def test_init_next_targets_snapshot_scope_baseline(self, data: dict) -> None:
+        assert data["states"]["init"].get("next") == "snapshot_scope_baseline"
+
+    def test_promote_writes_promoted_path_marker(self, data: dict) -> None:
+        """finalize_await_confirmation needs this marker to tell whether it
+        is reporting a pre-promotion draft or a post-promotion violation."""
+        action = data["states"]["promote"].get("action", "") or ""
+        assert ".promoted_path.txt" in action
+
+    def test_finalize_await_confirmation_checks_promoted_marker_and_violations(
+        self, data: dict
+    ) -> None:
+        action = data["states"]["finalize_await_confirmation"].get("action", "") or ""
+        assert ".promoted_path.txt" in action
+        assert ".scope_violations.txt" in action
 
     # --- Gate-completeness regression guards (workflow-generator run
     # 2026-08-26T121218: attach_evaluators emitted bare `type: output_json`
@@ -18541,18 +18702,28 @@ class TestWorkflowGeneratorLoop:
             assert "invalid operator" in result.stderr
 
 
-class TestCheckIntentScopeShellAction:
-    """FEAT-3332: check_intent_scope's containment gate, executed directly
-    against real temp git repos (subprocess model cloned from
-    TestGeneralTaskFinalVerifySpinGateShellAction, general-task.yaml)."""
+class _ScopeContainmentGateHelpers:
+    """Shared repo/init/snapshot/gate-invocation fixtures for
+    TestCheckIntentScopeShellAction and TestScopeContainmentGateGeneralization
+    (FEAT-3335). Deliberately carries no test_* methods -- a test class
+    subclassing this to reuse the helpers must not also inherit and re-run
+    the other class's test matrix."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "workflow-generator.yaml"
-    SKIPPED_TOKEN = "check_intent_scope: SKIPPED"
+    # FEAT-3335: the shared fragment's SKIPPED message is generic (no longer
+    # named after check_intent_scope specifically -- every gate that reuses
+    # the fragment emits the same token).
+    SKIPPED_TOKEN = "scope_containment_gate: SKIPPED"
 
     @pytest.fixture
     def data(self) -> dict:
+        """FEAT-3335: resolved, not raw -- check_intent_scope (and every
+        other scope-gate state) now carries only a fragment: reference in
+        the raw YAML; action/action_type live in the shared fragment and
+        only appear after resolve_fragments() merges them in."""
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
-        return yaml.safe_load(self.LOOP_FILE.read_text())
+        raw = yaml.safe_load(self.LOOP_FILE.read_text())
+        return resolve_fragments(raw, self.LOOP_FILE.parent)
 
     @staticmethod
     def _init_repo(repo: Path) -> None:
@@ -18573,23 +18744,79 @@ class TestCheckIntentScopeShellAction:
         action = action.replace(f"${{{token}:shell}}", shlex.quote(value))
         return action.replace(f"${{{token}}}", value)
 
+    @staticmethod
+    def _resolve_fragment_params(state: dict) -> dict:
+        """Mirror executor.py's _build_context param resolution: with:
+        bindings (fragment_bindings) win, unbound optional params fall back
+        to their fragment-declared default. resolve_fragments() leaves both
+        as plain dicts (schema parsing/ParameterSpec happens later, in
+        FSMLoop.from_dict), so this reads raw dict keys, not ParameterSpec
+        objects."""
+        resolved = dict(state.get("fragment_bindings") or {})
+        for name, spec in (state.get("fragment_parameters") or {}).items():
+            if name not in resolved and spec.get("default") is not None:
+                resolved[name] = spec["default"]
+        return resolved
+
+    def _gate_action(
+        self, data: dict, state_name: str, run_dir: Path | str, loops_dir: str = ""
+    ) -> str:
+        """Render a scope_containment_gate consumer's action with ${param.*}
+        and ${captured.run_dir.output} / ${context.loops_dir} substituted,
+        mirroring the real interpolation the FSM executor would do."""
+        state = data["states"][state_name]
+        params = self._resolve_fragment_params(state)
+        action = state["action"]
+        action = action.replace("${param.mode}", params.get("mode", "gate"))
+        action = action.replace("${param.allow_loops_dir}", params.get("allow_loops_dir", "false"))
+        action = self._substitute(action, "captured.run_dir.output", str(run_dir))
+        action = self._substitute(action, "context.loops_dir", loops_dir)
+        return action
+
+    def _run_snapshot(self, data: dict, run_dir: Path, cwd: Path) -> subprocess.CompletedProcess:
+        """Run snapshot_scope_baseline's action -- the FEAT-3335 replacement
+        for init's old inline baseline capture. Must run after init (which
+        no longer writes baseline-ref.txt/baseline-changed-set.json itself)
+        and before any gate."""
+        action = self._gate_action(data, "snapshot_scope_baseline", run_dir)
+        return subprocess.run(["bash", "-c", action], cwd=cwd, capture_output=True, text=True)
+
     def _run_init(
         self, data: dict, repo: Path, run_dir_rel: str, cwd: Path | None = None
     ) -> subprocess.CompletedProcess:
         """Run init's action with ${context.run_dir} substituted to run_dir_rel
-        (relative to cwd, mirroring the real runner). Returns the completed
-        process; stdout (rstripped) is the captured run_dir string."""
+        (relative to cwd, mirroring the real runner), then chain
+        snapshot_scope_baseline (FEAT-3335 moved the baseline capture out of
+        init) so every existing call site's baseline-ref.txt/
+        baseline-changed-set.json expectations still hold. Returns init's own
+        completed process unchanged -- callers read its stdout/returncode."""
         action = self._substitute(data["states"]["init"]["action"], "context.run_dir", run_dir_rel)
-        return subprocess.run(
+        result = subprocess.run(
             ["bash", "-c", action], cwd=cwd or repo, capture_output=True, text=True
         )
+        if result.returncode == 0:
+            lines = result.stdout.splitlines()
+            if len(lines) == 1:
+                snap = self._run_snapshot(data, Path(lines[0]), cwd or repo)
+                assert snap.returncode == 0, (
+                    f"snapshot_scope_baseline failed: {snap.stderr}"
+                )
+        return result
 
-    def _run_gate(self, data: dict, run_dir: Path, cwd: Path) -> subprocess.CompletedProcess:
-        """Run check_intent_scope's action with ${captured.run_dir.output}
-        substituted to the absolute run_dir, from the given cwd."""
-        action = self._substitute(
-            data["states"]["check_intent_scope"]["action"], "captured.run_dir.output", str(run_dir)
-        )
+    def _run_gate(
+        self,
+        data: dict,
+        run_dir: Path,
+        cwd: Path,
+        *,
+        state_name: str = "check_intent_scope",
+        loops_dir: str = "",
+    ) -> subprocess.CompletedProcess:
+        """Run a scope_containment_gate consumer's action (default
+        check_intent_scope, for the pre-existing 20-test matrix below) with
+        ${captured.run_dir.output} substituted to the absolute run_dir, from
+        the given cwd."""
+        action = self._gate_action(data, state_name, run_dir, loops_dir)
         return subprocess.run(["bash", "-c", action], cwd=cwd, capture_output=True, text=True)
 
     def _setup(
@@ -18618,6 +18845,12 @@ class TestCheckIntentScopeShellAction:
         assert len(lines) == 1, f"init stdout must be exactly one line, got: {lines!r}"
         run_dir = Path(lines[0])
         return repo, cwd, run_dir
+
+
+class TestCheckIntentScopeShellAction(_ScopeContainmentGateHelpers):
+    """FEAT-3332: check_intent_scope's containment gate, executed directly
+    against real temp git repos (subprocess model cloned from
+    TestGeneralTaskFinalVerifySpinGateShellAction, general-task.yaml)."""
 
     # --- (i)-(vi-b): baseline / dirty-tree / no-repo behavior ---
 
@@ -18914,6 +19147,112 @@ class TestCheckIntentScopeShellAction:
         result = self._run_gate(data, run_dir, cwd)
         assert result.returncode == 0
         assert self.SKIPPED_TOKEN in result.stdout
+
+
+class TestScopeContainmentGateGeneralization(_ScopeContainmentGateHelpers):
+    """FEAT-3335: behavioral proof that every one of the six new post-window
+    gates -- not just check_intent_scope -- actually turns red on a planted
+    out-of-scope write ("a green gate proves nothing until you have seen it
+    go red", Implementation Step 6), and that the rolling baseline attributes
+    a violation to the correct window rather than to "somewhere since init".
+
+    Shares _ScopeContainmentGateHelpers' repo/init/snapshot fixtures
+    (_init_repo, _run_init, _run_snapshot, _setup) with
+    TestCheckIntentScopeShellAction rather than re-deriving them -- the
+    mechanism under test is identical, only the state name and the
+    allow_loops_dir binding vary.
+    """
+
+    NEW_GATES = (
+        "check_sketch_scope",
+        "check_evaluators_scope",
+        "check_routing_scope",
+        "check_artifact_scope",
+        "check_shrink_scope",
+    )
+
+    @pytest.mark.parametrize("state_name", NEW_GATES)
+    def test_in_scope_write_passes(self, data: dict, tmp_path: Path, state_name: str) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        (run_dir / "artifact.txt").write_text("produced by this window\n")
+        result = self._run_gate(data, run_dir, cwd, state_name=state_name)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    @pytest.mark.parametrize("state_name", NEW_GATES)
+    def test_planted_out_of_scope_write_turns_gate_red(
+        self, data: dict, tmp_path: Path, state_name: str
+    ) -> None:
+        """The AC's literal requirement: a deliberately planted out-of-scope
+        write from a post-gate state must fail the gate, not just pass it."""
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        (repo / "planted-violation.txt").write_text("written outside run_dir\n")
+        result = self._run_gate(data, run_dir, cwd, state_name=state_name)
+        assert result.returncode != 0
+        assert "planted-violation.txt" in result.stdout
+        violations_file = run_dir / ".scope_violations.txt"
+        assert "planted-violation.txt" in violations_file.read_text()
+
+    def test_rolling_baseline_attributes_violation_to_correct_window(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """Chains two gates: check_intent_scope then check_sketch_scope. A
+        write made and cleared through gate 1 must not re-trip gate 2 (the
+        window is 'since the previous gate', not 'since init'); a violation
+        planted only after gate 1 passes must be caught by gate 2."""
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+
+        (run_dir / "intent.yaml").write_text("name: x\n")
+        gate1 = self._run_gate(data, run_dir, cwd, state_name="check_intent_scope")
+        assert gate1.returncode == 0, gate1.stdout + gate1.stderr
+
+        # gate 2 immediately after gate 1, no new writes: must still pass --
+        # proves the baseline advanced on gate 1's pass rather than staying
+        # pinned to init's snapshot (which never saw intent.yaml).
+        gate2_clean = self._run_gate(data, run_dir, cwd, state_name="check_sketch_scope")
+        assert gate2_clean.returncode == 0, gate2_clean.stdout + gate2_clean.stderr
+
+        # a violation planted after gate 1 passed must be attributed to
+        # gate 2's window, not silently absorbed into gate 1's already-passed
+        # baseline.
+        (repo / "sketch-pass-violation.txt").write_text("written during sketch window\n")
+        gate2_dirty = self._run_gate(data, run_dir, cwd, state_name="check_sketch_scope")
+        assert gate2_dirty.returncode != 0
+        assert "sketch-pass-violation.txt" in gate2_dirty.stdout
+
+    def test_promote_gate_allows_loops_dir_only_with_binding(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """requirement (h), test-guarded: check_promote_scope
+        (allow_loops_dir: true) must NOT trip on a legitimate write to
+        loops_dir, while every other gate (allow_loops_dir defaults to
+        false) must still catch the identical write as a violation -- the
+        regression the deferred FEAT-3332 requirement exists to prevent.
+
+        Two independent repos/run_dirs, not one chained through a single
+        rolling baseline -- a passing gate advances the baseline to the
+        current snapshot, so a second gate run against the *same* baseline
+        would no longer see the loops_dir write as new and would trivially
+        "pass" regardless of allow_loops_dir. Each half needs its own
+        pre-gate baseline to be a real test of the allow-set difference.
+        """
+        repo1, cwd1, run_dir1 = self._setup(data, tmp_path / "allowed")
+        loops_dir1 = repo1 / "loops"
+        loops_dir1.mkdir()
+        (loops_dir1 / "promoted-workflow.yaml").write_text("name: x\n")
+        allowed = self._run_gate(
+            data, run_dir1, cwd1, state_name="check_promote_scope", loops_dir=str(loops_dir1)
+        )
+        assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+
+        repo2, cwd2, run_dir2 = self._setup(data, tmp_path / "disallowed")
+        loops_dir2 = repo2 / "loops"
+        loops_dir2.mkdir()
+        (loops_dir2 / "promoted-workflow.yaml").write_text("name: x\n")
+        disallowed = self._run_gate(
+            data, run_dir2, cwd2, state_name="check_intent_scope", loops_dir=str(loops_dir2)
+        )
+        assert disallowed.returncode != 0
+        assert "loops/promoted-workflow.yaml" in disallowed.stdout
 
 
 def _load_builtin_loop(filename: str) -> dict:
@@ -19835,7 +20174,9 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/vega-viz.yaml", "captured.run_dir.output", "ENH-3358"),
     ("loops/vega-viz.yaml", "context.data_path", "ENH-3358"),
     ("loops/workflow-generator.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/workflow-generator.yaml", "captured.run_dir.output", "FEAT-3335"),
     ("loops/workflow-generator.yaml", "context.auto_promote", "ENH-3358"),
+    ("loops/workflow-generator.yaml", "context.loops_dir", "FEAT-3335"),
     ("loops/workflow-generator.yaml", "context.enable_shrink", "ENH-3358"),
     ("loops/workflow-generator.yaml", "context.loops_dir", "ENH-3358"),
     ("loops/workflow-generator.yaml", "context.max_emit_retries", "ENH-3358"),

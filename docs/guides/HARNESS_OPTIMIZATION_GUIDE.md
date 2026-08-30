@@ -797,44 +797,73 @@ instructions. It does not prevent the state from writing files outside
 detour, a hallucinated path, a tool that resolves relative paths against the wrong
 cwd. `workflow-generator.yaml`'s `check_intent_scope` (FEAT-3332) is a runtime
 *containment gate*: a non-LLM `action_type: shell` / `evaluate: {type: exit_code}`
-state that asserts the set of files changed since `init` is a subset of `run_dir`
-(plus explicit `.loops/`/`.ll/` harness-state exclusions), and fails the run into
-`diagnose` — not a retry state — if it is not.
+state that asserts the set of files changed since the previous gate's checkpoint is
+a subset of `run_dir` (plus explicit `.loops/`/`.ll/` harness-state exclusions), and
+fails the run into `diagnose` — not a retry state — if it is not.
 
-**Mechanism, in outline.** `init` baselines the entire changed-file set at launch —
+**Mechanism, in outline.** `init` triggers a one-time baseline snapshot
+(`snapshot_scope_baseline`, FEAT-3335) of the entire changed-file set at launch —
 tracked *and* untracked, as a `path -> content-hash` map, not a name-only listing —
-into `baseline-changed-set.json`. `check_intent_scope` recomputes the identical map
-(the two `python3 -c` bodies are byte-identical, differing only in argv — a
-dedicated structural test enforces this) and flags any path that is new, whose hash
-changed, or whose baseline key is absent from the current map (a symmetric
-comparison, so deletions are caught too). The flagged set is then filtered by a
-post-enumeration `os.path.realpath` prefix check against `run_dir` — separator-safe,
-not a bare `startswith` — to drop legitimate run-dir writes. A non-repo or
-zero-commit repo takes a skip-with-warning escape (`check_intent_scope: SKIPPED` on
-stdout, exit 0); a missing, zero-byte, or unparseable baseline file takes the same
-escape, but a baseline that parses to `{}` (a genuinely clean tree) does not — it
-gates normally.
+into `baseline-changed-set.json`. Every gate downstream (`check_intent_scope` and
+the six FEAT-3335 windowed gates below) recomputes the identical map — one shared
+`scope_containment_gate` fragment body, referenced by every gate state rather than
+copy-pasted, so the computation cannot drift between call sites — and flags any path
+that is new, whose hash changed, or whose baseline key is absent from the current
+map (a symmetric comparison, so deletions are caught too). The flagged set is then
+filtered by a post-enumeration `os.path.realpath` prefix check against `run_dir`
+(plus `loops_dir`, for the one gate at or after `promote`) — separator-safe, not a
+bare `startswith` — to drop legitimate writes. **Rolling baseline:** on a passing
+gate, the baseline file is rewritten to the current snapshot before the next state
+runs, so each gate's diff window is "since the *previous* gate," not "since init" —
+a violation attributes to the specific pass that caused it, and a gate that already
+passed cannot be re-tripped by a write a later gate already accounted for. On a
+failing gate the baseline is left untouched, so a persistent violation keeps
+reporting until it is actually fixed. A non-repo or zero-commit repo takes a
+skip-with-warning escape (`scope_containment_gate: SKIPPED` on stdout, exit 0); a
+missing, zero-byte, or unparseable baseline file takes the same escape, but a
+baseline that parses to `{}` (a genuinely clean tree) does not — it gates normally.
+
+**Full pipeline coverage (FEAT-3335).** The one-shot `init`→`validate_intent`
+window this section originally described has been generalized to the whole
+pipeline: seven gates total, `check_intent_scope` (FEAT-3332, unchanged
+placement) plus six FEAT-3335 windowed gates — `check_sketch_scope`,
+`check_evaluators_scope`, `check_routing_scope`, and `check_artifact_scope` sit on
+the four lowering-pass validators' `on_yes` edges (`sketch_state_graph`,
+`attach_evaluators`, `resolve_routing`, `emit_artifact` respectively);
+`check_shrink_scope` sits on the shrink pass's exit edge
+(`shrink_select_candidate.on_no`); `check_promote_scope` sits on `promote`'s exit
+edge, and is the only gate with `loops_dir` in its allowed set (`promote`
+legitimately writes there). Routing differs by position: the four early gates and
+`check_intent_scope` route a violation to `diagnose` (not retryable — the
+out-of-scope file is already written, and no earlier state can unwrite it); the two
+post-`emit_artifact` gates (`check_shrink_scope`, `check_promote_scope`) route
+warn-and-continue to `finalize_await_confirmation` instead, since a valid
+`workflow.yaml` already exists by that point and collapsing it into `diagnose`'s
+`failed` terminal would discard real progress for a containment concern, not an
+artifact-quality one. `diagnose`, `sketch_state_graph`'s prompt states, and every
+other LLM state downstream of a gate are still fenced (BUG-3327's "write no file
+this state does not explicitly ask you to write" clause) as well as gated — the
+fence and the gate are independent layers, not substitutes for each other.
 
 **This pattern generalizes to any loop with a `run_dir` and an `init`-time baseline
-opportunity.** The shape to copy: baseline the changed-set at `init` (after any
-run-dir scaffolding, not before — capturing the baseline too early makes the loop's
-own scratch files read as violations, permanently), diff symmetrically at the gate,
-exclude harness state by explicit depth-agnostic pathspec rather than relying on
-ambient `.gitignore`, and route a violation to a diagnostic/terminal state directly —
-never back through a retry loop, since an already-written out-of-scope file is not
-something a retry can undo.
+opportunity.** The shape to copy: baseline the changed-set once (after any run-dir
+scaffolding, not before — capturing the baseline too early makes the loop's own
+scratch files read as violations, permanently), diff symmetrically at each gate,
+advance the baseline on pass so a chain of gates attributes correctly, exclude
+harness state by explicit depth-agnostic pathspec rather than relying on ambient
+`.gitignore`, and route a violation to a diagnostic/terminal state directly — never
+back through a retry loop, since an already-written out-of-scope file is not
+something a retry can undo. Factor the gate body once (an FSM `fragment:`, per
+`fragments.py`) rather than copy-pasting it per insertion point — the FEAT-3335
+`scope_containment_gate` fragment is the reference implementation.
 
 **Five limits, by design — read these before assuming the gate is stronger than it
 is:**
 
-1. **One-shot window.** The gate audits only `init` through `validate_intent`.
-   `sketch_state_graph`, `attach_evaluators`, `resolve_routing`, `emit_artifact`, and
-   `diagnose` all run afterward and are equally capable of writing outside
-   `run_dir`; this gate does not check them. (`diagnose` itself is fenced with the
-   same "write no file this state does not explicitly ask you to write" clause as
-   `capture_intent`, but that is a fence, not a gate — nothing re-runs the
-   containment check after it.) Generalizing the gate across the remaining prompt
-   states is a separate, larger issue (FEAT-3335).
+1. **The gate audits changed-file state, not execution order or intent.** Coverage
+   is now the whole pipeline (seven gates, described above), but the gate still
+   cannot tell *why* a file changed outside `run_dir` — only that it did. It is a
+   containment backstop, not a substitute for reviewing what a run actually did.
 2. **Gitignored writes are invisible.** The changed-set enumeration uses
    `--exclude-standard`, so a write to a gitignored path (`node_modules/`, `.env`,
    build output) is never reported. This is the correct trade — without it the gate

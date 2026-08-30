@@ -25,6 +25,13 @@ description: |
   behind `enable_shrink` (default off). Promotion to the project loops dir is
   HITL-gated behind `auto_promote` (default off) — a run without auto_promote
   stops at `await_confirmation` and reports the validated draft's path.
+
+  FEAT-3335: containment (the assertion that this run's changed-file set stays
+  under ${captured.run_dir.output}) is no longer a one-shot check at the
+  intent window. `scope_containment_gate` (see fragments: below) is a single
+  shared gate body, re-entered at every post-init pass boundary via a rolling
+  baseline — each gate diffs since the *previous* gate, not since init, so a
+  violation attributes to the window that caused it.
 initial: init
 scope:
   - "${context.run_dir}"
@@ -40,57 +47,51 @@ context:
   max_intent_retries: "3"
   loops_dir: ".ll/loops"
 
-states:
-  init:
-    # HARNESS: capture the runner-injected run_dir as an absolute path (guard
-    # against double-prefixing an already-absolute path, per BUG-2435).
+fragments:
+  scope_containment_gate:
+    # FEAT-3335: single definition of the containment-gate body, re-entered by
+    # every post-init scope check in this loop (snapshot_scope_baseline,
+    # check_intent_scope, check_sketch_scope, check_evaluators_scope,
+    # check_routing_scope, check_artifact_scope, check_shrink_scope,
+    # check_promote_scope). Implementation Step 2: this retires the landed
+    # FEAT-3332 check_intent_scope/init near-duplicate copies and the
+    # byte-identical-pair invariant those copies needed — every state below
+    # instead references this one fragment name.
     #
-    # FEAT-3332: also resolve ROOT and baseline the changed-file set (tracked
-    # ∪ untracked, path -> content-hash) so check_intent_scope can later
-    # subtract "what was already dirty when this run started" from "what
-    # changed since". Ordering is load-bearing (requirement (a1)): (1) this
-    # existing mkdir/truncate block, extended with .scope_violations.txt, (2)
-    # ROOT + baseline capture, (3) the case/echo stdout block last and alone.
-    # Every new command below redirects stdout to a file (or $(...)) and
-    # stderr to /dev/null so init's stdout stays exactly one line
-    # (requirement (b)) -- capture: run_dir stores the state's ENTIRE stdout,
-    # not just its last line.
+    # mode: "snapshot" (init's one-time baseline write — no comparison, no
+    # exit-code gate; the state supplies `next:` only, never `on_yes`/`on_no`)
+    # or "gate" (default — diffs the current changed-set against the rolling
+    # baseline, writes violations to .scope_violations.txt, and on PASS
+    # advances the baseline to the current snapshot so the *next* gate's
+    # window starts here rather than at init). The rolling-advance-on-pass
+    # step is the mechanism the FEAT-3335 spike proved has no in-repo
+    # precedent but works: scripts/tests/spike/rolling_scope_gate/.
+    #
+    # allow_loops_dir: "true" additionally allows ${context.loops_dir} in the
+    # gate's allowed set — only for the gate at or after `promote`
+    # (requirement (h), carried over from FEAT-3332; `promote` legitimately
+    # writes there under auto_promote).
+    #
+    # State must supply: routing — `next:` for snapshot mode, or
+    # `evaluate: {type: exit_code}` + `on_yes`/`on_no` for gate mode.
+    parameters:
+      mode:
+        type: string
+        default: "gate"
+      allow_loops_dir:
+        type: string
+        default: "false"
     action_type: shell
     action: |
-      DIR="${context.run_dir}"
-      mkdir -p "$DIR"
-      mkdir -p "$DIR/probes"
-      : > "$DIR/.emit_errors.txt"
-      rm -f "$DIR/.emit_retry_count"
-      rm -f "$DIR/.intent_retry_count"
-      : > "$DIR/.intent_errors.txt"
-      : > "$DIR/.scope_violations.txt"
-      : > "$DIR/.evaluator_vocab_errors.txt"
-      # ENH-3355: generate attach_evaluators' evaluator vocabulary from the
-      # validator's own tables instead of hand-restating it in that prompt.
-      # Unconditional (not nested in the $ROOT branch below) so it also runs
-      # on non-repo runs. Double-quoted -c body (never single-quoted) so it
-      # is never matched by check_intent_scope's byte-identical-pair regex,
-      # which anchors on a single-quoted python3 -c block.
-      python3 -c "
-      from little_loops.fsm.validation import EVALUATOR_REQUIRED_FIELDS, NON_LLM_EVALUATOR_TYPES
-      EXCLUDED = {'open_question_stall', 'harbor_scorer'}
-      for t in sorted(NON_LLM_EVALUATOR_TYPES - EXCLUDED):
-          req = EVALUATOR_REQUIRED_FIELDS[t]
-          print(f'- {t} — ' + ('no companion fields' if not req else 'requires ' + ', '.join(req)))
-      print()
-      print('Do not use:')
-      for t in sorted(set(EVALUATOR_REQUIRED_FIELDS) - NON_LLM_EVALUATOR_TYPES):
-          print(f'- {t}')
-      " > "$DIR/evaluator-vocab.md" 2> "$DIR/.evaluator_vocab_errors.txt" \
-        || : > "$DIR/evaluator-vocab.md"
       ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
-      if [ -n "$ROOT" ]; then
-        git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt" 2>/dev/null || : > "$DIR/baseline-ref.txt"
-        # HARNESS: unified changed-set baseline (tracked ∪ untracked, path ->
-        # hash). Matched pair with check_intent_scope (requirement (c)) --
-        # keep this python3 -c body byte-identical at both sites; only argv
-        # differs.
+      DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) FEAT-3335 - single shared-gate site, all output/baseline paths derive from this var
+      LOOPS_DIR="${context.loops_dir}"  # ll-lint: mr11-ok(context.loops_dir) FEAT-3335 - allowed-set widening for the gate at/after promote (requirement (h))
+      MODE="${param.mode}"
+
+      # HARNESS: matched-pair invariant retired (FEAT-3332's byte-identical
+      # check_intent_scope/init copies) — this function body is now the only
+      # copy in the file; every mode/state calls it with different argv.
+      run_scope_script() {
         python3 -c '
       import sys, os, subprocess, hashlib, json
 
@@ -143,13 +144,14 @@ states:
           sys.exit(0)
 
       run_dir_arg, baseline_path_arg = sys.argv[3], sys.argv[4]
+      loops_dir_arg = sys.argv[5] if len(sys.argv) > 5 else ""
       try:
           if os.path.getsize(baseline_path_arg) == 0:
               raise ValueError("empty baseline")
           with open(baseline_path_arg, "r") as fh:
               baseline = json.load(fh)
       except (OSError, ValueError):
-          print("check_intent_scope: SKIPPED (baseline unreadable or unparseable)")
+          print("scope_containment_gate: SKIPPED (baseline unreadable or unparseable)")
           sys.exit(0)
 
       flagged = set()
@@ -160,11 +162,14 @@ states:
           if p not in current:
               flagged.add(p)
 
-      run_dir_real = os.path.realpath(run_dir_arg)
+      allowed_reals = [os.path.realpath(run_dir_arg)]
+      if loops_dir_arg:
+          allowed_reals.append(os.path.realpath(loops_dir_arg))
+
       violations = []
       for p in sorted(flagged):
           full_real = os.path.realpath(os.path.join(root, p))
-          if full_real == run_dir_real or full_real.startswith(run_dir_real + os.sep):
+          if any(full_real == a or full_real.startswith(a + os.sep) for a in allowed_reals):
               continue
           violations.append(p)
 
@@ -172,18 +177,93 @@ states:
           for v in violations:
               print(v)
           sys.exit(1)
+
+      with open(baseline_path_arg, "w") as fh:
+          json.dump(current, fh)
       sys.exit(0)
-      ' "$ROOT" "$(cat "$DIR/baseline-ref.txt")" \
-          > "$DIR/baseline-changed-set.json" 2>/dev/null || : > "$DIR/baseline-changed-set.json"
-      else
-        : > "$DIR/baseline-ref.txt"
-        : > "$DIR/baseline-changed-set.json"
+      ' "$@"
+      }
+
+      if [ "$MODE" = "snapshot" ]; then
+        if [ -n "$ROOT" ]; then
+          git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt" 2>/dev/null || : > "$DIR/baseline-ref.txt"
+          run_scope_script "$ROOT" "$(cat "$DIR/baseline-ref.txt")" \
+            > "$DIR/baseline-changed-set.json" 2>/dev/null \
+            || : > "$DIR/baseline-changed-set.json"
+        else
+          : > "$DIR/baseline-ref.txt"
+          : > "$DIR/baseline-changed-set.json"
+        fi
+        exit 0
       fi
+
+      BASELINE_REF=$(cat "$DIR/baseline-ref.txt" 2>/dev/null || echo "")
+      if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then
+        echo "scope_containment_gate: SKIPPED (no git repo, or repo has no commits)"
+        : > "$DIR/.scope_violations.txt"
+        exit 0
+      fi
+      LOOPS_DIR_ARG=""
+      [ "${param.allow_loops_dir}" = "true" ] && LOOPS_DIR_ARG="$LOOPS_DIR"
+      run_scope_script "$ROOT" "$BASELINE_REF" "$DIR" "$DIR/baseline-changed-set.json" "$LOOPS_DIR_ARG" \
+        > "$DIR/.scope_violations.txt"
+      RC=$?
+      cat "$DIR/.scope_violations.txt"
+      exit "$RC"
+
+states:
+  init:
+    # HARNESS: capture the runner-injected run_dir as an absolute path (guard
+    # against double-prefixing an already-absolute path, per BUG-2435).
+    #
+    # FEAT-3335: the changed-file baseline capture that used to live here
+    # (FEAT-3332) moved to snapshot_scope_baseline, the state right after
+    # this one — the scope_containment_gate fragment's "snapshot" mode. That
+    # split removes the ordering constraint this state used to carry (init's
+    # ENTIRE stdout becomes the captured run_dir value via `capture:` below,
+    # so nothing after the mkdir/truncate block could risk a second stdout
+    # line); snapshot_scope_baseline runs after run_dir is already captured
+    # and has no such constraint.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      mkdir -p "$DIR/probes"
+      : > "$DIR/.emit_errors.txt"
+      rm -f "$DIR/.emit_retry_count"
+      rm -f "$DIR/.intent_retry_count"
+      : > "$DIR/.intent_errors.txt"
+      : > "$DIR/.scope_violations.txt"
+      : > "$DIR/.evaluator_vocab_errors.txt"
+      # ENH-3355: generate attach_evaluators' evaluator vocabulary from the
+      # validator's own tables instead of hand-restating it in that prompt.
+      python3 -c "
+      from little_loops.fsm.validation import EVALUATOR_REQUIRED_FIELDS, NON_LLM_EVALUATOR_TYPES
+      EXCLUDED = {'open_question_stall', 'harbor_scorer'}
+      for t in sorted(NON_LLM_EVALUATOR_TYPES - EXCLUDED):
+          req = EVALUATOR_REQUIRED_FIELDS[t]
+          print(f'- {t} — ' + ('no companion fields' if not req else 'requires ' + ', '.join(req)))
+      print()
+      print('Do not use:')
+      for t in sorted(set(EVALUATOR_REQUIRED_FIELDS) - NON_LLM_EVALUATOR_TYPES):
+          print(f'- {t}')
+      " > "$DIR/evaluator-vocab.md" 2> "$DIR/.evaluator_vocab_errors.txt" \
+        || : > "$DIR/evaluator-vocab.md"
       case "$DIR" in
         /*) echo "$DIR" ;;
         *) echo "$(pwd)/$DIR" ;;
       esac
     capture: run_dir
+    next: snapshot_scope_baseline
+
+  snapshot_scope_baseline:
+    # FEAT-3335: one-time baseline write via scope_containment_gate's
+    # "snapshot" mode — see the fragment definition above. Runs unconditionally
+    # (never fails the loop): a non-repo or zero-commit run gets empty
+    # baseline files, which every downstream gate treats as SKIPPED.
+    fragment: scope_containment_gate
+    with:
+      mode: "snapshot"
     next: capture_intent
 
   capture_intent:
@@ -255,108 +335,10 @@ states:
     # (which would burn count_intent_retry attempts on a condition no retry
     # can clear).
     #
-    # HARNESS: matched pair with init's baseline capture (requirement (c)).
-    # The single-quoted python3 -c body below is byte-identical to the one
-    # embedded in init -- only argv differs (init passes 2 args and dumps the
-    # baseline map; this state passes 4, which switches the same script into
-    # comparison mode). Keep the two literal blocks identical if you edit
-    # either.
-    action_type: shell
-    action: |
-      ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
-      BASELINE_REF=$(cat "${captured.run_dir.output}/baseline-ref.txt" 2>/dev/null || echo "")  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then
-        echo "check_intent_scope: SKIPPED (no git repo, or repo has no commits)"
-        : > "${captured.run_dir.output}/.scope_violations.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-        exit 0
-      fi
-      python3 -c '
-      import sys, os, subprocess, hashlib, json
-
-      root, ref = sys.argv[1], sys.argv[2]
-      EXCL = [":(exclude,glob)**/.loops/**", ":(exclude,glob)**/.ll/**"]
-      DELETED = "DELETED"
-
-
-      def _run(args):
-          try:
-              out = subprocess.run(
-                  args, capture_output=True, check=False
-              ).stdout
-          except OSError:
-              return []
-          return [p for p in out.split(b"\0") if p]
-
-
-      def _hash(path):
-          try:
-              with open(path, "rb") as fh:
-                  return hashlib.sha256(fh.read()).hexdigest()
-          except OSError:
-              return DELETED
-
-
-      def changed_set(root, ref):
-          paths = set()
-          if ref:
-              diff_args = ["git", "-C", root, "diff", "--name-only", "-z", ref, "--", *EXCL]
-              for p in _run(diff_args):
-                  paths.add(p.decode("utf-8", "surrogateescape"))
-          ls_args = ["git", "-C", root, "ls-files", "-o", "--exclude-standard", "-z", "--", *EXCL]
-          for p in _run(ls_args):
-              paths.add(p.decode("utf-8", "surrogateescape"))
-          result = {}
-          for p in paths:
-              full = os.path.join(root, p)
-              if os.path.exists(full):
-                  result[p] = _hash(full)
-              else:
-                  result[p] = DELETED
-          return result
-
-
-      current = changed_set(root, ref)
-
-      if len(sys.argv) <= 3:
-          json.dump(current, sys.stdout)
-          sys.exit(0)
-
-      run_dir_arg, baseline_path_arg = sys.argv[3], sys.argv[4]
-      try:
-          if os.path.getsize(baseline_path_arg) == 0:
-              raise ValueError("empty baseline")
-          with open(baseline_path_arg, "r") as fh:
-              baseline = json.load(fh)
-      except (OSError, ValueError):
-          print("check_intent_scope: SKIPPED (baseline unreadable or unparseable)")
-          sys.exit(0)
-
-      flagged = set()
-      for p, h in current.items():
-          if p not in baseline or baseline[p] != h:
-              flagged.add(p)
-      for p in baseline:
-          if p not in current:
-              flagged.add(p)
-
-      run_dir_real = os.path.realpath(run_dir_arg)
-      violations = []
-      for p in sorted(flagged):
-          full_real = os.path.realpath(os.path.join(root, p))
-          if full_real == run_dir_real or full_real.startswith(run_dir_real + os.sep):
-              continue
-          violations.append(p)
-
-      if violations:
-          for v in violations:
-              print(v)
-          sys.exit(1)
-      sys.exit(0)
-      ' "$ROOT" "$BASELINE_REF" "${captured.run_dir.output:shell}" "${captured.run_dir.output:shell}/baseline-changed-set.json" \
-        > "${captured.run_dir.output}/.scope_violations.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      RC=$?
-      cat "${captured.run_dir.output}/.scope_violations.txt"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      exit "$RC"
+    # FEAT-3335: converted to the shared scope_containment_gate fragment
+    # (Implementation Step 2) — same semantics, now the same body as every
+    # other window's gate, with the rolling baseline advancing on pass.
+    fragment: scope_containment_gate
     evaluate:
       type: exit_code
     on_yes: sketch_state_graph
@@ -422,8 +404,19 @@ states:
       PYEOF
     evaluate:
       type: exit_code
-    on_yes: attach_evaluators
+    on_yes: check_sketch_scope
     on_no: sketch_state_graph
+
+  check_sketch_scope:
+    # FEAT-3335: post-window containment gate for the sketch_state_graph
+    # window — see scope_containment_gate above. A violation here is not
+    # retryable (same reasoning as check_intent_scope), so it routes straight
+    # to diagnose.
+    fragment: scope_containment_gate
+    evaluate:
+      type: exit_code
+    on_yes: attach_evaluators
+    on_no: diagnose
 
   attach_evaluators:
     # HARNESS: third lowering pass — attach a non-LLM discriminator to every
@@ -504,8 +497,17 @@ states:
       PYEOF
     evaluate:
       type: exit_code
-    on_yes: resolve_routing
+    on_yes: check_evaluators_scope
     on_no: attach_evaluators
+
+  check_evaluators_scope:
+    # FEAT-3335: post-window containment gate for the attach_evaluators
+    # window — see scope_containment_gate above.
+    fragment: scope_containment_gate
+    evaluate:
+      type: exit_code
+    on_yes: resolve_routing
+    on_no: diagnose
 
   resolve_routing:
     # HARNESS: fourth lowering pass — add transitions. Every non-terminal
@@ -552,8 +554,17 @@ states:
       PYEOF
     evaluate:
       type: exit_code
-    on_yes: emit_artifact
+    on_yes: check_routing_scope
     on_no: resolve_routing
+
+  check_routing_scope:
+    # FEAT-3335: post-window containment gate for the resolve_routing
+    # window — see scope_containment_gate above.
+    fragment: scope_containment_gate
+    evaluate:
+      type: exit_code
+    on_yes: emit_artifact
+    on_no: diagnose
 
   emit_artifact:
     # HARNESS: fifth lowering pass — assemble the final runnable FSM-loop
@@ -611,8 +622,19 @@ states:
       exit "$RC"
     evaluate:
       type: exit_code
-    on_yes: check_shrink_enabled
+    on_yes: check_artifact_scope
     on_no: count_emit_retry
+
+  check_artifact_scope:
+    # FEAT-3335: post-window containment gate for the emit_artifact window —
+    # see scope_containment_gate above. Last gate before the optional shrink
+    # pass / promotion; on the shrink-disabled default path this is the last
+    # scope assertion before promotion_gate.
+    fragment: scope_containment_gate
+    evaluate:
+      type: exit_code
+    on_yes: check_shrink_enabled
+    on_no: diagnose
 
   count_emit_retry:
     # HARNESS: bounded-retry guard, same idiom as cli-anything-bootstrap's
@@ -710,7 +732,7 @@ states:
     evaluate:
       type: exit_code
     on_yes: shrink_try_remove
-    on_no: promotion_gate
+    on_no: check_shrink_scope
 
   shrink_try_remove:
     # HARNESS: write a candidate artifact with the selected state excised and
@@ -806,6 +828,20 @@ states:
       echo "removal kept; workflow.yaml updated"
     next: shrink_select_candidate
 
+  check_shrink_scope:
+    # FEAT-3335: post-window containment gate for the shrink pass, on the
+    # edge where shrink_select_candidate exhausts its candidates
+    # (shrink_select_candidate.on_no). Per the Routing Decision, a violation
+    # here is warn-and-continue rather than fail: emit_artifact has already
+    # produced a valid workflow.yaml, so collapsing into diagnose's `failed`
+    # terminal would discard real progress. finalize_await_confirmation
+    # surfaces the violation instead.
+    fragment: scope_containment_gate
+    evaluate:
+      type: exit_code
+    on_yes: promotion_gate
+    on_no: finalize_await_confirmation
+
   promotion_gate:
     # HARNESS: HITL gate (issue FEAT-2354 § Artifact Destination & Promotion)
     # — landing a runnable loop where loop-router/loop-composer can
@@ -825,6 +861,12 @@ states:
     # existing project loops (ll-loop list --json covers both via filesystem
     # scan); on collision, suffix rather than overwrite; never shadow a
     # built-in name.
+    #
+    # FEAT-3335: also records the promoted path to .promoted_path.txt —
+    # finalize_await_confirmation reads it to tell whether it is reporting a
+    # pre-promotion draft or a post-promotion scope violation (the
+    # check_promote_scope gate right after this state can fire even though
+    # promote's own write already landed).
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
@@ -850,20 +892,52 @@ states:
       done
 
       cp "$RUN_DIR/workflow.yaml" "$LOOPS_DIR/$CANDIDATE.yaml"
+      echo "$LOOPS_DIR/$CANDIDATE.yaml" > "$RUN_DIR/.promoted_path.txt"
       echo "PROMOTED: $LOOPS_DIR/$CANDIDATE.yaml"
-    next: done
+    next: check_promote_scope
+
+  check_promote_scope:
+    # FEAT-3335: post-window containment gate for the promote window — the
+    # only gate with allow_loops_dir: "true" (requirement (h)): promote's own
+    # write to ${context.loops_dir} must not trip the gate it runs into.
+    # Per the Routing Decision, warn-and-continue on violation (same
+    # reasoning as check_shrink_scope) — promote has already run by the time
+    # this fires, so finalize_await_confirmation's wording must not claim
+    # the draft was NOT promoted (see that state's .promoted_path.txt check).
+    fragment: scope_containment_gate
+    with:
+      allow_loops_dir: "true"
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: finalize_await_confirmation
 
   finalize_await_confirmation:
     action_type: prompt
     action: |
-      A validated workflow draft is ready at
-      ${captured.run_dir.output}/workflow.yaml but has NOT been promoted to
-      the project loops dir (promotion is HITL-gated by default).
+      Check whether ${captured.run_dir.output}/.promoted_path.txt exists and
+      is non-empty.
 
-      Tell the operator: review the draft, then either re-run this loop with
+      If it does NOT exist or is empty: a validated workflow draft is ready
+      at ${captured.run_dir.output}/workflow.yaml but has NOT been promoted
+      to the project loops dir (promotion is HITL-gated by default). Tell the
+      operator: review the draft, then either re-run this loop with
       `--set auto_promote=true`, or manually copy the file into
       ${context.loops_dir}/ under a name that doesn't collide with an
       existing built-in or project loop.
+
+      If it DOES exist and is non-empty: the draft was already promoted to
+      the path it contains. Tell the operator the promoted path, and that a
+      scope-containment violation was detected in the same pass that
+      promoted it (do not tell them it was not promoted — it was).
+
+      Either way, check whether
+      ${captured.run_dir.output}/.scope_violations.txt exists and is
+      non-empty. If it is non-empty, surface it prominently: tell the
+      operator a scope-containment gate found file(s) changed outside the
+      run directory (listed in that file), which the operator should review
+      before trusting the run's isolation — this does not invalidate the
+      workflow draft itself, only the run's containment guarantee.
     next: await_confirmation
     on_error: failed
   await_confirmation:
@@ -890,9 +964,11 @@ states:
       Most common failure: either emit_artifact could not produce a
       workflow.yaml that passes `ll-loop validate` within max_emit_retries
       attempts, or capture_intent could not produce an intent.yaml that
-      passes validate_intent within max_intent_retries attempts, or
-      check_intent_scope found the changed-file set since init was not
-      contained in run_dir (a scope violation, listed in
+      passes validate_intent within max_intent_retries attempts, or one of
+      the scope-containment gates (check_intent_scope, check_sketch_scope,
+      check_evaluators_scope, check_routing_scope, or check_artifact_scope)
+      found the changed-file set since the previous gate's checkpoint was
+      not contained in run_dir (a scope violation, listed in
       .scope_violations.txt if non-empty) -- that failure is not retryable,
       since the out-of-scope file has already been written. Write a
       one-paragraph diagnostic the operator can use to adjust the brief.

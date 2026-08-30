@@ -4,7 +4,7 @@ type: FEAT
 title: Generalize the check_intent_scope containment gate to workflow-generator's
   post-gate prompt states
 priority: P4
-status: open
+status: done
 discovered_by: review-of-FEAT-3332
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T00:00:00Z'
@@ -22,6 +22,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+completed_at: '2026-08-30T05:31:02Z'
 ---
 
 # FEAT-3335: Generalize the check_intent_scope containment gate to workflow-generator's post-gate prompt states
@@ -539,27 +540,27 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Every post-gate *window* after FEAT-3332's gate — the four lowering
+- [x] Every post-gate *window* after FEAT-3332's gate — the four lowering
       prompt states (`sketch_state_graph`, `attach_evaluators`,
       `resolve_routing`, `emit_artifact`) plus the shrink and promote shell
       windows — is covered by a containment assertion at the six insertion
       edges recorded in this issue (Option B).
-- [ ] The gate body is defined once (fragment, rolling snapshot, or
+- [x] The gate body is defined once (fragment, rolling snapshot, or
       parameterized state) — no near-duplicate shell blocks per insertion
       point, **including** the landed `check_intent_scope`/`init` copies,
       which convert to the shared body (Implementation Step 2).
-- [ ] `${context.loops_dir}` is in the allowed set for any gate at or after
+- [x] `${context.loops_dir}` is in the allowed set for any gate at or after
       `promote`; a legitimate `auto_promote: true` write there does not trip
       the gate (test-guarded).
-- [ ] A deliberately planted out-of-scope write from a post-gate state turns a
+- [x] A deliberately planted out-of-scope write from a post-gate state turns a
       gate red in a live run (the gate has been seen to fail, not just pass).
-- [ ] `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
+- [x] `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
       passes with no new WARNING categories
       (`TestValidatorWarningBudget.test_deterministic_warning_categories_do_not_regrow`).
-- [ ] `TestWorkflowGeneratorLoop` extensions in
+- [x] `TestWorkflowGeneratorLoop` extensions in
       `scripts/tests/test_builtin_loops.py` pass under
       `python -m pytest scripts/tests/`.
-- [ ] Both docs updated: the one-shot caveat replaced with actual coverage;
+- [x] Both docs updated: the one-shot caveat replaced with actual coverage;
       the state-graph diagram in `docs/reference/loops.md` reflects the new
       gates.
 
