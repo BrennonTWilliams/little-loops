@@ -3,11 +3,12 @@ id: ENH-3353
 type: ENH
 title: Document stdio stdout JSON-RPC frame constraint in MCP server guide
 priority: P4
-status: open
+status: done
 testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T18:42:53Z'
+completed_at: '2026-08-30T04:19:39Z'
 program_design_not_applicable: true
 confidence_score: 100
 outcome_confidence: 86
@@ -231,6 +232,7 @@ category.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T04:19:11 - `2ced93d4-cb98-4480-9d8f-05bf8397f3b5.jsonl`
 - `/ll:confidence-check` - 2026-08-30T04:05:52 - `88146606-f2a1-4426-bbe4-fbee395686b0.jsonl`
 - `/ll:refine-issue` - 2026-08-30T03:52:40 - `ed7f738d-23a1-4ebc-8ac8-c914ef582fa7.jsonl`
 - `/ll:capture-issue` - 2026-08-28T18:43:17 - `51a7dd65-db46-4ad2-be82-40e74f2445d1.jsonl`

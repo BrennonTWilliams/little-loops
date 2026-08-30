@@ -15,6 +15,7 @@
 - [Registering the Server](#registering-the-server)
 - [Verifying with `mcp-call`](#verifying-with-mcp-call)
 - [Resources and Prompts in Practice](#resources-and-prompts-in-practice)
+- [Adding a Tool](#adding-a-tool)
 - [The Mutation Surface and Its Guards](#the-mutation-surface-and-its-guards)
 - [Polling and Stopping a Run: `tasks/*`](#polling-and-stopping-a-run-tasks)
 - [Troubleshooting](#troubleshooting)
@@ -200,7 +201,7 @@ mcp-call ll-mcp/capabilities '{}'
 Its exit code tells you which layer failed: `0` success, `1` tool error, `124` timeout,
 `127` server or tool not found, `2` config/usage error.
 
-### The five tools, end to end
+### The eight read tools, end to end
 
 ```bash
 # Open issues, filtered and sorted by priority
@@ -304,6 +305,65 @@ mcp-call ll-mcp/capabilities '{}'
 This reports the host **little-loops itself would drive** for automation (per
 `LL_HOST_CLI` / `orchestration.host_cli`), not the MCP client you are calling from.
 
+```bash
+# Persisted ll-queue entries
+mcp-call ll-mcp/queue_list '{}'
+```
+
+```json
+[
+  {
+    "id": "a1b2c3d4e5f6",
+    "action": { "name": "rn-refine", "runner": "loop", "target": "FEAT-3122", "args": [], "timeout": null },
+    "enqueuedAt": "2026-08-20T10:00:00Z",
+    "priority": 0,
+    "status": "queued",
+    "result": null,
+    "claimedAt": null,
+    "ownerPid": null
+  }
+]
+```
+
+```bash
+# One queue entry by full id or 8+-char prefix
+mcp-call ll-mcp/queue_get '{"id": "a1b2c3d4"}'
+```
+
+```json
+{
+  "id": "a1b2c3d4e5f6",
+  "action": { "name": "rn-refine", "runner": "loop", "target": "FEAT-3122", "args": [], "timeout": null },
+  "enqueuedAt": "2026-08-20T10:00:00Z",
+  "priority": 0,
+  "status": "queued",
+  "result": null,
+  "claimedAt": null,
+  "ownerPid": null
+}
+```
+
+```bash
+# The project's loop catalog
+mcp-call ll-mcp/loop_list '{}'
+```
+
+```json
+[
+  {
+    "name": "rn-refine",
+    "path": "/abs/path/loops/rn-refine.yaml",
+    "category": "refine",
+    "labels": ["autonomous"],
+    "visibility": "public",
+    "description": "Refine an issue until implementation-ready."
+  }
+]
+```
+
+`queue_list`/`queue_get` mirror `ll-queue list`/`ll-queue status`; `loop_list` mirrors
+`ll-loop list` — each returns the same JSON shape as its `--json` CLI form.
+
 ---
 
 ## Resources and Prompts in Practice
@@ -399,6 +459,44 @@ Unlike every other resource kind, `ui://issues/view`:
   ("notify") on the [Artifact Control Levels](../reference/ARTIFACT_CONTROL_LEVELS.md)
   taxonomy. It never issues `tools/call` back into the FSM; level-2/3 interactions are
   out of this scope.
+
+---
+
+## Adding a Tool
+
+**Never let a handler print.** On the stdio transport, stdout *is* the JSON-RPC frame —
+anything a handler writes to stdout (directly, or by calling a `cmd_*` CLI function that
+prints its result) corrupts the protocol. The client-visible symptom is a JSON parse error
+that points nowhere near the offending tool, so this is the single most likely defect when
+adding a tool.
+
+Two mitigations cover every case in this codebase today:
+
+1. **Prefer extracting a non-printing library function.** `_tool_issue_set_status` and
+   `_tool_issue_link` (`mcp_server/tools.py:317-420`) never call `cmd_set_status`/`cmd_link`
+   — they call `apply_status_transition`/`apply_link`, the non-printing functions FEAT-3149
+   extracted from those `cmd_*` implementations for exactly this reason. When the CLI
+   function you're wrapping still prints, extract its logic first rather than wrapping the
+   printing function.
+2. **`redirect_stdout`/`redirect_stderr` when extraction isn't practical.** `_tool_loop_start`
+   (`mcp_server/tools.py:699-705`) wraps `run_background()` — which prints on both its
+   success and pre-flight-failure paths — in `contextlib.redirect_stdout`/`redirect_stderr`,
+   reading the captured stderr back to build an error message on non-zero return. Reach for
+   this only when the wrapped call is otherwise unsafe to extract.
+
+Registration checklist for a new tool:
+
+- Add the handler function and register it in `_TOOL_HANDLERS` (`mcp_server/tools.py`).
+- Add its `types.Tool` definition to `_TOOLS`, in the same source order as `_TOOL_HANDLERS`.
+  No test asserts `_TOOL_HANDLERS`/`_TOOLS` parity — a tool registered in one but missed in
+  the other is caught only if some test happens to call it, not by a dedicated gate, so
+  double-check both by hand.
+- If the tool writes, add its name to `policy.MUTATING_TOOLS` — never `TASK_STARTING_TOOLS`,
+  which is reserved for `loop_start`'s "start a run" semantics (no coherent dry-run, gated
+  by `allow_tasks` instead of `allow_mutations`). A mutating tool gets Guard 1's `apply`
+  dry-run wrapper automatically once it's in `MUTATING_TOOLS`; a tool omitted from both
+  registries is unguarded — reachable and able to write with no dry-run and no per-transport
+  policy check.
 
 ---
 
