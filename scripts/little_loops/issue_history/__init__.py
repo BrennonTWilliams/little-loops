@@ -46,6 +46,8 @@ Public exports:
     analyze_agent_effectiveness: Analyze agent effectiveness
     analyze_complexity_proxy: Analyze complexity proxy
     detect_cross_cutting_smells: Detect cross-cutting concerns
+    analyze_rework: Reopen/follow-up/touch-back/revert rates (FEAT-2867)
+    analyze_agent_quality: Fix-rate/correction/cost/tokens/retry-inflation trends (FEAT-3183)
 
     # Formatting
     format_summary_text: Format summary as text
@@ -54,6 +56,14 @@ Public exports:
     format_analysis_json: Format analysis as JSON
     format_analysis_markdown: Format analysis as markdown
     format_analysis_yaml: Format analysis as YAML
+    format_rework_text: Format rework analysis as text
+    format_rework_json: Format rework analysis as JSON
+    format_rework_markdown: Format rework analysis as markdown
+    format_rework_yaml: Format rework analysis as YAML
+    format_agent_quality_text: Format agent-quality analysis as text
+    format_agent_quality_json: Format agent-quality analysis as JSON
+    format_agent_quality_markdown: Format agent-quality analysis as markdown
+    format_agent_quality_yaml: Format agent-quality analysis as YAML
 
     # Documentation synthesis
     synthesize_docs: Synthesize documentation from issue history
@@ -62,6 +72,17 @@ Public exports:
     build_structured_doc: Build structured documentation
 """
 
+from little_loops.issue_history.agent_quality import (
+    QualityAnalysis,
+    QualityMetric,
+    QualityWindow,
+    RetryWindow,
+    analyze_agent_quality,
+    format_agent_quality_json,
+    format_agent_quality_markdown,
+    format_agent_quality_text,
+    format_agent_quality_yaml,
+)
 from little_loops.issue_history.analysis import calculate_analysis
 from little_loops.issue_history.collisions import (
     CollisionEntry,
@@ -191,6 +212,10 @@ __all__ = [
     "ReworkSignal",
     "ReworkWindow",
     "ReworkAnalysis",
+    "QualityMetric",
+    "QualityWindow",
+    "RetryWindow",
+    "QualityAnalysis",
     "CollisionEntry",
     "CollisionGroup",
     "audit_issue_collisions",
@@ -220,6 +245,7 @@ __all__ = [
     "detect_cross_cutting_smells",
     "analyze_rework",
     "quality_adjusted_throughput",
+    "analyze_agent_quality",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -231,6 +257,10 @@ __all__ = [
     "format_rework_json",
     "format_rework_markdown",
     "format_rework_yaml",
+    "format_agent_quality_text",
+    "format_agent_quality_json",
+    "format_agent_quality_markdown",
+    "format_agent_quality_yaml",
     # Documentation synthesis
     "synthesize_docs",
     "score_relevance",

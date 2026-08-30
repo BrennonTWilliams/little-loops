@@ -14,11 +14,14 @@ import logging
 import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from little_loops.history_reader import _connect_readonly
+from little_loops.issue_history._utils import add_days as _add_days
+from little_loops.issue_history._utils import classify_verdict as _classify_verdict
+from little_loops.issue_history._utils import month_key as _month_key
+from little_loops.issue_history._utils import orchestrator_labels as _orchestrator_labels
 from little_loops.issue_parser import superseded_by
 from little_loops.session_store import DEFAULT_DB_PATH
 
@@ -37,7 +40,6 @@ LOW_COVERAGE_THRESHOLD = 0.5
 
 _REOPEN_TRANSITIONS = ("open", "in_progress", "blocked")
 _REVERT_MESSAGE_RE = re.compile(r"[Tt]his reverts commit ([0-9a-fA-F]{7,40})")
-_TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 _STANDARD_NOTES = (
     "Orchestrator attribution is correlational, not causal.",
@@ -127,18 +129,6 @@ class ReworkAnalysis:
         }
 
 
-def _month_key(ts: str | None) -> str:
-    return ts[:7] if ts else "unknown"
-
-
-def _add_days(ts: str, days: int) -> str:
-    try:
-        dt = datetime.strptime(ts, _TS_FORMAT)
-    except (ValueError, TypeError):
-        return ts
-    return (dt + timedelta(days=days)).strftime(_TS_FORMAT)
-
-
 def _load_issue_events(conn: sqlite3.Connection) -> dict[str, list[tuple[str, str]]]:
     """issue_id -> [(transition, ts), ...] sorted by ts, oldest first."""
     try:
@@ -181,25 +171,6 @@ def _load_commits(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             }
         )
     return commits
-
-
-def _orchestrator_labels(conn: sqlite3.Connection, issue_ids: set[str]) -> dict[str, str]:
-    if not issue_ids:
-        return {}
-    placeholders = ",".join("?" for _ in issue_ids)
-    try:
-        rows = conn.execute(
-            "SELECT issue_id, driver FROM orchestration_runs "  # noqa: S608 - fixed cols, ? placeholders
-            f"WHERE issue_id IN ({placeholders}) ORDER BY started_at",
-            list(issue_ids),
-        ).fetchall()
-    except sqlite3.Error:
-        logger.warning("rework: orchestration_runs query failed", exc_info=True)
-        return {}
-    labels: dict[str, str] = {}
-    for row in rows:
-        labels.setdefault(row["issue_id"], row["driver"])
-    return labels
 
 
 def _is_reopened(
@@ -271,16 +242,6 @@ def _is_reverted(commit_shas: list[str], commits: list[dict[str, Any]]) -> bool:
             if sha.startswith(target) or target.startswith(sha):
                 return True
     return False
-
-
-def _classify_verdict(rate: float, baseline: float) -> str:
-    if baseline == 0:
-        return "stable" if rate == 0 else "degrading"
-    if rate < baseline * 0.8:
-        return "improving"
-    if rate > baseline * 1.2:
-        return "degrading"
-    return "stable"
 
 
 def _assign_verdicts(windows: list[ReworkWindow]) -> None:

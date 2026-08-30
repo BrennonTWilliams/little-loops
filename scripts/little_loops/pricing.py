@@ -4,7 +4,11 @@ Prices are in USD per million tokens ($/Mtok).
 Source: Anthropic pricing page (as of July 2026; ENH-2745 added
 claude-sonnet-5/claude-opus-4-8/claude-fable-5). Sonnet 5's introductory rate
 ($2/$10 through 2026-08-31, inclusive) is modeled via `INTRO_PRICING`, which
-overrides `MODEL_PRICING` while active (ENH-2835).
+overrides `MODEL_PRICING` while active (ENH-2835). claude-opus-5 added
+2026-08-29 (FEAT-3183): it was the largest source of null `cost_usd` rows in
+`usage_events` (37,269 rows on this repo's own history.db at time of fix).
+This closes the gap going forward only — already-written null rows are not
+recomputed, so `ll-history quality`'s cost-coverage gate remains required.
 """
 
 from __future__ import annotations
@@ -21,6 +25,12 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
         "cache_creation": 12.50,
     },
     "claude-opus-4-8": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.50,
+        "cache_creation": 6.25,
+    },
+    "claude-opus-5": {
         "input": 5.0,
         "output": 25.0,
         "cache_read": 0.50,

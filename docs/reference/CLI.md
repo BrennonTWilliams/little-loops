@@ -3040,6 +3040,52 @@ second done→open→done cycle collapses into the first. Revert rate is compute
 lineage (`This reverts commit <sha>`) only; diff-inverse detection is out of scope. Orchestrator
 attribution is correlational, not causal.
 
+#### `ll-history quality`
+
+Agent-quality report (FEAT-3183): fix-rate, correction rate, cost per issue, and tokens per
+issue as a time series across the same `(calendar month, orchestrator)` windows `ll-history
+rework` uses, plus retry inflation on its own `(calendar month, loop_name)` axis. Read-only
+against `.ll/history.db`; no network access, no LLM calls.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--format` | `-f` | Output format: `text` (default), `json`, `markdown`, `yaml` |
+| `--min-sample N` | | Minimum closed issues (or loop runs, for retry inflation) per window before a rate is reported (default: 5) |
+
+Metric definitions, per window:
+
+- **fix-rate** = `1 - rework_share` (reusing `ll-history rework`'s pinned formula, so the two
+  reports cannot disagree). Verdict is derived from `rework_share`'s own trend, not re-derived
+  from the (nonlinearly related) fix-rate value.
+- **correction rate** = non-retired `user_corrections` rows attributed to closed issues via
+  `session_id -> issue_sessions -> issue_num` (split evenly across sessions that touched more
+  than one issue), divided by closed issues in the window. `user_corrections` has no `issue_id`
+  column, so sessions with no recorded issue association are excluded.
+- **cost per issue** = `usage_events.cost_usd` summed per issue (same session-split rule),
+  divided by closed issues. Each window also reports `coverage` — the share of attributed
+  `usage_events` rows with a non-null `cost_usd` — and **suppresses the verdict** (not the
+  number) when `coverage < 0.5`: `cost_usd` is null for any model absent from
+  `pricing.MODEL_PRICING`, and that gap is not evenly distributed across time, so an unguarded
+  trend would read pricing-table coverage as an agent-behavior regression.
+- **tokens per issue** = the four `usage_events` token columns summed the same way. Always
+  computable — no pricing-table dependency — so it has no coverage gate and stays a useful
+  spend signal even when cost coverage is poor.
+- **retry inflation** = mean `loop_runs.iterations` per `(calendar month, loop_name)`. Bucketed
+  by loop rather than orchestrator because `loop_runs` has no `issue_id` column and the two-hop
+  join needed to recover one is only partially reachable.
+
+Every window below `--min-sample` reports `insufficient_history: true` on every metric instead
+of a computed value. Issues with no matching `orchestration_runs` row fall into the
+`unattributed` orchestrator bucket, which is typically the dominant bucket, not an edge case.
+Every metric's formula, window, denominator, and caveats are also emitted as a `MetricDefinition`
+in the JSON/YAML payload, so a downstream consumer never has to re-derive them.
+
+```bash
+ll-history quality                        # Text report
+ll-history quality --format json          # JSON output, includes metric definitions
+ll-history quality --min-sample 3         # Lower the sample-size gate
+```
+
 #### `ll-history audit-issue-collisions`
 
 Read-only report (BUG-3006) of every `issue_num` held by more than one `issue_id` in
@@ -3082,6 +3128,8 @@ ll-history analyze --format markdown       # Markdown report
 ll-history analyze --compare 30            # Compare last 30 days to previous
 ll-history export "session log"            # Export excerpts for topic
 ll-history export "sprint CLI" --output docs/arch/sprint.md
+ll-history rework                          # Reopen/follow-up/touch-back/revert rates
+ll-history quality                         # Fix-rate/correction/cost/tokens/retry trends
 ll-history sessions ENH-1710              # Sessions that touched ENH-1710
 ll-history sessions ENH-1710 --json       # JSON output
 ```

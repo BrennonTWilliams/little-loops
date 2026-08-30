@@ -204,6 +204,72 @@ class TestHistoryReworkSubcommand:
 
         assert result == 0
 
+    def test_rework_help_exits_zero_after_quality_subparser_added(self) -> None:
+        """FEAT-3183: adding the `quality` subparser must not disturb `rework`."""
+        with patch.object(sys, "argv", ["ll-history", "rework", "--help"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_history()
+        assert exc_info.value.code == 0
+
+
+# ---------------------------------------------------------------------------
+# quality subcommand (FEAT-3183)
+# ---------------------------------------------------------------------------
+
+
+class TestHistoryQualitySubcommand:
+    """Test the quality subcommand's argument wiring and format routing."""
+
+    def test_quality_text_default_empty_history(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "quality"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Agent Quality Report" in captured.out
+        assert "No closed-issue history found" in captured.out
+
+    def test_quality_json_format_routes_to_json_formatter(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "quality", "--format", "json"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["windows"] == []
+        assert payload["min_sample_size"] == 5
+        assert len(payload["definitions"]) == 4
+
+    def test_quality_min_sample_flag_accepted(self, tmp_path: Path) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "quality", "--min-sample", "2"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+
+    def test_quality_help_exits_zero(self) -> None:
+        with patch.object(sys, "argv", ["ll-history", "quality", "--help"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_history()
+        assert exc_info.value.code == 0
+
 
 # ---------------------------------------------------------------------------
 # sessions subcommand — json output

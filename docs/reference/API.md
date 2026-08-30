@@ -2359,6 +2359,8 @@ Parse a single completed issue file.
 | `analyze_agent_effectiveness(issues)` | Analyze agent effectiveness by type |
 | `analyze_complexity_proxy(issues)` | Analyze complexity via issue duration |
 | `detect_cross_cutting_smells(issues)` | Detect cross-cutting concern patterns |
+| `analyze_rework(issues, *, db=DEFAULT_DB_PATH, min_sample=5, follow_up_days=14)` | Reopen/follow-up/touch-back/revert rates + quality-adjusted throughput, windowed by `(calendar month, orchestrator)` (FEAT-2867) |
+| `analyze_agent_quality(issues, *, db=DEFAULT_DB_PATH, min_sample=5)` | Fix-rate/correction-rate/cost-per-issue/tokens-per-issue (same windows as `analyze_rework`) plus retry inflation on a `(calendar month, loop_name)` axis (FEAT-3183) |
 
 #### Formatting
 
@@ -2370,6 +2372,8 @@ Parse a single completed issue file.
 | `format_analysis_json(analysis)` | Format full analysis as JSON |
 | `format_analysis_markdown(analysis)` | Format full analysis as Markdown |
 | `format_analysis_yaml(analysis)` | Format full analysis as YAML |
+| `format_rework_{text,json,markdown,yaml}(analysis)` | Format `ReworkAnalysis` in each of the four formats |
+| `format_agent_quality_{text,json,markdown,yaml}(analysis)` | Format `QualityAnalysis` in each of the four formats |
 
 #### Documentation Synthesis
 
@@ -4641,6 +4645,7 @@ Entry point for `ll-history` command. Display summary statistics, analysis, and 
 | `analyze` | Full analysis with trends, subsystems, and debt metrics |
 | `export` | Export topic-filtered excerpts from completed issue history |
 | `rework` | Reopen/follow-up/touch-back/revert rates and quality-adjusted throughput (FEAT-2867) |
+| `quality` | Fix-rate/correction-rate/cost-per-issue/tokens-per-issue trends plus retry inflation (FEAT-3183) |
 
 **Global options (all sub-commands):**
 - `--intent QUERY` - Intent query for output filtering (no-op until FTS5 ranking lands; ENH-1114)

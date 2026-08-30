@@ -3,7 +3,7 @@ id: FEAT-3183
 title: Local agent-quality report over history.db
 type: FEAT
 priority: P2
-status: open
+status: done
 parent: EPIC-3214
 epic: EPIC-3214
 testable: true
@@ -21,6 +21,7 @@ relates_to:
 - ENH-2775
 confidence_score: 90
 outcome_confidence: 82
+completed_at: '2026-08-30T00:42:59Z'
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
@@ -489,12 +490,45 @@ restated in the module docstring._
 
 - ENH-3211
 
+## Resolution
+
+Shipped as `ll-history quality`, modeled structurally on `rework.py` per the plan:
+
+- Extracted `month_key`/`add_days`/`classify_verdict`/`orchestrator_labels`/`MetricDefinition`
+  into `issue_history/_utils.py`; `rework.py` now imports them. `test_issue_history_rework.py`
+  passes unchanged (behavior-preserving refactor, verified before writing any new code).
+- New `issue_history/agent_quality.py`: `QualityMetric`/`QualityWindow`/`RetryWindow`/
+  `QualityAnalysis` dataclasses, `analyze_agent_quality()`, and the four
+  `format_agent_quality_*` renderers, matching the Program Design section's types/signatures
+  exactly (no deviations).
+- Fix-rate reuses `analyze_rework()`'s `rework_share` directly (`fix_rate = 1 - rework_share`)
+  and derives its verdict from `rework_share`'s own trend rather than re-deriving it from the
+  fix-rate value, since the two are related nonlinearly around the ±20% verdict band — this
+  distinction surfaced during implementation and is documented in the module docstring.
+  Correction rate, cost per issue, and tokens per issue all join through
+  `session_id -> issue_sessions.issue_num`, splitting evenly across sessions that touch more
+  than one issue (applied to `user_corrections` too, by extension of the cost decision, since no
+  separate resolution existed for it). Retry inflation is computed independently of the
+  orchestrator-axis data (fixed during testing: it must not disappear when there are zero closed
+  issues, since it needs none of that data).
+- `pricing.MODEL_PRICING` gained `claude-opus-5` per Open Decision #3.
+- `--min-sample 0` is honored via `is None` (not `or MIN_SAMPLE_SIZE`), per the CLI dispatch note.
+- Tests: `test_issue_history_agent_quality.py` (18 tests, including the required
+  `TestCostCoverageGate`, `TestUnattributedDominant`, and `TestMinSampleZero`), plus a
+  `quality` dispatch smoke test and a `rework --help` no-regression check in
+  `test_cli_history.py`. Full suite: 21,354 passed, 4 pre-existing failures unrelated to this
+  change (verified via `git status` showing no diff to the affected files).
+- Docs: `docs/reference/CLI.md` (`#### ll-history quality`), `docs/reference/API.md`
+  (function/subcommand tables), `docs/guides/HISTORY_SESSION_GUIDE.md` (new "Quality Metric
+  Definitions" section, the AC #4 documented home).
+
 ## Status
 
 - [ ] open
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T00:42:59 - `83e70505-38c2-42da-a682-4eab6a48ba84.jsonl`
 - `/ll:confidence-check` - 2026-08-29T23:50:31 - `f07ad83d-593f-4ba1-aba1-67baa08aa529.jsonl`
 - `/ll:ready-issue` - 2026-08-29T23:36:47 - `4b1b868d-82c2-4215-81b0-b47fc6f857e5.jsonl`
 - `/ll:ready-issue` - 2026-08-29T22:53:31 - `4b1b868d-82c2-4215-81b0-b47fc6f857e5.jsonl`

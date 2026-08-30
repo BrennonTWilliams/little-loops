@@ -24,10 +24,15 @@ def main_history() -> int:
     with cli_event_context(DEFAULT_DB_PATH, "ll-history", sys.argv[1:]):
         from little_loops.issue_history import (
             HistoryDbUnavailable,
+            analyze_agent_quality,
             analyze_rework,
             calculate_analysis,
             calculate_summary,
             count_loop_runs_in_window,
+            format_agent_quality_json,
+            format_agent_quality_markdown,
+            format_agent_quality_text,
+            format_agent_quality_yaml,
             format_analysis_json,
             format_analysis_markdown,
             format_analysis_text,
@@ -59,6 +64,8 @@ Examples:
   %(prog)s export "sprint CLI" --output docs/arch/sprint.md
   %(prog)s rework               # Reopen/follow-up/touch-back/revert rates
   %(prog)s rework --format json # Rework analysis as JSON
+  %(prog)s quality              # Fix-rate/correction/cost/tokens/retry trends
+  %(prog)s quality --format json # Agent quality analysis as JSON
   %(prog)s audit-issue-collisions  # (issue_num, transition) dedup collisions
 """,
         )
@@ -238,6 +245,28 @@ Examples:
             default=None,
             metavar="N",
             help="Lookahead window in days for follow-up/touch-back detection (default: 14)",
+        )
+
+        # quality subcommand (FEAT-3183)
+        quality_parser = subparsers.add_parser(
+            "quality",
+            help="Fix-rate, correction rate, cost/tokens per issue, and retry inflation trends",
+        )
+        quality_parser.add_argument(
+            "-f",
+            "--format",
+            type=str,
+            choices=["text", "json", "markdown", "yaml"],
+            default="text",
+            help="Output format (default: text)",
+        )
+        quality_parser.add_argument(
+            "--min-sample",
+            type=int,
+            default=None,
+            metavar="N",
+            help="Minimum closed issues (or loop runs) per window before a rate is "
+            "reported (default: 5)",
         )
 
         # sessions subcommand (ENH-1711)
@@ -435,6 +464,36 @@ Examples:
                 print(format_rework_markdown(rework_analysis))
             else:
                 print(format_rework_text(rework_analysis))
+
+            return 0
+
+        if args.command == "quality":
+            from little_loops.issue_history.rework import MIN_SAMPLE_SIZE
+            from little_loops.issue_parser import find_issues
+
+            db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
+            all_statuses = {
+                "open",
+                "in_progress",
+                "blocked",
+                "deferred",
+                "done",
+                "cancelled",
+            }
+            all_issues = find_issues(config, status_filter=all_statuses)
+            # Deliberately `is None` rather than `args.min_sample or MIN_SAMPLE_SIZE`:
+            # the latter would silently discard an explicit `--min-sample 0`.
+            min_sample = args.min_sample if args.min_sample is not None else MIN_SAMPLE_SIZE
+            quality_analysis = analyze_agent_quality(all_issues, db=db_path, min_sample=min_sample)
+
+            if args.format == "json":
+                print(format_agent_quality_json(quality_analysis))
+            elif args.format == "yaml":
+                print(format_agent_quality_yaml(quality_analysis))
+            elif args.format == "markdown":
+                print(format_agent_quality_markdown(quality_analysis))
+            else:
+                print(format_agent_quality_text(quality_analysis))
 
             return 0
 

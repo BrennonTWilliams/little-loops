@@ -13,6 +13,7 @@ Long-term observability for your little-loops project: what ran, what changed, w
 - [Issue ↔ Session Cross-References](#issue--session-cross-references)
 - [Planning Skill Injection](#planning-skill-injection)
 - [History Analytics](#history-analytics)
+- [Quality Metric Definitions](#quality-metric-definitions)
 - [Session Log Tooling (ll-logs)](#session-log-tooling-ll-logs)
 - [Advanced: LCM Compaction](#advanced-lcm-compaction)
 - [Retention & Pruning](#retention--pruning)
@@ -428,6 +429,47 @@ ll-session skill-stats --skill /ll:manage-issue --window-days 30
 ```
 
 Per-skill invocation count, completion count, and success rate, derived from the `exit_code` / `success` / `duration_ms` columns on `skill_events` (added in v15, ENH-2460). Use this to surface skills that users are pushing back on most, or to measure whether a recent change improved a skill's reliability.
+
+### Rework and agent-quality trends
+
+```bash
+ll-history rework                # Reopen/follow-up/touch-back/revert rates
+ll-history quality               # Fix-rate/correction/cost/tokens/retry-inflation trends
+```
+
+Both answer "are things getting better or worse," not "what happened" — see
+[Quality Metric Definitions](#quality-metric-definitions) below for what each metric means, and
+`docs/reference/CLI.md`'s `ll-history rework` / `ll-history quality` sections for the full flag
+tables.
+
+## Quality Metric Definitions
+
+`ll-history rework` (FEAT-2867) and `ll-history quality` (FEAT-3183) share one
+`(calendar month, orchestrator)` windowing convention and one min-sample/insufficient-history
+gate, extracted into `issue_history/_utils.py` so the two reports read side by side and cannot
+silently diverge. This section states each metric's definition once; the CLI flag tables live in
+`docs/reference/CLI.md` and are not restated here.
+
+| Metric | Command | Formula | Notes |
+|---|---|---|---|
+| Reopen / follow-up / touch-back / revert rate | `rework` | Share of closed issues in the window exhibiting the signal | `issue_events` dedups per `(issue_num, transition)`, so a second done→open→done cycle collapses into the first |
+| Quality-adjusted throughput | `rework` | `closed_count x (1 - max(reopen_rate, revert_rate))` | The pinned rework-share formula; reused verbatim by `quality`'s fix-rate |
+| Fix-rate | `quality` | `1 - rework_share` | Verdict is derived from `rework_share`'s own trend, not re-derived from the fix-rate value, since the two are related nonlinearly around the ±20% verdict band |
+| Correction rate | `quality` | Non-retired `user_corrections` attributed via `session_id -> issue_sessions -> issue_num` (split evenly across multi-issue sessions) ÷ closed issues | `user_corrections` has no `issue_id` column; sessions with no recorded issue association are excluded from the numerator |
+| Cost per issue | `quality` | `usage_events.cost_usd` summed per issue (same session-split rule) ÷ closed issues | Each window reports `coverage` (share of attributed rows with non-null `cost_usd`) and **suppresses the verdict, not the number,** below 50% coverage |
+| Tokens per issue | `quality` | The four `usage_events` token columns summed the same way ÷ closed issues | Always computable — no pricing-table dependency, so it stays informative when cost coverage is poor |
+| Retry inflation | `quality` | Mean `loop_runs.iterations` per `(calendar month, loop_name)` | Bucketed by loop, not orchestrator — `loop_runs` has no `issue_id` column, and the two-hop join needed to recover one is only partially reachable |
+
+**Why cost coverage matters**: `usage_events.cost_usd` is `None` for any model absent from
+`pricing.MODEL_PRICING` at write time, and that null rate is not evenly distributed across
+time — the current-generation model is typically the least-priced one. Without the coverage
+gate, a cost-per-issue trend would silently read "pricing-table lag" as "agents got more
+expensive." `--min-sample`/`insufficient_history` guards against the symmetric failure: a
+window built from too few closed issues (or loop runs) reporting a misleadingly confident ratio.
+
+Every metric's formula, window, denominator, min-sample, verdict band, and caveats are also
+emitted as a `MetricDefinition` object in `ll-history quality`'s JSON/YAML payload — the same
+data as this table, machine-readable for a downstream regression-detection consumer.
 
 ## Session Log Tooling (`ll-logs`)
 
