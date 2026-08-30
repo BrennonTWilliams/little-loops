@@ -7,6 +7,16 @@ source_state: resolve_set
 
 # BUG-3361: SprintManager.load_or_resolve unions relates_to sibling-EPIC ids into an EPIC's dispatch set
 
+## Current Behavior
+
+`SprintManager.load_or_resolve()` (`scripts/little_loops/sprint.py:341`) builds
+`forward_ids` as `set(epic_info.relates_to)` with no issue-type filter, then
+unions it with the backward `parent:`-chain `backward_ids` to form the EPIC's
+dispatch set. Because `relates_to:` is also used as a documentation
+cross-reference between sibling EPICs (not a decomposition edge), an EPIC that
+lists a sibling EPIC in `relates_to:` gets that sibling's raw `EPIC-*` id
+unioned into its own dispatch set alongside its real leaf children.
+
 ## Summary
 
 `sprint-refine-and-implement EPIC-2258` (instance `sprint-refine-and-implement-20260830T124555`,
@@ -93,6 +103,20 @@ relates_to:
 - EPIC-2178
 ```
 
+## Steps to Reproduce
+
+1. Create `EPIC-A` and `EPIC-B` as separate, independently-decomposed epics.
+2. Add `relates_to: [EPIC-B]` to `EPIC-A`'s frontmatter as a documentation
+   cross-reference (not a `parent:` decomposition edge).
+3. Give `EPIC-A` its own real leaf children via `parent: EPIC-A` on their
+   frontmatter.
+4. Call `SprintManager.load_or_resolve("EPIC-A")` (or run
+   `sprint-refine-and-implement EPIC-A` / any sprint path that resolves an
+   EPIC id).
+5. Observe: the returned `Sprint.issues` includes `EPIC-B` alongside
+   `EPIC-A`'s real children — `EPIC-B` is not a child of `EPIC-A` and should
+   not be dispatched for implementation.
+
 ## Expected Behavior
 
 `SprintManager.load_or_resolve()` should never place an EPIC-type id into an
@@ -102,15 +126,42 @@ either be excluded entirely from `forward_ids`, or filtered the same way
 `next_issues.py` filters `find_issues()` results for BUG-2638
 (`not info.issue_id.startswith("EPIC-")`).
 
-## Proposed Fix
+## Proposed Solution
 
 In `scripts/little_loops/sprint.py`, filter `forward_ids` (and/or the final
 `child_ids` union) to exclude ids starting with `EPIC-`, mirroring the
-`next_issues.py` fix from BUG-2638. As defense in depth, consider also
-hardening `implement_current` in `autodev.yaml` to refuse (or redirect to the
-EPIC's own confidence-check-identified next child) when `$CURRENT` matches
+`not i.issue_id.startswith("EPIC-")` guard already used in
+`cli/issues/next_issues.py` (BUG-2638):
+
+```python
+# scripts/little_loops/sprint.py, SprintManager.load_or_resolve()
+forward_ids: set[str] = {
+    i for i in epic_info.relates_to if not i.startswith("EPIC-")
+}
+```
+
+As defense in depth, consider also hardening `implement_current` in
+`autodev.yaml` to refuse (or redirect to the EPIC's own
+confidence-check-identified next child) when `$CURRENT` matches
 `^EPIC-\d+$`, so a future leak from any resolution path can't reach
 `ll-auto --only` on an EPIC id.
+
+## Program Design
+
+### Signatures
+
+- `SprintManager.load_or_resolve(self, arg: str) -> Sprint | None` — signature unchanged; only the `forward_ids` computation inside changes
+
+### Call Path
+
+`SprintManager.load_or_resolve()` -> filtered `forward_ids` (excludes `EPIC-`-prefixed ids) -> unioned with `backward_ids` into `child_ids` (`sprint.py:367`)
+
+## Impact
+
+- **Priority**: P2 - Misroutes ~4 minutes of agent time per leaked EPIC id into a doomed `ll-auto --only` attempt; no data corruption (the coding agent's own completion guard refuses to mark the EPIC done), but wastes autodev run time and requires manual intervention to stop/redirect the run.
+- **Effort**: Small - single-line filter change to `forward_ids` construction, mirroring an existing, already-shipped pattern (BUG-2638's `next_issues.py` fix).
+- **Risk**: Low - additive filter on a set comprehension; only removes ids that were never valid children of the EPIC, cannot regress legitimate dispatch behavior.
+- **Breaking Change**: No.
 
 ## Acceptance Criteria
 
@@ -128,3 +179,7 @@ EPIC's own confidence-check-identified next child) when `$CURRENT` matches
 ## Status
 
 **Open** | Created: 2026-08-30 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-08-30T18:30:07 - `94b795f5-375b-4a55-9190-f07c0af5f00b.jsonl`
