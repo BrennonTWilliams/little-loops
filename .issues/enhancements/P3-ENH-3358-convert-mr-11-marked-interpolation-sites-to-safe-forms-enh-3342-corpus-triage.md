@@ -44,11 +44,23 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 - `TestMr11MarkerSet::test_marker_set_matches_enumeration` (`scripts/tests/test_builtin_loops.py:19861`) tracks 187 deduplicated `(file, namespace.key, issue_id)` tuples in `MR11_MARKER_ALLOWLIST` (`scripts/tests/test_builtin_loops.py:19645`) — fewer than 585 because several files repeat the same `namespace.key` marker on multiple lines, which the allowlist tracks once per file.
 - Marker concentration is uneven: `rn-refine.yaml` (67), `rn-implement.yaml` (54), `rn-remediate.yaml` (48), `autodev.yaml` (46), and `cua-agent-desktop.yaml` (40) together hold 255 of the 585 markers (~44%); the top 10 files hold ~63%. Prioritizing these files converts the bulk of the corpus in the fewest passes.
 
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- **Correction to the commit-touch claim above**: "no commit since [`401b7418a`] has touched `scripts/little_loops/loops/`" is false. `git log --oneline 401b7418a..HEAD -- scripts/little_loops/loops/` returns 3 commits: `8ceeb024c` (3-line edit to `refine-to-ready-issue.yaml`), `ff709f91b` (9 files, 204 insertions — adds/edits `rn-build.yaml`, `integrate-sdk.yaml`, `loop-router.yaml`, etc.), and `a38e266e6` (rewrites `workflow-generator.yaml`, 39 changed lines). The 55-file / 585-marker corpus count is still independently confirmed current as of this pass (`grep -rl "ll-lint: mr11-ok" scripts/little_loops/loops/ | wc -l` → 55; `grep -ro ... | wc -l` → 585), it just isn't unchanged for the reason originally stated — the corpus was touched by these 3 commits without net effect on marker count, which was never established.
+- **Correction to the `TestMr11MarkerSet` citation above**: `class TestMr11MarkerSet:` is at `scripts/tests/test_builtin_loops.py:19856` (not 19855) and `def test_marker_set_matches_enumeration` is at `:19862` (not 19861). The 187-tuple count is independently reconfirmed correct as stated (parsed `MR11_MARKER_ALLOWLIST`'s set literal directly via `ast.literal_eval`: 187 tuples, all `("...", "...", "ENH-3358")`, all unique; `python -m pytest scripts/tests/test_builtin_loops.py -k TestMr11MarkerSet -q` passes, confirming the corpus's discovered set equals the 187-tuple allowlist exactly).
+- **Correction to the "~63%" figure above**: using the same per-file counts already cited (67+54+48+46+40+34+25+23+21+19 for the top 10), the actual share is 377/585 ≈ 64.4%, not ~63%.
+
 ## Expected Behavior
 
 Zero `# ll-lint: mr11-ok(...)` markers in `scripts/little_loops/loops/**`;
 `ll-loop validate` stays clean because every site is actually safe, not
 because it is marked.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+- **"Zero markers" is necessary but not sufficient — the loop-wide escape hatch must also stay unset.** `_validate_unsafe_context_interpolation()` (`scripts/little_loops/fsm/validation/shell_safety.py:533`) returns `[]` (skips `_scan_state_for_mr11` entirely) for any loop file where `fsm.unsafe_context_interpolation_ok: true` is set — this suppresses MR-11 scanning for the *whole file*, not one site. Today zero of the 55 marked files (or any other builtin loop) set this flag (`grep -rln "unsafe_context_interpolation_ok" scripts/little_loops/loops/` → 0 matches), and no test in `scripts/tests/test_builtin_loops.py` asserts it stays that way. A pass that deletes the 585 per-site markers and sets this flag loop-wide on the highest-marker-count files instead of converting them would satisfy "zero `mr11-ok` markers" and a clean `ll-loop validate`, while leaving every site's raw interpolation unfixed and now invisible to both `TestMr11MarkerSet` (nothing left to enumerate) and `TestValidatorWarningBudget` (no WARNING is ever emitted to hit its budget). "Every site is actually safe" therefore also requires: no builtin loop file this issue touches sets `unsafe_context_interpolation_ok: true` as a substitute for per-site conversion.
 
 ## Motivation
 
