@@ -16,7 +16,7 @@ cleanup() {
     # NOTE: scratch-pad cleanup deliberately does NOT happen here. This is a Stop
     # handler (fires at every turn end); deleting .loops/tmp/scratch here raced
     # auto-backgrounded allowlisted commands that outlive the turn (BUG-2420).
-    # Scratch cleanup now lives in scratch-cleanup.sh, wired to SessionEnd.
+    # Scratch cleanup now lives in scratch-cleanup.sh, wired to SessionStart.
 
     # Read worktree base from config, with fallback default
     CONFIG_FILE=".ll/ll-config.json"

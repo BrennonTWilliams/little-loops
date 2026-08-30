@@ -3,10 +3,11 @@ id: BUG-3363
 type: BUG
 title: scratch-cleanup.sh SessionEnd hook intermittently cancelled on session exit
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-30'
 captured_at: '2026-08-30T19:48:39Z'
+completed_at: '2026-08-30T21:11:19Z'
 program_design_not_applicable: true
 confidence_score: 98
 outcome_confidence: 87
@@ -309,6 +310,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T21:11:03 - `f4a71a24-6e8c-4fe8-b605-9397e7b59dac.jsonl`
+- `/ll:ready-issue` - 2026-08-30T21:01:05 - `0d3ac98c-1bf3-4d62-ba46-1c4c2d95622b.jsonl`
 - `/ll:confidence-check` - 2026-08-30T20:51:16 - `c0383600-4aba-41a2-bb58-b8d027178e96.jsonl`
 - `/ll:wire-issue` - 2026-08-30T20:27:44 - `f157be7e-42d9-436b-aab4-68974045eabd.jsonl`
 - `/ll:refine-issue` - 2026-08-30T20:16:05 - `0689d759-b3b6-42ca-983c-618fccd6cc96.jsonl`

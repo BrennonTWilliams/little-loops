@@ -34,6 +34,17 @@
             "statusMessage": "Checking doc drift..."
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/scratch-cleanup.sh",
+            "timeout": 5,
+            "statusMessage": "Cleaning up scratch pad..."
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -235,28 +246,6 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/stop.sh",
             "timeout": 190,
             "statusMessage": "Consulting advisor on working diff..."
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/scratch-cleanup.sh",
-            "timeout": 5,
-            "statusMessage": "Cleaning up scratch pad..."
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/record-hook-event.sh SessionEnd hooks/scripts/scratch-cleanup.sh",
-            "timeout": 5,
-            "statusMessage": "Recording hook telemetry..."
           }
         ]
       }

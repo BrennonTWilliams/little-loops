@@ -52,6 +52,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **SessionStart** | session-start | Loads config + local overrides, injects a 7-day project digest, starts history backfill | — | on |
 | **SessionStart** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
 | **SessionStart** | drift-check | Surfaces throttled `mention`/`route` doc-drift findings (`hooks.doc_drift_throttle_days`, default 7 days); opt out with `LL_DOC_DRIFT_DISABLE` | — | on |
+| **SessionStart** | scratch-cleanup | Prunes dead-PID scratch files from `.loops/tmp/scratch` | — | on |
 | **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | on (opt-in for recording) |
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` or `.ll/decisions.d/*.json` fragment from Claude-side Write/Edit | **yes** | on |
@@ -70,8 +71,6 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
 | **Stop** | record-hook-event | Telemetry shim: records the session-cleanup fire to `hook_events` | — | on |
 | **Stop** | pre_done | Auto-consults the advisor on the working diff, deduped per distinct diff state | — | off |
-| **SessionEnd** | scratch-cleanup | Prunes dead-PID scratch files from `.loops/tmp/scratch` | — | on |
-| **SessionEnd** | record-hook-event | Telemetry shim: records the scratch-cleanup fire to `hook_events` | — | on |
 | **PreCompact** | precompact | Snapshots task state before compaction (rubric-gated when `hooks.pre_compact.rubric.enabled: true`) | exit 2 | on |
 | **PreCompact** | precompact-handoff | Writes session continuation prompt before compaction (passive path for `/ll:resume`) | — | on |
 | **SubagentStart** | subagent-start | Records a subagent (Task/Agent) spawn in `subagent_runs` | — | on |
@@ -88,6 +87,7 @@ You start a session
   → SessionStart: loads config + local overrides, injects project digest
   → SessionStart (stale refs): reports any open-issue references pointing at issues the previous session marked done
   → SessionStart (drift check): reports throttled mention/route doc-drift findings, at most once per hooks.doc_drift_throttle_days
+  → SessionStart (scratch cleanup): prunes dead-PID scratch files
 
 You submit a prompt
   → UserPromptSubmit: optimizes vague prompts; records skill calls and corrections
@@ -115,7 +115,6 @@ Context window fills up (Claude Code fires PreCompact before compacting)
 
 Session ends
   → Stop (cleanup): removes locks, temp files, orphaned worktrees
-  → SessionEnd (scratch cleanup): prunes dead-PID scratch files
 ```
 
 ---
@@ -174,6 +173,12 @@ Every invocation also writes one best-effort `stale_ref_sweep` row to `.ll/histo
 **Hook:** `drift-check.sh` → `little_loops.hooks.drift_check.handle`
 
 Runs `verify_documentation()` (the same derived checker behind `ll-verify-docs`) and surfaces throttled `mention`/`route` doc-drift findings — count mismatches between documented and actual file counts — as advisory context at session start. Throttled to at most once every `hooks.doc_drift_throttle_days` (default **7**) days per project. Opt out entirely with `LL_DOC_DRIFT_DISABLE` (any non-empty value). Never blocks.
+
+### Scratch-pad cleanup
+
+**Hook:** `scratch-cleanup.sh` (pure bash)
+
+Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive, leaving untouched any file a still-running concurrent session/`ll-loop`/`ll-auto` process owns. **Only files matching the `${SAFE_NAME}-<pid>.txt` shape produced by `scratch-pad-redirect.sh` are eligible for removal** — user-typed scratch files (no `-<pid>` suffix) are preserved unconditionally (BUG-2525). Runs once at the start of each session — catching files left over from the *previous* session's exit. Originally bound to `SessionEnd`, but that event enforces a hard ~1.5s kill ceiling on any exit path (Ctrl+C, Ctrl+D, `/exit`) regardless of configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577), which could cancel even this fast (~0.07s) hook and print a spurious "Hook cancelled" error (BUG-3363). Re-homed to `SessionStart`, where there's no forced-kill deadline — the PID-liveness guard already protects concurrently-active writers regardless of which event triggers the sweep. Always on.
 
 ---
 
@@ -417,18 +422,20 @@ If the session ended context-heavy (≥ ~50% estimated) and no handoff was compl
 
 **Hook:** `session-cleanup.sh` (pure bash)
 
-Removes this session's lock and context-state files, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. Note there is a separate `automation.worktree_base` key (also default `.worktrees`) used by `ll-auto` and FSM sub-loop worktrees (`Config.get_worktree_base()`); this Stop-hook cleanup reads `parallel.worktree_base` specifically, not `automation.worktree_base`. (Scratch cleanup now lives in `scratch-cleanup.sh` on SessionEnd — see BUG-2420.) Always on.
+Removes this session's lock and context-state files, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. Note there is a separate `automation.worktree_base` key (also default `.worktrees`) used by `ll-auto` and FSM sub-loop worktrees (`Config.get_worktree_base()`); this Stop-hook cleanup reads `parallel.worktree_base` specifically, not `automation.worktree_base`. (Scratch cleanup now lives in `scratch-cleanup.sh` on SessionStart — see [Scratch-pad cleanup](#scratch-pad-cleanup), BUG-2420/BUG-3363.) Always on.
 
 ### Hook-event telemetry shim
 
 **Hook:** `record-hook-event.sh <EventName> <shadowed-script>` (pure bash)
 
-Registered on `Stop` and `SessionEnd` only — the two events whose handlers are
-pure bash and therefore never pass through `main_hooks()`, where every
-Python-dispatched intent is already wrapped by `hook_event_context()`. The shim
-takes the event name and the script it shadows as arguments, and records that
-fire's outcome to the `hook_events` table so bash-only hooks are not a blind spot
-in hook telemetry.
+Registered on `Stop` only — the one event whose handler is pure bash and
+therefore never passes through `main_hooks()`, where every Python-dispatched
+intent is already wrapped by `hook_event_context()`. The shim takes the event
+name and the script it shadows as arguments, and records that fire's outcome
+to the `hook_events` table so bash-only hooks are not a blind spot in hook
+telemetry. (`SessionEnd` has no registered hooks — `scratch-cleanup.sh`, its
+only handler, moved to `SessionStart` in BUG-3363 — so there is no longer a
+second `record-hook-event.sh` pairing.)
 
 Gated by `analytics.enabled` **and** `analytics.capture.hooks` (both default
 `true`, but `analytics.enabled` is off unless you turn it on). Records only —
@@ -454,24 +461,6 @@ advisory only: a successful verdict is surfaced via **exit 0 + `feedback`**
 never via blocking (`exit_code=2`). A failed or timed-out consult logs a
 warning and never blocks the turn. Bounded by `advisor.max_consults_per_task`
 like every other advisor trigger.
-
----
-
-## SessionEnd
-
-Runs **once, when the session terminates** (Claude Code's `SessionEnd` event) — not per turn. Advisory; must never fail.
-
-### Scratch-pad cleanup
-
-**Hook:** `scratch-cleanup.sh` (pure bash)
-
-Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive, leaving untouched any file a still-running concurrent session/`ll-loop`/`ll-auto` process owns. **Only files matching the `${SAFE_NAME}-<pid>.txt` shape produced by `scratch-pad-redirect.sh` are eligible for removal** — user-typed scratch files (no `-<pid>` suffix) are preserved unconditionally (BUG-2525). Always on.
-
-### Hook-event telemetry shim
-
-`record-hook-event.sh` is registered here too, shadowing `scratch-cleanup.sh`. Same behavior as under [Stop](#stop).
-
-> Keep `SessionEnd` handlers fast — Claude Code enforces a hard ~1.5s ceiling on this event before killing the hook on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577). This is why the stale-ref sweep lives under [SessionStart](#sessionstart) instead.
 
 ---
 

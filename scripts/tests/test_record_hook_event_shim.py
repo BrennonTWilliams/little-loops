@@ -1,8 +1,11 @@
 """Tests for the ``record-hook-event.sh`` bash shim (ENH-2506).
 
-The shim is the telemetry path for hosts events that never route through the
-Python dispatcher — today only ``Stop``/``SessionEnd``, which
-``hooks/hooks.json`` binds directly to raw bash scripts. It must:
+The shim is the telemetry path for host events that never route through the
+Python dispatcher — today only ``Stop``, which ``hooks/hooks.json`` binds
+directly to a raw bash script (``SessionEnd`` had the same pairing until
+BUG-3363 re-homed its sole handler, ``scratch-cleanup.sh``, to
+``SessionStart``, which already flows through the Python dispatcher). It
+must:
 
 1. Exit 0 unconditionally (telemetry can never fail the paired hook).
 2. Write a ``hook_events`` row via ``ll-session record-hook-event`` when

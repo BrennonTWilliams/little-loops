@@ -1,16 +1,23 @@
 #!/bin/bash
 #
 # scratch-cleanup.sh
-# SessionEnd hook for little-loops plugin (BUG-2420, extended)
+# SessionStart hook for little-loops plugin (BUG-2420, extended; re-homed
+# from SessionEnd to SessionStart by BUG-3363)
 #
 # Prunes stale files from the scratch-pad directory (.loops/tmp/scratch) at
-# session termination.
+# the start of the next session.
 #
 # This cleanup previously ran on the `Stop` event (in session-cleanup.sh), but
 # `Stop` fires at the end of EVERY assistant turn — so it raced auto-backgrounded
 # allowlisted commands that intentionally outlive the turn, deleting the scratch
 # dir out from under a command that was still writing to it (zero output
-# captured). `SessionEnd` fires only once per session.
+# captured). It then ran on `SessionEnd` (once per session) until BUG-3363
+# found that event's ~1.5s upstream kill deadline (anthropics/claude-code#32712,
+# #41577 — the same class of bug BUG-2483 fixed for session-end.sh) could cancel
+# even this fast (~0.07s) hook, printing a spurious "Hook cancelled" error on
+# exit. It now runs on `SessionStart` instead: the PID-liveness guard below
+# checks the writing process's liveness rather than which event triggered the
+# sweep, so it protects concurrently-active writers regardless of trigger.
 #
 # But `.loops/tmp/scratch` is a single path shared by EVERY concurrent Claude
 # Code session / ll-loop / ll-auto process running against this repo — there is

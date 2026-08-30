@@ -127,44 +127,48 @@ class TestClaudeCodeAdapterIntegration:
             f"expected drift-check.sh in a SessionStart command; got {ss_cmds!r}"
         )
 
-    def test_hooks_json_session_end_no_longer_references_sweep(self) -> None:
-        """The SessionEnd array must no longer reference session-end.sh (regression).
+    def test_hooks_json_registers_scratch_cleanup_under_session_start(self) -> None:
+        """scratch-cleanup.sh (BUG-2420) must be registered under SessionStart.
 
-        After re-homing to SessionStart, the sweep must not race session
-        teardown. The other SessionEnd handler (scratch-cleanup.sh) remains
-        untouched.
+        BUG-3363: SessionEnd hooks are killed under a hard ~1.5s ceiling on
+        any exit path (Ctrl+C, Ctrl+D, /exit), regardless of configured
+        ``timeout`` (anthropics/claude-code#32712, #41577) — the same
+        upstream bug test_hooks_json_registers_sweep_under_session_start
+        documents for session-end.sh. scratch-cleanup.sh's own runtime
+        (~0.07s) is nowhere near that ceiling, but it was still being
+        intermittently cancelled — consistent with the ceiling depending on
+        exit-path teardown timing, not purely the hook's own cost. Re-homed
+        to SessionStart, mirroring session-end.sh's BUG-2483 fix.
         """
         data = json.loads(HOOKS_JSON.read_text())
-        assert "SessionEnd" in data["hooks"], "hooks.json is missing SessionEnd key"
-        se_cmds = [
+        assert "SessionStart" in data["hooks"], "hooks.json is missing SessionStart key"
+        ss_cmds = [
             h["command"]
-            for group in data["hooks"]["SessionEnd"]
+            for group in data["hooks"]["SessionStart"]
             for h in group.get("hooks", [])
             if h.get("type") == "command"
         ]
-        assert not any("session-end.sh" in cmd for cmd in se_cmds), (
-            f"session-end.sh must be removed from the SessionEnd array; got {se_cmds!r}"
+        assert any("scratch-cleanup.sh" in cmd for cmd in ss_cmds), (
+            f"expected scratch-cleanup.sh in a SessionStart command; got {ss_cmds!r}"
         )
 
-    def test_hooks_json_session_end_no_longer_references_orphan_worker_sweep(self) -> None:
-        """The SessionEnd array must no longer reference orphan-worker-sweep.sh.
+    def test_hooks_json_has_no_session_end_key(self) -> None:
+        """SessionEnd must have zero registered hooks after BUG-3363.
 
-        The orphan xdist sweep is a local-only hook (registered in
-        .claude/settings.local.json, gitignored) — it is NOT a built-in plugin
-        hook and must not ship via hooks/hooks.json. See the design discussion
-        recorded at .claude/plans/make-it-a-local-only-groovy-stallman.md.
+        Both prior SessionEnd handlers (session-end.sh, re-homed by
+        BUG-2483; scratch-cleanup.sh, re-homed by BUG-3363) now live under
+        SessionStart. Per BUG-3363's wiring decision the SessionEnd key is
+        dropped entirely rather than left as an empty array — an absent key
+        also trivially covers the two prior regression checks this test
+        replaces (session-end.sh absence, orphan-worker-sweep.sh absence;
+        the latter guards a local-only hook documented at
+        .claude/plans/make-it-a-local-only-groovy-stallman.md that must
+        never ship via hooks/hooks.json).
         """
         data = json.loads(HOOKS_JSON.read_text())
-        assert "SessionEnd" in data["hooks"], "hooks.json is missing SessionEnd key"
-        se_cmds = [
-            h["command"]
-            for group in data["hooks"]["SessionEnd"]
-            for h in group.get("hooks", [])
-            if h.get("type") == "command"
-        ]
-        assert not any("orphan-worker-sweep" in cmd for cmd in se_cmds), (
-            f"orphan-worker-sweep.sh must not be in SessionEnd (it is a "
-            f"local-only hook, not a built-in); got {se_cmds!r}"
+        assert "SessionEnd" not in data["hooks"], (
+            f"hooks.json must not have a SessionEnd key; got "
+            f"{data['hooks'].get('SessionEnd')!r}"
         )
 
     def test_post_tool_use_default_host_claude_code(self, tmp_path: Path) -> None:

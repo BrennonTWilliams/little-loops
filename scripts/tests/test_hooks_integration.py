@@ -2862,7 +2862,11 @@ class TestScratchPadRedirectBug2420:
 
 class TestScratchCleanupSessionEnd:
     """BUG-2420: scratch cleanup moved off the racing `Stop` hook onto a
-    dedicated, correctly-wired `SessionEnd` binding."""
+    dedicated, correctly-wired binding — originally `SessionEnd`; re-homed to
+    `SessionStart` by BUG-3363 after `SessionEnd`'s upstream ~1.5s kill
+    ceiling was found to intermittently cancel it too. The execution-behavior
+    tests below (PID-liveness pruning, ownership contract) are unaffected by
+    which event triggers the script."""
 
     REPO_ROOT = Path(__file__).parent.parent.parent
 
@@ -2912,7 +2916,7 @@ class TestScratchCleanupSessionEnd:
     ):
         """BUG-2525: a scratch file written without the -<pid> suffix convention
         (e.g. user-typed `> .loops/tmp/scratch/test-results.txt`) must survive
-        the SessionEnd sweep — the cleanup only owns files its sibling
+        the sweep — the cleanup only owns files its sibling
         scratch-pad-redirect.sh created, identified by the PID-suffix shape."""
 
         script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
@@ -2934,7 +2938,7 @@ class TestScratchCleanupSessionEnd:
         """A scratch file whose owning PID is still alive must survive cleanup.
 
         Regression test for the cross-process collision: a concurrent
-        session's SessionEnd must not delete another live session's
+        session's cleanup sweep must not delete another live session's
         in-progress scratch-pad-redirected output.
         """
         import os
@@ -2972,17 +2976,36 @@ class TestScratchCleanupSessionEnd:
         assert not dead.exists(), "file owned by a dead PID must be pruned"
         assert not scratch.exists(), "dir should be removed once empty"
 
-    def test_hooks_json_registers_session_end_scratch_cleanup(self):
-        """hooks/hooks.json registers a SessionEnd block bound to scratch-cleanup.sh."""
+    def test_hooks_json_registers_scratch_cleanup_under_session_start(self):
+        """hooks/hooks.json registers a SessionStart block bound to scratch-cleanup.sh.
+
+        BUG-3363: re-homed from SessionEnd, whose ~1.5s upstream kill
+        ceiling (anthropics/claude-code#32712, #41577) was intermittently
+        cancelling this hook despite its own ~0.07s runtime.
+        """
         data = json.loads((self.REPO_ROOT / "hooks/hooks.json").read_text())
-        assert "SessionEnd" in data["hooks"], "hooks.json is missing a SessionEnd key"
+        assert "SessionStart" in data["hooks"], "hooks.json is missing a SessionStart key"
         commands = [
             hook.get("command", "")
-            for group in data["hooks"]["SessionEnd"]
+            for group in data["hooks"]["SessionStart"]
             for hook in group.get("hooks", [])
         ]
         assert any("scratch-cleanup.sh" in c for c in commands), (
-            f"SessionEnd must bind scratch-cleanup.sh; got {commands!r}"
+            f"SessionStart must bind scratch-cleanup.sh; got {commands!r}"
+        )
+
+    def test_hooks_json_has_no_session_end_key(self):
+        """SessionEnd must have zero registered hooks after BUG-3363.
+
+        Both prior SessionEnd handlers (session-end.sh, re-homed by
+        BUG-2483; scratch-cleanup.sh, re-homed by BUG-3363) now live under
+        SessionStart. Per BUG-3363's wiring decision the SessionEnd key is
+        dropped entirely rather than left as an empty array.
+        """
+        data = json.loads((self.REPO_ROOT / "hooks/hooks.json").read_text())
+        assert "SessionEnd" not in data["hooks"], (
+            f"hooks.json must not have a SessionEnd key; got "
+            f"{data['hooks'].get('SessionEnd')!r}"
         )
 
 

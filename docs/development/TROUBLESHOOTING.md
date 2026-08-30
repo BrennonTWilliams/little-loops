@@ -1038,9 +1038,11 @@ Requires `analytics.enabled: true` and `analytics.capture.hooks` not set to
 rows at all with a config confirmed correct usually means the dispatcher-level
 wrap in `hooks/__init__.py:main_hooks()` isn't seeing a resolvable config for
 the invoking cwd — check `resolve_config_path()` for that intent's `cwd`.
-`Stop`/`SessionEnd` are bash-only (never routed through `main_hooks()`) and
-are instead recorded by the `hooks/scripts/record-hook-event.sh` shim
-registered as a second `hooks.json` command.
+`Stop` is bash-only (never routed through `main_hooks()`) and is instead
+recorded by the `hooks/scripts/record-hook-event.sh` shim registered as a
+second `hooks.json` command. `SessionEnd` has no registered hooks (BUG-3363
+re-homed its sole handler, `scratch-cleanup.sh`, to `SessionStart`), so
+there's nothing to record there.
 
 ### Hook timeout errors
 
