@@ -47,7 +47,7 @@ review time chasing a phantom parent/child relationship.
 
 ## Proposed Solution
 
-In `scripts/little_loops/cli/deps.py`'s `main_deps()`, filter `forward_ids` to exclude EPIC-shaped ids, mirroring BUG-3361's resolution: reuse the case-insensitive `_EPIC_ID_RE` primitive from `scripts/little_loops/sprint.py:14` (or extract it to a shared helper both modules import) rather than a literal `.startswith("EPIC-")` check, for consistency with `relates_to` entries being unnormalized free text with no case guarantee.
+In `scripts/little_loops/cli/deps.py`'s `main_deps()`, filter `forward_ids` to exclude EPIC-shaped ids, mirroring BUG-3361's resolution: reuse the case-insensitive `_EPIC_ID_RE` primitive from `scripts/little_loops/sprint.py:14` (or extract it to a shared helper both modules import) rather than a literal `.startswith("EPIC-")` check, for consistency with `relates_to` entries being unnormalized free text with no case guarantee. BUG-3361 has landed (commit `8886bc261`): `sprint.py:343` now applies exactly this filter, so this change makes the two branches identical.
 
 ```python
 forward_ids: set[str] = {
@@ -64,7 +64,7 @@ forward_ids: set[str] = {
 - `scripts/tests/test_deps_cli.py` — has `relates_to` fixtures (`FEAT-001`, `FEAT-002`) but none EPIC-shaped; needs a new regression test mirroring BUG-3361's AC (sibling-EPIC `relates_to` entry never appears in `ll-deps tree --epic` output)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_deps_cli.py` — confirmed gap: no test in this file, `test_cli_deps.py`, or `test_dependency_mapper.py` currently exercises `forward_ids` with an EPIC-shaped `relates_to` entry [Agent 3 finding]. Note: BUG-3361's own regression test does not exist yet either (`sprint.py:341`'s `forward_ids` is still unfiltered as of this pass) — there is no landed BUG-3361 test to literally mirror. Closest templates to model the new test on: `test_tree_linear_chain` / `test_tree_no_children` (`test_deps_cli.py:77-97`, `:65-75`) for structure, and `test_load_or_resolve_epic_id_forward_lookup` (`scripts/tests/test_sprint.py:2606-2623`) for the sibling-EPIC fixture shape once BUG-3361 lands [Agent 3 finding]
+- `scripts/tests/test_deps_cli.py` — confirmed gap: no test in this file, `test_cli_deps.py`, or `test_dependency_mapper.py` currently exercises `forward_ids` with an EPIC-shaped `relates_to` entry [Agent 3 finding]. BUG-3361 has since landed (commit `8886bc261`): its regression test `test_load_or_resolve_relates_to_excludes_sibling_epic` (`scripts/tests/test_sprint.py:2774`) is the exact template to mirror for fixture shape and assertion. Closest structural templates in this file: `test_tree_linear_chain` / `test_tree_no_children` (`test_deps_cli.py:77-97`, `:65-75`) [Agent 3 finding, updated post-BUG-3361]
 - New test case: an EPIC whose *only* `relates_to` entries are EPIC-shaped (no `parent:`-linked children) will newly hit the `(no children)` sentinel at `deps.py:292-294` after the fix, where it previously rendered the sibling EPIC id — add a case asserting this transition explicitly [Agent 2 finding]
 
 ### Documentation
