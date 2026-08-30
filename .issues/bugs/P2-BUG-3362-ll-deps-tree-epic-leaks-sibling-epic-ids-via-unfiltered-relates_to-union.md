@@ -63,6 +63,10 @@ forward_ids: set[str] = {
 ### Tests
 - `scripts/tests/test_deps_cli.py` — has `relates_to` fixtures (`FEAT-001`, `FEAT-002`) but none EPIC-shaped; needs a new regression test mirroring BUG-3361's AC (sibling-EPIC `relates_to` entry never appears in `ll-deps tree --epic` output)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_deps_cli.py` — confirmed gap: no test in this file, `test_cli_deps.py`, or `test_dependency_mapper.py` currently exercises `forward_ids` with an EPIC-shaped `relates_to` entry [Agent 3 finding]. Note: BUG-3361's own regression test does not exist yet either (`sprint.py:341`'s `forward_ids` is still unfiltered as of this pass) — there is no landed BUG-3361 test to literally mirror. Closest templates to model the new test on: `test_tree_linear_chain` / `test_tree_no_children` (`test_deps_cli.py:77-97`, `:65-75`) for structure, and `test_load_or_resolve_epic_id_forward_lookup` (`scripts/tests/test_sprint.py:2606-2623`) for the sibling-EPIC fixture shape once BUG-3361 lands [Agent 3 finding]
+- New test case: an EPIC whose *only* `relates_to` entries are EPIC-shaped (no `parent:`-linked children) will newly hit the `(no children)` sentinel at `deps.py:292-294` after the fix, where it previously rendered the sibling EPIC id — add a case asserting this transition explicitly [Agent 2 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` — `#### ll-deps tree` section describes this branch's behavior; may need a note once the fix ships
 
@@ -71,6 +75,13 @@ forward_ids: set[str] = {
 1. Add the `forward_ids` filter in `scripts/little_loops/cli/deps.py`'s `ll-deps tree --epic` branch (lines 288-290), reusing (or extracting to a shared helper) the `_EPIC_ID_RE` primitive from `scripts/little_loops/sprint.py:14`.
 2. Add a regression test in `scripts/tests/test_deps_cli.py` covering a sibling-EPIC `relates_to` entry, mirroring BUG-3361's AC.
 3. Run `python -m pytest scripts/tests/` to verify the new test and existing `test_deps_cli.py` coverage pass.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Import directly, don't extract: `_EPIC_ID_RE` is private to `scripts/little_loops/sprint.py` (no other production file imports it) — no shared-helper module for EPIC-id-shape detection exists yet in `issue_parser.py` or `cli_args.py`. `scripts/little_loops/cli/deps.py` already imports `from little_loops.sprint import Sprint` at line 335, inside this same `main_deps()` function's sibling "sprint-scoped filtering" branch, and `sprint.py` never imports from `little_loops.cli`/`little_loops.cli.deps` — so `from little_loops.sprint import _EPIC_ID_RE` at the "tree --epic" branch is a proven-safe, non-circular import with an exact precedent already live in this file. Resolves the "reuse ... or extract to a shared helper" ambiguity in Proposed Solution in favor of direct import; no extraction needed for this fix. [Agent 2 finding]
+- FYI, out of scope: `scripts/little_loops/recursive_finalize.py:35` defines an identical pattern under a different name (`_EPIC_RE = re.compile(r"^EPIC-\d+$", re.IGNORECASE)`), with no cross-import between it and `sprint.py`. Not a caller of the buggy branch and not required for this fix, but relevant if a future pass consolidates EPIC-id-shape detection into a shared helper. [Agent 1 / Agent 2 finding]
 
 ## Program Design
 
@@ -117,6 +128,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-30T19:07:21 - `3e336bf1-dd8f-4ab7-b5d8-b5bf4adff8fb.jsonl`
 - `/ll:refine-issue` - 2026-08-30T18:58:55 - `12d26f9a-ed28-4a88-a053-f90953905374.jsonl`
 - `/ll:format-issue` - 2026-08-30T18:57:02 - `9bc3b2e3-2cf2-4efa-91d3-ec380f6bfaf0.jsonl`
 - `/ll:capture-issue` - 2026-08-30T18:54:08 - `00726072-62d6-4f81-b684-ed899628cec1.jsonl`
