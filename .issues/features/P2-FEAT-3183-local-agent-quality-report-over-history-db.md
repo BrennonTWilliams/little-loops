@@ -19,12 +19,12 @@ relates_to:
 - FEAT-3182
 - FEAT-2315
 - ENH-2775
-confidence_score: 98
-outcome_confidence: 92
-score_complexity: 20
-score_test_coverage: 24
-score_ambiguity: 24
-score_change_surface: 24
+confidence_score: 90
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 ## Summary
@@ -33,7 +33,7 @@ Ship a local, screenshot-worthy agent-quality report built from `.ll/history.db`
 
 ## Current Behavior
 
-`.ll/history.db` (`SCHEMA_VERSION = 40`) records issue transitions, loop runs, user corrections,
+`.ll/history.db` (`SCHEMA_VERSION = 45`) records issue transitions, loop runs, user corrections,
 token/cost usage, and test runs per project. Two commands read parts of it analytically:
 `ll-history analyze` (issue-file trends, `--period`/`--compare`) and `ll-history rework`
 (reopen/follow-up/touch-back/revert rates). Neither answers whether the *agents* are getting
@@ -121,7 +121,7 @@ draft. It is the wrong foundation on four counts:
 
 1. **Blocked behind a deferred chain.** FEAT-2315 is `status: deferred`, `depends_on: ENH-2317`
    (also deferred), under EPIC-2369 (deferred), alongside FEAT-2316 and ENH-2318 (both deferred).
-   This issue is P1; starting there means unblocking four P3 issues first.
+   This issue is P2; starting there means unblocking four P3 issues first.
 2. **No trend machinery to inherit.** FEAT-2315 is explicitly point-in-time — one
    `--window-days N` lookback rendered as a table. This issue's central requirement (a time series
    per metric) is precisely the part FEAT-2315 does not have.
@@ -146,7 +146,7 @@ yet — this issue must therefore *establish* the shared definition surface, not
 ## Metric Data Sources
 
 _Added by wiring pass — all tables verified against `scripts/little_loops/session_store/schema.py`
-at `SCHEMA_VERSION = 41`._
+at `SCHEMA_VERSION = 41`; re-verified unchanged at `SCHEMA_VERSION = 45` (2026-08-29)._
 
 | Metric | Source | Notes |
 |---|---|---|
@@ -206,6 +206,10 @@ Adding `claude-opus-5` and a documented unpriced/non-Anthropic path to `MODEL_PR
 worthwhile prerequisite but is **not** a substitute for the coverage gate — historical rows are
 already written with null and are not recomputed.
 
+_Re-measured 2026-08-29: the gap is growing — `claude-opus-5` is at 37,269 null rows (was
+23,084), and `deepseek-v4-pro` (236 rows, all null) has appeared. Adding `claude-opus-5` to
+`MODEL_PRICING` is now **in scope** (see Open Decisions #3, resolved)._
+
 ### Retry-inflation attribution
 
 The Expected Behavior sample (`retry inflation 2.4 iterations/run`) is a per-**run** mean and needs
@@ -236,7 +240,7 @@ up and can be read side by side.
 
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
-- **BLOCKER — `issue_sessions.issue_num` does not exist on already-migrated databases. Filed as [[BUG-3236]]; this issue now `depends_on` it.** `schema.py:889-908` (migration index 35 → v36, ENH-2771) redefines the view with an `issue_num` column, and the finding below correctly reports that as the source-of-truth definition. It is not what a live database has. This repo's `.ll/history.db` reports `schema_version = 41` in its `meta` table, yet `sqlite_master` holds the **v16** view — five columns (`issue_id, session_id, jsonl_path, first_message_ts, last_message_ts`), no `issue_num`. `SELECT issue_num FROM issue_sessions` raises `sqlite3.OperationalError: no such column` on it today (verified), and the drift is already breaking shipped readers — `ll-history sessions <ID>`, `issue_effort()`, and `recent_issue_velocity()` all silently return empty against it. Fresh databases and the current upgrade path are both correct, so a fresh-install test will not reproduce it. Every metric in this issue except retry inflation depends on this join, so BUG-3236 gates the feature; until it lands, any code written against `issue_num` must also carry an `issue_id` fallback path.
+- **RESOLVED 2026-08-29 — BUG-3236 is `done`; the live view now carries `issue_num` (verified against this repo's `.ll/history.db`). The `issue_id` fallback path and the pre-v36-view degradation test are no longer required.** Original finding kept for context: `issue_sessions.issue_num` did not exist on already-migrated databases. `schema.py:889-908` (migration index 35 → v36, ENH-2771) redefines the view with an `issue_num` column, and the finding below correctly reports that as the source-of-truth definition. It is not what a live database has. This repo's `.ll/history.db` reports `schema_version = 41` in its `meta` table, yet `sqlite_master` holds the **v16** view — five columns (`issue_id, session_id, jsonl_path, first_message_ts, last_message_ts`), no `issue_num`. `SELECT issue_num FROM issue_sessions` raises `sqlite3.OperationalError: no such column` on it today (verified), and the drift is already breaking shipped readers — `ll-history sessions <ID>`, `issue_effort()`, and `recent_issue_velocity()` all silently return empty against it. Fresh databases and the current upgrade path are both correct, so a fresh-install test will not reproduce it. Every metric in this issue except retry inflation depends on this join, so BUG-3236 gates the feature; until it lands, any code written against `issue_num` must also carry an `issue_id` fallback path.
 - **`SCHEMA_VERSION` is 41** (`session_store/schema.py:21`); the tables cited (`usage_events`, `loop_runs`, `user_corrections`, `correction_retirements`, `issue_sessions` view) are unaffected by v41 (ENH-3185, unrelated). The Metric Data Sources header has been corrected to match.
 - **`loop_runs` has no `issue_id` column.** Confirmed schema (`session_store/schema.py:557-571`, v23/ENH-2814): `id, run_id (UNIQUE), loop_name, started_at, ended_at, final_state, iterations, terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch, failure_terminal`. Retry inflation per-issue requires a two-hop join not exercised anywhere in the codebase today: `loop_runs.run_id → usage_events.run_id → usage_events.session_id → issue_sessions.session_id → issue_num`. The one existing precedent, `history_reader.waste_attribution()` (`history_reader.py:1010-1049`), only goes one hop (`usage_events JOIN loop_runs ON run_id`, grouped by `loop_name`, never by issue) and its own comment (`history_reader.py:1017-1021`) notes rows with no matching `loop_runs` are dropped by the inner join, not misattributed — the same drop-not-misattribute behavior would need to hold for the two-hop chain.
 - **`issue_sessions` view does support the claimed `usage_events.session_id → issue_id` join**, but the correct group key is `issue_num` (stable numeric), not `issue_id` (mutable TEXT on retype — rationale at `schema.py:827-833`, ENH-2771). Current live view definition is v36/ENH-2771 (`schema.py:889-908`; it has been redefined three times — v5, v16, v36 — each `DROP VIEW IF EXISTS` + `CREATE VIEW` supersedes the prior, so v36 is authoritative), exposing `issue_id, issue_num, session_id, jsonl_path, first_message_ts, last_message_ts`.
@@ -266,14 +270,17 @@ _Added by wiring pass — based on codebase analysis._
   Refactor `rework.py` to import from `_utils` — behavior-preserving, covered by the existing
   `scripts/tests/test_issue_history_rework.py`.
 - `scripts/little_loops/cli/history.py` — add a `quality` subparser (copy the `rework_parser`
-  block, lines 198–224: `--format` with `text|json|markdown|yaml`, `--min-sample`) and the
-  `if args.command == "quality":` dispatch branch (mirror the `rework` branch, lines 339–372,
+  block, line 216: `--format` with `text|json|markdown|yaml`, `--min-sample`) and the
+  `if args.command == "quality":` dispatch branch (mirror the `rework` branch, line 406,
   including its `resolve_history_db(project_root / DEFAULT_DB_PATH)` + `find_issues(config,
   status_filter=all_statuses)` preamble). Add usage examples to the epilog beside the existing
-  `rework` examples (lines 57–58).
+  `rework` examples (~line 60).
 - `scripts/little_loops/issue_history/__init__.py` — export the new models, `analyze_agent_quality`,
   and the four formatters; add them to `__all__` and to the module docstring's `Public exports`
   block (the docstring is the package's documented surface — it lists every existing analyzer).
+- `scripts/little_loops/pricing.py` — add `claude-opus-5` to `MODEL_PRICING` (Open Decisions #3,
+  resolved: in scope). Improves priced coverage going forward only; already-written null rows are
+  not recomputed, so the coverage gate remains required.
 
 ### Reused (read-only — no changes needed)
 - `scripts/little_loops/history_reader.py:_connect_readonly()` — the read-only connect helper
@@ -317,9 +324,8 @@ _Added by wiring pass — based on codebase analysis._
     `orchestration_runs` row and assert the text renderer emits a readable `unattributed` block.
   - `TestMinSampleZero` — assert `--min-sample 0` is honored rather than replaced by
     `MIN_SAMPLE_SIZE`.
-  - A test that runs against a database seeded at `schema_version >= 36` with the **pre-v36**
-    `issue_sessions` view (no `issue_num`) and asserts the report degrades rather than raising
-    `sqlite3.OperationalError` — the step-0 hazard. Drop this only if the view repair lands first.
+  - ~~A pre-v36 `issue_sessions` view degradation test~~ — **dropped**: BUG-3236 landed the view
+    repair (done 2026-08-29), so the hazard no longer exists.
 - `scripts/tests/test_issue_history_rework.py` — must pass **unchanged** after the `_utils`
   extraction; that is the regression gate on the refactor.
 - `scripts/tests/test_cli_history.py` / `test_issue_history_cli.py` — add a `ll-history quality`
@@ -390,9 +396,9 @@ render through the same shape.
 
 ## Implementation Steps
 
-0. **Prerequisite — BUG-3236** (`depends_on`): land the `issue_sessions` view repair, or implement
-   every session→issue join with an `issue_id` fallback. Verify against a database already at
-   `schema_version >= 36`, not a freshly created one — a fresh DB masks the defect entirely.
+0. **Prerequisite — BUG-3236: SATISFIED** (done 2026-08-29). The `issue_sessions` view repair
+   landed; the live view carries `issue_num` (verified). No `issue_id` fallback path is needed —
+   join on `issue_num` directly.
 1. Extract the windowing/min-sample primitives from `rework.py` into `_utils.py`; refactor
    `rework.py` to import them. Confirm `test_issue_history_rework.py` passes unchanged.
 2. Define the metric-definition structure (name, unit, window, denominator, formula, min_sample,
@@ -446,17 +452,17 @@ alone concealed. They pin the prior model without having to hand-assemble a sess
 - **Effort**: Medium — the windowing/min-sample/rendering scaffolding is inherited from
   `rework.py`; the real work is the `_utils` extraction, the three net-new metrics
   (retry inflation, cost per issue, tokens per issue), and the coverage-gating machinery.
-  Add the `issue_sessions` view repair (step 0) if it is not landed separately first.
-- **Risk**: Medium — the new command is read-only and additive, but (a) the `_utils` extraction
+  (The `issue_sessions` view repair landed separately via BUG-3236 — no step-0 work remains.)
+- **Risk**: Medium — the new command is read-only and additive, but the `_utils` extraction
   touches shipped `ll-history rework` behavior, gated by `test_issue_history_rework.py` passing
-  unchanged, and (b) the session→issue join it depends on is broken on already-migrated databases
-  (step 0). The dominant *product* risk is publishing a cost trend that reflects pricing-table
+  unchanged. (The session→issue join hazard is gone: BUG-3236 landed the view repair.)
+  The dominant *product* risk is publishing a cost trend that reflects pricing-table
   coverage rather than agent behavior — the coverage gate exists to prevent exactly that.
 - **Breaking Change**: No.
 
 ## Open Decisions
 
-_Both previously-open decisions are now **resolved**; they remain recorded here and must be
+_All three decisions are now **resolved**; they remain recorded here and must be
 restated in the module docstring._
 
 1. **Multi-issue session cost attribution** — **RESOLVED: split `cost_usd` evenly** across the N
@@ -470,12 +476,13 @@ restated in the module docstring._
    Viability confirmed: 193 of 195 `user_corrections` rows map to an `issue_sessions` row on this
    repo's DB.
 
-Remaining unresolved:
-
-3. **Whether to land the `MODEL_PRICING` gap first.** Adding `claude-opus-5` (and a documented
-   unpriced path for non-Anthropic models) improves coverage going forward but does not recompute
-   already-written null rows, so the coverage gate is required either way. Sequencing is the only
-   question, not necessity.
+3. **Whether to land the `MODEL_PRICING` gap first** — **RESOLVED 2026-08-29: add
+   `claude-opus-5` to `MODEL_PRICING` in scope of this issue** (a one-line table entry; see
+   Files to Modify). The gap grew from 23,084 to 37,269 null rows since research, and
+   `deepseek-v4-pro` has appeared unpriced. The fix improves coverage going forward only —
+   already-written null rows are not recomputed — so the coverage gate is required either way.
+   Non-Anthropic models (MiniMax-M3, deepseek-*) stay unpriced; they are covered by the
+   documented unpriced path and the tokens-per-issue companion metric.
 
 
 ## Blocks
@@ -488,6 +495,7 @@ Remaining unresolved:
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T23:50:31 - `f07ad83d-593f-4ba1-aba1-67baa08aa529.jsonl`
 - `/ll:ready-issue` - 2026-08-29T23:36:47 - `4b1b868d-82c2-4215-81b0-b47fc6f857e5.jsonl`
 - `/ll:ready-issue` - 2026-08-29T22:53:31 - `4b1b868d-82c2-4215-81b0-b47fc6f857e5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:58 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
