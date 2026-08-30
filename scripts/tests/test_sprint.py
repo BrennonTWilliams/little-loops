@@ -2771,6 +2771,34 @@ class TestSprintManagerLoadOrResolve:
         # Deduplicated: BUG-001 should appear exactly once
         assert issue_ids.count("BUG-001") == 1
 
+    def test_load_or_resolve_relates_to_excludes_sibling_epic(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """BUG-3361: a sibling EPIC referenced via relates_to (a documentation
+        cross-reference, not a decomposition edge) must not leak into the
+        EPIC's own dispatch set — only its real leaf children (found via the
+        backward parent: chain) belong there.
+        """
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-900-primary.md").write_text(
+            "---\nid: EPIC-900\nstatus: open\nrelates_to:\n  - EPIC-901\n---\n"
+            "# EPIC-900: Primary\n"
+        )
+        (issues_dir / "epics" / "P1-EPIC-901-sibling.md").write_text(
+            "---\nid: EPIC-901\nstatus: open\n---\n# EPIC-901: Sibling\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-050-real-child.md").write_text(
+            "---\nid: FEAT-050\nstatus: open\nparent: EPIC-900\n---\n"
+            "# FEAT-050: Real Child\n\n## Summary\nImplement this.\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-900")
+
+        assert result is not None
+        assert "EPIC-901" not in result.issues
+        assert "FEAT-050" in result.issues
+
     def test_load_or_resolve_filters_inactive_statuses(
         self, tmp_path: Path, epic_project: BRConfig
     ) -> None:

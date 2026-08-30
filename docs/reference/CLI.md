@@ -560,7 +560,7 @@ Execute a sprint or resolve an EPIC's active children as a sprint.
 | `--context-limit` | | Override context window token estimate |
 | `--skip-learning-gate` | | Bypass the pre-flight learning-test batch gate (see below) |
 
-When an EPIC ID is passed, resolution is the union of the EPIC's `relates_to:` field (forward) and any issue with `parent: EPIC-NNN` (backward), deduplicated and filtered to active statuses (`open`, `in_progress`, `blocked`). Resume works using the normalized `epic-NNN` name stored in `.sprint-state.json`.
+When an EPIC ID is passed, resolution is the union of the EPIC's `relates_to:` field (forward, EPIC-shaped ids excluded — `relates_to:` on an EPIC is a documentation cross-reference to sibling EPICs, not a decomposition edge, BUG-3361) and any issue with `parent: EPIC-NNN` (backward), deduplicated and filtered to active statuses (`open`, `in_progress`, `blocked`). Resume works using the normalized `epic-NNN` name stored in `.sprint-state.json`.
 
 **Pre-flight learning-test gate (ENH-2210):** When `learning_tests.enabled` is `true`, `ll-sprint run` aggregates all `learning_tests_required` targets across every issue in the sprint before the first wave runs, checks each target via `ll-learning-tests check --stale-aware`, and blocks execution if any are missing or stale. This catches assumption gaps for the entire sprint in a single pre-flight pass rather than discovering them mid-wave. Use `--skip-learning-gate` to bypass when the registry is unavailable.
 

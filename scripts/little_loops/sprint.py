@@ -337,8 +337,10 @@ class SprintManager:
             logger.warning("Failed to parse EPIC file %s: %s", epic_path, e)
             return None
 
-        # Forward lookup: relates_to on the EPIC file
-        forward_ids: set[str] = set(epic_info.relates_to)
+        # Forward lookup: relates_to on the EPIC file, excluding EPIC-shaped
+        # ids (BUG-3361) — relates_to is also used as a documentation
+        # cross-reference between sibling EPICs, not a decomposition edge.
+        forward_ids: set[str] = {i for i in epic_info.relates_to if not _EPIC_ID_RE.match(i)}
 
         # Backward lookup (ENH-2615): walk each active issue's parent: chain
         # transitively so grandchildren (e.g. follow-ups decomposed from a child

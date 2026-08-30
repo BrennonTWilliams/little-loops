@@ -1,5 +1,6 @@
 ---
 discovered_date: 2026-08-30
+completed_at: '2026-08-30T19:12:47Z'
 discovered_by: debug-loop-run
 source_loop: sprint-refine-and-implement
 source_state: resolve_set
@@ -10,6 +11,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-3361: SprintManager.load_or_resolve unions relates_to sibling-EPIC ids into an EPIC's dispatch set
@@ -258,20 +260,44 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `SprintManager.load_or_resolve("EPIC-2258")` (or an equivalent unit
+- [x] `SprintManager.load_or_resolve("EPIC-2258")` (or an equivalent unit
       test fixture with a `relates_to:` pointing at another EPIC) never
       includes a `relates_to`-sourced `EPIC-*` id in the returned
       `Sprint.issues` (backward-path sub-EPICs via `parent:` chains remain
       included per ENH-2615 — see Expected Behavior scope note)
-- [ ] A regression test mirrors BUG-2638's coverage but targets
+- [x] A regression test mirrors BUG-2638's coverage but targets
       `sprint.py`'s forward/`relates_to` path specifically, using an
       uppercase sibling-EPIC entry as the must-fail-before-fix repro
-- [ ] `test_load_or_resolve_nested_epic_grandchild_transitive`
+- [x] `test_load_or_resolve_nested_epic_grandchild_transitive`
       (`test_sprint.py:2884`) still passes unmodified — backward-path
       sub-EPIC inclusion is unchanged
-- [ ] `docs/reference/API.md:6980` and `docs/reference/CLI.md:563,580` updated
+- [x] `docs/reference/API.md:6980` and `docs/reference/CLI.md:563,580` updated
       to note forward/`relates_to` resolution excludes EPIC-typed ids
-- [ ] `python -m pytest scripts/tests/` passes
+- [x] `python -m pytest scripts/tests/` passes
+
+## Resolution
+
+Filtered `forward_ids` in `SprintManager.load_or_resolve()`
+(`scripts/little_loops/sprint.py:341`) to exclude EPIC-shaped ids via the
+module's existing `_EPIC_ID_RE` primitive (Option B from Decision
+Rationale), matching the `_EPIC_ID_RE`/`.upper()` case-insensitive
+convention already used at `sprint.py:319,322`. Backward-path (`parent:`
+chain) sub-EPIC inclusion is unchanged per the Expected Behavior scope
+note.
+
+Added `test_load_or_resolve_relates_to_excludes_sibling_epic`
+(`scripts/tests/test_sprint.py`) as the regression test: an EPIC with an
+uppercase sibling-EPIC `relates_to` entry plus a real `parent:`-linked leaf
+child asserts the sibling EPIC id is excluded and the real child is
+included. Updated `docs/reference/API.md:6980` and
+`docs/reference/CLI.md:563` to document that forward/`relates_to`
+resolution excludes EPIC-typed ids.
+
+Full suite: `python -m pytest scripts/tests/` — 22211 passed (7 pre-existing
+failures on `main`, unrelated to this change: README drift, priority-drift
+corpus checks, guillotine-prompt test, decision-rules corpus differential,
+verify-evidence repo gate — confirmed via `git stash` that all 7 fail
+identically without this change applied).
 
 ## Labels
 
@@ -283,6 +309,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-30T19:12:46 - `3e336bf1-dd8f-4ab7-b5d8-b5bf4adff8fb.jsonl`
 - `/ll:confidence-check` - 2026-08-30T19:02:12 - `23dfebb9-a2c6-4ea0-af1c-820007a2d67b.jsonl`
 - `/ll:wire-issue` - 2026-08-30T18:50:09 - `00726072-62d6-4f81-b684-ed899628cec1.jsonl`
 - `/ll:decide-issue` - 2026-08-30T18:42:34 - `485b5d3f-a476-487f-b5bc-30b3083dcc2d.jsonl`

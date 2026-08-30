@@ -6977,7 +6977,7 @@ Manager for sprint CRUD operations.
 |--------|---------|-------------|
 | `create(name, issues, description, options)` | `Sprint` | Create new sprint |
 | `load(name)` | `Sprint \| None` | Load sprint by name |
-| `load_or_resolve(arg)` | `Sprint \| None` | Load sprint by name **or** resolve an EPIC ID (`EPIC-NNN`) to an ephemeral Sprint via forward (`relates_to:`) + backward **transitive** (`parent:`-chain walk, cycle-guarded — grandchildren under sub-EPICs/intermediates included, ENH-2615) lookup, filtered to active statuses |
+| `load_or_resolve(arg)` | `Sprint \| None` | Load sprint by name **or** resolve an EPIC ID (`EPIC-NNN`) to an ephemeral Sprint via forward (`relates_to:`, EPIC-shaped ids excluded — `relates_to:` is a documentation cross-reference between sibling EPICs, not a decomposition edge, BUG-3361) + backward **transitive** (`parent:`-chain walk, cycle-guarded — grandchildren under sub-EPICs/intermediates included, ENH-2615) lookup, filtered to active statuses |
 | `list_all()` | `list[Sprint]` | List all sprints |
 | `delete(name)` | `bool` | Delete sprint |
 | `validate_issues(issues)` | `dict[str, Path]` | Validate issue IDs exist |
