@@ -517,6 +517,7 @@ _Added by `/ll:spike` on 2026-08-29_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-30T04:22:25 - `afda9a92-b08f-49bc-af59-b238d6180c39.jsonl`
 - `/ll:spike` - 2026-08-30T04:18:09 - `ff699041-98cb-4619-b0e1-ea29f873929f.jsonl`
 - `/ll:refine-issue` - 2026-08-30T03:54:52 - `60f4b2a5-6804-4c4a-8095-0f67f3431a09.jsonl`
 - `/ll:wire-issue` - 2026-08-28T23:41:12 - `425908b6-e1d5-4f67-8fd1-7db76f87cdd4.jsonl`
