@@ -19,6 +19,12 @@ labels:
 - ergonomics
 testable: true
 verify_verdict: NON_VALID
+confidence_score: 100
+outcome_confidence: 98
+score_complexity: 25
+score_test_coverage: 23
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2977: Add a --timeout CLI flag to ll-auto, matching the existing --idle-timeout
@@ -264,5 +270,6 @@ lowered P3 → P4.
   `<cmd> --help` winning over any prose.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T04:40:55 - `0d08a078-6a53-4f72-959b-ecc948902882.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-01T20:18:53 - `52bc5a67-0032-4383-ae03-a6de98447a01.jsonl`
