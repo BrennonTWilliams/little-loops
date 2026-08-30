@@ -9,7 +9,7 @@ discovered_by: review-of-FEAT-3332
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T00:00:00Z'
 depends_on: [FEAT-3332]
-decision_needed: true
+decision_needed: false
 learning_tests_required: [pyyaml]
 unproven_mechanism: true
 spike_completed: true
@@ -206,10 +206,7 @@ defined-once AC) or converges on B's fragment anyway.
   script, with the byte-identical-pair constraint (`test_builtin_loops.py:18046`) and
   the resolved-fragments test fixture as the known costs.
 
-### Routing Decision (Expected Behavior Question 2 — Unresolved)
-
-Late-violation routing is not yet decided. Two concrete alternatives, no stated
-preference — decide before implementation:
+### Routing Decision (Expected Behavior Question 2)
 
 ### Option A
 
@@ -218,10 +215,79 @@ FEAT-3332's existing routing for the intent-window gate.
 
 ### Option B
 
+> **Selected:** Warn-and-continue — surfaces the still-valid `workflow.yaml`
+> to the operator instead of collapsing it into the generic `failed` terminal,
+> matching `general-task.yaml`'s ENH-2575 precedent for late-pipeline failures
+> after real progress already exists.
+
 Warn-and-continue — route post-`emit_artifact` violations to
 `finalize_await_confirmation`, surfacing the violation in the confirmation text
 so the operator sees it without discarding the valid `workflow.yaml` artifact
 that already exists at that point.
+
+### Decision Rationale
+
+**Decision point:** Routing Decision (Expected Behavior Question 2)
+
+Decided by `/ll:decide-issue` on 2026-08-30.
+
+**Selected**: Option B — Warn-and-continue, routing post-`emit_artifact` scope
+violations to `finalize_await_confirmation` instead of `diagnose`.
+
+**Reasoning**: `diagnose` (`workflow-generator.yaml:875-899`) was built for the
+"nothing usable was produced" case — it writes a one-paragraph diagnostic and
+routes to the `failed` terminal (`:899`), with no path that surfaces a
+still-valid `workflow.yaml` to the operator. Routing a post-`emit_artifact`
+violation through it collapses "a valid draft exists" into the same
+undifferentiated failure as a total failure — exactly the operator-signal loss
+the codebase's own closest analog was built to avoid: `general-task.yaml`'s
+`final_verify.on_error`/`final_verify_spin_gate.on_no` → `summarize_partial` →
+the dedicated `partial` terminal (ENH-2575, commented "must NOT forfeit the
+run's partial progress by collapsing to the failed terminal"). Option B's
+warn-and-surface mechanism is not a new pattern either — it mirrors
+`rn-refine.yaml`'s established `RECOVERY_NEEDED`/`PARTIAL_DRAIN` marker
+convention (append a marker, continue to a report/confirmation state,
+instruct that state to surface it prominently), and reuses
+`workflow-generator.yaml`'s own conditional-file-check prompt idiom already
+used twice in this loop (`capture_intent:204-206`, `emit_artifact:567-569`).
+
+Option A's cost is real but smaller: it reuses `check_intent_scope`'s exact
+`on_no: diagnose` edge verbatim and needs no prompt-text changes, which is why
+it scores higher on Simplicity and Testability below. It loses on Consistency
+because it contradicts the codebase's own precedent for this specific
+condition (a late failure after real progress already exists), which is the
+tiebreaker this pipeline uses on a tied total.
+
+Implementation note carried into Files to Modify: `finalize_await_confirmation`'s
+current prompt ("has NOT been promoted...") is only accurate for insertion
+edges before `promote` runs; a gate on the `promote.next` edge fires after
+`promote`'s write has already landed in `${context.loops_dir}`, so that edge's
+message needs its own conditional wording rather than reusing the prompt
+verbatim.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| Option A (fail → `diagnose`) | 2/3 | 3/3 | 3/3 | 1/3 | 9/12 |
+| Option B (warn → `finalize_await_confirmation`) | 3/3 | 2/3 | 2/3 | 2/3 | 9/12 |
+
+Tied on total; Option B wins on Consistency (the designated tiebreaker).
+
+**Key evidence**:
+- `diagnose` has no artifact-preserving path and terminates at `failed`
+  (`workflow-generator.yaml:875-899`); `finalize_await_confirmation` already
+  tells the operator "A validated workflow draft is ready at
+  `${captured.run_dir.output}/workflow.yaml`" (`:856-868`).
+- `general-task.yaml`'s ENH-2575 `partial` terminal (`:1128-1133`) is the
+  codebase's deliberate precedent against collapsing late failures with real
+  progress into `failed`.
+- `rn-refine.yaml`'s `RECOVERY_NEEDED`/`PARTIAL_DRAIN` convention
+  (`:849-889`, surfaced in `report` at `:1140-1163`) is the precedented
+  warn-and-continue mechanism Option B reuses.
+- The `promote.next` edge is the one wrinkle: `finalize_await_confirmation`'s
+  "has NOT been promoted" text is inaccurate there, since `promote`'s write
+  (`:823-853`) has already occurred by the time that edge's gate would fire.
 
 ## Integration Map
 
@@ -534,6 +600,7 @@ _Added by `/ll:spike` on 2026-08-29_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-30T04:43:20 - `b8abac66-e634-410f-b256-f5d2ac362d82.jsonl`
 - `/ll:decide-issue` - 2026-08-30T04:33:44 - `71bd91ab-afc2-49d1-b813-807e5cd751b0.jsonl`
 - `/ll:refine-issue` - 2026-08-30T04:22:25 - `afda9a92-b08f-49bc-af59-b238d6180c39.jsonl`
 - `/ll:spike` - 2026-08-30T04:18:09 - `ff699041-98cb-4619-b0e1-ea29f873929f.jsonl`

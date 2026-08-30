@@ -1,0 +1,12 @@
+{
+  "id": "50641b10-4467-448a-ae05-1b49c353afcd",
+  "type": "decision",
+  "timestamp": "2026-08-30T04:43:01Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "diagnose has no path to surface a still-valid workflow.yaml and ends at the failed terminal; general-task.yaml's ENH-2575 partial-terminal precedent and rn-refine.yaml's RECOVERY_NEEDED/PARTIAL_DRAIN convention both establish warn-and-preserve as the codebase's answer for a late failure after real progress exists. Tied 9/12 score with Option A, won on Consistency tiebreaker.",
+  "rule": "Warn-and-continue: route post-emit_artifact scope violations to finalize_await_confirmation, not diagnose",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: fail the run via diagnose, matching FEAT-3332's intent-window routing",
+  "issue": "FEAT-3335"
+}
