@@ -12,11 +12,11 @@ labels:
 - loops
 - dead-code
 verify_verdict: VALID
-confidence_score: 85
-outcome_confidence: 67
-score_complexity: 14
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -407,6 +407,7 @@ _Added by `/ll:confidence-check` on 2026-08-30_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T20:21:21 - `2728ce43-8a34-4c85-a85c-d62c320e9372.jsonl`
 - `/ll:confidence-check` - 2026-08-30T20:12:02 - `0689d759-b3b6-42ca-983c-618fccd6cc96.jsonl`
 - `/ll:verify-issues` - 2026-08-30T20:06:44 - `a1ad8a57-f920-432c-8aa4-c8eaf847f8b7.jsonl`
 - `/ll:wire-issue` - 2026-08-30T20:01:49 - `a1ad8a57-f920-432c-8aa4-c8eaf847f8b7.jsonl`
