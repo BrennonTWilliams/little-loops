@@ -189,9 +189,7 @@ class TestMainAdvise:
         assert before == after
         mock_r.assert_called_once_with("claude-code")
 
-    def test_disabled_advisor_still_consults_manually(
-        self, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_disabled_advisor_still_consults_manually(self, capsys: pytest.CaptureFixture) -> None:
         # AC #7: advisor.enabled: false (the default) does not block an
         # explicit `ll-advise` invocation — the manual path bypasses the
         # enabled gate, though it still spends budget.

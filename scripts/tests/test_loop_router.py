@@ -250,7 +250,7 @@ class TestLoopRouterStates:
         run_dir.mkdir()
         # Quote-dense filler so shlex.quote()'s ~4x expansion on embedded
         # single quotes is actually exercised, not just the pre-quoting length.
-        big_stream = "{\"event\": \"it's a test, it's fine\"}\n" * 6000  # ~230KB raw
+        big_stream = '{"event": "it\'s a test, it\'s fine"}\n' * 6000  # ~230KB raw
         action = loop_data["states"]["write_sub_loop_output"]["action"]
         ctx = InterpolationContext(
             context={"run_dir": str(run_dir)},

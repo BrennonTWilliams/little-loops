@@ -18230,13 +18230,11 @@ class TestWorkflowGeneratorLoop:
             state = data["states"][name]
             allow = (state.get("with") or {}).get("allow_loops_dir")
             assert allow in (None, "false"), f"{name} must not allow loops_dir, got {allow!r}"
-        assert data["states"]["check_promote_scope"].get("with", {}).get(
-            "allow_loops_dir"
-        ) == "true"
+        assert (
+            data["states"]["check_promote_scope"].get("with", {}).get("allow_loops_dir") == "true"
+        )
 
-    def test_snapshot_scope_baseline_uses_snapshot_mode_and_no_evaluator(
-        self, data: dict
-    ) -> None:
+    def test_snapshot_scope_baseline_uses_snapshot_mode_and_no_evaluator(self, data: dict) -> None:
         state = data["states"]["snapshot_scope_baseline"]
         assert state.get("with", {}).get("mode") == "snapshot"
         assert "evaluate" not in state, (
@@ -18390,7 +18388,9 @@ class TestWorkflowGeneratorLoop:
         fake_bin = tmp_path / "fakebin"
         fake_bin.mkdir()
         fake_python3 = fake_bin / "python3"
-        fake_python3.write_text("#!/bin/sh\necho 'boom: forced vocab-generation failure' >&2\nexit 1\n")
+        fake_python3.write_text(
+            "#!/bin/sh\necho 'boom: forced vocab-generation failure' >&2\nexit 1\n"
+        )
         fake_python3.chmod(0o755)
         env = os.environ.copy()
         env["PATH"] = f"{fake_bin}:{env['PATH']}"
@@ -18798,9 +18798,7 @@ class _ScopeContainmentGateHelpers:
             lines = result.stdout.splitlines()
             if len(lines) == 1:
                 snap = self._run_snapshot(data, Path(lines[0]), cwd or repo)
-                assert snap.returncode == 0, (
-                    f"snapshot_scope_baseline failed: {snap.stderr}"
-                )
+                assert snap.returncode == 0, f"snapshot_scope_baseline failed: {snap.stderr}"
         return result
 
     def _run_gate(
@@ -19863,7 +19861,9 @@ class TestUntrustedOutputFencing:
         )
 
     @pytest.mark.parametrize(
-        "site", sorted(KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES), ids=lambda s: f"{s[0]}::{s[1]}::{s[2]}"
+        "site",
+        sorted(KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES),
+        ids=lambda s: f"{s[0]}::{s[1]}::{s[2]}",
     )
     def test_known_unfenced_sites_stay_unfenced(self, site: tuple[str, str, str]) -> None:
         """Negative control mirroring TestBriefFencing's own — currently
@@ -19879,9 +19879,7 @@ class TestUntrustedOutputFencing:
         """AC9: fence.py's module docstring must name the class-(4) constant,
         so a docstring edit made without the matching guide edit (or vice
         versa) fails the suite instead of passing silently."""
-        fence_src = (
-            Path(__file__).parent.parent / "little_loops" / "fsm" / "fence.py"
-        ).read_text()
+        fence_src = (Path(__file__).parent.parent / "little_loops" / "fsm" / "fence.py").read_text()
         assert "FENCE_CORE_UNTRUSTED_OUTPUT" in fence_src.split('"""', 2)[1]
 
     def test_guide_names_untrusted_output_class(self) -> None:

@@ -2132,7 +2132,9 @@ class TestENH2365SummarizeSuccess:
         result = interpolate(action, ctx)
         assert ":default=" not in result
         assert "json.loads(raw)" in result
-        assert "cat > \"$FINAL_COUNTS_FILE\" << 'LL_RAW_9F3C1A7E_EOF'\n\nLL_RAW_9F3C1A7E_EOF" in result
+        assert (
+            "cat > \"$FINAL_COUNTS_FILE\" << 'LL_RAW_9F3C1A7E_EOF'\n\nLL_RAW_9F3C1A7E_EOF" in result
+        )
 
     def test_implemented_counts_checked_criteria_not_leftover(self, tmp_path: Path) -> None:
         """BUG-2608: implemented must be the CHECKED count. On the success path

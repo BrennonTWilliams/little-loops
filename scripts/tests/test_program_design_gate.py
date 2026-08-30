@@ -224,17 +224,13 @@ class TestSignatureShape:
         """
         from little_loops.issues.program_design import parse_signature_lines
 
-        assert parse_signature_lines(
-            "- `foo(a: int) -> Bar` (`module.py:12-34`) — does a thing"
-        )
+        assert parse_signature_lines("- `foo(a: int) -> Bar` (`module.py:12-34`) — does a thing")
         assert parse_signature_lines("- `x: int` (`module.py:5`) — a field")
 
     def test_citation_alone_does_not_rescue_a_prose_sentence(self) -> None:
         from little_loops.issues.program_design import parse_signature_lines
 
-        assert not parse_signature_lines(
-            "It returns a verdict (specific or not) to the caller."
-        )
+        assert not parse_signature_lines("It returns a verdict (specific or not) to the caller.")
 
 
 class TestDuplicateCallPathAnchors:

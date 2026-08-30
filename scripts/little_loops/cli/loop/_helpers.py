@@ -1898,7 +1898,9 @@ def run_foreground(
         # not the one line naming the file the run's loop→artifact handoff produced.
         promoted_artifact = fsm.context.get("promoted_artifact")
         if promoted_artifact:
-            print(f"Promoted artifact: {colorize(_relativize_to_cwd(str(promoted_artifact)), '32')}")
+            print(
+                f"Promoted artifact: {colorize(_relativize_to_cwd(str(promoted_artifact)), '32')}"
+            )
 
         if not renderer.quiet:
             print()

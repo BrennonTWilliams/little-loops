@@ -5,7 +5,6 @@ import os
 import subprocess
 from pathlib import Path
 
-
 # `scripts/` is the source root for the ``little_loops`` package (the
 # ``scripts/pyproject.toml`` workspace). On a CI runner the bash subprocess
 # inherits ``python3`` from the system PATH, which does NOT have ``little_loops``
@@ -34,11 +33,11 @@ def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = (
-        f"{_LITTLE_LOOPS_PYTHONPATH}{os.pathsep}{existing}" if existing else _LITTLE_LOOPS_PYTHONPATH
+        f"{_LITTLE_LOOPS_PYTHONPATH}{os.pathsep}{existing}"
+        if existing
+        else _LITTLE_LOOPS_PYTHONPATH
     )
-    return subprocess.run(
-        ["bash", "-c", script], cwd=cwd, capture_output=True, text=True, env=env
-    )
+    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True, env=env)
 
 
 # ---------------------------------------------------------------------------

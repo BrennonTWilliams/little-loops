@@ -635,7 +635,10 @@ def _tool_queue_requeue(arguments: dict[str, Any], *, project_root: Path, apply:
 
     target = {"id": entry.id, "target": entry.action.target, "status": entry.status}
     if not apply:
-        return {"target": target, "changes": [{"field": "status", "from": "running", "to": "pending"}]}
+        return {
+            "target": target,
+            "changes": [{"field": "status", "from": "running", "to": "pending"}],
+        }
 
     reset_to_pending(entry.id, root=project_root)
     return {"target": target, "changes": [{"field": "status", "from": "running", "to": "pending"}]}

@@ -340,7 +340,9 @@ def add_entry(
     )
 
 
-def list_entries(db_path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None) -> list[QueueEntry]:
+def list_entries(
+    db_path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None
+) -> list[QueueEntry]:
     """Return all entries ordered by priority tier, then FIFO within tier."""
     conn = connect(db_path, root=root)
     try:

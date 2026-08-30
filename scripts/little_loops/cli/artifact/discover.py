@@ -432,16 +432,16 @@ def discover_regions(artifact_bytes: bytes, source_text: str, config: object) ->
 
     if raw is None or not _DISCOVERY_KEYS.issubset(raw.keys()):
         got_keys = sorted((raw or {}).keys())
-        exc = RegionMapError(
+        err = RegionMapError(
             f"discovery response missing expected keys ({sorted(_DISCOVERY_KEYS)}): got {got_keys}"
         )
-        exc.raw = raw  # type: ignore[attr-defined]
-        raise exc
+        err.raw = raw  # type: ignore[attr-defined]
+        raise err
     unknown = set(raw.keys()) - _DISCOVERY_KEYS
     if unknown:
-        exc = RegionMapError(f"discovery response: unknown top-level key(s) {sorted(unknown)}")
-        exc.raw = raw  # type: ignore[attr-defined]
-        raise exc
+        err = RegionMapError(f"discovery response: unknown top-level key(s) {sorted(unknown)}")
+        err.raw = raw  # type: ignore[attr-defined]
+        raise err
 
     try:
         resolved = _resolve_offsets(artifact_bytes, raw)

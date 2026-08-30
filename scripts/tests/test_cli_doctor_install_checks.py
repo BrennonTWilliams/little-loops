@@ -492,7 +492,9 @@ class TestLoopValidity:
 
 
 class _FakeAdvisorConfig:
-    def __init__(self, *, enabled: bool = False, host: str | None = None, model: str = "opus") -> None:
+    def __init__(
+        self, *, enabled: bool = False, host: str | None = None, model: str = "opus"
+    ) -> None:
         self.enabled = enabled
         self.host = host
         self.model = model
@@ -504,7 +506,9 @@ class _FakeOrchestrationConfig:
 
 
 class _FakeBRConfig:
-    def __init__(self, advisor: _FakeAdvisorConfig, orchestration: _FakeOrchestrationConfig) -> None:
+    def __init__(
+        self, advisor: _FakeAdvisorConfig, orchestration: _FakeOrchestrationConfig
+    ) -> None:
         self.advisor = advisor
         self.orchestration = orchestration
 
@@ -560,7 +564,9 @@ class TestAdvisor:
         import little_loops.cli.doctor as doctor_mod
 
         monkeypatch.chdir(tmp_path)
-        fake_cfg = _FakeBRConfig(_FakeAdvisorConfig(enabled=True, host=None), _FakeOrchestrationConfig())
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host=None), _FakeOrchestrationConfig()
+        )
         monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
 
         rows = doctor_mod._advisor_data()
@@ -744,7 +750,10 @@ class TestAdvisor:
         seen = {"resolve_host_called": False}
         monkeypatch.setattr(
             "little_loops.host_runner.resolve_host",
-            lambda *a, **k: (seen.__setitem__("resolve_host_called", True), _FakeHostRunner("claude-code"))[1],
+            lambda *a, **k: (
+                seen.__setitem__("resolve_host_called", True),
+                _FakeHostRunner("claude-code"),
+            )[1],
         )
 
         doctor_mod._advisor_data()
@@ -825,7 +834,9 @@ class TestAdvisor:
         assert doctor_mod._probe_advisor_version("claude-code") == "v-claude-code"
         assert doctor_mod._probe_advisor_version("codex") == "v-codex"
 
-    def test_magicmock_config_guard_attempts_no_resolution(self, tmp_path: Path, monkeypatch) -> None:
+    def test_magicmock_config_guard_attempts_no_resolution(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         import little_loops.cli.doctor as doctor_mod
 
         monkeypatch.chdir(tmp_path)
@@ -848,7 +859,9 @@ class TestAdvisor:
         assert not called["resolve_host"]
         assert not called["resolve_host_named"]
 
-    def test_json_and_text_output_include_advisor_section(self, tmp_path: Path, monkeypatch) -> None:
+    def test_json_and_text_output_include_advisor_section(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         import io
         from contextlib import redirect_stdout
 

@@ -77,21 +77,14 @@ class TestNoRealPathAvailableAtCallSites:
 
 
 class TestFileValueDoesNotLeakIntoMr11Output:
-    ACTION = (
-        "python3 <<'PYEOF'\n"
-        "goal = '${context.goal}'\n"
-        "print(goal)\n"
-        "PYEOF\n"
-    )
+    ACTION = "python3 <<'PYEOF'\ngoal = '${context.goal}'\nprint(goal)\nPYEOF\n"
 
     def _scan_and_render(self, file_value: str) -> list[str]:
         sites: list[InterpSite] = scan_action(self.ACTION, state="run", file=file_value)
         # Reconstruct MR-11-style messages the way the widened validator would,
         # deliberately never reading site.file.
         return [
-            _mr11_style_message("run", "${" + site.var + "}")
-            for site in sites
-            if site.cls != "C"
+            _mr11_style_message("run", "${" + site.var + "}") for site in sites if site.cls != "C"
         ]
 
     def test_scan_action_file_value_does_not_leak_into_mr11_style_message(self):
@@ -158,7 +151,9 @@ class TestFsmNameAlwaysAvailable:
         scaffold_verify_style = FSMLoop(
             name="verify-enh-3342-widen-mr-11",
             initial="probe-boundary",
-            states={"probe-boundary": StateConfig(action="echo hi", action_type="shell", terminal=True)},
+            states={
+                "probe-boundary": StateConfig(action="echo hi", action_type="shell", terminal=True)
+            },
             description="d",
             category="verification",
             max_steps=10,

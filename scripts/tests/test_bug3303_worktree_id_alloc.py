@@ -24,9 +24,7 @@ from tests.helpers import copy_git_template
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
-    )
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True)
 
 
 def _init_main_repo(path: Path, sample_config: dict[str, Any]) -> Path:
@@ -177,9 +175,7 @@ class TestCreateIssueCrossTreeLock:
         (main_bugs / "P2-BUG-020-existing.md").write_text("# BUG-020")
 
         wt_config = BRConfig(worktree)
-        created = create_issue(
-            wt_config, IssueSpec(type="BUG", title="New bug", priority="P2")
-        )
+        created = create_issue(wt_config, IssueSpec(type="BUG", title="New bug", priority="P2"))
 
         assert created.id == "BUG-021"
         # The highwater file is written to the *main* tree's .issues/, not the

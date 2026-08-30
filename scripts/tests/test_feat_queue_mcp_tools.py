@@ -119,7 +119,7 @@ def test_queue_requeue_running_entry(tmp_path, monkeypatch) -> None:
     project = _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        from little_loops.queue_store import DEFAULT_DB_PATH, add_entry, connect
+        from little_loops.queue_store import add_entry, connect
         from little_loops.runner_spec import ActionSpec, RunnerType
 
         entry = add_entry(

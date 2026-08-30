@@ -12,8 +12,6 @@ import json
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from scripts.tests.spike.rolling_scope_gate.rolling_gate import (
     changed_set,
     run_gate,
