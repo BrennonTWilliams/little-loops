@@ -8,6 +8,12 @@ testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T18:42:53Z'
+confidence_score: 90
+outcome_confidence: 86
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3353: Document stdio stdout JSON-RPC frame constraint in MCP server guide
@@ -184,11 +190,34 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 | `docs/guides/MCP_SERVER_GUIDE.md` | The file this issue edits |
 | `docs/reference/API.md` | `little_loops.mcp_server` module reference |
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-29_
+
+**Readiness Score**: 90/100 → STOP — ADDRESS GAPS (Program Design hard override)
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- Program Design hard override (ENH-2852/ENH-2967): `## Program Design` is missing
+  entirely (format-check `missing`: "Program Design", "Scope Boundaries" — the gate
+  is armed via `.ll/program-design-cutover.json`). Remedy: populate `## Program
+  Design` with the concrete section/heading structure and call path via
+  `/ll:refine-issue` or `/ll:reconcile-issue`, or set `program_design_not_applicable:
+  true` in frontmatter — a reasonable candidate here since this is a docs-only
+  change with no code paths touched.
+- Advisory claim gap (caps Criterion 4 at 10, does not itself force STOP):
+  format-check's `stale_symbol_ref` flagged `StringIO (claimed in
+  scripts/little_loops/workflow_sequence/io.py)`. This resolves to the `io.StringIO()`
+  mention in the Codebase Research Findings, which refers to the stdlib `io` module,
+  not a local `workflow_sequence/io.py` module — likely a resolver false positive,
+  but listed per the gate's own output rather than re-judged here.
+
 ## Status
 
 **Open** | Created: 2026-08-28 | Priority: P4
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T04:05:52 - `88146606-f2a1-4426-bbe4-fbee395686b0.jsonl`
 - `/ll:refine-issue` - 2026-08-30T03:52:40 - `ed7f738d-23a1-4ebc-8ac8-c914ef582fa7.jsonl`
 - `/ll:capture-issue` - 2026-08-28T18:43:17 - `51a7dd65-db46-4ad2-be82-40e74f2445d1.jsonl`
