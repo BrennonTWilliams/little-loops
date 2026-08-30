@@ -3,6 +3,7 @@ discovered_date: 2026-08-30
 discovered_by: debug-loop-run
 source_loop: sprint-refine-and-implement
 source_state: resolve_set
+decision_needed: true
 ---
 
 # BUG-3361: SprintManager.load_or_resolve unions relates_to sibling-EPIC ids into an EPIC's dispatch set
@@ -146,6 +147,47 @@ confidence-check-identified next child) when `$CURRENT` matches
 `^EPIC-\d+$`, so a future leak from any resolution path can't reach
 `ll-auto --only` on an EPIC id.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
+
+Two viable filter primitives for excluding EPIC-typed ids from `forward_ids`:
+
+**Option A**: `{i for i in epic_info.relates_to if not i.startswith("EPIC-")}` — the literal snippet already in this issue's Proposed Solution, mirroring BUG-2638's `next_issues.py` pattern exactly (`not i.issue_id.startswith("EPIC-")`, `next_issues.py:52,83,86`). Case-sensitive: a `relates_to: [epic-2178]` entry would not be filtered, since `IssueInfo.relates_to` parsing (`issue_parser.py:3624-3671`) does not normalize entries to uppercase.
+
+**Option B**: `{i for i in epic_info.relates_to if not _EPIC_ID_RE.match(i)}` — reuses the module's existing EPIC-id-shape primitive (`_EPIC_ID_RE = re.compile(r"^EPIC-\d+$", re.IGNORECASE)`, `sprint.py:14`), already applied case-insensitively at `sprint.py:319` for the `arg` parameter and exercised by `test_load_or_resolve_epic_id_case_insensitive` (`test_sprint.py:2841`) for that same input path.
+
+**Recommended**: Option B — `relates_to` entries are unnormalized free text, and the module already holds a case-insensitive EPIC-id convention for exactly this shape of check; Option A silently regresses on a lowercase or mixed-case sibling-EPIC reference.
+
+## Integration Map
+
+### Codebase Research Findings
+
+### Files to Modify
+- `scripts/little_loops/sprint.py` — `forward_ids` construction at `sprint.py:341` inside `SprintManager.load_or_resolve()`; the union/active-filter at `sprint.py:365-368` is downstream and unaffected by the fix itself
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/sprint/edit.py:17` — `manager.load_or_resolve(args.sprint)`
+- `scripts/little_loops/cli/sprint/manage.py:73` — `manager.load_or_resolve(args.sprint)`
+- `scripts/little_loops/cli/sprint/show.py:166` — `manager.load_or_resolve(args.sprint)`
+- `scripts/little_loops/cli/sprint/run.py:380` — `manager.load_or_resolve(args.sprint)`
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml:146,356` — `resolve_set` state builds `SprintManager(...).load_or_resolve(arg)`, the loop-context call site this issue's Summary traces the leak through
+
+### Conventions in Force
+- EPIC-typed ids are excluded from implementable/dispatch sets by matching on the candidate's own id shape, not by a separate config flag — evidence: `scripts/little_loops/cli/issues/next_issues.py:52,83,86` (`not i.issue_id.startswith("EPIC-")`, BUG-2638)
+- A sibling subsystem treats `relates_to:` as a non-child cross-reference and excludes it entirely from its own child-resolution logic, rather than filtering by type — evidence: `scripts/little_loops/issue_progress.py:120-132`, `compute_epic_progress()` docstring: "`relates_to:` is a cross-reference field (siblings, dependencies) and is intentionally excluded to avoid inflating counts with non-child references"
+- EPIC-id shape matching elsewhere in this same module is case-insensitive via a shared regex, not a literal prefix check — evidence: `_EPIC_ID_RE = re.compile(r"^EPIC-\d+$", re.IGNORECASE)` (`sprint.py:14`), used at `sprint.py:319`
+- Architectural intent already on record that `relates_to:` should hold only non-membership cross-refs, not children — evidence: `.issues/epics/P3-EPIC-2330-stop-overloading-relates-to-in-epic-writers.md` (status: done)
+
+### Tests
+- `scripts/tests/test_sprint.py:2606` (`test_load_or_resolve_epic_id_forward_lookup`) and `:2746` (`test_load_or_resolve_epic_id_union_dedup`) construct `relates_to: [BUG-001]` and assert `BUG-001` is included in `result.issues` — the fix must preserve this: non-EPIC `relates_to` entries stay in the dispatch set
+- `scripts/tests/test_sprint.py:2825-3043` — existing `load_or_resolve` EPIC-dispatch coverage (no-active-children, case-insensitive arg, nested-grandchild-transitive, multi-hop, done-intermediate chain, cycle-guard, unprefixed-filename, genuinely-absent) has no case for a sibling-EPIC `relates_to` entry — the AC's regression test is new coverage, not a modification of these
+- `scripts/tests/test_next_issues.py`, `scripts/tests/test_next_issue.py` — regression coverage for the BUG-2638 precedent pattern this fix mirrors
+
+### Documentation
+- `docs/reference/API.md:6980` — documents `load_or_resolve`'s forward (`relates_to:`) + backward semantics; will need updating once forward excludes EPIC-typed ids
+- `docs/reference/CLI.md:563,580` — documents the same forward/backward union semantics for sprint resolution
+
 ## Program Design
 
 ### Signatures
@@ -182,4 +224,5 @@ confidence-check-identified next child) when `$CURRENT` matches
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-30T18:36:06 - `3caa0a54-1798-44b0-ac84-0105003d8212.jsonl`
 - `/ll:format-issue` - 2026-08-30T18:30:07 - `94b795f5-375b-4a55-9190-f07c0af5f00b.jsonl`
