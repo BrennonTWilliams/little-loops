@@ -4883,8 +4883,8 @@ class TestPriorityRegexCompletenessAllowlist:
             21: "_ID_RE: prose-dependency ID shape, optional prefix group discarded",
         },
         "mcp_server/tools.py": {
-            761: "JSON-schema pattern for a priority argument, not a filename read",
-            904: "JSON-schema pattern for a priority argument, not a filename read",
+            764: "JSON-schema pattern for a priority argument, not a filename read",
+            907: "JSON-schema pattern for a priority argument, not a filename read",
         },
         "session_store/writers.py": {
             2521: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "
@@ -5701,6 +5701,10 @@ class TestBug3293DecisionRulesCorpusDifferential:
         "P2-ENH-3045-replacement-parity-and-negative-claim-doctrine-for-wire-and-refine.md": (
             "decision_rules_numbered",
             4,
+        ),
+        "P3-BUG-3356-gap-analysis-refine-passes-consume-max_refine_count-despite-documented-exemption.md": (
+            "decision_rules_numbered",
+            2,
         ),
     }
 
