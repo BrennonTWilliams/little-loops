@@ -7,6 +7,13 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-29'
 captured_at: '2026-08-29T19:44:17Z'
+verify_verdict: NON_VALID
+confidence_score: 90
+outcome_confidence: 77
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3358: Convert MR-11-marked interpolation sites to safe forms (ENH-3342 corpus triage)
@@ -83,6 +90,9 @@ _Added by `/ll:refine-issue` — 2026-08-30 — based on codebase analysis:_
 - `scripts/tests/test_builtin_loops.py::TestMr11MarkerSet::test_marker_set_matches_enumeration` (class at line 19855, test at 19861) is the ratchet: it asserts the corpus's discovered `(file, namespace.key, issue_id)` set equals `MR11_MARKER_ALLOWLIST` exactly, so it fails loudly on both an unenumerated new marker and a stale (unremoved) allowlist entry.
 - `ll-loop validate <loop-file>` re-runs the live MR-11 scan per file and is the fastest per-site feedback loop while converting one file at a time (per `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:414,427`).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestValidatorWarningBudget::test_deterministic_warning_categories_do_not_regrow` (class at line 16346) is a second, independent corpus-wide gate: it runs `load_and_validate()` over every builtin loop and fails on any WARNING whose message matches `"interpolates user-controlled context raw into a shell body"` (the `unsafe-context-interp` category) that isn't in its own `ALLOWLIST`. That category currently has zero `ALLOWLIST` entries because every real MR-11 finding today is marker-suppressed; if a conversion removes a marker without actually fixing the site (or fixes it incorrectly), `_scan_state_for_mr11` emits a live MR-11 finding whose message this test's pattern catches — a safety net on top of, not a replacement for, `ll-loop validate` and `TestMr11MarkerSet`. No `ALLOWLIST` entry should ever be added here for this issue's work; a hit means the conversion at that site is wrong, not that it needs allowlisting.
+
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:104` (MR-11 row) and `:137-215` ("MR-11's two safe interpolation idioms" through the marker-grammar subsection) is the authoritative source for both safe forms and the marker escape hatch — this issue converts markers away, it does not change this documentation.
 
@@ -155,4 +165,6 @@ progress and the checked-in enumeration in lockstep.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-30T02:12:01 - `d17317a4-6f41-44f3-a144-01ed88f7016d.jsonl`
+- `/ll:wire-issue` - 2026-08-30T02:00:50 - `2efc4cfb-bbbb-46a9-a8ab-64e90cf35402.jsonl`
 - `/ll:refine-issue` - 2026-08-30T01:53:34 - `543d94ed-e5f6-4375-8dca-4a4196321654.jsonl`
