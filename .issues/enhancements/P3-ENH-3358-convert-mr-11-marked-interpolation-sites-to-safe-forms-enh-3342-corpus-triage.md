@@ -3,7 +3,7 @@ id: ENH-3358
 type: ENH
 title: Convert MR-11-marked interpolation sites to safe forms (ENH-3342 corpus triage)
 priority: P3
-status: in_progress
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-29'
 captured_at: '2026-08-29T19:44:17Z'
@@ -13,6 +13,7 @@ score_complexity: 9
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: '2026-08-30T03:36:05Z'
 ---
 
 # ENH-3358: Convert MR-11-marked interpolation sites to safe forms (ENH-3342 corpus triage)
@@ -278,6 +279,7 @@ Explicitly out of scope for this issue:
 
 
 ## Session Log
+- `ll-auto` - 2026-08-30T03:36:05 - `f03addc3-6309-435f-9408-48e8108ca2d4.jsonl`
 - `/ll:manage-issue` - 2026-08-30T03:27:15 - `3954d634-f7fa-4367-b087-758ad458f012.jsonl`
 - `/ll:ready-issue` - 2026-08-30T03:05:39 - `331c980f-f81b-4ffd-aa21-97063786a71d.jsonl`
 - `/ll:confidence-check` - 2026-08-30T03:02:07 - `03107e30-2c48-46f8-bca3-62c49ee24e4f.jsonl`
@@ -286,3 +288,23 @@ Explicitly out of scope for this issue:
 - `/ll:confidence-check` - 2026-08-30T02:12:01 - `d17317a4-6f41-44f3-a144-01ed88f7016d.jsonl`
 - `/ll:wire-issue` - 2026-08-30T02:00:50 - `2efc4cfb-bbbb-46a9-a8ab-64e90cf35402.jsonl`
 - `/ll:refine-issue` - 2026-08-30T01:53:34 - `543d94ed-e5f6-4375-8dca-4a4196321654.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-29
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details
