@@ -85,6 +85,9 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 - `auto-refine-and-implement.yaml`'s `verify` state (line 449, unconditional) and `merge_epic_branch` state's fallback re-check (lines 610-807, only when the cached verdict/SHA is stale) — both call `verify_epic_branch_before_merge()`
 - `scripts/little_loops/parallel/orchestrator.py`'s `ParallelOrchestrator._verify_epic_branch_before_merge` (lines 1514-1535) — third caller outside the FSM path
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/spike/epic_verify_gate_doc_flake/repro_harness.py:16,114` — a fourth caller of `verify_epic_branch_before_merge()`, outside the FSM/orchestrator paths: a stress-repro harness built for the BUG-2649/BUG-2650 doc-flake investigation. Not touched by this fix, but confirms no other caller exists beyond the 3 already known.
+
 ### Similar Patterns
 - BUG-2649's PYTHONPATH hermeticity regression tests and BUG-3082's LL_AUTOMATION env-scrub fix are the two prior fixes for this same failure class
 
@@ -92,8 +95,20 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 - New regression test(s) for each fixed contamination vector, mirroring `scripts/tests/test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge` (BUG-2649 pattern) or `scripts/tests/test_hook_session_start.py:667-718` (BUG-3082 pattern)
 - Re-verify the 6 originally-failing tests pass under the gate: `test_tsc_noemit_passes` (`test_opencode_adapter.py`, `test_omp_adapter.py` — confirmed mechanism) and `test_recheck_set_folds_back_abandoned_residual`, `test_no_new_unverifiable_evidence`, `test_hint_fires_for_root_level_report`, `test_policy_builder_renders_byte_identically_to_golden_fixture` (unresolved mechanism)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_opencode_adapter.py:184-203` (`TestOpenCodeAdapterTypecheck.test_tsc_noemit_passes`) / `scripts/tests/test_omp_adapter.py:167-181` (`TestOmpAdapterTypecheck.test_tsc_noemit_passes`) — both modules already carry a module-level `pytestmark = pytest.mark.skipif(_BUN is None, ...)`; the new `LL_VERIFY_GATE` skip must be a second, additive function-level `@pytest.mark.skipif` decorator, not a replacement. Precedent for stacking two independent skipif marks on one function: `scripts/tests/test_fsm_persistence.py:2778-2785`.
+- `scripts/tests/test_orchestrator.py:1782` (`class TestEpicBranchVerifyGate`) — indirect gate coverage that patches `setup_worktree`/`cleanup_worktree`/`subprocess.run` and drives the gate through `ParallelOrchestrator`, without calling `verify_epic_branch_before_merge` by name; unaffected by this fix but should be re-run to confirm.
+- `scripts/tests/test_worktree_utils.py:1162-1183` (`test_verify_gate_marker_set_in_child_env`) — existing guard that `LL_VERIFY_GATE=1` reaches the child subprocess; not affected by adding a consumer of that marker, but is the test this fix's skip logic depends on staying green.
+- If Step 2's diagnosis of the 4 unresolved failures lands on an inherited env var: `scripts/tests/conftest.py:1060-1078`'s `_CMD_RUN_ENV_VARS` allowlist is suite-wide (autouse `_restore_cmd_run_env_vars`, not gated on `LL_VERIFY_GATE`) — adding a var there scrubs it for the *entire* suite, not just gate runs. Mirror the regression pattern in `scripts/tests/test_hook_session_start.py:667-718` (`TestAmbientAutomationEnvHermeticity::test_suite_passes_with_ambient_ll_automation`), which re-spawns the suite as a subprocess with the var deliberately set and asserts exit 0.
+
 ### Documentation
 - N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — documents the `LL_VERIFY_GATE` marker/idiom in prose (narrative section + a "**Behavior:**" bullet); BUG-2649's fix updated this same doc when the marker was introduced. Add a corroborating clause noting `test_tsc_noemit_passes` as a second consumer.
+- `hooks/adapters/opencode/README.md` § Smoke Test — states the typecheck gate "runs as part of `python -m pytest scripts/tests/`"; add a caveat that it's skipped under `LL_VERIFY_GATE=1`.
+- `hooks/adapters/omp/README.md` § Smoke Test — same sentence pattern, same caveat needed.
+- `CHANGELOG.md` — add an entry under the current top `### Fixed` section, standalone-bullet format (not narrative-paragraph), mirroring `CHANGELOG.md:1437-1448`'s BUG-2650 entry exactly, per the decision's explicit instruction to follow that precedent's format.
 
 ### Configuration
 - N/A
@@ -127,6 +142,16 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 2. Diagnose the remaining 4 failures (`test_recheck_set_folds_back_abandoned_residual`, `test_no_new_unverifiable_evidence`, `test_hint_fires_for_root_level_report`, `test_policy_builder_renders_byte_identically_to_golden_fixture`), which do not share the missing-node_modules mechanism — investigate the gate's full child env build (`verify_epic_branch_before_merge()`, `worktree_utils.py:565-589`), and for `test_hint_fires_for_root_level_report` specifically, cwd-relative `git check-ignore` behavior inside the ephemeral worktree path.
 3. Fix each identified contamination vector at the source (scrub/normalize the diverging env value, or the chosen tsc fix), following the BUG-2649/BUG-3082 pattern.
 4. Add a hermeticity regression test asserting each contamination vector stays fixed, mirroring the existing BUG-2649/BUG-3082 tests.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/API.md` — add `test_tsc_noemit_passes` as a second documented consumer of the `LL_VERIFY_GATE` marker idiom, alongside the existing narrative section and "**Behavior:**" bullet.
+- Update `hooks/adapters/opencode/README.md` and `hooks/adapters/omp/README.md` § Smoke Test — caveat that the typecheck gate is skipped under `LL_VERIFY_GATE=1`.
+- Update `CHANGELOG.md` — add a standalone `### Fixed` bullet mirroring the BUG-2650 entry format (`CHANGELOG.md:1437-1448`), under the current top version section.
+- File a dedicated follow-up bug to track un-quarantine (BUG-2650 precedent): new issue with `relates_to: [BUG-3368]` in its own frontmatter; add a prose pointer to that new bug ID in this issue's eventual `## Resolution` section (no structured cross-reference field is used for this pattern elsewhere in the repo).
+- Add the new `LL_VERIFY_GATE`-keyed `@pytest.mark.skipif` as a second, function-level decorator stacked on `test_tsc_noemit_passes` in both `test_opencode_adapter.py` and `test_omp_adapter.py` — additive to the existing module-level `_BUN is None` skip, not a replacement.
 
 ## Impact
 
@@ -174,6 +199,7 @@ The tsc failures were `Cannot find type definition file for 'bun'`.
 ## Frequency
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-31T22:11:27 - `c4a9442e-319b-44f7-a243-d71188c2e525.jsonl`
 - `/ll:decide-issue` - 2026-08-31T22:02:05 - `37ee9921-5737-4ac0-9e3a-27926a3278f3.jsonl`
 - `/ll:reconcile-issue` - 2026-08-31T21:55:00 - `10ac5aa7-c8d4-4c48-94b7-5c6942cffbd5.jsonl`
 - `/ll:refine-issue` - 2026-08-31T21:40:31 - `a39b473b-2472-40a4-90ee-2531e40475f9.jsonl`

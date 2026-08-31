@@ -78,14 +78,29 @@ Note: this does not fully resolve the issue's own "Recommended: Undetermined" no
 ### Dependent Files (Callers/Importers)
 - Any FSM loop that reuses the same `merge_epic_branch` completion-gate pattern (grep for `done_count == total` and `cancelled_count == 0` in `scripts/little_loops/loops/*.yaml`)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/worktree_utils.py:613` (`merge_epic_branch_to_base()`) — the shared git-merge helper (extracted under BUG-2614) that both `merge_epic_branch` and `_maybe_complete_epic` invoke once their respective `all_done` gates pass. Not modified by this fix, but confirmed as the common downstream consumer of both gates' verdicts.
+- Confirmed no third production site shares this gate's `done_count == total ... cancelled_count == 0` shape: repo-wide grep for `cancelled_count`/`done_count` found only `orchestrator.py:1478-1479` and `auto-refine-and-implement.yaml:710-712`, plus a deliberately different display-only computation in `scripts/little_loops/cli/issues/epic_progress.py:73-76` (`done_count = done_only + cancelled_count` for the progress-bar badge) that is unrelated to the merge gate and needs no change.
+
 ### Similar Patterns
 - Dependency-edge resolution already treats `done`/`cancelled` as the two terminal statuses (`.claude/CLAUDE.md` § Issue File Format) — this fix brings the completion gate in line with that existing convention
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` (or the FSM/loop test module covering `merge_epic_branch`) — add a case with a mix of `done` and `cancelled` children asserting `all_done` resolves true
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_orchestrator.py:1633-1643` (`test_cancelled_child_does_not_trigger_merge`) is the **only** test in `TestEpicCompletionMerge`/`TestEpicBranchVerifyGate` (lines 1564-1955, 16 tests audited) whose fixture includes a `cancelled` child status — confirmed the sole rewrite target; no other test in that range needs auditing for interaction effects. Model the rewrite on the sibling `test_merges_epic_branch_when_all_children_done` (`:1590-1606`), asserting a merge now fires for `{"FEAT-010": "done", "FEAT-020": "cancelled"}`.
+- `scripts/tests/test_builtin_loops.py::TestMergeEpicBranchConfigReadShell` (class starts `:5861`) has zero existing `cancelled`-status coverage — add `test_merges_when_done_and_cancelled_mix`, modeled on `test_merges_when_all_children_done` (`:6002-6016`), asserting `epic-merge-verdict.txt` reads `"merged"`.
+- `scripts/tests/test_orchestrator.py:1621-1631` (`test_blocked_child_holds_branch_open`) — confirmed unaffected (`{"FEAT-010": "done", "FEAT-020": "blocked"}`, no `cancelled` in its fixture); re-run only, no rewrite, to guard that `blocked_count == 0` stays strict.
+- `scripts/tests/test_issue_progress.py` — the `issue_progress` module's own primary test file for `compute_epic_progress`/`EpicProgress`; not previously listed as known coverage.
+- `scripts/tests/test_worktree_utils.py:612-765` (`TestMergeEpicBranchToBase`) — exercises the shared merge helper both gates call; unaffected by the condition change but worth re-running.
+- No existing three-way `done`+`cancelled`+`blocked` fixture exists in either test file (confirmed via targeted search) — not required by the issue's Implementation Steps, but worth adding if defense-in-depth coverage is wanted for the `blocked_count == 0` term staying independent of the `cancelled` fold-in.
+
 ### Documentation
 - N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.issues/features/P3-FEAT-2449-per-epic-integration-branch-completion-flow.md` (status `done`) — the design record whose stated intent ("a cancelled child must NOT trigger a merge into base") this fix knowingly reverses. No `relates_to` link exists in either direction today (confirmed: BUG-3369's frontmatter has no `relates_to` field; `.ll/decisions.yaml`/`.ll/decisions.d/` have zero `FEAT-2449` cross-reference fragments). No doc/CLI/config text elsewhere asserts the cancelled-exclusion as current fact, so this is the only stale-record touchpoint found.
 
 ### Configuration
 - N/A
@@ -127,6 +142,15 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 2. Add a test covering an epic with a mix of `done` and `cancelled` children (and none `blocked`) asserting `all_done` resolves true and the branch reaches the `verify_before_merge` check, for the FSM side (`test_builtin_loops.py`). Rewrite `test_orchestrator.py::test_cancelled_child_does_not_trigger_merge` (`:1633-1643`) to assert a merge now fires for the same done+cancelled mix, since its current assertion locks in the opposite (pre-fix) behavior.
 3. Verify existing tests for the fully-`done` and any-`blocked` cases still pass unchanged in both test modules, and audit the other epic-gate tests in `test_orchestrator.py` (lines ~1598-1952) for interaction effects.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/parallel/orchestrator.py:1417-1433` (`_maybe_complete_epic`'s docstring) and `:1473-1475` (inline comment) — both currently state the pre-fix "cancelled excluded" rationale as fact ("cancelled children do NOT count", "a cancelled child must NOT trigger a merge into base"); must be rewritten alongside the condition change, not left as stale rationale text.
+- Rewrite `scripts/tests/test_orchestrator.py::test_cancelled_child_does_not_trigger_merge` (`:1633-1643`) to assert a merge now fires for a done+cancelled mix — its current docstring/assertion locks in the pre-fix behavior.
+- Add `test_merges_when_done_and_cancelled_mix` to `scripts/tests/test_builtin_loops.py::TestMergeEpicBranchConfigReadShell` (model: `test_merges_when_all_children_done`, `:6002-6016`).
+- Add a cross-reference between this issue and `.issues/features/P3-FEAT-2449-per-epic-integration-branch-completion-flow.md`, whose design intent this fix reverses — no existing link exists in either direction.
+
 ## Impact
 
 - **Priority**: P3 — doesn't block any specific in-flight work today (this instance was worked around by hand), but silently strands every future epic with a cancelled child, and the failure mode (branch just never merges, no error) is easy to miss.
@@ -160,6 +184,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-31T22:11:28 - `c4a9442e-319b-44f7-a243-d71188c2e525.jsonl`
 - `/ll:decide-issue` - 2026-08-31T22:01:17 - `37ee9921-5737-4ac0-9e3a-27926a3278f3.jsonl`
 - `/ll:refine-issue` - 2026-08-31T21:40:32 - `a39b473b-2472-40a4-90ee-2531e40475f9.jsonl`
 - `/ll:format-issue` - 2026-08-31T21:28:22 - `24eb8111-3a52-4364-98e0-699548ae82fc.jsonl`
