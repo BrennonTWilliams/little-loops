@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.160.0] - 2026-08-31
+
+### Added
+
+- **FEAT-2261**: omp hook adapter
+- **FEAT-2263**: omp hook-event parity audit
+- **FEAT-2797**: omp structured-output surface — audit findings, matrix correction, and agent `output:` schema wiring
+- feat(schemas): add 9 missing event schema definitions (94cadf9d7)
+
+### Fixed
+
+- **BUG-3360**: `cost_ceiling` is schema-validated but never enforced at runtime
+- **BUG-3361**: `SprintManager.load_or_resolve` unions `relates_to` sibling-EPIC ids into an EPIC's dispatch set
+- **BUG-3362**: `ll-deps tree --epic` leaks sibling EPIC ids via unfiltered `relates_to` union
+- **BUG-3363**: `scratch-cleanup.sh` SessionEnd hook intermittently cancelled on session exit
+- **BUG-3364**: `verify` and `merge_epic_branch` swallow a python3 crash as an empty verdict, not `failed`/`not_run`
+- **BUG-3367**: workflow-generator output not discoverable or runnable
+- fix(subprocess_utils): cap guillotine scratch-file listing (3ed30d5af)
+- fix(tests): stop hardcoded dates from aging out of history window (7e803e1ac)
+
+### Changed
+
+- **ENH-3365**: FSM shell actions should invoke the executor's own Python interpreter, not bare `python3`
+- **ENH-3366**: `delegate`(autodev) verdict is laundered through `recheck_set`
+
+### Documentation
+
+- docs: fix stale skill count in README (63cd8a019)
+- docs: sync stale references, counts, and config drift across guides (8fb65b513)
+- docs: sync stale references, counts, and Codex capability findings (dff55fdc0)
+- docs: resync scripts/README.md with repo-root README (a1189747217)
+
+### Maintenance
+
+- style(scripts): fix ruff formatting drift and a mypy type error (7ed6c35f5)
+- test(dashboard): freeze clock in gzip reproducibility test (4c374850a)
+- test(fsm): fix builtin-loop tests for the $${LL_PYTHON:-python3} escape (cd1b5150a)
+
 ## [1.159.0] - 2026-08-30
 
 ### Added
@@ -1279,6 +1317,7 @@ beside a silently truncated list (BUG-3055).
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.160.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.159.0...v1.160.0
 [1.159.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.158.0...v1.159.0
 [1.158.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.157.0...v1.158.0
 [1.157.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.156.0...v1.157.0
