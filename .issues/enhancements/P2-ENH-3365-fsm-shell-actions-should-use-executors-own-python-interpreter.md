@@ -163,6 +163,18 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
   for a new regression test asserting `LL_PYTHON` is present and equals
   `sys.executable`
 
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:9946-9962` — the `project_child_env()` reference
+  entry explicitly states both task-path `bash -c` spawn sites
+  (`fsm/runners.py`'s `DefaultActionRunner` shell branch and
+  `runner_spec.py::_run_cmd()`) "never construct a `HostInvocation` at
+  all" and call `project_child_env()` "with no arguments" — that claim
+  goes stale for whichever site(s) this issue updates to pass
+  `extra={"LL_PYTHON": sys.executable}` and needs updating alongside the
+  code change [Agent 2 finding, confirmed via `ll-code`/grep]
+
 ## Impact
 
 - **Priority**: P2 — this is the root cause behind [[BUG-3364]]'s specific
@@ -183,5 +195,6 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-31T02:33:50 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:30:14 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:format-issue` - 2026-08-31T02:10:25 - `816b6544-6e69-4192-a4ac-f797f3d82975.jsonl`

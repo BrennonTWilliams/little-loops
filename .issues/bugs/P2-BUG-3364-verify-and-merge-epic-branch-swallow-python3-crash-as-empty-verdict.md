@@ -143,6 +143,21 @@ minimum, `"not_run"` — never a bare empty string that passes silently through
    and assert `summary.json` reports a non-empty, documented verdict token —
    not `""`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_builtin_loops.py` — add a `PYTHONPATH`-override
+  `subprocess.run(env=...)` regression case to `TestVerifyStateConfigReadShell`
+  / `TestMergeEpicBranchConfigReadShell`, and add an `epic_merge_verdict`
+  seeding parameter to `_run_finalize()` (currently absent) so the
+  `epic-merge-verdict.txt` read path gets end-to-end coverage alongside
+  `verify-verdict.txt`
+- Update `docs/development/MERGE-COORDINATOR.md` (lines 159-163) — mention
+  the new `"error"` verdict token alongside the existing
+  `passed`/`collection_error`/`config_error`/`failed`/`skipped` vocabulary
+  it already documents
+
 ## Program Design
 
 ### Signatures
@@ -207,6 +222,30 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
   six-token enum for a human/LLM auditor reading `summary.json`; does not
   account for an empty-string value
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — sub-loop
+  caller: its `read_outcome` state invokes `loop: auto-refine-and-implement`
+  (line 31) and its `done` state `cat`s the child's `summary.json` verbatim
+  for display (lines 45-46) — confirmed it does not branch on the literal
+  value of `verify_verdict`/`epic_merge_verdict` (it gates only on the
+  separate `subloop_outcome_auto-refine-and-implement.txt` token), so no
+  code change is required here; noted only because a new `"error"` token
+  will flow through into what this state echoes [Agent 1 finding, confirmed
+  via direct read]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/MERGE-COORDINATOR.md` (lines 159, 161, 163) — documents
+  `verify-verdict.txt`/`verify-sha.txt` and the `merge_epic_branch` state's
+  verdict-reuse logic ("skips its own `verify_epic_branch_before_merge`
+  call... when the verdict is `passed` and the recorded SHA matches");
+  the reuse guard already correctly falls back to a fresh check for any
+  non-`passed` verdict (including a future `"error"` token), so no logic
+  change is implied here, but the new token should be mentioned alongside
+  the existing verdict vocabulary for a reader tracing this file [Agent 1
+  finding, confirmed via direct read]
+
 ### Conventions in Force
 - Loop YAML states that capture a plain shell/test/build command's exit
   code do so via an immediate `RC=$?` on the next line, avoiding any
@@ -245,6 +284,32 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
   *present-but-empty* file — the crash-to-empty-string path is untested
   end-to-end as well.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- New crash-injection technique for `TestVerifyStateConfigReadShell`/
+  `TestMergeEpicBranchConfigReadShell` (`test_builtin_loops.py:5530-5941`):
+  neither class's existing `subprocess.run(["bash", "-c", action], ...)`
+  calls pass `env=`, so a new regression case should follow
+  `TestFinalizeDone`'s `env={**os.environ, "PATH": ...}` override pattern
+  (`test_builtin_loops.py` ~line 6829) but override `PYTHONPATH` instead —
+  e.g. `env={**os.environ, "PYTHONPATH": str(tmp_path / "empty")}` on the
+  `subprocess.run` call — to force the heredoc's own `ModuleNotFoundError`
+  without needing a separate fixture [Agent 3 finding, confirmed via direct
+  read]
+- `_run_finalize()` (`test_builtin_loops.py:4598-4719`) has **no**
+  `epic_merge_verdict`/`epic-merge-verdict.txt` seeding parameter at all —
+  unlike `verify_verdict`, finalize's read of `epic-merge-verdict.txt` has
+  zero end-to-end test coverage today (present, absent, or empty-file
+  cases). The new regression coverage in item 3 of Proposed Solution should
+  add this parameter to `_run_finalize()` alongside the fix, not only cover
+  `verify_verdict` [Agent 3 finding, confirmed via direct read of
+  `_run_finalize`]
+- Passing `verify_verdict=""` through `_run_finalize()`'s existing
+  `if verify_verdict is not None:` guard already writes a present-but-empty
+  file today (the guard is `is not None`, not truthiness) — the
+  present-but-empty regression case may not need a harness change, just a
+  new call site; verify this against the fixed `finalize` behavior once
+  landed [Agent 3 finding]
+
 ## Impact
 
 - **Priority**: P2 — mirrors BUG-2614's severity class: a config'd gate
@@ -258,5 +323,6 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-31T02:36:16 - `b1737911-44d2-40e3-9bd5-5d8a15c8f475.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:24:08 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:format-issue` - 2026-08-31T02:10:25 - `816b6544-6e69-4192-a4ac-f797f3d82975.jsonl`
