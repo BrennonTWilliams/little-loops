@@ -32,7 +32,7 @@ Ensure `little_loops` is installed in the Python interpreter on `PATH`
 | `SessionStart` (2nd group)     | `drift_check`   | `python -m little_loops.hooks drift_check`     | Implemented (ENH-2888) |
 | `PreCompact`                   | `pre_compact`   | `python -m little_loops.hooks pre_compact`     | Implemented |
 | `PostCompact`                  | —               | —                                              | Deferred — no concrete consumer in ll today; `pre_compact` performs all compact-time cleanup |
-| `PreToolUse`                   | `pre_tool_use` (opt-in) | `python -m little_loops.hooks pre_tool_use`   | Opt-in — handler registered; not wired in `hooks.json` by default (FEAT-1489) |
+| `PreToolUse`                   | `pre_tool_use`  | `python -m little_loops.hooks pre_tool_use`   | Implemented (`Edit\|Write` matcher; FEAT-1742 learning-test discoverability gate, ENH-1718) |
 | `PostToolUse`                  | `post_tool_use` | `python -m little_loops.hooks post_tool_use`   | Implemented (fire-and-forget via ≤5s timeout) |
 | `UserPromptSubmit`             | `user_prompt_submit` | `python -m little_loops.hooks user_prompt_submit` | Implemented |
 | `PermissionRequest`            | —               | —                                              | Deferred — hook can return `allow`/`deny`; no current consumer |
@@ -96,18 +96,15 @@ timeout approach was selected over `&`/`disown` because it avoids
 introducing a backgrounded subprocess pattern that has no other
 representative in the adapter layer.
 
-### Opt-in: `PreToolUse`
+### `PreToolUse` (default: enabled, ENH-1718)
 
-`hooks.json` deliberately omits a `PreToolUse` entry for Codex. The Python
-handler (`pre_tool_use`) now implements the learning-test discoverability gate
-(FEAT-1742) and is **active by default for Claude Code** via
-`hooks/adapters/claude-code/pre-tool-use.sh` (wired in `hooks/hooks.json` for
-the `"Write|Edit"` matcher). For Codex users, opt in by adding the entry
-manually:
+`hooks.json` wires a `PreToolUse` entry for Codex by default, scoped to the
+`"Edit|Write"` matcher:
 
 ```json
 "PreToolUse": [
   {
+    "matcher": "Edit|Write",
     "hooks": [
       {
         "type": "command",
@@ -120,9 +117,15 @@ manually:
 ]
 ```
 
-Then create `pre-tool-use.sh` as a sibling shim invoking the `pre_tool_use`
-intent (same pattern as `post-tool-use.sh`). After the edit, Codex will prompt
-for re-trust.
+The Python handler (`pre_tool_use`) implements the learning-test
+discoverability gate (FEAT-1742): it dispatches `Write`/`Edit` calls to the
+gate and passes every other tool through unchanged. The `Edit|Write`
+matcher keeps the shim off the hot path for all other tool calls — the same
+scoping Claude Code uses via `hooks/adapters/claude-code/pre-tool-use.sh`.
+The gate itself is config-gated (`learning_tests.enabled`, default `false`),
+so on projects that have not opted into learning tests this is a no-op
+pass-through. FEAT-1488's benchmark measured p95 ≈ 10ms for this shim
+shape, well under the 200ms hot-path threshold.
 
 > **Codex non-zero exit semantics**: Codex logs a non-zero hook exit as
 > `HookRunStatus::Failed` and continues the session. To deliberately abort

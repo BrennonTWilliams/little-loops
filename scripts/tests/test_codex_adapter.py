@@ -1,6 +1,7 @@
 """Integration tests for the Codex CLI hook adapter (FEAT-957).
 
-The adapter at ``hooks/adapters/codex/{session-start,pre-compact}.sh`` is a
+The adapter at
+``hooks/adapters/codex/{session-start,pre-compact,pre-tool-use}.sh`` is a
 thin Bash transport: each script reads the host JSON payload from stdin,
 exports ``LL_HOOK_HOST=codex`` on the subprocess environment, and pipes the
 payload to ``python -m little_loops.hooks <intent>``. These tests exercise
@@ -36,6 +37,7 @@ SESSION_START = ADAPTER_DIR / "session-start.sh"
 PRE_COMPACT = ADAPTER_DIR / "pre-compact.sh"
 PROMPT_SUBMIT = ADAPTER_DIR / "prompt-submit.sh"
 POST_TOOL_USE = ADAPTER_DIR / "post-tool-use.sh"
+PRE_TOOL_USE = ADAPTER_DIR / "pre-tool-use.sh"
 DRIFT_CHECK = ADAPTER_DIR / "drift-check.sh"
 
 
@@ -43,11 +45,12 @@ class TestCodexAdapterIntegration:
     """End-to-end adapter tests via bash + the real Python dispatcher."""
 
     def test_adapter_files_exist(self) -> None:
-        """The adapter directory ships session-start.sh, pre-compact.sh, prompt-submit.sh, post-tool-use.sh, hooks.json; README.md stays at repo-root hooks/adapters/codex/."""
+        """The adapter directory ships session-start.sh, pre-compact.sh, prompt-submit.sh, post-tool-use.sh, pre-tool-use.sh, hooks.json; README.md stays at repo-root hooks/adapters/codex/."""
         assert SESSION_START.is_file()
         assert PRE_COMPACT.is_file()
         assert PROMPT_SUBMIT.is_file()
         assert POST_TOOL_USE.is_file()
+        assert PRE_TOOL_USE.is_file()
         assert DRIFT_CHECK.is_file()
         assert (HOOKS_JSON_DIR / "hooks.json").is_file()
         assert (REPO_ROOT / "hooks" / "adapters" / "codex" / "README.md").is_file()
@@ -65,6 +68,9 @@ class TestCodexAdapterIntegration:
         )
         assert os.access(POST_TOOL_USE, os.X_OK), (
             f"{POST_TOOL_USE} is not executable; chmod +x required"
+        )
+        assert os.access(PRE_TOOL_USE, os.X_OK), (
+            f"{PRE_TOOL_USE} is not executable; chmod +x required"
         )
         assert os.access(DRIFT_CHECK, os.X_OK), (
             f"{DRIFT_CHECK} is not executable; chmod +x required"
@@ -236,6 +242,83 @@ class TestCodexAdapterIntegration:
         result = subprocess.run(
             [BASH, str(PROMPT_SUBMIT)],
             input='{"hook_event_name":"UserPromptSubmit","prompt":"test prompt"}',
+            capture_output=True,
+            text=True,
+            timeout=20,
+            cwd=str(tmp_path),
+            env=full_env,
+        )
+        assert result.returncode == 0, (
+            f"adapter exited {result.returncode}; stderr={result.stderr!r}"
+        )
+        assert sentinel.is_file(), (
+            f"sentinel not written; PYTHONPATH may not have routed to fake "
+            f"module. stderr={result.stderr!r}"
+        )
+        assert sentinel.read_text() == "codex"
+
+    def test_hooks_json_has_pre_tool_use(self) -> None:
+        """hooks.json must include a PreToolUse entry scoped to Edit|Write (ENH-1718).
+
+        The matcher is load-bearing: ``pre_tool_use.handle()`` acts only on
+        ``Write``/``Edit`` and no-ops for every other tool, so an unmatched
+        entry would spawn a bash shim plus a Python interpreter on every
+        ``Read``/``Grep``/``Bash`` call for no effect.
+        """
+        data = json.loads((HOOKS_JSON_DIR / "hooks.json").read_text())
+        assert "PreToolUse" in data["hooks"], "hooks.json is missing PreToolUse key"
+        groups = data["hooks"]["PreToolUse"]
+        matches = [
+            hook
+            for group in groups
+            if group.get("matcher") == "Edit|Write"
+            for hook in group.get("hooks", [])
+            if "pre-tool-use.sh" in hook.get("command", "")
+        ]
+        assert matches, (
+            f"expected an Edit|Write-matched pre-tool-use.sh entry under PreToolUse; got {groups!r}"
+        )
+        assert any(hook.get("timeout") == 5 for hook in matches), (
+            f"pre-tool-use.sh hook timeout must be 5; got {[h.get('timeout') for h in matches]!r}"
+        )
+
+    def test_pre_tool_use_sets_ll_hook_host_codex(self, tmp_path: Path) -> None:
+        """pre-tool-use.sh sets LL_HOOK_HOST=codex in the Python subprocess.
+
+        Uses the same sentinel-file pattern as test_adapter_sets_ll_hook_host_codex
+        to isolate env-var propagation from real handler logic.
+        """
+        fake_pkg = tmp_path / "fake_pkg"
+        ll_dir = fake_pkg / "little_loops" / "hooks"
+        ll_dir.mkdir(parents=True)
+        (fake_pkg / "little_loops" / "__init__.py").write_text("")
+        (ll_dir / "__init__.py").write_text("")
+        sentinel = tmp_path / "sentinel.txt"
+        (ll_dir / "__main__.py").write_text(
+            textwrap.dedent(
+                f"""
+                import os, sys
+                with open({str(sentinel)!r}, "w") as f:
+                    f.write(os.environ.get("LL_HOOK_HOST", "<unset>"))
+                sys.exit(0)
+                """
+            ).strip()
+        )
+
+        env_passthrough = {"PYTHONPATH": str(fake_pkg)}
+        full_env = {**os.environ, **env_passthrough}
+        full_env.pop("LL_HOOK_HOST", None)
+
+        result = subprocess.run(
+            [BASH, str(PRE_TOOL_USE)],
+            input=json.dumps(
+                {
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": "Write",
+                    "tool_input": {"file_path": "/tmp/x.txt", "content": "hi"},
+                    "tool_use_id": "toolu_test",
+                }
+            ),
             capture_output=True,
             text=True,
             timeout=20,

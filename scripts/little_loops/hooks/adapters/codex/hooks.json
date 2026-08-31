@@ -49,6 +49,19 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/pre-tool-use.sh",
+            "timeout": 5,
+            "statusMessage": "Checking learning-test coverage..."
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [

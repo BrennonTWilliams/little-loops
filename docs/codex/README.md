@@ -16,7 +16,7 @@ little-loops integrates with [OpenAI Codex CLI](https://github.com/openai/codex)
 | `pre_compact` | ✓ wired |
 | `user_prompt_submit` | ✓ wired |
 | `post_tool_use` | ✓ wired (fire-and-forget, ≤5s timeout) |
-| `pre_tool_use` | opt-in (see [Usage → Opt-in pre_tool_use](usage.md#opt-in-pre_tool_use)) |
+| `pre_tool_use` | ✓ wired (`Edit\|Write` matcher; see [Usage → pre_tool_use](usage.md#pre_tool_use-enh-1718)) |
 | `stop` | deferred — no current consumer |
 | `post_compact` | deferred — no current consumer |
 | `permission_request` | deferred — no current consumer |
@@ -47,6 +47,6 @@ Run `ll-doctor` (or `ll-doctor --json`) to see exactly which capabilities and ho
 ## See also
 
 - [Getting Started](getting-started.md) — prerequisites, install, trust prompt, first-run verification
-- [Usage](usage.md) — orchestration CLIs, skill invocation, opt-in pre_tool_use, current limitations
+- [Usage](usage.md) — orchestration CLIs, skill invocation, pre_tool_use, current limitations
 - [Host Compatibility Matrix](../reference/HOST_COMPATIBILITY.md) — authoritative per-host feature matrix
 - [Troubleshooting](../development/TROUBLESHOOTING.md) — common issues including binary detection and hook trust

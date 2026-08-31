@@ -8,10 +8,11 @@ The gate is a no-op when ``learning_tests.enabled`` is false (default) or
 emits a soft nudge (warn mode, exit 0) or blocks (block mode, exit 2) when
 a file being written imports packages with no proven Learning Test record.
 
-Claude Code wires this handler via
-``hooks/adapters/claude-code/pre-tool-use.sh`` for the ``"Write|Edit"``
-matcher in ``hooks/hooks.json``. Codex and OpenCode users opt in separately
-— see ``hooks/adapters/codex/README.md`` and
+Claude Code and Codex wire this handler by default via
+``hooks/adapters/claude-code/pre-tool-use.sh`` and
+``scripts/little_loops/hooks/adapters/codex/pre-tool-use.sh`` for the
+``"Write|Edit"``/``"Edit|Write"`` matcher in their respective
+``hooks.json`` (ENH-1718). OpenCode users opt in separately — see
 ``hooks/adapters/opencode/README.md``.
 """
 

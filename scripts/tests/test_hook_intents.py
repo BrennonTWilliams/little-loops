@@ -360,11 +360,11 @@ class TestHooksMainModule:
         assert not (tmp_path / ".ll" / "history.db").exists()
 
     def test_dispatch_pre_tool_use_happy_path(self, tmp_path) -> None:
-        """``pre_tool_use`` intent runs the opt-in no-op handler and exits 0 (FEAT-1489).
+        """``pre_tool_use`` intent no-ops for a non-Write/Edit tool and exits 0 (FEAT-1489).
 
-        The handler is registered for dispatch but not invoked by any default
-        host wiring — users opt in via host config. The CLI path is exercised
-        here to confirm the dispatcher table includes it.
+        Wired by default for Claude Code and Codex (ENH-1718); still opt-in
+        for OpenCode. The CLI path is exercised here to confirm the
+        dispatcher table includes it.
         """
         result = subprocess.run(
             [sys.executable, "-m", "little_loops.hooks", "pre_tool_use"],
