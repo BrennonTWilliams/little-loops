@@ -4239,6 +4239,7 @@ class TestAutoRefineAndImplementLoop:
             "resolve_set",
             "checkout_epic_branch",
             "delegate",
+            "delegate_failed",
             "recheck_set",
             "verify",
             "record_error",
@@ -4313,13 +4314,85 @@ class TestAutoRefineAndImplementLoop:
     def test_delegate_crash_routes_to_record_error(self, data: dict) -> None:
         """on_error must route to a DISTINCT crash state (not finalize/verify directly)
         so an infrastructure crash is recorded, not laundered into a clean no-op
-        (ENH-2005). on_success/on_failure route through recheck_set (ENH-2615) so
-        mid-run decomposed descendants get re-dispatched before verify."""
+        (ENH-2005). on_success routes through recheck_set (ENH-2615) so mid-run
+        decomposed descendants get re-dispatched before verify; on_failure routes
+        through delegate_failed (ENH-3366) so autodev's genuine failed terminal is
+        not laundered into recheck_set's clean-pass route."""
         state = data["states"].get("delegate", {})
         assert state.get("on_success") == "recheck_set"
-        assert state.get("on_failure") == "recheck_set"
+        assert state.get("on_failure") == "delegate_failed"
         assert state.get("on_error") == "record_error"
         assert state.get("on_error") != state.get("on_success")
+        assert state.get("on_failure") != state.get("on_success"), (
+            "delegate.on_success and on_failure must differ — routing both to "
+            "recheck_set launders autodev's failed terminal (ENH-3366)"
+        )
+
+    def test_delegate_has_no_explicit_on_no(self, data: dict) -> None:
+        """BUG-2611: delegate must NOT declare a raw on_no key. schema.py's
+        `on_no = on_no or on_failure` means an explicit on_no here would shadow
+        on_failure, dead-coding the delegate_failed route for every non-terminal
+        class (timeout/max_steps/interrupted/signal) that reaches this edge via
+        the compiled on_no fallback."""
+        state = data["states"].get("delegate", {})
+        assert "on_no" not in state, (
+            "delegate must not set on_no directly — it shadows on_failure "
+            "(BUG-2611); the delegate_failed route depends on on_no falling "
+            "back to on_failure via schema.py's StateConfig.from_dict"
+        )
+
+    def test_delegate_compiled_on_no_resolves_to_delegate_failed(self, data: dict) -> None:
+        """BUG-2611 regression: verify the *compiled* schema, not just the raw YAML
+        dict — on_no must resolve to delegate_failed (matching on_failure) so a
+        budget-exhausted or signalled autodev sub-loop still reaches the routing
+        state that preserves ENH-2686's recheck_set fold-back."""
+        from little_loops.fsm.schema import StateConfig
+
+        state = StateConfig.from_dict(data["states"]["delegate"])
+        assert state.on_no == "delegate_failed", (
+            f"delegate's compiled on_no should resolve to 'delegate_failed' "
+            f"(via the on_failure fallback), got {state.on_no!r}"
+        )
+
+    def test_delegate_failed_state_exists_and_is_shell(self, data: dict) -> None:
+        """delegate_failed must be declared as delegate's on_failure target and
+        use the shell_exit fragment (inherits action_type: shell, ENH-3366)."""
+        state = data["states"].get("delegate_failed", {})
+        assert state, (
+            "delegate_failed state not found — add it as delegate's on_failure target (ENH-3366)"
+        )
+        assert state.get("fragment") == "shell_exit", (
+            f"delegate_failed.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_delegate_failed_branches_on_terminated_by(self, data: dict) -> None:
+        """delegate_failed must branch on ${captured.delegate.terminated_by} to
+        distinguish autodev's genuine failed terminal from budget/signal classes
+        (ENH-3366)."""
+        state = data["states"].get("delegate_failed", {})
+        action = state.get("action", "")
+        assert "captured.delegate.terminated_by" in action
+        assert "terminal" in action
+
+    def test_delegate_failed_records_and_routes_to_finalize_on_terminal(self, data: dict) -> None:
+        """A genuine autodev failed terminal must be recorded (sibling artifact to
+        auto-refine-and-implement-errored.txt) and routed to finalize, mirroring
+        record_error's record-then-finalize shape (ENH-3366)."""
+        state = data["states"].get("delegate_failed", {})
+        action = state.get("action", "")
+        assert "auto-refine-and-implement-failed.txt" in action
+        assert state.get("on_yes") == "finalize", (
+            f"delegate_failed.on_yes should be 'finalize', got {state.get('on_yes')!r} — "
+            "landing directly on a failure terminal would silently drop finalize/merge "
+            "for partial runs"
+        )
+
+    def test_delegate_failed_non_terminal_routes_to_recheck_set(self, data: dict) -> None:
+        """Budget exhaustion / signal classes must still reach recheck_set so
+        ENH-2686's mid-drain residual fold-back is preserved (ENH-3366)."""
+        state = data["states"].get("delegate_failed", {})
+        assert state.get("on_no") == "recheck_set"
+        assert state.get("on_error") == "recheck_set"
 
     def test_recheck_set_structure_and_routing(self, data: dict) -> None:
         """ENH-2615: recheck_set re-resolves the EPIC's descendant set after each
@@ -5561,9 +5634,11 @@ class TestCheckoutEpicBranchConfigReadShell:
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = loop["states"]["checkout_epic_branch"]["action"]
-        action = _unescape_ll_python(action).replace(
-            "${context.scope:shell}", shlex.quote(scope)
-        ).replace("${context.run_dir}", str(run_dir))
+        action = (
+            _unescape_ll_python(action)
+            .replace("${context.scope:shell}", shlex.quote(scope))
+            .replace("${context.run_dir}", str(run_dir))
+        )
         return subprocess.run(
             ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
         )
@@ -5978,9 +6053,7 @@ class TestMergeEpicBranchConfigReadShell:
         shadow.mkdir(parents=True)
         (shadow / "__init__.py").write_text("")
         env = {**os.environ, "PYTHONPATH": str(tmp_path / "shadow")}
-        result, run_dir = self._run(
-            tmp_path, child_statuses={"FEAT-010": "done"}, env=env
-        )
+        result, run_dir = self._run(tmp_path, child_statuses={"FEAT-010": "done"}, env=env)
         assert result.returncode == 0, result.stderr
         assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "error"
 
@@ -20122,6 +20195,7 @@ _MR11_MARKER_RE = re.compile(r"#\s*ll-lint:\s*mr11-ok\(([^)]+)\)\s+.*?(\S+-\d+)"
 
 MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/adversarial-redesign.yaml", "captured.run_dir.output", "ENH-3358"),
+    ("loops/auto-refine-and-implement.yaml", "captured.delegate.terminated_by", "ENH-3366"),
     ("loops/auto-refine-and-implement.yaml", "captured.issue_set.output", "ENH-3358"),
     ("loops/auto-refine-and-implement.yaml", "context.scope", "ENH-3358"),
     ("loops/autodev.yaml", "captured.dequeue_status.output", "ENH-3358"),

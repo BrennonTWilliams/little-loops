@@ -52,6 +52,14 @@ description: |
   back into delegate, whose per-entry worktree attach re-attaches the SAME
   epic branch, so their commits also land on epic/<EPIC-ID>-<slug> instead of
   bypassing it. Non-EPIC scopes keep the single upfront resolution.
+
+  ENH-3366: delegate's on_success/on_failure no longer both route to
+  recheck_set. on_success still does; on_failure routes through delegate_failed,
+  which reads ${captured.delegate.terminated_by} to tell autodev's genuine
+  `failed` terminal (recorded, then routed to finalize) from a budget/signal
+  class (routed to recheck_set, preserving ENH-2686's mid-drain residual
+  fold-back) — so a real autodev failure is no longer indistinguishable from a
+  clean pass at this join point.
 initial: init
 # BUG-3110: bind the positional CLI arg to `scope`, not the FSM default `input`.
 # Without this, `ll-loop run auto-refine-and-implement EPIC-3041` parked the id
@@ -300,26 +308,75 @@ states:
     # Delegate the entire refine+implement to the autodev engine. autodev shares
     # this loop's run_dir (executor injects it via setdefault), so its
     # autodev-passed.txt / autodev-skipped.txt land under ${context.run_dir}
-    # where finalize reads them. on_success/on_failure both route to recheck_set
+    # where finalize reads them. on_success routes straight to recheck_set
     # (ENH-2615) so an EPIC scope re-resolves its descendant set and cycles new
     # mid-run children back through this state before verify's post-
     # implementation test/lint check runs (the ground-truth completed/ diff
-    # computed in finalize remains the authoritative closure verdict). on_error
-    # routes to a DISTINCT crash state so an infrastructure failure is not
-    # laundered into a clean completion (ENH-2005 / ENH-2376).
+    # computed in finalize remains the authoritative closure verdict). on_failure
+    # routes to delegate_failed (ENH-3366) so autodev's genuine `failed` terminal
+    # is distinguished from a clean pass instead of being laundered into
+    # recheck_set's same route; delegate_failed still forwards budget/signal
+    # classes to recheck_set, preserving ENH-2686's mid-drain residual
+    # fold-back. on_error routes to a DISTINCT crash state so an infrastructure
+    # failure is not laundered into a clean completion (ENH-2005 / ENH-2376).
     # ENH-2609: worktree attaches a scratch worktree to the epic branch that
     # checkout_epic_branch created (checkout_existing, branch preserved on
     # detach), so autodev's commits land on epic/<EPIC-ID>-<slug> without the
     # main tree's checkout changing. Empty capture (non-EPIC scope or
     # epic_branches disabled) → strict no-op, delegate runs in place as before.
+    #
+    # BUG-2611: do NOT add an on_no: key here. schema.py's
+    # `on_no = on_no or on_failure` means an explicit on_no would shadow the
+    # on_failure route above, dead-coding delegate_failed for every non-terminal
+    # class (timeout/max_steps/interrupted/signal) that reaches this edge via
+    # the compiled on_no → on_failure fallback (executor.py:1184-1196).
     loop: autodev
     worktree: "${captured.epic_branch.output}"
     with:
       input: "${captured.issue_set.output}"
       skip_learning_gate: "${context.skip_learning_gate}"
     on_success: recheck_set
-    on_failure: recheck_set
+    on_failure: delegate_failed
     on_error: record_error
+
+  delegate_failed:
+    # ENH-3366: distinguish autodev's genuine `failed` terminal from budget/
+    # signal classes before recheck_set's clean-pass re-dispatch loop sees it —
+    # the prior unconditional on_success == on_failure == recheck_set (ENH-2615)
+    # laundered both into the same route. ${captured.delegate.terminated_by} is
+    # written by the executor's sub-loop capture (executor.py:1147-1151) before
+    # this state runs. terminated_by == "terminal" means autodev reached its own
+    # `failed` terminal (failure_terminal=True, executor.py:1170-1175): record
+    # it as a sibling artifact to auto-refine-and-implement-errored.txt and
+    # route to finalize, mirroring record_error's record-then-finalize shape —
+    # finalize's ledger diff stays the authoritative closure verdict, so the run
+    # still emits a summary and still reaches merge_epic_branch (do NOT land
+    # this edge directly on a failure terminal, which would silently drop
+    # finalize/merge for partial runs). Every other terminated_by class
+    # (timeout/max_steps/interrupted/signal — everything reaching this state
+    # via delegate's compiled on_no → on_failure fallback, executor.py:
+    # 1184-1196) preserves ENH-2686's mid-drain residual fold-back by routing
+    # to recheck_set unchanged.
+    #
+    # BUG-2611: no on_no here — this state's own shell_exit on_yes/on_no
+    # branch is unrelated to delegate's compiled on_no, which already
+    # resolved to on_failure (this state) before execution reached here.
+    action: |
+      # ll-lint: mr11-ok(captured.delegate.terminated_by) ENH-3366 - terminated_by is an
+      # executor-controlled enum (terminal/error/timeout/max_steps/...), not user input
+      case "${captured.delegate.terminated_by?}" in
+        terminal)
+          echo "${captured.issue_set.output}" >> ${context.run_dir}/auto-refine-and-implement-failed.txt  # ll-lint: mr11-ok(captured.issue_set.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+          exit 0
+          ;;
+        *)
+          exit 1
+          ;;
+      esac
+    fragment: shell_exit
+    on_yes: finalize
+    on_no: recheck_set
+    on_error: recheck_set
 
   recheck_set:
     # ENH-2615: after each delegate pass, re-resolve the EPIC's descendant set

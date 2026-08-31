@@ -449,11 +449,17 @@ path (ENH-2601): `auto-refine-and-implement`/`sprint-refine-and-implement`
 read `parallel.epic_branches.enabled`/`.prefix` to create (not check out) the
 `epic/<EPIC-ID>-<slug>` branch when `scope` resolves to an EPIC-NNN id, then
 run a post-implementation `test_cmd`/`lint_cmd` verify pass folded into
-`summary.json`. After each `delegate` pass, `recheck_set` re-resolves the
-EPIC's descendant set (transitive `parent:`-chain walk, ENH-2615) and cycles
-newly-decomposed children back through `delegate` — whose per-entry worktree
-attach re-attaches the same epic branch — so mid-run decomposition work also
-lands on the integration branch instead of bypassing it. Once all the EPIC's children are `done`, a `merge_epic_branch`
+`summary.json`. After each successful `delegate` pass, `recheck_set`
+re-resolves the EPIC's descendant set (transitive `parent:`-chain walk,
+ENH-2615) and cycles newly-decomposed children back through `delegate` —
+whose per-entry worktree attach re-attaches the same epic branch — so mid-run
+decomposition work also lands on the integration branch instead of bypassing
+it. A `delegate` pass that fails routes through `delegate_failed` instead
+(ENH-3366): it reads `${captured.delegate.terminated_by}` to tell autodev's
+genuine `failed` terminal (recorded, then routed to `finalize`) from a
+budget-exhaustion or signal class (still routed to `recheck_set`, so mid-drain
+residuals are still folded back for re-dispatch) — `on_success`/`on_failure`
+no longer collapse into the same route. Once all the EPIC's children are `done`, a `merge_epic_branch`
 state merges (or, per `epic_branches.open_pr`, opens a PR for) the branch back to
 `base_branch`, honoring `merge_to_base_on_complete`/`verify_before_merge` the same
 way the `WorkerPool` path above does (BUG-2614) — both paths share the same

@@ -2,8 +2,9 @@
 id: ENH-3366
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-30T23:30:00Z'
+completed_at: '2026-08-31T05:02:21Z'
 discovered_date: 2026-08-30
 discovered_by: audit-loop-run
 relates_to:
@@ -299,9 +300,37 @@ _These touchpoints were identified by wiring analysis and must be included in th
   currently produces no distinguishable signal from a clean success at this
   join point.
 
+## Resolution
+
+Implemented Option A exactly as specified in Program Design:
+`scripts/little_loops/loops/auto-refine-and-implement.yaml`'s `delegate`
+state now routes `on_success: recheck_set` (unchanged) and
+`on_failure: delegate_failed` (new state). `delegate_failed` branches on
+`${captured.delegate.terminated_by}`: `terminal` (autodev's genuine `failed`
+terminal) records the issue set to `auto-refine-and-implement-failed.txt`
+(sibling artifact to `-errored.txt`) and routes to `finalize`; every other
+class (timeout/max_steps/interrupted/signal) routes to `recheck_set`,
+preserving ENH-2686's mid-drain residual fold-back. No `on_no:` was added to
+either state (BUG-2611). Updated the loop's top-of-file description,
+`docs/guides/LOOPS_REFERENCE.md`'s FSM-flow diagram/Notes, and
+`docs/ARCHITECTURE.md`'s epic-branch section to describe the new routing.
+Added `delegate_failed` to `test_required_states_exist` plus 6 new structural
+regression tests mirroring the `refine_current` test model
+(`test_delegate_crash_routes_to_record_error` updated;
+`test_delegate_has_no_explicit_on_no`,
+`test_delegate_compiled_on_no_resolves_to_delegate_failed`,
+`test_delegate_failed_state_exists_and_is_shell`,
+`test_delegate_failed_branches_on_terminated_by`,
+`test_delegate_failed_records_and_routes_to_finalize_on_terminal`,
+`test_delegate_failed_non_terminal_routes_to_recheck_set` added). Registered
+the new `mr11-ok` marker in `MR11_MARKER_ALLOWLIST`. Full suite:
+22266 passed, 42 skipped, 3 pre-existing unrelated failures in
+`test_cli_harness.py` (confirmed via `git stash` against main, untouched by
+this change).
+
 ## Status
 
-**Open** | Created: 2026-08-30 | Priority: P3
+**Done** | Created: 2026-08-30 | Priority: P3 | Completed: 2026-08-31
 
 ## Confidence Check Notes
 
@@ -320,6 +349,7 @@ remain.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-31T05:01:43 - `23d26f6c-7971-438b-82ce-a53b9e73cd5e.jsonl`
 - `/ll:confidence-check` - 2026-08-31T03:34:23 - `754758f7-a27d-41c2-ba70-fc1192723658.jsonl`
 - `/ll:confidence-check` - 2026-08-31T03:11:18 - `29e8f5ee-bb5d-4aac-ae78-4403d15301ef.jsonl`
 - `/ll:wire-issue` - 2026-08-31T02:56:39 - `3198a6b2-0ff9-49c6-a768-b2979f52ed21.jsonl`
