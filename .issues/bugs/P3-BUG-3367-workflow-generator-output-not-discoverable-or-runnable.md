@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T03:21:26Z'
+confidence_score: 100
+outcome_confidence: 92
+score_complexity: 20
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # BUG-3367: workflow-generator output not discoverable or runnable
@@ -351,6 +357,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-31T04:04:11 - `e6624bad-8105-48eb-a1a4-bb4f8a49ae52.jsonl`
 - `/ll:refine-issue` - 2026-08-31T03:37:52 - `d3fa0ee5-3d96-476c-a86f-50795f749f97.jsonl`
 - `/ll:format-issue` - 2026-08-31T03:25:45 - `58ca304a-54ac-44f8-bc17-9bdf9d83c13c.jsonl`
 - `/ll:capture-issue` - 2026-08-31T03:21:32 - `41ef66dd-c959-46d5-a910-2bd5157e43bf.jsonl`
