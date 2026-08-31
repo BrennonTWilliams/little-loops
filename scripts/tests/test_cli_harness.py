@@ -1717,10 +1717,18 @@ class TestReadTargetHistory:
     """Tests for `_read_target_history()` — the historical rate reader."""
 
     def _seed(self, target: str, rows: list[dict]) -> None:
-        from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event
+        from little_loops.session_store import (
+            DEFAULT_DB_PATH,
+            record_harness_event,
+            resolve_history_db,
+        )
 
+        # Match the read path's DB resolution — the conftest isolates writes via
+        # LL_HISTORY_DB, so DEFAULT_DB_PATH would land on the real .ll/history.db
+        # while _read_target_history reads from the env-override temp path.
+        db = resolve_history_db(DEFAULT_DB_PATH)
         for row in rows:
-            record_harness_event(DEFAULT_DB_PATH, target=target, **row)
+            record_harness_event(db, target=target, **row)
 
     def test_below_threshold_returns_none(self) -> None:
         """AC7: fewer than `_HISTORY_MIN_SCORED` scored rows -- suppressed entirely."""
@@ -1739,12 +1747,24 @@ class TestReadTargetHistory:
 
     def test_at_threshold_renders(self) -> None:
         """AC7: exactly `_HISTORY_MIN_SCORED` scored rows -- rendered, not suppressed."""
+        from datetime import UTC, timedelta, datetime
+
         from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
 
+        # Use dates relative to today so the 30-day window in
+        # `_read_target_history()` includes them (BUG-3208 followup: hardcoded
+        # `2026-08-0X` dates fall outside the 30-day window as time advances
+        # and the read returns None).
+        from datetime import UTC, timedelta
+        today = datetime.now(UTC).date()
         self._seed(
             "some-target",
             [
-                {"ts": f"2026-08-0{i}T00:00:00Z", "runner": "cmd", "semantic_passed": True}
+                {
+                    "ts": (today - timedelta(days=(_HISTORY_MIN_SCORED + 1 - i))).isoformat() + "T00:00:00+00:00",
+                    "runner": "cmd",
+                    "semantic_passed": True,
+                }
                 for i in range(1, _HISTORY_MIN_SCORED + 1)
             ],
         )
@@ -1758,15 +1778,21 @@ class TestReadTargetHistory:
     def test_distinct_denominators_for_pass_and_abstention(self) -> None:
         """AC5: pass-rate and abstention-rate denominators are different
         populations and must not collide under one key."""
+        from datetime import UTC, timedelta, datetime
+
         from little_loops.cli.harness import _read_target_history
 
         rows = []
+        # Use dates relative to today so the 30-day window in
+        # `_read_target_history()` includes them.
+        from datetime import UTC, timedelta
+        today = datetime.now(UTC).date()
         # Four semantically-judged rows (one abstained) -- feeds both counters.
         for i in range(4):
             verdict = "cannot_judge" if i == 0 else "yes"
             rows.append(
                 {
-                    "ts": f"2026-08-0{i + 1}T00:00:00Z",
+                    "ts": (today - timedelta(days=i + 1)).isoformat() + "T00:00:00+00:00",
                     "runner": "cmd",
                     "semantic_verdict": verdict,
                     "semantic_passed": None if verdict == "cannot_judge" else True,
@@ -1776,7 +1802,7 @@ class TestReadTargetHistory:
         for i in range(3):
             rows.append(
                 {
-                    "ts": f"2026-08-1{i}T00:00:00Z",
+                    "ts": (today - timedelta(days=i + 5)).isoformat() + "T00:00:00+00:00",
                     "runner": "cmd",
                     "semantic_passed": True,
                 }
@@ -1826,14 +1852,22 @@ class TestTargetHistoryRegression:
     """AC2: the current run's own row must not leak into its reported rate."""
 
     def test_current_run_excluded_from_reported_rate(self, capsys: pytest.CaptureFixture) -> None:
+        from datetime import UTC, timedelta, datetime
+
         from little_loops.fsm.evaluators import EvaluationResult
         from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event
 
         target = "some-target"
+        from little_loops.session_store import resolve_history_db
+        db = resolve_history_db(DEFAULT_DB_PATH)
+        # Use dates relative to today so the 30-day window in
+        # `_read_target_history()` includes them.
+        from datetime import UTC, timedelta
+        today = datetime.now(UTC).date()
         for i in range(3):
             record_harness_event(
-                DEFAULT_DB_PATH,
-                ts=f"2026-08-0{i + 1}T00:00:00Z",
+                db,
+                ts=(today - timedelta(days=i + 1)).isoformat() + "T00:00:00+00:00",
                 runner="cmd",
                 target=target,
                 semantic_verdict="cannot_judge",
