@@ -541,6 +541,17 @@ def run_claude_command(
             stderr=f"Subprocess spawn failed: {exc}",
         )
 
+    # BUG-3208-cleanup: take a pgid snapshot at spawn time so the unconditional
+    # cleanup in the finally below can reach the whole group (including any
+    # grandchildren spawned by the server). Without this snapshot, a successful
+    # direct-child exit would orphan any grandchildren holding inherited stderr
+    # pipes, leaking FDs. Track whether the timeout path already cleaned up
+    # the group, so the finally-block cleanup doesn't double-issue killpg
+    # when the timeout path has already handled it. The pgid snapshot is
+    # deferred to the finally block — snapshotting at spawn time would
+    # double-call getpgid on the timeout path (which calls getpgid itself).
+    process_cleanup_done = False
+
     if on_process_start:
         on_process_start(process)
 
@@ -572,6 +583,7 @@ def run_claude_command(
                 now = time.time()
                 if _shutdown_event.is_set():
                     _kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)
+                    process_cleanup_done = True
                     try:
                         process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
@@ -583,6 +595,7 @@ def run_claude_command(
 
                 if timeout and (now - start_time) > timeout:
                     _kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)
+                    process_cleanup_done = True
                     try:
                         process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
@@ -594,6 +607,7 @@ def run_claude_command(
 
                 if effective_idle_timeout and (now - last_output_time) > effective_idle_timeout:
                     _kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)
+                    process_cleanup_done = True
                     try:
                         process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
@@ -721,6 +735,7 @@ def run_claude_command(
                     post_stream_close_grace_seconds,
                 )
                 _kill_process_group(process)
+                process_cleanup_done = True
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
@@ -729,6 +744,20 @@ def run_claude_command(
                         process.pid,
                     )
         finally:
+            # BUG-3208-cleanup: always reap the process group, not just on the
+            # timeout path. Even a clean exit can leave grandchildren alive holding
+            # inherited stderr write-ends — the kernel only closes a pipe when
+            # the *last* writer drops it, so the EOF signal we'd otherwise rely
+            # on never arrives. safe_killpg handles the kill(-1) BUG-3208 trap
+            # and the Windows/invalid-pgid fallback internally. The pgid
+            # snapshot is deferred to here so the timeout path (which also
+            # calls getpgid) doesn't double-call it.
+            if not process_cleanup_done:
+                try:
+                    cleanup_pgid = os.getpgid(process.pid)
+                except (OSError, AttributeError, TypeError, ValueError):
+                    cleanup_pgid = None
+                safe_killpg(cleanup_pgid, signal.SIGKILL)
             if on_process_end:
                 on_process_end(process)
 

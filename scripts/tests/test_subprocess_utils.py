@@ -3217,3 +3217,77 @@ class TestKillProcessGroupMockPidRegression:
         mock_getpgid.assert_called_once_with(12345)
         mock_killpg.assert_called_once_with(12345, signal.SIGKILL)
         mock_process.kill.assert_not_called()
+
+
+# =============================================================================
+# TestRunClaudeCommandFdLeak (BUG-3208-cleanup, issue #16)
+# =============================================================================
+
+
+class TestRunClaudeCommandFdLeak:
+    """Regression: run_claude_command must reap the process group on clean exit, not just on timeout/exception.
+
+    A server that spawns a stderr-holding grandchild and exits cleanly
+    (returncode 0) used to leak FDs and a daemon thread because the cleanup
+    only ran on the timeout/exception path. The fix calls safe_killpg in
+    the finally block so grandchildren get reaped regardless of how the parent
+    exited.
+    """
+
+    def test_safe_killpg_called_in_finally_on_clean_exit(self) -> None:
+        """Even when Popen exits cleanly (no TimeoutExpired), safe_killpg is invoked."""
+        import io
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        # process.wait() succeeds — no TimeoutExpired raised, so the cleanup
+        # path that previously skipped safe_killpg never fired.
+        mock_process.wait.return_value = None
+        # Mock os.getpgid so safe_killpg's pgid-resolution sees a valid pgid
+        # (real value, not MagicMock-with-__index__-==1 which would trip the
+        # BUG-3208 kill(-1, SIGKILL) broadcast guard).
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                with patch("os.getpgid", return_value=12345) as mock_getpgid:
+                    with patch("os.killpg") as mock_killpg:
+                        run_claude_command("test command")
+
+        # getpgid was called (pgid snapshot), and killpg was called with the
+        # snapshotted pgid — proving the unconditional finally-block cleanup.
+        mock_getpgid.assert_called_once_with(mock_process.pid)
+        mock_killpg.assert_called_once_with(12345, signal.SIGKILL)
+
+    def test_safe_killpg_returns_false_on_invalid_pgid(self) -> None:
+        """If getpgid raises (Windows / MagicMock-pid), safe_killpg returns False; cleanup is a no-op.
+
+        No fallback to process.kill is needed: the direct child has already
+        exited cleanly (returncode 0, wait succeeded), and on the success path
+        the only purpose of the cleanup is to reap orphan grandchildren. If pgid
+        is invalid, we don't know the group, so we can't safely reap it — and
+        the direct child is already gone.
+        """
+        import io
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                with patch("os.getpgid", side_effect=OSError):
+                    with patch("os.killpg") as mock_killpg:
+                        run_claude_command("test command")
+
+        # pgid was None (OSError), safe_killpg returned False, killpg was never
+        # called, and we deliberately did NOT fall back to process.kill — the
+        # direct child has already exited and there's no group to reap.
+        mock_killpg.assert_not_called()
+        mock_process.kill.assert_not_called()
