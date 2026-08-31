@@ -948,7 +948,6 @@ class TestRepoGate:
             pytest.skip(f"{GATE_CLI} not installed; install via `pip install -e ./scripts[dev]`")
         return path
 
-    @pytest.mark.skip(reason="Gate CLI now runs under venv activation (was skipped on main pre-PR-19). 145 new evidence-unverifiable spans exposed. Pre-existing drift, not PR #19 logic. Tracked as workstream B.")
     def test_no_new_unverifiable_evidence(self, gate_cli: str) -> None:
         if not (REPO_ROOT / ".git").exists():
             pytest.skip("not a git checkout; nothing to enumerate")
