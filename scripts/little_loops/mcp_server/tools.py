@@ -867,7 +867,7 @@ _TOOLS: list[types.Tool] = [
                 },
                 "visibility": {
                     "type": "string",
-                    "enum": ["public", "internal", "example", "all"],
+                    "enum": ["public", "internal", "example", "draft", "all"],
                     "description": "Visibility tier to include. Default: public.",
                 },
             },

@@ -96,29 +96,77 @@ def cmd_install(
     loop_name: str,
     loops_dir: Path,
     logger: Logger,
+    name_override: str | None = None,
 ) -> int:
-    """Copy a built-in loop to .loops/ for customization."""
+    """Copy a built-in loop, or an arbitrary loop YAML path, into loops_dir.
+
+    BUG-3367: ``loop_name`` is name-or-path — a built-in name is tried first
+    (unchanged behavior); anything else falls back to treating the argument as
+    a filesystem path (e.g. a workflow-generator draft), deriving the install
+    name from the YAML's internal ``name:`` field unless ``name_override`` is
+    given, with promote-style collision suffixing.
+    """
     import shutil
 
     builtin_dir = get_builtin_loops_dir()
     source = builtin_dir / f"{loop_name}.yaml"
 
-    if not source.exists():
+    if source.exists():
+        loops_dir.mkdir(exist_ok=True)
+        dest = loops_dir / f"{loop_name}.yaml"
+
+        if dest.exists():
+            logger.error(f"Loop already exists: {dest}")
+            print("Remove it first or edit it directly.")
+            return 1
+
+        shutil.copy2(source, dest)
+        print(f"Installed {loop_name} to {dest}")
+        print("You can now customize it by editing the file.")
+        return 0
+
+    path_candidate = Path(loop_name)
+    if not path_candidate.exists():
         available = [f.stem for f in builtin_dir.glob("*.yaml")] if builtin_dir.exists() else []
         logger.error(f"No built-in loop named '{loop_name}'")
         if available:
             print(f"Available built-in loops: {', '.join(sorted(available))}")
         return 1
 
-    loops_dir.mkdir(exist_ok=True)
-    dest = loops_dir / f"{loop_name}.yaml"
+    from little_loops.fsm import is_runnable_loop
 
-    if dest.exists():
-        logger.error(f"Loop already exists: {dest}")
-        print("Remove it first or edit it directly.")
+    if not is_runnable_loop(path_candidate):
+        logger.error(f"Not a runnable loop definition: {path_candidate}")
         return 1
 
-    shutil.copy2(source, dest)
-    print(f"Installed {loop_name} to {dest}")
+    if name_override:
+        base_name = name_override
+    else:
+        import yaml
+
+        try:
+            data = yaml.safe_load(path_candidate.read_text())
+        except (OSError, yaml.YAMLError) as e:
+            logger.error(f"Failed to read {path_candidate}: {e}")
+            return 1
+        base_name = data.get("name") if isinstance(data, dict) else None
+        if not isinstance(base_name, str) or not base_name:
+            logger.error(
+                f"{path_candidate} has no internal 'name:' field; use --name to specify one"
+            )
+            return 1
+
+    loops_dir.mkdir(exist_ok=True)
+    candidate = base_name
+    suffix = 1
+    while (loops_dir / f"{candidate}.yaml").exists() or (
+        builtin_dir / f"{candidate}.yaml"
+    ).exists():
+        suffix += 1
+        candidate = f"{base_name}-{suffix}"
+
+    dest = loops_dir / f"{candidate}.yaml"
+    shutil.copy2(path_candidate, dest)
+    print(f"Installed {path_candidate} to {dest}")
     print("You can now customize it by editing the file.")
     return 0

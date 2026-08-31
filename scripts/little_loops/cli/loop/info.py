@@ -47,6 +47,7 @@ from little_loops.cli.output import (
 from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.concurrency import resolve_scope
 from little_loops.fsm.fragments import resolve_inheritance
+from little_loops.fsm.loop_paths import draft_internal_name
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
 from little_loops.logger import Logger
@@ -168,11 +169,36 @@ def enumerate_loop_catalog(
     `cmd_list`'s pre-extraction behavior. Filter order (category → label → visibility) is
     load-bearing: ``hidden_counts`` reflects only loops that survived the category/label
     filters.
+
+    BUG-3367: unpromoted workflow-generator drafts (``runs/*/workflow.yaml`` only — other
+    YAMLs under ``runs/``, e.g. eval-harness copies or probes, are excluded entirely) are
+    keyed by their internal ``name:`` field rather than ``_rel_key``'s unrecognizable
+    relative path, and surfaced under a new ``draft`` visibility tier (hidden by default,
+    same as ``internal``/``example``). Reruns of the generator producing multiple drafts
+    with the same ``name:`` collapse to the latest by ``workflow.yaml`` mtime.
     """
     project_names: set[str] = set()
     yaml_files: list[Path] = []
+    draft_latest: dict[str, Path] = {}
     if not builtin_only and loops_dir.exists():
-        yaml_files = sorted(p for p in loops_dir.rglob("*.yaml") if is_runnable_loop(p))
+        runs_root = loops_dir / "runs"
+        for p in sorted(loops_dir.rglob("*.yaml")):
+            if not is_runnable_loop(p):
+                continue
+            try:
+                rel_to_runs = p.relative_to(runs_root)
+            except ValueError:
+                yaml_files.append(p)
+                continue
+            # Only the direct `<instance>/workflow.yaml` shape counts as a draft;
+            # anything else under runs/ (nested probes, eval-harness copies, ...)
+            # is excluded from the catalog entirely.
+            if len(rel_to_runs.parts) == 2 and rel_to_runs.parts[1] == "workflow.yaml":
+                name = draft_internal_name(p)
+                if name:
+                    existing = draft_latest.get(name)
+                    if existing is None or p.stat().st_mtime > existing.stat().st_mtime:
+                        draft_latest[name] = p
         project_names = {_rel_key(p, loops_dir) for p in yaml_files}
 
     builtin_dir = get_builtin_loops_dir()
@@ -195,6 +221,10 @@ def enumerate_loop_catalog(
         entries.append(
             LoopCatalogEntry(name=_rel_key(path, builtin_dir), path=path, builtin=True, **meta)
         )
+    for name, path in draft_latest.items():
+        meta = _load_loop_meta(path)
+        meta["visibility"] = "draft"
+        entries.append(LoopCatalogEntry(name=name, path=path, builtin=False, **meta))
 
     total_before_filters = len(entries)
 
@@ -206,7 +236,7 @@ def enumerate_loop_catalog(
             e for e in entries if any(lf.lower() in [lb.lower() for lb in e.labels] for lf in label)
         ]
 
-    hidden_counts: dict[str, int] = {"internal": 0, "example": 0}
+    hidden_counts: dict[str, int] = {"internal": 0, "example": 0, "draft": 0}
     if visibilities is None:
         pass
     elif visibilities == {"public"}:
@@ -321,6 +351,7 @@ def cmd_list(
     show_all = getattr(args, "all", False) or visibility_flag == "all"
     show_internal = getattr(args, "internal", False) or visibility_flag == "internal"
     show_examples = getattr(args, "examples", False) or visibility_flag == "example"
+    show_drafts = getattr(args, "drafts", False) or visibility_flag == "draft"
     show_public_only = visibility_flag == "public"
 
     visibilities: set[str] | None
@@ -328,12 +359,14 @@ def cmd_list(
         visibilities = None
     elif show_public_only:
         visibilities = {"public"}
-    elif show_internal or show_examples:
+    elif show_internal or show_examples or show_drafts:
         visibilities = set()
         if show_internal:
             visibilities.add("internal")
         if show_examples:
             visibilities.add("example")
+        if show_drafts:
+            visibilities.add("draft")
     else:
         visibilities = {"public"}
 
@@ -426,8 +459,19 @@ def cmd_list(
     small_cats = sorted(c for c in buckets if len(buckets[c]) < _FOLD_THRESHOLD)
 
     sections: list[tuple[str, str, list[tuple[dict[str, Any], str]]]] = []
+
+    def _project_tag(lp: dict[str, Any]) -> str:
+        # BUG-3367: an unpromoted draft's "alongside" info is its run-dir
+        # path, not a category (drafts have no category of their own).
+        if lp.get("visibility") == "draft":
+            try:
+                return str(lp["path"].parent.relative_to(loops_dir))
+            except ValueError:
+                pass
+        return lp["category"] or "uncategorized"
+
     if project_loops:
-        prows = [(lp, lp["category"] or "uncategorized") for lp in project_loops]
+        prows = [(lp, _project_tag(lp)) for lp in project_loops]
         prows.sort(key=lambda r: r[0]["name"])
         sections.append(("YOUR PROJECT", "36;1", prows))
     for cat in big_cats:
@@ -478,12 +522,19 @@ def _badge_for(lp: dict[str, Any]) -> str:
         return "◆ internal"
     if lp.get("visibility") == "example":
         return "◆ example"
+    if lp.get("visibility") == "draft":
+        return "◆ draft"
     if not lp.get("builtin", True):
         return "◆ project"
     return ""
 
 
-_BADGE_COLOR = {"◆ project": "36;1", "◆ internal": "3", "◆ example": "33"}
+_BADGE_COLOR = {
+    "◆ project": "36;1",
+    "◆ internal": "3",
+    "◆ example": "33",
+    "◆ draft": "35",
+}
 
 
 def _is_tty() -> bool:

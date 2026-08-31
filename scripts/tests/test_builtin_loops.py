@@ -880,6 +880,25 @@ class TestBuiltinLoopInstall:
             result = main_loop()
         assert result == 1
 
+    def test_install_accepts_arbitrary_path_via_full_cli(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """BUG-3367: `ll-loop install <path>` promotes a workflow-generator draft."""
+        monkeypatch.chdir(tmp_path)
+        run_dir = tmp_path / ".loops" / "runs" / "workflow-generator-1"
+        run_dir.mkdir(parents=True)
+        draft = run_dir / "workflow.yaml"
+        draft.write_text("name: sample-brand-kit-synth\ninitial: done\nstates: {done: {}}\n")
+
+        with patch.object(sys, "argv", ["ll-loop", "install", str(draft)]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+        assert result == 0
+        assert (tmp_path / ".loops" / "sample-brand-kit-synth.yaml").exists()
+
 
 class TestBuiltinLoopScratchIsolation:
     """Tests that built-in loops use project-scoped scratch paths, not global /tmp names."""
@@ -18253,6 +18272,15 @@ class TestWorkflowGeneratorLoop:
         assert state.get("evaluate", {}).get("type") == "exit_code"
         assert state.get("on_no") == "finalize_await_confirmation"
         assert state.get("on_yes") == "promote"
+
+    def test_loops_dir_default_matches_cli_default(self, data: dict) -> None:
+        """BUG-3367: the generator's own promote step must land drafts where the CLI
+        actually looks (`.loops`), not the stale `.ll/loops` default it shipped with —
+        otherwise a promoted loop is still undiscoverable via `ll-loop list`/`run`."""
+        from little_loops.config.features import LoopsConfig
+
+        ctx = data.get("context", {})
+        assert ctx.get("loops_dir") == LoopsConfig().loops_dir
 
     @pytest.mark.parametrize(
         "state_name",

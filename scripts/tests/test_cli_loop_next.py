@@ -443,3 +443,127 @@ class TestCmdInstall:
         # Should not print "Available built-in loops:" since there are none
         captured = capsys.readouterr()
         assert "Available built-in loops:" not in captured.out
+
+    # -----------------------------------------------------------------
+    # BUG-3367: arbitrary filesystem path install (workflow-generator drafts)
+    # -----------------------------------------------------------------
+
+    def test_installs_from_path_using_internal_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A path argument is installed under its internal `name:` field, not its stem."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        builtin_dir = tmp_path / "builtins"
+        builtin_dir.mkdir()
+        monkeypatch.setattr(
+            "little_loops.cli.loop.config_cmds.get_builtin_loops_dir",
+            lambda: builtin_dir,
+        )
+
+        run_dir = tmp_path / "runs" / "workflow-generator-1"
+        run_dir.mkdir(parents=True)
+        draft = run_dir / "workflow.yaml"
+        draft.write_text("name: sample-brand-kit-synth\ninitial: done\nstates: {done: {}}\n")
+
+        logger = Logger()
+        result = cmd_install(str(draft), loops_dir, logger)
+
+        assert result == 0
+        # Not installed as "workflow" (the path stem) — every draft is named workflow.yaml.
+        assert not (loops_dir / "workflow.yaml").exists()
+        assert (loops_dir / "sample-brand-kit-synth.yaml").exists()
+
+    def test_installs_from_path_with_name_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        builtin_dir = tmp_path / "builtins"
+        builtin_dir.mkdir()
+        monkeypatch.setattr(
+            "little_loops.cli.loop.config_cmds.get_builtin_loops_dir",
+            lambda: builtin_dir,
+        )
+
+        run_dir = tmp_path / "runs" / "workflow-generator-1"
+        run_dir.mkdir(parents=True)
+        draft = run_dir / "workflow.yaml"
+        draft.write_text("name: sample-brand-kit-synth\ninitial: done\nstates: {done: {}}\n")
+
+        logger = Logger()
+        result = cmd_install(str(draft), loops_dir, logger, name_override="my-custom-name")
+
+        assert result == 0
+        assert (loops_dir / "my-custom-name.yaml").exists()
+
+    def test_installs_from_path_suffixes_on_collision(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "sample-brand-kit-synth.yaml").write_text("existing")
+        builtin_dir = tmp_path / "builtins"
+        builtin_dir.mkdir()
+        monkeypatch.setattr(
+            "little_loops.cli.loop.config_cmds.get_builtin_loops_dir",
+            lambda: builtin_dir,
+        )
+
+        run_dir = tmp_path / "runs" / "workflow-generator-1"
+        run_dir.mkdir(parents=True)
+        draft = run_dir / "workflow.yaml"
+        draft.write_text("name: sample-brand-kit-synth\ninitial: done\nstates: {done: {}}\n")
+
+        logger = Logger()
+        result = cmd_install(str(draft), loops_dir, logger)
+
+        assert result == 0
+        assert (loops_dir / "sample-brand-kit-synth.yaml").read_text() == "existing"
+        assert (loops_dir / "sample-brand-kit-synth-2.yaml").exists()
+
+    def test_installs_from_path_never_shadows_builtin_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        builtin_dir = tmp_path / "builtins"
+        builtin_dir.mkdir()
+        (builtin_dir / "sample-brand-kit-synth.yaml").write_text("name: sample-brand-kit-synth")
+        monkeypatch.setattr(
+            "little_loops.cli.loop.config_cmds.get_builtin_loops_dir",
+            lambda: builtin_dir,
+        )
+
+        run_dir = tmp_path / "runs" / "workflow-generator-1"
+        run_dir.mkdir(parents=True)
+        draft = run_dir / "workflow.yaml"
+        draft.write_text("name: sample-brand-kit-synth\ninitial: done\nstates: {done: {}}\n")
+
+        logger = Logger()
+        result = cmd_install(str(draft), loops_dir, logger)
+
+        assert result == 0
+        assert not (loops_dir / "sample-brand-kit-synth.yaml").exists()
+        assert (loops_dir / "sample-brand-kit-synth-2.yaml").exists()
+
+    def test_installs_from_path_rejects_non_runnable_loop(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        builtin_dir = tmp_path / "builtins"
+        builtin_dir.mkdir()
+        monkeypatch.setattr(
+            "little_loops.cli.loop.config_cmds.get_builtin_loops_dir",
+            lambda: builtin_dir,
+        )
+
+        not_a_loop = tmp_path / "not-a-loop.yaml"
+        not_a_loop.write_text("just: some_data\n")
+
+        logger = Logger()
+        result = cmd_install(str(not_a_loop), loops_dir, logger)
+
+        assert result == 1
+        assert not any(loops_dir.glob("*.yaml"))

@@ -3,10 +3,11 @@ id: BUG-3367
 type: BUG
 title: workflow-generator output not discoverable or runnable
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T03:21:26Z'
+completed_at: '2026-08-31T05:35:50Z'
 confidence_score: 100
 outcome_confidence: 92
 score_complexity: 20
@@ -321,7 +322,7 @@ behavior.
   literal-path/`<name>.fsm.yaml`/`<name>.yaml`/builtin checks:
   `loops_dir/runs/<name>/workflow.yaml`, then an internal-`name:` scan of
   `loops_dir/runs/*/workflow.yaml` (latest mtime wins). Shared by the FSM core
-  (`fsm/validation.py`, `fsm/fragments.py`, `fsm/executor.py`) — both branches
+  (`fsm/validation/structural_rules.py`, `fsm/fragments.py`, `fsm/executor.py`) — both branches
   are additive fallbacks after all existing checks, so core resolution is
   unaffected for existing names.
 - `cmd_install(loop_name: str, loops_dir: Path, logger: Logger) -> int`
@@ -357,6 +358,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-31T05:35:03 - `57895937-283e-4bda-9ec3-825fc4752302.jsonl`
+- `/ll:ready-issue` - 2026-08-31T05:17:46 - `28163470-98d0-43dd-92ef-a9663f48cfd0.jsonl`
 - `/ll:confidence-check` - 2026-08-31T04:04:11 - `e6624bad-8105-48eb-a1a4-bb4f8a49ae52.jsonl`
 - `/ll:refine-issue` - 2026-08-31T03:37:52 - `d3fa0ee5-3d96-476c-a86f-50795f749f97.jsonl`
 - `/ll:format-issue` - 2026-08-31T03:25:45 - `58ca304a-54ac-44f8-bc17-9bdf9d83c13c.jsonl`

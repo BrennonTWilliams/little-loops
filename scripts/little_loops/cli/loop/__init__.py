@@ -449,14 +449,19 @@ Examples:
             help="Show only example/template loops",
         )
         list_parser.add_argument(
+            "--drafts",
+            action="store_true",
+            help="Show only unpromoted workflow-generator drafts (hidden by default)",
+        )
+        list_parser.add_argument(
             "--visibility",
-            choices=["public", "internal", "example", "all"],
+            choices=["public", "internal", "example", "draft", "all"],
             default=None,
-            metavar="{public,internal,example,all}",
+            metavar="{public,internal,example,draft,all}",
             help=(
                 "Filter loops by visibility tier. "
                 "'public' (default view) returns only routable loops; "
-                "'internal'/'example' narrow to those tiers; "
+                "'internal'/'example'/'draft' narrow to those tiers; "
                 "'all' shows everything. Composes with --label and --json."
             ),
         )
@@ -668,7 +673,11 @@ Examples:
             "install",
             help="Copy a built-in loop to .loops/ for customization",
         )
-        install_parser.add_argument("loop", help="Built-in loop name to install")
+        install_parser.add_argument("loop", help="Built-in loop name or path to a loop YAML")
+        install_parser.add_argument(
+            "--name",
+            help="Install name for a path argument (default: the YAML's internal 'name:' field)",
+        )
 
         # Show subcommand
         show_parser = subparsers.add_parser(
@@ -1069,7 +1078,7 @@ Examples:
         elif args.command == "simulate":
             return cmd_simulate(args.loop, args, loops_dir, logger)
         elif args.command == "install":
-            return cmd_install(args.loop, loops_dir, logger)
+            return cmd_install(args.loop, loops_dir, logger, getattr(args, "name", None))
         elif args.command == "show":
             return cmd_show(args.loop, args, loops_dir, logger)
         elif args.command == "fragments":

@@ -1,0 +1,11 @@
+{
+  "id": "2dd67168-8ef9-415e-abcf-8b2a30f0045a",
+  "type": "decision",
+  "timestamp": "2026-08-31T05:21:31Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the CLI's actual default loops dir (config/features.py, cli/loop/__init__.py) so promoted drafts are discoverable via ll-loop list/run. Deliberately widens the FEAT-3335 promote-window containment gate's allowed realpaths (allow_loops_dir) from an isolated .ll/loops dir to the whole .loops tree (project loops, runs/, .history/). Accepted: promote's collision suffixing prevents overwrites, and the gate still excludes everything outside .loops. Accepted debt: still mismatches projects overriding loops.loops_dir in .ll/ll-config.json; deferred as a follow-up.",
+  "rule": "workflow-generator promote's context.loops_dir default changed from .ll/loops to .loops",
+  "scope": "issue",
+  "issue": "BUG-3367"
+}

@@ -45,7 +45,7 @@ context:
   auto_promote: "false"
   max_emit_retries: "3"
   max_intent_retries: "3"
-  loops_dir: ".ll/loops"
+  loops_dir: ".loops"
 
 fragments:
   scope_containment_gate:

@@ -170,6 +170,136 @@ def test_loop_list_resolves_loops_dir_from_project_root_not_cwd(tmp_path, monkey
     anyio.run(run)
 
 
+def _write_draft(loops_dir: Path, instance: str, name: str) -> Path:
+    """BUG-3367: write an unpromoted workflow-generator draft (`runs/<instance>/workflow.yaml`)."""
+    run_dir = loops_dir / "runs" / instance
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / "workflow.yaml"
+    path.write_text(
+        f"name: {name}\ninitial: done\nstates:\n  done:\n    terminal: true\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_loop_list_default_hides_drafts(tmp_path, monkeypatch) -> None:
+    project = _make_project(tmp_path, monkeypatch)
+    _hide_builtins(tmp_path, monkeypatch)
+    loops_dir = project / ".loops"
+    _write_loop(loops_dir, "public-loop")
+    _write_draft(loops_dir, "workflow-generator-1", "sample-brand-kit-synth")
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            items = _payload(await client.call_tool("loop_list", {}))
+            names = {i["name"] for i in items}
+            assert names == {"public-loop"}
+
+    anyio.run(run)
+
+
+def test_loop_list_visibility_draft_surfaces_drafts_under_internal_name(
+    tmp_path, monkeypatch
+) -> None:
+    project = _make_project(tmp_path, monkeypatch)
+    _hide_builtins(tmp_path, monkeypatch)
+    loops_dir = project / ".loops"
+    _write_draft(loops_dir, "workflow-generator-1", "sample-brand-kit-synth")
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            items = _payload(await client.call_tool("loop_list", {"visibility": "draft"}))
+            names = {i["name"] for i in items}
+            assert names == {"sample-brand-kit-synth"}
+            assert items[0]["visibility"] == "draft"
+
+    anyio.run(run)
+
+
+def test_loop_list_visibility_all_includes_drafts(tmp_path, monkeypatch) -> None:
+    project = _make_project(tmp_path, monkeypatch)
+    _hide_builtins(tmp_path, monkeypatch)
+    loops_dir = project / ".loops"
+    _write_loop(loops_dir, "public-loop")
+    _write_draft(loops_dir, "workflow-generator-1", "sample-brand-kit-synth")
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            items = _payload(await client.call_tool("loop_list", {"visibility": "all"}))
+            names = {i["name"] for i in items}
+            assert names == {"public-loop", "sample-brand-kit-synth"}
+
+    anyio.run(run)
+
+
+def test_loop_list_only_direct_runs_workflow_yaml_counts_as_draft(tmp_path, monkeypatch) -> None:
+    """BUG-3367: other YAMLs under runs/ (nested probes, non-`workflow.yaml` artifacts)
+    are excluded from the catalog entirely, not surfaced under an unrecognizable path."""
+    project = _make_project(tmp_path, monkeypatch)
+    _hide_builtins(tmp_path, monkeypatch)
+    loops_dir = project / ".loops"
+    _write_draft(loops_dir, "workflow-generator-1", "sample-brand-kit-synth")
+    nested = loops_dir / "runs" / "workflow-generator-1" / "probes" / "probe-1.yaml"
+    nested.parent.mkdir(parents=True, exist_ok=True)
+    nested.write_text(
+        "name: probe-1\ninitial: done\nstates:\n  done:\n    terminal: true\n", encoding="utf-8"
+    )
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            items = _payload(await client.call_tool("loop_list", {"visibility": "all"}))
+            names = {i["name"] for i in items}
+            assert names == {"sample-brand-kit-synth"}
+
+    anyio.run(run)
+
+
+def test_loop_list_dedups_duplicate_draft_names_to_latest(tmp_path, monkeypatch) -> None:
+    project = _make_project(tmp_path, monkeypatch)
+    _hide_builtins(tmp_path, monkeypatch)
+    loops_dir = project / ".loops"
+    old_path = _write_draft(loops_dir, "workflow-generator-old", "dup-name")
+    new_path = _write_draft(loops_dir, "workflow-generator-new", "dup-name")
+
+    import os
+    import time
+
+    now = time.time()
+    os.utime(old_path, (now - 100, now - 100))
+    os.utime(new_path, (now, now))
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            items = _payload(await client.call_tool("loop_list", {"visibility": "draft"}))
+            matches = [i for i in items if i["name"] == "dup-name"]
+            assert len(matches) == 1
+            assert matches[0]["path"] == str(new_path)
+
+    anyio.run(run)
+
+
+def test_loop_run_resolves_the_exact_name_loop_list_displays_for_a_draft(
+    tmp_path, monkeypatch
+) -> None:
+    """Contract test (BUG-3367): whatever identifier `ll-loop list` displays for a draft,
+    `resolve_loop_path` (which `ll-loop run` calls) must resolve."""
+    from little_loops.cli.loop.info import enumerate_loop_catalog
+    from little_loops.fsm.loop_paths import resolve_loop_path
+
+    project = _make_project(tmp_path, monkeypatch)
+    _hide_builtins(tmp_path, monkeypatch)
+    loops_dir = project / ".loops"
+    draft_path = _write_draft(loops_dir, "workflow-generator-1", "sample-brand-kit-synth")
+
+    catalog = enumerate_loop_catalog(loops_dir=loops_dir, visibilities={"draft"})
+    assert len(catalog.entries) == 1
+    displayed_name = catalog.entries[0].name
+
+    resolved = resolve_loop_path(displayed_name, loops_dir)
+
+    assert resolved == draft_path
+
+
 def test_loop_list_advertised_as_read_only(tmp_path, monkeypatch) -> None:
     project = _make_project(tmp_path, monkeypatch)
 

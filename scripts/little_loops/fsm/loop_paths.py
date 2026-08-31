@@ -8,12 +8,27 @@ for backward compatibility.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+import yaml
 
 
 def get_builtin_loops_dir() -> Path:
     """Get the path to built-in loops bundled with the plugin."""
     return Path(__file__).parent.parent / "loops"
+
+
+def draft_internal_name(workflow_yaml: Path) -> str | None:
+    """Return a generator draft's internal ``name:`` field, or None if unreadable."""
+    try:
+        data = yaml.safe_load(workflow_yaml.read_text())
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    name = data.get("name")
+    return name if isinstance(name, str) and name else None
 
 
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
@@ -37,4 +52,34 @@ def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
     if builtin_path.exists():
         return builtin_path
 
-    raise FileNotFoundError(f"Loop not found: {name_or_path}")
+    # BUG-3367: fall back to an unpromoted workflow-generator draft, addressed
+    # by its instance-folder name (runs/<name>/workflow.yaml)...
+    run_dir_path = loops_dir / "runs" / name_or_path / "workflow.yaml"
+    if run_dir_path.exists():
+        return run_dir_path
+
+    # ...or by the draft's internal `name:` field, scanning runs/*/workflow.yaml.
+    # Same latest-mtime-wins policy as `ll-loop list` uses for duplicate names.
+    runs_root = loops_dir / "runs"
+    if runs_root.exists():
+        candidates = sorted(runs_root.glob("*/workflow.yaml"))
+        matches = [wf for wf in candidates if draft_internal_name(wf) == name_or_path]
+        if matches:
+            matches.sort(key=lambda p: p.stat().st_mtime)
+            if len(matches) > 1:
+                skipped = ", ".join(str(p) for p in matches[:-1])
+                print(
+                    f"Note: skipped older draft(s) named {name_or_path!r}: {skipped}",
+                    file=sys.stderr,
+                )
+            return matches[-1]
+
+    raise FileNotFoundError(
+        f"Loop not found: {name_or_path}. Tried: "
+        f"{path} (as a filesystem path), "
+        f"{fsm_path} (compiled FSM), "
+        f"{loops_path} (project loop), "
+        f"{builtin_path} (built-in loop), "
+        f"{run_dir_path} (generator-draft run dir), "
+        f"{runs_root}/*/workflow.yaml (generator-draft internal name scan)"
+    )

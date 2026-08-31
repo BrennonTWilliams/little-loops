@@ -644,7 +644,7 @@ Run a loop.
 
 | Argument/Flag | Short | Description |
 |---------------|-------|-------------|
-| `loop` | | Loop name or path |
+| `loop` | | Loop name or path. Resolution order: literal filesystem path -> `<loops_dir>/<name>.fsm.yaml` -> `<loops_dir>/<name>.yaml` -> built-in `<name>.yaml` -> `<loops_dir>/runs/<name>/workflow.yaml` (a draft's instance-folder name) -> a scan of `<loops_dir>/runs/*/workflow.yaml` for a file whose internal `name:` matches (latest by mtime when a rerun produced duplicates — BUG-3367). The last two resolve exactly what `ll-loop list --drafts` displays for an unpromoted workflow-generator draft. |
 | `input` | | (Optional positional) If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in `context[input_key]` |
 | `--max-steps` | `-n` | Override step cap (individual state transitions) |
 | `--max-iterations` | | Override full-pass cap (complete loop cycles) |
@@ -908,8 +908,22 @@ For nested loops, the displayed identifier is the **relative path** without the 
 | `--all` / `-a` | `-a` | Show all loops including internal sub-loops and examples (hidden by default) |
 | `--internal` | | Show only internal (delegated-only) sub-loops |
 | `--examples` | | Show only example/template loops |
-| `--visibility {public,internal,example,all}` | | Filter loops by visibility tier: `public` (routable, default view), `internal`, `example`, or `all`. Composes with `--label` and `--json`. |
-| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name` (relative-path identifier — e.g. `oracles/oracle-capture-issue` for nested loops, `fix-quality-and-tests` for top-level), `path`, `category`, `labels`, `visibility` (`"public"` \| `"internal"` \| `"example"`), `description`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
+| `--drafts` | | Show only unpromoted workflow-generator drafts (hidden by default — BUG-3367) |
+| `--visibility {public,internal,example,draft,all}` | | Filter loops by visibility tier: `public` (routable, default view), `internal`, `example`, `draft`, or `all`. Composes with `--label` and `--json`. |
+| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name` (relative-path identifier — e.g. `oracles/oracle-capture-issue` for nested loops, `fix-quality-and-tests` for top-level), `path`, `category`, `labels`, `visibility` (`"public"` \| `"internal"` \| `"example"` \| `"draft"`), `description`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
+
+**Workflow-generator drafts (BUG-3367):** an unpromoted `workflow-generator` run
+(`<loops_dir>/runs/<instance_id>/workflow.yaml`, `context.auto_promote=false`, the
+default) is surfaced under its internal `name:` field with a `◆ draft` badge and its
+run-dir path shown alongside, rather than under `_rel_key`'s unrecognizable relative
+path. Drafts are a `draft` visibility tier — hidden under the default view like
+`internal`/`example`, shown via `--drafts` or `--visibility draft`/`--visibility all`.
+Only the direct `runs/<instance>/workflow.yaml` shape counts; other YAMLs under `runs/`
+(nested probes, eval-harness copies) are excluded from the catalog. Reruns producing
+multiple drafts with the same `name:` collapse to the latest by `workflow.yaml` mtime.
+`ll-loop run <name>` resolves the exact identifier `ll-loop list` displays for a draft
+(see `ll-loop run` below), and `ll-loop install <path>` (see below) promotes one into
+`loops_dir` under a short name.
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
 
@@ -1012,7 +1026,19 @@ Runner-injected context variables (`run_dir`, `input`, `run_timestamp`) are popu
 
 #### `ll-loop install <loop>`
 
-Copy a built-in loop to `.loops/` for customization.
+Copy a built-in loop, or an arbitrary loop YAML path, into `.loops/` for customization.
+
+A built-in name is tried first (unchanged behavior: installs as `<name>.yaml`, refuses if
+the destination already exists). Anything else is treated as a filesystem path (BUG-3367)
+— e.g. a workflow-generator draft at `.loops/runs/<instance_id>/workflow.yaml` — and is
+validated with `is_runnable_loop` before copying. The install name is derived from the
+YAML's internal `name:` field (not the path stem — every generator draft is literally
+named `workflow.yaml`), with promote-style collision suffixing (`-2`, `-3`, ...) that never
+shadows a built-in name.
+
+| Flag | Description |
+|------|-------------|
+| `--name NAME` | Install name for a path argument, overriding the YAML's internal `name:` field |
 
 #### `ll-loop show <loop>` / `ll-loop s <loop>`
 
