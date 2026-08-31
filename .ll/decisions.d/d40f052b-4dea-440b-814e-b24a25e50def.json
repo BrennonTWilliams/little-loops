@@ -1,0 +1,12 @@
+{
+  "id": "0924b87e-a837-4d6c-a9b9-a0de5a0505b1",
+  "type": "decision",
+  "timestamp": "2026-08-31T02:44:57Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Only same-subsystem precedent for this defect shape (mirrors ENH-1679's refine_current fix); reuses executor's existing terminated_by/failure_terminal classification with no new artifact; has a directly transplantable 5-test regression model; avoids touching autodev.yaml's standalone-load-bearing finalize_done state that Option B would require.",
+  "rule": "Option A \u2014 differentiate delegate's on_success/on_failure into distinct target states",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 subloop_outcome_autodev.txt sidecar convention (ENH-2005 style); rejected because it requires editing autodev.yaml's finalize_done (used standalone by every direct ll-loop run autodev invocation) and adds new conditional-branch logic to recheck_set beyond a simple read.",
+  "issue": "ENH-3366"
+}
