@@ -83,7 +83,7 @@ ll-init
 .ll/ll-config.json
 ```
 
-**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` so runtime state never ends up committed: `.auto-manage-state.json`, `.parallel-manage-state.json`, `.ll/ll-context-state.json`, `.ll/ll-sync-state.json`, `.ll/ll-session-events.jsonl`, `.ll/history.db*`, `.ll/queue.db*`, `.ll/*.lock`, `.ll/ll-continue-prompt.md`, `.ll/private-refs.local.txt`, and the nested-`.ll/` stray guards `**/.ll/` followed by `!/.ll/`.
+**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` so runtime state never ends up committed: `.auto-manage-state.json`, `.parallel-manage-state.json`, `.ll/ll-context-state.json`, `.ll/ll-sync-state.json`, `.ll/ll-session-events.jsonl`, `.ll/history.db*`, `.ll/queue.db*`, `.ll/*.lock`, `.ll/ll-continue-prompt.md`, `.ll/private-refs.local.txt`, `.ll/evidence-verdict-cache.json`, and the nested-`.ll/` stray guards `**/.ll/` followed by `!/.ll/`.
 
 The `.ll/` handling follows the `.claude/` model: the repo-root directory is tracked (the decisions log, the learning-test registry, `templates/`, `ll-goals.md` — curated artifacts a team shares) with machine-local state ignored file-by-file, while every *nested* `.ll/` is ignored outright as a stray created by running an `ll-*` command from a subdirectory. **Entry order is load-bearing**: git is last-match-wins, so `!/.ll/` must follow `**/.ll/`. `.ll/ll-continue-prompt.md` and `.ll/private-refs.local.txt` are ignored *because* `ll-verify-private-refs` exempts them from the private-reference gate — the ignore rule and the exemption are a matched pair, and exempting a file without also ignoring it would let a real leak reach a commit.
 
@@ -100,7 +100,7 @@ The `.ll/` handling follows the `.claude/` model: the repo-root directory is tra
 | `--disable FEATURE` | Disable a feature (same valid names as `--enable`) | Turning off a feature that was auto-enabled |
 | `--upgrade` | Act on version drift automatically, then refresh every active host's integration surface: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`), and scope-aware-update the claude-code plugin. Default headless mode is warn-only. Passing it alone (no `--yes`/`--dry-run`/`--plan`) implies `--yes` and runs headlessly | CI pipelines or automation where you want hands-free upgrades |
 | `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |
-| `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `kimi-code`, `qwen` (adapter-wired); `opencode`, `pi` (recognized, adapter pending). `gemini`/`omp` are orchestration-only and not valid here — see the canonical [host tier table](../reference/HOST_COMPATIBILITY.md#host-tiers) | Only needed if you use little-loops with multiple AI coding tools |
+| `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `kimi-code`, `qwen` (adapter-wired); `opencode`, `pi`, `omp` (recognized, adapter pending). `gemini` is orchestration-only and not valid here — see the canonical [host tier table](../reference/HOST_COMPATIBILITY.md#host-tiers) | Only needed if you use little-loops with multiple AI coding tools |
 
 **Ambiguous or monorepo layouts:** rather than piping `--plan` into `apply --config`
 by hand, run `/ll:init` inside Claude Code — it drives this same seam but reads your
@@ -235,7 +235,7 @@ Code references in issue files use function and class names, not line numbers.
 
 ```markdown
 # Correct
-Root cause is in function `_run_wave()` in `scripts/little_loops/sprint.py`.
+Root cause is in function `get_execution_waves()` in `scripts/little_loops/dependency_graph.py`.
 
 # Wrong — line numbers drift
 Root cause is at line 1847 in sprint.py.
@@ -243,7 +243,7 @@ Root cause is at line 1847 in sprint.py.
 
 ### Minimal vs. Full Template
 
-By default, `/ll:capture-issue` creates a full v2.0 issue with all sections. Pass `--quick` to create a minimal issue (Summary + Impact only) when you just want to record an idea quickly.
+By default, `/ll:capture-issue` creates a full v2.0 issue with all sections. Pass `--quick` to create a minimal issue (Summary, Current Behavior, Expected Behavior, Impact, Status) when you just want to record an idea quickly.
 
 ```bash
 /ll:capture-issue "login button broken"           # full template (default)

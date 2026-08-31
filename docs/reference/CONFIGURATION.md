@@ -893,11 +893,7 @@ When no `profiles/` directory is present, the resolver falls back to the flat la
 
 #### W3C DTCG `$value` Format (ENH-1769)
 
-The design token loader supports the [W3C Design Tokens Community Group](https://tr.designtokens.org/) `$value` format in addition to the legacy flat key-value layout. When a token file contains `$value` keys (e.g., `{"color-primary": {"$value": "#A3B59A"}}`), the loader normalizes them to the internal representation automatically.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `dtcg_mode` | `str` | `"auto"` | Format detection mode: `"auto"` (detect from file content), `"dtcg"` (force DTCG `$value` parsing), or `"flat"` (legacy key-value only). |
+The design token loader supports the [W3C Design Tokens Community Group](https://tr.designtokens.org/) `$value` format in addition to the legacy flat key-value layout. When a token file contains `$value` keys (e.g., `{"color-primary": {"$value": "#A3B59A"}}`), the loader normalizes them to the internal representation automatically — detection is unconditional/automatic based on file content, with no config key to toggle it.
 
 **Example DTCG token file:**
 ```json
@@ -1437,7 +1433,7 @@ and `triggers`, but is still budget-counted — see FEAT-3116).
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Enable auto-consults (`consult_for_trigger` without `manual=True`). Absent or `false` means auto-consults are disabled; `ll-advise` still works. |
-| `host` | `null` | Registry key for the host CLI the advisor consults: `"claude-code"`, `"codex"`, `"opencode"`, `"pi"`, `"gemini"`, `"omp"`, or `"kimi-code"` — the same enum as `orchestration.host_cli`, but may differ from it. |
+| `host` | `null` | Registry key for the host CLI the advisor consults: `"claude-code"`, `"codex"`, `"opencode"`, `"pi"`, `"gemini"`, `"omp"`, `"kimi-code"`, or `"qwen"` — the same enum as `orchestration.host_cli`, but may differ from it. |
 | `model` | `"opus"` | Model the advisor requests from the selected host. |
 | `min_tier` | `null` | Capability floor for the advisor's model; enforced within a host, warned across hosts. |
 | `timeout_seconds` | `180` | Per-consult timeout in seconds. Mandatory-with-a-default — a synchronous in-band consult with no timeout can hang a loop indefinitely. |
@@ -1537,7 +1533,7 @@ After installing the package, `ll` will discover and load it on every run alongs
 
 The same `little_loops.extensions` entry-point group also dispatches `LLHookIntentExtension` providers — extensions that contribute hook intent handlers via `provided_hook_intents()`. A single package can implement both `LLExtension` (event observers) and `LLHookIntentExtension` (request/response hook handlers); `wire_extensions()` duck-types each interface independently. This single shared group is the resolved design from FEAT-1116 Decision 2 (FEAT-1117 group-split is deferred). See [API Reference → `LLHookIntentExtension`](API.md#llhookintentextension) for the Protocol shape.
 
-Extensions can also be auto-discovered via Python entry points — see [API Reference → Extension API](API.md#extension-api).
+Extensions can also be auto-discovered via Python entry points — see [API Reference → little_loops.extension](API.md#little_loopsextension).
 
 > **Tip**: Use [`ll-create-extension`](CLI.md#ll-create-extension) to scaffold a new extension repo with a ready-to-run entry point, skeleton handler, and example test. Use [`LLTestBus`](API.md#lltestbus) to replay recorded events against your extension offline without starting a live loop.
 

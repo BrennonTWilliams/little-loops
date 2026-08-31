@@ -124,7 +124,8 @@ numeric score, a diff stall, or a convergence gate.
 sub-loop fails, `reassess` (`llm_structured`) is reached unconditionally via
 `write_step_failed → read_completed_summaries → read_last_verdict → reassess`.
 If `reassess` decides to replan, `check_replan_budget` (`output_numeric`, operator: `lt`)
-gates *re-entry*: `reassess → parse_reassess_decision → route_reassess_replan (on_yes)
+gates *re-entry*: `reassess → parse_reassess_decision → route_reassess_continue (on_no)
+→ route_reassess_replan (on_yes)
 → check_replan_budget → increment_replan_count → apply_replan → (sub-loop re-runs)
 → … → reassess`. The budget counter is a non-LLM signal the LLM cannot self-inflate,
 so it enforces a hard ceiling on how many times the LLM judge can decide to replan —

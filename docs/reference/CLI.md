@@ -47,12 +47,12 @@ When run on a project that already has a `.ll/ll-config.json`, the interactive w
 | `--dry-run` | `-n` | Preview actions without writing files |
 | `--plan` | | Emit a JSON plan `{detected, proposed_config, requested_upgrade, host_options, warnings, provenance, ambiguities}` without writing anything. `provenance` is a list of `{field, value, provenance, evidence}` for each manifest-introspected `project.*`/`scan.focus_dirs` field (`declared`/`inferred`/`default`); `ambiguities` lists any field where multiple equally-valid candidates were found and the template default was kept (FEAT-2703). `requested_upgrade` echoes whether `--upgrade` was also passed — plan mode never executes it (no writes happen in plan mode), it's surfaced purely so the flag isn't silently dropped (BUG-2755). On a re-init (existing `.ll/ll-config.json`), a `declared`-provenance value that diverges from the stored config prints a `Warning: config has ... but ... declares ...` line to stderr — the existing value is always kept; stdout stays pure JSON (ENH-2704) |
 | `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for: `claude-code`, `codex`, `kimi-code`, `qwen` (adapter-wired); `opencode`, `pi`, `omp` (recognized, adapter pending — for `omp` this is an info-only branch, no writer). Defaults to auto-detected hosts. Unknown values produce a warning and are skipped — note `gemini` is orchestration-only and is **not** valid here. See [HOST_COMPATIBILITY.md § Host tiers](HOST_COMPATIBILITY.md#host-tiers). |
-| `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`. |
+| `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`, `parallel`, `documents`, `design_tokens`, `sync`, `confidence_gate`, `tdd`. |
 | `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--enable prompt_optimization` to opt in to the default-off prompt optimizer. |
 | `--upgrade` | | Act on version drift automatically, then run a **host-parameterized surface refresh** for every active host: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`, re-stamping the embedded gen-version), and scope-aware-update the claude-code plugin (auto for project-scoped installs, advise-only for user-scoped). Without this flag, headless mode only warns — including a hint when a generated adapter's gen-version stamp diverges from the installed package. Passing `--upgrade` alone (no `--yes`/`--dry-run`/`--plan`) implies `--yes` and runs headlessly, rather than silently dropping the flag and launching the interactive wizard (BUG-2755). |
 | `--root ROOT` | `-C` | Project root directory (default: current directory) |
 
-Richer features (`parallel`, `sync`, `documents`, `design_tokens`, `confidence_gate`, `tdd`) carry sub-config and remain interactive-only; they are not accepted by `--enable`/`--disable`. Unknown feature names exit `2`.
+`parallel`, `sync`, `documents`, `design_tokens`, `confidence_gate`, `tdd` carry richer sub-config; `--enable`/`--disable` write the schema-default shape for these (use the interactive wizard to fine-tune sub-values). Unknown feature names exit `2`.
 
 **Subcommands:**
 
@@ -652,6 +652,8 @@ Run a loop.
 | `--no-llm` | | Disable LLM evaluation |
 | `--no-host-guard` | | Disable the adaptive host memory-pressure guard (`host_guard:` block, ENH-2452). By default the guard samples host memory before each prompt-mode state and adds an extra cooldown / routes / aborts per the loop's `host_guard:` config. |
 | `--host-guard-budget-mb N` | | Override `host_guard.max_cumulative_subproc_mb`: cap on summed peak subprocess RSS (MB) across the run (ENH-2453). `0` disables the budget. |
+| `--no-prompt-size-guard` | | Disable the per-invocation prompt-size guard (`fsm.prompt_size_guard`). |
+| `--prompt-size-warn-chars N` | | Override `prompt_size_guard.warn_chars`: interpolated-action char size at/above which a `prompt_size_warn` is emitted (`0` disables the guard). |
 | `--model` | | Default model for host-CLI action states (`prompt`/`slash_command`). Per-state `model:` key overrides this. |
 | `--effort` | | Default reasoning-effort level (`low`/`medium`/`high`/`xhigh`/`max`) for host-CLI action states. Per-state `effort:` key overrides this. When set, shown appended to the header's `model:` value, e.g. `model: claude-sonnet-4-6 [LOW]` (ENH-2869). |
 | `--llm-model` | | Override model for FSM evaluator/judge states (distinct from `--model`) |
@@ -3201,7 +3203,10 @@ Analyze workflows from messages and Step 1 patterns.
 |------|-------|-------------|
 | `--input` | `-i` | Input JSONL file with user messages (default: `.ll/workflow-analysis/step1-patterns.jsonl`) |
 | `--patterns` | `-p` | **Required.** Input YAML from Step 1 (workflow-pattern-analyzer) |
-| `--output` | `-o` | Output YAML file (default: `.ll/workflow-analysis/step2-workflows.yaml`) |
+| `--output` | `-o` | Output file (default: `.ll/workflow-analysis/step2-workflows.yaml` or `.json`, depending on `--format`) |
+| `--format` | `-f` | Output format: `yaml` or `json` (default: `yaml`) |
+| `--overlap-threshold` | | Minimum entity overlap to cluster messages together (default: `0.3`) |
+| `--boundary-threshold` | | Minimum boundary score to split workflow segments (default: `0.6`) |
 | `--verbose` | `-v` | Show verbose analysis output |
 
 The Python API (`analyze_workflows()`) accepts an optional `db_path` argument that prefers the unified session store's `message_events` table over the JSONL input when populated (ENH-1621); an empty/missing DB transparently falls back to the JSONL file. The `--patterns` YAML is a generated analysis artifact and stays a file input.

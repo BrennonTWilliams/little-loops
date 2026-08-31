@@ -308,7 +308,7 @@ Note the scope difference: `prompt-regression-test` takes a *directory* of promp
 > finish a run, check `git diff`, see nothing, and conclude the loop failed. Every other APO
 > loop writes; this one advises.
 
-> **The other four write before deciding.** `apo-beam` (`:48`), `apo-contrastive` (`:49-50`),
+> **The other three write before deciding.** `apo-beam` (`:48`), `apo-contrastive` (`:49-50`),
 > and `apo-feedback-refinement` (`:74`) overwrite the prompt file inside the same state that
 > scores it — *before* the convergence check. A run that ends at the step cap without
 > converging still leaves the file modified, mid-optimization. Always start from a clean tree.
@@ -325,7 +325,7 @@ Note the scope difference: `prompt-regression-test` takes a *directory* of promp
 > does not.) The other three use `>=`. Set 90, not 100.
 
 > **`max_steps` counts state executions, not rounds.** The executor increments its counter on
-> every state entry (`fsm/executor.py:486`), including the pure evaluator states that only
+> every state entry (`fsm/executor.py:728`), including the pure evaluator states that only
 > route. Divide by states-per-cycle for your real budget: `apo-textgrad` 20/4 ≈ 5 rounds,
 > `apo-contrastive` 15/3 = 5, `apo-opro` 25/4 ≈ 6. Raise it with `-n`/`--max-steps`.
 > `--max-iterations` does **not** help here — it counts maintain-mode restarts

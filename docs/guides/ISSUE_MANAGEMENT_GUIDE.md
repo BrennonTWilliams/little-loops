@@ -371,7 +371,7 @@ Use this to sense-check your backlog before sprint planning. A backlog with 200 
 - For BUGs: Root Cause identifies file + function anchor + explanation
 - For FEATs: Acceptance Criteria are individually testable
 
-Issues that pass validation have their Status updated to `Ready`. Issues that fail get specific improvement notes — `ready-issue` will auto-correct what it can and flag what requires human attention. Issues that are fundamentally invalid (e.g., the bug doesn't exist) are closed via `status: cancelled` with a "Closed: invalid" resolution note.
+Issues that pass validation have their Status updated to `Ready`. Issues that fail get specific improvement notes — `ready-issue` will auto-correct what it can and flag what requires human attention. Issues that are fundamentally invalid (e.g., the bug doesn't exist) are closed via `status: done` with a "Closed - Invalid" resolution note.
 
 ### Confidence Scoring
 

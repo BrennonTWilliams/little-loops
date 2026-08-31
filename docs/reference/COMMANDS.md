@@ -216,7 +216,7 @@ Find and fix issue filenames lacking valid IDs (BUG-001, etc.).
 ### `/ll:sync-issues`
 Sync local issues with GitHub Issues (push/pull/status).
 
-**Arguments:** `mode` (optional) - `push`, `pull`, or `status`
+**Arguments:** `mode` (required) - `push`, `pull`, or `status`
 
 ### `/ll:manage-issue`
 Autonomously manage issues - plan, implement, verify, complete.
@@ -1099,8 +1099,8 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `distill-traces`^ | Mine loop execution history to extract reusable state templates and transition patterns |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
-| `review-epic` | Audit EPIC health: stalled children, scope drift, missing coverage |
-| `scope-epic` | Decompose a theme into an EPIC with 3–8 pre-wired child issue stubs |
+| `review-epic`^ | Audit EPIC health: stalled children, scope drift, missing coverage |
+| `scope-epic`^ | Decompose a theme into an EPIC with 3–8 pre-wired child issue stubs |
 
 ---
 

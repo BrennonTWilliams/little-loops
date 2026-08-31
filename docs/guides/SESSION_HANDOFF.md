@@ -98,7 +98,8 @@ When you want to preserve your work:
 │ When usage >= 80%:                                              │
 │     "[ll] Context ~82% used. Run /ll:handoff..."                │
 │     ↓                                                           │
-│ Reminder repeats on every tool call until handoff executed      │
+│ Reminder repeats (rate-limited to once per 60s) until handoff   │
+│ executed                                                        │
 │     ↓                                                           │
 │ /ll:handoff writes .ll/ll-continue-prompt.md                    │
 │     ↓                                                           │
@@ -344,7 +345,7 @@ The context monitor estimates the current-turn delta based on tool activity:
 | `.ll/ll-continue-prompt.md` | Generated continuation prompt |
 | `.ll/ll-context-state.json` | Running context usage state |
 | `.ll/ll-context-handoff-needed` | Sentinel written by `Stop → context-handoff-sentinel.sh` when the session ended context-heavy (≥ ~50% estimated) — consumed by `run_with_continuation` and the next session |
-| `.ll/ll-precompact-state.json` | Idempotency guard written by `precompact.sh`; read by `precompact-handoff.sh` to prevent duplicate continuation-prompt writes |
+| `.ll/ll-precompact-state.json` | Idempotency guard written by `pre_compact.py::handle()` (invoked via `precompact.sh`); read by `precompact-handoff.sh` to prevent duplicate continuation-prompt writes |
 
 > **Note**: `.ll/ll-session-state.json` is mentioned in `commands/resume.md` but is not currently produced by any hook or script. `FEAT-1680` (session-end hook sweeping stale cross-issue status refs) landed, but it only sweeps stale cross-issue status prose — it does not write `.ll/ll-session-state.json`. Treat the `commands/resume.md` reference as legacy documentation.
 

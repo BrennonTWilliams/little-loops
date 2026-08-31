@@ -253,7 +253,7 @@ This is the integration point that makes the registry pay for itself: a loop tha
 
 ### Gate Entry Points
 
-Five named loops compose the learning-test gate stack. Pick the one that matches your starting point:
+Six named loops (five direct entry points, plus one shared internal sub-loop) compose the learning-test gate stack. Pick the one that matches your starting point:
 
 | Loop | When to use |
 |------|-------------|
@@ -354,7 +354,7 @@ Auto-prove (ENH-2431) lets the gate resolve the block itself: an unproven target
 
 Whether auto-prove fires is **config-gated** (ENH-2487), resolved in three tiers: an explicit per-run `auto_prove_learning_gate` context flag wins (non-empty, unless it is `0`/`false`/`no`/`off`); otherwise it is driven by config — on when `learning_tests.enabled && learning_tests.auto_prove` (`auto_prove` defaults `true`), so enabling the Learning Test feature makes auto-prove self-healing by default; set `learning_tests.auto_prove: false` to keep the gate check-only. The same config-gated prove also runs at the deeper remediation-path gate (`prove_rem_learning_gate`), so a target that only surfaces after `rn-remediate` runs (and in decomposed children that reach remediation) is proven rather than dead-ended.
 
-When the field **is** populated, `ll-auto` and `ll-parallel` thread it straight through as a `targets_csv` context input on the `proof-first-task` gate, which proves exactly that registered list via `ready-to-implement-gate` — skipping `assumption-firewall`'s LLM-based extraction entirely (ENH-2405). The two extraction paths (registry-declared vs. JIT) can never diverge: the gate always proves what was registered when something was registered, and only re-derives a list from issue text when nothing was.
+When the field **is** populated, `ll-parallel` threads it straight through as a `targets_csv` context input on the `proof-first-task` gate, which proves that registered list via `ready-to-implement-gate` (skipping `assumption-firewall`'s LLM-based extraction). `ll-auto` and `ll-sprint` instead invoke `ready-to-implement-gate` directly with a `targets` context input, bypassing `proof-first-task` altogether (ENH-2834) — a leaner path with no impl-loop delegation to discard. In every path, the two extraction routes (registry-declared vs. JIT) can never diverge: the gate always proves what was registered when something was registered, and only re-derives a list from issue text when nothing was.
 
 `/ll:go-no-go` pre-fetches registry status for all declared targets and injects a **Learning Test Context** block into both adversarial agent prompts and the judge prompt before Phase 3b, so unproven assumptions surface in the judge's RATIONALE without requiring numeric score deltas.
 

@@ -43,6 +43,7 @@ Read the rest of this guide if you want to interpret the output, run steps manua
   - [Fresh proposals from existing data](#fresh-proposals-from-existing-data)
   - [Extract only recent messages](#extract-only-recent-messages)
   - [Filter messages by type (`--skip-cli` / `--commands-only`)](#filter-messages-by-type---skip-cli----commands-only)
+  - [Sequences-driven loop suggestions (`ll-logs sequences`)](#sequences-driven-loop-suggestions-ll-logs-sequences)
 - [See Also](#see-also)
 
 ## What Is Workflow Analysis?
@@ -70,7 +71,7 @@ Claude logs into      messages, detects         clusters entities,         patte
                       tools                                                 estimates                       proposals
         │                 │                          │                          │                               │
         ▼                 ▼                          ▼                          ▼                               ▼
-msgs-*.jsonl      step1-patterns.yaml       step2-workflows.yaml      step3-proposals.yaml            summary-*.md
+user-messages-*.jsonl  step1-patterns.yaml       step2-workflows.yaml      step3-proposals.yaml            summary-*.md
 ```
 
 Each step's output is the next step's input. Partial results are always preserved — if Step 2 fails, Step 1's output remains in `.ll/workflow-analysis/`.
@@ -169,13 +170,10 @@ Here's what a typical pattern entry looks like:
 
 ```yaml
 # Example entry from step1-patterns.yaml
-- pattern: run_tests_after_edit
-  category: code_quality
+- pattern: "run the tests after making this change"
   frequency: 7
-  examples:
-    - "run the tests after making this change"
-    - "check if tests still pass"
-  confidence: 0.85
+  category: code_quality
+  example_messages: ["uuid-1", "uuid-2", "uuid-3"]
 ```
 
 ### Key fields in `step2-workflows.yaml`

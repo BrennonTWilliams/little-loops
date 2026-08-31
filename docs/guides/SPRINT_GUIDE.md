@@ -225,7 +225,7 @@ Before the first wave runs, `ll-sprint` validates the sprint:
 - No dependency cycles
 - Wave structure computed and displayed
 - Completed and cancelled issues are logged individually and surfaced in a pre-validation summary rather than silently skipped
-- Issues with `status: done` or `status: cancelled` in frontmatter are auto-skipped silently; if all issues are already completed, the sprint exits with success immediately
+- Issues with `status: done` or `status: cancelled` in frontmatter are auto-skipped (logged individually, see above); if all issues are already completed, the sprint exits with success immediately
 
 The execution plan is printed before any work begins:
 
@@ -471,7 +471,7 @@ ll-sprint analyze sprint-1 --format json
 
 - **Composition breakdown** — issue count by type (BUG/FEAT/ENH/EPIC) and priority distribution
 - **Sprint run state** — progress from `.sprint-state.json` if the sprint has been started (only present on `ll-sprint run`, not on `ll-sprint show`)
-- **Issue file paths** — full paths included in `ll-sprint show --json` for easy machine consumption (text output uses issue IDs only)
+- **Issue file paths** — full paths included in `ll-sprint show --json` for easy machine consumption; the text output also prints each issue's file path inline in the execution-plan tree
 - **Readiness/confidence scores** — per-issue scores from any completed confidence checks
 - **Human-friendly timestamps** — relative time suffixes (e.g., "3 days ago") on dated fields
 

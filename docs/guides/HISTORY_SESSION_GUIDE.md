@@ -54,7 +54,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 40, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 45, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
 
 | Version | Issue | Adds |
 |---------|-------|------|
@@ -162,8 +162,8 @@ Reads these sources sequentially:
 
 1. **Issues directory** (`.issues/*/`) → `issue_events`, `issue_snapshots`
 2. **Loop state** (`.loops/.running/`, `.loops/.history/`) → `loop_events`
-3. **Session JSONL files** (discovered from your project folder) → `raw_events`
-4. **Git history** (when the project has a `.git`) → `commit_events`
+3. **Git history** (when the project has a `.git`) → `commit_events`
+4. **Session JSONL files** (discovered from your project folder) → `raw_events`
 5. **Learning Test Registry** (`.ll/learning-tests/`) → `learning_test_events`
 6. **Subagent transcripts** (under the sessions root) → `subagent_runs`
 
@@ -216,10 +216,12 @@ Processes only session JSONL files modified after the given date. Faster than a 
 You can specify which host's session files to scan if you use multiple Claude Code hosts:
 
 ```bash
-ll-session backfill --host claude-code   # default
+ll-session backfill --host claude-code
 ll-session backfill --host codex
 ll-session backfill --host opencode
 ```
+
+`--host` defaults to `None` (auto-detect from `LL_HOOK_HOST`); valid choices also include `pi`, `kimi-code`, and `qwen`.
 
 ---
 
@@ -233,7 +235,7 @@ ll-session search --fts "rate limit" --kind correction
 ll-session search --fts "worktree" --kind tool --limit 5
 ```
 
-Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event`, `harness`, `prompt_opt`, `verdict`, `context_pressure`, `review` — 23 kinds in total, sourced from `VALID_KINDS` in `session_store/schema.py`. Note the kind for `harness_events` is `harness`, not `harness_event`.
+Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event`, `harness`, `prompt_opt`, `verdict`, `context_pressure`, `review`, `advisor_consult` — 24 kinds in total, sourced from `VALID_KINDS` in `session_store/schema.py`. Note the kind for `harness_events` is `harness`, not `harness_event`.
 
 ### Most recent events
 
@@ -271,7 +273,7 @@ ll-session export --since 2026-06-01 -o export.jsonl  # date-filtered, to a file
 ll-session export --include-messages                  # also include message_events (~46K rows)
 ```
 
-Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `loop_run`, `session_lifecycle_event`, `harness_event`, `prompt_opt_event`, `verdict_event`, `context_pressure_event`, `review_event` — 19 in total, sourced from `_EXPORT_TABLE_MAP` in `session_store/queries.py`. When `--tables` is omitted, the default set is every type except `message_event` (pass `--include-messages` to add messages back, or select it explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ended_at` for `orchestration_run` and `loop_run`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
+Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `loop_run`, `session_lifecycle_event`, `harness_event`, `prompt_opt_event`, `verdict_event`, `context_pressure_event`, `review_event`, `advisor_consult_event` — 20 in total, sourced from `_EXPORT_TABLE_MAP` in `session_store/queries.py`. When `--tables` is omitted, the default set is every type except `message_event` (pass `--include-messages` to add messages back, or select it explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ended_at` for `orchestration_run` and `loop_run`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
 
 ---
 
@@ -408,7 +410,7 @@ Shows the top-level condensed summary node when LCM compaction is enabled. `--ex
 
 ```bash
 ll-session recent --kind test_run --limit 5
-# Filtering by branch is not supported on `recent`; use `ll-session backfill --branch main --since ...` for branch-scoped queries.
+# Filtering by branch is not supported on `recent` or `backfill`; query `test_run_events.branch` directly, e.g. via `ll-session export --tables test_run_event` and filter client-side.
 ```
 
 Each row is a pytest invocation captured live during a session or by `ll-session backfill` from a recorded run: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Use this to spot a branch where tests started failing, or to find the commit that flipped a passing run red. (ENH-2459.)
@@ -425,7 +427,7 @@ Each row is a `ready-issue`/`confidence-check`/`go-no-go`/etc. invocation with i
 
 ```bash
 ll-session skill-stats
-ll-session skill-stats --skill /ll:manage-issue --window-days 30
+ll-session skill-stats --since 2026-08-01
 ```
 
 Per-skill invocation count, completion count, and success rate, derived from the `exit_code` / `success` / `duration_ms` columns on `skill_events` (added in v15, ENH-2460). Use this to surface skills that users are pushing back on most, or to measure whether a recent change improved a skill's reliability.

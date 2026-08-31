@@ -3,7 +3,7 @@
 This document catalogs every event type emitted by little-loops subsystems. It is the primary reference for extension authors, external consumers (e.g. loop-viz), and internal development.
 
 > **Related Documentation:**
-> - [API Reference — EventBus and LLExtension](API.md#littleloopsevents) — bus registration, transports, filter patterns
+> - [API Reference — EventBus and LLExtension](API.md#little_loopsevents) — bus registration, transports, filter patterns
 > - [Architecture Overview](../ARCHITECTURE.md) — Event persistence patterns and FSM executor design
 
 ---
@@ -1172,7 +1172,7 @@ Emitted when a deferred issue is undeferred and returned to active status (via `
 
 ## Subsystem: Parallel Orchestrator
 
-**Source:** `little_loops.parallel.orchestrator.Orchestrator`  
+**Source:** `little_loops.parallel.orchestrator.ParallelOrchestrator`  
 **Path:** `scripts/little_loops/parallel/orchestrator.py`  
 **Filter pattern:** `"parallel.*"`
 
@@ -1440,7 +1440,7 @@ counters — reconstruct the blocked set from `parallel.worker_blocked`/
 This section documents, for every event-emitter surface, what JSON callers can expect when the underlying emit path fails. **All event delivery in little-loops is best-effort by design:** the bus never propagates exceptions to the caller, and each transport has its own failure surface. Consumers should treat absent or partial output as success-with-soft-fail and never rely on emission of any specific event as a hard control-flow signal.
 
 > **Related Documentation:**
-> - [API Reference — EventBus and LLExtension](API.md#littleloopsevents) — bus registration, transports, filter patterns
+> - [API Reference — EventBus and LLExtension](API.md#little_loopsevents) — bus registration, transports, filter patterns
 > - [Architecture Overview — Event persistence](../ARCHITECTURE.md) — how events flow from emit sites to transports and persistence
 
 ### EventBus.emit() dispatch contract

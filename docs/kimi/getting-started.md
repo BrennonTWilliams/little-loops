@@ -109,7 +109,7 @@ or set `orchestration.host_cli: "kimi-code"` in `ll-config.json`. Auto-detection
 4. To exercise the hook adapter end-to-end from the shell (outside a session):
 
    ```bash
-   LL_HOOK_HOST=kimi-code echo '{"session_id":"test","cwd":"'$(pwd)'","hook_event_name":"SessionStart","source":"startup"}' \
+   echo '{"session_id":"test","cwd":"'$(pwd)'","hook_event_name":"SessionStart","source":"startup"}' \
      | bash scripts/little_loops/hooks/adapters/kimi/session-start.sh
    ```
 

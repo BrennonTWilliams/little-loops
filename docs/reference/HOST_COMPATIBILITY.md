@@ -240,9 +240,9 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | Capability       | Claude Code | OpenCode | Codex CLI                          | Gemini CLI                         | omp                                | Kimi Code | Qwen Code |
 | ---------------- | ----------- | -------- | ---------------------------------- | ---------------------------------- | ---------------------------------- | --------- | --------- |
 | Streaming        | ✓           | ✓        | ✓                                  | ✓ (`--output-format stream-json`)[^gemini]      | ✓ (`--mode json`, JSONL)[^omp]     | ✓ (`--output-format stream-json`)[^kimi] | ✓ (`--output-format stream-json`, JSONL)[^qwen] |
-| Permission skip  | ✓           | ✗        | ✗[^runnercap]                      | ✓ (`--approval-mode=yolo`)[^gemini] | ✓ (implicit — print mode never prompts)[^omp] | ✓ (implicit — `-p` runs under the auto permission policy; `--yolo`/`--auto`/`--plan` are rejected with `-p`)[^kimi] | ✓ (`--yolo` / `--approval-mode yolo`; hidden flags, live-verified with `-p`)[^qwen] |
+| Permission skip  | ✓           | ✗        | ✓ (`--dangerously-bypass-approvals-and-sandbox`)[^runnercap] | ✓ (`--approval-mode=yolo`)[^gemini] | ✓ (implicit — print mode never prompts)[^omp] | ✓ (implicit — `-p` runs under the auto permission policy; `--yolo`/`--auto`/`--plan` are rejected with `-p`)[^kimi] | ✓ (`--yolo` / `--approval-mode yolo`; hidden flags, live-verified with `-p`)[^qwen] |
 | Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] | ✗ — subagents spawn in-session; no `--agent` flag[^omp] | partial (native `--agent`; rejected with `--continue` — dropped with warning on resume)[^kimi] | ✗ — no `--agent` flag (documented upstream as planned future work); parameter dropped with `CapabilityNotSupported` warning[^qwen] |
-| Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   | ✗ — no `--tools` flag; tool policy via agent files / global `[tools]` config[^kimi] | ✗ — `--exclude-tools` is a denylist, not allowlist semantics[^qwen] |
+| Tool allowlist   | ✓           | ✗        | partial (sandbox-mode constrained execution: `off`/`read-only`/`workspace-write`/`danger-full-access`; no `--tools` allowlist flag)[^runnercap] | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   | ✗ — no `--tools` flag; tool policy via agent files / global `[tools]` config[^kimi] | ✗ — `--exclude-tools` is a denylist, not allowlist semantics[^qwen] |
 | `json_schema`    | ✓[^schema]  | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            | ✗[^kimi] | ✓ — inline `--json-schema` flag; Ajv-validated synthetic `structured_output` tool (live-verified)[^qwen] |
 | `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct][^omp]                   | ✗[^struct] — no single-blob JSON mode; blocking consumers take the final assistant stream event[^kimi] | ✓ — **second host ever**; evaluators append `--json-schema` + `--chat-recording false` and parse the validated JSON string from the final envelope's `result` field[^qwen] |
 | Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         | ✗[^omp]                            | ✗ — no usage events in stream-json (0.30.0)[^kimi] | ✓ — `usage` (incl. `total_tokens`) on assistant messages and the final `result` envelope[^qwen] |
@@ -293,12 +293,11 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 [^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is tracked by **FEAT-2123**. Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output. Qwen and Claude both carry `usage` in-stream.
 
 [^runnercap]: `permission skip` and `tool allowlist` are reported `✗` by `ll-doctor`
-    for both OpenCode and Codex. Whether these have native Codex equivalents
-    (e.g., `sandbox_mode`/approval policy for permission skip; per-agent
-    `mcp_servers`/`skills.config` scoping for tool allowlist) is unresearched —
-    the cells were never backed by a tracking issue. **ENH-2124** produces that
-    research note and either wires the capability or marks it a documented
-    permanent gap.
+    for OpenCode. For Codex, **ENH-2124** researched the native equivalents and
+    `CodexRunner.describe_capabilities()` now reports `permission_skip` as
+    `full` (`--dangerously-bypass-approvals-and-sandbox`) and `tool_allowlist`
+    as `partial` (sandbox-mode constrained execution via `sandbox_mode=` on
+    the build methods; no `--tools` allowlist flag).
 
 [^schema]: `CodexRunner.build_blocking_json` serializes the schema dict to a temp file and passes `--output-schema <path>` to Codex (ENH-1530). The temp file path is returned in `HostInvocation.cleanup_paths`; callers must call `p.unlink(missing_ok=True)` for each path after the subprocess completes. `ClaudeCodeRunner` honors an inline `--json-schema` flag (BUG-2759 corrected this row to agree with `structured_output` below) — but its `build_blocking_json()` has no schema flag of its own and still silently drops a `json_schema` parameter passed there.
 
@@ -403,7 +402,7 @@ agents exit preview and gain native subagent spawning later, the capability
 map's `subagents` flips to `native` and `agent_output_format` switches to
 describe the native format — no other code changes required.
 
-> **Last Verified: 2026-07-29** — this table was re-checked against the
+> **Last Verified: 2026-08-31** — this table was re-checked against the
 > emitters' actual source (not just re-dated); distinct from *Last Updated*
 > above, which only means the file text changed. Update both dates when the
 > table changes; update only *Last Verified* after a re-check that finds no
@@ -573,7 +572,7 @@ the adapter.
 | Env var          | Description |
 | ---------------- | ----------- |
 | `LL_HOST_CLI`         | Override host runner selection (`claude-code`, `codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`, `qwen`). Takes precedence over binary probe and `orchestration.host_cli` config. |
-| `LL_HOOK_HOST`        | Identify the host to hook adapters (`claude-code`, `opencode`, `codex`, `kimi-code`, `qwen`). Set by each adapter before invoking the Python hook layer. |
+| `LL_HOOK_HOST`        | Identify the host to hook adapters (`claude-code`, `opencode`, `codex`, `kimi-code`, `qwen`, `omp`). Set by each adapter before invoking the Python hook layer. |
 | `LL_STATE_DIR`        | Scope config probe to a host-specific directory (e.g. `.codex`). Affects config resolution only — other state paths are unaffected (see [^state]). |
 | `LL_HISTORY_DB`       | Override the default `.ll/history.db` session-store path (e.g. for test isolation). Takes precedence over the `history.db_path` config key, which is the persistent per-project alternative for a durable relocation. Also exported by `setup_worktree()` into the orchestrator's own `os.environ` (BUG-3112), so every descendant process spawned with `cwd=<worktree>` — host-CLI sessions, FSM shell actions, hooks, pytest runs — inherits the main repo's DB instead of resolving a throwaway `<worktree>/.ll/history.db` that worktree teardown deletes. |
 | `LL_NON_INTERACTIVE`  | Set to `"1"` by all `build_*` host runner methods to signal that a skill is running in a non-interactive automation context. Skills check this (via `[[ -n "${LL_NON_INTERACTIVE:-}" ]]`) to auto-enable `--auto` mode and skip `AskUserQuestion` prompts. Use `DANGEROUSLY_SKIP_PERMISSIONS` as a fallback during the migration period. |
