@@ -150,7 +150,8 @@ Decided by `/ll:decide-issue` on 2026-08-30.
 
 ### Signatures
 
-- No new artifact or sidecar file. `delegate`'s `on_success`/`on_failure` (`auto-refine-and-implement.yaml:320-321`) split into distinct targets: `on_success: recheck_set` unchanged; `on_failure:` a new failure-handling state, `delegate_failed`.
+- `delegate_failed(terminated_by: str) -> finalize | recheck_set` — new shell state branching on the executor's termination classification read from `${captured.delegate.terminated_by}`: `terminated_by == "terminal"` records `autodev_failed` then routes to `finalize`; every other class routes to `recheck_set` (anchors: `auto-refine-and-implement.yaml:320-321`, `executor.py:1147`).
+- No new artifact or sidecar file. `delegate`'s `on_success`/`on_failure` (`auto-refine-and-implement.yaml:320-321`) split into distinct targets: `on_success: recheck_set` unchanged; `on_failure:` the new `delegate_failed` state above.
 - **`delegate_failed` does not need to re-derive success vs. failure** — reaching `on_failure` *is* the executor's classification (`executor.py:1170-1176` already branched on `failure_terminal`; non-degenerate for this boundary via `autodev.yaml`'s `done`/`failed` terminals, lines 2497-2500). What it reads from `${captured.delegate.*}` is **`terminated_by`**, to separate:
   - `terminated_by == "terminal"` (genuine `failed` terminal): record `autodev_failed` against the dispatched set (sibling artifact to `auto-refine-and-implement-errored.txt`) → `next: finalize`, mirroring `record_error`'s record-then-finalize shape. Finalize's ledger diff stays the authoritative closure verdict (per the loop's own documented design), so the run still emits a summary / partial-with-errors and still reaches `merge_epic_branch` — do **not** land this edge directly on a `failure: true` terminal, which would silently drop finalize/merge for partial runs.
   - any other `terminated_by` (budget exhaustion `timeout`/`max_steps`, interrupted, signal — everything reaching here via the `on_no` → `on_failure` fallback, `executor.py:1184-1196`): route to `recheck_set`, preserving ENH-2686's mid-drain residual fold-back (`autodev-queue.txt` re-dispatch). Alternatively, declare `on_timeout: recheck_set` on `delegate` (the ENH-3019 extra route the executor already supports) and let `delegate_failed` handle only the remainder — implementer's choice, but the budget-class path MUST keep reaching `recheck_set` either way.
@@ -173,7 +174,7 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` — the
   sub-loop-invoking state (lines 299-322) and `recheck_set` state (lines
   324-390); no change to `scripts/little_loops/loops/autodev.yaml` (the
-  rejected Option B would have touched its `finalize_done` state)
+  rejected Option B would have touched autodev's finalize state)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — `FSMExecutor._execute_sub_loop()`

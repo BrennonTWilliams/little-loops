@@ -171,6 +171,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
   the new `"error"` verdict token alongside the existing
   `passed`/`collection_error`/`config_error`/`failed`/`skipped` vocabulary
   it already documents
+- Update `skills/audit-loop-run/SKILL.md` (Step 6a) — add `"error"` to the
+  documented `verify_verdict`/`epic_merge_verdict` enums so the auditor
+  reports it as an infra crash rather than an unknown token
+- Update `docs/guides/LOOPS_REFERENCE.md` — add `"error"` to the documented
+  `verify_verdict` enum (`passed`/`failed`/`collection_error`/`config_error`/
+  `skipped`/`not_run`) AND to the `epic_merge_verdict` enum
+  (`merged`/`pr_opened`/`held_open`/`verify_failed`/`merge_failed`/`skipped`/
+  `not_run`) — the new token joins *both* taxonomies
 
 ## Program Design
 

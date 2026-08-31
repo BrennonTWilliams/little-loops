@@ -44,8 +44,9 @@ FSM executor itself is running under, and not necessarily one with
 ## Expected Behavior
 
 Shell-action heredocs invoke `$${LL_PYTHON:-python3}`, where `LL_PYTHON` is
-set by the executor to `sys.executable` — the exact interpreter running the
-loop — so a heredoc that needs `little_loops` always resolves to an
+set to `sys.executable` — the exact interpreter running the loop — at the
+shell-action spawn sites (`fsm/runners.py` / `runner_spec.py`, see Program
+Design), so a heredoc that needs `little_loops` always resolves to an
 interpreter that has it installed, regardless of what a bare `python3` on
 `PATH` would resolve to.
 
@@ -77,9 +78,13 @@ empty verdict).
 
 ## Proposed Solution
 
-Have the FSM executor (`scripts/little_loops/fsm/executor.py`) export
-`sys.executable` as an environment variable (e.g. `LL_PYTHON`) into every
-shell action's environment, and update loop YAML heredocs to invoke
+Export `sys.executable` as `LL_PYTHON` into every shell action's environment
+at the two decided spawn sites — `DefaultActionRunner.run()`'s shell branch
+(`scripts/little_loops/fsm/runners.py:305`) and
+`runner_spec.py::_run_cmd()` (lines 242-248) — via the existing
+`project_child_env(extra={"LL_PYTHON": sys.executable})` idiom (see Program
+Design; `fsm/executor.py` itself is NOT modified), and update loop YAML
+heredocs to invoke
 `$${LL_PYTHON:-python3}` instead of bare `python3`. This guarantees any
 Python heredoc a loop runs uses the exact interpreter running the loop
 itself — the one guaranteed to have `little_loops` importable — regardless
