@@ -22,7 +22,7 @@ exits with the handler's exit code. Today it routes:
 
 - ``post_tool_use`` → :mod:`little_loops.hooks.post_tool_use`
 
-- ``pre_tool_use`` → :mod:`little_loops.hooks.pre_tool_use` (active for Claude Code via hooks.json Write|Edit matcher; opt-in for Codex/OpenCode)
+- ``pre_tool_use`` → :mod:`little_loops.hooks.pre_tool_use` (active for Claude Code and Codex via hooks.json Write|Edit matcher; opt-in for OpenCode)
 
 - ``edit_batch_nudge`` → :mod:`little_loops.hooks.edit_batch_nudge` (PostToolUse Edit|Write|MultiEdit matcher; injects an edit-batching reminder)
 

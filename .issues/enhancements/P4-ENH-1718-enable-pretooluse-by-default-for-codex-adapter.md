@@ -3,9 +3,10 @@ id: ENH-1718
 title: Enable `PreToolUse` by default for Codex adapter
 type: ENH
 priority: P4
-status: open
+status: done
 testable: true
 captured_at: '2026-05-26T02:23:05Z'
+completed_at: '2026-08-31T20:15:18Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
@@ -13,13 +14,14 @@ labels:
 - codex
 - hooks
 - host-compat
-verify_verdict: VALID
+verify_verdict: EVIDENCE_UNVERIFIED
 confidence_score: 95
 outcome_confidence: 90
 score_complexity: 22
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+size: Very Large
 ---
 
 # ENH-1718: Enable `PreToolUse` by default for Codex adapter
@@ -96,6 +98,10 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 - Two coexisting conventions exist in the same table for how an "active" `pre_tool_use` cell is formatted: Claude Code uses `✓ (active)[^hot]` (routes to the shared `[^hot]` footnote), while Kimi/Qwen use `✓ (active, blockable)[^kimi|qwen]` (routes to their own per-host footnote, no `[^hot]` reference). **Decided: use `✓ (active)[^hot]`** — Codex has no per-host footnote to route to, and the flipped cell still needs the `[^hot]` latency note. The ACs above now prescribe this form rather than the bare `✓` the original AC text implied.
 - Claude Code scopes this same shim with `"matcher": "Write|Edit"` in `hooks/hooks.json`, while Codex's `hooks.json` already demonstrates matcher support on this host via the `edit-batch-nudge.sh` `PostToolUse` entry (`"matcher": "Edit|Write|MultiEdit"`). Together these settle the matcher question the original Implementation Steps got wrong — see Expected Behavior.
 
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- Existing structural precedent for the matcher AC: `scripts/tests/test_check_decisions_yaml_hook.py:121-138` (`test_hooks_json_registers_check_decisions_yaml_hook`) filters `hooks.json`'s `PreToolUse` array to groups where `group.get("matcher") == "Write|Edit"`, then filters commands within matching groups for the target script, then asserts a non-empty match plus a `timeout == 5` hook. This is the closest existing convention for "assert a hooks.json entry carries a specific matcher" (vs. `test_codex_adapter.py:73-85`'s `test_hooks_json_uses_matcher_startup`, which asserts every group under an event key shares one matcher rather than filtering by command). Neither pattern exercises the host's actual regex-matching runtime — both are pure JSON-structure assertions on the literal `matcher` string.
+
 ## Program Design
 
 ### Codebase Research Findings
@@ -103,6 +109,15 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 Concrete types, signatures, and call path for wiring the existing `pre_tool_use` handler into the Codex adapter.
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- Anchor drift since the 2026-08-16 refine pass: `main_hooks()` is now at `scripts/little_loops/hooks/__init__.py:173` (was cited as `:168`), and the `"pre_tool_use": pre_tool_use.handle` dispatch-table registration is now at `:163` (was cited as `:159`). `_dispatch_table()` itself starts at `:137`. Confirm current line numbers before citing them in a PR description.
+- `_INTENT_EVENT_NAME` maps `"pre_tool_use": "PreToolUse"` at `scripts/little_loops/hooks/__init__.py:78` — this is what names the `hook_events` telemetry row once the intent starts firing for Codex; unmodified by this issue, but relevant context for the Call Path.
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- `scripts/little_loops/init/writers.py:662-714` (`_codex_template_path()`, `install_codex_adapter()`) reads the in-package `scripts/little_loops/hooks/adapters/codex/hooks.json` **verbatim** and applies only a literal `{{LL_PLUGIN_ROOT}}`/`{{LL_GEN_VERSION}}` token substitution before writing it to a consuming project's `.codex/hooks.json` — there is no per-entry codegen or JSON-schema validation in this path. Editing the in-package `hooks.json` this issue targets is therefore sufficient on its own to propagate the new `PreToolUse` group to `ll-init --codex` / `--force` reinstalls; `writers.py` itself needs no change.
 
 ### Types
 - `host: str` — `LLHookEvent.host` (`scripts/little_loops/hooks/types.py`), resolved in `main_hooks()` from `os.environ.get("LL_HOOK_HOST", "claude-code")`; the new shim's `export LL_HOOK_HOST=codex` is what makes `event.host == "codex"` for this intent
@@ -119,6 +134,29 @@ Codex `PreToolUse` host event -> `hooks.json` `PreToolUse` group command (new) -
 
 ### Decision Rules
 N/A — no new decision logic. This issue wires an existing, unmodified handler into a new host's config; it does not introduce a new gate, threshold, or keyword list.
+
+## Integration Map
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/codex/usage.md` — rewrite the `## Opt-in: pre_tool_use` section (lines 56-77); it currently states "not wired by default" and gives a manual opt-in recipe that will be stale once this ships [Agent 2 finding]
+- `docs/codex/getting-started.md` — Next Steps bullet (line 137) reads "opt-in `pre_tool_use`"; drop "opt-in" [Agent 1 finding]
+- `docs/codex/README.md` — event table row (line 19, `pre_tool_use` marked `opt-in` with a link to the now-stale `usage.md` anchor) and the "See also" bullet (line 50, "opt-in pre_tool_use") [Agent 1 finding]
+- `docs/index.md` — top-level docs TOC entry (line 23) repeats "opt-in pre_tool_use" [Agent 1 finding]
+- `docs/reference/CONFIGURATION.md` — `discoverability.mode` row (line 1032): "the `PreToolUse` gate (active for Claude Code; opt-in for Codex/OpenCode)" — drop only the Codex half; OpenCode stays opt-in [Agent 2 finding]
+- `scripts/little_loops/hooks/pre_tool_use.py` — module docstring (lines 11-15): "Codex and OpenCode users opt in separately" — drop the Codex clause [Agent 2 finding]
+- `scripts/little_loops/hooks/__init__.py` — module docstring (line 25): "active for Claude Code via hooks.json Write|Edit matcher; opt-in for Codex/OpenCode" — drop the Codex clause [Agent 2 finding]
+- `hooks/adapters/kimi/README.md` — line 68's comparative claim "Codex wires four" (intents) becomes five once `PreToolUse` ships; the "best non-Claude parity" framing (vs. Kimi's eight) should be re-checked [Agent 2 finding, advisory]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_codex_adapter.py` — the new `PreToolUse` test payload must use `"hook_event_name":"PreToolUse"` and a `tool_input` key (not `tool_response`, which is `PostToolUse`-shaped); mirror `test_qwen_adapter.py:276-288`'s `test_pre_tool_use_sets_ll_hook_host_qwen` payload shape (`tool_name`, `tool_input`, `tool_use_id`, `tool_call_id`) rather than inventing a new one [Agent 3 finding]
+- `scripts/tests/test_codex_adapter.py` — the module docstring (lines 1-14) and constant block (lines 35-39) enumerate every adapter script by name; add `pre-tool-use.sh` / `PRE_TOOL_USE` to both, not just the new test bodies [Agent 3 finding]
+- `scripts/tests/test_hook_intents.py:362-380` (`test_dispatch_pre_tool_use_happy_path`) — docstring says "not invoked by any default host wiring"; already stale today (Claude Code + Qwen wire it) and becomes more so once Codex joins — update for accuracy, no assertion changes needed [Agent 3 finding, advisory]
 
 ## Scope Boundaries
 
@@ -163,6 +201,26 @@ as precedent only. The Claude Code `PreToolUse` scripts
 5. Edit the `[^hot]` footnote's `pre_tool_use` sub-bullet (`docs/reference/HOST_COMPATIBILITY.md:91-95`): drop the Codex clause from "It remains opt-in for OpenCode (`tool.execute.before`) and Codex (`PreToolUse`)", preserving the OpenCode clause — OpenCode's `pre_tool_use` is out of scope here. Note Codex's `Edit|Write` matcher alongside Claude Code's.
 6. Update `hooks/adapters/codex/README.md` — event table row (line 35) and the `### Opt-in: PreToolUse` section (lines 99-109), which documents the manual `hooks.json` snippet users currently paste and must now describe default enablement instead
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/codex/usage.md` — rewrite the `## Opt-in: pre_tool_use` section to describe default wiring instead of a manual opt-in recipe
+- Update `docs/codex/getting-started.md:137` — drop "opt-in" from the `pre_tool_use` Next Steps bullet
+- Update `docs/codex/README.md:19,50` — flip the event-table row and "See also" bullet off "opt-in"
+- Update `docs/index.md:23` — drop "opt-in" from the Codex Usage TOC entry
+- Update `docs/reference/CONFIGURATION.md:1032` — drop the Codex clause from "opt-in for Codex/OpenCode" (preserve the OpenCode clause)
+- Update `scripts/little_loops/hooks/pre_tool_use.py` module docstring — drop the Codex clause from "Codex and OpenCode users opt in separately"
+- Update `scripts/little_loops/hooks/__init__.py:25` module docstring — drop the Codex clause from "opt-in for Codex/OpenCode"
+- Update `scripts/tests/test_codex_adapter.py` module docstring and script-list prose alongside the new `PRE_TOOL_USE` constant and test pair, using the `tool_input`-keyed payload shape from `test_qwen_adapter.py`'s `PreToolUse` test
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- `hooks/adapters/codex/README.md`'s Event → Intent Mapping table (lines 29-38) has a convention Implementation Step 6 doesn't fully pin down: every already-"Implemented" row uses a bare intent name in column 2 (no `(opt-in)` suffix) and an `Implemented` (optionally parenthetical, e.g. `Implemented (fire-and-forget via ≤5s timeout)` for `post_tool_use`, line 36) Status cell. The current `PreToolUse` row (line 35) reads `pre_tool_use (opt-in)` / `Opt-in — handler registered; not wired in hooks.json by default (FEAT-1489)` — both cells need to change to match the Implemented convention, not just the Status cell's wording.
+- The `### Opt-in: \`PreToolUse\`` heading (line 99) itself describes a state that will no longer be true; whether to rename it (vs. leave the heading and just rewrite the body) is a wording call for whoever edits the section, not settled by existing convention — no other adapter README section was found that documents a similarly-shaped "how default wiring works" note under a heading naming it opt-in.
+
 ## Notes
 
 - Trust-hash churn: adding `PreToolUse` to `scripts/little_loops/hooks/adapters/codex/hooks.json` changes the file hash; existing Codex users will be prompted to re-trust on next startup. Document in PR.
@@ -176,6 +234,11 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 - Confirmed via BUG-2921's own fix record: the `cd`-to-payload-`cwd` step was "deliberately not ported" to Claude Code or Codex shims, with the explicit stated reason "Claude Code and Codex already spawn in the project directory" — direct corroboration of this issue's Implementation Step 1 decision to omit the step here.
 - Codex's own `hooks/adapters/codex/README.md` "Opt-in: PreToolUse" section (lines 99-125) — the manual recipe a Codex user currently pastes by hand — carries **no `matcher` key at all** in its JSON snippet (it fires unconditionally, unlike either Claude Code's `Write|Edit` or Qwen's `write_file|edit` runtime-id matcher). This confirms Implementation Step 6's README update is not just prose — the existing hand-documented recipe would spawn the shim on every tool call if adopted as-is today, which is exactly the AC-mandated `Edit|Write` matcher's purpose to prevent.
 - Matcher-value convention differs across hosts (confirmed, not just a naming variance): Claude Code matches its own tool *display names* (`Write|Edit`); Qwen matches *runtime tool ids* (`write_file|edit`); Codex's own existing `PostToolUse` precedent (`edit-batch-nudge.sh`) uses `Edit|Write|MultiEdit`. This issue's `Edit|Write` choice for Codex `PreToolUse` follows the Claude Code display-name convention, consistent with Codex's own tool-name vocabulary (confirmed: Codex's `edit-batch-nudge.sh` matcher already uses the same `Edit`/`Write` tokens, not runtime ids).
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- No shim-generator or `hooks.json` schema-validation utility exists anywhere in this codebase (searched for codegen/schema-validation helpers and a doctor-level cross-adapter check; none found) — every adapter shim is hand-authored and hand-copied from a sibling, consistent with this issue's own Implementation Step 1 approach. There is nothing to reuse instead of hand-writing `pre-tool-use.sh`.
+- No prior issue in this codebase adds its own CHANGELOG entry for a `hooks.json`-level default-behavior flip: FEAT-1489 (the direct precedent for this issue's shape) records only a trust-hash PR-description note, and two unrelated config-default-flip issues (ENH-3207, ENH-2720) both explicitly defer the CHANGELOG line to release prep. Consistent with this issue's own Implementation Steps, which name no CHANGELOG step.
 
 ## Related Key Documentation
 
@@ -219,6 +282,11 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 - **2026-06-26** (/ll:verify-issues): Confirmed all substantive moved-file path references (hooks.json, post-tool-use.sh, pre-tool-use.sh) already point at the post-FEAT-2274 in-package location `scripts/little_loops/hooks/adapters/codex/`; the remaining bare `hooks/adapters/codex/README.md` refs are correct since that README legitimately stays at the repo root. PreToolUse-not-default gap remains real and unimplemented — no substantive change needed.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-31T20:15:08 - `86551163-ff67-4e76-9482-c0a5658d66b6.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-08-31T20:01:11 - `61f9ba7f-e95f-4a39-9501-35f2ed14bf35.jsonl`
+- `/ll:verify-issues` - 2026-08-31T19:56:05 - `5ca6f40e-9638-47f6-ba97-66b9382b5fb2.jsonl`
+- `/ll:wire-issue` - 2026-08-31T19:52:44 - `30687766-b67c-48db-8c67-559c7049822d.jsonl`
+- `/ll:refine-issue` - 2026-08-31T19:44:37 - `251ad604-0cfa-468d-94a0-92287ba29f95.jsonl`
 - `/ll:refine-issue` - 2026-08-31T18:16:20 - `79825ede-998a-42fa-9870-aab9ce64b599.jsonl`
 - `/ll:confidence-check` - 2026-08-16T20:59:10 - `7e0c4df2-cf1e-458e-8242-dd501680bfd2.jsonl`
 - `/ll:refine-issue` - 2026-08-16T20:53:33 - `08baf035-dd8f-42d7-8612-8a15da0895a0.jsonl`

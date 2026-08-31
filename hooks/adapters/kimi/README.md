@@ -65,7 +65,7 @@ This mapping conforms to the `LLHookEvent` contract introduced by
 [FEAT-1116](../../../.issues/features/P3-FEAT-1116-hook-intent-abstraction-layer.md)
 and reuses the same Python dispatcher as the Claude Code, Codex, and
 OpenCode adapters. Eight wired intents — the best non-Claude parity yet
-(Codex wires four).
+(Codex wires five).
 
 ## SessionStart `matcher: "startup"`
 

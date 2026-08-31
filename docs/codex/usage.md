@@ -53,28 +53,34 @@ Skills are installed to `~/.codex/skills/<name>/SKILL.md`. Re-run `ll-adapt --ho
 
 ---
 
-## Opt-in: pre_tool_use
+## pre_tool_use (ENH-1718)
 
-The `PreToolUse` hook fires before every tool invocation, adding ~10ms per call. It is **not** wired by default to avoid latency and trust-hash churn for existing users.
-
-To opt in, add a `PreToolUse` entry to `.codex/hooks.json`:
+The `PreToolUse` hook is wired by default, scoped to the `Edit|Write` matcher
+in `.codex/hooks.json` — it does not fire for `Read`/`Grep`/`Bash` or other
+tool calls:
 
 ```json
 "PreToolUse": [
   {
+    "matcher": "Edit|Write",
     "hooks": [
       {
         "type": "command",
         "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/pre-tool-use.sh",
         "timeout": 5,
-        "statusMessage": "Checking tool call..."
+        "statusMessage": "Checking learning-test coverage..."
       }
     ]
   }
 ]
 ```
 
-After saving, start a new Codex session. Codex will prompt you to re-trust the modified `hooks.json`.
+It dispatches `Write`/`Edit` calls to the FEAT-1742 learning-test
+discoverability gate (a no-op unless `learning_tests.enabled` is set) and
+adds ~10ms per matched call — well under the 200ms hot-path threshold. If
+you need to disable it, remove the `PreToolUse` entry from
+`.codex/hooks.json`; Codex will prompt you to re-trust the modified file
+either way.
 
 ---
 

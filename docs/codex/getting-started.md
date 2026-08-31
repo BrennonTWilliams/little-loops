@@ -134,6 +134,6 @@ For more issues see [Troubleshooting](../development/TROUBLESHOOTING.md) and the
 
 ## Next steps
 
-- [Usage](usage.md) — running `ll-auto`/`ll-parallel` under Codex, invoking skills, opt-in `pre_tool_use`, limitations
+- [Usage](usage.md) — running `ll-auto`/`ll-parallel` under Codex, invoking skills, `pre_tool_use`, limitations
 - [Host Compatibility Matrix](../reference/HOST_COMPATIBILITY.md) — full per-host feature matrix
 - [Getting Started Guide](../guides/GETTING_STARTED.md) — general little-loops orientation (host-agnostic)

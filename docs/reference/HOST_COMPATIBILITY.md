@@ -70,7 +70,7 @@ into `LLHookEvent` payloads.
 | `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async | ✓[^kimi]                                         | ✓ (`manual\|auto` matcher)[^qwen] | (deferred)[^omp] — `session_before_compact`; blocking + custom-result override |
 | `pre_compact_handoff` | ✓           | (deferred)    | (deferred)    | (deferred)[^gemini] | (deferred)[^kimi] | ✓[^qwen] | (deferred)[^omp] — second handler on `session_before_compact` (same event as `pre_compact`, no distinct native event on any host) |
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` | ✓ (blockable; block-array prompt handled)[^kimi] | ✓ (blockable; string `prompt`)[^qwen] | (deferred)[^omp] — `before_agent_start`; injection-only, cannot block/reject |
-| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` | ✓ (active, blockable)[^kimi]                     | ✓ (active, blockable; `write_file\|edit` runtime-id matcher)[^qwen] | (deferred)[^omp] — `tool_call`; blocking + input revision, no observed timeout |
+| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | ✓ (active)[^hot] | (deferred)[^gemini] — `BeforeTool` | ✓ (active, blockable)[^kimi]                     | ✓ (active, blockable; `write_file\|edit` runtime-id matcher)[^qwen] | (deferred)[^omp] — `tool_call`; blocking + input revision, no observed timeout |
 | `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2974)[^kimi] | ✓ (fire-and-forget)[^qwen] | ✓ (fire-and-forget)[^omp] — `tool_result`; result-rewrite only |
 | `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort | ✓ — native `SessionEnd`; no SessionStart workaround needed[^kimi] | ✓ — native `SessionEnd` (interactive only; does **not** fire under `-p`[^qwenheadless]); headless cleanup rides the `Stop` legacy scripts[^qwen] | (deferred)[^omp] — `session_shutdown`; fires on both graceful-exit and signal paths, hard-timeout behavior unverified |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent | (deferred)[^kimi] — kimi fires `PostCompact`; unwired | N/A — no `PostCompact` event in Qwen's 17-event surface[^qwen] | N/A — no post-compact event in omp's `HookAPI`[^omp] |
@@ -92,8 +92,11 @@ into `LLHookEvent` payloads.
     - `pre_tool_use` is **active for Claude Code**: wired via
       `hooks/adapters/claude-code/pre-tool-use.sh` for the `"Write|Edit"`
       matcher in `hooks/hooks.json` (FEAT-1742 learning-test discoverability
-      gate). It remains opt-in for OpenCode (`tool.execute.before`) and
-      Codex (`PreToolUse`) — see the adapter READMEs.
+      gate). It is now also **active for Codex** (ENH-1718): wired via
+      `scripts/little_loops/hooks/adapters/codex/pre-tool-use.sh` for the
+      same `"Edit|Write"` matcher shape in the Codex `hooks.json`. It
+      remains opt-in for OpenCode (`tool.execute.before`) — see the
+      adapter READMEs.
     - Measured cold-start p95 (OpenCode adapter, 30 sequential
       invocations on dev hardware): **≈10ms** for both `session_start`
       and `pre_compact`, well below the 200ms target. The
