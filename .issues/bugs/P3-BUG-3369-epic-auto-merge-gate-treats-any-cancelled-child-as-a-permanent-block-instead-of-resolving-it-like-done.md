@@ -8,6 +8,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T21:19:28Z'
+decision_needed: true
 ---
 
 # BUG-3369: Epic auto-merge gate treats any cancelled child as a permanent block instead of resolving it like done
@@ -38,6 +39,16 @@ This is a general defect, not specific to EPIC-1463: any epic with at least one 
 
 Not prescriptive, but the natural fix mirrors how `done`/`cancelled` are already treated as the two terminal states elsewhere (dependency-edge resolution): change the completion condition from `done_count == total` to `(done_count + cancelled_count) == total`, keeping the `blocked_count == 0` requirement as-is so genuinely blocked children still hold the branch open.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+**Option A**: Apply the fix as proposed — change `merge_epic_branch`'s `all_done` condition from `done_count == total` to `(done_count + cancelled_count) == total`, keeping `blocked_count == 0` as-is. This brings the FSM-loop epic-merge gate in line with the `done`/`cancelled`-terminal convention used by dependency-edge resolution (`_TERMINAL_STATUSES`, `issue_progress.py:14`) and the `ll-issues epic-progress`/`list_cmd.py` progress badges.
+
+**Option B**: Do not change the condition alone — or change it together with `ParallelOrchestrator._maybe_complete_epic` (`orchestrator.py:1472-1479`). The sibling non-FSM implementation of this same epic-merge-completion feature (FEAT-2449, `done`) intentionally excludes `cancelled` from its done-count, with an explicit code comment ("a cancelled child must NOT trigger a merge into base") and a passing regression test (`test_orchestrator.py::test_cancelled_child_does_not_trigger_merge`). `merge_epic_branch`'s current shape matches that intentional design, not a stray duplicate bug. Applying Option A to `merge_epic_branch` alone would make the FSM-loop and `ll-parallel` orchestrator paths behave differently for the identical epic-completion scenario — the same epic could auto-merge via one runner and stay held open via the other.
+
+**Recommended**: Undetermined from the code alone — resolving this requires deciding whether FEAT-2449's "cancelled must not trigger merge" design is still intended policy, or should be revisited given how common post-refinement cancellation has turned out to be (per this issue's own Motivation). Whichever way it resolves, `merge_epic_branch` and `_maybe_complete_epic` should end up consistent with each other.
+
 ## Integration Map
 
 ### Files to Modify
@@ -58,6 +69,17 @@ Not prescriptive, but the natural fix mirrors how `done`/`cancelled` are already
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- `_TERMINAL_STATUSES = frozenset({"done", "cancelled"})` (`scripts/little_loops/issue_progress.py:14`) is the canonical definition backing the done/cancelled-terminal convention this issue cites; consumers treating the two as equivalent include `issue_lifecycle.py:1051`, `issue_lifecycle.py:4091`, `cli/sprint/edit.py:76` (`--prune`), `cli/issues/list_cmd.py:247` (epic progress badge), `cli/issues/epic_progress.py:72-76` (`ll-issues epic-progress` CLI display), and FSM defer-guard states asserted by `test_builtin_loops.py:6803,7728`.
+- A second, deliberately divergent implementation exists: `ParallelOrchestrator._maybe_complete_epic()` (`scripts/little_loops/parallel/orchestrator.py:1416-1512`, condition at `:1472-1479`) computes the same `done_count == total and cancelled_count == 0` shape as `merge_epic_branch` — but per that function's own code comment and FEAT-2449's design record (`.issues/features/P3-FEAT-2449-per-epic-integration-branch-completion-flow.md:139-165,496-506`, status `done`), excluding `cancelled` from the epic-branch-merge done-count is intentional: "a cancelled child must NOT trigger a merge into base." Covered by `scripts/tests/test_orchestrator.py:1633-1643` `test_cancelled_child_does_not_trigger_merge`, which asserts no merge call fires for a cancelled-plus-done child mix.
+- `compute_epic_progress()` (`scripts/little_loops/issue_progress.py:120-184`) is the single function both `merge_epic_branch` and `_maybe_complete_epic` call for `EpicProgress.by_status` — a plain `dict[str, int]` keyed by raw status string; it exposes no separate `done_count`/`cancelled_count`/`total` fields, so both callers independently recompute their own numerator from `by_status.get(...)`.
+- `merge_epic_branch`'s own header comment (`auto-refine-and-implement.yaml`, near line 610) documents it as "the FSM-loop-side equivalent of `ParallelOrchestrator._maybe_complete_epic`" — the two are meant to mirror each other's behavior for the same underlying feature, which is the crux of the Proposed Solution decision point below.
+- No `merge_epic_branch`-covering test in `scripts/tests/test_builtin_loops.py` (class beginning ~line 5860) currently exercises a `cancelled` child status — the two existing cases (`test_merges_when_all_children_done`, `test_held_open_when_child_not_done`) use only `done`/`in_progress`. A new test would use the same `_setup_repo`/`_write_issues`/`_run`/`_branches` helpers already defined in that class.
+- No other loop YAML under `scripts/little_loops/loops/*.yaml` reuses this `done_count == total` / `cancelled_count == 0` gate shape — `orchestrator.py` is the only other site with the same pattern (repo-wide grep, unfiltered).
+
 ## Program Design
 
 ### Types
@@ -71,6 +93,12 @@ Not prescriptive, but the natural fix mirrors how `done`/`cancelled` are already
 ### Call Path
 
 `ll-issues epic-progress <EPIC-ID>` -> `merge_epic_branch` state (`scripts/little_loops/loops/auto-refine-and-implement.yaml`) `all_done` condition -> `epic_cfg.verify_before_merge` check
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- `compute_epic_progress()` (`scripts/little_loops/issue_progress.py:120-184`) returns `EpicProgress.by_status: dict[str, int]`; its internal `done_count` (line 158) already sums `_TERMINAL_STATUSES` but that sum is used only for `percent_done`, not exposed as a queryable field — the fix's `done_count`/`cancelled_count` inputs are `prog.by_status.get("done", 0)` / `prog.by_status.get("cancelled", 0)`, matching the shape `merge_epic_branch` already reads today (`auto-refine-and-implement.yaml:707-710`).
 
 ## Implementation Steps
 
@@ -111,5 +139,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-31T21:40:32 - `a39b473b-2472-40a4-90ee-2531e40475f9.jsonl`
 - `/ll:format-issue` - 2026-08-31T21:28:22 - `24eb8111-3a52-4364-98e0-699548ae82fc.jsonl`
 - `/ll:capture-issue` - 2026-08-31T21:19:35 - `8f60449e-8767-4de4-9ff3-4177cfb2cbee.jsonl`

@@ -9,6 +9,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T21:18:18Z'
 relates_to: [BUG-2649, BUG-3082]
+decision_needed: true
 ---
 
 # BUG-3368: Epic verify gate produces environment-only false failures — third recurrence after BUG-2649/BUG-3082
@@ -46,6 +47,16 @@ This is the third recurrence of the same failure class. Each occurrence silently
 
 TBD — root cause is unidentified (see Root Cause below). Once found, the fix should follow the established pattern from BUG-2649 (hermeticity regression test + scrubbing the offending environment difference) and BUG-3082 (scrub the leaking variable in `scripts/tests/conftest.py`'s env-scrub list): diagnose the concrete environment divergence first (see Implementation Steps), then scrub/normalize it at the source and add a regression test.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+**Option A**: Add a dependency-materialization step (e.g. `bun install`) to the verify gate's worktree setup (`setup_worktree()` / `verify_epic_branch_before_merge()`, `scripts/little_loops/worktree_utils.py`) so `node_modules/@types/bun` exists before `tsc --noEmit` runs — matching Expected Behavior's goal that the gate's environment should reproduce a direct clean-checkout run. This only closes the gap for the 2 tsc failures; the other 4 remain unexplained and need separate diagnosis.
+
+**Option B**: Quarantine the two `test_tsc_noemit_passes` tests under the gate via the established `LL_VERIFY_GATE=1` self-detection marker (the same idiom previously used for `test_wiring_skills_and_commands.py`'s BUG-2649 quarantine), on the grounds that an ephemeral `git worktree add` checkout never has locally-installed JS dependencies for *any* fresh clone, not just under this gate — so this may not be an "environment-only false failure" of the BUG-2649/BUG-3082 kind (an env-var leak), but an inherent limitation of type-checking a JS toolchain from a git-tracked-only worktree.
+
+**Recommended**: Undetermined from the code alone — the choice depends on whether the epic-worktree verify gate is meant to fully mirror a real CI/dev checkout (favoring Option A) or only to catch regressions in git-tracked source (favoring Option B, since JS type-checking was never truly hermetic across any fresh checkout). This is a scope decision, not something derivable from research.
+
 ## Integration Map
 
 ### Files to Modify
@@ -66,6 +77,15 @@ TBD — root cause is unidentified (see Root Cause below). Once found, the fix s
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- The verify gate's subprocess/worktree environment is assembled in exactly one place: `verify_epic_branch_before_merge()` (`scripts/little_loops/worktree_utils.py:481-608`), called from both the `verify` state (`auto-refine-and-implement.yaml:449`, unconditional) and the `merge_epic_branch` state's fallback re-check (`auto-refine-and-implement.yaml:610-807`, only when the cached verdict/SHA is stale). A third caller exists outside the FSM path: `ParallelOrchestrator._verify_epic_branch_before_merge` (`scripts/little_loops/parallel/orchestrator.py:1514-1535`).
+- `project_child_env()` (`scripts/little_loops/host_runner.py:1853-1883`) is the chokepoint every subprocess call in this path routes through — default behavior is `os.environ.copy()` merged with caller-supplied `extra`; per its own docstring it provides no way to clear or deny an inherited variable (tracked separately as ENH-3203).
+- Established convention for hermeticity fixes in this codebase (both BUG-2649 and BUG-3082): each pairs (a) a scrub/normalize of the diverging value at its source with (b) a dedicated regression test that deliberately re-creates the contaminated condition and asserts it no longer breaks. BUG-2649's fix lives in production code (`worktree_utils.py`'s own env-build, guarded `PYTHONPATH` prepend at lines 583-589) with tests in `scripts/tests/test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge`. BUG-3082's fix lives in test infrastructure (`scripts/tests/conftest.py:1060-1078`'s `_CMD_RUN_ENV_VARS` allowlist + autouse `_restore_cmd_run_env_vars` fixture) with a regression test in `scripts/tests/test_hook_session_start.py:667-718` that re-spawns the suite as a subprocess under a deliberately-set ambient var. Neither prior fix's scrub list touches `PATH`, `node_modules`, or bun/node toolchain resolution.
+- Established fallback when a gate-sensitive test's non-determinism can't be root-caused: quarantine via the `LL_VERIFY_GATE=1` self-detection marker (set unconditionally in `verify_epic_branch_before_merge()`, `worktree_utils.py:571`) rather than a scrub — e.g. `test_wiring_skills_and_commands.py`'s prior `skipif(os.environ.get("LL_VERIFY_GATE") == "1")` guard (later removed under BUG-2650 once that test's flake was independently proven deterministic).
+
 ## Program Design
 
 ### Types
@@ -83,6 +103,7 @@ TBD — root cause is unidentified (see Root Cause below). Once found, the fix s
 ## Implementation Steps
 
 1. Capture and diff the verify gate's subprocess/worktree environment (`PATH`, node/bun module resolution, `PYTHONPATH`, other env vars) against a direct clean-checkout test run to isolate the contamination vector — the bun-types tsc failures suggest a PATH/node-module-resolution difference distinct from BUG-2649 (PYTHONPATH) and BUG-3082 (LL_AUTOMATION).
+   > ⚠ Superseded for the tsc failures — root cause is a missing `node_modules` install, not PATH; see Root Cause findings. Still open for the other 4 failures.
 2. Root-cause the specific mechanism and fix it at the source (scrub/normalize the diverging env value), following the BUG-2649/BUG-3082 pattern.
 3. Add a hermeticity regression test asserting this contamination vector stays fixed, mirroring the existing BUG-2649/BUG-3082 tests.
 
@@ -115,6 +136,14 @@ Unknown — this is a false-failure report, not yet root-caused.
 - **Anchor**: N/A (root cause not yet identified)
 - **Cause**: All 6 tests pass on clean main in ~5.5s when run directly, outside the verify gate's worktree/subprocess environment. Commit d8e8b9ed1's diff (Codex adapter shell script, hooks.json entry, docs) is completely disjoint from all 6 failing tests' code paths. This is the third instance of the epic-worktree verify gate producing environment-only false failures, after BUG-2649 (PYTHONPATH injection non-hermeticity) and BUG-3082 (ambient LL_AUTOMATION leaking into the subprocess tree). Neither prior fix covers this new set of 6 tests, so a third, distinct contamination vector is implicated — the bun-types tsc failures specifically suggest a PATH or node-module-resolution difference specific to the verify gate's subprocess/worktree environment.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- **Confirmed mechanism for 2 of the 6 failures** (`test_tsc_noemit_passes` in `test_opencode_adapter.py` and `test_omp_adapter.py`): a third, distinct contamination vector from BUG-2649 (PYTHONPATH) and BUG-3082 (LL_AUTOMATION) — a missing-dependency-install gap, not a PATH/env-var divergence. `setup_worktree()` (`scripts/little_loops/worktree_utils.py`) materializes the epic branch tip via `git worktree add`, which only checks out git-tracked content; `node_modules/` is gitignored (`.gitignore:29`) and is never installed by `verify_epic_branch_before_merge()` or any of its callers (repo-wide search for `bun install`/`npm install`/`npm ci` under `scripts/little_loops/` finds no install step anywhere in this code path). Each adapter's own `package.json` pins `@types/bun` as a `devDependency`, and each `tsconfig.json` sets `"types": ["bun"]` — so `tsc --noEmit` fails with "Cannot find type definition file for 'bun'" because `node_modules/@types/bun` was never materialized in the ephemeral worktree, while the `bun` binary itself resolves fine on the inherited `PATH` (confirmed: the tests reported `FAILED`, not the `skipif`-triggered `SKIPPED` that fires when `bun` isn't found on `PATH`).
+- **Unresolved for the other 4 failures**: `test_recheck_set_folds_back_abandoned_residual`, `test_no_new_unverifiable_evidence`, `test_hint_fires_for_root_level_report`, and `test_policy_builder_renders_byte_identically_to_golden_fixture` do not share the missing-node_modules mechanism above. Traced but not conclusively root-caused: all four inherit the gate's full child env (`LL_VERIFY_GATE=1`, a reduced `PYTEST_XDIST_AUTO_NUM_WORKERS`, `LL_FUZZ=full`, a conditional `PYTHONPATH` prepend — built in `verify_epic_branch_before_merge()`, `worktree_utils.py:565-589`) with no per-test override; `test_hint_fires_for_root_level_report` specifically depends on `cwd`-relative `git check-ignore` behavior inside the ephemeral worktree path, which could differ from the main checkout. Ruled out: none of the four use Hypothesis (`@given`/`@settings`), so the gate's `LL_FUZZ=full` override is not implicated for these four specifically.
+- No precedent exists for the issue's proposed `dump_verify_gate_env()` diagnostic helper — searched repo-wide; no existing subprocess-env capture/diff utility distinct from `project_child_env()` (`scripts/little_loops/host_runner.py:1853`, which builds env, not diffs it).
+
 ## Error Messages
 
 The tsc failures were `Cannot find type definition file for 'bun'`.
@@ -124,5 +153,6 @@ The tsc failures were `Cannot find type definition file for 'bun'`.
 ## Frequency
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-31T21:40:31 - `a39b473b-2472-40a4-90ee-2531e40475f9.jsonl`
 - `/ll:format-issue` - 2026-08-31T21:28:22 - `24eb8111-3a52-4364-98e0-699548ae82fc.jsonl`
 - `/ll:capture-issue` - 2026-08-31T21:19:00 - `8f60449e-8767-4de4-9ff3-4177cfb2cbee.jsonl`
