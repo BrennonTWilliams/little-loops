@@ -11,10 +11,10 @@ relates_to:
 - ENH-2005
 decision_needed: false
 confidence_score: 95
-outcome_confidence: 71
+outcome_confidence: 86
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -305,17 +305,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-08-30_
+_Updated by `/ll:confidence-check` on 2026-08-30 — supersedes the 2026-08-30 03:11:18 STOP result_
 
-**Readiness Score**: 95/100 → STOP — ADDRESS GAPS (Program Design hard override)
-**Outcome Confidence**: 71/100 → MODERATE
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 86/100 → HIGH
 
-### Gaps to Address
-- Program Design: no signature-shaped line found in Types, Signatures, Call Path, or the section preamble — `ll-issues check-design` fails the deterministic gate. Remedy: add a concrete signature-shaped line to `## Program Design` (e.g. a state-transition line in the established `state_name -> next_state` / `field: value` shape already used in this issue's own Call Path prose isn't being picked up as signature-shaped by the linter — add an explicit `on_success:`/`on_failure:` key=value line or a `delegate_failed(...)`-style pseudo-signature), or set `program_design_not_applicable: true` in frontmatter if judged genuinely inapplicable to a pure FSM-routing change.
-- `unapplied_decision`: Files to Modify still specifies `finalize_done` (rejected option) — the "Files to Modify" bullet under Integration Map reads "no change to `scripts/little_loops/loops/autodev.yaml` (the rejected Option B would have touched its `finalize_done` state)"; the identifier `finalize_done` appears unmarked outside its own parenthetical disclaimer and trips the unapplied-decision detector. Advisory only — capped Criterion C (Ambiguity) at 10/25; does not by itself force the STOP verdict.
+Both gaps from the prior run are resolved: `ll-issues check-design ENH-3366`
+now exits 0 (Program Design carries a signature-shaped `delegate_failed(...)`
+line), and `format-check`'s `unapplied_decision` is empty (the Integration
+Map's "Files to Modify" bullet no longer names the rejected option's
+`finalize_done` identifier unmarked). Criterion C (Ambiguity) is uncapped
+accordingly: 10/25 → 25/25, raising Outcome Confidence 71 → 86. No open gaps
+remain.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-31T03:34:23 - `754758f7-a27d-41c2-ba70-fc1192723658.jsonl`
 - `/ll:confidence-check` - 2026-08-31T03:11:18 - `29e8f5ee-bb5d-4aac-ae78-4403d15301ef.jsonl`
 - `/ll:wire-issue` - 2026-08-31T02:56:39 - `3198a6b2-0ff9-49c6-a768-b2979f52ed21.jsonl`
 - `/ll:decide-issue` - 2026-08-31T02:46:15 - `2778d8be-8e6e-4975-8f6c-4273dcc76d08.jsonl`
