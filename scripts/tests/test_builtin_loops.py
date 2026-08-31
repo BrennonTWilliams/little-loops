@@ -43,6 +43,13 @@ from little_loops.learning_tests import LearnTestRecord, write_record
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 
 
+def _unescape_ll_python(action: str) -> str:
+    """Undo the FSM's `$${` -> `${` escape consumption (interpolation.py's
+    ESCAPED_PATTERN) for tests that run a raw extracted action via bash -c
+    directly, bypassing the real interpolate() call that normally does this."""
+    return action.replace("$${LL_PYTHON:-python3}", "${LL_PYTHON:-python3}")
+
+
 class TestBuiltinLoopFiles:
     """Tests that all built-in loop YAML files are valid."""
 
@@ -4344,7 +4351,7 @@ class TestAutoRefineAndImplementLoop:
         are already present in dispatched.txt from the initial seed, so the
         comm -23 diff against dispatched.txt alone excludes them forever
         without this explicit union."""
-        action = data["states"]["recheck_set"].get("action", "")
+        action = _unescape_ll_python(data["states"]["recheck_set"].get("action", ""))
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         # dispatched.txt already contains both IDs from the initial seed.
@@ -4379,7 +4386,7 @@ class TestAutoRefineAndImplementLoop:
         """A clean drain (no residual, no new descendants) must still exit 1
         (routes to verify) — ENH-2686 must not turn every recheck into a
         re-dispatch when there is genuinely nothing left to do."""
-        action = data["states"]["recheck_set"].get("action", "")
+        action = _unescape_ll_python(data["states"]["recheck_set"].get("action", ""))
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         (run_dir / "auto-refine-and-implement-dispatched.txt").write_text("ENH-1\nENH-2\n")
@@ -5478,9 +5485,9 @@ class TestCheckoutEpicBranchConfigReadShell:
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = loop["states"]["checkout_epic_branch"]["action"]
-        action = action.replace("${context.scope:shell}", shlex.quote(scope)).replace(
-            "${context.run_dir}", str(run_dir)
-        )
+        action = _unescape_ll_python(action).replace(
+            "${context.scope:shell}", shlex.quote(scope)
+        ).replace("${context.run_dir}", str(run_dir))
         return subprocess.run(
             ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
         )
@@ -5546,7 +5553,7 @@ class TestVerifyStateConfigReadShell:
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = (
-            loop["states"]["verify"]["action"]
+            _unescape_ll_python(loop["states"]["verify"]["action"])
             .replace("${context.run_dir}", str(run_dir))
             .replace("${context.scope:shell}", shlex.quote(""))
         )
@@ -5639,7 +5646,7 @@ class TestVerifyStateConfigReadShell:
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = (
-            loop["states"]["verify"]["action"]
+            _unescape_ll_python(loop["states"]["verify"]["action"])
             .replace("${context.run_dir}", str(run_dir))
             .replace("${context.scope:shell}", shlex.quote("EPIC-42"))
         )
@@ -5771,7 +5778,7 @@ class TestMergeEpicBranchConfigReadShell:
             (run_dir / "verify-sha.txt").write_text(seed_sha + "\n")
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
-        action = loop["states"]["merge_epic_branch"]["action"]
+        action = _unescape_ll_python(loop["states"]["merge_epic_branch"]["action"])
         action = action.replace("${context.scope:shell}", shlex.quote("EPIC-42")).replace(
             "${context.run_dir}", str(run_dir)
         )
@@ -5853,7 +5860,7 @@ class TestMergeEpicBranchConfigReadShell:
         assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "merged"
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
-        action = loop["states"]["merge_epic_branch"]["action"]
+        action = _unescape_ll_python(loop["states"]["merge_epic_branch"]["action"])
         action = action.replace("${context.scope:shell}", shlex.quote("EPIC-42")).replace(
             "${context.run_dir}", str(run_dir)
         )
@@ -14756,7 +14763,7 @@ class TestMigrateSdkVersionListStaleExecution:
         self, project_dir: Path, targets: str = ""
     ) -> subprocess.CompletedProcess[str]:
         data = yaml.safe_load(self.LOOP_FILE.read_text())
-        action = data["states"]["list_stale"]["action"]
+        action = _unescape_ll_python(data["states"]["list_stale"]["action"])
         run_dir = project_dir / "run"
         action = action.replace("${context.run_dir}", str(run_dir))
         action = action.replace("${context.targets:shell}", shlex.quote(targets))
@@ -18299,7 +18306,7 @@ class TestWorkflowGeneratorLoop:
         graph_file = tmp_path / "graph-evaluators.yaml"
         graph_file.write_text(yaml.safe_dump(graph, sort_keys=False))
 
-        action = data["states"]["validate_evaluators"]["action"].replace(
+        action = _unescape_ll_python(data["states"]["validate_evaluators"]["action"]).replace(
             "${context.run_dir}", str(tmp_path)
         )
         result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
@@ -18690,7 +18697,7 @@ class TestWorkflowGeneratorLoop:
         graph_file = tmp_path / "graph-evaluators.yaml"
         graph_file.write_text(yaml.safe_dump(graph, sort_keys=False))
 
-        action = data["states"]["validate_evaluators"]["action"].replace(
+        action = _unescape_ll_python(data["states"]["validate_evaluators"]["action"]).replace(
             "${context.run_dir}", str(tmp_path)
         )
         result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)

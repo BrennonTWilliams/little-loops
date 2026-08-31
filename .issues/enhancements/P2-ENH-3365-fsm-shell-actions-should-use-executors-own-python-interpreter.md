@@ -2,8 +2,9 @@
 id: ENH-3365
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-08-30T23:30:00Z'
+completed_at: '2026-08-31T04:01:46Z'
 discovered_date: 2026-08-30
 discovered_by: audit-loop-run
 relates_to:
@@ -145,7 +146,7 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 - A second, independent bare `bash -c` FSM shell spawn also routes through `project_child_env()` with no `invocation`/`extra`: `_run_cmd(spec: ActionSpec)` in `scripts/little_loops/runner_spec.py:231`, `subprocess.Popen(["bash", "-c", spec.target], ..., env=project_child_env())` at lines 242-248. Resolved during review: this second site IS in scope — see Decision Rules.
 - `project_child_env()`'s actual merge order (confirmed by reading its body, `host_runner.py:1853-1883`): `env = os.environ.copy()` then merge `invocation.env` (if an `invocation` is given) then merge `extra` (if given), each layer overriding the previous on key collision. Since the shell branch currently calls `project_child_env()` with zero arguments, today's shell action gets exactly `os.environ.copy()`.
-- `LL_PYTHON` is not a new name in this codebase — it is already load-bearing in the hook-adapter shim subsystem (`hooks/adapters/*/*.sh`, `scripts/little_loops/hooks/adapters/*/`), which resolves its own interpreter via `PY="${LL_PYTHON:-$(command -v python3 || command -v python || echo python)}"` (asserted in `scripts/tests/test_kimi_adapter.py:80-83`). That is a probe-chain-with-fallback contract, not necessarily `sys.executable` specifically — a different producer for the same variable name that this fix should confirm doesn't conflict.
+- `LL_PYTHON` is not a new name in this codebase — it is already load-bearing in the hook-adapter shim subsystem (`hooks/adapters/*/*.sh`, `scripts/little_loops/hooks/adapters/*/`), which resolves its own interpreter via `PY="${LL_PYTHON:-$(command -v python3 || command -v python || echo python)}"` (`hooks/adapters/claude-code/stop.sh:11`; the exact chain is asserted more loosely — just `"LL_PYTHON" in body` — by `scripts/tests/test_kimi_adapter.py:80-83`). That is a probe-chain-with-fallback contract, not necessarily `sys.executable` specifically — a different producer for the same variable name that this fix should confirm doesn't conflict.
 
 ## Integration Map
 
@@ -238,12 +239,48 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 - The "mechanical follow-up" scope is larger than a single find/replace: 155 bare `python3 <<` heredoc invocations exist across 39 distinct loop YAML files under `scripts/little_loops/loops/` (not limited to `auto-refine-and-implement.yaml`), plus roughly 100 additional non-heredoc bare `python3` invocations (`-c`/`-m` forms) across 16 more files. Resolved during review: this issue migrates only the invocations that import `little_loops`; the full sweep is a follow-up ENH (see Scope Boundaries).
 
+## Resolution
+
+Both task-path `bash -c` spawn sites now pass `extra={"LL_PYTHON": sys.executable}`
+through `project_child_env()`:
+
+- `scripts/little_loops/fsm/runners.py:305` (`DefaultActionRunner.run()` shell branch)
+- `scripts/little_loops/runner_spec.py:248` (`_run_cmd()`)
+
+All 15 `python3 <<` heredocs that `import little_loops` across the 7 files identified
+in scope (`assumption-firewall.yaml`, `auto-refine-and-implement.yaml`,
+`lib/policy-router.yaml`, `migrate-sdk-version.yaml`, `oracles/enumerate-and-prove.yaml`,
+`sft-corpus.yaml`, `workflow-generator.yaml`) now invoke `$${LL_PYTHON:-python3}`.
+
+Added regression tests asserting `env["LL_PYTHON"] == sys.executable` at both spawn
+sites (`test_fsm_runners.py::test_shell_sets_ll_python_env`,
+`test_runner_spec.py::test_cmd_dispatch_sets_ll_python_env`). Fixed six existing
+`test_builtin_loops.py` test helpers that extract a raw action string and run it via
+`bash -c` directly (bypassing the FSM's real `interpolate()` call) — they now undo the
+`$${` → `${` escape themselves via a new `_unescape_ll_python()` helper, matching what
+`interpolation.py`'s `ESCAPED_PATTERN` does at runtime. Also corrected a stale
+quote/file attribution in this issue's own "Codebase Research Findings" (line 148) that
+`ll-verify-evidence` flagged. `docs/reference/API.md`'s `project_child_env` entry
+updated to document the `LL_PYTHON` convention and narrowed non-FSM override scope.
+
+Full suite: `python -m pytest scripts/tests/` — all green except 3 pre-existing
+`test_cli_harness.py::TestReadTargetHistory`/`TestTargetHistoryRegression` failures
+confirmed failing on `main` before this change (unrelated `history_judged_runs` KeyError).
+
+**Note:** mid-implementation, a concurrent process operating on this same working
+directory committed this exact implementation as `553079f6d` (plus an unrelated
+`bed29940a` BUG-3367 docs commit) before this session reached Phase 5. This session's
+remaining work — the six test-helper escape fixes, the evidence-gate attribution fix,
+and this Resolution — lands as a new commit on top rather than re-doing what's already
+on `main`.
+
 ## Status
 
 **Open** | Created: 2026-08-30 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-31T04:01:27 - `0712b8b1-eba4-4dd0-9d5a-30b279c36d04.jsonl`
 - `/ll:ready-issue` - 2026-08-31T03:37:38 - `d3fa0ee5-3d96-476c-a86f-50795f749f97.jsonl`
 - `/ll:confidence-check` - 2026-08-31T03:11:18 - `29e8f5ee-bb5d-4aac-ae78-4403d15301ef.jsonl`
 - `/ll:wire-issue` - 2026-08-31T02:33:50 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
