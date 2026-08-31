@@ -98,6 +98,11 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v38 | ENH-2866 | `orchestration_runs.base_sha` / `base_dirty` (dequeue-time base-state stamp) |
 | v39 | ENH-141 | `harness_events.target_content_hash` / `target_path` / `dirty` (content-pinning a harness run) |
 | v40 | ENH-2997 | `prepatch_evidence` table |
+| v41 | ENH-3185 | `idx_harness_semantic_verdict` index on `harness_events(semantic_verdict)`, backing the abstention-rate query (the `cannot_judge` verdict itself is just a value of the pre-existing `semantic_verdict` column, not a new one) |
+| v42 | BUG-3236 | Idempotent rebuild of the `issue_sessions` view (repairs databases left with a pre-v36 view shape by an uncommitted working-tree migration) |
+| v43 | BUG-3241 | Repairs databases missing `idx_assistant_messages_dedup` and/or `idx_summary_nodes_retention_dedup`; dedups any accumulated duplicate rows first, then re-creates the UNIQUE indexes, and re-asserts every non-UNIQUE index for good measure |
+| v44 | ENH-230 | `abstention_reason` column on `verdict_events` plus a CHECK constraint restricting `verdict` to `pass`/`fail`/`implement`/`cannot_judge` (table rebuilt via rename/copy/drop, since SQLite can't `ALTER TABLE` a CHECK onto an existing column) |
+| v45 | FEAT-3300 | `advisor_consults` table (advisor-consult telemetry) |
 
 v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances. Migrations v37–v39 add columns without backfilling them, so rows written before those versions carry `NULL` in the new columns.
 
@@ -136,6 +141,7 @@ v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observabil
 | `context_pressure_events` | Context-window pressure measurements emitted by `context-monitor.sh`. Live-write-only. Queryable via `ll-session recent --kind context_pressure` (ENH-2507, v34). |
 | `review_events` | Reviewer/audit outcome telemetry. Live-write-only. Queryable via `ll-session recent --kind review` (ENH-2512, v35). |
 | `prepatch_evidence` | Pre-patch evidence captured during implementation runs: `issue_id`, `run_id`, `state`, `evidence_json`, `created_at`; indexed by `issue_id` (ENH-2997, v40). |
+| `advisor_consults` | One row per `consult_for_trigger()` invocation (`advisor.py`): `task_key`, `signal`, `advisor_host`, `advisor_model`, `main_model`, `floor_status`, `outcome` (`"issued"` or a `skipped_reason` value), `latency_ms`, `input_tokens`, `output_tokens`, `confidence`, `verdict_body` (nullable; only populated when `advisor.store_verdict_body` opts in). Live-write-only — no `raw_events` source exists, so the table is excluded from `rebuild()` (FEAT-3300, v45). |
 
 Capture is controlled per-signal via `analytics.capture.*` config (`scripts/little_loops/config-schema.json`):
 - `analytics.capture.file_events` (bool, default `true`) — gate `file_events` recording
@@ -520,7 +526,7 @@ ll-logs eval-export --skill manage-issue --limit 50 --out fixtures/manage-issue.
 ll-logs eval-export --issue FEAT-1933 --out fixtures/feat-1933-turns.yaml
 ```
 
-Extracts turn-pair fixtures from session logs for SFT training corpus construction. Filtered by skill name or issue ID. Requires schema v11+.
+Extracts turn-pair fixtures from session logs for SFT training corpus construction. Filtered by skill name or issue ID. Invocations are reconstructed directly from JSONL session logs, not from `history.db` — the DB is consulted only for enrichment (`history_reader.lookup_session_metadata()`, e.g. correction/issue-outcome signal for fixture classification) and degrades gracefully to `{}` if `history.db` is missing or on an old schema, so there is no minimum schema version requirement.
 
 ---
 

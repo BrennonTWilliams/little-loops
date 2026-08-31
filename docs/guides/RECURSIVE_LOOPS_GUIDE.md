@@ -251,7 +251,7 @@ it and route. For `rn-remediate`:
 |---------------|---------|--------------------------|
 | `IMPLEMENTED` | Issue implemented. FEAT-2552: `rn-remediate`'s inner code-run-gate oracle passed (build / test / typecheck / lint / health all green), or all commands were null/empty (`GATE_SKIP` from the oracle, which `rn-remediate`'s own gate-child routing treats identically to `GATE_PASS` before ever writing the parent-visible sidecar) — so `GATE_SKIP` never appears as a distinct token in this table; it's folded into `IMPLEMENTED` upstream. | `route_rem_implemented` → `re_enqueue_unblocked`, continue |
 | `GATE_FAILED` | FEAT-2552: code-run-gate oracle reported a non-skip failure (build / test / typecheck / lint / health). Written by `rn-remediate.record_gate_failure`. Increments the same `remediation_count_<ID>.txt` counter that `check_remediation_budget` enforces, so a gate failure consumes a budget slot. Tagged `GATE_FAILED_CODE_QUALITY` in `failures.txt` for the report's per-tag tally. | `route_rem_gate_failed` → `record_failure`, dequeue next |
-| `GATE_FAILED_INFRA` | FEAT-2552 / ENH-2005 mirror: code-run-gate child crashed / timed out / context-resolution-failed before writing its token. Written by `rn-remediate.record_gate_error`. Distinct from `GATE_FAILED` so a gate infrastructure failure isn't confused with a code-quality failure, but it is **not** a separate terminal — the `GATE_FAILED` substring match in `route_rem_gate_failed` also catches it, so it routes the same way. | `route_rem_gate_failed` → `record_failure` (tagged `GATE_FAILED_INFRA` in `failures.txt`), dequeue next |
+| `GATE_FAILED_INFRA` | FEAT-2552 / ENH-2005 mirror: code-run-gate child crashed / timed out / context-resolution-failed before writing its token. `rn-remediate.record_gate_error` writes `GATE_FAILED_INFRA` to the sidecar and to `failures.txt`, but then transitions to `emit_implement_failed`, whose action unconditionally overwrites that same sidecar file with `IMPLEMENT_FAILED` before `rn-implement`'s `classify_remediation` ever `cat`s it. The parent therefore never observes the literal string `GATE_FAILED_INFRA` in `captured.rem_outcome.output` — neither `route_rem_gate_infra_failed`'s `GATE_INFRA_FAILED` pattern nor `route_rem_gate_failed`'s `GATE_FAILED` pattern matches `IMPLEMENT_FAILED`, so it falls through both routers' `on_no` branches to `record_failure`. The `failures.txt` tag still reads `GATE_FAILED_INFRA` (written directly by `record_gate_error`, not derived from the routing match), so the report's per-tag tally is unaffected — only the routing *mechanism* differs from a substring hit. | `route_rem_gate_infra_failed` → `route_rem_gate_failed` → `record_failure` (tagged `GATE_FAILED_INFRA` in `failures.txt`), dequeue next |
 | `NEEDS_DECOMPOSE` | Issue too large | Delegate to `rn-decompose` |
 | `STALLED_NEEDS_DECOMPOSE` | Remediation exhausted its budget | Try `rn-decompose`; if no children, defer |
 | `MANUAL_REVIEW_NEEDED` | Needs a human decision | Mark blocked |
@@ -402,18 +402,24 @@ When `rn-implement` finishes it writes a `summary.json` and a human-readable
 completion message; check `failures.txt`, `deferred.txt`, and `blocked.txt` in
 the run directory for issues that need attention.
 
-The `summary.json` carries additive structured fields beyond the original 14
-scalar counters (ENH-2533): `per_issue` is an array of one record per
+The `summary.json` carries three additive structured fields beyond its
+scalar counters (currently 17, `total_processed` … `rate_limited`: the
+original 14 from ENH-2533 plus `gate_failed_code_quality`,
+`gate_failed_infra`, and `gate_infra_failed`, added later by
+FEAT-2552/ENH-3084): `per_issue` is an array of one record per
 `subloop_outcome_<ID>.txt` sidecar (`{id, outcome, reason?}` with optional
-`pre_scores` / `post_scores` / `convergence` embeddings) and `learning_followups`
+`pre_scores` / `post_scores` / `convergence` embeddings), `learning_followups`
 is an array of one record per `learning_unproven_<ID>.txt` sidecar
-(`{id, targets, remedy}` where `remedy` is `/ll:explore-api <targets>`).
-These make per-issue outcomes and learning-gate followups discoverable
-without grepping the sidecars directly; downstream tooling (audit-loop-run's
-Step 6b verdict, follow-up runs) reads them via the archived copy under
-`.loops/.history/<run_id>-rn-implement/summary.json`. Malformed per-issue
-sidecars are surfaced in `summary_warnings.txt` rather than aborting the
-report.
+(`{id, targets, remedy}` where `remedy` is `/ll:explore-api <targets>`), and
+`deferred_automation` (FEAT-2665) is a `{count, by_reason, issues}` object
+built from `deferred_reason_<ID>.txt` sidecars (`issues` is an array of
+`{id, reason}` records; `by_reason` tallies issue counts per reason).
+These make per-issue outcomes, learning-gate followups, and automation
+deferrals discoverable without grepping the sidecars directly; downstream
+tooling (audit-loop-run's Step 6b verdict, follow-up runs) reads them via
+the archived copy under `.loops/.history/<run_id>-rn-implement/summary.json`.
+Malformed per-issue sidecars are surfaced in `summary_warnings.txt` rather
+than aborting the report.
 
 > **Tip**: For the full end-to-end pipeline (spec → design → EPIC → eval harness
 > → batched implementation → eval gate), use `rn-build` — see its section in the

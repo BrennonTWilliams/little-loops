@@ -12,11 +12,11 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--parent EPIC-NNN` | Bind a captured issue as a child of the named EPIC | `capture-issue` |
 | `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
-| `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
+| `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts`, `init`, `update`, `publish`, `decide-issue`, `wire-issue`, `improve-claude-md`, `review-loop`, `simplify-loop`, `cleanup-loops`, `rename-loop` |
 | `--auto` | Non-interactive mode (no prompts). Also activated independently by the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` env var, or by `--dangerously-skip-permissions` | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `spike`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics`, `audit-loop-run`, `debug-loop-run`, `explore-api`, `decide-issue`, `wire-issue`, `go-no-go`, `scope-epic`, `review-loop`, `simplify-loop` |
 | `--gap-analysis` | Additive-only enrichment: fill gaps, never remove content; exempt from `max_refine_count` via a discriminated Session Log entry (`/ll:refine-issue:gap-analysis`) | `refine-issue` |
 | `--full-rewrite` | Full-rewrite mode (legacy): overwrites sections with research findings | `refine-issue` |
-| `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go`, `spike` |
+| `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go`, `spike`, `reconcile-issue`, `map-dependencies`, `normalize-issues`, `prioritize-issues`, `format-issue` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
 | `--sprint <name>` | Scope to issues in a named sprint definition | `confidence-check`, `issue-size-review` |
@@ -164,6 +164,7 @@ Format issue files to align with template v2.0 structure through section renamin
   - `--auto` - Non-interactive auto-format mode
   - `--all` - Process all active issues
   - `--dry-run` - Preview changes without applying
+  - `--check` - Check-only mode for FSM loop evaluators: dry-run of auto mode, print `[ID] format: N gaps found`, exit 1 if any gaps, exit 0 if all compliant (implies `--auto --dry-run`)
 
 ### `/ll:scan-codebase`
 Scan codebase to identify bugs, enhancements, and features (technical analysis).
@@ -179,6 +180,10 @@ Scan codebase for product-focused issues based on goals document (requires `prod
 
 ### `/ll:prioritize-issues`
 Analyze issues and assign priority levels (P0-P5).
+
+**Flags:**
+- `--auto` — Non-interactive mode
+- `--check` — Check-only mode for FSM loop evaluators: run `ll-issues prioritize --check` and exit with its exit code
 
 ### `/ll:ready-issue`
 Validate issue file for accuracy and auto-correct problems.
@@ -212,6 +217,13 @@ Validate active issues against key documents for relevance and alignment.
 
 ### `/ll:normalize-issues`
 Find and fix issue filenames lacking valid IDs (BUG-001, etc.).
+
+**Arguments:**
+- `issue_id` (optional): Scope reported/applied findings to this issue
+- `flags` (optional):
+  - `--auto` — Apply all auto-fixable findings without prompting
+  - `--check` — FSM-gate mode: exit 0 clean / 1 violations, no fixes applied
+  - `--strict` — Widen `--check` to also gate on `legacy_dir`/`type_mismatch` findings
 
 ### `/ll:sync-issues`
 Sync local issues with GitHub Issues (push/pull/status).
@@ -422,10 +434,24 @@ The reason appears inline in verdict output (`NO-GO ✗ (CLOSE)`), batch summari
 
 **Trigger keywords:** "go no go", "should I implement", "adversarial review", "worth implementing", "debate this issue"
 
+### `/ll:advise`
+One-shot, signal-cited consult to a different (typically stronger) model for a second opinion on a stalled or ambiguous decision. Requires an explicit signal naming why the consult is happening — never auto-triggered without cause.
+
+**Flags:**
+- `--signal SIGNAL` (required): Why this consult is happening (e.g. `user_requested`, `score_stall`)
+- `--question QUESTION` (required): The question to ask the advisor model
+- `--context-file PATH` (optional): Path to a file with supporting context. Never auto-slurps the working tree — only what's explicitly included.
+- `--host HOST` (optional): Host CLI to run the advisor through (default: configured host)
+- `--model MODEL` (optional): Advisor model override
+
+**Example:** `/ll:advise --signal score_stall --question "Is this decomposition correct?" --context-file notes.md`
+
 ### `/ll:map-dependencies`
 Analyze active issues to discover cross-issue dependencies based on file overlap, validate existing dependency references, and propose new relationships. Delegates to `ll-deps` CLI subcommands.
 
-**Flags:** `--auto` (non-interactive: applies only HIGH-confidence proposals)
+**Flags:**
+- `--auto` — Non-interactive mode: apply all HIGH-confidence dependency proposals without prompting, skip MEDIUM-confidence proposals
+- `--check` — Check-only mode for FSM loop evaluators: run dependency analysis without applying changes, print `[ID] deps: N unmapped dependencies` per issue with unmapped deps, exit 1 if any unmapped, exit 0 if all mapped (implies `--auto`)
 
 **Trigger keywords:** "map dependencies", "dependency mapping", "find dependencies"
 
@@ -515,7 +541,7 @@ Analyze codebase architecture for patterns and improvements.
 ### `/ll:audit-docs`
 Audit documentation for accuracy and completeness. Auto-fixable findings (wrong counts, outdated paths, broken links) can be fixed directly during the audit.
 
-**Scope:** `full`, `readme`, `file:<path>`
+**Scope:** `full`, `readme`, `file:<path>`, `dir:<path>` (or a bare directory path, e.g. `docs/guides/`) — all markdown under a directory
 
 **Flags:** `--fix` (auto-apply fixable corrections without prompting)
 
@@ -568,10 +594,14 @@ Create git commits with user approval (no assistant attribution — Claude, Qwen
 ### `/ll:describe-pr`
 Generate comprehensive PR descriptions from branch changes.
 
+**Arguments:**
+- `base_branch` (optional, default: auto-detect): Base branch for PR comparison. If omitted, auto-detects from `refs/remotes/origin/HEAD` (usually `main` or `master`).
+
 ### `/ll:open-pr`
 Open a pull request for the current branch.
 
 **Arguments:**
+- `issue_id` (optional): Issue ID (e.g. `ENH-2175`) to read `branch:`/`pr_url:` from issue frontmatter. If omitted, auto-detected from the current branch name.
 - `target_branch` (optional): Target branch for the PR (default: auto-detect)
 
 **Flags:** `--draft` (create as draft PR)
@@ -603,6 +633,9 @@ Generate continuation prompt for session handoff.
 
 **Arguments:**
 - `context` (optional): Description of current work context
+
+**Flags:**
+- `--deep` — Validate and enrich with artifacts (git status, todos, recent files) instead of relying only on conversation history
 
 ### `/ll:resume`
 Resume from a previous session's continuation prompt.

@@ -324,6 +324,47 @@ Beyond the host-capability table, `ll-doctor` always runs 7 default install-surf
 
 **Exit codes:** `0` = all error-tier checks passed, `1` = an error-tier check failed. `ll-doctor` folds the host-capability report and any registered install-surface checks (FEAT-2793's `CheckResult` registry) — including the `--full` verifier family when requested — into a single severity split: `unsupported` capabilities/checks are error-tier (fail the exit code, as before); informational checks — e.g. an absent-but-optional subsystem — never affect it regardless of status.
 
+**Context residency (`--trim`):**
+
+`--trim` reports whether the setup's context-resident components (skill/command
+descriptions, memory-file `##` sections) are earning the tokens they cost every
+session — a cost-vs-usage question distinct from the rest of `ll-doctor`'s
+"is this broken?" checks. It scores two signal sources: **cost** (`len(text) //
+4`, the repo-wide token approximation) and **use** (`skill_events` invocation
+counts from `.ll/history.db` over a lookback window, the same aggregation
+`ll-logs dead-skills` reports).
+
+Each component gets one of three verdicts:
+- `trim` — resident cost > 0 and zero recorded invocations in the window: it
+  demonstrably returned nothing for what it charged.
+- `review` — cost is non-trivial but usage is low, or (for memory-file
+  sections, which have no per-line usage signal) cost alone crosses the review
+  bar. Not a recommendation to cut — a pointer at what's worth a manual
+  keep/cut judgment call.
+- `keep` — cheap, or used often enough in the window to have earned its
+  residency.
+
+Memory files (`.claude/CLAUDE.md`, `CLAUDE.md`, `.ll/ll.local.md`) are scored
+per-`##`-section since they have no usage telemetry; skills and commands are
+scored by frontmatter `description` cost against `skill_events` invocation
+counts, and entries with `disable-model-invocation` set are excluded (they
+cost no listing tokens). With no usage telemetry available (`.ll/history.db`
+absent or missing `skill_events`), catalog entries render as `keep`/not
+scored and only memory-section costs are reported.
+
+`--trim` is purely advisory: an unused skill is a cost signal, not a broken
+install, so it is excluded from the `results` used to compute the exit code
+and **never affects `ll-doctor`'s exit code**, with or without `--json`.
+
+- `--trim` — Report context-residency verdicts (`trim`/`review`/`keep`) for
+  memory sections and catalog entries. With `-j`/`--json`, adds a `trim` key
+  (`{window_days, usage_available, sessions_observed, total_resident_tokens,
+  reclaimable_tokens, components}`, where each component is
+  `{name, kind, scope, resident_tokens, invocations, verdict, rationale}`) to
+  the JSON payload; omitted entirely when `--trim` is not passed.
+- `--trim-window-days D` — Usage lookback in days for `--trim` verdicts
+  (default: `90`).
+
 **Example output:**
 ```
 Host:    claude-code
@@ -348,6 +389,8 @@ Analytics Capture
 ```bash
 ll-doctor
 ll-doctor --json
+ll-doctor --trim
+ll-doctor --trim --trim-window-days 30 --json
 ```
 
 ---

@@ -249,12 +249,16 @@ Run /ll:handoff to generate one, or specify a custom path:
   "context_monitor": {
     "enabled": true,
     "auto_handoff_threshold": 80,
+    "sentinel_threshold": 50,
     "context_limit_estimate": 1000000,
     "estimate_weights": {
       "read_per_line": 10,
       "tool_call_base": 100,
-      "bash_output_per_char": 0.3
+      "bash_output_per_char": 0.3,
+      "per_turn_overhead": 800,
+      "system_prompt_baseline": 10000
     },
+    "post_compaction_percent": 30,
     "use_transcript_baseline": true,
     "state_file": ".ll/ll-context-state.json"
   },
@@ -275,6 +279,7 @@ Run /ll:handoff to generate one, or specify a custom path:
 |---------|---------|-------------|
 | `context_monitor.enabled` | `true` | Enable automatic context monitoring |
 | `context_monitor.auto_handoff_threshold` | `80` | Percentage (50-95) to trigger warnings |
+| `context_monitor.sentinel_threshold` | `50` | Percentage above which the `Stop` hook (`context-handoff-sentinel.sh`) writes the `.ll/ll-context-handoff-needed` sentinel if no handoff completed. Lower than `auto_handoff_threshold` so the sentinel is written with enough remaining context for the explicit handoff instruction turn to fit on resume. |
 | `context_monitor.context_limit_estimate` | `0` (auto) | Override for the context window token limit. Omit or set to `0` for auto-detection (`[1m]`-suffixed model ids resolve to 1M by identifier; known Claude 4 base models → 200000; if the measured transcript baseline exceeds the resolved limit but is ≤ 1,100,000 — an upper bound that guards against corrupt transcript reads triggering a false upgrade — it auto-upgrades to 1000000 as a fallback). Set explicitly to override, e.g. `1000000` for 1M-context sessions. |
 | `context_monitor.estimate_weights.read_per_line` | `10` | Token cost per line for Read tool calls |
 | `context_monitor.estimate_weights.tool_call_base` | `100` | Base token overhead per tool call |
@@ -365,6 +370,11 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
   "threshold_crossed_at": "2024-01-15T11:45:00Z",
   "handoff_complete": false,
   "last_baseline_mtime": "1705315800",
+  "detected_model": "claude-sonnet-5",
+  "context_limit": 200000,
+  "pressure_levels_emitted": [50, 75, 80],
+  "last_pressure_write_epoch": 1705315800,
+  "last_compaction": null,
   "breakdown": {
     "read": 60000,
     "bash": 30000,
@@ -380,6 +390,11 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
 - `result_token_count`: The authoritative `input_tokens + output_tokens` total from the most recent stream-json `result` event, written by the `_on_usage_writer` callback in `process_issue_inplace` (note: this does **not** include `cache_read_input_tokens`, contrary to other heuristic estimators in the file). When non-zero, the context monitor uses this value directly instead of heuristics or the transcript baseline (zero lag, maximum accuracy).
 - `last_baseline_mtime`: The transcript file's mtime (epoch seconds, as a string) at the time `transcript_baseline_tokens` was last read. Used to detect turn boundaries — the transcript baseline is only re-read when the mtime advances, so repeated tool calls within the same turn serve the cached value.
 - `breakdown.claude_overhead`: Cumulative `per_turn_overhead` (plus the one-time `system_prompt_baseline` on the first call) added across all tool calls, tracked separately from per-tool estimates for diagnosing where estimated tokens come from.
+- `detected_model`: The model id detected from the last `assistant` transcript entry, cached so only the first hook invocation per session needs to read the transcript for this purpose.
+- `context_limit`: The resolved context window size (in tokens) used for this session's percentage calculation — accounts for auto-detection and the 1M-context auto-upgrade.
+- `pressure_levels_emitted`: The set of `50/75/80/90/100` usage-percent crossing levels already recorded for this session, so each is persisted to the pressure-event log only once.
+- `last_pressure_write_epoch`: Unix epoch seconds of the last context-pressure sample persisted to the history DB. Used to cap sampling to roughly once per second (new threshold crossings bypass the cap).
+- `last_compaction`: The `compacted_at` timestamp of the most recently handled compaction event (from `.ll/ll-precompact-state.json`), or `null` if none has occurred this session. Used to avoid re-applying the same compaction reset twice.
 
 ## Troubleshooting
 

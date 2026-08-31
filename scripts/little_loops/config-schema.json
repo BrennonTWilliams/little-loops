@@ -918,6 +918,13 @@
           "type": "boolean",
           "default": true,
           "description": "Use JSONL transcript usage fields as accurate baseline for token estimation (one-turn lag). Falls back to pure heuristics if transcript is unavailable."
+        },
+        "sentinel_threshold": {
+          "type": "integer",
+          "description": "Estimated context usage percentage above which the Stop hook writes the .ll/ll-context-handoff-needed sentinel if no handoff was completed. Lower than auto_handoff_threshold so the sentinel is written with enough remaining context for the explicit handoff instruction turn to fit on resume.",
+          "default": 50,
+          "minimum": 0,
+          "maximum": 100
         }
       },
       "additionalProperties": false

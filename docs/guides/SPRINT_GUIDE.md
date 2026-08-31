@@ -117,7 +117,7 @@ options:
 | `description` | no | Human-readable purpose for the sprint |
 | `created` | yes | ISO 8601 timestamp; set automatically on creation |
 | `issues` | yes | List of issue IDs (e.g., `BUG-001`, `FEAT-010`) |
-| `options.timeout` | no | Per-issue timeout in seconds (default: 3600) |
+| `options.timeout` | no | Per-issue timeout in seconds (default: 3600). **Currently has no effect** — parsed but never read at run time; see [Configuration](#configuration) for the mechanisms that actually enforce per-issue timeouts. |
 | `options.max_workers` | no | Max parallel workers per wave (default: 2) |
 | `options.max_iterations` | no | Max Claude iterations per issue (default: 100) |
 
@@ -201,7 +201,7 @@ The skill is interactive: it proposes changes and you approve or reject each one
 ll-sprint run sprint-name
 ll-sprint run sprint-name --dry-run                       # show plan without executing
 ll-sprint run sprint-name --max-workers 3
-ll-sprint run sprint-name --timeout 7200
+ll-sprint run sprint-name --timeout 7200                  # parsed but currently inert — no runtime effect (see Configuration)
 ll-sprint run sprint-name --skip BUG-010                  # exclude specific issues
 ll-sprint run sprint-name --only BUG-001,FEAT-010         # run only these issues (allowlist)
 ll-sprint run sprint-name --type bug,feat                 # filter by issue type at run time
@@ -226,39 +226,54 @@ Before the first wave runs, `ll-sprint` validates the sprint:
 - Wave structure computed and displayed
 - Completed and cancelled issues are logged individually and surfaced in a pre-validation summary rather than silently skipped
 - Issues with `status: done` or `status: cancelled` in frontmatter are auto-skipped (logged individually, see above); if all issues are already completed, the sprint exits with success immediately
+- **Learning-test gate** (ENH-2210): aggregates all `learning_tests_required` targets across sprint issues and runs the `ready-to-implement-gate` loop once; an unproven target hard-stops the sprint before any wave runs. Skip with `--skip-learning-gate` (see below).
+- **Per-EPIC base-branch check** (FEAT-2652): for each sprint issue whose nearest EPIC ancestor declares a `base_branch:` (alias `target_branch:`), asserts that ref exists locally or on the remote before dispatch; a missing ref hard-stops the sprint (see [Per-EPIC Integration Branch](#per-epic-integration-branch)).
 
-The execution plan is printed before any work begins:
+`ll-sprint run` prints the wave order as a plain log line per wave before any work begins:
 
 ```
-======================================================================
-EXECUTION PLAN (5 issues, 3 waves)
-======================================================================
+Running sprint: bug-fixes
+Dependency analysis:
+  Wave 1: FEAT-001, BUG-010
+  Wave 2: FEAT-002, FEAT-003
+  Wave 3: FEAT-004
+```
+
+Use `--dry-run` to see this plan without executing anything — it stops right after this listing and prints `Dry run mode - no changes will be made`.
+
+For a richer view — issue titles, priorities, file paths, and blocker chains — use `ll-sprint show <name>`, which renders the same wave structure as a tree:
+
+```
+── Execution Plan (5 issues, 3 waves) ──────────────────────────────
 
 Wave 1 (parallel):
   ├── FEAT-001: Add middleware layer (P2)
+  │   .issues/features/P2-FEAT-001-add-middleware-layer.md
   └── BUG-010: Fix null check in parser (P1)
+      .issues/bugs/P1-BUG-010-fix-null-check-in-parser.md
 
-Wave 2 (parallel, after Wave 1):
+Wave 2 (after Wave 1) parallel:
   ├── FEAT-002: Extend middleware config (P2)
+  │   .issues/features/P2-FEAT-002-extend-middleware-config.md
   │   └── blocked by: FEAT-001
   └── FEAT-003: Update middleware tests (P2)
+      .issues/features/P2-FEAT-003-update-middleware-tests.md
       └── blocked by: FEAT-001
 
-Wave 3 (serial, after Wave 2):
+Wave 3 (after Wave 2):
   └── FEAT-004: Integration tests for middleware (P3)
-      blocked by: FEAT-002, FEAT-003
+      .issues/features/P3-FEAT-004-integration-tests-for-middleware.md
+      └── blocked by: FEAT-002, FEAT-003
 
-======================================================================
-DEPENDENCY GRAPH
-======================================================================
+── Dependency Graph ─────────────────────────────────────────────────
 
-  FEAT-001 ──→ FEAT-002 ──→ FEAT-004
   FEAT-001 ──→ FEAT-003 ──→ FEAT-004
+  FEAT-001 ──→ FEAT-002 ──→ FEAT-004
 
 Legend: ──→ blocks (must complete before)
 ```
 
-Use `--dry-run` to see this plan without executing anything.
+`ll-sprint show`/`ll-sprint analyze` use the shared `_render_execution_plan`/`_render_dependency_graph` renderers (`scripts/little_loops/cli/sprint/_helpers.py`, `show.py`); `ll-sprint run` does not — it only ever prints the plain per-wave list above.
 
 ### Wave Execution
 
@@ -498,12 +513,12 @@ Sprint behavior is configured in `.ll/ll-config.json` under the `sprints` key:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `sprints_dir` | `.sprints` | Directory where sprint YAML files are stored |
-| `default_timeout` | `3600` | Per-issue timeout in seconds (1 hour) |
+| `default_timeout` | `3600` | Round-trips through config load/save but is never read at run time — **currently inert**. |
 | `default_max_workers` | `2` | Max parallel workers per wave (also overridable per sprint via `options.max_workers` / `--max-workers`) |
-| `max_issue_wall_clock_time` | `2700` | Hard wall-clock cap per issue in seconds (45 min); enforced via SIGALRM |
-| `parallel.timeout_per_issue` | `3600` | Timeout for multi-issue waves (independent default from `max_issue_wall_clock_time`; in-place single-issue waves use `sprints.max_issue_wall_clock_time` instead) |
+| `max_issue_wall_clock_time` | `2700` | Hard wall-clock cap per issue in seconds (45 min); enforced via SIGALRM. This is the actual per-issue timeout for in-place (single-issue and contention-subwave) waves. |
+| `parallel.timeout_per_issue` | `3600` | Timeout for multi-issue waves dispatched through `ParallelOrchestrator` (independent default from `max_issue_wall_clock_time`); this is the actual per-issue timeout for those waves. |
 
-Per-sprint options (in the YAML `options` block) override the project config for that sprint. CLI flags (`--max-workers`, `--timeout`) override both.
+Per-sprint `options.max_workers` overrides `default_max_workers`; `--max-workers` overrides both. `--timeout` (CLI flag) and `options.timeout` (per-sprint YAML) are parsed but **not currently wired to either timeout mechanism above** — they have no runtime effect. Real per-issue timeout enforcement always comes from `sprints.max_issue_wall_clock_time` (single-issue/contention-subwave waves) or `parallel.timeout_per_issue` (multi-issue orchestrator waves), neither of which is fed from `--timeout`/`options.timeout`/`default_timeout`. This is a known code gap, not intended behavior — worth wiring up or removing in a follow-up.
 
 ---
 
