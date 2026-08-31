@@ -24,15 +24,15 @@ If `all_done` is false, the state prints `held_open` and the epic branch is neve
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+The `merge_epic_branch` completion gate computes `all_done` as `total > 0 and done_count == total and blocked_count == 0 and cancelled_count == 0`. Any epic with even one `cancelled` child (a normal, common outcome of refinement/tradeoff-review) has `cancelled_count > 0`, so `all_done` is permanently false — the epic branch is never merged to the base branch, and the gate never even reaches the `epic_cfg.verify_before_merge` check. This happened silently for EPIC-1463 (20 done, 5 cancelled, 3 open, 2 deferred), which required a manual merge (commit 6e158e703).
 
 ## Expected Behavior
 
-[What should happen instead]
+`cancelled` children should resolve the completion gate the same way `done` children do, since `.claude/CLAUDE.md`'s Issue File Format section documents `done`/`cancelled` as the two terminal statuses elsewhere (dependency-edge resolution). An epic whose remaining children are all `done` or `cancelled`, with none `blocked`, should be eligible to auto-merge — not permanently stuck.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+This is a general defect, not specific to EPIC-1463: any epic with at least one legitimately cancelled child is permanently unable to auto-merge, with no error and no path to ever becoming eligible. The failure mode (branch just never merges) is silent and easy to miss, and it forces manual intervention on every affected epic.
 
 ## Proposed Solution
 
@@ -41,33 +41,55 @@ Not prescriptive, but the natural fix mirrors how `done`/`cancelled` are already
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `merge_epic_branch` state's `all_done` condition (roughly lines 610-716)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- Any FSM loop that reuses the same `merge_epic_branch` completion-gate pattern (grep for `done_count == total` and `cancelled_count == 0` in `scripts/little_loops/loops/*.yaml`)
 
 ### Similar Patterns
-- TBD - search for consistency
+- Dependency-edge resolution already treats `done`/`cancelled` as the two terminal statuses (`.claude/CLAUDE.md` § Issue File Format) — this fix brings the completion gate in line with that existing convention
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_builtin_loops.py` (or the FSM/loop test module covering `merge_epic_branch`) — add a case with a mix of `done` and `cancelled` children asserting `all_done` resolves true
 
 ### Documentation
-- TBD - docs that need updates
+- N/A
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+## Program Design
+
+### Types
+
+- (none — this is a condition-expression fix, no new types)
+
+### Signatures
+
+- `compute_all_done(done_count: int, cancelled_count: int, blocked_count: int, total: int) -> bool` — returns `total > 0 and (done_count + cancelled_count) == total and blocked_count == 0`
+
+### Call Path
+
+`ll-issues epic-progress <EPIC-ID>` -> `merge_epic_branch` state (`scripts/little_loops/loops/auto-refine-and-implement.yaml`) `all_done` condition -> `epic_cfg.verify_before_merge` check
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Change the `all_done` condition in `merge_epic_branch` from `done_count == total` to `(done_count + cancelled_count) == total`, keeping `blocked_count == 0` as-is.
+2. Add a test covering an epic with a mix of `done` and `cancelled` children (and none `blocked`) asserting `all_done` resolves true and the branch reaches the `verify_before_merge` check.
+3. Verify existing tests for the fully-`done` and any-`blocked` cases still pass unchanged.
 
 ## Impact
 
 - **Priority**: P3 — doesn't block any specific in-flight work today (this instance was worked around by hand), but silently strands every future epic with a cancelled child, and the failure mode (branch just never merges, no error) is easy to miss.
+- **Effort**: Small — a one-line condition change plus a test case; the fix is already fully specified in Proposed Solution.
+- **Risk**: Low — narrows a false-negative gate condition to match an existing terminal-status convention (`done`/`cancelled`) used elsewhere in the codebase; does not change behavior for epics with no cancelled children.
 - **Breaking Change**: No — loosens an over-strict gate condition.
+
+## Steps to Reproduce
+
+1. Create (or use) an EPIC whose children include at least one `cancelled` issue alongside `done` children, with no `blocked` children (e.g. EPIC-1463: 20 done, 5 cancelled, 3 open, 2 deferred).
+2. Run an FSM loop that reaches the `merge_epic_branch` state (e.g. `ll-loop run sprint-refine-and-implement <EPIC-ID>`).
+3. Observe the state prints `held_open` and the epic branch is never merged, even though the `all_done` condition should reasonably be satisfied once `blocked_count == 0` — check `summary.json` for `"epic_merge_verdict":"held_open"`.
 
 ## Root Cause
 
@@ -89,4 +111,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-31T21:28:22 - `24eb8111-3a52-4364-98e0-699548ae82fc.jsonl`
 - `/ll:capture-issue` - 2026-08-31T21:19:35 - `8f60449e-8767-4de4-9ff3-4177cfb2cbee.jsonl`
