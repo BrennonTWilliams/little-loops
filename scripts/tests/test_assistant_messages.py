@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from little_loops.history_reader import conversation_turns
 from little_loops.session_store import (
     SCHEMA_VERSION,
@@ -136,7 +138,7 @@ class TestBackfillAssistantMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["assistant_messages"] == 1
 
@@ -167,7 +169,7 @@ class TestBackfillAssistantMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
 
         conn = connect(db)
@@ -195,7 +197,7 @@ class TestBackfillAssistantMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
 
         conn = connect(db)
@@ -226,7 +228,7 @@ class TestBackfillAssistantMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["assistant_messages"] == 0
 
@@ -252,7 +254,7 @@ class TestBackfillAssistantMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["assistant_messages"] == 0
 
@@ -270,14 +272,14 @@ class TestBackfillAssistantMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         backfill(
             db,
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         # Second backfill should not duplicate rows
         conn = connect(db)
@@ -300,7 +302,7 @@ class TestBackfillAssistantMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         results = search(db, query="unique answer")
         assert any(r["kind"] == "message" and "42" in r["content"] for r in results)
@@ -314,7 +316,7 @@ class TestBackfillAssistantMessages:
             encoding="utf-8",
         )
         db = tmp_path / "test.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True, host="test")
         assert counts["assistant_messages"] == 1
 
 

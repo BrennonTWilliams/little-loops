@@ -1152,6 +1152,7 @@ class TestCmdDsl:
         out = capsys.readouterr().out
         assert "3/3" in out
 
+    @pytest.mark.conformance
     def test_cmd_dsl_all_abstain_excludes_from_ci_and_exits_3(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
@@ -1400,6 +1401,7 @@ class TestCmdDsl:
         out = capsys.readouterr().out
         assert "malformed" in out
 
+    @pytest.mark.conformance
     def test_cmd_dsl_mismatch_outranks_abstain(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
@@ -1484,6 +1486,7 @@ class TestCmdDsl:
 
         assert "['on_yes']" not in str(captured["prompt"])
 
+    @pytest.mark.conformance
     def test_cmd_dsl_task_row_records_host_exit_code_and_verdict(self, tmp_path: Path) -> None:
         """AC10/10a/10b: exactly one dsl-task row, with the host rc/timed_out/verdict."""
         from little_loops.session_store import recent
@@ -1715,10 +1718,18 @@ class TestReadTargetHistory:
     """Tests for `_read_target_history()` — the historical rate reader."""
 
     def _seed(self, target: str, rows: list[dict]) -> None:
-        from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event
+        from little_loops.session_store import (
+            DEFAULT_DB_PATH,
+            record_harness_event,
+            resolve_history_db,
+        )
 
+        # Match the read path's DB resolution — the conftest isolates writes via
+        # LL_HISTORY_DB, so DEFAULT_DB_PATH would land on the real .ll/history.db
+        # while _read_target_history reads from the env-override temp path.
+        db = resolve_history_db(DEFAULT_DB_PATH)
         for row in rows:
-            record_harness_event(DEFAULT_DB_PATH, target=target, **row)
+            record_harness_event(db, target=target, **row)
 
     def test_below_threshold_returns_none(self) -> None:
         """AC7: fewer than `_HISTORY_MIN_SCORED` scored rows -- suppressed entirely."""
@@ -1831,13 +1842,14 @@ class TestTargetHistoryRegression:
 
     def test_current_run_excluded_from_reported_rate(self, capsys: pytest.CaptureFixture) -> None:
         from little_loops.fsm.evaluators import EvaluationResult
-        from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event
+        from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event, resolve_history_db
 
         target = "some-target"
+        db = resolve_history_db(DEFAULT_DB_PATH)
         now = datetime.now(UTC)
         for i in range(3):
             record_harness_event(
-                DEFAULT_DB_PATH,
+                db,
                 ts=(now - timedelta(days=i + 1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 runner="cmd",
                 target=target,

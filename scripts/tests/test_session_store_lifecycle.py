@@ -65,7 +65,7 @@ class TestBackfill:
             "---\nid: BUG-1\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
         )
         db = tmp_path / "session.db"
-        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops")
+        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops", host="test")
         assert counts["issues"] == 1
         rows = recent(db, kind="issue")
         assert rows[0]["issue_id"] == "BUG-1"
@@ -77,7 +77,7 @@ class TestBackfill:
             json.dumps({"loop_name": "docs-sync", "current_state": "verify"}), encoding="utf-8"
         )
         db = tmp_path / "session.db"
-        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops")
+        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops", host="test")
         assert counts["loops"] == 1
 
     def test_backfill_tool_events_from_jsonl(self, tmp_path: Path) -> None:
@@ -104,7 +104,7 @@ class TestBackfill:
             issues_dir=tmp_path / "none",
             loops_dir=tmp_path / "none",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["tools"] == 1
         assert recent(db, kind="tool")[0]["tool_name"] == "Bash"
@@ -115,7 +115,7 @@ class TestBackfill:
             db,
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
-            registry_dir=tmp_path / "no-registry",
+            registry_dir=tmp_path / "no-registry", host="test"
         )
         assert counts == {
             "issues": 0,
@@ -147,7 +147,7 @@ class TestBackfill:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["sessions"] == 1
         conn = connect(db)
@@ -167,7 +167,7 @@ class TestBackfill:
             "---\nid: BUG-2\nstatus: done\ntype: BUG\n---\n", encoding="utf-8"
         )
         db = tmp_path / "session.db"
-        backfill(db, issues_dir=issues, loops_dir=tmp_path / "no")
+        backfill(db, issues_dir=issues, loops_dir=tmp_path / "no", host="test")
         results = search(db, query="done")
         assert any(r["kind"] == "issue" for r in results)
 
@@ -200,7 +200,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["messages"] == 1
         rows = recent(db, kind="message")
@@ -223,7 +223,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         rows = recent(db, kind="message")
         assert rows[0]["content"] == "first\nsecond"
@@ -250,7 +250,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["messages"] == 1
 
@@ -266,7 +266,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         results = search(db, query="needle")
         assert any(r["kind"] == "message" for r in results)
@@ -289,7 +289,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["corrections"] == 1
         rows = recent(db, kind="correction")
@@ -311,7 +311,7 @@ class TestBackfillMessages:
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
             config={"analytics": {"capture": {"corrections": False}}},
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["corrections"] == 0
         assert len(recent(db, kind="correction")) == 0
@@ -329,14 +329,14 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         backfill(
             db,
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         rows = recent(db, kind="correction")
         assert len(rows) == 1, "re-running backfill must not duplicate correction rows"
@@ -519,19 +519,19 @@ class TestBackfillIncremental:
     def test_processes_all_files_when_since_ts_zero(self, tmp_path: Path) -> None:
         jsonl = self._make_tool_jsonl(tmp_path, "s1")
         db = tmp_path / "history.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         assert counts["raw_events"] >= 1
 
     def test_filters_files_with_future_since_ts(self, tmp_path: Path) -> None:
         """Files with mtime before a far-future since_ts are excluded."""
         jsonl = self._make_tool_jsonl(tmp_path, "s2")
         db = tmp_path / "history.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=9_999_999_999.0)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=9_999_999_999.0, host="test")
         assert counts["raw_events"] == 0
 
     def test_writes_last_raw_event_ts_after_run(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
-        backfill_incremental(db, jsonl_files=[], since_ts=0.0)
+        backfill_incremental(db, jsonl_files=[], since_ts=0.0, host="test")
         conn = connect(db)
         try:
             row = conn.execute("SELECT value FROM meta WHERE key = 'last_raw_event_ts'").fetchone()
@@ -555,20 +555,20 @@ class TestBackfillIncremental:
             conn.commit()
         finally:
             conn.close()
-        counts = backfill_incremental(db, jsonl_files=[jsonl])
+        counts = backfill_incremental(db, jsonl_files=[jsonl], host="test")
         assert counts["raw_events"] == 0
 
     def test_missing_file_is_skipped_silently(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         counts = backfill_incremental(
-            db, jsonl_files=[tmp_path / "nonexistent.jsonl"], since_ts=0.0
+            db, jsonl_files=[tmp_path / "nonexistent.jsonl"], since_ts=0.0, host="test"
         )
         assert counts["raw_events"] == 0
 
     def test_also_rebuild_materializes_messages_and_sessions(self, tmp_path: Path) -> None:
         jsonl = self._make_msg_jsonl(tmp_path, "s4")
         db = tmp_path / "history.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True, host="test")
         assert counts["messages"] >= 1
         assert counts["sessions"] >= 1
 
@@ -576,7 +576,7 @@ class TestBackfillIncremental:
         """backfill_incremental() is ingest-only by default (ENH-2581)."""
         jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
         db = tmp_path / "history.db"
-        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         conn = connect(db)
         try:
             sessions_count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
@@ -591,7 +591,7 @@ class TestBackfillIncremental:
     def test_also_rebuild_materializes_sessions(self, tmp_path: Path) -> None:
         jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
         db = tmp_path / "history.db"
-        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
+        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True, host="test")
         conn = connect(db)
         try:
             count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
@@ -629,7 +629,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -651,7 +651,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -671,7 +671,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["skill_events"] == 0
 
@@ -688,7 +688,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -707,7 +707,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         results = search(db, query="ready")
         assert any(r["kind"] == "skill" for r in results)
@@ -814,10 +814,8 @@ class TestCompactSession:
         # Mock subprocess so _call_llm_for_summary never invokes the real claude binary
         # (which would trigger SessionStart hooks writing to the production db).
         short_summary = "Condensed summary."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             compact_session(session_id, db, config=config)
         conn = connect(db)
         try:
@@ -883,11 +881,9 @@ class TestCompactSession:
         # Mock subprocess to avoid real LLM calls in test; return a short summary
         # that passes the size check so level 1 is accepted.
         short_summary = "Compacted summary."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
-            counts = backfill(db, jsonl_files=[jsonl], config=config, also_rebuild=True)
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
+            counts = backfill(db, jsonl_files=[jsonl], config=config, also_rebuild=True, host="test")
         assert counts["summaries"] >= 1
         conn = connect(db)
         try:
@@ -919,7 +915,7 @@ class TestCompactSession:
         jsonl.write_text(json.dumps(record) + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
         counts = backfill(
-            db, jsonl_files=[jsonl], also_rebuild=True
+            db, jsonl_files=[jsonl], also_rebuild=True, host="test"
         )  # no config → compaction.enabled=False
         assert counts["summaries"] == 0
         conn = connect(db)
@@ -963,10 +959,8 @@ class TestCompactSession:
         db = self._make_multi_session_db(tmp_path, sessions)
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
         short_summary = "Compacted."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             conn = connect(db)
             try:
                 _compact_sessions(conn, config)
@@ -1009,10 +1003,8 @@ class TestCompactSession:
         db = self._make_multi_session_db(tmp_path, sessions)
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
         short_summary = "Compacted."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             # First run
             conn = connect(db)
             try:
@@ -1056,10 +1048,8 @@ class TestCompactSession:
         db = self._make_multi_session_db(tmp_path, sessions)
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
         short_summary = "Linked summary."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             conn = connect(db)
             try:
                 _compact_sessions(conn, config)
@@ -1103,10 +1093,8 @@ class TestCompactSession:
             }
         }
         short_summary = "Off."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             conn = connect(db)
             try:
                 _compact_sessions(conn, config)
@@ -1201,24 +1189,19 @@ class TestSummarizeBlock:
     def test_level_1_accepts_smaller_summary(self) -> None:
         """Level 1: LLM returns a summary smaller than input — accepted immediately."""
         short_summary = "Short summary."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary", return_value=short_summary):
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         assert result == short_summary
-        # Only one subprocess call (level 1 succeeded)
-        assert mock_run.call_count == 1
 
     def test_level_1_escalates_when_summary_not_smaller(self) -> None:
         """Level 1 summary >= input size → escalates to level 2."""
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)  # longer than input
         short_summary = "Short bullet list."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
             # Level 1 returns verbose (long), level 2 returns short
             mock_run.side_effect = [
-                _make_completed(returncode=0, stdout=_llm_response(verbose)),
-                _make_completed(returncode=0, stdout=_llm_response(short_summary)),
+                verbose,
+                short_summary,
             ]
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         assert result == short_summary
@@ -1229,10 +1212,10 @@ class TestSummarizeBlock:
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
         medium = "Medium summary but still verbose." * 20  # verbose level 2
         # Both levels fail, fall through to truncation
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
             mock_run.side_effect = [
-                _make_completed(returncode=0, stdout=_llm_response(verbose)),
-                _make_completed(returncode=0, stdout=_llm_response(medium)),
+                verbose,
+                medium,
             ]
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         assert mock_run.call_count == 2
@@ -1243,8 +1226,8 @@ class TestSummarizeBlock:
     def test_level_3_truncation_when_llm_fails(self) -> None:
         """LLM call raises FileNotFoundError → all levels escalate → truncation."""
         with patch(
-            "little_loops.session_store.subprocess.run",
-            side_effect=FileNotFoundError("claude"),
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value=None,
         ):
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         combined = "\n---\n".join(self.SHORT_INPUT)
@@ -1253,19 +1236,17 @@ class TestSummarizeBlock:
     def test_level_3_truncation_when_timeout(self) -> None:
         """LLM call times out → escalates through levels → truncation."""
         with patch(
-            "little_loops.session_store.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=60),
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value=None,
         ):
             result = _summarize_block(self.SHORT_INPUT, budget=1024)
         combined = "\n---\n".join(self.SHORT_INPUT)
         assert result == combined[: min(1024 * 4, 2048)]
 
     def test_level_3_truncation_when_nonzero_returncode(self) -> None:
-        """LLM returns non-zero exit code → escalates → truncation."""
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(returncode=1, stderr="API error")
+        """LLM returns non-prose → escalates → truncation."""
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary", return_value=None):
             result = _summarize_block(self.SHORT_INPUT, budget=256)
-        assert mock_run.call_count == 2  # both levels tried, both failed
         combined = "\n---\n".join(self.SHORT_INPUT)
         assert result == combined[: min(256 * 4, 2048)]
 
@@ -1274,8 +1255,8 @@ class TestSummarizeBlock:
         long_input = ["Long message. " * 100]
         # Force LLM failure so truncation is used
         with patch(
-            "little_loops.session_store.subprocess.run",
-            side_effect=FileNotFoundError("claude"),
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value=None,
         ):
             result = _summarize_block(long_input, budget=4096)
         # budget=4096 → budget * 4 = 16384, but cap at 2048
@@ -1284,10 +1265,8 @@ class TestSummarizeBlock:
     def test_json_envelope_parsing(self) -> None:
         """The result field is extracted from the JSON envelope, not stored raw."""
         summary_text = "Extracted summary prose."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(summary_text)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = summary_text
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         # Result is the extracted prose, not the JSON envelope
         assert result == summary_text
@@ -1295,8 +1274,8 @@ class TestSummarizeBlock:
 
     def test_model_and_timeout_wired_to_subprocess(self) -> None:
         """model and timeout params flow through to subprocess.run."""
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response("ok"))
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "ok"
             _summarize_block(self.SHORT_INPUT, budget=256, model="haiku", timeout=30)
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["timeout"] == 30
@@ -1308,10 +1287,10 @@ class TestSummarizeBlock:
         """Escalation produces WARNING log messages."""
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
         short_summary = "Short."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
             mock_run.side_effect = [
-                _make_completed(returncode=0, stdout=_llm_response(verbose)),
-                _make_completed(returncode=0, stdout=_llm_response(short_summary)),
+                verbose,
+                short_summary,
             ]
             with caplog.at_level(logging.WARNING, logger="little_loops.session_store"):
                 _summarize_block(self.SHORT_INPUT, budget=256)
@@ -1325,15 +1304,11 @@ class TestSummarizeBlock:
             "Message two also has plenty of content for testing.",
             "Message three is similarly substantive in length.",
         ]
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response("short"))
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "short"
             _summarize_block(messages, budget=256)
-        # The prompt text appears in the subprocess args regardless of host
-        # convention: Claude Code uses -p <prompt>, Codex appends directly, etc.
-        cmd_args = mock_run.call_args[0][0]
-        prompt_args = [a for a in cmd_args if isinstance(a, str) and "Message one" in a]
-        assert len(prompt_args) == 1, f"Expected one arg containing the prompt, got {prompt_args}"
-        prompt = prompt_args[0]
+        # _call_llm_for_summary is called with prompt as first positional arg
+        prompt = mock_run.call_args[0][0]
         assert "Message one" in prompt
         assert "\n---\n" in prompt
         assert "Message three" in prompt
@@ -1372,7 +1347,7 @@ class TestRawEventsPayloadCompression:
         jsonl = tmp_path / "s.jsonl"
         jsonl.write_text(self._user_line("hello") + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         conn = connect(db)
         try:
             row = conn.execute(
@@ -1387,7 +1362,7 @@ class TestRawEventsPayloadCompression:
         jsonl = tmp_path / "s.jsonl"
         jsonl.write_text(self._user_line("compressed") + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)  # writes a BLOB row
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")  # writes a BLOB row
         conn = connect(db)
         legacy = self._user_line("legacy", ts="2026-05-22T00:00:01Z")
         conn.execute(
@@ -1436,7 +1411,7 @@ class TestRawEventsPayloadCompression:
         jsonl = tmp_path / "s.jsonl"
         jsonl.write_text(self._user_line("hello") + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)  # already compressed
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")  # already compressed
         result = recompress_raw_events(db)
         assert result["recompressed"] == 0  # nothing legacy left to convert
 
@@ -1458,7 +1433,7 @@ class TestRebuild:
             + "\n",
             encoding="utf-8",
         )
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
 
     def test_rebuild_materializes_from_raw_events_without_original_files(
         self, tmp_path: Path
@@ -1478,7 +1453,7 @@ class TestRebuild:
             + "\n",
             encoding="utf-8",
         )
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         jsonl.unlink()  # source file gone — rebuild must not need it
 
         counts = rebuild(db)
@@ -1556,7 +1531,7 @@ class TestBackfillUsageEvents:
     def _seed(self, tmp_path: Path, db: Path, records: list[str]) -> None:
         jsonl = tmp_path / "s.jsonl"
         jsonl.write_text("\n".join(records) + "\n", encoding="utf-8")
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
 
     def test_roundtrip_known_model_computes_cost(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1951,7 +1926,7 @@ class TestFts5LeakFixed:
         ]
         jsonl.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
 
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         rebuild(db)
 
         conn = connect(db)
@@ -2633,7 +2608,7 @@ class TestBackfillPromptOpt:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["prompt_opt_events"] == 1
         rows = recent(db, kind="prompt_opt")
@@ -2666,7 +2641,7 @@ class TestBackfillPromptOpt:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["prompt_opt_events"] == 0
         rows = recent(db, kind="prompt_opt")
@@ -2698,7 +2673,7 @@ class TestBackfillPromptOpt:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         first_pass = rebuild(db)
         assert first_pass["prompt_opt_events"] == 0

@@ -13,6 +13,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from little_loops.hooks.post_tool_use import handle
 from little_loops.hooks.types import LLHookEvent
 from little_loops.session_store import _MIGRATIONS, SCHEMA_VERSION, _split_sql_statements, ensure_db
@@ -258,7 +260,7 @@ class TestBackfillMcpColumns:
             issues_dir=tmp_path / "none",
             loops_dir=tmp_path / "none",
             jsonl_files=[jsonl_path],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
 
         conn = sqlite3.connect(str(db))
@@ -293,7 +295,7 @@ class TestBackfillMcpColumns:
             issues_dir=tmp_path / "none",
             loops_dir=tmp_path / "none",
             jsonl_files=[jsonl_path],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
 
         conn = sqlite3.connect(str(db))

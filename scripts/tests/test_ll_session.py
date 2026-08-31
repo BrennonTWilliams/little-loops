@@ -881,7 +881,15 @@ class TestGrepExpandDescribe:
     def test_expand_condensed_node_returns_messages_cli(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        db, condensed_id = self._make_db_with_condensed_node(tmp_path)
+        # main_session → compact_session → _call_llm_for_summary → resolve_host.
+        # CI (ubuntu-latest) has no host CLI; mock the LLM-call layer.
+        # Helper call inside the LLM patch so compact_session's host
+        # resolution is mocked at fixture-setup time.
+        with patch(
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value="Expanded.",
+        ):
+            db, condensed_id = self._make_db_with_condensed_node(tmp_path)
         with patch("sys.argv", ["ll-session", "--db", str(db), "expand", str(condensed_id)]):
             result = main_session()
         out = capsys.readouterr().out
@@ -891,7 +899,15 @@ class TestGrepExpandDescribe:
     def test_grep_with_condensed_summary_id_cli(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        db, condensed_id = self._make_db_with_condensed_node(tmp_path)
+        # main_session → compact_session → _call_llm_for_summary → resolve_host.
+        # CI (ubuntu-latest) has no host CLI; mock the LLM-call layer.
+        # Helper call inside the LLM patch so compact_session's host
+        # resolution is mocked at fixture-setup time.
+        with patch(
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value="Grepped.",
+        ):
+            db, condensed_id = self._make_db_with_condensed_node(tmp_path)
         with patch(
             "sys.argv",
             ["ll-session", "--db", str(db), "grep", "--summary-id", str(condensed_id), "auth"],
@@ -1405,7 +1421,7 @@ class TestSkillStatsAndNewKinds:
             + "\n",
             encoding="utf-8",
         )
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         rebuild(db)
         with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "usage"]):
             assert main_session() == 0

@@ -897,6 +897,7 @@ class TestLLMStructuredEvaluator:
             mock_run.return_value = mock_result
             yield mock_run, mock_result
 
+    @pytest.mark.conformance
     def test_cli_not_found(self) -> None:
         """Returns error when host CLI not installed."""
         with patch(
@@ -908,6 +909,7 @@ class TestLLMStructuredEvaluator:
         assert result.details.get("missing_dependency") is True
         assert "CLI not found" in result.details["error"]
 
+    @pytest.mark.conformance
     def test_success_verdict(self, mock_cli) -> None:
         """LLM returns success verdict."""
         mock_run, mock_result = mock_cli
@@ -920,6 +922,7 @@ class TestLLMStructuredEvaluator:
         assert result.details["confident"] is True
         assert result.details["reason"] == "Action completed successfully"
 
+    @pytest.mark.conformance
     def test_env_carries_only_the_two_build_blocking_json_keys(self, mock_cli) -> None:
         """ENH-3184 AC3: this spawn newly receives LL_NON_INTERACTIVE and
         DANGEROUSLY_SKIP_PERMISSIONS (build_blocking_json()'s fixed literal),
@@ -937,6 +940,7 @@ class TestLLMStructuredEvaluator:
         # merge leaves whatever (if anything) the parent process inherited.
         assert env.get("LL_AUTOMATION") == os.environ.get("LL_AUTOMATION")
 
+    @pytest.mark.conformance
     def test_json_schema_present_when_host_supports_structured_output(self, mock_cli) -> None:
         """ENH-2627: the flag is appended for a structured-output-capable host.
 
@@ -983,6 +987,7 @@ class TestLLMStructuredEvaluator:
         assert "--no-session-persistence" not in call_args
         assert result.verdict == "yes"
 
+    @pytest.mark.conformance
     def test_failure_verdict(self, mock_cli) -> None:
         """LLM returns failure verdict."""
         mock_run, mock_result = mock_cli
@@ -993,6 +998,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "no"
         assert result.details["confident"] is True
 
+    @pytest.mark.conformance
     def test_blocked_verdict(self, mock_cli) -> None:
         """LLM returns blocked verdict."""
         mock_run, mock_result = mock_cli
@@ -1002,6 +1008,7 @@ class TestLLMStructuredEvaluator:
 
         assert result.verdict == "blocked"
 
+    @pytest.mark.conformance
     def test_partial_verdict(self, mock_cli) -> None:
         """LLM returns partial verdict."""
         mock_run, mock_result = mock_cli
@@ -1011,6 +1018,7 @@ class TestLLMStructuredEvaluator:
 
         assert result.verdict == "partial"
 
+    @pytest.mark.conformance
     def test_low_confidence_without_suffix(self, mock_cli) -> None:
         """Low confidence without uncertain_suffix keeps original verdict."""
         mock_run, mock_result = mock_cli
@@ -1021,6 +1029,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "yes"
         assert result.details["confident"] is False
 
+    @pytest.mark.conformance
     def test_low_confidence_with_suffix(self, mock_cli) -> None:
         """Low confidence with uncertain_suffix appends _uncertain."""
         mock_run, mock_result = mock_cli
@@ -1031,6 +1040,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "yes_uncertain"
         assert result.details["confident"] is False
 
+    @pytest.mark.conformance
     def test_custom_schema(self, mock_cli) -> None:
         """Custom schema with non-standard verdicts."""
         custom_schema = {
@@ -1061,6 +1071,7 @@ class TestLLMStructuredEvaluator:
         schema_idx = call_args.index("--json-schema")
         assert call_args[schema_idx + 1] == json.dumps(custom_schema)
 
+    @pytest.mark.conformance
     def test_custom_prompt(self, mock_cli) -> None:
         """Custom prompt is passed to CLI."""
         mock_run, mock_result = mock_cli
@@ -1074,6 +1085,7 @@ class TestLLMStructuredEvaluator:
         prompt_idx = call_args.index("-p")
         assert custom_prompt in call_args[prompt_idx + 1]
 
+    @pytest.mark.conformance
     def test_cli_timeout_handling(self) -> None:
         """Timeout returns error verdict."""
         with patch(
@@ -1085,6 +1097,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert result.details.get("timeout") is True
 
+    @pytest.mark.conformance
     def test_cli_error_handling(self, mock_cli) -> None:
         """Non-zero exit code returns error verdict."""
         mock_run, mock_result = mock_cli
@@ -1096,6 +1109,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert result.details.get("api_error") is True
 
+    @pytest.mark.conformance
     def test_empty_stdout(self, mock_cli) -> None:
         """Empty stdout from CLI returns error with diagnostic message."""
         mock_run, mock_result = mock_cli
@@ -1108,6 +1122,7 @@ class TestLLMStructuredEvaluator:
         assert result.details.get("empty_output") is True
         assert "empty output" in result.details["error"]
 
+    @pytest.mark.conformance
     def test_empty_stdout_includes_stderr(self, mock_cli) -> None:
         """Empty stdout error includes stderr content when available."""
         mock_run, mock_result = mock_cli
@@ -1119,6 +1134,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert "rate limit exceeded" in result.details["error"]
 
+    @pytest.mark.conformance
     def test_is_error_in_envelope(self, mock_cli) -> None:
         """is_error=true in envelope returns error even with exit code 0."""
         mock_run, mock_result = mock_cli
@@ -1129,6 +1145,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert result.details.get("api_error") is True
 
+    @pytest.mark.conformance
     def test_structured_output_retry_exhaustion(self, mock_cli) -> None:
         """CLI reports error_max_structured_output_retries when schema validation fails after retries."""
         mock_run, mock_result = mock_cli
@@ -1144,6 +1161,7 @@ class TestLLMStructuredEvaluator:
         assert "structured output" in result.details["error"].lower()
         assert result.details.get("api_error") is True
 
+    @pytest.mark.conformance
     def test_result_as_dict_in_envelope(self, mock_cli) -> None:
         """result field as dict (not string) is handled correctly."""
         mock_run, mock_result = mock_cli
@@ -1163,6 +1181,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "yes"
         assert result.details["confidence"] == 0.9
 
+    @pytest.mark.conformance
     def test_empty_result_field_includes_raw_preview(self, mock_cli) -> None:
         """Empty result field returns error with raw_preview for diagnosis."""
         mock_run, mock_result = mock_cli
@@ -1174,6 +1193,7 @@ class TestLLMStructuredEvaluator:
         assert "raw_preview" in result.details
         assert "Empty result field" in result.details["error"]
 
+    @pytest.mark.conformance
     def test_empty_result_with_tool_turns_regression(self, mock_cli) -> None:
         """Regression: --json-schema multi-turn response has empty result field."""
         mock_run, mock_result = mock_cli
@@ -1197,6 +1217,7 @@ class TestLLMStructuredEvaluator:
         assert "Empty result field" in result.details["error"]
         assert "raw_preview" in result.details
 
+    @pytest.mark.conformance
     def test_invalid_json_response(self, mock_cli) -> None:
         """Unparseable JSON from CLI returns error with raw_preview."""
         mock_run, mock_result = mock_cli
@@ -1208,6 +1229,7 @@ class TestLLMStructuredEvaluator:
         assert "Failed to parse" in result.details["error"]
         assert "raw_preview" in result.details
 
+    @pytest.mark.conformance
     def test_output_truncation(self, mock_cli) -> None:
         """Long output is truncated to last 4000 chars."""
         mock_run, mock_result = mock_cli
@@ -1223,6 +1245,7 @@ class TestLLMStructuredEvaluator:
         # Should have prompt + truncated output (last 4000 chars) + XML tags
         assert len(prompt_content) < 5000
 
+    @pytest.mark.conformance
     def test_raw_response_in_details(self, mock_cli) -> None:
         """Raw LLM response is included in details."""
         mock_run, mock_result = mock_cli
@@ -1234,6 +1257,7 @@ class TestLLMStructuredEvaluator:
         assert result.details["raw"]["verdict"] == "yes"
         assert result.details["raw"]["confidence"] == 0.9
 
+    @pytest.mark.conformance
     def test_default_values_used(self, mock_cli) -> None:
         """Default prompt and schema used when not specified."""
         mock_run, mock_result = mock_cli
@@ -1250,6 +1274,7 @@ class TestLLMStructuredEvaluator:
         schema_idx = call_args.index("--json-schema")
         assert call_args[schema_idx + 1] == json.dumps(DEFAULT_LLM_SCHEMA)
 
+    @pytest.mark.conformance
     def test_envelope_as_direct_result(self, mock_cli) -> None:
         """Envelope itself is the structured result when result field is absent."""
         mock_run, mock_result = mock_cli
@@ -1269,6 +1294,7 @@ class TestLLMStructuredEvaluator:
         assert result.details["confidence"] == 0.9
         assert result.details["reason"] == "All checks passed"
 
+    @pytest.mark.conformance
     def test_jsonl_output_uses_last_line(self, mock_cli) -> None:
         """JSONL output (multiple JSON lines) uses the last non-empty line."""
         mock_run, mock_result = mock_cli
@@ -1318,6 +1344,7 @@ class TestAbstentionVerdict:
         """AC1: cannot_judge is a member of DEFAULT_LLM_SCHEMA's verdict enum."""
         assert "cannot_judge" in DEFAULT_LLM_SCHEMA["properties"]["verdict"]["enum"]
 
+    @pytest.mark.conformance
     def test_cannot_judge_verdict(self, mock_cli) -> None:
         """AC1: a judge that cannot evaluate reports cannot_judge, not a coin-flip yes/no."""
         mock_run, mock_result = mock_cli
@@ -1327,6 +1354,7 @@ class TestAbstentionVerdict:
 
         assert result.verdict == "cannot_judge"
 
+    @pytest.mark.conformance
     def test_cannot_judge_survives_empty_evidence_coercion(self, mock_cli) -> None:
         """AC10: cannot_judge is exempt from the empty-evidence -> 'no' coercion —
         an abstention has no verbatim quote by definition."""
@@ -1338,6 +1366,7 @@ class TestAbstentionVerdict:
         assert result.verdict == "cannot_judge"
         assert result.details["evidence_coerced"] is False
 
+    @pytest.mark.conformance
     def test_yes_no_partial_still_coerced_on_empty_evidence(self, mock_cli) -> None:
         """AC10 exemption is narrow: yes/no/partial are still coerced (ENH-2342 unchanged)."""
         mock_run, mock_result = mock_cli
@@ -1348,6 +1377,7 @@ class TestAbstentionVerdict:
         assert result.verdict == "no"
         assert result.details["evidence_coerced"] is True
 
+    @pytest.mark.conformance
     def test_cannot_judge_uncertain_suffix(self, mock_cli) -> None:
         """AC12: low confidence + uncertain_suffix produces cannot_judge_uncertain,
         distinct from a plain cannot_judge abstention."""
@@ -1358,6 +1388,7 @@ class TestAbstentionVerdict:
 
         assert result.verdict == "cannot_judge_uncertain"
 
+    @pytest.mark.conformance
     def test_verdict_outside_grammar_fails_loudly(self, mock_cli) -> None:
         """AC5: an out-of-grammar verdict on the default schema becomes verdict="error"
         rather than silently flowing through to routing as if it were a real verdict."""
@@ -1370,6 +1401,7 @@ class TestAbstentionVerdict:
         assert result.details.get("invalid_verdict") is True
         assert result.details.get("raw_verdict") == "maybe"
 
+    @pytest.mark.conformance
     def test_verdict_outside_grammar_allowed_for_custom_schema(self, mock_cli) -> None:
         """AC5's grammar check is scoped to the default schema; a caller-supplied
         schema controls its own vocabulary (mirrors test_custom_schema)."""
@@ -1438,16 +1470,29 @@ class TestTaggedStructuredOutputFallback:
 
     @pytest.fixture
     def mock_cli(self):
-        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+        # Mock resolve_host AND subprocess.run (the layer run_blocking_json
+        # uses to invoke the CLI). This lets the real tag-fallback parser
+        # run on our fabricated stdout — patching run_blocking_json would
+        # skip the parser entirely (vacuous pass).
+        with (
+            patch("little_loops.fsm.evaluators.resolve_host") as mock_resolve,
+            patch("little_loops.host_runner.subprocess.run") as mock_run,
+        ):
+            fake_runner = MagicMock()
+            mock_invocation = MagicMock()
+            mock_invocation.binary = "test"
+            mock_invocation.args = []
+            fake_runner.build_blocking_json.return_value = mock_invocation
+            mock_resolve.return_value = fake_runner
             mock_result = MagicMock()
             mock_result.returncode = 0
             mock_result.stderr = ""
             mock_run.return_value = mock_result
-            yield mock_run, mock_result
+            yield mock_resolve, fake_runner, mock_result
 
     def test_tagged_verdict_recovered(self, mock_cli) -> None:
         """A <StructuredOutput> tag response with a 'yes' verdict parses to yes."""
-        mock_run, mock_result = mock_cli
+        mock_resolve, fake_runner, mock_result = mock_cli
         mock_result.stdout = self._minimax_stdout(
             "<StructuredOutput>\n"
             "<verdict>yes</verdict>\n"
@@ -1464,10 +1509,17 @@ class TestTaggedStructuredOutputFallback:
         assert result.details["reason"] == "The assistant produced a complete artifact"
         assert result.details["evidence"] == "index.html written to run_dir"
 
+        result = evaluate_llm_structured("generated index.html")
+
+        assert result.verdict == "yes"
+        assert result.details["confidence"] == 0.75
+        assert result.details["reason"] == "The assistant produced a complete artifact"
+        assert result.details["evidence"] == "index.html written to run_dir"
+
     def test_tagged_verdict_without_evidence_coerced_to_no(self, mock_cli) -> None:
         """Default-schema evidence contract still holds on the fallback path:
         a tag verdict lacking <evidence> is coerced to 'no'."""
-        mock_run, mock_result = mock_cli
+        mock_resolve, fake_runner, mock_result = mock_cli
         mock_result.stdout = self._minimax_stdout(
             "<StructuredOutput>\n"
             "<verdict>yes</verdict>\n"
@@ -1483,7 +1535,7 @@ class TestTaggedStructuredOutputFallback:
 
     def test_tagged_verdict_in_json_fence(self, mock_cli) -> None:
         """Tags wrapped in a ```json fence by a proxy are still recovered."""
-        mock_run, mock_result = mock_cli
+        mock_resolve, fake_runner, mock_result = mock_cli
         mock_result.stdout = self._minimax_stdout(
             "```json\n<StructuredOutput>\n"
             "<verdict>no</verdict>\n"
@@ -1500,7 +1552,7 @@ class TestTaggedStructuredOutputFallback:
 
     def test_non_tag_garbage_still_errors(self, mock_cli) -> None:
         """Genuinely unparseable result (no verdict tag, not JSON) still errors."""
-        mock_run, mock_result = mock_cli
+        mock_resolve, fake_runner, mock_result = mock_cli
         mock_result.stdout = self._minimax_stdout("total garbage with no verdict")
 
         result = evaluate_llm_structured("output")
@@ -1541,6 +1593,7 @@ class TestEvaluateDispatcherLLM:
             mock_run.return_value = mock_result
             yield mock_run, mock_result
 
+    @pytest.mark.conformance
     def test_dispatch_llm_structured(self, mock_cli) -> None:
         """llm_structured type routes correctly."""
         mock_run, mock_result = mock_cli
@@ -1553,6 +1606,7 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "yes"
         assert result.details["confident"] is True
 
+    @pytest.mark.conformance
     def test_dispatch_llm_structured_uses_default_model_when_none_passed(self, mock_cli) -> None:
         """ENH-2713: evaluate() without a model= kwarg falls back to DEFAULT_LLM_MODEL
         (pre-existing behavior — evaluate_llm_structured's own default)."""
@@ -1567,6 +1621,7 @@ class TestEvaluateDispatcherLLM:
         model_arg = call_args[call_args.index("--model") + 1]
         assert model_arg == DEFAULT_LLM_MODEL
 
+    @pytest.mark.conformance
     def test_dispatch_llm_structured_threads_model_kwarg(self, mock_cli) -> None:
         """ENH-2713: evaluate()'s model= kwarg reaches evaluate_llm_structured's
         --model CLI flag for the explicit llm_structured evaluate branch."""
@@ -1581,6 +1636,7 @@ class TestEvaluateDispatcherLLM:
         model_arg = call_args[call_args.index("--model") + 1]
         assert model_arg == "claude-haiku-4-5-20251001"
 
+    @pytest.mark.conformance
     def test_dispatch_llm_with_config_options(self, mock_cli) -> None:
         """llm_structured uses config options."""
         mock_run, mock_result = mock_cli
@@ -1614,6 +1670,7 @@ class TestEvaluateDispatcherLLM:
 
         assert result.verdict == "error"
 
+    @pytest.mark.conformance
     def test_dispatch_llm_structured_interpolates_prompt(self, mock_cli) -> None:
         """llm_structured interpolates ${context.*} variables in prompt before sending to LLM."""
         mock_run, mock_result = mock_cli
@@ -1636,6 +1693,7 @@ class TestEvaluateDispatcherLLM:
 
     # --- evidence coercion (ENH-2342) ---
 
+    @pytest.mark.conformance
     def test_empty_evidence_coerces_to_no(self, mock_cli) -> None:
         """Absent evidence coerces verdict to 'no' for default schema."""
         mock_run, mock_result = mock_cli
@@ -1652,6 +1710,7 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "no"
         assert result.details["evidence_coerced"] is True
 
+    @pytest.mark.conformance
     def test_populated_evidence_passes_through(self, mock_cli) -> None:
         """Non-empty evidence lets verdict pass through unchanged."""
         mock_run, mock_result = mock_cli
@@ -1662,6 +1721,7 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "yes"
         assert result.details["evidence_coerced"] is False
 
+    @pytest.mark.conformance
     def test_evidence_coercion_logged_in_details(self, mock_cli) -> None:
         """Evidence value and coerced flag are always in details for default schema."""
         mock_run, mock_result = mock_cli
@@ -1672,6 +1732,7 @@ class TestEvaluateDispatcherLLM:
         assert "evidence" in result.details
         assert "evidence_coerced" in result.details
 
+    @pytest.mark.conformance
     def test_custom_schema_not_coerced(self, mock_cli) -> None:
         """Custom schema bypasses evidence coercion — caller controls the contract."""
         mock_run, mock_result = mock_cli
@@ -2176,6 +2237,7 @@ class TestMcpResultEvaluator:
         assert result.verdict == "error"
 
 
+@pytest.mark.conformance
 class TestBlindComparator:
     """Tests for evaluate_blind_comparator — blind A/B output comparison."""
 
@@ -2390,6 +2452,7 @@ class TestComparatorEvaluator:
         result = evaluate(config, output="new output", exit_code=0, context=ctx)
         assert result.verdict == "no_baseline"
 
+    @pytest.mark.conformance
     def test_harness_wins(self, baseline_with_file: Path) -> None:
         """Majority harness_pass=True → yes verdict."""
         config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
@@ -2406,6 +2469,7 @@ class TestComparatorEvaluator:
         assert result.details["harness_wins"] == 1
         assert result.details["baseline_wins"] == 0
 
+    @pytest.mark.conformance
     def test_baseline_wins(self, baseline_with_file: Path) -> None:
         """Majority baseline_pass=True → no verdict."""
         config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
@@ -2422,6 +2486,7 @@ class TestComparatorEvaluator:
         assert result.details["harness_wins"] == 0
         assert result.details["baseline_wins"] == 1
 
+    @pytest.mark.conformance
     def test_tie(self, baseline_with_file: Path) -> None:
         """Equal harness/baseline wins → tie verdict (min_pairs=2)."""
         config = EvaluateConfig(
@@ -2448,6 +2513,7 @@ class TestComparatorEvaluator:
                 result = evaluate(config, output="harness output", exit_code=0, context=ctx)
         assert result.verdict == "tie"
 
+    @pytest.mark.conformance
     def test_auto_promote_writes_file(self, baseline_with_file: Path) -> None:
         """auto_promote=True with yes verdict writes output to baseline file."""
         config = EvaluateConfig(
@@ -2476,6 +2542,7 @@ class TestComparatorEvaluator:
         assert result.details.get("bootstrapped") is True
         assert (baseline_dir / "output.txt").read_text() == "first run output"
 
+    @pytest.mark.conformance
     def test_no_auto_promote_does_not_write_file(self, baseline_with_file: Path) -> None:
         """auto_promote=False (default) never writes to baseline file on yes."""
         original_content = (baseline_with_file / "output.txt").read_text()
@@ -2521,6 +2588,7 @@ class TestContractEvaluator:
             mock_run.return_value = mock_result
             yield mock_run, mock_result
 
+    @pytest.mark.conformance
     def test_aligned_pair_returns_yes(self, mock_cli, tmp_path) -> None:
         """Single aligned pair returns yes verdict."""
         mock_run, mock_result = mock_cli
@@ -2548,6 +2616,7 @@ class TestContractEvaluator:
         assert len(result.details["pair_results"]) == 1
         assert result.details["pair_results"][0]["verdict"] == "yes"
 
+    @pytest.mark.conformance
     def test_mismatched_pair_returns_no(self, mock_cli, tmp_path) -> None:
         """Mismatched pair (LLM returns no) yields no verdict."""
         mock_run, mock_result = mock_cli
@@ -2656,6 +2725,7 @@ class TestContractEvaluator:
         assert result.verdict == "error"
         assert "pairs" in result.details["error"].lower()
 
+    @pytest.mark.conformance
     def test_regex_extraction_applies_to_both_sides(self, mock_cli, tmp_path) -> None:
         """Producer and consumer regex patterns correctly extract slices."""
         mock_run, mock_result = mock_cli
@@ -2685,6 +2755,7 @@ class TestContractEvaluator:
         # The prompt was passed to the CLI binary — just verify CLI was called
         assert mock_run.called
 
+    @pytest.mark.conformance
     def test_cli_not_found_returns_error(self, tmp_path) -> None:
         """Returns error immediately when host CLI is not installed."""
         producer = tmp_path / "api.ts"
@@ -2708,6 +2779,7 @@ class TestContractEvaluator:
         assert result.verdict == "error"
         assert result.details.get("missing_dependency") is True
 
+    @pytest.mark.conformance
     def test_multi_pair_any_failure_returns_no(self, mock_cli, tmp_path) -> None:
         """With multiple pairs, any failure causes overall no verdict."""
         mock_run, mock_result = mock_cli
@@ -2747,6 +2819,7 @@ class TestContractEvaluator:
         assert result.verdict == "no"
         assert len(result.details["pair_results"]) == 2
 
+    @pytest.mark.conformance
     def test_dispatch_contract(self, mock_cli, tmp_path) -> None:
         """Contract type routes through the evaluate() dispatcher."""
         mock_run, mock_result = mock_cli

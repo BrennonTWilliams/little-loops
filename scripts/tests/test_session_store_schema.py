@@ -928,7 +928,7 @@ class TestRawEventsTable:
             encoding="utf-8",
         )
         db = tmp_path / "history.db"
-        count = backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        count = backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         assert count == 1
         conn = connect(db)
         try:
@@ -958,8 +958,8 @@ class TestRawEventsTable:
             encoding="utf-8",
         )
         db = tmp_path / "history.db"
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         conn = connect(db)
         try:
             count = conn.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
@@ -969,7 +969,7 @@ class TestRawEventsTable:
 
     def test_updates_last_raw_event_ts(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
-        backfill_raw_events(db, jsonl_files=[], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[], since_ts=0.0, host="test")
         conn = connect(db)
         try:
             row = conn.execute("SELECT value FROM meta WHERE key = 'last_raw_event_ts'").fetchone()

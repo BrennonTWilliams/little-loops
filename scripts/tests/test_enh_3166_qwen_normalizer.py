@@ -353,7 +353,7 @@ class TestRawEventsHostPlumbing:
             encoding="utf-8",
         )
 
-        backfill_raw_events(db, jsonl_files=[claude_jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[claude_jsonl], since_ts=0.0, host="claude-code")
 
         conn = connect(db)
         try:
@@ -495,7 +495,7 @@ class TestClaudeParity:
         original_lines = [json.dumps(r) for r in self.CLAUDE_LINES]
         jsonl.write_text("\n".join(original_lines) + "\n", encoding="utf-8")
 
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         counts = rebuild(db)
 
         assert counts["sessions"] == 1
