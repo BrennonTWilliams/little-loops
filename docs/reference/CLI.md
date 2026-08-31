@@ -2880,6 +2880,12 @@ Render an EPIC's child issue hierarchy as a Unicode box-drawing tree with depend
 JSON output (`--format json`) emits `{"root": "EPIC-NNN", "nodes": [...], "edges": [...]}`.
 Exits 0 on success; exits non-zero if the EPIC is not found.
 
+The child set is the union of `parent: EPIC-NNN` issues (backward) and the EPIC's own
+`relates_to:` field (forward), with EPIC-shaped ids excluded from the forward half —
+`relates_to:` on an EPIC is a documentation cross-reference to sibling EPICs, not a
+decomposition edge, so a sibling EPIC id never renders as a child node (BUG-3362,
+mirroring `ll-sprint`'s `load_or_resolve` fix from BUG-3361).
+
 **Examples:**
 ```bash
 ll-deps analyze                       # Full analysis with markdown output
