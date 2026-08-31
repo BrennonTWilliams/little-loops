@@ -64,6 +64,33 @@ short-circuits `cat`'s success and the fallback never fires, so
    `"config_error"`, or `"not_run"` — while the run's own terminal `verdict`
    still reads `"success"`.
 
+## Root Cause
+
+- **File**: `scripts/little_loops/loops/auto-refine-and-implement.yaml`
+- **Anchor**: in `verify`'s embedded python3 heredoc (`classify()` at line 428,
+  `emit()` at line 441, invoked via `VERIFY_VERDICT=$(... python3 <<'PYEOF'
+  ... PYEOF)` at line 410) and in `merge_epic_branch`'s heredoc (`python3
+  <<'PYEOF' > "$RUN_DIR/epic-merge-verdict.txt"` at line 570)
+- **Cause**: Every code path either heredoc's author wrote reaches `emit()`
+  (which always ends in `print(verdict)` + `raise SystemExit(0)`) or a bare
+  `print(...)` followed by `SystemExit(0)` — so on every *intentional*
+  branch the python3 process's own exit code is 0. The bug is specifically
+  an *uncaught* exception (e.g. `ModuleNotFoundError` for
+  `little_loops.worktree_utils`/`little_loops.config`) that never reaches
+  `emit()`/`print()`: Python writes nothing to stdout, a traceback to
+  stderr, and exits non-zero. Because each state's action script ends with
+  an unconditional `echo` after the heredoc, the wrapping `bash -c`
+  invocation always exits 0 regardless of the nested heredoc's own exit
+  code — `DefaultActionRunner.run()` (`scripts/little_loops/fsm/runners.py`)
+  reports exactly one `ActionResult.exit_code` for the whole action string,
+  with no visibility into the nested heredoc's own exit status. This is why
+  `on_error` (declared on both states) is unreachable for this failure mode.
+  `finalize`'s subsequent read (`cat "$RUN_DIR/verify-verdict.txt"
+  2>/dev/null || echo "not_run"`, lines 966/987) only substitutes
+  `"not_run"` on file *absence*; a present-but-empty file (the crash's
+  actual output) passes through as the literal empty string into
+  `summary.json`.
+
 ## Evidence
 
 Observed via `/ll:audit-loop-run sprint-refine-and-implement
@@ -127,6 +154,97 @@ minimum, `"not_run"` — never a bare empty string that passes silently through
 
 `verify` -> heredoc's `classify()` / `emit()` -> `VERIFY_VERDICT` -> `verify-verdict.txt` -> `finalize` -> `summary.json`'s `verify_verdict` field. Same shape for `merge_epic_branch` -> `epic-merge-verdict.txt` -> `finalize` -> `summary.json`'s `epic_merge_verdict` field.
 
+### Decision Rules
+
+- New verdict token: the fix introduces a value (e.g. `"error"`) distinct
+  from the existing `classify()` taxonomy (`passed`/`collection_error`/
+  `config_error`/`failed`) and from `finalize`'s `"not_run"` fallback.
+- Exact trigger: the heredoc's own python3 subprocess exit code (captured
+  via `$?` immediately after the heredoc, before any later command resets
+  it — no existing statement in either state does this today) is non-zero
+  **and** the heredoc printed no verdict to stdout (i.e. `emit()`/`print()`
+  was never reached). This is a different signal from `classify()`'s
+  `returncode` parameter, which is the *inner* `test_cmd`/
+  `worktree_utils` result and must keep flowing through `emit()` unchanged.
+- Escape hatch / precedence: this classification must fire only when the
+  heredoc process itself crashed before emitting a verdict — it must never
+  override a verdict the heredoc legitimately printed.
+- Companion change: `finalize`'s two file reads (lines 966, 987) must
+  resolve a present-but-empty verdict file to `"not_run"` (or the new
+  token), not the empty string that reaches `summary.json` today — no
+  existing idiom in this codebase combines a `[ -s file ]` non-empty guard
+  with `cat file || echo <default>` (confirmed absent repo-wide by
+  pattern-finder research).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- The FSM executor has no built-in mechanism to surface a nested heredoc's exit code separately from the wrapping `bash -c` action's own exit code: `DefaultActionRunner.run()` (`scripts/little_loops/fsm/runners.py`) always executes the full multi-line action string as one `subprocess.Popen(["bash", "-c", action], ...)` and returns a single `ActionResult.exit_code = process.returncode` for the whole script; `executor.py`'s un-annotated shell-state default (`evaluate_exit_code(action_result.exit_code)`) and the `shell_exit` fragment (`scripts/little_loops/fsm/fragments.py`) share this same single-exit-code contract. Any fix must manually capture `$?` immediately after the heredoc and propagate it (e.g. a final `exit "$RC"`), since any command executed afterward resets `$?`.
+- Precedent for this exact idiom already exists elsewhere in this codebase: `workflow-generator.yaml`'s `validate_intent` state runs its heredoc directly (not via `$(...)`), captures `RC=$?` on the next line, and ends with `exit "$RC"` plus `evaluate: {type: exit_code}` — the shape that lets a heredoc's own crash reach the FSM's exit-code check. `general-task.yaml`'s `summarize_success` state instead appends `2>/dev/null || echo 0` on the heredoc's opening line inside the command substitution, substituting a safe numeric default on a non-zero exit. Neither idiom is used today in `verify`/`merge_epic_branch`.
+- `finalize`'s composite `$VERDICT` (`success`/`partial`/`partial-with-errors`/`phantom`/`incomplete-abandoned`/`no-op`) is computed independently of `verify_verdict`/`epic_merge_verdict` — both states' own header comments say this is "advisory only." A fix to these two tokens does not by itself change `finalize`'s pass/fail gate; that gate stays blind to this crash mode unless separately wired.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `verify`
+  state (heredoc + post-heredoc `echo`, ~lines 392-527), `merge_epic_branch`
+  state (heredoc + post-heredoc `echo`, ~lines 543-570), `finalize` state
+  (verdict file reads, ~lines 966, 987)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner.run()`
+  executes the full action string as one `bash -c` subprocess and reports a
+  single `ActionResult.exit_code` for it; this is why the nested heredoc's
+  own crash is invisible today
+- `scripts/little_loops/fsm/executor.py` — `_evaluate()` /
+  `evaluate_exit_code()` route on that single exit code; the `on_error`
+  decisions for `verify`/`merge_epic_branch` derive from it
+- `docs/guides/LOOPS_REFERENCE.md` — documents the `verify_verdict` enum
+  (`passed`/`failed`/`collection_error`/`config_error`/`skipped`/`not_run`)
+  as "advisory only, not folded into `verdict`"
+- `skills/audit-loop-run/SKILL.md` (Step 6a) — documents the same
+  six-token enum for a human/LLM auditor reading `summary.json`; does not
+  account for an empty-string value
+
+### Conventions in Force
+- Loop YAML states that capture a plain shell/test/build command's exit
+  code do so via an immediate `RC=$?` on the next line, avoiding any
+  command-substitution ambiguity — evidence: `code-run-gate.yaml:266-267`,
+  `general-task.yaml`'s `INSTALL_RC=$?`/`PYTEST_RC=$?`. No occurrence of
+  this idiom in the codebase is applied to a `$(python3 <<'PYEOF' ...)`
+  heredoc-in-command-substitution — that exact combination does not exist
+  anywhere in `scripts/little_loops/loops/` today.
+- The `cat file 2>/dev/null || echo <default>` idiom used throughout the
+  loops tree (including `finalize`'s two verdict reads) always treats
+  file-absence as the only failure signal; no variant elsewhere adds a
+  `[ -s file ]` non-empty guard before the fallback.
+- BUG-2594 (closed) is the closest prior precedent for a loop state
+  silently mis-signaling by trusting untrusted/failure-mode output; its
+  resolution added `set -o pipefail` around a teed subprocess, `on_error`
+  routes for callers, and a regression test that executes the real action
+  string against adversarial/crash input via `subprocess.run(["bash", "-c",
+  script], ...)`.
+
+### Tests
+- `scripts/tests/test_builtin_loops.py::TestVerifyStateConfigReadShell`
+  (~line 5530) and `::TestMergeEpicBranchConfigReadShell` (~line 5653)
+  already extract-substitute-execute-assert the real `verify`/
+  `merge_epic_branch` action strings via `subprocess.run(["bash", "-c",
+  action], ...)` and read the resulting `verify-verdict.txt`/
+  `epic-merge-verdict.txt`/`verify-returncode.txt` — the established
+  harness for exercising these two states.
+- Existing cases in that harness vary the *inner* `test_cmd`'s behavior
+  (e.g. exit 2 → `collection_error`, a missing-script stderr string →
+  `config_error`); none forces the heredoc's own python3 interpreter to
+  crash (e.g. via an `ImportError`), so there is no existing regression
+  coverage for this bug's exact failure mode.
+- `test_finalize_surfaces_verify_verdict`,
+  `test_finalize_verify_verdict_defaults_to_not_run`, and the
+  `_run_finalize()` helper's `verify-verdict.txt` seeding never seed a
+  *present-but-empty* file — the crash-to-empty-string path is untested
+  end-to-end as well.
+
 ## Impact
 
 - **Priority**: P2 — mirrors BUG-2614's severity class: a config'd gate
@@ -140,4 +258,5 @@ minimum, `"not_run"` — never a bare empty string that passes silently through
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-31T02:24:08 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:format-issue` - 2026-08-31T02:10:25 - `816b6544-6e69-4192-a4ac-f797f3d82975.jsonl`
