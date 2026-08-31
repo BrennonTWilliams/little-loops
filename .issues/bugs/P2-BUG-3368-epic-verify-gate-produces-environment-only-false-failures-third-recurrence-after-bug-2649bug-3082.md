@@ -14,6 +14,7 @@ relates_to:
 - BUG-3369
 - BUG-3370
 decision_needed: false
+program_design_not_applicable: true
 reconcile_attempted: true
 confidence_score: 98
 outcome_confidence: 84
@@ -212,6 +213,7 @@ The tsc failures were `Cannot find type definition file for 'bun'`.
 **Verdict**: STOP — ADDRESS GAPS (Program Design Hard Override, ENH-2852/ENH-2967) | Readiness: 98/100 | Outcome Confidence: 84/100
 
 ### Gaps to Address
+- **RESOLVED (2026-08-31 review pass)**: `program_design_not_applicable: true` added to frontmatter; `ll-issues check-design BUG-3368` now exits 0. Original gap kept below for the record.
 - `ll-issues check-design BUG-3368` fails: "Program Design: no signature-shaped line found in Types, Signatures, Call Path, or the section preamble." The section's Types/Signatures entries are prose stating "(none — ... decorator-only)" rather than a signature-shaped line, so the linter finds nothing to anchor on even though the Call Path line does name `verify_epic_branch_before_merge()`. Remedy: since this fix genuinely adds no new types or functions (two stacked `@pytest.mark.skipif` decorators only), set `program_design_not_applicable: true` in this issue's frontmatter rather than fabricating a signature — this is the skill's documented remedy path for genuinely trivial work.
 
 ### Outcome Risk Factors (informational, non-blocking — outcome confidence 84 clears the 65 threshold)
