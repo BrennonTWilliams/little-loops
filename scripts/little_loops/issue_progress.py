@@ -14,6 +14,17 @@ _OPEN_STATUSES = frozenset({"open", "in_progress", "blocked"})
 _TERMINAL_STATUSES = frozenset({"done", "cancelled"})
 
 
+def compute_all_done(done_count: int, cancelled_count: int, blocked_count: int, total: int) -> bool:
+    """True iff every child is terminally resolved (``done`` or ``cancelled``) and none is blocked.
+
+    Shared by the epic-branch-merge completion gates (BUG-3369) —
+    ``ParallelOrchestrator._maybe_complete_epic`` and the FSM loop's
+    ``merge_epic_branch`` state — so both stay behaviorally identical rather
+    than drifting via independently inlined expressions.
+    """
+    return total > 0 and (done_count + cancelled_count) == total and blocked_count == 0
+
+
 @dataclass
 class EpicProgress:
     """Aggregate progress metrics for an EPIC computed from its children."""

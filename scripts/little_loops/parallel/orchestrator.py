@@ -1421,11 +1421,11 @@ class ParallelOrchestrator:
         helpers, then consults ``compute_epic_progress`` (transitive child walk)
         against the current on-disk statuses:
 
-        - **All children terminally ``done``** (``by_status["done"]`` alone;
-          cancelled children do NOT count) with no ``blocked``/``cancelled``
-          child and no child in this run's failure set → merge
-          ``epic/<id>-<slug>`` into ``base_branch`` (or open one PR when
-          ``epic_branches.open_pr``), then delete the branch on merge.
+        - **All children terminally resolved** (``done`` or ``cancelled``,
+          BUG-3369) with no ``blocked`` child and no child in this run's
+          failure set → merge ``epic/<id>-<slug>`` into ``base_branch`` (or
+          open one PR when ``epic_branches.open_pr``), then delete the branch
+          on merge.
         - **Any child failed/blocked** → the epic branch is held open (no merge,
           no delete): the partial-failure gate scopes ``queue.failed_ids`` /
           ``state.failed_issues`` to this EPIC's child-ID set.
@@ -1445,6 +1445,7 @@ class ParallelOrchestrator:
         from little_loops.issue_parser import find_issues
         from little_loops.issue_progress import (
             build_parent_map,
+            compute_all_done,
             compute_epic_progress,
             find_nearest_epic_ancestor,
         )
@@ -1470,13 +1471,13 @@ class ParallelOrchestrator:
             return
 
         total = len(prog.children)
-        # Use by_status["done"] ALONE — a cancelled child must NOT trigger a
-        # merge into base (diverges from the list_cmd badge which sums
-        # done+cancelled; see issue Codebase Research Findings).
+        # BUG-3369: done+cancelled both count toward completion (matches the
+        # codebase-wide terminal-status convention, _TERMINAL_STATUSES) — a
+        # cancelled child no longer permanently blocks the merge gate.
         done_count = prog.by_status.get("done", 0)
         blocked_count = prog.by_status.get("blocked", 0)
         cancelled_count = prog.by_status.get("cancelled", 0)
-        all_done = total > 0 and done_count == total and blocked_count == 0 and cancelled_count == 0
+        all_done = compute_all_done(done_count, cancelled_count, blocked_count, total)
         if not all_done:
             return
 

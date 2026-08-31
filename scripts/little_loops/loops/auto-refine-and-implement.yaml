@@ -667,37 +667,48 @@ states:
           raise SystemExit(0)
 
       from little_loops.issue_parser import find_issues
-      from little_loops.issue_progress import compute_epic_progress
+      from little_loops.issue_progress import compute_all_done, compute_epic_progress
 
       all_issues = find_issues(
           cfg,
           status_filter={"open", "in_progress", "blocked", "done", "cancelled", "deferred"},
       )
       # BUG-2637: the run that completes the FINAL child wrote `status: done`
-      # inside the epic-branch worktree — that status lives only on the epic
-      # branch tip, not on the base working tree find_issues() just scanned. So
-      # the all-done gate reads the completing child as still `open` and never
-      # merges. Union the epic-branch-tip `done` set over the base status before
+      # (or, per BUG-3369, `status: cancelled`) inside the epic-branch
+      # worktree — that status lives only on the epic branch tip, not on the
+      # base working tree find_issues() just scanned. So the all-done gate
+      # reads the completing child as still `open` and never merges. Union
+      # the epic-branch-tip terminal statuses over the base status before
       # counting, mirroring finalize's `git grep -lE '^status: *done' <branch>`
-      # tip-read idiom (ENH-2609) in this same file.
+      # tip-read idiom (ENH-2609) in this same file. Two separate greps (not
+      # one alternation) because `git grep -l` only lists matching filenames,
+      # not which alternative matched — a single widened pattern couldn't
+      # tell a done tip from a cancelled one.
       import re
 
-      tip_done: set[str] = set()
-      try:
-          tip = subprocess.run(
-              ["git", "grep", "-lE", r"^status: *done", epic_branch, "--", ".issues"],
-              capture_output=True, text=True, timeout=30,
-          )
-          if tip.returncode in (0, 1):
-              for line in tip.stdout.splitlines():
-                  m = re.search(r"(BUG|FEAT|ENH|EPIC)-[0-9]+", line)
-                  if m:
-                      tip_done.add(m.group(0))
-      except Exception:
-          pass
+      def _tip_ids(status: str) -> set[str]:
+          ids: set[str] = set()
+          try:
+              tip = subprocess.run(
+                  ["git", "grep", "-lE", rf"^status: *{status}", epic_branch, "--", ".issues"],
+                  capture_output=True, text=True, timeout=30,
+              )
+              if tip.returncode in (0, 1):
+                  for line in tip.stdout.splitlines():
+                      m = re.search(r"(BUG|FEAT|ENH|EPIC)-[0-9]+", line)
+                      if m:
+                          ids.add(m.group(0))
+          except Exception:
+              pass
+          return ids
+
+      tip_done = _tip_ids("done")
+      tip_cancelled = _tip_ids("cancelled")
       for iss in all_issues:
           if iss.issue_id in tip_done:
               iss.status = "done"
+          elif iss.issue_id in tip_cancelled:
+              iss.status = "cancelled"
 
       prog = compute_epic_progress(epic_id, all_issues)
       if prog is None:
@@ -705,12 +716,13 @@ states:
           raise SystemExit(0)
 
       total = len(prog.children)
+      # BUG-3369: done+cancelled both count toward completion (matches the
+      # codebase-wide terminal-status convention) — mirrors
+      # ParallelOrchestrator._maybe_complete_epic via the shared predicate.
       done_count = prog.by_status.get("done", 0)
       blocked_count = prog.by_status.get("blocked", 0)
       cancelled_count = prog.by_status.get("cancelled", 0)
-      all_done = (
-          total > 0 and done_count == total and blocked_count == 0 and cancelled_count == 0
-      )
+      all_done = compute_all_done(done_count, cancelled_count, blocked_count, total)
       if not all_done:
           print("held_open")
           raise SystemExit(0)

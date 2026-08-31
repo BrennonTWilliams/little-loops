@@ -6015,6 +6015,15 @@ class TestMergeEpicBranchConfigReadShell:
         assert not (run_dir / "merge-detail.txt").exists()
         assert not (run_dir / "merge-returncode.txt").exists()
 
+    def test_merges_when_done_and_cancelled_mix(self, tmp_path: Path) -> None:
+        """BUG-3369: a cancelled child now counts toward completion, same as done."""
+        result, run_dir = self._run(
+            tmp_path, child_statuses={"FEAT-010": "done", "FEAT-020": "cancelled"}
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "merged"
+        assert self._EPIC_BRANCH not in self._branches(tmp_path)
+
     def test_merge_failed_persists_diagnostic_artifacts(self, tmp_path: Path) -> None:
         """ENH-2643: a real merge-back conflict emits `merge_failed` AND persists
         merge-detail.txt / merge-returncode.txt / merge-conflicts.txt under run_dir,

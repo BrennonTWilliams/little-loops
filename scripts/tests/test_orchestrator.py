@@ -1630,17 +1630,19 @@ class TestEpicCompletionMerge:
 
         assert not [c for c in calls if c[0] == "merge"]
 
-    def test_cancelled_child_does_not_trigger_merge(
+    def test_cancelled_child_counts_toward_merge(
         self,
         make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
     ) -> None:
-        """A cancelled child must NOT count as done (diverges from the badge)."""
+        """BUG-3369: a cancelled child now counts as terminal, same as done."""
         orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "cancelled"})
         calls = self._capture_git(orch)
 
         orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
 
-        assert not [c for c in calls if c[0] == "merge"]
+        merge_calls = [c for c in calls if c[0] == "merge" and "--abort" not in c]
+        assert len(merge_calls) == 1
+        assert self._EPIC_BRANCH in merge_calls[0]
 
     def test_partial_failure_gate_scopes_failed_ids(
         self,

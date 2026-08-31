@@ -4,10 +4,11 @@ type: BUG
 title: Epic auto-merge gate treats any cancelled child as a permanent block instead
   of resolving it like done
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T21:19:28Z'
+completed_at: '2026-08-31T23:06:47Z'
 relates_to:
 - FEAT-2449
 - BUG-3368
@@ -202,12 +203,41 @@ This is a general defect, not specific to EPIC-1463 — any epic with at least o
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented Option B (both gates changed together, per Decision Rationale):
+
+- Added `compute_all_done(done_count, cancelled_count, blocked_count, total)` to
+  `scripts/little_loops/issue_progress.py`, next to `_TERMINAL_STATUSES`: `total > 0
+  and (done_count + cancelled_count) == total and blocked_count == 0`.
+- `ParallelOrchestrator._maybe_complete_epic` (`orchestrator.py:1472-1479`) now calls
+  the shared predicate instead of inlining `done_count == total and cancelled_count ==
+  0`; its docstring and inline comment were rewritten to state the new done+cancelled
+  policy instead of the stale "cancelled must NOT count" rationale.
+- `merge_epic_branch` (`auto-refine-and-implement.yaml:610-716`) now calls the same
+  shared predicate. Its epic-branch-tip status union (BUG-2637) was widened from a
+  single `done`-only grep to two separate greps (`done`, `cancelled`) — `git grep -l`
+  only lists matching filenames, not which alternative matched, so a single widened
+  pattern couldn't distinguish a done tip from a cancelled one.
+- Rewrote `test_orchestrator.py::test_cancelled_child_does_not_trigger_merge` →
+  `test_cancelled_child_counts_toward_merge`, asserting a merge now fires for a
+  done+cancelled mix.
+- Added `test_builtin_loops.py::TestMergeEpicBranchConfigReadShell::
+  test_merges_when_done_and_cancelled_mix`, modeled on
+  `test_merges_when_all_children_done`.
+- Full suite: `python -m pytest scripts/tests/` — 22289 passed, 42 skipped, 1 failed.
+  The one failure (`test_verify_evidence.py::TestRepoGate::
+  test_no_new_unverifiable_evidence`) is against `.issues/enhancements/P5-ENH-1722-*`,
+  modified concurrently by an unrelated `/ll:refine-issue` run on this shared
+  editable-install working tree — unrelated to this fix and not committed here.
+
 ## Status
 
 **Open** | Created: 2026-08-31 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-31T23:06:11 - `5697e608-83de-4166-b643-c3401ee611ef.jsonl`
 - `/ll:confidence-check` - 2026-08-31T22:31:20 - `a1600312-93ed-46f3-9d4c-f81445a303c2.jsonl`
 - `/ll:wire-issue` - 2026-08-31T22:11:28 - `c4a9442e-319b-44f7-a243-d71188c2e525.jsonl`
 - `/ll:decide-issue` - 2026-08-31T22:01:17 - `37ee9921-5737-4ac0-9e3a-27926a3278f3.jsonl`
