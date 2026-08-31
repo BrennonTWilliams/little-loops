@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-cost_ceiling_exceeded.json",
+  "title": "Cost Ceiling Exceeded",
+  "description": "Emitted when a state's actual cost exceeds its configured cost_ceiling.cost_ceiling_per_state hard limit; the executor finishes the run with terminated_by='cost_ceiling_exceeded' (BUG-3360).",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "cost_usd",
+    "cost_ceiling_per_state",
+    "action"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every parallel.* emitter (ENH-3346); required on all parallel.* events, optional elsewhere."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
+    "state": {
+      "type": "string",
+      "description": "Name of the state whose cost exceeded the hard ceiling"
+    },
+    "cost_usd": {
+      "type": "number",
+      "description": "State's actual cost in USD, rounded to 4 decimal places"
+    },
+    "cost_ceiling_per_state": {
+      "type": "number",
+      "description": "Configured hard-ceiling threshold that was exceeded"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "abort"
+      ],
+      "description": "Always 'abort'"
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-ab_summary.json",
+  "title": "AB Summary",
+  "description": "Emitted once, when the FSM executor finishes a run that collected any ab_comparison results (FEAT-1822), reporting the run-level aggregate.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "harness_pass_rate",
+    "baseline_pass_rate",
+    "delta",
+    "item_count"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every parallel.* emitter (ENH-3346); required on all parallel.* events, optional elsewhere."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
+    "harness_pass_rate": {
+      "type": "number",
+      "description": "Fraction of items where the harness arm passed (0-1)"
+    },
+    "baseline_pass_rate": {
+      "type": "number",
+      "description": "Fraction of items where the baseline arm passed (0-1)"
+    },
+    "delta": {
+      "type": "number",
+      "description": "Pass-rate difference (harness_pass_rate - baseline_pass_rate)"
+    },
+    "item_count": {
+      "type": "integer",
+      "description": "Number of items included in the summary"
+    }
+  },
+  "additionalProperties": true
+}

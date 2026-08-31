@@ -14,12 +14,14 @@ from little_loops.generate_schemas import SCHEMA_DEFINITIONS, generate_schemas
 class TestSchemaDefinitions:
     """Tests for the SCHEMA_DEFINITIONS catalog."""
 
-    def test_all_41_event_types_defined(self) -> None:
-        """All 48 LLEvent types must be defined (ENH-3346: added six parallel.* lifecycle events)."""
-        assert len(SCHEMA_DEFINITIONS) == 48
+    def test_all_58_event_types_defined(self) -> None:
+        """All 58 LLEvent types must be defined (doc audit 2026-08-31: added messages_append,
+        sub_loop_worktree_attached/detached/error, prepatch_check_flagged, baseline_complete,
+        ab_summary, cost_ceiling_unknown/warn/exceeded)."""
+        assert len(SCHEMA_DEFINITIONS) == 58
 
     def test_expected_event_types_present(self) -> None:
-        """Each of the 48 known event types must appear in catalog."""
+        """Each of the 58 known event types must appear in catalog."""
         expected = {
             "loop_start",
             "state_enter",
@@ -69,6 +71,16 @@ class TestSchemaDefinitions:
             "learning_target_stale",
             "max_steps_summary",
             "max_iterations_reached_summary",
+            "messages_append",
+            "sub_loop_worktree_attached",
+            "sub_loop_worktree_detached",
+            "sub_loop_worktree_error",
+            "prepatch_check_flagged",
+            "baseline_complete",
+            "ab_summary",
+            "cost_ceiling_unknown",
+            "cost_ceiling_warn",
+            "cost_ceiling_exceeded",
         }
         assert set(SCHEMA_DEFINITIONS.keys()) == expected
 
@@ -95,18 +107,18 @@ class TestSchemaDefinitions:
 class TestGenerateSchemas:
     """Tests for generate_schemas() output."""
 
-    def test_creates_41_files(self, tmp_path: Path) -> None:
-        """Generates exactly 48 schema files (ENH-3346: added six parallel.* lifecycle events)."""
+    def test_creates_58_files(self, tmp_path: Path) -> None:
+        """Generates exactly 58 schema files (doc audit 2026-08-31: added 9 event types)."""
         generate_schemas(tmp_path)
         files = list(tmp_path.glob("*.json"))
-        assert len(files) == 48
+        assert len(files) == 58
 
     def test_creates_output_dir_if_missing(self, tmp_path: Path) -> None:
         """Creates the output directory if it doesn't exist."""
         output_dir = tmp_path / "nested" / "schemas"
         generate_schemas(output_dir)
         assert output_dir.exists()
-        assert len(list(output_dir.glob("*.json"))) == 48
+        assert len(list(output_dir.glob("*.json"))) == 58
 
     def test_all_files_are_valid_json(self, tmp_path: Path) -> None:
         """Every generated file contains valid JSON."""
@@ -230,12 +242,12 @@ class TestGenerateSchemasCLI:
         assert result == 0
 
     def test_cli_creates_files(self, tmp_path: Path) -> None:
-        """CLI generates 48 schema files in the specified output directory (ENH-3346)."""
+        """CLI generates 58 schema files in the specified output directory."""
         from little_loops.cli.schemas import main_generate_schemas
 
         with patch("sys.argv", ["ll-generate-schemas", "--output", str(tmp_path)]):
             main_generate_schemas()
-        assert len(list(tmp_path.glob("*.json"))) == 48
+        assert len(list(tmp_path.glob("*.json"))) == 58
 
     def test_cli_default_output_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """CLI defaults to docs/reference/schemas/ relative to cwd."""

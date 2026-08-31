@@ -195,6 +195,133 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["state", "error", "route"],
     ),
+    "messages_append": _schema(
+        "messages_append",
+        "Messages Append",
+        "Emitted when a state's append_to_messages field is set and the state's "
+        "action completes. The interpolated message is appended to the executor's "
+        "in-memory messages list and mirrored onto the event bus.",
+        {
+            "message": _str("The interpolated message text that was appended"),
+            "state": _str("Name of the state whose append_to_messages fired"),
+        },
+        ["message", "state"],
+    ),
+    "sub_loop_worktree_attached": _schema(
+        "sub_loop_worktree_attached",
+        "Sub-Loop Worktree Attached",
+        "Emitted when a state.worktree-configured sub-loop call (ENH-2609) "
+        "successfully sets up a dedicated git worktree for the child loop.",
+        {
+            "branch": _str("Interpolated state.worktree branch name"),
+            "path": _str("Filesystem path to the created worktree"),
+        },
+        ["branch", "path"],
+    ),
+    "sub_loop_worktree_detached": _schema(
+        "sub_loop_worktree_detached",
+        "Sub-Loop Worktree Detached",
+        "Emitted after the child loop finishes and its dedicated worktree is "
+        "torn down. Only the worktree checkout is removed; the branch is not "
+        "auto-deleted.",
+        {
+            "branch": _str("Interpolated state.worktree branch name"),
+            "path": _str("Filesystem path of the worktree that was torn down"),
+        },
+        ["branch", "path"],
+    ),
+    "sub_loop_worktree_error": _schema(
+        "sub_loop_worktree_error",
+        "Sub-Loop Worktree Error",
+        "Emitted when setup_worktree() raises a RuntimeError while attaching a "
+        "per-state worktree for a sub-loop call.",
+        {
+            "branch": _str("Interpolated state.worktree branch name that failed to attach"),
+            "error": _str("String representation of the raised RuntimeError"),
+        },
+        ["branch", "error"],
+    ),
+    "prepatch_check_flagged": _schema(
+        "prepatch_check_flagged",
+        "Prepatch Check Flagged",
+        "Emitted when a state's prepatch_check guard runs in 'warn' policy mode "
+        "and the pre-patch evidence check returns a 'flagged' verdict.",
+        {
+            "state": _str("Name of the state whose prepatch check flagged"),
+            "policy": _str("Configured prepatch_check policy (always 'warn' when this fires)"),
+            "outcomes": _int("Count of outcomes recorded in the evidence bundle"),
+        },
+        ["state", "policy", "outcomes"],
+    ),
+    "baseline_complete": _schema(
+        "baseline_complete",
+        "Baseline Complete",
+        "Emitted once per compared item during an A/B baseline run, after the "
+        "harness arm and baseline arm both finish executing in parallel and "
+        "before the blind comparator runs.",
+        {
+            "harness_duration_ms": _int("Wall-clock duration of the harness arm, in ms"),
+            "baseline_duration_ms": _int("Wall-clock duration of the baseline arm, in ms"),
+            "harness_tokens": _int("Total tokens (input + output) consumed by the harness arm"),
+            "baseline_tokens": _int("Total tokens (input + output) consumed by the baseline arm"),
+        },
+        ["harness_duration_ms", "baseline_duration_ms", "harness_tokens", "baseline_tokens"],
+    ),
+    "ab_summary": _schema(
+        "ab_summary",
+        "AB Summary",
+        "Emitted once, when the FSM executor finishes a run that collected any "
+        "ab_comparison results (FEAT-1822), reporting the run-level aggregate.",
+        {
+            "harness_pass_rate": _number("Fraction of items where the harness arm passed (0-1)"),
+            "baseline_pass_rate": _number(
+                "Fraction of items where the baseline arm passed (0-1)"
+            ),
+            "delta": _number("Pass-rate difference (harness_pass_rate - baseline_pass_rate)"),
+            "item_count": _int("Number of items included in the summary"),
+        },
+        ["harness_pass_rate", "baseline_pass_rate", "delta", "item_count"],
+    ),
+    "cost_ceiling_unknown": _schema(
+        "cost_ceiling_unknown",
+        "Cost Ceiling Unknown",
+        "Emitted by the post-action per-state cost-ceiling check (BUG-3360) when "
+        "a state with cost_ceiling configured cannot have its actual cost "
+        "evaluated. Unknown cost is never treated as under budget.",
+        {
+            "state": _str("Name of the state whose cost could not be evaluated"),
+            "reason": _str("'usage.jsonl unavailable' or 'unpriceable model'"),
+        },
+        ["state", "reason"],
+    ),
+    "cost_ceiling_warn": _schema(
+        "cost_ceiling_warn",
+        "Cost Ceiling Warn",
+        "Emitted when a state's actual cost reaches or exceeds its configured "
+        "cost_ceiling.cost_warn_at threshold. WARN-only — does not route or abort.",
+        {
+            "state": _str("Name of the state whose cost crossed the warn threshold"),
+            "cost_usd": _number("State's actual cost in USD, rounded to 4 decimal places"),
+            "cost_warn_at": _number("Configured cost_ceiling.cost_warn_at threshold"),
+        },
+        ["state", "cost_usd", "cost_warn_at"],
+    ),
+    "cost_ceiling_exceeded": _schema(
+        "cost_ceiling_exceeded",
+        "Cost Ceiling Exceeded",
+        "Emitted when a state's actual cost exceeds its configured "
+        "cost_ceiling.cost_ceiling_per_state hard limit; the executor finishes "
+        "the run with terminated_by='cost_ceiling_exceeded' (BUG-3360).",
+        {
+            "state": _str("Name of the state whose cost exceeded the hard ceiling"),
+            "cost_usd": _number("State's actual cost in USD, rounded to 4 decimal places"),
+            "cost_ceiling_per_state": _number(
+                "Configured hard-ceiling threshold that was exceeded"
+            ),
+            "action": {"type": "string", "enum": ["abort"], "description": "Always 'abort'"},
+        },
+        ["state", "cost_usd", "cost_ceiling_per_state", "action"],
+    ),
     "evaluate": _schema(
         "evaluate",
         "Evaluate",

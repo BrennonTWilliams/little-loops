@@ -283,6 +283,22 @@ Emitted when an action raises an unhandled exception that is routed to the state
 
 ---
 
+### `messages_append`
+
+Emitted when a state's `append_to_messages` field is set and the state's action completes. The interpolated message is appended to the executor's in-memory `messages` list and mirrored onto the event bus.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message` | `str` | The interpolated message text that was appended |
+| `state` | `str` | Name of the state whose `append_to_messages` fired |
+
+**Example:**
+```json
+{"event": "messages_append", "ts": "...", "message": "Implemented auth middleware", "state": "implement"}
+```
+
+---
+
 ### `evaluate`
 
 Emitted after the evaluator runs to determine the next routing decision.
@@ -757,9 +773,74 @@ Emitted when a state requested a non-CLI `request_path` (`sdk` or `batch`) that 
 
 ---
 
+### `sub_loop_worktree_attached`
+
+Emitted when a `state.worktree`-configured sub-loop call (ENH-2609) successfully sets up a dedicated git worktree for the child loop, immediately after `setup_worktree()` succeeds and before the child executor runs. Pairs with `sub_loop_worktree_detached` when the child finishes; mutually exclusive with `sub_loop_worktree_error` for the same call (whichever of `setup_worktree()`'s outcomes actually occurred fires exactly one of the two).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `branch` | `str` | Interpolated `state.worktree` branch name |
+| `path` | `str` | Filesystem path to the created worktree |
+
+**Example:**
+```json
+{"event": "sub_loop_worktree_attached", "ts": "...", "branch": "sub-implement-BUG-042", "path": "/repo/.worktrees/20260402-153000-subloop-sub-implement-BUG-042"}
+```
+
+---
+
+### `sub_loop_worktree_detached`
+
+Emitted after the child loop finishes and its dedicated worktree is torn down via `cleanup_worktree()`. Only the worktree checkout is removed — the branch itself is never auto-deleted.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `branch` | `str` | Interpolated `state.worktree` branch name |
+| `path` | `str` | Filesystem path of the worktree that was torn down |
+
+**Example:**
+```json
+{"event": "sub_loop_worktree_detached", "ts": "...", "branch": "sub-implement-BUG-042", "path": "/repo/.worktrees/20260402-153000-subloop-sub-implement-BUG-042"}
+```
+
+---
+
+### `sub_loop_worktree_error`
+
+Emitted when `setup_worktree()` raises a `RuntimeError` while attaching a per-state worktree for a sub-loop call. The state then routes via `on_error` if defined, else `on_no`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `branch` | `str` | Interpolated `state.worktree` branch name that failed to attach |
+| `error` | `str` | String representation of the raised `RuntimeError` |
+
+**Example:**
+```json
+{"event": "sub_loop_worktree_error", "ts": "...", "branch": "sub-implement-BUG-042", "error": "RuntimeError: worktree already exists at .worktrees/..."}
+```
+
+---
+
+### `prepatch_check_flagged`
+
+Emitted when a state's `prepatch_check` guard runs in `"warn"` policy mode and the pre-patch evidence check returns a `"flagged"` verdict. `"warn"` policy never blocks the run — this event is the lightweight signal that a flag occurred; the full evidence bundle is written to a `_prepatch_check` context list and, when `run_dir`/`issue_id` are available, a `prepatch_evidence_<issue_id>.json` sidecar plus a `session_store` record.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state whose prepatch check flagged |
+| `policy` | `str` | Configured `prepatch_check` policy (always `"warn"` when this event fires) |
+| `outcomes` | `int` | Count of outcomes recorded in the evidence bundle (`len(evidence.outcomes)`) |
+
+**Example:**
+```json
+{"event": "prepatch_check_flagged", "ts": "...", "state": "implement", "policy": "warn", "outcomes": 2}
+```
+
+---
+
 ### `ab_comparison`
 
-Emitted once per compared item during an A/B baseline run (`ll-loop run <loop> --baseline`), carrying the per-item harness-vs-baseline result. A sibling `baseline_complete` event reports the run-level totals.
+Emitted once per compared item during an A/B baseline run (`ll-loop run <loop> --baseline`), carrying the per-item harness-vs-baseline result. A sibling [`baseline_complete`](#baseline_complete) event reports the raw per-arm cost/timing totals for the same item, and a run-level [`ab_summary`](#ab_summary) event reports the aggregate across all items.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -786,6 +867,42 @@ Emitted once per compared item during an A/B baseline run (`ll-loop run <loop> -
   "confidence": 0.82, "reason": "harness output satisfied all criteria; baseline missed two",
   "raw": {}
 }
+```
+
+---
+
+### `baseline_complete`
+
+Emitted once per compared item during an A/B baseline run, immediately after the harness arm and baseline arm both finish executing in parallel (`_execute_with_baseline`) — before the blind comparator runs. Reports the raw per-arm cost/timing totals for the item; the qualitative pass/fail verdict is reported separately by the sibling [`ab_comparison`](#ab_comparison) event once the blind comparator has judged the pair.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `harness_duration_ms` | `int` | Wall-clock duration of the harness arm, in milliseconds |
+| `baseline_duration_ms` | `int` | Wall-clock duration of the baseline arm, in milliseconds |
+| `harness_tokens` | `int` | Total tokens (input + output) consumed by the harness arm |
+| `baseline_tokens` | `int` | Total tokens (input + output) consumed by the baseline arm |
+
+**Example:**
+```json
+{"event": "baseline_complete", "ts": "...", "harness_duration_ms": 42000, "baseline_duration_ms": 9000, "harness_tokens": 18400, "baseline_tokens": 5200}
+```
+
+---
+
+### `ab_summary`
+
+Emitted once, when the FSM executor finishes a run that collected any `ab_comparison` results (FEAT-1822), immediately after `ab.json` is written to `run_dir` via `write_ab_json()`. Reports the run-level aggregate; each individual item's comparison was already reported by `ab_comparison`. Best-effort — wrapped in a `try/except` so a failure computing or writing the summary never fails the loop run itself; on that path no `ab_summary` event is emitted at all.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `harness_pass_rate` | `float` | Fraction of items where the harness arm passed (0-1) |
+| `baseline_pass_rate` | `float` | Fraction of items where the baseline arm passed (0-1) |
+| `delta` | `float` | Pass-rate difference (`harness_pass_rate - baseline_pass_rate`) |
+| `item_count` | `int` | Number of items included in the summary (`len(summary.per_item)`) |
+
+**Example:**
+```json
+{"event": "ab_summary", "ts": "...", "harness_pass_rate": 0.82, "baseline_pass_rate": 0.61, "delta": 0.21, "item_count": 25}
 ```
 
 ---
@@ -823,6 +940,57 @@ Emitted when a state's retryable API errors exhaust the retry allowance. Termina
 
 ---
 
+### `cost_ceiling_unknown`
+
+Emitted by the post-action per-state cost-ceiling check (BUG-3360, `_check_cost_ceiling`) when a state with `cost_ceiling` configured cannot have its actual cost evaluated — because `usage.jsonl` is missing/empty for the run, or because the state's usage rows reference an unpriceable model. Logged at most once per state name per run. Unknown cost is never treated as under budget — the ceiling simply cannot be enforced for that visit.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state whose cost could not be evaluated |
+| `reason` | `str` | `"usage.jsonl unavailable"` or `"unpriceable model"` |
+
+**Example:**
+```json
+{"event": "cost_ceiling_unknown", "ts": "...", "state": "implement", "reason": "usage.jsonl unavailable"}
+```
+
+---
+
+### `cost_ceiling_warn`
+
+Emitted when a state's actual cost (summed from `usage.jsonl`) reaches or exceeds its configured `cost_ceiling.cost_warn_at` threshold. WARN-only — does not route or abort. Logged at most once per state name per run.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state whose cost crossed the warn threshold |
+| `cost_usd` | `float` | State's actual cost in USD, rounded to 4 decimal places |
+| `cost_warn_at` | `float` | Configured `cost_ceiling.cost_warn_at` threshold |
+
+**Example:**
+```json
+{"event": "cost_ceiling_warn", "ts": "...", "state": "implement", "cost_usd": 1.2345, "cost_warn_at": 1.0}
+```
+
+---
+
+### `cost_ceiling_exceeded`
+
+Emitted when a state's actual cost exceeds its configured `cost_ceiling.cost_ceiling_per_state` hard limit. The executor finishes the run via `self._finish("cost_ceiling_exceeded", ...)`, mirroring the abort branch of `host_budget_exceeded`; `loop_complete` carries `terminated_by="cost_ceiling_exceeded"`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state whose cost exceeded the hard ceiling |
+| `cost_usd` | `float` | State's actual cost in USD, rounded to 4 decimal places |
+| `cost_ceiling_per_state` | `float` | Configured hard-ceiling threshold that was exceeded |
+| `action` | `str` | Always `"abort"` |
+
+**Example:**
+```json
+{"event": "cost_ceiling_exceeded", "ts": "...", "state": "implement", "cost_usd": 5.5, "cost_ceiling_per_state": 5.0, "action": "abort"}
+```
+
+---
+
 ### `loop_complete`
 
 Emitted once when the executor finishes, regardless of how it terminated.
@@ -832,7 +1000,7 @@ Emitted once when the executor finishes, regardless of how it terminated.
 | `final_state` | `str` | Name of the state at termination. Usually the last state entered; when `terminated_by="timeout"` this may be a state that was routed to but never entered. **Exception (BUG-1226):** when that pending state is a shell action, the executor flushes it — emitting `state_enter` with `flushed: true` and running its action — before honoring the timeout, so `state_enter` for `final_state` is always emitted before `loop_complete`. Slash commands and sub-loops are not flushed. |
 | `iterations` | `int` | Total number of iterations completed |
 | `failure_terminal` | `bool` | Emitted unconditionally (ENH-2814). `true` only when `terminated_by="terminal"` **and** the reached terminal state declares `failure: true` — the single source of truth for "did this run fail?", keyed on the flag rather than the state's name. Absent in run archives predating ENH-2814. |
-| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"timeout"` (wall-clock timeout elapsed), `"terminal"` (a terminal state was reached), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_steps"` (step cap reached), `"max_iterations_reached"` (full-pass cap reached), `"user_stopped"`, `"system_signal"`, `"interrupted"`, `"host_pressure_abort"` (ENH-2452 memory pressure), `"host_budget_exceeded"` (ENH-2453 subprocess RSS budget), or `"handoff"` (ContextLimitHandoff handler) |
+| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"timeout"` (wall-clock timeout elapsed), `"terminal"` (a terminal state was reached), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_steps"` (step cap reached), `"max_iterations_reached"` (full-pass cap reached), `"user_stopped"`, `"system_signal"`, `"interrupted"`, `"host_pressure_abort"` (ENH-2452 memory pressure), `"host_budget_exceeded"` (ENH-2453 subprocess RSS budget), `"cost_ceiling_exceeded"` (BUG-3360 per-state cost ceiling), or `"handoff"` (ContextLimitHandoff handler) |
 | `error` | `str` | only when `terminated_by="error"` | Error message explaining why the loop crashed. Read this field directly from the JSONL stream to diagnose crash reasons without filesystem forensics. |
 
 **Example (normal termination):**
@@ -1589,10 +1757,15 @@ Every *emitted* event type listed in this document has a corresponding JSON Sche
 
 ```
 docs/reference/schemas/
+├── ab_summary.json
 ├── action_complete.json
 ├── action_error.json
 ├── action_output.json
 ├── action_start.json
+├── baseline_complete.json
+├── cost_ceiling_exceeded.json
+├── cost_ceiling_unknown.json
+├── cost_ceiling_warn.json
 ├── cycle_detected.json
 ├── evaluate.json
 ├── handoff_detected.json
@@ -1616,6 +1789,7 @@ docs/reference/schemas/
 ├── loop_start.json
 ├── max_iterations_reached_summary.json
 ├── max_steps_summary.json
+├── messages_append.json
 ├── parallel_epic_branch_stale.json
 ├── parallel_merge_completed.json
 ├── parallel_merge_started.json
@@ -1624,6 +1798,7 @@ docs/reference/schemas/
 ├── parallel_worker_completed.json
 ├── parallel_worker_started.json
 ├── parallel_worker_unblocked.json
+├── prepatch_check_flagged.json
 ├── rate_limit_exhausted.json
 ├── prompt_size_warn.json
 ├── rate_limit_storm.json
@@ -1634,6 +1809,9 @@ docs/reference/schemas/
 ├── state_enter.json
 ├── state_issue_completed.json
 ├── state_issue_failed.json
+├── sub_loop_worktree_attached.json
+├── sub_loop_worktree_detached.json
+├── sub_loop_worktree_error.json
 ├── throttle_hard.json
 ├── throttle_stop.json
 └── throttle_warn.json
@@ -1753,9 +1931,19 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `host_subproc_rss` | FSM | `fsm/host_guard.py + fsm/executor.py` |
 | `host_budget_exceeded` | FSM | `fsm/host_guard.py + fsm/executor.py` |
 | `request_path_downgrade` | FSM | `fsm/executor.py` |
+| `sub_loop_worktree_attached` | FSM | `fsm/executor.py` |
+| `sub_loop_worktree_detached` | FSM | `fsm/executor.py` |
+| `sub_loop_worktree_error` | FSM | `fsm/executor.py` |
+| `prepatch_check_flagged` | FSM | `fsm/executor.py` |
+| `messages_append` | FSM | `fsm/executor.py` |
 | `ab_comparison` | FSM | `fsm/executor.py` |
+| `baseline_complete` | FSM | `fsm/executor.py` |
+| `ab_summary` | FSM | `fsm/executor.py` |
 | `api_error_retry` | FSM | `fsm/executor.py` |
 | `api_error_exhausted` | FSM | `fsm/executor.py` |
+| `cost_ceiling_unknown` | FSM | `fsm/executor.py` |
+| `cost_ceiling_warn` | FSM | `fsm/executor.py` |
+| `cost_ceiling_exceeded` | FSM | `fsm/executor.py` |
 | `loop_resume` | FSM Persistence | `fsm/persistence.py` |
 | `state.issue_completed` | StateManager | `state.py` |
 | `state.issue_failed` | StateManager | `state.py` |

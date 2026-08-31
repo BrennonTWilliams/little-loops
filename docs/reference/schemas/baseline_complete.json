@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-baseline_complete.json",
+  "title": "Baseline Complete",
+  "description": "Emitted once per compared item during an A/B baseline run, after the harness arm and baseline arm both finish executing in parallel and before the blind comparator runs.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "harness_duration_ms",
+    "baseline_duration_ms",
+    "harness_tokens",
+    "baseline_tokens"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every parallel.* emitter (ENH-3346); required on all parallel.* events, optional elsewhere."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
+    "harness_duration_ms": {
+      "type": "integer",
+      "description": "Wall-clock duration of the harness arm, in ms"
+    },
+    "baseline_duration_ms": {
+      "type": "integer",
+      "description": "Wall-clock duration of the baseline arm, in ms"
+    },
+    "harness_tokens": {
+      "type": "integer",
+      "description": "Total tokens (input + output) consumed by the harness arm"
+    },
+    "baseline_tokens": {
+      "type": "integer",
+      "description": "Total tokens (input + output) consumed by the baseline arm"
+    }
+  },
+  "additionalProperties": true
+}
