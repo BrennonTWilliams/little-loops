@@ -3,7 +3,7 @@ id: ENH-2124
 title: Research and track Codex permission-skip and tool-allowlist capability gaps
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-13T00:00:00Z'
 discovered_date: 2026-06-13
 discovered_by: capture-issue
@@ -19,6 +19,8 @@ labels:
 - sandbox
 - host-compat
 - research
+completed_at: '2026-08-31T23:03:16Z'
+closed_reason: already_fixed
 ---
 
 # ENH-2124: Research and track Codex permission-skip and tool-allowlist capability gaps
@@ -123,6 +125,27 @@ Conditional — `describe_capabilities()` return dict may include updated values
 
 ## Verification Notes
 _Updated by `/ll:verify-issues` (2026-06-27):_ Current Behavior section corrected — `describe_capabilities()` already returns `"full"` / `"partial"` at `host_runner.py:590, 607`; the remaining work is the research rationale (`thoughts/research/codex-runner-capability-gaps.md`) and `HOST_COMPATIBILITY.md` doc update, not the code wiring. Prior notes from 2026-06-17 and 2026-06-19 calling for a body update have been addressed.
+
+## Resolution
+
+Wrote the research note at `thoughts/research/codex-runner-capability-gaps.md`.
+Both capability ratings were confirmed correct as-is:
+
+- `permission_skip`: **full** — `--dangerously-bypass-approvals-and-sandbox`
+  is a root-session, flag-based mechanism equivalent to Claude Code's.
+- `tool_allowlist`: **partial** — no root-session `--tools` flag exists;
+  `sandbox_mode` constrains write access, not callable tools. One new
+  finding not previously documented: subagent generation
+  (`ll-adapt --host codex --apply`, FEAT-1527) already derives a real
+  per-server `mcp_servers` allowlist from an agent's `tools:` frontmatter
+  (`adapters/codex.py::_derive_mcp_servers`) — the `mcp_servers` half of
+  ENH-2121's proposed scope landed even though ENH-2121 itself was
+  cancelled/absorbed into FEAT-2260. The `skills.config` half did not land.
+
+Updated the `[^runnercap]` footnote in `HOST_COMPATIBILITY.md` to link the
+research note and mention the subagent-layer `mcp_servers` finding. No code
+changes were warranted — `describe_capabilities()` and its test coverage
+(`test_host_runner.py:716-731`) already matched the confirmed decision.
 
 ## Session Log
 - backlog-grooming - 2026-07-03T00:00:00Z - EPIC-1463 tail cleanup: status -> deferred per decision SCOPE-042 in .ll/decisions.yaml (epic 23/30 done; value delivered).

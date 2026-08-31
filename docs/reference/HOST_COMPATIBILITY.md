@@ -299,11 +299,17 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 [^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is tracked by **FEAT-2123**. Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output. Qwen and Claude both carry `usage` in-stream.
 
 [^runnercap]: `permission skip` and `tool allowlist` are reported `✗` by `ll-doctor`
-    for OpenCode. For Codex, **ENH-2124** researched the native equivalents and
+    for OpenCode. For Codex, **ENH-2124** researched the native equivalents
+    (`thoughts/research/codex-runner-capability-gaps.md`) and
     `CodexRunner.describe_capabilities()` now reports `permission_skip` as
     `full` (`--dangerously-bypass-approvals-and-sandbox`) and `tool_allowlist`
     as `partial` (sandbox-mode constrained execution via `sandbox_mode=` on
-    the build methods; no `--tools` allowlist flag).
+    the build methods; no root-session `--tools` allowlist flag). One layer
+    below the root session, subagent generation (`ll-adapt --host codex
+    --apply`, FEAT-1527) already derives a real per-server `mcp_servers`
+    allowlist from an agent's `tools:` frontmatter (`adapters/codex.py`'s
+    `_derive_mcp_servers`) — ENH-2121's proposed `skills.config` half of that
+    scoping did not land.
 
 [^schema]: `CodexRunner.build_blocking_json` serializes the schema dict to a temp file and passes `--output-schema <path>` to Codex (ENH-1530). The temp file path is returned in `HostInvocation.cleanup_paths`; callers must call `p.unlink(missing_ok=True)` for each path after the subprocess completes. `ClaudeCodeRunner` honors an inline `--json-schema` flag (BUG-2759 corrected this row to agree with `structured_output` below) — but its `build_blocking_json()` has no schema flag of its own and still silently drops a `json_schema` parameter passed there.
 
