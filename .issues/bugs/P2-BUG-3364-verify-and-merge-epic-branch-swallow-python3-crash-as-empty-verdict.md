@@ -13,6 +13,12 @@ relates_to:
 depends_on:
 - ENH-3365
 decision_needed: false
+confidence_score: 90
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3364: `verify` and `merge_epic_branch` swallow a python3 crash as an empty verdict, not `failed`/`not_run`
@@ -362,6 +368,7 @@ after ENH-3365 needs no further changes.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-31T03:11:18 - `29e8f5ee-bb5d-4aac-ae78-4403d15301ef.jsonl`
 - `/ll:wire-issue` - 2026-08-31T02:36:16 - `b1737911-44d2-40e3-9bd5-5d8a15c8f475.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:24:08 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:format-issue` - 2026-08-31T02:10:25 - `816b6544-6e69-4192-a4ac-f797f3d82975.jsonl`

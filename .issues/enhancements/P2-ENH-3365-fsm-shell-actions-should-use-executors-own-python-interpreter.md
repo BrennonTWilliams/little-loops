@@ -9,6 +9,12 @@ discovered_by: audit-loop-run
 relates_to:
 - BUG-3364
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # ENH-3365: FSM shell actions should invoke the executor's own Python interpreter, not bare `python3`
@@ -233,6 +239,7 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-31T03:11:18 - `29e8f5ee-bb5d-4aac-ae78-4403d15301ef.jsonl`
 - `/ll:wire-issue` - 2026-08-31T02:33:50 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:30:14 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:format-issue` - 2026-08-31T02:10:25 - `816b6544-6e69-4192-a4ac-f797f3d82975.jsonl`

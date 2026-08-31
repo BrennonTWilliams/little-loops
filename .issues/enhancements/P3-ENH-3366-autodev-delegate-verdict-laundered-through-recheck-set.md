@@ -10,6 +10,12 @@ relates_to:
 - ENH-1679
 - ENH-2005
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # ENH-3366: `delegate`(autodev) verdict is laundered through `recheck_set`
@@ -296,8 +302,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-08-30 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-30_
+
+**Readiness Score**: 95/100 → STOP — ADDRESS GAPS (Program Design hard override)
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Gaps to Address
+- Program Design: no signature-shaped line found in Types, Signatures, Call Path, or the section preamble — `ll-issues check-design` fails the deterministic gate. Remedy: add a concrete signature-shaped line to `## Program Design` (e.g. a state-transition line in the established `state_name -> next_state` / `field: value` shape already used in this issue's own Call Path prose isn't being picked up as signature-shaped by the linter — add an explicit `on_success:`/`on_failure:` key=value line or a `delegate_failed(...)`-style pseudo-signature), or set `program_design_not_applicable: true` in frontmatter if judged genuinely inapplicable to a pure FSM-routing change.
+- `unapplied_decision`: Files to Modify still specifies `finalize_done` (rejected option) — the "Files to Modify" bullet under Integration Map reads "no change to `scripts/little_loops/loops/autodev.yaml` (the rejected Option B would have touched its `finalize_done` state)"; the identifier `finalize_done` appears unmarked outside its own parenthetical disclaimer and trips the unapplied-decision detector. Advisory only — capped Criterion C (Ambiguity) at 10/25; does not by itself force the STOP verdict.
+
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-31T03:11:18 - `29e8f5ee-bb5d-4aac-ae78-4403d15301ef.jsonl`
 - `/ll:wire-issue` - 2026-08-31T02:56:39 - `3198a6b2-0ff9-49c6-a768-b2979f52ed21.jsonl`
 - `/ll:decide-issue` - 2026-08-31T02:46:15 - `2778d8be-8e6e-4975-8f6c-4273dcc76d08.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:37:53 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
