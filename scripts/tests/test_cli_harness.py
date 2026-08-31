@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -1738,10 +1739,15 @@ class TestReadTargetHistory:
         """AC7: exactly `_HISTORY_MIN_SCORED` scored rows -- rendered, not suppressed."""
         from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
 
+        now = datetime.now(UTC)
         self._seed(
             "some-target",
             [
-                {"ts": f"2026-08-0{i}T00:00:00Z", "runner": "cmd", "semantic_passed": True}
+                {
+                    "ts": (now - timedelta(days=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "runner": "cmd",
+                    "semantic_passed": True,
+                }
                 for i in range(1, _HISTORY_MIN_SCORED + 1)
             ],
         )
@@ -1757,13 +1763,14 @@ class TestReadTargetHistory:
         populations and must not collide under one key."""
         from little_loops.cli.harness import _read_target_history
 
+        now = datetime.now(UTC)
         rows = []
         # Four semantically-judged rows (one abstained) -- feeds both counters.
         for i in range(4):
             verdict = "cannot_judge" if i == 0 else "yes"
             rows.append(
                 {
-                    "ts": f"2026-08-0{i + 1}T00:00:00Z",
+                    "ts": (now - timedelta(days=i + 1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "runner": "cmd",
                     "semantic_verdict": verdict,
                     "semantic_passed": None if verdict == "cannot_judge" else True,
@@ -1773,7 +1780,7 @@ class TestReadTargetHistory:
         for i in range(3):
             rows.append(
                 {
-                    "ts": f"2026-08-1{i}T00:00:00Z",
+                    "ts": (now - timedelta(days=i + 10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "runner": "cmd",
                     "semantic_passed": True,
                 }
@@ -1827,10 +1834,11 @@ class TestTargetHistoryRegression:
         from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event
 
         target = "some-target"
+        now = datetime.now(UTC)
         for i in range(3):
             record_harness_event(
                 DEFAULT_DB_PATH,
-                ts=f"2026-08-0{i + 1}T00:00:00Z",
+                ts=(now - timedelta(days=i + 1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 runner="cmd",
                 target=target,
                 semantic_verdict="cannot_judge",
