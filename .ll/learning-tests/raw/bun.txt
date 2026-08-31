@@ -1,0 +1,14 @@
+=== Claim 1/3/4/5 (Bun.spawn/Bun.spawnSync/Bun.which/Bun API) ===
+CLAIM1: bun --version prints a version and exits 0
+  exitCode= 0 stdout= 1.3.9
+CLAIM3: Bun.spawn can spawn a subprocess, capture stdout, and .exited resolves to exit code
+  stdout= hello-from-spawn exitCode= 0
+CLAIM4: Bun.spawn can pipe stdin to a subprocess and it reads it
+  stdout= piped-input
+CLAIM5: Bun.which resolves an executable's path or returns null if absent
+  Bun.which('python3')= /path/to/python3
+  Bun.which('definitely-not-a-real-binary-xyz')= null
+
+=== Claim 2/6 (bun install + bun x tsc --noEmit) ===
+install exit: 0
+tsc exit: 0 (no output, clean typecheck)

@@ -1,6 +1,6 @@
 # Host Compatibility Matrix
 
-> **Last Updated: 2026-08-15** — update this date whenever a matrix cell changes status.
+> **Last Updated: 2026-08-30** — update this date whenever a matrix cell changes status.
 
 little-loops integrates with multiple coding-agent host CLIs. This page is
 the authoritative parity matrix — what is wired where, and which gaps are
@@ -28,7 +28,7 @@ docs links here rather than restating one of them (BUG-3186).
 | `opencode` | ✓ | ✓ | ✗ | Recognized, adapter pending |
 | `pi` | ✓ | ✓ | ✗ | Recognized, adapter pending [^pi-epic] |
 | `gemini` | ✓ | ✗ | ✗ | Orchestration-only |
-| `omp` | ✓ | ✗ | ✗ | Orchestration-only |
+| `omp` | ✓ | ✓ | ✗ | Recognized, adapter pending |
 
 
 What each column is derived from — these are the sources of truth, and
@@ -64,16 +64,17 @@ Hook intents are dispatched through the host-agnostic Python layer at
 `hooks/adapters/<host>/` and translates the host's native hook protocol
 into `LLHookEvent` payloads.
 
-| Hook intent          | Claude Code | OpenCode      | Codex CLI     | Gemini CLI    | Kimi Code                                                            | Qwen Code |
-| -------------------- | ----------- | ------------- | ------------- | ------------- | -------------------------------------------------------------------- | --------- |
-| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | (deferred)[^gemini] — `SessionStart`; advisory only | ✓ — `transcript_path` absent (guarded)[^kimi]  | ✓ — fires under `qwen -p` headless (managed `.qwen/settings.json` block)[^qwen] |
-| `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async | ✓[^kimi]                                         | ✓ (`manual\|auto` matcher)[^qwen] |
-| `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` | ✓ (blockable; block-array prompt handled)[^kimi] | ✓ (blockable; string `prompt`)[^qwen] |
-| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` | ✓ (active, blockable)[^kimi]                     | ✓ (active, blockable; `write_file\|edit` runtime-id matcher)[^qwen] |
-| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2974)[^kimi] | ✓ (fire-and-forget)[^qwen] |
-| `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort | ✓ — native `SessionEnd`; no SessionStart workaround needed[^kimi] | ✓ — native `SessionEnd` (interactive only; does **not** fire under `-p`[^qwenheadless]); headless cleanup rides the `Stop` legacy scripts[^qwen] |
-| `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent | (deferred)[^kimi] — kimi fires `PostCompact`; unwired | N/A — no `PostCompact` event in Qwen's 17-event surface[^qwen] |
-| `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only | (deferred)[^kimi] — kimi fires `PermissionRequest`/`Result`; unwired | (deferred)[^qwen] — Qwen fires native `PermissionRequest`/`PermissionDenied`; no ll consumer yet |
+| Hook intent          | Claude Code | OpenCode      | Codex CLI     | Gemini CLI    | Kimi Code                                                            | Qwen Code | omp |
+| -------------------- | ----------- | ------------- | ------------- | ------------- | -------------------------------------------------------------------- | --------- | --- |
+| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | (deferred)[^gemini] — `SessionStart`; advisory only | ✓ — `transcript_path` absent (guarded)[^kimi]  | ✓ — fires under `qwen -p` headless (managed `.qwen/settings.json` block)[^qwen] | ✓ — `session_start`; advisory only, no cancel path[^omp] |
+| `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async | ✓[^kimi]                                         | ✓ (`manual\|auto` matcher)[^qwen] | (deferred)[^omp] — `session_before_compact`; blocking + custom-result override |
+| `pre_compact_handoff` | ✓           | (deferred)    | (deferred)    | (deferred)[^gemini] | (deferred)[^kimi] | ✓[^qwen] | (deferred)[^omp] — second handler on `session_before_compact` (same event as `pre_compact`, no distinct native event on any host) |
+| `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` | ✓ (blockable; block-array prompt handled)[^kimi] | ✓ (blockable; string `prompt`)[^qwen] | (deferred)[^omp] — `before_agent_start`; injection-only, cannot block/reject |
+| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` | ✓ (active, blockable)[^kimi]                     | ✓ (active, blockable; `write_file\|edit` runtime-id matcher)[^qwen] | (deferred)[^omp] — `tool_call`; blocking + input revision, no observed timeout |
+| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2974)[^kimi] | ✓ (fire-and-forget)[^qwen] | ✓ (fire-and-forget)[^omp] — `tool_result`; result-rewrite only |
+| `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort | ✓ — native `SessionEnd`; no SessionStart workaround needed[^kimi] | ✓ — native `SessionEnd` (interactive only; does **not** fire under `-p`[^qwenheadless]); headless cleanup rides the `Stop` legacy scripts[^qwen] | (deferred)[^omp] — `session_shutdown`; fires on both graceful-exit and signal paths, hard-timeout behavior unverified |
+| `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent | (deferred)[^kimi] — kimi fires `PostCompact`; unwired | N/A — no `PostCompact` event in Qwen's 17-event surface[^qwen] | N/A — no post-compact event in omp's `HookAPI`[^omp] |
+| `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only | (deferred)[^kimi] — kimi fires `PermissionRequest`/`Result`; unwired | (deferred)[^qwen] — Qwen fires native `PermissionRequest`/`PermissionDenied`; no ll consumer yet | N/A — no permission-request event in omp's `HookAPI`[^omp] |
 
 [^hot]: Hot-path intents (`pre_tool_use` / `post_tool_use`) fire on every
     tool invocation and require a latency budget. Research decision
@@ -243,7 +244,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] | ✗ — subagents spawn in-session; no `--agent` flag[^omp] | partial (native `--agent`; rejected with `--continue` — dropped with warning on resume)[^kimi] | ✗ — no `--agent` flag (documented upstream as planned future work); parameter dropped with `CapabilityNotSupported` warning[^qwen] |
 | Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   | ✗ — no `--tools` flag; tool policy via agent files / global `[tools]` config[^kimi] | ✗ — `--exclude-tools` is a denylist, not allowlist semantics[^qwen] |
 | `json_schema`    | ✓[^schema]  | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            | ✗[^kimi] | ✓ — inline `--json-schema` flag; Ajv-validated synthetic `structured_output` tool (live-verified)[^qwen] |
-| `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct] — no single-blob JSON mode; blocking consumers take the final assistant stream event[^kimi] | ✓ — **second host ever**; evaluators append `--json-schema` + `--chat-recording false` and parse the validated JSON string from the final envelope's `result` field[^qwen] |
+| `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct][^omp]                   | ✗[^struct] — no single-blob JSON mode; blocking consumers take the final assistant stream event[^kimi] | ✓ — **second host ever**; evaluators append `--json-schema` + `--chat-recording false` and parse the validated JSON string from the final envelope's `result` field[^qwen] |
 | Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         | ✗[^omp]                            | ✗ — no usage events in stream-json (0.30.0)[^kimi] | ✓ — `usage` (incl. `total_tokens`) on assistant messages and the final `result` envelope[^qwen] |
 | `disable_background_tasks` | ✓ (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`)[^bgtasks] | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) |
 
@@ -251,12 +252,43 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 
 [^omp]: oh-my-pi (`omp` binary, Bun package `@oh-my-pi/pi-coding-agent`) support
     is tracked by **EPIC-2258**. The runner core (`OmpRunner`, FEAT-1850) and the
-    `.omp/ll-config.json` config probe (FEAT-2262) are landed; the hook adapter
-    (FEAT-2261) and hook-event parity audit (FEAT-2263) are pending — hook-intent
-    cells for omp are not tracked in the matrix until FEAT-2261 lands. omp has no
+    `.omp/ll-config.json` config probe (FEAT-2262) are landed. omp has no
     single-blob JSON mode: `--mode json` emits a JSONL event stream (same
     consume-the-final-event contract as Codex `--json`). Audit artifact:
     `thoughts/research/omp-headless-flags.md`.
+
+    **Hook-event parity (FEAT-2263):** the hook-event parity audit is complete
+    and the hook adapter (FEAT-2261) has landed at
+    `scripts/little_loops/hooks/adapters/omp/` — `session_start` and
+    `post_tool_use` (via `tool_result`) are wired; the remaining hook-intent
+    cells above stay `(deferred)` (no `ll-init` auto-install under Option B,
+    so wiring the rest is a manual, opt-in step) — each cell names the
+    concrete native `HookAPI` event a future pass would bind to. All 7
+    canonical ll intents have a native event
+    candidate; 3 (`pre_tool_use`, `pre_compact`, `pre_compact_handoff`) map to
+    richer events (full block + input/result revision) than most other hosts,
+    `user_prompt_submit` maps to a narrower one (injection-only, no block/reject),
+    and `session_end`'s candidate (`session_shutdown`) has an unverified
+    timeout ceiling. omp has no Hooks-exposed analog for Claude Code's `Stop`
+    (`session_stop` exists in the shared event union but is Extensions-only,
+    not on `HookAPI`). Full mapping, per-event advisory/blocking semantics, and
+    open questions: `thoughts/research/omp-hook-event-parity.md`.
+
+    **`json_schema`/`structured_output` (FEAT-2797):** both `✗` at the CLI
+    level because `packages/coding-agent/src/cli/args.ts` defines no
+    schema/response-format flag — `--mode` is `text|json|rpc|acp|rpc-ui`,
+    nothing schema-shaped. This does not mean omp cannot do structured
+    output at all: a real mechanism exists off the CLI path that ll does not
+    use — task-agent frontmatter `output:` (a per-agent output schema on
+    `.omp/agents/*.md`, read natively by omp and carried through unmodified
+    by `OmpEmitter.emit_agent`) and the SDK/RPC surface
+    (`createAgentSession({outputSchema, requireYieldTool})`, and `--mode
+    rpc`'s JSON-RPC protocol with its own response schema). FEAT-2797
+    evaluated wiring the RPC path into `OmpRunner.build_blocking_json` and
+    chose to stay on prompt-and-parse instead — reusing the existing
+    BUG-2626 `<StructuredOutput>` tag fallback, the same posture as every
+    other non-Anthropic/non-qwen host — since the RPC path is a structurally
+    different, session-based mechanism with no precedent in `HostRunner`.
 
 [^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is tracked by **FEAT-2123**. Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output. Qwen and Claude both carry `usage` in-stream.
 
@@ -351,9 +383,12 @@ discovers agents via a native `.omp/agents/` scan dir (not a reused
 `.claude/agents`/`.codex/agents` path) with a frontmatter `output:` key for
 an optional per-agent output schema, and spawns real subagents from these
 files — the same native shape as `kimi-code`'s emitter, hence
-`subagents: native` and a real `agent_output_format`. It is explicitly
-excluded from ENH-2874's degraded-emission coverage because it never needed
-that path — it emits natively, not via the degraded fallback.
+`subagents: native` and a real `agent_output_format`. The FEAT-2797 spike
+proved `output:` survives `emit_agent` unmodified (byte-for-byte-equivalent
+round trip); no real ll agent definition has an `output:` schema to
+populate it with yet. It is explicitly excluded from ENH-2874's
+degraded-emission coverage because it never needed that path — it emits
+natively, not via the degraded fallback.
 
 Gemini has no native subagent-spawning support (`subagents: none`), so
 `GeminiEmitter.emit_agent` produces the degraded-mode file described above
@@ -550,6 +585,13 @@ the adapter.
 - Codex CLI: [`scripts/little_loops/hooks/adapters/codex/`](../../scripts/little_loops/hooks/adapters/codex/) — Bash shim with `matcher: "startup"` (SessionStart), plus PreCompact / UserPromptSubmit / PostToolUse handlers
 - Kimi Code: [`scripts/little_loops/hooks/adapters/kimi/`](../../scripts/little_loops/hooks/adapters/kimi/) — Bash shims + `hooks.toml` template (managed `[[hooks]]` block installed into `~/.kimi-code/config.toml` by `ll-init`; eight events: SessionStart, PreCompact, UserPromptSubmit, PreToolUse, PostToolUse, SessionEnd, SubagentStart/Stop)
 - Qwen Code: [`scripts/little_loops/hooks/adapters/qwen/`](../../scripts/little_loops/hooks/adapters/qwen/) — Bash shims + `settings-block.json` template (managed `ll:`-prefixed entries merged into project `.qwen/settings.json` by `ll-init`; nine event types: SessionStart, PreCompact, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd, SubagentStart/Stop)[^qwen]
+- omp: [`scripts/little_loops/hooks/adapters/omp/`](../../scripts/little_loops/hooks/adapters/omp/) —
+  landed by FEAT-2261 (TS/Bun-plugin shape, `session_start` +
+  `post_tool_use` wired; no `ll-init` auto-install, Option B). Event mapping
+  verified by the FEAT-2263 audit (`thoughts/research/omp-hook-event-parity.md`); omp
+  hooks are native Bun/TS modules loaded via `pi.on(event, handler)`, not a
+  JSON-config or shell-shim protocol — closer to the OpenCode adapter's
+  Bun-plugin shape than the Bash-shim hosts above.
 
 Each adapter is a thin transport (`spawn → set env → pipe stdin → exit`);
 all real logic lives in `scripts/little_loops/hooks/`.
@@ -607,8 +649,14 @@ This matrix is the authoritative parity reference; the per-host docs above are t
   oh-my-pi (`omp`) under **EPIC-2258**. The `omp` column replaced the Pi column
   when `OmpRunner` landed (FEAT-1850).
 - **EPIC-2258** — oh-my-pi (`omp`) host adapter tracking (this matrix's omp
-  column). Runner core (FEAT-1850) and config probe (FEAT-2262) landed; hook
-  adapter (FEAT-2261) and hook-event parity (FEAT-2263) pending.
+  column). Runner core (FEAT-1850) and config probe (FEAT-2262) landed;
+  hook-event parity audit **FEAT-2263 complete** (see
+  `thoughts/research/omp-hook-event-parity.md`); hook adapter **FEAT-2261
+  complete** — `scripts/little_loops/hooks/adapters/omp/` wires
+  `session_start` and `post_tool_use`; the remaining mapped intents
+  (`pre_tool_use`, `pre_compact`, `pre_compact_handoff`, `user_prompt_submit`,
+  `session_end`) stay `(deferred)` — no `ll-init` auto-install under Option B,
+  so wiring them is a manual follow-up, not blocked on further research.
 - **FEAT-1488** — Research spike: sidecar/IPC for hot-path intents on
   non-Claude-Code hosts (completed — decision: opt-in-only + fire-and-forget
   `post_tool_use`; sidecar deferred until benchmark; see

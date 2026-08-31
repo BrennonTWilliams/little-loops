@@ -3023,6 +3023,19 @@ class TestHostDispatch:
         assert code == 0
         assert "not yet available" in capsys.readouterr().out
 
+    def test_hosts_omp_graceful_unavailable(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """FEAT-2261: omp is a known host (info-only branch, Option B — no writer)."""
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "omp", "--root", str(tmp_project)])
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "Unknown host" not in out
+        assert "not yet available" in out
+
     def test_hosts_comma_separated(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 

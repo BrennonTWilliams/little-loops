@@ -1,6 +1,6 @@
 ---
 target: oh-my-pi
-date: '2026-07-25'
+date: '2026-08-30'
 status: proven
 assertions:
 - claim: omp binary is not present on PATH in this environment
@@ -15,10 +15,10 @@ assertions:
 - claim: omp -p "<prompt>" runs one-shot print mode and exits 0
   result: fail
 - claim: omp --mode json emits a JSONL event stream
-  result: untested
+  result: fail
 - claim: --continue/-c resumes the most recent session in the current working directory
-  result: untested
+  result: fail
 - claim: --tools <comma-list> natively allowlists tools
-  result: untested
+  result: fail
 raw_output_path: .ll/learning-tests/raw/oh-my-pi.txt
 ---
