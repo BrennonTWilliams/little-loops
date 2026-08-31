@@ -8,7 +8,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T21:19:28Z'
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3369: Epic auto-merge gate treats any cancelled child as a permanent block instead of resolving it like done
@@ -37,7 +37,7 @@ This is a general defect, not specific to EPIC-1463: any epic with at least one 
 
 ## Proposed Solution
 
-Not prescriptive, but the natural fix mirrors how `done`/`cancelled` are already treated as the two terminal states elsewhere (dependency-edge resolution): change the completion condition from `done_count == total` to `(done_count + cancelled_count) == total`, keeping the `blocked_count == 0` requirement as-is so genuinely blocked children still hold the branch open.
+Per the Decision Rationale below (Option B selected): change the completion condition from `done_count == total` to `(done_count + cancelled_count) == total` — keeping the `blocked_count == 0` requirement as-is so genuinely blocked children still hold the branch open — in **both** `merge_epic_branch` (`auto-refine-and-implement.yaml:707-713`) and `ParallelOrchestrator._maybe_complete_epic` (`orchestrator.py:1472-1479`), not `merge_epic_branch` alone, so the FSM-loop and `ll-parallel` paths stay consistent with each other.
 
 ### Codebase Research Findings
 
@@ -47,7 +47,28 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 **Option B**: Do not change the condition alone — or change it together with `ParallelOrchestrator._maybe_complete_epic` (`orchestrator.py:1472-1479`). The sibling non-FSM implementation of this same epic-merge-completion feature (FEAT-2449, `done`) intentionally excludes `cancelled` from its done-count, with an explicit code comment ("a cancelled child must NOT trigger a merge into base") and a passing regression test (`test_orchestrator.py::test_cancelled_child_does_not_trigger_merge`). `merge_epic_branch`'s current shape matches that intentional design, not a stray duplicate bug. Applying Option A to `merge_epic_branch` alone would make the FSM-loop and `ll-parallel` orchestrator paths behave differently for the identical epic-completion scenario — the same epic could auto-merge via one runner and stay held open via the other.
 
+> **Selected:** Option B — both gates change together, keeping `merge_epic_branch` and `_maybe_complete_epic` consistent with each other; see Decision Rationale below.
+
 **Recommended**: Undetermined from the code alone — resolving this requires deciding whether FEAT-2449's "cancelled must not trigger merge" design is still intended policy, or should be revisited given how common post-refinement cancellation has turned out to be (per this issue's own Motivation). Whichever way it resolves, `merge_epic_branch` and `_maybe_complete_epic` should end up consistent with each other.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-31.
+
+**Selected**: Option B — change `merge_epic_branch` and `ParallelOrchestrator._maybe_complete_epic` together (not `merge_epic_branch` alone).
+
+**Reasoning**: The two gates are documented as an intentionally mirrored pair — `auto-refine-and-implement.yaml`'s own header comment self-describes `merge_epic_branch` as "the FSM-loop-side equivalent of `ParallelOrchestrator._maybe_complete_epic`," and both compute a byte-identical `done_count == total and cancelled_count == 0` predicate. Fixing `merge_epic_branch` alone would leave that mirroring broken: the identical epic-completion scenario (one `done` child, one `cancelled` child) would auto-merge via the FSM-loop runner but stay held open via `ll-parallel` — a silent, undocumented cross-runner divergence, per both evidence agents' findings. Options tied on raw total (8/12 each); Consistency was the deciding dimension (Option B 3/3 vs. Option A 1/3), per the scoring rubric's explicit tiebreak rule.
+
+Note: this does not fully resolve the issue's own "Recommended: Undetermined" note — whether `cancelled` should count as done for merge purposes at all remains a product/policy call (FEAT-2449's design record states the exclusion as a semantic conclusion, not a safety rationale, and doesn't address the operational frequency this issue raises). What codebase evidence *does* settle is that whichever way that policy resolves, both call sites must change together, not one in isolation.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| Option A (fix `merge_epic_branch` alone) | 1/3 | 3/3 | 3/3 | 1/3 | 8/12 |
+| Option B (fix both gates together) | 3/3 | 1/3 | 2/3 | 2/3 | 8/12 |
+
+**Key evidence**: The rejected single-file change reuses `compute_epic_progress()`/`by_status` directly and has zero existing FSM-side test coverage of the cancelled case, so it would have been a purely additive one-line change (`auto-refine-and-implement.yaml:707-713`) — but it contradicts the state's own header comment framing it as `_maybe_complete_epic`'s mirror, and leaves `test_orchestrator.py::test_cancelled_child_does_not_trigger_merge` (`:1633-1643`) green while the FSM path would behave oppositely for the same scenario. The selected both-gates change preserves the documented mirroring between `merge_epic_branch` and `_maybe_complete_epic` (`orchestrator.py:1472-1479`), but requires rewriting that existing regression test and auditing ~15 sibling gate tests in `test_orchestrator.py` (lines 1598-1952) for interaction effects, since `_maybe_complete_epic` has a live production call site (`orchestrator.py:1287`).
 
 ## Integration Map
 
@@ -102,9 +123,9 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Change the `all_done` condition in `merge_epic_branch` from `done_count == total` to `(done_count + cancelled_count) == total`, keeping `blocked_count == 0` as-is.
-2. Add a test covering an epic with a mix of `done` and `cancelled` children (and none `blocked`) asserting `all_done` resolves true and the branch reaches the `verify_before_merge` check.
-3. Verify existing tests for the fully-`done` and any-`blocked` cases still pass unchanged.
+1. Change the `all_done` condition from `done_count == total` to `(done_count + cancelled_count) == total` (keeping `blocked_count == 0` as-is) in **both** `merge_epic_branch` (`auto-refine-and-implement.yaml:707-713`) and `ParallelOrchestrator._maybe_complete_epic` (`orchestrator.py:1472-1479`) — per Option B, not `merge_epic_branch` alone.
+2. Add a test covering an epic with a mix of `done` and `cancelled` children (and none `blocked`) asserting `all_done` resolves true and the branch reaches the `verify_before_merge` check, for the FSM side (`test_builtin_loops.py`). Rewrite `test_orchestrator.py::test_cancelled_child_does_not_trigger_merge` (`:1633-1643`) to assert a merge now fires for the same done+cancelled mix, since its current assertion locks in the opposite (pre-fix) behavior.
+3. Verify existing tests for the fully-`done` and any-`blocked` cases still pass unchanged in both test modules, and audit the other epic-gate tests in `test_orchestrator.py` (lines ~1598-1952) for interaction effects.
 
 ## Impact
 
@@ -139,6 +160,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-31T22:01:17 - `37ee9921-5737-4ac0-9e3a-27926a3278f3.jsonl`
 - `/ll:refine-issue` - 2026-08-31T21:40:32 - `a39b473b-2472-40a4-90ee-2531e40475f9.jsonl`
 - `/ll:format-issue` - 2026-08-31T21:28:22 - `24eb8111-3a52-4364-98e0-699548ae82fc.jsonl`
 - `/ll:capture-issue` - 2026-08-31T21:19:35 - `8f60449e-8767-4de4-9ff3-4177cfb2cbee.jsonl`

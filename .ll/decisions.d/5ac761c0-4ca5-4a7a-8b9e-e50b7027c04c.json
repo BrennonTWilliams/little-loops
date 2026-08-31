@@ -1,0 +1,12 @@
+{
+  "id": "3efbfee7-bd85-430b-bc5e-23e613a7dc3a",
+  "type": "decision",
+  "timestamp": "2026-08-31T21:59:54Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Both epic-merge gates are documented as an intentionally mirrored pair; fixing merge_epic_branch alone would introduce a silent cross-runner behavioral divergence for the same epic-completion scenario. Tied 8/12 on raw score; Consistency (3/3 vs 1/3) was the deciding dimension.",
+  "rule": "Option B \u2014 change merge_epic_branch and ParallelOrchestrator._maybe_complete_epic together, not merge_epic_branch alone",
+  "scope": "issue",
+  "alternatives_rejected": "Option A \u2014 fix merge_epic_branch's all_done condition alone",
+  "issue": "BUG-3369"
+}

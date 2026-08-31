@@ -1,0 +1,12 @@
+{
+  "id": "7801fe5b-b07a-4544-bb35-65347207793e",
+  "type": "decision",
+  "timestamp": "2026-08-31T22:01:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Zero codebase precedent for automated dependency-install steps in worktree/CI/gate code; both prior fixes for this failure class (BUG-2649, BUG-3082) were pure env-scrubbing with no network dependency. LL_VERIFY_GATE=1 marker already set unconditionally at worktree_utils.py:571 for this purpose.",
+  "rule": "Option B: quarantine test_tsc_noemit_passes under LL_VERIFY_GATE=1, per BUG-2649/BUG-2650 precedent",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: add a bun install dependency-materialization step to setup_worktree()/verify_epic_branch_before_merge() \u2014 rejected for introducing a novel network-dependent, non-hermetic step with no existing precedent.",
+  "issue": "BUG-3368"
+}
