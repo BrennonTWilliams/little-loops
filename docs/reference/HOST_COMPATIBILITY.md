@@ -28,7 +28,7 @@ docs links here rather than restating one of them (BUG-3186).
 | `opencode` | ✓ | ✓ | ✗ | Recognized, adapter pending |
 | `pi` | ✓ | ✓ | ✗ | Recognized, adapter pending [^pi-epic] |
 | `gemini` | ✓ | ✗ | ✗ | Orchestration-only |
-| `omp` | ✓ | ✗ | ✗ | Orchestration-only |
+| `omp` | ✓ | ✓ | ✗ | Recognized, adapter pending |
 
 
 What each column is derived from — these are the sources of truth, and
@@ -66,12 +66,12 @@ into `LLHookEvent` payloads.
 
 | Hook intent          | Claude Code | OpenCode      | Codex CLI     | Gemini CLI    | Kimi Code                                                            | Qwen Code | omp |
 | -------------------- | ----------- | ------------- | ------------- | ------------- | -------------------------------------------------------------------- | --------- | --- |
-| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | (deferred)[^gemini] — `SessionStart`; advisory only | ✓ — `transcript_path` absent (guarded)[^kimi]  | ✓ — fires under `qwen -p` headless (managed `.qwen/settings.json` block)[^qwen] | (deferred)[^omp] — `session_start`; advisory only |
+| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | (deferred)[^gemini] — `SessionStart`; advisory only | ✓ — `transcript_path` absent (guarded)[^kimi]  | ✓ — fires under `qwen -p` headless (managed `.qwen/settings.json` block)[^qwen] | ✓ — `session_start`; advisory only, no cancel path[^omp] |
 | `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async | ✓[^kimi]                                         | ✓ (`manual\|auto` matcher)[^qwen] | (deferred)[^omp] — `session_before_compact`; blocking + custom-result override |
 | `pre_compact_handoff` | ✓           | (deferred)    | (deferred)    | (deferred)[^gemini] | (deferred)[^kimi] | ✓[^qwen] | (deferred)[^omp] — second handler on `session_before_compact` (same event as `pre_compact`, no distinct native event on any host) |
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` | ✓ (blockable; block-array prompt handled)[^kimi] | ✓ (blockable; string `prompt`)[^qwen] | (deferred)[^omp] — `before_agent_start`; injection-only, cannot block/reject |
 | `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` | ✓ (active, blockable)[^kimi]                     | ✓ (active, blockable; `write_file\|edit` runtime-id matcher)[^qwen] | (deferred)[^omp] — `tool_call`; blocking + input revision, no observed timeout |
-| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2974)[^kimi] | ✓ (fire-and-forget)[^qwen] | (deferred)[^omp] — `tool_result`; result-rewrite only |
+| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2974)[^kimi] | ✓ (fire-and-forget)[^qwen] | ✓ (fire-and-forget)[^omp] — `tool_result`; result-rewrite only |
 | `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort | ✓ — native `SessionEnd`; no SessionStart workaround needed[^kimi] | ✓ — native `SessionEnd` (interactive only; does **not** fire under `-p`[^qwenheadless]); headless cleanup rides the `Stop` legacy scripts[^qwen] | (deferred)[^omp] — `session_shutdown`; fires on both graceful-exit and signal paths, hard-timeout behavior unverified |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent | (deferred)[^kimi] — kimi fires `PostCompact`; unwired | N/A — no `PostCompact` event in Qwen's 17-event surface[^qwen] | N/A — no post-compact event in omp's `HookAPI`[^omp] |
 | `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only | (deferred)[^kimi] — kimi fires `PermissionRequest`/`Result`; unwired | (deferred)[^qwen] — Qwen fires native `PermissionRequest`/`PermissionDenied`; no ll consumer yet | N/A — no permission-request event in omp's `HookAPI`[^omp] |
@@ -257,10 +257,14 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     consume-the-final-event contract as Codex `--json`). Audit artifact:
     `thoughts/research/omp-headless-flags.md`.
 
-    **Hook-event parity (FEAT-2263):** the hook-event parity audit is complete;
-    the hook adapter (FEAT-2261) is still pending, so all hook-intent cells above
-    stay `(deferred)` — each cell names the concrete native `HookAPI` event
-    FEAT-2261 would bind to. All 7 canonical ll intents have a native event
+    **Hook-event parity (FEAT-2263):** the hook-event parity audit is complete
+    and the hook adapter (FEAT-2261) has landed at
+    `scripts/little_loops/hooks/adapters/omp/` — `session_start` and
+    `post_tool_use` (via `tool_result`) are wired; the remaining hook-intent
+    cells above stay `(deferred)` (no `ll-init` auto-install under Option B,
+    so wiring the rest is a manual, opt-in step) — each cell names the
+    concrete native `HookAPI` event a future pass would bind to. All 7
+    canonical ll intents have a native event
     candidate; 3 (`pre_tool_use`, `pre_compact`, `pre_compact_handoff`) map to
     richer events (full block + input/result revision) than most other hosts,
     `user_prompt_submit` maps to a narrower one (injection-only, no block/reject),
@@ -581,8 +585,10 @@ the adapter.
 - Codex CLI: [`scripts/little_loops/hooks/adapters/codex/`](../../scripts/little_loops/hooks/adapters/codex/) — Bash shim with `matcher: "startup"` (SessionStart), plus PreCompact / UserPromptSubmit / PostToolUse handlers
 - Kimi Code: [`scripts/little_loops/hooks/adapters/kimi/`](../../scripts/little_loops/hooks/adapters/kimi/) — Bash shims + `hooks.toml` template (managed `[[hooks]]` block installed into `~/.kimi-code/config.toml` by `ll-init`; eight events: SessionStart, PreCompact, UserPromptSubmit, PreToolUse, PostToolUse, SessionEnd, SubagentStart/Stop)
 - Qwen Code: [`scripts/little_loops/hooks/adapters/qwen/`](../../scripts/little_loops/hooks/adapters/qwen/) — Bash shims + `settings-block.json` template (managed `ll:`-prefixed entries merged into project `.qwen/settings.json` by `ll-init`; nine event types: SessionStart, PreCompact, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd, SubagentStart/Stop)[^qwen]
-- omp: `hooks/adapters/omp/` — **pending FEAT-2261.** Event mapping verified
-  by the FEAT-2263 audit (`thoughts/research/omp-hook-event-parity.md`); omp
+- omp: [`scripts/little_loops/hooks/adapters/omp/`](../../scripts/little_loops/hooks/adapters/omp/) —
+  landed by FEAT-2261 (TS/Bun-plugin shape, `session_start` +
+  `post_tool_use` wired; no `ll-init` auto-install, Option B). Event mapping
+  verified by the FEAT-2263 audit (`thoughts/research/omp-hook-event-parity.md`); omp
   hooks are native Bun/TS modules loaded via `pi.on(event, handler)`, not a
   JSON-config or shell-shim protocol — closer to the OpenCode adapter's
   Bun-plugin shape than the Bash-shim hosts above.
@@ -645,9 +651,12 @@ This matrix is the authoritative parity reference; the per-host docs above are t
 - **EPIC-2258** — oh-my-pi (`omp`) host adapter tracking (this matrix's omp
   column). Runner core (FEAT-1850) and config probe (FEAT-2262) landed;
   hook-event parity audit **FEAT-2263 complete** (see
-  `thoughts/research/omp-hook-event-parity.md`); hook adapter (FEAT-2261) is
-  the remaining pending child — hook-intent cells stay `(deferred)` until it
-  lands.
+  `thoughts/research/omp-hook-event-parity.md`); hook adapter **FEAT-2261
+  complete** — `scripts/little_loops/hooks/adapters/omp/` wires
+  `session_start` and `post_tool_use`; the remaining mapped intents
+  (`pre_tool_use`, `pre_compact`, `pre_compact_handoff`, `user_prompt_submit`,
+  `session_end`) stay `(deferred)` — no `ll-init` auto-install under Option B,
+  so wiring them is a manual follow-up, not blocked on further research.
 - **FEAT-1488** — Research spike: sidecar/IPC for hot-path intents on
   non-Claude-Code hosts (completed — decision: opt-in-only + fire-and-forget
   `post_tool_use`; sidecar deferred until benchmark; see

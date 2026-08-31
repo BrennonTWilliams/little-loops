@@ -1,0 +1,12 @@
+{
+  "id": "a31c8632-63b9-4c70-a7cf-9ce2afb21da1",
+  "type": "decision",
+  "timestamp": "2026-08-31T00:08:15Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "hooks/adapters/opencode/ is the confirmed structural analog (same TS/Bun-plugin shape); it has no installer and no generated artifact, and no declarative registration format exists for omp's HookAPI to generate against.",
+  "rule": "Option B \u2014 omp hook adapter gets an info-only _KNOWN_HOSTS entry, no install_omp_adapter() writer",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: build install_omp_adapter() matching codex/kimi/qwen's Bash-shim-era writer convention",
+  "issue": "FEAT-2261"
+}

@@ -41,10 +41,12 @@ _TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
 # Recognized host names for --hosts validation. Only hosts with install
 # wiring (or an explicit graceful-degradation branch) in
 # _dispatch_host_adapters belong here — it does NOT mirror
-# _HOST_RUNNER_REGISTRY keys: gemini/omp are deliberately absent because they
-# have no install wiring and would warn "Unknown host".
+# _HOST_RUNNER_REGISTRY keys: gemini is deliberately absent because it has no
+# install wiring and would warn "Unknown host". omp (FEAT-2261) has a real
+# adapter directory (scripts/little_loops/hooks/adapters/omp/) but, like
+# opencode, no install wiring (Option B) — it still gets an info-only branch.
 _KNOWN_HOSTS: frozenset[str] = frozenset(
-    {"claude-code", "codex", "opencode", "pi", "kimi-code", "qwen"}
+    {"claude-code", "codex", "opencode", "pi", "kimi-code", "qwen", "omp"}
 )
 
 
@@ -159,6 +161,11 @@ def _dispatch_host_adapters(
             info("OpenCode: adapter not yet available — opencode orchestration not yet wired.")
         elif host == "pi":
             info("Pi: adapter not yet available — tracked in EPIC-1622.")
+        elif host == "omp":
+            info(
+                "omp: adapter not yet available — hooks/adapters/omp/ requires manual "
+                "bun install + hook registration (see hooks/adapters/omp/README.md)."
+            )
         # claude-code: no adapter file needed; plugin hooks fire when globally enabled
 
 
