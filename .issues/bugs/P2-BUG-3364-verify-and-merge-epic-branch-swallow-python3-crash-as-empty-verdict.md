@@ -10,6 +10,8 @@ relates_to:
 - ENH-2601
 - ENH-2631
 - BUG-2614
+depends_on:
+- ENH-3365
 decision_needed: false
 ---
 
@@ -78,7 +80,13 @@ short-circuits `cat`'s success and the fallback never fires, so
   an *uncaught* exception (e.g. `ModuleNotFoundError` for
   `little_loops.worktree_utils`/`little_loops.config`) that never reaches
   `emit()`/`print()`: Python writes nothing to stdout, a traceback to
-  stderr, and exits non-zero. Because each state's action script ends with
+  stderr, and exits non-zero. Note that in `merge_epic_branch` the shell
+  performs the `> "$RUN_DIR/epic-merge-verdict.txt"` redirection *before*
+  python3 runs, so a crash still leaves a present-but-empty verdict file
+  behind — a state-side exit-code check alone (without rewriting the file)
+  does not stop `finalize` from reading the empty file; the state-side RC
+  handling and `finalize`'s `[ -s ]` guard are a required pairing, not
+  alternatives. Because each state's action script ends with
   an unconditional `echo` after the heredoc, the wrapping `bash -c`
   invocation always exits 0 regardless of the nested heredoc's own exit
   code — `DefaultActionRunner.run()` (`scripts/little_loops/fsm/runners.py`)
@@ -184,6 +192,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Escape hatch / precedence: this classification must fire only when the
   heredoc process itself crashed before emitting a verdict — it must never
   override a verdict the heredoc legitimately printed.
+- **Scope decision — `finalize`'s pass/fail gate stays blind to the new
+  token.** `verify_verdict`/`epic_merge_verdict` are documented as "advisory
+  only, not folded into `verdict`" (`docs/guides/LOOPS_REFERENCE.md`), and a
+  legitimate `failed` verdict already does not fail the run; making the new
+  `"error"` token divert `finalize` to the failure terminal would give an
+  infra crash *more* gating power than an actual test failure. This fix
+  keeps the advisory contract: `"error"` must land in `summary.json` (where
+  `audit-loop-run`'s documented enum check catches it) but must NOT change
+  `finalize`'s `case "$VERDICT" in phantom|incomplete-abandoned)` gate.
+  Wiring verify/merge verdicts into the composite gate is a separate,
+  deliberate design change if ever wanted — out of scope here.
 - Companion change: `finalize`'s two file reads (lines 966, 987) must
   resolve a present-but-empty verdict file to `"not_run"` (or the new
   token), not the empty string that reaches `summary.json` today — no
@@ -290,11 +309,22 @@ _Wiring pass added by `/ll:wire-issue`:_
   neither class's existing `subprocess.run(["bash", "-c", action], ...)`
   calls pass `env=`, so a new regression case should follow
   `TestFinalizeDone`'s `env={**os.environ, "PATH": ...}` override pattern
-  (`test_builtin_loops.py` ~line 6829) but override `PYTHONPATH` instead —
-  e.g. `env={**os.environ, "PYTHONPATH": str(tmp_path / "empty")}` on the
-  `subprocess.run` call — to force the heredoc's own `ModuleNotFoundError`
-  without needing a separate fixture [Agent 3 finding, confirmed via direct
-  read]
+  (`test_builtin_loops.py` ~line 6829) but override `PYTHONPATH` with a
+  **shadow package**. NOTE: an empty-dir `PYTHONPATH` does NOT work —
+  `PYTHONPATH` prepends to `sys.path` and never hides site-packages, so
+  `import little_loops.config` still succeeds (verified 2026-08-30 on this
+  machine). The verified technique: create
+  `tmp_path / "shadow" / "little_loops" / "__init__.py"` (empty file), then
+  pass `env={**os.environ, "PYTHONPATH": str(tmp_path / "shadow")}` — the
+  shadow regular package wins module resolution and
+  `import little_loops.worktree_utils` / `little_loops.config` raises
+  `ModuleNotFoundError`, exactly this bug's failure mode. Because
+  [[ENH-3365]] lands first, the heredocs will invoke
+  `$${LL_PYTHON:-python3}`; the test env must also account for `LL_PYTHON`
+  (leave it pointing at a real interpreter — the shadow-package trick
+  crashes the import regardless of which interpreter runs, which is why it
+  is preferred over a PATH-stub `python3`) [Agent 3 finding, corrected
+  during review]
 - `_run_finalize()` (`test_builtin_loops.py:4598-4719`) has **no**
   `epic_merge_verdict`/`epic-merge-verdict.txt` seeding parameter at all —
   unlike `verify_verdict`, finalize's read of `epic-merge-verdict.txt` has
@@ -309,6 +339,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   present-but-empty regression case may not need a harness change, just a
   new call site; verify this against the fixed `finalize` behavior once
   landed [Agent 3 finding]
+
+## Sequencing
+
+Implement **after [[ENH-3365]]** (`depends_on` declared in frontmatter).
+ENH-3365 changes the same heredocs to invoke `$${LL_PYTHON:-python3}`;
+landing this bug's regression test first would require rewriting it when
+the interpreter-selection change lands. The shadow-package crash injection
+(see Tests wiring) works under either interpreter, so the test written
+after ENH-3365 needs no further changes.
 
 ## Impact
 

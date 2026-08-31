@@ -9,7 +9,7 @@ discovered_by: audit-loop-run
 relates_to:
 - ENH-1679
 - ENH-2005
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-3366: `delegate`(autodev) verdict is laundered through `recheck_set`
@@ -66,6 +66,11 @@ via `${captured.delegate.*}` (`executor.py:1147-1196`), whether to proceed
 into `recheck_set` (success) or route to a failure-handling state (failure)
 before ever reaching `recheck_set`.
 
+> **Selected:** Option A — differentiated `on_success`/`on_failure` routing off the
+> executor's existing `terminated_by`/`failure_terminal` classification, mirroring
+> ENH-1679's `refine_current` fix in the same subsystem with no new artifact and a
+> directly transplantable 5-test regression model (score 12/12 vs. Option B's 7/12).
+
 **Option B**: Have `autodev.yaml`'s `finalize_done` state write a new
 `subloop_outcome_autodev.txt` sidecar (a one-line `printf '%s\n' "$VERDICT"`
 addition, since `$VERDICT` is already computed there), and have
@@ -86,6 +91,25 @@ later read by another state (as `sprint-refine-and-implement`'s
 `recheck_set`, which only needs a success/crash distinction to decide
 whether to re-dispatch.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-30.
+
+**Selected**: Option A — differentiate `delegate`'s `on_success`/`on_failure` into distinct target states.
+
+**Reasoning**: Option A is the only precedent in this codebase for this exact defect shape (a sub-loop join needing to distinguish success/failure at the routing level itself), it lives in the same subsystem (`autodev.yaml`) that ENH-1679 already fixed identically, requires no new artifact or change to `autodev.yaml` itself, and reuses the executor's already-computed `${captured.delegate.*}` classification (`executor.py:1147-1196`), which is confirmed non-degenerate for this exact call boundary. Option B is a well-established convention elsewhere (ENH-2005) but would require editing `autodev.yaml`'s standalone-used, actively load-bearing `finalize_done` state and adding new conditional-branch logic to `recheck_set` beyond a simple read — more integration surface for no offsetting benefit, since `recheck_set` only needs a success/crash distinction, not the child's full verdict detail.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option B | 2/3 | 2/3 | 2/3 | 1/3 | 7/12 |
+
+**Key evidence**:
+- For the selected Option A: `autodev.yaml:487-503` (`refine_current`) is the exact pattern to mirror, already documenting anti-laundering intent and a BUG-2611 `on_no:` guard; `executor.py:1147-1196` already classifies `terminated_by`/`failure_terminal` for the `delegate`→`autodev` boundary specifically; `test_refine_current_has_success_and_failure_routes` and its 4 siblings (`test_builtin_loops.py:6103-6161`) are a directly transplantable test model. ~33 of ~41 `loop:` call states repo-wide already use distinct `on_success`/`on_failure` routing — this is the dominant convention.
+- For the rejected alternative: `auto-refine-and-implement.yaml:1027-1032` and `sprint-refine-and-implement.yaml:39-49` are a verbatim sidecar-write/read template, and `autodev.yaml:2463-2477` already computes `$VERDICT` ready to redirect — but the fix would touch `autodev.yaml`'s `finalize_done`, a large state exercised by every standalone `ll-loop run autodev` invocation, and `recheck_set`'s existing EPIC-scope/cycle-cap/diff logic means the sidecar read needs new conditional branching (closer to `rn-implement.yaml:1298`'s precedent than to a trivial `cat`).
+
 ## Scope Boundaries
 
 - Does not change `recheck_set`'s re-dispatch semantics for EPIC descendant
@@ -102,41 +126,38 @@ whether to re-dispatch.
 
 ### Signatures
 
-- `subloop_outcome_autodev.txt: str` — new sidecar artifact `autodev`'s own `finalize` state writes under `${context.run_dir}`, mirroring the existing `subloop_outcome_auto-refine-and-implement.txt` convention `sprint-refine-and-implement.yaml`'s `read_outcome` state already reads.
-- `recheck_set(RUN_DIR)` (`auto-refine-and-implement.yaml:324`) — extend to read `subloop_outcome_autodev.txt` before deciding on re-dispatch, or route through a new intermediate state that does so first.
+- No new artifact or sidecar file. `delegate`'s `on_success`/`on_failure` (`auto-refine-and-implement.yaml:320-321`) split into distinct targets: `on_success: recheck_set` unchanged; `on_failure:` a new failure-handling state that reads the executor's existing `${captured.delegate.failure_terminal}` classification (`executor.py:1147-1196`) — already non-degenerate for this call boundary via `autodev.yaml`'s `done`/`failed` terminals (lines 2497-2500).
+- New failure-handling state (name TBD at implementation time, e.g. `delegate_failed`) — mirrors `refine_current`'s `on_failure: skip_inflight` shape (`autodev.yaml:487-503`); routes to a failure path before ever reaching `recheck_set`.
 
 ### Call Path
 
-`delegate` -> `autodev`'s `finalize` -> `subloop_outcome_autodev.txt` -> `recheck_set` -> distinct downstream routing instead of the current unconditional fan-in from both `on_success` and `on_failure`.
+`delegate` -> (`on_success`, unchanged) `recheck_set`; `delegate` -> (`on_failure`) new failure-handling state -> failure-path routing, distinct from the current unconditional fan-in where both `on_success` and `on_failure` reach `recheck_set`.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
-- ENH-1679's actual fix (`autodev.yaml`'s `refine_current` state, lines 470-539) is differentiated `on_success`/`on_failure`/`on_error` routing at the join itself — it never introduced or reads a `subloop_outcome_` sidecar. The sidecar convention this section's Signatures/Call Path describe is a *different*, unrelated precedent (ENH-2005, used by `sprint-refine-and-implement.yaml`'s `delegate`/`read_outcome` and `rn-implement.yaml`'s `run_remediation`/`classify_remediation`), not the one the Current Behavior section credits ENH-1679 with.
-- See the Proposed Solution section's Option A/Option B framing — this section's existing Signatures/Call Path describe Option B only. Option A would need no new signature or artifact, only differentiated `on_success`/`on_failure` targets consuming the executor's existing `${captured.delegate.*}` classification (`executor.py:1147-1196`).
+- ENH-1679's actual fix (`autodev.yaml`'s `refine_current` state, lines 470-539) is differentiated `on_success`/`on_failure`/`on_error` routing at the join itself — it never introduced or reads a `subloop_outcome_` sidecar. This is the convention `/ll:decide-issue` selected (Option A) for this issue; the sidecar convention (ENH-2005, used by `sprint-refine-and-implement.yaml`'s `delegate`/`read_outcome` and `rn-implement.yaml`'s `run_remediation`/`classify_remediation`) was the rejected alternative (Option B).
+- The Signatures/Call Path above describe the selected Option A only — no new signature or artifact, only differentiated `on_success`/`on_failure` targets consuming the executor's existing `${captured.delegate.*}` classification (`executor.py:1147-1196`).
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` — the
   sub-loop-invoking state (lines 299-322) and `recheck_set` state (lines
-  324-390) — both options touch these
-- Option B only: `scripts/little_loops/loops/autodev.yaml` — `finalize_done`
-  state (lines 2320-2496, specifically its `summary.json` write ~lines
-  2479-2481)
+  324-390); no change to `scripts/little_loops/loops/autodev.yaml` (the
+  rejected Option B would have touched its `finalize_done` state)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — `FSMExecutor._execute_sub_loop()`
   (line 914) and its `on_success`/`on_failure`/`on_error` classification
-  (lines 1160-1196) is what an Option A fix would read from via
+  (lines 1160-1196) is what the selected fix reads from via
   `${captured.delegate.*}`
 - `skills/audit-loop-run/SKILL.md` (Step 8, lines 329-350) — the ENH-2005
-  sidecar-exemption check this issue's own text cites; whichever option is
-  chosen must satisfy Step 8's laundering check (Option A satisfies it by
-  never collapsing `on_success`/`on_failure` in the first place, the same
-  way `refine_current` does; Option B satisfies it via the sidecar-read
-  condition)
+  sidecar-exemption check this issue's own text cites; the selected fix
+  satisfies Step 8's laundering check by never collapsing
+  `on_success`/`on_failure` in the first place, the same way `refine_current`
+  does
 
 ### Conventions in Force
 - Two established, working conventions for a sub-loop join needing to
@@ -190,6 +211,7 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-31T02:46:15 - `2778d8be-8e6e-4975-8f6c-4273dcc76d08.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:37:53 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:36:37 - `b1737911-44d2-40e3-9bd5-5d8a15c8f475.jsonl`
 - `/ll:format-issue` - 2026-08-31T02:10:25 - `816b6544-6e69-4192-a4ac-f797f3d82975.jsonl`
