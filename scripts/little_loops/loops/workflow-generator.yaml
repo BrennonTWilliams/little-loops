@@ -474,7 +474,7 @@ states:
     # longer reach the state that made the mistake.
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      $${LL_PYTHON:-python3} << 'PYEOF'
       import os
       import yaml
       from little_loops.fsm.validation import (

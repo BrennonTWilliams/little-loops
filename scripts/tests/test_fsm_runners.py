@@ -8,6 +8,7 @@ DefaultActionRunner shell/slash paths. Skips _current_process lifecycle
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 import warnings
 from io import StringIO
@@ -387,6 +388,22 @@ class TestDefaultActionRunnerShellPath:
             DefaultActionRunner().run("echo hi", 30, False)
 
         assert mock_popen.call_args.kwargs["start_new_session"] is True
+
+    def test_shell_sets_ll_python_env(self) -> None:
+        """ENH-3365: shell actions must expose LL_PYTHON=sys.executable so a
+        heredoc invoking $${LL_PYTHON:-python3} always resolves to the exact
+        interpreter running the loop, not whatever `python3` is first on PATH.
+        """
+        proc = _make_selector_mock_process()
+        sel = _make_ready_selector({})
+
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc) as mock_popen,
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+        ):
+            DefaultActionRunner().run("echo hi", 30, False)
+
+        assert mock_popen.call_args.kwargs["env"]["LL_PYTHON"] == sys.executable
 
     def test_timeout_reaps_grandchildren_and_runner_survives(self) -> None:
         """End-to-end: a timed-out shell action's whole tree dies, runner lives.

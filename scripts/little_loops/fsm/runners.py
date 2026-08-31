@@ -302,7 +302,7 @@ class DefaultActionRunner:
             text=True,
             cwd=working_dir,
             start_new_session=True,
-            env=project_child_env(),
+            env=project_child_env(extra={"LL_PYTHON": sys.executable}),
         )
         self._current_process = process
         # FEAT-3033: timeout=0 means "no wall-clock cap" (matches

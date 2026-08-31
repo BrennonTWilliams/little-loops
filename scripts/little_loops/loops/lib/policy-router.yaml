@@ -137,7 +137,7 @@ fragments:
         * -> repair
     action_type: shell
     action: |
-      LL_ARG_POLICY_RULES=${context.policy_rules:shell} python3 << 'PYEOF'
+      LL_ARG_POLICY_RULES=${context.policy_rules:shell} $${LL_PYTHON:-python3} << 'PYEOF'
       import os, sys
       from little_loops.fsm.policy_rules import parse_rules, evaluate_rules
 

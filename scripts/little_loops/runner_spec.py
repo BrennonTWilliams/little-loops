@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import selectors
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -245,7 +246,7 @@ def _run_cmd(spec: ActionSpec) -> RunnerResult:
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
-        env=project_child_env(),
+        env=project_child_env(extra={"LL_PYTHON": sys.executable}),
     )
     deadline = time.time() + spec.timeout
 

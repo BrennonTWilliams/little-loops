@@ -135,7 +135,7 @@ states:
     action: |
       mkdir -p "${context.run_dir}"
       if [ -n "${context.scope}" ]; then  # ll-lint: mr11-ok(context.scope) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-        LIST=$(LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
+        LIST=$(LL_ARG_SCOPE=${context.scope:shell} $${LL_PYTHON:-python3} << 'PYEOF'
       import os
       import sys
       from pathlib import Path
@@ -196,7 +196,7 @@ states:
     # N>0 commits behind base, this writes epic-branch-stale.txt (read by
     # finalize) when the outcome is warned/merge_conflict.
     action: |
-      LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
+      LL_ARG_SCOPE=${context.scope:shell} $${LL_PYTHON:-python3} << 'PYEOF'
       import os
       import re
       import subprocess
@@ -345,7 +345,7 @@ states:
         echo "recheck_set: re-dispatch cycle cap (5) reached" >&2
         exit 1
       fi
-      LIST=$(LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
+      LIST=$(LL_ARG_SCOPE=${context.scope:shell} $${LL_PYTHON:-python3} << 'PYEOF'
       import os
       import sys
       from pathlib import Path
@@ -407,7 +407,7 @@ states:
     # the same function below). Non-epic runs verify in place, unchanged.
     action: |
       RUN_DIR="${context.run_dir}"
-      VERIFY_VERDICT=$(LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
+      VERIFY_VERDICT=$(LL_ARG_SCOPE=${context.scope:shell} $${LL_PYTHON:-python3} << 'PYEOF'
       import json
       import os
       import shlex
@@ -567,7 +567,7 @@ states:
     # one from — on-disk status is the sole source of truth in this context).
     action: |
       RUN_DIR="${context.run_dir}"
-      LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF' > "$RUN_DIR/epic-merge-verdict.txt"
+      LL_ARG_SCOPE=${context.scope:shell} $${LL_PYTHON:-python3} << 'PYEOF' > "$RUN_DIR/epic-merge-verdict.txt"
       import os
       import subprocess
       import sys

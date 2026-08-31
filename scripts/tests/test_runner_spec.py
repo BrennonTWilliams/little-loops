@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import subprocess
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -191,6 +192,18 @@ class TestRunActionDispatch:
         result = run_action(spec)
         assert result.exit_code == 0
         assert result.stdout == "hi\n"
+
+    def test_cmd_dispatch_sets_ll_python_env(self) -> None:
+        """ENH-3365: _run_cmd()'s bash -c spawn must expose
+        LL_PYTHON=sys.executable so a heredoc invoking
+        $${LL_PYTHON:-python3} always resolves to the exact interpreter
+        running the loop, not whatever `python3` is first on PATH.
+        """
+        spec = ActionSpec(
+            name="print ll_python", runner=RunnerType.CMD, target="echo $LL_PYTHON", timeout=5
+        )
+        result = run_action(spec)
+        assert result.stdout.strip() == sys.executable
 
     def test_cmd_hang_before_stdout_eof_times_out(self) -> None:
         """BUG-2777: a process that holds stdout open without exiting must still

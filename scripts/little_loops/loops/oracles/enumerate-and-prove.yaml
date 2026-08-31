@@ -37,7 +37,7 @@ states:
   parse_enumeration:
     fragment: parse_tagged_json
     action: |
-      LL_ARG_RAW_ENUMERATION=${context.raw_enumeration:shell} LL_ARG_TAG=${context.tag:shell} python3 << 'PYEOF'
+      LL_ARG_RAW_ENUMERATION=${context.raw_enumeration:shell} LL_ARG_TAG=${context.tag:shell} $${LL_PYTHON:-python3} << 'PYEOF'
       import json, os, sys
       from little_loops.output_parsing import extract_tagged_json
 

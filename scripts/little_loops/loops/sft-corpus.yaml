@@ -68,7 +68,7 @@ states:
       cat > "${context.run_dir}/enrich-stage_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.stage_output.output}
       LL_RAW_9F3C1A7E_EOF
-      python3 << 'PYEOF'
+      $${LL_PYTHON:-python3} << 'PYEOF'
       import json, sys
       from pathlib import Path
       sys.path.insert(0, "scripts")
@@ -325,7 +325,7 @@ states:
       cat > "${context.run_dir}/check_pii-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.enrich_output.output}
       LL_RAW_9F3C1A7E_EOF
-      LL_ARG_PII_ACTION=${context.pii_action:shell} python3 << 'PYEOF'
+      LL_ARG_PII_ACTION=${context.pii_action:shell} $${LL_PYTHON:-python3} << 'PYEOF'
       import json, os, sys
       sys.path.insert(0, "scripts")
       from little_loops.pii import apply_pii_action
@@ -457,7 +457,7 @@ states:
   dedup:
     action_type: shell
     action: |
-      LL_ARG_DEDUP_THRESHOLD=${context.dedup_threshold:shell} python3 << 'PYEOF'
+      LL_ARG_DEDUP_THRESHOLD=${context.dedup_threshold:shell} $${LL_PYTHON:-python3} << 'PYEOF'
       import json, os, sys
       sys.path.insert(0, "scripts")
       from little_loops.text_utils import extract_words, calculate_word_overlap

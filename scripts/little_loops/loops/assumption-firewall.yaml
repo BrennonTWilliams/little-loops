@@ -62,7 +62,7 @@ states:
       cat > "${context.run_dir}/parse_assumptions-raw_extraction.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.raw_extraction.output}
       LL_RAW_9F3C1A7E_EOF
-      python3 << 'PYEOF'
+      $${LL_PYTHON:-python3} << 'PYEOF'
       import json, sys
       from little_loops.output_parsing import extract_tagged_json
 
@@ -128,7 +128,7 @@ states:
       cat > "${context.run_dir}/record_untestable-raw_classified.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.raw_classified.output}
       LL_RAW_9F3C1A7E_EOF
-      python3 << 'PYEOF'
+      $${LL_PYTHON:-python3} << 'PYEOF'
       import json, sys, subprocess
       from little_loops.output_parsing import extract_tagged_json
 
@@ -162,7 +162,7 @@ states:
       cat > "${context.run_dir}/flatten_testable-raw_classified.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.raw_classified.output}
       LL_RAW_9F3C1A7E_EOF
-      python3 << 'PYEOF'
+      $${LL_PYTHON:-python3} << 'PYEOF'
       import json, sys
       from little_loops.output_parsing import extract_tagged_json
 
