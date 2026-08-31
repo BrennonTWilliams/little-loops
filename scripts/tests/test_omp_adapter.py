@@ -74,7 +74,9 @@ def _write_driver(tmp_path: Path, event_name: str, payload: dict) -> Path:
     return driver
 
 
-def _run_driver(driver: Path, tmp_path: Path, env: dict | None = None) -> subprocess.CompletedProcess:
+def _run_driver(
+    driver: Path, tmp_path: Path, env: dict | None = None
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [BUN, "run", str(driver)],
         capture_output=True,
@@ -99,7 +101,9 @@ class TestOmpAdapterIntegration:
 
     def test_session_start_runs_handler(self, tmp_path: Path) -> None:
         """session_start omp event -> session_start ll intent; no config -> stderr warning."""
-        driver = _write_driver(tmp_path, event_name="session_start", payload={"type": "session_start"})
+        driver = _write_driver(
+            tmp_path, event_name="session_start", payload={"type": "session_start"}
+        )
         result = _run_driver(driver, tmp_path)
         assert result.returncode == 0, (
             f"driver exited {result.returncode}; stderr={result.stderr!r}"

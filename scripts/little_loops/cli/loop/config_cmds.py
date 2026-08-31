@@ -139,6 +139,7 @@ def cmd_install(
         logger.error(f"Not a runnable loop definition: {path_candidate}")
         return 1
 
+    base_name: str | None
     if name_override:
         base_name = name_override
     else:

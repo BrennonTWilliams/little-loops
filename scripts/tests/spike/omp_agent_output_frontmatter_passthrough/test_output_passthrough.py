@@ -30,7 +30,9 @@ class TestOutputFrontmatterPassthrough:
 
     def test_output_block_survives_short_description_strip(self):
         content = agent_md(include_name=True, include_metadata_block=True)
-        new_content, changed = _select_frontmatter_fields(content, "existing-agent-name", _fields_read())
+        new_content, changed = _select_frontmatter_fields(
+            content, "existing-agent-name", _fields_read()
+        )
 
         assert changed is True
         fm = _read_frontmatter(new_content)
@@ -51,7 +53,9 @@ class TestOutputFrontmatterPassthrough:
         # output: block directly abutting the metadata: block — the
         # sharpest stress case for the regex-based line removal.
         content = agent_md(include_name=False, include_metadata_block=True)
-        new_content, changed = _select_frontmatter_fields(content, "adjacency-agent", _fields_read())
+        new_content, changed = _select_frontmatter_fields(
+            content, "adjacency-agent", _fields_read()
+        )
 
         assert changed is True
         fm = _read_frontmatter(new_content)
@@ -68,7 +72,9 @@ class TestOutputFrontmatterPassthrough:
         content = agent_md(
             include_name=True, include_metadata_block=True, include_short_description=False
         )
-        new_content, changed = _select_frontmatter_fields(content, "existing-agent-name", _fields_read())
+        new_content, changed = _select_frontmatter_fields(
+            content, "existing-agent-name", _fields_read()
+        )
 
         assert changed is False
         fm = _read_frontmatter(new_content)

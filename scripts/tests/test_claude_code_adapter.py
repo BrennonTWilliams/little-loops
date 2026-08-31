@@ -167,8 +167,7 @@ class TestClaudeCodeAdapterIntegration:
         """
         data = json.loads(HOOKS_JSON.read_text())
         assert "SessionEnd" not in data["hooks"], (
-            f"hooks.json must not have a SessionEnd key; got "
-            f"{data['hooks'].get('SessionEnd')!r}"
+            f"hooks.json must not have a SessionEnd key; got {data['hooks'].get('SessionEnd')!r}"
         )
 
     def test_post_tool_use_default_host_claude_code(self, tmp_path: Path) -> None:

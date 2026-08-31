@@ -286,9 +286,7 @@ Examples:
                 return 1
             epic_info = epic_matches[0]
 
-            forward_ids: set[str] = {
-                i for i in epic_info.relates_to if not _EPIC_ID_RE.match(i)
-            }
+            forward_ids: set[str] = {i for i in epic_info.relates_to if not _EPIC_ID_RE.match(i)}
             backward_ids: set[str] = {i.issue_id for i in all_issues if i.parent == epic_id}
             all_child_ids = forward_ids | backward_ids
 

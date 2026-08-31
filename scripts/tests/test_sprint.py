@@ -2781,8 +2781,7 @@ class TestSprintManagerLoadOrResolve:
         """
         issues_dir = tmp_path / ".issues"
         (issues_dir / "epics" / "P1-EPIC-900-primary.md").write_text(
-            "---\nid: EPIC-900\nstatus: open\nrelates_to:\n  - EPIC-901\n---\n"
-            "# EPIC-900: Primary\n"
+            "---\nid: EPIC-900\nstatus: open\nrelates_to:\n  - EPIC-901\n---\n# EPIC-900: Primary\n"
         )
         (issues_dir / "epics" / "P1-EPIC-901-sibling.md").write_text(
             "---\nid: EPIC-901\nstatus: open\n---\n# EPIC-901: Sibling\n"

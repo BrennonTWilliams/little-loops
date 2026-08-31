@@ -3004,8 +3004,7 @@ class TestScratchCleanupSessionEnd:
         """
         data = json.loads((self.REPO_ROOT / "hooks/hooks.json").read_text())
         assert "SessionEnd" not in data["hooks"], (
-            f"hooks.json must not have a SessionEnd key; got "
-            f"{data['hooks'].get('SessionEnd')!r}"
+            f"hooks.json must not have a SessionEnd key; got {data['hooks'].get('SessionEnd')!r}"
         )
 
 
