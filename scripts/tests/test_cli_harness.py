@@ -1738,7 +1738,6 @@ class TestReadTargetHistory:
 
         assert _read_target_history("some-target") is None
 
-    @pytest.mark.skip(reason="BUG: test seeds via DEFAULT_DB_PATH but reads via resolve_history_db (LL_HISTORY_DB) — they don't match under PR #19's venv activation. Tracked as workstream B; the underlying test is not broken on main, it just hits a different DB than the read.")
     def test_at_threshold_renders(self) -> None:
         """AC7: exactly `_HISTORY_MIN_SCORED` scored rows -- rendered, not suppressed."""
         from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
@@ -1762,7 +1761,6 @@ class TestReadTargetHistory:
         assert history["history_pass_rate"] == 1.0
         assert history["history_pass_rate_runs"] == _HISTORY_MIN_SCORED
 
-    @pytest.mark.skip(reason="Same BUG as test_at_threshold_renders — DB-path mismatch exposed by PR #19's venv activation. Tracked as workstream B.")
     def test_distinct_denominators_for_pass_and_abstention(self) -> None:
         """AC5: pass-rate and abstention-rate denominators are different
         populations and must not collide under one key."""
@@ -1834,7 +1832,6 @@ class TestReadTargetHistory:
 class TestTargetHistoryRegression:
     """AC2: the current run's own row must not leak into its reported rate."""
 
-    @pytest.mark.skip(reason="Same BUG — DB-path mismatch between seed (DEFAULT_DB_PATH) and read (resolve_history_db / LL_HISTORY_DB). Tracked as workstream B.")
     def test_current_run_excluded_from_reported_rate(self, capsys: pytest.CaptureFixture) -> None:
         from little_loops.fsm.evaluators import EvaluationResult
         from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event

@@ -93,7 +93,6 @@ def test_hook_script_is_executable() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="Validator CLI now found under venv activation (was skipped on main pre-PR-19). Failure is pre-existing test data drift, not PR #19 logic. Tracked as workstream B.")
 def test_hint_fires_for_root_level_report(validator: str | None) -> None:
     """A blocked root-level .md that isn't a standard root doc gets the redirect."""
     if validator is None:
