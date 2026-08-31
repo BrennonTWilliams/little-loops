@@ -159,6 +159,15 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
   `on_success`/`on_failure` in the first place, the same way `refine_current`
   does
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — has its
+  own, structurally distinct `delegate` state (lines 24-37) that invokes
+  `auto-refine-and-implement` as a sub-loop and reads
+  `subloop_outcome_auto-refine-and-implement.txt` via `read_outcome`; reads
+  this file's *overall* outcome (already ENH-2005-covered), not the internal
+  `delegate`/`recheck_set` routing this issue changes — no code change
+  required here, listed for awareness only [Agent 1 finding]
+
 ### Conventions in Force
 - Two established, working conventions for a sub-loop join needing to
   distinguish real success from failure exist in this codebase today, and
@@ -180,6 +189,23 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
   (`on_success == on_failure == "recheck_set"`) as correct/intentional —
   whichever option is chosen, this test's assertions will need to change.
 
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — the `auto-refine-and-implement` FSM-flow
+  diagram (~lines 972-978) shows a single `on_success / on_failure →
+  recheck_set` arrow, and the Notes prose (~line 997) repeats the collapsed
+  description; both need updating once the routes diverge [Agent 2 finding]
+- `docs/ARCHITECTURE.md` — Epic-branch integration section (~lines 452-454)
+  describes "After each `delegate` pass, `recheck_set` re-resolves..." with
+  the same implicit collapsed-route framing; needs the same update
+  [Agent 2 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — the loop's
+  own top-of-file `description:` block (~lines 48-54, the ENH-2615
+  paragraph) states "after each delegate pass, recheck_set re-resolves...";
+  update alongside the state-comment rewrite already scoped by this issue
+  [Agent 2 finding]
+
 ### Tests
 - `test_refine_current_has_success_and_failure_routes`,
   `test_refine_current_failure_routes_to_skip_inflight`,
@@ -195,7 +221,42 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 - `test_delegate_crash_routes_to_record_error` (`test_builtin_loops.py:4300`)
   — must be updated regardless of which option is chosen
 - `TestSubloopSidecarContract` (`test_builtin_loops.py:490`) — only
-  relevant if Option B is chosen and its `SUBLOOPS` coverage is extended
+  relevant if Option B is chosen and its `SUBLOOPS` coverage is extended;
+  confirmed its `SUBLOOPS` tuple (`test_builtin_loops.py:511`) is
+  `("rn-remediate", "rn-decompose", "oracles/code-run-gate")` and does not
+  cover `auto-refine-and-implement`/`autodev` today — Option A needs no
+  change here [Agent 3 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `TestBuiltinLoopFiles.test_no_failure_edge_routes_to_a_success_terminal`
+  (`test_builtin_loops.py:74+`, ENH-2825) — asserts no `on_error`/
+  `on_failure`/`on_retry_exhausted` edge terminates directly in a
+  non-`failure: true` terminal, via an explicit `(loop file, state, edge)`
+  exemption dict that currently has no entry for `delegate`/`recheck_set`
+  or the new failure-handling state; the new state's routing must land on a
+  `failure: true` terminal (or gain an exemption entry) or this test fails
+  [Agent 3 finding]
+- New state-existence/structure tests for the new failure-handling state
+  itself, mirroring `test_skip_inflight_state_exists`,
+  `test_skip_inflight_is_shell_action`, and
+  `test_skip_inflight_writes_skipped_file` (`test_builtin_loops.py:6163+`)
+  — `refine_current`'s companion-state test pattern to transplant once the
+  new state's name is chosen [Agent 3 finding]
+- `test_required_states_exist` (`test_builtin_loops.py:4222-4237`) — a
+  minimum-set (`required - actual`) check, not exhaustive; won't break from
+  a new state, but its `required_states` set is the idiomatic place to add
+  the new failure-handling state's name once chosen [Agent 3 finding]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation. No existing `## Implementation Steps` section exists in this issue; the Program Design / Call Path sections above cover the routing change itself — these are the completeness touchpoints:_
+
+- Update `docs/guides/LOOPS_REFERENCE.md` — the `auto-refine-and-implement` FSM-flow diagram and Notes prose describing the collapsed `on_success / on_failure → recheck_set` route
+- Update `docs/ARCHITECTURE.md` — Epic-branch integration section's collapsed-route description
+- Update `scripts/little_loops/loops/auto-refine-and-implement.yaml`'s own top-of-file `description:` block (ENH-2615 paragraph)
+- Confirm the new failure-handling state's routing satisfies `test_no_failure_edge_routes_to_a_success_terminal` (lands on a `failure: true` terminal, or add an exemption entry)
+- Write state-existence/structure tests for the new failure-handling state, mirroring `test_skip_inflight_state_exists` / `test_skip_inflight_is_shell_action` / `test_skip_inflight_writes_skipped_file`
+- Add the new failure-handling state's name to `test_required_states_exist`'s `required_states` set
 
 ## Impact
 
@@ -211,6 +272,7 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-31T02:56:39 - `3198a6b2-0ff9-49c6-a768-b2979f52ed21.jsonl`
 - `/ll:decide-issue` - 2026-08-31T02:46:15 - `2778d8be-8e6e-4975-8f6c-4273dcc76d08.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:37:53 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:36:37 - `b1737911-44d2-40e3-9bd5-5d8a15c8f475.jsonl`
