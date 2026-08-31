@@ -2,8 +2,9 @@
 id: BUG-3364
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-08-30T23:30:00Z'
+completed_at: '2026-08-31T04:30:59Z'
 discovered_date: 2026-08-30
 discovered_by: audit-loop-run
 relates_to:
@@ -376,6 +377,7 @@ after ENH-3365 needs no further changes.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-31T04:30:37 - `e6624bad-8105-48eb-a1a4-bb4f8a49ae52.jsonl`
 - `/ll:confidence-check` - 2026-08-31T03:11:18 - `29e8f5ee-bb5d-4aac-ae78-4403d15301ef.jsonl`
 - `/ll:wire-issue` - 2026-08-31T02:36:16 - `b1737911-44d2-40e3-9bd5-5d8a15c8f475.jsonl`
 - `/ll:refine-issue` - 2026-08-31T02:24:08 - `80c0d0f5-6988-4121-a3c7-d08dabaee7ea.jsonl`

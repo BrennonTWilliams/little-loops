@@ -524,6 +524,16 @@ states:
       emit(verdict, returncode, message or '')
       PYEOF
       )
+      PY_RC=$?
+      # BUG-3364: every intentional emit()/print() branch above ends in
+      # `raise SystemExit(0)`, so a non-zero PY_RC with no verdict on stdout
+      # means the heredoc's own python3 process crashed (e.g. an uncaught
+      # ModuleNotFoundError) before reaching emit() — never a legitimately
+      # printed verdict, which always exits 0. Only fire when both hold, so a
+      # real verdict is never overridden.
+      if [ "$PY_RC" -ne 0 ] && [ -z "$VERIFY_VERDICT" ]; then
+        VERIFY_VERDICT="error"
+      fi
       echo "$VERIFY_VERDICT" > "$RUN_DIR/verify-verdict.txt"
       echo "verify: verdict=$VERIFY_VERDICT"
     action_type: shell
@@ -728,6 +738,15 @@ states:
           )
           print("merged" if merged else "merge_failed")
       PYEOF
+      PY_RC=$?
+      # BUG-3364: the `>` redirect above truncates epic-merge-verdict.txt
+      # before python3 even starts, so a crash (uncaught exception, non-zero
+      # PY_RC) leaves a present-but-empty file rather than no file — the same
+      # crash signature as verify above. Every intentional print() branch
+      # exits 0, so this only fires on a genuine crash.
+      if [ "$PY_RC" -ne 0 ] && [ ! -s "$RUN_DIR/epic-merge-verdict.txt" ]; then
+        echo "error" > "$RUN_DIR/epic-merge-verdict.txt"
+      fi
       echo "merge_epic_branch: verdict=$(cat "$RUN_DIR/epic-merge-verdict.txt")"
     action_type: shell
     next: finalize
@@ -963,7 +982,15 @@ states:
       # (passed/failed/skipped) — "not_run" when verify never ran (e.g. the
       # resolve_set on_no/on_error path skipped straight to finalize with no
       # delegate/verify pass at all).
-      VERIFY_VERDICT=$(cat "$RUN_DIR/verify-verdict.txt" 2>/dev/null || echo "not_run")
+      # BUG-3364: read then default-fill on emptiness, not `[ -s file ]` —
+      # verify's `echo "$VERIFY_VERDICT" > file` still writes a 1-byte
+      # newline-only file for an empty verdict, which `-s` sees as
+      # non-empty; the shell default-fill below catches both file-absence
+      # (cat yields "") and a present-but-blank file (cat + trailing-
+      # newline-stripping also yields ""). Belt-and-suspenders alongside the
+      # verify state's own PY_RC fix, not an alternative to it.
+      VERIFY_VERDICT=$(cat "$RUN_DIR/verify-verdict.txt" 2>/dev/null)
+      VERIFY_VERDICT=$${VERIFY_VERDICT:-not_run}
 
       # ENH-2631: the verify state persists the failing process exit code to
       # verify-returncode.txt (flat text, Option A). Surface it as a JSON number
@@ -984,7 +1011,9 @@ states:
       # skipped) — "not_run" when merge_epic_branch never ran (e.g. the
       # record_error crash path routes straight to finalize). Advisory only,
       # same as VERIFY_VERDICT — does not gate finalize's own closure verdict.
-      EPIC_MERGE_VERDICT=$(cat "$RUN_DIR/epic-merge-verdict.txt" 2>/dev/null || echo "not_run")
+      # BUG-3364: same read-then-default-fill guard as VERIFY_VERDICT above.
+      EPIC_MERGE_VERDICT=$(cat "$RUN_DIR/epic-merge-verdict.txt" 2>/dev/null)
+      EPIC_MERGE_VERDICT=$${EPIC_MERGE_VERDICT:-not_run}
 
       # ENH-3302: EPIC_BRANCH_STALE_ACTION surfaces checkout_epic_branch's
       # staleness-guard outcome (written to epic-branch-stale.txt only on

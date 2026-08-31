@@ -46,8 +46,14 @@ BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 def _unescape_ll_python(action: str) -> str:
     """Undo the FSM's `$${` -> `${` escape consumption (interpolation.py's
     ESCAPED_PATTERN) for tests that run a raw extracted action via bash -c
-    directly, bypassing the real interpolate() call that normally does this."""
-    return action.replace("$${LL_PYTHON:-python3}", "${LL_PYTHON:-python3}")
+    directly, bypassing the real interpolate() call that normally does this.
+
+    BUG-3364: generalized from a hardcoded `$${LL_PYTHON:-python3}` literal
+    to the same regex the real engine uses (`\\$\\$\\{` -> `\\$\\{`) so any
+    `$${VAR...}` escape — not just the LL_PYTHON one — round-trips correctly
+    when a test runs an extracted action string directly via bash -c.
+    """
+    return re.sub(r"\$\$\{", "${", action)
 
 
 class TestBuiltinLoopFiles:
@@ -4620,6 +4626,7 @@ class TestAutoRefineAndImplementLoop:
         issue_set: tuple[str, ...] = (),
         verify_verdict: str | None = None,
         verify_returncode: str | None = None,
+        epic_merge_verdict: str | None = None,
         inflight: str | None = None,
         queue: tuple[str, ...] = (),
         epic_branch_stale_action: str | None = None,
@@ -4649,10 +4656,25 @@ class TestAutoRefineAndImplementLoop:
         synthetic `ID-{i}` lines), so the same ID can also be seeded via
         `done_in_place` — exercising closed_via_recovery (an issue skipped
         this run that nonetheless reached status:done by finalize time).
+
+        BUG-3364: `epic_merge_verdict`, when given, seeds
+        epic-merge-verdict.txt (the artifact merge_epic_branch writes) —
+        previously absent from this helper, leaving finalize's read of that
+        file with zero end-to-end coverage. An empty string seeds a
+        present-but-empty file (the `write_text` call still runs, since the
+        guard below is `is not None`), exercising the `[ -s ]` companion
+        guard finalize now applies to both verdict files.
         """
         p = "auto-refine-and-implement"
         if verify_verdict is not None:
+            # BUG-3364: unconditional "+\n" (not skipped when verify_verdict=="")
+            # matches the real verify state's `echo "$VERIFY_VERDICT" > file` —
+            # even an empty verdict produces a present-but-1-byte-newline file,
+            # not a 0-byte one, so the present-but-empty regression case is
+            # already reachable via this existing seeding path.
             (run_dir / "verify-verdict.txt").write_text(verify_verdict + "\n")
+        if epic_merge_verdict is not None:
+            (run_dir / "epic-merge-verdict.txt").write_text(epic_merge_verdict + "\n")
         # ENH-2631: seed verify-returncode.txt (the flat-text exit-code artifact
         # the verify state writes on failure) so summary.json's verify_returncode
         # key can be exercised; when omitted the file is absent and finalize must
@@ -4709,7 +4731,7 @@ class TestAutoRefineAndImplementLoop:
         # triggers) is exercisable. Absent/empty by default → abandoned=0.
         if queue:
             (run_dir / "autodev-queue.txt").write_text("".join(f"{i}\n" for i in queue))
-        action = data["states"]["finalize"].get("action", "")
+        action = _unescape_ll_python(data["states"]["finalize"].get("action", ""))
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("${captured.issue_set.output}", ",".join(issue_set))
         result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
@@ -4931,6 +4953,60 @@ class TestAutoRefineAndImplementLoop:
         run_dir.mkdir()
         summary = self._run_finalize(data, run_dir)
         assert summary["verify_verdict"] == "not_run", f"got {summary}"
+
+    def test_finalize_verify_verdict_present_but_empty_defaults_to_not_run(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3364: a present-but-empty verify-verdict.txt (the artifact a
+        python3 heredoc crash leaves behind — `echo "$VERIFY_VERDICT" > file`
+        still writes the file even when VERIFY_VERDICT is empty) must resolve
+        to 'not_run', not the literal empty string that used to reach
+        summary.json unexplained."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",), verify_verdict=""
+        )
+        assert summary["verify_verdict"] == "not_run", f"got {summary}"
+
+    def test_finalize_surfaces_epic_merge_verdict(self, data: dict, tmp_path: Path) -> None:
+        """BUG-3364: finalize's read of epic-merge-verdict.txt had zero
+        end-to-end coverage — assert it surfaces merge_epic_branch's verdict
+        verbatim, same as verify_verdict does."""
+        for verdict in ("merged", "pr_opened", "held_open", "verify_failed", "merge_failed"):
+            run_dir = tmp_path / f"run-{verdict}"
+            run_dir.mkdir()
+            summary = self._run_finalize(
+                data,
+                run_dir,
+                closed=("FEAT-1",),
+                passed=("FEAT-1",),
+                epic_merge_verdict=verdict,
+            )
+            assert summary["epic_merge_verdict"] == verdict, f"expected {verdict!r}, got {summary}"
+
+    def test_finalize_epic_merge_verdict_defaults_to_not_run(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """When merge_epic_branch never ran (e.g. record_error's crash path
+        routes straight to finalize), epic_merge_verdict must default to
+        'not_run', not omit the key or crash."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir)
+        assert summary["epic_merge_verdict"] == "not_run", f"got {summary}"
+
+    def test_finalize_epic_merge_verdict_present_but_empty_defaults_to_not_run(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3364: a present-but-empty epic-merge-verdict.txt must resolve
+        to 'not_run', matching verify_verdict's companion fix."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",), epic_merge_verdict=""
+        )
+        assert summary["epic_merge_verdict"] == "not_run", f"got {summary}"
 
     # --- ENH-2631: verify_returncode + collection_error verdict class ---------
 
@@ -5539,7 +5615,14 @@ class TestVerifyStateConfigReadShell:
     read against a stubbed command (mirrors
     test_general_task_loop.py::test_falls_back_to_config_test_cmd)."""
 
-    def _run(self, tmp_path: Path, *, test_cmd: str | None, lint_cmd: str | None = None) -> str:
+    def _run(
+        self,
+        tmp_path: Path,
+        *,
+        test_cmd: str | None,
+        lint_cmd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> str:
         (tmp_path / ".ll").mkdir()
         project: dict = {}
         if test_cmd is not None:
@@ -5558,7 +5641,12 @@ class TestVerifyStateConfigReadShell:
             .replace("${context.scope:shell}", shlex.quote(""))
         )
         result = subprocess.run(
-            ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
+            ["bash", "-c", action],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
         )
         assert result.returncode == 0, result.stderr
         return (run_dir / "verify-verdict.txt").read_text().strip()
@@ -5656,6 +5744,25 @@ class TestVerifyStateConfigReadShell:
         assert result.returncode == 0, result.stderr
         assert (run_dir / "verify-verdict.txt").read_text().strip() == "config_error"
 
+    def test_error_when_heredoc_python3_crashes(self, tmp_path: Path) -> None:
+        """BUG-3364: an uncaught exception in the heredoc's own python3
+        process (e.g. ModuleNotFoundError for little_loops.worktree_utils,
+        the observed failure mode) must yield the distinct 'error' verdict —
+        never an empty string that silently passes finalize's fallback.
+
+        Crash injection: a shadow `little_loops` package earlier on
+        PYTHONPATH than the real one wins module resolution and makes
+        `from little_loops.worktree_utils import format_verify_detail`
+        raise ModuleNotFoundError, regardless of which interpreter runs it
+        (an empty-dir PYTHONPATH does NOT work — it only prepends to
+        sys.path and never hides site-packages, verified against this repo).
+        """
+        shadow = tmp_path / "shadow" / "little_loops"
+        shadow.mkdir(parents=True)
+        (shadow / "__init__.py").write_text("")
+        env = {**os.environ, "PYTHONPATH": str(tmp_path / "shadow")}
+        assert self._run(tmp_path, test_cmd="true", env=env) == "error"
+
 
 class TestMergeEpicBranchConfigReadShell:
     """BUG-2614 end-to-end: exercise merge_epic_branch's config-gated merge-back
@@ -5718,6 +5825,7 @@ class TestMergeEpicBranchConfigReadShell:
         seed_sha: str | None = None,
         branch_statuses: dict[str, str] | None = None,
         conflict: bool = False,
+        env: dict[str, str] | None = None,
     ) -> tuple[subprocess.CompletedProcess, Path]:
         self._setup_repo(tmp_path, conflict=conflict)
         self._write_issues(tmp_path, child_statuses)
@@ -5783,7 +5891,12 @@ class TestMergeEpicBranchConfigReadShell:
             "${context.run_dir}", str(run_dir)
         )
         result = subprocess.run(
-            ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
+            ["bash", "-c", action],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
         )
         return result, run_dir
 
@@ -5850,6 +5963,26 @@ class TestMergeEpicBranchConfigReadShell:
         )
         assert result.returncode == 0, result.stderr
         assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "skipped"
+
+    def test_error_when_heredoc_python3_crashes(self, tmp_path: Path) -> None:
+        """BUG-3364: an uncaught exception in the heredoc's own python3
+        process (e.g. ModuleNotFoundError for little_loops.config, the
+        observed failure mode) must yield the distinct 'error' verdict —
+        never a present-but-empty file whose content silently reads back as
+        the empty string. Unlike verify's `VERIFY_VERDICT=$(...)` command
+        substitution, this heredoc's stdout is redirected straight to
+        epic-merge-verdict.txt via `> file`, so a crash leaves a genuinely
+        0-byte file — the state-side fix must write "error" into it itself.
+        """
+        shadow = tmp_path / "shadow" / "little_loops"
+        shadow.mkdir(parents=True)
+        (shadow / "__init__.py").write_text("")
+        env = {**os.environ, "PYTHONPATH": str(tmp_path / "shadow")}
+        result, run_dir = self._run(
+            tmp_path, child_statuses={"FEAT-010": "done"}, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "error"
 
     def test_idempotent_when_branch_already_merged(self, tmp_path: Path) -> None:
         """A second run after the branch is already merged/deleted must no-op,
