@@ -32,6 +32,38 @@ leaves the file present but empty, so the fallback never fires and
 neither of which matches any documented enum value
 (`passed/failed/collection_error/config_error/skipped/not_run`).
 
+## Current Behavior
+
+`verify` (line 392) captures its python3 heredoc's stdout directly into
+`VERIFY_VERDICT` via command substitution, and `merge_epic_branch` (line 570)
+redirects its heredoc's stdout straight into `epic-merge-verdict.txt` — in
+both cases only the heredoc's *stdout* is used as the verdict; neither state
+checks the python3 subprocess's own exit code. A crash mid-heredoc (e.g.
+`ModuleNotFoundError`) prints a traceback to stderr, leaves stdout empty, and
+both states still write the empty string to their verdict file with the
+outer shell action reporting `exit_code: 0`. `finalize`'s fallback (lines
+966/987: `cat verify-verdict.txt 2>/dev/null || echo "not_run"`) only
+substitutes `"not_run"` when the file is *absent* — a present-but-empty file
+short-circuits `cat`'s success and the fallback never fires, so
+`summary.json` ends up with `verify_verdict: ""` / `epic_merge_verdict: ""`.
+
+## Steps to Reproduce
+
+1. Run `auto-refine-and-implement.yaml` against an `EPIC-*` scope so the
+   `verify` and `merge_epic_branch` states take the epic-branch code path
+   (the one that imports `little_loops.worktree_utils` / `little_loops.config`
+   inside the heredoc).
+2. Force the heredoc's python3 subprocess to crash instead of running
+   normally — e.g. invoke the loop with a `PYTHONPATH` that shadows/hides the
+   `little_loops` package for just that subprocess (matching the machine
+   conditions [[ENH-3365]] documents: multiple Python installs on `PATH`,
+   only one with `little_loops` importable).
+3. Let the run reach `finalize` and inspect `summary.json`.
+4. Observe: `verify_verdict` and `epic_merge_verdict` are both `""` (empty
+   string) — not `"passed"`, `"failed"`, `"skipped"`, `"collection_error"`,
+   `"config_error"`, or `"not_run"` — while the run's own terminal `verdict`
+   still reads `"success"`.
+
 ## Evidence
 
 Observed via `/ll:audit-loop-run sprint-refine-and-implement
@@ -84,9 +116,28 @@ minimum, `"not_run"` — never a bare empty string that passes silently through
    and assert `summary.json` reports a non-empty, documented verdict token —
    not `""`.
 
+## Program Design
+
+### Signatures
+
+- `emit(verdict, returncode=None, detail='')` (`auto-refine-and-implement.yaml:439`) — must also receive the heredoc's own subprocess exit code from its caller, not just trust stdout being non-empty.
+- `classify(returncode, stderr='')` (`auto-refine-and-implement.yaml:428`) — unchanged; the caller must invoke it (or emit `"error"` directly) when the heredoc itself crashed, instead of only calling it on a clean run.
+
+### Call Path
+
+`verify` -> heredoc's `classify()` / `emit()` -> `VERIFY_VERDICT` -> `verify-verdict.txt` -> `finalize` -> `summary.json`'s `verify_verdict` field. Same shape for `merge_epic_branch` -> `epic-merge-verdict.txt` -> `finalize` -> `summary.json`'s `epic_merge_verdict` field.
+
 ## Impact
 
 - **Priority**: P2 — mirrors BUG-2614's severity class: a config'd gate
   (test/lint verification, epic-branch merge) silently no-ops for an entire
   run and the run still reports `success`, with the miscue currently visible
   only via a stray empty-string field a human has to notice.
+
+## Status
+
+**Open** | Created: 2026-08-30 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-08-31T02:10:25 - `816b6544-6e69-4192-a4ac-f797f3d82975.jsonl`
