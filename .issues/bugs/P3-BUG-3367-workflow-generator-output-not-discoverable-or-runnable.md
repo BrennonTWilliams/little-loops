@@ -48,11 +48,13 @@ anywhere in the generator's output or in `ll-loop list`.
 
 ## Expected Behavior
 
-At minimum, one of:
+**Contract: whatever identifier `ll-loop list` displays for a draft, `ll-loop run`
+must resolve.** Concretely:
+
 - `ll-loop list` surfaces unpromoted generator drafts under their internal `name:`
-  (clearly marked as an unpromoted draft, with its run-dir path), and/or
-- `ll-loop run <name>` resolves a draft loop's internal name to its `run_dir/workflow.yaml`
-  path, and/or
+  (clearly marked as an unpromoted draft, with the run-dir path shown alongside), and
+- `ll-loop run <name>` resolves both a draft's internal `name:` and its instance-folder
+  name (`runs/<instance_id>`) to the `run_dir/workflow.yaml` path, and
 - `ll-loop install <path>` accepts an arbitrary filesystem path (not just built-in loop
   names) so a generated draft can be promoted into `loops_dir` under a short name via a
   documented, working command.
@@ -77,20 +79,63 @@ broken on first use (as observed live — see Reproduction Steps below).
 Close all three CLI-side gaps so a generated draft is discoverable end-to-end,
 and fix the generator's own config mismatch regardless of which gaps are closed:
 
-1. **`ll-loop list`** — key catalog entries for loops under `runs/` by their
-   internal `name:` field (already parsed to validate `is_runnable_loop`) instead
-   of only `_rel_key`'s relative path, and mark them clearly as unpromoted drafts
-   with their run-dir path shown alongside.
-2. **`ll-loop run <name>`** — extend `resolve_loop_path` to also try
-   `loops_dir/runs/<name>/workflow.yaml` (and the bare instance-folder name shown
-   in the generator's own output) before falling through to "Loop not found".
-3. **`ll-loop install <path>`** — accept an arbitrary filesystem path (not just a
-   built-in loop name) and copy it into `loops_dir` under a derived or
-   user-supplied short name, so a draft can be promoted without a manual `cp`.
+1. **`ll-loop list`** — key catalog entries for drafts by their internal `name:`
+   field instead of only `_rel_key`'s relative path, and mark them clearly as
+   unpromoted drafts with their run-dir path shown alongside.
+   - **Draft scope**: only files matching `runs/*/workflow.yaml` count as drafts.
+     Other runnable YAMLs under `runs/` (eval-harness copies, run artifacts) are
+     *excluded* from the catalog — today's behavior of surfacing them under an
+     unrecognizable path key is part of the bug, not something to preserve.
+   - **Duplicate names**: reruns of the generator produce multiple drafts with the
+     same internal `name:`. The catalog shows only the *latest* draft per name
+     (newest `workflow.yaml` mtime); older same-named drafts are not listed.
+   - **Badge/visibility**: introduce a `draft` visibility tier rendered via the
+     existing `◆ <word>` badge convention (`_badge_for()`, `cli/loop/info.py:475-483`).
+     Drafts are *hidden* under the default `visibilities={"public"}` filter and
+     shown via a new `--drafts` flag (mirroring `--internal`/`--examples`), with a
+     hidden-count footer hint. This keeps `ll-loop list` from growing unboundedly
+     as historical runs accumulate. Note: drafts flow through the shared
+     `enumerate_loop_catalog()` into the MCP `loop_list` tool as well
+     (`test_feat_3352_mcp_loop_list.py`) — the MCP tool inherits the same
+     default-hidden behavior.
+2. **`ll-loop run <name>`** — extend `resolve_loop_path` with two fallback
+   branches, both *after* the existing literal-path/`<name>.fsm.yaml`/`<name>.yaml`/
+   builtin checks so no existing name changes meaning:
+   - `loops_dir/runs/<name>/workflow.yaml` (instance-folder name), then
+   - a scan of `loops_dir/runs/*/workflow.yaml` for a file whose internal `name:`
+     matches — resolving to the *latest* match by mtime when duplicates exist
+     (same policy as `list`), with a stderr note when older same-named drafts
+     were skipped.
+   The terminal `FileNotFoundError` message should enumerate the candidate paths
+   tried, matching the `resolve_template()` convention
+   (`artifact_templates.py:70-85`).
+3. **`ll-loop install <name-or-path>`** — accept an arbitrary filesystem path (not
+   just a built-in loop name) and copy it into `loops_dir` under a short name.
+   - **Name derivation**: every generator draft is literally named `workflow.yaml`,
+     so a path-stem derivation would yield `workflow` for all drafts — derive the
+     install name from the YAML's internal `name:` field instead (the same
+     convention the generator's own `promote` step uses,
+     `workflow-generator.yaml:875`), with an optional `--name` override.
+   - **Collision rules**: reuse the promote step's policy — suffix on collision
+     (`-2`, `-3`, ...), never shadow a built-in name.
+   - **Validation**: run `is_runnable_loop` on the source file before copying and
+     refuse (with the validation error) if it fails.
 4. **`workflow-generator.yaml`'s `promote` step** — correct its
-   `context.loops_dir` default from `.ll/loops` to `.loops`, matching
-   `scripts/little_loops/cli/loop/__init__.py:57`, so promotion (once reachable)
+   `context.loops_dir` default from `.ll/loops` to `.loops`, matching the CLI's
+   config default (`config/features.py:998`, read at
+   `scripts/little_loops/cli/loop/__init__.py:57`), so promotion (once reachable)
    lands drafts where the CLI actually looks.
+   - **Containment-gate widening (deliberate)**: `${context.loops_dir}` feeds the
+     FEAT-3335 promote-window scope gate's allowed realpaths (`allow_loops_dir`,
+     `workflow-generator.yaml:70-88`, `check_promote_scope` ~line 899). Changing
+     the default to `.loops` widens that gate's allowed set from an isolated dir
+     to the whole `.loops` tree (project loops, `runs/`, `.history/`). Accepted:
+     promote's collision suffixing prevents overwrites, and the gate still
+     excludes everything outside `.loops`. Record this in the decision log.
+   - **Accepted debt**: hardcoding `.loops` still mismatches projects that
+     override `loops.loops_dir` in `.ll/ll-config.json`. The durable fix —
+     injecting the configured dir into run context at launch — is out of scope
+     here; note it as a follow-up if it bites.
 
 ## Integration Map
 
@@ -118,10 +163,21 @@ and fix the generator's own config mismatch regardless of which gaps are closed:
   arbitrary-path support
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` or a dedicated `test_loop_cli.py` —
-  add cases for: `ll-loop list` surfacing a `runs/` draft under its `name:`,
-  `ll-loop run` resolving a run-dir/instance name, `ll-loop install` accepting
-  a filesystem path
+- `scripts/tests/test_fsm_loop_paths.py` — one unit test per new
+  `resolve_loop_path` branch (instance-folder name; internal-`name:` scan;
+  latest-mtime dedup for duplicate names), following the existing
+  one-test-per-branch convention
+- `scripts/tests/test_builtin_loops.py` (`TestBuiltinLoopInstall`) and
+  `test_cli_loop_next.py` (`TestCmdInstall`) — `ll-loop install <path>`:
+  installs under the YAML's internal `name:` (NOT the `workflow` path stem),
+  `--name` override, collision suffixing, built-in shadowing refused,
+  `is_runnable_loop` rejection
+- `scripts/tests/test_feat_3352_mcp_loop_list.py` (or adjacent) — catalog
+  cases: draft surfaced under its `name:` with `draft` visibility, hidden
+  under the default filter, shown with drafts enabled; only
+  `runs/*/workflow.yaml` counts; latest-per-name dedup; contract test that
+  `resolve_loop_path` resolves the exact name `enumerate_loop_catalog` emits
+  for a draft
 - Regression test asserting `workflow-generator.yaml`'s `promote` step default
   matches the CLI's actual `.loops` default
 
@@ -133,17 +189,34 @@ and fix the generator's own config mismatch regardless of which gaps are closed:
 - N/A — the only config touched is the generator loop's own
   `context.loops_dir` default, already covered above
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- **Ordered-fallback resolution convention**: `resolve_loop_path()` (`scripts/little_loops/fsm/loop_paths.py:19-40`) is a comment-labeled `if <path>.exists(): return <path>` early-return chain, ordered most-specific to most-general, terminating in `raise FileNotFoundError(name_or_path)`. The same shape recurs in `resolve_template()` (`scripts/little_loops/artifact_templates.py:70-85`, though its error names every candidate tried, not just the input) and `resolve_run()` (`scripts/little_loops/cli/loop/audit.py:85-115`).
+- **`name_or_path` dual-mode argument convention**: every `ll-loop` subcommand except `install` declares its positional as `"Loop name or path"` (`cli/loop/__init__.py:137,377,481,648,678,902`) and routes through the shared `resolve_loop_path()`, whose own `path.exists()` first branch is what makes name-or-path work as one argument. `install_parser`'s argument is instead labeled `"Built-in loop name to install"` (`cli/loop/__init__.py:667-671`), and `cmd_install()` (`cli/loop/config_cmds.py:95-124`) does its own direct `get_builtin_loops_dir()`-only lookup rather than calling `resolve_loop_path()` — it is the one `ll-loop` subcommand that does not follow the dual-mode convention the others share. A second, differently-worded name-or-path precedent exists outside `ll-loop`: `ll-artifact status`'s `template` argument (`cli/artifact/status.py:174-180`), resolved via `resolve_template()`.
+- **Catalog status-marker conventions disagree, and neither defines a draft/unpromoted value**: loop-catalog listings use a `◆ <word>`-prefixed colored badge keyed off `visibility`/`builtin` dataclass fields (`_badge_for()`, `cli/loop/info.py:475-483`, values `internal`/`example`/`project`); issue listings instead use a plain `[status]` bracket suffix keyed off frontmatter `status` (`cli/issues/list_cmd.py:278,293,329`). A repo-wide search for `draft|unpromoted|pending_promotion|promoted` found no existing status value for "generated but not yet promoted" in either convention.
+- **Test conventions**: `resolve_loop_path()` has one direct `tmp_path`-based unit test per resolution branch in `scripts/tests/test_fsm_loop_paths.py`; `cmd_install()` is tested both via direct function call with a monkeypatched `get_builtin_loops_dir` (`test_cli_loop_next.py:354+`, class `TestCmdInstall`) and via full CLI dispatch (`test_builtin_loops.py:804-868`, class `TestBuiltinLoopInstall`). `enumerate_loop_catalog()` has no direct unit test of its own — it's exercised only indirectly through the `loop_list` MCP tool test (`scripts/tests/test_feat_3352_mcp_loop_list.py`), which uses a `_write_loop(loops_dir, rel_name, **fields)` fixture helper supporting nested `rel_name` paths.
+- **No existing "derive a short name from a path" utility**: a repo-wide search (`slugify`, `derive_name`, `.stem` call sites) found no shared helper for turning an arbitrary filesystem path into a catalog-safe short name. The two adjacent "derive a name" examples — `workflow-generator.yaml`'s `promote` step (`~lines 859-897`, derives from the artifact's own `name:` field, collision-disambiguated by incrementing a `-<suffix>`) and `persistence.py:770-801`'s `promote_run_artifact()` (derives from `run_id`, not a path stem) — both derive from content or an ID, not from a source path.
+
 ## Implementation Steps
 
 1. Fix the `workflow-generator.yaml` `loops_dir` default mismatch
-   (`.ll/loops` → `.loops`) — smallest, unconditional fix.
-2. Extend `resolve_loop_path` to resolve a run-dir/instance name to its
-   `workflow.yaml`.
-3. Key `ll-loop list`'s catalog entries for `runs/` loops by internal `name:`,
-   marked as unpromoted drafts.
-4. Extend `cmd_install` to accept an arbitrary filesystem path and promote it
-   into `loops_dir` under a short name.
-5. Add regression tests for each of the above and verify against the
+   (`.ll/loops` → `.loops`) — smallest, unconditional fix. Log the
+   containment-gate widening (see Proposed Solution item 4) in the decision log.
+2. Extend `resolve_loop_path` with the two fallback branches (instance-folder
+   name, then internal-`name:` scan with latest-mtime dedup) and the
+   candidates-tried error message.
+3. Key `ll-loop list`'s catalog draft entries (`runs/*/workflow.yaml` only,
+   latest per name) by internal `name:`, add the `draft` visibility tier +
+   badge and `--drafts` flag, exclude other `runs/` YAMLs from the catalog.
+4. Extend `cmd_install` to accept a filesystem path: internal-`name:` dest
+   derivation with `--name` override, promote-style collision suffixing,
+   `is_runnable_loop` pre-validation.
+5. Add regression tests for each of the above (including: `run` resolves the
+   exact identifier `list` displays; duplicate-named drafts resolve to the
+   latest; `install` on a draft named `workflow.yaml` does NOT install as
+   `workflow`; MCP `loop_list` hides drafts by default) and verify against the
    reproduction steps.
 
 ## Impact
@@ -151,8 +224,10 @@ and fix the generator's own config mismatch regardless of which gaps are closed:
 - **Priority**: P3 — usability/discoverability gap in a generator feature, not
   a correctness or data-loss bug; the workaround (manual file path/`cp`) exists
   but is undocumented.
-- **Effort**: Medium — four small, independent fixes across three CLI modules
-  plus one YAML default, each well-localized with no shared state between them.
+- **Effort**: Medium — four well-localized fixes across three CLI modules plus
+  one YAML default. Fixes 1 and 2 share a contract (the identifier `list`
+  displays must be what `run` resolves, latest-mtime dedup policy) and should
+  land together; fixes 3 and 4 are independent.
 - **Risk**: Low — additive path-resolution logic in `resolve_loop_path`/
   `cmd_install`/`enumerate_loop_catalog`; existing built-in/`.loops/<name>.yaml`
   resolution order is preserved, new checks only add fallback branches.
@@ -229,17 +304,28 @@ behavior.
 
 ### Signatures
 
-- `enumerate_loop_catalog(loops_dir: Path) -> dict[str, LoopCatalogEntry]`
-  (`scripts/little_loops/cli/loop/info.py:151`) — key `runs/`-nested entries
-  by their parsed `name:` field instead of only `_rel_key(path)`.
-- `resolve_loop_path(name: str, loops_dir: Path) -> Path | None`
-  (`scripts/little_loops/fsm/loop_paths.py:19`) — add a check for
-  `loops_dir/runs/<name>/workflow.yaml` alongside the existing
-  `<name>.fsm.yaml`/`<name>.yaml`/builtin checks.
-- `cmd_install(name_or_path: str, loops_dir: Path) -> int`
+- `enumerate_loop_catalog(*, loops_dir: Path, category: str | None, label: list[str] | None, visibilities: set[str] | None, builtin_only: bool) -> LoopCatalog`
+  (`scripts/little_loops/cli/loop/info.py:151`) — key `runs/*/workflow.yaml`
+  draft entries by their parsed `name:` field (latest per name by mtime),
+  exclude other `runs/` YAMLs, and assign drafts the new `draft` visibility
+  tier so the existing visibility filter hides them by default.
+- `resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path`
+  (`scripts/little_loops/fsm/loop_paths.py:19`; raises `FileNotFoundError`,
+  never returns `None`) — append two fallback branches after the existing
+  literal-path/`<name>.fsm.yaml`/`<name>.yaml`/builtin checks:
+  `loops_dir/runs/<name>/workflow.yaml`, then an internal-`name:` scan of
+  `loops_dir/runs/*/workflow.yaml` (latest mtime wins). Shared by the FSM core
+  (`fsm/validation.py`, `fsm/fragments.py`, `fsm/executor.py`) — both branches
+  are additive fallbacks after all existing checks, so core resolution is
+  unaffected for existing names.
+- `cmd_install(loop_name: str, loops_dir: Path, logger: Logger) -> int`
   (`scripts/little_loops/cli/loop/config_cmds.py:95`) — fall back to treating
-  `name_or_path` as an arbitrary filesystem path when it isn't a known
-  built-in loop name.
+  the argument as a filesystem path when it isn't a known built-in loop name;
+  derive the dest name from the source YAML's `name:` field (or a new
+  `--name` flag), apply promote-style collision suffixing, validate with
+  `is_runnable_loop` before copying. Relabel the parser argument from
+  `"Built-in loop name to install"` to `"Built-in loop name or path to a loop
+  YAML"` (`cli/loop/__init__.py:667-671`).
 
 ### Call Path
 
@@ -265,5 +351,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-31T03:37:52 - `d3fa0ee5-3d96-476c-a86f-50795f749f97.jsonl`
 - `/ll:format-issue` - 2026-08-31T03:25:45 - `58ca304a-54ac-44f8-bc17-9bdf9d83c13c.jsonl`
 - `/ll:capture-issue` - 2026-08-31T03:21:32 - `41ef66dd-c959-46d5-a910-2bd5157e43bf.jsonl`
