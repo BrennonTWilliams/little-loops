@@ -3,8 +3,8 @@ id: ENH-1722
 title: Research and decide per-host state directory redirection for Codex
 type: ENH
 priority: P5
-status: deferred
-captured_at: "2026-05-26T02:23:05Z"
+status: open
+captured_at: '2026-05-26T02:23:05Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463

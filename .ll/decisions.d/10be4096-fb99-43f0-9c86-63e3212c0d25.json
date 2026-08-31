@@ -1,0 +1,14 @@
+{
+  "id": "d24b2b7d-b346-4982-b697-5a5332dabf1b",
+  "type": "decision",
+  "timestamp": "2026-08-31T22:54:23Z",
+  "category": "scope",
+  "labels": [
+    "codex",
+    "host-compat"
+  ],
+  "rationale": "SCOPE-042 deferred ENH-2124 pending scheduled Codex host-parity work. On review, describe_capabilities() already returns full/partial for permission_skip/tool_allowlist (host_runner.py), the HOST_COMPATIBILITY.md [^runnercap] footnote already documents the decision citing ENH-2124 by name, and test_host_runner.py:716-731 covers the capability probe. Only the standalone thoughts/research/ note is outstanding. Reopening to close out the remaining doc-note gap rather than leaving a substantively-done issue parked as deferred.",
+  "rule": "Un-defer ENH-2124: revisit condition (Codex host-parity work scheduled) is moot \u2014 the work already landed",
+  "scope": "issue",
+  "issue": "ENH-2124"
+}

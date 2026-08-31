@@ -4,15 +4,17 @@ type: BUG
 title: "Epic verify gate produces environment-only false failures \u2014 third recurrence\
   \ after BUG-2649/BUG-3082"
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T21:18:18Z'
+completed_at: '2026-08-31T22:55:36Z'
 relates_to:
 - BUG-2649
 - BUG-3082
 - BUG-3369
 - BUG-3370
+- BUG-3371
 decision_needed: false
 program_design_not_applicable: true
 reconcile_attempted: true
@@ -174,9 +176,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented Option B: added a stacked, function-level
+`@pytest.mark.skipif(os.environ.get("LL_VERIFY_GATE") == "1", ...)` decorator to
+`test_tsc_noemit_passes` in both `scripts/tests/test_opencode_adapter.py` and
+`scripts/tests/test_omp_adapter.py`, additive to the existing module-level
+`_BUN is None` skip. Updated `docs/reference/API.md` (narrative section + the
+`verify_before_merge` bullet), `hooks/adapters/opencode/README.md`, and
+`hooks/adapters/omp/README.md` to document the quarantine, and added a
+`CHANGELOG.md` entry under `## [1.160.0]`. Filed BUG-3371 to track un-quarantine
+once the missing-`node_modules` gap is resolved or the gate's scope is revisited.
+The 4 unrelated failures observed in the same run remain out of scope, tracked by
+BUG-3370.
+
 ## Status
 
-**Open** | Created: 2026-08-31 | Priority: P2
+**Done** | Created: 2026-08-31 | Priority: P2
 
 ## Steps to Reproduce
 
@@ -220,6 +236,7 @@ The tsc failures were `Cannot find type definition file for 'bun'`.
 - `format-check`'s `unapplied_decision` check flags `verify_epic_branch_before_merge()` in Program Design as a "rejected option" identifier. This reads as a linter false-positive — that function is the shared gate entry point referenced by both Option A and Option B (not something Option B rejected) — but is worth a quick sanity check before implementation since it capped Criterion C (Ambiguity) in this scoring pass.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-31T22:54:55 - `84d2201c-0e1c-4721-aeea-e46912791104.jsonl`
 - `/ll:confidence-check` - 2026-08-31T22:31:20 - `a1600312-93ed-46f3-9d4c-f81445a303c2.jsonl`
 - `/ll:wire-issue` - 2026-08-31T22:11:27 - `c4a9442e-319b-44f7-a243-d71188c2e525.jsonl`
 - `/ll:decide-issue` - 2026-08-31T22:02:05 - `37ee9921-5737-4ac0-9e3a-27926a3278f3.jsonl`

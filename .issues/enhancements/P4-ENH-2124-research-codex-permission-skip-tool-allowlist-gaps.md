@@ -3,8 +3,8 @@ id: ENH-2124
 title: Research and track Codex permission-skip and tool-allowlist capability gaps
 type: ENH
 priority: P4
-status: deferred
-captured_at: "2026-06-13T00:00:00Z"
+status: open
+captured_at: '2026-06-13T00:00:00Z'
 discovered_date: 2026-06-13
 discovered_by: capture-issue
 parent: EPIC-1463

@@ -92,7 +92,10 @@ handlers directly (mirroring `test_opencode_adapter.py`'s `_write_driver()`
 pattern). It is automatically skipped if Bun is not available on `PATH`. The
 same module gates `bun x tsc --noEmit -p tsconfig.json`
 (`TestOmpAdapterTypecheck`), so the adapter's `strict: true` typecheck runs
-as part of `python -m pytest scripts/tests/`.
+as part of `python -m pytest scripts/tests/`. This typecheck is skipped under
+the epic-merge verify gate (`LL_VERIFY_GATE=1`) because the gate's ephemeral
+worktree checkout never installs the gitignored `node_modules/@types/bun`
+devDependency (BUG-3368).
 
 ## Related
 

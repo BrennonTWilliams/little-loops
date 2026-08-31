@@ -133,6 +133,9 @@ not available on `PATH`.
 The same test module also gates `bun x tsc --noEmit -p tsconfig.json`
 (`TestOpenCodeAdapterTypecheck`), so the adapter's `strict: true` typecheck
 runs as part of `python -m pytest scripts/tests/` instead of only on-demand.
+This typecheck is skipped under the epic-merge verify gate (`LL_VERIFY_GATE=1`)
+because the gate's ephemeral worktree checkout never installs the gitignored
+`node_modules/@types/bun` devDependency (BUG-3368).
 
 ## Related
 

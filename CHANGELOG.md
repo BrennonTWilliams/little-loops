@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BUG-3363**: `scratch-cleanup.sh` SessionEnd hook intermittently cancelled on session exit
 - **BUG-3364**: `verify` and `merge_epic_branch` swallow a python3 crash as an empty verdict, not `failed`/`not_run`
 - **BUG-3367**: workflow-generator output not discoverable or runnable
+- **BUG-3368**: epic-worktree verify gate false-fails `test_tsc_noemit_passes` (opencode/omp adapters) because the ephemeral worktree checkout never installs the gitignored `node_modules/@types/bun` devDependency — quarantined under `LL_VERIFY_GATE=1`
 - fix(subprocess_utils): cap guillotine scratch-file listing (3ed30d5af)
 - fix(tests): stop hardcoded dates from aging out of history window (7e803e1ac)
 

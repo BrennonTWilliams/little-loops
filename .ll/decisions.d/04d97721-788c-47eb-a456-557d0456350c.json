@@ -1,0 +1,14 @@
+{
+  "id": "6c979e2e-298f-4c11-9786-63d9351c42ed",
+  "type": "decision",
+  "timestamp": "2026-08-31T22:54:23Z",
+  "category": "scope",
+  "labels": [
+    "codex",
+    "host-compat"
+  ],
+  "rationale": "ENH-1722 was silently set to deferred by an automated /ll:verify-issues pass on 2026-06-27 with no logged decision rationale. No research progress has been made since capture (2026-05-26): no research note, no HOST_COMPATIBILITY.md [^state] decision. Since capture, _config_candidates() (config/core.py) generalized config-probe scoping to 5 hosts (codex, gemini, omp, kimi-code, qwen), all still sharing .issues/, .loops/, scratch, and history.db unconditionally \u2014 raising the value of a documented decision rather than lowering it. Reopening as a low-cost research task with no code dependencies.",
+  "rule": "Un-defer ENH-1722: the state-dir scoping question now spans 5 hosts, not just Codex",
+  "scope": "issue",
+  "issue": "ENH-1722"
+}

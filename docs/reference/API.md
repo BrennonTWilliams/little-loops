@@ -4030,7 +4030,12 @@ that are non-deterministic under the gate's non-standard invocation (injected
 `os.environ.get("LL_VERIFY_GATE") == "1"` and quarantine themselves
 (`pytest.mark.skipif`) rather than false-negative a genuinely mergeable branch —
 the assertions still run under the standard `python -m pytest scripts/tests/`
-invocation off the gate. On the `ll-parallel` path, a failure blocks
+invocation off the gate. A second consumer of this idiom is
+`test_tsc_noemit_passes` in `test_opencode_adapter.py`/`test_omp_adapter.py`
+(BUG-3368): the gate's ephemeral `git worktree add` checkout only materializes
+git-tracked content, so the gitignored `node_modules/@types/bun` devDependency
+is never installed there, making `tsc --noEmit` fail on a missing type
+definition regardless of the commit under test. On the `ll-parallel` path, a failure blocks
 the merge/PR-open (the branch is NOT added to `_merged_epic_branches`, so it is retried
 on the next completion event), and the message is recorded in
 `ParallelOrchestrator.epic_branch_verify_failures` (EPIC ID → message), which
@@ -12360,7 +12365,7 @@ Runs `test_cmd`/`lint_cmd` against an EPIC branch tip before merge/PR (ENH-2603,
 - `src_dir` — When truthy, the source directory (relative to the branch worktree, e.g. `"scripts"`) whose absolute path is prepended to `PYTHONPATH` for the test/lint subprocess. Defeats editable-install `.pth` shadowing (BUG-2629): the editable `_editable_impl_*.pth` hardcodes the main checkout's source dir at interpreter startup regardless of `cwd`, so `import little_loops.<branch_only_module>` would otherwise resolve to the main tree and fail collection. `.pth` entries land on `sys.path` after `PYTHONPATH`, so the prepend wins.
 
 **Behavior:**
-- The test/lint subprocess always runs with `LL_VERIFY_GATE="1"` in its environment (BUG-2649), independent of `src_dir`, so tests non-deterministic under the gate's non-standard invocation (injected `PYTHONPATH` + parallel-xdist worktree) can detect and quarantine themselves.
+- The test/lint subprocess always runs with `LL_VERIFY_GATE="1"` in its environment (BUG-2649), independent of `src_dir`, so tests non-deterministic under the gate's non-standard invocation (injected `PYTHONPATH` + parallel-xdist worktree) can detect and quarantine themselves. `test_tsc_noemit_passes` (`test_opencode_adapter.py`/`test_omp_adapter.py`) is a second consumer, quarantined because the gate's worktree checkout never installs the gitignored `node_modules/@types/bun` devDependency (BUG-3368).
 - Also sets `PYTEST_XDIST_AUTO_NUM_WORKERS` (default `max(2, cpu_count // 4)`, via `setdefault`) to cap nested pytest-xdist worker counts across concurrent verify gates, and `LL_FUZZ=full` (via `setdefault`) so the enforced gate always fuzzes at full depth.
 
 **Returns:** `(ok, message, returncode)`. `(True, None, None)` if the gate passed or was disabled. `(False, message, returncode)` if worktree setup or a configured command failed — `message` describes the failure and `returncode` is the failing process's exit code (`None` for a worktree-setup failure, which never ran a command). ENH-2631: the exit code lets callers distinguish a pytest collection/usage error (exit 2, a harness/env problem — BUG-2629) from a real test failure (exit 1) without re-running the suite.
