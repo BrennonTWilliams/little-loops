@@ -28,7 +28,16 @@ on_failure: recheck_set   # line 321
 `recheck_set` (line 324) only re-resolves the sprint/EPIC's current issue
 list to look for newly-added descendants to re-dispatch — it never reads any
 `subloop_outcome_autodev`-style sidecar, so it cannot tell whether `autodev`
-actually reached a successful terminal or crashed/failed. This is the same
+actually reached a successful terminal or its `failed` failure terminal.
+Note the laundering is **narrower than a full crash/failure collapse**:
+`on_error: record_error` (line 322) already routes executor-level crashes to
+a distinct recording state (test-enforced by
+`test_delegate_crash_routes_to_record_error`). The laundered cases are
+exactly (a) `autodev` reaching its `failed` terminal
+(`failure_terminal=True`), and (b) budget-class terminations
+(`timeout`/`max_steps`) plus other non-terminal classes (interrupted,
+signal), all of which fall through the compiled `on_no` → `on_failure`
+fallback into `recheck_set`. This is the same
 verdict-laundering shape [[ENH-1679]] fixed for `refine_current`'s sub-loop,
 but on this different state, and it does not qualify for the ENH-2005 sidecar
 exemption `/ll:audit-loop-run` checks for (the shared next state's action
@@ -39,8 +48,17 @@ does not contain `subloop_outcome_`).
 `delegate`'s `on_success` and `on_failure` both route to `recheck_set` (lines
 320-321). `recheck_set` only re-resolves the sprint/EPIC's descendant set to
 find newly-added children; it never reads any `autodev` outcome sidecar, so
-whether `autodev` reached a clean terminal or crashed/failed is indistinguishable
-by the time execution reaches `recheck_set` — both paths look identical.
+whether `autodev` reached its clean `done` terminal or its `failed` failure
+terminal (or was budget-exhausted) is indistinguishable by the time execution
+reaches `recheck_set` — those paths look identical. (Executor-level crashes
+are already distinct: `on_error: record_error`, line 322.)
+
+One consequence of the current collapse is load-bearing: because compiled
+`on_no` falls back to `on_failure`, budget-class terminations
+(`timeout`/`max_steps`, `executor.py:1184-1191`) currently land in
+`recheck_set`, whose ENH-2686 block folds back `autodev-queue.txt` mid-drain
+residuals for re-dispatch. Any fix that redirects `on_failure` must preserve
+that healing path for budget-class terminations (see Program Design).
 
 ## Expected Behavior
 
@@ -126,12 +144,15 @@ Decided by `/ll:decide-issue` on 2026-08-30.
 
 ### Signatures
 
-- No new artifact or sidecar file. `delegate`'s `on_success`/`on_failure` (`auto-refine-and-implement.yaml:320-321`) split into distinct targets: `on_success: recheck_set` unchanged; `on_failure:` a new failure-handling state that reads the executor's existing `${captured.delegate.failure_terminal}` classification (`executor.py:1147-1196`) — already non-degenerate for this call boundary via `autodev.yaml`'s `done`/`failed` terminals (lines 2497-2500).
-- New failure-handling state (name TBD at implementation time, e.g. `delegate_failed`) — mirrors `refine_current`'s `on_failure: skip_inflight` shape (`autodev.yaml:487-503`); routes to a failure path before ever reaching `recheck_set`.
+- No new artifact or sidecar file. `delegate`'s `on_success`/`on_failure` (`auto-refine-and-implement.yaml:320-321`) split into distinct targets: `on_success: recheck_set` unchanged; `on_failure:` a new failure-handling state, `delegate_failed`.
+- **`delegate_failed` does not need to re-derive success vs. failure** — reaching `on_failure` *is* the executor's classification (`executor.py:1170-1176` already branched on `failure_terminal`; non-degenerate for this boundary via `autodev.yaml`'s `done`/`failed` terminals, lines 2497-2500). What it reads from `${captured.delegate.*}` is **`terminated_by`**, to separate:
+  - `terminated_by == "terminal"` (genuine `failed` terminal): record `autodev_failed` against the dispatched set (sibling artifact to `auto-refine-and-implement-errored.txt`) → `next: finalize`, mirroring `record_error`'s record-then-finalize shape. Finalize's ledger diff stays the authoritative closure verdict (per the loop's own documented design), so the run still emits a summary / partial-with-errors and still reaches `merge_epic_branch` — do **not** land this edge directly on a `failure: true` terminal, which would silently drop finalize/merge for partial runs.
+  - any other `terminated_by` (budget exhaustion `timeout`/`max_steps`, interrupted, signal — everything reaching here via the `on_no` → `on_failure` fallback, `executor.py:1184-1196`): route to `recheck_set`, preserving ENH-2686's mid-drain residual fold-back (`autodev-queue.txt` re-dispatch). Alternatively, declare `on_timeout: recheck_set` on `delegate` (the ENH-3019 extra route the executor already supports) and let `delegate_failed` handle only the remainder — implementer's choice, but the budget-class path MUST keep reaching `recheck_set` either way.
+- **BUG-2611 constraint (carried from the mirrored `refine_current` pattern)**: do NOT add an explicit `on_no:` to `delegate` — schema compiles `on_no = on_no or on_failure`, and an explicit `on_no` would shadow the new `on_failure` route. The flip side of that same fallback: every non-terminal, non-error termination class flows into `delegate_failed`, whose recording logic must tolerate them (hence the `terminated_by` branch above).
 
 ### Call Path
 
-`delegate` -> (`on_success`, unchanged) `recheck_set`; `delegate` -> (`on_failure`) new failure-handling state -> failure-path routing, distinct from the current unconditional fan-in where both `on_success` and `on_failure` reach `recheck_set`.
+`delegate` -> (`on_success`, unchanged) `recheck_set`; `delegate` -> (`on_failure`) `delegate_failed` -> branch on `${captured.delegate.terminated_by}`: genuine `failed` terminal → record `autodev_failed` → `finalize`; budget/signal classes → `recheck_set` (ENH-2686 residual healing preserved). Distinct from the current unconditional fan-in where both `on_success` and `on_failure` reach `recheck_set`. `on_error: record_error` unchanged.
 
 ### Codebase Research Findings
 
@@ -229,13 +250,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `TestBuiltinLoopFiles.test_no_failure_edge_routes_to_a_success_terminal`
-  (`test_builtin_loops.py:74+`, ENH-2825) — asserts no `on_error`/
-  `on_failure`/`on_retry_exhausted` edge terminates directly in a
-  non-`failure: true` terminal, via an explicit `(loop file, state, edge)`
-  exemption dict that currently has no entry for `delegate`/`recheck_set`
-  or the new failure-handling state; the new state's routing must land on a
-  `failure: true` terminal (or gain an exemption entry) or this test fails
-  [Agent 3 finding]
+  (`test_builtin_loops.py:74+`, ENH-2825) — fires only when a failure edge's
+  *direct* target is a success terminal (confirmed: it does not follow
+  chains, so `record_error → next: finalize` passes today with no exemption
+  entry). The chosen design (`on_failure → delegate_failed`, a non-terminal
+  intermediate that records then routes to `finalize`/`recheck_set`) is
+  clean under this test with no exemption needed — it would only fail if the
+  edge were pointed directly at `finalize` [Agent 3 finding; verified
+  against the test body during review]
 - New state-existence/structure tests for the new failure-handling state
   itself, mirroring `test_skip_inflight_state_exists`,
   `test_skip_inflight_is_shell_action`, and
@@ -254,17 +276,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/guides/LOOPS_REFERENCE.md` — the `auto-refine-and-implement` FSM-flow diagram and Notes prose describing the collapsed `on_success / on_failure → recheck_set` route
 - Update `docs/ARCHITECTURE.md` — Epic-branch integration section's collapsed-route description
 - Update `scripts/little_loops/loops/auto-refine-and-implement.yaml`'s own top-of-file `description:` block (ENH-2615 paragraph)
-- Confirm the new failure-handling state's routing satisfies `test_no_failure_edge_routes_to_a_success_terminal` (lands on a `failure: true` terminal, or add an exemption entry)
-- Write state-existence/structure tests for the new failure-handling state, mirroring `test_skip_inflight_state_exists` / `test_skip_inflight_is_shell_action` / `test_skip_inflight_writes_skipped_file`
-- Add the new failure-handling state's name to `test_required_states_exist`'s `required_states` set
+- Confirm `delegate.on_failure` points at `delegate_failed` (a non-terminal), never directly at `finalize` — `test_no_failure_edge_routes_to_a_success_terminal` fires on direct-to-success-terminal edges only, so the record-then-finalize shape needs no exemption entry (same as `record_error` today)
+- Preserve the budget-class → `recheck_set` path (ENH-2686 residual fold-back): either branch on `${captured.delegate.terminated_by}` inside `delegate_failed`, or declare `on_timeout: recheck_set` on `delegate` (ENH-3019 route) — and add a regression test asserting it, since no existing test covers timeout-class routing through this join
+- Do NOT add an explicit `on_no:` to `delegate` (BUG-2611 — it would shadow the new `on_failure`)
+- Write state-existence/structure tests for `delegate_failed`, mirroring `test_skip_inflight_state_exists` / `test_skip_inflight_is_shell_action` / `test_skip_inflight_writes_skipped_file`
+- Add `delegate_failed` to `test_required_states_exist`'s `required_states` set
 
 ## Impact
 
 - **Priority**: P3 — matches [[ENH-1679]]'s severity class (same defect
   shape, different state); doesn't block the run today since `recheck_set`'s
-  own `on_error` already routes to `verify` regardless, but a genuine
-  `autodev` crash currently produces no distinguishable signal from a clean
-  success at this join point.
+  own `on_error` already routes to `verify` regardless, and executor-level
+  crashes are already caught by `on_error: record_error` — but `autodev`
+  reaching its `failed` failure terminal (or being budget-exhausted)
+  currently produces no distinguishable signal from a clean success at this
+  join point.
 
 ## Status
 
