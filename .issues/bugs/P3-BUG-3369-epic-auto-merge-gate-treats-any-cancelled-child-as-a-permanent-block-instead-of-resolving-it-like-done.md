@@ -8,8 +8,16 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T21:19:28Z'
-relates_to: [FEAT-2449, BUG-3368]
+relates_to:
+- FEAT-2449
+- BUG-3368
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 19
+score_test_coverage: 23
+score_ambiguity: 15
+score_change_surface: 21
 ---
 
 # BUG-3369: Epic auto-merge gate treats any cancelled child as a permanent block instead of resolving it like done
@@ -197,6 +205,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-31T22:31:20 - `a1600312-93ed-46f3-9d4c-f81445a303c2.jsonl`
 - `/ll:wire-issue` - 2026-08-31T22:11:28 - `c4a9442e-319b-44f7-a243-d71188c2e525.jsonl`
 - `/ll:decide-issue` - 2026-08-31T22:01:17 - `37ee9921-5737-4ac0-9e3a-27926a3278f3.jsonl`
 - `/ll:refine-issue` - 2026-08-31T21:40:32 - `a39b473b-2472-40a4-90ee-2531e40475f9.jsonl`

@@ -8,9 +8,19 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-31'
 captured_at: '2026-08-31T21:18:18Z'
-relates_to: [BUG-2649, BUG-3082, BUG-3369, BUG-3370]
+relates_to:
+- BUG-2649
+- BUG-3082
+- BUG-3369
+- BUG-3370
 decision_needed: false
 reconcile_attempted: true
+confidence_score: 98
+outcome_confidence: 84
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # BUG-3368: Epic verify gate produces environment-only false failures — third recurrence after BUG-2649/BUG-3082
@@ -197,7 +207,18 @@ The tsc failures were `Cannot find type definition file for 'bun'`.
 
 ## Frequency
 
+## Confidence Check Notes
+
+**Verdict**: STOP — ADDRESS GAPS (Program Design Hard Override, ENH-2852/ENH-2967) | Readiness: 98/100 | Outcome Confidence: 84/100
+
+### Gaps to Address
+- `ll-issues check-design BUG-3368` fails: "Program Design: no signature-shaped line found in Types, Signatures, Call Path, or the section preamble." The section's Types/Signatures entries are prose stating "(none — ... decorator-only)" rather than a signature-shaped line, so the linter finds nothing to anchor on even though the Call Path line does name `verify_epic_branch_before_merge()`. Remedy: since this fix genuinely adds no new types or functions (two stacked `@pytest.mark.skipif` decorators only), set `program_design_not_applicable: true` in this issue's frontmatter rather than fabricating a signature — this is the skill's documented remedy path for genuinely trivial work.
+
+### Outcome Risk Factors (informational, non-blocking — outcome confidence 84 clears the 65 threshold)
+- `format-check`'s `unapplied_decision` check flags `verify_epic_branch_before_merge()` in Program Design as a "rejected option" identifier. This reads as a linter false-positive — that function is the shared gate entry point referenced by both Option A and Option B (not something Option B rejected) — but is worth a quick sanity check before implementation since it capped Criterion C (Ambiguity) in this scoring pass.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-31T22:31:20 - `a1600312-93ed-46f3-9d4c-f81445a303c2.jsonl`
 - `/ll:wire-issue` - 2026-08-31T22:11:27 - `c4a9442e-319b-44f7-a243-d71188c2e525.jsonl`
 - `/ll:decide-issue` - 2026-08-31T22:02:05 - `37ee9921-5737-4ac0-9e3a-27926a3278f3.jsonl`
 - `/ll:reconcile-issue` - 2026-08-31T21:55:00 - `10ac5aa7-c8d4-4c48-94b7-5c6942cffbd5.jsonl`
