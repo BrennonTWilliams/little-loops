@@ -102,6 +102,8 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
+Concrete types, signatures, and call path for wiring the existing `pre_tool_use` handler into the Codex adapter.
+
 ### Types
 - `host: str` — `LLHookEvent.host` (`scripts/little_loops/hooks/types.py`), resolved in `main_hooks()` from `os.environ.get("LL_HOOK_HOST", "claude-code")`; the new shim's `export LL_HOOK_HOST=codex` is what makes `event.host == "codex"` for this intent
 - `intent: str` — `LLHookEvent.intent`; the dispatch-table key, `"pre_tool_use"`
@@ -167,6 +169,14 @@ as precedent only. The Claude Code `PreToolUse` scripts
 - Benchmark evidence on record: `scripts/tests/bench_opencode_adapter.py` p95 ≈ 10ms (from FEAT-1489 resolution), well under `_DECISION_TARGET_MS = 200`. With the `Edit|Write` matcher the shim fires on a strict subset of the calls that benchmark assumed, so the measured headroom is conservative.
 - This is **not** a behavior-free change for projects with `learning_tests.enabled: true` — see Codebase Research Findings under Current Behavior. An earlier revision of this issue claimed the handler was "already a no-op"; that was wrong and has been removed.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- Confirmed via BUG-2921's own fix record: the `cd`-to-payload-`cwd` step was "deliberately not ported" to Claude Code or Codex shims, with the explicit stated reason "Claude Code and Codex already spawn in the project directory" — direct corroboration of this issue's Implementation Step 1 decision to omit the step here.
+- Codex's own `hooks/adapters/codex/README.md` "Opt-in: PreToolUse" section (lines 99-125) — the manual recipe a Codex user currently pastes by hand — carries **no `matcher` key at all** in its JSON snippet (it fires unconditionally, unlike either Claude Code's `Write|Edit` or Qwen's `write_file|edit` runtime-id matcher). This confirms Implementation Step 6's README update is not just prose — the existing hand-documented recipe would spawn the shim on every tool call if adopted as-is today, which is exactly the AC-mandated `Edit|Write` matcher's purpose to prevent.
+- Matcher-value convention differs across hosts (confirmed, not just a naming variance): Claude Code matches its own tool *display names* (`Write|Edit`); Qwen matches *runtime tool ids* (`write_file|edit`); Codex's own existing `PostToolUse` precedent (`edit-batch-nudge.sh`) uses `Edit|Write|MultiEdit`. This issue's `Edit|Write` choice for Codex `PreToolUse` follows the Claude Code display-name convention, consistent with Codex's own tool-name vocabulary (confirmed: Codex's `edit-batch-nudge.sh` matcher already uses the same `Edit`/`Write` tokens, not runtime ids).
+
 ## Related Key Documentation
 
 | Document | Why Relevant |
@@ -182,6 +192,11 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 - `scripts/little_loops/hooks/adapters/kimi/pre-tool-use.sh` and `scripts/little_loops/hooks/adapters/qwen/pre-tool-use.sh` — existing `pre-tool-use.sh` shims for other non-default hosts; evidence for the `LL_HOOK_HOST=<host>` + stdin-pipe + exit-passthrough shape shared across every adapter's shim scripts, Codex's `post-tool-use.sh` included.
 - `scripts/tests/test_codex_adapter.py:265-274` (`test_hooks_json_has_post_tool_use`) and `:276-319` (`test_post_tool_use_sets_ll_hook_host_codex`) — exact test-function shapes the new `test_hooks_json_has_pre_tool_use` / `test_pre_tool_use_sets_ll_hook_host_codex` tests should mirror, including the sentinel-file fake-package subprocess pattern and the JSON payload shape (`{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_response":{}}` for the Post variant — a PreToolUse-shaped payload needs `hook_event_name":"PreToolUse"` and a `tool_input` key instead of `tool_response`, since that's what `pre_tool_use.handle()` reads to decide the `Write`/`Edit` branch).
+
+_Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
+
+- `hooks/adapters/claude-code/pre-tool-use.sh` — the currently-active Claude Code shim this issue targets parity with. Confirmed shape: no `export LL_HOOK_HOST=...` line at all (the dispatcher's `main_hooks()` defaults `host` to `"claude-code"` when the env var is unset), otherwise the same `INPUT=$(cat)` / interpreter-resolution / pipe-to-`little_loops.hooks pre_tool_use` / `exit $?` shape as every other adapter shim.
+- Codex's sibling shims not previously cited — `scripts/little_loops/hooks/adapters/codex/prompt-submit.sh`, `session-start.sh`, `pre-compact.sh`, `drift-check.sh`, `edit-batch-nudge.sh` — all confirmed to follow the identical 4-line skeleton (`export LL_HOOK_HOST=codex`; `INPUT=$(cat)`; `PY="${LL_PYTHON:-...}"` interpreter resolution; pipe + `exit $?`), none carrying a `PAYLOAD_CWD`/`cd` step. This is the full sibling set the new `pre-tool-use.sh` should match, not just `post-tool-use.sh` alone.
 
 ## Status
 
@@ -204,6 +219,7 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 - **2026-06-26** (/ll:verify-issues): Confirmed all substantive moved-file path references (hooks.json, post-tool-use.sh, pre-tool-use.sh) already point at the post-FEAT-2274 in-package location `scripts/little_loops/hooks/adapters/codex/`; the remaining bare `hooks/adapters/codex/README.md` refs are correct since that README legitimately stays at the repo root. PreToolUse-not-default gap remains real and unimplemented — no substantive change needed.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-31T18:16:20 - `79825ede-998a-42fa-9870-aab9ce64b599.jsonl`
 - `/ll:confidence-check` - 2026-08-16T20:59:10 - `7e0c4df2-cf1e-458e-8242-dd501680bfd2.jsonl`
 - `/ll:refine-issue` - 2026-08-16T20:53:33 - `08baf035-dd8f-42d7-8612-8a15da0895a0.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:11 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
