@@ -1,8 +1,8 @@
 ---
 id: EPIC-2258
-title: oh-my-pi (omp) host adapter — tracking
+title: "oh-my-pi (omp) host adapter \u2014 tracking"
 type: EPIC
-status: open
+status: done
 verify_verdict: VALID
 priority: P4
 discovered_date: 2026-06-24
@@ -17,6 +17,7 @@ labels:
 relates_to:
 - EPIC-2257
 - EPIC-2178
+completed_at: '2026-08-31T01:54:10Z'
 ---
 
 # EPIC-2258: oh-my-pi (omp) host adapter — tracking
