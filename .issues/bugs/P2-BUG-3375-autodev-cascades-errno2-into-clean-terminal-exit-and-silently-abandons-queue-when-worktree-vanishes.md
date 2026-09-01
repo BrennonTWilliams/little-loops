@@ -131,31 +131,43 @@ In `scripts/little_loops/fsm/executor.py`:
    test — the fanout that dragged outcome confidence down. The
    `exc.filename == str(working_dir)` discriminator is kept in Decision
    Rules for a future follow-up only; do not add the runners test.
-1c. **Make `LoopPersistence` paths absolute (added 2026-09-01, round 4) —
-   required for the `working_dir=None` fallback to be deliverable.** Under
-   `ll-loop run`, every persistence path is relative to the process cwd:
-   `LoopPersistence.__init__` sets `loops_dir = loops_dir or Path(".loops")`
-   (`fsm/persistence.py:491`) and derives `running_dir`/`state_file`/
-   `events_file` from it; `append_event` (`persistence.py:554`) calls
-   `_append_jsonl` (`persistence.py:208-224`), which `open(path, "a")`s per
-   event with no guard. Once the cwd is unlinked, `_finish("workdir_vanished")`
-   → `_emit("loop_complete")` → `_append_jsonl` raises `FileNotFoundError`;
-   that escapes `_finish`, hits `run()`'s outer `except Exception`
-   (`executor.py:911`), which calls `_finish("error")`, which raises again and
-   propagates out of `run()` as a traceback. `PersistentExecutor.run`'s
-   `save_state`/`archive_run` (`persistence.py:1253-1255`) fail the same way.
-   Net: the ll-parallel-worker case step 1's fallback exists for would crash
-   instead of reporting `workdir_vanished`, and the bare-`FSMExecutor` test in
-   step 4 (in-memory callback) would pass and hide it. Fix: resolve at
-   construction — `self.loops_dir = (loops_dir or Path(".loops")).resolve()` in
-   `LoopPersistence.__init__` — so the sink, state file, and archive keep
-   working after the cwd vanishes. Before landing, grep tests that construct
-   `LoopPersistence`/`PersistentExecutor` and then `chdir` (or `monkeypatch.chdir`)
-   and confirm none depend on `loops_dir` staying relative. The incident
-   topology itself is unaffected (child `run_dir` is anchored to the parent's
-   absolute run dir at `executor.py:1055-1060`, and the parent's cwd is the
-   project root), so this is only load-bearing for top-level runs inside a
-   worktree.
+1c. **Make the abort path sink-tolerant (rewritten 2026-09-01, round 5) —
+   required for the `working_dir=None` fallback to be deliverable.** The
+   round-4 version of this step ("resolve `LoopPersistence.loops_dir` to
+   absolute") rested on a false premise and is withdrawn: `cmd_run` already
+   resolves `loops_dir` absolute before constructing `PersistentExecutor`
+   (`cli/loop/run.py:103`, BUG-2386), so `LoopPersistence.__init__`'s
+   relative default (`persistence.py:491`) is never hit on the `ll-loop run`
+   path. Do **not** add `.resolve()` there. The real problem is that
+   absolute paths do not help either: in the ll-parallel-worker case the
+   worker runs `ll-loop run` with `cwd=worktree_path`, `BRConfig(Path.cwd())`
+   yields the default `.loops`, so the sink resolves to `<worktree>/.loops`
+   and the events file, state file, `run_dir` (`lifecycle.py:671`), and lock
+   dir all vanish *with* the worktree. After the vanish,
+   `_finish("workdir_vanished")` → `_emit("loop_complete")` →
+   `_append_jsonl` (`persistence.py:208-224`, unguarded `open(path, "a")`)
+   raises `FileNotFoundError`; that escapes `_finish`, hits `run()`'s outer
+   `except Exception` (`executor.py:911`), which calls `_finish("error")`,
+   which raises again and propagates out of `run()` as a traceback.
+   `PersistentExecutor.run`'s `save_state`/`archive_run`
+   (`persistence.py:1253-1255`) and `cmd_run`'s `lock_manager.release`
+   (`run.py:664`) fail the same way. Fix — guard the abort path, not the
+   paths: (i) in `run()`, wrap the `workdir_vanished` `_finish` call in
+   `try/except OSError`; on failure write
+   `workdir_vanished: <path>` to stderr and return an `ExecutionResult`
+   constructed directly (`terminated_by="workdir_vanished"`, `error=<msg>`,
+   `failure_terminal=False`) so the abort never degrades into an `"error"`
+   traceback; (ii) in `PersistentExecutor.run`, when
+   `result.terminated_by == "workdir_vanished"`, wrap `save_state`/
+   `archive_run` in `try/except OSError` (log, do not raise); (iii) in
+   `cmd_run`, wrap `lock_manager.release` the same way. **Deliverable for
+   the top-level-in-worktree case is therefore: exit code 1, stderr names
+   the missing path, no traceback.** `events.jsonl`/`state.json` cannot be
+   written because they lived in the deleted tree — that is accepted, not a
+   gap. The incident topology (in-process `loop:` child with `working_dir`
+   set, parent's sink in the project root) is unaffected: the child's
+   `loop_complete` reaches the parent's persistence normally, and the child
+   `run_dir` is already anchored absolute at `executor.py:1055-1063`.
 2. On that classification, stop routing via the state's `on_error` edge:
    terminate the loop with a distinct failure terminal, emitting a new
    event (e.g. `workdir_vanished`) carrying the missing path and current
@@ -218,14 +230,23 @@ In `scripts/little_loops/fsm/executor.py`:
    write `${context.run_dir}/infra-workdir-vanished` containing
    `${captured.delegate.error?}` (the missing path) in addition to the
    existing `auto-refine-and-implement-errored.txt` append; then `next:
-   finalize` as today. **Two guards on that reference (added 2026-09-01):**
-   use the optional `?` form — `record_error` is also reached for plain
-   `error` aborts, where `_execute_sub_loop` only sets `captured.<state>.error`
-   when `child_result.error` is truthy, and an unresolved `${...}` raises
-   inside a state that has no `on_error` edge; and annotate the line
+   finalize` as today. **Three guards on those references (updated
+   2026-09-01, round 5):** use the optional `?` form on both —
+   `record_error` is also reached for plain `error` aborts, where
+   `_execute_sub_loop` only sets `captured.<state>.error` when
+   `child_result.error` is truthy, and an unresolved `${...}` raises inside a
+   state that has no `on_error` edge; and add **two** MR-11 markers, one per
+   variable, each on its own comment line preceding the action body:
+   `# ll-lint: mr11-ok(captured.delegate.terminated_by) BUG-3375 -
+   executor-controlled enum, not user input` and
    `# ll-lint: mr11-ok(captured.delegate.error) BUG-3375 - executor-written
-   path string, not user input`, because `fsm/validation/shell_safety.py`
-   (MR-11) flags every `${captured.*}` in a shell action. Have the finalize
+   path string, not user input`. `fsm/validation/shell_safety.py` (MR-11)
+   is not a key allowlist — it flags **every** `${captured.*}` in a shell
+   action, and a marker exempts only the single variable it names.
+   `delegate_failed` (YAML lines ~366-368) is the precedent: its
+   `captured.delegate.terminated_by` marker sits on its own comment line
+   above the `case`. Run `ll-loop validate auto-refine-and-implement` after
+   editing. Have the finalize
    state (lines ~1102-1125) emit `verdict=infra-worktree-vanished` when that
    marker is present, taking precedence over `incomplete-abandoned`. Keep
    the abandoned count in the JSON so the truncation is still quantified.
@@ -257,11 +278,16 @@ In `scripts/little_loops/fsm/executor.py`:
    the iteration-one missing-dir test from step 1 edge case (b). Add a
    `working_dir=None` variant that deletes the process cwd (chdir into a
    temp dir, `rmtree` it mid-run) to pin the `os.getcwd()` fallback. **That
-   variant must run through `PersistentExecutor` (or a `LoopPersistence`
-   event sink), not a bare `FSMExecutor` with an in-memory callback (added
-   2026-09-01, round 4)** — assert `terminated_by == "workdir_vanished"`,
-   that `loop_complete` landed in `events.jsonl`, and that `save_state`/
-   `archive_run` succeeded; this is the only test that proves step 1c.
+   variant must run through `PersistentExecutor` with `loops_dir` *inside*
+   the deleted cwd (e.g. `tmp_path / ".loops"`, mirroring the worker case),
+   not a bare `FSMExecutor` with an in-memory callback (rewritten
+   2026-09-01, round 5)** — assert `run()` returns (no exception) with
+   `terminated_by == "workdir_vanished"`, `error` naming the path, and that
+   stderr (capsys) contains the path. Do **not** assert `loop_complete`
+   landed in `events.jsonl` — the sink is gone with the tree (step 1c). A
+   `loops_dir` placed *outside* the deleted cwd would pass without step 1c's
+   guards and proves nothing; this in-tree variant is the only test that
+   proves step 1c.
    **Nesting note (added 2026-09-01):** in the incident topology the abort
    fires in the grandchild (`refine-to-ready-issue`); `autodev` then routes
    its `refine` state's `on_error` once, and its own pre-dispatch check
@@ -282,7 +308,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (lines 1968-1987) — add an explicit branch mapping `workdir_vanished` to `"error"` (decided: an infrastructure loss is not a loop-logic failure and must not inflate the `"failed"` bucket in fleet rollups). **Correction 2026-09-01**: this is belt-and-suspenders, not load-bearing — the function's first line `if "error" in event: return "error"` already classifies the run as `"error"` because `_finish(..., error=...)` writes `error` into `loop_complete`. The "misclassified as converged" risk only materializes if the abort omits `error=`, which Proposed Solution step 1 forbids.
 - Add `"workdir_vanished": 1` to `EXIT_CODES` in `scripts/little_loops/cli/loop/_helpers.py` (lines 69-82). `failure_terminal` is `False` for this abort (see Proposed Solution 2b), so `FAILURE_TERMINAL_EXIT_CODE` does not apply; today the value would only reach 1 via the `.get(..., 1)` default.
 - Extend the `terminated_by == "error"` branch of `_execute_sub_loop` (`executor.py:1176-1181`) and the verdict-derivation block (`1163-1169`) to include `workdir_vanished` (Proposed Solution step 3).
-- Add the `workdir_vanished` marker branch to `auto-refine-and-implement.yaml`'s **`record_error`** state (not `delegate_failed` — unreachable via `on_error`, see Proposed Solution 3b) and a matching `infra-worktree-vanished` verdict in its finalize state — **including the `exit 1` routing arm** (`phantom|incomplete-abandoned) exit 1`), the `finalize_incomplete` message, `${captured.delegate.error?}` (optional form), and an MR-11 `# ll-lint: mr11-ok(...)` annotation (added 2026-09-01).
+- Add the `workdir_vanished` marker branch to `auto-refine-and-implement.yaml`'s **`record_error`** state (not `delegate_failed` — unreachable via `on_error`, see Proposed Solution 3b) and a matching `infra-worktree-vanished` verdict in its finalize state — **including the `exit 1` routing arm** (`phantom|incomplete-abandoned) exit 1`), the `finalize_incomplete` message, `${captured.delegate.error?}` (optional form), and **two** MR-11 `# ll-lint: mr11-ok(...)` annotations, one for `captured.delegate.terminated_by` and one for `captured.delegate.error` (updated round 5).
 - ~~Add a Popen-raises-`FileNotFoundError` test to `scripts/tests/test_fsm_runners.py`~~ — dropped with step 1b (2026-09-01); no runners.py change, no runners test.
 - Bump the four `== 58` count literals in `scripts/tests/test_generate_schemas.py` (lines 21, 114, 121, 250) to `59`
 - Add a `workdir_vanished` row to `docs/guides/LOOPS_GUIDE.md`'s `terminated_by` exit-reasons table (lines 907-921)
@@ -295,7 +321,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Files to Modify
 - `scripts/little_loops/fsm/executor.py` — the **only** executor change is the pre-dispatch existence check at the top of `run()`'s main loop, before the terminal check at `665` (Proposed Solution step 1), plus the `_execute_sub_loop` branch extensions (step 3). `_run_subprocess` (Popen at `2559-2566`) and `_run_action_or_route` (`3344-3372`) are **not** modified — step 1b was dropped 2026-09-01
   > ⚠ Superseded — this bullet originally named `_run_subprocess_direct` (which does not exist) and then the Popen-site changes of step 1b; both corrected, the second in round 4
-- `scripts/little_loops/fsm/persistence.py` — `LoopPersistence.__init__` (`491`): resolve `loops_dir` to absolute so `append_event`/`save_state`/`archive_run` survive a vanished process cwd (Proposed Solution step 1c, added round 4)
+- `scripts/little_loops/fsm/persistence.py` — `PersistentExecutor.run` (`1253-1255`): wrap `save_state`/`archive_run` in `try/except OSError` when `result.terminated_by == "workdir_vanished"` (Proposed Solution step 1c, rewritten round 5). **No change to `LoopPersistence.__init__`** — the round-4 `.resolve()` plan is withdrawn; `cmd_run` already resolves `loops_dir` (`run.py:103`)
+- `scripts/little_loops/cli/loop/run.py` — `lock_manager.release` (`664`): same `OSError` guard for the `workdir_vanished` result (step 1c)
 - `scripts/little_loops/fsm/runners.py` — **no change** (step 1b dropped 2026-09-01); listed for context only. Its shell branch (Popen at `298-306`) is one raising site; its prompt-mode branch (`232-272`) converts **any** launch failure into `ActionResult(exit_code=1)` and never raises, which is why the pre-dispatch check in `run()` is the required primary detector rather than Popen-site catching
 - `scripts/little_loops/fsm/types.py` — `ExecutionResult.terminated_by` docstring (lines 35-41) enumerates existing abort kinds; add the new value there
 - `scripts/little_loops/generate_schemas.py` — `SCHEMA_DEFINITIONS`; register the new event following the `"stall_detected"` entry (lines 383-395) as the pattern
@@ -334,7 +361,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_runners.py` — **no test added** (step 1b dropped 2026-09-01). Kept for reference: `TestDefaultActionRunnerShellPath` (lines 226-460) never makes `Popen` raise, so if 1b is ever revived, a `side_effect=FileNotFoundError(...)` test belongs there [Agent 3 finding, descoped]
 - `scripts/tests/test_generate_schemas.py` — the hardcoded `assert len(SCHEMA_DEFINITIONS) == 58` / `len(files) == 58` / `len(list(output_dir.glob("*.json"))) == 58` (×2) at lines 21, 114, 121, 250 all need bumping to `59`; `scripts/tests/test_des_schema.py` is set-relational (`>=`/set-difference) and self-adjusts with no literal to bump; `scripts/tests/test_des_audit.py` exercises `main_verify_des_audit()` generically and requires no manual update, only that the new `_emit("workdir_vanished", ...)` call site gets a matching registered `DESVariant` [Agent 2/3 finding]
-- `scripts/tests/test_fsm_persistence.py` (or wherever `LoopPersistence` is constructed directly) — add a test that builds `LoopPersistence` with the default relative `loops_dir` inside a temp cwd, deletes that cwd, and asserts `append_event` still writes; pins step 1c's `.resolve()`. Before adding, grep the suite for tests that construct `LoopPersistence`/`PersistentExecutor` and then `chdir` — any that rely on `loops_dir` staying relative must be adjusted (added round 4)
+- ~~`scripts/tests/test_fsm_persistence.py` — `LoopPersistence` relative-`loops_dir` `.resolve()` test~~ — dropped with the round-4 step 1c (round 5). Replaced by the in-tree `PersistentExecutor` cwd-deletion variant in Proposed Solution step 4, which asserts a clean `workdir_vanished` return with `loops_dir` inside the deleted cwd
 - `scripts/tests/test_cli_loop_lifecycle.py` — mocks `PersistentExecutor`/`map_final_status` routing via `mock_result.terminated_by = "..."`/`failure_terminal = ...` (e.g. lines 669-870); add a `workdir_vanished` case (with `failure_terminal=False`) asserting status `"failed"` AND exit code 1 — this pins both the `map_final_status` fallback and the `EXIT_CODES` entry [Agent 1 finding, strengthened 2026-09-01]
 - `scripts/tests/test_ll_logs.py` (exercises `_derive_loop_outcome`) — add a case with `terminated_by="workdir_vanished"` and an `error` key asserting `"error"`, plus one *without* `error` proving the explicit branch still yields `"error"`
 - `scripts/tests/test_builtin_loops.py` — add a structural assertion that `auto-refine-and-implement.yaml`'s `record_error` action references `workdir_vanished` and `infra-workdir-vanished`, and that its finalize emits `infra-worktree-vanished`, so the YAML wiring in Proposed Solution 3b cannot silently regress. Sit it next to `test_delegate_crash_routes_to_record_error` (line ~4333), which already pins `delegate.on_error == record_error` — the routing assumption 3b depends on
@@ -428,6 +455,8 @@ _Added by `/ll:confidence-check` on 2026-09-01_
 - Several dependent-file consumers were reasoned through individually as "no code change needed" (map_final_status default fallback, EXIT_CODES via FAILURE_TERMINAL_EXIT_CODE, etc.) rather than exercised by a test asserting that reasoning holds — mitigate by adding the `workdir_vanished` case to `test_cli_loop_lifecycle.py` already suggested in the Wiring Phase notes to close this gap for at least one consumer
 
 ## Session Log
+- Manual review 2026-09-01 (pre-implementation, round 5): two fixes. (1) Step 1c rewritten — its premise was wrong (`cmd_run` already resolves `loops_dir` at `run.py:103`, BUG-2386) and absolute paths would not help anyway, since a worker's `.loops`, `run_dir`, and lock dir live *inside* the vanished worktree. Replaced with `OSError` guards on the `workdir_vanished` abort path (`run()` `_finish` call, `PersistentExecutor.run` `save_state`/`archive_run`, `cmd_run` `lock_manager.release`); deliverable for that case is now "exit 1, stderr names the path, no traceback". Step 4's persistence variant now requires `loops_dir` inside the deleted cwd and no longer asserts `events.jsonl` contents; the `test_fsm_persistence.py` `.resolve()` test is dropped. (2) `record_error` needs two MR-11 markers (one per `${captured.delegate.*}` variable), following `delegate_failed`'s precedent. Also noted: place the step 1 check immediately after `state_config = self.fsm.states[...]` (`executor.py:645`), ahead of the retry-tracking block.
+- `/ll:confidence-check` - 2026-09-01T22:40:47 - `c86491ed-c494-4931-ae71-56c1f8ef7cbb.jsonl`
 - Manual review 2026-09-01 (pre-implementation, round 4): one real gap and three stale-text fixes. (1) The `working_dir=None`/`os.getcwd()` fallback from round 3 was undeliverable as written: `LoopPersistence` paths are cwd-relative (`persistence.py:491`) and `append_event` is unguarded, so `_finish("workdir_vanished")` would itself raise from the event sink and escape `run()` as a traceback. Added step 1c (resolve `loops_dir` absolute at construction) plus a persistence-backed cwd-deletion test. (2) Dropped the wrong "`ll-loop resume` of a run whose worktree is gone" example (resume runs from project root; worktree path is not persisted). (3) Rewrote Integration Map's first executor bullet, which still described the dropped step 1b Popen-site changes, and Program Design's Call Path, which still called for a `_pending_*` flag. (4) Confidence notes body said 64, frontmatter 69. All other cited line numbers re-verified against main.
 - Manual review 2026-09-01 (pre-implementation, round 3): three gaps closed. (1) finalize's `case "$VERDICT"` exit-1 arm and the `test_builtin_loops.py` finalize harness's `expected_rc` tuple must include `infra-worktree-vanished`, else the run exits 0 → green `done`. (2) The pre-dispatch check must fall back to `os.getcwd()` when `working_dir is None` — top-level `ll-loop run`/`resume` executors never set it, so the `is not None` guard alone would skip them. (3) `record_error`'s marker line needs `${captured.delegate.error?}` (optional) and an MR-11 `mr11-ok` annotation. Added the nesting note for test 4 (one `route` per level is expected) and a `working_dir=None` cwd-deletion test. Re-verified all cited line numbers against main today.
 - Manual review 2026-09-01 (pre-implementation, round 2): corrected Summary/Current Behavior/repro — both sub-loops ended at their `failed` terminal with `failure_terminal: true` (events.jsonl 571, 585), not a "clean" terminal; the defect is indistinguishability, not a clean exit. Named `auto-refine-and-implement` (not `sprint-refine-and-implement`) as the worktree-attaching parent. Fixed step 3/3b contradiction: `delegate.on_error` is `record_error`, so the marker moves there and `delegate_failed` is untouched. Dropped step 1b and the runners.py test. Added 3c (no re-dispatch recovery, scope boundary), the iteration-one missing-dir edge case, and the optional `EXIT_CODES` completeness note.
