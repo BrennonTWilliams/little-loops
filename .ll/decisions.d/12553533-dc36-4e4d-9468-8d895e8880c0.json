@@ -1,0 +1,11 @@
+{
+  "id": "375cc8c9-d6e5-4598-88cd-fd3d0f0dc495",
+  "type": "decision",
+  "timestamp": "2026-09-01T03:55:59Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-init detects whether the Claude Code plugin is installed but never installs it; _dispatch_host_adapters has no claude-code branch.",
+  "rule": "Captured: ll-init should auto-install ll@little-loops plugin from marketplace",
+  "scope": "issue",
+  "issue": "FEAT-3372"
+}
