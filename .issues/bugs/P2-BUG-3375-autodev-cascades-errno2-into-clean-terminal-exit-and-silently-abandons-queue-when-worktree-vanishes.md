@@ -97,6 +97,16 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 - **Correction**: `_run_subprocess_direct` (named in step 1 above) does not exist anywhere in the repository — confirmed by a repo-wide, unfiltered grep with zero hits outside this issue file. The two actual subprocess-launch sites needing the fix are `FSMExecutor._run_subprocess` (`executor.py:2543`, Popen at `2559-2566`) for `mcp_tool` actions, and `DefaultActionRunner.run()`'s shell branch (`runners.py:117`, Popen at `298-306`) for ordinary shell actions — both need equivalent FileNotFoundError/vanished-cwd handling. See Integration Map and Program Design below for the full call path and the existing abort-pattern this should follow.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (lines 1968-1987) — add an explicit branch for `workdir_vanished` (e.g. mapping to a `"failed"`/infra-abort outcome); without it, the run falls through to the `final_state` keyword-substring fallback and is misclassified as `"converged"` in `ll-loop history`/`ll-loop fleet` rollups
+- Add a Popen-raises-`FileNotFoundError` test to `scripts/tests/test_fsm_runners.py::TestDefaultActionRunnerShellPath` for the `runners.py` shell-branch site (no such test exists there today)
+- Bump the four `== 58` count literals in `scripts/tests/test_generate_schemas.py` (lines 21, 114, 121, 250) to `59`
+- Add a `workdir_vanished` row to `docs/guides/LOOPS_GUIDE.md`'s `terminated_by` exit-reasons table (lines 907-921)
+- Regenerate `docs/reference/schemas/workdir_vanished.json` via `ll-generate-schemas`, and confirm/perform the regeneration path for `docs/observability/des-audit.md`'s variant table and "Total variants" count (no in-repo generator script was found for this specific doc — verify before assuming it's manual)
+
 ## Integration Map
 
 ### Codebase Research Findings
@@ -108,9 +118,23 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 - `scripts/little_loops/generate_schemas.py` — `SCHEMA_DEFINITIONS`; register the new event following the `"stall_detected"` entry (lines 383-395) as the pattern
 - `scripts/little_loops/observability/schema.py` — new `DESVariant` subclass following `StallDetectedVariant`/`HostPressureAbortVariant` (lines 207-211, 406-410), registered in the `DES_VARIANTS` tuple
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/logs.py` — `_derive_loop_outcome()` (lines 1968-1987) is a closed if/elif chain (`max_steps`/`max_iterations_reached` → `"max-steps"`, `cycle_detected` → `"stalled"`, `interrupted`/`handoff`/`timeout`/`user_stopped` → `"interrupted"`, `system_signal` → `"signal"`) with no branch for the new value; without one, `workdir_vanished` falls through to the `final_state` keyword-substring fallback and is silently misclassified as `"converged"` in `ll-loop history`/`ll-loop fleet` rollups unless the landing state's name happens to contain `fail`/`error`/`abort` [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `delegate_failed` state (lines 342-379) already reads `${captured.delegate.terminated_by}` in a `case` statement; its `*` branch currently folds all non-`terminal` `terminated_by` values into `recheck_set` — a new abort kind falls into this existing catch-all unless the case list is deliberately extended
 - `scripts/little_loops/fsm/executor.py::_execute_sub_loop` (lines 914-1196) — captures `child_result.terminated_by`/`failure_terminal` for any parent loop observing a sub-loop's outcome (lines 1147-1196)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` (lines 1036-1041) — `case "${captured.confidence_check.failure_terminal?}:${captured.confidence_check.terminated_by?}" in True:*|*:error|*:timeout|*:max_steps)` — the `True:*` arm already catches any `failure_terminal=True` terminal, so a `workdir_vanished` classification is caught automatically here with no code change; this is a second sub-loop-delegation consumer beyond `auto-refine-and-implement.yaml`'s `delegate_failed`, and is one of the loops the BUG-3373/BUG-3375 incident itself ran (`sprint-refine-and-implement` → `refine-to-ready-issue`) [Agent 1/2 finding]
+- `scripts/little_loops/fsm/persistence.py::map_final_status()` (lines 132-168) — canonical `(terminated_by, failure_terminal)` → persisted `LoopState.status` mapper; its default fallback already returns `"failed"` for any unrecognized `terminated_by`, so `workdir_vanished` is auto-covered with no code change [Agent 1/2 finding]
+- `scripts/little_loops/cli/loop/_helpers.py` — `EXIT_CODES` dict (lines 69-82) and `_is_success()` (1917-1920); since the new terminal sets `failure_terminal=True`, the exit-code path is auto-covered via `FAILURE_TERMINAL_EXIT_CODE` (checked before `EXIT_CODES` is consulted) — no change needed [Agent 2 finding]
+- `scripts/little_loops/cli/loop/info.py`, `scripts/little_loops/cli/loop/audit.py`, `scripts/little_loops/cli/loop/testing.py` — all pass `terminated_by` through verbatim (f-string/dict field); display correctly for any new string value with no change needed [Agent 1/2 finding]
+- `scripts/little_loops/testing.py` — imports `ExecutionResult, FSMExecutor`; wraps `FSMExecutor` in a `PersistentExecutor`-style class whose `.run()`/`.resume()` return `ExecutionResult` [Agent 1 finding]
+- `scripts/little_loops/extension.py` — imports `FSMExecutor, RouteContext, RouteDecision`; type-annotates executor fields [Agent 1 finding]
+- `scripts/little_loops/cli/loop/lifecycle.py` — indirect consumer via `persistence.py`'s `map_final_status` (instantiates `PersistentExecutor`, line 728) [Agent 1 finding]
+- `scripts/little_loops/history_reader.py::_WASTED_RUN_PREDICATE` (lines 1011-1017) — SQL `IN (...)` list with an `OR lr.failure_terminal = 1` arm auto-covers the new terminal for `waste_attribution()` token-waste rollups, no change needed [Agent 2 finding]
+- `scripts/little_loops/parallel/worker_pool.py`, `scripts/little_loops/learning_tests/gate.py`, `scripts/little_loops/cli/queue.py` — branch on the `FAILURE_TERMINAL_EXIT_CODE` (`=2`) of a `ll-loop run <subloop>` subprocess, not on the `terminated_by` string — a workdir-vanished sub-loop surfaces as `"blocked"`/`"terminal failure"`, the same bucket as any other `failure: true` terminal; no change needed but these are affected consumers [Agent 2 finding]
 
 ### Conventions in Force
 - Every distinct infra-abort kind in this codebase follows a `_pending_*` flag set deep in the call stack, checked in `run()`'s main loop, short-circuiting to `self._finish(<new terminated_by>, error=...)` — evidence: `_check_host_guard`/`HOST_PRESSURE_ABORT_EVENT` (`executor.py:3527-3601`, `744-748`), `_check_cost_ceiling`/cost-ceiling event (`3603-3683`, `825-834`), the stall detector/`STALL_DETECTED_EVENT` (`774-784`)
@@ -121,6 +145,20 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 - `scripts/tests/test_fsm_executor.py` — existing `_run_subprocess` patch-target tests (lines 717-839, 5349-5396) are the location for the new "delete working dir mid-run" test this issue's own Proposed Solution names
 - `scripts/tests/test_generate_schemas.py`, `scripts/tests/test_des_schema.py`, `scripts/tests/test_des_audit.py` — count-literal/expectation updates required by the event-registration procedure (CONTRIBUTING.md § Event Schema Maintenance)
 - `scripts/tests/test_builtin_loops.py` — structural/lint coverage over the built-in loop YAMLs (autodev, auto-refine-and-implement) that would exercise the new terminal wiring
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_runners.py` — `TestDefaultActionRunnerShellPath` (lines 226-460) covers the shell-branch Popen call this issue targets (`runners.py:298-306`) but no existing test makes `Popen` raise — every test there patches `Popen` with `return_value=mock_process`. Add a `patch("subprocess.Popen", side_effect=FileNotFoundError(2, "No such file or directory", "..."))` test here, paired with a `working_dir` pointed at a deleted `tmp_path` subdirectory, following the same shape as `test_fsm_executor.py`'s `test_current_process_cleared_after_successful_run`/`_after_timeout` (lines 5348-5400). This is a second implementation-site test file this issue's Proposed Solution step 4 didn't separately call out [Agent 3 finding]
+- `scripts/tests/test_generate_schemas.py` — the hardcoded `assert len(SCHEMA_DEFINITIONS) == 58` / `len(files) == 58` / `len(list(output_dir.glob("*.json"))) == 58` (×2) at lines 21, 114, 121, 250 all need bumping to `59`; `scripts/tests/test_des_schema.py` is set-relational (`>=`/set-difference) and self-adjusts with no literal to bump; `scripts/tests/test_des_audit.py` exercises `main_verify_des_audit()` generically and requires no manual update, only that the new `_emit("workdir_vanished", ...)` call site gets a matching registered `DESVariant` [Agent 2/3 finding]
+- `scripts/tests/test_cli_loop_lifecycle.py` — mocks `PersistentExecutor`/`map_final_status` routing via `mock_result.terminated_by = "..."`/`failure_terminal = ...` (e.g. lines 669-870); consider adding a `workdir_vanished` case to confirm it maps to `"failed"` status through the existing fallback [Agent 1 finding]
+- `scripts/tests/test_host_guard.py::TestExecutorPressureGate.test_abort_on_pressure` (lines 360-374) and `scripts/tests/test_cost_ceiling_enforcement.py::TestCostCeilingBreachAborts.test_breach_aborts_with_terminated_by` — closest existing `_pending_*`-abort-convention test shapes (assert `result.terminated_by == "<value>"` plus an event name present in captured events); useful as the E2E-level pattern to follow, though neither mocks `Popen` directly since neither originates from a Popen call [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` § "`terminated_by` exit reasons" (lines 907-921) — add a `workdir_vanished` row to the existing Markdown table alongside `host_pressure_abort`/`host_budget_exceeded` [Agent 2 finding]
+- `docs/reference/API.md` § `ExecutionResult` (lines 6162, 6172) — closed pipe-union type comment for `terminated_by`; add `workdir_vanished` there (note: this union is already stale relative to `LOOPS_GUIDE.md`, missing `host_pressure_abort`/`host_budget_exceeded`/`cost_ceiling_exceeded`/`user_stopped`/`system_signal` — pre-existing drift, not introduced by this fix) [Agent 2 finding]
+- `docs/observability/des-audit.md` — generated doc (`<!-- DO NOT EDIT - generated by ll-verify-des-audit -->`, currently "Total variants: 83") needs a new `workdir_vanished` row and updated count; no in-repo regeneration script/flag was found for this specific file (`ll-verify-des-audit` / `scripts/little_loops/cli/verify_des_audit.py` is read-only/audit-only) — confirm the regeneration path before implementation [Agent 2 finding]
+- `docs/reference/schemas/workdir_vanished.json` — new generated JSON-Schema artifact via `ll-generate-schemas`, joining the existing 58-file set referenced by `test_generate_schemas.py` [Agent 2 finding]
 
 ## Program Design
 
@@ -185,4 +223,5 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-01T21:11:04 - `27ab64ec-faa5-4f8f-b9db-d62e91a3f572.jsonl`
 - `/ll:refine-issue` - 2026-09-01T20:49:16 - `87c7efdc-d115-415c-a741-428b9e0191a6.jsonl`
