@@ -13,6 +13,7 @@ labels:
 - host-compat
 - research
 testable: false
+program_design_not_applicable: true
 ---
 
 # ENH-1722: Research and decide per-host state directory redirection for Codex
@@ -36,6 +37,7 @@ The decision is implicit — nobody wrote down whether a Codex user is better se
 - An explicit **Decision** section: "leave shared" or "scope per host" with rationale
 - If decision is "scope per host" for any surface: a child FEAT/ENH issue filed with the implementation plan, referencing the research note
 - `HOST_COMPATIBILITY.md` `[^state]` footnote updated to reference this issue's decision rather than "file a separate issue if needed"
+- `hooks/adapters/codex/README.md` `## State Directory (LL_STATE_DIR)` section (lines 184-200) updated to stay consistent with the recorded decision — it independently documents that `.loops/`, `.issues/`, and scratch are not redirected
 
 ## Integration Map
 
@@ -105,6 +107,10 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 ## Notes
 
+- Research-session pairing: FEAT-2122 (Codex native spawn model) is the same
+  shape — research note + decision, same `HOST_COMPATIBILITY.md` — and both
+  hinge on worktree/state-isolation semantics. Batch the two research sessions
+  and cross-link the notes.
 - Strong prior: the current EPIC-1463 text says "likely the latter (a project's `.issues/` is host-independent), but worth confirming rather than assuming." The research note may simply confirm this and close the gap by documenting the decision.
 - This is a research-only issue; no code change is required unless the decision warrants it.
 

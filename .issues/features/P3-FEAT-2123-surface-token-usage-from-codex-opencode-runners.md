@@ -31,12 +31,12 @@ learning_tests_required:
 
 ## Summary
 
-Per-invocation token usage is reported only for `claude`-backed runs. The
-`HOST_COMPATIBILITY.md` `Token reporting` row marks both OpenCode and Codex
-`✗`, and the `[^tok]` footnote previously deferred this to **EPIC-1744 — which
-is the unrelated, completed "FSM Loop Hardening" epic.** That was an orphaned
-dead-link: token-reporting parity for non-Claude hosts had no real tracking
-issue. This issue is that tracking surface.
+Per-invocation token usage is reported only for hosts whose stream carries a
+Claude-compatible `usage` payload (`claude`, and qwen for free — see Proposed
+Solution). The `HOST_COMPATIBILITY.md` `Token reporting` row marks both
+OpenCode and Codex `✗`, and the `[^tok]` footnote tracks the gap under this
+issue. This issue is the tracking surface for closing that gap (or formally
+documenting it).
 
 ## Motivation
 
@@ -68,7 +68,8 @@ supported hosts
 ## Current Behavior
 
 - `ll-doctor` reports `Token reporting: ✗` for OpenCode and Codex.
-- `[^tok]` footnote in `HOST_COMPATIBILITY.md` now points here (was EPIC-1744).
+- `[^tok]` footnote in `HOST_COMPATIBILITY.md` correctly cites FEAT-2123
+  (verified 2026-08-31; an earlier EPIC-1744 dead-link was fixed previously).
 - FEAT-1623's per-tool byte metrics (`.ll/history.db`) work on all hosts, but
   *token* usage specifically is Claude-only.
 
@@ -90,9 +91,27 @@ evidence that proves it.
   for any host where usage is surfaced.
 - If no usage source exists for a host: `[^tok]` is updated to a documented
   permanent-gap marker citing the research note (not a tracking placeholder).
+- OpenCode-specific outcome: `OpenCodeRunner.build_streaming()` unconditionally
+  raises `HostNotConfigured` today — no subprocess is ever spawned, so there is
+  no stream to parse regardless of what the `opencode` CLI emits. If OpenCode
+  orchestration is still unwired at implementation time, the acceptable outcome
+  for OpenCode is a *deferred-pending-orchestration* marker (citing the wiring
+  gap), not a "permanent limitation" claim; the research note should still
+  record what the `opencode` CLI emits (probed directly) so the wiring issue
+  inherits the answer.
 - `scripts/tests/` coverage for the parse path on any wired host.
 
 ## Proposed Solution
+
+**Qwen precedent (the model to follow):** qwen already has
+`Token reporting: ✓` (`HOST_COMPATIBILITY.md:251`) with zero host-specific
+code — its stream emits a Claude-compatible final `result` envelope carrying
+`usage`, which the existing shared parser branch in `run_claude_command()`
+(`subprocess_utils.py:666-697`) picks up unchanged. This proves the entire
+downstream chain is host-agnostic in practice. The research question for Codex
+is therefore concrete: can its terminal event be normalized to that same shape
+(no new branch needed), or does it require its own event-type branch in the
+shared loop?
 
 ### Codebase Research Findings
 
@@ -198,6 +217,10 @@ N/A — no new decision logic. This issue's only decision point is the research 
 - Keep the callback contract identical to the Claude path so downstream
   consumers (`usage.jsonl`, cost table, `ll-ctx-stats`) need no host-specific
   branching.
+- `learning_tests_required: [opencode]` means probing the `opencode` CLI
+  *directly* for a usage source (its runner never spawns a subprocess today —
+  see the OpenCode-specific AC), not exercising it through ll's runner.
+- `depends_on: ENH-2461` is satisfied — ENH-2461 is `done` (2026-07-13).
 
 ## Impact
 
