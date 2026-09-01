@@ -8,6 +8,12 @@ parent: ENH-3374
 relates_to:
 - BUG-3373
 - BUG-3375
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 18
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 20
 ---
 
 # ENH-3376: registry-based worktree liveness survives in-tree marker deletion
@@ -328,6 +334,7 @@ ships.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - format decided (plain text pid/create_time/run_id), registry written before `git worktree add`, prune requires dead pid, create_time pid-reuse guard, MergeCoordinator gets an explicit removal call (no redirect), run_id demoted to optional metadata.
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:46 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`

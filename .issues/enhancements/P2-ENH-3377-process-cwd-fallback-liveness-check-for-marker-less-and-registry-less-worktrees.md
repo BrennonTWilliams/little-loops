@@ -9,6 +9,12 @@ depends_on:
 - ENH-3376
 learning_tests_required:
 - psutil
+confidence_score: 90
+outcome_confidence: 89
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # ENH-3377: process-cwd fallback liveness check for marker-less and registry-less worktrees
@@ -258,6 +264,7 @@ fix (which already closes the primary BUG-3373 mechanism on its own).
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - cleared `unproven_mechanism` (spike proven), replaced the `-> bool` signature with a tri-state single-sweep design, folded the `cwd=None` AccessDenied correction into step 1, required the skip warning to name the blocking pid/process.
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:46 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`

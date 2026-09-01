@@ -7,6 +7,12 @@ status: open
 parent: ENH-3374
 depends_on:
 - ENH-3376
+confidence_score: 90
+outcome_confidence: 85
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 19
 ---
 
 # ENH-3378: harden session-cleanup.sh to consult the liveness registry before deleting
@@ -250,6 +256,7 @@ its sibling worktrees out from under still-running work.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - switched the hook to positive-evidence-only deletion (no marker + no registry → skip, not delete), registry path derived from the worktree path (covers `automation.worktree_base` sub-loop worktrees), EPERM-safe `pid_alive` helper for both signals, test matrix rewritten accordingly, format question closed (plain text, decided in ENH-3376).
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:47 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
