@@ -1,13 +1,24 @@
 ---
 id: BUG-3370
 type: BUG
-title: Diagnose 4 unexplained epic verify-gate test failures not covered by the tsc quarantine
+title: Diagnose 4 unexplained epic verify-gate test failures not covered by the tsc
+  quarantine
 priority: P3
 status: open
 discovered_by: pre-implementation-review
 discovered_date: '2026-08-31'
-relates_to: [BUG-3368, BUG-2649, BUG-3082]
+relates_to:
+- BUG-3368
+- BUG-2649
+- BUG-3082
 decision_needed: false
+reconcile_attempted: true
+confidence_score: 95
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3370: Diagnose 4 unexplained epic verify-gate test failures not covered by the tsc quarantine
@@ -31,9 +42,9 @@ The verify gate's subprocess/worktree environment sometimes produces failures in
 
 The verify gate's environment reproduces the same results for these 4 tests as a direct run on the same commit — or, if a test is inherently non-deterministic under the gate's invocation, it self-quarantines via `LL_VERIFY_GATE=1` with a tracked un-quarantine path.
 
-## Important caveat: single observation, possibly flaky
+## Important caveat: 3 of 4 mechanisms confirmed deterministic; 1 remains single-observation
 
-These 4 failures have been observed **exactly once**, during a run with concurrent xdist workers, a reduced `PYTEST_XDIST_AUTO_NUM_WORKERS`, and `LL_FUZZ=full`. Known prior false signals in this environment class: a pytest log redirected to a fixed `.loops/tmp/scratch/` name being clobbered by a concurrent run, and ambient `LL_AUTOMATION` leaking into descendants. Do not begin env-diffing before establishing reproducibility (Implementation Step 1).
+Originally all 4 failures were observed exactly once. Since then, code-tracing plus a direct git experiment (2026-08-31, pre-implementation review) confirmed deterministic mechanisms for **three** of the four (`LL_PYTHON` inheritance, missing `.ll/design-tokens/`, missing `postmortems/` — see Root Cause). Only `test_no_new_unverifiable_evidence` remains a single, unexplained observation; the flakiness caveat (concurrent xdist workers, scratch-log clobber risk, ambient-env leaks) now applies to that test alone. Do not env-diff for it before establishing reproducibility — and note the recorded evidence cannot confirm the timeout hypothesis (see Step 3).
 
 ## Codebase Research Findings (carried over from BUG-3368)
 
@@ -49,23 +60,18 @@ These 4 failures have been observed **exactly once**, during a run with concurre
 
 _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
-### Files to Modify (candidates — mechanism, not a fix, is confirmed for 2 of 4)
-- `scripts/little_loops/worktree_utils.py` — `verify_epic_branch_before_merge()`'s env build (`:565-589`) and `copy_files=[]` call to `setup_worktree()` (`:555`) are where BUG-2649/BUG-2629's fixes landed and where any new env-scrub or copy-allowlist fix would land too
-- `scripts/little_loops/host_runner.py` — `project_child_env()` (`:1853-1883`), the single additive-only chokepoint every task-path spawn routes through; per its own docstring, it has no clear/deny primitive (tracked as ENH-3203)
-- `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner.run()` (`:297-306`) is the one call site that injects `LL_PYTHON` into the env chain implicated in `test_recheck_set_folds_back_abandoned_residual`
+- **Files to Modify (candidates — mechanism, not a fix, is confirmed for 2 of 4)**: `scripts/little_loops/worktree_utils.py` — `verify_epic_branch_before_merge()`'s env build (`:565-589`) and `copy_files=[]` call to `setup_worktree()` (`:555`) are where BUG-2649/BUG-2629's fixes landed and where any new env-scrub or copy-allowlist fix would land too; `scripts/little_loops/host_runner.py` — `project_child_env()` (`:1853-1883`), the single additive-only chokepoint every task-path spawn routes through, with no clear/deny primitive (tracked as ENH-3203); `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner.run()` (`:297-306`) is the one call site that injects `LL_PYTHON` into the env chain implicated in `test_recheck_set_folds_back_abandoned_residual`
+- **Dependent Files (Callers/Importers)**: `scripts/little_loops/parallel/orchestrator.py:1527` — `ParallelOrchestrator::_verify_epic_branch_before_merge`, the other caller of the gate besides the FSM `verify` state; `scripts/little_loops/prepatch_check.py:31`, `scripts/little_loops/cli/sprint/run.py:27`, `scripts/little_loops/cli/parallel.py:35`, `scripts/little_loops/parallel/orchestrator.py:47` — importers of `worktree_utils.py`
+- **Conventions in Force**: env-contamination fixes land inside `verify_epic_branch_before_merge()`'s own env-build block rather than at call sites — evidence: BUG-2649/BUG-2629's PYTHONPATH fix at `worktree_utils.py:565-589`; suite-wide env scrubs (vs. gate-specific ones) go through `conftest.py`'s autouse `_CMD_RUN_ENV_VARS` allowlist, which is unconditional (not gated on `LL_VERIFY_GATE`) — evidence: `conftest.py:1060-1078`; hermeticity regressions are proven by re-spawning the suite as a subprocess with the contaminated condition deliberately set, pinned to `-n 0`, and asserting exit 0 — evidence: `test_hook_session_start.py:667-719` (`TestAmbientAutomationEnvHermeticity`)
+- **Tests**: `scripts/tests/test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge` (`:956-1282`) — existing gate regression coverage; already includes a BUG-2650-pattern stress-loop test, `test_gate_read_is_deterministic_on_present_needle` (`:1263`); `scripts/tests/spike/epic_verify_gate_doc_flake/{repro_harness.py,test_repro_harness.py}` — BUG-2650's bounded (`MAX_ITERATIONS=25`/`MAX_WORKERS=2`) repeat-loop-through-the-real-gate harness; never promoted out of `scripts/tests/spike/`, and not reused by `test_gate_read_is_deterministic_on_present_needle` above despite driving the same shape
 
-### Dependent Files (Callers/Importers)
-- `scripts/little_loops/parallel/orchestrator.py:1527` — `ParallelOrchestrator::_verify_epic_branch_before_merge`, the other caller of the gate besides the FSM `verify` state
-- `scripts/little_loops/prepatch_check.py:31`, `scripts/little_loops/cli/sprint/run.py:27`, `scripts/little_loops/cli/parallel.py:35`, `scripts/little_loops/parallel/orchestrator.py:47` — importers of `worktree_utils.py`
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
-### Conventions in Force
-- Env-contamination fixes land inside `verify_epic_branch_before_merge()`'s own env-build block rather than at call sites — evidence: BUG-2649/BUG-2629's PYTHONPATH fix at `worktree_utils.py:565-589`
-- Suite-wide env scrubs (vs. gate-specific ones) go through `conftest.py`'s autouse `_CMD_RUN_ENV_VARS` allowlist, which is unconditional (not gated on `LL_VERIFY_GATE`) — evidence: `conftest.py:1060-1078`
-- Hermeticity regressions are proven by re-spawning the suite as a subprocess with the contaminated condition deliberately set, pinned to `-n 0`, and asserting exit 0 — evidence: `test_hook_session_start.py:667-719` (`TestAmbientAutomationEnvHermeticity`)
-
-### Tests
-- `scripts/tests/test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge` (`:956-1282`) — existing gate regression coverage; already includes a BUG-2650-pattern stress-loop test, `test_gate_read_is_deterministic_on_present_needle` (`:1263`)
-- `scripts/tests/spike/epic_verify_gate_doc_flake/{repro_harness.py,test_repro_harness.py}` — BUG-2650's bounded (`MAX_ITERATIONS=25`/`MAX_WORKERS=2`) repeat-loop-through-the-real-gate harness; never promoted out of `scripts/tests/spike/`, and not reused by `test_gate_read_is_deterministic_on_present_needle` above despite driving the same shape
+- **Env-scrub landing site precedent conflicts by scope**: gate-specific env fixes land in the gate's own env-build block — evidence: BUG-2649's PYTHONPATH prepend, `worktree_utils.py:583-589`, immediately after `env = project_child_env(extra={"LL_VERIFY_GATE": "1"})` (`:571`); suite-wide scrubs instead go through `conftest.py`'s autouse `_CMD_RUN_ENV_VARS` allowlist (`conftest.py:1060-1078`) — evidence: BUG-3082's LL_AUTOMATION fix. The two prior fixes disagree on location because the failure shapes differ (a value the gate itself injects vs. an ambient var any test's raw `os.environ` read might see); `LL_PYTHON` is a gate-injected value (matches the BUG-2649 shape, not the BUG-3082 shape).
+- **`copy_files` directory entries are an exercised code path, not a new capability**: `setup_worktree()` already handles directory entries in `copy_files` via `copytree(..., dirs_exist_ok=True)` (`worktree_utils.py:265-268`). The general worktree flow's configured default (`worktree_copy_files` in `scripts/little_loops/config/automation.py:101-103,141-143` — `[".claude/settings.local.json", ".env", ".ll/ll.local.md"]`) predates and is unrelated to this gap. `verify_epic_branch_before_merge()` and `setup_prepatch_worktree()` both hardcode `copy_files=[]` at their `setup_worktree()` call sites (`worktree_utils.py:555`, `:392`) rather than passing the configured default — no existing call site has ever added an entry to this specific gate's list, and no prior `copy_files` addition anywhere in the codebase was made to fix a gitignored-directory-materialization bug.
+- **Hermeticity regression tests follow one of two disagreeing shapes**: (a) re-spawn the *outer test process* as a subprocess with the contaminated condition deliberately set, pinned to `-n 0`, asserting exit 0 — evidence: `TestAmbientAutomationEnvHermeticity.test_suite_passes_with_ambient_ll_automation` (`test_hook_session_start.py:667-718`), which guards against self-recursion via `_AMBIENT_GUARD_SENTINEL` (`:682-685`); or (b) call `verify_epic_branch_before_merge()` directly in-process against a real scratch git repo and assert on its `(ok, message, returncode)` tuple, optionally stress-looped — evidence: `TestVerifyEpicBranchBeforeMerge` (`test_worktree_utils.py:956-1282`), specifically `test_verify_gate_marker_set_in_child_env` (`:1162-1183`) and the stress-loop `test_gate_read_is_deterministic_on_present_needle` (`:1263-1293`).
+- **Searched, no hits**: no existing env-diff/env-dump utility exists anywhere in `scripts/little_loops/` (confirms this issue's own finding that `dump_verify_gate_env()` would be new); no test anywhere in `scripts/tests/` exercises real `git check-ignore` process exit-code behavior against a path that may or may not physically exist (the 3 files matching `check-ignore|check_ignore` don't cover this — `test_audit_loop_run_skill.py:642` only string-matches `"git check-ignore"` inside markdown prose) — the `postmortems/`-absence hypothesis for `test_hint_fires_for_root_level_report` has no established test-pattern precedent to follow.
+- Related prior art already on file: `scripts/tests/spike/epic_verify_gate_doc_flake/repro_harness.py`'s `run_gate_n_times()` (BUG-2650) remains unpromoted from `scripts/tests/spike/` and is not reused by `test_gate_read_is_deterministic_on_present_needle` despite the same bounded repeat-loop-through-the-real-gate shape.
 
 ## Program Design
 
@@ -75,11 +81,11 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 ### Signatures
 
-- `dump_verify_gate_env() -> dict[str, str]` — **temporary diagnostic helper** (Step 2 only, removed before close): capture `PATH`, node/bun toolchain resolution, `PYTHONPATH`, cwd, and remaining env vars from inside the verify-gate subprocess for comparison against a direct clean-checkout run.
+- `dump_verify_gate_env() -> dict[str, str]` — **temporary diagnostic helper, now scoped to `test_no_new_unverifiable_evidence` only** (the other 3 mechanisms are confirmed without it; removed before close): capture `PATH`, `PYTHONPATH`, cwd, and remaining env vars from inside the verify-gate subprocess for comparison against a direct clean-checkout run. Only build it if Step 3 opts for re-running the gate rather than accepting the flake classification.
 
 ### Call Path
 
-`merge_epic_branch` (epic-worktree verify gate, `scripts/little_loops/loops/auto-refine-and-implement.yaml`) -> `verify_epic_branch_before_merge()` (`worktree_utils.py:481-608`) -> `dump_verify_gate_env()` -> diff against direct `python -m pytest scripts/tests/` on a clean checkout of the same commit
+`merge_epic_branch` (epic-worktree verify gate, `scripts/little_loops/loops/auto-refine-and-implement.yaml`) -> `verify_epic_branch_before_merge()` (`worktree_utils.py:481-608`) -> (Step 3 only, if pursued) `dump_verify_gate_env()` -> diff against direct `python -m pytest scripts/tests/` on a clean checkout of the same commit
 
 Confirmed mechanism call paths (from codebase-analyzer, this pass):
 
@@ -92,10 +98,11 @@ N/A — no new decision logic; this issue diagnoses existing verify-gate env-inh
 
 ## Implementation Steps
 
-1. **Reproduce first**: re-run the verify gate on commit d8e8b9ed1 (or current main) 2–3 times, serially (no concurrent gates), and record whether any of the 4 failures recur. If none reproduce, close this issue as a flake (likely concurrent-run interference — e.g. scratch-file collision) with the evidence recorded; steps 2–4 evaporate.
-2. If reproducible: diagnose via the temporary `dump_verify_gate_env()` diff, plus for `test_hint_fires_for_root_level_report` specifically, cwd-relative `git check-ignore` behavior inside the ephemeral worktree path.
-3. Fix each identified contamination vector at the source (scrub/normalize the diverging env value), following the BUG-2649/BUG-3082 pattern — BUG-2649's fix lives in `worktree_utils.py`'s env build; BUG-3082's lives in `scripts/tests/conftest.py:1060-1078`'s `_CMD_RUN_ENV_VARS` allowlist. Note that list is suite-wide (autouse, not gated on `LL_VERIFY_GATE`) — adding a var there scrubs it for the entire suite.
-4. Add a hermeticity regression test per fixed vector, mirroring `scripts/tests/test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge` (BUG-2649 pattern) or `scripts/tests/test_hook_session_start.py:667-718` (BUG-3082 pattern: re-spawn the suite as a subprocess with the contaminated condition deliberately set, assert exit 0).
+1. **Two of four mechanisms are already confirmed deterministic — skip reproduction, go straight to Step 4**: `test_recheck_set_folds_back_abandoned_residual` (fails whenever the gate is invoked in-process from an FSM "verify" state action, which sets `LL_PYTHON`) and `test_policy_builder_renders_byte_identically_to_golden_fixture` (fails on every gate run when `design_tokens.enabled: true`, as in this repo) — see Root Cause findings.
+2. ~~Confirm the `postmortems/` hypothesis via a direct git experiment~~ **DONE (2026-08-31 pre-implementation review): confirmed.** In a scratch repo with `.gitignore` containing `postmortems/`: `git check-ignore -q postmortems` exits **1** when the directory does not physically exist and **0** when it does — so the hook's hint (`check-private-refs.sh:229`) silently never fires in the ephemeral worktree, failing `test_hint_fires_for_root_level_report`. Bonus finding: `git check-ignore -q postmortems/` (trailing slash) exits **0 regardless of physical existence** — a one-character hook fix that also makes the hint work in fresh downstream clones that lack the directory. Prefer this over materializing `postmortems/` in the worktree. (Verify trailing-slash behavior holds on the CI runner's git version via the regression test.)
+3. For `test_no_new_unverifiable_evidence`: no code-traced data/env divergence exists. **Note: the recorded evidence cannot confirm the timeout hypothesis** — `verify-detail.txt` in the run dir is a 26-line tail of pytest output (short-summary lines only, no tracebacks), so whether the failure was a `TimeoutExpired` is unrecoverable. Either re-run the gate with full log capture to catch a recurrence, or accept it as a documented flake class (optionally raising `GATE_TIMEOUT` or self-quarantining under `LL_VERIFY_GATE=1`). Consider a follow-up ENH: the gate should persist the full pytest log per run so future diagnosis issues aren't evidence-starved.
+4. Fix each confirmed mechanism at the source: scrub `LL_PYTHON` in `verify_epic_branch_before_merge()`'s env build (`worktree_utils.py:565-589`, BUG-2649/BUG-3082 pattern — BUG-2649's fix lives there, BUG-3082's lives in `scripts/tests/conftest.py:1060-1078`'s suite-wide `_CMD_RUN_ENV_VARS` allowlist) for the `LL_PYTHON` mechanism; use the trailing-slash `git check-ignore -q postmortems/` fix from Step 2 for the hook mechanism; for the design-tokens mechanism, decide between (a) adding `.ll/design-tokens/` to the gate's `copy_files` (`worktree_utils.py:555`) — smallest diff, but copies user-local gitignored state into a gate meant to test the branch, and leaves the golden test dependent on whatever the user's editable `warm-paper` tokens currently say (a local token edit breaks the test on the main checkout too) — or (b) making `test_policy_builder_renders_byte_identically_to_golden_fixture` hermetic by pinning its token inputs to a checked-in fixture directory instead of ambient `.ll/design-tokens/`. **(b) is the durable fix**; (a) is acceptable as a stopgap only.
+5. Add a hermeticity regression test per fixed vector, mirroring `scripts/tests/test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge` (BUG-2649 pattern) or `scripts/tests/test_hook_session_start.py:667-718` (BUG-3082 pattern: re-spawn the suite as a subprocess with the contaminated condition deliberately set, assert exit 0).
 
 ### Codebase Research Findings
 
@@ -121,7 +128,7 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 
 ## Root Cause
 
-Unknown — single observation, not yet reproduced. Candidate classes: a third env contamination vector (BUG-2649/BUG-3082 precedent), worktree-cwd-sensitive behavior (`git check-ignore`), or concurrent-run interference making this a flake rather than a deterministic divergence.
+3 of 4 confirmed deterministic (see findings below and the 2026-08-31 pre-implementation review): `LL_PYTHON` env inheritance (`test_recheck_set_folds_back_abandoned_residual`), gitignored `.ll/design-tokens/` never materialized in the worktree (`test_policy_builder_renders_byte_identically_to_golden_fixture`), and gitignored `postmortems/` never materialized — `git check-ignore -q postmortems` exits 1 against a physically-absent path, 0 when present, **confirmed by direct git experiment** (`test_hint_fires_for_root_level_report`). `test_no_new_unverifiable_evidence` remains unknown — single observation; best-supported hypothesis is the gate's documented CPU-contention timeout, unconfirmable from the tail-only recorded log.
 
 ### Codebase Research Findings
 
@@ -137,5 +144,10 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 **Open** | Created: 2026-08-31 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-01T00:59:38 - `3beed365-88e1-487d-84de-69cc4b78bd81.jsonl`
+- `/ll:reconcile-issue` - 2026-09-01T00:49:29 - `b37471c4-ab88-4161-9264-ab74b2ba17db.jsonl`
+- `/ll:refine-issue` - 2026-09-01T00:32:11 - `62ae4509-7f2b-4712-b3d4-4a2a89c6253f.jsonl`
+- `/ll:reconcile-issue` - 2026-08-31T23:13:50 - `fabb1894-25ff-4052-aa2b-31f751e64151.jsonl`
+- `/ll:format-issue` - 2026-08-31T23:13:12 - `fabb1894-25ff-4052-aa2b-31f751e64151.jsonl`
 - `/ll:refine-issue` - 2026-08-31T23:07:36 - `138b65fa-2748-4f37-965e-8ace7ca774da.jsonl`
 - pre-implementation review split from BUG-3368 - 2026-08-31
