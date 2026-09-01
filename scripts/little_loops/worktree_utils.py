@@ -552,7 +552,14 @@ def verify_epic_branch_before_merge(
             repo_path=repo_path,
             worktree_path=worktree_path,
             branch_name=epic_branch,
-            copy_files=[],
+            # BUG-3370: .ll/design-tokens/ is gitignored, so `git worktree add`
+            # never materializes it; without this, tests that render themed
+            # artifacts (e.g. test_policy_builder_renders_byte_identically_to_
+            # golden_fixture) see a degraded/empty token set here vs. the real
+            # tokens on a direct checkout and fail deterministically under the
+            # gate. Stopgap, not the durable fix (see issue) — the golden test
+            # itself should pin to a checked-in fixture instead of ambient config.
+            copy_files=[".ll/design-tokens"],
             logger=logger,
             git_lock=git_lock,
             checkout_existing=True,
@@ -569,6 +576,15 @@ def verify_epic_branch_before_merge(
     # instead of sniffing PYTHONPATH. Mirrors the ``LL_NON_INTERACTIVE`` marker
     # idiom (host_runner.py / session_start.py).
     env: dict[str, str] = project_child_env(extra={"LL_VERIFY_GATE": "1"})
+    # BUG-3370: project_child_env() has no clear/deny primitive (ENH-3203), so
+    # when this gate is invoked in-process from an FSM "verify" state action
+    # (DefaultActionRunner.run(), fsm/runners.py), the ambient LL_PYTHON it set
+    # rides through unscrubbed into this env and on into the test_cmd pytest
+    # subprocess, where tests with their own un-overridden `${LL_PYTHON:-...}`
+    # shell expansions (e.g. test_recheck_set_folds_back_abandoned_residual)
+    # bypass their PATH-stub mocks and fail deterministically. A bare terminal
+    # pytest run never sets LL_PYTHON, so this only fires under the gate.
+    env.pop("LL_PYTHON", None)
     # Global worker budget for nested pytest-xdist runs: ll-parallel/ll-sprint
     # can trigger several verify gates concurrently, each of which would
     # otherwise spawn its own cpus//2-worker suite (the conftest cap is

@@ -226,7 +226,11 @@ if [[ $RC -ne 0 ]]; then
                 : # a real root doc — the fix is to remove the path, not move the file
                 ;;
             *)
-                if git check-ignore -q postmortems 2>/dev/null; then
+                # BUG-3370: trailing slash makes `git check-ignore -q` match a
+                # directory-only gitignore pattern even when the directory
+                # doesn't physically exist yet (e.g. a fresh worktree/clone) —
+                # without it, exit code differs by physical existence alone.
+                if git check-ignore -q postmortems/ 2>/dev/null; then
                     echo "[little-loops] private-refs gate: If this is a loop-run postmortem, write it to" >&2
                     echo "[little-loops] private-refs gate: postmortems/ instead — gitignored, source-repo-only." >&2
                 fi

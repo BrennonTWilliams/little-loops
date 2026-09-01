@@ -4,9 +4,10 @@ type: BUG
 title: Diagnose 4 unexplained epic verify-gate test failures not covered by the tsc
   quarantine
 priority: P3
-status: open
+status: done
 discovered_by: pre-implementation-review
 discovered_date: '2026-08-31'
+completed_at: '2026-09-01T02:40:34Z'
 relates_to:
 - BUG-3368
 - BUG-2649
@@ -139,11 +140,57 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 - `test_hint_fires_for_root_level_report` (`scripts/tests/test_check_private_refs_hook.py:96-105`): the issue's original cwd-relative-`git check-ignore` hypothesis is refuted in its narrow form — `REPO_ROOT` (`test_check_private_refs_hook.py:32`) and the hook's `git check-ignore -q postmortems` (`hooks/scripts/check-private-refs.sh:229`) both resolve cwd correctly to the worktree root, and the `.gitignore` rule for `postmortems/` (`.gitignore:136`) is tracked and checked out identically into every worktree. The refined candidate: `postmortems/` is a real, non-empty, gitignored directory on disk in the main checkout (11+ files) but does not exist at all in a fresh worktree (same materialization gap as the design-tokens case above). Whether `git check-ignore -q` on a directory-only gitignore pattern returns a different exit code when the target path doesn't physically exist versus when it does is a plausible, code-traced but **not yet confirmed** explanation — the analyzer could not execute `git` to verify the exact exit code in each case.
 - `test_no_new_unverifiable_evidence` (`scripts/tests/test_verify_evidence.py:951-968`): no code-level data divergence found — `REPO_ROOT` resolves correctly and the evidence baseline (`.ll/evidence-baseline.json`) is git-tracked, not gitignored. The best-supported explanation is the gate's own documented CPU-contention risk (`worktree_utils.py:572-579`: concurrent verify gates can oversubscribe cores) pushing this test's `subprocess.run(..., timeout=GATE_TIMEOUT)` (`test_verify_evidence.py:71`, `GATE_TIMEOUT=120`) past its 120s budget under load, raising `TimeoutExpired` — a resource/scheduling failure, not a data or env-content difference.
 
+## Resolution
+
+Fixed 3 of 4 confirmed mechanisms at the source:
+
+- `test_recheck_set_folds_back_abandoned_residual`: scrubbed `LL_PYTHON` from
+  the gate's child env (`env.pop("LL_PYTHON", None)` in
+  `verify_epic_branch_before_merge()`, `worktree_utils.py`, immediately after
+  the `project_child_env()` call) so it no longer rides through unscrubbed
+  from an FSM "verify" state's `DefaultActionRunner.run()` invocation.
+- `test_hint_fires_for_root_level_report`: changed `check-private-refs.sh`'s
+  `git check-ignore -q postmortems` to `git check-ignore -q postmortems/`
+  (trailing slash) — confirmed by direct git experiment that the no-slash
+  form's exit code depends on the target's physical existence for a
+  directory-only gitignore pattern, while the slash form matches regardless.
+- `test_policy_builder_renders_byte_identically_to_golden_fixture`: added
+  `.ll/design-tokens` to the gate's `copy_files` list
+  (`verify_epic_branch_before_merge()`'s `setup_worktree()` call). This is
+  the stopgap (Option a), not the durable fix (Option b, pinning the golden
+  test to a checked-in fixture instead of ambient config) — left for a
+  follow-up since it requires touching the test's own hermeticity, out of
+  this issue's env/worktree-materialization scope.
+
+`test_no_new_unverifiable_evidence` remains unexplained as a *gate-environment*
+mechanism (no code-traced env/data divergence — see Root Cause), but while
+verifying this fix, the full suite reproduced a failure in this exact test on
+plain `python -m pytest`, unrelated to the gate: a stale evidence quote in
+`.issues/enhancements/P5-ENH-1722-...md:61` (committed at 6281fa52a) cited
+`_config_candidates(project_root, *, host, state_dir)` as a verbatim call
+shape, but the real signature spans multiple lines with type annotations, so
+the evidence-verification CLI's substring match never held. Fixed the quote to
+name the function and describe its parameters in prose instead of a fake
+verbatim call-shape quote. This resolves this specific occurrence but does not
+confirm or refute the original single-observation CPU-contention-timeout
+hypothesis for the gate itself — a stale-evidence-quote failure is a distinct,
+real mechanism from a gate-environment artifact, and either can independently
+make this test fail. No fix to `verify_epic_branch_before_merge()` itself was
+identified or needed for this test.
+
+Added 3 regression tests: `test_ll_python_scrubbed_from_child_env` and
+`test_gitignored_design_tokens_dir_materialized_in_worktree` in
+`test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge`, and
+`test_hint_fires_when_ignored_dir_not_yet_materialized` in
+`test_check_private_refs_hook.py` (verified this one fails without the fix,
+via `git stash` of the one-line change, and passes with it).
+
 ## Status
 
 **Open** | Created: 2026-08-31 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-01T02:39:58 - `396b8ad1-2bab-4820-a9f0-118d917e0c37.jsonl`
 - `/ll:confidence-check` - 2026-09-01T02:16:55 - `9f6724ff-1c3f-4012-ac09-41f5ef9209f2.jsonl`
 - `/ll:confidence-check` - 2026-09-01T00:59:38 - `3beed365-88e1-487d-84de-69cc4b78bd81.jsonl`
 - `/ll:reconcile-issue` - 2026-09-01T00:49:29 - `b37471c4-ab88-4161-9264-ab74b2ba17db.jsonl`

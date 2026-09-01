@@ -1182,6 +1182,75 @@ class TestVerifyEpicBranchBeforeMerge:
 
         assert (ok, message, returncode) == (True, None, None)
 
+    def test_ll_python_scrubbed_from_child_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3370: LL_PYTHON — set by DefaultActionRunner.run() when this gate is
+        invoked in-process from an FSM "verify" state action — must not ride
+        unscrubbed through project_child_env() into the test_cmd subprocess.
+        Left in place, tests with their own un-overridden ``${LL_PYTHON:-...}``
+        shell expansions bypass their PATH-stub mocks and fail deterministically
+        only when the gate was invoked this way (never on a bare terminal run,
+        which never sets LL_PYTHON)."""
+        monkeypatch.setenv("LL_PYTHON", "/fake/interpreter")
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        check = "import os,sys; sys.exit(1 if 'LL_PYTHON' in os.environ else 0)"
+
+        ok, message, returncode = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd=f"python3 -c {shlex.quote(check)}",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert (ok, message, returncode) == (True, None, None)
+
+    def test_gitignored_design_tokens_dir_materialized_in_worktree(self, tmp_path: Path) -> None:
+        """BUG-3370: .ll/design-tokens/ is gitignored, so ``git worktree add`` alone
+        never brings it into the ephemeral gate worktree — degrading tests that
+        render themed artifacts against ambient token config (e.g.
+        test_policy_builder_renders_byte_identically_to_golden_fixture). The
+        gate's copy_files must explicitly materialize it (stopgap; see issue for
+        the durable fix of pinning that test to a checked-in fixture instead)."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".gitignore").write_text(".ll/design-tokens/\n")
+        token_dir = repo / ".ll" / "design-tokens" / "warm-paper"
+        token_dir.mkdir(parents=True)
+        (token_dir / "tokens.json").write_text('{"color-paper-0": "#fdfbf6"}')
+        _git(repo, "add", ".gitignore")
+        _git(repo, "commit", "-m", "add gitignore")
+        _git(repo, "branch", "epic/epic-1-integration")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        check = (
+            "import pathlib,sys; "
+            "p = pathlib.Path('.ll/design-tokens/warm-paper/tokens.json'); "
+            "sys.exit(0 if p.exists() else 1)"
+        )
+
+        ok, message, returncode = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd=f"python3 -c {shlex.quote(check)}",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert (ok, message, returncode) == (True, None, None)
+
     def test_worktree_setup_failure_returns_false_with_message(self, tmp_path: Path) -> None:
         """A branch that doesn't exist fails worktree setup, not the test_cmd."""
         repo = _init_repo(tmp_path / "repo")

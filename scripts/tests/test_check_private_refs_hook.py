@@ -146,6 +146,34 @@ def test_hint_silent_when_convention_unconfigured(validator: str | None, tmp_pat
     assert _HINT_MARKER not in result.stderr
 
 
+def test_hint_fires_when_ignored_dir_not_yet_materialized(
+    validator: str | None, tmp_path: Path
+) -> None:
+    """BUG-3370 regression: a fresh worktree/clone has ``postmortems/`` gitignored
+    but not yet materialized on disk (``git worktree add`` only checks out tracked
+    content). Before the fix, ``git check-ignore -q postmortems`` (no trailing
+    slash) exited 1 against a nonexistent path, silently suppressing the hint
+    exactly where a repo with the convention configured (like this one, which has
+    files under ``postmortems/``) should have fired it. The trailing-slash form
+    matches the directory-only gitignore pattern regardless of physical existence.
+    """
+    if validator is None:
+        pytest.skip(f"{CLI} not installed")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text("postmortems/\n")
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-q", "-m", "init"],
+        cwd=tmp_path,
+        check=True,
+    )
+    assert not (tmp_path / "postmortems").exists()
+
+    result = _invoke_hook(_write_payload("audit-loop-run-x.md", _PRIVATE_CONTENT), cwd=tmp_path)
+    assert result.returncode == 2, result.stderr
+    assert _HINT_MARKER in result.stderr
+
+
 # ---------------------------------------------------------------------------
 # The hint must not change pass/fail behaviour
 # ---------------------------------------------------------------------------
