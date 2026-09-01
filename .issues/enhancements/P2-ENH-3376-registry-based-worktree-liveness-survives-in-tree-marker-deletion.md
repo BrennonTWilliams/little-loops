@@ -158,6 +158,16 @@ directly extends the already-proven atomic-write JSON pattern used by
   `/ll:cleanup-worktrees` — update liveness semantics prose to mention the
   registry as the primary signal.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Confirmed via direct code read: `MergeCoordinator._cleanup_worktree()` (`merge_coordinator.py:1148-1192`) has no import of `worktree_utils` anywhere in the file and independently reimplements the full unlock/remove/rmtree/branch-delete sequence — verifies this issue's Current Behavior claim. Its branch-delete guard is `branch_name.startswith("parallel/")` (narrower than the `_is_ll_branch()` guard used by `worktree_utils.cleanup_worktree()` and the orphan-reap loop) — the "redirect to call `worktree_utils.cleanup_worktree()`" option in Proposed Solution step 3 would also normalize this guard difference as a side effect; "add the same registry-removal call" would leave it unchanged.
+- Two additional call sites already call `worktree_utils.cleanup_worktree()` directly and therefore need no separate registry-removal wiring once step 2 lands. `WorkerPool._cleanup_worktree()` (`scripts/little_loops/parallel/worker_pool.py:880-918`, called from `cleanup_all_worktrees()` at line 2088) imports and calls `cleanup_worktree()` at line 912; its one early-return branch (`worker_pool.py:889-895`, BUG-142 guard, worktree actively in use) never reaches that call, correctly, since the worktree isn't being torn down on that path.
+- `scripts/little_loops/cli/loop/run.py`'s `_cleanup_worktree_on_exit()` (registered via `atexit.register` at line 566) is the other such call site — it calls `cleanup_worktree()` directly at line 543.
+- The `_save_state`/`_load_state` atomic-write pattern this issue's registry write is meant to mirror (`orchestrator.py:720-782`) uses `tempfile.mkstemp(dir=state_file.parent)` + `os.replace()` for atomicity, guarded only by an in-process `threading.Lock` (`self._state_lock`) — no cross-process file lock (`fcntl`/`flock`) exists anywhere in this path. Each registry entry is a distinct per-worktree file, so cross-worker write collision is not a concern here, but there is no existing precedent in this codebase for locking a shared registry *directory* if a future change ever needs one.
+- `_prune_ghost_worktree_refs()` (`orchestrator.py:424-473`, called unconditionally at the end of `_cleanup_orphaned_worktrees()`) does not scan `worktree_base` via `iterdir()` — it walks `git worktree list --porcelain` output instead. A `.registry/` sibling directory is therefore already outside its candidate set, independent of the `_is_ll_worktree()` guard the Tests section cites for the orphan-detection loop.
+
 ## Program Design
 
 ### Types
@@ -182,6 +192,12 @@ directly extends the already-proven atomic-write JSON pattern used by
 `ParallelOrchestrator.run` -> `_cleanup_orphaned_worktrees` -> `_registry_entry_is_live`
 -> (fallback) existing `.ll-session-*` glob check
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Format-decision precedent (relevant to step 1's "choose with ENH-3378's bash consumer in mind"): `hooks/scripts/scratch-cleanup.sh:49` already extracts a filename-embedded pid via `sed -nE 's/.*-([0-9]+)\.[^.]+$/\1/p'`, a working, proven-in-this-codebase precedent for the filename-embedded-pid option. By contrast, no bash code anywhere in this repo extracts a single field from JSON content without `jq` — every existing "jq-optional" fallback (`hooks/scripts/lib/common.sh:162-234`, and `session-cleanup.sh`'s own `WORKTREE_BASE` resolution) either requires `jq` or substitutes a fixed default/shape check, never a field extraction. This favors the filename-embedded-pid or plain-text-line options over JSON for bash readability, consistent with the issue's own leaning.
+
 ## Scope Boundaries
 
 - The process-cwd fallback liveness check for worktrees with neither a live
@@ -199,6 +215,12 @@ directly extends the already-proven atomic-write JSON pattern used by
 - `scripts/little_loops/worktree_utils.py` (`setup_worktree`, `cleanup_worktree`)
 - `scripts/little_loops/parallel/orchestrator.py` (`_cleanup_orphaned_worktrees`)
 - `scripts/little_loops/parallel/merge_coordinator.py` (`_cleanup_worktree`)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- No additional files require registry-removal wiring beyond the three listed above. `WorkerPool._cleanup_worktree()` (`scripts/little_loops/parallel/worker_pool.py:880-918`) and `scripts/little_loops/cli/loop/run.py`'s `_cleanup_worktree_on_exit()` (~line 510-566) already call `worktree_utils.cleanup_worktree()` directly, so they automatically inherit the registry-removal addition once it lands there.
 
 ## Impact
 
@@ -219,5 +241,6 @@ ships.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-01T18:27:46 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:44 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:22 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`

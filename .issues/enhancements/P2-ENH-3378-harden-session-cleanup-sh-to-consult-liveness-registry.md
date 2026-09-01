@@ -73,13 +73,14 @@ still live — is deleted with no cross-check today.
    check before line 52 means it covers **both** fallthrough paths: no marker
    found at all, **and** marker present but its pid dead (the parent flagged
    the dead-pid path UNSPECIFIED — it is explicitly in scope here).
-2. Registry parsing follows the format ENH-3376 lands, which is being chosen
-   for bash readability (pid encoded in the entry filename, or plain-text
-   `pid` on line 1 — see ENH-3376 Proposed Solution step 1). The existing
-   "jq-optional" pattern (`command -v jq`, line 24) is **not** sufficient on
-   its own: it only substitutes a default config value and cannot extract a
-   field from JSON. If ENH-3376 nonetheless lands JSON content, add a
-   grep/sed extraction fallback for the no-jq case.
+2. Registry parsing follows the format the registry-write issue lands (see
+   Scope Boundaries), chosen for bash readability (pid encoded in the entry
+   filename, or plain-text `pid` on line 1 — see that issue's Proposed
+   Solution step 1). The existing "jq-optional" pattern (`command -v jq`,
+   line 24) is **not** sufficient on its own: it only substitutes a default
+   config value and cannot extract a field from JSON. If that issue
+   nonetheless lands JSON content, add a grep/sed extraction fallback for
+   the no-jq case.
 3. If the registry entry's pid is alive, skip (log + `continue`), matching the
    marker-present-and-alive behavior at lines 44-51. If a registry entry
    exists but cannot be parsed (no jq and no working fallback, corrupt file),
@@ -115,6 +116,21 @@ still live — is deleted with no cross-check today.
   `commands/cleanup-worktrees.md`'s liveness prose changes as part of this
   work (these mirror it verbatim with no drift test, per ENH-2968).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Confirmed exact `cleanup()` content (`hooks/scripts/session-cleanup.sh`, full function is lines 12-58, `return 0` at line 57): the marker check (lines 44-51) only `continue`s when a marker exists AND `kill -0 "$PID"` succeeds; the "jq-optional" block (lines 21-26, not 24-26) reads `WORKTREE_BASE` from `.ll/ll-config.json`, pre-seeded with the literal default `.worktrees` and only overwritten by `jq -r '.parallel.worktree_base // ".worktrees"'` when `jq` is on PATH — it substitutes one scalar config value and contains no JSON field-extraction fallback, confirming this issue's claim.
+- Repo-wide search for a working no-jq JSON field-extraction fallback (grep/sed pulling an arbitrary key out of JSON, as opposed to a fixed default or shape-only check) found zero precedent anywhere under `hooks/scripts/` — every existing "jq-optional" block (`hooks/scripts/lib/common.sh:162-234` included) either requires jq or falls back to a caller-supplied default. If the registry-write issue lands JSON content for the registry (see Scope Boundaries), the grep/sed fallback this issue's Proposed Solution step 2 calls for would be new code with no existing shape to follow — not an adaptation of an existing pattern.
+- A directly relevant precedent exists for the filename-embedded-pid registry format instead: `hooks/scripts/scratch-cleanup.sh:49` extracts a pid from a filename via `sed -nE 's/.*-([0-9]+)\.[^.]+$/\1/p'`, then does `kill -0 "$pid"` at line 52 — the same two-step shape `read_registry_pid()` + `kill -0` would need, already proven working in this exact codebase for a sibling cleanup script.
+- Exact `hooks/hooks.json` wiring: the Stop-hook invocation of `session-cleanup.sh` is at lines 221-230 (`bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-cleanup.sh`, timeout 15), with a separate telemetry-shim entry (`record-hook-event.sh Stop hooks/scripts/session-cleanup.sh`) at lines 231-240 — refines the issue's "lines 225, 235" reference.
+- Confirmed no `_is_ll_worktree()`-equivalent name-shape filter exists in `session-cleanup.sh` today — the deletion loop (lines 39-54) applies only a substring `grep "$WORKTREE_PATTERN"` against `git worktree list` output, with no per-name regex check, matching this issue's characterization for optional item 5.
+- Existing test class confirmed: `TestSessionCleanupWorktrees` (`scripts/tests/test_hooks_integration.py:3202`) uses a `cleanup_script` fixture pointing at this script; `test_session_cleanup_removes_worktree_with_no_marker` is at line 3261 as cited, alongside sibling tests `test_session_cleanup_skips_worktree_with_live_pid_marker` (3228) and `test_session_cleanup_removes_worktree_with_dead_pid_marker` (3245).
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Possible additional doc mirror not in Documentation's list above, unconfirmed: `.kimi-code/skills/ll-cleanup-worktrees/SKILL.md` surfaced in a repo-wide search alongside the `.qwen`/`.gemini` mirrors but was not independently verified as a verbatim mirror of `commands/cleanup-worktrees.md` — worth a quick check during implementation alongside the two confirmed mirrors.
+
 ## Program Design
 
 ### Types
@@ -142,10 +158,11 @@ issue, Proposed Solution step 4)
 
 - The registry write/remove and its on-disk format are decided in ENH-3376, a
   hard dependency of this issue — not reopened here.
+
 - The process-cwd fallback (ENH-3377) has no bash equivalent and is out of
   scope for this issue.
-- The optional `_is_ll_worktree()`-equivalent name filter (Proposed Solution
-  item 5) is explicitly optional in this issue's own scope — implement only if
+- The `_is_ll_worktree()`-equivalent name filter (Proposed Solution
+  item 5) is explicitly discretionary in this issue's own scope — implement only if
   cheap while already in the file; its absence does not block closing this
   issue.
 
@@ -172,5 +189,6 @@ its sibling worktrees out from under still-running work.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-01T18:27:47 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:45 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:23 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`

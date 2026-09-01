@@ -70,9 +70,9 @@ absent.
    Registry conventions (see `/ll:explore-api`).
 
    Note: `psutil` is already a **required** dependency
-   (`scripts/pyproject.toml:58`, moved from optional in FEAT-2930), so the
-   "psutil unavailable" branch is defensive-only. The spike's real questions
-   are:
+   (`scripts/pyproject.toml:58`, no longer gated behind an extras install as
+   of FEAT-2930), so the "psutil unavailable" branch is defensive-only. The
+   spike's real questions are:
    - **macOS path aliasing**: `psutil.Process.cwd()` returns
      `/private/tmp/...` where the worktree path may read `/tmp/...` — the
      prefix comparison must `Path.resolve()` both sides or live processes
@@ -107,6 +107,15 @@ absent.
   it -> still deleted (this is the BUG-579 regression test, moved from the
   parent's Phase-4 test list to reflect the new gating).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Contested convention — the two existing pid-liveness checks in this codebase disagree on how to treat an ambiguous/errored probe, and this issue's own "never delete when liveness cannot be positively excluded" rule matches neither precedent exactly: `_verify_owner_alive` (`scripts/little_loops/cli/queue.py:514-539`) wraps everything in a broad `except Exception: return False` — any error, including a genuine `AccessDenied`, collapses to "not alive". The existing marker-based `os.kill(pid, 0)` check this issue's fallback sits behind (`orchestrator.py:334-347`) does the opposite: it treats `PermissionError` as "alive" (process exists, just unsignalable). Implementer should treat this issue's stricter "skip on any inability to positively exclude liveness" rule as a deliberate new synthesis, not an extension of either existing convention.
+- A second existing psutil-cmdline-identity precedent exists beyond `_verify_owner_alive`: `scripts/little_loops/cli/loop/queue.py::_verify_queue_pid_identity` (~line 88-100), same shape (`psutil.Process(pid)` construction, broad exception handling), tested via `scripts/tests/test_cli_loop_queue.py` (patches `little_loops.cli.loop.queue.psutil.Process`). Neither this nor `_verify_owner_alive` does cwd-based matching or `Path.resolve()`-based comparison — both remain cmdline/create_time identity checks only.
+- No shared/reusable process-liveness helper exists anywhere in this codebase (`_verify_owner_alive` is module-private and not imported elsewhere; the `os.kill(pid, 0)` probe is inlined directly in `_cleanup_orphaned_worktrees`) — there is no established convention either way on whether to extract `_process_cwd_liveness_check` into a shared utility.
+- Every existing psutil test in this codebase mocks `psutil.Process` directly at the consuming module's import path (e.g. `patch("little_loops.cli.queue.psutil.Process", ...)`, `scripts/tests/test_cli_queue_run.py:609-692`); none mock `psutil.process_iter`. Since this issue's design uses `process_iter`, its test suite will need to establish a `psutil.process_iter` mocking shape not previously present in this codebase's tests.
+
 ## Program Design
 
 ### Types
@@ -126,6 +135,13 @@ absent.
 `ParallelOrchestrator.run` -> `_cleanup_orphaned_worktrees` -> (registry check,
 marker check — ENH-3376) -> `_process_cwd_liveness_check` -> skip-with-warning
 or delete
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- A learning-test spike for this exact mechanism already exists and is `proven`: `.ll/learning-tests/psutil-process-cwd-liveness-check.md` (dated 2026-09-01, same day as this issue). It confirms `psutil.Process(pid).cwd()` works, that `Path.resolve()` is required on both sides for the macOS `/tmp` → `/private/tmp` symlink, and that `psutil.AccessDenied`/`NoSuchProcess` are both subclasses of `psutil.Error`. This satisfies Proposed Solution step 1's "Spike first" requirement — see NEXT STEPS in this refine pass's output for how this should be surfaced.
+- Correction to the stated mechanism: the spike's raw output (`.ll/learning-tests/raw/psutil-process-cwd-liveness-check.txt`, `CLAIM3-refined`) found that `psutil.process_iter(['pid', 'cwd'])` does **not** raise `AccessDenied` per-process during iteration — it silently returns `cwd=None` for those rows (via psutil's internal `ad_value` substitution). Only a *direct* `psutil.Process(pid).cwd()` call raises `AccessDenied`. Since `_process_cwd_liveness_check` as specified uses `process_iter` for its single-sweep-per-pass design, there is no reachable `try/except psutil.AccessDenied` inside that loop — the implementation must instead treat `cwd is None` as "cannot determine, skip", not catch an exception that `process_iter` never raises. This directly revises the "AccessDenied decision rule" bullet under Proposed Solution step 1.
 
 ## Scope Boundaries
 
@@ -167,5 +183,6 @@ fix (which already closes the primary BUG-3373 mechanism on its own).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-01T18:27:46 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:45 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:22 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`
