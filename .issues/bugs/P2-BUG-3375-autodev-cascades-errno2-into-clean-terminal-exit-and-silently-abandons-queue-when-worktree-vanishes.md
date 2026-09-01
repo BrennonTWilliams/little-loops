@@ -11,10 +11,10 @@ relates_to:
 - BUG-3373
 - ENH-3374
 confidence_score: 90
-outcome_confidence: 67
+outcome_confidence: 64
 score_complexity: 14
-score_test_coverage: 25
-score_ambiguity: 18
+score_test_coverage: 18
+score_ambiguity: 22
 score_change_surface: 10
 ---
 
@@ -75,11 +75,28 @@ diagnosable from the verdict instead of a full events.jsonl replay.
 
 In `scripts/little_loops/fsm/executor.py`:
 
-1. In the subprocess-launch path(s) (`_run_subprocess_direct` and the
-   action-runner shell branch), catch the `Popen` failure when
-   `self.working_dir` no longer exists and classify it as a new
-   infrastructure failure kind (e.g. `workdir_vanished`) instead of a
-   generic action error.
+1. **Primary detector — pre-dispatch existence check in `run()`'s main
+   loop.** Immediately before each state dispatch (next to the existing
+   `_check_host_guard` call, `executor.py:744`), if `self.working_dir` is
+   set and `Path(self.working_dir).exists()` is `False`, short-circuit to
+   `self._finish("workdir_vanished", error=...)`. This is one `stat` per
+   state and covers **every** action type. It must be the primary detector
+   because the Popen-site approach alone cannot work: `DefaultActionRunner`'s
+   prompt-mode branch (`runners.py:232-272`) wraps `run_claude_command` in a
+   bare `except Exception` and returns `ActionResult(exit_code=1,
+   stderr="Action failed: ...")`, so a vanished cwd under a `/ll:*` prompt
+   state never raises out to the executor — it silently routes via
+   `on_failure`/`on_error`. Prompt states are the majority in the affected
+   loops, so instrumenting only `_run_subprocess`/the shell branch would
+   leave the cascade intact.
+1b. *(Optional, secondary)* At the two raising launch sites
+   (`FSMExecutor._run_subprocess`, `executor.py:2559`; shell branch,
+   `runners.py:298`), catch `FileNotFoundError` where
+   `exc.filename == str(working_dir)` and set the same pending flag so the
+   abort fires before the current state's `on_error` route rather than at
+   the next dispatch. Skip this if it grows the change surface; the
+   pre-dispatch check alone satisfies the "at most one further dispatch"
+   test criterion in step 4.
 2. On that classification, stop routing via the state's `on_error` edge:
    terminate the loop with a distinct failure terminal, emitting a new
    event (e.g. `workdir_vanished`) carrying the missing path and current
@@ -92,7 +109,14 @@ In `scripts/little_loops/fsm/executor.py`:
 3. Let parent sub-loops observe the child's distinct terminal
    (`terminated_by`/verdict plumbing already read by
    `auto-refine-and-implement`'s `delegate_failed` state) so the sprint
-   verdict names the real cause.
+   verdict names the real cause. **No special parent propagation.** In the
+   incident the parent (`sprint-refine-and-implement`) ran from the project
+   root, whose cwd was intact; only the sub-loops' cwd vanished. The
+   existing catch-all else-branch in `_execute_sub_loop`
+   (`executor.py:1191-1196`) routing unknown `terminated_by` values to
+   `on_no` is the correct behaviour for that case. When a parent *shares*
+   the vanished dir, its own pre-dispatch check (step 1) aborts it at the
+   next dispatch. Add `workdir_vanished` to that else-branch's comment list.
 4. Tests in `scripts/tests/test_fsm_executor.py`: delete the executor's
    working dir mid-run (after the first state) and assert the loop
    terminates with the new failure terminal after at most one further
@@ -109,11 +133,11 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (lines 1968-1987) — add an explicit branch for `workdir_vanished` (e.g. mapping to a `"failed"`/infra-abort outcome); without it, the run falls through to the `final_state` keyword-substring fallback and is misclassified as `"converged"` in `ll-loop history`/`ll-logs loop-fleet` rollups
+- Update `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (lines 1968-1987) — add an explicit branch mapping `workdir_vanished` to `"error"` (decided: an infrastructure loss is not a loop-logic failure and must not inflate the `"failed"` bucket in fleet rollups; `"error"` is the existing bucket for non-loop-logic termination and needs no new consumer wiring); without it, the run falls through to the `final_state` keyword-substring fallback and is misclassified as `"converged"` in `ll-loop history`/`ll-logs loop-fleet` rollups
 - Add a Popen-raises-`FileNotFoundError` test to `scripts/tests/test_fsm_runners.py::TestDefaultActionRunnerShellPath` for the `runners.py` shell-branch site (no such test exists there today)
 - Bump the four `== 58` count literals in `scripts/tests/test_generate_schemas.py` (lines 21, 114, 121, 250) to `59`
 - Add a `workdir_vanished` row to `docs/guides/LOOPS_GUIDE.md`'s `terminated_by` exit-reasons table (lines 907-921)
-- Regenerate `docs/reference/schemas/workdir_vanished.json` via `ll-generate-schemas`, and confirm/perform the regeneration path for `docs/observability/des-audit.md`'s variant table and "Total variants" count (no in-repo generator script was found for this specific doc — verify before assuming it's manual)
+- Regenerate `docs/reference/schemas/workdir_vanished.json` via `ll-generate-schemas`. `docs/observability/des-audit.md` is **hand-maintained** despite its "DO NOT EDIT - generated" header (verified 2026-09-01: `ll-verify-des-audit` / `cli/verify_des_audit.py` is audit-only with no write flag, and no other writer exists in the repo) — add the `workdir_vanished` row by hand and bump "Total variants: 83" to 84
 
 ## Integration Map
 
@@ -122,7 +146,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Files to Modify
 - `scripts/little_loops/fsm/executor.py` — `_run_subprocess` (Popen at `2559-2566`) and `_run_action_or_route` (`3344-3372`) need FileNotFoundError/vanished-cwd detection and a new abort path, analogous to `_check_host_guard`/`_check_cost_ceiling` (`3527-3601`, `3603-3683`) and the `run()` main-loop checks at lines `744-834`
   > ⚠ Superseded — Proposed Solution step 1's `_run_subprocess_direct` does not exist in the repo; the actual site is `_run_subprocess` above (see § Codebase Research Findings under Proposed Solution)
-- `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner.run()` shell branch (Popen at `298-306`) needs the same detection; its own prompt-mode branch (`232-272`) already shows the pattern of converting a launch failure into a returned `ActionResult` instead of raising
+- `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner.run()` shell branch (Popen at `298-306`) may get the optional secondary detection; note its prompt-mode branch (`232-272`) converts **any** launch failure into `ActionResult(exit_code=1)` and never raises, which is why the pre-dispatch check in `run()` is the required primary detector rather than Popen-site catching
 - `scripts/little_loops/fsm/types.py` — `ExecutionResult.terminated_by` docstring (lines 35-41) enumerates existing abort kinds; add the new value there
 - `scripts/little_loops/generate_schemas.py` — `SCHEMA_DEFINITIONS`; register the new event following the `"stall_detected"` entry (lines 383-395) as the pattern
 - `scripts/little_loops/observability/schema.py` — new `DESVariant` subclass following `StallDetectedVariant`/`HostPressureAbortVariant` (lines 207-211, 406-410), registered in the `DES_VARIANTS` tuple
@@ -166,7 +190,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_GUIDE.md` § "`terminated_by` exit reasons" (lines 907-921) — add a `workdir_vanished` row to the existing Markdown table alongside `host_pressure_abort`/`host_budget_exceeded` [Agent 2 finding]
 - `docs/reference/API.md` § `ExecutionResult` (lines 6162, 6172) — closed pipe-union type comment for `terminated_by`; add `workdir_vanished` there (note: this union is already stale relative to `LOOPS_GUIDE.md`, missing `host_pressure_abort`/`host_budget_exceeded`/`cost_ceiling_exceeded`/`user_stopped`/`system_signal` — pre-existing drift, not introduced by this fix) [Agent 2 finding]
-- `docs/observability/des-audit.md` — generated doc (`<!-- DO NOT EDIT - generated by ll-verify-des-audit -->`, currently "Total variants: 83") needs a new `workdir_vanished` row and updated count; no in-repo regeneration script/flag was found for this specific file (`ll-verify-des-audit` / `scripts/little_loops/cli/verify_des_audit.py` is read-only/audit-only) — confirm the regeneration path before implementation [Agent 2 finding]
+- `docs/observability/des-audit.md` — header claims it is generated (`<!-- DO NOT EDIT - generated by ll-verify-des-audit -->`, currently "Total variants: 83") but it is hand-maintained: `ll-verify-des-audit` / `scripts/little_loops/cli/verify_des_audit.py` is audit-only with no write flag and no other writer exists (verified 2026-09-01). Add the `workdir_vanished` row and bump the count to 84 by hand [Agent 2 finding, resolved]
 - `docs/reference/schemas/workdir_vanished.json` — new generated JSON-Schema artifact via `ll-generate-schemas`, joining the existing 58-file set referenced by `test_generate_schemas.py` [Agent 2 finding]
 
 ## Program Design
@@ -185,7 +209,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 `_execute_state` → `_run_action_or_route` → `_run_action` (`executor.py:2180`) → { `_run_subprocess` (mcp_tool actions) | `self.action_runner.run()` → `DefaultActionRunner.run()` shell branch (ordinary shell actions) } → `subprocess.Popen(cwd=...)` raises `FileNotFoundError` → caught generically by `_run_action_or_route` → routes via `state.on_error` → cascades until a `terminal: true` state → `run()` calls `_finish("terminal", ...)`. Established distinct-abort precedent to follow: `_check_host_guard`/`_check_cost_ceiling`/the stall detector each set a `_pending_*` flag checked in `run()`'s main loop (lines 744-834), short-circuiting straight to `self._finish(<new_terminated_by>, error=...)` before further states dispatch — the fix should add an equivalent `_pending_workdir_vanished`-style flag.
 
 ### Decision Rules
-- **New failure classification**: a Popen `FileNotFoundError` at either launch site (`executor.py:2559` or `runners.py:298`) where `Path(self.working_dir).exists()` is `False` at the moment of failure is the trigger — confirmed by an explicit existence check, not by errno alone (a bare `FileNotFoundError` can also mean "command not found," an unrelated, already-handled case). Escape hatch: if `self.working_dir` is `None` or the path still exists on disk, the failure is NOT reclassified — it falls through to the existing generic `action_error`/`on_error` path unchanged. `FailureType.INFRA_RETRY`/`classify_failure` (`issue_lifecycle.py:141-159`) is a different, incompatible convention — it operates on a completed `ActionResult`'s stderr/exit-code text and retries in place, and cannot apply here since a Popen launch failure never produces an `ActionResult`.
+- **Primary trigger (pre-dispatch)**: at the top of each `run()` main-loop iteration, `self.working_dir is not None and not Path(self.working_dir).exists()` → `_finish("workdir_vanished", ...)`. Action-type-agnostic; this is what catches prompt-mode states, whose launch failures are swallowed into `ActionResult(exit_code=1)` by `runners.py:232-272` and never raise.
+- **Secondary trigger (optional, Popen sites)**: a `FileNotFoundError` at `executor.py:2559` or `runners.py:298` is a vanished-cwd failure iff `exc.filename == str(working_dir)`. Verified 2026-09-01: CPython sets `.filename` to the cwd when the child's `chdir` fails (both `shell=True` and `shell=False`) and to the executable name when the command is missing — so `filename` discriminates precisely, whereas a post-hoc `exists()` check is racy and errno alone is ambiguous. Escape hatch: if `working_dir` is `None` or `exc.filename` names something other than the cwd, the failure is NOT reclassified — it falls through to the existing generic `action_error`/`on_error` path unchanged.
+- **Outcome bucket**: `_derive_loop_outcome()` maps `workdir_vanished` → `"error"`, not `"failed"` (see Wiring Phase). `FailureType.INFRA_RETRY`/`classify_failure` (`issue_lifecycle.py:141-159`) is a different, incompatible convention — it operates on a completed `ActionResult`'s stderr/exit-code text and retries in place, and cannot apply here since a Popen launch failure never produces an `ActionResult`.
 
 ## Impact
 
@@ -231,7 +257,20 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 - **Cause**: Two subprocess-launch sites call `subprocess.Popen(..., cwd=<working dir>)` with no guard around the call itself: `FSMExecutor._run_subprocess` (`executor.py:2543`, Popen at `2559-2566`, used for `mcp_tool` actions) and `DefaultActionRunner.run()`'s shell branch (`runners.py:298-306`, used for ordinary shell actions). When the cwd (a shared worktree) has vanished, Popen raises `FileNotFoundError` uncaught at either site. It propagates up through `_run_action` (`executor.py:2180`) and is caught by `_run_action_or_route`'s bare `except Exception as exc:` (`executor.py:3361`) — the same generic handler used for every other action exception, with no `FileNotFoundError`/`OSError`-specific branch anywhere between either Popen call and this handler. If the failing state declares `on_error`, the handler emits a generic `action_error` event and routes to `on_error` with no distinction for a vanished-cwd cause. Because the cwd stays vanished, every subsequently-reached `on_error`-linked state fails the same way and re-routes the same way, cascading state-by-state until the FSM lands on some `terminal: true` state; `_finish()` (`executor.py:3835-3930`) reports `terminated_by="terminal"` with `failure_terminal` determined solely by whether that landing state happens to be declared `failure: true` in the loop YAML — nothing about the original Popen failure is preserved. Contrast: `DefaultActionRunner.run()`'s prompt-mode branch (`runners.py:232-272`) already converts a launch failure into a normal `ActionResult(exit_code=1, ...)` instead of raising — the shell branch has no equivalent conversion.
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-01_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 64/100 → LOW
+
+### Outcome Risk Factors
+- Broad enumeration across ~15+ touchpoints (executor.py, runners.py, types.py, generate_schemas.py, schema.py, logs.py, plus doc/test wiring) with no single verification grep or automated completeness test tying the full fanout together — Criterion D scored 10/25 (sites enumerated, no verification command) rather than 25/25
+- Several dependent-file consumers were reasoned through individually as "no code change needed" (map_final_status default fallback, EXIT_CODES via FAILURE_TERMINAL_EXIT_CODE, etc.) rather than exercised by a test asserting that reasoning holds — mitigate by adding the `workdir_vanished` case to `test_cli_loop_lifecycle.py` already suggested in the Wiring Phase notes to close this gap for at least one consumer
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-01T21:40:51 - `4b16ef85-c362-493d-849c-c846475b72fa.jsonl`
+- Manual review 2026-09-01: pre-dispatch existence check made the primary detector (prompt-mode branch swallows launch failures, so Popen-site catching alone misses most states); `exc.filename == cwd` discriminator documented; sub-loop propagation rule stated (none needed); `des-audit.md` confirmed hand-maintained; `_derive_loop_outcome` bucket decided as `"error"`.
 - `/ll:format-issue` - 2026-09-01T21:22:14 - `1d545f12-483a-4164-8eb9-869bb2218b10.jsonl`
 - `/ll:confidence-check` - 2026-09-01T21:18:13 - `af7d0948-35ab-4cf4-ba66-d9d4fed80c50.jsonl`
 - `/ll:wire-issue` - 2026-09-01T21:11:04 - `27ab64ec-faa5-4f8f-b9db-d62e91a3f572.jsonl`

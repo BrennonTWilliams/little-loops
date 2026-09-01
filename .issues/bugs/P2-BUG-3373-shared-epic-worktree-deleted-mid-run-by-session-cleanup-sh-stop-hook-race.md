@@ -3,7 +3,7 @@ id: BUG-3373
 type: BUG
 title: shared epic worktree deleted mid-run by session-cleanup.sh Stop hook race
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-01'
 captured_at: '2026-09-01T04:10:53Z'
@@ -12,6 +12,7 @@ relates_to:
 - BUG-3375
 - ENH-3376
 - ENH-3378
+- ENH-3379
 depends_on:
 - ENH-3376
 - ENH-3378
@@ -22,6 +23,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: '2026-09-01T21:38:11Z'
 ---
 
 # BUG-3373: shared epic worktree deleted mid-run by session-cleanup.sh Stop hook race
@@ -127,7 +129,7 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 ### Documentation
 - `docs/guides/BUILTIN_HOOKS_GUIDE.md:423,429` — documents session-cleanup.sh and the accepted residual gap (no bash-side process-cwd fallback)
-- **Stale reference**: this issue's own "Related Key Documentation" cites `docs/reference/CLI.md — ll-parallel --cleanup-orphans`; `docs/reference/CLI.md` documents `ll-parallel --cleanup` (lines 513, 552) but does not contain the literal string `--cleanup-orphans` anywhere, even though `cli/parallel.py:97` does define that flag — a docs gap, not a code gap, and out of this issue's scope to fix.
+- **Stale reference**: this issue's own "Related Key Documentation" cites `docs/reference/CLI.md — ll-parallel --cleanup-orphans`; `docs/reference/CLI.md` documents `ll-parallel --cleanup` (lines 513, 552) but does not contain the literal string `--cleanup-orphans` anywhere, even though `cli/parallel.py:97` does define that flag — a docs gap, not a code gap — captured as ENH-3379.
 
 ## Impact
 
@@ -234,8 +236,10 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 - `docs/reference/CLI.md` — `ll-parallel --cleanup-orphans`
 - `scripts/little_loops/worktree_utils.py` — session-marker write (BUG-579)
-- `hooks/scripts/session-cleanup.sh` — confirmed deleter (`cleanup()`,
-  lines 42-54); wired as a Claude Code `Stop` hook at `hooks/hooks.json:225,235`
+- `hooks/scripts/session-cleanup.sh` — confirmed deleter (`cleanup()`; the
+  pre-fix lines 42-54 cited in Root Cause were rewritten by ENH-3378 into the
+  decision table now at lines 36-109); wired as a Claude Code `Stop` hook at
+  `hooks/hooks.json:225,235`
 - `.ll/history.db` `hook_events` table (ENH-2506 telemetry) — forensic
   evidence for the confirmed root cause above
 
@@ -250,9 +254,10 @@ No concerns, gaps, or outcome risk factors — root cause is confirmed with fore
 
 ## Status
 
-**Open** | Created: 2026-09-01 | Priority: P2
+**Done** | Created: 2026-09-01 | Completed: 2026-09-01 | Priority: P2
 
 ## Session Log
+- Closed 2026-09-01 (manual review): fix landed entirely via ENH-3376/ENH-3378 (both done); stale `cleanup()` line refs corrected; `--cleanup-orphans` docs gap captured as ENH-3379.
 - `/ll:refine-issue` - 2026-09-01T20:49:16 - `87c7efdc-d115-415c-a741-428b9e0191a6.jsonl`
 - `/ll:confidence-check` - 2026-09-01T17:43:13 - `0f1d05ea-2a5c-47b5-a9b2-873c176e4caf.jsonl`
 - Root cause confirmed 2026-09-01 via `.ll/history.db` `hook_events` forensic
