@@ -293,7 +293,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Codebase Research Findings
 
 ### Files to Modify
-- `scripts/little_loops/fsm/executor.py` — the **only** executor change is the pre-dispatch existence check at the top of `run()`'s main loop, before the terminal check at `665` (Proposed Solution step 1), plus the `_execute_sub_loop` branch extensions (step 3). `_run_subprocess` (Popen at `2559-2566`) and `_run_action_or_route` (`3344-3372`) are **not** modified — step 1b was dropped 2026-09-01 (rewritten round 4; the earlier wording here predated that decision)
+- `scripts/little_loops/fsm/executor.py` — the **only** executor change is the pre-dispatch existence check at the top of `run()`'s main loop, before the terminal check at `665` (Proposed Solution step 1), plus the `_execute_sub_loop` branch extensions (step 3). `_run_subprocess` (Popen at `2559-2566`) and `_run_action_or_route` (`3344-3372`) are **not** modified — step 1b was dropped 2026-09-01
+  > ⚠ Superseded — this bullet originally named `_run_subprocess_direct` (which does not exist) and then the Popen-site changes of step 1b; both corrected, the second in round 4
 - `scripts/little_loops/fsm/persistence.py` — `LoopPersistence.__init__` (`491`): resolve `loops_dir` to absolute so `append_event`/`save_state`/`archive_run` survive a vanished process cwd (Proposed Solution step 1c, added round 4)
 - `scripts/little_loops/fsm/runners.py` — **no change** (step 1b dropped 2026-09-01); listed for context only. Its shell branch (Popen at `298-306`) is one raising site; its prompt-mode branch (`232-272`) converts **any** launch failure into `ActionResult(exit_code=1)` and never raises, which is why the pre-dispatch check in `run()` is the required primary detector rather than Popen-site catching
 - `scripts/little_loops/fsm/types.py` — `ExecutionResult.terminated_by` docstring (lines 35-41) enumerates existing abort kinds; add the new value there
