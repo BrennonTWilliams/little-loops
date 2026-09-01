@@ -1824,6 +1824,61 @@ class TestRunClaudeCommandModelDetection:
 
         assert detailed_calls == []
 
+    def test_on_usage_detailed_callback_called_with_codex_turn_completed_event(self) -> None:
+        """on_usage_detailed parses Codex's `turn.completed` usage shape (FEAT-2123).
+
+        Codex `exec --json` has no "result" event; its terminal event is
+        `turn.completed` with a `usage` block using different field names
+        (`cached_input_tokens`, `cache_write_input_tokens`, no `model`).
+        """
+        turn_completed_event = (
+            '{"type": "turn.completed", "usage": {"input_tokens": 1000, '
+            '"output_tokens": 200, "cached_input_tokens": 500, '
+            '"cache_write_input_tokens": 75, "reasoning_output_tokens": 10}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(turn_completed_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        from little_loops.subprocess_utils import TokenUsage
+
+        detailed_calls: list[TokenUsage] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_usage_detailed=detailed_calls.append)
+
+        assert len(detailed_calls) == 1
+        u = detailed_calls[0]
+        assert u.input_tokens == 1000
+        assert u.output_tokens == 200
+        assert u.cache_read_tokens == 500
+        assert u.cache_creation_tokens == 75
+        assert u.model == "unknown"
+
+    def test_on_usage_detailed_not_called_when_turn_completed_has_no_usage(self) -> None:
+        """on_usage_detailed is not fired when a turn.completed event has no usage block."""
+        turn_completed_event = '{"type": "turn.completed"}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(turn_completed_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        from little_loops.subprocess_utils import TokenUsage
+
+        detailed_calls: list[TokenUsage] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_usage_detailed=detailed_calls.append)
+
+        assert detailed_calls == []
+
     def test_result_event_is_error_appends_to_stderr(self) -> None:
         """result event with is_error=True appends [result] prefixed error to stderr."""
         result_event = (

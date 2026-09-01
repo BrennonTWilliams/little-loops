@@ -93,7 +93,7 @@ def register_check(fn: Callable[[], list[CheckResult]]) -> Callable[[], list[Che
 # fully functional without them, just more token-expensive. Folding these at
 # "error" severity would make an honest `unsupported` (e.g. claude-code has no
 # flag to skip CLAUDE.md) fail the primary host's own health check.
-_ADVISORY_CAPABILITIES = frozenset({"claude_md_suppression"})
+_ADVISORY_CAPABILITIES = frozenset({"claude_md_suppression", "token_reporting"})
 
 
 def _capability_check_results(report: CapabilityReport) -> list[CheckResult]:
