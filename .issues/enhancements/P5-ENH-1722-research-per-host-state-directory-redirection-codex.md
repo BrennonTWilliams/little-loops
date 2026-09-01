@@ -74,6 +74,13 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 **Configuration**
 - No `state_dir` / per-host keyed sub-object exists anywhere in `scripts/little_loops/config-schema.json` (confirmed by a full-file grep for `host|codex|gemini|kimi|qwen|omp` — 135 hits, all flat `"enum"` string fields or prose). If the decision is "scope per host" for any surface, the schema change is a new surface, not an extension of an existing one.
 
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Additional `host_layout_for()` consumers beyond `writers.py`: `session_store/lifecycle.py:766,1081`, `session_store/__init__.py:137,212`, `user_messages.py:438,440`, `cli/session.py:672,705`, `cli/logs.py:103,140,192,284,634`, `cli/backfill_worker.py:57,59` — the table-driven rival pattern has more real call sites than previously cited, strengthening it as a precedent if "scope per host" is chosen.
+- `hooks/adapters/codex/README.md:184-200` carries its own `## State Directory (LL_STATE_DIR)` section, independently documenting that `.loops/`, `.issues/`, `.loops/tmp/scratch/` are not redirected — a second documentation surface (beyond `HOST_COMPATIBILITY.md`) that AC #4's decision should keep consistent with.
+- Sibling generalization precedent confirms the Scope Boundary note's concern is not hypothetical: `ENH-2187` (gemini), `FEAT-2262` (omp), and `ENH-3157` (qwen) each independently extended `_config_candidates()`'s config-probe-only redirection to their own host. 3 of the 5 currently-integrated hosts already carry their own "config-probe only, nothing else redirected" precedent issue — this issue's decision is the de facto answer for all of them, not just Codex.
+- Test coverage for the rival table-driven pattern (`host_layout_for()`) exists at `scripts/tests/test_enh_3166_qwen_normalizer.py:198-247` and `scripts/tests/test_enh_2505_subagent_runs.py` — a usable template for a table-driven per-host test suite if that pattern is chosen over `_config_candidates()`'s branch style.
+
 ## Implementation Steps
 
 1. Read `docs/reference/HOST_COMPATIBILITY.md` `[^state]` footnote and EPIC-1463 per-host state section for existing framing
@@ -89,6 +96,12 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 - Scope check: confirm in the research note whether the recommendation applies uniformly to all 5 hosts now covered by `_config_candidates()` (codex, gemini, omp, kimi-code, qwen), not just Codex — see Scope Boundary finding.
 - Footnote template: two existing shapes are available to copy from — the current unresolved `[^state]` text (`docs/reference/HOST_COMPATIBILITY.md:499-503`) and the resolved `[^cmds]` footnote (`:212-219`), which cites the research-note path and follow-on issue IDs. Match the resolved shape once the decision lands.
 - Architectural alternative to weigh: `host_layout_for(host)` / `HostLayout` (`scripts/little_loops/session_store/writers.py`) is a table-driven per-host pattern already in the codebase (for session-transcript directories), distinct from `_config_candidates()`'s branch-per-host style — worth a line in the research note if "scope per host" is the decision, since it affects which pattern a follow-on implementation issue should use.
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Sibling `thoughts/research/*.md` notes do NOT uniformly use a `## Decision` heading — of `codex-command-discovery.md`, `codex-headless-invocation.md`, `codex-agent-selection.md`, `codex-runner-capability-gaps.md`, `gemini-cli-surface.md`, `kimi-cli-surface.md`, `omp-headless-flags.md`, `hot-path-hook-intents.md`, only `codex-runner-capability-gaps.md` uses that exact heading; the others use `## Recommendation`, `## Conclusion`, `## Gating recommendation`, or `## Decision tree outcomes`, carrying the actual verdict in a `**Status:**` metadata line at the top instead. AC #1's requirement for an "explicit **Decision** section" is a deliberate departure from the majority sibling convention, not an omission to fix.
+- No frontmatter field dedicated to "conditional child issue" tracking exists beyond the general `parent:`/`relates_to:` pair (confirmed absent from `config-schema.json`) — AC #3's "file a child issue if X" is satisfied via the standard `/ll:capture-issue --parent EPIC-1463` wiring already documented in `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:169-181`, not a special construct.
+- Program Design applicability confirmed: no stubbed, partial, or reserved-parameter resolver exists anywhere in the five state-surface call paths (`.issues/`, `.loops/`, scratch, continuation-prompt, `history.db`) that anticipates a future `host`/`state_dir` argument. Consistent with this issue's own framing as research-only, a `## Program Design` section is not applicable here — recommend `program_design_not_applicable: true`.
 
 ## Notes
 
@@ -130,6 +143,7 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 Confirmed by codebase research: `_config_candidates()` (`scripts/little_loops/config/core.py:120-154`) already generalized config-probe host scoping from Codex-only to 5 hosts — `codex`, `gemini`, `omp`, `kimi-code`, `qwen` — all of which currently share `.issues/`, `.loops/`, scratch, continuation-prompt, and `history.db` unconditionally. This raises (not lowers) the value of a single cross-host decision here: whatever this issue decides for Codex is the de facto answer for all 5 hosts unless the Decision section says otherwise, so the note should explicitly state whether its recommendation generalizes to gemini/omp/kimi-code/qwen (not just Pi/omp as the original 2026-06-09 note anticipated).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-01T02:54:09 - `02c2a272-7226-4055-8f34-6d4118279276.jsonl`
 - `/ll:refine-issue` - 2026-08-31T23:03:10 - `eae3ec24-820c-436e-95b7-06e3279780e2.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:22:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
