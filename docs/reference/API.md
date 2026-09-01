@@ -12242,10 +12242,13 @@ def setup_worktree(
     git_lock: GitLock,
     base_branch: str | None = None,
     checkout_existing: bool = False,
+    run_id: str | None = None,
 ) -> None
 ```
 
 Creates a git worktree and copies essential files. Copies the `.claude/` directory (so Claude Code can detect the project root, BUG-007) and any additional files listed in `copy_files`, then writes a `.ll-session-<pid>` marker so orphan-cleanup routines can identify this process's worktrees. If `worktree_path` already exists, it is torn down via `cleanup_worktree` first.
+
+Before `git worktree add` runs, also writes an out-of-tree liveness registry entry to `<worktree_base>/.registry/<worktree-name>` (ENH-3376) — plain text: line 1 pid, line 2 `psutil.Process(pid).create_time()`, optional line 3 `run_id`. Living outside the worktree checkout means a `git clean -fdx` run from inside the worktree cannot erase it, unlike the in-tree marker; writing it *before* `worktree add` (rather than after, where the marker lands) closes the race window where a concurrent orphan scan sees a marker-less, just-created worktree and reaps it. The entry is removed if `git worktree add` subsequently fails.
 
 **Parameters:**
 - `repo_path` — Path to the main repository.
@@ -12256,6 +12259,7 @@ Creates a git worktree and copies essential files. Copies the `.claude/` directo
 - `git_lock` — Thread-safe git lock for serializing repo operations.
 - `base_branch` — Optional commit-ish to fork the new branch from. When `None`, forks from the current HEAD of `repo_path`. When provided, validated via `git rev-parse --verify` before use. Mutually exclusive with `checkout_existing`.
 - `checkout_existing` — When `True`, check out `branch_name` (which must already exist) instead of creating a new branch.
+- `run_id` — Optional orchestration run id, recorded as metadata (line 3) in the liveness registry entry (ENH-3376). Not a liveness input — nothing reads it back today.
 
 **Raises:**
 - `ValueError` — If both `base_branch` and `checkout_existing` are given.
@@ -12277,7 +12281,7 @@ def cleanup_worktree(
 ) -> None
 ```
 
-Removes a git worktree and optionally its associated branch. No-op if `worktree_path` does not exist. Before removal, calls `preserve_before_teardown()` (from `little_loops.git_operations`) to snapshot any non-noise uncommitted work to a durable ref — `git worktree remove --force` discards uncommitted changes unconditionally, but the snapshot ref survives because worktrees share the main repo's object database and ref store (BUG-2963 #8). Runs `git worktree unlock` then `git worktree remove --force`, falling back to `shutil.rmtree` if the directory still exists afterward.
+Removes a git worktree and optionally its associated branch. Always removes the worktree's liveness registry entry first (ENH-3376, best-effort — a `git clean` inside the worktree never reaches this function, so the registry, not the in-tree marker, is the durable record); everything else is a no-op if `worktree_path` does not exist. Before removal, calls `preserve_before_teardown()` (from `little_loops.git_operations`) to snapshot any non-noise uncommitted work to a durable ref — `git worktree remove --force` discards uncommitted changes unconditionally, but the snapshot ref survives because worktrees share the main repo's object database and ref store (BUG-2963 #8). Runs `git worktree unlock` then `git worktree remove --force`, falling back to `shutil.rmtree` if the directory still exists afterward.
 
 **Parameters:**
 - `worktree_path` — Path to the worktree to remove.

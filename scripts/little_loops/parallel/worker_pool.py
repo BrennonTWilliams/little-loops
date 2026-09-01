@@ -825,6 +825,7 @@ class WorkerPool:
             logger=self.logger,
             git_lock=self._git_lock,
             base_branch=base_branch,
+            run_id=self.run_id,
         )
 
         # Verify model if --show-model flag is set (requires API call)

@@ -144,8 +144,10 @@ git worktree prune
 **Cause**: Branch already exists, or worktree directory locked
 
 **Solution**:
-1. Remove orphaned worktrees from interrupted runs (liveness-aware — skips any worktree
-   whose session-marker PID is still alive):
+1. Remove orphaned worktrees from interrupted runs (liveness-aware — an out-of-tree
+   registry entry is the primary signal (ENH-3376, survives `git clean -fdx` run inside
+   the worktree), falling back to a still-alive session-marker PID when no registry
+   entry exists):
    ```bash
    ll-parallel --cleanup-orphans
    ```
@@ -229,7 +231,8 @@ git status   # now works correctly
 # List all worktrees
 git worktree list
 
-# Remove orphaned worktrees from interrupted runs (skips live-process worktrees)
+# Remove orphaned worktrees from interrupted runs (skips live-process worktrees —
+# liveness registry first (ENH-3376), then the in-tree session marker)
 ll-parallel --cleanup-orphans
 
 # Remove ALL worktrees unconditionally (use when --cleanup-orphans leaves stragglers)

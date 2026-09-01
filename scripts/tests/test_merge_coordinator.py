@@ -2381,6 +2381,38 @@ class TestCleanupWorktreeFallback:
         remove_idx = next(i for i, c in enumerate(calls) if c[:2] == ["worktree", "remove"])
         assert unlock_idx < remove_idx
 
+    def test_cleanup_removes_registry_entry(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+        tmp_path: Path,
+    ) -> None:
+        """ENH-3376: MergeCoordinator._cleanup_worktree() removes the registry
+        entry it created, since it reimplements teardown independently of
+        worktree_utils.cleanup_worktree()."""
+        from little_loops.worktree_utils import _registry_entry_path, _write_registry_entry
+
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        worktree_path = tmp_path / "test-worktree"
+        worktree_path.mkdir()
+        _write_registry_entry(worktree_path, pid=999999, create_time=1.0)
+        entry_path = _registry_entry_path(worktree_path)
+        assert entry_path.exists()
+
+        def mock_git_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.object(coordinator._git_lock, "run", side_effect=mock_git_run):
+            coordinator._cleanup_worktree(worktree_path, "parallel/test-branch")
+
+        assert not entry_path.exists()
+
 
 class TestMergeLoopExceptionHandling:
     """Tests for _merge_loop queue exception handling (BUG-424)."""

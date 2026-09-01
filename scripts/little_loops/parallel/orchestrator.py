@@ -47,6 +47,10 @@ from little_loops.session_store import (
 from little_loops.worktree_utils import (
     _is_ll_branch,
     _is_ll_worktree,
+    _pid_is_live,
+    _read_registry_entry,
+    _registry_entry_is_live,
+    _remove_registry_entry,
     merge_epic_branch_to_base,
     open_pr_for_epic_branch,
     verify_epic_branch_before_merge,
@@ -332,6 +336,15 @@ class ParallelOrchestrator:
         orphaned = []
         for item in worktree_base.iterdir():
             if item.is_dir() and _is_ll_worktree(item.name):
+                # ENH-3376: consult the out-of-tree registry first — it
+                # survives a `git clean -fdx` run from inside the worktree
+                # that would otherwise erase the in-tree marker below. Only
+                # when there is no live registry entry does the in-tree
+                # marker check run (today's behavior, unchanged).
+                if _registry_entry_is_live(item):
+                    self.logger.info(f"Skipping {item.name}: owned by running process (registry)")
+                    continue
+
                 # Check for a .ll-session-<pid> marker left by an active orchestrator
                 owned_by_live = False
                 for marker in item.glob(".ll-session-*"):
@@ -388,6 +401,11 @@ class ParallelOrchestrator:
                     if worktree_path.exists():
                         shutil.rmtree(worktree_path, ignore_errors=True)
 
+                    # ENH-3376: registry entries don't accumulate — remove the
+                    # deleted worktree's entry so a later pid recycle can't be
+                    # misread as this now-gone worktree being live again.
+                    _remove_registry_entry(worktree_path)
+
                     # Delete branch only for ll-managed shapes (BUG-2324: safe guard replaces
                     # the old parallel/-only guard to also cover loop worktree branches)
                     if branch_name and _is_ll_branch(branch_name):
@@ -419,7 +437,42 @@ class ParallelOrchestrator:
                     timeout=30,
                 )
 
+        if not dry_run:
+            self._prune_stale_registry_entries(worktree_base)
         self._prune_ghost_worktree_refs()
+
+    def _prune_stale_registry_entries(self, worktree_base: Path) -> None:
+        """Prune registry entries whose worktree dir is gone and whose pid is dead (ENH-3376).
+
+        The dead-pid condition is required: an entry is written before `git
+        worktree add` runs, so a dir-missing-only prune would delete a
+        just-written entry for a worktree whose creation is still in flight —
+        the next pass would then reap the new worktree as marker-less and
+        registry-less.
+        """
+        # Same "sibling of worktree checkout dirs" convention as
+        # _registry_dir(worktree_path) == worktree_path.parent / ".registry";
+        # worktree_base *is* that parent for every entry scanned here.
+        registry_dir = worktree_base / ".registry"
+        if not registry_dir.is_dir():
+            return
+
+        for entry_path in registry_dir.iterdir():
+            if not entry_path.is_file():
+                continue
+            worktree_path = worktree_base / entry_path.name
+            if worktree_path.exists():
+                continue
+            entry = _read_registry_entry(worktree_path)
+            if entry is None:
+                continue
+            pid, create_time = entry
+            if not _pid_is_live(pid, create_time):
+                entry_path.unlink(missing_ok=True)
+                self.logger.info(f"Pruned stale registry entry: {entry_path.name}")
+
+        with suppress(OSError):
+            registry_dir.rmdir()
 
     def _prune_ghost_worktree_refs(self) -> None:
         """Prune git worktree metadata entries whose on-disk path no longer exists.

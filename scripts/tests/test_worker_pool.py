@@ -667,6 +667,47 @@ class TestWorkerPoolWorktreeManagement:
         assert len(worktree_cmds) >= 1
         assert branch_name in worktree_cmds[0]
 
+    def test_setup_worktree_forwards_run_id_to_registry(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+    ) -> None:
+        """ENH-3376: WorkerPool._setup_worktree() forwards self.run_id as the
+        registry entry's optional line 3."""
+        from little_loops.worktree_utils import _registry_entry_path
+
+        pool = WorkerPool(
+            parallel_config=default_parallel_config,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=temp_repo_with_config,
+            git_lock=mock_git_lock,
+            run_id="run-abc123",
+        )
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-002"
+        branch_name = "parallel/bug-002"
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["config", "user.email"]:
+                return subprocess.CompletedProcess(args, 0, "test@test.com\n", "")
+            if args[:2] == ["config", "user.name"]:
+                return subprocess.CompletedProcess(args, 0, "Test User\n", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(pool._git_lock, "run", side_effect=mock_git_run):
+            with patch("subprocess.run") as mock_subprocess:
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "", "")
+                with patch("shutil.copy2"):
+                    pool._setup_worktree(worktree_path, branch_name)
+
+        entry_lines = _registry_entry_path(worktree_path).read_text().splitlines()
+        assert entry_lines[2] == "run-abc123"
+
     def test_setup_worktree_copies_config_files(
         self,
         worker_pool: WorkerPool,

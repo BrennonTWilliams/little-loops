@@ -26,6 +26,7 @@ from little_loops.parallel.types import (
     WorkerResult,
 )
 from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
+from little_loops.worktree_utils import _remove_registry_entry
 
 if TYPE_CHECKING:
     from little_loops.events import EventBus
@@ -1152,6 +1153,13 @@ class MergeCoordinator:
             worktree_path: Path to the worktree
             branch_name: Name of the branch to delete
         """
+        # ENH-3376: this method reimplements worktree removal independently of
+        # worktree_utils.cleanup_worktree() (it does not call it, to preserve
+        # its narrower parallel/-only branch-delete guard), so it needs its
+        # own explicit registry-entry removal. Unconditional/best-effort, same
+        # as cleanup_worktree()'s own removal.
+        _remove_registry_entry(worktree_path)
+
         if not worktree_path.exists():
             return
 

@@ -610,7 +610,10 @@ Open a pull request for the current branch.
 Clean orphaned git worktrees and branches from interrupted ll-parallel or ll-loop runs.
 Delegates to `ll-parallel --cleanup-orphans`, which uses the canonical Python orphan-detection
 logic: selects only ll-managed worktrees (`worker-*` or `YYYYMMDD-HHMMSS-*`), skips worktrees
-owned by live processes, and deletes both the directory and its branch (parallel/* and loop-style).
+owned by live processes — an out-of-tree liveness registry entry (ENH-3376) is the primary
+signal, since it survives a `git clean -fdx` run inside the worktree that would erase the
+in-tree session marker; the marker is only consulted when no registry entry exists — and
+deletes both the directory and its branch (parallel/* and loop-style).
 
 **Arguments:**
 - `mode`: `run` (default), `dry-run`

@@ -14,7 +14,7 @@ arguments:
 
 You are tasked with cleaning up orphaned git worktrees that may remain after interrupted or failed ll-parallel or ll-loop runs.
 
-This command delegates to `ll-parallel --cleanup-orphans`, which uses the canonical Python orphan-detection logic (`_is_ll_worktree` / `_cleanup_orphaned_worktrees`). It skips worktrees owned by live processes and deletes both the worktree directory and its associated branch (for both `parallel/*` and loop-style `YYYYMMDD-HHMMSS-*` branches).
+This command delegates to `ll-parallel --cleanup-orphans`, which uses the canonical Python orphan-detection logic (`_is_ll_worktree` / `_cleanup_orphaned_worktrees`). It skips worktrees owned by live processes — checking an out-of-tree liveness registry first (ENH-3376, survives a `git clean -fdx` run inside the worktree that would erase the in-tree marker), falling back to the in-tree session marker when no registry entry exists — and deletes both the worktree directory and its associated branch (for both `parallel/*` and loop-style `YYYYMMDD-HHMMSS-*` branches).
 
 ## Process
 
@@ -36,7 +36,7 @@ ll-parallel --cleanup-orphans --dry-run
 
 #### Mode: run
 
-Remove orphaned worktrees (skips any worktree whose session-marker PID is still alive):
+Remove orphaned worktrees (skips any worktree with a live out-of-tree liveness registry entry — ENH-3376 — or, failing that, a still-alive session-marker PID):
 
 ```bash
 ll-parallel --cleanup-orphans

@@ -11,10 +11,13 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+
+import psutil
 
 from little_loops.git_operations import preserve_before_teardown
 from little_loops.host_runner import project_child_env
@@ -157,6 +160,126 @@ def resolve_epic_branch_name(epic_id: str, prefix: str, slug: str) -> str:
     return f"{prefix}{epic_id.lower()}-{slug}"
 
 
+def _registry_dir(worktree_path: Path) -> Path:
+    """Sibling directory of a worktree's checkout dir holding liveness registry entries.
+
+    Living outside the worktree checkout (not inside it) means a `git clean
+    -fdx` run from inside the worktree cannot erase the entry (ENH-3376).
+    """
+    return worktree_path.parent / ".registry"
+
+
+def _registry_entry_path(worktree_path: Path) -> Path:
+    return _registry_dir(worktree_path) / worktree_path.name
+
+
+def _write_registry_entry(
+    worktree_path: Path,
+    pid: int,
+    create_time: float,
+    run_id: str | None = None,
+) -> None:
+    """Write an out-of-tree liveness registry entry for ``worktree_path`` (ENH-3376).
+
+    Plain text: line 1 pid, line 2 create_time, optional line 3 run_id — so a
+    bash consumer without ``jq`` can read line 1 with ``head -n1``. Uses the
+    same ``tempfile.mkstemp`` + ``os.replace`` atomic-write pattern as
+    ``ParallelOrchestrator._save_state``.
+    """
+    registry_dir = _registry_dir(worktree_path)
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    entry_path = registry_dir / worktree_path.name
+    lines = [str(pid), str(create_time)]
+    if run_id:
+        lines.append(run_id)
+    content = "\n".join(lines) + "\n"
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=registry_dir, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w") as f:
+            f.write(content)
+        os.replace(tmp_path, entry_path)
+    except Exception:
+        os.unlink(tmp_path)
+        raise
+
+
+def _remove_registry_entry(worktree_path: Path) -> None:
+    """Remove the registry entry for ``worktree_path``, if present.
+
+    Also removes the ``.registry/`` dir itself once it is empty, so a fully
+    torn-down worktree base leaves no stray artifacts behind.
+    """
+    _registry_entry_path(worktree_path).unlink(missing_ok=True)
+    registry_dir = _registry_dir(worktree_path)
+    try:
+        registry_dir.rmdir()
+    except OSError:
+        pass  # not empty (other live entries) or already gone
+
+
+def _read_registry_entry(worktree_path: Path) -> tuple[int, float | None] | None:
+    """Read the registry entry for ``worktree_path``.
+
+    Returns None when the entry is absent or line 1 is not an int.
+    """
+    entry_path = _registry_entry_path(worktree_path)
+    if not entry_path.exists():
+        return None
+    try:
+        lines = entry_path.read_text().splitlines()
+        pid = int(lines[0].strip())
+    except (OSError, ValueError, IndexError):
+        return None
+    create_time: float | None = None
+    if len(lines) > 1:
+        try:
+            create_time = float(lines[1].strip())
+        except ValueError:
+            create_time = None
+    return pid, create_time
+
+
+def _pid_is_live(pid: int, create_time: float | None) -> bool:
+    """Check pid liveness, guarding against pid-reuse when ``create_time`` is known.
+
+    Reuses the bare ``os.kill(pid, 0)`` existence probe (a ``PermissionError``
+    means the process exists but we lack signal rights, matching
+    ``_cleanup_orphaned_worktrees``'s existing marker check). When
+    ``create_time`` is provided, additionally compares it against
+    ``psutil.Process(pid).create_time()`` with a small float tolerance (some
+    platforms round) so a recycled pid is treated as dead — the same
+    identity-check shape as ``cli/queue.py::_verify_owner_alive`` and
+    ``cli/loop/queue.py::_verify_queue_pid_identity``.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass  # process exists, no permission to signal
+    except OSError:
+        return False
+
+    if create_time is None:
+        return True
+
+    try:
+        actual = psutil.Process(pid).create_time()
+    except Exception:
+        return True
+
+    return abs(actual - create_time) < 1.0
+
+
+def _registry_entry_is_live(worktree_path: Path) -> bool:
+    """True when the registry entry for ``worktree_path`` names a live, non-recycled pid."""
+    entry = _read_registry_entry(worktree_path)
+    if entry is None:
+        return False
+    pid, create_time = entry
+    return _pid_is_live(pid, create_time)
+
+
 def setup_worktree(
     repo_path: Path,
     worktree_path: Path,
@@ -166,6 +289,7 @@ def setup_worktree(
     git_lock: GitLock,
     base_branch: str | None = None,
     checkout_existing: bool = False,
+    run_id: str | None = None,
 ) -> None:
     """Create a git worktree and copy essential files.
 
@@ -190,6 +314,9 @@ def setup_worktree(
             Mutually exclusive with ``checkout_existing``.
         checkout_existing: When True, check out ``branch_name`` (which must
             already exist) instead of creating a new branch.
+        run_id: Optional orchestration run id, recorded as metadata (line 3)
+            in the out-of-tree liveness registry entry (ENH-3376). Not a
+            liveness input — nothing reads it back in this issue set.
 
     Raises:
         ValueError: If both ``base_branch`` and ``checkout_existing`` are given.
@@ -222,6 +349,14 @@ def setup_worktree(
         if verify_result.returncode != 0:
             raise RuntimeError(f"Branch '{base_branch}' does not resolve: {verify_result.stderr}")
 
+    # Registry entry written before `git worktree add` (ENH-3376): closes the
+    # window where a concurrent orphan scan sees a marker-less, just-created
+    # worktree and reaps it before the in-tree marker (written at the very
+    # end of this function) lands.
+    pid = os.getpid()
+    create_time = psutil.Process(pid).create_time()
+    _write_registry_entry(worktree_path, pid, create_time, run_id=run_id)
+
     if checkout_existing:
         worktree_args = ["worktree", "add", str(worktree_path), branch_name]
     else:
@@ -235,6 +370,7 @@ def setup_worktree(
         timeout=60,
     )
     if result.returncode != 0:
+        _remove_registry_entry(worktree_path)
         raise RuntimeError(f"Failed to create worktree: {result.stderr}")
 
     # Copy git identity so commits inside the worktree have the right author
@@ -297,6 +433,13 @@ def cleanup_worktree(
         git_lock: Thread-safe git lock for serializing repo operations.
         delete_branch: If True, detect and delete the worktree's branch after removal.
     """
+    # Best-effort and unconditional (ENH-3376): a `git clean` inside the
+    # worktree never reaches this function, so the registry — not the
+    # in-tree marker — is the durable liveness record. Removed even on the
+    # early-return path below since a stale entry pointing at a
+    # never-materialized worktree is otherwise a permanent pid-reuse hazard.
+    _remove_registry_entry(worktree_path)
+
     if not worktree_path.exists():
         return
 

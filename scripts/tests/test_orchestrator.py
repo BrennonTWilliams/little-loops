@@ -1071,6 +1071,145 @@ class TestOrphanedWorktreeCleanup:
             assert not loop_git_wt_dir.exists(), "loop ghost ref should be pruned by startup scan"
 
 
+class TestRegistryBasedOrphanCleanup:
+    """ENH-3376: registry-based liveness survives in-tree marker deletion."""
+
+    def _mock_git_run(self) -> Callable[..., MagicMock]:
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+            return result
+
+        return mock_git_run
+
+    def test_live_registry_entry_skips_cleanup_despite_deleted_marker(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """The direct BUG-3373 regression: a worktree whose in-tree marker was
+        deleted (as a `git clean -fdx` run from inside it would do) is still
+        skipped because its out-of-tree registry entry reports it live."""
+        import os
+
+        import psutil
+
+        from little_loops.worktree_utils import _write_registry_entry
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        active_dir = worktree_base / "worker-bug-active"
+        active_dir.mkdir()
+        # No .ll-session-<pid> marker written at all — simulates deletion.
+        pid = os.getpid()
+        _write_registry_entry(active_dir, pid, psutil.Process(pid).create_time())
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        orchestrator._cleanup_orphaned_worktrees()
+
+        assert active_dir.exists(), "registry-live worktree must not be reaped"
+
+    def test_registry_entry_removed_when_orphan_deleted(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Deleting an orphaned worktree also removes its registry entry."""
+        from little_loops.worktree_utils import _registry_entry_path, _write_registry_entry
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        stale_dir = worktree_base / "worker-bug-stale"
+        stale_dir.mkdir()
+        _write_registry_entry(stale_dir, pid=999999, create_time=1.0)
+        entry_path = _registry_entry_path(stale_dir)
+        assert entry_path.exists()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert not entry_path.exists()
+
+    def test_stale_registry_entry_pruned_when_worktree_dir_missing_and_pid_dead(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A registry entry whose worktree dir is gone and whose pid is dead
+        is pruned on the next pass."""
+        from little_loops.worktree_utils import _registry_entry_path, _write_registry_entry
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        # No worktree dir exists at all — only the registry entry survives.
+        ghost_path = worktree_base / "worker-bug-ghost"
+        _write_registry_entry(ghost_path, pid=999999, create_time=1.0)
+        entry_path = _registry_entry_path(ghost_path)
+        assert entry_path.exists()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert not entry_path.exists()
+
+    def test_live_registry_entry_not_pruned_when_worktree_dir_missing(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Prune requires a dead pid: a registry entry whose worktree dir is
+        missing but whose pid is alive with matching create_time is NOT
+        pruned — required so an in-flight `setup_worktree` (entry written
+        before `git worktree add`) never gets its just-written entry deleted
+        out from under it."""
+        import os
+
+        import psutil
+
+        from little_loops.worktree_utils import _registry_entry_path, _write_registry_entry
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        in_flight_path = worktree_base / "worker-bug-in-flight"
+        pid = os.getpid()
+        _write_registry_entry(in_flight_path, pid, psutil.Process(pid).create_time())
+        entry_path = _registry_entry_path(in_flight_path)
+        assert entry_path.exists()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        orchestrator._cleanup_orphaned_worktrees()
+
+        assert entry_path.exists(), "live in-flight entry must survive the hygiene prune"
+
+    def test_registry_dir_never_treated_as_orphan_candidate(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """The `.registry/` dir itself is never scanned as a worktree candidate."""
+        from little_loops.worktree_utils import _write_registry_entry
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        some_worktree = worktree_base / "worker-bug-001"
+        some_worktree.mkdir()
+        _write_registry_entry(some_worktree, pid=999999, create_time=1.0)
+        registry_dir = worktree_base / ".registry"
+        assert registry_dir.is_dir()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        # If `.registry/` had been treated as a worktree candidate, cleanup
+        # would have tried to `git worktree remove` it and/or crashed on
+        # branch-name resolution; reaching here without error is the guard.
+
+
 class TestCheckPendingWorktrees:
     """Tests for _check_pending_worktrees method."""
 
@@ -2290,6 +2429,21 @@ class TestRunMethod:
                 orchestrator.run()
 
         assert cleanup_called[0] is True
+
+    def test_run_invokes_cleanup_orphaned_worktrees(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """run() auto-invokes _cleanup_orphaned_worktrees() (ENH-3376): the
+        registry-based liveness check only ever runs through this call path,
+        so no test in this class previously pinned the auto-invocation."""
+        orchestrator.parallel_config.dry_run = True
+
+        with patch.object(orchestrator, "_cleanup_orphaned_worktrees") as mock_cleanup_orphaned:
+            with patch.object(orchestrator, "_scan_issues", return_value=[]):
+                orchestrator.run()
+
+        mock_cleanup_orphaned.assert_called_once()
 
 
 class TestDryRun:

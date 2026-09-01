@@ -88,6 +88,11 @@ class TestWorktreeConcurrency:
         remaining = list(worktree_base.glob("worker-*")) if worktree_base.exists() else []
         assert not remaining, f"Orphaned worktrees after concurrent run: {remaining}"
 
+        # ENH-3376: no stray registry entries survive the same concurrent race.
+        registry_dir = worktree_base / ".registry"
+        stray_entries = list(registry_dir.glob("*")) if registry_dir.exists() else []
+        assert not stray_entries, f"Stray registry entries after concurrent run: {stray_entries}"
+
         branches = subprocess.run(
             ["git", "branch", "--list", "parallel/*"],
             cwd=repo_path,

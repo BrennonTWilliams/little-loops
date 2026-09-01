@@ -11,7 +11,8 @@ import os
 import shlex
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -446,6 +447,179 @@ class TestSetupWorktreeHistoryDbExport:
         rows = recent_lifecycle_events(event="handoff_needed", db=repo / ".ll" / "history.db")
         session_ids = {r.session_id for r in rows}
         assert session_ids >= {f"concurrent-{i}" for i in range(4)}
+
+
+class TestRegistryLiveness:
+    """Out-of-tree liveness registry (ENH-3376): survives an in-tree marker
+    deleted by `git clean -fdx` run from inside the worktree."""
+
+    def test_round_trip_write_and_remove(self, tmp_path: Path) -> None:
+        """setup_worktree() writes a registry entry; cleanup_worktree() removes it."""
+        from little_loops.worktree_utils import _registry_entry_path
+
+        repo = _init_repo(tmp_path / "repo")
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=worktree_path,
+            branch_name="feature/registry",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        entry_path = _registry_entry_path(worktree_path)
+        assert entry_path.exists()
+        lines = entry_path.read_text().splitlines()
+        assert lines[0] == str(os.getpid())
+        float(lines[1])  # create_time parses as a float
+
+        cleanup_worktree(worktree_path, repo, logger, git_lock)
+
+        assert not entry_path.exists()
+        assert not entry_path.parent.exists(), "empty .registry/ dir should also be removed"
+
+    def test_registry_survives_in_tree_marker_deletion(self, tmp_path: Path) -> None:
+        """The direct BUG-3373 regression: deleting the in-tree marker (as a
+        `git clean -fdx` from inside the worktree would) does not make the
+        registry-based liveness check report the worktree as dead."""
+        from little_loops.worktree_utils import _registry_entry_is_live
+
+        repo = _init_repo(tmp_path / "repo")
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=worktree_path,
+            branch_name="feature/registry",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        for marker in worktree_path.glob(".ll-session-*"):
+            marker.unlink()
+        assert not list(worktree_path.glob(".ll-session-*"))
+
+        assert _registry_entry_is_live(worktree_path) is True
+
+    def test_entry_written_before_worktree_add_and_removed_on_failure(self, tmp_path: Path) -> None:
+        """Registry entry exists before `worktree add` runs, and is removed
+        when `worktree add` fails (ENH-3376 ordering requirement)."""
+        from little_loops.worktree_utils import _registry_entry_path
+
+        repo = _init_repo(tmp_path / "repo")
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+        entry_path = _registry_entry_path(worktree_path)
+
+        seen_entry_present_at_worktree_add: list[bool] = []
+        real_run = git_lock.run
+
+        def spy_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["worktree", "add"]:
+                seen_entry_present_at_worktree_add.append(entry_path.exists())
+                result = MagicMock()
+                result.returncode = 1
+                result.stderr = "simulated failure"
+                return result
+            return real_run(args, **kwargs)
+
+        with patch.object(git_lock, "run", side_effect=spy_run):
+            with pytest.raises(RuntimeError, match="Failed to create worktree"):
+                setup_worktree(
+                    repo_path=repo,
+                    worktree_path=worktree_path,
+                    branch_name="feature/registry",
+                    copy_files=[],
+                    logger=logger,
+                    git_lock=git_lock,
+                )
+
+        assert seen_entry_present_at_worktree_add == [True]
+        assert not entry_path.exists()
+
+    def test_pid_reuse_guard_treats_mismatched_create_time_as_dead(self, tmp_path: Path) -> None:
+        """A live pid whose recorded create_time doesn't match the live
+        process's actual create_time is a recycled pid: treated as dead."""
+        from little_loops.worktree_utils import _registry_entry_is_live, _write_registry_entry
+
+        worktree_path = tmp_path / "wt"
+        worktree_path.mkdir()
+        own_pid = os.getpid()
+        _write_registry_entry(worktree_path, own_pid, create_time=1.0)
+
+        assert _registry_entry_is_live(worktree_path) is False
+
+    def test_missing_create_time_falls_back_to_bare_pid_probe(self, tmp_path: Path) -> None:
+        """A missing/unparseable line 2 falls back to the bare os.kill probe."""
+        from little_loops.worktree_utils import _registry_entry_is_live, _registry_entry_path
+
+        worktree_path = tmp_path / "wt"
+        worktree_path.mkdir()
+        entry_path = _registry_entry_path(worktree_path)
+        entry_path.parent.mkdir(parents=True)
+        entry_path.write_text(f"{os.getpid()}\n")
+
+        assert _registry_entry_is_live(worktree_path) is True
+
+    def test_dead_pid_registry_entry_is_not_live(self, tmp_path: Path) -> None:
+        """A registry entry naming an unreachable pid is not live."""
+        from little_loops.worktree_utils import _registry_entry_is_live, _write_registry_entry
+
+        worktree_path = tmp_path / "wt"
+        worktree_path.mkdir()
+        # A pid vanishingly unlikely to be live on any test machine.
+        _write_registry_entry(worktree_path, pid=999999, create_time=1.0)
+
+        assert _registry_entry_is_live(worktree_path) is False
+
+    def test_absent_registry_entry_is_not_live(self, tmp_path: Path) -> None:
+        from little_loops.worktree_utils import _registry_entry_is_live
+
+        worktree_path = tmp_path / "wt"
+        worktree_path.mkdir()
+
+        assert _registry_entry_is_live(worktree_path) is False
+
+    def test_write_leaves_no_tmp_file_on_success(self, tmp_path: Path) -> None:
+        """Same atomic-write shape as file_utils.atomic_write_json (ENH-3376 wiring pass)."""
+        from little_loops.worktree_utils import _registry_dir, _write_registry_entry
+
+        worktree_path = tmp_path / "wt"
+        _write_registry_entry(worktree_path, pid=os.getpid(), create_time=1.0)
+
+        assert list(_registry_dir(worktree_path).glob("*.tmp")) == []
+
+    def test_write_leaves_no_tmp_orphan_on_replace_failure(self, tmp_path: Path) -> None:
+        from little_loops.worktree_utils import _registry_dir, _write_registry_entry
+
+        worktree_path = tmp_path / "wt"
+        with patch("os.replace", side_effect=OSError("simulated disk full")):
+            with pytest.raises(OSError):
+                _write_registry_entry(worktree_path, pid=os.getpid(), create_time=1.0)
+
+        assert list(_registry_dir(worktree_path).glob("*.tmp")) == []
+
+    def test_write_preserves_existing_entry_on_replace_failure(self, tmp_path: Path) -> None:
+        from little_loops.worktree_utils import _registry_entry_path, _write_registry_entry
+
+        worktree_path = tmp_path / "wt"
+        _write_registry_entry(worktree_path, pid=111, create_time=1.0)
+        entry_path = _registry_entry_path(worktree_path)
+        original = entry_path.read_text()
+
+        with patch("os.replace", side_effect=OSError("simulated disk full")):
+            with pytest.raises(OSError):
+                _write_registry_entry(worktree_path, pid=222, create_time=2.0)
+
+        assert entry_path.read_text() == original
 
 
 class TestSetupPrepatchWorktree:

@@ -3,7 +3,7 @@ id: ENH-3376
 type: ENH
 title: registry-based worktree liveness survives in-tree marker deletion
 priority: P2
-status: open
+status: done
 parent: ENH-3374
 relates_to:
 - BUG-3373
@@ -14,6 +14,7 @@ score_complexity: 18
 score_test_coverage: 23
 score_ambiguity: 24
 score_change_surface: 20
+completed_at: '2026-09-01T20:10:00Z'
 ---
 
 # ENH-3376: registry-based worktree liveness survives in-tree marker deletion
@@ -360,6 +361,8 @@ ships.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-01T20:09:25 - `d5a9a03c-f68b-4fb9-95f0-031f088cbb82.jsonl`
+- `/ll:ready-issue` - 2026-09-01T19:47:11 - `fb785ce3-4ca9-4f3f-8f22-cf643fea5f65.jsonl`
 - Pre-implementation review (2nd pass) - 2026-09-01 - pinned registry-write placement (after the line-211 pre-cleanup and base_branch verify, immediately before `worktree add`), made the hygiene test bullet consistent with the dead-pid prune rule, added the executor sub-loop `_detach` inheriting site, moved the command-doc mirror obligation here from ENH-3378.
 - `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - format decided (plain text pid/create_time/run_id), registry written before `git worktree add`, prune requires dead pid, create_time pid-reuse guard, MergeCoordinator gets an explicit removal call (no redirect), run_id demoted to optional metadata.
