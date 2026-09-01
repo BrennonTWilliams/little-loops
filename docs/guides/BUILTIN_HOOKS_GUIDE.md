@@ -422,7 +422,13 @@ If the session ended context-heavy (≥ ~50% estimated) and no handoff was compl
 
 **Hook:** `session-cleanup.sh` (pure bash)
 
-Removes this session's lock and context-state files, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. Note there is a separate `automation.worktree_base` key (also default `.worktrees`) used by `ll-auto` and FSM sub-loop worktrees (`Config.get_worktree_base()`); this Stop-hook cleanup reads `parallel.worktree_base` specifically, not `automation.worktree_base`. (Scratch cleanup now lives in `scratch-cleanup.sh` on SessionStart — see [Scratch-pad cleanup](#scratch-pad-cleanup), BUG-2420/BUG-3363.) Always on.
+Removes this session's lock and context-state files, and prunes git worktrees under `parallel.worktree_base` (default `.worktrees`) on **positive evidence of death only** (ENH-3378): a worktree is deleted only when its ENH-3376 out-of-tree registry entry or an in-tree `.ll-session-*` marker names a pid that is now dead. A worktree with **neither** a registry entry nor a marker is left alone — it's for `ll-parallel --cleanup-orphans` (which also gets a process-cwd fallback, ENH-3377) to reap, not this hook. This positive-evidence rule is what closes the BUG-3373 failure mode, where the hook fires on every Stop event of every unrelated project-root session and previously deleted on *absence* of evidence.
+
+The registry path is derived from each worktree's own path (`<parent>/.registry/<worktree-name>`), not from the `WORKTREE_BASE` config value, so it correctly covers `automation.worktree_base` sub-loop worktrees too — even though the `git worktree list` filter this hook uses still only sees worktrees whose path contains the configured base's basename. Note there is a separate `automation.worktree_base` key (also default `.worktrees`) used by `ll-auto` and FSM sub-loop worktrees (`Config.get_worktree_base()`); this Stop-hook cleanup reads `parallel.worktree_base` for the base-directory scan, not `automation.worktree_base`.
+
+**Accepted residual:** if the owning `ll-loop`/`ll-parallel` process is SIGKILLed but a dispatched host-CLI child survives with its cwd inside the worktree, this hook still sees a dead registry/marker pid and deletes under the live child — bash has no cwd sweep, so only the Python `ll-parallel --cleanup-orphans` path (ENH-3377) closes this gap.
+
+(Scratch cleanup now lives in `scratch-cleanup.sh` on SessionStart — see [Scratch-pad cleanup](#scratch-pad-cleanup), BUG-2420/BUG-3363.) Always on.
 
 ### Hook-event telemetry shim
 

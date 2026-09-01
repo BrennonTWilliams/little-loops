@@ -3,10 +3,11 @@ id: ENH-3378
 type: ENH
 title: harden session-cleanup.sh to consult the liveness registry before deleting
 priority: P2
-status: open
+status: done
 parent: ENH-3374
 depends_on:
 - ENH-3376
+completed_at: '2026-09-01T20:36:43Z'
 confidence_score: 90
 outcome_confidence: 85
 score_complexity: 20
@@ -66,7 +67,7 @@ otherwise leaves it alone. Concretely, for each worktree:
 2. If the registry pid is alive → skip. If **any** marker pid is alive →
    skip. Today's check (`ls "${w}/.ll-session-"* | head -1`, line 45) only
    inspects the first marker; the Python side
-   (`orchestrator.py:337-347`) iterates every `.ll-session-*` file. Since
+   (`scripts/little_loops/parallel/orchestrator.py:393-403`) iterates every `.ll-session-*` file. Since
    the per-worktree body is being rewritten, loop over all markers.
 3. If a registry entry exists but is unparseable → skip (cannot positively
    exclude liveness).
@@ -85,7 +86,7 @@ otherwise leaves it alone. Concretely, for each worktree:
 
 "Alive" for `kill -0`: bash `kill -0` fails with EPERM for a process owned
 by another user, which today reads as "dead". Match the Python side
-(`orchestrator.py:345-347` treats `PermissionError` as alive): a pid is
+(`scripts/little_loops/parallel/orchestrator.py:401-403` treats `PermissionError` as alive): a pid is
 alive if `kill -0 "$PID" 2>/dev/null || ps -p "$PID" >/dev/null 2>&1`.
 
 Preserve the "must never fail" invariant (`cleanup() || true`) — a registry
@@ -151,7 +152,7 @@ still live — is deleted with no cross-check today.
    `<worktree_base>/` that `git worktree list` reports, including shapes the
    Python orphan path deliberately refuses to touch (e.g. `epic-refresh-*`
    worktrees, which do not match `_is_ll_worktree()` in
-   `worktree_utils.py:419-430`). If skipped, that asymmetry stays open —
+   `scripts/little_loops/worktree_utils.py:562-573`). If skipped, that asymmetry stays open —
    note it in the doc update either way.
 
 ### Documentation
@@ -275,6 +276,8 @@ its sibling worktrees out from under still-running work.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-01T20:36:27 - `db7ac429-4aa2-4b70-b9ef-aa16a3190052.jsonl`
+- `/ll:ready-issue` - 2026-09-01T20:28:27 - `cabc9719-f49d-43cc-8455-259d8b8f9cff.jsonl`
 - Pre-implementation review (2nd pass) - 2026-09-01 - iterate all markers instead of `head -1`, documented the accepted dead-owner/live-child residual (Python-only fix via ENH-3377), reassigned the command-doc mirror obligation to ENH-3376/3377, noted the Qwen `stop.sh` adapter inherits the script.
 - `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - switched the hook to positive-evidence-only deletion (no marker + no registry → skip, not delete), registry path derived from the worktree path (covers `automation.worktree_base` sub-loop worktrees), EPERM-safe `pid_alive` helper for both signals, test matrix rewritten accordingly, format question closed (plain text, decided in ENH-3376).

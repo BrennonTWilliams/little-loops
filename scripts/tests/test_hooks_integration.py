@@ -3258,20 +3258,128 @@ class TestSessionCleanupWorktrees:
             "Worktree with dead PID marker should be removed by session-cleanup.sh"
         )
 
-    def test_session_cleanup_removes_worktree_with_no_marker(
+    def _registry_path(self, worker_dir: Path) -> Path:
+        return worker_dir.parent / ".registry" / worker_dir.name
+
+    def test_session_cleanup_skips_worktree_with_no_evidence(
         self, cleanup_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Orphaned worktree (no .ll-session-* marker) must be removed by session-cleanup.sh."""
+        """ENH-3378/BUG-3373: no registry entry and no marker must SKIP, not delete.
+
+        Deleting on absence of evidence is exactly BUG-3373's failure mode —
+        this hook fires on every Stop event of every unrelated project-root
+        session. Worktrees with no ll ownership record at all are left for
+        the explicit, user-invoked `ll-parallel --cleanup-orphans` path.
+        """
 
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".ll").mkdir(exist_ok=True)
         worker_dir = self._make_worktree(tmp_path)
-        # No marker — simulates an orphan from an interrupted run
+        # No registry entry, no marker — simulates a pre-feature or externally
+        # created worktree with no ll ownership record.
+
+        subprocess.run([str(cleanup_script)], capture_output=True, text=True, timeout=15)
+
+        assert worker_dir.exists(), (
+            "Worktree with no registry entry and no marker should be skipped, not deleted"
+        )
+
+    def test_session_cleanup_skips_worktree_with_live_registry_entry(
+        self, cleanup_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Live registry entry (ENH-3376), no marker: must be skipped."""
+        import os
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        worker_dir = self._make_worktree(tmp_path)
+        registry_path = self._registry_path(worker_dir)
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text(f"{os.getpid()}\n")
+
+        subprocess.run([str(cleanup_script)], capture_output=True, text=True, timeout=15)
+
+        assert worker_dir.exists(), (
+            "Worktree with a live registry entry should not be removed by session-cleanup.sh"
+        )
+
+    def test_session_cleanup_removes_worktree_with_dead_pid_registry_entry(
+        self, cleanup_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dead-pid registry entry, no marker: this is the positive-evidence
+        delete path (BUG-579's "genuinely orphaned worktree gets reaped"
+        coverage now lives here for this hook)."""
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        worker_dir = self._make_worktree(tmp_path)
+        registry_path = self._registry_path(worker_dir)
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text("99999\n")
 
         subprocess.run([str(cleanup_script)], capture_output=True, text=True, timeout=15)
 
         assert not worker_dir.exists(), (
-            "Orphaned worktree with no session marker should be removed by session-cleanup.sh"
+            "Worktree with a dead-pid registry entry should be removed by session-cleanup.sh"
+        )
+
+    def test_session_cleanup_skips_worktree_with_unparseable_registry_entry(
+        self, cleanup_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Registry entry present but line 1 is not numeric: skip (cannot
+        positively exclude liveness)."""
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        worker_dir = self._make_worktree(tmp_path)
+        registry_path = self._registry_path(worker_dir)
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text("not-a-pid\n")
+
+        subprocess.run([str(cleanup_script)], capture_output=True, text=True, timeout=15)
+
+        assert worker_dir.exists(), (
+            "Worktree with an unparseable registry entry should be skipped, not deleted"
+        )
+
+    def test_session_cleanup_skips_worktree_under_non_default_base_with_live_registry(
+        self, cleanup_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Registry path is derived from the worktree path itself, not
+        WORKTREE_BASE — covers the automation.worktree_base vs
+        parallel.worktree_base split (ENH-3374/ENH-3378): a worktree under a
+        nested dir whose `.registry/` sibling holds a live pid must be skipped
+        even though it isn't directly under the configured WORKTREE_BASE."""
+        import os
+
+        git = ["git", "-c", "user.email=t@t.com", "-c", "user.name=T"]
+        subprocess.run([*git, "init"], cwd=tmp_path, capture_output=True, check=True)
+        subprocess.run(
+            [*git, "commit", "--allow-empty", "-m", "init"],
+            cwd=tmp_path,
+            capture_output=True,
+            check=True,
+        )
+        # Nested under .worktrees/ so the WORKTREE_PATTERN grep filter still
+        # matches, but the registry sibling lives next to the nested dir —
+        # exercising path-derived (not WORKTREE_BASE-derived) registry lookup.
+        worker_dir = tmp_path / ".worktrees" / "sub-loop" / "worker-test-nested"
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/test-nested", str(worker_dir)],
+            cwd=tmp_path,
+            capture_output=True,
+            check=True,
+        )
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        registry_path = self._registry_path(worker_dir)
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text(f"{os.getpid()}\n")
+
+        subprocess.run([str(cleanup_script)], capture_output=True, text=True, timeout=15)
+
+        assert worker_dir.exists(), (
+            "Worktree under a non-default base with a live registry entry should be skipped"
         )
 
 
