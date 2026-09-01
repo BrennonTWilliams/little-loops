@@ -4,7 +4,7 @@
 
 Generated: 2026-08-30T02:33:20Z
 
-Total variants: **83**
+Total variants: **84**
 
 Every event type currently emitted to `.ll/history.db` (Channel A direct
 writers + Channel B EventBus emits) is registered here as a frozen dataclass
@@ -38,6 +38,7 @@ walks the source tree to verify every emit site maps to a registered variant.
 | `ThrottleHardVariant` | `throttle_hard` |
 | `ThrottleStopVariant` | `throttle_stop` |
 | `StallDetectedVariant` | `stall_detected` |
+| `WorkdirVanishedVariant` | `workdir_vanished` |
 | `PromptSizeWarnVariant` | `prompt_size_warn` |
 | `PrePatchCheckFlaggedVariant` | `prepatch_check_flagged` |
 | `SubLoopWorktreeAttachedVariant` | `sub_loop_worktree_attached` |

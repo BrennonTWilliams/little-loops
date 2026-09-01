@@ -15,13 +15,13 @@ class TestSchemaDefinitions:
     """Tests for the SCHEMA_DEFINITIONS catalog."""
 
     def test_all_58_event_types_defined(self) -> None:
-        """All 58 LLEvent types must be defined (doc audit 2026-08-31: added messages_append,
+        """All 59 LLEvent types must be defined (doc audit 2026-08-31: added messages_append,
         sub_loop_worktree_attached/detached/error, prepatch_check_flagged, baseline_complete,
-        ab_summary, cost_ceiling_unknown/warn/exceeded)."""
-        assert len(SCHEMA_DEFINITIONS) == 58
+        ab_summary, cost_ceiling_unknown/warn/exceeded; BUG-3375 added workdir_vanished)."""
+        assert len(SCHEMA_DEFINITIONS) == 59
 
     def test_expected_event_types_present(self) -> None:
-        """Each of the 58 known event types must appear in catalog."""
+        """Each of the 59 known event types must appear in catalog."""
         expected = {
             "loop_start",
             "state_enter",
@@ -81,6 +81,7 @@ class TestSchemaDefinitions:
             "cost_ceiling_unknown",
             "cost_ceiling_warn",
             "cost_ceiling_exceeded",
+            "workdir_vanished",
         }
         assert set(SCHEMA_DEFINITIONS.keys()) == expected
 
@@ -111,14 +112,14 @@ class TestGenerateSchemas:
         """Generates exactly 58 schema files (doc audit 2026-08-31: added 9 event types)."""
         generate_schemas(tmp_path)
         files = list(tmp_path.glob("*.json"))
-        assert len(files) == 58
+        assert len(files) == 59
 
     def test_creates_output_dir_if_missing(self, tmp_path: Path) -> None:
         """Creates the output directory if it doesn't exist."""
         output_dir = tmp_path / "nested" / "schemas"
         generate_schemas(output_dir)
         assert output_dir.exists()
-        assert len(list(output_dir.glob("*.json"))) == 58
+        assert len(list(output_dir.glob("*.json"))) == 59
 
     def test_all_files_are_valid_json(self, tmp_path: Path) -> None:
         """Every generated file contains valid JSON."""
@@ -247,7 +248,7 @@ class TestGenerateSchemasCLI:
 
         with patch("sys.argv", ["ll-generate-schemas", "--output", str(tmp_path)]):
             main_generate_schemas()
-        assert len(list(tmp_path.glob("*.json"))) == 58
+        assert len(list(tmp_path.glob("*.json"))) == 59
 
     def test_cli_default_output_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """CLI defaults to docs/reference/schemas/ relative to cwd."""

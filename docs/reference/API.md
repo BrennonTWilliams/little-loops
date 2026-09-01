@@ -6159,7 +6159,7 @@ result = executor.run()
 
 print(result.final_state)     # "done"
 print(result.iterations)      # Number of iterations
-print(result.terminated_by)   # "terminal", "max_steps", "max_iterations_reached", "timeout", "interrupted", "cycle_detected", "stall_detected", or "error"
+print(result.terminated_by)   # "terminal", "max_steps", "max_iterations_reached", "timeout", "interrupted", "cycle_detected", "stall_detected", "workdir_vanished", or "error"
 ```
 
 #### ExecutionResult
@@ -6169,7 +6169,7 @@ print(result.terminated_by)   # "terminal", "max_steps", "max_iterations_reached
 class ExecutionResult:
     final_state: str                      # State when execution stopped
     iterations: int                       # Total iterations
-    terminated_by: str                    # "terminal" | "max_steps" | "max_iterations_reached" | "timeout" | "interrupted" | "cycle_detected" | "stall_detected" | "error"
+    terminated_by: str                    # "terminal" | "max_steps" | "max_iterations_reached" | "timeout" | "interrupted" | "cycle_detected" | "stall_detected" | "workdir_vanished" | "error"
     duration_ms: int                      # Total execution time
     captured: dict[str, dict[str, Any]]   # Captured variable values
     failure_terminal: bool = False        # Stopped on a `failure: true` terminal (ENH-2814)

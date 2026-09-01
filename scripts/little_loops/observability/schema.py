@@ -212,6 +212,18 @@ class StallDetectedVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class WorkdirVanishedVariant(DESVariant):
+    """FSMExecutor._emit('workdir_vanished') — the pre-dispatch existence check
+    (BUG-3375) found the executor's working directory (or process cwd) gone;
+    the run aborts via ``_finish("workdir_vanished", ...)`` instead of
+    cascading through ordinary on_error routing."""
+
+    type: Literal["workdir_vanished"] = "workdir_vanished"
+    state: str = ""
+    path: str = ""
+
+
+@dataclass(frozen=True)
 class PromptSizeWarnVariant(DESVariant):
     """FSMExecutor._emit('prompt_size_warn') — prompt payload exceeded threshold."""
 
@@ -779,6 +791,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     ThrottleHardVariant,
     ThrottleStopVariant,
     StallDetectedVariant,
+    WorkdirVanishedVariant,
     PromptSizeWarnVariant,
     PrePatchCheckFlaggedVariant,
     CostCeilingExceededVariant,

@@ -1981,6 +1981,12 @@ def _derive_loop_outcome(event: dict) -> str:
     if terminated_by == "system_signal":
         # ENH-2522: kernel/SIGKILL/OOM is its own signal bucket.
         return "signal"
+    if terminated_by == "workdir_vanished":
+        # BUG-3375: belt-and-suspenders — the `"error" in event` branch above
+        # already catches this since _finish always passes error= for this
+        # abort. An infra loss is not a loop-logic failure and must not
+        # inflate the "failed" bucket in fleet rollups.
+        return "error"
     final_state = event.get("final_state", "")
     if any(kw in final_state for kw in ("fail", "error", "abort")):
         return "failed"

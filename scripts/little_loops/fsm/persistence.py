@@ -1249,9 +1249,24 @@ class PersistentExecutor:
             accumulated_ms=result.duration_ms,
             context=dict(self.fsm.context),
         )
-        self.persistence.save_state(final_state)
         run_dir_str = self.fsm.context.get("run_dir", "")
-        self.persistence.archive_run(run_dir=Path(run_dir_str) if run_dir_str else None)
+        if result.terminated_by == "workdir_vanished":
+            # BUG-3375: the run's own persistence sink (`.loops/`, run_dir, lock
+            # dir) may live inside the vanished directory (e.g. an ll-parallel
+            # worker rooted at cwd=worktree_path). Best-effort only — the abort
+            # itself must still surface cleanly to the caller.
+            try:
+                self.persistence.save_state(final_state)
+                self.persistence.archive_run(run_dir=Path(run_dir_str) if run_dir_str else None)
+            except OSError:
+                logger.warning(
+                    f"workdir_vanished: could not persist final state for "
+                    f"'{self.fsm.name}' — its persistence sink vanished with the "
+                    "working directory"
+                )
+        else:
+            self.persistence.save_state(final_state)
+            self.persistence.archive_run(run_dir=Path(run_dir_str) if run_dir_str else None)
 
         return result
 

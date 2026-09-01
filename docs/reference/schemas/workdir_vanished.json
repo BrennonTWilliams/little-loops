@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-workdir_vanished.json",
+  "title": "Working Directory Vanished",
+  "description": "Emitted when the executor's pre-dispatch existence check (BUG-3375) finds that its working directory \u2014 or, when none is set, the process cwd \u2014 no longer exists. The run aborts immediately via `_finish(\"workdir_vanished\", ...)` rather than cascading state-by-state through ordinary on_error routing.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "path"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every parallel.* emitter (ENH-3346); required on all parallel.* events, optional elsewhere."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
+    "state": {
+      "type": "string",
+      "description": "State the executor was about to dispatch when the vanish was detected"
+    },
+    "path": {
+      "type": "string",
+      "description": "The working directory (or process cwd) found to be missing"
+    }
+  },
+  "additionalProperties": true
+}

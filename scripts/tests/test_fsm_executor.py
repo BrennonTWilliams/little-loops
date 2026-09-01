@@ -6,6 +6,7 @@ import hashlib
 import json
 import queue
 import shlex
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from little_loops.fsm.executor import (
     SimulationActionRunner,
 )
 from little_loops.fsm.interpolation import InterpolationContext
+from little_loops.fsm.persistence import PersistentExecutor
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
@@ -13254,3 +13256,226 @@ class TestInboundEvents:
         assert artifact_events[0]["during"] == "subloop"
         # depth=1: forwarded from the immediate child sub-loop executor.
         assert artifact_events[0]["depth"] == 1
+
+
+@dataclass
+class _DirDeletingRunner:
+    """Action runner that deletes a directory as a side effect of its first
+    call, then returns a normal success result (BUG-3375 vanished-workdir tests).
+    """
+
+    to_delete: Path
+    calls: int = 0
+
+    def run(self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any) -> ActionResult:
+        del action, timeout, is_slash_command, kwargs
+        self.calls += 1
+        if self.calls == 1:
+            shutil.rmtree(self.to_delete, ignore_errors=True)
+        return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=0)
+
+
+class TestWorkdirVanished:
+    """BUG-3375: pre-dispatch working-directory existence check."""
+
+    def test_working_dir_vanishes_mid_run_aborts_cleanly(self, tmp_path: Path) -> None:
+        """Deleting `working_dir` after the first state aborts before dispatching
+        the second, with zero action_error events (the cascade never starts)."""
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        fsm = FSMLoop(
+            name="t",
+            initial="a",
+            states={
+                "a": StateConfig(action="echo hi", next="b", on_error="failed"),
+                "b": StateConfig(action="echo bye", next="done", on_error="failed"),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True, failure=True),
+            },
+        )
+        runner = _DirDeletingRunner(to_delete=work_dir)
+        events: list[dict[str, Any]] = []
+        executor = FSMExecutor(
+            fsm, action_runner=runner, working_dir=work_dir, event_callback=events.append
+        )
+
+        result = executor.run()
+
+        assert result.terminated_by == "workdir_vanished"
+        assert result.failure_terminal is False
+        assert result.error is not None and str(work_dir) in result.error
+        names = [e["event"] for e in events]
+        assert "workdir_vanished" in names
+        assert "action_error" not in names
+        # Only state "a" ever dispatched — the vanish is caught before "b".
+        assert runner.calls == 1
+
+    def test_vanish_before_actionless_terminal_state_still_aborts(self, tmp_path: Path) -> None:
+        """The check fires before the terminal-state check: an action-less
+        `terminal: true` state reached right after the vanish must not let the
+        run finish `terminated_by="terminal"` and hide the cause."""
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        fsm = FSMLoop(
+            name="t",
+            initial="a",
+            states={
+                "a": StateConfig(action="echo hi", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = _DirDeletingRunner(to_delete=work_dir)
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=work_dir)
+
+        result = executor.run()
+
+        # current_state has already advanced to the action-less terminal "done"
+        # by the time the pre-dispatch check runs on it; the assertion that
+        # matters is that it aborts as workdir_vanished rather than "terminal".
+        assert result.final_state == "done"
+        assert result.terminated_by == "workdir_vanished"
+
+    def test_missing_working_dir_at_start_aborts_as_workdir_vanished(self, tmp_path: Path) -> None:
+        """A `working_dir` that never existed reports as workdir_vanished on the
+        very first iteration too (accepted edge case, same operator action)."""
+        never_existed = tmp_path / "never-existed"
+        fsm = FSMLoop(
+            name="t",
+            initial="a",
+            states={
+                "a": StateConfig(action="echo hi", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(
+            fsm, action_runner=SimulationActionRunner(), working_dir=never_existed
+        )
+
+        result = executor.run()
+
+        assert result.terminated_by == "workdir_vanished"
+        assert result.error is not None and str(never_existed) in result.error
+
+    def test_os_getcwd_fallback_catches_vanished_process_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When `working_dir` is unset (the top-level `ll-loop run`/ll-parallel-
+        worker shape), the process cwd is checked via os.getcwd() instead."""
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        monkeypatch.chdir(work_dir)
+        fsm = FSMLoop(
+            name="t",
+            initial="a",
+            states={
+                "a": StateConfig(action="echo hi", next="b"),
+                "b": StateConfig(action="echo bye", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = _DirDeletingRunner(to_delete=work_dir)
+        executor = FSMExecutor(fsm, action_runner=runner)
+
+        result = executor.run()
+
+        assert result.terminated_by == "workdir_vanished"
+        assert result.error is not None and str(work_dir) in result.error
+        # Restore a valid cwd so pytest's own teardown doesn't trip over the
+        # deleted directory.
+        monkeypatch.chdir(tmp_path)
+
+    def test_sub_loop_workdir_vanished_routes_on_error_and_captures_error(
+        self, tmp_path: Path
+    ) -> None:
+        """A child that dies with terminated_by="workdir_vanished" joins the
+        `error` branch of _execute_sub_loop (step 3), not the on_no catch-all:
+        the parent routes on_error and captures the missing-path message."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="child",
+                    capture="run_child_result",
+                    on_yes="success",
+                    on_no="fallback",
+                    on_error="handled",
+                ),
+                "success": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+                "handled": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        original_run = FSMExecutor.run
+        vanished_error = "Working directory vanished mid-run: /tmp/deleted-worktree"
+
+        def vanished_child_run(self_inner: FSMExecutor) -> ExecutionResult:
+            if self_inner.fsm.name == "child":
+                return ExecutionResult(
+                    final_state="done",
+                    iterations=1,
+                    terminated_by="workdir_vanished",
+                    duration_ms=0,
+                    captured={},
+                    failure_terminal=False,
+                    error=vanished_error,
+                )
+            return original_run(self_inner)
+
+        with patch.object(FSMExecutor, "run", vanished_child_run):
+            result = executor.run()
+
+        assert result.final_state == "handled"
+        assert executor.captured["run_child"]["terminated_by"] == "workdir_vanished"
+        assert executor.captured["run_child"]["error"] == vanished_error
+        assert executor.captured["run_child_result"]["verdict"] == "error"
+
+    def test_persistent_executor_cwd_deletion_reports_clean_abort(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-3375 step 1c: an ll-parallel-worker-shaped run whose `.loops`,
+        run_dir, and lock dir live *inside* the vanished directory must not
+        degrade `_finish`'s abort into an unhandled traceback. Deliverable:
+        `run()` returns normally with terminated_by="workdir_vanished", the
+        error names the path, and it is also printed to stderr — events.jsonl
+        cannot be asserted since its directory no longer exists."""
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        loops_dir = work_dir / ".loops"
+        monkeypatch.chdir(work_dir)
+        fsm = FSMLoop(
+            name="t",
+            initial="a",
+            states={
+                "a": StateConfig(action="echo hi", next="b"),
+                "b": StateConfig(action="echo bye", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = PersistentExecutor(fsm, loops_dir=loops_dir)
+        # Delete the directory only after state "a"'s own `route` event has
+        # been durably recorded — i.e. strictly between iterations, mirroring
+        # an external actor deleting the shared worktree mid-run rather than
+        # a same-iteration side effect that would fail state "a" itself.
+        original_event_callback = executor._executor.event_callback
+
+        def delete_after_route_to_b(event: dict[str, Any]) -> None:
+            original_event_callback(event)
+            if event.get("event") == "route" and event.get("to") == "b":
+                shutil.rmtree(work_dir, ignore_errors=True)
+
+        executor._executor.event_callback = delete_after_route_to_b
+
+        result = executor.run()
+
+        assert result.terminated_by == "workdir_vanished"
+        assert result.error is not None and str(work_dir) in result.error
+        captured = capsys.readouterr()
+        assert str(work_dir) in captured.err
+        monkeypatch.chdir(tmp_path)

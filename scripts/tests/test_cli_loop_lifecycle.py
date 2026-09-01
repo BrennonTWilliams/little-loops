@@ -1325,6 +1325,25 @@ class TestCmdResumeExitCodes:
             == FAILURE_TERMINAL_EXIT_CODE
         )
 
+    def test_workdir_vanished_returns_exit_code_1(self, tmp_path: Path) -> None:
+        """BUG-3375: failure_terminal is False for this abort (it never reaches
+        a `terminal` arrival), so FAILURE_TERMINAL_EXIT_CODE does not apply —
+        pins the explicit EXIT_CODES["workdir_vanished"] = 1 entry, not just
+        the `.get(..., 1)` default it would otherwise fall through to."""
+        assert (
+            self._resume_with_terminated_by(
+                tmp_path, "workdir_vanished", final_state="a", failure_terminal=False
+            )
+            == 1
+        )
+
+    def test_workdir_vanished_maps_to_failed_persisted_status(self) -> None:
+        """map_final_status's default fallback (no dedicated branch needed)
+        persists workdir_vanished as "failed", same as any other crash."""
+        from little_loops.fsm.persistence import map_final_status
+
+        assert map_final_status("workdir_vanished", failure_terminal=False) == "failed"
+
 
 class TestCmdRunHandoffThreshold:
     """Tests for --handoff-threshold handling in cmd_run (ENH-768)."""

@@ -79,6 +79,10 @@ EXIT_CODES: dict[str, int] = {
     # are non-zero so callers can distinguish them from graceful paths.
     "user_stopped": 1,
     "system_signal": 1,
+    # BUG-3375: failure_terminal is False for this abort (it isn't a "terminal"
+    # arrival), so FAILURE_TERMINAL_EXIT_CODE doesn't apply — make the exit
+    # code an explicit 1 rather than relying on the .get(..., 1) default.
+    "workdir_vanished": 1,
 }
 
 # Minimum number of action-output rows reserved beneath the pinned pane in

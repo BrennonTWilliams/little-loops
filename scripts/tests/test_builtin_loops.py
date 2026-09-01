@@ -4347,6 +4347,29 @@ class TestAutoRefineAndImplementLoop:
             "recheck_set launders autodev's failed terminal (ENH-3366)"
         )
 
+    def test_record_error_and_finalize_wire_workdir_vanished(self, data: dict) -> None:
+        """BUG-3375: record_error is the only state reachable via delegate's
+        on_error, so its action must branch on
+        ${captured.delegate.terminated_by} for "workdir_vanished" and drop the
+        infra-workdir-vanished marker; finalize must in turn read that marker
+        into a distinct verdict and route it through the exit-1 arm, or the
+        run still finalizes as a plain incomplete-abandoned with no signal
+        naming the vanished worktree."""
+        record_error_action = data["states"]["record_error"].get("action", "")
+        assert "workdir_vanished" in record_error_action, (
+            "record_error must branch on delegate's workdir_vanished terminated_by"
+        )
+        assert "infra-workdir-vanished" in record_error_action, (
+            "record_error must drop the infra-workdir-vanished marker file"
+        )
+        finalize_action = data["states"]["finalize"].get("action", "")
+        assert "infra-worktree-vanished" in finalize_action, (
+            "finalize must derive the infra-worktree-vanished verdict from the marker"
+        )
+        assert "infra-worktree-vanished) exit 1" in finalize_action.replace("\n", " ") or (
+            "phantom|incomplete-abandoned|infra-worktree-vanished" in finalize_action
+        ), "finalize's exit-1 routing arm must include infra-worktree-vanished"
+
     def test_delegate_has_no_explicit_on_no(self, data: dict) -> None:
         """BUG-2611: delegate must NOT declare a raw on_no key. schema.py's
         `on_no = on_no or on_failure` means an explicit on_no here would shadow
@@ -4722,6 +4745,7 @@ class TestAutoRefineAndImplementLoop:
         inflight: str | None = None,
         queue: tuple[str, ...] = (),
         epic_branch_stale_action: str | None = None,
+        workdir_vanished: str | None = None,
     ) -> dict:
         """Execute finalize against ground-truth completed/ + done dirs; return summary.json.
 
@@ -4756,6 +4780,11 @@ class TestAutoRefineAndImplementLoop:
         present-but-empty file (the `write_text` call still runs, since the
         guard below is `is not None`), exercising the `[ -s ]` companion
         guard finalize now applies to both verdict files.
+
+        BUG-3375: `workdir_vanished`, when given, seeds the infra-workdir-vanished
+        marker record_error drops when delegate's terminated_by=workdir_vanished
+        — exercising the verdict=infra-worktree-vanished precedence rule (it
+        wins over incomplete-abandoned even with a non-empty queue).
         """
         p = "auto-refine-and-implement"
         if verify_verdict is not None:
@@ -4823,6 +4852,8 @@ class TestAutoRefineAndImplementLoop:
         # triggers) is exercisable. Absent/empty by default → abandoned=0.
         if queue:
             (run_dir / "autodev-queue.txt").write_text("".join(f"{i}\n" for i in queue))
+        if workdir_vanished is not None:
+            (run_dir / "infra-workdir-vanished").write_text(workdir_vanished)
         action = _unescape_ll_python(data["states"]["finalize"].get("action", ""))
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("${captured.issue_set.output}", ",".join(issue_set))
@@ -4832,7 +4863,12 @@ class TestAutoRefineAndImplementLoop:
         # `phantom` run exits non-zero (→ the `incomplete` terminal, rendered as
         # not-success by ll-loop) while every other verdict exits 0 (→ `done`).
         # summary.json is written before the routing exit, so it is always readable.
-        expected_rc = 1 if summary["verdict"] in ("phantom", "incomplete-abandoned") else 0
+        # BUG-3375: infra-worktree-vanished joins them on the exit-1 arm.
+        expected_rc = (
+            1
+            if summary["verdict"] in ("phantom", "incomplete-abandoned", "infra-worktree-vanished")
+            else 0
+        )
         assert result.returncode == expected_rc, (
             f"finalize exit {result.returncode} != {expected_rc} for "
             f"verdict={summary['verdict']}: {result.stderr}"
@@ -5314,6 +5350,30 @@ class TestAutoRefineAndImplementLoop:
         assert (run_dir / "auto-refine-and-implement-abandoned.txt").exists(), (
             "abandoned artifact listing the residual IDs must be written"
         )
+
+    def test_finalize_infra_workdir_vanished_takes_precedence_over_abandoned(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3375: the infra-workdir-vanished marker (dropped by record_error
+        when delegate's terminated_by=workdir_vanished) must win over
+        incomplete-abandoned even with a non-empty residual queue — the
+        operator must see "worktree vanished", not a routine partial drain.
+        The abandoned count is still reported alongside it."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            closed=("FEAT-1",),
+            passed=("FEAT-1",),
+            issue_set=("FEAT-1", "ENH-2", "ENH-3", "ENH-4"),
+            queue=("ENH-2", "ENH-3", "ENH-4"),
+            workdir_vanished="Working directory vanished mid-run: /tmp/deleted-worktree",
+        )
+        assert summary["verdict"] == "infra-worktree-vanished", (
+            f"the vanished-worktree marker must take precedence, got {summary}"
+        )
+        assert summary["abandoned"] == 3, f"abandoned count must still be reported, got {summary}"
 
     def test_finalize_empty_queue_is_unaffected(self, data: dict, tmp_path: Path) -> None:
         """ENH-2657: a run that fully drained its queue (empty/absent
@@ -20233,6 +20293,8 @@ _MR11_MARKER_RE = re.compile(r"#\s*ll-lint:\s*mr11-ok\(([^)]+)\)\s+.*?(\S+-\d+)"
 MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/adversarial-redesign.yaml", "captured.run_dir.output", "ENH-3358"),
     ("loops/auto-refine-and-implement.yaml", "captured.delegate.terminated_by", "ENH-3366"),
+    ("loops/auto-refine-and-implement.yaml", "captured.delegate.terminated_by", "BUG-3375"),
+    ("loops/auto-refine-and-implement.yaml", "captured.delegate.error", "BUG-3375"),
     ("loops/auto-refine-and-implement.yaml", "captured.issue_set.output", "ENH-3358"),
     ("loops/auto-refine-and-implement.yaml", "context.scope", "ENH-3358"),
     ("loops/autodev.yaml", "captured.dequeue_status.output", "ENH-3358"),

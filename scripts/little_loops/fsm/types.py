@@ -38,7 +38,9 @@ class ExecutionResult:
             user-stop.marker before signalling, ENH-2522), "system_signal" (POSIX process killed
             by signal N with no user-stop marker — e.g. kernel OOM/SIGKILL, ENH-2522),
             "error", "handoff", "cycle_detected", "stall_detected", "host_pressure_abort"
-            (ENH-2452), "host_budget_exceeded" (ENH-2453).
+            (ENH-2452), "host_budget_exceeded" (ENH-2453), "workdir_vanished" (BUG-3375:
+            the executor's working directory disappeared mid-run; failure_terminal stays
+            False for this abort — see the failure_terminal docstring below).
         duration_ms: Total execution time in milliseconds
         captured: All captured variable values
         failure_terminal: True when execution stopped on a terminal state whose

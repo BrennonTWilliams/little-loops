@@ -393,6 +393,20 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["state", "exit_code", "verdict", "consecutive", "action"],
     ),
+    "workdir_vanished": _schema(
+        "workdir_vanished",
+        "Working Directory Vanished",
+        "Emitted when the executor's pre-dispatch existence check (BUG-3375) "
+        "finds that its working directory — or, when none is set, the process "
+        "cwd — no longer exists. The run aborts immediately via "
+        '`_finish("workdir_vanished", ...)` rather than cascading state-by-state '
+        "through ordinary on_error routing.",
+        {
+            "state": _str("State the executor was about to dispatch when the vanish was detected"),
+            "path": _str("The working directory (or process cwd) found to be missing"),
+        },
+        ["state", "path"],
+    ),
     "rate_limit_exhausted": _schema(
         "rate_limit_exhausted",
         "Rate Limit Exhausted",

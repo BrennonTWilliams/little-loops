@@ -915,6 +915,7 @@ Every terminating loop sets `terminated_by` to one of these values. Inspect with
 | `cycle_detected` | `max_edge_revisits` (default 100) tripped — usually a missing `on_no` / `on_partial` route | Add the missing route, or lower `max_edge_revisits` to surface regressions faster |
 | `host_pressure_abort` | `host_guard` aborted an iteration | Cool down host, or relax `host_guard.critical_pct` |
 | `host_budget_exceeded` | `max_cumulative_subproc_mb` budget hit (ENH-2453) | Raise the budget, or split the loop |
+| `workdir_vanished` | The executor's working directory (or process cwd) disappeared mid-run (BUG-3375) — e.g. a shared worktree was deleted while a sub-loop was running in it | Not resumable in place; investigate why the directory vanished (see the `workdir_vanished` event's `path` field) before re-running |
 | `error` | Uncaught exception in action or evaluator | The `loop_complete` event has an `error` field with the crash reason |
 | `user_stopped` | `ll-loop stop` invoked (writes a `user-stop.marker` sentinel so the runner can attribute the cause even when SIGKILL races past `_finish()`) | Resume with `ll-loop resume` |
 | `system_signal` | Kernel/SIGKILL/OOM kill — `last_result.exit_code <= -1` (e.g. -9 = SIGKILL, -11 = SIGSEGV, -6 = SIGABRT) with no `user-stop.marker` present | **Not resumable** — the runner died mid-state. Reduce per-step memory footprint, split into smaller invocations, or lower `host_guard.max_cumulative_subproc_mb` so the guard trips before the kernel does; rerun |

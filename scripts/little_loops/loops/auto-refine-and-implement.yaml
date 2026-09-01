@@ -601,9 +601,20 @@ states:
     # autodev crashed at the infrastructure level before it could drain the set.
     # Record the crash so finalize can report partial-with-errors / phantom
     # rather than a silent no-op.
+    #
+    # BUG-3375: when the crash cause is a vanished working directory (delegate's
+    # shared worktree disappeared mid-run), also drop a distinct marker file so
+    # finalize can report `verdict=infra-worktree-vanished` instead of the
+    # generic incomplete-abandoned — without this the operator sees a plausible
+    # partial-drain verdict with no signal that the ground disappeared under it.
     action: |
       echo "${captured.issue_set.output}" >> ${context.run_dir}/auto-refine-and-implement-errored.txt  # ll-lint: mr11-ok(captured.issue_set.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "ERROR: autodev crashed on set ${captured.issue_set.output} — see events.jsonl"  # ll-lint: mr11-ok(captured.issue_set.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.delegate.terminated_by) BUG-3375 - executor-controlled enum, not user input
+      if [ "${captured.delegate.terminated_by?}" = "workdir_vanished" ]; then
+        # ll-lint: mr11-ok(captured.delegate.error) BUG-3375 - executor-written path string, not user input
+        echo "${captured.delegate.error?}" > ${context.run_dir}/infra-workdir-vanished
+      fi
     action_type: shell
     next: finalize
 
@@ -1104,7 +1115,15 @@ states:
       # gets its own compound verdict (Option B, mirroring ENH-2376's
       # partial-with-errors) that names the abandonment and diverts to incomplete
       # regardless of CLOSED. A genuinely drained queue leaves ABANDONED=0.
-      if [ "$ABANDONED" -gt 0 ]; then
+      # BUG-3375: an infra-worktree-vanished marker (dropped by record_error
+      # when delegate's terminated_by=workdir_vanished) takes precedence over
+      # every other bucket, including incomplete-abandoned — the abandoned
+      # count is still reported below, but the verdict must name the actual
+      # cause (the ground disappeared) rather than reading like a routine
+      # partial drain.
+      if [ -f "$RUN_DIR/infra-workdir-vanished" ]; then
+        VERDICT=infra-worktree-vanished
+      elif [ "$ABANDONED" -gt 0 ]; then
         VERDICT=incomplete-abandoned
       elif [ "$CLOSED" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ] && [ "$NOT_CLOSED" -eq 0 ]; then
         VERDICT=success
@@ -1141,9 +1160,12 @@ states:
       # success/partial/partial-with-errors (real progress) and a genuine
       # empty-backlog no-op stay `done`; only `phantom` diverts to `incomplete`.
       # ENH-2657: incomplete-abandoned joins phantom on the exit-1 → incomplete
-      # route so an abandoned-queue run never renders green `done`.
+      # route so an abandoned-queue run never renders green `done`. BUG-3375:
+      # infra-worktree-vanished joins them — without it here, the run would
+      # exit 0 and render green `done`, the exact mis-signal this verdict
+      # exists to remove.
       case "$VERDICT" in
-        phantom|incomplete-abandoned) exit 1 ;;
+        phantom|incomplete-abandoned|infra-worktree-vanished) exit 1 ;;
         *) exit 0 ;;
       esac
     fragment: shell_exit
@@ -1157,7 +1179,7 @@ states:
   finalize_incomplete:
     action_type: shell
     action: |
-      echo "auto-refine-and-implement: incomplete — see summary.json verdict. phantom: dispatched work closed nothing (parked / not-closed / in-flight / errored). incomplete-abandoned: autodev abandoned N issues left in autodev-queue.txt at timeout/max_steps (see the 'abandoned' count and auto-refine-and-implement-abandoned.txt); re-run to drain the remainder. Re-run after resolving blockers."
+      echo "auto-refine-and-implement: incomplete — see summary.json verdict. phantom: dispatched work closed nothing (parked / not-closed / in-flight / errored). incomplete-abandoned: autodev abandoned N issues left in autodev-queue.txt at timeout/max_steps (see the 'abandoned' count and auto-refine-and-implement-abandoned.txt); re-run to drain the remainder. infra-worktree-vanished: the shared worktree disappeared mid-run (see infra-workdir-vanished for the missing path); investigate the cause before re-running — the abandoned count (if any) is still reported. Re-run after resolving blockers."
     next: incomplete
     on_error: incomplete
   incomplete:
@@ -1170,5 +1192,7 @@ states:
     # never refined/implemented/parked. The abandoned count and the residual-ID
     # artifact are in summary.json / auto-refine-and-implement-abandoned.txt so a
     # re-run to drain the remainder is obvious.
+    # BUG-3375: also reached on verdict=infra-worktree-vanished — the shared
+    # worktree disappeared mid-run; see infra-workdir-vanished for the path.
     terminal: true
     failure: true

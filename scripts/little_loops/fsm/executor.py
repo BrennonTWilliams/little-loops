@@ -99,6 +99,9 @@ _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER: list[int] = [300, 900, 1800, 3600]
 # Event name emitted when the stall detector fires on N consecutive
 # identical (state, exit_code, verdict) transitions. See FEAT-1637.
 STALL_DETECTED_EVENT: str = "stall_detected"
+# Event name emitted when the executor's working directory (or, absent one,
+# the process cwd) is found to have vanished mid-run (BUG-3375).
+WORKDIR_VANISHED_EVENT: str = "workdir_vanished"
 # Event name emitted when rate-limit retries are exhausted.
 RATE_LIMIT_EXHAUSTED_EVENT: str = "rate_limit_exhausted"
 # Event name emitted when consecutive rate-limit exhaustions reach the storm threshold.
@@ -300,6 +303,11 @@ class FSMExecutor:
         self.elapsed_offset_ms = (
             0  # milliseconds from segments before current run (set by PersistentExecutor on resume)
         )
+        # BUG-3375: last observed process cwd, refreshed each main-loop iteration
+        # when `working_dir` is unset. `os.getcwd()` cannot report a path once it
+        # starts raising FileNotFoundError, so this is the only way to name the
+        # vanished directory in that (top-level executor) case.
+        self._last_known_cwd: str | None = None
 
         # Shutdown flag for graceful signal handling
         self._shutdown_requested = False
@@ -643,6 +651,53 @@ class FSMExecutor:
 
                 # Get current state config
                 state_config = self.fsm.states[self.current_state]
+
+                # BUG-3375: primary detector for a vanished working directory.
+                # Placed ahead of the terminal-state check below (an action-less
+                # `terminal: true` state must not finish "terminal" and hide the
+                # vanish) and ahead of the retry-tracking block (a doomed
+                # iteration must not mutate retry counters). `working_dir` is
+                # set only for `loop:` children with an attached `worktree:`;
+                # every other executor (top-level `ll-loop run`/`resume`,
+                # ll-parallel workers running `ll-loop run` with cwd=worktree)
+                # has it as None and is covered by the os.getcwd() fallback,
+                # which raises FileNotFoundError once its cwd is unlinked.
+                if self.working_dir is not None:
+                    workdir_vanished = not Path(self.working_dir).exists()
+                    vanished_path = str(self.working_dir)
+                else:
+                    try:
+                        self._last_known_cwd = os.getcwd()
+                        workdir_vanished = False
+                        vanished_path = self._last_known_cwd
+                    except FileNotFoundError:
+                        workdir_vanished = True
+                        vanished_path = self._last_known_cwd or "<unknown>"
+                if workdir_vanished:
+                    error_msg = f"Working directory vanished mid-run: {vanished_path}"
+                    try:
+                        self._emit(
+                            WORKDIR_VANISHED_EVENT,
+                            {"state": self.current_state, "path": vanished_path},
+                        )
+                        return self._finish(WORKDIR_VANISHED_EVENT, error=error_msg)
+                    except OSError:
+                        # BUG-3375 step 1c: the run's own event/state sink lived
+                        # inside the vanished directory (e.g. an ll-parallel
+                        # worker's `.loops` under its worktree) — _finish's
+                        # loop_complete write raised. Never let that degrade
+                        # into an unhandled traceback; report cleanly instead.
+                        print(error_msg, file=sys.stderr)
+                        return ExecutionResult(
+                            final_state=self.current_state,
+                            iterations=self.iteration,
+                            terminated_by=WORKDIR_VANISHED_EVENT,
+                            duration_ms=_now_ms() - self.start_time_ms + self.elapsed_offset_ms,
+                            captured=self.captured,
+                            failure_terminal=False,
+                            error=error_msg,
+                            messages=list(self.messages),
+                        )
 
                 # Update per-state retry tracking based on transition from previous iteration.
                 # If re-entering the same state consecutively, increment retry count.
@@ -1159,7 +1214,9 @@ class FSMExecutor:
         if state.capture:
             if child_result.terminated_by == "terminal":
                 _child_verdict = "no" if child_result.failure_terminal else "yes"
-            elif child_result.terminated_by == "error":
+            elif child_result.terminated_by in ("error", "workdir_vanished"):
+                # BUG-3375: a vanished working directory is a child death, not a
+                # concluded "no" — same verdict bucket as a runtime error.
                 _child_verdict = "error"
             else:
                 _child_verdict = "no"
@@ -1173,8 +1230,11 @@ class FSMExecutor:
             else:
                 # Reached a terminal declared (or defaulted) failure: true
                 return interpolate(state.on_no, ctx) if state.on_no else None
-        elif child_result.terminated_by == "error":
-            # Runtime child failure (not a YAML load error)
+        elif child_result.terminated_by in ("error", "workdir_vanished"):
+            # Runtime child failure (not a YAML load error). BUG-3375: a
+            # vanished working directory joins this branch rather than the
+            # on_no catch-all below — the child didn't conclude "no", it died,
+            # and only this branch preserves the missing-path message.
             if child_result.error:
                 self.captured.setdefault(self.current_state, {})["error"] = child_result.error
             if state.on_error:

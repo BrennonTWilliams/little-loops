@@ -5062,6 +5062,23 @@ class TestLoopFleet:
         event = {"event": "loop_complete", "terminated_by": "terminal", "error": "timeout"}
         assert _derive_loop_outcome(event) == "error"
 
+    def test_derive_outcome_workdir_vanished_with_error(self) -> None:
+        """BUG-3375: terminated_by=workdir_vanished with an error key present
+        (the normal case — _finish always passes error= for this abort) hits
+        the `"error" in event` branch before terminated_by is even inspected."""
+        event = {
+            "event": "loop_complete",
+            "terminated_by": "workdir_vanished",
+            "error": "Working directory vanished mid-run: /tmp/worktree",
+        }
+        assert _derive_loop_outcome(event) == "error"
+
+    def test_derive_outcome_workdir_vanished_without_error(self) -> None:
+        """BUG-3375: the explicit workdir_vanished branch is belt-and-suspenders
+        — still "error" even if an `error` key were somehow absent."""
+        event = {"event": "loop_complete", "terminated_by": "workdir_vanished"}
+        assert _derive_loop_outcome(event) == "error"
+
     def test_parse_terminal_event_finds_loop_complete(self, tmp_path) -> None:
         """_parse_terminal_event returns the loop_complete record."""
         events_file = tmp_path / "events.jsonl"

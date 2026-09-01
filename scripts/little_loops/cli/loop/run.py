@@ -661,4 +661,13 @@ def cmd_run(
         if executor is not None:
             executor.close_transports()
         if not getattr(args, "no_lock", False):
-            lock_manager.release(fsm.name, instance_id=instance_id)
+            try:
+                lock_manager.release(fsm.name, instance_id=instance_id)
+            except OSError:
+                # BUG-3375: the lock dir can vanish along with the working
+                # directory (workdir_vanished abort); the abort must still
+                # surface cleanly rather than raising out of the finally block.
+                logger.warning(
+                    f"workdir_vanished: could not release lock for '{fsm.name}' — "
+                    "its lock directory vanished with the working directory"
+                )

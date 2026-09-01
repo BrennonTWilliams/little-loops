@@ -4,9 +4,10 @@ type: BUG
 title: autodev cascades Errno 2 into clean terminal exit and silently abandons queue
   when worktree vanishes
 priority: P2
-status: open
+status: done
 discovered_by: claude-code-review
 discovered_date: '2026-09-01'
+completed_at: '2026-09-01T23:48:53Z'
 relates_to:
 - BUG-3373
 - ENH-3374
@@ -413,6 +414,63 @@ based automation (`autodev`, `auto-refine-and-implement`,
 - `CONTRIBUTING.md` § Event Schema Maintenance
 - `docs/reference/DEFERRAL_CODES.md`
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-01
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/fsm/executor.py`: pre-dispatch working-directory
+  existence check at the top of `run()`'s main loop (before the terminal
+  check), with an `os.getcwd()` fallback for `working_dir=None` executors;
+  aborts via `_finish("workdir_vanished", error=...)`, guarded by
+  `try/except OSError` so a vanished persistence sink degrades to a clean
+  `ExecutionResult` instead of an unhandled traceback. `_execute_sub_loop`'s
+  verdict-derivation and routing now join `workdir_vanished` to the `error`
+  branch.
+- `scripts/little_loops/fsm/persistence.py`: `PersistentExecutor.run()` wraps
+  `save_state`/`archive_run` in `try/except OSError` when
+  `terminated_by == "workdir_vanished"`.
+- `scripts/little_loops/cli/loop/run.py`: `lock_manager.release` wrapped the
+  same way in `cmd_run`'s `finally` block.
+- `scripts/little_loops/cli/loop/_helpers.py`: added an explicit
+  `"workdir_vanished": 1` entry to `EXIT_CODES`.
+- `scripts/little_loops/cli/logs.py`: `_derive_loop_outcome()` gained a
+  defensive `workdir_vanished → "error"` branch (belt-and-suspenders; the
+  `"error" in event` branch already covers it).
+- `scripts/little_loops/fsm/types.py`, `generate_schemas.py`,
+  `observability/schema.py`: registered the new `workdir_vanished` event
+  (`WorkdirVanishedVariant`, `SCHEMA_DEFINITIONS` entry) per the Event Schema
+  Maintenance procedure; regenerated
+  `docs/reference/schemas/workdir_vanished.json`.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml`: `record_error`
+  drops an `infra-workdir-vanished` marker when
+  `${captured.delegate.terminated_by?}` is `workdir_vanished`; `finalize`
+  derives `verdict=infra-worktree-vanished` from that marker (taking
+  precedence over `incomplete-abandoned`) and added it to the exit-1 routing
+  arm and the `finalize_incomplete` message.
+- Docs: `docs/guides/LOOPS_GUIDE.md`, `docs/reference/API.md`,
+  `docs/observability/des-audit.md` updated for the new `terminated_by`
+  value / event.
+- Tests: `test_fsm_executor.py` (6 new tests — mid-run vanish, action-less
+  terminal state, iteration-one missing dir, `os.getcwd()` fallback, sub-loop
+  routing, `PersistentExecutor` clean-abort), `test_cli_loop_lifecycle.py`,
+  `test_ll_logs.py`, `test_builtin_loops.py` (structural + finalize-harness
+  precedence test), `test_generate_schemas.py` (count bump + enumerated set).
+
+### Verification Results
+
+- Tests: PASS (`python -m pytest scripts/tests/` — 22340 passed, 42 skipped,
+  2 pre-existing unrelated failures on `main` before this change: an
+  evidence-verification gate and a decision-rules corpus differential test,
+  both triggered by an unrelated FEAT-3372 issue file, confirmed via
+  `git stash`)
+- Lint: PASS (`ruff check`, `ruff format --diff` clean on all touched files)
+- Types: PASS (`mypy` clean on all touched modules)
+- `ll-loop validate auto-refine-and-implement`: valid, no new MR-11 warnings
+
 ## Status
 
 **Open** | Created: 2026-09-01 | Priority: P2
@@ -455,6 +513,7 @@ _Added by `/ll:confidence-check` on 2026-09-01_
 - Several dependent-file consumers were reasoned through individually as "no code change needed" (map_final_status default fallback, EXIT_CODES via FAILURE_TERMINAL_EXIT_CODE, etc.) rather than exercised by a test asserting that reasoning holds — mitigate by adding the `workdir_vanished` case to `test_cli_loop_lifecycle.py` already suggested in the Wiring Phase notes to close this gap for at least one consumer
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-01T23:48:37 - `8acc57aa-edd5-4430-8650-0d238b555b28.jsonl`
 - `/ll:confidence-check` - 2026-09-01T23:00:58 - `d205b9bc-a0cb-4b8a-88a1-5ab0188c6d97.jsonl`
 - Manual review 2026-09-01 (pre-implementation, round 5): two fixes. (1) Step 1c rewritten — its premise was wrong (`cmd_run` already resolves `loops_dir` at `run.py:103`, BUG-2386) and absolute paths would not help anyway, since a worker's `.loops`, `run_dir`, and lock dir live *inside* the vanished worktree. Replaced with `OSError` guards on the `workdir_vanished` abort path (`run()` `_finish` call, `PersistentExecutor.run` `save_state`/`archive_run`, `cmd_run` `lock_manager.release`); deliverable for that case is now "exit 1, stderr names the path, no traceback". Step 4's persistence variant now requires `loops_dir` inside the deleted cwd and no longer asserts `events.jsonl` contents; the `test_fsm_persistence.py` `.resolve()` test is dropped. (2) `record_error` needs two MR-11 markers (one per `${captured.delegate.*}` variable), following `delegate_failed`'s precedent. Also noted: place the step 1 check immediately after `state_config = self.fsm.states[...]` (`executor.py:645`), ahead of the retry-tracking block.
 - `/ll:confidence-check` - 2026-09-01T22:40:47 - `c86491ed-c494-4931-ae71-56c1f8ef7cbb.jsonl`
