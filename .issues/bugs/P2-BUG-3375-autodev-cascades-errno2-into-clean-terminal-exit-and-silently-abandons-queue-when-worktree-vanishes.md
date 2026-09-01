@@ -76,11 +76,21 @@ diagnosable from the verdict instead of a full events.jsonl replay.
 In `scripts/little_loops/fsm/executor.py`:
 
 1. **Primary detector — pre-dispatch existence check in `run()`'s main
-   loop.** Immediately before each state dispatch (next to the existing
-   `_check_host_guard` call, `executor.py:744`), if `self.working_dir` is
-   set and `Path(self.working_dir).exists()` is `False`, short-circuit to
-   `self._finish("workdir_vanished", error=...)`. This is one `stat` per
-   state and covers **every** action type. It must be the primary detector
+   loop.** At the **top of each main-loop iteration, before the terminal-state
+   check** (`executor.py:665`, `if state_config.terminal:`) — NOT next to
+   `_check_host_guard` at `executor.py:743`, which runs *after* the terminal
+   check returns `_finish("terminal")`. If the check sat at 743, a vanish
+   during the last non-terminal action whose `on_error`/`on_failure` routes
+   straight to an action-less `terminal: true` state would finish as
+   `terminated_by="terminal"` and the abort would never fire. If
+   `self.working_dir` is set and `Path(self.working_dir).exists()` is
+   `False`, short-circuit to `self._finish("workdir_vanished",
+   error=f"Working directory vanished mid-run: {self.working_dir}")` —
+   **always pass `error=`**; downstream outcome derivation keys on it (see
+   step 2b). Accepted edge case: a loop whose own final action legitimately
+   removes its working dir will now abort as `workdir_vanished` instead of
+   finishing `terminal`. This is one `stat` per state and covers **every**
+   action type. It must be the primary detector
    because the Popen-site approach alone cannot work: `DefaultActionRunner`'s
    prompt-mode branch (`runners.py:232-272`) wraps `run_claude_command` in a
    bare `except Exception` and returns `ActionResult(exit_code=1,
@@ -106,22 +116,59 @@ In `scripts/little_loops/fsm/executor.py`:
    `.json` → `DESVariant` in `observability/schema.py`; update the
    `test_generate_schemas.py` count literals and
    `test_des_schema.py`/`test_des_audit.py` expectations).
-3. Let parent sub-loops observe the child's distinct terminal
-   (`terminated_by`/verdict plumbing already read by
-   `auto-refine-and-implement`'s `delegate_failed` state) so the sprint
-   verdict names the real cause. **No special parent propagation.** In the
+2b. **`failure_terminal` is `False` for this abort — plan accordingly.**
+   `_finish()` (`executor.py:3838-3841`) computes `failure_terminal =
+   terminated_by == "terminal" and <state in failure states>`, so
+   `workdir_vanished` behaves like `host_pressure_abort`/`stall_detected`:
+   `failure_terminal=False`. Consequences (each verified 2026-09-01):
+   - `cli/loop/_helpers.py` exit code is **not** `FAILURE_TERMINAL_EXIT_CODE`
+     (2); it falls to `EXIT_CODES.get(terminated_by, 1)` → 1. Add an explicit
+     `"workdir_vanished": 1` entry to `EXIT_CODES` (lines 69-82) so the
+     mapping is deliberate, not a default.
+   - `cli/logs.py::_derive_loop_outcome()` already returns `"error"` because
+     its first line is `if "error" in event: return "error"` and `_finish`
+     writes `error` into the `loop_complete` payload whenever `error=` is
+     passed. The explicit `workdir_vanished → "error"` branch is
+     belt-and-suspenders; keep it, and add a test asserting the
+     `loop_complete` event carries `error`.
+   - `fsm/persistence.py::map_final_status()` default fallback → `"failed"`
+     — correct, no change.
+3. **Parent routing: treat it like `error`, not the `on_no` catch-all.** In
+   `_execute_sub_loop` (`executor.py:1176-1181`) extend the
+   `terminated_by == "error"` branch to
+   `terminated_by in ("error", "workdir_vanished")`. That branch captures
+   `child_result.error` (which names the missing path) into
+   `${captured.<state>.error}`, sets the capture verdict to `"error"`, and
+   routes `on_error` when declared (falling back to `on_no`). The else-branch
+   (`1191-1196`) would instead route `on_no` with verdict `"no"` and drop the
+   error string — but the child never *concluded* "no"; it died. Every
+   consumer YAML already wires `on_error` as "child died" (e.g. autodev's
+   `on_error: check_decide_rate_limited`), so this lands in the right place.
+   Update the verdict-derivation block at `1163-1169` to match. In the
    incident the parent (`sprint-refine-and-implement`) ran from the project
-   root, whose cwd was intact; only the sub-loops' cwd vanished. The
-   existing catch-all else-branch in `_execute_sub_loop`
-   (`executor.py:1191-1196`) routing unknown `terminated_by` values to
-   `on_no` is the correct behaviour for that case. When a parent *shares*
-   the vanished dir, its own pre-dispatch check (step 1) aborts it at the
-   next dispatch. Add `workdir_vanished` to that else-branch's comment list.
+   root, whose cwd was intact; only the sub-loops' cwd vanished. When a
+   parent *shares* the vanished dir, its own pre-dispatch check (step 1)
+   aborts it at the next dispatch regardless of routing.
+3b. **Name the cause in the sprint verdict** (this is Expected Behavior #3;
+   without it the run still finalizes as `incomplete-abandoned`). In
+   `scripts/little_loops/loops/auto-refine-and-implement.yaml`'s
+   `delegate_failed` `case` on `${captured.delegate.terminated_by}` (lines
+   342-379), add a `workdir_vanished)` arm that writes a marker file under
+   `${context.run_dir}/` (e.g. `infra-workdir-vanished`) before continuing
+   to the existing residual fold-back, and have the finalize state (lines
+   ~1102-1125) emit `verdict=infra-worktree-vanished` when that marker is
+   present, taking precedence over `incomplete-abandoned`. Keep the abandoned
+   count in the JSON so the truncation is still quantified.
 4. Tests in `scripts/tests/test_fsm_executor.py`: delete the executor's
    working dir mid-run (after the first state) and assert the loop
-   terminates with the new failure terminal after at most one further
-   dispatch attempt, with the new event emitted — instead of walking its
-   remaining states.
+   terminates with `terminated_by="workdir_vanished"`,
+   `failure_terminal=False`, `error` naming the path, the new event emitted,
+   and **zero `action_error` events after the first post-vanish route** —
+   pin the cascade shape, not just "at most one further dispatch". Add a
+   second test where the state after the vanish is an action-less
+   `terminal: true` state, proving the check fires before the terminal
+   check (step 1 placement). Add a sub-loop test asserting the parent
+   routes `on_error` and captures `error`/`verdict="error"` (step 3).
 
 ### Codebase Research Findings
 
@@ -133,7 +180,10 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (lines 1968-1987) — add an explicit branch mapping `workdir_vanished` to `"error"` (decided: an infrastructure loss is not a loop-logic failure and must not inflate the `"failed"` bucket in fleet rollups; `"error"` is the existing bucket for non-loop-logic termination and needs no new consumer wiring); without it, the run falls through to the `final_state` keyword-substring fallback and is misclassified as `"converged"` in `ll-loop history`/`ll-logs loop-fleet` rollups
+- Update `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (lines 1968-1987) — add an explicit branch mapping `workdir_vanished` to `"error"` (decided: an infrastructure loss is not a loop-logic failure and must not inflate the `"failed"` bucket in fleet rollups). **Correction 2026-09-01**: this is belt-and-suspenders, not load-bearing — the function's first line `if "error" in event: return "error"` already classifies the run as `"error"` because `_finish(..., error=...)` writes `error` into `loop_complete`. The "misclassified as converged" risk only materializes if the abort omits `error=`, which Proposed Solution step 1 forbids.
+- Add `"workdir_vanished": 1` to `EXIT_CODES` in `scripts/little_loops/cli/loop/_helpers.py` (lines 69-82). `failure_terminal` is `False` for this abort (see Proposed Solution 2b), so `FAILURE_TERMINAL_EXIT_CODE` does not apply; today the value would only reach 1 via the `.get(..., 1)` default.
+- Extend the `terminated_by == "error"` branch of `_execute_sub_loop` (`executor.py:1176-1181`) and the verdict-derivation block (`1163-1169`) to include `workdir_vanished` (Proposed Solution step 3).
+- Add a `workdir_vanished)` arm to `auto-refine-and-implement.yaml`'s `delegate_failed` case and a matching `infra-worktree-vanished` verdict in its finalize state (Proposed Solution step 3b).
 - Add a Popen-raises-`FileNotFoundError` test to `scripts/tests/test_fsm_runners.py::TestDefaultActionRunnerShellPath` for the `runners.py` shell-branch site (no such test exists there today)
 - Bump the four `== 58` count literals in `scripts/tests/test_generate_schemas.py` (lines 21, 114, 121, 250) to `59`
 - Add a `workdir_vanished` row to `docs/guides/LOOPS_GUIDE.md`'s `terminated_by` exit-reasons table (lines 907-921)
@@ -152,22 +202,24 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/observability/schema.py` — new `DESVariant` subclass following `StallDetectedVariant`/`HostPressureAbortVariant` (lines 207-211, 406-410), registered in the `DES_VARIANTS` tuple
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/logs.py` — `_derive_loop_outcome()` (lines 1968-1987) is a closed if/elif chain (`max_steps`/`max_iterations_reached` → `"max-steps"`, `cycle_detected` → `"stalled"`, `interrupted`/`handoff`/`timeout`/`user_stopped` → `"interrupted"`, `system_signal` → `"signal"`) with no branch for the new value; without one, `workdir_vanished` falls through to the `final_state` keyword-substring fallback and is silently misclassified as `"converged"` in `ll-loop history`/`ll-logs loop-fleet` rollups unless the landing state's name happens to contain `fail`/`error`/`abort` [Agent 2 finding]
+- `scripts/little_loops/cli/logs.py` — `_derive_loop_outcome()` (lines 1968-1987) is a closed if/elif chain (`max_steps`/`max_iterations_reached` → `"max-steps"`, `cycle_detected` → `"stalled"`, `interrupted`/`handoff`/`timeout`/`user_stopped` → `"interrupted"`, `system_signal` → `"signal"`) with no branch for the new value [Agent 2 finding]. **Corrected 2026-09-01**: the chain is preceded by `if "error" in event: return "error"`, so a `workdir_vanished` abort that passes `error=` is already bucketed `"error"`; the explicit branch is defensive only.
+- `scripts/little_loops/cli/loop/_helpers.py` — `EXIT_CODES` (lines 69-82) needs an explicit `"workdir_vanished": 1` entry; see Proposed Solution 2b.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `delegate_failed` (lines 342-379) and the finalize verdict block (~1102-1125) need the `workdir_vanished` arm / `infra-worktree-vanished` verdict; see Proposed Solution 3b.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `delegate_failed` state (lines 342-379) already reads `${captured.delegate.terminated_by}` in a `case` statement; its `*` branch currently folds all non-`terminal` `terminated_by` values into `recheck_set` — a new abort kind falls into this existing catch-all unless the case list is deliberately extended
-- `scripts/little_loops/fsm/executor.py::_execute_sub_loop` (lines 914-1196) — captures `child_result.terminated_by`/`failure_terminal` for any parent loop observing a sub-loop's outcome (lines 1147-1196)
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `delegate_failed` state (lines 342-379) already reads `${captured.delegate.terminated_by}` in a `case` statement; its `*` branch currently folds all non-`terminal` `terminated_by` values into `recheck_set`. **Decided 2026-09-01: extend the case list** with a `workdir_vanished)` arm (Proposed Solution 3b) — otherwise the run still finalizes `incomplete-abandoned` and Expected Behavior #3 is unmet
+- `scripts/little_loops/fsm/executor.py::_execute_sub_loop` (lines 914-1196) — captures `child_result.terminated_by`/`failure_terminal` for any parent loop observing a sub-loop's outcome (lines 1147-1196). **Decided 2026-09-01**: `workdir_vanished` joins the `error` branch (1176-1181), not the else-branch — see Proposed Solution step 3
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` (lines 1036-1041) — `case "${captured.confidence_check.failure_terminal?}:${captured.confidence_check.terminated_by?}" in True:*|*:error|*:timeout|*:max_steps)` — the `True:*` arm already catches any `failure_terminal=True` terminal, so a `workdir_vanished` classification is caught automatically here with no code change; this is a second sub-loop-delegation consumer beyond `auto-refine-and-implement.yaml`'s `delegate_failed`, and is one of the loops the BUG-3373/BUG-3375 incident itself ran (`sprint-refine-and-implement` → `refine-to-ready-issue`) [Agent 1/2 finding]
-- `scripts/little_loops/fsm/persistence.py::map_final_status()` (lines 132-168) — canonical `(terminated_by, failure_terminal)` → persisted `LoopState.status` mapper; its default fallback already returns `"failed"` for any unrecognized `terminated_by`, so `workdir_vanished` is auto-covered with no code change [Agent 1/2 finding]
-- `scripts/little_loops/cli/loop/_helpers.py` — `EXIT_CODES` dict (lines 69-82) and `_is_success()` (1917-1920); since the new terminal sets `failure_terminal=True`, the exit-code path is auto-covered via `FAILURE_TERMINAL_EXIT_CODE` (checked before `EXIT_CODES` is consulted) — no change needed [Agent 2 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` (lines 1036-1041) — `case "${captured.confidence_check.failure_terminal?}:${captured.confidence_check.terminated_by?}" in True:*|*:error|*:timeout|*:max_steps)`. **Corrected 2026-09-01**: the `True:*` arm does NOT catch this — `failure_terminal` is `False` for a non-`terminal` abort (Proposed Solution 2b), so the value is `False:workdir_vanished` and matches no arm. Moot in practice: `confidence_check` is a `loop:` child sharing the parent's `working_dir`, so the parent's own pre-dispatch check aborts it before this state can run. No change needed, but not for the reason originally stated. This is one of the loops the BUG-3373/BUG-3375 incident itself ran (`sprint-refine-and-implement` → `refine-to-ready-issue`) [Agent 1/2 finding]
+- `scripts/little_loops/fsm/persistence.py::map_final_status()` (lines 132-168) — canonical `(terminated_by, failure_terminal)` → persisted `LoopState.status` mapper; its default fallback already returns `"failed"` for any unrecognized `terminated_by`, so `workdir_vanished` is auto-covered with no code change [Agent 1/2 finding; re-verified 2026-09-01]
+- `scripts/little_loops/cli/loop/_helpers.py` — `EXIT_CODES` dict (lines 69-82) and `_is_success()` (1917-1920). **Corrected 2026-09-01**: `failure_terminal` is `False` here, so `FAILURE_TERMINAL_EXIT_CODE` does NOT apply; the exit code reaches 1 only via `EXIT_CODES.get(..., 1)`. Add an explicit `"workdir_vanished": 1` entry [Agent 2 finding, corrected]
 - `scripts/little_loops/cli/loop/info.py`, `scripts/little_loops/cli/loop/audit.py`, `scripts/little_loops/cli/loop/testing.py` — all pass `terminated_by` through verbatim (f-string/dict field); display correctly for any new string value with no change needed [Agent 1/2 finding]
 - `scripts/little_loops/testing.py` — imports `ExecutionResult, FSMExecutor`; wraps `FSMExecutor` in a `PersistentExecutor`-style class whose `.run()`/`.resume()` return `ExecutionResult` [Agent 1 finding]
 - `scripts/little_loops/extension.py` — imports `FSMExecutor, RouteContext, RouteDecision`; type-annotates executor fields [Agent 1 finding]
 - `scripts/little_loops/cli/loop/lifecycle.py` — indirect consumer via `persistence.py`'s `map_final_status` (instantiates `PersistentExecutor`, line 728) [Agent 1 finding]
 - `scripts/little_loops/history_reader.py::_WASTED_RUN_PREDICATE` (lines 1011-1017) — SQL `IN (...)` list with an `OR lr.failure_terminal = 1` arm auto-covers the new terminal for `waste_attribution()` token-waste rollups, no change needed [Agent 2 finding]
-- `scripts/little_loops/parallel/worker_pool.py`, `scripts/little_loops/learning_tests/gate.py`, `scripts/little_loops/cli/queue.py` — branch on the `FAILURE_TERMINAL_EXIT_CODE` (`=2`) of a `ll-loop run <subloop>` subprocess, not on the `terminated_by` string — a workdir-vanished sub-loop surfaces as `"blocked"`/`"terminal failure"`, the same bucket as any other `failure: true` terminal; no change needed but these are affected consumers [Agent 2 finding]
+- `scripts/little_loops/parallel/worker_pool.py`, `scripts/little_loops/learning_tests/gate.py`, `scripts/little_loops/cli/queue.py` — branch on the exit code of a `ll-loop run <subloop>` subprocess, not on the `terminated_by` string. **Corrected 2026-09-01**: a workdir-vanished sub-loop exits 1 (not `FAILURE_TERMINAL_EXIT_CODE`=2, since `failure_terminal` is `False`), so it lands in the generic non-zero bucket alongside `max_steps`/`timeout`/`stall_detected`, NOT the `"blocked"`/`"terminal failure"` bucket. No change needed but these are affected consumers [Agent 2 finding, corrected]
 
 ### Conventions in Force
 - Every distinct infra-abort kind in this codebase follows a `_pending_*` flag set deep in the call stack, checked in `run()`'s main loop, short-circuiting to `self._finish(<new terminated_by>, error=...)` — evidence: `_check_host_guard`/`HOST_PRESSURE_ABORT_EVENT` (`executor.py:3527-3601`, `744-748`), `_check_cost_ceiling`/cost-ceiling event (`3603-3683`, `825-834`), the stall detector/`STALL_DETECTED_EVENT` (`774-784`)
@@ -182,7 +234,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_runners.py` — `TestDefaultActionRunnerShellPath` (lines 226-460) covers the shell-branch Popen call this issue targets (`runners.py:298-306`) but no existing test makes `Popen` raise — every test there patches `Popen` with `return_value=mock_process`. Add a `patch("subprocess.Popen", side_effect=FileNotFoundError(2, "No such file or directory", "..."))` test here, paired with a `working_dir` pointed at a deleted `tmp_path` subdirectory, following the same shape as `test_fsm_executor.py`'s `test_current_process_cleared_after_successful_run`/`_after_timeout` (lines 5348-5400). This is a second implementation-site test file this issue's Proposed Solution step 4 didn't separately call out [Agent 3 finding]
 - `scripts/tests/test_generate_schemas.py` — the hardcoded `assert len(SCHEMA_DEFINITIONS) == 58` / `len(files) == 58` / `len(list(output_dir.glob("*.json"))) == 58` (×2) at lines 21, 114, 121, 250 all need bumping to `59`; `scripts/tests/test_des_schema.py` is set-relational (`>=`/set-difference) and self-adjusts with no literal to bump; `scripts/tests/test_des_audit.py` exercises `main_verify_des_audit()` generically and requires no manual update, only that the new `_emit("workdir_vanished", ...)` call site gets a matching registered `DESVariant` [Agent 2/3 finding]
-- `scripts/tests/test_cli_loop_lifecycle.py` — mocks `PersistentExecutor`/`map_final_status` routing via `mock_result.terminated_by = "..."`/`failure_terminal = ...` (e.g. lines 669-870); consider adding a `workdir_vanished` case to confirm it maps to `"failed"` status through the existing fallback [Agent 1 finding]
+- `scripts/tests/test_cli_loop_lifecycle.py` — mocks `PersistentExecutor`/`map_final_status` routing via `mock_result.terminated_by = "..."`/`failure_terminal = ...` (e.g. lines 669-870); add a `workdir_vanished` case (with `failure_terminal=False`) asserting status `"failed"` AND exit code 1 — this pins both the `map_final_status` fallback and the `EXIT_CODES` entry [Agent 1 finding, strengthened 2026-09-01]
+- `scripts/tests/test_ll_logs.py` (exercises `_derive_loop_outcome`) — add a case with `terminated_by="workdir_vanished"` and an `error` key asserting `"error"`, plus one *without* `error` proving the explicit branch still yields `"error"`
+- `scripts/tests/test_builtin_loops.py` — add a structural assertion that `auto-refine-and-implement.yaml`'s `delegate_failed` case contains a `workdir_vanished)` arm and its finalize emits `infra-worktree-vanished`, so the YAML wiring in Proposed Solution 3b cannot silently regress
 - `scripts/tests/test_host_guard.py::TestExecutorPressureGate.test_abort_on_pressure` (lines 360-374) and `scripts/tests/test_cost_ceiling_enforcement.py::TestCostCeilingBreachAborts.test_breach_aborts_with_terminated_by` — closest existing `_pending_*`-abort-convention test shapes (assert `result.terminated_by == "<value>"` plus an event name present in captured events); useful as the E2E-level pattern to follow, though neither mocks `Popen` directly since neither originates from a Popen call [Agent 3 finding]
 
 ### Documentation
@@ -209,7 +263,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 `_execute_state` → `_run_action_or_route` → `_run_action` (`executor.py:2180`) → { `_run_subprocess` (mcp_tool actions) | `self.action_runner.run()` → `DefaultActionRunner.run()` shell branch (ordinary shell actions) } → `subprocess.Popen(cwd=...)` raises `FileNotFoundError` → caught generically by `_run_action_or_route` → routes via `state.on_error` → cascades until a `terminal: true` state → `run()` calls `_finish("terminal", ...)`. Established distinct-abort precedent to follow: `_check_host_guard`/`_check_cost_ceiling`/the stall detector each set a `_pending_*` flag checked in `run()`'s main loop (lines 744-834), short-circuiting straight to `self._finish(<new_terminated_by>, error=...)` before further states dispatch — the fix should add an equivalent `_pending_workdir_vanished`-style flag.
 
 ### Decision Rules
-- **Primary trigger (pre-dispatch)**: at the top of each `run()` main-loop iteration, `self.working_dir is not None and not Path(self.working_dir).exists()` → `_finish("workdir_vanished", ...)`. Action-type-agnostic; this is what catches prompt-mode states, whose launch failures are swallowed into `ActionResult(exit_code=1)` by `runners.py:232-272` and never raise.
+- **Primary trigger (pre-dispatch)**: at the top of each `run()` main-loop iteration, **before the `if state_config.terminal:` check at `executor.py:665`**, `self.working_dir is not None and not Path(self.working_dir).exists()` → `_finish("workdir_vanished", error=<path>)`. Action-type-agnostic; this is what catches prompt-mode states, whose launch failures are swallowed into `ActionResult(exit_code=1)` by `runners.py:232-272` and never raise. Placement before the terminal check matters: action-less terminal states return `_finish("terminal")` at 665 and never reach the `_check_host_guard` block at 743.
+- **`failure_terminal` stays `False`**: `_finish` only sets it for `terminated_by == "terminal"`. Consumers keyed on `failure_terminal` (`FAILURE_TERMINAL_EXIT_CODE`, the `True:*` case arm in `refine-to-ready-issue.yaml`) do not fire; consumers keyed on `terminated_by` or `error` do. Add `"workdir_vanished": 1` to `EXIT_CODES` explicitly.
+- **Parent routing**: `_execute_sub_loop` treats `workdir_vanished` like `error` — `on_error` when declared (else `on_no`), `${captured.<state>.error}` set to the child's message, capture verdict `"error"`. Rationale: the child did not conclude "no"; it died, and only the `error` branch preserves the missing path for the parent.
 - **Secondary trigger (optional, Popen sites)**: a `FileNotFoundError` at `executor.py:2559` or `runners.py:298` is a vanished-cwd failure iff `exc.filename == str(working_dir)`. Verified 2026-09-01: CPython sets `.filename` to the cwd when the child's `chdir` fails (both `shell=True` and `shell=False`) and to the executable name when the command is missing — so `filename` discriminates precisely, whereas a post-hoc `exists()` check is racy and errno alone is ambiguous. Escape hatch: if `working_dir` is `None` or `exc.filename` names something other than the cwd, the failure is NOT reclassified — it falls through to the existing generic `action_error`/`on_error` path unchanged.
 - **Outcome bucket**: `_derive_loop_outcome()` maps `workdir_vanished` → `"error"`, not `"failed"` (see Wiring Phase). `FailureType.INFRA_RETRY`/`classify_failure` (`issue_lifecycle.py:141-159`) is a different, incompatible convention — it operates on a completed `ActionResult`'s stderr/exit-code text and retries in place, and cannot apply here since a Popen launch failure never produces an `ActionResult`.
 
@@ -269,6 +325,7 @@ _Added by `/ll:confidence-check` on 2026-09-01_
 - Several dependent-file consumers were reasoned through individually as "no code change needed" (map_final_status default fallback, EXIT_CODES via FAILURE_TERMINAL_EXIT_CODE, etc.) rather than exercised by a test asserting that reasoning holds — mitigate by adding the `workdir_vanished` case to `test_cli_loop_lifecycle.py` already suggested in the Wiring Phase notes to close this gap for at least one consumer
 
 ## Session Log
+- Manual review 2026-09-01 (pre-implementation): corrected four wiring claims that assumed `failure_terminal=True` (`_finish` only sets it for `terminated_by="terminal"`): exit code is 1 via a new explicit `EXIT_CODES` entry, not `FAILURE_TERMINAL_EXIT_CODE`; `refine-to-ready-issue.yaml`'s `True:*` arm does not match; worker_pool/queue/gate see the generic non-zero bucket. Noted `_derive_loop_outcome` already returns `"error"` via the `error` key. Moved the pre-dispatch check ahead of the terminal-state check (`executor.py:665`). Decided parent routing joins the `error` branch of `_execute_sub_loop`, and added step 3b (`delegate_failed` arm + `infra-worktree-vanished` verdict) to satisfy Expected Behavior #3. Strengthened test criteria.
 - `/ll:confidence-check` - 2026-09-01T21:40:51 - `4b16ef85-c362-493d-849c-c846475b72fa.jsonl`
 - Manual review 2026-09-01: pre-dispatch existence check made the primary detector (prompt-mode branch swallows launch failures, so Popen-site catching alone misses most states); `exc.filename == cwd` discriminator documented; sub-loop propagation rule stated (none needed); `des-audit.md` confirmed hand-maintained; `_derive_loop_outcome` bucket decided as `"error"`.
 - `/ll:format-issue` - 2026-09-01T21:22:14 - `1d545f12-483a-4164-8eb9-869bb2218b10.jsonl`
