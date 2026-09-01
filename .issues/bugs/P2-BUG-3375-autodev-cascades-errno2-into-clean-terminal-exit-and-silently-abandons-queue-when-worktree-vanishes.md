@@ -102,9 +102,14 @@ In `scripts/little_loops/fsm/executor.py`:
    construct `FSMExecutor` without it, and the only `working_dir=` in
    `cli/loop/` is `testing.py:260` — so a `self.working_dir is not None`
    guard alone would skip every `ll-loop run` (including ll-parallel workers
-   running inside a worktree, and `ll-loop resume` of a run whose worktree
-   is gone). Only `loop:` children with an attached `worktree:` carry a
-   non-`None` `working_dir`. Accepted edge cases: (a) a loop whose own final
+   running inside a worktree — the `worker_pool.py` subprocess runs
+   `ll-loop run` with `cwd=worktree_path`). `ll-loop resume` is NOT such a
+   case: it runs from the project root with `working_dir=None`, and the
+   worktree path is not persisted in `LoopState`, so nothing in a resume
+   references the vanished dir (corrected 2026-09-01, round 4). Only
+   `loop:` children with an attached `worktree:` carry a non-`None`
+   `working_dir`. **The fallback only works if step 1c lands with it** —
+   see below. Accepted edge cases: (a) a loop whose own final
    action legitimately removes its working dir will now abort as
    `workdir_vanished` instead of finishing `terminal`; (b) the check also
    fires on iteration one, so a `working_dir` that *never* existed reports
@@ -126,6 +131,31 @@ In `scripts/little_loops/fsm/executor.py`:
    test — the fanout that dragged outcome confidence down. The
    `exc.filename == str(working_dir)` discriminator is kept in Decision
    Rules for a future follow-up only; do not add the runners test.
+1c. **Make `LoopPersistence` paths absolute (added 2026-09-01, round 4) —
+   required for the `working_dir=None` fallback to be deliverable.** Under
+   `ll-loop run`, every persistence path is relative to the process cwd:
+   `LoopPersistence.__init__` sets `loops_dir = loops_dir or Path(".loops")`
+   (`fsm/persistence.py:491`) and derives `running_dir`/`state_file`/
+   `events_file` from it; `append_event` (`persistence.py:554`) calls
+   `_append_jsonl` (`persistence.py:208-224`), which `open(path, "a")`s per
+   event with no guard. Once the cwd is unlinked, `_finish("workdir_vanished")`
+   → `_emit("loop_complete")` → `_append_jsonl` raises `FileNotFoundError`;
+   that escapes `_finish`, hits `run()`'s outer `except Exception`
+   (`executor.py:911`), which calls `_finish("error")`, which raises again and
+   propagates out of `run()` as a traceback. `PersistentExecutor.run`'s
+   `save_state`/`archive_run` (`persistence.py:1253-1255`) fail the same way.
+   Net: the ll-parallel-worker case step 1's fallback exists for would crash
+   instead of reporting `workdir_vanished`, and the bare-`FSMExecutor` test in
+   step 4 (in-memory callback) would pass and hide it. Fix: resolve at
+   construction — `self.loops_dir = (loops_dir or Path(".loops")).resolve()` in
+   `LoopPersistence.__init__` — so the sink, state file, and archive keep
+   working after the cwd vanishes. Before landing, grep tests that construct
+   `LoopPersistence`/`PersistentExecutor` and then `chdir` (or `monkeypatch.chdir`)
+   and confirm none depend on `loops_dir` staying relative. The incident
+   topology itself is unaffected (child `run_dir` is anchored to the parent's
+   absolute run dir at `executor.py:1055-1060`, and the parent's cwd is the
+   project root), so this is only load-bearing for top-level runs inside a
+   worktree.
 2. On that classification, stop routing via the state's `on_error` edge:
    terminate the loop with a distinct failure terminal, emitting a new
    event (e.g. `workdir_vanished`) carrying the missing path and current
@@ -226,7 +256,12 @@ In `scripts/little_loops/fsm/executor.py`:
    routes `on_error` and captures `error`/`verdict="error"` (step 3). Add
    the iteration-one missing-dir test from step 1 edge case (b). Add a
    `working_dir=None` variant that deletes the process cwd (chdir into a
-   temp dir, `rmtree` it mid-run) to pin the `os.getcwd()` fallback.
+   temp dir, `rmtree` it mid-run) to pin the `os.getcwd()` fallback. **That
+   variant must run through `PersistentExecutor` (or a `LoopPersistence`
+   event sink), not a bare `FSMExecutor` with an in-memory callback (added
+   2026-09-01, round 4)** — assert `terminated_by == "workdir_vanished"`,
+   that `loop_complete` landed in `events.jsonl`, and that `save_state`/
+   `archive_run` succeeded; this is the only test that proves step 1c.
    **Nesting note (added 2026-09-01):** in the incident topology the abort
    fires in the grandchild (`refine-to-ready-issue`); `autodev` then routes
    its `refine` state's `on_error` once, and its own pre-dispatch check
@@ -258,8 +293,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Codebase Research Findings
 
 ### Files to Modify
-- `scripts/little_loops/fsm/executor.py` — `_run_subprocess` (Popen at `2559-2566`) and `_run_action_or_route` (`3344-3372`) need FileNotFoundError/vanished-cwd detection and a new abort path, analogous to `_check_host_guard`/`_check_cost_ceiling` (`3527-3601`, `3603-3683`) and the `run()` main-loop checks at lines `744-834`
-  > ⚠ Superseded — Proposed Solution step 1's `_run_subprocess_direct` does not exist in the repo; the actual site is `_run_subprocess` above (see § Codebase Research Findings under Proposed Solution)
+- `scripts/little_loops/fsm/executor.py` — the **only** executor change is the pre-dispatch existence check at the top of `run()`'s main loop, before the terminal check at `665` (Proposed Solution step 1), plus the `_execute_sub_loop` branch extensions (step 3). `_run_subprocess` (Popen at `2559-2566`) and `_run_action_or_route` (`3344-3372`) are **not** modified — step 1b was dropped 2026-09-01 (rewritten round 4; the earlier wording here predated that decision)
+- `scripts/little_loops/fsm/persistence.py` — `LoopPersistence.__init__` (`491`): resolve `loops_dir` to absolute so `append_event`/`save_state`/`archive_run` survive a vanished process cwd (Proposed Solution step 1c, added round 4)
 - `scripts/little_loops/fsm/runners.py` — **no change** (step 1b dropped 2026-09-01); listed for context only. Its shell branch (Popen at `298-306`) is one raising site; its prompt-mode branch (`232-272`) converts **any** launch failure into `ActionResult(exit_code=1)` and never raises, which is why the pre-dispatch check in `run()` is the required primary detector rather than Popen-site catching
 - `scripts/little_loops/fsm/types.py` — `ExecutionResult.terminated_by` docstring (lines 35-41) enumerates existing abort kinds; add the new value there
 - `scripts/little_loops/generate_schemas.py` — `SCHEMA_DEFINITIONS`; register the new event following the `"stall_detected"` entry (lines 383-395) as the pattern
@@ -298,6 +333,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_runners.py` — **no test added** (step 1b dropped 2026-09-01). Kept for reference: `TestDefaultActionRunnerShellPath` (lines 226-460) never makes `Popen` raise, so if 1b is ever revived, a `side_effect=FileNotFoundError(...)` test belongs there [Agent 3 finding, descoped]
 - `scripts/tests/test_generate_schemas.py` — the hardcoded `assert len(SCHEMA_DEFINITIONS) == 58` / `len(files) == 58` / `len(list(output_dir.glob("*.json"))) == 58` (×2) at lines 21, 114, 121, 250 all need bumping to `59`; `scripts/tests/test_des_schema.py` is set-relational (`>=`/set-difference) and self-adjusts with no literal to bump; `scripts/tests/test_des_audit.py` exercises `main_verify_des_audit()` generically and requires no manual update, only that the new `_emit("workdir_vanished", ...)` call site gets a matching registered `DESVariant` [Agent 2/3 finding]
+- `scripts/tests/test_fsm_persistence.py` (or wherever `LoopPersistence` is constructed directly) — add a test that builds `LoopPersistence` with the default relative `loops_dir` inside a temp cwd, deletes that cwd, and asserts `append_event` still writes; pins step 1c's `.resolve()`. Before adding, grep the suite for tests that construct `LoopPersistence`/`PersistentExecutor` and then `chdir` — any that rely on `loops_dir` staying relative must be adjusted (added round 4)
 - `scripts/tests/test_cli_loop_lifecycle.py` — mocks `PersistentExecutor`/`map_final_status` routing via `mock_result.terminated_by = "..."`/`failure_terminal = ...` (e.g. lines 669-870); add a `workdir_vanished` case (with `failure_terminal=False`) asserting status `"failed"` AND exit code 1 — this pins both the `map_final_status` fallback and the `EXIT_CODES` entry [Agent 1 finding, strengthened 2026-09-01]
 - `scripts/tests/test_ll_logs.py` (exercises `_derive_loop_outcome`) — add a case with `terminated_by="workdir_vanished"` and an `error` key asserting `"error"`, plus one *without* `error` proving the explicit branch still yields `"error"`
 - `scripts/tests/test_builtin_loops.py` — add a structural assertion that `auto-refine-and-implement.yaml`'s `record_error` action references `workdir_vanished` and `infra-workdir-vanished`, and that its finalize emits `infra-worktree-vanished`, so the YAML wiring in Proposed Solution 3b cannot silently regress. Sit it next to `test_delegate_crash_routes_to_record_error` (line ~4333), which already pins `delegate.on_error == record_error` — the routing assumption 3b depends on
@@ -325,7 +361,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `FSMExecutor._run_action_or_route(state: StateConfig, ctx: InterpolationContext) -> tuple[ActionResult | None, str | None]` (`executor.py:3344`) — the generic `except Exception as exc:` handler (line 3361) that currently intercepts both failure sites identically
 
 ### Call Path
-`_execute_state` → `_run_action_or_route` → `_run_action` (`executor.py:2180`) → { `_run_subprocess` (mcp_tool actions) | `self.action_runner.run()` → `DefaultActionRunner.run()` shell branch (ordinary shell actions) } → `subprocess.Popen(cwd=...)` raises `FileNotFoundError` → caught generically by `_run_action_or_route` → routes via `state.on_error` → cascades until a `terminal: true` state → `run()` calls `_finish("terminal", ...)`. Established distinct-abort precedent to follow: `_check_host_guard`/`_check_cost_ceiling`/the stall detector each set a `_pending_*` flag checked in `run()`'s main loop (lines 744-834), short-circuiting straight to `self._finish(<new_terminated_by>, error=...)` before further states dispatch — the fix should add an equivalent `_pending_workdir_vanished`-style flag.
+`_execute_state` → `_run_action_or_route` → `_run_action` (`executor.py:2180`) → { `_run_subprocess` (mcp_tool actions) | `self.action_runner.run()` → `DefaultActionRunner.run()` shell branch (ordinary shell actions) } → `subprocess.Popen(cwd=...)` raises `FileNotFoundError` → caught generically by `_run_action_or_route` → routes via `state.on_error` → cascades until a `terminal: true` state → `run()` calls `_finish("terminal", ...)`. Established distinct-abort precedent to follow: `_check_host_guard`/`_check_cost_ceiling`/the stall detector each set a `_pending_*` flag checked in `run()`'s main loop (lines 744-834), short-circuiting straight to `self._finish(<new_terminated_by>, error=...)` before further states dispatch. **This fix deliberately does NOT add a `_pending_*` flag (clarified 2026-09-01, round 4):** nothing deeper in the stack detects the condition, so the pre-dispatch check in step 1 calls `_finish("workdir_vanished", error=...)` directly from the main loop. It shares the precedents' *placement* (main-loop short-circuit before dispatch), not their flag mechanism.
 
 ### Decision Rules
 - **Primary trigger (pre-dispatch)**: at the top of each `run()` main-loop iteration, **before the `if state_config.terminal:` check at `executor.py:665`**, `(self.working_dir is not None and not Path(self.working_dir).exists()) or (self.working_dir is None and os.getcwd() raises FileNotFoundError)` → `_finish("workdir_vanished", error=<path>)`. The `None` arm is load-bearing: top-level `ll-loop run`/`resume` executors have `working_dir=None` (only `loop:` children with `worktree:` set it). Action-type-agnostic; this is what catches prompt-mode states, whose launch failures are swallowed into `ActionResult(exit_code=1)` by `runners.py:232-272` and never raise. Placement before the terminal check matters: action-less terminal states return `_finish("terminal")` at 665 and never reach the `_check_host_guard` block at 743.
@@ -384,13 +420,14 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 _Added by `/ll:confidence-check` on 2026-09-01_
 
 **Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 64/100 → LOW
+**Outcome Confidence**: 69/100 → PROCEED (re-scored b6373c410; the body previously still read 64, corrected round 4)
 
 ### Outcome Risk Factors
 - Broad enumeration across ~15+ touchpoints (executor.py, runners.py, types.py, generate_schemas.py, schema.py, logs.py, plus doc/test wiring) with no single verification grep or automated completeness test tying the full fanout together — Criterion D scored 10/25 (sites enumerated, no verification command) rather than 25/25
 - Several dependent-file consumers were reasoned through individually as "no code change needed" (map_final_status default fallback, EXIT_CODES via FAILURE_TERMINAL_EXIT_CODE, etc.) rather than exercised by a test asserting that reasoning holds — mitigate by adding the `workdir_vanished` case to `test_cli_loop_lifecycle.py` already suggested in the Wiring Phase notes to close this gap for at least one consumer
 
 ## Session Log
+- Manual review 2026-09-01 (pre-implementation, round 4): one real gap and three stale-text fixes. (1) The `working_dir=None`/`os.getcwd()` fallback from round 3 was undeliverable as written: `LoopPersistence` paths are cwd-relative (`persistence.py:491`) and `append_event` is unguarded, so `_finish("workdir_vanished")` would itself raise from the event sink and escape `run()` as a traceback. Added step 1c (resolve `loops_dir` absolute at construction) plus a persistence-backed cwd-deletion test. (2) Dropped the wrong "`ll-loop resume` of a run whose worktree is gone" example (resume runs from project root; worktree path is not persisted). (3) Rewrote Integration Map's first executor bullet, which still described the dropped step 1b Popen-site changes, and Program Design's Call Path, which still called for a `_pending_*` flag. (4) Confidence notes body said 64, frontmatter 69. All other cited line numbers re-verified against main.
 - Manual review 2026-09-01 (pre-implementation, round 3): three gaps closed. (1) finalize's `case "$VERDICT"` exit-1 arm and the `test_builtin_loops.py` finalize harness's `expected_rc` tuple must include `infra-worktree-vanished`, else the run exits 0 → green `done`. (2) The pre-dispatch check must fall back to `os.getcwd()` when `working_dir is None` — top-level `ll-loop run`/`resume` executors never set it, so the `is not None` guard alone would skip them. (3) `record_error`'s marker line needs `${captured.delegate.error?}` (optional) and an MR-11 `mr11-ok` annotation. Added the nesting note for test 4 (one `route` per level is expected) and a `working_dir=None` cwd-deletion test. Re-verified all cited line numbers against main today.
 - Manual review 2026-09-01 (pre-implementation, round 2): corrected Summary/Current Behavior/repro — both sub-loops ended at their `failed` terminal with `failure_terminal: true` (events.jsonl 571, 585), not a "clean" terminal; the defect is indistinguishability, not a clean exit. Named `auto-refine-and-implement` (not `sprint-refine-and-implement`) as the worktree-attaching parent. Fixed step 3/3b contradiction: `delegate.on_error` is `record_error`, so the marker moves there and `delegate_failed` is untouched. Dropped step 1b and the runners.py test. Added 3c (no re-dispatch recovery, scope boundary), the iteration-one missing-dir edge case, and the optional `EXIT_CODES` completeness note.
 - `/ll:confidence-check` - 2026-09-01T22:06:07 - `e7481ca4-ea29-4d74-85c9-acbd0706ed86.jsonl`
