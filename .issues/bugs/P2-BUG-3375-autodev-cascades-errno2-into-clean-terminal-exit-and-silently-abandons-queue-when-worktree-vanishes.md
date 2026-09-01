@@ -109,7 +109,7 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (lines 1968-1987) — add an explicit branch for `workdir_vanished` (e.g. mapping to a `"failed"`/infra-abort outcome); without it, the run falls through to the `final_state` keyword-substring fallback and is misclassified as `"converged"` in `ll-loop history`/`ll-loop fleet` rollups
+- Update `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (lines 1968-1987) — add an explicit branch for `workdir_vanished` (e.g. mapping to a `"failed"`/infra-abort outcome); without it, the run falls through to the `final_state` keyword-substring fallback and is misclassified as `"converged"` in `ll-loop history`/`ll-logs loop-fleet` rollups
 - Add a Popen-raises-`FileNotFoundError` test to `scripts/tests/test_fsm_runners.py::TestDefaultActionRunnerShellPath` for the `runners.py` shell-branch site (no such test exists there today)
 - Bump the four `== 58` count literals in `scripts/tests/test_generate_schemas.py` (lines 21, 114, 121, 250) to `59`
 - Add a `workdir_vanished` row to `docs/guides/LOOPS_GUIDE.md`'s `terminated_by` exit-reasons table (lines 907-921)
@@ -121,13 +121,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Files to Modify
 - `scripts/little_loops/fsm/executor.py` — `_run_subprocess` (Popen at `2559-2566`) and `_run_action_or_route` (`3344-3372`) need FileNotFoundError/vanished-cwd detection and a new abort path, analogous to `_check_host_guard`/`_check_cost_ceiling` (`3527-3601`, `3603-3683`) and the `run()` main-loop checks at lines `744-834`
+  > ⚠ Superseded — Proposed Solution step 1's `_run_subprocess_direct` does not exist in the repo; the actual site is `_run_subprocess` above (see § Codebase Research Findings under Proposed Solution)
 - `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner.run()` shell branch (Popen at `298-306`) needs the same detection; its own prompt-mode branch (`232-272`) already shows the pattern of converting a launch failure into a returned `ActionResult` instead of raising
 - `scripts/little_loops/fsm/types.py` — `ExecutionResult.terminated_by` docstring (lines 35-41) enumerates existing abort kinds; add the new value there
 - `scripts/little_loops/generate_schemas.py` — `SCHEMA_DEFINITIONS`; register the new event following the `"stall_detected"` entry (lines 383-395) as the pattern
 - `scripts/little_loops/observability/schema.py` — new `DESVariant` subclass following `StallDetectedVariant`/`HostPressureAbortVariant` (lines 207-211, 406-410), registered in the `DES_VARIANTS` tuple
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/logs.py` — `_derive_loop_outcome()` (lines 1968-1987) is a closed if/elif chain (`max_steps`/`max_iterations_reached` → `"max-steps"`, `cycle_detected` → `"stalled"`, `interrupted`/`handoff`/`timeout`/`user_stopped` → `"interrupted"`, `system_signal` → `"signal"`) with no branch for the new value; without one, `workdir_vanished` falls through to the `final_state` keyword-substring fallback and is silently misclassified as `"converged"` in `ll-loop history`/`ll-loop fleet` rollups unless the landing state's name happens to contain `fail`/`error`/`abort` [Agent 2 finding]
+- `scripts/little_loops/cli/logs.py` — `_derive_loop_outcome()` (lines 1968-1987) is a closed if/elif chain (`max_steps`/`max_iterations_reached` → `"max-steps"`, `cycle_detected` → `"stalled"`, `interrupted`/`handoff`/`timeout`/`user_stopped` → `"interrupted"`, `system_signal` → `"signal"`) with no branch for the new value; without one, `workdir_vanished` falls through to the `final_state` keyword-substring fallback and is silently misclassified as `"converged"` in `ll-loop history`/`ll-logs loop-fleet` rollups unless the landing state's name happens to contain `fail`/`error`/`abort` [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `delegate_failed` state (lines 342-379) already reads `${captured.delegate.terminated_by}` in a `case` statement; its `*` branch currently folds all non-`terminal` `terminated_by` values into `recheck_set` — a new abort kind falls into this existing catch-all unless the case list is deliberately extended
@@ -231,6 +232,7 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-01T21:22:14 - `1d545f12-483a-4164-8eb9-869bb2218b10.jsonl`
 - `/ll:confidence-check` - 2026-09-01T21:18:13 - `af7d0948-35ab-4cf4-ba66-d9d4fed80c50.jsonl`
 - `/ll:wire-issue` - 2026-09-01T21:11:04 - `27ab64ec-faa5-4f8f-b9db-d62e91a3f572.jsonl`
 - `/ll:refine-issue` - 2026-09-01T20:49:16 - `87c7efdc-d115-415c-a741-428b9e0191a6.jsonl`
