@@ -63,8 +63,11 @@ otherwise leaves it alone. Concretely, for each worktree:
    the two only coincide by default. Format is plain text, line 1 = pid
    (final, decided in ENH-3376); read it with `head -n1` and require it to
    match `^[0-9]+$`.
-2. If the registry pid is alive → skip. If the marker pid (existing check)
-   is alive → skip.
+2. If the registry pid is alive → skip. If **any** marker pid is alive →
+   skip. Today's check (`ls "${w}/.ll-session-"* | head -1`, line 45) only
+   inspects the first marker; the Python side
+   (`orchestrator.py:337-347`) iterates every `.ll-session-*` file. Since
+   the per-worktree body is being rewritten, loop over all markers.
 3. If a registry entry exists but is unparseable → skip (cannot positively
    exclude liveness).
 4. If a registry entry or marker exists and its pid is **dead** → delete
@@ -88,6 +91,14 @@ alive if `kill -0 "$PID" 2>/dev/null || ps -p "$PID" >/dev/null 2>&1`.
 Preserve the "must never fail" invariant (`cleanup() || true`) — a registry
 read error must not raise out of the hook.
 
+**Accepted residual (document, do not fix here):** if the owning
+`ll-loop`/`ll-parallel` process is SIGKILLed but a dispatched host-CLI child
+survives with its cwd inside the worktree, this hook sees a dead registry/
+marker pid and deletes under the live child. Bash has no cwd sweep; only the
+Python path closes this via ENH-3377. This is the one BUG-3373-shaped hole
+this issue knowingly leaves open — state it in the
+`docs/guides/BUILTIN_HOOKS_GUIDE.md` update.
+
 ## Motivation
 
 A registry-only fix scoped to `_cleanup_orphaned_worktrees()` in
@@ -104,7 +115,8 @@ still live — is deleted with no cross-check today.
    `ALIVE` pair: add a `pid_alive()` helper (`kill -0 ... || ps -p ...`,
    see Expected Behavior) and a `read_registry_pid()` helper that reads
    `$(dirname "$w")/.registry/$(basename "$w")`. Decision table:
-   - registry or marker pid alive → `continue`
+   - registry pid alive, or *any* marker pid alive (iterate all
+     `.ll-session-*` files, not `head -1`) → `continue`
    - registry file present but line 1 not numeric → `continue`
    - registry or marker present, pid dead → `git worktree remove --force`
    - neither present → `continue` (log at debug level; no deletion)
@@ -154,17 +166,24 @@ still live — is deleted with no cross-check today.
   `config/core.py:578` uses `automation.worktree_base`, while this hook reads
   `parallel.worktree_base`).
 - `.qwen/commands/ll/cleanup-worktrees.md`,
-  `.gemini/commands/cleanup-worktrees.toml` — update if
-  `commands/cleanup-worktrees.md`'s liveness prose changes as part of this
-  work (these mirror it verbatim with no drift test, per ENH-2968).
+  `.gemini/commands/cleanup-worktrees.toml` — **not this issue's
+  obligation.** This issue does not edit `commands/cleanup-worktrees.md`
+  (that file describes the Python `ll-parallel --cleanup-orphans` path);
+  ENH-3376 and ENH-3377 do, and each now carries the re-mirror item. Left
+  here only as a pointer.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `.kimi-code/skills/ll-cleanup-worktrees/SKILL.md` — CONFIRMED (was
   unconfirmed at refine-issue time, see the Codebase Research Findings note
   below): read side-by-side against `commands/cleanup-worktrees.md`, the
-  entire body is byte-for-byte identical (only frontmatter differs). Add this
-  to the conditional "update if `commands/cleanup-worktrees.md` changes"
-  group alongside the `.qwen`/`.gemini` mirrors above.
+  entire body is byte-for-byte identical (only frontmatter differs). Same
+  disposition as the `.qwen`/`.gemini` mirrors above — owned by
+  ENH-3376/ENH-3377, not this issue.
+- `scripts/little_loops/hooks/adapters/qwen/stop.sh` — the Qwen Stop-hook
+  adapter resolves and runs this same `hooks/scripts/session-cleanup.sh`
+  from `CLAUDE_PLUGIN_ROOT`/`LL_PLUGIN_ROOT`. No edit needed — it inherits
+  the hardened script automatically. No other adapter (opencode, codex, omp)
+  reimplements worktree removal.
 - `hooks/hooks.json` (Stop hook entry, lines 221-240) — confirmed no
   liveness/marker/registry prose anywhere in the file (pure wiring: command
   string, timeout, generic status message). No edit needed.
@@ -256,6 +275,7 @@ its sibling worktrees out from under still-running work.
 
 
 ## Session Log
+- Pre-implementation review (2nd pass) - 2026-09-01 - iterate all markers instead of `head -1`, documented the accepted dead-owner/live-child residual (Python-only fix via ENH-3377), reassigned the command-doc mirror obligation to ENH-3376/3377, noted the Qwen `stop.sh` adapter inherits the script.
 - `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - switched the hook to positive-evidence-only deletion (no marker + no registry → skip, not delete), registry path derived from the worktree path (covers `automation.worktree_base` sub-loop worktrees), EPERM-safe `pid_alive` helper for both signals, test matrix rewritten accordingly, format question closed (plain text, decided in ENH-3376).
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`

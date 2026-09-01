@@ -61,6 +61,17 @@ unavailable, or `process_iter` itself raising), also skip with a warning
 rather than deleting — absence of a marker/registry is never, by itself,
 treated as proof of orphanhood.
 
+"Neither signal" is defined as *no live* signal: a worktree whose registry
+entry exists but whose pid is dead or recycled (ENH-3376's `create_time`
+mismatch) still reaches this fallback tier and gets the cwd sweep before
+deletion. This is deliberately more conservative than ENH-3378's bash hook,
+which treats a dead registry/marker pid as positive evidence and deletes
+without a cwd check (bash has no `psutil` equivalent). The asymmetry is
+intended: the Python path is the one that can afford the extra check, and it
+covers the case where the owning `ll-loop`/`ll-parallel` process was
+SIGKILLed but a dispatched host-CLI child is still running inside the
+worktree.
+
 The scan runs **once per cleanup pass**, not once per candidate worktree, and
 its result is tri-state: a set of live process cwds, or "scan failed". A
 plain `bool` cannot express "could not check", which is why the Program
@@ -133,7 +144,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `commands/cleanup-worktrees.md` and `docs/reference/COMMANDS.md` §
-  `/ll:cleanup-worktrees` — see Wiring Phase above. No other doc describes
+  `/ll:cleanup-worktrees` — see Wiring Phase above. Re-mirror the
+  host-adapter copies of `commands/cleanup-worktrees.md` in the same change
+  (verbatim mirrors, no drift test — ENH-2968):
+  `.qwen/commands/ll/cleanup-worktrees.md`,
+  `.gemini/commands/cleanup-worktrees.toml`,
+  `.kimi-code/skills/ll-cleanup-worktrees/SKILL.md`. No other doc describes
   the orphan-cleanup liveness algorithm (`docs/reference/API.md` has no
   algorithm-level prose for `ParallelOrchestrator`, only a one-row methods
   table).
@@ -156,6 +172,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - A marker-less, registry-less worktree with no live process anywhere inside
   it -> still deleted (this is the BUG-579 regression test, moved from the
   parent's Phase-4 test list to reflect the new gating).
+- **Keep the existing suite hermetic:** every marker-less-deletion test in
+  `test_orchestrator.py::TestOrphanedWorktreeCleanup` (line 544) now reaches
+  the fallback tier and would otherwise run a real full-machine
+  `process_iter` sweep per test. Add an autouse fixture on that class (and
+  any other class that drives `_cleanup_orphaned_worktrees()` to the
+  deletion path) patching
+  `little_loops.parallel.orchestrator.psutil.process_iter` to return an
+  empty iterator, so those tests keep asserting deletion without depending
+  on what happens to be running on the host. Only this issue's own
+  end-to-end `subprocess.Popen(["sleep", "30"], cwd=worktree)` case uses the
+  real sweep.
 
 ### Codebase Research Findings
 
@@ -264,6 +291,7 @@ fix (which already closes the primary BUG-3373 mechanism on its own).
 
 
 ## Session Log
+- Pre-implementation review (2nd pass) - 2026-09-01 - made explicit that dead/recycled registry pids still reach the cwd sweep (intended asymmetry vs ENH-3378's hook), added the autouse `process_iter` patch for the existing `TestOrphanedWorktreeCleanup` suite, added the command-doc mirror obligation.
 - `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - cleared `unproven_mechanism` (spike proven), replaced the `-> bool` signature with a tri-state single-sweep design, folded the `cwd=None` AccessDenied correction into step 1, required the skip warning to name the blocking pid/process.
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`

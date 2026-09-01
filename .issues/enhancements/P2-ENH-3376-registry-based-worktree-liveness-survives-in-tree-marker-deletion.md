@@ -109,8 +109,19 @@ directly extends the already-proven atomic-write JSON pattern used by
 1. `setup_worktree` (`worktree_utils.py:160`): add a registry write to
    `<worktree_base>/.registry/` for the worktree, placed **before** the
    `git worktree add` call (~line 232) rather than beside the marker write
-   (~line 280) — see Expected Behavior for why. Use the same
-   `tempfile.mkstemp` + `os.replace` atomic-write pattern as `_save_state`.
+   (~line 280) — see Expected Behavior for why. **Exact placement:**
+   immediately before the `git_lock.run(worktree_args, ...)` call, which
+   means *after* both (a) the pre-existing-path teardown at lines 211-214
+   (`if worktree_path.exists(): cleanup_worktree(...)` — that call will now
+   remove the registry entry, so writing earlier would self-delete it) and
+   (b) the `base_branch` `rev-parse --verify` check at lines 216-223 (which
+   raises `RuntimeError` before `worktree add`, so writing earlier would leak
+   an entry on that path). Use the same
+   `tempfile.mkstemp` + `os.replace` atomic-write pattern as `_save_state`;
+   `mkdir(parents=True, exist_ok=True)` the `.registry/` dir first (the
+   worktree base may not exist yet on first use). Line 2 comes from
+   `psutil.Process(os.getpid()).create_time()` (psutil is already a required
+   dependency, `scripts/pyproject.toml:58`).
    Remove the entry on the `RuntimeError` path if `git worktree add` fails.
    Keep the in-tree marker write unchanged (backward compatibility). Derive
    the registry dir as `worktree_path.parent / ".registry"` (the function
@@ -182,7 +193,8 @@ directly extends the already-proven atomic-write JSON pattern used by
   setup/cleanup race.
 - Registry hygiene: orphan deletion via `_cleanup_orphaned_worktrees()`
   removes the deleted worktree's registry entry; a registry entry whose
-  worktree dir is gone is pruned on the next pass.
+  worktree dir is gone **and whose pid is dead** is pruned on the next pass
+  (same condition as the "Prune requires dead pid" bullet above).
 - The `.registry/` directory itself is never treated as an orphan candidate
   by the `worktree_base.iterdir()` scan (guaranteed today by
   `_is_ll_worktree()`'s name shapes — pin it with a test so a future filter
@@ -207,6 +219,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `commands/cleanup-worktrees.md` and `docs/reference/COMMANDS.md` §
   `/ll:cleanup-worktrees` — update liveness semantics prose to mention the
   registry as the primary signal.
+- Host-adapter mirrors of `commands/cleanup-worktrees.md` — these copy its
+  body verbatim with no drift test (ENH-2968), so re-mirror them in the same
+  change: `.qwen/commands/ll/cleanup-worktrees.md`,
+  `.gemini/commands/cleanup-worktrees.toml`,
+  `.kimi-code/skills/ll-cleanup-worktrees/SKILL.md`. (This obligation
+  belongs here and in ENH-3377 — the issues that actually edit the source
+  file — not in ENH-3378, which doesn't touch it.)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/development/TROUBLESHOOTING.md` (§ "Worktree creation fails", lines
@@ -298,6 +317,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   `cleanup_worktree()`. This extends (does not contradict) the "no additional
   files require wiring" conclusion above — the enumeration of *why* was
   incomplete by two sites, not the conclusion itself.
+- `scripts/little_loops/fsm/executor.py:1070` — the sub-loop `_detach`
+  closure inside `_execute_sub_loop` (assigned to `detach_worktree` at line
+  1082, invoked from the `finally` block at line 1127) calls
+  `worktree_utils.cleanup_worktree()` directly. No edit needed — it inherits
+  registry removal. Listed explicitly because this is the teardown path for
+  the exact worktree shape BUG-3373 lost (`<ts>-subloop-<branch>` under
+  `Config.get_worktree_base()`).
 - `scripts/little_loops/parallel/worker_pool.py:2078-2088`
   (`WorkerPool.cleanup_all_worktrees()`) — a separate `worktree_base.iterdir()`
   enumeration (filtered by `_is_ll_worktree`) that calls
@@ -334,6 +360,7 @@ ships.
 
 
 ## Session Log
+- Pre-implementation review (2nd pass) - 2026-09-01 - pinned registry-write placement (after the line-211 pre-cleanup and base_branch verify, immediately before `worktree add`), made the hygiene test bullet consistent with the dead-pid prune rule, added the executor sub-loop `_detach` inheriting site, moved the command-doc mirror obligation here from ENH-3378.
 - `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - format decided (plain text pid/create_time/run_id), registry written before `git worktree add`, prune requires dead pid, create_time pid-reuse guard, MergeCoordinator gets an explicit removal call (no redirect), run_id demoted to optional metadata.
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
