@@ -544,6 +544,15 @@ class TestGitignoreEntries:
 class TestOrphanedWorktreeCleanup:
     """Tests for _cleanup_orphaned_worktrees."""
 
+    @pytest.fixture(autouse=True)
+    def _no_real_process_sweep(self) -> Iterator[None]:
+        """ENH-3377: every marker-less deletion in this class now reaches the
+        process-cwd fallback tier. Patch it to an empty sweep so these tests
+        keep asserting deletion without depending on what happens to be
+        running on the host machine."""
+        with patch("little_loops.parallel.orchestrator.psutil.process_iter", return_value=iter([])):
+            yield
+
     def test_does_nothing_when_no_worktree_dir(
         self,
         orchestrator: ParallelOrchestrator,
@@ -1074,6 +1083,15 @@ class TestOrphanedWorktreeCleanup:
 class TestRegistryBasedOrphanCleanup:
     """ENH-3376: registry-based liveness survives in-tree marker deletion."""
 
+    @pytest.fixture(autouse=True)
+    def _no_real_process_sweep(self) -> Iterator[None]:
+        """ENH-3377: dead-pid registry entries in this class reach the
+        process-cwd fallback tier before deletion. Patch it to an empty
+        sweep so these tests keep asserting deletion/pruning without
+        depending on what happens to be running on the host machine."""
+        with patch("little_loops.parallel.orchestrator.psutil.process_iter", return_value=iter([])):
+            yield
+
     def _mock_git_run(self) -> Callable[..., MagicMock]:
         def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
             result = MagicMock()
@@ -1208,6 +1226,194 @@ class TestRegistryBasedOrphanCleanup:
         # If `.registry/` had been treated as a worktree candidate, cleanup
         # would have tried to `git worktree remove` it and/or crashed on
         # branch-name resolution; reaching here without error is the guard.
+
+
+class _FakeProcInfo:
+    """Minimal stand-in for a psutil.Process yielded by process_iter(attrs)."""
+
+    def __init__(self, pid: int, name: str, cwd: str | None) -> None:
+        self.info = {"pid": pid, "name": name, "cwd": cwd}
+
+
+class TestProcessCwdFallbackLiveness:
+    """ENH-3377: process-cwd fallback liveness check for marker-less,
+    registry-less worktrees."""
+
+    def _mock_git_run(self) -> Callable[..., MagicMock]:
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+            return result
+
+        return mock_git_run
+
+    def test_live_process_cwd_inside_worktree_skips_deletion(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A real subprocess with cwd inside a marker-less, registry-less
+        worktree blocks deletion — exercises the real macOS /tmp ->
+        /private/tmp resolve, not a mock."""
+        import subprocess as sp
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        live_dir = worktree_base / "worker-bug-cwdlive"
+        live_dir.mkdir()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        child = sp.Popen(["sleep", "30"], cwd=live_dir)
+        try:
+            orchestrator._cleanup_orphaned_worktrees()
+            assert live_dir.exists(), "worktree with a live cwd-matching process must not be reaped"
+        finally:
+            child.terminate()
+            child.wait(timeout=5)
+
+    def test_live_process_cwd_names_pid_and_process_in_warning(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_logger: MagicMock,
+    ) -> None:
+        """The skip warning names the blocking pid and process name, so a
+        user can act on an idle shell parked in a dead worktree."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        live_dir = worktree_base / "worker-bug-cwdmock"
+        live_dir.mkdir()
+
+        orchestrator.logger = mock_logger
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        fake_proc = _FakeProcInfo(pid=54321, name="zsh", cwd=str(live_dir))
+        with patch(
+            "little_loops.parallel.orchestrator.psutil.process_iter",
+            return_value=iter([fake_proc]),
+        ):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert live_dir.exists()
+        warning_text = "\n".join(str(c.args[0]) for c in mock_logger.warning.call_args_list)
+        assert "54321" in warning_text
+        assert "zsh" in warning_text
+
+    def test_cwd_none_row_ignored_not_treated_as_live(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A process_iter row with cwd=None (the AccessDenied shape) is
+        skipped and does not by itself block deletion."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        stale_dir = worktree_base / "worker-bug-cwdnone"
+        stale_dir.mkdir()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        fake_proc = _FakeProcInfo(pid=1, name="unreadable", cwd=None)
+        with patch(
+            "little_loops.parallel.orchestrator.psutil.process_iter",
+            return_value=iter([fake_proc]),
+        ):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert not stale_dir.exists(), "a cwd=None row must not itself prevent deletion"
+
+    def test_scan_failure_skips_every_fallback_tier_candidate(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """When process_iter itself raises, every candidate reaching the
+        fallback tier is skipped with a warning — never falls through to
+        deletion on error."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        dir_a = worktree_base / "worker-bug-scanfail-a"
+        dir_b = worktree_base / "worker-bug-scanfail-b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        with patch(
+            "little_loops.parallel.orchestrator.psutil.process_iter",
+            side_effect=RuntimeError("scan failed"),
+        ):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert dir_a.exists(), "scan failure must not fall through to deletion"
+        assert dir_b.exists(), "scan failure must not fall through to deletion"
+
+    def test_sweep_runs_at_most_once_per_pass(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """The process sweep runs once per _cleanup_orphaned_worktrees() call
+        even with several candidates reaching the fallback tier."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        for name in ("worker-bug-multi-a", "worker-bug-multi-b", "worker-bug-multi-c"):
+            (worktree_base / name).mkdir()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        with patch(
+            "little_loops.parallel.orchestrator.psutil.process_iter",
+            return_value=iter([]),
+        ) as mock_process_iter:
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert mock_process_iter.call_count == 1
+
+    def test_sweep_not_run_when_no_candidate_reaches_fallback_tier(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """The sweep is never paid for when every worktree resolves via the
+        registry or marker checks before reaching this tier."""
+        import os
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        active_dir = worktree_base / "worker-bug-active"
+        active_dir.mkdir()
+        (active_dir / f".ll-session-{os.getpid()}").write_text(str(os.getpid()))
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        with patch(
+            "little_loops.parallel.orchestrator.psutil.process_iter",
+            return_value=iter([]),
+        ) as mock_process_iter:
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert mock_process_iter.call_count == 0
+        assert active_dir.exists()
+
+    def test_marker_less_registry_less_no_live_process_still_deleted(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """BUG-579 regression, moved here to reflect the ENH-3376/3377
+        gating: a marker-less, registry-less worktree with no live process
+        anywhere inside it is still deleted."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        stale_dir = worktree_base / "worker-bug-truly-dead"
+        stale_dir.mkdir()
+
+        orchestrator._git_lock.run = self._mock_git_run()  # type: ignore[method-assign,assignment]
+
+        with patch(
+            "little_loops.parallel.orchestrator.psutil.process_iter",
+            return_value=iter([]),
+        ):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert not stale_dir.exists()
 
 
 class TestCheckPendingWorktrees:

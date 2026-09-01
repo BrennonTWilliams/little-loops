@@ -3,7 +3,7 @@ id: ENH-3377
 type: ENH
 title: process-cwd fallback liveness check for marker-less and registry-less worktrees
 priority: P2
-status: open
+status: done
 parent: ENH-3374
 depends_on:
 - ENH-3376
@@ -15,6 +15,7 @@ score_complexity: 20
 score_test_coverage: 23
 score_ambiguity: 24
 score_change_surface: 22
+completed_at: '2026-09-01T20:24:28Z'
 ---
 
 # ENH-3377: process-cwd fallback liveness check for marker-less and registry-less worktrees
@@ -114,7 +115,7 @@ absent.
      Measure the sweep on macOS during implementation; if it exceeds ~1s on
      a busy machine, note it in the log line, but do not add caching.
 2. Add the fallback check to `_cleanup_orphaned_worktrees()`
-   (`scripts/little_loops/parallel/orchestrator.py:317`), gated after the
+   (`scripts/little_loops/parallel/orchestrator.py:321`), gated after the
    registry and marker checks from ENH-3376. Call
    `_collect_live_process_cwds()` once, lazily, the first time a candidate
    reaches this tier (so passes where every worktree is registry- or
@@ -188,7 +189,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
-- Contested convention — the two existing pid-liveness checks in this codebase disagree on how to treat an ambiguous/errored probe, and this issue's own "never delete when liveness cannot be positively excluded" rule matches neither precedent exactly: `_verify_owner_alive` (`scripts/little_loops/cli/queue.py:514-539`) wraps everything in a broad `except Exception: return False` — any error, including a genuine `AccessDenied`, collapses to "not alive". The existing marker-based `os.kill(pid, 0)` check this issue's fallback sits behind (`orchestrator.py:334-347`) does the opposite: it treats `PermissionError` as "alive" (process exists, just unsignalable). Implementer should treat this issue's stricter "skip on any inability to positively exclude liveness" rule as a deliberate new synthesis, not an extension of either existing convention.
+- Contested convention — the two existing pid-liveness checks in this codebase disagree on how to treat an ambiguous/errored probe, and this issue's own "never delete when liveness cannot be positively excluded" rule matches neither precedent exactly: `_verify_owner_alive` (`scripts/little_loops/cli/queue.py:514-539`) wraps everything in a broad `except Exception: return False` — any error, including a genuine `AccessDenied`, collapses to "not alive". The existing marker-based `os.kill(pid, 0)` check this issue's fallback sits behind (`orchestrator.py:348-363`) does the opposite: it treats `PermissionError` as "alive" (process exists, just unsignalable). Implementer should treat this issue's stricter "skip on any inability to positively exclude liveness" rule as a deliberate new synthesis, not an extension of either existing convention.
 - A second existing psutil-cmdline-identity precedent exists beyond `_verify_owner_alive`: `scripts/little_loops/cli/loop/queue.py::_verify_queue_pid_identity` (~line 88-100), same shape (`psutil.Process(pid)` construction, broad exception handling), tested via `scripts/tests/test_cli_loop_queue.py` (patches `little_loops.cli.loop.queue.psutil.Process`). Neither this nor `_verify_owner_alive` does cwd-based matching or `Path.resolve()`-based comparison — both remain cmdline/create_time identity checks only.
 - No shared/reusable process-liveness helper exists anywhere in this codebase (`_verify_owner_alive` is module-private and not imported elsewhere; the `os.kill(pid, 0)` probe is inlined directly in `_cleanup_orphaned_worktrees`) — there is no established convention either way on whether to extract `_process_cwd_liveness_check` into a shared utility.
 - Every existing psutil test in this codebase mocks `psutil.Process` directly at the consuming module's import path (e.g. `patch("little_loops.cli.queue.psutil.Process", ...)`, `scripts/tests/test_cli_queue_run.py:609-692`); none mock `psutil.process_iter`. Since this issue's design uses `process_iter`, its test suite will need to establish a `psutil.process_iter` mocking shape not previously present in this codebase's tests.
@@ -285,12 +286,32 @@ fix (which already closes the primary BUG-3373 mechanism on its own).
 - `scripts/little_loops/parallel/orchestrator.py` (orphan detection)
 - `scripts/little_loops/cli/queue.py` (`_verify_owner_alive`, closest psutil precedent)
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-01
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/orchestrator.py`: added `_collect_live_process_cwds()` / `_worktree_has_live_cwd()` module-level helpers and wired the process-cwd fallback tier into `_cleanup_orphaned_worktrees()`, gated after the ENH-3376 registry and in-tree marker checks. A scan failure (or psutil unavailable) skips every candidate reaching the tier with a warning rather than falling through to deletion.
+- `scripts/tests/test_orchestrator.py`: added `TestProcessCwdFallbackLiveness` (real-subprocess e2e case, `cwd=None` handling, scan-failure skip, once-per-pass sweep, no-sweep-when-unneeded, and the moved BUG-579 regression test); added an autouse `psutil.process_iter` patch to `TestOrphanedWorktreeCleanup` and `TestRegistryBasedOrphanCleanup` so their existing deletion-path tests stay hermetic.
+- `commands/cleanup-worktrees.md`, `docs/reference/COMMANDS.md`, and the host-adapter mirrors (`.qwen/commands/ll/cleanup-worktrees.md`, `.gemini/commands/cleanup-worktrees.toml`, `.kimi-code/skills/ll-cleanup-worktrees/SKILL.md`): documented the third liveness tier.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 22321 passed, 2 pre-existing unrelated failures confirmed present on `main` before this change, 42 skipped)
+- Lint: PASS
+- Types: PASS
+
 ## Status
 
 **Open** | Created: 2026-09-01 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-01T20:24:11 - `7ae98572-e410-45fd-a4d7-76b25bbe5586.jsonl`
+- `/ll:ready-issue` - 2026-09-01T20:12:56 - `31bbcd29-be68-46cb-8e1b-72702886c96f.jsonl`
 - Pre-implementation review (2nd pass) - 2026-09-01 - made explicit that dead/recycled registry pids still reach the cwd sweep (intended asymmetry vs ENH-3378's hook), added the autouse `process_iter` patch for the existing `TestOrphanedWorktreeCleanup` suite, added the command-doc mirror obligation.
 - `/ll:confidence-check` - 2026-09-01T19:10:49 - `9df9cefa-f639-494c-867c-39fd1ac3ff91.jsonl`
 - Pre-implementation review - 2026-09-01 - cleared `unproven_mechanism` (spike proven), replaced the `-> bool` signature with a tri-state single-sweep design, folded the `cwd=None` AccessDenied correction into step 1, required the skip warning to name the blocking pid/process.

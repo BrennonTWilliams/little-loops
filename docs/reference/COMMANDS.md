@@ -612,8 +612,11 @@ Delegates to `ll-parallel --cleanup-orphans`, which uses the canonical Python or
 logic: selects only ll-managed worktrees (`worker-*` or `YYYYMMDD-HHMMSS-*`), skips worktrees
 owned by live processes — an out-of-tree liveness registry entry (ENH-3376) is the primary
 signal, since it survives a `git clean -fdx` run inside the worktree that would erase the
-in-tree session marker; the marker is only consulted when no registry entry exists — and
-deletes both the directory and its branch (parallel/* and loop-style).
+in-tree session marker; the marker is only consulted when no registry entry exists. When
+neither the registry nor the marker finds a live signal, a last-resort fallback (ENH-3377)
+checks whether any live process's cwd is inside the worktree, skipping with a warning (naming
+the blocking pid/process) instead of deleting if so, or if the check itself cannot be
+performed — and deletes both the directory and its branch (parallel/* and loop-style).
 
 **Arguments:**
 - `mode`: `run` (default), `dry-run`

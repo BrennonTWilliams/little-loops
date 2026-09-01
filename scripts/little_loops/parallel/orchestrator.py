@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+import psutil
+
 from little_loops.events import EventBus
 from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 from little_loops.git_operations import preserve_before_teardown, snapshot_dirty_paths
@@ -73,6 +75,45 @@ def _worktree_branch_name(worktree_path: Path) -> str | None:
         text=True,
     )
     return result.stdout.strip() if result.returncode == 0 else None
+
+
+LiveCwds = dict[Path, tuple[int, str]]
+
+
+def _collect_live_process_cwds() -> LiveCwds | None:
+    """One-time sweep of every live process's cwd, for the ENH-3377 fallback tier.
+
+    Maps each readable, resolved cwd to the ``(pid, name)`` that owns it (for
+    the skip-warning text). Rows with ``cwd=None`` — psutil's ``ad_value``
+    substitution for unreadable processes, confirmed by the ENH-3377 spike to
+    never raise ``AccessDenied`` per-row during ``process_iter`` — are
+    skipped, not treated as evidence either way. Returns ``None`` only on
+    wholesale failure (psutil unavailable or ``process_iter`` itself
+    raising), which the caller must treat as "liveness could not be
+    excluded", never as "no live process found".
+    """
+    live_cwds: LiveCwds = {}
+    try:
+        for info in psutil.process_iter(["pid", "name", "cwd"]):
+            cwd = info.info.get("cwd")
+            if cwd is None:
+                continue
+            try:
+                live_cwds[Path(cwd).resolve()] = (info.info["pid"], info.info["name"])
+            except (psutil.NoSuchProcess, psutil.ZombieProcess, OSError):
+                continue
+    except Exception:
+        return None
+    return live_cwds
+
+
+def _worktree_has_live_cwd(worktree_path: Path, live_cwds: LiveCwds) -> tuple[int, str] | None:
+    """Return the ``(pid, name)`` of a live process whose cwd is inside ``worktree_path``."""
+    resolved = worktree_path.resolve()
+    for cwd, owner in live_cwds.items():
+        if cwd.is_relative_to(resolved):
+            return owner
+    return None
 
 
 class ParallelOrchestrator:
@@ -334,6 +375,8 @@ class ParallelOrchestrator:
 
         # Get list of worktree directories, skipping those owned by live processes (BUG-579)
         orphaned = []
+        live_cwds: LiveCwds | None = None
+        live_cwds_collected = False
         for item in worktree_base.iterdir():
             if item.is_dir() and _is_ll_worktree(item.name):
                 # ENH-3376: consult the out-of-tree registry first — it
@@ -360,6 +403,29 @@ class ParallelOrchestrator:
                         break
                 if owned_by_live:
                     self.logger.info(f"Skipping {item.name}: owned by running process")
+                    continue
+
+                # ENH-3377: neither the registry nor the marker found a live
+                # signal — last-resort fallback: is any live process's cwd
+                # inside this worktree? Collected lazily, once per pass, so
+                # a pass where every worktree resolves earlier never pays
+                # for the sweep.
+                if not live_cwds_collected:
+                    live_cwds = _collect_live_process_cwds()
+                    live_cwds_collected = True
+                if live_cwds is None:
+                    self.logger.warning(
+                        f"Skipping {item.name}: process liveness could not be checked "
+                        "(process scan failed) — treating as potentially live"
+                    )
+                    continue
+                owner = _worktree_has_live_cwd(item, live_cwds)
+                if owner is not None:
+                    pid, name = owner
+                    self.logger.warning(
+                        f"Skipping {item.name}: owned by running process "
+                        f"(cwd match, pid={pid}, name={name})"
+                    )
                     continue
                 orphaned.append(item)
 
