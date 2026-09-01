@@ -97,6 +97,28 @@ absent.
    liveness cannot be positively excluded" principle — do not fall through to
    deletion on error.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `commands/cleanup-worktrees.md` (line 16, 38) and
+  `docs/reference/COMMANDS.md` § `/ll:cleanup-worktrees` (lines 609-613) —
+  both describe the full orphan-cleanup liveness algorithm in a single
+  sentence ("skips worktrees owned by live processes..."). ENH-3376 already
+  commits to editing these same lines, but scoped narrowly to mentioning the
+  registry as the primary signal — its edit does not cover this issue's
+  process-cwd fallback tier. Add a clause for the third tier when this issue
+  lands (after ENH-3376's registry edit is in place).
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `commands/cleanup-worktrees.md` and `docs/reference/COMMANDS.md` §
+  `/ll:cleanup-worktrees` — see Wiring Phase above. No other doc describes
+  the orphan-cleanup liveness algorithm (`docs/reference/API.md` has no
+  algorithm-level prose for `ParallelOrchestrator`, only a one-row methods
+  table).
+
 ### Tests
 
 - A live process with cwd inside a marker-less, registry-less worktree ->
@@ -166,6 +188,24 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
   (`patch("<module>.psutil.Process", ...)`) for mocking a `psutil`-based
   liveness check in tests, though it checks cmdline identity, not cwd.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/parallel.py:224` — `main_parallel`'s
+  `--cleanup-orphans` CLI handler calls `_cleanup_orphaned_worktrees()`
+  directly (a second call path alongside the auto-invocation from
+  `ParallelOrchestrator.run()`). No edit needed — the fallback check is gated
+  inside `_cleanup_orphaned_worktrees()` itself, so both callers get it for
+  free. Confirms `scripts/tests/test_cli.py:548,568,592`
+  (`test_main_parallel_cleanup_orphans_mode*`) already mock
+  `_cleanup_orphaned_worktrees` at the boundary and are unaffected.
+- No shared process-liveness utility module exists anywhere in this codebase
+  (confirmed repo-wide) — `_process_cwd_liveness_check` has no existing home
+  to be extracted into; it is a net-new addition to `orchestrator.py`.
+- Mocking `psutil.process_iter` in tests has no existing precedent to copy
+  verbatim (only `psutil.Process` mocking precedent exists, at
+  `<module>.psutil.Process`) — the new test suite establishes
+  `patch("little_loops.parallel.orchestrator.psutil.process_iter", ...)` as a
+  new shape.
+
 ## Impact
 
 Closes the residual liveness gap for worktrees whose registry entry is itself
@@ -183,6 +223,7 @@ fix (which already closes the primary BUG-3373 mechanism on its own).
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:46 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:45 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:22 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`

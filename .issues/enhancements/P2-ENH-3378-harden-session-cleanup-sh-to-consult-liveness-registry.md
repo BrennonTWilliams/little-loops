@@ -116,6 +116,23 @@ still live — is deleted with no cross-check today.
   `commands/cleanup-worktrees.md`'s liveness prose changes as part of this
   work (these mirror it verbatim with no drift test, per ENH-2968).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.kimi-code/skills/ll-cleanup-worktrees/SKILL.md` — CONFIRMED (was
+  unconfirmed at refine-issue time, see the Codebase Research Findings note
+  below): read side-by-side against `commands/cleanup-worktrees.md`, the
+  entire body is byte-for-byte identical (only frontmatter differs). Add this
+  to the conditional "update if `commands/cleanup-worktrees.md` changes"
+  group alongside the `.qwen`/`.gemini` mirrors above.
+- `hooks/hooks.json` (Stop hook entry, lines 221-240) — confirmed no
+  liveness/marker/registry prose anywhere in the file (pure wiring: command
+  string, timeout, generic status message). No edit needed.
+- `docs/development/TROUBLESHOOTING.md` § "Too many worktrees" — confirmed
+  this describes only the Python `ll-parallel --cleanup-orphans`/`--cleanup`
+  path, never names `session-cleanup.sh`, and doesn't describe its
+  marker/registry logic. No edit needed for this issue (ENH-3376 already
+  claims a related edit to this file's other section for its own registry
+  description).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
@@ -189,6 +206,7 @@ its sibling worktrees out from under still-running work.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:47 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:45 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:23 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`

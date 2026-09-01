@@ -150,6 +150,14 @@ directly extends the already-proven atomic-write JSON pattern used by
   `test_worktree_utils.py`, `test_cli_loop_worktree.py`) must continue to pass
   unmodified where they don't touch the registry.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- Pattern to follow for the atomic registry-write test:
+  `test_file_utils.py::TestAtomicWriteJson` (covers `little_loops.file_utils.
+  atomic_write_json`, the same `tempfile.mkstemp`+`os.replace` shape) has the
+  exact three properties a registry-write test needs and `_save_state`'s own
+  tests don't check: no orphaned `.tmp` on success, no orphaned `.tmp` on
+  `os.replace` failure, and prior content preserved on failure.
+
 ### Documentation
 
 - `docs/reference/API.md` — update `setup_worktree`/`cleanup_worktree`
@@ -157,6 +165,13 @@ directly extends the already-proven atomic-write JSON pattern used by
 - `commands/cleanup-worktrees.md` and `docs/reference/COMMANDS.md` §
   `/ll:cleanup-worktrees` — update liveness semantics prose to mention the
   registry as the primary signal.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/TROUBLESHOOTING.md` (§ "Worktree creation fails", lines
+  147-148, and § "Too many worktrees", lines 232-233) — both sections state
+  orphan cleanup is "liveness-aware — skips any worktree whose session-marker
+  PID is still alive", phrased purely in marker terms; will read as
+  incomplete once the registry becomes the primary signal.
 
 ### Codebase Research Findings
 
@@ -222,6 +237,34 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 - No additional files require registry-removal wiring beyond the three listed above. `WorkerPool._cleanup_worktree()` (`scripts/little_loops/parallel/worker_pool.py:880-918`) and `scripts/little_loops/cli/loop/run.py`'s `_cleanup_worktree_on_exit()` (~line 510-566) already call `worktree_utils.cleanup_worktree()` directly, so they automatically inherit the registry-removal addition once it lands there.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/work_verification.py:213-237` (`_prepatch_teardown`) and
+  `scripts/little_loops/fsm/executor.py:1649-1677` (`_prepatch_teardown`) —
+  both import and call `worktree_utils.cleanup_worktree()` directly, same
+  shape as the two call sites already noted above. No edit needed — they
+  automatically inherit the registry-removal addition once it lands in
+  `cleanup_worktree()`. This extends (does not contradict) the "no additional
+  files require wiring" conclusion above — the enumeration of *why* was
+  incomplete by two sites, not the conclusion itself.
+- `scripts/little_loops/parallel/worker_pool.py:2078-2088`
+  (`WorkerPool.cleanup_all_worktrees()`) — a separate `worktree_base.iterdir()`
+  enumeration (filtered by `_is_ll_worktree`) that calls
+  `self._cleanup_worktree()` per match; reached via
+  `scripts/little_loops/cli/parallel.py:207` (`main_parallel`'s `--cleanup`
+  branch) and `scripts/little_loops/parallel/orchestrator.py:1952` (shutdown
+  path). No edit needed — `WorkerPool._cleanup_worktree()` already calls
+  `worktree_utils.cleanup_worktree()` (per the finding above this one), so
+  this whole call chain inherits registry-removal automatically.
+- `scripts/little_loops/parallel/orchestrator.py:558-584`
+  (`_check_pending_worktrees()`) — a distinct `worktree_base.iterdir()` scan,
+  separate from `_cleanup_orphaned_worktrees()`. Confirmed read-only: it only
+  reports pending-work status (commits ahead, uncommitted changes) via
+  `self.logger.warning`, and never deletes a worktree or makes a
+  liveness/orphan classification. No wiring needed — not a liveness decision
+  point.
+
 ## Impact
 
 Closes the primary BUG-3373 misclassification hole: a live worktree whose
@@ -241,6 +284,7 @@ ships.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:46 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:44 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:22 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`
