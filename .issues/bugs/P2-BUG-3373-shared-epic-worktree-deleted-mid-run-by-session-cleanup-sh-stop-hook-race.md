@@ -101,6 +101,34 @@ diagnosis above (`program_design_not_applicable: true`, `depends_on:
 [ENH-3376, ENH-3378]`). Close this issue once those land, or close it now
 with the fix tracked entirely on those issues.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- **Status update (2026-09-01)**: all three fixes named above have landed and are `status: done`: ENH-3376 (`completed_at: 2026-09-01T20:10:00Z`, commit `f9e97b9e4`), ENH-3377 (`completed_at: 2026-09-01T20:24:28Z`, commit `6cb00fbf7`), ENH-3378 (`completed_at: 2026-09-01T20:36:43Z`, commit `a289d5db5`, the confirmed deleter's script). Both of this issue's `depends_on` entries (ENH-3376, ENH-3378) are done, so BUG-3373 is unblocked. Per this issue's own text ("close this issue now with the fix tracked entirely on those issues"), BUG-3373 is ready to close — recommend running `/ll:ready-issue BUG-3373` to verify and close.
+
+## Integration Map
+
+### Codebase Research Findings
+
+### Files Verified (Diagnosis, No Code Change Owned by This Issue)
+- `hooks/scripts/session-cleanup.sh` — confirmed deleter; `cleanup()` (lines 36-109) now implements the ENH-3378 positive-evidence-only decision table
+- `hooks/hooks.json:225,235` — Stop hook wiring (confirmed unchanged)
+- `scripts/little_loops/worktree_utils.py` — registry write/read (ENH-3376): `_registry_dir`, `_write_registry_entry`, `_remove_registry_entry`, `_read_registry_entry`, `_pid_is_live` (lines 163-281); `.ll-session-<pid>` marker write (BUG-579) at line 416
+- `scripts/little_loops/parallel/orchestrator.py::_cleanup_orphaned_worktrees()` (lines 362-434) — Python-side orphan sweep, now consults registry → marker → process-cwd fallback (ENH-3377) in that order
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/parallel.py:224` — `ll-parallel --cleanup-orphans` entry point calling `_cleanup_orphaned_worktrees()`
+- `scripts/little_loops/parallel/orchestrator.py`, `ParallelOrchestrator`/`WorkerPool`, `ll-loop`, and the FSM worktree states all call through `worktree_utils.py::setup_worktree()`/`cleanup_worktree()` for both marker and registry writes
+
+### Tests
+- `scripts/tests/test_hooks_integration.py::TestSessionCleanupWorktrees` (class at line 3202) — 7 tests covering session-cleanup.sh's registry/marker decision table end-to-end via subprocess + a real git worktree
+- `scripts/tests/test_worktree_utils.py` (registry tests from line 453) — unit tests for the Python-side registry primitives
+
+### Documentation
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md:423,429` — documents session-cleanup.sh and the accepted residual gap (no bash-side process-cwd fallback)
+- **Stale reference**: this issue's own "Related Key Documentation" cites `docs/reference/CLI.md — ll-parallel --cleanup-orphans`; `docs/reference/CLI.md` documents `ll-parallel --cleanup` (lines 513, 552) but does not contain the literal string `--cleanup-orphans` anywhere, even though `cli/parallel.py:97` does define that flag — a docs gap, not a code gap, and out of this issue's scope to fix.
+
 ## Impact
 
 Silent batch truncation for epic/sprint automation runs: 1 of 3 issues
@@ -196,6 +224,12 @@ fix) would not have prevented this incident, and could not work as designed
 anyway: every site that clears the sentinel is an autodev FSM state, so
 nothing clears it after autodev's FSM has returned.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- **Post-fix state (confirmed 2026-09-01)**: the behavior described above as current — `cleanup()`'s unconditional `git worktree remove --force` on missing/stale marker evidence — no longer reflects the script. ENH-3378 (`status: done`, `completed_at: 2026-09-01T20:36:43Z`) rewrote `hooks/scripts/session-cleanup.sh::cleanup()` into a positive-evidence-only decision table: it now consults an out-of-tree pid+create_time registry (`read_registry_pid()`, lines 22-33) before deleting, and only removes a worktree when a registry or `.ll-session-<pid>` marker entry names a confirmed-dead pid — absence of both signals now means skip, not delete (decision table at lines 66-104; the self-exclusion guard moved to lines 54-61). The registry itself (ENH-3376, `completed_at: 2026-09-01T20:10:00Z`) is written by `worktree_utils.py::setup_worktree()` to a sibling `.registry/` directory outside the worktree checkout, immune to the in-tree `git clean -fdx` that likely caused this incident's marker to go missing. Test coverage for the new decision table: `scripts/tests/test_hooks_integration.py::TestSessionCleanupWorktrees` (7 tests, class starting line 3202), including `test_session_cleanup_skips_worktree_with_no_evidence` — the exact failure mode this issue reported.
+
 ## Related Key Documentation
 
 - `docs/reference/CLI.md` — `ll-parallel --cleanup-orphans`
@@ -219,6 +253,7 @@ No concerns, gaps, or outcome risk factors — root cause is confirmed with fore
 **Open** | Created: 2026-09-01 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-01T20:49:16 - `87c7efdc-d115-415c-a741-428b9e0191a6.jsonl`
 - `/ll:confidence-check` - 2026-09-01T17:43:13 - `0f1d05ea-2a5c-47b5-a9b2-873c176e4caf.jsonl`
 - Root cause confirmed 2026-09-01 via `.ll/history.db` `hook_events` forensic
   query: deleter is `hooks/scripts/session-cleanup.sh`'s Stop hook, fired by
