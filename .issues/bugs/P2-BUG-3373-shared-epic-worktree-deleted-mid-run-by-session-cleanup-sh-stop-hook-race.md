@@ -1,16 +1,30 @@
 ---
 id: BUG-3373
 type: BUG
-title: shared epic worktree deleted mid-run by unidentified external actor
+title: shared epic worktree deleted mid-run by session-cleanup.sh Stop hook race
 priority: P2
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-01'
 captured_at: '2026-09-01T04:10:53Z'
-relates_to: [ENH-3374, BUG-3375]
+relates_to:
+- ENH-3374
+- BUG-3375
+- ENH-3376
+- ENH-3378
+depends_on:
+- ENH-3376
+- ENH-3378
+program_design_not_applicable: true
+confidence_score: 75
+outcome_confidence: 46
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 0
+score_change_surface: 10
 ---
 
-# BUG-3373: shared epic worktree deleted mid-run by unidentified external actor
+# BUG-3373: shared epic worktree deleted mid-run by session-cleanup.sh Stop hook race
 
 ## Summary
 
@@ -67,34 +81,25 @@ original version of this issue was) leaves the actual hole open.
 
 ## Proposed Solution
 
-Investigate and identify the deleter, then fix at the source. Leads, in
-order of suspicion:
+Root cause is now confirmed (see Root Cause) — no further investigation
+needed. The fix is already fully scoped as descendants of ENH-3374
+(decomposed 2026-09-01, see its Resolution):
 
-1. **Orphan-cleanup misclassification** (`ll-parallel --cleanup-orphans`,
-   `/ll:cleanup-worktrees`): orphan detection trusts a `.ll-session-<pid>`
-   marker written at `setup_worktree`
-   (`scripts/little_loops/worktree_utils.py:280`) and checked in
-   `parallel/orchestrator.py:334-345`. The marker is an untracked file
-   inside the worktree — if anything deleted it (e.g. a `git clean -fdx`
-   run by the FEAT-2123 manage-issue session, which did an editable-package
-   reinstall and full test pass inside this worktree minutes before the
-   deletion window), a subsequent cleanup pass would see the active
-   worktree as orphaned and remove it. Check whether any
-   `ll-parallel --cleanup-orphans` invocation ran ~22:55–22:57 local on
-   2026-08-31 (shell history, other Claude session transcripts, analytics
-   events).
-2. **A dispatched session's own tooling**: the FEAT-2123 manage-issue
-   session (ended `03:54:47Z`) or the FEAT-2122 refine session itself may
-   have invoked a cleanup command or `git worktree remove` via a subagent
-   or hook. Grep both sessions' transcripts for `worktree remove`,
-   `cleanup-orphans`, `cleanup-worktrees`, `git clean`.
-3. **Concurrent manual action**: a second interactive session or terminal
-   command. `.loops/.history/` shows no concurrent loop run in the window,
-   but a plain CLI invocation would leave no history entry there.
+- **ENH-3376** — introduces a registry-based worktree liveness record that
+  survives in-tree marker deletion. Addresses the underlying reason the
+  `.ll-session-<pid>` marker was missing/stale in this incident.
+- **ENH-3378** — hardens `hooks/scripts/session-cleanup.sh::cleanup()` (this
+  issue's confirmed deleter) to consult that registry before its
+  unconditional zero-marker `git worktree remove --force`. This is the
+  direct fix for the mechanism identified below.
+- ENH-3377 (process-cwd fallback) is not required to close this specific
+  incident's mechanism — ENH-3376 + ENH-3378 alone close the registry-consult
+  gap this deletion exploited.
 
-Deliverable: the identified mechanism written into this issue's Root Cause,
-plus a source fix (likely landing in the component ENH-3374 also touches —
-coordinate the two).
+BUG-3373 owns no separate code change: its remaining scope was the
+diagnosis above (`program_design_not_applicable: true`, `depends_on:
+[ENH-3376, ENH-3378]`). Close this issue once those land, or close it now
+with the fix tracked entirely on those issues.
 
 ## Impact
 
@@ -138,7 +143,45 @@ Verified timeline (all timestamps from `events.jsonl`, UTC):
 
 ## Root Cause
 
-Unknown — under investigation (see Proposed Solution leads).
+**Confirmed.** The deleter is `hooks/scripts/session-cleanup.sh::cleanup()`
+— wired as a Claude Code `Stop` hook (`hooks/hooks.json:225,235`) — fired by
+an unrelated, ordinary interactive session that happened to end a turn
+inside the deletion window.
+
+Evidence from `.ll/history.db`'s `hook_events` table (Stop-hook telemetry,
+ENH-2506), for `03:52:00`–`03:58:00Z` on 2026-09-01:
+
+| ts (UTC) | session_id | script | notes |
+|---|---|---|---|
+| `03:54:47Z` | `f311a645-…` | `session-cleanup.sh` | FEAT-2123's own session ending. No commands from this session appear under the project's default cwd via `ll-messages` (which resolves sessions by cwd) — consistent with it running with cwd = the shared epic worktree itself. `cleanup()` self-excludes when `git-dir != git-common-dir` (script lines 33-37), so this firing almost certainly did **not** touch worktree cleanup. |
+| **`03:56:11Z`** | **`54b7abda-…`** | **`session-cleanup.sh`** | **Squarely inside the `03:54:58`–`03:57:14` deletion window.** cwd = true project root (confirmed via `ll-messages`). This session had no connection to EPIC-1463 — it was an ordinary session capturing/committing **FEAT-3372**, whose commands and commit bracket this timestamp. Its Stop hook firing is the only other worktree-scanning event in the window. |
+
+`cleanup()` runs on **every turn-end** of any project-root session (per its
+own comment, it "fires at every turn end," not just session-end). On each
+firing it globs `git worktree list` for **all** worktrees under
+`parallel.worktree_base` and, for any whose `.ll-session-<pid>` marker is
+missing or names a dead pid, runs `git worktree remove --force`
+unconditionally (script lines 42-54) — with no check for a live subprocess
+using the worktree as its cwd, no dry-run, and no logging of what was
+removed. This is a third, independent reimplementation of the liveness
+check that ENH-3374's descendants (ENH-3376, ENH-3377, ENH-3378) already
+identified as fragile; ENH-3378 specifically scopes hardening this exact
+script.
+
+This resolves the "unidentified external actor" framing: the deleter is not
+external, malicious, or a deliberate cleanup invocation — it is this
+project's own Stop-hook automation, triggered incidentally by an unrelated
+session that finished an ordinary turn during the ~2-minute window in which
+the shared epic worktree's `.ll-session-<pid>` marker was apparently
+missing or stale. (The mechanism for *why* the marker was missing —most
+likely a `git clean -fdx` run by FEAT-2123 inside the worktree minutes
+earlier — remains ENH-3374/ENH-3376's scope, not re-litigated here.)
+
+This also explains why the original transcript-grep leads found nothing:
+the deleting command never appears as a Bash tool call in any session's
+transcript — it runs inside a harness-triggered hook script the model never
+sees or invokes directly, so no amount of grepping session transcripts for
+`worktree remove` / `cleanup-orphans` could have surfaced it.
 
 Ruled out: `FSMExecutor._execute_sub_loop`'s `finally`-block
 `detach_worktree()` (`scripts/little_loops/fsm/executor.py:1125-1127`),
@@ -157,12 +200,41 @@ nothing clears it after autodev's FSM has returned.
 
 - `docs/reference/CLI.md` — `ll-parallel --cleanup-orphans`
 - `scripts/little_loops/worktree_utils.py` — session-marker write (BUG-579)
+- `hooks/scripts/session-cleanup.sh` — confirmed deleter (`cleanup()`,
+  lines 42-54); wired as a Claude Code `Stop` hook at `hooks/hooks.json:225,235`
+- `.ll/history.db` `hook_events` table (ENH-2506 telemetry) — forensic
+  evidence for the confirmed root cause above
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-01_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Program Design hard override)
+**Outcome Confidence**: 46/100 → LOW
+
+### Concerns
+- Root cause is explicitly unidentified ("Unknown — under investigation"); three ranked candidate mechanisms are proposed but none confirmed (Criterion 3: 10/20).
+- Ambiguity is high: which of the three leads is the actual deleter is unresolved, and the fix site depends entirely on that finding (Criterion C: 0/25).
+
+### Gaps to Address
+- `## Program Design` section is missing entirely (not present, not just non-specific) — `ll-issues check-design` fails. Populate it once the deleter is identified (run `/ll:refine-issue` or `/ll:reconcile-issue`), or set `program_design_not_applicable: true` if this issue is intentionally scoped as investigation-only ahead of a follow-up fix issue.
+
+### Outcome Risk Factors
+- Change surface is not yet bounded — the actual fix site is unknown until one of the three leads is confirmed, and cleanup logic spans multiple call paths (`ll-parallel --cleanup-orphans`, `/ll:cleanup-worktrees`, dispatched-session tooling) (Criterion D: 10/25).
+- Multiple competing root-cause hypotheses remain open; effort could be spent investigating a lead that turns out to be a dead end (Criterion C: 0/25).
 
 ## Status
 
 **Open** | Created: 2026-09-01 | Priority: P2
 
 ## Session Log
+- Root cause confirmed 2026-09-01 via `.ll/history.db` `hook_events` forensic
+  query: deleter is `hooks/scripts/session-cleanup.sh`'s Stop hook, fired by
+  session `54b7abda-af7a-4b45-bfa4-e6f3cd9335a3` (unrelated FEAT-3372
+  capture) at `03:56:11Z`. Fix delegated to ENH-3376/ENH-3378 (already
+  scoped as ENH-3374 descendants); `program_design_not_applicable: true`
+  set since this issue owns no separate code change.
+- `/ll:confidence-check` - 2026-09-01T17:01:32 - `98f877f4-d015-4e8b-adfe-7dbdd68338b7.jsonl`
 - Rewritten 2026-09-01 after events.jsonl replay disproved the original root cause; hardening split to ENH-3374 / BUG-3375.
 - `/ll:confidence-check` - 2026-09-01T05:03:18 - `cb6b213f-3d5d-4d43-865a-115ce8e42c87.jsonl` (against superseded content)
 - `/ll:verify-issues` - 2026-09-01T05:00:57 - `59d87293-a76b-4fa5-956d-fafc8b453dfc.jsonl` (against superseded content)
