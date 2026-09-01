@@ -174,7 +174,8 @@ class TestOmpAdapterTypecheck:
         "content, so `node_modules/@types/bun` (a gitignored devDependency) is "
         "never installed there, unlike a normal clone. `tsc --noEmit` then fails "
         "with 'Cannot find type definition file for bun' — not a real regression. "
-        "Tracked for un-quarantine by BUG-3371. The assertion is still fully "
+        "Permanent by design: BUG-3371 (cancelled, won't-fix) records the decision "
+        "to exclude JS/TS type-checking from the gate's scope. The assertion is still fully "
         "exercised by the standard `python -m pytest scripts/tests/` run, so "
         "coverage is unchanged off the gate.",
     )

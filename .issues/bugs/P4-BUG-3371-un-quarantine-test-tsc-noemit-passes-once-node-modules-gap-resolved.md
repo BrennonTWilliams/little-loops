@@ -3,7 +3,8 @@ id: BUG-3371
 type: BUG
 title: "Un-quarantine test_tsc_noemit_passes once the verify gate's node_modules gap is resolved"
 priority: P4
-status: open
+status: cancelled
+cancelled_reason: "Option B chosen: the epic-worktree verify gate's scope deliberately excludes JS/TS type-checking of worktree checkouts. Materializing node_modules (Option A) was already rejected in BUG-3368's decision record (novel network-dependent, non-hermetic step with zero gate-code precedent), and no concrete driver emerged. The tsc --noEmit assertion remains fully exercised by the standard `python -m pytest scripts/tests/` run off the gate, so coverage is unchanged; the LL_VERIFY_GATE skipif quarantine is now permanent by design."
 discovered_by: manage-issue
 discovered_date: '2026-08-31'
 relates_to:
@@ -123,7 +124,27 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-08-31 | Priority: P4
+**Cancelled** (won't-fix, Option B) | Created: 2026-08-31 | Cancelled: 2026-08-31 | Priority: P4
+
+## Resolution
+
+Closed won't-fix per Option B: the verify gate's scope is deliberately redefined to
+exclude JS/TS type-checking of ephemeral worktree checkouts. Rationale:
+
+- BUG-3368's decision record (`.ll/decisions.d/509372bd-43b5-4997-abf8-5dc1337a293c.json`)
+  already rejected the dependency-install path (Option A) as a novel network-dependent,
+  non-hermetic step with zero precedent in gate/worktree/CI code.
+- No concrete driver (e.g. a false negative traceable to the missing gate coverage)
+  materialized after the quarantine landed.
+- Coverage is unchanged in practice: `test_tsc_noemit_passes` still runs the real
+  `tsc --noEmit` check in every standard `python -m pytest scripts/tests/` run
+  wherever Bun is available — only the gate's worktree run skips it.
+
+The `LL_VERIFY_GATE=1` skipif decorators in `scripts/tests/test_opencode_adapter.py`
+and `scripts/tests/test_omp_adapter.py` are permanent by design; their reason strings
+point here for the rationale. A hermetic alternative (vendoring a minimal git-tracked
+`@types/bun` stub or a gate-specific tsconfig) was noted but not pursued — file a new
+issue against this one if gate-side type-check coverage is ever actually needed.
 
 
 ## Session Log

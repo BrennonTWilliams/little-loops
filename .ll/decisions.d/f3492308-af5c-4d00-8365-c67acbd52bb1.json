@@ -1,0 +1,12 @@
+{
+  "id": "de04d804-3b6f-4ca9-a397-bd74727250aa",
+  "type": "decision",
+  "timestamp": "2026-09-01T02:46:04Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "BUG-3371 closed won't-fix (Option B). Materializing node_modules in gate worktrees was already rejected in BUG-3368's decision (network-dependent, non-hermetic, zero gate-code precedent) and no concrete driver for gate-side tsc coverage emerged. tsc --noEmit remains fully exercised by the standard pytest run off the gate.",
+  "rule": "Epic-worktree verify gate scope deliberately excludes JS/TS type-checking of ephemeral worktree checkouts; the LL_VERIFY_GATE=1 skipif quarantine on test_tsc_noemit_passes (opencode + omp adapters) is permanent.",
+  "scope": "project",
+  "alternatives_rejected": "Option A: bun install in setup_worktree()/verify gate (rejected per BUG-3368 decision 7801fe5b); hermetic middle path (vendored @types/bun stub or gate-specific tsconfig) noted but not pursued absent a concrete driver.",
+  "issue": "BUG-3371"
+}
