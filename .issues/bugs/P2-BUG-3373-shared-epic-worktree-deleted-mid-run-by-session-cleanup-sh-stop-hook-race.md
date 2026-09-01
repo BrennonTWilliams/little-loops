@@ -16,12 +16,12 @@ depends_on:
 - ENH-3376
 - ENH-3378
 program_design_not_applicable: true
-confidence_score: 75
-outcome_confidence: 46
-score_complexity: 18
-score_test_coverage: 18
-score_ambiguity: 0
-score_change_surface: 10
+confidence_score: 95
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3373: shared epic worktree deleted mid-run by session-cleanup.sh Stop hook race
@@ -207,27 +207,19 @@ nothing clears it after autodev's FSM has returned.
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-01_
+_Updated by `/ll:confidence-check` on 2026-09-01 — supersedes the 17:01:32 run below, which predates root-cause confirmation and `program_design_not_applicable: true`_
 
-**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Program Design hard override)
-**Outcome Confidence**: 46/100 → LOW
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 100/100 → HIGH CONFIDENCE
 
-### Concerns
-- Root cause is explicitly unidentified ("Unknown — under investigation"); three ranked candidate mechanisms are proposed but none confirmed (Criterion 3: 10/20).
-- Ambiguity is high: which of the three leads is the actual deleter is unresolved, and the fix site depends entirely on that finding (Criterion C: 0/25).
-
-### Gaps to Address
-- `## Program Design` section is missing entirely (not present, not just non-specific) — `ll-issues check-design` fails. Populate it once the deleter is identified (run `/ll:refine-issue` or `/ll:reconcile-issue`), or set `program_design_not_applicable: true` if this issue is intentionally scoped as investigation-only ahead of a follow-up fix issue.
-
-### Outcome Risk Factors
-- Change surface is not yet bounded — the actual fix site is unknown until one of the three leads is confirmed, and cleanup logic spans multiple call paths (`ll-parallel --cleanup-orphans`, `/ll:cleanup-worktrees`, dispatched-session tooling) (Criterion D: 10/25).
-- Multiple competing root-cause hypotheses remain open; effort could be spent investigating a lead that turns out to be a dead end (Criterion C: 0/25).
+No concerns, gaps, or outcome risk factors — root cause is confirmed with forensic evidence, `program_design_not_applicable: true` is set and `ll-issues check-design` passes, `format-check` reports no gaps, and the remaining dependency on ENH-3376/ENH-3378 is explicitly non-blocking per this issue's own Proposed Solution (close now, tracked entirely on those issues).
 
 ## Status
 
 **Open** | Created: 2026-09-01 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-01T17:43:13 - `0f1d05ea-2a5c-47b5-a9b2-873c176e4caf.jsonl`
 - Root cause confirmed 2026-09-01 via `.ll/history.db` `hook_events` forensic
   query: deleter is `hooks/scripts/session-cleanup.sh`'s Stop hook, fired by
   session `54b7abda-af7a-4b45-bfa4-e6f3cd9335a3` (unrelated FEAT-3372
