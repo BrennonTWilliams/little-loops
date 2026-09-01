@@ -15,7 +15,7 @@ relates_to:
 ## Summary
 
 Add an out-of-tree liveness registry (`<worktree_base>/.registry/<worktree-name>`,
-pid + run id) written at `setup_worktree` and removed at `cleanup_worktree`, so a
+plain text: pid + process create_time) written at `setup_worktree` and removed at `cleanup_worktree`, so a
 `git clean -fdx` run from inside a worktree can no longer erase its liveness
 record. `_cleanup_orphaned_worktrees()` consults the registry first, then falls
 back to the existing in-tree `.ll-session-<pid>` marker. This is the direct fix
@@ -48,16 +48,30 @@ independently shippable concerns.
 
 ## Expected Behavior
 
-- `setup_worktree` writes a registry entry `{pid, run_id}` under
+- `setup_worktree` writes a registry entry under
   `<worktree_base>/.registry/<worktree-name>` (sibling of, not inside, the
   worktree checkout dirs, so `git clean` cannot reach it), in addition to the
-  existing in-tree marker.
+  existing in-tree marker. **Format (decided here, final):** plain text,
+  line 1 = pid, line 2 = `psutil.Process(pid).create_time()` as a float
+  string, optional line 3 = run id. Bash consumers read line 1 only.
+- The registry entry is written **before** `git worktree add`, not after.
+  Today the in-tree marker lands at the very end of `setup_worktree` (after
+  `git worktree add` and the `.claude/` + `copy_files` copies), so a
+  concurrent orphan scan during that window sees a marker-less worktree and
+  reaps it. The registry closes this window because it does not need the
+  worktree directory to exist yet. If `git worktree add` then fails, the
+  entry is removed on the error path.
 - `cleanup_worktree` removes the registry entry.
 - `MergeCoordinator._cleanup_worktree()` also removes the registry entry (or
   is redirected to call `worktree_utils.cleanup_worktree()`), since it bypasses
   that function today.
 - `_cleanup_orphaned_worktrees()` consults the registry first: an entry with a
-  live pid means the worktree is live regardless of in-tree marker state. Only
+  live pid **whose `create_time` matches the recorded one** (pid-reuse guard,
+  same identity-check shape as `cli/queue.py::_verify_owner_alive` and
+  `cli/loop/queue.py::_verify_queue_pid_identity`) means the worktree is live
+  regardless of in-tree marker state. A live pid with a mismatched
+  `create_time` is a recycled pid: treat the entry as dead. A missing or
+  unparseable line 2 falls back to the bare `os.kill(pid, 0)` probe. Only
   when there is no live registry entry does it fall back to the existing
   in-tree marker check. Worktrees with neither a live registry entry nor a
   live marker keep today's behavior (treated as orphaned) — the fallback
@@ -65,7 +79,11 @@ independently shippable concerns.
 - Registry entries do not accumulate: when `_cleanup_orphaned_worktrees()`
   deletes an orphaned worktree it also removes that worktree's registry
   entry, and it prunes any registry entry whose worktree directory no longer
-  exists. (The orphan path inlines removal at `orchestrator.py:356-398` and
+  exists **and whose pid is dead**. The dead-pid condition is required: the
+  entry is now written before `git worktree add` (see above), so a
+  dir-missing-only prune would delete a just-written entry for a worktree
+  whose creation is still in flight, and the next pass would then reap the
+  new worktree as marker-less and registry-less. (The orphan path inlines removal at `orchestrator.py:356-398` and
   never calls `cleanup_worktree()`, so without this the registry grows
   unbounded — worker names embed timestamps and are never reused — and every
   stale entry is a pid-reuse hazard: once the OS recycles that pid, a genuine
@@ -82,45 +100,53 @@ directly extends the already-proven atomic-write JSON pattern used by
 
 ## Proposed Solution
 
-1. `setup_worktree` (`worktree_utils.py:160`, marker write ~line 280): add a
-   registry write to `<worktree_base>/.registry/` for the worktree, using the
-   same `tempfile.mkstemp` + `os.replace` atomic-write pattern as
-   `_save_state`. Keep the in-tree marker write unchanged (backward
-   compatibility). Derive the registry dir as `worktree_path.parent /
-   ".registry"` (the function receives `worktree_path`, not `worktree_base`).
+1. `setup_worktree` (`worktree_utils.py:160`): add a registry write to
+   `<worktree_base>/.registry/` for the worktree, placed **before** the
+   `git worktree add` call (~line 232) rather than beside the marker write
+   (~line 280) — see Expected Behavior for why. Use the same
+   `tempfile.mkstemp` + `os.replace` atomic-write pattern as `_save_state`.
+   Remove the entry on the `RuntimeError` path if `git worktree add` fails.
+   Keep the in-tree marker write unchanged (backward compatibility). Derive
+   the registry dir as `worktree_path.parent / ".registry"` (the function
+   receives `worktree_path`, not `worktree_base`).
 
-   **Format decision — choose with ENH-3378's bash consumer in mind, before
-   landing:** `session-cleanup.sh` has no guaranteed JSON parser, and its
-   existing "jq-optional" pattern (line 24-26) only substitutes a default
-   config value — it cannot extract a pid from JSON. Prefer a format bash can
-   read in one line, e.g. encode the pid in the filename
-   (`<worktree-name>.<pid>.json`, mirroring the `.ll-session-<pid>` marker
-   convention) or write plain text (`pid\nrun_id\n`) instead of JSON. If JSON
-   is kept, ENH-3378 must specify a grep/sed extraction fallback.
+   **Format decision (final — do not reopen in ENH-3378):** plain-text file
+   named exactly `<worktree-name>` (no pid in the filename, so removal and
+   prune never need a glob). Line 1 = pid, line 2 = `create_time` float,
+   optional line 3 = run id. Rationale: `session-cleanup.sh` has no
+   guaranteed JSON parser, and its "jq-optional" pattern (lines 21-26) only
+   substitutes a default config value — it cannot extract a field from JSON.
+   `head -n1` + a `[[ "$PID" =~ ^[0-9]+$ ]]` check is the whole bash reader.
 2. `cleanup_worktree` (`worktree_utils.py:284`): add an explicit registry-entry
    removal call (best-effort; a `git clean` inside the worktree never reaches
    this function, so the registry is the durable record).
 3. `MergeCoordinator._cleanup_worktree()`
-   (`merge_coordinator.py:1148-1192`): add the same registry-removal call, or
-   redirect this method to call `worktree_utils.cleanup_worktree()` — pick
-   whichever keeps the removal logic in one place.
+   (`merge_coordinator.py:1148-1192`): **add the registry-removal call**; do
+   not redirect this method to `worktree_utils.cleanup_worktree()`. The
+   redirect would also change its branch-delete guard from `parallel/`-only
+   to `_is_ll_branch()` (see Codebase Research Findings) — a behavior change
+   unrelated to liveness. File that normalization separately if wanted.
 4. `_cleanup_orphaned_worktrees()` (`orchestrator.py:317`): consult the
-   registry before the existing `.ll-session-*` glob (line 337); treat "registry
-   entry with live pid" (reusing the existing `os.kill(pid, 0)` liveness probe)
-   as live regardless of in-tree marker state.
+   registry before the existing `.ll-session-*` glob (line 337); treat
+   "registry entry with live pid and matching `create_time`" as live
+   regardless of in-tree marker state. Reuse the existing `os.kill(pid, 0)`
+   probe for existence (keep its `PermissionError` → alive semantics), then
+   compare `psutil.Process(pid).create_time()` against line 2 with a small
+   float tolerance (`abs(a - b) < 1.0`; psutil rounds on some platforms). A
+   mismatch means the pid was recycled → treat as dead.
 5. Registry hygiene in the same method: when the orphan-deletion loop
    (`orchestrator.py:356-398`) removes a worktree, also remove its registry
    entry (this path inlines removal and never calls `cleanup_worktree()`);
    additionally prune any registry entry whose worktree directory no longer
-   exists. Both are required to bound pid-reuse exposure (see Expected
-   Behavior).
-6. Determine where `run_id` comes from for non-orchestrator callers
-   (`setup_prepatch_worktree`, `ensure_epic_branch` in `worktree_utils.py`) —
-   `ParallelOrchestrator.run_id` exists today (`orchestrator.py:124`) but
-   `worktree_utils.py` has no `run_id` concept; either add an optional
-   `run_id: str | None = None` parameter to `setup_worktree` (falling back to
-   e.g. the pid as a string when absent) or synthesize one locally. This gap
-   was flagged UNSPECIFIED in the parent's Program Design.
+   exists **and** whose pid is dead (or recycled). Never prune on
+   dir-missing alone — see Expected Behavior for the in-flight-creation race.
+6. `run_id` is optional metadata, not a liveness input. Add
+   `run_id: str | None = None` to `setup_worktree`; the orchestrator passes
+   `self.run_id` (`orchestrator.py:124`), other callers
+   (`setup_prepatch_worktree`, `ensure_epic_branch`, `fsm/executor.py`'s
+   sub-loop path) pass nothing and line 3 is omitted. Nothing reads line 3
+   in this issue set; it exists only to make a registry entry attributable
+   when debugging.
 
 ### Tests
 
@@ -129,6 +155,16 @@ directly extends the already-proven atomic-write JSON pattern used by
 - `_cleanup_orphaned_worktrees()` skips a worktree with a live registry entry
   even when its in-tree marker was deleted (the direct BUG-3373 regression
   test).
+- Registry entry exists before `git worktree add` runs: patch
+  `git_lock.run` to assert the entry is present when the `worktree add`
+  argv arrives; and the entry is removed when `worktree add` returns
+  non-zero.
+- Pid-reuse guard: a registry entry whose pid is alive but whose recorded
+  `create_time` does not match `psutil.Process(pid).create_time()` is
+  treated as dead (worktree reaped, entry removed). A missing line 2 falls
+  back to the bare `os.kill` probe.
+- Prune requires dead pid: a registry entry whose worktree dir is missing
+  but whose pid is alive with matching `create_time` is NOT pruned.
 - `MergeCoordinator._cleanup_worktree()` removes the registry entry it created
   (extend `test_merge_coordinator.py::TestCleanupWorktreeFallback`).
 - `ParallelOrchestrator.run()` invokes `_cleanup_orphaned_worktrees()` — add
@@ -187,22 +223,25 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 ### Types
 
-- Registry entry: `pid: int`, `run_id: str` (on-disk encoding — filename-embedded
-  pid vs. plain-text `pid\nrun_id\n` vs. JSON — is the open Format decision in
-  Proposed Solution step 1)
+- Registry entry (on-disk, plain text, file `<worktree_base>/.registry/<worktree-name>`):
+  line 1 `pid: int`, line 2 `create_time: float`, optional line 3 `run_id: str`.
+  Decided in Proposed Solution step 1; final.
 
 ### Signatures
 
 - `_registry_dir(worktree_path: Path) -> Path` — `worktree_path.parent / ".registry"`
-- `_write_registry_entry(worktree_path: Path, pid: int, run_id: str) -> None` —
+- `_write_registry_entry(worktree_path: Path, pid: int, create_time: float, run_id: str | None = None) -> None` —
   atomic write via the `_save_state` `tempfile.mkstemp` + `os.replace` pattern
 - `_remove_registry_entry(worktree_path: Path) -> None`
+- `_read_registry_entry(worktree_path: Path) -> tuple[int, float | None] | None` —
+  None when absent or line 1 is not an int
 - `_registry_entry_is_live(worktree_path: Path) -> bool` — reads the entry,
-  reuses the existing `os.kill(pid, 0)` liveness probe
+  reuses the existing `os.kill(pid, 0)` existence probe, then compares
+  `create_time` when line 2 is present (mismatch → False)
 
 ### Call Path
 
-`setup_worktree` -> `_write_registry_entry`
+`setup_worktree` -> `_write_registry_entry` -> `git worktree add` (-> `_remove_registry_entry` on failure)
 `cleanup_worktree` / `MergeCoordinator._cleanup_worktree` -> `_remove_registry_entry`
 `ParallelOrchestrator.run` -> `_cleanup_orphaned_worktrees` -> `_registry_entry_is_live`
 -> (fallback) existing `.ll-session-*` glob check
@@ -221,9 +260,14 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
   of scope — split into ENH-3378.
 - No backfill: worktrees created before this feature ships have no registry
   entry and fall back to marker-only behavior until they're recreated.
-- The on-disk registry-entry format is decided once here (with ENH-3378's bash
-  consumer in mind, per Proposed Solution step 1); reopening that format later
-  is out of scope for this issue.
+- The on-disk registry-entry format is decided here (Proposed Solution step 1:
+  plain text, pid / create_time / optional run id); ENH-3378 consumes it and
+  must not reopen it.
+- Normalizing `MergeCoordinator._cleanup_worktree()`'s `parallel/`-only
+  branch-delete guard to `_is_ll_branch()` is out of scope (step 3).
+- Closing the marker-write window for the in-tree marker itself is out of
+  scope; the registry-before-`worktree add` ordering makes the registry the
+  signal that covers that window.
 
 ## Files to Modify
 
@@ -284,6 +328,7 @@ ships.
 
 
 ## Session Log
+- Pre-implementation review - 2026-09-01 - format decided (plain text pid/create_time/run_id), registry written before `git worktree add`, prune requires dead pid, create_time pid-reuse guard, MergeCoordinator gets an explicit removal call (no redirect), run_id demoted to optional metadata.
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:46 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:44 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`

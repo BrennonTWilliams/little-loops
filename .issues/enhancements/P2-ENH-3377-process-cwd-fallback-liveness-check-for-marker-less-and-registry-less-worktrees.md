@@ -7,7 +7,6 @@ status: open
 parent: ENH-3374
 depends_on:
 - ENH-3376
-unproven_mechanism: true
 learning_tests_required:
 - psutil
 ---
@@ -29,11 +28,13 @@ worktrees cannot be classified orphaned. Covers Proposed Solution step 3 and
 the third Phase-4 test bullet ("marker-less + registry-less worktree still
 cleaned" — this issue changes that path to consult the fallback first, so the
 regression test moves here). The parent flagged this exact mechanism
-`unproven_mechanism: true` with `learning_tests_required: psutil` — no
-`psutil` or `lsof` usage exists anywhere in the current worktree-liveness code
-path, and no cwd-based liveness precedent exists in the codebase (the closest
-prior art, `scripts/little_loops/cli/queue.py::_verify_owner_alive`, is
-cmdline-identity based, not cwd based).
+`unproven_mechanism: true` with `learning_tests_required: psutil`. That spike
+has since been run and is **proven** —
+`.ll/learning-tests/psutil-process-cwd-liveness-check.md` (2026-09-01) — so
+the flag is cleared and the mechanism's findings are folded into Proposed
+Solution step 1. No cwd-based liveness precedent exists in the codebase (the
+closest prior art, `scripts/little_loops/cli/queue.py::_verify_owner_alive`,
+is cmdline-identity based, not cwd based).
 
 ## Current Behavior
 
@@ -46,9 +47,18 @@ and no live in-tree marker is deleted immediately by
 Before deleting a worktree with neither a live registry entry nor a live
 marker, check whether any live process has its cwd inside the worktree path.
 If such a process exists, skip the worktree with a warning instead of
-deleting it. If the check cannot be performed (e.g. `psutil` unavailable),
-also skip with a warning rather than deleting — absence of a marker/registry
-is never, by itself, treated as proof of orphanhood.
+deleting it. The warning must name the blocking process (pid and name, e.g.
+`zsh`), because an idle user shell parked in a genuinely dead worktree will
+block cleanup indefinitely under this rule and the user needs enough
+information to act. If the check cannot be performed (e.g. `psutil`
+unavailable, or `process_iter` itself raising), also skip with a warning
+rather than deleting — absence of a marker/registry is never, by itself,
+treated as proof of orphanhood.
+
+The scan runs **once per cleanup pass**, not once per candidate worktree, and
+its result is tri-state: a set of live process cwds, or "scan failed". A
+plain `bool` cannot express "could not check", which is why the Program
+Design signature below is not `-> bool`.
 
 ## Motivation
 
@@ -62,40 +72,43 @@ absent.
 
 ## Proposed Solution
 
-1. **Spike first** (required — `unproven_mechanism: true`): prove a
-   `psutil`-based (or `lsof`-based, if `psutil` proves unsuitable) mechanism
-   for "does any live process have its cwd inside path X" works reliably
-   across the platforms this codebase targets, before wiring it into
-   `_cleanup_orphaned_worktrees()`. Record the proof per the Learning Test
-   Registry conventions (see `/ll:explore-api`).
-
-   Note: `psutil` is already a **required** dependency
-   (`scripts/pyproject.toml:58`, no longer gated behind an extras install as
-   of FEAT-2930), so the "psutil unavailable" branch is defensive-only. The
-   spike's real questions are:
-   - **macOS path aliasing**: `psutil.Process.cwd()` returns
-     `/private/tmp/...` where the worktree path may read `/tmp/...` — the
-     prefix comparison must `Path.resolve()` both sides or live processes
-     produce false negatives (i.e. deletions).
-   - **`AccessDenied` decision rule**: on macOS, `cwd()` raises
-     `AccessDenied` for many system/other-user processes as a matter of
-     course. A literal "cannot positively exclude → skip" rule would block
-     all cleanup forever. Rule to prove/adopt: per-process `AccessDenied`
-     (and `NoSuchProcess`/zombie races) is ignored and the scan continues;
-     only a wholesale scan failure (e.g. `process_iter` itself raising)
-     triggers the skip-with-warning path.
-   - **Cost**: `process_iter` + per-process `cwd()` on every cleanup pass —
-     measure, and iterate once per pass (checking all candidate worktrees in
-     one sweep), not once per worktree.
+1. **Mechanism (proven — no further spike needed):** the learning test
+   `.ll/learning-tests/psutil-process-cwd-liveness-check.md` (`status:
+   proven`, raw output in `.ll/learning-tests/raw/`) establishes the rules
+   the implementation must follow. `psutil` is already a **required**
+   dependency (`scripts/pyproject.toml:58`, FEAT-2930), so the "psutil
+   unavailable" branch is defensive-only.
+   - **macOS path aliasing** (proven): `cwd()` returns `/private/tmp/...`
+     where the worktree path may read `/tmp/...`. `Path.resolve()` both
+     sides and compare with `is_relative_to()`, or live processes produce
+     false negatives (i.e. deletions).
+   - **`AccessDenied` handling** (proven, and it corrects the parent's
+     assumption): `psutil.process_iter(['pid', 'name', 'cwd'])` does **not**
+     raise `AccessDenied` per process — it yields `cwd=None` for rows it
+     cannot read (psutil's `ad_value` substitution). Only a direct
+     `psutil.Process(pid).cwd()` raises. So the sweep loop treats
+     `info['cwd'] is None` as "unknown, skip this row and continue"; there
+     is no per-process `except AccessDenied` to write. Catch
+     `psutil.NoSuchProcess`/`psutil.ZombieProcess` around the row anyway
+     for the race where a process exits mid-iteration. Only `process_iter`
+     itself raising counts as a wholesale scan failure.
+   - **Cost**: iterate once per cleanup pass, collect every readable cwd
+     into a set, then check each candidate worktree against that set.
+     Measure the sweep on macOS during implementation; if it exceeds ~1s on
+     a busy machine, note it in the log line, but do not add caching.
 2. Add the fallback check to `_cleanup_orphaned_worktrees()`
    (`scripts/little_loops/parallel/orchestrator.py:317`), gated after the
-   registry and marker checks from ENH-3376: for a worktree
-   with neither a live registry entry nor a live marker, run the process-cwd
-   check before deleting.
-3. If the check raises or the required dependency is unavailable, skip the
-   worktree with a warning (log entry), matching the "never delete when
-   liveness cannot be positively excluded" principle — do not fall through to
-   deletion on error.
+   registry and marker checks from ENH-3376. Call
+   `_collect_live_process_cwds()` once, lazily, the first time a candidate
+   reaches this tier (so passes where every worktree is registry- or
+   marker-live never pay for the sweep). For each candidate with neither
+   signal, skip if any collected cwd `is_relative_to` the resolved worktree
+   path.
+3. If `_collect_live_process_cwds()` returns `None` (psutil import failed or
+   `process_iter` raised), skip **every** candidate that reached this tier
+   with one warning naming the failure, matching the "never delete when
+   liveness cannot be positively excluded" principle — do not fall through
+   to deletion on error.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -122,9 +135,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 
 - A live process with cwd inside a marker-less, registry-less worktree ->
-  worktree is skipped with a warning, not deleted.
-- The check being unavailable (mock ImportError / mock the check raising) ->
-  worktree is skipped with a warning, not deleted.
+  worktree is skipped with a warning that names the pid and process name,
+  not deleted. Use a real `subprocess.Popen(["sleep", "30"], cwd=worktree)`
+  child for one end-to-end case (exercises the `/tmp` → `/private/tmp`
+  resolve on macOS), and mocked `process_iter` for the rest.
+- A `process_iter` row with `cwd=None` (the AccessDenied shape) is ignored
+  and does not by itself cause a skip.
+- The check being unavailable (`process_iter` raising; psutil import
+  failing) -> every candidate at this tier is skipped with a warning, none
+  deleted.
+- The sweep runs at most once per `_cleanup_orphaned_worktrees()` call even
+  with several candidates, and not at all when no candidate reaches the
+  fallback tier.
 - A marker-less, registry-less worktree with no live process anywhere inside
   it -> still deleted (this is the BUG-579 regression test, moved from the
   parent's Phase-4 test list to reflect the new gating).
@@ -146,24 +168,35 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 ### Signatures
 
-- `_process_cwd_liveness_check(worktree_path: Path) -> bool` — iterates
-  `psutil.process_iter()` once per cleanup pass, `Path.resolve()`s both sides
-  before the prefix comparison, ignores per-process `AccessDenied`/
-  `NoSuchProcess`, and returns `False` only on a wholesale scan failure
-  (`process_iter` itself raising) or when `psutil` is unavailable
+- `_collect_live_process_cwds() -> dict[Path, tuple[int, str]] | None` — one
+  `psutil.process_iter(['pid', 'name', 'cwd'])` sweep; maps each
+  readable, `Path.resolve()`d cwd to `(pid, name)` for the warning text;
+  rows with `cwd=None` are skipped; `NoSuchProcess`/`ZombieProcess` per row
+  are skipped; returns `None` only when psutil is unavailable or
+  `process_iter` itself raises (wholesale failure)
+- `_worktree_has_live_cwd(worktree_path: Path, live_cwds: LiveCwds) -> tuple[int, str] | None` — pure
+  helper (`LiveCwds = dict[Path, tuple[int, str]]`): `worktree_path.resolve()` then
+  `any(cwd.is_relative_to(resolved) ...)`; returns the first matching
+  `(pid, name)` or `None`
+
+(The earlier `_process_cwd_liveness_check(worktree_path) -> bool` shape was
+dropped: a bool cannot distinguish "no live process found" from "could not
+check", and a per-worktree signature cannot implement the single-sweep
+design.)
 
 ### Call Path
 
 `ParallelOrchestrator.run` -> `_cleanup_orphaned_worktrees` -> (registry check,
-marker check — ENH-3376) -> `_process_cwd_liveness_check` -> skip-with-warning
-or delete
+marker check — ENH-3376) -> `_collect_live_process_cwds` (once, lazily) ->
+`_worktree_has_live_cwd` per candidate -> skip-with-warning or delete;
+`None` from the sweep -> skip all fallback-tier candidates with one warning
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
-- A learning-test spike for this exact mechanism already exists and is `proven`: `.ll/learning-tests/psutil-process-cwd-liveness-check.md` (dated 2026-09-01, same day as this issue). It confirms `psutil.Process(pid).cwd()` works, that `Path.resolve()` is required on both sides for the macOS `/tmp` → `/private/tmp` symlink, and that `psutil.AccessDenied`/`NoSuchProcess` are both subclasses of `psutil.Error`. This satisfies Proposed Solution step 1's "Spike first" requirement — see NEXT STEPS in this refine pass's output for how this should be surfaced.
-- Correction to the stated mechanism: the spike's raw output (`.ll/learning-tests/raw/psutil-process-cwd-liveness-check.txt`, `CLAIM3-refined`) found that `psutil.process_iter(['pid', 'cwd'])` does **not** raise `AccessDenied` per-process during iteration — it silently returns `cwd=None` for those rows (via psutil's internal `ad_value` substitution). Only a *direct* `psutil.Process(pid).cwd()` call raises `AccessDenied`. Since `_process_cwd_liveness_check` as specified uses `process_iter` for its single-sweep-per-pass design, there is no reachable `try/except psutil.AccessDenied` inside that loop — the implementation must instead treat `cwd is None` as "cannot determine, skip", not catch an exception that `process_iter` never raises. This directly revises the "AccessDenied decision rule" bullet under Proposed Solution step 1.
+- A learning-test spike for this exact mechanism already exists and is `proven`: `.ll/learning-tests/psutil-process-cwd-liveness-check.md` (dated 2026-09-01, same day as this issue). It confirms `psutil.Process(pid).cwd()` works, that `Path.resolve()` is required on both sides for the macOS `/tmp` → `/private/tmp` symlink, and that `psutil.AccessDenied`/`NoSuchProcess` are both subclasses of `psutil.Error`. _(Folded into Proposed Solution step 1 and the frontmatter on 2026-09-01; `unproven_mechanism` cleared.)_
+- Correction to the stated mechanism: the spike's raw output (`.ll/learning-tests/raw/psutil-process-cwd-liveness-check.txt`, `CLAIM3-refined`) found that `psutil.process_iter(['pid', 'cwd'])` does **not** raise `AccessDenied` per-process during iteration — it silently returns `cwd=None` for those rows (via psutil's internal `ad_value` substitution). Only a *direct* `psutil.Process(pid).cwd()` call raises `AccessDenied`. The implementation must treat `cwd is None` as "cannot determine, skip this row", not catch an exception that `process_iter` never raises. _(Now reflected in Proposed Solution step 1 and the Signatures.)_
 
 ## Scope Boundaries
 
@@ -172,8 +205,9 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
   when ENH-3376's checks find no live entry).
 - `hooks/scripts/session-cleanup.sh` hardening is out of scope — bash has no
   `psutil` equivalent; that path is handled independently in ENH-3378.
-- An `lsof`-based fallback is out of scope unless the spike (Proposed Solution
-  step 1) finds `psutil` unsuitable.
+- An `lsof`-based fallback is out of scope; the spike found `psutil`
+  suitable.
+- Caching or throttling the process sweep across passes is out of scope.
 - Liveness checking for worktrees outside `_cleanup_orphaned_worktrees()`'s
   existing candidate enumeration is out of scope.
 
@@ -198,8 +232,9 @@ _Wiring pass added by `/ll:wire-issue`:_
   (`test_main_parallel_cleanup_orphans_mode*`) already mock
   `_cleanup_orphaned_worktrees` at the boundary and are unaffected.
 - No shared process-liveness utility module exists anywhere in this codebase
-  (confirmed repo-wide) — `_process_cwd_liveness_check` has no existing home
-  to be extracted into; it is a net-new addition to `orchestrator.py`.
+  (confirmed repo-wide) — `_collect_live_process_cwds` /
+  `_worktree_has_live_cwd` have no existing home to be extracted into; they
+  are net-new module-level helpers in `orchestrator.py`.
 - Mocking `psutil.process_iter` in tests has no existing precedent to copy
   verbatim (only `psutil.Process` mocking precedent exists, at
   `<module>.psutil.Process`) — the new test suite establishes
@@ -223,6 +258,7 @@ fix (which already closes the primary BUG-3373 mechanism on its own).
 
 
 ## Session Log
+- Pre-implementation review - 2026-09-01 - cleared `unproven_mechanism` (spike proven), replaced the `-> bool` signature with a tri-state single-sweep design, folded the `cwd=None` AccessDenied correction into step 1, required the skip warning to name the blocking pid/process.
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:46 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:45 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`

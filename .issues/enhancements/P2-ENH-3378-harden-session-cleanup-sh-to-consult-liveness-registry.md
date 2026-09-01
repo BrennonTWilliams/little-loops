@@ -45,15 +45,42 @@ ensuring the hook never fails — but also never surfaces this as a warning.
 
 ## Expected Behavior
 
-Before the unconditional `git worktree remove --force` on the no-live-marker
-path (which covers both "no marker" and "marker present, pid dead"),
-`cleanup()` reads the same out-of-tree registry entry that ENH-3376
-introduces under `<worktree_base>/.registry/` (pid + run id; exact file
-format decided in ENH-3376 with this bash consumer in mind). If the registry
-entry exists and its pid is alive, skip the worktree instead of deleting it;
-if it exists but cannot be parsed, also skip. Preserve the "must never
-fail" invariant (`cleanup() || true`) — a registry read error must not raise
-out of the hook.
+`cleanup()` deletes a worktree **only on positive evidence of death**, and
+otherwise leaves it alone. Concretely, for each worktree:
+
+1. Read the registry entry ENH-3376 introduces at
+   `$(dirname "$w")/.registry/$(basename "$w")` — derived from the worktree
+   path itself, **not** from `$WORKTREE_BASE`. The hook reads
+   `parallel.worktree_base`, but FSM sub-loop worktrees (the BUG-3373 case)
+   are created under `automation.worktree_base` via
+   `Config.get_worktree_base()` (`scripts/little_loops/config/core.py:578`);
+   the two only coincide by default. Format is plain text, line 1 = pid
+   (final, decided in ENH-3376); read it with `head -n1` and require it to
+   match `^[0-9]+$`.
+2. If the registry pid is alive → skip. If the marker pid (existing check)
+   is alive → skip.
+3. If a registry entry exists but is unparseable → skip (cannot positively
+   exclude liveness).
+4. If a registry entry or marker exists and its pid is **dead** → delete
+   (positive evidence: an ll process owned this worktree and is gone).
+5. If **neither** a registry entry nor a marker exists → **skip, do not
+   delete.** This reverses today's no-marker-means-delete behavior for this
+   hook only. Rationale: this hook fires on every turn end of every
+   unrelated project-root session (BUG-3373's confirmed root cause) and
+   today deletes on *absence* of evidence, which is exactly the failure
+   class. After ENH-3376 lands, every ll-managed worktree has a registry
+   entry written before `git worktree add`, so a worktree with neither
+   signal is pre-feature or externally created. Reaping those belongs to
+   the explicit, user-invoked Python path (`ll-parallel --cleanup-orphans`,
+   which gains ENH-3377's process-cwd fallback), not a Stop hook.
+
+"Alive" for `kill -0`: bash `kill -0` fails with EPERM for a process owned
+by another user, which today reads as "dead". Match the Python side
+(`orchestrator.py:345-347` treats `PermissionError` as alive): a pid is
+alive if `kill -0 "$PID" 2>/dev/null || ps -p "$PID" >/dev/null 2>&1`.
+
+Preserve the "must never fail" invariant (`cleanup() || true`) — a registry
+read error must not raise out of the hook.
 
 ## Motivation
 
@@ -66,36 +93,41 @@ still live — is deleted with no cross-check today.
 
 ## Proposed Solution
 
-1. In `hooks/scripts/session-cleanup.sh::cleanup()`, before the fallthrough at
-   line 52, add a registry read for the worktree's entry under
-   `<worktree_base>/.registry/`, extract the pid, and `kill -0 "$PID"` it —
-   mirroring the existing marker-check pattern (lines 44-51). Placing the
-   check before line 52 means it covers **both** fallthrough paths: no marker
-   found at all, **and** marker present but its pid dead (the parent flagged
-   the dead-pid path UNSPECIFIED — it is explicitly in scope here).
-2. Registry parsing follows the format the registry-write issue lands (see
-   Scope Boundaries), chosen for bash readability (pid encoded in the entry
-   filename, or plain-text `pid` on line 1 — see that issue's Proposed
-   Solution step 1). The existing "jq-optional" pattern (`command -v jq`,
-   line 24) is **not** sufficient on its own: it only substitutes a default
-   config value and cannot extract a field from JSON. If that issue
-   nonetheless lands JSON content, add a grep/sed extraction fallback for
-   the no-jq case.
-3. If the registry entry's pid is alive, skip (log + `continue`), matching the
-   marker-present-and-alive behavior at lines 44-51. If a registry entry
-   exists but cannot be parsed (no jq and no working fallback, corrupt file),
-   **skip the worktree** — per the "never delete when liveness cannot be
-   positively excluded" principle — rather than falling through to deletion.
-   Only a genuinely absent registry entry falls through. All of this must
-   preserve the "must never fail" invariant (`cleanup || true`).
+1. In `hooks/scripts/session-cleanup.sh::cleanup()`, restructure the
+   per-worktree body (lines 44-52) around an explicit `EVIDENCE` /
+   `ALIVE` pair: add a `pid_alive()` helper (`kill -0 ... || ps -p ...`,
+   see Expected Behavior) and a `read_registry_pid()` helper that reads
+   `$(dirname "$w")/.registry/$(basename "$w")`. Decision table:
+   - registry or marker pid alive → `continue`
+   - registry file present but line 1 not numeric → `continue`
+   - registry or marker present, pid dead → `git worktree remove --force`
+   - neither present → `continue` (log at debug level; no deletion)
+2. Registry parsing is fixed by ENH-3376: plain text, `head -n1` is the pid.
+   No JSON, no jq, no sed fallback needed. Do not reopen the format.
+3. Apply the EPERM fix to the existing marker check too, so both signals use
+   the same `pid_alive()` helper.
 4. Rewrite `test_session_cleanup_removes_worktree_with_no_marker`
-   (`scripts/tests/test_hooks_integration.py:3261`) — it currently asserts the
-   unsafe no-marker-means-delete behavior as *correct*; it must instead assert
-   that a worktree with a live registry entry (but no marker) is skipped, and
-   that a worktree with neither is still deleted (preserving the original
-   BUG-579 regression coverage for the genuinely-orphaned case). Add a
-   sibling test for the dead-pid-marker path: marker present with a dead pid
-   but a live registry entry → skipped, not deleted.
+   (`scripts/tests/test_hooks_integration.py:3261`) — it currently asserts
+   the unsafe no-marker-means-delete behavior as *correct*. Replace it with:
+   - live registry entry, no marker → skipped;
+   - dead-pid registry entry, no marker → deleted (the positive-evidence
+     path; this is where BUG-579's "genuinely orphaned worktree gets
+     reaped" coverage now lives for this hook);
+   - neither registry nor marker → **skipped** (new behavior; name the test
+     `test_session_cleanup_skips_worktree_with_no_evidence` and reference
+     BUG-3373 in its docstring);
+   - registry entry with non-numeric line 1 → skipped;
+   - worktree under a base that is *not* `$WORKTREE_BASE` but whose
+     `.registry/` sibling holds a live pid → skipped (covers the
+     `automation.worktree_base` vs `parallel.worktree_base` split; the
+     `git worktree list | grep` filter still needs the path to contain the
+     basename pattern, so use a nested dir under the base for this case).
+   Keep `test_session_cleanup_removes_worktree_with_dead_pid_marker` (3245)
+   as-is: dead marker pid with no registry entry still deletes. Note that
+   "marker dead but registry alive" cannot occur naturally — both are
+   written by the same process with the same pid — so no test is needed for
+   that combination beyond the corrupt-marker case above.
+
 5. Optional (cheap while in the file): add an `_is_ll_worktree()`-equivalent
    name filter to the deletion loop. Today the script reaps anything under
    `<worktree_base>/` that `git worktree list` reports, including shapes the
@@ -108,9 +140,13 @@ still live — is deleted with no cross-check today.
 
 - `docs/guides/BUILTIN_HOOKS_GUIDE.md` § "Session cleanup" — update the
   liveness semantics prose ("skipping any worktree owned by a live parallel
-  worker") to mention the registry check; confirm during implementation
-  whether `automation.worktree_base` (`Config.get_worktree_base()`) consumers
-  (ll-auto/FSM sub-loop worktrees) also need registry consultation here.
+  worker") to state the positive-evidence rule: the hook deletes only
+  worktrees whose registry/marker pid is dead, and leaves worktrees with no
+  ll ownership record to `ll-parallel --cleanup-orphans`. Mention that the
+  registry path is derived per-worktree, so `automation.worktree_base`
+  sub-loop worktrees are covered (confirmed: `Config.get_worktree_base()` at
+  `config/core.py:578` uses `automation.worktree_base`, while this hook reads
+  `parallel.worktree_base`).
 - `.qwen/commands/ll/cleanup-worktrees.md`,
   `.gemini/commands/cleanup-worktrees.toml` — update if
   `commands/cleanup-worktrees.md`'s liveness prose changes as part of this
@@ -152,24 +188,26 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 ### Types
 
-- Registry entry: `pid` (+ `run_id`, unused by this consumer) — read-only,
-  format decided by ENH-3376 with this bash consumer in mind.
+- Registry entry: plain text, line 1 = `pid` (lines 2-3 `create_time` /
+  `run_id` unused by this consumer) — read-only, format final per ENH-3376.
 
 ### Signatures
 
-- `cleanup()` (existing, `hooks/scripts/session-cleanup.sh`) — extended with a
-  registry read before the unconditional fallthrough at line 52
-- `read_registry_pid()` (new bash helper) — extracts the pid from a worktree's
-  registry entry under `<worktree_base>/.registry/`; on JSON content with no
-  `jq`, falls back to grep/sed extraction
+- `cleanup()` (existing, `hooks/scripts/session-cleanup.sh`) — per-worktree
+  body rewritten as the decision table in Proposed Solution step 1
+- `pid_alive PID` (new bash helper) — `kill -0 "$1" 2>/dev/null || ps -p "$1" >/dev/null 2>&1`
+- `read_registry_pid WORKTREE_PATH` (new bash helper) — prints line 1 of
+  `$(dirname "$1")/.registry/$(basename "$1")` if it matches `^[0-9]+$`;
+  prints `INVALID` if the file exists but line 1 does not; prints nothing
+  if the file is absent
 
 ### Call Path
 
-Claude Code `Stop` hook -> `session-cleanup.sh::cleanup()` -> (marker check,
-existing) -> `read_registry_pid()` -> `kill -0 "$PID"` -> skip or
-`git worktree remove --force`, exercised by
-`test_session_cleanup_removes_worktree_with_no_marker` (rewritten in this
-issue, Proposed Solution step 4)
+Claude Code `Stop` hook -> `session-cleanup.sh::cleanup()` ->
+`read_registry_pid()` + marker glob -> `pid_alive()` on each ->
+`continue` (alive / invalid / no evidence) or `git worktree remove --force`
+(dead pid), exercised by the rewritten `TestSessionCleanupWorktrees` cases
+(Proposed Solution step 4)
 
 ## Scope Boundaries
 
@@ -177,7 +215,13 @@ issue, Proposed Solution step 4)
   hard dependency of this issue — not reopened here.
 
 - The process-cwd fallback (ENH-3377) has no bash equivalent and is out of
-  scope for this issue.
+  scope for this issue. Worktrees with no ownership record at all are
+  deliberately left for the Python path (which gets that fallback) rather
+  than approximated here.
+- Changing which config key the hook reads for `WORKTREE_BASE` is out of
+  scope; the per-worktree registry-path derivation makes it unnecessary for
+  liveness, though the `grep "$WORKTREE_PATTERN"` filter still only sees
+  worktrees whose path contains that basename.
 - The `_is_ll_worktree()`-equivalent name filter (Proposed Solution
   item 5) is explicitly discretionary in this issue's own scope — implement only if
   cheap while already in the file; its absence does not block closing this
@@ -206,6 +250,7 @@ its sibling worktrees out from under still-running work.
 
 
 ## Session Log
+- Pre-implementation review - 2026-09-01 - switched the hook to positive-evidence-only deletion (no marker + no registry → skip, not delete), registry path derived from the worktree path (covers `automation.worktree_base` sub-loop worktrees), EPERM-safe `pid_alive` helper for both signals, test matrix rewritten accordingly, format question closed (plain text, decided in ENH-3376).
 - `/ll:wire-issue` - 2026-09-01T18:47:09 - `79009b58-7363-45db-90f1-4e47ed1282ba.jsonl`
 - `/ll:refine-issue` - 2026-09-01T18:27:47 - `f0c0abcb-9bb0-4011-99a7-b965b2d4e8f5.jsonl`
 - `/ll:format-issue` - 2026-09-01T18:11:45 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
