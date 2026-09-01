@@ -33,6 +33,17 @@ underlying gap is closed (or the gate's scope is deliberately revisited).
 never runs the real `tsc --noEmit` check under the gate. No tooling enforces
 un-quarantine — this bug is the only tracking mechanism.
 
+## Steps to Reproduce
+
+1. Run the verify gate against a worktree checkout with `LL_VERIFY_GATE=1` set:
+   `LL_VERIFY_GATE=1 python -m pytest scripts/tests/test_opencode_adapter.py::test_tsc_noemit_passes scripts/tests/test_omp_adapter.py::test_tsc_noemit_passes -v`
+2. Observe both tests are skipped (the `skipif` quarantine from BUG-3368 fires),
+   confirming the gate never exercises the real `tsc --noEmit` check.
+3. To see the underlying gap directly: run `git worktree add` for the same commit,
+   then `tsc --noEmit` inside that worktree without first installing
+   `node_modules` — it fails on the missing `@types/bun` devDependency, which is
+   why the skip exists.
+
 ## Expected Behavior
 
 Either:
@@ -59,3 +70,7 @@ because removal is expected soon.
 ## Status
 
 **Open** | Created: 2026-08-31 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-01T02:11:59 - `d8c43b11-c63e-40e3-b48e-79de7f7bd724.jsonl`
