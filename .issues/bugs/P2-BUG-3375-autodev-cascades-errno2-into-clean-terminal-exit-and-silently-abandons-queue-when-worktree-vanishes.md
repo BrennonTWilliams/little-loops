@@ -1,13 +1,21 @@
 ---
 id: BUG-3375
 type: BUG
-title: autodev cascades Errno 2 into clean terminal exit and silently abandons
-  queue when worktree vanishes
+title: autodev cascades Errno 2 into clean terminal exit and silently abandons queue
+  when worktree vanishes
 priority: P2
 status: open
 discovered_by: claude-code-review
 discovered_date: '2026-09-01'
-relates_to: [BUG-3373, ENH-3374]
+relates_to:
+- BUG-3373
+- ENH-3374
+confidence_score: 90
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # BUG-3375: autodev cascades Errno 2 into clean terminal exit and silently abandons queue when worktree vanishes
@@ -223,5 +231,6 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-01T21:18:13 - `af7d0948-35ab-4cf4-ba66-d9d4fed80c50.jsonl`
 - `/ll:wire-issue` - 2026-09-01T21:11:04 - `27ab64ec-faa5-4f8f-b9db-d62e91a3f572.jsonl`
 - `/ll:refine-issue` - 2026-09-01T20:49:16 - `87c7efdc-d115-415c-a741-428b9e0191a6.jsonl`
