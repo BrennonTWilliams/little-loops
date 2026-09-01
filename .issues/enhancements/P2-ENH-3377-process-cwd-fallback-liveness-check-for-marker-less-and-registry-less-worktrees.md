@@ -107,6 +107,38 @@ absent.
   it -> still deleted (this is the BUG-579 regression test, moved from the
   parent's Phase-4 test list to reflect the new gating).
 
+## Program Design
+
+### Types
+
+- None new — consumes `psutil.Process.cwd()` (existing third-party API).
+
+### Signatures
+
+- `_process_cwd_liveness_check(worktree_path: Path) -> bool` — iterates
+  `psutil.process_iter()` once per cleanup pass, `Path.resolve()`s both sides
+  before the prefix comparison, ignores per-process `AccessDenied`/
+  `NoSuchProcess`, and returns `False` only on a wholesale scan failure
+  (`process_iter` itself raising) or when `psutil` is unavailable
+
+### Call Path
+
+`ParallelOrchestrator.run` -> `_cleanup_orphaned_worktrees` -> (registry check,
+marker check — ENH-3376) -> `_process_cwd_liveness_check` -> skip-with-warning
+or delete
+
+## Scope Boundaries
+
+- The registry itself (write/remove/consult) is out of scope — that's
+  ENH-3376, a hard dependency of this issue (this issue's fallback only fires
+  when ENH-3376's checks find no live entry).
+- `hooks/scripts/session-cleanup.sh` hardening is out of scope — bash has no
+  `psutil` equivalent; that path is handled independently in ENH-3378.
+- An `lsof`-based fallback is out of scope unless the spike (Proposed Solution
+  step 1) finds `psutil` unsuitable.
+- Liveness checking for worktrees outside `_cleanup_orphaned_worktrees()`'s
+  existing candidate enumeration is out of scope.
+
 ## Files to Modify
 
 - `scripts/little_loops/parallel/orchestrator.py` (`_cleanup_orphaned_worktrees`)
@@ -135,4 +167,5 @@ fix (which already closes the primary BUG-3373 mechanism on its own).
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-01T18:11:45 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:22 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`

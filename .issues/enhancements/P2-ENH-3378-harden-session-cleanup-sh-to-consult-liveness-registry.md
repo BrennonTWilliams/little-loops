@@ -115,6 +115,40 @@ still live — is deleted with no cross-check today.
   `commands/cleanup-worktrees.md`'s liveness prose changes as part of this
   work (these mirror it verbatim with no drift test, per ENH-2968).
 
+## Program Design
+
+### Types
+
+- Registry entry: `pid` (+ `run_id`, unused by this consumer) — read-only,
+  format decided by ENH-3376 with this bash consumer in mind.
+
+### Signatures
+
+- `cleanup()` (existing, `hooks/scripts/session-cleanup.sh`) — extended with a
+  registry read before the unconditional fallthrough at line 52
+- `read_registry_pid()` (new bash helper) — extracts the pid from a worktree's
+  registry entry under `<worktree_base>/.registry/`; on JSON content with no
+  `jq`, falls back to grep/sed extraction
+
+### Call Path
+
+Claude Code `Stop` hook -> `session-cleanup.sh::cleanup()` -> (marker check,
+existing) -> `read_registry_pid()` -> `kill -0 "$PID"` -> skip or
+`git worktree remove --force`, exercised by
+`test_session_cleanup_removes_worktree_with_no_marker` (rewritten in this
+issue, Proposed Solution step 4)
+
+## Scope Boundaries
+
+- The registry write/remove and its on-disk format are decided in ENH-3376, a
+  hard dependency of this issue — not reopened here.
+- The process-cwd fallback (ENH-3377) has no bash equivalent and is out of
+  scope for this issue.
+- The optional `_is_ll_worktree()`-equivalent name filter (Proposed Solution
+  item 5) is explicitly optional in this issue's own scope — implement only if
+  cheap while already in the file; its absence does not block closing this
+  issue.
+
 ## Files to Modify
 
 - `hooks/scripts/session-cleanup.sh`
@@ -138,4 +172,5 @@ its sibling worktrees out from under still-running work.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-01T18:11:45 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:23 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`

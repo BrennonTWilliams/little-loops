@@ -158,6 +158,42 @@ directly extends the already-proven atomic-write JSON pattern used by
   `/ll:cleanup-worktrees` — update liveness semantics prose to mention the
   registry as the primary signal.
 
+## Program Design
+
+### Types
+
+- Registry entry: `pid: int`, `run_id: str` (on-disk encoding — filename-embedded
+  pid vs. plain-text `pid\nrun_id\n` vs. JSON — is the open Format decision in
+  Proposed Solution step 1)
+
+### Signatures
+
+- `_registry_dir(worktree_path: Path) -> Path` — `worktree_path.parent / ".registry"`
+- `_write_registry_entry(worktree_path: Path, pid: int, run_id: str) -> None` —
+  atomic write via the `_save_state` `tempfile.mkstemp` + `os.replace` pattern
+- `_remove_registry_entry(worktree_path: Path) -> None`
+- `_registry_entry_is_live(worktree_path: Path) -> bool` — reads the entry,
+  reuses the existing `os.kill(pid, 0)` liveness probe
+
+### Call Path
+
+`setup_worktree` -> `_write_registry_entry`
+`cleanup_worktree` / `MergeCoordinator._cleanup_worktree` -> `_remove_registry_entry`
+`ParallelOrchestrator.run` -> `_cleanup_orphaned_worktrees` -> `_registry_entry_is_live`
+-> (fallback) existing `.ll-session-*` glob check
+
+## Scope Boundaries
+
+- The process-cwd fallback liveness check for worktrees with neither a live
+  registry entry nor a live marker is out of scope — split into ENH-3377.
+- Hardening `hooks/scripts/session-cleanup.sh` to consult the registry is out
+  of scope — split into ENH-3378.
+- No backfill: worktrees created before this feature ships have no registry
+  entry and fall back to marker-only behavior until they're recreated.
+- The on-disk registry-entry format is decided once here (with ENH-3378's bash
+  consumer in mind, per Proposed Solution step 1); reopening that format later
+  is out of scope for this issue.
+
 ## Files to Modify
 
 - `scripts/little_loops/worktree_utils.py` (`setup_worktree`, `cleanup_worktree`)
@@ -183,4 +219,5 @@ ships.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-01T18:11:44 - `a022c67c-3828-4e2e-96d1-3bcdf7adfc60.jsonl`
 - `/ll:issue-size-review` - 2026-09-01T15:20:22 - `9c0fcbc0-a053-4d0e-b64f-70b69247e895.jsonl`
