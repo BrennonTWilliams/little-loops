@@ -51,18 +51,35 @@ Add a `claude-code` branch inside `_dispatch_host_adapters()` (`scripts/little_l
 ### Documentation
 - N/A
 
+## Program Design
+
+### Types
+
+No new types — reuses `detect_installation()`'s existing
+`tuple[str | None, str | None, str | None]` (`install_source`, `installed_version`,
+`install_path`) return shape.
+
+### Signatures
+
+- `_dispatch_host_adapters(hosts: list[str], project_root: Path, plugin_root: Path, force: bool = False, dry_run: bool = False) -> None` — add a `claude-code` branch alongside the existing `codex`/`kimi-code`/`qwen` branches (`scripts/little_loops/init/cli.py:169`)
+- `detect_installation(project_root: Path) -> tuple[str | None, str | None, str | None]` — existing, called from the new branch to gate on `install_source is None` (`scripts/little_loops/init/install_check.py:60`)
+
+### Call Path
+
+`_dispatch_host_adapters()` -> `detect_installation(project_root)` -> (if `install_source is None`) `resolve_host().build_version_check().binary` -> `subprocess.run([binary, "plugin", "marketplace", "add", ...])` -> `subprocess.run([binary, "plugin", "install", "ll@little-loops"])`, reporting via `info()`/`warning()` — mirrors the scope-aware subprocess pattern already used in `_dispatch_host_upgrade()` (`scripts/little_loops/init/cli.py:172`).
+
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add a `claude-code` branch to `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py:169`) that calls `detect_installation(project_root)` and short-circuits (no-op) when `install_source` is already one of `local-editable`/`pypi`/`global-claude-code`/`project-claude-code`
+2. When `install_source is None`, resolve the host binary via `resolve_host().build_version_check().binary` and run the `claude plugin marketplace add` + `claude plugin install ll@little-loops` subprocess sequence, reporting outcome through `info()` on success and `warning()` on subprocess failure or missing binary (headless/non-interactive `claude` CLI limitation)
+3. Add tests covering: host selected + not installed → install invoked; host deselected/omitted from `--hosts` → not invoked; host selected + already installed (any `install_source` value) → not invoked; install subprocess failure → surfaced as `warning()`, not silent
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - First-run UX gap (default host ends up with no working `/ll:*` commands), not a regression or data-loss risk, so below P0-P2
+- **Effort**: Small - One new branch in an existing dispatch function, reusing `detect_installation()` and the `resolve_host()` subprocess pattern already proven in `_dispatch_host_upgrade()`; no new files or public API
+- **Risk**: Low - Change is additive and gated behind `install_source is None`; existing hosts' branches and the already-installed path are untouched
+- **Breaking Change**: No
 
 ## Use Case
 
@@ -85,4 +102,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-01T04:14:36 - `e78ad427-afac-4f8a-8262-9a68ce395c55.jsonl`
 - `/ll:capture-issue` - 2026-09-01T03:55:58 - `54b7abda-af7a-4b45-bfa4-e6f3cd9335a3.jsonl`
