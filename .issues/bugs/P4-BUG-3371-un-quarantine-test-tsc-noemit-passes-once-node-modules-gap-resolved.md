@@ -61,6 +61,60 @@ absence, or a deliberate decision to make the gate hermetic for JS toolchains).
 Not urgent — filed per BUG-2650 precedent to keep the quarantine auditable, not
 because removal is expected soon.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- A formal decision record already exists rejecting Option A: `.ll/decisions.d/509372bd-43b5-4997-abf8-5dc1337a293c.json` (from BUG-3368, 2026-08-31) scored Option A 2/12 vs. Option B 11/12 across Consistency/Simplicity/Testability/Risk axes, citing "zero codebase precedent for automated dependency-install steps in worktree/CI/gate code." Reopening Option A means overturning that decision, not merely supplying new information — no `bun install`/`npm install`/`npm ci` step exists anywhere in `scripts/little_loops/` gate/worktree/CI code today (confirmed repo-wide).
+- The precedent this issue cites (BUG-2649→BUG-2650) was resolved as an active code fix within roughly a day of the quarantine landing: root cause was determined deterministic, proven via a 60x stress-repro harness, the `skipif` was deleted, and a permanent regression test was added (`test_gate_read_is_deterministic_on_present_needle` in `test_worktree_utils.py`). That precedent is not an example of indefinite deferral — it is the opposite outcome (a same-cycle un-quarantine). Noted so a future reader doesn't read "mirrors BUG-2649→BUG-2650" as implying comparable resolution speed for this P4, deliberately-not-urgent tracking bug.
+- If this issue is ever closed won't-fix instead (Option B's alternate resolution — permanently redefine gate scope), this codebase's convention for that closure shape is `status: cancelled` + a `cancelled_reason:` frontmatter field (e.g. `.issues/enhancements/P3-ENH-2582-analytics-auto-collect-opt-in-background-summarization.md`), not a `## Resolution` narrative alone.
+
+## Integration Map
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/worktree_utils.py:388` — `setup_prepatch_worktree()` calls `setup_worktree()`
+- `scripts/little_loops/worktree_utils.py:551` — `verify_epic_branch_before_merge()` calls `setup_worktree()` (the epic-worktree verify gate itself)
+- `scripts/little_loops/worktree_utils.py:841` — `ensure_epic_branch()` calls `setup_worktree()`
+- `scripts/tests/test_worktree_utils.py` — multiple existing tests call `setup_worktree()` directly (`:148,168,189,225,248,271,294,330,367,412`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py:1036` — `FSMExecutor` calls `worktree_utils.setup_worktree()` directly for the ENH-2609 per-state `worktree:` sub-loop attach path
+- `scripts/little_loops/parallel/worker_pool.py:808-828` — `WorkerPool._setup_worktree()` wraps `setup_worktree()` for `ll-parallel`'s per-issue worktree creation
+- `scripts/little_loops/parallel/orchestrator.py:47-52,1502-1528` — `ParallelOrchestrator._verify_epic_branch_before_merge()` wraps `verify_epic_branch_before_merge()`
+- `scripts/little_loops/cli/loop/run.py:451,480` — `ll-loop run --worktree` calls `setup_worktree()` directly
+- `scripts/little_loops/prepatch_check.py:31,446` — calls `setup_prepatch_worktree()` (one level removed from `setup_worktree()`)
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml:218,525,542,738` — inline FSM shell-action blocks import `worktree_utils` symbols directly
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_worktree.py::TestSetupWorktree` (12 call sites: `:68,97,125,159,192,222,253,280,310,343,380,413`) — direct unit coverage of `setup_worktree()`, distinct from `test_worktree_utils.py`'s 10 sites
+- `scripts/tests/test_worktree_concurrency.py::TestWorktreeConcurrency` (`:66`, `pytest.mark.integration`) — real-git multi-threaded regression guard exercising the actual `git worktree add` checkout step
+- `scripts/tests/test_orchestrator.py:1787-1947` — patches `little_loops.worktree_utils.setup_worktree` and exercises `_verify_epic_branch_before_merge`
+- `scripts/tests/test_test_tamper_guard.py:333,342,356` — calls `setup_prepatch_worktree()` / `cleanup_worktree()`
+- `scripts/tests/test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge::test_verify_gate_marker_set_in_child_env:1162-1183` — asserts `LL_VERIFY_GATE=1` propagates into the gate's child env, the exact mechanism this issue's quarantine decorator relies on
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/WORKTREES.md` — the primary reference doc for `setup_worktree()`'s copy-semantics contract; its "## Verify-gate exception" section (`:26-32`) documents `verify_epic_branch_before_merge()`'s `copy_files=[]` call
+- `docs/reference/EVENT-SCHEMA.md` (`sub_loop_worktree_attached` `:778`, `sub_loop_worktree_error` `:810`) — events tied to `setup_worktree()`'s success/failure outcome on the FSM sub-loop path
+- `docs/ARCHITECTURE.md:462-473` — describes the `merge_epic_branch` FSM state and the free functions it calls
+- `docs/development/MERGE-COORDINATOR.md:147-167` — fullest prose description of `verify_epic_branch_before_merge()`'s routing logic
+- `docs/reference/HOST_COMPATIBILITY.md:589` — documents `setup_worktree()` exporting `LL_HISTORY_DB` into the orchestrator's own env (BUG-3112)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- **Files to Modify (none planned by this issue — deferred; listed as the surface a future resolution would touch)**: if Option A is ever revisited, `scripts/little_loops/worktree_utils.py` (`setup_worktree()` `:160-281`, `verify_epic_branch_before_merge()` `:481-610`); either option requires removing the `skipif` decorators in `scripts/tests/test_opencode_adapter.py:192-215` and `scripts/tests/test_omp_adapter.py:170-192`.
+- **Conventions in Force**: the `LL_VERIFY_GATE` self-detection marker idiom mirrors the `LL_NON_INTERACTIVE` marker idiom (`host_runner.py`/`session_start.py`) — evidence: `worktree_utils.py:565-571` comment.
+- **Conventions in Force**: this codebase's quarantine-then-track lifecycle files the quarantine and its removal-tracking as two separate, cross-referenced issues (never one issue reopened) — evidence: BUG-2649 (quarantine) / BUG-2650 (removal), linked via prose in BUG-2649's `## Resolution`, not a structured field.
+- **Tests**: `scripts/tests/test_worktree_utils.py` already exercises `setup_worktree()` directly at 10 call sites (e.g. `:148,168,189,225,248,271,294,330,367,412`) — any future change to `setup_worktree()` should extend this file's coverage rather than adding a new test module.
+- **Documentation**: `docs/reference/API.md:4023-4038`, `hooks/adapters/opencode/README.md`, `hooks/adapters/omp/README.md`, and `CHANGELOG.md` (`## [1.160.0]`) already document the quarantine (added by BUG-3368) and would need a follow-up entry when un-quarantined.
+- **Configuration**: `hooks/adapters/opencode/package.json` and `scripts/little_loops/hooks/adapters/omp/package.json` each declare exactly 1 runtime dependency + 1 devDependency (`@types/bun`) — minimal install scope if Option A were ever implemented, though no install-time cost is measured anywhere in the repo.
+
 ## Impact
 
 - **Priority**: P4 — tracking-only; no active harm while quarantined.
@@ -73,4 +127,17 @@ because removal is expected soon.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-01T02:40:09 - `396b8ad1-2bab-4820-a9f0-118d917e0c37.jsonl`
+- `/ll:refine-issue` - 2026-09-01T02:25:22 - `db36f084-b57f-4f2f-9793-def924e148e3.jsonl`
 - `/ll:format-issue` - 2026-09-01T02:11:59 - `d8c43b11-c63e-40e3-b48e-79de7f7bd724.jsonl`
+
+## Root Cause
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- **File**: `scripts/little_loops/worktree_utils.py`
+- **Anchor**: `setup_worktree()` (`:160-281`) — performs only `git worktree add`/`git worktree add -b`, a git-identity copy, a `.claude/` copytree, and a caller-supplied `copy_files` copy loop. No subprocess call in this function materializes any package-manager dependency; `copy_files` only copies paths that already exist in `repo_path`, and the gitignored `node_modules` tree never exists there either (`.gitignore:29`).
+- **Anchor**: `verify_epic_branch_before_merge()` (`:481-610`) — the epic-worktree verify gate itself. Sets `LL_VERIFY_GATE=1` unconditionally via `project_child_env(extra={"LL_VERIFY_GATE": "1"})` at `:571`, then runs the project's test/lint commands against the worktree at `:592-602`.
+- **Cause**: No hook point exists inside `setup_worktree()` for injecting a post-checkout install step. The only place such a step could be added is by wrapping the `setup_worktree()` call at each caller site (`verify_epic_branch_before_merge` `:551-559`, `setup_prepatch_worktree` `:388`, `ensure_epic_branch` `:841`) — none of which do this today. Confirmed repo-wide: no `bun install`/`npm install`/`npm ci` step exists anywhere in `scripts/little_loops/` gate/worktree/CI code.
