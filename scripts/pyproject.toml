@@ -146,21 +146,22 @@ dev = [
     # pytest-xdist 3.8.0. Thread-method timeouts leave watchdog threads on
     # idle workers rather than terminating them (pytest-xdist #1094/#117,
     # pytest-timeout #72/#137), which is what wedges the run at the tail when
-    # most workers have gone idle. Lift the cap only alongside a verified
-    # clean full-suite run on the newer major.
+    # most workers have gone idle. The ci.yml --timeout-method=signal switch
+    # addresses the watchdog-leak mechanism directly (SIGALRM per-worker
+    # timeout, reaped by xdist), so the xdist<3.8 pin is now the *secondary*
+    # belt-and-suspenders guard against the original mechanism rather than the
+    # primary fix. Lift only alongside a verified clean full-suite run on
+    # the newer major.
     "pytest>=7.0,<9",
     "pytest-cov>=4.0",
-    # BUG-3208 had two halves: pytest 9.x AND pytest-xdist 3.8.0 interact to
-    # trigger the thread-method watchdog leak on idle workers (same root
-    # cause as the pytest<9 cap above: xdist issue #1094/#117 + timeout #72/#137).
-    # The pytest<9 cap is in place, but xdist<3.8 is also required — a fresh
-    # venv still resolves `pytest-xdist>=3.0` to 3.8.0 (the BUG-3208-stamped
-    # version) and repros the wedge on pytest 8.x with the same addopts.
-    # Lift only alongside a verified clean full-suite run on the newer xdist.
+    # xdist<3.8 secondary guard: see comment on the xdist pin above.
     "pytest-xdist>=3.0,<3.8",
     # psutil moved to [project].dependencies (FEAT-2930) — it now backs both
     # xdist's `-n logical` core detection and _reclaim_stale's PID-liveness
     # identity check, so it's no longer dev-only.
+    # pytest-timeout pin: >=2.0 is the *minimum* that supports signal-method's
+    # per-worker SIGALRM install (the race-fixed redesign). Pin lower bound
+    # only; the timeout-method=signal ci.yml switch is the actual fix.
     "pytest-timeout>=2.0",
     "hypothesis>=6.0",
     "mutmut>=3.0",
@@ -254,8 +255,20 @@ python_functions = ["test_*"]
 # killed and reported as a timeout, freeing the xdist worker slot before it
 # can wedge a core indefinitely. Tests with legitimately slow wall-clock
 # can opt out via @pytest.mark.timeout(N) per test.
-# --timeout-method=thread is explicit because signal-based timeouts race
-# with xdist worker process management.
+# --timeout-method=signal is required because thread-method leaves watchdog
+# threads on idle workers rather than terminating them (pytest-xdist
+# #1094/#117, pytest-timeout #72/#137), which wedges the run at the tail
+# when most workers have gone idle. Signal-method installs the SIGALRM
+# handler in each worker process and fires it directly, so a wedged test
+# triggers TimeoutExpired and pytest-xdist reaps the worker — surfacing
+# the failure instead of letting the run silently die past the runner
+# ceiling (BUG-3208 / PR #6-era hang).
+#
+# Tradeoff: signal-method historically raced with xdist worker process
+# management. pytest-timeout 2.0+ redesigned signal-mode to install the
+# handler per-worker (not via the controller), so the race is no longer
+# load-bearing for our pytest-timeout pin (`>=2.0`). Accept this
+# tradeoff deliberately to fix the wedge — see ci/fix-unit-test-hang.
 # --dist loadfile gives each test file worker affinity: far fewer
 # controller<->worker scheduling round-trips than the default per-test `load`
 # on a ~13.7k-test suite, and per-file fixtures (git repos, subprocess envs)
@@ -264,7 +277,7 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--timeout=120",
-    "--timeout-method=thread",
+    "--timeout-method=signal",
     "-n",
     "logical",
     "--dist",

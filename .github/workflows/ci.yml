@@ -102,15 +102,18 @@ jobs:
           .venv/bin/python -m pytest scripts/tests/ \
             -m "not integration and not conformance" \
             --junit-xml=pytest-junit.xml \
+            --timeout-method=signal \
             | tee pytest.log
 
       - name: Upload unit-test artifacts
         # `if: always()` is the data-collection gate — green runs need to
         # upload too, because the clean-finish signal (junit pass, no busy-spin
         # tail) is exactly the verification surface for the BUG-3208 stack.
-        # `if-no-files-found: warn` is deliberate: if pytest hangs at 98-99%
-        # (the BUG-3208 failure mode) junit XML never gets written, and the
-        # upload step should not turn a hung run into a *double* failure.
+        # `if-no-files-found: error` is deliberate: if pytest hangs (the
+        # BUG-3208 failure mode) junit XML never gets written, and the upload
+        # step must surface that as a real failure — not as a silent warning
+        # that's easy to miss in the run summary. The previous `warn` setting
+        # hid hang-mode behind an annotation nobody reads.
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -119,7 +122,7 @@ jobs:
             pytest.log
             pytest-junit.xml
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
 
   conformance:
     name: Host conformance (Thinky)
