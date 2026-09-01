@@ -1,0 +1,49 @@
+## claude --version
+2.1.241 (Claude Code)
+
+## claim: 'claude plugin marketplace add <source>' succeeds non-interactively (no TTY prompt) for a local path
+Adding marketplace…✔ Successfully added marketplace: little-loops (declared in user settings)
+exit: 0
+
+## claim: re-adding the same source is idempotent (exit 0, no duplicate entry)
+Adding marketplace…✔ Marketplace 'little-loops' already on disk — declared in user settings
+exit: 0
+[
+  {
+    "name": "little-loops",
+    "source": "directory",
+    "path": "<repo-root>",
+    "installLocation": "<repo-root>"
+  }
+]
+
+## claim: 'add' on a nonexistent path exits non-zero with a clear error, no prompt
+✘ Path does not exist: /nonexistent/path/xyz123
+exit: 1
+
+## claim: 'add' accepts a bare github 'owner/repo' shorthand and clones headlessly
+Adding marketplace…Cloning via SSH: git@github.com:anthropics/claude-plugins-official.git
+Refreshing marketplace cache (timeout: 120s)…
+Cloning repository (timeout: 120s): git@github.com:anthropics/claude-plugins-official.git
+Clone complete, validating marketplace…
+Cleaning up old marketplace cache…
+✔ Successfully added marketplace: claude-plugins-official (declared in user settings)
+exit: 0
+
+## claim: --scope project writes the marketplace declaration into ./.claude/settings.json instead of user config
+Adding marketplace…✔ Successfully added marketplace: little-loops (declared in project settings)
+exit: 0
+{
+  "extraKnownMarketplaces": {
+    "little-loops": {
+      "source": {
+        "source": "directory",
+        "path": "<repo-root>"
+      }
+    }
+  }
+}
+
+## claim: after marketplace add, 'plugin install <name>@<marketplace>' also runs non-interactively
+Installing plugin "ll@little-loops"...✔ Successfully installed plugin: ll@little-loops (scope: user)
+exit: 0

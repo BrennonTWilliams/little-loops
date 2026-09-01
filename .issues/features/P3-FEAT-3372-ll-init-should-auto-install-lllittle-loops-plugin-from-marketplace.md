@@ -7,6 +7,9 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-01'
 captured_at: '2026-09-01T03:55:51Z'
+unproven_mechanism: true
+verify_verdict: EVIDENCE_UNVERIFIED
+size: Medium
 ---
 
 # FEAT-3372: ll-init should auto-install ll@little-loops plugin from marketplace
@@ -23,7 +26,9 @@ captured_at: '2026-09-01T03:55:51Z'
 
 ## Expected Behavior
 
-When `claude-code` is among the selected/detected hosts and `detect_installation()` reports the plugin is not installed (`install_source is None`), `ll-init` should install `ll@little-loops` from the marketplace automatically — unless the user explicitly deselected `claude-code` in the TUI's host checklist (`scripts/little_loops/init/tui.py:519`) or via `--hosts` on the headless path.
+When `claude-code` is among the selected/detected hosts and the `ll@little-loops` plugin is not present in `claude plugin list`, `ll-init` should install it from the marketplace automatically — unless the user explicitly deselected `claude-code` in the TUI's host checklist (`scripts/little_loops/init/tui.py:519`) or via `--hosts` on the headless path.
+
+> **Design correction (2026-09-01 review):** the gate must be a direct **plugin-presence probe**, NOT `detect_installation()`'s `install_source is None`. `ll-init` is a pip entry point (`scripts/pyproject.toml:127`), so `importlib.metadata.version("little-loops")` always succeeds in the environment running it, and `detect_installation()` (`install_check.py:74-78`) checks pip metadata *first* and returns `"pypi"`/`"local-editable"` without ever reaching the plugin-list check. Gating on `install_source is None` would make the branch dead code for exactly the Use Case user (pip-installed, plugin absent). Pip-package presence and Claude Code plugin presence are independent facts.
 
 ## Motivation
 
@@ -31,12 +36,30 @@ Today, running `ll-init` with Claude Code as the target host doesn't actually ge
 
 ## Proposed Solution
 
-Add a `claude-code` branch inside `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py:169`) parallel to the existing `codex`/`kimi-code`/`qwen` branches: call `detect_installation(project_root)`; if the returned source is `None`, resolve the `claude` binary the same way `fetch_latest_plugin()` already does (`resolve_host().build_version_check().binary` / the pattern in `install_check.py:83`), then run the marketplace-add + install subprocess sequence, reporting success/failure via `info()`/`warning()`.
+Add a `claude-code` branch inside `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py:169`) parallel to the existing `codex`/`kimi-code`/`qwen` branches:
+
+1. Factor the `claude plugin list --json` probe out of `detect_installation()` (`install_check.py:88-112`) into a reusable helper, e.g. `plugin_installed(binary: str) -> bool` in `install_check.py` (`detect_installation()` keeps its behavior by calling it). This is required because pip metadata shadows the plugin check inside `detect_installation()` — see Expected Behavior's design correction.
+2. In the new branch: resolve the `claude` binary the same way `fetch_latest_plugin()` already does (`resolve_host().build_version_check().binary` / the pattern in `install_check.py:83`); if the binary is present and `plugin_installed(binary)` is False, run the marketplace-add + install subprocess sequence, reporting success/failure via `info()`/`warning()`.
+
+### Decisions (resolved 2026-09-01 review)
+
+- **Marketplace source**: prefer the local path when `plugin_root / ".claude-plugin" / "plugin.json"` exists (true for editable/dev checkouts, where `_plugin_root()` resolves to the repo root); otherwise fall back to the GitHub source `BrennonTWilliams/little-loops` (matching `docs/guides/GETTING_STARTED.md:40`). Rationale: for a site-packages install, `_plugin_root()`'s `__file__`-relative fallback lands in `lib/python3.x/` — not a plugin root — so the local-path source only works for dev checkouts.
+- **Install scope**: `-s user` (the `claude plugin install` default, matching the manual instructions in `GETTING_STARTED.md`). Do not pass `-s project` — that would silently change how later runs classify `install_source` (`project-claude-code`) and unlock `_dispatch_host_upgrade`'s auto-update path.
+- **`local-editable` dev checkouts**: the branch fires for them too — the gate is purely plugin absence, regardless of pip state. (Every consuming project on this machine is `local-editable`; if the plugin is already installed globally the probe skips, so this only acts when `/ll:*` genuinely wouldn't work.)
+- **`marketplace add` failure handling**: best-effort — don't gate the `plugin install` call on marketplace-add's returncode (it fails benignly when the marketplace is already added). Mirrors `fetch_latest_plugin()`'s precedent (`install_check.py:141-184`), which never checks its `marketplace update` step's returncode.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- No existing code path in this repository ever runs `claude plugin marketplace add` followed by `claude plugin install` — the combination this issue's remedy depends on. Every other `claude plugin`/`claude plugin marketplace` subprocess call in the codebase (`plugin update`, `plugin list`, `plugin marketplace update`) is a read-only or already-configured-target operation; none add a new marketplace source or perform a first-time install headlessly.
+   ⚠ Unproven mechanism — no headless add+install precedent in repo
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/init/cli.py` — `_dispatch_host_adapters()` claude-code branch
+- `scripts/little_loops/init/install_check.py` — extract `plugin_installed(binary) -> bool` from `detect_installation()` (the gate; see Expected Behavior's design correction)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/init/tui.py` (calls `_dispatch_host_adapters` at line 902) and `scripts/little_loops/init/cli.py` (headless paths at lines 223, 672, 879)
@@ -48,37 +71,90 @@ Add a `claude-code` branch inside `_dispatch_host_adapters()` (`scripts/little_l
 ### Tests
 - TBD — needs a test covering: host selected + not installed → install invoked; host deselected → not invoked; host selected + already installed → not invoked
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_init_core.py` — ~14 existing tests mock `little_loops.init.install_check.detect_installation` to return `(None, None, None)` and run `main_init` without `--dry-run`, without mocking `little_loops.init.cli._subprocess.run`: `test_yes_creates_config` (:1780), `test_yes_merges_existing_config` (:1797), `test_yes_preserves_unmodeled_keys` (:1826), `test_yes_force_drops_unmodeled_keys` (:1868), `test_yes_enable_feature_flags_write_sections` (:1982), `test_yes_enable_prompt_optimization_writes_enabled` (:2009), `test_yes_deploys_design_tokens_when_enabled` (:2342), `test_yes_deploys_issue_templates_when_enabled` (:2366), `test_yes_adds_explore_api_permission_when_learning_tests` (:2391), `test_no_git_repo_prints_notice` (:2686), `test_git_repo_prints_no_notice` (:2705), `test_git_worktree_file_counts_as_repo` (:2726), `test_bare_upgrade_implies_yes_never_launches_wizard` (:2473, reaches the new branch via `_dispatch_host_upgrade` → `_dispatch_host_adapters(force=True)`), and the "live" second `main_init` call in `test_dry_run_output_matches_yes_writes` (:2679) — once the claude-code branch lands these will attempt real, unmocked `claude plugin marketplace add`/`claude plugin install` subprocess calls and need `_subprocess.run`/`resolve_host` mocks (or a non-`None` `detect_installation` stub) to stay hermetic [Agent 3 finding]
+- `scripts/tests/test_init_audit_fixes.py:484` (`test_apply_honors_requested_upgrade`) and `:501` (`test_apply_ignores_requested_upgrade_in_dry_run`) — drive `--hosts claude-code` through `_run_apply`, mocking only `_dispatch_host_upgrade`, not `detect_installation`/`_subprocess.run`; the direct `_dispatch_host_adapters` call at `cli.py:879` is unmocked and would hit the new branch [Agent 1 finding]
+- `scripts/tests/test_init_core.py:2960` (`test_hosts_claude_code_no_adapter_file`) and `:3008` (`test_hosts_claude_code_no_agents_md`) — currently pass only because this dev environment's ambient `local-editable` install source is non-`None` (no explicit `detect_installation` mock); add one so pass/fail doesn't depend on incidental repo state [Agent 3 finding]
+- `scripts/tests/test_init_core.py:2526` (`test_project_scoped_plugin_install_source_written_to_config`, BUG-2266 regression) — drives `main_init(["--yes", ...])` through the same `detect_installation()` call path the new branch sits next to; useful precedent for asserting `install_source` handling doesn't regress [Agent 1 finding]
+- `scripts/tests/test_init_core.py:3117` (`TestDispatchHostUpgrade::test_project_scoped_runs_plugin_update`) — exact mock template to follow for the new test: `_subprocess.run` patched at `little_loops.init.cli._subprocess.run` with a `record(cmd, **kwargs)` closure appending argv, `resolve_host` patched at `little_loops.host_runner.resolve_host` (its defining module) returning a `MagicMock` with `.build_version_check.return_value.binary` set [Agent 3 finding]
+- New test needed (no existing precedent for headless `marketplace add` + `install` together): `install_source is None` + `host == "claude-code"` → assert `marketplace add`/`plugin install ll@little-loops -y` subprocess argv; companion case with a non-`None` `install_source` asserting `_subprocess.run` not called; `dry_run=True` case asserting no subprocess call [Agent 3 finding]
+
 ### Documentation
 - N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/GETTING_STARTED.md` — "Existing Installation Detection" table (~line 122-128) describes the not-installed case as "warns only by default — pass `--upgrade` to install automatically"; needs updating since claude-code will now auto-install without `--upgrade` [Agent 2 finding]
+- `docs/guides/GETTING_STARTED.md` — "Step 2: Install the Plugin" (lines 34-51), manual `/plugin marketplace add` + `/plugin install` instructions; note that `ll-init --hosts claude-code` can now do this automatically [Agent 2 finding]
+- `README.md` (lines 70-75) and `scripts/README.md` (lines 70-75) — same manual plugin-install block, duplicated in both files [Agent 2 finding]
+- `docs/reference/CLI.md` — `### ll-init` section (lines 35-96): `--hosts` flag description and the Screen 1/7 "Plugin Install" TUI-screen description don't mention the new headless auto-install side effect [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md` — "Host tiers" table + note (lines 22-49) describes claude-code's `_dispatch_host_adapters` behavior as a pure no-op ("no adapter file to write"); needs updating once it performs a marketplace-install side effect [Agent 2 finding]
+- `skills/update/SKILL.md:106` — prints `claude plugin install ll@little-loops` as a manual fallback message; cross-check wording consistency with the new automated path [Agent 1 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py:94`) does NOT currently take an `install_source` parameter — only `_dispatch_host_upgrade()` does. `project_root` is already a parameter, so the new claude-code branch can call `detect_installation(project_root)` internally without a signature change.
+- Existing writer branches (codex/kimi-code/qwen) follow a tri-state contract: their `install_*_adapter()` calls return `bool | None` — `None` → `warning()`, truthy + not dry_run → `info()`, falsy → silent. The claude-code branch has no equivalent call today (bare comment only, `cli.py:169`).
+- `_KNOWN_HOSTS` (`cli.py:41-50`) already includes `"claude-code"` — no registration change needed for a new branch.
+- Two entry points reach `_dispatch_host_adapters()`: `_run_yes()` (`cli.py:672`, mutually exclusive with `_dispatch_host_upgrade()` based on `upgrade and not dry_run`) and `_run_apply()` (`cli.py:879`, called unconditionally, with `_dispatch_host_upgrade()` separately conditional at `cli.py:890`). A new claude-code branch in `_dispatch_host_adapters()` is reached identically by both.
+- Existing tests: `TestHostDispatch` (`scripts/tests/test_init_core.py:2950-3098`, drives through `main_init()` with `--hosts`, asserts filesystem/stdout side effects) and `TestDispatchHostUpgrade` (`scripts/tests/test_init_core.py:3106+`, calls `_dispatch_host_upgrade()` directly). No existing test exercises a positive/install action for `claude-code` in `_dispatch_host_adapters` — only negative-outcome tests (`test_hosts_claude_code_no_adapter_file`, `test_hosts_claude_code_no_agents_md`).
+- Mocking pattern used by `TestDispatchHostUpgrade` (reusable for the new branch's tests): patch `"little_loops.init.cli._subprocess.run"` with a `side_effect` recorder closure appending argv lists, and patch `"little_loops.host_runner.resolve_host"` (the *defining* module, not `little_loops.init.cli.resolve_host` — the import is local inside the function body) returning a `MagicMock` whose `.build_version_check.return_value.binary` is set.
 
 ## Program Design
 
 ### Types
 
-No new types — reuses `detect_installation()`'s existing
-`tuple[str | None, str | None, str | None]` (`install_source`, `installed_version`,
-`install_path`) return shape.
+No new types.
 
 ### Signatures
 
+- `plugin_installed(binary: str) -> bool` — NEW helper in `scripts/little_loops/init/install_check.py`: the `claude plugin list --json` probe factored out of `detect_installation()` (`install_check.py:88-112`), returning True iff `ll@little-loops` appears; `detect_installation()` refactored to call it (behavior unchanged)
 - `_dispatch_host_adapters(hosts: list[str], project_root: Path, plugin_root: Path, force: bool = False, dry_run: bool = False) -> None` — add a `claude-code` branch alongside the existing `codex`/`kimi-code`/`qwen` branches (`scripts/little_loops/init/cli.py:169`)
-- `detect_installation(project_root: Path) -> tuple[str | None, str | None, str | None]` — existing, called from the new branch to gate on `install_source is None` (`scripts/little_loops/init/install_check.py:60`)
+
+Do NOT gate on `detect_installation()`'s `install_source` — pip metadata shadows the plugin probe (see Expected Behavior's design correction).
 
 ### Call Path
 
-`_dispatch_host_adapters()` -> `detect_installation(project_root)` -> (if `install_source is None`) `resolve_host().build_version_check().binary` -> `subprocess.run([binary, "plugin", "marketplace", "add", ...])` -> `subprocess.run([binary, "plugin", "install", "ll@little-loops"])`, reporting via `info()`/`warning()` — mirrors the scope-aware subprocess pattern already used in `_dispatch_host_upgrade()` (`scripts/little_loops/init/cli.py:172`).
+`_dispatch_host_adapters()` -> `resolve_host().build_version_check().binary` -> (binary present and not `plugin_installed(binary)` and not `dry_run`) -> `subprocess.run([binary, "plugin", "marketplace", "add", <source>])` (best-effort, returncode ignored) -> `subprocess.run([binary, "plugin", "install", "ll@little-loops", "-y"])`, reporting via `info()`/`warning()` — `<source>` per the Decisions block (local `plugin_root` when it contains `.claude-plugin/plugin.json`, else `BrennonTWilliams/little-loops`).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Two divergent subprocess-invocation styles exist for `resolve_host().build_version_check().binary` calls, and the new branch has to pick one: Pattern 1 (`_dispatch_host_upgrade`, `cli.py:197-218`) uses bare `_subprocess.run([...], check=False)` — no `capture_output`, no `timeout`. Pattern 2 (`install_check.py` `detect_installation()`/`fetch_latest_plugin()`) uses `capture_output=True, text=True, timeout=<N>` wrapped in `try/except (subprocess.TimeoutExpired, FileNotFoundError, OSError)`. There is no shared helper — each site inlines its own call.
+- Confirmed via `claude plugin install --help` (local CLI, this machine): `claude plugin install <plugin>` accepts `-y`/`--yes` — "required when stdin or stdout is not a TTY" — and `-s`/`--scope <user|project|local>` (default `user`). `ll-init` in `--yes`/headless mode has no TTY, so `-y` is load-bearing, not optional, for this call to complete non-interactively.
+- Confirmed via `claude plugin marketplace add --help`: takes a `<source>` (URL, path, or GitHub repo) and `--scope <user|project|local>` (default `user`). `_plugin_root()` (`cli.py:59`, env-var-first: `CLAUDE_PLUGIN_ROOT` then `__file__`-relative) is already computed by every caller of `_dispatch_host_adapters()` and passed through as the `plugin_root` parameter — this is a ready-made local-path `<source>` value matching the docs' local-install pattern (`docs/guides/GETTING_STARTED.md:49`, `/plugin marketplace add /path/to/little-loops`).
+- No existing subprocess call anywhere in this codebase exercises `plugin marketplace add` or `plugin install` — the only precedented `claude plugin`/`claude plugin marketplace` subcommands actually invoked via subprocess are `plugin update` (`_dispatch_host_upgrade`), `plugin list --json`/`plugin list --available --json` (`detect_installation`, `fetch_latest_plugin`), and `plugin marketplace update` (`fetch_latest_plugin`). `marketplace add`+`install` together, non-interactively, is untested territory for this codebase even though both subcommands exist per `--help`.
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- `dry_run` contract (analyzer): every existing branch in `_dispatch_host_adapters()` that performs a write/subprocess side effect conditions it on `dry_run` — codex/kimi-code/qwen thread `dry_run=dry_run` into their writer (`writers.py:708-710`: `if dry_run: info(...); return True`) and the caller additionally gates its own follow-up `info()` on `elif installed and not dry_run:` (`cli.py:122`). The new claude-code branch has no writer to delegate to, so this contract is not automatically inherited — the marketplace-add/install subprocess calls need their own explicit `if dry_run:` short-circuit to stay consistent with every sibling branch. Neither the issue's Implementation Steps nor Acceptance Criteria currently state this.
+- Subprocess-invocation style is a three-way, not two-way, contested convention: (1) `install_check.py`'s `capture_output=True, text=True, timeout=N` wrapped in `try/except (TimeoutExpired, FileNotFoundError, OSError)` (already documented); (2) `_dispatch_host_upgrade`'s bare `check=False`, no returncode read, comment-justified as "a missing/unauthenticated host must never abort init" (`cli.py:206-213`, already documented); (3) newly found — `_run_yes()`'s pip-install calls (`cli.py:478-485`, `:521-534`, `:541-554`) use `check=True` + `except _subprocess.CalledProcessError as exc: print(f"Warning: auto-install failed: {exc}", file=sys.stderr)`. All three styles coexist in this codebase with no stated precedent for which a marketplace-add+install sequence should follow.
+- `fetch_latest_plugin()`'s existing "marketplace update, then plugin list" sequence (`install_check.py:141-184`, already cited in Call Path) never checks step 1's returncode at all — only step 2's. This is the closest existing precedent for a two-step `marketplace X` → `plugin Y` sequence, and it treats the first call as pure best-effort.
+- `warning()`/`info()` (`scripts/little_loops/cli/output.py:264-291`) both print to **stdout** (not stderr); only `error()` uses stderr. Tests asserting on the new branch's warning/info output should use stdout-capturing `capsys`, not stderr.
 
 ## Implementation Steps
 
-1. Add a `claude-code` branch to `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py:169`) that calls `detect_installation(project_root)` and short-circuits (no-op) when `install_source` is already one of `local-editable`/`pypi`/`global-claude-code`/`project-claude-code`
-2. When `install_source is None`, resolve the host binary via `resolve_host().build_version_check().binary` and run the `claude plugin marketplace add` + `claude plugin install ll@little-loops` subprocess sequence, reporting outcome through `info()` on success and `warning()` on subprocess failure or missing binary (headless/non-interactive `claude` CLI limitation)
-3. Add tests covering: host selected + not installed → install invoked; host deselected/omitted from `--hosts` → not invoked; host selected + already installed (any `install_source` value) → not invoked; install subprocess failure → surfaced as `warning()`, not silent
+1. Factor the `claude plugin list --json` probe out of `detect_installation()` into `plugin_installed(binary: str) -> bool` in `scripts/little_loops/init/install_check.py`; refactor `detect_installation()` to use it (behavior unchanged — existing `detect_installation` tests must stay green)
+2. Add a `claude-code` branch to `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py:169`): resolve the host binary via `resolve_host().build_version_check().binary`; short-circuit (no-op) when the binary is missing, `dry_run` is set, or `plugin_installed(binary)` is True
+3. Otherwise run `claude plugin marketplace add <source>` (best-effort, returncode ignored; `<source>` = `plugin_root` if it contains `.claude-plugin/plugin.json`, else `BrennonTWilliams/little-loops`) then `claude plugin install ll@little-loops -y` (default user scope), reporting outcome through `info()` on success and `warning()` on install-subprocess failure or timeout
+4. Add tests covering: host selected + plugin absent → install invoked **even when pip metadata reports `pypi`/`local-editable`** (the shadowing case); host deselected/omitted from `--hosts` → not invoked; host selected + plugin present → not invoked; `dry_run=True` → not invoked; install subprocess failure → surfaced as `warning()`, not silent; source selection (local path vs GitHub fallback)
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update the ~14 tests in `test_init_core.py` and the 2 tests in `test_init_audit_fixes.py` listed under Integration Map → Tests to mock the new `plugin_installed` gate (and/or `_subprocess.run`/`resolve_host`) so they stay hermetic once the claude-code branch fires real subprocess calls — note their existing `detect_installation` mocks no longer shield them, since the gate is now the plugin probe, not `install_source`
+- Add an explicit `plugin_installed` mock to `test_hosts_claude_code_no_adapter_file` and `test_hosts_claude_code_no_agents_md` (`test_init_core.py:2960`, `:3008`) so they don't depend on this machine's incidental plugin-install state
+- Update `docs/guides/GETTING_STARTED.md` ("Existing Installation Detection" table and "Step 2: Install the Plugin"), `README.md`, `scripts/README.md`, `docs/reference/CLI.md` (`### ll-init`), and `docs/reference/HOST_COMPATIBILITY.md` ("Host tiers") to describe the new automatic claude-code install behavior
+- Choose `info()`/`warning()` message text for the new branch that avoids colliding with existing substring assertions elsewhere in `TestHostDispatch` (e.g. `"not yet available"`, `"Unknown host"`)
 
 ## Impact
 
 - **Priority**: P3 - First-run UX gap (default host ends up with no working `/ll:*` commands), not a regression or data-loss risk, so below P0-P2
-- **Effort**: Small - One new branch in an existing dispatch function, reusing `detect_installation()` and the `resolve_host()` subprocess pattern already proven in `_dispatch_host_upgrade()`; no new files or public API
-- **Risk**: Low - Change is additive and gated behind `install_source is None`; existing hosts' branches and the already-installed path are untouched
+- **Effort**: Medium - One new branch plus a `plugin_installed()` extraction from `detect_installation()`, but ~16 existing tests need `detect_installation`/`_subprocess.run` mocks retrofitted to stay hermetic (see Integration Map → Tests)
+- **Risk**: Low - Change is additive and gated behind plugin absence; existing hosts' branches and the already-installed path are untouched
 - **Breaking Change**: No
 
 ## Use Case
@@ -87,10 +163,18 @@ A developer runs `ll-init` in a new project, accepts the default host selection 
 
 ## Acceptance Criteria
 
-- If `claude-code` is selected/detected as a host and `detect_installation()` returns no installed source, `ll-init` runs the marketplace add + plugin install for `ll@little-loops` (or clearly documents/prints the exact commands needed and why it can't run them itself, e.g. headless/non-interactive `claude` CLI limitations).
+- If `claude-code` is selected/detected as a host, the `claude` binary resolves, and the `ll@little-loops` plugin is absent from `claude plugin list` (`plugin_installed(binary)` False), `ll-init` runs the marketplace add + `plugin install ll@little-loops -y` — **including when pip metadata reports `pypi`/`local-editable`** (pip-package presence must not suppress the install; see Expected Behavior's design correction).
 - If the user unchecks `claude-code` in the TUI host checklist (or omits it from `--hosts`), no install is attempted.
-- If the plugin is already installed (any of the `install_source` values `local-editable`, `pypi`, `global-claude-code`, `project-claude-code`), no redundant install is attempted — this path already exists via `_dispatch_host_upgrade()` (`scripts/little_loops/init/cli.py:172`) for the upgrade case and should not be duplicated.
-- Failure to install (e.g. `claude` binary present but the install subprocess errors) is surfaced as a warning, not a silent no-op, consistent with the `warning()`/`info()` pattern already used for the other hosts in `_dispatch_host_adapters()`.
+- If the plugin is already installed (`plugin_installed(binary)` True), no redundant install is attempted; the upgrade case stays with `_dispatch_host_upgrade()` (`scripts/little_loops/init/cli.py:172`) and is not duplicated.
+- `--dry-run` performs no marketplace-add/install subprocess calls (consistent with every sibling branch's `dry_run` contract).
+- Failure to install (e.g. `claude` binary present but the install subprocess errors or times out) is surfaced as a warning, not a silent no-op, consistent with the `warning()`/`info()` pattern already used for the other hosts in `_dispatch_host_adapters()`.
+- `detect_installation()`'s observable behavior is unchanged after the `plugin_installed()` refactor (existing tests stay green).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- Gap (gap-analysis structural check): none of the four existing Acceptance Criteria state expected behavior when `ll-init` runs with `--dry-run`. Per the established `dry_run` contract documented under Program Design → Codebase Research Findings (every side-effecting branch in `_dispatch_host_adapters()` gates on `dry_run`), a dry-run invocation with `claude-code` selected and no installed source should not actually shell out to `claude plugin marketplace add`/`claude plugin install` — this is implied by precedent but not currently asserted as a criterion.
 
 ## Related Key Documentation
 
@@ -102,5 +186,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-01T04:44:53 - `8486b04b-164d-4f78-8378-f72d0c6fa4d3.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-09-01T04:42:38 - `07acdd53-4d5d-4207-99c9-310382b1a8e5.jsonl`
+- `/ll:verify-issues` - 2026-09-01T04:38:12 - `40b7a789-f8db-4653-baaa-e3175b0ea699.jsonl`
+- `/ll:wire-issue` - 2026-09-01T04:35:51 - `f8a17cf2-c664-4f0b-8a41-7619ae34b9bf.jsonl`
+- `/ll:refine-issue` - 2026-09-01T04:27:13 - `ccaa2b41-32ae-4c21-ae8d-777bf39b68ad.jsonl`
 - `/ll:format-issue` - 2026-09-01T04:14:36 - `e78ad427-afac-4f8a-8262-9a68ce395c55.jsonl`
 - `/ll:capture-issue` - 2026-09-01T03:55:58 - `54b7abda-af7a-4b45-bfa4-e6f3cd9335a3.jsonl`
