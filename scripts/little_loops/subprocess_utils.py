@@ -695,6 +695,28 @@ def run_claude_command(
                                 # never deliver.
                                 result_seen = True
                                 continue  # skip other event types (tool_use, etc.)
+                            elif etype == "turn.completed":
+                                # Codex `exec --json` terminal event (FEAT-2123). Field
+                                # names differ from Claude's "result" usage block; see
+                                # exec_events.rs::Usage in openai/codex (no cache-read
+                                # split, no model field — Codex reports a single
+                                # cached_input_tokens count and never echoes the model).
+                                usage = event.get("usage", {})
+                                if on_usage_detailed and usage:
+                                    on_usage_detailed(
+                                        TokenUsage(
+                                            input_tokens=usage.get("input_tokens", 0),
+                                            output_tokens=usage.get("output_tokens", 0),
+                                            cache_read_tokens=usage.get(
+                                                "cached_input_tokens", 0
+                                            ),
+                                            cache_creation_tokens=usage.get(
+                                                "cache_write_input_tokens", 0
+                                            ),
+                                            model=detected_model,
+                                        )
+                                    )
+                                continue  # skip other event types (item.*, etc.)
                             else:
                                 continue  # skip other event types (tool_use, etc.)
                         except (json.JSONDecodeError, KeyError, TypeError):

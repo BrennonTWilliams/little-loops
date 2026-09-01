@@ -1776,6 +1776,13 @@ class TestDescribeCapabilities:
         assert by_name["tool_allowlist"].status == "partial"  # ENH-1529
         assert by_name["json_schema"].status == "partial"
 
+    def test_codex_runner_token_reporting_full(self) -> None:
+        """FEAT-2123: turn.completed's usage block is parsed into TokenUsage."""
+        report = CodexRunner().describe_capabilities()
+        by_name = {e.name: e for e in report.capabilities}
+        assert by_name["token_reporting"].status == "full"
+        assert "turn.completed" in by_name["token_reporting"].note
+
     def test_opencode_runner_returns_capability_report(self) -> None:
         report = OpenCodeRunner().describe_capabilities()
         assert isinstance(report, CapabilityReport)

@@ -846,6 +846,18 @@ class CodexRunner:
                     "codex CLAUDE.md/AGENTS.md suppression support not confirmed; "
                     "defer-until-confirmed, mirrors tool_allowlist posture",
                 ),
+                # FEAT-2123: codex exec --json's terminal "turn.completed" event
+                # carries a usage block; run_claude_command() parses it into
+                # TokenUsage via on_usage_detailed, same contract as the claude
+                # "result" event. No model field on the wire (defaults to "unknown").
+                CapabilityEntry(
+                    "token_reporting",
+                    "full",
+                    "codex exec --json's turn.completed event carries a usage block "
+                    "(input_tokens/output_tokens/cached_input_tokens/"
+                    "cache_write_input_tokens); parsed into TokenUsage by "
+                    "run_claude_command()'s shared event-type branch",
+                ),
             ],
         )
 

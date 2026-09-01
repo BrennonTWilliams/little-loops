@@ -3,8 +3,9 @@ id: FEAT-2123
 title: Surface per-invocation token usage from Codex and OpenCode runners
 type: FEAT
 priority: P3
-status: open
-captured_at: "2026-06-13T00:00:00Z"
+status: done
+completed_at: '2026-08-31T00:00:00Z'
+captured_at: '2026-06-13T00:00:00Z'
 discovered_date: 2026-06-13
 discovered_by: capture-issue
 parent: EPIC-1463
@@ -25,6 +26,12 @@ labels:
 verify_verdict: VALID
 learning_tests_required:
 - opencode
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-2123: Surface per-invocation token usage from Codex and OpenCode runners
@@ -131,9 +138,9 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 - `scripts/little_loops/subprocess_utils.py` — `on_usage_detailed` callback / `run_claude_command()`
 - `scripts/little_loops/host_runner.py` — `CodexRunner` / `OpenCodeRunner`
 - `docs/reference/HOST_COMPATIBILITY.md` — `[^tok]` footnote update + `Token reporting` row
+- `scripts/little_loops/cli/doctor.py` — `_ADVISORY_CAPABILITIES` frozenset (`:96`) — add `token_reporting` here if it's implemented as an advisory-only `CapabilityEntry` (the `claude_md_suppression` precedent); otherwise an `"unsupported"` entry on a host without usage support flips `ll-doctor`'s exit code to 1 via `_exit_code_for()` [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
-- TBD — `grep -r "on_usage_detailed" scripts/` to find all consumers
 - `ll-loop` run output (cost table rendering)
 - `.ll/usage.jsonl` write path
 - `scripts/little_loops/subprocess_utils.py:674` — invokes `on_usage_detailed` inside `run_claude_command()`'s `"result"` event branch
@@ -142,14 +149,27 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 - `scripts/little_loops/fsm/persistence.py` `_handle_event()` — writes a `usage.jsonl` row gated on `"input_tokens" in event`
 - `scripts/little_loops/cli/loop/_helpers.py` `_print_usage_summary()` — reads `usage.jsonl` via `CostReport.from_usage_jsonl()` and prints the per-state cost table
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_host_runner.py:~1779` — `test_opencode_runner_returns_capability_report` asserts `report.capabilities[0].status == "unsupported"` positionally; a new capability entry for `OpenCodeRunner` must be appended after the existing `"host"` entry (index 0), or this test breaks [Agent 2 finding]
+- `scripts/little_loops/observability/tracing.py` — `_read_token()`/`OTelAttributes.from_usage()` already read `TokenUsage` fields via `getattr(source, field, 0)` with defaults; confirmed no change needed once Codex/OpenCode start populating real data — `_VENDOR_BY_RUNNER` already maps `"codex": "openai"` [Agent 2 finding, informational — no action required]
+
 ### Similar Patterns
 - FEAT-1623 per-tool byte metrics (`.ll/history.db`) — analogous host-agnostic callback pattern
 
 ### Tests
 - `scripts/tests/` — add coverage for parse path on any wired host (per Acceptance Criteria)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_subprocess_utils.py` — no Codex/OpenCode-specific usage-parsing test exists yet; `test_on_usage_detailed_callback_called_with_result_event` (`:1778`) and `test_on_usage_detailed_not_called_when_no_usage` (`:1807`) are the template to follow for a new event-type-branch test (mock `Popen`/`selectors` per `_make_single_line_selector` helper) [Agent 3 finding]
+- `scripts/tests/test_host_runner.py` — `TestDescribeCapabilities` class (`:1716`); `test_codex_runner_agent_select_partial` (`:1768`) is the `by_name = {e.name: e for e in report.capabilities}` lookup pattern for a new `token_reporting` capability assertion [Agent 3 finding]
+- `scripts/tests/test_cli_doctor.py` — `test_claude_md_suppression_reported_unsupported` (`:139`) and `test_advisory_capability_unsupported_does_not_fail` (`:108`) are the template for a new `token_reporting` advisory-capability test; `test_exit_one_when_critical_capability_missing` (`:148`) shows the non-advisory failure mode this issue must avoid triggering if `token_reporting` ends up `"unsupported"` for any host [Agent 2 + 3 finding]
+
 ### Documentation
 - `docs/reference/HOST_COMPATIBILITY.md` — flip `Token reporting` row to ✓ or `partial`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — auto-generated module reference mirrors the primary files' contracts almost verbatim: `TokenUsage` (`~11982`), `run_claude_command` (`~12110`, `~2922`), `HostCapabilities` (`~9793`), and the "Concrete runners" table (`~9854`, documents `CodexRunner`'s/`OpenCodeRunner`'s per-capability status in prose) — update via the doc-generation source (docstrings), not by hand-editing this file directly, if a new event-type branch or capability entry is added [Agent 1 + 2 finding]
+- `docs/reference/CLI.md` — already mentions `describe_capabilities` and "Token reporting"; verify accuracy after implementation [Agent 1 finding]
 
 ### Configuration
 - N/A
@@ -170,6 +190,12 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 - ENH-2461 (`depends_on`) is confirmed `status: done`, `completed_at: 2026-07-13`. It landed a *different* design than its own original plan: Option C, an independent `usage_events` table populated post-hoc by `_backfill_usage_events()` (`session_store/writers.py:2987`) parsing `raw_events`, not a live writer off `on_usage_detailed`. Its own Addendum 2 deferred the live writer (citing `_run_action()` not threading `on_usage_detailed` through). That live writer was built separately as ENH-2724 (`record_usage_event()` call in `FSMExecutor._finish()`), not part of ENH-2461's own commit. Both existing sinks are already fully host-agnostic downstream of `ActionResult.usage_events` — extending parity for Codex/OpenCode requires touching only the upstream parser in `run_claude_command()`, nothing in either sink.
 - `claude_md_suppression` (present in all 4 runners' `describe_capabilities()`, `host_runner.py:536,844,1210,1396`) is the confirmed precedent for a `CapabilityEntry`-only capability with no matching `HostCapabilities` dataclass field; `cli/doctor.py:96` additionally special-cases it via `_ADVISORY_CAPABILITIES = frozenset({"claude_md_suppression"})` for how `ll-doctor` renders an advisory-only (non-boolean-gated) capability — a second precedent worth following if a `token_reporting`-style entry is added without a corresponding dataclass field.
 - Test precedent for a capability-status assertion: `scripts/tests/test_cli_doctor.py:123,139` (`CapabilityEntry("claude_md_suppression", ...)`, `test_claude_md_suppression_reported_unsupported`) — template for asserting `ll-doctor`'s rendering of a new advisory-only capability.
+
+_Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
+
+- `docs/reference/HOST_COMPATIBILITY.md`'s `Token reporting` row now also lists Kimi Code (`✗ — no usage events in stream-json (0.30.0)[^kimi]`) alongside OpenCode/Codex `✗[^tok]`, and confirms Qwen Code `✓ — usage (incl. total_tokens) on assistant messages and the final result envelope[^qwen]` (line 251). This is new since the 2026-09-01 pass: a second host (Kimi) is now a confirmed `✗` case with its own footnote, evidencing that "no usage in stream-json" is not unique to Codex/OpenCode — useful precedent for what a permanent-gap footnote should look like if Codex/OpenCode end up in that bucket. The `[^tok]` footnote's own text is unchanged in substance from what this issue already quotes; the file's later mtime was driven by these unrelated nearby footnote additions, not a change to `[^tok]` itself.
+- The `claude_md_suppression` `CapabilityEntry` precedent (cited in this issue's Program Design/Integration Map as the model for an advisory-only capability with no matching `HostCapabilities` field) is present on only 4 of the repo's 6 host runners today — `ClaudeCodeRunner` (`host_runner.py:536`), `CodexRunner` (`:844`), `GeminiRunner` (`:1210`), `OmpRunner` (`:1396`). `KimiRunner` and `QwenRunner` (both now present in `host_runner.py`) omit it entirely from their `describe_capabilities()`. Correction to this issue's earlier phrasing ("present in all 4 runners") — that was accurate when only 4 runners existed; the repo now has 6, and the precedent is per-runner-optional, not universal. A `token_reporting`-style entry does not need to be added to every runner, only the ones where usage is actually surfaced.
+- No `runner.name`/binary-name branch exists anywhere inside `run_claude_command()`'s per-line event parser (`subprocess_utils.py:616-716`) — confirmed by a repo-wide search for `runner.name ==` / `host_name ==` / `binary_name ==` / `command[0] ==` patterns inside a stream-parsing context; the one hit in the codebase (`cli/loop/_helpers.py:2137`) is an unrelated display comparison, not a parser branch. There is no existing convention to model a new Codex-specific event-type branch on other than the shared `etype == "result"` branch itself.
 
 ## Program Design
 
@@ -209,6 +235,16 @@ N/A — no new decision logic. This issue's only decision point is the research 
 4. Update `HostCapabilities` / `ll-doctor` to flip `Token reporting` to ✓ or `partial`
 5. Add `scripts/tests/` coverage for the parse path on the wired host(s)
 6. If no usage source exists: mark `[^tok]` as a permanent-gap footnote citing the research note
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/cli/doctor.py` — add `token_reporting` to `_ADVISORY_CAPABILITIES` (`:96`) if implemented as an advisory-only `CapabilityEntry`; otherwise an `"unsupported"` entry flips `ll-doctor`'s exit code to 1
+- Update `scripts/tests/test_host_runner.py` — append any new `OpenCodeRunner` capability entry after the existing `"host"` entry (index 0) so `test_opencode_runner_returns_capability_report` (`~:1779`) does not break; add a `token_reporting` assertion to `TestDescribeCapabilities` (`:1716`) following the `test_codex_runner_agent_select_partial` (`:1768`) by-name lookup pattern
+- Add `scripts/tests/test_subprocess_utils.py` coverage for the new Codex event-type branch, following `test_on_usage_detailed_callback_called_with_result_event` (`:1778`)
+- Add `scripts/tests/test_cli_doctor.py` coverage for `token_reporting`'s advisory rendering, following `test_claude_md_suppression_reported_unsupported` (`:139`)
+- Verify `docs/reference/API.md` (auto-generated) and `docs/reference/CLI.md` reflect the new event-type branch / capability entry after implementation
 
 ## Notes
 
@@ -255,6 +291,10 @@ N/A — no new decision logic. This issue's only decision point is the research 
 Verified 2026-08-10: core gap still real — `on_usage_detailed` (`subprocess_utils.py:353`) still only fires for the claude runner; `CodexRunner`/`OpenCodeRunner` exist in `host_runner.py` without it. However, the issue's claim that the `[^tok]` footnote in `HOST_COMPATIBILITY.md:177` is an orphaned dead-link to EPIC-1744 is now stale — that footnote already correctly self-cites FEAT-2123. Update or drop that part of the Summary.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-01T03:29:26 - `fa235cb3-3fc5-4ec8-b6e6-71833c37b0e4.jsonl`
+- `/ll:verify-issues` - 2026-09-01T03:25:06 - `9b831d20-5b68-492a-b16e-2cc99f6c8dac.jsonl`
+- `/ll:wire-issue` - 2026-09-01T03:23:53 - `f17594ae-88c1-4967-be80-56a2d10f272f.jsonl`
+- `/ll:refine-issue` - 2026-09-01T03:19:07 - `78d9af52-85a9-43d3-8c38-4422e56f8f04.jsonl`
 - `/ll:refine-issue` - 2026-09-01T02:54:09 - `02c2a272-7226-4055-8f34-6d4118279276.jsonl`
 - `/ll:refine-issue` - 2026-08-31T18:16:19 - `79825ede-998a-42fa-9870-aab9ce64b599.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:31 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

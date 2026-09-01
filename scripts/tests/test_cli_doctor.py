@@ -15,6 +15,7 @@ from little_loops.host_runner import (
     CapabilityEntry,
     CapabilityReport,
     ClaudeCodeRunner,
+    CodexRunner,
     HostInvocation,
     HostNotConfigured,
 )
@@ -135,6 +136,41 @@ class TestMainDoctor:
             result = main_doctor()
 
         assert result == 0
+
+    def test_advisory_token_reporting_unsupported_does_not_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FEAT-2123: token_reporting is advisory — a host that cannot surface
+        per-invocation usage (e.g. opencode, still HostNotConfigured) must not
+        fail ll-doctor's exit code over an observability optimization."""
+        monkeypatch.chdir(tmp_path)  # isolate from this repo's own history.db (ENH-3242)
+        report = CapabilityReport(
+            host="opencode",
+            binary="opencode",
+            version="",
+            capabilities=[
+                CapabilityEntry("streaming", "full"),
+                CapabilityEntry("token_reporting", "unsupported", "no usage source wired"),
+            ],
+        )
+        runner = _make_runner(report)
+
+        with (
+            patch("sys.argv", ["ll-doctor"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig"),
+            patch("builtins.print"),
+        ):
+            result = main_doctor()
+
+        assert result == 0
+
+    def test_codex_token_reporting_reported_full(self) -> None:
+        """FEAT-2123: codex's turn.completed usage block is now parsed, so
+        token_reporting must report 'full', not the pre-implementation gap."""
+        entries = {c.name: c for c in CodexRunner().describe_capabilities().capabilities}
+        assert entries["token_reporting"].status == "full"
 
     def test_claude_md_suppression_reported_unsupported(self) -> None:
         """The claude CLI exposes no flag that skips CLAUDE.md, so the
