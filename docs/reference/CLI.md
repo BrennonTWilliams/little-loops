@@ -511,6 +511,7 @@ Process issues concurrently using isolated git worktrees.
 | `--priority` | `-p` | Comma-separated priorities to process (e.g., `P1,P2`) |
 | `--worktree-base` | | Base directory for git worktrees |
 | `--cleanup` | `-c` | Clean up all worktrees and exit |
+| `--cleanup-orphans` | | Liveness-aware orphan cleanup: scans `worktree_base` for `.ll-*` worktrees and removes only those confirmed dead, in order — (1) the out-of-tree PID registry (`_registry_entry_is_live`, ENH-3376 — survives an in-worktree `git clean -fdx` that would erase the in-tree marker), (2) an in-tree `.ll-session-<pid>` marker checked via `os.kill(pid, 0)`, (3) a last-resort scan of live processes' cwds (`_collect_live_process_cwds` / `_worktree_has_live_cwd`, ENH-3377); worktrees still owned by a live process are skipped. Combine with `--dry-run` to preview. |
 | `--prune-merged-branches` | | Delete local `feature/*` branches already merged into the base branch; use with `--dry-run` to preview. Squash/rebase-merged branches require the `gh` CLI for detection. |
 | `--merge-pending` | | Attempt to merge pending work from interrupted runs |
 | `--clean-start` | | Remove all worktrees and start fresh |
@@ -550,6 +551,7 @@ ll-parallel --workers 3             # Use 3 parallel workers
 ll-parallel --dry-run               # Preview what would be processed
 ll-parallel --priority P1,P2        # Only process P1 and P2 issues
 ll-parallel --cleanup               # Clean up worktrees and exit
+ll-parallel --cleanup-orphans --dry-run  # Preview liveness-aware orphan cleanup
 ll-parallel --stream-output         # Stream Claude output in real-time
 ll-parallel --only BUG-001,BUG-002  # Process only specific issues
 ll-parallel --type BUG,ENH          # Process bugs and enhancements

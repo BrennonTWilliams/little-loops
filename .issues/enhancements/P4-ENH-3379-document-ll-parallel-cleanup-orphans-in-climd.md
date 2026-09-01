@@ -3,10 +3,11 @@ id: ENH-3379
 type: ENH
 title: document ll-parallel --cleanup-orphans in CLI.md
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-01'
 captured_at: '2026-09-01T21:38:04Z'
+completed_at: '2026-09-01T21:46:37Z'
 relates_to:
 - BUG-3373
 testable: false
@@ -66,4 +67,5 @@ example.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-01T21:46:26 - `88075229-d92f-46f1-95f6-17978cad5cfc.jsonl`
 - `/ll:ready-issue` - 2026-09-01T21:41:47 - `4b16ef85-c362-493d-849c-c846475b72fa.jsonl`
