@@ -316,7 +316,7 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 - `cli_events` (`scripts/little_loops/session_store/schema.py:242-249`) has no free-form JSON/payload column — `args` is raw `sys.argv[1:]` capped to 50 entries, `exit_code`/`duration_ms` are the only outcome columns. A structured per-axis verdict payload cannot attach to the existing row without a schema change (new table or new column); the answer to this issue's own "check whether the existing CLI-invocation capture can carry a structured payload" question is confirmed no, not as-is.
 - `cli_event_context()` wraps the entire `ll-issues` process once (`scripts/little_loops/cli/issues/__init__.py:21`), not per-subcommand — every one of `ll-issues`' ~90 subcommands writes `binary="ll-issues"`; a `research-triage` row is identifiable today only by parsing `args[0]` from its stored JSON array.
 - Event tables in this codebase that do model a closed-set outcome column enforce the set with a SQL `CHECK` constraint at the DB layer (`verdict_events.verdict`, `schema.py:768-781`/`:1202-1219`; the cross-column `abstention_reason` constraint) — independent of whatever Python-side type the value has before the INSERT. Relevant if the new reason code lands as its own `history.db` column.
-- ENH-3000 (`.issues/enhancements/P3-ENH-3000-*.md`) is still `status: open` and unimplemented — `RefStatus` (`scripts/little_loops/text_utils.py:161`) is the pre-ENH-3000 five-member `Literal`, with no `untracked_by_design` anywhere in `scripts/little_loops/` (repo-wide search, no hits). Confirms the reconciliation constraint this issue's own Scope Boundary note already flags.
+- ~~ENH-3000 is still `status: open` and unimplemented~~ — superseded by the next entry; ENH-3000 shipped later the same day.
 
 _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
@@ -335,6 +335,8 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 - `_triage_axis(...) -> AxisCoverage` (`scripts/little_loops/issues/research_triage.py:402-451`) — the one function containing all four rejection branches this issue's reason-code taxonomy needs to distinguish.
 - `cmd_research_triage(config, args)` (`scripts/little_loops/cli/issues/research_triage.py:45-71`) — confirmed thin wrapper: calls `triage_research_axes(path, config.project_root)` with all staleness/index args defaulted, then `print_json({c.axis: c.to_dict() for c in coverages})`. No telemetry write happens inside it today.
+- **New: `issue_refined_at(content: str) -> datetime | None`** (`scripts/little_loops/issues/research_triage.py`, public) — extracted from the block at `triage_research_axes:319-325` (`max` of `last_command_timestamp(content, REFINE_COMMAND)` and `last_command_timestamp(content, GAP_REFINE_COMMAND)`, or `None`). Required because `triage_research_axes` computes `refined_at` internally and returns only the axis tuple — `cmd_research_triage` has no way to obtain it for the row otherwise. `triage_research_axes` calls the helper (behavior unchanged); `cmd_research_triage` calls it on the same file content to fill `refined_at`. Prefer this over changing `triage_research_axes`'s return type, which `TestCorpusBaseline` and the corpus sweep consume as a tuple.
+- **New writer: `write_research_triage(db_path, *, issue_id, refined_at, session_id, axes: Sequence[AxisCoverage], ts=None) -> bool`** (`session_store/writers.py`) — one call per invocation, inserting all three axis rows in a single transaction with one `ts`. Not three `write_advisor_consult`-style single-row calls: Decision Rules key an invocation on `ts + issue_id`, which only holds if the rows share a `ts` written atomically. Fail-soft exactly like `write_advisor_consult` (`except sqlite3.Error` → `logger.warning` → `return False`).
 - `cli_event_context(db_path, binary, args)` (`scripts/little_loops/session_store/writers.py:482-560`) — inserts one `cli_events` row per `ll-issues` process on enter, updates `exit_code`/`duration_ms` on exit; best-effort (`sqlite3.Error` caught and logged, never propagated).
 
 ### Call Path
@@ -348,11 +350,14 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 - **Naming decision: the axis-level code is `stale`, not `axis_stale`.** The Scope Boundary note below recommended `axis_stale` to avoid confusion with `RefStatus.stale`; that concern does not apply because the new code is stored in its own `history.db` column with its own `CHECK` constraint and its own Python `Literal`, so no query or type can conflate the two. Do not introduce `axis_stale`.
 - **Re-refine stratification is mandatory.** When the issue has no prior `/ll:refine-issue` or gap-refine Session Log entry, `refined_at` is `None` (`triage_research_axes:319-325`) and the staleness branch never runs — so a first-refine invocation can only ever produce coverage-side reasons. Every recorded row MUST carry `refined_at` (nullable ISO-8601) so the read-back can condition on `refined_at IS NOT NULL`; the headline number this issue exists to produce is the skip rate over *re-refine* invocations only. Reporting an unstratified rate would dilute the `stale`-vs-coverage split with first refines and make the figure incomparable to ENH-2971's 33.7% / 8.6%.
 - **Row granularity: one row per axis** — `ts, session_id (nullable), issue_id, axis, covered, reason (nullable, CHECK-constrained), refined_at (nullable), evidence`. Three rows per invocation, sharing `ts` + `issue_id`. This matches the `verdict_events` closed-set-column precedent and makes the skip rate a single `GROUP BY reason` query; a per-invocation row with three axis columns would force the read side to unpivot.
-- **Gating and path resolution.** The new writer honors the same `analytics.capture.cli_commands` gate `cli_event_context` applies (`writers.py:505-512`, via `feature_enabled_for(..., "ll-issues")`) and resolves its path with `resolve_history_db()`, never a bare `DEFAULT_DB_PATH`. `session_id` is read from `CLAUDE_SESSION_ID` exactly as `advisor.py:483` does, but that variable is not guaranteed to be set in a `Bash`-tool subprocess — it is best-effort; `issue_id` is the reliable join key.
+- **Gating and path resolution.** The new writer gates explicitly on `config.analytics_capture.cli_commands` (`BRConfig.analytics_capture`, `config/core.py:481`) via `feature_enabled_for({"cli_commands": ...}, "cli_commands", "ll-issues")`, and resolves its path with `resolve_history_db()`, never a bare `DEFAULT_DB_PATH`. **Do not describe this as "matching `cli_event_context`":** that wrapper's gate (`writers.py:505-512`) only runs when its optional `config` argument is passed, and *no* caller passes it — `cli/issues/__init__.py:21` and all ten other `ll-*` entry points call `cli_event_context(DEFAULT_DB_PATH, "<binary>", sys.argv[1:])` — so `cli_events` is effectively ungated today. This issue gates its own table because `cmd_research_triage` has the config in hand; the dead wrapper gate is a separate ENH-2932 regression, out of scope here (capture as its own BUG). `session_id` is read from `CLAUDE_SESSION_ID` exactly as `advisor.py:483` does, but that variable is not guaranteed to be set in a `Bash`-tool subprocess — it is best-effort; `issue_id` is the reliable join key.
+- **`program_design_unmet` rows are excluded from the ENH-2971-comparable figure.** BUG-3003's `_program_design_unmet` override (`issues/research_triage.py:337-345`) post-dates ENH-2971's 2026-08-02 measurement and replaces the analyzer verdict wholesale, so a `program_design_unmet` row says nothing about whether coverage or staleness would have passed. The read function reports the comparable rates over rows where `reason IS NOT 'program_design_unmet'` (equivalently: all locator/pattern_finder rows plus analyzer rows the gate did not override), and reports the `program_design_unmet` count separately so the override's own frequency is visible.
+- **Headline formulas** (both over `refined_at IS NOT NULL` rows, after the exclusion above): production skip rate = `covered` / total; coverage-only counterfactual = (`covered` + `reason = 'stale'`) / total. The gap between the two is the Staleness Check's cost on real invocations — the direct analogue of ENH-2971's 33.7% (coverage only) vs 8.6% (production). Report both; the counterfactual is what Motivation's "~34% vs ~9%" decision turns on.
+- **The writer runs on both output paths.** Call it before the `--json` branch in `cmd_research_triage`, so the text-mode invocation records too.
 - Modeling convention: a new `Literal[...]` alias, not an `Enum` or a dataclass field wrapping one — this is the codebase's stated convention for a classifying function's return value that is stored and compared (`ResearchAxis`, `research_triage.py:59`; `RefStatus`, `text_utils.py:161`; `Verdict`, `doctor_trim.py:66`; documented explicitly as convention in `.issues/enhancements/P3-ENH-3298-*.md:232`). `Enum` classes in this codebase (`RunnerType`, `MergeStatus`, `WorkerStage`, `InstallStatus`, `HandoffBehavior`, `ValidationSeverity`) model internal lifecycle/control-flow state instead — a different shape of problem, not a competing convention for this case.
 - If the reason code is persisted as its own `history.db` column rather than staying in-process: existing closed-set outcome columns (`verdict_events.verdict`, `schema.py:768-781`/`:1202-1219`; the cross-column `abstention_reason` constraint) enforce the set with a SQL `CHECK` constraint at the DB layer, independent of the Python-side `Literal` type — the same pattern would apply here.
 - Escape hatch: the reason code is additive to `evidence`, not a replacement — `evidence`'s existing prose stays human-readable.
-- Reconciliation constraint (already flagged by this issue's own Scope Boundary note): ENH-3000 is still `status: open` and unimplemented — `RefStatus` (`text_utils.py:161`) is still the pre-ENH-3000 five-member `Literal` with no `untracked_by_design` value anywhere in `scripts/little_loops/` (repo-wide search, no hits). The reason-code taxonomy should leave room for that eventual sixth value rather than being finalized as a closed set independently of it.
+- ENH-3000 has shipped (see the later Codebase Research Findings entry); `RefStatus` is now six-member and its `untracked_by_design` refs already fall into `_triage_axis`'s "not eligible" bucket. No reconciliation with `TriageReason` is needed — the two taxonomies classify different things (per-ref vs per-axis) and the six-code set above is final.
 
 ### Codebase Research Findings
 
@@ -368,18 +373,28 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
    Rationale).
 2. Add `reason: TriageReason | None` to `AxisCoverage` and populate it on every
    branch per the Decision Rules taxonomy (six codes, including the two
-   outside `_triage_axis`). `to_dict()` gains a `"reason"` key.
+   outside `_triage_axis`). `to_dict()` gains a `"reason"` key. Extract
+   `issue_refined_at(content)` from `triage_research_axes:319-325` as a public
+   helper (Program Design § Signatures) and have `triage_research_axes` call
+   it — no behavior change.
 3. Add the `history.db` v46 table (one row per axis, columns per Decision
-   Rules) and its fail-soft writer; call it from `cmd_research_triage` after
-   `triage_research_axes` returns, passing `refined_at` alongside each axis.
+   Rules) and the fail-soft `write_research_triage()` writer (one call, three
+   rows, one transaction, one `ts`). Call it from `cmd_research_triage` after
+   `triage_research_axes` returns and **before** the `--json` branch, passing
+   `refined_at=issue_refined_at(content)` read from the same issue file, gated
+   on `config.analytics_capture.cli_commands`.
 4. Add the read path: a `history_reader.py` function returning counts grouped
-   by `(refined_at IS NOT NULL, covered, reason)`, plus the exact SQL pasted
-   into this issue's Verification Notes so the number can be re-derived
-   without Python. No CLI subcommand — the advisor precedent
-   (`consult_stats`) has none either, and adding one is out of scope.
+   by `(refined_at IS NOT NULL, covered, reason)` **and** the two derived
+   rates from Decision Rules § Headline formulas (production = covered/total;
+   coverage-only counterfactual = (covered + stale)/total), computed over
+   re-refine rows with `program_design_unmet` excluded and that exclusion's
+   count reported alongside. Paste the exact SQL into this issue's
+   Verification Notes so the number can be re-derived without Python. No CLI
+   subcommand — the advisor precedent (`consult_stats`) has none either, and
+   adding one is out of scope.
 5. Write a stub `## Threshold Validation (ENH-2990 — live)` entry in ENH-2971
    next to the corpus numbers, stating the query and that the figure is
-   pending N re-refine invocations.
+   pending the row threshold in Acceptance Criteria.
 6. Once the sample threshold in Acceptance Criteria is met, fill in the entry.
    If `stale` dominates, open a follow-up to narrow the Staleness Check.
 
@@ -395,17 +410,29 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
       (plus NULL); `schema_manifest.json` regenerated; `SCHEMA_VERSION == 46`.
 - [ ] The writer never raises: the monkeypatch-`connect`-raises test passes,
       and `cmd_research_triage` still exits 0 when the DB is unwritable.
-- [ ] The writer is suppressed when `analytics.capture.cli_commands` excludes
-      `ll-issues`, matching `cli_event_context`.
+- [ ] The writer is suppressed when `config.analytics_capture.cli_commands`
+      excludes `ll-issues` (explicit gate in `cmd_research_triage`; see
+      Decision Rules — `cli_event_context`'s own gate is dead and is not the
+      reference behavior).
+- [ ] One `write_research_triage()` call per invocation writes all three axis
+      rows in one transaction sharing a single `ts`; the writer fires on both
+      the `--json` and text output paths.
 - [ ] Each row records `refined_at`; the read function reports first-refine
-      and re-refine rows separately.
+      and re-refine rows separately, reports both headline rates (production
+      and coverage-only counterfactual) over re-refine rows, and excludes
+      `program_design_unmet` rows from those rates while reporting their
+      count.
 - [ ] ENH-2971 carries the stub Threshold Validation entry with the read query.
 - [ ] **Close condition**: this issue closes when the items above land. The
-      live figure is recorded when at least **200 re-refine invocations**
-      (`refined_at IS NOT NULL`, ≈67 issues × 3 axes) have accumulated; if
-      that has not happened by the time the instrumentation ships, open a
-      follow-up issue titled "Record ENH-2990 live skip rate" that holds only
-      Step 6, so this issue does not sit open waiting on autodev volume.
+      live figure is recorded when at least **1,500 re-refine axis rows**
+      (`refined_at IS NOT NULL`, ≈500 invocations) have accumulated. Volume
+      is not the constraint: `cli_events` already holds 1,531
+      `research-triage` invocations since 2026-08-02 across 300 issues, of
+      which 1,231 are repeat invocations on an already-seen issue (~50/day),
+      so this threshold is roughly ten days of autodev. If it has not been
+      met by the time the instrumentation ships, open a follow-up issue
+      titled "Record ENH-2990 live skip rate" that holds only Step 6, so this
+      issue does not sit open waiting.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
