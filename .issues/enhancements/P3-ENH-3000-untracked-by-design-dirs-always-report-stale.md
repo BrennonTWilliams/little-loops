@@ -1012,6 +1012,7 @@ All other citations (including `research_triage.py:416`,
 content changed.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T20:43:16 - `39d84820-6142-436e-a022-2d67dd752172.jsonl`
 - `/ll:reconcile-issue` - 2026-09-02T20:32:59 - `62eddba7-ec09-476f-aa16-88e65bd2f581.jsonl`
 - `/ll:verify-issues` - 2026-09-02T20:26:35 - `596b078b-a7c0-4bdc-bd3a-515cb9746073.jsonl`
 - `/ll:verify-issues` - 2026-09-02T17:36:28 - `f3822202-1edc-4948-9375-b7a4b68307e4.jsonl`

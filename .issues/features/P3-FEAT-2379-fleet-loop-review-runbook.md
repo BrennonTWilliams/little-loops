@@ -64,9 +64,9 @@ Make "use other projects' logs to continuously fix and improve this repo's built
 **repeatable, documented cycle** rather than an ad-hoc investigation. Other projects on the
 machine act as a *test fleet* for all runnable built-in loops (the set returned by
 `_get_builtin_loop_names()` in `scripts/little_loops/cli/logs.py` — every `*.yaml` under the
-package `loops/` dir except `lib/` fragments; 89 at time of writing, do not hard-code the
-number); their run traces feed improvements back here, and each fix is validated against the
-fleet's next-cycle failure delta.
+package `loops/` dir except `lib/` fragments, **recursively** (104 at time of writing, 12 of
+them under `oracles/`; do not hard-code the number); their run traces feed improvements back
+here, and each fix is validated against the fleet's next-cycle failure delta.
 
 ## The cycle
 
@@ -101,9 +101,13 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
      with zero runs, so this must be derived.)
    - validation of each flagged loop via `load_and_validate()` (runs here; validate reads the
      YAML, not history — see Decisions #8 for why not `cmd_validate`).
+   - a **shadowed built-ins** section: runs whose project carries its own `.loops/<name>.yaml`
+     copy of a built-in name executed that copy, not this repo's loop, and are listed here
+     instead of being flagged (Decisions #10).
    The command writes `.loops/diagnostics/fleet-review-<YYYYMMDDTHHMMSSZ>.md` plus a
    machine-readable sidecar `.loops/diagnostics/fleet-review-<YYYYMMDDTHHMMSSZ>.json` (see
-   Deliverable 3).
+   Deliverable 3), both under `Path.cwd() / ".loops" / "diagnostics"` (the invoking project,
+   not the config-resolved `loops_dir`; created if absent).
    The runbook's DIAGNOSE phase then directs the maintainer to run `ll-loop
    diagnose-evaluators <loop>` / `calibrate-budget <loop>` **from inside the project that
    produced the failing runs** (the `project` field of each `loop-fleet` record) — see
@@ -119,7 +123,9 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
 - **Target**: this repo's **built-in** loops only. Cross-project data is *evidence*; fixes to
   other projects' `.loops/` happen in those projects, not back-ported here. This filter is
   **mechanical**: every `loop-fleet` record carries `attribution: "builtin" | "custom"`
-  (`logs.py:2055`), so only `builtin` records feed flagging.
+  (`logs.py:2055`), so only `builtin` records feed flagging. Name-only attribution is not
+  enough on its own — a project's modified copy of a built-in shares the name — so a third
+  value `"shadowed"` is added (Decisions #10).
 
 ## Decisions (resolved 2026-09-02 review)
 
@@ -199,22 +205,38 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
      tie-break** for `top_outcome`: sort by `(-count, outcome)`, not `Counter.most_common(1)`
      first-seen — first-seen depends on `iterdir()` order, which varies by filesystem and would
      make the baseline and tests unstable. Adding `--aggregate` to `loop-fleet -j` is optional.
-   - `_collect_failure_clusters(args, logger) -> list[_FailureCluster]` from
+   - `_collect_failure_clusters(args, logger, *, projects=None) -> list[_FailureCluster]` from
      `_cmd_scan_failures` (everything up to and including the `skill_filter` / `limit` steps;
      `--capture` and printing stay in `_cmd_scan_failures`).
-   - `_collect_sequences(args, logger) -> list[<chain result>]` from `_cmd_sequences`
-     (project discovery + `_extract_ll_event_streams` + `_count_ngrams` +
-     `_build_chain_results`; printing stays in `_cmd_sequences`).
+   - `_collect_sequences(args, logger, *, projects=None) -> list[ChainResult]` from
+     `_cmd_sequences` (project discovery + `_extract_ll_event_streams` + `_count_ngrams` +
+     `_build_chain_results`; printing stays in `_cmd_sequences`). `ChainResult` already has
+     `to_dict()`.
+   - **Both collectors take an explicit `projects: list[Path] | None`** (Decisions #11). Today
+     each `_cmd_*` calls `discover_all_projects(logger)` itself under `--all`
+     (`logs.py:1206`, `:642`); with `args`-only signatures there is no way to hand them the
+     post-`--exclude-project` list, and the appendix half of Decisions #9 is unmeetable. When
+     `projects` is given the collector skips discovery and maps each path through
+     `get_project_folder()`; when `None` it discovers as before, so the existing `_cmd_*`
+     printers are unchanged.
 8. **`validate` is called as a library, not via `cmd_validate`.** `cmd_validate`
    (`cli/loop/config_cmds.py:14`) prints to stdout and returns an int, so its findings cannot
    be embedded in the report without stdout capture. `fleet-review` calls
-   `load_and_validate(resolve_loop_path(name, loops_dir), raise_on_error=False, ...)`
-   directly (`little_loops.fsm.validation` / `little_loops.fsm.loop_paths`) and renders the
-   violations itself. `resolve_loop_path` already falls back to `get_builtin_loops_dir()`, and
-   `logs.py` already imports from `little_loops.cli.loop.info` (`:19`), so there is no
-   import-cycle risk. While there, `_get_builtin_loop_names()` should enumerate
-   `get_builtin_loops_dir()` rather than its own private `_LOOPS_DIR` (`logs.py:39`) so
-   `fleet-review` and `ll-loop` agree on what "built-in" means.
+   `load_and_validate(path, raise_on_error=False,
+   orchestration_request_path=BRConfig(Path.cwd()).orchestration.request_path)` directly
+   (`little_loops.fsm.validation`, mirroring `cmd_validate`) and renders the returned
+   `list[ValidationError]` itself. **Do not resolve `path` via `resolve_loop_path`** — it
+   checks only the top level of `get_builtin_loops_dir()` (`fsm/loop_paths.py:50-53`), while
+   `_get_builtin_loop_names()` walks recursively, so the 12 `oracles/*` built-ins resolve to
+   `FileNotFoundError` (verified: `ll-loop validate code-run-gate` fails from this repo today
+   with "Loop not found"). Instead add `_builtin_loop_paths() -> dict[str, Path]` (the same
+   `rglob`, `lib/` excluded, rooted at `get_builtin_loops_dir()` instead of the private
+   `_LOOPS_DIR` at `logs.py:39`), derive `_get_builtin_loop_names()` from its keys, and have
+   `_validate_builtin_loop` look the path up there. `little_loops.fsm.loop_paths` imports only
+   stdlib + `yaml`, so there is no import-cycle risk. Verified 2026-09-02: all 92 top-level
+   built-ins validate clean from this repo, so the validation section is signal, not noise,
+   once nested lookup works. (Making `resolve_loop_path` itself recursive for built-ins is a
+   separate BUG, not in scope.)
 9. **The source repo dominates the fleet — expose it, allow excluding it.** Measured at review
    time: 1102 of 2247 built-in runs on this machine come from `little-loops` itself
    (dev-iteration runs made while authoring the loops), so the "other projects as unbiased
@@ -225,6 +247,28 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
    decides per run; the runbook's HARVEST step recommends `--exclude-project .` when reviewing
    from this repo. (`add_corpus_target_args()` has no exclusion primitive today; this is the
    only new argparse surface beyond `--threshold`/`--min-runs`.)
+10. **Shadowed built-ins are a third attribution value, never flagged.** `_collect_loop_runs`
+    attributes by name only (`loop_name in builtin_names`), but `resolve_loop_path` prefers a
+    project's own `.loops/<name>.yaml` over the package copy (`fsm/loop_paths.py:45-53`), and
+    `ll-loop install` creates exactly such copies (`cli/loop/config_cmds.py:116`). Measured
+    2026-09-02: five copies on this fleet, all heavily modified — in `loop-sandbox`,
+    `rlhf-animated-svg` (2027 diff lines, 71 runs), `p5js-sketch-generator` (1574, 17),
+    `cua-agent-desktop` (262, 17), `eval-driven-development` (73, 5); in a private project,
+    `issue-refinement` (203, 1). Those 111 runs executed a different loop and would be flagged
+    against this repo's built-in — the exact misattribution the in-scope rule exists to
+    prevent. Events carry no provenance (`loop_start` has only `loop` and `ts`), so the
+    filesystem is the only signal: in `_collect_loop_runs`, when
+    `project_path / ".loops" / f"{loop_name}.yaml"` exists (checked once per project via a
+    set of stems, not per run), emit `attribution="shadowed"`. `_flag_loops` already requires
+    `"builtin"`, so shadowed runs drop out of flagging and zero-run evidence (a loop that ran
+    only as a shadowed copy is still zero-run **here**); the report lists them under
+    "Shadowed built-ins" (loop, project, runs) so the maintainer can look at the divergence.
+    `loop-fleet`'s Type column gains the value; note it in `docs/reference/CLI.md`. The
+    project-local `.loops/` path is used rather than the config-resolved `loops_dir` because
+    the harvester must not load another project's `BRConfig`; document the assumption.
+11. **Collectors accept an explicit project list.** See Decisions #7 — `projects=` on
+    `_collect_failure_clusters` / `_collect_sequences` is what lets `--exclude-project` reach
+    the appendices; `fleet-review` passes the same filtered list it used for `loop-fleet`.
 
 ## Runbook conventions (location decision)
 
@@ -251,7 +295,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - ~~Conditional new top-level `ll-*` console script wiring~~ — **does not apply**: `fleet-review` is a subcommand of the existing `ll-logs` entry point, so no `pyproject.toml` `[project.scripts]`, `_LL_PERMISSIONS`, `skills/configure/areas.md`, or `ll-verify-cli-allowlist` change is needed (Decisions #1). Only the `ll-logs` subcommand table in `docs/reference/CLI.md` needs a row. [Resolved 2026-09-02]
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/logs.py` (holds all four HARVEST-phase subcommands) is imported by `scripts/little_loops/cli/__init__.py:75`, `scripts/little_loops/cli/ctx_stats.py:20`, `scripts/little_loops/cli/loop/_helpers.py:19`, and tested by `scripts/tests/test_ll_logs.py:16`, `scripts/tests/test_enh_3166_qwen_normalizer.py:32`, `scripts/tests/test_bug_3216_telemetry_digest_invocations.py:31`, `scripts/tests/test_cli_ctx_stats.py:13` — none require modification for this issue; listed to confirm `logs.py`'s current consumer surface is stable and won't be disturbed by adding a new orchestrator on top of it.
+- `scripts/little_loops/cli/logs.py` (holds all four HARVEST-phase subcommands) is imported by `scripts/little_loops/cli/__init__.py:75`, `scripts/little_loops/cli/ctx_stats.py:20` (not by `cli/loop/_helpers.py` — verified 2026-09-02, `_helpers` imports nothing from `logs`, so the `logs.py → fsm.loop_paths` import direction is clean), and tested by `scripts/tests/test_ll_logs.py:16`, `scripts/tests/test_enh_3166_qwen_normalizer.py:32`, `scripts/tests/test_bug_3216_telemetry_digest_invocations.py:31`, `scripts/tests/test_cli_ctx_stats.py:13` — none require modification for this issue; listed to confirm `logs.py`'s current consumer surface is stable and won't be disturbed by adding a new orchestrator on top of it.
 - `agents/loop-specialist.md` — the agent this issue's runbook must link (per Acceptance Criteria); also asserted by `scripts/tests/test_wiring_skills_and_commands.py` to reference `.loops/diagnostics/` and `FEAT-1532`.
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -275,18 +319,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 - No test file exists yet for the new entry point or report writer this issue proposes, since neither is implemented.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_wiring_skills_and_commands.py` — add `docs/runbooks/FLEET_LOOP_REVIEW.md` to the `DOC_FILES_MUST_EXIST` list (lines 400-423, `(file_path, issue_id)` tuples) and to the `DOC_STRINGS_PRESENT` list (lines 27-336, `(doc_path, expected_string, issue_id)` tuples) with a needle proving it links `loop-specialist` and states the in-scope rule — following the exact convention already used for `("agents/loop-specialist.md", ".loops/diagnostics/", "FEAT-1532")` at line 192. No existing test asserts *ordered* section headers (Purpose · Cadence · Phases · Baseline/Re-measure · In-scope rule); every doc-wiring test in this family checks unordered substring presence only. [Agent finding]
+- `scripts/tests/test_wiring_skills_and_commands.py` — add `docs/runbooks/FLEET_LOOP_REVIEW.md` to the `DOC_FILES_MUST_EXIST` list (lines 400-423, `(file_path, issue_id)` tuples) and to the `DOC_STRINGS_PRESENT` list (lines 27-336, `(doc_path, expected_string, issue_id)` tuples) with a needle proving it links `loop-specialist` and states the in-scope rule — following the exact convention already used for `("agents/loop-specialist.md", ".loops/diagnostics/", "FEAT-1532")` at line 192. Also add `("mkdocs.yml", "runbooks/FLEET_LOOP_REVIEW.md", "FEAT-2379")` — no test asserts nav completeness, and the ENH-1495 rows at lines 73-76 are the precedent for pinning a nav entry. No existing test asserts *ordered* section headers (Purpose · Cadence · Phases · Baseline/Re-measure · In-scope rule); every doc-wiring test in this family checks unordered substring presence only. [Agent finding]
 - `scripts/tests/test_ll_logs.py` — new `test_fleet_review_*` tests following the subcommand test shape already there: a parse-only test (`test_dead_skills_subcommand_parsed`, lines 2550-2556), a `--project`/`--all` mutual-exclusion test (`test_dead_skills_project_and_all_mutually_exclusive`, lines 2623-2627), and a behavioral test patching `sys.argv`+`builtins.print` (`test_dead_skills_window_days_behavioral`, lines 2569-2621), plus a `test_cli.py` smoke test. `test_cli_entry_point_coverage` is unaffected (no new console script). Also add a unit test for the extracted `_aggregate_fleet_runs()` asserting the table branch and `fleet-review` agree on `success_pct`/`top_outcome` for the same run list.
 - **Flagging-rule tests**: table-driven over synthetic `_LoopRunRecord` lists — below `--min-runs` never flags; `custom` attribution never flags; `success_pct` exactly at threshold does not flag; each of `error`/`max-steps`/`stalled`/`failed` as `top_outcome` flags with a lowered `--threshold` (e.g. 30) where `success_pct` alone would not; `interrupted`/`signal` as `top_outcome` does **not** flag via the outcome clause; a 2-vs-2 tie between `failed` and `converged` resolves to `converged` (name-ascending tie-break) on both `iterdir` orders — build the record list in both orders.
 - **Collector-extraction tests**: `_collect_failure_clusters` / `_collect_sequences` return the same clusters/chains that the existing `test_scan_failures_*` / `test_sequences_*` behavioral tests observe via printed output (one assertion each that the printer branch is a pure projection of the collector result).
-- **Validate wrapper test**: `_validate_builtin_loop("nonexistent-loop")` returns `(False, [one error violation])` rather than raising; a real built-in name returns `valid=True` with the same violation list `load_and_validate` yields.
+- **Validate wrapper test**: `_validate_builtin_loop("nonexistent-loop")` returns `(False, [one error violation])` rather than raising; a real built-in name returns `valid=True` with the same violation list `load_and_validate` yields; **a nested built-in (`code-run-gate`, under `oracles/`) resolves and validates** — this is the regression test for Decisions #8's nested-lookup fix. Plus `_builtin_loop_paths()` keys equal `_get_builtin_loop_names()` and include `code-run-gate`.
+- **Shadowed attribution tests** (Decisions #10): a fixture project with `.loops/general-task.yaml` and a `.loops/.history/<id>-general-task/` run → the record's `attribution == "shadowed"`; it is absent from `_flag_loops` output even with `runs >= min_runs` and `success_pct == 0`; `general-task` still appears under zero-run built-ins when no other project ran it; the report's "Shadowed built-ins" section lists the loop, absolute project path, and run count. A project with only `.loops/.history/` (no copy) still yields `"builtin"`, so existing `test_loop_fleet_*` expectations hold.
+- **Collector `projects=` tests** (Decisions #11): `_collect_failure_clusters(args, logger, projects=[p1])` / `_collect_sequences(..., projects=[p1])` with two fixture projects returns only `p1`'s clusters/chains and never calls `discover_all_projects` (patch it to raise).
 - **Baseline / delta tests** (this replaces the un-runnable "run the cycle twice on the live fleet" acceptance criterion): two fixture JSON sidecars in `tmp_path`, the second with one loop's `converged`/`success_pct` raised — assert the rendered delta table shows the positive Δsuccess_pct for that loop, unchanged for the rest, a `new` marker for a loop only in the second, a "dropped out of window" entry for a loop only in the first, a "no prior baseline" line when the dir is empty, and a window-mismatch warning when `window_days` differs. **Same-day test**: two sidecars with stamps `…T100000Z` and `…T110000Z` — the second run's baseline is the first, never itself (pass `exclude=` the path being written). **`--json` writes nothing**: after a `--json` run `tmp_path/.loops/diagnostics/` is still empty. Model on `scripts/tests/test_verify_private_refs.py::TestBaseline` (count-per-stable-key; loop names don't get renamed the way issue files do, so `test_verify_evidence.py`'s hash-per-ID shape is not needed).
 - **Zero-run / window test**: a fixture history with one loop run 100 days ago — under `--window-days 30` it is absent from the aggregates but **not** listed under zero-run built-ins.
 - **`--exclude-project` test**: two fixture projects, exclude one — its runs vanish from aggregates, its path appears in `excluded_projects`, and a loop that ran only there is now zero-run.
 - ~~Conditional shell-script pytest gate~~ — does not apply (Decisions #1).
 
 ### Documentation
-- `docs/reference/CLI.md` — `ll-logs` subcommand table (~lines 3459-3472), flags (~3510-3536), examples (~3599-3620): add a `fleet-review` row, its `--threshold`/`--min-runs` flags, and one example. `ll-loop validate` (~904), `diagnose-evaluators` (~1228), `calibrate-budget` (~1247) are already documented and match the implementation; the runbook links them rather than re-documenting.
+- `docs/reference/CLI.md` — `ll-logs` subcommand table (~line 3500), flags (`loop-fleet` flags at ~3604), examples (~3646): add a `fleet-review` row, its `--threshold`/`--min-runs`/`--exclude-project` flags, and one example; note the new `shadowed` value in `loop-fleet`'s Type column (Decisions #10). `ll-loop validate` (~904), `diagnose-evaluators` (~1228), `calibrate-budget` (~1247) are already documented and match the implementation; the runbook links them rather than re-documenting.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `README.md` lines 192-228 — the repo's human-facing docs index: a "Guides" table (196-213, `docs/guides/*.md`) and a "Reference" table (220-228, e.g. `CLI Reference` → `docs/reference/CLI.md`). Neither has a "runbooks" row/category; add one once `docs/runbooks/FLEET_LOOP_REVIEW.md` exists. Not test-enforced (`scripts/tests/test_readme_structure.py` only checks README stays a "hero page," not that this index matches the `docs/` tree). [Agent finding]
@@ -309,7 +355,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Baseline is the JSON sidecar, count-per-loop-name (Decisions #4); test it on the `scripts/tests/test_verify_private_refs.py::TestBaseline` shape.
 - Register `fleet-review` as an `ll-logs` subcommand in `logs.py` (Decisions #1) and add its row/flags/example to the `ll-logs` section of `docs/reference/CLI.md`. No new console script, no shell script.
 - Extract `_aggregate_fleet_runs()` from `_cmd_loop_fleet`, `_collect_failure_clusters()` from `_cmd_scan_failures`, and `_collect_sequences()` from `_cmd_sequences` before writing `_cmd_fleet_review` (Decisions #7); existing `test_loop_fleet_*` / `test_scan_failures_*` / `test_sequences_*` must pass unchanged.
-- Call `load_and_validate()` directly for flagged loops, not `cmd_validate()` (Decisions #8); point `_get_builtin_loop_names()` at `get_builtin_loops_dir()`.
+- Call `load_and_validate()` directly for flagged loops, not `cmd_validate()` (Decisions #8); add `_builtin_loop_paths()` rooted at `get_builtin_loops_dir()` and derive `_get_builtin_loop_names()` from it, so nested `oracles/*` built-ins resolve.
+- Emit `attribution="shadowed"` in `_collect_loop_runs` when the project has its own `.loops/<name>.yaml` (Decisions #10); render a "Shadowed built-ins" section; document the value in `docs/reference/CLI.md`.
+- Give `_collect_failure_clusters` / `_collect_sequences` a `projects: list[Path] | None` parameter and pass the post-exclusion list from `fleet-review` (Decisions #11).
+- Add `("mkdocs.yml", "runbooks/FLEET_LOOP_REVIEW.md", "FEAT-2379")` to `DOC_STRINGS_PRESENT`.
 - Add `--exclude-project DIR` (repeatable) to `fleet-review` and document it in `docs/reference/CLI.md` beside `--threshold`/`--min-runs` (Decisions #9).
 - Report/sidecar filenames use the `YYYYMMDDTHHMMSSZ` stamp; the runbook and CLI.md example must show that shape, not `<date>` (Decisions #4).
 - Do not route the fleet-wide report through `session_store/writers.py::update_loop_run_diagnostics` — it is `run_id`-scoped and does not fit a multi-loop report (see Dependent Files above).
@@ -318,15 +367,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Program Design
 
 ### Types
+- `_LoopRunRecord.attribution` (existing, `:1154`) — value set widens from `"builtin" | "custom"` to `"builtin" | "custom" | "shadowed"` (Decisions #10). No dataclass change; the `loop-fleet` JSON row and Type column carry the new value through.
 - `_LoopFleetAggregate` (new `@dataclass` in `logs.py`, next to `_LoopRunRecord` at `:1154`) — `loop_name: str`, `attribution: str`, `runs: int`, `converged: int`, `success_pct: int`, `median_iterations: float`, `top_outcome: str`, `outcomes: dict[str, int]` (full outcome counter), `projects: list[Path]` (absolute), `runs_by_project: dict[str, int]` (abs path → count). Produced by `_aggregate_fleet_runs()`; consumed by the `loop-fleet` table branch (which shortens `projects` to `.name` for display), the flagging rule, and the JSON sidecar.
-- JSON sidecar `.loops/diagnostics/fleet-review-<stamp>.json` — `{"generated": ISO-ts, "window_days": int|null, "since": ISO|null, "until": ISO|null, "projects_scanned": [abs], "excluded_projects": [abs], "loops": {loop_name: {runs, converged, success_pct, top_outcome, outcomes, projects: [abs], runs_by_project}}}`. Read back by the next run as the baseline (Decisions #4). Not a Python type; a `dict` round-tripped through `json`.
-- Report `.loops/diagnostics/fleet-review-<stamp>.md` sections, in order: **Summary** (window/since/until, projects scanned and excluded, run count, prior baseline path or "none", and a **window-mismatch warning** when the prior sidecar's `window_days`/`since`/`until` differ) · **Flagged loops** (table: loop, runs, success%, top outcome, outcome breakdown, runs-per-project; then per loop the rendered `load_and_validate` violations and the `cd <abs project> && ll-loop diagnose-evaluators <loop>` command per project) · **Delta vs baseline** (table: loop, prior→current success% with Δ, Δruns, Δconverged, Δ per failure outcome; loops absent from prior marked `new`; loops in prior but absent now under "dropped out of window") · **Zero-run built-ins** · **Appendix: scan-failures clusters** · **Appendix: sequences** · **Reviewed, not fixed** (empty heading for the maintainer to fill by hand).
+- JSON sidecar `.loops/diagnostics/fleet-review-<stamp>.json` — `{"generated": ISO-ts, "window_days": int|null, "since": ISO|null, "until": ISO|null, "projects_scanned": [abs], "excluded_projects": [abs], "loops": {loop_name: {runs, converged, success_pct, top_outcome, outcomes, projects: [abs], runs_by_project}}, "shadowed": {loop_name: {abs_project: runs}}}`. `loops` holds `builtin` aggregates only; `shadowed` is informational (Decisions #10). Read back by the next run as the baseline (Decisions #4). Not a Python type; a `dict` round-tripped through `json` — `Path` values are `str()`-ed on write.
+- Report `.loops/diagnostics/fleet-review-<stamp>.md` sections, in order: **Summary** (window/since/until, projects scanned and excluded, run count, prior baseline path or "none", and a **window-mismatch warning** when the prior sidecar's `window_days`/`since`/`until` differ) · **Flagged loops** (table: loop, runs, success%, top outcome, outcome breakdown, runs-per-project; then per loop the rendered `load_and_validate` violations and the `cd <abs project> && ll-loop diagnose-evaluators <loop>` command per project) · **Delta vs baseline** (table: loop, prior→current success% with Δ, Δruns, Δconverged, Δ per failure outcome; loops absent from prior marked `new`; loops in prior but absent now under "dropped out of window") · **Zero-run built-ins** · **Shadowed built-ins** (table: loop, absolute project, runs — projects running a modified copy under a built-in name; Decisions #10) · **Appendix: scan-failures clusters** · **Appendix: sequences** · **Reviewed, not fixed** (empty heading for the maintainer to fill by hand).
 
 ### Signatures
 - `_aggregate_fleet_runs(runs: list[_LoopRunRecord]) -> list[_LoopFleetAggregate]` — new; extracted from the table branch of `_cmd_loop_fleet` (`logs.py:2165-2183`); `top_outcome` tie-break is `sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]` (Decisions #7).
-- `_collect_failure_clusters(args: argparse.Namespace, logger: Logger) -> list[_FailureCluster]` / `_collect_sequences(args: argparse.Namespace, logger: Logger) -> list[...]` — new; extracted from `_cmd_scan_failures` / `_cmd_sequences` (Decisions #7). `fleet-review` builds a `Namespace` for each carrying only the corpus/window fields it inherited (`project`, `all`, `existing_only`, `window_days`, `since`, `until`) plus the collector's own defaults (`skill=None`, `limit=0`, `min_len`/`min_count`/`top` at their parser defaults).
+- `_collect_failure_clusters(args: argparse.Namespace, logger: Logger, *, projects: list[Path] | None = None) -> list[_FailureCluster]` / `_collect_sequences(args: argparse.Namespace, logger: Logger, *, projects: list[Path] | None = None) -> list[ChainResult]` — new; extracted from `_cmd_scan_failures` / `_cmd_sequences` (Decisions #7, #11). `fleet-review` builds a `Namespace` for each carrying only the window fields it inherited (`window_days`, `since`, `until`) plus the collector's own defaults (`skill=None`, `limit=0`, `min_len`/`min_count`/`top` at their parser defaults), and passes its post-exclusion project list as `projects=`; the existing `_cmd_*` printers call with `projects=None` and keep their own `--project`/`--all` discovery.
+- `_builtin_loop_paths() -> dict[str, Path]` — new; `get_builtin_loops_dir().rglob("*.yaml")` minus `lib/`, keyed on stem. `_get_builtin_loop_names()` becomes `frozenset(_builtin_loop_paths())` (Decisions #8).
+- `_in_window(ts: str, cutoff: datetime | None, until: datetime | None) -> bool` — new; the exact guard `_collect_loop_runs` applies inline at `:2049-2054` (an **empty `ts` passes** any window). `_collect_loop_runs` and `fleet-review`'s in-memory window filter both call it so the two cannot drift.
 - `_flag_loops(aggs: list[_LoopFleetAggregate], *, threshold: int, min_runs: int) -> list[_LoopFleetAggregate]` — new; the Decisions #2 rule, pure function so it is table-testable. `_FLAG_OUTCOMES: frozenset[str] = frozenset({"error", "max-steps", "stalled", "failed"})` is a module constant next to it.
-- `_validate_builtin_loop(name: str) -> tuple[bool, list[Violation]]` — new thin wrapper over `resolve_loop_path(name, get_builtin_loops_dir())` + `load_and_validate(path, raise_on_error=False, orchestration_request_path=...)` (Decisions #8); `FileNotFoundError`/`ValueError`/`yaml.YAMLError` become a single synthetic error violation, mirroring `cmd_validate`'s `--json` branch.
+- `_validate_builtin_loop(name: str) -> tuple[bool, list[ValidationError]]` — new thin wrapper over `_builtin_loop_paths()[name]` + `load_and_validate(path, raise_on_error=False, orchestration_request_path=BRConfig(Path.cwd()).orchestration.request_path)` (`little_loops.fsm.validation`; Decisions #8); an unknown name, `ValueError`, `yaml.YAMLError`, or `OSError` becomes a single synthetic error `ValidationError`, mirroring `cmd_validate`'s `--json` branch. `valid` is `not any(v.severity is ValidationSeverity.ERROR ...)`.
 - `_load_prior_baseline(diagnostics_dir: Path, *, exclude: Path | None) -> tuple[Path, dict] | None` / `_write_baseline(path: Path, aggs: list[_LoopFleetAggregate], *, window_days: int | None, since: datetime | None, until: datetime | None, projects: list[Path], excluded: list[Path]) -> None` — new; newest prior sidecar by lexical filename order over `fleet-review-*.json`, skipping `exclude` (the sidecar this run is about to write).
 - `_cmd_fleet_review(args: argparse.Namespace, logger: Logger) -> int` — new `ll-logs fleet-review [--project DIR | --all] [--exclude-project DIR ...] [--window-days D | --since DATE] [--until DATE] [--threshold N=50] [--min-runs N=3] [--existing-only] [-j|--json]`; `--json` prints the sidecar dict to stdout and **writes no files** (Decisions #4). Output stamp is `datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")`.
 - `_cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int` (`scripts/little_loops/cli/logs.py:2108`) — implements `ll-logs loop-fleet`, the HARVEST phase's core data source.
@@ -339,7 +391,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `ll-loop validate <loop> [-j|--json]`, `ll-loop diagnose-evaluators <loop> [--threshold F] [--min-runs N] [-j|--json]`, `ll-loop calibrate-budget <loop> [--threshold F] [--min-runs N] [-j|--json]` — `cmd_validate`/`cmd_diagnose_evaluators`/`cmd_calibrate_budget` (`scripts/little_loops/cli/loop/config_cmds.py`, `scripts/little_loops/cli/loop/info.py`) — each takes exactly one positional `loop` (name or path); no fleet-wide/batch form exists on the `ll-loop` side.
 
 ### Call Path
-`ll-logs fleet-review --all [--exclude-project DIR] --window-days N` -> `_cmd_fleet_review` -> `discover_all_projects()` minus `--exclude-project` paths (Decisions #9) -> per project `_collect_loop_runs(proj, builtin_names)` **unwindowed** (`logs.py:2015`) -> zero-run set = `_get_builtin_loop_names()` − names seen in the unwindowed records -> window filter applied in memory on `ts` (same `cutoff`/`until` semantics as `_collect_loop_runs`) -> `_aggregate_fleet_runs()` -> `_flag_loops()` (Decisions #2) -> per flagged loop: `_validate_builtin_loop(name)` (Decisions #8) -> `_collect_failure_clusters()` / `_collect_sequences()` run once for the appendices (Decisions #7) -> `_load_prior_baseline(exclude=this run's sidecar path)` -> render markdown + `_write_baseline()` (skipped entirely under `--json`). The runbook (not the command) then drives DIAGNOSE: `cd <project> && ll-loop diagnose-evaluators <loop>` / `calibrate-budget <loop>` (Decisions #5) -> fix via `loop-specialist` -> next `fleet-review` run shows the delta.
+`ll-logs fleet-review --all [--exclude-project DIR] --window-days N` -> `_cmd_fleet_review` -> `discover_all_projects()` minus `--exclude-project` paths (Decisions #9) -> per project `_collect_loop_runs(proj, builtin_names)` **unwindowed** (`logs.py:2015`; emits `shadowed` where the project has its own copy, Decisions #10) -> zero-run set = `_get_builtin_loop_names()` − names seen in the unwindowed **`builtin`** records -> window filter applied in memory via `_in_window()` -> `_aggregate_fleet_runs()` over `builtin` records; `shadowed` records tallied separately per (loop, project) -> `_flag_loops()` (Decisions #2) -> per flagged loop: `_validate_builtin_loop(name)` (Decisions #8) -> `_collect_failure_clusters(projects=...)` / `_collect_sequences(projects=...)` run once over the same post-exclusion list for the appendices (Decisions #7, #11) -> `_load_prior_baseline(exclude=this run's sidecar path)` -> render markdown + `_write_baseline()` (skipped entirely under `--json`). The runbook (not the command) then drives DIAGNOSE: `cd <project> && ll-loop diagnose-evaluators <loop>` / `calibrate-budget <loop>` (Decisions #5) -> fix via `loop-specialist` -> next `fleet-review` run shows the delta.
 
 ### Decision Rules
 - **Flag** iff `attribution == "builtin"` AND `runs >= min_runs` AND (`success_pct < threshold` OR `top_outcome in _FLAG_OUTCOMES`), where `_FLAG_OUTCOMES = {"error", "max-steps", "stalled", "failed"}`. Defaults `threshold=50`, `min_runs=3`. `success_pct` is `round(converged / runs * 100)` (unchanged from `loop-fleet`; `interrupted`/`signal` count against it). `top_outcome` is the outcome with the highest count, ties broken by outcome name ascending (deterministic). Note the `top_outcome` clause is redundant at `threshold=50` (a non-converged plurality implies `success_pct < 50`) — it exists so lowering `--threshold` still catches loops where a failure mode is the plurality. (Decisions #2, #7)
@@ -348,6 +400,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **False positive**: no dismissal list; the maintainer records it under "Reviewed, not fixed" in the report by hand. (Decisions #2)
 - **Zero-run built-in**: `_get_builtin_loop_names()` minus the set of `loop_name` values across the **unwindowed** records (collect once with `cutoff=None, until=None`, then window-filter in memory for aggregation), so a windowed run does not list every loop that merely didn't run recently. Listed, never flagged.
 - **Excluded projects**: `--exclude-project` paths are removed after discovery and recorded in the sidecar's `excluded_projects`; they never contribute runs, zero-run evidence, or appendix rows. (Decisions #9)
+- **Shadowed**: a run is `shadowed` iff `project_path / ".loops" / f"{loop_name}.yaml"` exists at harvest time. Shadowed runs are never flagged, never count as zero-run evidence, and never enter `loops` in the sidecar; they are listed in the report and stored under `shadowed`. (Decisions #10)
 
 ## Use Case
 
@@ -383,7 +436,14 @@ of a self-graded claim.
   attribution, `success_pct == threshold`, each flagging `top_outcome`, `interrupted`/`signal`
   not flagging via the outcome clause).
 - Flagged-loop validation goes through `load_and_validate()` directly; the report embeds the
-  violations and never shells out or captures stdout.
+  violations and never shells out or captures stdout. Nested built-ins (`oracles/*`) resolve
+  via `_builtin_loop_paths()`; a test validates `code-run-gate` successfully.
+- Runs from a project that carries its own `.loops/<name>.yaml` copy of a built-in are
+  attributed `shadowed`, never flagged, and listed in a "Shadowed built-ins" section with the
+  absolute project path (tested with a fixture project).
+- `_collect_failure_clusters` / `_collect_sequences` accept `projects=`; `fleet-review` passes
+  its post-exclusion list, and a test shows an excluded project's clusters/chains are absent
+  from the appendices.
 - Two fixture sidecars in a test prove the delta table shows a positive Δsuccess_pct for the
   improved loop, unchanged for the rest, `new` / "dropped out of window" markers, a
   window-mismatch warning, and a "no prior baseline" line on an empty dir; a same-day second
@@ -437,6 +497,7 @@ path is recorded, not built.
 - `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
 
 ## Session Log
+- pre-implementation review #3 - 2026-09-02 - Verified against code and the live fleet: (1) `resolve_loop_path` does not see the 12 nested `oracles/*` built-ins (`ll-loop validate code-run-gate` fails from this repo) → added `_builtin_loop_paths()` and dropped `resolve_loop_path` from `_validate_builtin_loop` (Decisions #8 rewritten); (2) five projects run heavily modified `.loops/<name>.yaml` copies of built-ins (111 runs) that name-only attribution would flag against this repo → added `attribution="shadowed"` (Decisions #10); (3) `_cmd_scan_failures`/`_cmd_sequences` discover projects internally, so `--exclude-project` could not reach the appendices → collectors take `projects=` (Decisions #11). Accuracy: `ValidationError` not `Violation`; `ChainResult` return type; output dir is `Path.cwd()/.loops/diagnostics`; `_in_window()` shared helper for the empty-`ts` quirk; removed stale `_helpers.py:19` import claim; built-in count 104; mkdocs nav needle added to the wiring test; CLI.md line refs refreshed.
 - `/ll:confidence-check` - 2026-09-02T20:32:58 - `62eddba7-ec09-476f-aa16-88e65bd2f581.jsonl`
 - pre-implementation review #2 - 2026-09-02 - Verified against code and a live `loop-fleet --all` run: fixed the flagging outcome set (`cycle` doesn't exist → `stalled`; added `failed`, the dominant failure); added collector extractions for `scan-failures`/`sequences` and direct `load_and_validate()` (Decisions #7–#8); sidecar now stores full outcome counter + absolute project paths, uses a `YYYYMMDDTHHMMSSZ` stamp, excludes itself from the baseline search, and `--json` writes nothing; Δsuccess_pct is the primary delta; zero-run derived unwindowed; deterministic `top_outcome` tie-break; added `--exclude-project` (source repo is 1102/2247 built-in runs) (Decisions #9).
 - pre-implementation review - 2026-09-02 - Verified tool claims against code; corrected `dead-skills` (skills only) and `diagnose-evaluators`/`calibrate-budget` (local history only) assumptions; decided mechanism (`ll-logs fleet-review`), flagging rule, JSON baseline, report layout; replaced live-fleet AC with fixture-based tests.
