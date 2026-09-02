@@ -14,7 +14,7 @@ unproven_mechanism: true
 decision_needed: false
 spike_attempted: true
 spike_completed: true
-confidence_score: 95
+confidence_score: 90
 outcome_confidence: 67
 score_complexity: 14
 score_test_coverage: 18
@@ -224,6 +224,7 @@ python -m pytest scripts/tests/test_prepatch_check.py -v                   # 36 
 **Promotion**: move to `scripts/little_loops/cli/loop/evidence.py` (decided in `## Design Review`; `cli/artifact/` rejected), wired to real `history.db` reads. Note the spike fixture's probe-file placement inside the archive dir does not match production until step 3a lands — the promoted test fixture must build the archive dir the way the extended `archive_run()` does.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T18:04:39 - `816beb27-9b86-42b0-9b64-63f61826d1c0.jsonl`
 - `/ll:confidence-check` - 2026-09-02T17:52:11 - `852881be-b9ae-4653-91cb-48f6a2940c2a.jsonl`
 - `/ll:decide-issue` - 2026-09-02T17:43:55 - `b56fa4ef-4a26-4110-aa7f-162711184ed7.jsonl`
 - `/ll:spike` - 2026-09-02T17:34:43 - `31beec40-f765-410a-8519-571661ae2696.jsonl`
