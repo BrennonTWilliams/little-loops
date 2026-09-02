@@ -2081,8 +2081,18 @@ _OPTION_PATTERNS = (
     re.compile(r"^###\s+Option\s+[A-Za-z0-9]", re.MULTILINE | re.IGNORECASE),
     re.compile("^" + _BOLD_OPTION_MARKER, re.MULTILINE | re.IGNORECASE),
     re.compile(r"^\d+\.\s+(?:\*\*Option|[A-Z][^.]*\bapproach\b)", re.MULTILINE),
+    # The `Option X` alternatives require either the full _BOLD_OPTION_MARKER
+    # shape (bold-wrapped, same discipline as the bold_label tier — BUG-3285),
+    # or a title separator (`:`/em-dash/hyphen/`)`)/end-of-line right after a
+    # bare identifier. Without this, prose that merely *cites* an option
+    # ("- Option B precedent: ...") reads as a bullet-tier option block.
     re.compile(
-        r"^[-*]\s+\*{0,2}(?:\([a-z0-9]\)\s*|Option\s+[A-Za-z0-9])", re.MULTILINE | re.IGNORECASE
+        r"^[-*]\s+(?:"
+        r"\*{0,2}\([a-z0-9]\)\s*"
+        "|" + _BOLD_OPTION_MARKER + "|"
+        r"\*{0,1}Option\s+[A-Za-z0-9](?=\s*(?:[:—-]|\)|$))"
+        r")",
+        re.MULTILINE | re.IGNORECASE,
     ),
 )
 

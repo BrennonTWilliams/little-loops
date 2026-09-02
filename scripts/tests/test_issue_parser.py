@@ -4873,10 +4873,10 @@ class TestPriorityRegexCompletenessAllowlist:
             "frontmatter directly by design — drift IS the comparison, not a resolution",
             1697: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            3780: "comment describing the P[0-5]-NNN- filename shape",
-            3784: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            3790: "comment describing the P[0-5]-NNN- filename shape",
+            3794: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            3805: "_generate_id_from_filename strips a leading priority token before "
+            3815: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
