@@ -67,7 +67,7 @@ ll-init
 
 `ll-init` auto-detects your project type — Python, JS/TS, Go, Rust, Java, .NET, or generic — infers test/lint commands and source layout, scaffolds `.issues/`, and writes `.ll/ll-config.json`. Run it bare for an interactive TUI, or `ll-init --yes` to accept the detected defaults. Sanity-check the host integration any time with `ll-doctor`.
 
-**Inside Claude Code**, add the plugin to get the `/ll:*` slash-command surface:
+**Inside Claude Code**, `ll-init` installs the plugin for you automatically when `claude-code` is a selected/detected host and it's not already installed — no manual step needed. To do it yourself instead:
 
 ```bash
 /plugin marketplace add BrennonTWilliams/little-loops

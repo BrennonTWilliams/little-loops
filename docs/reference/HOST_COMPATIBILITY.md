@@ -46,7 +46,11 @@ Reading the tiers:
 - **Adapter-wired** — `ll-init --hosts <host>` installs a working hook
   integration. `claude-code` is in this tier despite having no
   `install_*_adapter`: its hooks are registered by the plugin itself, so there
-  is no adapter file to write.
+  is no adapter file to write. Unlike the other adapter-wired hosts, though,
+  `claude-code` does have a side effect: if `ll@little-loops` isn't already
+  installed, `ll-init` runs `claude plugin marketplace add` + `claude plugin
+  install ll@little-loops -y` automatically so the plugin itself (not just an
+  adapter file) ends up present (FEAT-3372).
 - **Recognized, adapter pending** — a valid `--hosts` value that prints an
   "adapter not yet available" notice instead of installing anything. Note that
   `hooks/adapters/opencode/` exists on disk but holds only a `bun.lock`; the

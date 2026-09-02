@@ -33,7 +33,7 @@ Then run `ll-init` once per project — see [Set Up Your Project](#set-up-your-p
 
 ### Step 2: Install the Plugin
 
-The slash commands (`/ll:*`) run inside Claude Code sessions. Install the plugin from within Claude Code:
+The slash commands (`/ll:*`) run inside Claude Code sessions. If `claude-code` is among `ll-init`'s selected/detected hosts and the plugin isn't already installed, `ll-init` installs it from the marketplace automatically — no manual step needed. To do it yourself instead, run from within Claude Code:
 
 ```bash
 # Add the GitHub repository as a marketplace source
@@ -125,7 +125,7 @@ Start with the auto-detected defaults.
 
 | Detected state | What ll-init does |
 |----------------|-------------------|
-| Not installed (no pip package, no global plugin) | Prints a notice; **warns only** by default — pass `--upgrade` to install automatically |
+| Not installed (no pip package, no global plugin) | Pip package: prints a notice; **warns only** by default — pass `--upgrade` to install automatically. Claude Code plugin: if `claude-code` is a selected/detected host, `ll-init` installs `ll@little-loops` from the marketplace automatically (no `--upgrade` needed) — this fires regardless of pip-package state, since pip and plugin presence are independent |
 | Global plugin (`ll@little-loops` via `claude plugin list --json`) | Reads the plugin version; checks marketplace for drift |
 | Local dev install (editable `pip install -e`) | Reads the installed version; checks PyPI for drift |
 | PyPI consumer install (`pip install little-loops`) | Reads the installed version; checks PyPI for drift |

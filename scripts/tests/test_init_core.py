@@ -71,6 +71,21 @@ def tmp_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def _default_plugin_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FEAT-3372: stub the claude-code plugin-presence gate to True by default.
+
+    `claude` is genuinely on PATH in dev environments, so any test in this
+    file that reaches `_dispatch_host_adapters`'s claude-code branch without
+    this stub would either hit the conftest `_install_no_live_host_cli` guard
+    (real host-CLI spawn) or, absent that guard, actually shell out. Tests
+    that exercise the install branch itself (`TestClaudeCodeAutoInstall`)
+    override this via their own explicit `patch(...)`, which wins for the
+    duration of their `with` block.
+    """
+    monkeypatch.setattr("little_loops.init.install_check.plugin_installed", lambda binary: True)
+
+
 @pytest.fixture
 def fake_templates(tmp_path: Path) -> Path:
     """Minimal in-memory templates/ directory with two templates + generic fallback."""
@@ -3096,6 +3111,255 @@ class TestHostDispatch:
         assert code == 0
         plan = json.loads(capsys.readouterr().out)
         assert "has_pi" in plan["host_options"]
+
+
+# ===========================================================================
+# TestClaudeCodeAutoInstall
+# ===========================================================================
+
+
+class TestClaudeCodeAutoInstall:
+    """FEAT-3372: claude-code auto-installs ll@little-loops when absent."""
+
+    @staticmethod
+    def _runner_mock(binary: str = "claude") -> MagicMock:
+        invocation = MagicMock()
+        invocation.binary = binary
+        runner = MagicMock()
+        runner.build_version_check.return_value = invocation
+        return runner
+
+    def test_installs_when_absent(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+        ):
+            _dispatch_host_adapters(["claude-code"], tmp_project, _PROJECT_ROOT)
+        assert any("marketplace" in c and "add" in c for c in captured), (
+            f"expected marketplace add call; got {captured}"
+        )
+        assert any("install" in c and "ll@little-loops" in c and "-y" in c for c in captured), (
+            f"expected plugin install call; got {captured}"
+        )
+
+    def test_installs_even_when_pip_metadata_present(self, tmp_project: Path) -> None:
+        """Pip-package presence (pypi/local-editable) must not suppress the install."""
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "1.0.0", None),
+            ),
+        ):
+            _dispatch_host_adapters(["claude-code"], tmp_project, _PROJECT_ROOT)
+        assert any("install" in c for c in captured), f"expected install call; got {captured}"
+
+    def test_not_invoked_when_host_deselected(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+        ):
+            _dispatch_host_adapters(["codex"], tmp_project, _PROJECT_ROOT)
+        assert not any("plugin" in c for c in captured), f"unexpected plugin call: {captured}"
+
+    def test_not_invoked_when_already_installed(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=True),
+        ):
+            _dispatch_host_adapters(["claude-code"], tmp_project, _PROJECT_ROOT)
+        assert captured == [], f"unexpected subprocess calls: {captured}"
+
+    def test_dry_run_skips_install(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+        ):
+            _dispatch_host_adapters(["claude-code"], tmp_project, _PROJECT_ROOT, dry_run=True)
+        assert captured == [], f"unexpected subprocess calls during dry-run: {captured}"
+
+    def test_install_failure_warns(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if "install" in cmd:
+                return MagicMock(returncode=1, stdout="")
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+        ):
+            _dispatch_host_adapters(["claude-code"], tmp_project, _PROJECT_ROOT)
+        out = capsys.readouterr().out
+        assert "Claude Code" in out
+        assert "exited with code 1" in out
+
+    def test_install_timeout_warns_not_raises(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if "install" in cmd:
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=120)
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+        ):
+            _dispatch_host_adapters(["claude-code"], tmp_project, _PROJECT_ROOT)
+        out = capsys.readouterr().out
+        assert "Claude Code" in out
+        assert "plugin install failed" in out
+
+    def test_source_prefers_local_plugin_root(self, tmp_project: Path) -> None:
+        """When plugin_root contains .claude-plugin/plugin.json, use it as the source."""
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+        ):
+            _dispatch_host_adapters(["claude-code"], tmp_project, _PROJECT_ROOT)
+        add_call = next(c for c in captured if "add" in c)
+        assert str(_PROJECT_ROOT) in add_call
+
+    def test_source_falls_back_to_github_when_no_local_plugin_root(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import _dispatch_host_adapters
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        non_plugin_root = tmp_project / "not-a-plugin-root"
+        non_plugin_root.mkdir()
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+        ):
+            _dispatch_host_adapters(["claude-code"], tmp_project, non_plugin_root)
+        add_call = next(c for c in captured if "add" in c)
+        assert "BrennonTWilliams/little-loops" in add_call
+
+    def test_upgrade_path_installs_alongside_plugin_update(self, tmp_project: Path) -> None:
+        """--upgrade with plugin absent installs it via _dispatch_host_upgrade delegation,
+        alongside (not instead of) the existing project-scoped plugin update call."""
+        from little_loops.init.cli import _dispatch_host_upgrade
+
+        captured: list[list[str]] = []
+
+        def record(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(list(cmd))
+            return MagicMock(returncode=0, stdout="")
+
+        with (
+            patch("little_loops.init.cli._subprocess.run", side_effect=record),
+            patch(
+                "little_loops.host_runner.resolve_host",
+                return_value=self._runner_mock("claude"),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=False),
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+        ):
+            _dispatch_host_upgrade(
+                ["claude-code"], tmp_project, _PROJECT_ROOT, "project-claude-code"
+            )
+        assert any("update" in c and "ll@little-loops" in c for c in captured), (
+            f"expected plugin update call; got {captured}"
+        )
+        assert any("install" in c and "ll@little-loops" in c for c in captured), (
+            f"expected plugin install call alongside update; got {captured}"
+        )
 
 
 # ===========================================================================

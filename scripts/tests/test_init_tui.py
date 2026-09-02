@@ -35,6 +35,19 @@ def mock_detect_installation() -> MagicMock:
         yield m
 
 
+@pytest.fixture(autouse=True)
+def _default_plugin_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FEAT-3372: stub the claude-code plugin-presence gate to True by default.
+
+    `_apply_config()` calls `_dispatch_host_adapters()` with no `dry_run` kwarg
+    (always real, unlike the headless `--dry-run`-aware paths), so any TUI
+    test reaching it with claude-code selected would otherwise hit the real
+    `claude` binary on PATH. Tests exercising the install branch itself
+    override this via their own explicit `patch(...)`.
+    """
+    monkeypatch.setattr("little_loops.init.install_check.plugin_installed", lambda binary: True)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

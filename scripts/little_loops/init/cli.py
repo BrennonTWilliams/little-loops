@@ -166,7 +166,53 @@ def _dispatch_host_adapters(
                 "omp: adapter not yet available — hooks/adapters/omp/ requires manual "
                 "bun install + hook registration (see hooks/adapters/omp/README.md)."
             )
-        # claude-code: no adapter file needed; plugin hooks fire when globally enabled
+        elif host == "claude-code":
+            # No adapter file needed; plugin hooks fire when globally enabled.
+            # Auto-install the plugin from the marketplace when it's absent —
+            # resolve_host() honors LL_HOST_CLI/orchestration.host_cli, so in a
+            # codex-configured project this probes the codex binary instead;
+            # only meaningful when the active host is claude-code (same caveat
+            # as detect_installation()).
+            from little_loops.host_runner import HostNotConfigured, resolve_host
+            from little_loops.init.install_check import plugin_installed
+
+            try:
+                binary: str | None = resolve_host().build_version_check().binary
+            except HostNotConfigured:
+                binary = None
+            if binary and not dry_run and not plugin_installed(binary):
+                source = (
+                    str(plugin_root)
+                    if (plugin_root / ".claude-plugin" / "plugin.json").exists()
+                    else "BrennonTWilliams/little-loops"
+                )
+                try:
+                    # Best-effort: fails benignly when the marketplace is
+                    # already added (mirrors fetch_latest_plugin's precedent).
+                    _subprocess.run(
+                        [binary, "plugin", "marketplace", "add", source],
+                        check=False,
+                        timeout=120,
+                    )
+                except (_subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                    pass
+                try:
+                    result = _subprocess.run(
+                        [binary, "plugin", "install", "ll@little-loops", "-y"],
+                        check=False,
+                        timeout=120,
+                    )
+                except (_subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+                    warning(f"Claude Code: plugin install failed: {exc}")
+                else:
+                    if result.returncode == 0:
+                        info("Claude Code: installed ll@little-loops plugin from marketplace")
+                    else:
+                        warning(
+                            "Claude Code: plugin install exited with code "
+                            f"{result.returncode}; run 'claude plugin install "
+                            "ll@little-loops' manually"
+                        )
 
 
 def _dispatch_host_upgrade(

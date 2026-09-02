@@ -3,10 +3,11 @@ id: FEAT-3372
 type: FEAT
 title: ll-init should auto-install ll@little-loops plugin from marketplace
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-01'
 captured_at: '2026-09-01T03:55:51Z'
+completed_at: '2026-09-02T03:32:24Z'
 unproven_mechanism: false
 verify_verdict: VALID
 size: Medium
@@ -215,8 +216,30 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-01 | Priority: P3
 
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-02
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/init/install_check.py`: added `_probe_plugin()`/`plugin_installed(binary) -> bool`, refactored `detect_installation()` to call the shared probe (behavior unchanged)
+- `scripts/little_loops/init/cli.py`: added a `claude-code` branch to `_dispatch_host_adapters()` — resolves the host binary, no-ops on missing binary/`dry_run`/already-installed, otherwise runs best-effort `marketplace add` then `plugin install ll@little-loops -y` (`timeout=120`, `info()`/`warning()` reporting)
+- `scripts/tests/test_init_core.py`: new `TestClaudeCodeAutoInstall` class (10 tests) plus an autouse `_default_plugin_installed` fixture stubbing the new gate to `True` for the rest of the file
+- `scripts/tests/test_init_tui.py`: extended the existing autouse `mock_detect_installation` fixture with the same `plugin_installed` stub (TUI's `_apply_config()` calls `_dispatch_host_adapters()` with no `dry_run` kwarg)
+- `scripts/tests/test_init_audit_fixes.py`, `scripts/tests/test_init_skill_fixtures.py`, `scripts/tests/integration/test_init_e2e.py`: added the same stub to each file's shared `_run()`/`_run_init()` helper
+- `docs/guides/GETTING_STARTED.md`, `README.md`, `scripts/README.md`, `docs/reference/CLI.md`, `docs/reference/HOST_COMPATIBILITY.md`: documented the new auto-install behavior
+
+### Verification Results
+- Tests: PASS (22352 passed, 42 skipped, full suite)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-02T03:32:17 - `fd57def2-5d14-4292-ae17-dbabd176ae11.jsonl`
 - `/ll:confidence-check` - 2026-09-02T03:08:14 - `bb906cb6-447a-4e73-92c7-9067b87990ec.jsonl`
 - `/ll:refine-issue` - 2026-09-02T02:50:47 - `e1ccf5f9-3d11-46da-b6d8-7e77648d884b.jsonl`
 - `/ll:verify-issues` - 2026-09-01T04:44:53 - `8486b04b-164d-4f78-8378-f72d0c6fa4d3.jsonl`

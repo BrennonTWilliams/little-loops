@@ -34,6 +34,10 @@ def _run(argv: list[str]) -> int:
     with (
         patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
         patch(_NO_INSTALL[0], return_value=_NO_INSTALL[1]),
+        # FEAT-3372: `claude` is on PATH in dev environments — stub plugin
+        # presence so claude-code-hosted runs through this helper don't hit
+        # the real marketplace-add/install subprocess calls.
+        patch("little_loops.init.install_check.plugin_installed", return_value=True),
     ):
         return main_init(argv)
 

@@ -36,7 +36,13 @@ _NO_INSTALL = "little_loops.init.install_check.detect_installation"
 def _run_init(argv: list[str]) -> int:
     from little_loops.init.cli import main_init
 
-    with patch(_NO_INSTALL, return_value=(None, None, None)):
+    with (
+        patch(_NO_INSTALL, return_value=(None, None, None)),
+        # FEAT-3372: `claude` is on PATH in dev environments — stub plugin
+        # presence so claude-code-hosted runs don't hit the real
+        # marketplace-add/install subprocess calls.
+        patch("little_loops.init.install_check.plugin_installed", return_value=True),
+    ):
         return main_init(argv)
 
 

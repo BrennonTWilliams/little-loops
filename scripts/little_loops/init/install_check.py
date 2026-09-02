@@ -84,34 +84,60 @@ def detect_installation(
     except HostNotConfigured:
         binary = None
     if binary:
-        try:
-            # ll-no-project: detection probe, no task payload (ENH-3184 AC2)
-            result = subprocess.run(
-                [binary, "plugin", "list", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                try:
-                    plugins = json.loads(result.stdout)
-                    for plugin in plugins:
-                        if isinstance(plugin, dict) and plugin.get("name") == "ll@little-loops":
-                            scope = plugin.get("scope", "user")
-                            source = (
-                                "project-claude-code"
-                                if scope == "project"
-                                else "global-claude-code"
-                            )
-                            return source, plugin.get("version"), plugin.get("installPath")
-                except (json.JSONDecodeError, TypeError, AttributeError):
-                    # Older CLI without --json: fall back to plain-text presence check.
-                    if "ll@little-loops" in result.stdout:
-                        return "global-claude-code", None, None
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            pass
+        found, version, scope, install_path = _probe_plugin(binary)
+        if found:
+            source = "project-claude-code" if scope == "project" else "global-claude-code"
+            return source, version, install_path
 
     return None, None, None
+
+
+def _probe_plugin(binary: str) -> tuple[bool, str | None, str | None, str | None]:
+    """Run ``<binary> plugin list --json`` and look for ``ll@little-loops``.
+
+    Returns ``(found, version, scope, install_path)``. All ``None``/``False``
+    on any failure (timeout, missing binary, unparseable output) except
+    ``found``, which falls back to a plain-text substring check when JSON
+    parsing fails (older CLI without ``--json`` support).
+    """
+    try:
+        # ll-no-project: detection probe, no task payload (ENH-3184 AC2)
+        result = subprocess.run(
+            [binary, "plugin", "list", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False, None, None, None
+        try:
+            plugins = json.loads(result.stdout)
+            for plugin in plugins:
+                if isinstance(plugin, dict) and plugin.get("name") == "ll@little-loops":
+                    return (
+                        True,
+                        plugin.get("version"),
+                        plugin.get("scope", "user"),
+                        plugin.get("installPath"),
+                    )
+            return False, None, None, None
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            # Older CLI without --json: fall back to plain-text presence check.
+            return "ll@little-loops" in result.stdout, None, None, None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False, None, None, None
+
+
+def plugin_installed(binary: str) -> bool:
+    """Return True iff the ``ll@little-loops`` plugin appears in ``claude plugin list``.
+
+    Factored out of :func:`detect_installation` (FEAT-3372): callers that only
+    care about Claude Code plugin presence — not pip-package state — cannot
+    rely on ``detect_installation()``'s return value, since it checks pip
+    metadata *first* and returns early for any pip-installed environment
+    (``pypi``/``local-editable``), never reaching the plugin probe.
+    """
+    return _probe_plugin(binary)[0]
 
 
 def fetch_latest_pypi(timeout: float = 10.0) -> str | None:
