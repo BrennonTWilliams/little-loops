@@ -3,9 +3,10 @@ id: FEAT-3182
 title: Deterministic verification-evidence bundle from verify-loop runs
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: EPIC-2087
 discovered_date: '2026-08-15'
+completed_at: '2026-09-02T20:20:14Z'
 labels:
 - path-a
 - verification
@@ -323,6 +324,7 @@ _Added by `/ll:confidence-check` on 2026-09-02_
 - Ambiguity (10/25, capped): see Concerns above — the `unapplied_decision` gap on `count_probes` caps this criterion regardless of the otherwise-low ambiguity in this issue.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-02T20:19:56 - `972ffda4-3540-46cc-931f-997ebd4d75a3.jsonl`
 - `/ll:confidence-check` - 2026-09-02T19:11:42 - `3a147a77-c572-4741-8be9-efbfc5354c69.jsonl`
 - `/ll:confidence-check` - 2026-09-02T18:25:12 - `84e0bbf3-d0f7-4d45-a3b6-ea9216ba3165.jsonl`
 - `/ll:confidence-check` - 2026-09-02T18:04:39 - `816beb27-9b86-42b0-9b64-63f61826d1c0.jsonl`
