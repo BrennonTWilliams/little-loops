@@ -18,11 +18,11 @@ labels:
 verify_verdict: VALID
 depends_on: []
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 86
+confidence_score: 98
+outcome_confidence: 85
 score_complexity: 16
 score_test_coverage: 24
-score_ambiguity: 23
+score_ambiguity: 22
 score_change_surface: 23
 ---
 
@@ -493,6 +493,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T23:02:19 - `d0684beb-384f-442a-8bf1-2102526cb87e.jsonl`
 - pre-implementation review - 2026-09-02T23:30:00 - added `issue_refined_at` helper (refined_at unreachable from CLI), explicit config gate (cli_event_context gate is dead), `program_design_unmet` exclusion, headline formulas, one-call-three-rows writer, row-based close threshold from measured volume, removed stale ENH-3000-open text
 - pre-implementation review - 2026-09-02T23:00:00 - added re-refine stratification, six-code taxonomy, `stale` naming decision, per-axis row shape, gating, read path, and Acceptance Criteria with a close condition
 - `/ll:wire-issue` - 2026-09-02T22:14:34 - `45cec2d5-6331-4821-b360-a7b6926c4a33.jsonl`
