@@ -11,7 +11,7 @@ labels:
 - verification
 - audit-evidence
 unproven_mechanism: true
-decision_needed: true
+decision_needed: false
 spike_attempted: true
 spike_completed: true
 ---
@@ -38,9 +38,32 @@ A prior, unresolved question determines the bundle's actual shape (see `## Progr
 
 **Option A**: Bundle only structural/existence facts as evidentiary content — that a run occurred, which states executed, artifact/probe file existence and hashes, probe counts, `loop_runs` row fields, git ref/diff state. LLM verdicts (criterion pass/fail, `break_found`) are attached as a segregated, explicitly labeled-non-evidentiary section for human context. This satisfies AC3 literally, but the resulting attestation is "a check was attempted, here is what exists" rather than "the criteria passed" — a materially weaker claim than "verification evidence" implies to a reviewer.
 
+> **Selected:** Option A — satisfies AC3 literally, matches the shipped `count_probes` non-LLM segregation precedent, and its mechanism is already validated by this issue's own spike (7/7 passing tests).
+
 **Option B**: Treat the LLM verdict fields as evidentiary, wrapped with the deterministic provenance that produced them (artifact existence/hash, the `_aggregate_state`/`count_probes` gate result) so a reviewer can independently re-derive whether the loop's own non-LLM aggregation passed. This makes the *aggregation* deterministic and re-checkable, but the underlying per-criterion/per-probe judgment remains LLM-sourced — it does not satisfy AC3's "No LLM self-evaluation contributes to the attestation" for that content.
 
 **Recommended**: Neither option is implementation-ready without a human decision — the tension is structural, not a research gap this pass can close. Flagged via `unproven_mechanism: true` rather than resolved here. Recommend `/ll:spike` to prototype Option A against a real `verify-issue-loop` run and confirm the resulting (weaker) bundle is still useful to a reviewer before committing to full implementation.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-02.
+
+**Selected**: Option A — structural/existence facts only as evidentiary content, LLM verdicts segregated as labeled non-evidentiary context.
+
+**Reasoning**: Option A is the only option that literally satisfies AC3 ("No LLM self-evaluation contributes to the attestation"); Option B directly contradicts it and the MR-1 self-grading doctrine. A live, shipped precedent for the exact evidentiary/non-evidentiary split already exists in production (`count_probes`, `scripts/little_loops/cli/loop/scaffold_verify.py:245`), and Option A's mechanism was already prototyped and validated by this issue's own spike (`scripts/tests/spike/verify_evidence_bundle/`, 7/7 tests passing, including reproducibility and gap-list coverage).
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+| Option B | 0/3 | 1/3 | 2/3 | 1/3 | 4/12 |
+
+**Key evidence**:
+- Winner: the `count_probes` gate (`scaffold_verify.py:245-251`) already ships the same structural-facts-only, non-LLM-verdict pattern in production; `LoopRun` (`history_reader.py:242-256`), `verify_evidence.py`'s git-fact/hash helpers, and `FormatGaps`/`Gap`/`GapAnalysis` each have a direct reusable analog; the spike proves the segregation mechanism holds (no LLM-sourced field ever lands in `evidentiary`).
+- Rejected: `evaluate_llm_structured()` (`fsm/evaluators.py:1135-1149`) shows provenance-wrapped LLM output is an established shape, but no precedent packages an LLM verdict as evidentiary content, and doing so would contradict AC3 and MR-1 outright — the issue's own spike built and passed tests enforcing the segregated shape instead.
+
+Note: the spike also surfaced a real product-value tradeoff outside this scoring's scope — the selected bundle shape's evidentiary section contains no pass/fail content, only structural facts (see `## Spike Results`). That is a question of whether the resulting attestation is useful, not of codebase fit, and does not change the selection: AC3 makes the rejected shape non-compliant regardless.
 
 ## Integration Map
 
@@ -103,9 +126,9 @@ No existing types/signatures/call path cover this feature; the findings below tr
 `ll-loop run` (`cli/loop/run.py`) -> `FSMExecutor` evaluate loop (`fsm/executor.py`; each `llm_structured` state's verdict written to `state.capture`'d `captured.<key>.verdict` and emitted as an `evaluate` event in `events.jsonl` with LLM-origin fields `reason`/`evidence`/`raw`/`llm_model`/`llm_prompt`) -> `FSMExecutor._finish()` (`executor.py:3895`) -> `record_loop_run_summary()` (`session_store/writers.py:1428`) writes the `loop_runs` row (`head_sha`/`branch`/`evaluator_score`/`diagnostics_path` NULL) -> `archive_run()` (`fsm/persistence.py:585`) copies run-dir artifacts into `.loops/.history/<run_id>-<loop_name>/` -> **[bundle exporter, not yet implemented]** reads the `loop_runs` row + `.loops/.history/<run_id>-<loop_name>/{state.json,events.jsonl}` + (adversarial mode) `probe-*.json` + independently-computed git predicates (no shared git-facts helper exists — every `head_sha`/`branch` column elsewhere in the codebase is populated by call-site-local `git rev-parse` subprocess calls) -> assembles the bundle.
 
 ### Decision Rules
-- **What counts as a "deterministic source" vs. "LLM-produced content" is not self-evident and needs to be pinned down**, because in the current system the loop's *primary output* — the actual pass/fail verdict for each acceptance criterion and each adversarial probe — is itself LLM-graded (`llm_structured` evaluator states, `scaffold_verify.py:111,199`). The only non-LLM gates in the loop (`_aggregate_state()` at `scaffold_verify.py:67`, `count_probes` at `scaffold_verify.py:245`) aggregate *over* those LLM verdicts (`output_contains`/`output_numeric` on `${captured.*.verdict}`); they do not independently establish pass/fail. Concretely unresolved: does the bundle (a) treat the LLM verdict itself as the evidentiary payload (contradicting AC3's "No LLM self-evaluation contributes to the attestation"), or (b) treat only structural facts — that a run occurred, which states executed, artifact/probe file existence, counts, git ref/diff state — as evidentiary, with the LLM verdict included only as segregated, labeled-non-evidentiary context (satisfying AC3, but then the bundle attests "a check was attempted," not "the check passed")? No exact field list, no threshold, and no escape hatch for this split exists yet in the issue or in codebase precedent.
-- No existing codebase site draws this line: searched repo-wide for `evidentiary`/`non_evidentiary`, no hits besides this issue's own text; `session_store/schema.py:258-265`'s "LLM-generated" label on `summary_nodes` is prose-only, not a queryable field or established pattern. Resolving this determines nearly the entire shape of the exporter (which fields go in the enumerable evidentiary list vs. the segregated context section), so it is unresolved decision logic, not an implementation detail.
-  > ⚠ Unproven mechanism — no precedent for evidencing a check whose verdict is itself LLM-graded
+- **Resolved by `/ll:decide-issue` (2026-09-02) — see `## Proposed Solution` → Decision Rationale.** In the current system the loop's *primary output* — the actual pass/fail verdict for each acceptance criterion and each adversarial probe — is itself LLM-graded (`llm_structured` evaluator states, `scaffold_verify.py:111,199`). The only non-LLM gates in the loop (`_aggregate_state()` at `scaffold_verify.py:67`, `count_probes` at `scaffold_verify.py:245`) aggregate *over* those LLM verdicts (`output_contains`/`output_numeric` on `${captured.*.verdict}`); they do not independently establish pass/fail. The bundle treats only structural facts — that a run occurred, which states executed, artifact/probe file existence, counts, git ref/diff state — as evidentiary, with the LLM verdict included only as segregated, labeled-non-evidentiary context. This satisfies AC3 ("No LLM self-evaluation contributes to the attestation"); the resulting attestation is "a check was attempted," not "the check passed" — an accepted, documented tradeoff, not an open question.
+- No existing codebase site draws the evidentiary/non-evidentiary line: searched repo-wide for `evidentiary`/`non_evidentiary`, no hits besides this issue's own text; `session_store/schema.py:258-265`'s "LLM-generated" label on `summary_nodes` is prose-only, not a queryable field or established pattern. This determines the exporter's field list (which fields go in the enumerable evidentiary list vs. the segregated context section) and is now decided, not open.
+  > ✓ Mechanism proven — `scripts/tests/spike/verify_evidence_bundle/` (7/7 tests) validates evidencing a check whose verdict is itself LLM-graded via structural-facts-only segregation
 
 ## Implementation Steps
 
@@ -169,5 +192,6 @@ python -m pytest scripts/tests/test_prepatch_check.py -v                   # 36 
 **Promotion**: move to `scripts/little_loops/spike/verify_evidence_bundle/` (or directly into `scripts/little_loops/cli/artifact/`) in a separate PR, wired to real `history.db` reads and a real git-facts helper.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-02T17:43:55 - `b56fa4ef-4a26-4110-aa7f-162711184ed7.jsonl`
 - `/ll:spike` - 2026-09-02T17:34:43 - `31beec40-f765-410a-8519-571661ae2696.jsonl`
 - `/ll:refine-issue` - 2026-09-02T17:19:59 - `2cfeb4de-9401-4270-a496-a50f1f1de3d7.jsonl`

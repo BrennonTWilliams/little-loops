@@ -1,0 +1,12 @@
+{
+  "id": "6c0a66fc-b22e-4397-8dd7-4771da07cb57",
+  "type": "decision",
+  "timestamp": "2026-09-02T17:42:30Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Only option that literally satisfies AC3 (no LLM self-evaluation contributes to attestation); matches shipped count_probes non-LLM segregation precedent; mechanism already validated by this issue's own spike (7/7 tests). Scored 11/12 vs Option B's 4/12.",
+  "rule": "Option A \u2014 structural/existence facts only as evidentiary content; LLM verdicts segregated as labeled non-evidentiary context",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: treat LLM verdict fields as evidentiary wrapped with deterministic provenance \u2014 contradicts AC3 and MR-1 self-grading doctrine outright",
+  "issue": "FEAT-3182"
+}
