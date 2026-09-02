@@ -94,9 +94,17 @@ on a cadence**, with a checklist and a recorded baseline. To keep the classes di
   - an LLM-driven skill/command — `skills/audit-loop-run/SKILL.md` is the only existing precedent in this repo for "issue a sequence of `ll-*`/`ll-issues`/`git` calls and synthesize a markdown report" as numbered prose steps rather than orchestration code; a repo-wide search for `subprocess.run(["ll-` returns zero hits, so no Python module anywhere chains `ll-*` CLIs programmatically today.
 - `.loops/diagnostics/fleet-review-<date>.md` — generated output, not a source file to create by hand. `.loops/diagnostics/` already exists and holds differently-named one-off reports (`audit-interactive-component-generator-2026-06-28.md`, `vega-viz-20260702T025053Z.md`, `general-task-20260707T152654Z.md`); no file matching `fleet-review-*` exists there yet, and the directory's only established writer today is the `loop-specialist` agent itself (`agents/loop-specialist.md`), which writes directly via its own tool calls — no Python helper function writes into this directory.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- **Conditional — only if a new top-level `ll-*` console script is chosen for the entry point**: `scripts/pyproject.toml:74-119` `[project.scripts]` block — add one `ll-<name> = "little_loops.cli:main_<name>"` line following the existing 46-line convention (e.g. `ll-logs = "little_loops.cli:main_logs"` at line 103). Per `CONTRIBUTING.md:393-417` this also requires a new `### ll-<toolname>` section in `docs/reference/CLI.md` (enforced by `test_wiring_cli_registry.py::test_cli_entry_point_coverage`, see Tests below), a `skills/configure/areas.md` "Authorize all ll- commands" preset entry, and `"Bash(ll-<toolname>:*)"` in `little_loops/init/writers.py::_LL_PERMISSIONS` — all gated by `ll-verify-cli-allowlist` (BUG-2764). This entire bullet does not apply if the shell-script or LLM-skill mechanism is chosen instead. [Agent finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/logs.py` (holds all four HARVEST-phase subcommands) is imported by `scripts/little_loops/cli/__init__.py:75`, `scripts/little_loops/cli/ctx_stats.py:20`, `scripts/little_loops/cli/loop/_helpers.py:19`, and tested by `scripts/tests/test_ll_logs.py:16`, `scripts/tests/test_enh_3166_qwen_normalizer.py:32`, `scripts/tests/test_bug_3216_telemetry_digest_invocations.py:31`, `scripts/tests/test_cli_ctx_stats.py:13` — none require modification for this issue; listed to confirm `logs.py`'s current consumer surface is stable and won't be disturbed by adding a new orchestrator on top of it.
 - `agents/loop-specialist.md` — the agent this issue's runbook must link (per Acceptance Criteria); also asserted by `scripts/tests/test_wiring_skills_and_commands.py` to reference `.loops/diagnostics/` and `FEAT-1532`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/loop-specialist-eval.yaml` (lines 4-35, 50-56) — a separate file from `agents/loop-specialist.md` that independently encodes the same `.loops/diagnostics/<loop>-<ts>.md` naming/section convention as an eval pass/fail criterion. Its filename pattern (`<loop>-<ts>.md`, no `fleet-review-` prefix) does not collide with this issue's `fleet-review-<date>.md`, but the report writer should be aware this second file exists and shares the directory. [Agent finding]
+- `scripts/little_loops/session_store/writers.py::update_loop_run_diagnostics` (lines 1556-1574) and `docs/reference/CLI.md:4721` (`ll-session export --shareable` excludes `diagnostics_path`) — the existing mechanism for linking a `.loops/diagnostics/` artifact to session history is `run_id`-scoped (one `run_id` → one `diagnostics_path`). A fleet-wide report spanning many loops' runs has no single natural `run_id` to key on — this issue's report writer should NOT attempt to route through `update_loop_run_diagnostics`; it is a structural mismatch, not a missing wiring target. [Agent finding]
+- `scripts/tests/test_fsm_validation_meta_rules.py::test_mr3_does_not_fire_for_diagnostics_dir` (lines 330-334) — confirms the FSM validator's MR-3 artifact-isolation rule already carves out `.loops/diagnostics/` writes generically; no FSM validator change is needed regardless of which entry-point mechanism is chosen. [Agent finding]
 
 ### Conventions in Force
 - All four HARVEST-phase `ll-logs` subcommands share three argparse helpers — `add_corpus_target_args()`, `add_window_args()`, `add_json_arg()` (`scripts/little_loops/cli_args.py`) — confirming `--all`, `--window-days N`, and `-j`/`--json` exist exactly as this issue's Deliverable #2 assumes, uniformly across `loop-fleet`, `scan-failures`, `sequences`, and `dead-skills`.
@@ -109,11 +117,36 @@ on a cadence**, with a checklist and a recorded baseline. To keep the classes di
 - `scripts/tests/test_cli.py` — end-to-end argv-level invocations at ~line 3005 (`scan-failures --all`), ~3047 (`dead-skills --all --sort name`), ~3084 (`loop-fleet`).
 - No test file exists yet for the new entry point or report writer this issue proposes, since neither is implemented.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_skills_and_commands.py` — add `docs/runbooks/FLEET_LOOP_REVIEW.md` to the `DOC_FILES_MUST_EXIST` list (lines 400-423, `(file_path, issue_id)` tuples) and to the `DOC_STRINGS_PRESENT` list (lines 27-336, `(doc_path, expected_string, issue_id)` tuples) with a needle proving it links `loop-specialist` and states the in-scope rule — following the exact convention already used for `("agents/loop-specialist.md", ".loops/diagnostics/", "FEAT-1532")` at line 192. No existing test asserts *ordered* section headers (Purpose · Cadence · Phases · Baseline/Re-measure · In-scope rule); every doc-wiring test in this family checks unordered substring presence only. [Agent finding]
+- **Conditional — if a new top-level `ll-*` console script is chosen**: `scripts/tests/test_wiring_cli_registry.py::test_cli_entry_point_coverage` (lines 216-235) will fail until a matching `### ll-<toolname>` section exists in `docs/reference/CLI.md` — add both together. Follow `scripts/tests/test_ll_logs.py`'s subcommand test shape: a parse-only test (`test_dead_skills_subcommand_parsed`, lines 2550-2556), a `--project`/`--all` mutual-exclusion test (`test_dead_skills_project_and_all_mutually_exclusive`, lines 2623-2627), and a behavioral test patching `sys.argv`+`builtins.print` (`test_dead_skills_window_days_behavioral`, lines 2569-2621), plus a `test_cli.py` smoke test. [Agent finding]
+- **Conditional — if a shell-script entry point is chosen**: model the pytest gate after `scripts/tests/test_policy_builder_node_gate.py::test_node_conformance_suite_passes` (lines 53-79) — `shutil.which()` guard, `pytest.skip()` if the tool is absent, `subprocess.run(..., capture_output=True, timeout=N)`, assert `returncode == 0`. No existing pytest wraps `scripts/verify_learning_citations.sh` to copy directly (its only caller is the FSM loop `integrate-sdk.yaml`, not a test). [Agent finding]
+- Baseline-diff pattern for the re-measurement contract (resolves part of the Decision Rules gap below): two independent precedents exist, not one. `scripts/tests/test_verify_private_refs.py::TestBaseline` models a count-per-path baseline (doesn't survive renames); `scripts/tests/test_verify_evidence.py::TestBaseline`/`TestBaselineKeying` models a set-of-hashes-per-stable-ID baseline (survives renames). Since loop names are stable identifiers that don't get renamed the way issue files do, the count-per-key shape (`test_verify_private_refs.py`'s pattern, keyed on loop name instead of file path) is the structurally closer fit for a per-loop failure-count baseline. [Agent finding]
+
 ### Documentation
 - `docs/reference/CLI.md` — `ll-logs` subcommand table (~lines 3459-3472), flags (~3510-3536), examples (~3599-3620); `ll-loop validate` (~904), `diagnose-evaluators` (~1228), `calibrate-budget` (~1247) — the flag names/defaults this issue's Deliverable #2 assumes are already documented there and match the implementation.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `README.md` lines 192-228 — the repo's human-facing docs index: a "Guides" table (196-213, `docs/guides/*.md`) and a "Reference" table (220-228, e.g. `CLI Reference` → `docs/reference/CLI.md`). Neither has a "runbooks" row/category; add one once `docs/runbooks/FLEET_LOOP_REVIEW.md` exists. Not test-enforced (`scripts/tests/test_readme_structure.py` only checks README stays a "hero page," not that this index matches the `docs/` tree). [Agent finding]
+- `CONTRIBUTING.md:192-221` — directory-tree listing of `docs/` subdirectories (`reference/`, `guides/`, `development/`, `research/`, `claude-code/`, `codex/`, `demo/`); no `runbooks/` line exists. Add one. [Agent finding]
+- `mkdocs.yml:65-100` — the `nav:` block has `Guides:`/`Reference:`/etc. sections (e.g. `guides/GETTING_STARTED.md`) but no `Runbooks:` section or `runbooks/` path; add one so the new doc surfaces in the built docs site. [Agent finding]
+
 ### Configuration
 N/A — no `.ll/ll-config.json` key, `config-schema.json` entry, or `.ll.local.md` field references `fleet-review`, `fleet_loop_review`, or a `loop-fleet` output path today.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- No config key is required by this issue's own scope, but if the implementer's chosen mechanism needs settings (e.g. default `--window-days`, output path, baseline path), the closest existing analogs are `orchestration.composer`/`orchestration.cluster` in `config-schema.json:1711-1749` (per-built-in-loop orchestration settings, e.g. `max_plan_nodes`, `max_batch_size`) if framed as a loop-orchestration feature, or the top-level `automation` block (`config-schema.json:237`, "Sequential automation script settings (`ll-auto`)") if framed as a standalone script. [Agent finding]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add a `docs/runbooks/` entry to `CONTRIBUTING.md`'s docs directory tree (lines 192-221) and to `mkdocs.yml`'s `nav:` block (lines 65-100).
+- Add a "runbooks" row/category to `README.md`'s Guides/Reference index tables (lines 192-228).
+- Add `docs/runbooks/FLEET_LOOP_REVIEW.md` to `DOC_FILES_MUST_EXIST` and `DOC_STRINGS_PRESENT` in `scripts/tests/test_wiring_skills_and_commands.py`, following the existing `agents/loop-specialist.md` row.
+- Resolve the Decision Rules baseline-shape gap using the count-per-loop-name model (closer fit than the hash-per-ID model — see Tests above), then model its test on `scripts/tests/test_verify_private_refs.py::TestBaseline`.
+- **If** a new top-level `ll-*` console script is chosen: register it in `scripts/pyproject.toml`'s `[project.scripts]`, add a `### ll-<toolname>` section to `docs/reference/CLI.md`, and add coverage in `scripts/tests/test_wiring_cli_registry.py` + `scripts/tests/test_ll_logs.py`-style subcommand tests (parse/mutual-exclusion/behavioral). **If** a shell script is chosen instead: add a `test_policy_builder_node_gate.py`-style pytest wrapper (`shutil.which()` guard, `subprocess.run`, assert exit 0). Do not do both.
+- Do not route the fleet-wide report through `session_store/writers.py::update_loop_run_diagnostics` — it is `run_id`-scoped and does not fit a multi-loop report (see Dependent Files above).
 
 ## Program Design
 
@@ -167,6 +200,7 @@ path is recorded, not built.
 - `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-02T19:12:27 - `d3f3386b-13e9-4c55-8779-7f6afaf007ab.jsonl`
 - `/ll:refine-issue` - 2026-09-02T19:00:54 - `ac9b1a09-d320-4fd9-96b4-3dcc47985b24.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:31 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1918 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
