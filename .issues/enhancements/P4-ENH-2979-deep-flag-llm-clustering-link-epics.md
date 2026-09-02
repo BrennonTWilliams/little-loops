@@ -9,7 +9,7 @@ discovered_date: 2026-08-01
 discovered_by: capture-issue
 parent: EPIC-2938
 blocked_by: []
-verify_verdict: NON_VALID
+verify_verdict: VALID
 reconcile_attempted: true
 decision_needed: false
 confidence_score: 90
@@ -64,12 +64,17 @@ jargon-heavy engineering backlogs where related issues are phrased independently
 
 Design agreed with user (this session):
 
-- Keep the existing Jaccard pass (Step 3 / S1 in `skills/link-epics/SKILL.md`) as a
-  cheap pre-filter to bound the candidate list — do **not** have the LLM score all
-  O(n²) pairs directly; that doesn't scale with orphan count.
-- `--deep` sends the pre-filtered candidate list (or, if pre-filtering yields
-  nothing, the full orphan list when count is small enough) to an LLM in **one
+- Keep the existing Jaccard pass (`synthesize_clusters()`) running unchanged
+  alongside `--deep`; its clusters are merged with the LLM's (Step 3). Do **not**
+  have the LLM score O(n²) pairs — it sees the orphan list once and proposes
+  clusters directly.
+- `--deep` sends the **full orphan list** (title + Summary section, capped at 40
+  orphans — see Program Design's candidate-set decision) to an LLM in **one
   batched call** — not one call per pair — to propose thematic clusters.
+  _(2026-09-02 design review: this replaces the earlier "Jaccard as pre-filter /
+  full list only as fallback" wording. Jaccard was never a filter on what the LLM
+  sees; gating the LLM on Jaccard returning zero clusters made Step 3's merge
+  unreachable and left `--deep` inert whenever Jaccard found even one pair.)_
 - The LLM step must **cite which words/phrases** in the issues' titles/summaries
   justify grouping them together — an evidence-contract requirement in the same
   spirit as MR-8's evidence-contract check for FSM `check_semantic` prompts
@@ -301,7 +306,11 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 - **Signatures citation correction**: the Signatures subsection above cites `resolve_host().build_blocking_json(...)` as "declared at `host_runner.py:262-270`." Direct read shows lines 262-270 fall inside the preceding `build_streaming()` method's docstring, not `build_blocking_json()`. The `HostRunner` Protocol actually declares `build_blocking_json` at `host_runner.py:304-312`; the concrete Claude-host implementation (where `json_schema` is silently dropped, per the finding already recorded above) is at `host_runner.py:442-471`.
 - **Step 2's title+summary premise has no data to back it**: `IssueInfo` (`scripts/little_loops/issue_parser.py`, dataclass at line 3370, attribute docstring lines 3371-3390+) has no `summary` field — confirmed by direct read of its full attribute list. The existing Jaccard pass already only reads `.title` (noted in Signatures above); the `orphans: list[IssueInfo]` objects flowing into `synthesize_clusters()` (and reusable for a `--deep` prompt) carry no summary text today. `issue_parser.py` already has the extraction primitive needed — `_section_body(content, "Summary")` (defined `issue_parser.py:491`, used internally at `issue_parser.py:1079` to pull a Summary section for a different purpose) — but nothing in the current pipeline calls it for orphans before they reach `synthesize_clusters()` or a `--deep` prompt-builder. A `--deep` implementation must read each orphan's raw file content and extract its Summary section by this same route (or add a `summary` field to `IssueInfo` itself) before any evidence can cite summary text, matching this issue's own Proposed Solution framing ("title+summary").
-- **Candidate-set definition decided (this pass)**: Proposed Solution's "the full orphan list when count is small enough" is underspecified in a way that defeats the issue's own motivating case — `synthesize_clusters()`'s return value is empty whenever no pair clears `min_score` (exactly the validated repro in Current Behavior: 11/11 orphans singletons), so if "candidate set" meant that return value, the LLM call would run over zero candidates in precisely the scenario `--deep` exists to fix. Resolution: the candidate set fed to the LLM is the full `orphans: list[IssueInfo]` list whenever `synthesize_clusters()` returns zero clusters with 2+ members (not that function's own output), capped at 40 orphans — chosen because no existing single-call LLM site in this codebase batches more than a few dozen structured items per request (`discover_regions()`'s region batches are page-bounded, not count-bounded, so it is not a numeric precedent to reuse directly) and a title+summary pair is small enough that 40 of them stays well inside typical prompt budgets. Above 40 orphans, `--deep` must skip the full-list fallback and process only the (still-empty, in this scenario) Jaccard-pre-filtered candidates, returning the pure-Jaccard result rather than chunking — chunking a semantic-clustering prompt across multiple calls risks splitting one real cluster across chunks with no cross-chunk reconciliation step, which is worse than falling back silently. This numeric cap has no existing config key; per the Integration Map finding above, adding one requires an explicit edit to `config-schema.json`'s `issues.link_epics` object (`additionalProperties: false`) — until then, hardcode the cap as a module constant in `link_epics.py` rather than leaving it configurable.
+- **Candidate-set definition decided (2026-08-29; revised 2026-09-02 design review)**: Proposed Solution's original "the full orphan list when count is small enough" was underspecified in a way that defeats the issue's own motivating case — `synthesize_clusters()`'s return value is empty whenever no pair clears `min_score` (exactly the validated repro in Current Behavior: 11/11 orphans singletons), so if "candidate set" meant that return value, the LLM call would run over zero candidates in precisely the scenario `--deep` exists to fix. **Resolution (revised)**: with `--deep`, the candidate set fed to the LLM is **always** the full `orphans: list[IssueInfo]` list (never `synthesize_clusters()`'s output), capped at 40 orphans. The 2026-08-29 version gated the LLM call on `synthesize_clusters()` returning zero multi-member clusters; that gate is withdrawn — it made Step 3's merge (and the Option A decision) unreachable, and left `--deep` inert for the remaining N-2 orphans whenever Jaccard found a single pair. The cap of 40 is chosen because no existing single-call LLM site in this codebase batches more than a few dozen structured items per request (`discover_regions()`'s region batches are page-bounded, not count-bounded, so it is not a numeric precedent to reuse directly) and a title+summary pair is small enough that 40 of them stays well inside typical prompt budgets. **Above 40 orphans, `--deep` does not chunk** (chunking a semantic-clustering prompt across multiple calls risks splitting one real cluster across chunks with no cross-chunk reconciliation step) **and does not fall back silently** (that would contradict the failure-mode decision below and AC5's rationale): it prints a `Warning: --deep skipped: N orphans exceeds the 40-orphan cap; showing Jaccard-only clusters` line to stderr, emits the Jaccard result, and in `--json` mode adds a top-level `"deep": {"skipped": "too_many_orphans", "count": N}` key so the skill can report it (this key is only ever present under `--deep`, so AC1's byte-identical no-flag requirement is unaffected). This numeric cap has no existing config key; per the Integration Map finding above, adding one requires an explicit edit to `config-schema.json`'s `issues.link_epics` object (`additionalProperties: false`) — until then, hardcode the cap as a module constant in `link_epics.py` rather than leaving it configurable.
+- **Response validation beyond key presence (decided 2026-09-02 design review)**: the key-set check alone does not catch three failure shapes the LLM can produce: (1) a `member_ids` entry not in the candidate set (hallucinated or out-of-scope ID), (2) a cluster with fewer than 2 members, (3) the same ID appearing in several LLM clusters. Resolution: after the key-set check, drop unknown IDs with a `Warning: --deep dropped unknown member id X` stderr line (not a hard error — one bad ID should not discard a whole run), then drop any cluster left with fewer than 2 members, then let Step 3's Option A union handle cross-cluster overlaps (an ID in two LLM clusters merges them, same as a shared member between an LLM and a Jaccard cluster).
+- **Evidence is mechanically verified, not trusted (decided 2026-09-02 design review)**: the "Evidence-citation mechanism precedent" finding above calls `discover.py`'s `_resolve_span()` substring re-verification "a stronger technique than trusting the LLM's citation by instruction alone" — this issue adopts it. Every member's title and Summary text is already in hand for the prompt, so each `evidence` string is checked as a verbatim (case-sensitive, whitespace-normalized) substring of at least one member's title or Summary text. Entries that fail are dropped; a cluster whose evidence is entirely dropped is itself dropped with a `Warning: --deep dropped cluster [ids]: no verifiable evidence` stderr line. This is what makes AC3 ("an empty `evidence` list on a `--deep`-sourced cluster is a bug") enforced rather than aspirational.
+- **Output fields for LLM-sourced clusters (decided 2026-09-02 design review)**: `pairwise_min_score` for a cluster with no Jaccard edge among its members is `0.0` (the value `synthesize_clusters()` already emits when `cluster_edge_scores` is empty, `link_epics.py:198`); a merged cluster keeps the minimum of its Jaccard edges. Because `0.000` in the human-readable line reads like a bug, `--deep` output additionally carries a `source` field on each cluster — `"jaccard"`, `"deep"`, or `"merged"` — rendered in the human line as e.g. `(source: deep, ...)` and emitted as a `"source"` key in JSON. Like `evidence`, `source` is only emitted under `--deep` (omitted from `to_dict()` when unset) so the no-flag output stays byte-identical. S2 in `SKILL.md` uses `source` to know which clusters have no lexical corroboration and deserve closer review.
+- **Prompt-input and call parameters (decided 2026-09-02 design review)**: each orphan's Summary section is extracted via `_section_body(content, "Summary")` (`issue_parser.py:491`) from the raw file and truncated to 600 characters before inclusion in the prompt, bounding worst-case prompt size at 40 × (title + 600 chars). The blocking call uses `timeout=180`, matching `discover_regions()` (`discover.py:429`). The LLM call lives in its own module-level function, `_deep_cluster_call(candidates: list[tuple[IssueInfo, str]]) -> list[dict]` (returns validated raw cluster dicts), and the merge/verification logic in a separate `deep_synthesize_clusters(orphans, summaries, jaccard_clusters) -> list[ClusterProposal]`, so the only thing the new tests need to mock is `resolve_host`/`run_blocking_json` in `link_epics.py`'s namespace, and `synthesize_clusters()`'s signature stays untouched.
 - **LLM-call failure mode decided (this pass)**: no Implementation Step specifies what `cmd_link_epics()` does when the batched `--deep` call raises `BlockingJsonError` (timeout/missing-binary/non-zero-exit/empty-stdout, per `run_blocking_json()`'s documented contract, already cited above) or returns a response that fails the post-hoc key-set check. Resolution, following this same file's own existing convention for a different `--mode synthesize` validation failure (`cmd_link_epics()`'s `--apply`-with-synthesize rejection, `link_epics.py:310-316`: print an `Error: ...` message to stderr and `return 1`): a `--deep` call that fails must print an `Error: ...` message to stderr identifying the failure and exit 1 — it must not silently fall back to Jaccard-only clusters (which would misrepresent `--deep`'s output as semantically-adjudicated when it is not) and must not let the raw exception propagate uncaught.
 - **`ClusterProposal.evidence` field shape decided (this pass)**: of the two precedents already recorded above (`SkillBypass.evidence`, capped at 3; `ConfigGap.evidence`, uncapped), this issue adopts the capped shape: `evidence: list[str] = field(default_factory=list)`, capped at 3 entries in `to_dict()` the same way `SkillBypass` caps its own — a cluster's justification is a small number of quoted title/summary fragments, not an open-ended log, and capping bounds CLI output size the way `--deep`'s cited MR-8-style evidence-contract requirement (Proposed Solution) intends without needing a second design pass later.
 
@@ -355,11 +364,16 @@ N/A — no new gap kind, gate, or threshold; `--deep` swaps the clustering mecha
 
 1. Add `--deep` flag parsing to `add_link_epics_parser()` (`link_epics.py:257-292`),
    alongside the existing `--mode`/`--threshold`/`--apply` flags.
-2. When `synthesize_clusters()` (`link_epics.py:154`) returns zero clusters
-   with 2+ members, build the LLM candidate set from the full
-   `orphans: list[IssueInfo]` list, capped at 40 orphans — above that cap,
-   skip the LLM path entirely and return the pure-Jaccard result rather than
-   chunking. Make one batched call via `little_loops.host_runner.run_blocking_json(...)`
+2. With `--deep`, run `synthesize_clusters()` (`link_epics.py:154`) unchanged,
+   then **always** build the LLM candidate set from the full
+   `orphans: list[IssueInfo]` list (never from `synthesize_clusters()`'s
+   output), capped at 40 orphans. Above the cap: no LLM call, no chunking —
+   print the `Warning: --deep skipped: ...` stderr line, emit the Jaccard
+   result, and add the `"deep": {"skipped": "too_many_orphans", "count": N}`
+   JSON key (Program Design's revised candidate-set decision). For each
+   candidate, read its file and extract the Summary via
+   `_section_body(content, "Summary")` (`issue_parser.py:491`), truncated to
+   600 chars. Make one batched call (`timeout=180`) via `little_loops.host_runner.run_blocking_json(...)`
    (wrapping `resolve_host().build_blocking_json(prompt=..., model=...,
    json_schema=...)`, declared on the `HostRunner` Protocol at
    `host_runner.py:304-312`) — not a per-issue loop or a manual
@@ -371,7 +385,15 @@ N/A — no new gap kind, gate, or threshold; `--deep` swaps the clustering mecha
    (capped at 3, quoted title/summary fragments). Validate the response with a
    post-hoc key-set check (`{"clusters"}.issubset(response.keys())`, then per
    item `{"member_ids", "placeholder_title", "evidence"}.issubset(item.keys())`);
-   a check failure or a `BlockingJsonError` is handled per Step 7.
+   a check failure or a `BlockingJsonError` is handled per Step 7. Then apply
+   the semantic validation (Program Design, 2026-09-02 decisions): drop
+   `member_ids` not in the candidate set (stderr warning), drop clusters left
+   with <2 members, and drop `evidence` entries that are not verbatim
+   substrings of a member's title/Summary text — a cluster whose evidence is
+   entirely dropped is itself dropped with a stderr warning. Isolate the host
+   call in `_deep_cluster_call()` and the merge/validation in
+   `deep_synthesize_clusters()` (names per Program Design) so
+   `synthesize_clusters()`'s signature is untouched.
 3. Merge LLM-proposed clusters with any Jaccard-only clusters before the
    placeholder-title step (`_placeholder_title()`, `link_epics.py:143-151`):
    any shared member merges the two clusters into one (Option A, Decision
@@ -379,18 +401,28 @@ N/A — no new gap kind, gate, or threshold; `--deep` swaps the clustering mecha
    behavior, `link_epics.py:125-141,154-189`). A merged cluster always takes
    the LLM cluster's `placeholder_title` and `evidence` (a pure-Jaccard
    cluster has no `evidence` to offer); `_placeholder_title()` must not
-   re-run on merged members and overwrite them.
-4. Add an `evidence` field to `ClusterProposal` (`link_epics.py:63-79`) and its
-   `to_dict()` (line 72-79), then extend `cmd_link_epics()`'s JSON and
-   human-readable output (`link_epics.py:352-358`) to show the cited evidence
-   alongside each `--deep`-sourced cluster so the user can verify the grouping.
+   re-run on merged members and overwrite them. An ID appearing in two LLM
+   clusters merges them by the same rule. Set `source` to `"jaccard"`,
+   `"deep"`, or `"merged"` accordingly; `pairwise_min_score` is the minimum
+   Jaccard edge among members, or `0.0` when there is none.
+4. Add `evidence: list[str]` (capped at 3) and `source: str | None` fields to
+   `ClusterProposal` (`link_epics.py:63-79`) and its `to_dict()` (line
+   72-79) — both keys omitted when empty/unset — then extend
+   `cmd_link_epics()`'s JSON and human-readable output (`link_epics.py:352-358`)
+   to show `source` and the cited evidence alongside each `--deep`-sourced
+   cluster so the user can verify the grouping.
 5. Add a `--deep` usage example to the CLI's `--help` text in
    `add_link_epics_parser()`.
 6. `skills/link-epics/SKILL.md`'s four `--deep`-forwarding sites — the
    `argument-hint`/`flags` doc (lines 6, 17), Step 1's argument parsing
    (lines 41-46), S1's CLI invocation (line 118), and S2's cluster review
    (lines 130-137) — all recognize and pass through `--deep`, and S2 renders
-   the new `evidence` field alongside `placeholder_title`/`member_ids`.
+   the new `evidence` and `source` fields alongside
+   `placeholder_title`/`member_ids` (flagging `source: deep` clusters as
+   having no lexical corroboration). S1's empty-result message ("No orphan
+   clusters found above the score threshold") is wrong under `--deep`; use a
+   mode-aware message, and surface the `deep.skipped` JSON key as a warning
+   when present.
    Verified by running `/ll:link-epics --mode synthesize --deep` end-to-end
    and confirming the flag reaches the CLI and the evidence renders
    (Acceptance Criteria bullet 4) — CLI-only wiring (Steps 1-5) does not
@@ -453,17 +485,32 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       output byte-identical to today's, and `TestSynthesizeClusters`'s 5
       existing methods (`test_link_epics_cli.py:104-149`) plus
       `TestLinkEpicsCLI::test_synthesize_mode_json` (line 295) pass unmodified.
-- [ ] With `--deep`, `synthesize_clusters()`'s own (possibly-empty) Jaccard
-      output is never treated as the LLM candidate set — the candidate set is
-      the full orphan list whenever Jaccard alone returns zero multi-member
-      clusters, capped at 40 orphans (see Program Design's candidate-set
-      decision), and running `--deep` against this project's live 11-orphan
+- [ ] With `--deep`, the LLM candidate set is **always** the full orphan list
+      (capped at 40) — never `synthesize_clusters()`'s output and never gated
+      on Jaccard returning zero clusters — and its clusters are merged with
+      Jaccard's via Option A (an automated test asserts a Jaccard pair and an
+      LLM cluster sharing one member merge into one `source: merged`
+      cluster). Running `--deep` against this project's live 11-orphan
       backlog (Current Behavior's validated repro) produces at least one
       multi-member cluster instead of 11 singletons.
+- [ ] Above 40 orphans, `--deep` makes no LLM call, prints the
+      `Warning: --deep skipped: ...` stderr line, emits the Jaccard result,
+      and includes `"deep": {"skipped": "too_many_orphans", "count": N}` in
+      `--json` output — it never silently returns Jaccard-only output as if
+      it were `--deep` output.
+- [ ] LLM responses are semantically validated after the key-set check:
+      `member_ids` not in the candidate set are dropped with a stderr
+      warning, clusters left with <2 members are dropped, and an ID in two
+      LLM clusters merges them (automated test covers each case).
 - [ ] Each `--deep`-sourced `ClusterProposal.evidence` is a non-empty
       `list[str]` (capped at 3, per Program Design's field-shape decision) of
-      quoted title/summary fragments — an empty `evidence` list on a
-      `--deep`-sourced cluster is a bug, not a valid output.
+      fragments **verified as verbatim substrings** of a member's title or
+      Summary text; unverifiable entries are dropped, and a cluster with no
+      surviving evidence is dropped with a stderr warning (automated test
+      asserts a fabricated evidence string is rejected).
+- [ ] `--deep` clusters carry `source` (`jaccard`/`deep`/`merged`) in JSON and
+      human-readable output; `evidence` and `source` are omitted from
+      `to_dict()` when unset, so no-flag output is unchanged.
 - [ ] `/ll:link-epics --mode synthesize --deep` (the skill invocation, not
       only the raw `ll-issues link-epics --deep` CLI call) forwards `--deep`
       through `skills/link-epics/SKILL.md` Step 1 and S1, and S2 displays the
@@ -532,6 +579,37 @@ distinct from the determinism concern), but it should be an explicit,
 acknowledged tradeoff against EPIC-2938 §Motivation point 2, not an implicit
 one. The `--deep` opt-in gate (default path stays deterministic Jaccard) is
 the mitigation already designed into this issue.
+
+## Design Review (2026-09-02, pre-implementation)
+
+Manual review before implementation; changes folded into Proposed Solution,
+Program Design, Implementation Steps, and Acceptance Criteria above:
+
+1. **Step 2 / Step 3 contradiction removed.** The 2026-08-29 candidate-set
+   decision gated the LLM call on Jaccard returning zero clusters, which made
+   Step 3's merge (and the Option A decision) unreachable and left `--deep`
+   inert for all other orphans whenever Jaccard found one pair. `--deep` now
+   always sends the full (≤40) orphan list and merges with Jaccard clusters.
+2. **Over-cap silent fallback replaced** with a stderr warning plus a
+   `deep.skipped` JSON key, consistent with AC5's "never misrepresent
+   Jaccard-only output as `--deep` output" rationale.
+3. **Semantic response validation added** (unknown IDs, <2-member clusters,
+   duplicate IDs across clusters).
+4. **Evidence is mechanically verified** as verbatim substrings, adopting the
+   `discover.py` `_resolve_span()` technique this issue already cited as
+   stronger.
+5. **`source` field and `pairwise_min_score` rule specified** for LLM-sourced
+   and merged clusters.
+6. **Pinned**: 180s timeout, 600-char Summary truncation, function names
+   (`_deep_cluster_call`, `deep_synthesize_clusters`), mode-aware S1 message.
+7. **Frontmatter `verify_verdict` corrected** from stale `NON_VALID` to
+   `VALID` — the 2026-09-02 verify pass below found no defect, but the
+   frontmatter still carried the pre-refine verdict, which makes
+   `ll-issues check-verify-verdict` exit 1 and block automation gates.
+
+Not done: consolidating the five "Codebase Research Findings" blocks (several
+are corrections of corrections). Recommended before implementation but not
+blocking — the authoritative sections above are now internally consistent.
 
 ## Verification Notes
 
