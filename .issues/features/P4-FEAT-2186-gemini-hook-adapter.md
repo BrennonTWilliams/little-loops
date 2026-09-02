@@ -1,6 +1,7 @@
 ---
 id: FEAT-2186
-title: Hook adapter — hooks/adapters/gemini/ translating gemini-cli events to LLHookEvent
+title: "Hook adapter \u2014 hooks/adapters/gemini/ translating gemini-cli events to\
+  \ LLHookEvent"
 type: feature
 status: open
 priority: P4
@@ -8,7 +9,7 @@ parent: EPIC-2178
 decision_needed: false
 decision_ref: ARCHITECTURE-046
 verify_verdict: VALID
-captured_at: "2026-06-15T00:00:00Z"
+captured_at: '2026-06-15T00:00:00Z'
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 labels:
@@ -16,6 +17,12 @@ labels:
 - host-compat
 - hooks
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-2186: Hook adapter — hooks/adapters/gemini/
@@ -305,6 +312,7 @@ _Run `/ll:normalize-issues` to discover and link additional relevant docs._
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T23:03:39 - `60db1b50-fe23-47d4-8b5d-f8c0cf6ef977.jsonl`
 - `/ll:reconcile-issue` - 2026-09-02T22:34:55 - `89e1b823-9c08-49e4-9fdf-cadf3dbc0d62.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:23:46 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
