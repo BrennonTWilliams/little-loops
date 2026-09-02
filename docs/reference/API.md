@@ -4445,6 +4445,104 @@ def scaffold_verify(issue_id: str, adversarial: bool) -> ScaffoldResult
   bullets, numbered lists; indented sub-bullets skipped) from `## Acceptance
   Criteria`, falling back to `## Expected Behavior` when empty.
 
+### little_loops.cli.loop.evidence
+
+`ll-loop evidence` (FEAT-3182) exports a deterministic verification-evidence
+bundle for an archived `verify-issue-loop` run. Option A (decided
+`## Proposed Solution` on the issue): `evidentiary` holds only structural
+facts a reviewer can re-derive independently — git predicates, the
+`loop_runs` row, and archived run-directory files — never an LLM-graded
+verdict. LLM-graded content (criterion pass/fail, `break_found`) is attached
+separately, always labeled non-evidentiary.
+
+```python
+@dataclass
+class EvidenceEntry:
+    key: str
+    value: Any
+    source: str  # "git_ref" | "history_db_row" | "run_dir_file"
+
+@dataclass
+class ContextEntry:
+    key: str
+    value: Any
+    llm_sourced: bool = True
+
+@dataclass
+class GapEntry:
+    category: str
+    detail: str
+
+@dataclass
+class EvidenceBundle:
+    evidentiary: list[EvidenceEntry]
+    context_non_evidentiary: list[ContextEntry]
+    gaps: list[GapEntry]
+    schema_version: int = 1
+
+    @property
+    def has_gaps(self) -> bool: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def canonical_json(self) -> str: ...
+
+def assemble_bundle(
+    loop_runs_row: dict[str, Any] | None,
+    run_dir: Path | None,
+    git_predicates: dict[str, str],
+) -> EvidenceBundle
+def allowlisted_loop_run_dict(loop_runs_row_raw: dict[str, Any]) -> dict[str, Any]
+def compute_git_predicates(
+    repo_root: Path, head_sha: str | None, issue_path: str | None
+) -> dict[str, str]
+def cmd_evidence(args: argparse.Namespace, loops_dir: Path) -> int
+```
+
+- `assemble_bundle()` is the pure core: it reads *run_dir*'s `state.json`/
+  `events.jsonl`/`probe-*.json` itself, so it needs no filesystem mocking
+  beyond a fixture directory. `loop_runs_row` must already be allowlist-
+  projected (`allowlisted_loop_run_dict()`) — `error`/`evaluator_score` are
+  never guaranteed deterministic in origin and are the caller's responsibility
+  to segregate into `context_non_evidentiary` instead (`cmd_evidence` does
+  this). `git_predicates` are export-time-only facts (`compute_git_predicates()`:
+  ref liveness, ancestry, the issue file's blob hash at `head_sha`) — distinct
+  from the run-time `head_sha`/`branch`/`worktree_digest` read from the
+  archived `loop_start` event, which are never recomputed at export time.
+- Gap taxonomy (each an explicit `GapEntry`, never a silent omission):
+  `missing_run_dir`, `missing_loop_runs_row`, `missing_head_sha`,
+  `missing_issue_path`, `issue_not_committed_at_head`,
+  `head_sha_changed_across_resume` (first `loop_start` wins across a resumed
+  run), `worktree_changed_during_run` (loop_start vs. last loop_complete
+  digest mismatch), `missing_probe_files` (adversarial mode only — zero
+  probes in criteria mode is not a gap), `missing_loop_complete`,
+  `loop_runs_row_stale` (a resumed run's `INSERT OR IGNORE`-frozen row
+  disagreeing with the last `loop_complete` event).
+- `worktree_digest` (recorded by `FSMExecutor`, see below) is a
+  tracked-content-plus-untracked-*names* digest — `git status --porcelain`
+  lists untracked file names only, `git diff HEAD` excludes untracked
+  content, so a probe editing an untracked file leaves it unchanged. Stated
+  in the bundle's `_comment` field.
+- `EvidenceBundle.canonical_json()` uses `json.dumps(..., sort_keys=True,
+  default=str)` with no timestamp field anywhere in the shape — reruns over
+  unchanged inputs are byte-identical (mirrors
+  `cli.artifact.dashboard`'s reproducible-render pattern).
+- `cmd_evidence()` resolves *run* via `cli.loop.audit.resolve_run()` (shared
+  with `ll-loop audit`); the resolved directory's basename **is** the
+  `run_id` (`derive_run_id()`, `fsm/executor.py`) and is passed to
+  `history_reader.find_loop_run()` unchanged, no suffix stripping.
+
+**Related `FSMExecutor` constructor kwargs** (`little_loops/fsm/executor.py`,
+FEAT-3182): `capture_git_facts: bool = False` records `head_sha`/`branch`/
+`worktree_digest` on the `loop_start` event (and a second `worktree_digest`
+on `loop_complete`) via three `_prepatch_git()` calls against
+`self.working_dir or Path.cwd()` — opt-in because the test suite constructs
+`FSMExecutor` roughly 470 times and pays zero git-subprocess cost when this
+is off. `loop_yaml_path: Path | None = None` records the executing loop
+YAML's path + sha256 on `loop_start`, independent of `capture_git_facts`.
+Only `cli/loop/run.py` sets `capture_git_facts=True` for top-level runs; both
+kwargs propagate to `loop:` sub-state child executors
+(`_execute_sub_loop()`), with the child getting its own resolved
+`loop_yaml_path`, not the parent's.
+
 ### main_issues
 
 ```python

@@ -254,6 +254,7 @@ class LoopRun:
     diagnostics_path: str | None
     head_sha: str | None
     branch: str | None
+    failure_terminal: int | None = None
 
 
 @dataclass
@@ -1975,7 +1976,8 @@ def read_prepatch_evidence(
 
 _LOOP_RUN_COLUMNS = (
     "run_id, loop_name, started_at, ended_at, final_state, iterations, "
-    "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch"
+    "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch, "
+    "failure_terminal"
 )
 
 

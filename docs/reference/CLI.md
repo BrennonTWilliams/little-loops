@@ -1209,6 +1209,32 @@ ll-loop audit --latest autodev --json     # Most recent autodev run, as JSON
 ll-loop audit --latest autodev --max-steps 40
 ```
 
+#### `ll-loop evidence`
+
+Export a deterministic verification-evidence bundle for an archived `verify-issue-loop` run (FEAT-3182). `evidentiary` holds only facts a reviewer can re-derive from git, `history.db`, and the archived run directory — no LLM-graded verdict ever lands there (Option A: "a check was attempted," not "the check passed"). LLM-graded criterion/probe verdicts are attached separately as labeled `context_non_evidentiary` entries. Incomplete evidence produces an explicit `gaps` entry rather than a bundle that silently looks smaller.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `run` (positional) | | Run directory name under `.loops/.history/` (the archive dir basename — this *is* the run_id). Optional when `--latest` is given |
+| `--latest LOOP` | | Resolve the most recent archived run for LOOP instead of naming a run directory |
+| `--output PATH` | | Write the canonical bundle JSON to PATH (in addition to stdout output) |
+| `--json` | `-j` | Print the canonical bundle JSON to stdout instead of the human summary |
+
+**Bundle shape:** `schema_version` (int), `_comment` (regeneration/provenance note — no timestamp field exists anywhere in the shape, by design, so reruns over unchanged inputs are byte-identical), `evidentiary` (list of `{key, value, source}`, `source` ∈ `git_ref` \| `history_db_row` \| `run_dir_file`), `context_non_evidentiary` (list of `{key, value, llm_sourced}`), `gaps` (list of `{category, detail}`), `has_gaps` (bool).
+
+**Gap categories:** `missing_run_dir`, `missing_loop_runs_row`, `missing_head_sha`, `missing_issue_path`, `issue_not_committed_at_head`, `head_sha_changed_across_resume`, `worktree_changed_during_run`, `missing_probe_files` (adversarial-mode only — zero probe files in criteria mode is not a gap), `missing_loop_complete`, `loop_runs_row_stale` (a resumed run's `loop_runs` row disagreeing with the last `loop_complete` event).
+
+`head_sha`/`branch`/`worktree_digest` and the loop-YAML path/sha256 are read from the run's own `loop_start` event (recorded at run time by `ll-loop run` when it constructed the executor — never recomputed at export time); export-time `git` is used only for ref-liveness/ancestry predicates and the issue file's blob hash at `head_sha`. `worktree_digest` covers tracked-file content plus untracked file *names*, not untracked file content.
+
+**Exit codes:** 0 = bundle assembled (gaps, if any, are reported inside it — a gap is not a command failure); 1 = run directory could not be resolved.
+
+**Examples:**
+```bash
+ll-loop evidence 20260902T120000-verify-feat-3182   # Human-readable summary
+ll-loop evidence --latest verify-feat-3182 --json   # Canonical bundle JSON on stdout
+ll-loop evidence --latest adversarial-feat-3182 --output evidence.json
+```
+
 #### `ll-loop audit-meta`
 
 Read `meta-eval.jsonl` from archived runs and print a summary table of LLM vs. external-evaluator agreement statistics. Useful for diagnosing meta-loops where the LLM judge may be too lenient or agreeing on no-op iterations.

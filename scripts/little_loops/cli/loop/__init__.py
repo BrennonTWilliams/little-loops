@@ -29,6 +29,7 @@ def main_loop() -> int:
         from little_loops.cli.loop.audit import cmd_audit
         from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
         from little_loops.cli.loop.edit_routes import cmd_edit_routes
+        from little_loops.cli.loop.evidence import cmd_evidence
         from little_loops.cli.loop.info import (
             cmd_audit_meta,
             cmd_calibrate_budget,
@@ -80,6 +81,7 @@ def main_loop() -> int:
             "monitor",
             "queue",
             "audit",
+            "evidence",
             "scaffold-eval",
             "scaffold-verify",
             # aliases
@@ -995,6 +997,29 @@ Examples:
             "-j", "--json", action="store_true", help="Output counters as JSON"
         )
 
+        # Evidence subcommand (FEAT-3182)
+        evidence_parser = subparsers.add_parser(
+            "evidence",
+            help="Export a deterministic verification-evidence bundle for an archived loop run",
+        )
+        evidence_parser.set_defaults(command="evidence")
+        evidence_parser.add_argument(
+            "run", nargs="?", default=None, help="Run directory name under .loops/.history/"
+        )
+        evidence_parser.add_argument(
+            "--latest", metavar="LOOP", help="Resolve the most recent archived run for LOOP"
+        )
+        evidence_parser.add_argument(
+            "--output",
+            type=Path,
+            default=None,
+            metavar="PATH",
+            help="Write the bundle JSON to PATH",
+        )
+        evidence_parser.add_argument(
+            "-j", "--json", action="store_true", help="Print the canonical bundle JSON to stdout"
+        )
+
         # Scaffold-eval subcommand (FEAT-2948)
         scaffold_eval_parser = subparsers.add_parser(
             "scaffold-eval",
@@ -1099,6 +1124,8 @@ Examples:
             return cmd_monitor(args, loops_dir)
         elif args.command == "audit":
             return cmd_audit(args, loops_dir)
+        elif args.command == "evidence":
+            return cmd_evidence(args, loops_dir)
         elif args.command == "scaffold-eval":
             return cmd_scaffold_eval(args, loops_dir)
         elif args.command == "scaffold-verify":

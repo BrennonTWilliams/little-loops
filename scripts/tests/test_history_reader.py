@@ -2251,6 +2251,24 @@ class TestNewEventReaders:
         assert found.loop_name == "rn-implement"
         assert finder("no-such-run", db=db) is None
 
+    def test_find_loop_run_exposes_failure_terminal(self, tmp_path: Path) -> None:
+        """FEAT-3182: failure_terminal is on the loop_runs allowlist the evidence
+        exporter reads; LoopRun previously omitted this existing column."""
+        from little_loops import history_reader, session_store
+
+        db = tmp_path / "history.db"
+        session_store.record_loop_run_summary(
+            db,
+            run_id="run-failed",
+            loop_name="rn-implement",
+            terminated_by="terminal",
+            failure_terminal=True,
+        )
+
+        found = history_reader.find_loop_run("run-failed", db=db)
+        assert found is not None
+        assert found.failure_terminal == 1
+
     def test_aggregate_loop_runs(self, tmp_path: Path) -> None:
         from little_loops import history_reader, session_store
 
