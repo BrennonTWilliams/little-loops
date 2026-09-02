@@ -6,6 +6,7 @@ status: open
 priority: P4
 parent: EPIC-2178
 verify_verdict: VALID
+reconcile_attempted: true
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
@@ -64,21 +65,34 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `gemini` to `--hosts` multi-select in `ll-init` CLI
-   (`scripts/little_loops/init/`).
-2. Add a `GEMINI.md` template in `templates/` (or generate from `CLAUDE.md`
-   template by swapping Claude-specific references).
-   > ⚠ Superseded — no `.j2`/file-based template convention exists for this content; `write_claude_md`/`write_agents_md` build from Python string constants in `writers.py` (see § Codebase Research Findings)
-3. Wire `--hosts gemini` to generate `GEMINI.md` from the template.
-4. If the project already has a `GEMINI.md`, emit a warning and skip
-   (don't overwrite user customizations).
-5. Update `ll-init --dry-run` output to show `GEMINI.md` as a planned file.
-6. Add tests in `scripts/tests/test_init_core.py`.
+1. Add `"gemini"` to `_KNOWN_HOSTS` (`cli.py:48-50`) and the `--hosts`
+   argparse help text (`cli.py:1023-1028`) in `scripts/little_loops/init/cli.py`.
+2. Add `write_gemini_md(project_root: Path, dry_run: bool = False) -> bool` to
+   `scripts/little_loops/init/writers.py`, mirroring `write_claude_md`'s shape
+   (detection order, `atomic_write`, idempotency marker) — built from Python
+   string constants, not a `.j2`/template file (no such convention exists for
+   CLAUDE.md/AGENTS.md-style content today). Content comes from
+   `_render_commands_block()` with no overrides (host-generic wording, same as
+   `write_agents_md`).
+3. Call `write_gemini_md()` from `_run_yes` (`cli.py:706-711`), `_run_apply`
+   (`cli.py:918-923`), and the TUI wizard's file-writing function
+   (`tui.py:~894-900`), gated on `"gemini" in hosts`.
+4. Reuse `write_claude_md`'s existing idempotency behavior: append the
+   little-loops section when `GEMINI.md` exists without the section marker,
+   no-op when the marker is already present. No separate warn-and-skip path.
+5. `write_gemini_md` prints its own dry-run line inline via `info()` (as
+   `write_claude_md`/`write_agents_md` do) — no separate dry-run summary
+   renderer to update.
+6. Add tests in `scripts/tests/test_init_core.py`: a new `TestWriteGeminiMd`
+   class (mirroring `TestWriteClaudeMd`/`TestWriteAgentsMd`'s method set), plus
+   gemini coverage in `TestHostDispatch` and `TestDetectHosts`.
 
 ## Acceptance Criteria
 
 - `ll-init --hosts gemini` generates `GEMINI.md` with ll project instructions.
-- Re-running with an existing `GEMINI.md` does not overwrite (warns instead).
+- Re-running with an existing `GEMINI.md` does not overwrite: appends the
+  little-loops section when the idempotency marker is absent, no-ops when it's
+  already present.
 - `ll-init --dry-run --hosts gemini` shows `GEMINI.md` in the plan.
 - Tests pass.
 
@@ -152,6 +166,7 @@ gate, threshold, or classification rule.
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-02T22:34:03 - `89e1b823-9c08-49e4-9fdf-cadf3dbc0d62.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:23:46 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
 - `/ll:format-issue` - 2026-09-02T22:10:34 - `aff86587-4c3b-4b44-8aae-a8fb91813a11.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
