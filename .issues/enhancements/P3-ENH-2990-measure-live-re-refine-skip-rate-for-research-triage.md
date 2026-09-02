@@ -343,8 +343,12 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 ### Decision Rules
 
-- New reason codes to add (named in this issue's own Summary/Integration Map): `below_threshold`, `no_qualified_refs`, `missing_symbol`, `stale`.
+- Reason-code taxonomy (closed set, `Literal` alias `TriageReason`): `no_qualified_refs`, `below_threshold`, `missing_symbol`, `stale`, `program_design_unmet`, `unreadable`. Covered axes carry `reason=None`. The last two live *outside* `_triage_axis` and were missing from earlier drafts of this list: `program_design_unmet` is the analyzer-axis override applied after triage by `_program_design_unmet` (`issues/research_triage.py:337-345`, evidence prefixed `"Program Design gate: "`), and `unreadable` is the `OSError` fail-open that returns three uncovered axes (`:311-314`).
 - Discriminator: `no_qualified_refs` when `eligible == 0`; `below_threshold` when `eligible > 0` and `len(resolved) / eligible < COVERAGE_THRESHOLD` — both currently the *same* branch (`_triage_axis`, line 423-424), so splitting them requires branching that single `if`. `missing_symbol` when coverage passes but the symbol-requirement filter (`_has_symbol`, lines 426-430) empties `resolved` (line 431-432). `stale` when both pass but `build_change_time_index` finds a resolved path changed after the issue's last refine (lines 437-448) — already prefixed `"stale: "` in `evidence`.
+- **Naming decision: the axis-level code is `stale`, not `axis_stale`.** The Scope Boundary note below recommended `axis_stale` to avoid confusion with `RefStatus.stale`; that concern does not apply because the new code is stored in its own `history.db` column with its own `CHECK` constraint and its own Python `Literal`, so no query or type can conflate the two. Do not introduce `axis_stale`.
+- **Re-refine stratification is mandatory.** When the issue has no prior `/ll:refine-issue` or gap-refine Session Log entry, `refined_at` is `None` (`triage_research_axes:319-325`) and the staleness branch never runs — so a first-refine invocation can only ever produce coverage-side reasons. Every recorded row MUST carry `refined_at` (nullable ISO-8601) so the read-back can condition on `refined_at IS NOT NULL`; the headline number this issue exists to produce is the skip rate over *re-refine* invocations only. Reporting an unstratified rate would dilute the `stale`-vs-coverage split with first refines and make the figure incomparable to ENH-2971's 33.7% / 8.6%.
+- **Row granularity: one row per axis** — `ts, session_id (nullable), issue_id, axis, covered, reason (nullable, CHECK-constrained), refined_at (nullable), evidence`. Three rows per invocation, sharing `ts` + `issue_id`. This matches the `verdict_events` closed-set-column precedent and makes the skip rate a single `GROUP BY reason` query; a per-invocation row with three axis columns would force the read side to unpivot.
+- **Gating and path resolution.** The new writer honors the same `analytics.capture.cli_commands` gate `cli_event_context` applies (`writers.py:505-512`, via `feature_enabled_for(..., "ll-issues")`) and resolves its path with `resolve_history_db()`, never a bare `DEFAULT_DB_PATH`. `session_id` is read from `CLAUDE_SESSION_ID` exactly as `advisor.py:483` does, but that variable is not guaranteed to be set in a `Bash`-tool subprocess — it is best-effort; `issue_id` is the reliable join key.
 - Modeling convention: a new `Literal[...]` alias, not an `Enum` or a dataclass field wrapping one — this is the codebase's stated convention for a classifying function's return value that is stored and compared (`ResearchAxis`, `research_triage.py:59`; `RefStatus`, `text_utils.py:161`; `Verdict`, `doctor_trim.py:66`; documented explicitly as convention in `.issues/enhancements/P3-ENH-3298-*.md:232`). `Enum` classes in this codebase (`RunnerType`, `MergeStatus`, `WorkerStage`, `InstallStatus`, `HandoffBehavior`, `ValidationSeverity`) model internal lifecycle/control-flow state instead — a different shape of problem, not a competing convention for this case.
 - If the reason code is persisted as its own `history.db` column rather than staying in-process: existing closed-set outcome columns (`verdict_events.verdict`, `schema.py:768-781`/`:1202-1219`; the cross-column `abstention_reason` constraint) enforce the set with a SQL `CHECK` constraint at the DB layer, independent of the Python-side `Literal` type — the same pattern would apply here.
 - Escape hatch: the reason code is additive to `evidence`, not a replacement — `evidence`'s existing prose stays human-readable.
@@ -360,15 +364,48 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Decide between A/B/C — the choice is a cost/latency tradeoff, not a
-   correctness one.
-2. Add a machine-readable reason code to `AxisCoverage` (or a sibling field)
-   so `stale` is distinguishable from the coverage-side rejections without
-   parsing `evidence` prose.
-3. Implement the chosen measurement path.
-4. Record the result in ENH-2971's Threshold Validation section next to the
-   corpus numbers, so the two are read together.
-5. If `stale` dominates, open a follow-up to narrow the Staleness Check.
+1. ~~Decide between A/B/C~~ — **done**, Option A selected (see Decision
+   Rationale).
+2. Add `reason: TriageReason | None` to `AxisCoverage` and populate it on every
+   branch per the Decision Rules taxonomy (six codes, including the two
+   outside `_triage_axis`). `to_dict()` gains a `"reason"` key.
+3. Add the `history.db` v46 table (one row per axis, columns per Decision
+   Rules) and its fail-soft writer; call it from `cmd_research_triage` after
+   `triage_research_axes` returns, passing `refined_at` alongside each axis.
+4. Add the read path: a `history_reader.py` function returning counts grouped
+   by `(refined_at IS NOT NULL, covered, reason)`, plus the exact SQL pasted
+   into this issue's Verification Notes so the number can be re-derived
+   without Python. No CLI subcommand — the advisor precedent
+   (`consult_stats`) has none either, and adding one is out of scope.
+5. Write a stub `## Threshold Validation (ENH-2990 — live)` entry in ENH-2971
+   next to the corpus numbers, stating the query and that the figure is
+   pending N re-refine invocations.
+6. Once the sample threshold in Acceptance Criteria is met, fill in the entry.
+   If `stale` dominates, open a follow-up to narrow the Staleness Check.
+
+## Acceptance Criteria
+
+- [ ] `AxisCoverage.reason` is populated on every uncovered branch with one of
+      the six `TriageReason` values and is `None` on covered axes; a test per
+      value asserts the exact string (pattern: `TestClassifyFileRef`).
+- [ ] `ll-issues research-triage --json` emits `"reason"` per axis; the
+      contract prose in `docs/reference/CLI.md` and
+      `commands/refine-issue.md` Step 3.0 documents it.
+- [ ] Schema v46 table exists with a `CHECK` constraint over the six codes
+      (plus NULL); `schema_manifest.json` regenerated; `SCHEMA_VERSION == 46`.
+- [ ] The writer never raises: the monkeypatch-`connect`-raises test passes,
+      and `cmd_research_triage` still exits 0 when the DB is unwritable.
+- [ ] The writer is suppressed when `analytics.capture.cli_commands` excludes
+      `ll-issues`, matching `cli_event_context`.
+- [ ] Each row records `refined_at`; the read function reports first-refine
+      and re-refine rows separately.
+- [ ] ENH-2971 carries the stub Threshold Validation entry with the read query.
+- [ ] **Close condition**: this issue closes when the items above land. The
+      live figure is recorded when at least **200 re-refine invocations**
+      (`refined_at IS NOT NULL`, ≈67 issues × 3 axes) have accumulated; if
+      that has not happened by the time the instrumentation ships, open a
+      follow-up issue titled "Record ENH-2990 live skip rate" that holds only
+      Step 6, so this issue does not sit open waiting on autodev volume.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -426,6 +463,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- pre-implementation review - 2026-09-02T23:00:00 - added re-refine stratification, six-code taxonomy, `stale` naming decision, per-axis row shape, gating, read path, and Acceptance Criteria with a close condition
 - `/ll:wire-issue` - 2026-09-02T22:14:34 - `45cec2d5-6331-4821-b360-a7b6926c4a33.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:08:13 - `0654a055-4280-424a-9a1f-55a9966af38e.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:07:49 - `0654a055-4280-424a-9a1f-55a9966af38e.jsonl`
@@ -456,4 +494,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
-- Codebase analysis (2026-09-02) suggests the reconciliation this note asks for is narrower than "merge into one enum." The two taxonomies classify different things at different granularities: `RefStatus` (`text_utils.py:161`) classifies one *reference* (`classify_file_ref`, per-ref), while this issue's proposed `below_threshold`/`no_qualified_refs`/`missing_symbol`/`stale` classifies one *axis's overall verdict* (`_triage_axis`, per-axis, aggregating many refs). They mostly don't collide — except both use the word **"stale" for two different meanings**: `RefStatus`'s `"stale"` means a `/`-qualified reference that doesn't resolve against the tracked-file index at all (`text_utils.py:388`); this issue's proposed axis-level `"stale"` means a reference that *did* resolve but its target changed after the issue's last refine (`_triage_axis:434-448`, existing `"stale: {tracked} changed …"` evidence string at `:445`). Recommend naming the new axis-level reason code something other than bare `stale` (e.g. `axis_stale`) to avoid conflating it with `RefStatus.stale` in logs/queries — not merging the two enums, since they operate at different levels.
+- Codebase analysis (2026-09-02) suggests the reconciliation this note asks for is narrower than "merge into one enum." The two taxonomies classify different things at different granularities: `RefStatus` (`text_utils.py:161`) classifies one *reference* (`classify_file_ref`, per-ref), while this issue's proposed `below_threshold`/`no_qualified_refs`/`missing_symbol`/`stale` classifies one *axis's overall verdict* (`_triage_axis`, per-axis, aggregating many refs). They mostly don't collide — except both use the word **"stale" for two different meanings**: `RefStatus`'s `"stale"` means a `/`-qualified reference that doesn't resolve against the tracked-file index at all (`text_utils.py:388`); this issue's proposed axis-level `"stale"` means a reference that *did* resolve but its target changed after the issue's last refine (`_triage_axis:434-448`, existing `"stale: {tracked} changed …"` evidence string at `:445`). An earlier draft of this note recommended renaming the axis-level code to `axis_stale`; that recommendation is **withdrawn** — see Program Design § Decision Rules: the code lives in its own column and `Literal`, so bare `stale` cannot be conflated with `RefStatus.stale`. Do not merge the two enums, since they operate at different levels.
