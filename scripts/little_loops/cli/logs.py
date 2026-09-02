@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from datetime import time as dt_time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from little_loops.analytics.association import compute_lift, compute_pmi
 from little_loops.cli.loop.info import (  # private symbol: cross-module coupling; verify signature on upgrade
@@ -22,6 +23,7 @@ from little_loops.cli.loop.info import (  # private symbol: cross-module couplin
 from little_loops.cli.output import configure_output, print_json, table, use_color_enabled
 from little_loops.cli_args import add_corpus_target_args, add_json_arg, add_window_args
 from little_loops.config import BRConfig
+from little_loops.fsm.loop_paths import get_builtin_loops_dir
 from little_loops.logger import Logger
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
@@ -32,11 +34,12 @@ from little_loops.session_store import (
 )
 from little_loops.user_messages import get_project_folder
 
+if TYPE_CHECKING:
+    from little_loops.fsm.validation import ValidationError
+
 _COMMAND_NAME_RE = re.compile(r"<command-name>/ll:")
 BRIDGE_MARKER = "Bridged from `commands/"
 
-# Built-in loops live one level up from this file: little_loops/loops/
-_LOOPS_DIR = Path(__file__).parent.parent / "loops"
 # Archive run folder naming: <YYYY-MM-DDTHHMMSS>-<loop-name>
 _HISTORY_RUN_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")
 
@@ -1161,7 +1164,28 @@ class _LoopRunRecord:
     iterations: int
     outcome: str  # converged / failed / max-steps / stalled / interrupted / error
     ts: str
-    attribution: str  # builtin / custom
+    attribution: str  # builtin / custom / shadowed (Decisions #10)
+
+
+@dataclass
+class _LoopFleetAggregate:
+    """Per-loop-name aggregate over a list of ``_LoopRunRecord`` (FEAT-2379).
+
+    Produced by ``_aggregate_fleet_runs()``; consumed by the ``loop-fleet``
+    table branch (which shortens ``projects`` to ``.name`` for display), the
+    ``_flag_loops`` flagging rule, and the fleet-review JSON sidecar.
+    """
+
+    loop_name: str
+    attribution: str
+    runs: int
+    converged: int
+    success_pct: int
+    median_iterations: float
+    top_outcome: str
+    outcomes: dict[str, int]  # full outcome Counter, not just the top one
+    projects: list[Path]  # absolute paths, deduplicated, sorted
+    runs_by_project: dict[str, int]  # str(abs path) -> run count
 
 
 @dataclass
@@ -1953,16 +1977,28 @@ def _cmd_eval_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _builtin_loop_paths() -> dict[str, Path]:
+    """Return {stem: path} for every runnable built-in loop, recursively (Decisions #8).
+
+    Rooted at ``get_builtin_loops_dir()`` (not a private ``logs.py``-local
+    constant) so nested ``oracles/*`` built-ins resolve — ``resolve_loop_path``
+    only checks the top level and must NOT be used for this. ``lib/`` fragments
+    are excluded (not standalone runnable loops).
+    """
+    base = get_builtin_loops_dir()
+    if not base.exists():
+        return {}
+    paths: dict[str, Path] = {}
+    for yaml_file in sorted(base.rglob("*.yaml")):
+        if "lib" in yaml_file.relative_to(base).parts:
+            continue
+        paths[yaml_file.stem] = yaml_file
+    return paths
+
+
 def _get_builtin_loop_names() -> frozenset[str]:
     """Return stem names of all runnable built-in loops in the package (excludes lib/ fragments)."""
-    if not _LOOPS_DIR.exists():
-        return frozenset()
-    names: set[str] = set()
-    for yaml_file in _LOOPS_DIR.rglob("*.yaml"):
-        if "lib" in yaml_file.relative_to(_LOOPS_DIR).parts:
-            continue
-        names.add(yaml_file.stem)
-    return frozenset(names)
+    return frozenset(_builtin_loop_paths())
 
 
 def _derive_loop_outcome(event: dict) -> str:

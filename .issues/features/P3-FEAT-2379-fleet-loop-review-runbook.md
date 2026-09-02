@@ -4,7 +4,6 @@ type: FEAT
 title: "Fleet loop-review runbook + `ll-logs fleet-review` \u2014 continuous improvement\
   \ of built-in loops from cross-project logs"
 priority: P3
-status: open
 captured_at: '2026-06-28T20:54:00Z'
 discovered_date: 2026-06-28
 discovered_by: user-report
@@ -23,6 +22,7 @@ decision_needed: false
 confidence_score: 90
 verify_verdict: VALID
 outcome_confidence: 89
+status: in_progress
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
@@ -497,6 +497,8 @@ path is recorded, not built.
 - `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
 
 ## Session Log
+- implementation session (partial) - 2026-09-02 - Landed only the Decisions #8 prerequisite: `_builtin_loop_paths()` (recursive, rooted at `get_builtin_loops_dir()`) added to `scripts/little_loops/cli/logs.py`, `_get_builtin_loop_names()` now derived from it, and the `_LoopFleetAggregate` dataclass stub added. Full suite green (21698 passed, 11 skipped). **Not implemented**: the `ll-logs fleet-review` subcommand, `_aggregate_fleet_runs`/`_collect_failure_clusters`/`_collect_sequences` extractions, `_flag_loops`, shadowed-attribution in `_collect_loop_runs`, baseline/delta sidecar + report writer, `docs/runbooks/FLEET_LOOP_REVIEW.md`, and all wiring (CLI.md, README, CONTRIBUTING, mkdocs.yml, test_wiring_skills_and_commands.py) and new tests. Status set to `in_progress`, not `done` — the Acceptance Criteria are unmet.
+- `/ll:ready-issue` - 2026-09-02T21:27:18 - `596a508f-cbf4-49ff-8da3-8b2d48d5ffad.jsonl`
 - `/ll:confidence-check` - 2026-09-02T20:54:19 - `0b51df9f-5499-44fc-9d1b-54e3664c1368.jsonl`
 - pre-implementation review #3 - 2026-09-02 - Verified against code and the live fleet: (1) `resolve_loop_path` does not see the 12 nested `oracles/*` built-ins (`ll-loop validate code-run-gate` fails from this repo) → added `_builtin_loop_paths()` and dropped `resolve_loop_path` from `_validate_builtin_loop` (Decisions #8 rewritten); (2) five projects run heavily modified `.loops/<name>.yaml` copies of built-ins (111 runs) that name-only attribution would flag against this repo → added `attribution="shadowed"` (Decisions #10); (3) `_cmd_scan_failures`/`_cmd_sequences` discover projects internally, so `--exclude-project` could not reach the appendices → collectors take `projects=` (Decisions #11). Accuracy: `ValidationError` not `Violation`; `ChainResult` return type; output dir is `Path.cwd()/.loops/diagnostics`; `_in_window()` shared helper for the empty-`ts` quirk; removed stale `_helpers.py:19` import claim; built-in count 104; mkdocs nav needle added to the wiring test; CLI.md line refs refreshed.
 - `/ll:confidence-check` - 2026-09-02T20:32:58 - `62eddba7-ec09-476f-aa16-88e65bd2f581.jsonl`
