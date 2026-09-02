@@ -207,6 +207,23 @@ class TestScaffoldVerifyAdversarialMode:
         assert "timeout: 1800" in result.yaml_text
 
 
+class TestScaffoldVerifyContext:
+    """FEAT-3182: context.issue_id/issue_path lets a downstream evidence
+    bundle join an archived run back to the issue it verified."""
+
+    def test_criteria_mode_sets_issue_id_and_path(self, project: Path) -> None:
+        path = _write_issue(project, "FEAT-303", ["Criterion"])
+        result = scaffold_verify("FEAT-303", adversarial=False)
+        assert "issue_id: FEAT-303" in result.yaml_text
+        assert f"issue_path: {path}" in result.yaml_text
+
+    def test_adversarial_mode_sets_issue_id_and_path(self, project: Path) -> None:
+        path = _write_issue(project, "FEAT-304", ["Criterion"])
+        result = scaffold_verify("FEAT-304", adversarial=True)
+        assert "issue_id: FEAT-304" in result.yaml_text
+        assert f"issue_path: {path}" in result.yaml_text
+
+
 class TestPrepatchCheckStateExample:
     """ENH-2998: scaffold_verify.py documents the deterministic pre-patch
     check via a state-template example, since it has no generator flag of

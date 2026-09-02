@@ -607,6 +607,12 @@ def cmd_run(
             compression_config=_config.compression,
             orchestration_config=_config.orchestration,
             inbound=inbound_queue,
+            # FEAT-3182: only the top-level `ll-loop run` entry point opts
+            # into run-time git-fact capture and loop-YAML hashing — the
+            # test suite's ~470 bare FSMExecutor(...) constructions stay at
+            # zero git subprocess cost.
+            capture_git_facts=True,
+            loop_yaml_path=path,
         )
 
         # Register signal handlers for graceful shutdown

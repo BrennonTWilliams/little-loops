@@ -332,6 +332,9 @@ def scaffold_verify(issue_id: str, adversarial: bool) -> ScaffoldResult:
         category="verification",
         max_steps=_MAX_STEPS,
         timeout=timeout,
+        # FEAT-3182: the only way a downstream evidence bundle can join a run
+        # back to the issue it verified — read from the archived state.json.
+        context={"issue_id": issue_id, "issue_path": str(path)},
     )
 
     validation_errors = validate_fsm(fsm)
