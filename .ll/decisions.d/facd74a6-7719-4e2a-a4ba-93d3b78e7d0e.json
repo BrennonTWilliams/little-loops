@@ -1,0 +1,12 @@
+{
+  "id": "f0f479b9-1fec-495e-9326-c86bb45a9bcf",
+  "type": "decision",
+  "timestamp": "2026-09-02T06:11:41Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Scored 10/12 vs Option B 6/12, Option C 5/12. advisor_consults (schema v45/FEAT-3300) is a near-identical precedent: a new history.db table for one call site's structured per-invocation outcome, written directly from feature code. Option B's replay is undermined by confirmed lossiness of historical issue-file reconstruction (auto_commit disabled, dirty working tree norm). Option C has no precedent for shimming a call inside an LLM-executed markdown bash block.",
+  "rule": "Option A \u2014 instrument the live CLI (research-triage skip-rate measurement)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (historical replay), Option C (bounded live sample)",
+  "issue": "ENH-2990"
+}

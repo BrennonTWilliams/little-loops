@@ -1,0 +1,12 @@
+{
+  "id": "d2fc724a-6569-4d58-b126-a5ccc7e1c002",
+  "type": "decision",
+  "timestamp": "2026-09-02T15:00:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Already selected by a prior /ll:decide-issue pass; today's run only fixed a check-unresolved-decisions bullet-tier false positive that was blocking the flag from clearing.",
+  "rule": "Option A \u2014 instrument the live CLI",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 historical replay; Option C \u2014 bounded live sample",
+  "issue": "ENH-2990"
+}
