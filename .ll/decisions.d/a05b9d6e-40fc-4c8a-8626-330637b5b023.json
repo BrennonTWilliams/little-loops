@@ -1,0 +1,12 @@
+{
+  "id": "354e4f3a-5594-49e6-91be-502f1ced7ff5",
+  "type": "decision",
+  "timestamp": "2026-09-02T22:36:26Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Mirrors the existing unconditional-detect-near-top shape already used by _run_yes() (cli.py:519) and run_tui() (tui.py:185); _apply_config() param addition matches its existing optional-keyword convention. Scored 11/12 vs Option B's 5/12 \u2014 Option B's config-plumbing approach has zero precedent for reading a value back across the plan/apply JSON-serialization boundary and runs against two established conventions (detection-only facts kept outside proposed_config; stale plan data recomputed fresh rather than trusted).",
+  "rule": "Option A \u2014 call detect_installation() unconditionally near the top of _run_apply(), thread install_source into _apply_config() as a new parameter",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: populate config[\"install_source\"] in _run_plan() so _run_apply() reads it back without a second detect_installation() call",
+  "issue": "BUG-3380"
+}

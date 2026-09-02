@@ -7,7 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-02'
 captured_at: '2026-09-02T22:19:40Z'
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3380: AGENTS.md/CLAUDE.md install line hardcoded to editable install for all install_source
@@ -75,6 +75,46 @@ The exact per-`install_source`-value wording of the `Install:` line is an
 implementation choice, not dictated by this research; `tui.py:228-242`
 shows existing precedent for a two-way message split (`local-editable` vs.
 everything else) that a fix could follow or depart from.
+
+> **Selected:** Option A — reuses the existing `detect_installation()`
+> unconditional-near-top call shape already used by `_run_yes()`
+> (`cli.py:519`) and `run_tui()` (`tui.py:185`), and the `_apply_config()`
+> parameter addition matches that function's existing optional-keyword
+> convention. Implementers should dedupe against the existing
+> `detect_installation()` call at `cli.py:935` rather than leaving two
+> calls in `_run_apply()`.
+
+### Decision Rationale
+
+**Selected**: Option A (11/12) over Option B (5/12).
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 | 1 |
+| Simplicity | 3 | 1 |
+| Testability | 3 | 2 |
+| Risk | 2 | 1 |
+| **Total** | **11** | **5** |
+
+Option A mirrors the unconditional-`detect_installation()`-near-the-top
+shape already present verbatim in both `_run_yes()` (`cli.py:519`) and
+`run_tui()` (`tui.py:185`), and the `_apply_config()` parameter addition
+follows that function's existing optional-keyword-arg convention exactly
+(`tui.py:819-832`). Its only real risk is a redundant second
+`detect_installation()` call if the pre-existing `cli.py:935` call isn't
+removed/deduped — up to a 10s subprocess probe cost in the plugin-install
+case — which the implementation should address directly rather than
+leaving both calls in place.
+
+Option B's write-side shape (`config["install_source"] = install_source`)
+has exact precedent (`cli.py:677-678`, `tui.py:623-624`), but reading that
+value back in a later, separately-invoked `_run_apply()` crosses a
+JSON-serialization boundary the code's own docstring flags as
+"machine-editable" — a shape with zero existing precedent that runs
+against two established conventions in this codebase: detection-only
+facts are kept outside `proposed_config` (the `plan["detected"]` section),
+and potentially-stale plan data is recomputed fresh at apply-time rather
+than trusted from the plan (`validate_deps` at `cli.py:927`).
 
 ## Integration Map
 
@@ -190,7 +230,9 @@ local at `tui.py:185` not passed into `_apply_config()`).
 - Gap: how `_run_apply()` obtains `install_source` before its writer calls
   at `cli.py:918`/`923`, given `detect_installation()` isn't invoked until
   `cli.py:935` and `_run_plan()` never populates `config["install_source"]`.
-  Not resolved by research — see Proposed Solution's Option A/B.
+  **Resolved: Option A** — call `detect_installation()` unconditionally
+  near the top of `_run_apply()`, deduping against the existing
+  `cli.py:935` call (see Proposed Solution's Decision Rationale).
 
 ## Implementation Steps
 
@@ -318,5 +360,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-02T22:37:14 - `bea601b2-a6af-4ef3-8359-e10eab8b1a54.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:29:09 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
 - `/ll:capture-issue` - 2026-09-02T22:19:45 - `64850b61-eea3-464a-8dc5-33dc204c7fce.jsonl`
