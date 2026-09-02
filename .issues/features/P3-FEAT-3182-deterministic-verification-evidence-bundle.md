@@ -14,6 +14,12 @@ unproven_mechanism: true
 decision_needed: false
 spike_attempted: true
 spike_completed: true
+confidence_score: 95
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 ## Summary
@@ -192,6 +198,7 @@ python -m pytest scripts/tests/test_prepatch_check.py -v                   # 36 
 **Promotion**: move to `scripts/little_loops/spike/verify_evidence_bundle/` (or directly into `scripts/little_loops/cli/artifact/`) in a separate PR, wired to real `history.db` reads and a real git-facts helper.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T17:52:11 - `852881be-b9ae-4653-91cb-48f6a2940c2a.jsonl`
 - `/ll:decide-issue` - 2026-09-02T17:43:55 - `b56fa4ef-4a26-4110-aa7f-162711184ed7.jsonl`
 - `/ll:spike` - 2026-09-02T17:34:43 - `31beec40-f765-410a-8519-571661ae2696.jsonl`
 - `/ll:refine-issue` - 2026-09-02T17:19:59 - `2cfeb4de-9401-4270-a496-a50f1f1de3d7.jsonl`
