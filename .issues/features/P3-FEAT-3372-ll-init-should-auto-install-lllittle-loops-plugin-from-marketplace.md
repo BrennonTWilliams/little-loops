@@ -10,6 +10,9 @@ captured_at: '2026-09-01T03:55:51Z'
 unproven_mechanism: true
 verify_verdict: EVIDENCE_UNVERIFIED
 size: Medium
+learning_tests_required:
+  - 'claude CLI plugin subsystem: headless `claude plugin marketplace add <source>'
+  - '`claude plugin install ll@little-loops -y` — non-interactive install flow for FEAT-3372'
 ---
 
 # FEAT-3372: ll-init should auto-install ll@little-loops plugin from marketplace
@@ -54,6 +57,12 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 
 - No existing code path in this repository ever runs `claude plugin marketplace add` followed by `claude plugin install` — the combination this issue's remedy depends on. Every other `claude plugin`/`claude plugin marketplace` subprocess call in the codebase (`plugin update`, `plugin list`, `plugin marketplace update`) is a read-only or already-configured-target operation; none add a new marketplace source or perform a first-time install headlessly.
    ⚠ Unproven mechanism — no headless add+install precedent in repo
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- Two Learning Test Registry entries, both dated 2026-09-01 and `status: proven`, directly test the mechanism the marker above flags as unproven:
+  - `.ll/learning-tests/claude-cli-plugin-subsystem-headless-claude-plugin-marketplace-add-source.md` proves `claude plugin marketplace add <source>` succeeds non-interactively for a local path, is idempotent on re-add, errors cleanly (exit 1) on a nonexistent path, accepts a bare `owner/repo` GitHub shorthand, and honors `--scope project`. Critically, its final assertion — "after marketplace add, `plugin install <name>@<marketplace>` also runs non-interactively" — passed, with raw evidence showing `claude plugin install ll@little-loops` exiting 0 immediately after the marketplace add (`.ll/learning-tests/raw/claude-cli-plugin-subsystem-headless-claude-plugin-marketplace-add-source.txt:47-49`). This is a direct headless add-then-install precedent, run in this exact repo.
+  - `.ll/learning-tests/claude-plugin-install-lllittle-loops-y-non-interactive-install-flow-for-feat-3372.md` (named for this issue) proves `claude plugin install ll@little-loops -y` exits 0 reporting "already installed" on a repeat install, that `-s project` writes the declaration to a project-scoped settings file under that directory's `.claude/` (not user config), and that default scope is `user`. One assertion — "without `-y`, in a non-TTY context, install exits non-zero" — is recorded as **fail**: the observed run exited 0 without `-y` (raw: lines 14-17) — but that run targeted an already-installed plugin, so whether `-y` is load-bearing for a *fresh* install in a non-TTY context remains untested by this evidence; the Program Design section's basis for requiring `-y` (the `--help` text) stands unmodified.
 
 ## Integration Map
 
@@ -100,6 +109,11 @@ _Added by `/ll:refine-issue` — 2026-09-01 — based on codebase analysis:_
 - Two entry points reach `_dispatch_host_adapters()`: `_run_yes()` (`cli.py:672`, mutually exclusive with `_dispatch_host_upgrade()` based on `upgrade and not dry_run`) and `_run_apply()` (`cli.py:879`, called unconditionally, with `_dispatch_host_upgrade()` separately conditional at `cli.py:890`). A new claude-code branch in `_dispatch_host_adapters()` is reached identically by both.
 - Existing tests: `TestHostDispatch` (`scripts/tests/test_init_core.py:2950-3098`, drives through `main_init()` with `--hosts`, asserts filesystem/stdout side effects) and `TestDispatchHostUpgrade` (`scripts/tests/test_init_core.py:3106+`, calls `_dispatch_host_upgrade()` directly). No existing test exercises a positive/install action for `claude-code` in `_dispatch_host_adapters` — only negative-outcome tests (`test_hosts_claude_code_no_adapter_file`, `test_hosts_claude_code_no_agents_md`).
 - Mocking pattern used by `TestDispatchHostUpgrade` (reusable for the new branch's tests): patch `"little_loops.init.cli._subprocess.run"` with a `side_effect` recorder closure appending argv lists, and patch `"little_loops.host_runner.resolve_host"` (the *defining* module, not `little_loops.init.cli.resolve_host` — the import is local inside the function body) returning a `MagicMock` whose `.build_version_check.return_value.binary` is set.
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- Confirmed (analyzer): `_apply_config()` in `tui.py` calls `_dispatch_host_adapters(hosts, project_root, plugin_root, force=force)` at `tui.py:902` with no `dry_run` kwarg — it inherits the function's own default of `False`. The TUI path has no `--dry-run` concept at all, so this branch always executes for real when reached from the TUI, unlike the headless `_run_yes`/`_run_apply` paths which explicitly thread `dry_run`.
+- Convention (pattern-finder): resolving the CLI binary via `resolve_host()` rather than a hardcoded `"claude"` string is enforced by an existing test, `test_uses_resolve_host_not_hardcoded_claude` (`scripts/tests/test_init_install.py:336`) — the new claude-code branch's binary resolution should follow the same no-hardcoding rule this test polices.
 
 ## Program Design
 
@@ -186,6 +200,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-02T02:50:47 - `e1ccf5f9-3d11-46da-b6d8-7e77648d884b.jsonl`
 - `/ll:verify-issues` - 2026-09-01T04:44:53 - `8486b04b-164d-4f78-8378-f72d0c6fa4d3.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-01T04:42:38 - `07acdd53-4d5d-4207-99c9-310382b1a8e5.jsonl`
 - `/ll:verify-issues` - 2026-09-01T04:38:12 - `40b7a789-f8db-4653-baaa-e3175b0ea699.jsonl`
