@@ -1,7 +1,8 @@
 ---
 id: FEAT-2379
 type: FEAT
-title: 'Fleet loop-review runbook + `ll-logs fleet-review` — continuous improvement of built-in loops from cross-project logs'
+title: "Fleet loop-review runbook + `ll-logs fleet-review` \u2014 continuous improvement\
+  \ of built-in loops from cross-project logs"
 priority: P3
 status: open
 captured_at: '2026-06-28T20:54:00Z'
@@ -19,8 +20,13 @@ relates_to:
 - BUG-2377
 - ENH-2378
 decision_needed: false
-confidence_score: 75
+confidence_score: 90
 verify_verdict: VALID
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-2379: Fleet loop-review runbook + repeatable target
