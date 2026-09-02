@@ -213,6 +213,8 @@ class FSMExecutor:
         compression_config: CompressionConfig | None = None,
         orchestration_config: OrchestrationConfig | None = None,
         inbound: queue.Queue[dict[str, Any]] | None = None,
+        capture_git_facts: bool = False,
+        loop_yaml_path: Path | None = None,
     ):
         """Initialize the executor.
 
@@ -257,6 +259,20 @@ class FSMExecutor:
                 event, and records it in ``self.inbound_events``. Inherited by
                 nested sub-loop executors so interactions keep arriving while
                 the FSM is inside a ``loop:`` sub-state.
+            capture_git_facts: When True, ``run()`` records ``head_sha``,
+                ``branch``, and a tracked-content ``worktree_digest`` on the
+                ``loop_start`` event (and a fresh ``worktree_digest`` on
+                ``loop_complete``), via three ``_prepatch_git()`` calls against
+                ``self.working_dir or Path.cwd()``. Default False so the ~470
+                ``FSMExecutor(`` constructions in the test suite pay no git
+                subprocess cost (FEAT-3182). Only ``cli/loop/run.py`` sets this
+                True for top-level runs.
+            loop_yaml_path: Optional path to the loop YAML file being executed
+                (FEAT-3182). When set, its sha256 is recorded alongside its
+                path on the ``loop_start`` event so a downstream evidence
+                bundle can attest to exactly which generated YAML ran, even
+                though ``ll-loop scaffold-verify`` regenerates the same output
+                path on every invocation.
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
@@ -269,6 +285,12 @@ class FSMExecutor:
         self.run_model = run_model
         self.run_effort = run_effort
         self.working_dir = working_dir
+        # FEAT-3182: opt-in run-time git-fact capture, and the resolved loop
+        # YAML path/hash recorded on loop_start. Both None/False by default.
+        self.capture_git_facts = capture_git_facts
+        self.loop_yaml_path = loop_yaml_path
+        self._captured_head_sha: str | None = None
+        self._captured_branch: str | None = None
         self.orchestration_config = orchestration_config
         # FEAT-2675: project-level heuristic prompt-compression config. None (default)
         # skips compression entirely, so executors constructed without it are
@@ -548,7 +570,7 @@ class FSMExecutor:
         self.run_id = derive_run_id(self.started_at, self.fsm.name)
         self.start_time_ms = _now_ms()
 
-        self._emit("loop_start", {})
+        self._emit("loop_start", self._capture_loop_start_facts())
 
         try:
             while True:
@@ -1159,6 +1181,8 @@ class FSMExecutor:
             run_effort=self.run_effort,
             compression_config=self.compression_config,
             inbound=self.inbound,
+            capture_git_facts=self.capture_git_facts,
+            loop_yaml_path=loop_path,
         )
         child_executor._depth = depth  # propagate depth for further nesting
 
@@ -1666,6 +1690,54 @@ class FSMExecutor:
         if proc.returncode not in ok_codes:
             return None
         return proc.stdout
+
+    def _compute_worktree_digest(self, repo_root: Path) -> str | None:
+        """Sha256 of tracked-content changes: `git status --porcelain` + `git diff HEAD`.
+
+        FEAT-3182: a tracked-content-plus-untracked-names digest, not a full
+        working-tree digest — `git status --porcelain` lists untracked file
+        *names* only and `git diff HEAD` excludes untracked *content*, so a
+        probe that edits an untracked file leaves this digest unchanged
+        (documented limitation, not extended in this issue). Returns None on
+        any git failure via `_prepatch_git()`, never raising.
+        """
+        status = self._prepatch_git(repo_root, ["status", "--porcelain"])
+        if status is None:
+            return None
+        diff = self._prepatch_git(repo_root, ["diff", "HEAD"])
+        if diff is None:
+            return None
+        digest = hashlib.sha256()
+        digest.update(status.encode("utf-8"))
+        digest.update(diff.encode("utf-8"))
+        return digest.hexdigest()
+
+    def _capture_loop_start_facts(self) -> dict[str, Any]:
+        """Build the extra loop_start payload fields (FEAT-3182).
+
+        Loop-YAML hash/path are recorded whenever `loop_yaml_path` is set
+        (cheap, no subprocess). Git facts are recorded only when
+        `capture_git_facts` is True (opt-in — see constructor docstring).
+        """
+        payload: dict[str, Any] = {}
+        if self.loop_yaml_path is not None:
+            try:
+                yaml_bytes = Path(self.loop_yaml_path).read_bytes()
+            except OSError:
+                pass
+            else:
+                payload["loop_yaml_path"] = str(self.loop_yaml_path)
+                payload["loop_yaml_sha256"] = hashlib.sha256(yaml_bytes).hexdigest()
+        if self.capture_git_facts:
+            repo_root = self.working_dir or Path.cwd()
+            head_sha = self._prepatch_git(repo_root, ["rev-parse", "HEAD"])
+            branch = self._prepatch_git(repo_root, ["rev-parse", "--abbrev-ref", "HEAD"])
+            self._captured_head_sha = head_sha.strip() if head_sha else None
+            self._captured_branch = branch.strip() if branch else None
+            payload["head_sha"] = self._captured_head_sha
+            payload["branch"] = self._captured_branch
+            payload["worktree_digest"] = self._compute_worktree_digest(repo_root)
+        return payload
 
     def _prepatch_step_diff(self, repo_root: Path, base_ref: str) -> str:
         """Cumulative patch diff for the pre-patch check core's `step_diff` (ENH-2997).
@@ -3907,6 +3979,13 @@ class FSMExecutor:
         }
         if error is not None:
             payload["error"] = error
+        if self.capture_git_facts:
+            # FEAT-3182: a second digest at finish time so a probe that
+            # edited tracked source mid-run is distinguishable from a
+            # read-only run (a single loop_start digest cannot detect this).
+            payload["worktree_digest"] = self._compute_worktree_digest(
+                self.working_dir or Path.cwd()
+            )
         self._emit("loop_complete", payload)
 
         # ENH-2463: write a loop_runs summary row. Best-effort — a sink
@@ -3926,6 +4005,8 @@ class FSMExecutor:
                 terminated_by=terminated_by,
                 error=error,
                 failure_terminal=failure_terminal,
+                head_sha=self._captured_head_sha,
+                branch=self._captured_branch,
             )
         except Exception:
             pass  # Non-fatal: loop still completes (ENH-2463)

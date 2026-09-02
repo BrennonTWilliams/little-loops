@@ -8361,6 +8361,8 @@ class TestRateLimitCircuitIntegration:
             "orchestration_config",
             "run_effort",
             "inbound",
+            "capture_git_facts",
+            "loop_yaml_path",
         }
 
         sig_params = set(inspect.signature(FSMExecutor.__init__).parameters) - exempt
