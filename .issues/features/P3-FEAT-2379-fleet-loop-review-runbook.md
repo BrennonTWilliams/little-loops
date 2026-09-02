@@ -437,6 +437,7 @@ path is recorded, not built.
 - `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T20:32:58 - `62eddba7-ec09-476f-aa16-88e65bd2f581.jsonl`
 - pre-implementation review #2 - 2026-09-02 - Verified against code and a live `loop-fleet --all` run: fixed the flagging outcome set (`cycle` doesn't exist → `stalled`; added `failed`, the dominant failure); added collector extractions for `scan-failures`/`sequences` and direct `load_and_validate()` (Decisions #7–#8); sidecar now stores full outcome counter + absolute project paths, uses a `YYYYMMDDTHHMMSSZ` stamp, excludes itself from the baseline search, and `--json` writes nothing; Δsuccess_pct is the primary delta; zero-run derived unwindowed; deterministic `top_outcome` tie-break; added `--exclude-project` (source repo is 1102/2247 built-in runs) (Decisions #9).
 - pre-implementation review - 2026-09-02 - Verified tool claims against code; corrected `dead-skills` (skills only) and `diagnose-evaluators`/`calibrate-budget` (local history only) assumptions; decided mechanism (`ll-logs fleet-review`), flagging rule, JSON baseline, report layout; replaced live-fleet AC with fixture-based tests.
 - `/ll:format-issue` - 2026-09-02T19:54:35 - `972ffda4-3540-46cc-931f-997ebd4d75a3.jsonl`

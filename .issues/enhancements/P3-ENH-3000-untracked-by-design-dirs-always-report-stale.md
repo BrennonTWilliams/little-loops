@@ -19,6 +19,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 18
+reconcile_attempted: true
 ---
 
 # References into untracked-by-design directories always report `stale`
@@ -837,8 +838,14 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
 1. ~~The design decision above is made and recorded~~ — **done** (Option B,
    2026-08-16; `decision_needed: false`).
-2. The mechanism lands as a **post-lookup step-5 fallback** with the verdict
-   propagated to all three production `build_ref_index()` call sites.
+2. The mechanism lands as a **post-lookup step-5 fallback** inside
+   `classify_file_ref`, so the verdict reaches every caller automatically. Only
+   two call sites need the config-sourced prefix list threaded in explicitly —
+   `cli/issues/format_check.py:574` (pass `untracked_by_design` directly) and
+   `cli/issues/research_triage.py:61` (build the index and inject it via
+   `index=`); `research_triage.py`'s own two `build_ref_index()` fallbacks
+   (`:212`, `:317`) keep the keyword default and need no config import
+   (Program Design § Config Threading).
 3. The config key ships with a **non-empty default** so the fix is live without
    any project opting in.
 4. Corpus re-measurement (script in Motivation § Corpus Measurement).
@@ -1005,6 +1012,7 @@ All other citations (including `research_triage.py:416`,
 content changed.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-02T20:32:59 - `62eddba7-ec09-476f-aa16-88e65bd2f581.jsonl`
 - `/ll:verify-issues` - 2026-09-02T20:26:35 - `596b078b-a7c0-4bdc-bd3a-515cb9746073.jsonl`
 - `/ll:verify-issues` - 2026-09-02T17:36:28 - `f3822202-1edc-4948-9375-b7a4b68307e4.jsonl`
 - `/ll:wire-issue` - 2026-08-20T00:18:27 - `73ca1a58-7749-4732-a724-9e42d23243f7.jsonl`
