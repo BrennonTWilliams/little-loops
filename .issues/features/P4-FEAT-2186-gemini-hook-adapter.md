@@ -15,6 +15,7 @@ labels:
 - gemini
 - host-compat
 - hooks
+reconcile_attempted: true
 ---
 
 # FEAT-2186: Hook adapter — hooks/adapters/gemini/
@@ -102,9 +103,14 @@ alias is provided by Gemini for compatibility.
 ## Integration Map
 
 ### Files to Modify
-- `ll:configure` command — add a `--gemini` path that injects the adapter's hook
-  entries into `.gemini/settings.json` (see Implementation Step 8).
-  > ⚠ Superseded — `ll:configure` has no host wiring; real path is `ll-init --hosts gemini` → `_dispatch_host_adapters()` (see § Codebase Research Findings)
+- `scripts/little_loops/init/cli.py` — add `"gemini"` to the `_KNOWN_HOSTS`
+  frozenset (currently `{"claude-code", "codex", "opencode", "pi", "kimi-code",
+  "qwen", "omp"}`, line 48-50) and a `gemini` branch in
+  `_dispatch_host_adapters()` (lines 94-216) that calls `install_gemini_adapter()`;
+  remove/update the comment at lines 41-47 stating Gemini has no install wiring.
+- `scripts/little_loops/init/writers.py` — add `install_gemini_adapter()`,
+  following `install_qwen_adapter`'s JSON-merge pattern (line 896) for
+  `.gemini/settings.json` (see Implementation Step 8).
 
 ### New Files
 - See [API/Interface § New Files](#apiinterface) for the full list of adapter
@@ -112,23 +118,50 @@ alias is provided by Gemini for compatibility.
 
 ### Dependent Files (Callers/Importers)
 - The host-agnostic ll hook handler invoked by the adapter scripts — reused
-  unchanged (`scripts/little_loops/hooks/`).
+  unchanged (`scripts/little_loops/hooks/`, entrypoint
+  `python -m little_loops.hooks <intent>` → `main_hooks()`).
+- `main_hooks()`'s `_dispatch_table()` (`scripts/little_loops/hooks/__init__.py`)
+  only accepts existing ll intent names (`session_start`, `pre_compact`,
+  `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, `session_end`) — the
+  Gemini→ll event-name translation happens entirely inside the adapter shell
+  scripts, not in the handler.
+- `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py`) — new caller
+  of `install_gemini_adapter()` at install time.
 
 ### Similar Patterns
-- `hooks/adapters/codex/` — closest pattern to follow (per-host adapter subdir).
+- `scripts/little_loops/hooks/adapters/codex/` — closest pattern for the
+  adapter shell scripts + `hooks.json` shape (event→intent mapping); the
+  runnable code lives under `scripts/little_loops/hooks/adapters/<host>/`, not
+  the top-level `hooks/adapters/<host>/` (which holds only the docs-only
+  README for codex/kimi/qwen/omp).
+- `install_qwen_adapter` (`scripts/little_loops/init/writers.py:896`) — closest
+  precedent for this issue's ratified Option A JSON-injection mechanism into
+  `.gemini/settings.json`: managed entries identified by an `"ll:"`-prefixed
+  `name` and an `"ll-gen:{{LL_GEN_VERSION}}"` stamp in `description`, since
+  JSON has no comment syntax for markers (unlike Kimi's TOML comment-marker
+  approach).
 - `hooks/adapters/claude-code/` — alternate reference; same stdin/stdout JSON
   protocol Gemini uses.
 
 ### Tests
 - `scripts/tests/test_gemini_adapter.py` — new; assert event→intent mapping and
-  that each adapter script dispatches the correct `LLHookEvent`.
+  that each adapter script dispatches the correct `LLHookEvent`. Follow the
+  existing per-host pattern: declare its own `ADAPTER_DIR` (pointing at
+  `scripts/little_loops/hooks/adapters/gemini/`) and `EXPECTED_SHIMS`
+  constants plus a `TestGeminiAdapterSentinels` + `TestGeminiAdapterIntegration`
+  class split — each of `test_codex_adapter.py`, `test_kimi_adapter.py`,
+  `test_qwen_adapter.py`, `test_omp_adapter.py`, `test_claude_code_adapter.py`,
+  and `test_opencode_adapter.py` declares its own independently; there is no
+  shared fixture/helper module to import from.
 
 ### Documentation
 - `hooks/adapters/gemini/README.md` — installation instructions + event mapping.
 - `docs/reference/HOST_COMPATIBILITY.md` — note Gemini hook support once landed.
 
 ### Configuration
-- `.gemini/settings.json` — user-local file patched by `ll:configure --gemini`.
+- `.gemini/settings.json` — user-local file patched by `install_gemini_adapter()`
+  via `ll-init --hosts gemini` (not `ll:configure`, which has no host/adapter
+  wiring).
 
 ### Codebase Research Findings
 
@@ -145,26 +178,42 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Create `hooks/adapters/gemini/` directory.
-2. Create `hooks/adapters/gemini/hooks.json` — event→handler mapping for the 6
-   events above.
-3. Create `hooks/adapters/gemini/session-start.sh` — wraps `session_start` intent.
-4. Create `hooks/adapters/gemini/pre-compact.sh` — wraps `pre_compact` intent.
-5. Create `hooks/adapters/gemini/pre-tool-use.sh` — wraps `pre_tool_use` intent.
-6. Create `hooks/adapters/gemini/post-tool-use.sh` — wraps `post_tool_use` intent.
-7. Create `hooks/adapters/gemini/README.md` — installation instructions and event
+1. Create `scripts/little_loops/hooks/adapters/gemini/` directory — this is
+   where the runnable adapter code lives (per the codex/kimi/qwen/omp
+   precedent), not the top-level `hooks/adapters/gemini/`.
+2. Create `scripts/little_loops/hooks/adapters/gemini/hooks.json` —
+   event→handler mapping for the 6 events above.
+3. Create `scripts/little_loops/hooks/adapters/gemini/session-start.sh` —
+   exports `LL_HOOK_HOST=gemini` and invokes
+   `python -m little_loops.hooks session_start`.
+4. Create `scripts/little_loops/hooks/adapters/gemini/pre-compact.sh` — wraps
+   `pre_compact`.
+5. Create `scripts/little_loops/hooks/adapters/gemini/pre-tool-use.sh` — wraps
+   `pre_tool_use` (Gemini's `BeforeTool` event).
+6. Create `scripts/little_loops/hooks/adapters/gemini/post-tool-use.sh` —
+   wraps `post_tool_use` (Gemini's `AfterTool` event).
+7. Create `hooks/adapters/gemini/README.md` — top-level, docs-only (mirrors
+   the codex/kimi/qwen/omp split) — installation instructions and event
    mapping table.
-8. Create `ll:configure --gemini` extension (or document manual installation) to
-   inject hook entries into `.gemini/settings.json`.
-   > ⚠ Superseded — no `ll:configure` host wiring exists; real path is `ll-init --hosts gemini` → `_dispatch_host_adapters()` (see § Codebase Research Findings)
+8. Add `"gemini"` to `_KNOWN_HOSTS` and add a `gemini` branch to
+   `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py`) that calls
+   new `install_gemini_adapter()` (`scripts/little_loops/init/writers.py`),
+   which performs a structured JSON merge into `.gemini/settings.json`
+   mirroring `install_qwen_adapter`'s managed-entry pattern (`"ll:"`-prefixed
+   `name` + `"ll-gen:{{LL_GEN_VERSION}}"` stamp). Users activate via
+   `ll-init --hosts gemini`, not `ll:configure --gemini`.
 9. Add tests in `scripts/tests/test_gemini_adapter.py`.
 
 ## Acceptance Criteria
 
-- `hooks/adapters/gemini/hooks.json` exists with all 6 event mappings.
+- `scripts/little_loops/hooks/adapters/gemini/hooks.json` exists with all 6
+  event mappings.
 - A `SessionStart` event from Gemini triggers the `session_start` ll intent handler.
 - A `BeforeTool` event triggers `pre_tool_use`.
-- `hooks/adapters/gemini/README.md` documents how to activate the adapter.
+- `hooks/adapters/gemini/README.md` documents how to activate the adapter via
+  `ll-init --hosts gemini`.
+- `"gemini"` is added to `_KNOWN_HOSTS` and `_dispatch_host_adapters()` wires
+  `install_gemini_adapter()`.
 - Tests pass.
 
 ## API/Interface
@@ -256,6 +305,7 @@ _Run `/ll:normalize-issues` to discover and link additional relevant docs._
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-02T22:34:55 - `89e1b823-9c08-49e4-9fdf-cadf3dbc0d62.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:23:46 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
