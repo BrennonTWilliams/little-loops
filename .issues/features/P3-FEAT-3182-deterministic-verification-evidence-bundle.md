@@ -12,6 +12,8 @@ labels:
 - audit-evidence
 unproven_mechanism: true
 decision_needed: true
+spike_attempted: true
+spike_completed: true
 ---
 
 ## Summary
@@ -138,5 +140,34 @@ verify-loop run artifacts and `history.db` tables the bundle draws from, and
 the exporter's CLI surface.
 
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-09-02_
+
+Plan: `.ll/spikes/spike-FEAT-3182.md`. Spike location: `scripts/tests/spike/verify_evidence_bundle/`.
+
+**Retired risks**
+
+| Risk (from Program Design → Decision Rules / Proposed Solution) | Proven by | Result |
+|---|---|---|
+| No precedent distinguishing LLM- vs. deterministic-origin fields on a bundle | `test_llm_sourced_fields_never_land_in_evidentiary` | ✓ pass |
+| AC1: enumerable, source-traced evidentiary entries | `test_every_evidentiary_entry_traces_to_deterministic_source` | ✓ pass |
+| AC2: reproducible across reruns of unchanged inputs | `test_rerun_over_unchanged_inputs_is_byte_identical` | ✓ pass |
+| AC4: incomplete evidence produces an explicit gap, not a silently smaller bundle | `test_missing_run_dir_produces_explicit_gap_not_silent_bundle`, `test_missing_loop_runs_row_produces_explicit_gap` | ✓ pass |
+| AC5: readable without little-loops installed (plain JSON, no custom types) | `test_bundle_is_plain_json_no_custom_types` | ✓ pass |
+| Isolation guard | `test_spike_does_not_import_production_session_store_or_fsm` | ✓ pass |
+
+**Verification**: 7 spike tests pass + 37 tests pass across 2 named regression suites (3 commands total, all exit 0):
+```
+python -m pytest scripts/tests/spike/verify_evidence_bundle/ -v            # 7 passed
+python -m pytest scripts/tests/test_feat3304_artifact_dashboard.py -v -k reproducible   # 1 passed
+python -m pytest scripts/tests/test_prepatch_check.py -v                   # 36 passed
+```
+
+**Empirical finding (the question this spike was scoped to answer)**: the segregation mechanism itself works cleanly — no LLM-sourced field ever leaks into `evidentiary`, and reruns are byte-identical. But the rendered sample bundle (`driver.py`, run against the fixture) shows the tradeoff the issue's `## Proposed Solution` named is real, not hypothetical: `evidentiary` contains only structural facts (git ref, `loop_runs` row fields, file hashes, a probe count of 3) — **no pass/fail content anywhere in that section**. Both criterion outcomes ("yes"/"yes") exist only in `context_non_evidentiary`, explicitly labeled `llm_sourced: true`. A reviewer reading only the evidentiary section of an Option A bundle cannot tell whether the check passed — only that a run occurred, produced expected artifacts, and ran 3 probes. This is consistent with the issue's own framing ("a check was attempted" vs. "the check passed") and should inform `/ll:decide-issue`'s choice between Option A and Option B rather than being treated as a spike failure — the mechanism works exactly as designed; whether that weaker attestation is still useful is the actual decision to make.
+
+**Promotion**: move to `scripts/little_loops/spike/verify_evidence_bundle/` (or directly into `scripts/little_loops/cli/artifact/`) in a separate PR, wired to real `history.db` reads and a real git-facts helper.
+
 ## Session Log
+- `/ll:spike` - 2026-09-02T17:34:43 - `31beec40-f765-410a-8519-571661ae2696.jsonl`
 - `/ll:refine-issue` - 2026-09-02T17:19:59 - `2cfeb4de-9401-4270-a496-a50f1f1de3d7.jsonl`
