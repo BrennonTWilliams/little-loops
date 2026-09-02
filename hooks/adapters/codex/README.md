@@ -194,10 +194,19 @@ Other state directories are **not** redirected by `LL_STATE_DIR=.codex`:
 - `.loops/` (FSM run state)
 - `.issues/` (issue tracking)
 - `.loops/tmp/scratch/` (scratch pads)
+- `.ll/ll-continue-prompt.md` (session handoff)
+- `.ll/history.db` (session store)
 - Any other directory rooted at the project root
 
-If a future feature needs full per-host state redirection, file a separate
-issue — do not silently expand `LL_STATE_DIR`'s reach here.
+This is a deliberate decision, not an open gap: research spike **ENH-1722**
+(`thoughts/research/codex-state-dir-redirection.md`) evaluated extending
+redirection to these surfaces and concluded **leave shared** — issues,
+loops, scratch, the continuation prompt, and history are project-level
+artifacts that multi-host users depend on sharing (a coherent backlog,
+cross-host handoffs, cross-host effort tracking), so Codex intentionally
+reads and writes the same paths Claude Code does. If a future feature needs
+full per-host state redirection, file a separate issue — do not silently
+expand `LL_STATE_DIR`'s reach here.
 
 ## Smoke Test
 

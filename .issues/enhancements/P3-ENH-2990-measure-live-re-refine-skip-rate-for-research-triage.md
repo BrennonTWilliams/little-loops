@@ -18,6 +18,7 @@ labels:
 verify_verdict: VALID
 depends_on:
 - ENH-3000
+decision_needed: true
 ---
 
 # ENH-2990: Measure the live re-refine skip rate for `research-triage`
@@ -88,6 +89,13 @@ Distinguishing `stale` from the coverage-side reasons is the whole point — tha
 split is exactly the 33.7%-vs-8.6% gap, measured on real invocations instead of
 inferred from a corpus sweep.
 
+> **Selected:** Option A — instrument the live CLI. A near-identical shape
+> already shipped (`advisor_consults`, schema v45/FEAT-3300: a new table for
+> one call site's structured per-invocation outcome, written directly from
+> feature code rather than through `cli_event_context`), and it directly
+> captures the `stale`-vs-coverage discriminant that is the whole point of
+> this measurement.
+
 **Option B — historical replay.** For each recorded `/ll:refine-issue` Session
 Log entry, reconstruct the issue's content and the repo state at that timestamp
 (`git show <rev>:<path>`) and score the predicate as it would have run. No
@@ -104,6 +112,54 @@ A follow-up worth scoping only after the number is in hand: if `stale`
 dominates, consider making the Staleness Check line-grained or scoping it to
 the specific paths an axis's evidence resolved against, rather than every
 resolved path in the section.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- Option B precedent: `read_paths_at_ref()` (`scripts/little_loops/test_tamper_guard.py:112-120`, backed by `_git()` at `:572-586`) already reconstructs file content at a git ref via `git show {ref}:{path}` — built for ENH-2935's non-FSM orchestrators, which verify after the run instead of at a live moment. A separate file gives a concrete per-call cost: `scripts/little_loops/cli/verify_evidence.py:799-809`'s `BlobReader` docstring measures `git show` at ~7ms/process-spawn vs. 0.048ms/blob for a long-lived `git cat-file --batch` process — the cost Option B's "expensive" framing should be checked against if chosen. This is separate from Option B's own stated lossiness for uncommitted issue-file state.
+- Option C precedent: `ab_writer.py`'s `_AB_SCHEMA`/`calculate_ab_summary()`/`ABResults.per_item` (used by `ll-loop run --baseline`) is the closest existing "run N times, log one structured record per item, then summarize" shape in this codebase — but it serves harness/baseline arms, not a CLI-invocation sampler. No existing implementation of "wrap the next N autodev runs with a shim, stop at a fixed sample size" was found (searched repo-wide for shim/wrap-run/bounded-sample/sample_size patterns, no hits) — Option C would be built from scratch.
+- Where to record the eventual number: two section-heading conventions exist in this repo for "measure X, then decide" results — ENH-2971 uses a custom `## Threshold Validation (Implementation Step N — measured DATE)` heading (which is what this issue's own Implementation Step 4 already targets); ENH-3291 instead uses the standard `## Verification Notes` template heading plus a checked-in labelled-sample artifact (`.ll/evidence-precision-labels.json`) for reproducibility. Since this issue already commits to extending ENH-2971's heading specifically, follow ENH-3291's "check in the sample" pattern only if the eventual measurement is non-trivial to reproduce from `history.db` alone.
+
+### Decision Rationale
+
+**Selected: Option A — instrument the live CLI.**
+
+Scored via parallel codebase-evidence gathering across all three options:
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — instrument live CLI | 3 | 2 | 2 | 3 | **10/12** |
+| B — historical replay | 2 | 1 | 2 | 1 | 6/12 |
+| C — bounded live sample | 1 | 1 | 2 | 1 | 5/12 |
+
+Option A wins on both consistency and risk. A near-identical shape already
+shipped and can be copied directly: `advisor_consults` (schema v45/FEAT-3300)
+is a new `history.db` table for one call site's structured per-invocation
+outcome, with a fail-soft writer (`write_advisor_consult()`,
+`session_store/writers.py:1823-1877`) called directly from feature code —
+sidestepping `cli_event_context`'s per-process-only granularity the same way
+`research-triage` would need to. The migration mechanics (`_MIGRATIONS[N]`
+append, `_apply_migrations()`) are simple and already exercised. Risk is low
+because the change is additive and the writer never raises.
+
+Option B's replay is undermined by the codebase's own admission that this
+repo runs with a persistently dirty working tree and `issues.auto_commit`
+defaults to `false` and self-skips whenever other files are dirty
+(`research_triage.py:19-25`, `hooks/scripts/issue-auto-commit.sh:47,62-69`) —
+so `git show <ref>:<issue-path>` at a recorded refine timestamp has no
+structural guarantee of matching what the predicate actually saw. That
+lossiness directly threatens the "defensible figure" the issue asks for, not
+just implementation cost.
+
+Option C's single wrappable call site (`commands/refine-issue.md:169`) makes
+its "cheapest to build" framing plausible on paper, but the call happens
+inside an LLM-executed markdown bash block rather than Python/FSM
+machinery — there is no existing subprocess-shim or self-disabling-after-N
+pattern to build on, and `ll-issues` isn't in the one hook
+(`scratch-pad-redirect.sh`) that intercepts shelled-out commands today. It
+would cost as much to build as Option A while producing a smaller, temporary
+sample instead of a durable measurement pipeline.
 
 ## Integration Map
 
@@ -123,6 +179,41 @@ resolved path in the section.
   existing corpus-sweep measurement and its documented coverage-only reading;
   whatever this issue measures should be recorded alongside it rather than
   replacing it.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- `cli_events` (`scripts/little_loops/session_store/schema.py:242-249`) has no free-form JSON/payload column — `args` is raw `sys.argv[1:]` capped to 50 entries, `exit_code`/`duration_ms` are the only outcome columns. A structured per-axis verdict payload cannot attach to the existing row without a schema change (new table or new column); the answer to this issue's own "check whether the existing CLI-invocation capture can carry a structured payload" question is confirmed no, not as-is.
+- `cli_event_context()` wraps the entire `ll-issues` process once (`scripts/little_loops/cli/issues/__init__.py:21`), not per-subcommand — every one of `ll-issues`' ~90 subcommands writes `binary="ll-issues"`; a `research-triage` row is identifiable today only by parsing `args[0]` from its stored JSON array.
+- Event tables in this codebase that do model a closed-set outcome column enforce the set with a SQL `CHECK` constraint at the DB layer (`verdict_events.verdict`, `schema.py:768-781`/`:1202-1219`; the cross-column `abstention_reason` constraint) — independent of whatever Python-side type the value has before the INSERT. Relevant if the new reason code lands as its own `history.db` column.
+- ENH-3000 (`.issues/enhancements/P3-ENH-3000-*.md`) is still `status: open` and unimplemented — `RefStatus` (`scripts/little_loops/text_utils.py:161`) is the pre-ENH-3000 five-member `Literal`, with no `untracked_by_design` anywhere in `scripts/little_loops/` (repo-wide search, no hits). Confirms the reconciliation constraint this issue's own Scope Boundary note already flags.
+
+## Program Design
+
+### Types
+
+- `AxisCoverage` (`scripts/little_loops/issues/research_triage.py:97`, `@dataclass(frozen=True)`) — exactly `axis: ResearchAxis`, `covered: bool`, `evidence: str`. No reason-code field exists today. `evidence` currently collapses three distinct rejection paths into an identical empty string: the ratio rejection and the zero-eligible rejection (`_triage_axis`, line 423-424, single `return AxisCoverage(axis=axis, covered=False, evidence="")` for both) and the symbol-requirement rejection (line 431-432, same bare `evidence=""`). Only the staleness rejection (line 437-448) populates `evidence`, with a `"stale: "`-prefixed prose string (line 445) — today that prefix is the *only* machine-checkable signal separating `stale` from the three coverage-side reasons.
+- `cli_events` (`scripts/little_loops/session_store/schema.py:242-249`): `id, ts, binary, args, exit_code, duration_ms`. No free-form JSON/payload column. `args` is raw `sys.argv[1:]` (JSON-encoded, capped to the first 50 elements, `writers.py:524`) — not a slot a caller can attach a structured verdict to. `cli_event_context()` wraps the entire `ll-issues` process once (`cli/issues/__init__.py:21`), not per-subcommand: every one of `ll-issues`' ~90 subcommands writes `binary="ll-issues"`, so identifying a `research-triage` row today requires parsing `args[0]` out of the stored JSON array.
+
+### Signatures
+
+- `_triage_axis(...) -> AxisCoverage` (`scripts/little_loops/issues/research_triage.py:402-451`) — the one function containing all four rejection branches this issue's reason-code taxonomy needs to distinguish.
+- `cmd_research_triage(config, args)` (`scripts/little_loops/cli/issues/research_triage.py:45-71`) — confirmed thin wrapper: calls `triage_research_axes(path, config.project_root)` with all staleness/index args defaulted, then `print_json({c.axis: c.to_dict() for c in coverages})`. No telemetry write happens inside it today.
+- `cli_event_context(db_path, binary, args)` (`scripts/little_loops/session_store/writers.py:482-560`) — inserts one `cli_events` row per `ll-issues` process on enter, updates `exit_code`/`duration_ms` on exit; best-effort (`sqlite3.Error` caught and logged, never propagated).
+
+### Call Path
+
+`ll-issues research-triage <ID>` → `main_issues()` opens `cli_event_context` and dispatches (`cli/issues/__init__.py:21,1073`) → `cmd_research_triage()` (`cli/issues/research_triage.py:61`) → `triage_research_axes()` → `_triage_axis()` per axis (`issues/research_triage.py:334`) → `AxisCoverage.to_dict()` → JSON printed to stdout. The verdict never reaches `history.db` on this path — `cli_event_context.__exit__` only records `exit_code`/`duration_ms` against the raw-argv row already inserted on entry.
+
+### Decision Rules
+
+- New reason codes to add (named in this issue's own Summary/Integration Map): `below_threshold`, `no_qualified_refs`, `missing_symbol`, `stale`.
+- Discriminator: `no_qualified_refs` when `eligible == 0`; `below_threshold` when `eligible > 0` and `len(resolved) / eligible < COVERAGE_THRESHOLD` — both currently the *same* branch (`_triage_axis`, line 423-424), so splitting them requires branching that single `if`. `missing_symbol` when coverage passes but the symbol-requirement filter (`_has_symbol`, lines 426-430) empties `resolved` (line 431-432). `stale` when both pass but `build_change_time_index` finds a resolved path changed after the issue's last refine (lines 437-448) — already prefixed `"stale: "` in `evidence`.
+- Modeling convention: a new `Literal[...]` alias, not an `Enum` or a dataclass field wrapping one — this is the codebase's stated convention for a classifying function's return value that is stored and compared (`ResearchAxis`, `research_triage.py:59`; `RefStatus`, `text_utils.py:161`; `Verdict`, `doctor_trim.py:66`; documented explicitly as convention in `.issues/enhancements/P3-ENH-3298-*.md:232`). `Enum` classes in this codebase (`RunnerType`, `MergeStatus`, `WorkerStage`, `InstallStatus`, `HandoffBehavior`, `ValidationSeverity`) model internal lifecycle/control-flow state instead — a different shape of problem, not a competing convention for this case.
+- If the reason code is persisted as its own `history.db` column rather than staying in-process: existing closed-set outcome columns (`verdict_events.verdict`, `schema.py:768-781`/`:1202-1219`; the cross-column `abstention_reason` constraint) enforce the set with a SQL `CHECK` constraint at the DB layer, independent of the Python-side `Literal` type — the same pattern would apply here.
+- Escape hatch: the reason code is additive to `evidence`, not a replacement — `evidence`'s existing prose stays human-readable.
+- Reconciliation constraint (already flagged by this issue's own Scope Boundary note): ENH-3000 is still `status: open` and unimplemented — `RefStatus` (`text_utils.py:161`) is still the pre-ENH-3000 five-member `Literal` with no `untracked_by_design` value anywhere in `scripts/little_loops/` (repo-wide search, no hits). The reason-code taxonomy should leave room for that eventual sixth value rather than being finalized as a closed set independently of it.
 
 ## Implementation Steps
 
@@ -161,6 +252,8 @@ resolved path in the section.
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-02T06:11:49 - `5cd97cca-9f12-4312-9a9d-0482900c54a9.jsonl`
+- `/ll:refine-issue` - 2026-09-02T05:15:39 - `4773592b-afeb-43e5-9f21-5583f07f1f43.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:58 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:52 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`

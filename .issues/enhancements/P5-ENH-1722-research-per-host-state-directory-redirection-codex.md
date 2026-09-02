@@ -3,8 +3,9 @@ id: ENH-1722
 title: Research and decide per-host state directory redirection for Codex
 type: ENH
 priority: P5
-status: open
+status: done
 captured_at: '2026-05-26T02:23:05Z'
+completed_at: '2026-09-02T06:16:47Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
@@ -31,6 +32,24 @@ score_change_surface: 25
 ## Motivation
 
 The decision is implicit — nobody wrote down whether a Codex user is better served by `.codex/issues/`, `.codex/loops/` etc., or by the current shared-path behavior. Without a written decision, the question recurs in every conversation touching Codex state. A one-time research note closes the loop and either confirms the status quo is correct or opens a concrete implementation path.
+
+## Current Behavior
+
+`LL_STATE_DIR=.codex` scopes only the config probe path (`_config_candidates()`
+in `scripts/little_loops/config/core.py:120-154`). All other state surfaces —
+`.issues/`, `.loops/`, `.loops/tmp/scratch/`, `.ll/ll-continue-prompt.md`, and
+`.ll/history.db` — remain at their default, shared paths regardless of host,
+with no per-host branching in their resolvers.
+
+## Expected Behavior
+
+A research note (`thoughts/research/codex-state-dir-redirection.md`) plus an
+explicit, per-surface decision — "leave shared" or "scope per host" — recorded
+in `HOST_COMPATIBILITY.md`'s `[^state]` footnote. If any surface's decision is
+"scope per host," a child issue capturing the implementation plan. Absent that
+decision, the default expectation (per the Strong prior in Notes) is "leave
+shared," since a project's `.issues/`/`.loops/` are host-independent; the
+research note may confirm this rather than overturn it.
 
 ## Acceptance Criteria
 
@@ -125,6 +144,30 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 - Architectural contrast for the research note's Decision section, confirmed by direct analysis: adopting the `_config_candidates()` branch-per-host style for the 4 non-config surfaces (`.issues/`, `.loops/`, scratch, continuation-prompt) requires each resolver gaining its own host/state_dir-aware branch behind a single new env-read boundary, analogous to `resolve_config_path()` — no caller changes needed beyond the resolver internals, since callers already go through `BRConfig`/the shared constants. Adopting the `host_layout_for()` table-driven style instead would require every one of that pattern's ~15 call sites (each of which already independently reads `LL_HOOK_HOST`) to additionally pass `host` into the currently host-blind `.issues/`/`.loops/`/scratch/continuation-prompt resolvers, since no single choke point exists for those surfaces today the way `resolve_config_path()` is for config. This is a concrete cost difference between the two candidate patterns the research note should weigh, not just cite as existing.
 - `host_layout_for()`'s existing fallback behavior (confirmed via `test_enh_3166_qwen_normalizer.py::TestHostLayoutRegistry`) is strict on `projects_root` (stays `None` for an unregistered host) but lenient on subagent/session fields (falls back to Claude-shaped defaults) — relevant precedent for how a table-driven implementation would need to handle an unregistered 6th host if that pattern is chosen.
 
+## Scope Boundaries
+
+- Producing the research note and recording the decision — implementing
+  "scope per host" (if that's the decision) is out of scope for this issue and
+  goes into the follow-on child issue named in Acceptance Criteria
+- Applies to all 5 currently-integrated hosts routed through
+  `_config_candidates()` (codex, gemini, omp, kimi-code, qwen), per the Scope
+  Boundary note below — not just Codex
+- Does not cover `host_layout_for()`'s session-transcript-directory surface,
+  which is a structurally distinct, already-host-aware mechanism serving a
+  different purpose (reading each host's native transcripts, not scoping a
+  little-loops-owned state surface)
+
+## Impact
+
+- **Priority**: P5 — research-only; no functional gap or user-facing bug,
+  deferred by EPIC-1463 pending exactly this note
+- **Effort**: Small — bounded to drafting one research note, updating one
+  footnote (plus the Codex README's mirrored section), and conditionally
+  filing a child issue; no code change unless the decision warrants it
+- **Risk**: Low — the research path itself has zero side effects; any
+  follow-on implementation is scoped to a separate child issue
+- **Breaking Change**: No
+
 ## Notes
 
 - Research-session pairing: FEAT-2122 (Codex native spawn model) is the same
@@ -152,6 +195,31 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 
 2026-06-18 (OUTDATED): `thoughts/research/codex-state-dir-redirection.md` still does not exist. `HOST_COMPATIBILITY.md` `[^state]` footnote still unresolved. No progress since capture (2026-05-26). Research task accurately described; no changes needed to issue body.
 
+## Resolution
+
+- **Action**: improve (research)
+- **Completed**: 2026-09-02
+- **Decision**: Leave shared — all five state surfaces (`.issues/`, `.loops/`,
+  `.loops/tmp/scratch/`, `.ll/ll-continue-prompt.md`, `.ll/history.db`) stay
+  at their default, unscoped project-root paths for every host routed
+  through `_config_candidates()` (codex, gemini, omp, kimi-code, qwen) and
+  Pi. `LL_STATE_DIR` scoping remains bounded to the config probe, as FEAT-957
+  originally scoped it.
+- **Status**: Completed
+
+### Changes Made
+- `thoughts/research/codex-state-dir-redirection.md`: new research note —
+  per-surface analysis for all five state surfaces, cross-cutting precedent
+  and architectural-alternative discussion, and the Decision section
+- `docs/reference/HOST_COMPATIBILITY.md`: `[^state]` footnote rewritten from
+  the unresolved shape to the resolved shape (matching the `[^cmds]`
+  template), citing this issue and the research note
+- `hooks/adapters/codex/README.md`: `## State Directory (LL_STATE_DIR)`
+  section updated to name all five non-redirected surfaces (previously
+  missing continuation-prompt and history.db) and to frame the current
+  behavior as a deliberate, researched decision rather than an open gap
+- No child issue filed — no surface's decision was "scope per host"
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
@@ -169,6 +237,8 @@ _Added by `/ll:refine-issue` — 2026-08-31 — based on codebase analysis:_
 Confirmed by codebase research: `_config_candidates()` (`scripts/little_loops/config/core.py:120-154`) already generalized config-probe host scoping from Codex-only to 5 hosts — `codex`, `gemini`, `omp`, `kimi-code`, `qwen` — all of which currently share `.issues/`, `.loops/`, scratch, continuation-prompt, and `history.db` unconditionally. This raises (not lowers) the value of a single cross-host decision here: whatever this issue decides for Codex is the de facto answer for all 5 hosts unless the Decision section says otherwise, so the note should explicitly state whether its recommendation generalizes to gemini/omp/kimi-code/qwen (not just Pi/omp as the original 2026-06-09 note anticipated).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-02T06:16:16 - `c5d96db7-ca67-4993-af3e-1c8e6e0baa85.jsonl`
+- `/ll:ready-issue` - 2026-09-02T06:08:44 - `004bf965-6e60-46ab-816e-f22abeee623e.jsonl`
 - `/ll:confidence-check` - 2026-09-02T03:50:15 - `951d4372-98bd-4efb-87f2-c6183621aa26.jsonl`
 - `/ll:refine-issue` - 2026-09-02T03:46:00 - `86b9ee51-21a9-413c-ab48-094245ce5eae.jsonl`
 - `/ll:refine-issue` - 2026-09-01T02:54:09 - `02c2a272-7226-4055-8f34-6d4118279276.jsonl`

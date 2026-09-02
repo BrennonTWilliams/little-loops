@@ -509,10 +509,17 @@ the adapter.
 | Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] |
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
-    config probe only. Other state directories remain at their default
-    paths regardless of host. If a future feature needs full per-host
-    state redirection, file a separate issue — do not silently expand
-    `LL_STATE_DIR`'s reach.
+    config probe only. Research spike **ENH-1722** evaluated extending
+    redirection to the other four surfaces plus the session store and
+    concluded **leave shared** for all of them, across all currently
+    integrated hosts (codex, gemini, omp, kimi-code, qwen) and Pi — issues,
+    loops, scratch, the continuation prompt, and history are project-level
+    artifacts that multi-host users depend on sharing (a coherent backlog,
+    cross-host handoffs, cross-host effort tracking). Research artifact:
+    `thoughts/research/codex-state-dir-redirection.md`. No implementation
+    followed; `LL_STATE_DIR`'s reach remains bounded to the config probe.
+    If a future feature needs full per-host state redirection, file a
+    separate issue rather than silently expanding `LL_STATE_DIR`'s reach.
 
 [^kimiwire]: Kimi wire files (`session_*/agents/main/wire.jsonl`) use a
     typed-event schema, not Claude's message schema — session-folder
