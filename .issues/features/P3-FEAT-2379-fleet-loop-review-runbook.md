@@ -25,6 +25,32 @@ verify_verdict: VALID
 
 # FEAT-2379: Fleet loop-review runbook + repeatable target
 
+## Summary
+
+Turn "use other projects' logs to continuously fix and improve this repo's built-in loops"
+into a repeatable, documented cycle: a runbook at `docs/runbooks/FLEET_LOOP_REVIEW.md` plus a
+`make fleet-loop-review` entry point that harvests fleet-wide loop outcomes from other
+projects on the machine, attributes failures to specific built-in loops, and writes a dated
+diagnostic report with a baseline diff against the prior run.
+
+## Current Behavior
+
+Cross-project loop-review happens ad hoc: someone manually runs `ll-logs loop-fleet`,
+`scan-failures`, `sequences`, and `dead-skills` against other projects, eyeballs the output,
+and fixes a loop if something looks wrong. There is no fixed cycle, no recorded baseline, and
+no dated report — so there is no way to mechanically confirm afterward that a fix actually
+reduced the fleet's failure rate for that loop.
+
+## Expected Behavior
+
+A single repeatable entry point (`make fleet-loop-review` or equivalent) chains the four
+HARVEST-phase `ll-logs` commands and the per-loop `ll-loop` diagnose commands, attributes
+flagged failures to built-in loops, and writes a dated report under
+`.loops/diagnostics/fleet-review-<date>.md`. The report stores per-loop failure counts so the
+next run can diff against it, making "did this fix help?" a mechanical re-measurement rather
+than a fresh manual investigation. The cycle and its commands are documented in
+`docs/runbooks/FLEET_LOOP_REVIEW.md`.
+
 ## Goal
 
 Make "use other projects' logs to continuously fix and improve this repo's built-in loops" a
@@ -169,7 +195,24 @@ entry point -> one call each of `ll-logs loop-fleet -j`, `ll-logs scan-failures 
 ### Decision Rules
 - **Unspecified — genuine gap, not resolved by research.** The ATTRIBUTE phase needs a concrete rule for which loops get "flagged" for DIAGNOSE, drawn from three differently-shaped data sources: `loop-fleet`'s per-run records (success-rate/outcome aggregation is not present in `--json`, only in the human-table code path — see Signatures above), `scan-failures`'s clusters (keyed by `(cwd, tool, normalized_error_sig)`, with no loop-name field to join on), and `dead-skills`'s never/rarely tiers. Neither this issue's text nor the codebase research specifies: the exact success-rate or failure-count threshold that makes a loop "flagged," how a `scan-failures` cluster gets attributed to a specific built-in loop name, or a dismissal/escape hatch for a loop that is flagged but judged a false positive on review. This is left for the implementer to define.
 
-## Acceptance criteria
+## Use Case
+
+**Who**: A little-loops maintainer investigating why one of the 77 shipped loops keeps
+stalling or failing across the projects that use it.
+
+**Context**: They currently have to manually chain `ll-logs loop-fleet`, `scan-failures`,
+`sequences`, and `dead-skills` against every other project, eyeball the output, and guess
+whether a fix actually helped — with no recorded baseline to check against later.
+
+**Goal**: Run one command (`make fleet-loop-review`) to harvest fleet-wide outcomes for all
+built-in loops, get a list of flagged loops with diagnose-tool output, fix the worst offender,
+then run the same command again next cycle.
+
+**Outcome**: The second run's dated report diffs against the first, showing the failure-count
+delta for the fixed loop — proving the fix worked (or didn't) against real fleet data instead
+of a self-graded claim.
+
+## Acceptance Criteria
 
 - `make fleet-loop-review` (or documented equivalent) runs end-to-end and produces a dated
   diagnostic report with: per-built-in-loop fleet outcomes, flagged loops, and a baseline diff
@@ -179,6 +222,20 @@ entry point -> one call each of `ll-logs loop-fleet -j`, `ll-logs scan-failures 
   `loop-specialist` agent.
 - Running the cycle twice (before/after a deliberate built-in-loop fix) demonstrates the
   failure-delta acceptance signal.
+
+## Impact
+
+- **Priority**: P3 - process/tooling improvement for maintainers, not user-facing or blocking.
+- **Effort**: Medium - chains existing `ll-logs`/`ll-loop` CLIs (no new data source), but the
+  ATTRIBUTE-phase flagging rule and the baseline-diff shape are an open Decision Rules gap the
+  implementer must resolve.
+- **Risk**: Low - the HARVEST phase is read-only; the only mutating step (fixing a flagged
+  built-in loop) already goes through normal review.
+- **Breaking Change**: No.
+
+## Status
+
+**Open** | Created: 2026-06-28 | Priority: P3
 
 ## Dependencies
 
@@ -200,6 +257,7 @@ path is recorded, not built.
 - `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-02T19:54:35 - `972ffda4-3540-46cc-931f-997ebd4d75a3.jsonl`
 - `/ll:wire-issue` - 2026-09-02T19:12:27 - `d3f3386b-13e9-4c55-8779-7f6afaf007ab.jsonl`
 - `/ll:refine-issue` - 2026-09-02T19:00:54 - `ac9b1a09-d320-4fd9-96b4-3dcc47985b24.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:31 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
