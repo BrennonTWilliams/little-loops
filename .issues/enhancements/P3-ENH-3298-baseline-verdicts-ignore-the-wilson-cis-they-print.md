@@ -12,6 +12,12 @@ labels:
 - loops
 - evaluation
 - stats
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3298: Baseline verdicts ignore the Wilson CIs they print
@@ -291,5 +297,6 @@ Low risk, warning-level semantics, no behavior change to loop execution.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T04:06:36 - `5c0bb0db-edd7-40d4-be88-a81699d7f3a8.jsonl`
 - `/ll:wire-issue` - 2026-09-02T03:54:37 - `951d4372-98bd-4efb-87f2-c6183621aa26.jsonl`
 - `/ll:refine-issue` - 2026-09-02T03:43:30 - `a609cc09-ff2a-486a-b930-aa4f07a62a30.jsonl`
