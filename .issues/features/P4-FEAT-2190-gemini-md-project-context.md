@@ -7,7 +7,7 @@ priority: P4
 parent: EPIC-2178
 verify_verdict: VALID
 reconcile_attempted: true
-captured_at: "2026-06-15T00:00:00Z"
+captured_at: '2026-06-15T00:00:00Z'
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 labels:
@@ -15,6 +15,12 @@ labels:
 - host-compat
 - init
 - project-context
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-2190: GEMINI.md project context file — ll:init --gemini
@@ -100,12 +106,18 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 ### New Files
 
-- `templates/GEMINI.md.j2` (or equivalent template)
+None — no `.j2`/template file. Content is built from a Python string constant
+in `writers.py`, following the existing `write_claude_md`/`write_agents_md`
+pattern (see Codebase Research Findings and Implementation Steps).
 
 ### Files to Modify
 
-- `scripts/little_loops/init/` — `--hosts gemini` branch
-- `scripts/tests/test_init_core.py` — Gemini init coverage
+- `scripts/little_loops/init/cli.py` — `_KNOWN_HOSTS`, `--hosts` help text,
+  `_run_yes`, `_run_apply`
+- `scripts/little_loops/init/writers.py` — new `write_gemini_md()`
+- `scripts/little_loops/init/tui.py` — TUI wizard file-writing function
+- `scripts/tests/test_init_core.py` — `TestWriteGeminiMd`, plus gemini
+  coverage in `TestHostDispatch`/`TestDetectHosts`
 
 ## Research Notes (FEAT-2179)
 
@@ -166,6 +178,7 @@ gate, threshold, or classification rule.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-02T23:01:14 - `89e1b823-9c08-49e4-9fdf-cadf3dbc0d62.jsonl`
 - `/ll:reconcile-issue` - 2026-09-02T22:34:03 - `89e1b823-9c08-49e4-9fdf-cadf3dbc0d62.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:23:46 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
 - `/ll:format-issue` - 2026-09-02T22:10:34 - `aff86587-4c3b-4b44-8aae-a8fb91813a11.jsonl`
