@@ -2641,6 +2641,7 @@ visualizes existing *dependency-edge* relationships, not text similarity.
 | `--mode assign\|synthesize` | `assign` (default) scores orphans against existing open EPICs; `synthesize` union-find clusters orphans against each other |
 | `--threshold <N>` | Minimum score to include; default `config.issues.link_epics.min_score` |
 | `--apply` | Write accepted `assign`-mode proposals (`parent:`/`epic:` frontmatter + EPIC `## Children` append); unsupported for `--mode synthesize` (exits 1) — EPIC creation from clusters is not implemented by this subcommand |
+| `--deep` | `--mode synthesize` only (exits 1 otherwise); adds one batched LLM-adjudicated clustering pass over the full orphan list (capped at 40), merged with the Jaccard clusters (ENH-2979). Above the cap, prints a warning and falls back to Jaccard-only output plus a `"deep": {"skipped": "too_many_orphans", "count": N}` JSON key. `--deep`-sourced clusters carry `evidence` (cited quotes, capped at 3) and `source` (`jaccard`/`deep`/`merged`) |
 | `--json` | Output as JSON: `{"proposals": [...], "applied": [...]}` (assign) or `{"clusters": [...], "applied": []}` (synthesize) |
 | `--config` | Path to project root |
 
@@ -2651,6 +2652,7 @@ visualizes existing *dependency-edge* relationships, not text similarity.
 ll-issues link-epics --mode assign --json                    # proposals only
 ll-issues link-epics --mode assign --threshold 0.5 --apply   # apply proposals >= 0.5
 ll-issues link-epics --mode synthesize --json                # cluster proposals only
+ll-issues link-epics --mode synthesize --deep --json         # + LLM-adjudicated clusters
 ```
 
 ---

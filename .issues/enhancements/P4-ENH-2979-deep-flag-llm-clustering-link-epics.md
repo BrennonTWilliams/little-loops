@@ -3,8 +3,9 @@ id: ENH-2979
 title: '--deep flag: LLM-adjudicated clustering for link-epics synthesize mode'
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-08-01T21:03:45Z'
+completed_at: '2026-09-02T19:39:14Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 parent: EPIC-2938
@@ -509,35 +510,35 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `add_link_epics_parser()` (`link_epics.py:257-292`) accepts `--deep` as a
+- [x] `add_link_epics_parser()` (`link_epics.py:257-292`) accepts `--deep` as a
       boolean flag, default off; omitting it leaves `--mode synthesize`'s
       output byte-identical to today's, and `TestSynthesizeClusters`'s 5
       existing methods (`test_link_epics_cli.py:104-149`) plus
       `TestLinkEpicsCLI::test_synthesize_mode_json` (line 295) pass unmodified.
-- [ ] With `--deep`, the LLM candidate set is **always** the full orphan list
+- [x] With `--deep`, the LLM candidate set is **always** the full orphan list
       (capped at 40) — never `synthesize_clusters()`'s output and never gated
       on Jaccard returning zero clusters — and its clusters are merged with
       Jaccard's via Option A (an automated test asserts a Jaccard pair and an
       LLM cluster sharing one member merge into one `source: merged`
       cluster whose `modal_priority` is recomputed over the union and whose
       position follows `synthesize_clusters()`'s sort key).
-- [ ] `--deep` with `--mode assign` (or with `--mode` omitted) prints
+- [x] `--deep` with `--mode assign` (or with `--mode` omitted) prints
       `Error: --deep is only supported for --mode synthesize` to stderr and
       exits 1 before any issue discovery runs (automated test).
-- [ ] The batched call passes the clusters schema to both
+- [x] The batched call passes the clusters schema to both
       `build_blocking_json(json_schema=...)` and
       `run_blocking_json(schema=...)` (automated test asserts the mocked
       `run_blocking_json` received a non-`None` `schema` kwarg).
-- [ ] Above 40 orphans, `--deep` makes no LLM call, prints the
+- [x] Above 40 orphans, `--deep` makes no LLM call, prints the
       `Warning: --deep skipped: ...` stderr line, emits the Jaccard result,
       and includes `"deep": {"skipped": "too_many_orphans", "count": N}` in
       `--json` output — it never silently returns Jaccard-only output as if
       it were `--deep` output.
-- [ ] LLM responses are semantically validated after the key-set check:
+- [x] LLM responses are semantically validated after the key-set check:
       `member_ids` not in the candidate set are dropped with a stderr
       warning, clusters left with <2 members are dropped, and an ID in two
       LLM clusters merges them (automated test covers each case).
-- [ ] Each `--deep`-sourced `ClusterProposal.evidence` is a non-empty
+- [x] Each `--deep`-sourced `ClusterProposal.evidence` is a non-empty
       `list[str]` (capped at 3, per Program Design's field-shape decision) of
       fragments **verified as verbatim substrings** of the exact per-member
       text sent in the prompt (title + 600-char-truncated Summary, or title
@@ -545,24 +546,24 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       dropped, and a cluster with no
       surviving evidence is dropped with a stderr warning (automated test
       asserts a fabricated evidence string is rejected).
-- [ ] `--deep` clusters carry `source` (`jaccard`/`deep`/`merged`) in JSON and
+- [x] `--deep` clusters carry `source` (`jaccard`/`deep`/`merged`) in JSON and
       human-readable output; `evidence` and `source` are omitted from
       `to_dict()` when unset, so no-flag output is unchanged.
-- [ ] `/ll:link-epics --mode synthesize --deep` (the skill invocation, not
+- [x] `/ll:link-epics --mode synthesize --deep` (the skill invocation, not
       only the raw `ll-issues link-epics --deep` CLI call) forwards `--deep`
       through `skills/link-epics/SKILL.md` Step 1 and S1, and S2 displays the
       cited `evidence` for review — confirms the Implementation Steps'
       SKILL.md-wiring finding was applied, not just the CLI parser.
-- [ ] A batched LLM call that raises `BlockingJsonError` or fails the
+- [x] A batched LLM call that raises `BlockingJsonError` or fails the
       post-hoc key-set check causes `cmd_link_epics()` to print an `Error:
       ...` message to stderr and exit 1 (matching the existing
       `--apply`-with-synthesize convention at `link_epics.py:310-316`) —
       it does not silently fall back to Jaccard-only output or propagate an
       uncaught exception.
-- [ ] `docs/reference/CLI.md`, `docs/reference/COMMANDS.md`,
+- [x] `docs/reference/CLI.md`, `docs/reference/COMMANDS.md`,
       `docs/reference/API.md`, and `skills/link-epics/SKILL.md` each document
       `--deep` — none is left describing only `--mode`/`--threshold`/`--apply`.
-- [ ] The `--deep` path is exercised by an automated test, not manual CLI
+- [x] The `--deep` path is exercised by an automated test, not manual CLI
       verification alone: a new test class/method in
       `test_link_epics_cli.py` mocks `resolve_host`/`run_blocking_json` in
       `link_epics.py`'s own namespace (the `discover.py`/`advisor.py`
@@ -718,12 +719,35 @@ Solution describe modifying skill prose (Step 3, S1 scoring) that no longer
 contains the scoring logic — needs rework to target the CLI code instead of
 skill markdown.
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-02
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/issues/link_epics.py`: added `--deep` flag; `ClusterProposal.evidence`/`source` fields; `_modal_priority`, `_orphan_prompt_text`, `_evidence_is_verifiable`, `_deep_cluster_call`, `_merge_clusters`, `deep_synthesize_clusters`; wired into `cmd_link_epics()` with the `--mode assign` rejection, over-cap skip, and `BlockingJsonError`/key-check failure handling.
+- `scripts/tests/test_link_epics_cli.py`: added `TestDeepSynthesizeClusters` and `TestDeepSynthesizeCLI` covering the merge, schema-passed-to-both-calls, over-cap skip, unknown-id/unverifiable-evidence drops, key-check failure, and end-to-end CLI paths.
+- `scripts/tests/test_wiring_reference_docs.py`: added `--deep`/`deep_synthesize_clusters` presence assertions for CLI.md/COMMANDS.md/API.md.
+- `docs/reference/CLI.md`, `docs/reference/COMMANDS.md`, `docs/reference/API.md`: documented `--deep` and `deep_synthesize_clusters`.
+- `skills/link-epics/SKILL.md`: forwarded `--deep` through `argument-hint`/flags doc, Step 1 parsing, S1's CLI invocation (incl. the `deep.skipped` warning and mode-aware empty message), and S2's evidence/source review.
+
+### Verification Results
+- Tests: PASS (21602 passed, 11 skipped — full `scripts/tests/` suite)
+- Lint: PASS (`ruff check`, `ruff format --check`)
+- Types: PASS (`mypy scripts/little_loops/`)
+- Run: N/A (no `run_cmd` configured)
+- Integration: PASS (reuses `discover_regions()`'s batched-call/schema-both-calls pattern, `_UnionFind`'s merge behavior one level up, `SkillBypass`'s capped-evidence shape; no new dependency)
+
 ## Status
 
 **Open** | Created: 2026-08-01 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-02T19:39:14 - `6108fb0c-3e29-4824-a178-dda06a7479b9.jsonl`
 - `/ll:confidence-check` - 2026-09-02T17:59:50 - `18ff1d5b-3582-4815-b2a4-ceb627e029f0.jsonl`
 - `/ll:confidence-check` - 2026-09-02T17:29:39 - `01c0eae5-a838-4e07-a9f8-52a021e8b20f.jsonl`
 - `/ll:verify-issues` - 2026-09-02T17:24:30 - `f0731315-44f0-4375-9752-2de14eea3520.jsonl`

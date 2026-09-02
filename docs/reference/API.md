@@ -1458,8 +1458,11 @@ class ClusterProposal:
     placeholder_title: str
     modal_priority: str
     pairwise_min_score: float
+    evidence: list[str] = field(default_factory=list)  # --deep only; capped at 3
+    source: str | None = None  # --deep only: "jaccard" | "deep" | "merged"
 
-    def to_dict(self) -> dict: ...  # sorts member_ids, rounds pairwise_min_score to 3 decimals
+    def to_dict(self) -> dict: ...  # sorts member_ids, rounds pairwise_min_score to 3 decimals;
+    # evidence/source omitted when unset, so non-`--deep` output is unchanged
 ```
 
 ### propose_assignments
@@ -1498,6 +1501,20 @@ Union-find clusters orphans on pairwise title word-overlap ≥ `min_score`.
 | `min_score` | `float` | Minimum pairwise score for an edge to union two orphans |
 
 **Returns:** `list[ClusterProposal]` for clusters with 2+ members (singletons not proposed), sorted by member count descending then first `member_id`.
+
+### deep_synthesize_clusters
+
+```python
+def deep_synthesize_clusters(
+    orphans: list[IssueInfo], jaccard_clusters: list[ClusterProposal]
+) -> tuple[list[ClusterProposal], dict[str, Any] | None]
+```
+
+`--deep` (ENH-2979): one batched LLM call (`_deep_cluster_call`) proposing thematic clusters over the full `orphans` list (never `jaccard_clusters`' members), capped at 40. Semantically validates the response (drops unknown IDs, undersized clusters, and unverifiable `evidence`), then merges with `jaccard_clusters` — any shared member merges two clusters (Option A), matching `_UnionFind`'s existing transitive-merge behavior one level up.
+
+**Returns:** `(merged_clusters, skip_info)`. `skip_info` is `{"skipped": "too_many_orphans", "count": N}` when `orphans` exceeds the 40-candidate cap (no LLM call made, `merged_clusters` is `jaccard_clusters` unchanged), else `None`.
+
+**Raises:** `little_loops.host_runner.BlockingJsonError` on host/call failure; `ValueError` when the response fails the post-hoc key-set check. Both must be handled by the caller as a hard failure (`Error: ...` + exit 1) — never silently falling back to Jaccard-only output.
 
 ### apply_assignment
 

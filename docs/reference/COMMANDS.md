@@ -462,6 +462,7 @@ Discover parentless open issues and either assign them to existing open EPICs (`
 - `--mode assign|synthesize` — `assign` (default) links orphans to existing EPICs; `synthesize` clusters orphans and proposes new EPIC files
 - `--threshold <score>` — minimum similarity score (float, e.g. `0.5`) to include; default `config.issues.link_epics.min_score`
 - `--auto` — apply/create all proposals without prompting
+- `--deep` — `--mode synthesize` only; adds one batched LLM-adjudicated clustering pass (capped at 40 orphans) merged with the Jaccard clusters, for thematically related issues that don't share vocabulary (ENH-2979). `--deep`-sourced clusters carry cited `evidence` and a `source` field, reviewed in S2
 
 **Output:** In `assign` mode, writes `parent: <EPIC-NNN>` and `epic: <EPIC-NNN>` to each accepted child issue's frontmatter and appends it to the EPIC's `## Children` section (via `ll-issues link-epics --apply`). In `synthesize` mode, creates new EPIC files for accepted clusters and writes `parent:`/`epic:` back to each child.
 

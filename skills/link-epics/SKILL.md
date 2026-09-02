@@ -3,7 +3,7 @@ name: link-epics
 description: Assign orphaned issues to existing EPICs, or cluster them into new-EPIC proposals, via `ll-issues link-epics`.
 disable-model-invocation: true
 
-argument-hint: "[--mode assign|synthesize] [--threshold <score>] [--auto]"
+argument-hint: "[--mode assign|synthesize] [--threshold <score>] [--auto] [--deep]"
 model: sonnet
 allowed-tools:
   - AskUserQuestion
@@ -14,7 +14,7 @@ allowed-tools:
 
 arguments:
   - name: flags
-    description: "--mode assign|synthesize (default: assign); --threshold 0.5 to set the min score (default: config.issues.link_epics.min_score); --auto to apply/create proposals without prompting"
+    description: "--mode assign|synthesize (default: assign); --threshold 0.5 to set the min score (default: config.issues.link_epics.min_score); --auto to apply/create proposals without prompting; --deep (synthesize mode only) to add an LLM-adjudicated clustering pass"
     required: false
 metadata:
   short-description: Assign orphans to EPICs, or cluster them into new-EPIC proposals.
@@ -44,6 +44,9 @@ relationships between issues that already declare `blocked_by`/`depends_on`.
 - `THRESHOLD` from `--threshold <value>` if present; otherwise omit the flag and
   let the CLI fall back to `config.issues.link_epics.min_score`.
 - `AUTO=true` if `--auto` is present.
+- `DEEP=true` if `--deep` is present. Only meaningful with `MODE=synthesize`; the
+  CLI itself rejects `--deep` with `assign` (or `MODE` omitted), so no
+  argument-parsing check is needed here — just forward it through in S1 below.
 
 ---
 
@@ -115,26 +118,47 @@ Files staged. Run /ll:commit to commit the changes.
 ### S1: Get Cluster Proposals
 
 ```bash
-ll-issues link-epics --mode synthesize --json ${THRESHOLD:+--threshold "$THRESHOLD"}
+ll-issues link-epics --mode synthesize --json ${THRESHOLD:+--threshold "$THRESHOLD"} ${DEEP:+--deep}
 ```
 
 Parse `{"clusters": [{member_ids, placeholder_title, modal_priority,
-pairwise_min_score}, ...], "applied": []}`. `--apply` is **not** supported for this
-mode (EPIC creation is deliberately kept out of the CLI — FEAT-2947). If `clusters`
-is empty, report:
+pairwise_min_score, evidence, source}, ...], "applied": []}` — `evidence`/`source`
+are only present on `--deep` runs (ENH-2979). `--apply` is **not** supported for
+this mode (EPIC creation is deliberately kept out of the CLI — FEAT-2947).
+
+If a top-level `"deep"` key is present (`--deep` skipped the LLM pass because the
+orphan count exceeded the 40-orphan cap), surface it as a warning before
+continuing with the score-based `clusters` the CLI still returned:
 ```
-No orphan clusters found above the score threshold — nothing to synthesize.
+⚠ --deep skipped: {deep.count} orphans exceeds the 40-orphan cap; showing the score-based clusters only.
+```
+
+If `clusters` is empty, report (mode-aware — `--deep` found no thematic or
+vocabulary-based groupings, vs. plain scoring finding no vocabulary overlap):
+```
+No orphan clusters found above the score threshold — nothing to synthesize.          # without --deep
+No orphan clusters found (vocabulary- or LLM-adjudicated) — nothing to synthesize.    # with --deep
 ```
 Stop.
 
 ### S2: Name and Validate Clusters
 
 For each cluster, review `placeholder_title` (frequency-derived from member
-titles) and `member_ids`. Replace the placeholder with a clearer title when the
-frequency-derived one is awkward or ambiguous; sanity-check that every member
-actually belongs (drop odd-fit members from the proposal rather than forcing the
-CLI's transitive grouping — clustering can chain unrelated issues together
-through a shared intermediate).
+titles, or LLM-proposed for a `--deep`-sourced cluster) and `member_ids`. Replace
+the placeholder with a clearer title when it's awkward or ambiguous; sanity-check
+that every member actually belongs (drop odd-fit members from the proposal rather
+than forcing the CLI's transitive grouping — clustering can chain unrelated
+issues together through a shared intermediate).
+
+When `source` is present (`--deep` runs), display it and the cited `evidence`
+alongside each cluster, e.g.:
+```
+[Duplication Cleanup] ENH-10, ENH-22 (source: deep)
+  Evidence: "predicate duplication in autodev", "heuristic duplication in refine-issue"
+```
+Clusters with `source: deep` have **no lexical corroboration** — they were found
+purely by the LLM's thematic read, not by shared vocabulary — so give them a closer
+look than `source: jaccard`/`merged` clusters before accepting.
 
 ### S3: Proposal Flow
 
@@ -242,4 +266,6 @@ newly created (or pre-existing) EPICs.
 /ll:link-epics --threshold 0.4              # assign mode, interactive, custom threshold
 /ll:link-epics --mode synthesize            # synthesize mode, interactive
 /ll:link-epics --mode synthesize --auto     # synthesize mode, create all clusters
+/ll:link-epics --mode synthesize --deep     # + LLM-adjudicated clusters for same-theme,
+                                             # different-vocabulary orphans (ENH-2979)
 ```
