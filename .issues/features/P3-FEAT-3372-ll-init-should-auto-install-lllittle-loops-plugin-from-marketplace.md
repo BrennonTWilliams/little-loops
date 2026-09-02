@@ -11,8 +11,15 @@ unproven_mechanism: false
 verify_verdict: VALID
 size: Medium
 learning_tests_required:
-  - 'claude CLI plugin subsystem: headless `claude plugin marketplace add <source>'
-  - '`claude plugin install ll@little-loops -y` — non-interactive install flow for FEAT-3372'
+- 'claude CLI plugin subsystem: headless `claude plugin marketplace add <source>'
+- "`claude plugin install ll@little-loops -y` \u2014 non-interactive install flow\
+  \ for FEAT-3372"
+confidence_score: 100
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # FEAT-3372: ll-init should auto-install ll@little-loops plugin from marketplace
@@ -210,6 +217,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T03:08:14 - `bb906cb6-447a-4e73-92c7-9067b87990ec.jsonl`
 - `/ll:refine-issue` - 2026-09-02T02:50:47 - `e1ccf5f9-3d11-46da-b6d8-7e77648d884b.jsonl`
 - `/ll:verify-issues` - 2026-09-01T04:44:53 - `8486b04b-164d-4f78-8378-f72d0c6fa4d3.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-01T04:42:38 - `07acdd53-4d5d-4207-99c9-310382b1a8e5.jsonl`
