@@ -249,7 +249,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   schema-history table (rows v2…v45) plus a separate `| Table | What it
   stores |` reference section with a dedicated `advisor_consults` row; needs
   a new row in both. Note: this file is already known-stale against `main`
-  per `.issues/bugs/P2-BUG-3187-...schema-table-stops-at-v33.md`, so parity
+  per BUG-3187, so parity
   with the checked-in file (not full accuracy) is the bar [Agent 2 finding]
 
 ### Tests
