@@ -10,6 +10,8 @@ labels:
 - path-a
 - verification
 - audit-evidence
+unproven_mechanism: true
+decision_needed: true
 ---
 
 ## Summary
@@ -21,6 +23,101 @@ Export a reproducible evidence bundle from `verify-loop` / `adversarial-verify-l
 An attestation that a change was verified is only as trustworthy as its weakest input. A bundle assembled from git refs, `history.db` rows, and run-directory files can be re-checked by anyone holding the repo. A bundle that folds in a model's own assessment of its own work inherits the self-evaluation bias MR-1 documents, and cannot be handed to a reviewer who did not run the loop.
 
 Two consumers need the first kind and cannot use the second: a team reviewing agent-produced changes at merge time, and any process that has to answer "what was checked, and how do you know" months after the run.
+
+## Proposed Solution
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+No implementation exists yet (searched repo-wide: no `Bundle`-named class, no `export_bundle`/`cmd_*export*` function, no `attestation`/`evidentiary` vocabulary anywhere but this issue). This codebase's closest shape precedent for a report exporter is the `Report`-suffixed dataclass family (`CostReport`, `scripts/little_loops/fsm/cost_graph.py:106-139`: plain fields, locked-shape `to_dict()`, sibling human-render method), and its closest CLI-placement precedent is `scripts/little_loops/cli/artifact/dashboard.py` (a `history.db`-plus-files exporter producing a portable, host-independent artifact — the "readable without little-loops installed" AC has a direct analogue there).
+
+A prior, unresolved question determines the bundle's actual shape (see `## Program Design` → Decision Rules): `verify-issue-loop`'s only real pass/fail judgment is LLM-graded (`llm_structured` states in both `criteria` and `adversarial` modes), and its only non-LLM gates (`_aggregate_state`, `count_probes`) aggregate *over* those judgments rather than independently establishing them. Two ways to resolve this were identified; neither is a foregone conclusion and it should be treated as a decision for a human before implementation, not settled by this pass:
+
+**Option A**: Bundle only structural/existence facts as evidentiary content — that a run occurred, which states executed, artifact/probe file existence and hashes, probe counts, `loop_runs` row fields, git ref/diff state. LLM verdicts (criterion pass/fail, `break_found`) are attached as a segregated, explicitly labeled-non-evidentiary section for human context. This satisfies AC3 literally, but the resulting attestation is "a check was attempted, here is what exists" rather than "the criteria passed" — a materially weaker claim than "verification evidence" implies to a reviewer.
+
+**Option B**: Treat the LLM verdict fields as evidentiary, wrapped with the deterministic provenance that produced them (artifact existence/hash, the `_aggregate_state`/`count_probes` gate result) so a reviewer can independently re-derive whether the loop's own non-LLM aggregation passed. This makes the *aggregation* deterministic and re-checkable, but the underlying per-criterion/per-probe judgment remains LLM-sourced — it does not satisfy AC3's "No LLM self-evaluation contributes to the attestation" for that content.
+
+**Recommended**: Neither option is implementation-ready without a human decision — the tension is structural, not a research gap this pass can close. Flagged via `unproven_mechanism: true` rather than resolved here. Recommend `/ll:spike` to prototype Option A against a real `verify-issue-loop` run and confirm the resulting (weaker) bundle is still useful to a reviewer before committing to full implementation.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+No implementation module exists yet; the findings below identify where one would live, what it would read, and the conventions already established for exporters of this shape.
+
+### Files to Modify
+- No exporter module exists yet. Convention: deterministic, `history.db`-reading CLI exporters live in `scripts/little_loops/cli/artifact/` alongside `dashboard.py`, `extract.py`, `status.py`, `templatize.py`, `policy_builder.py` — a new module there follows that placement convention.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/persistence.py:585` — `archive_run()`: copies `.loops/.running/<instance>.{state.json,events.jsonl}` (+ `summary.json`/`meta-eval.jsonl` if present) into `.loops/.history/<run_id>-<loop_name>/` on run completion — the on-disk artifact set the bundle exporter reads.
+- `scripts/little_loops/session_store/schema.py:563-580` — `loop_runs` table (v23/ENH-2463): `run_id` (unique, matches the archive dir name), `loop_name`, `started_at`, `ended_at`, `final_state`, `iterations`, `terminated_by`, `error`, `evaluator_score`, `diagnostics_path`, `head_sha`, `branch`, `failure_terminal`.
+- `scripts/little_loops/session_store/writers.py:1428-1499` — `record_loop_run_summary()`, the sole writer of `loop_runs` rows.
+- `scripts/little_loops/fsm/executor.py:3895-3931` — `FSMExecutor._finish()`, the sole production caller of `record_loop_run_summary()`. It supplies only `run_id`/`loop_name`/`started_at`/`final_state`/`iterations`/`terminated_by`/`error`/`failure_terminal`; `evaluator_score`, `diagnostics_path`, `head_sha`, and `branch` are never passed and stay NULL on every live run today. An exporter cannot join `loop_runs` to a commit via these columns as-is — it would need to derive `run_id -> .loops/.history/<run_id>-<loop_name>/` itself and compute git facts independently.
+- `scripts/little_loops/cli/loop/scaffold_verify.py` — `_criteria_states()` (line 111) and `_adversarial_states()` (line 199) generate the `llm_structured` evaluator states whose verdicts are the loop's primary output; `_aggregate_state()` (line 67) and `count_probes` (line 245) are the loop's only non-LLM (`output_contains`/`output_numeric`) gates, aggregating over `${captured.*.verdict}`.
+- `scripts/little_loops/cli/loop/audit.py:85,177` — `resolve_run()`/`audit_run()`: existing reader of the same on-disk run-directory shape (`events.jsonl` + `state.json` + `summary.json`), the closest existing per-run exporter precedent. It does not read `history.db` or git predicates, and does not segregate LLM-produced content today.
+- `scripts/little_loops/prepatch_check.py` — fully deterministic (module docstring: "no LLM calls, no FSM or CLI-orchestrator knowledge") evidence-collection precedent; its `PrePatchEvidence` dataclass (`to_dict()` -> `prepatch_evidence.evidence_json`) is the one existing "evidence bundle" term and shape in this codebase, though scoped to test-failure reconstruction only, not acceptance-criterion/adversarial-probe verdicts.
+
+### Conventions in Force
+- Report/analysis dataclasses expose a locked-shape `to_dict()` paired with a human-render method, not a custom encoder class — evidence: `CostReport.to_dict()`/`.table()` (`scripts/little_loops/fsm/cost_graph.py:106-139`).
+- Incomplete/missing data is modeled as an explicit, enumerable gap list (one `list[str]` field per category plus a derived `has_gaps` property) rather than silent omission — evidence: `FormatGaps` (`scripts/little_loops/issue_parser.py:505-533`, doc'd as a reusable model), `Gap`/`GapAnalysis` (`scripts/little_loops/issue_history/models.py:281-324`).
+- Byte-identical reproducibility across renders is achieved by normalizing time-variant inputs (e.g. `gzip.compress(..., mtime=0)`) and proven with a frozen-clock, render-twice-and-diff test — evidence: `scripts/little_loops/cli/artifact/dashboard.py:179-210`, `test_gzip_snapshot_is_reproducible_across_renders` (`scripts/tests/test_feat3304_artifact_dashboard.py:892-919`).
+- Canonical/hashable JSON uses the inline idiom `json.dumps(obj, sort_keys=True, default=str)` at each call site — no shared `canonical_json()` helper exists anywhere in the codebase — evidence: `fragment_key()` (`scripts/little_loops/prompts/fragment_store.py:20-32`), `cli/verify_evidence.py:1258`.
+- Self-documenting JSON artifacts carry an inline `"_comment"` field naming what the file is, how to regenerate it, and whether it is policy vs. disposable cache — evidence: `write_baseline()` (`scripts/little_loops/cli/verify_evidence.py:1288-1302`) vs. `VerdictCache` (same file, 1144-1261).
+- No existing convention labels content "non-evidentiary" or distinguishes LLM- vs. deterministic-origin fields on a record — searched repo-wide for `evidentiary`/`non_evidentiary`, no hits besides this issue's own text. `session_store/schema.py:258-265` documents `summary_nodes` as "LLM-generated" only via a schema *comment*, not a queryable field.
+- No `Bundle`-suffixed class exists anywhere in the codebase (searched repo-wide) — the nearest shape precedent is the `Report`-suffixed dataclass family (`CostReport`, `DependencyReport`, `TamperReport`).
+
+### Tests
+- `scripts/tests/test_feat3304_artifact_dashboard.py` — golden reproducibility pattern (frozen clock, byte-identical render assertion) directly applicable to AC2 ("re-running the exporter over unchanged inputs produces byte-identical output").
+- `scripts/tests/test_prepatch_check.py`, `scripts/tests/test_work_verification.py` — precedent for testing a deterministic evidence dataclass.
+- No existing test file covers this exporter (net-new).
+
+### Documentation
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — MR-1 ("every `check_semantic`/`llm_structured` state pairs with ≥1 non-LLM evaluator... self-grades are unreliable") is the rule this issue's own Motivation cites; it governs how loops must be *authored*, not how a downstream bundle labels LLM- vs. deterministic-origin output — the two are related but distinct problems.
+- `docs/reference/API.md`, `docs/reference/CLI.md` — no FEAT-3182-specific section exists yet; a new exporter CLI would need an entry in both.
+
+### Terminology note
+- The issue's own `verify-loop`/`adversarial-verify-loop` names predate ENH-2881 (done), which merged the two into the single `verify-issue-loop` skill's `--mode criteria|adversarial` flag (`skills/verify-issue-loop/SKILL.md`, `scripts/little_loops/cli/loop/scaffold_verify.py`). No standalone `loops/verify-loop.yaml` or `loops/adversarial-verify-loop.yaml` files exist. This is a naming drift only — the runs the issue means to capture are per-issue FSM loops generated by `scaffold_verify()` and executed via `ll-loop run`.
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+No existing types/signatures/call path cover this feature; the findings below trace the current data flow up to the point where a new exporter would attach, and flag one unresolved design question the flow surfaces.
+
+### Types
+- No existing `Bundle`-suffixed type exists in this codebase (confirmed by repo-wide search). The nearest shape convention to model a new bundle dataclass on is the `Report`-suffixed family: `CostReport` (`scripts/little_loops/fsm/cost_graph.py:106-139`), `DependencyReport`/`ValidationResult` (`scripts/little_loops/dependency_mapper/models.py:~50-83`), `TamperReport` (`scripts/little_loops/test_tamper_guard.py`) — plain dataclass fields, a locked-shape `to_dict()`, no custom encoder classes.
+
+### Signatures
+- `record_loop_run_summary(...)` (`scripts/little_loops/session_store/writers.py:1428-1499`) — accepts `evaluator_score`, `diagnostics_path`, `head_sha`, `branch` but its sole caller, `FSMExecutor._finish()` (`scripts/little_loops/fsm/executor.py:3895-3931`), never supplies them; they default to `None`/NULL on every live `loop_runs` row today.
+- `archive_run()` (`scripts/little_loops/fsm/persistence.py:585`) — copies `.loops/.running/<instance>.{state.json,events.jsonl}` (+ `summary.json`/`meta-eval.jsonl` if present) into `.loops/.history/<run_id>-<loop_name>/`, keyed by `run_id` matching `loop_runs.run_id`.
+- `resolve_run()`/`audit_run()` (`scripts/little_loops/cli/loop/audit.py:85,177`) — existing reader of the identical on-disk run-directory shape; a precedent for the new exporter's read path, not a dependency to import from (it builds `RunAuditStats`, a different-shaped report for a different purpose).
+
+### Call Path
+`ll-loop run` (`cli/loop/run.py`) -> `FSMExecutor` evaluate loop (`fsm/executor.py`; each `llm_structured` state's verdict written to `state.capture`'d `captured.<key>.verdict` and emitted as an `evaluate` event in `events.jsonl` with LLM-origin fields `reason`/`evidence`/`raw`/`llm_model`/`llm_prompt`) -> `FSMExecutor._finish()` (`executor.py:3895`) -> `record_loop_run_summary()` (`session_store/writers.py:1428`) writes the `loop_runs` row (`head_sha`/`branch`/`evaluator_score`/`diagnostics_path` NULL) -> `archive_run()` (`fsm/persistence.py:585`) copies run-dir artifacts into `.loops/.history/<run_id>-<loop_name>/` -> **[bundle exporter, not yet implemented]** reads the `loop_runs` row + `.loops/.history/<run_id>-<loop_name>/{state.json,events.jsonl}` + (adversarial mode) `probe-*.json` + independently-computed git predicates (no shared git-facts helper exists — every `head_sha`/`branch` column elsewhere in the codebase is populated by call-site-local `git rev-parse` subprocess calls) -> assembles the bundle.
+
+### Decision Rules
+- **What counts as a "deterministic source" vs. "LLM-produced content" is not self-evident and needs to be pinned down**, because in the current system the loop's *primary output* — the actual pass/fail verdict for each acceptance criterion and each adversarial probe — is itself LLM-graded (`llm_structured` evaluator states, `scaffold_verify.py:111,199`). The only non-LLM gates in the loop (`_aggregate_state()` at `scaffold_verify.py:67`, `count_probes` at `scaffold_verify.py:245`) aggregate *over* those LLM verdicts (`output_contains`/`output_numeric` on `${captured.*.verdict}`); they do not independently establish pass/fail. Concretely unresolved: does the bundle (a) treat the LLM verdict itself as the evidentiary payload (contradicting AC3's "No LLM self-evaluation contributes to the attestation"), or (b) treat only structural facts — that a run occurred, which states executed, artifact/probe file existence, counts, git ref/diff state — as evidentiary, with the LLM verdict included only as segregated, labeled-non-evidentiary context (satisfying AC3, but then the bundle attests "a check was attempted," not "the check passed")? No exact field list, no threshold, and no escape hatch for this split exists yet in the issue or in codebase precedent.
+- No existing codebase site draws this line: searched repo-wide for `evidentiary`/`non_evidentiary`, no hits besides this issue's own text; `session_store/schema.py:258-265`'s "LLM-generated" label on `summary_nodes` is prose-only, not a queryable field or established pattern. Resolving this determines nearly the entire shape of the exporter (which fields go in the enumerable evidentiary list vs. the segregated context section), so it is unresolved decision logic, not an implementation detail.
+  > ⚠ Unproven mechanism — no precedent for evidencing a check whose verdict is itself LLM-graded
+
+## Implementation Steps
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+1. The Option A vs. Option B decision (`## Proposed Solution`) is resolved via `/ll:decide-issue` before implementation begins — the exporter's evidentiary field list is not fixed until then.
+2. A bundle-shaped dataclass (following the `Report`-suffixed `to_dict()` convention, e.g. `CostReport` at `scripts/little_loops/fsm/cost_graph.py:106-139`) enumerates every entry's deterministic source: the `loop_runs` row (`scripts/little_loops/session_store/schema.py:563-580`), the archived run-directory artifacts under `.loops/.history/<run_id>-<loop_name>/` (`scripts/little_loops/fsm/persistence.py:585`), and any adversarial-mode `probe-*.json` files.
+3. `loop_runs.head_sha`/`.branch`/`.evaluator_score`/`.diagnostics_path` are NULL on every current row (`scripts/little_loops/fsm/executor.py:3895-3931` never supplies them to `record_loop_run_summary()`) — the exporter cannot rely on them for a git-linked bundle and must derive `head_sha`/`branch` independently, the way every other git-linked table in this codebase already does (call-site-local `git rev-parse` calls; no shared git-facts helper exists to reuse).
+4. Re-running the exporter over an unchanged `loop_runs` row and an unchanged archived run directory produces byte-identical output — verified the way `test_gzip_snapshot_is_reproducible_across_renders` (`scripts/tests/test_feat3304_artifact_dashboard.py:892-919`) verifies it: freeze the clock, render twice, assert equality.
+5. A `loop_runs` row whose archived run directory no longer exists (or the reverse) produces an explicit, enumerable gap entry in the bundle rather than a bundle that silently omits it — following the enumerable-gap-list convention (`FormatGaps`, `scripts/little_loops/issue_parser.py:505-533`; `Gap`/`GapAnalysis`, `scripts/little_loops/issue_history/models.py:281-324`).
+6. The exporter's output requires no little-loops-specific decoding — plain JSON with no custom encoder classes, matching `ll-session export` (`scripts/little_loops/cli/session.py:925-945`) and `ll-artifact dashboard` (`scripts/little_loops/cli/artifact/dashboard.py`).
+7. Coverage: a new test module (none currently exists for this exporter) asserts reproducibility (step 4) and gap reporting (step 5) against a fixture `loop_runs` row and archived run directory; `python -m pytest scripts/tests/` passes.
 
 ## Acceptance Criteria
 
@@ -39,3 +136,7 @@ solution, no integration map, no file references. **Run `/ll:refine-issue
 FEAT-3182` before scheduling implementation**; at minimum it must identify the
 verify-loop run artifacts and `history.db` tables the bundle draws from, and
 the exporter's CLI surface.
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-02T17:19:59 - `2cfeb4de-9401-4270-a496-a50f1f1de3d7.jsonl`
