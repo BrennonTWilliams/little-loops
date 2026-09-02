@@ -330,9 +330,10 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     via `ll-adapt --host codex --apply` (FEAT-1527).
 
     **Spawn-based, not flag-based.** Codex's agent model differs from Claude
-    Code's: agents are *spawned from within a session* (in-session prompt,
-    the `spawn_agents_on_csv` batch tool, or `/agent` to switch threads),
-    governed by `[agents]` config (`max_threads`, `max_depth`). Per the docs,
+    Code's: agents are *spawned from within a session* (in-session prompt via
+    the `spawn_agent` tool, or `/agent` to switch threads), governed by
+    `[agents]` config (`max_concurrent_threads_per_session`; `max_threads` is
+    a legacy alias). Per the docs,
     "Codex only spawns a new agent when you explicitly ask it to do so."
     There is **no startup CLI flag** to assign the *root* `codex exec` session
     a named persona — `--agent`, `CODEX_AGENT`, and `CODEX_PROFILE` do not
@@ -350,9 +351,12 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     `ll-adapt --host codex --apply`. `describe_capabilities()` reports
     `agent_select.status == "partial"`.
 
-    **Follow-ups:** ll does not yet exploit the native `spawn_agents_on_csv`
-    batch model, which maps onto `ll-parallel`'s per-issue fan-out
-    (**FEAT-2122**). See `thoughts/research/codex-agent-selection.md`.
+    **Batch spawn (closed):** Codex's `spawn_agents_on_csv` batch tool was
+    removed upstream on 2026-07-20 (openai/codex#34413), and `max_depth` /
+    `job_max_runtime_seconds` are now no-ops. **FEAT-2122**, which proposed
+    routing `ll-parallel`'s fan-out through it, was cancelled as obsolete;
+    the worktree-per-issue model remains the deliberate default on Codex.
+    See `thoughts/research/codex-agent-selection.md`.
 
 ## Adapter Host Capabilities
 
