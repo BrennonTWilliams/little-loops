@@ -27,6 +27,20 @@ Extend `ll-init` to support `--gemini` host selection, which generates a
 From FEAT-2179: Gemini uses `GEMINI.md` as its project instructions file
 (confirmed; exact analog of `CLAUDE.md`).
 
+## Current Behavior
+
+`ll-init` has no `gemini` option in its `--hosts` multi-select, and generates
+no `GEMINI.md` file. Projects initialized for Gemini CLI get no project
+instructions file — Gemini starts with no little-loops context.
+
+## Expected Behavior
+
+`ll-init --hosts gemini` generates a `GEMINI.md` file in the project root
+containing the same little-loops project instructions `CLAUDE.md` provides
+for Claude Code, using `GEMINI.md`'s confirmed role as Gemini's exact analog
+of `CLAUDE.md` (FEAT-2179). Re-running against a project that already has a
+`GEMINI.md` warns and skips instead of overwriting user customizations.
+
 ## Use Case
 
 A user initializes little-loops in a Gemini project: `ll-init --hosts gemini`.
@@ -43,7 +57,7 @@ that `CLAUDE.md` provides for Claude Code users.
 4. If the project already has a `GEMINI.md`, emit a warning and skip
    (don't overwrite user customizations).
 5. Update `ll-init --dry-run` output to show `GEMINI.md` as a planned file.
-6. Add tests in `scripts/tests/test_init.py`.
+6. Add tests in `scripts/tests/test_init_core.py`.
 
 ## Acceptance Criteria
 
@@ -61,7 +75,7 @@ that `CLAUDE.md` provides for Claude Code users.
 ### Files to Modify
 
 - `scripts/little_loops/init/` — `--hosts gemini` branch
-- `scripts/tests/test_init.py` — Gemini init coverage
+- `scripts/tests/test_init_core.py` — Gemini init coverage
 
 ## Research Notes (FEAT-2179)
 
@@ -82,6 +96,8 @@ loaded automatically on session start.
 
 - **2026-08-12** (`/ll:verify-issues`): VALID. `depends_on: [FEAT-2179]` removed — FEAT-2179 is now `status: done`, so the issue is unblocked.
 
+## Status
+
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Related Key Documentation
@@ -90,4 +106,5 @@ loaded automatically on session start.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-02T22:10:34 - `aff86587-4c3b-4b44-8aae-a8fb91813a11.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
