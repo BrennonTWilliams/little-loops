@@ -12356,6 +12356,8 @@ def verify_epic_branch_before_merge(
 
 Runs `test_cmd`/`lint_cmd` against an EPIC branch tip before merge/PR (ENH-2603, BUG-2614). Stateless free-function extraction of `ParallelOrchestrator`'s `_verify_epic_branch_before_merge`, shared by `WorkerPool`-based runs and the FSM `auto-refine-and-implement` loop. Checks out `epic_branch` in a scratch worktree under `worktree_base` (via `setup_worktree(..., checkout_existing=True)`), runs `test_cmd` and (if set) `lint_cmd` against it, and always tears the worktree down in a `finally` block regardless of outcome (`cleanup_worktree(..., delete_branch=False)`).
 
+The scratch worktree materializes `.ll/design-tokens/` via `copy_files` (BUG-3370) — `git worktree add` only checks out tracked content, so a gitignored dir would otherwise come up empty/degraded there versus a direct checkout, breaking token-rendering tests under the gate; this is a stopgap, not the durable fix (the golden test should pin to a checked-in fixture instead of ambient config). The child env also pops `LL_PYTHON` after `project_child_env()` (BUG-3370): when this gate runs in-process from an FSM `verify` state action, the ambient `LL_PYTHON` that action set would otherwise ride through unscrubbed into `test_cmd`'s subprocess and defeat tests with their own `${LL_PYTHON:-...}` shell-expansion mocks — a failure mode invisible on a bare terminal pytest run, which never sets `LL_PYTHON`.
+
 **Parameters:**
 - `epic_id` — The EPIC issue ID, used for logging and the scratch worktree name.
 - `epic_branch` — Name of the EPIC integration branch to verify.
