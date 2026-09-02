@@ -14,10 +14,10 @@ decision_needed: false
 testable: true
 verify_verdict: VALID
 confidence_score: 100
-outcome_confidence: 67
+outcome_confidence: 75
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 18
 reconcile_attempted: true
 ---
@@ -1132,6 +1132,7 @@ All other citations (including `research_triage.py:416`,
 content changed.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T20:54:05 - `0b51df9f-5499-44fc-9d1b-54e3664c1368.jsonl`
 - pre-implementation review - 2026-09-02 - found that the `.ll/` block of the
   shipped default was corpus-built rather than derived from `ll-init`'s
   `_GITIGNORE_ENTRIES` (`init/writers.py:59`), the canonical consumer-universal
