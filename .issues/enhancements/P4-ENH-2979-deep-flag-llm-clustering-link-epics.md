@@ -13,8 +13,8 @@ verify_verdict: NON_VALID
 reconcile_attempted: true
 decision_needed: false
 confidence_score: 90
-outcome_confidence: 78
-score_complexity: 10
+outcome_confidence: 82
+score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
@@ -575,6 +575,7 @@ skill markdown.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T17:29:39 - `01c0eae5-a838-4e07-a9f8-52a021e8b20f.jsonl`
 - `/ll:verify-issues` - 2026-09-02T17:24:30 - `f0731315-44f0-4375-9752-2de14eea3520.jsonl`
 - `/ll:refine-issue` - 2026-09-02T16:54:10 - `ce2608a1-58a5-4d87-8452-86bf408e6d36.jsonl`
 - `/ll:confidence-check` - 2026-08-29T21:48:18 - `c9c1c0a3-4ed0-4475-ae26-5a077ef3a172.jsonl`
