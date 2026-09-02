@@ -547,7 +547,7 @@ under-report drift there, never break a resolution.
 Put the key at `issues.untracked_by_design`, not `scan.untracked_by_design`.
 
 - **Consumer proximity**: all three production `build_ref_index()` call sites
-  are issues-domain (`cli/issues/format_check.py:563`,
+  are issues-domain (`cli/issues/format_check.py:574`,
   `issues/research_triage.py:212`, `:317`). `scan.*` governs codebase scanning
   for `/ll:scan-codebase`, a different subsystem; `scan.focus_dirs` and
   `scan.exclude_patterns` have effectively no runtime readers outside
@@ -596,7 +596,7 @@ The correct wiring is therefore **zero new plumbing in the core module**:
   )
   coverages = triage_research_axes(path, config.project_root, index=index)
   ```
-- `cli/issues/format_check.py:563` — already has `config` in scope; pass the
+- `cli/issues/format_check.py:574` — already has `config` in scope; pass the
   keyword directly.
 - The two in-module `build_ref_index()` fallbacks stay as they are and pick up
   `DEFAULT_UNTRACKED_BY_DESIGN` via the keyword default. That is the intended
@@ -617,7 +617,7 @@ Note it so the implementer does not mistake it for wiring this issue introduced.
 
 Excluding `untracked_by_design` from the eligible tuples in
 `qualified_ref_count()` (`research_triage.py:215`) and `_triage_axis()`
-(`research_triage.py:410`) **raises** coverage ratios: today those refs sit in
+(`research_triage.py:416`) **raises** coverage ratios: today those refs sit in
 the denominator as `stale` and drag the ratio down, so removing them makes the
 `COVERAGE_THRESHOLD` (≥80%) gate easier to clear for issues that cite many
 untracked `thoughts/`/`.loops/` paths. That is the correct outcome — a ref with
@@ -638,7 +638,7 @@ The design decision is closed (Option B, recorded in Decision Rationale above);
 _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
 - **Verdict wiring depth resolved**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py`, defined at :638; the ref-classification loop is the `if ref_index is not None:` block at ~:1022-1040) only branches on `stale` and `ambiguous` today; `resolved`, `unresolvable_form`, and `planned_new` pass through the loop with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` entry — they are silently non-gaps. Since `untracked_by_design` is a suppressing verdict (its purpose is to stop being reported as `stale`, not to be reported under a new category), it needs only the shallow treatment: a new `RefStatus` Literal member plus the step-5 fallback branch in `classify_file_ref` (this bullet originally said "form check"; superseded by Program Design § Check Ordering). It does not need the 5-site `FormatGaps`/`has_gaps`/`to_dict`/docstring/`_print_gaps()` treatment that `ambiguous_file_ref` (ENH-2999) required — that treatment is only for verdicts meant to be *surfaced* as a gap category.
-- **Denominator eligibility resolved**: `qualified_ref_count()` (`research_triage.py:215`) and `_triage_axis()` (`research_triage.py:410`) both gate on the literal tuple `("resolved", "stale", "ambiguous")` — duplicated independently at each site, no shared constant. Per `qualified_ref_count`'s own docstring, eligibility means "survived the form filter"; only `unresolvable_form` and `planned_new` are excluded, both decided at the form-check stage before index lookup. `untracked_by_design` only fires where there is no git-tracked target at all — it replaces a would-be `stale`, so nothing exists to compare against for the staleness check (`research_triage.py:431-442`). It therefore belongs in the same excluded category as `unresolvable_form`/`planned_new`, not added to the eligible tuple. (This bullet originally justified the exclusion by "it is a form check that runs before index lookup" — that framing is superseded by Program Design § Check Ordering; the exclusion conclusion is unchanged, and its denominator consequence is spelled out in § Denominator Side Effect.) Both call sites' literal tuples need updating independently (or reconciled with ENH-2990's `AxisCoverage` reason-code work per this issue's own trailing Scope Boundary note).
+- **Denominator eligibility resolved**: `qualified_ref_count()` (`research_triage.py:215`) and `_triage_axis()` (`research_triage.py:416`) both gate on the literal tuple `("resolved", "stale", "ambiguous")` — duplicated independently at each site, no shared constant. Per `qualified_ref_count`'s own docstring, eligibility means "survived the form filter"; only `unresolvable_form` and `planned_new` are excluded, both decided at the form-check stage before index lookup. `untracked_by_design` only fires where there is no git-tracked target at all — it replaces a would-be `stale`, so nothing exists to compare against for the staleness check (`research_triage.py:431-442`). It therefore belongs in the same excluded category as `unresolvable_form`/`planned_new`, not added to the eligible tuple. (This bullet originally justified the exclusion by "it is a form check that runs before index lookup" — that framing is superseded by Program Design § Check Ordering; the exclusion conclusion is unchanged, and its denominator consequence is spelled out in § Denominator Side Effect.) Both call sites' literal tuples need updating independently (or reconciled with ENH-2990's `AxisCoverage` reason-code work per this issue's own trailing Scope Boundary note).
 - **No shared prefix-matching helper exists** — three independent, shape-incompatible mechanisms already do adjacent things: (1) `_EXCLUDED_DIRS` (`verify_private_refs.py:75-90`) — hardcoded `frozenset` of bare directory *names*, matched via `any(part in _EXCLUDED_DIRS for part in rel_path.parts)`; (2) `file_matches_pattern()` (`git_operations.py:296+`) — full gitignore-glob semantics, the natural pairing for `scan.exclude_patterns` but currently has zero production callers for that config key (grep for `.scan.exclude_patterns` / `.scan.focus_dirs` returns nothing anywhere in `scripts/little_loops/`); (3) `_mirror_prefixes()` (`text_utils.py:198-214`) — a `@cache`d `tuple[str, ...]` of directory-prefix strings matched via plain `str.startswith(tuple)`, already used inside `classify_file_ref`'s own call chain (`suffix_match_candidates`, `text_utils.py:364`), though sourced from the host-capability registry rather than project config. This last one is the closest same-file precedent for "a cached tuple of directory prefixes consulted inside `text_utils.py`'s own classification logic."
 - **Config-location caveat**: `scan` is explicitly excluded from the schema-vs-code value parity walk — `_SCHEMA_PARITY_EXCLUDED_SECTIONS = {"$schema", "project", "issues", "scan"}` (`test_config_schema.py:1191`). A new key added under `scan` therefore would not get the cross-check other config sections get for free; the schema-vs-default drift that guard exists to catch would go undetected there specifically.
 - ~~**The stale "Resolve the option..." sentence at the end of this section predates the decision recorded above in Decision Rationale**~~ — **fixed 2026-08-19**: the sentence was removed and replaced with an explicit "decision is closed" note.
@@ -892,7 +892,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   (`config/core.py:737-748`), since neither happens automatically from a
   `config-schema.json` entry alone
 - Update both independent denominator tuples in `research_triage.py`
-  (`qualified_ref_count()` line 215, `_triage_axis()` line 410) to exclude
+  (`qualified_ref_count()` line 215, `_triage_axis()` line 416) to exclude
   `untracked_by_design` — no shared constant exists between them today, so
   each literal tuple needs editing separately
 - Update `classify_file_ref`'s "Resolution order" docstring
@@ -965,7 +965,30 @@ _Second wiring pass — 2026-08-19:_
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (a new `stale_file_ref` verdict branch vs. the testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-02:_
+
+Verdict: **NEEDS_UPDATE**. All 22 referenced files exist; ~15 spot-checked
+`file:line` citations, the decisions log (no active required rules), the
+evidence-quote check (`ll-verify-evidence`, 0 findings), and dependency refs
+(EPIC-3023, ENH-2983/2971/2999/2990, all resolve) came back clean. Signature
+claims in Program Design (`RefStatus` 5-member `Literal`, `RefIndex`
+`@dataclass(frozen=True)` with only `by_basename`, `build_ref_index(root:
+Path)` single positional arg) match the current code exactly.
+
+Two citations had drifted from unrelated edits since the last verification
+pass (2026-08-19) and were corrected in place:
+- `research_triage.py:410` → `:416` for `_triage_axis`'s denominator-tuple
+  check (3 occurrences)
+- `cli/issues/format_check.py:563` → `:574` for the `build_ref_index(config.project_root)`
+  call site (2 occurrences)
+
+No substantive content changed; the Proposed Solution, Program Design, and
+Implementation Steps remain accurate as written.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-02T17:36:28 - `f3822202-1edc-4948-9375-b7a4b68307e4.jsonl`
 - `/ll:wire-issue` - 2026-08-20T00:18:27 - `73ca1a58-7749-4732-a724-9e42d23243f7.jsonl`
 - `/ll:confidence-check` - 2026-08-19T22:36:34 - `783bfe67-e43b-4aa3-9685-9db5e496d2c0.jsonl`
 - `/ll:confidence-check` - 2026-08-19T22:18:20 - `0e6d0c6a-b043-41cd-9b71-7ebe3558528f.jsonl`
