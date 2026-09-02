@@ -586,8 +586,9 @@ class StatePersistence:
         """Archive current run files to .history/ before clearing.
 
         Reads the current state to derive the run timestamp, then copies
-        state.json, events.jsonl, and (when present) meta-eval.jsonl and
-        summary.json into:
+        state.json, events.jsonl, and (when present) meta-eval.jsonl,
+        summary.json, and (FEAT-3182) any `probe-*.json` /
+        `prepatch_evidence_*.json` files into:
             <loops_dir>/.history/<run_id>-<loop_name>/
 
         where run_id is a compact ISO timestamp derived from started_at
@@ -595,9 +596,13 @@ class StatePersistence:
 
         Args:
             run_dir: Optional path to the loop's run directory. When provided,
-                summary.json is copied from run_dir to the archive directory if
-                it exists. Pass None (default) when the run directory is not
-                available (e.g. stale-run cleanup paths).
+                summary.json, adversarial-mode `probe-*.json` result files, and
+                any `prepatch_evidence_*.json` files are copied from run_dir to
+                the archive directory when present (FEAT-3182: run_dir is
+                gitignored and otherwise never archived or pruned, so this is
+                the only durable copy of evidence a downstream `ll-loop
+                evidence` exporter can read). Pass None (default) when the run
+                directory is not available (e.g. stale-run cleanup paths).
 
         Returns:
             Path to the archive directory if files were archived, None if
@@ -628,6 +633,13 @@ class StatePersistence:
             summary_src = run_dir / "summary.json"
             if summary_src.exists():
                 shutil.copy2(summary_src, archive_dir / "summary.json")
+            # FEAT-3182 step 3a: adversarial-mode probe results and prepatch
+            # evidence files live only in run_dir (gitignored, never pruned or
+            # archived otherwise) — copy them alongside state.json/events.jsonl
+            # so the evidence exporter reads everything from one archive dir.
+            for pattern in ("probe-*.json", "prepatch_evidence_*.json"):
+                for src in sorted(run_dir.glob(pattern)):
+                    shutil.copy2(src, archive_dir / src.name)
 
         return archive_dir
 

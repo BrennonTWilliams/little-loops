@@ -768,6 +768,59 @@ class TestArchiveRun:
         assert archive_path is not None
         assert not (archive_path / "summary.json").exists()
 
+    def test_archive_run_copies_probe_files_from_run_dir(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """archive_run() copies probe-*.json from run_dir (FEAT-3182 step 3a)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "probe-boundary.json").write_text('{"probe_class": "boundary"}\n')
+        (run_dir / "probe-malformed-hostile.json").write_text('{"probe_class": "malformed"}\n')
+        (run_dir / "probe-failure-mode.json").write_text('{"probe_class": "failure_mode"}\n')
+
+        archive_path = persistence.archive_run(run_dir=run_dir)
+
+        assert archive_path is not None
+        assert (archive_path / "probe-boundary.json").exists()
+        assert (archive_path / "probe-malformed-hostile.json").exists()
+        assert (archive_path / "probe-failure-mode.json").exists()
+        content = (archive_path / "probe-boundary.json").read_text()
+        assert "boundary" in content
+
+    def test_archive_run_copies_prepatch_evidence_files_from_run_dir(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """archive_run() copies prepatch_evidence_*.json from run_dir (FEAT-3182 step 3a)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "prepatch_evidence_verify-criterion-1.json").write_text('{"outcome": "pass"}\n')
+
+        archive_path = persistence.archive_run(run_dir=run_dir)
+
+        assert archive_path is not None
+        assert (archive_path / "prepatch_evidence_verify-criterion-1.json").exists()
+
+    def test_archive_run_omits_probe_files_when_absent(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """archive_run() produces no probe-*.json entries when run_dir has none (criteria mode)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        archive_path = persistence.archive_run(run_dir=run_dir)
+
+        assert archive_path is not None
+        assert list(archive_path.glob("probe-*.json")) == []
+
 
 class MockActionRunner:
     """Mock action runner for testing."""
