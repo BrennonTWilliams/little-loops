@@ -130,9 +130,14 @@ drift, but because it would suppress the 19 proposed-but-unbuilt refs, which are
 real signal: they point at artifacts open issues have committed to building and
 should stay visible until built. They are `planned_new` in substance; the
 `_PLANNED_NEW_RE` marker misses them because they are cited in prose and tables
-rather than with a `(new)` marker. **That is ENH-2971's problem, not this
-issue's** — do not try to fix it here, and do not add these paths to the
-suppression list to make the number go down.
+rather than with a `(new)` marker. **That is not this issue's problem** — do
+not try to fix it here, and do not add these paths to the suppression list to
+make the number go down. (This paragraph originally handed the gap to
+ENH-2971; that issue is now `done` and `_PLANNED_NEW_RE`
+(`scripts/little_loops/text_utils.py:195`) is unchanged — it still matches only
+`(new)`/`(new file)`/`(to be created)`/`**new**`. The prose-and-table-cited
+`planned_new` gap is therefore **orphaned**: capture a follow-up issue for it
+when implementing this one, so the 19-ref residual is not lost.)
 
 ### `git check-ignore` is an incomplete oracle
 
@@ -460,7 +465,7 @@ argument — this is the actual guarantee.
 
 Neither `.loops/` nor `.ll/` may appear as a bare prefix.
 
-**`.loops/`** — `.gitignore:77-85` ignores only `.loops/.running/`,
+**`.loops/`** — `.gitignore:84-92` ignores only `.loops/.running/`,
 `.loops/.history/`, `.loops/.queue/`, `.loops/tmp/`, `.loops/runs/`,
 `.loops/diagnostics/`, `.loops/reviews/`, `.loops/generated/`, and
 `.loops/cli-anything/` — the tracked files at `.loops/*.yaml` and under
@@ -468,19 +473,70 @@ Neither `.loops/` nor `.ll/` may appear as a bare prefix.
 `.loops/rl-rlhf.yaml` **should** keep reporting `stale`. The shipped default
 therefore enumerates the ignored subdirectories, not the parent.
 
-**`.ll/`** — ignored per-*file* (`.gitignore:53-57, 100-116, 132`), not per
-directory: `.ll/decisions.d/` and `.ll/ll-config.json` are tracked, and 35 of
-the 144 `.ll/` stale refs point at never-tracked paths that must keep
-reporting — chiefly 19 refs to artifacts open issues have *committed to
-building* (`.ll/rubrics/…`, `.ll/standards.md`). See Motivation § The `.ll/`
-Slice for the full three-class breakdown; those 35 are not drift, but
-suppressing them would still destroy real signal.
+**`.ll/`** — ignored per-*file* and per-*subdirectory* (`.gitignore:60-64,
+107-125, 141, 163`), never wholesale: `.ll/decisions.d/` and
+`.ll/ll-config.json` are tracked, and 35 of the 144 `.ll/` stale refs point at
+never-tracked paths that must keep reporting — chiefly 19 refs to artifacts
+open issues have *committed to building* (`.ll/rubrics/…`, `.ll/standards.md`).
+See Motivation § The `.ll/` Slice for the full three-class breakdown; those 35
+are not drift, but suppressing them would still destroy real signal.
 
-The default therefore enumerates the 13 ignored state files individually plus
-the one ignored subdirectory `.ll/workflow-analysis/`. Tempting shortcuts that
-are wrong: `.ll/` (swallows all 35) and `.ll/ll-` (would suppress a ref to a
-deleted-but-formerly-tracked `.ll/ll-config.json`, and violates the
-directory-shaped normalization rule).
+**Correction (2026-09-02 review)**: eight of the `.ll/*-state.json` entries in
+the shipped default (`.auto-manage-state`, `context-pressure-state`,
+`ll-auto-state`, `ll-doc-drift-state`, `ll-edit-batch-state`,
+`ll-precompact-state`, `ll-session-state`, `ll-sprint-state`, `ll-state`) are
+ignored by the **global** `*-state.json` rule at `.gitignore:81`, not by
+per-file `.ll/` rules — verified with `git check-ignore -v`. Enumerating them
+individually is still correct (a `*-state.json` glob is not a prefix), but the
+"mirror `.gitignore`" framing means *mirror what is ignored*, not *copy the
+rule text*.
+
+The default therefore enumerates the ignored files individually plus the
+ignored subdirectories. Tempting shortcuts that are wrong: `.ll/` (swallows all
+35) and `.ll/ll-` (would suppress a ref to a deleted-but-formerly-tracked
+`.ll/ll-config.json`, and violates the directory-shaped normalization rule).
+
+### Source of truth for the `.ll/` block — `ll-init`'s `_GITIGNORE_ENTRIES`
+
+**Added 2026-09-02 review.** The earlier drafts built the `.ll/` block from
+what appeared in this repo's issue corpus. That is the wrong source: the
+canonical "untracked by design in *every* consuming project" list already
+exists as `_GITIGNORE_ENTRIES` in `scripts/little_loops/init/writers.py:59` —
+it is what `ll-init` writes into each consumer's `.gitignore` via
+`update_gitignore()` (`writers.py:324`). The `.ll/` block is therefore *not*
+little-loops-shaped in the way `thoughts/`/`postmortems/` are; it is
+consumer-universal, and it must not drift from the list `ll-init` maintains.
+
+Consequences for the shipped default (all safe per § Why an Over-Broad Entry
+Is Safe — additions can only under-report drift, never break a resolution):
+
+- **Add the `ll-init` entries the corpus-built list omitted**:
+  `.ll/ll-session-events.jsonl`, `.ll/history.db`, `.ll/queue.db`,
+  `.ll/private-refs.local.txt`, `.ll/evidence-verdict-cache.json`. Note the
+  issue elsewhere cites `.ll/ll-session-events.json` as a near-miss typo for the
+  real `.jsonl` file — under the pre-correction default the *correctly spelled*
+  ref would also have reported `stale`.
+- **Add the `.ll/` paths this repo's `.gitignore` ignores that are also
+  runtime-created by little-loops**: `.ll/ll-update-docs.watermark`,
+  `.ll/ll-context-handoff-needed`, `.ll/loop-suggestions/`,
+  `.ll/advisor-budget/`, `.ll/design-tokens/`.
+- **Glob entries in `_GITIGNORE_ENTRIES` map to prefixes where the glob is a
+  trailing `*`**: `.ll/history.db*` → `.ll/history.db`, `.ll/queue.db*` →
+  `.ll/queue.db` (covers the sqlite `-shm`/`-wal` siblings by `startswith`).
+  `.ll/*.lock` and `**/.ll/` have no prefix form and stay out of scope, as
+  § Prefix Matching Semantics already says for the `.ll/user-messages-*.jsonl`
+  family. `.auto-manage-state.json` and `.parallel-manage-state.json` are
+  repo-root files, not `.ll/` — include them as file-shaped entries too.
+- **Test**: assert that every entry of `_GITIGNORE_ENTRIES` that is neither a
+  `*`-containing glob (other than a trailing `*`) nor a `**/`/`!` rule appears
+  in `DEFAULT_UNTRACKED_BY_DESIGN` after normalization. This is the guard that
+  keeps the two lists from drifting when someone adds a new state file to
+  `ll-init`. Import the constant rather than duplicating it.
+- **Optional, not required**: accept a trailing `*` on a config entry as
+  "raw prefix, do not apply the directory-slash rule", so `.ll/history.db*` and
+  `.ll/ll-continue-prompt*.md`'s stem can be written exactly as `.gitignore`
+  spells them. If adopted, `_normalize_untracked_prefix` strips the `*` and
+  returns the stem unchanged; the idempotency test must then cover it.
 
 ### Shipped Default
 
@@ -491,11 +547,11 @@ ships a populated `field(default_factory=...)`:
 
 ```python
 DEFAULT_UNTRACKED_BY_DESIGN: tuple[str, ...] = (
-    # Wholly-ignored directories (.gitignore:21, 122, 127)
+    # Wholly-ignored directories (.gitignore:21, 131, 136)
     "thoughts/",
     "postmortems/",
     "logs/",
-    # .loops/ is ignored per-subdirectory, not wholesale (.gitignore:77-85)
+    # .loops/ is ignored per-subdirectory, not wholesale (.gitignore:84-92)
     ".loops/.running/",
     ".loops/.history/",
     ".loops/.queue/",
@@ -505,10 +561,17 @@ DEFAULT_UNTRACKED_BY_DESIGN: tuple[str, ...] = (
     ".loops/reviews/",
     ".loops/generated/",
     ".loops/cli-anything/",
-    # .ll/ is ignored per-*file* (.gitignore:53, 100-116); .ll/decisions.d/ and
-    # .ll/ll-config.json are tracked, and .ll/standards.md, .ll/program.md,
-    # .ll/prompts/, .ll/rubrics/ must keep reporting -- they are artifacts open
-    # issues propose to create, not drift. See Motivation § The .ll/ Slice.
+    # Repo-root state files written by ll-init's _GITIGNORE_ENTRIES
+    # (init/writers.py:59); also caught by the global *-state.json rule.
+    ".auto-manage-state.json",
+    ".parallel-manage-state.json",
+    # .ll/ is ignored per-file / per-subdirectory, never wholesale
+    # (.gitignore:60-64, 81 [global *-state.json], 107-125, 141, 163).
+    # .ll/decisions.d/ and .ll/ll-config.json are tracked, and .ll/standards.md,
+    # .ll/program.md, .ll/prompts/, .ll/rubrics/ must keep reporting -- they are
+    # artifacts open issues propose to create, not drift. See Motivation § The
+    # .ll/ Slice. Source of truth for this block: ll-init's _GITIGNORE_ENTRIES
+    # (see § Source of truth); a test pins the two lists together.
     ".ll/.auto-manage-state.json",
     ".ll/context-pressure-state.json",
     ".ll/ll-auto-state.json",
@@ -523,8 +586,39 @@ DEFAULT_UNTRACKED_BY_DESIGN: tuple[str, ...] = (
     ".ll/ll-sync-state.json",
     ".ll/ll.local.md",
     ".ll/workflow-analysis/",
+    # Added 2026-09-02 from _GITIGNORE_ENTRIES / this repo's .gitignore:
+    ".ll/ll-session-events.jsonl",
+    ".ll/history.db",                 # prefix form of .ll/history.db* (-shm/-wal)
+    ".ll/queue.db",                   # prefix form of .ll/queue.db*
+    ".ll/private-refs.local.txt",
+    ".ll/evidence-verdict-cache.json",
+    ".ll/ll-update-docs.watermark",
+    ".ll/ll-context-handoff-needed",  # extensionless: MUST carry no slash --
+                                      # see normalization note below
+    ".ll/loop-suggestions/",
+    ".ll/advisor-budget/",
+    ".ll/design-tokens/",
 )
 ```
+
+**Normalization hazard introduced by the additions**: `.ll/ll-context-handoff-needed`
+is an extensionless *file*, so the directory-shape heuristic in
+§ Prefix Matching Semantics would coerce it to `.ll/ll-context-handoff-needed/`
+and it would match nothing. Likewise `.ll/history.db` and `.ll/queue.db` are
+meant as *raw prefixes* (to catch `-shm`/`-wal`), which the heuristic handles
+correctly only by accident (they contain a `.`). Two acceptable resolutions —
+pick one and pin it with the idempotency test:
+
+1. Adopt the optional trailing-`*` form from § Source of truth and write the
+   entries as `.ll/ll-context-handoff-needed*`, `.ll/history.db*`,
+   `.ll/queue.db*`; or
+2. Keep the heuristic and exempt `DEFAULT_UNTRACKED_BY_DESIGN` itself from
+   normalization (only user-supplied config entries are normalized), documenting
+   that extensionless files cannot be expressed in user config without the `*`.
+
+Option 1 is simpler and makes the `_GITIGNORE_ENTRIES` cross-check a plain
+string comparison. Whichever lands, the "normalization-idempotent" assertion
+below must hold for the final list.
 
 This list is **normalization-idempotent** under the rule in § Prefix Matching
 Semantics — every entry either already ends in `/` or is file-shaped, so
@@ -537,11 +631,13 @@ dataclass `field(default_factory=...)`; an absent config key falls through
 `data.get(key, DEFAULT)` to the dataclass default, so a project that never
 opts in still gets the fix.
 
-Note this default is little-loops-shaped (`thoughts/`, `postmortems/`, and the
-whole `.ll/` block are this repo's conventions). That is acceptable on two
-counts: it is a *default*, overridable per project; and per § Why an Over-Broad
-Entry Is Safe, a prefix that does not apply to a consuming project can only
-under-report drift there, never break a resolution.
+Note the `thoughts/`, `postmortems/`, and `logs/` entries are little-loops-shaped
+(this repo's conventions). That is acceptable on two counts: it is a *default*,
+overridable per project; and per § Why an Over-Broad Entry Is Safe, a prefix
+that does not apply to a consuming project can only under-report drift there,
+never break a resolution. The `.loops/` and `.ll/` blocks are **not**
+repo-specific — they are what little-loops itself creates in every consumer
+(see § Source of truth).
 
 ### Config Placement — `issues.`, not `scan.`
 
@@ -559,10 +655,11 @@ Put the key at `issues.untracked_by_design`, not `scan.untracked_by_design`.
   `_SCHEMA_PARITY_EXCLUDED_SECTIONS` (`scripts/tests/test_config_schema.py:1191`)
   excludes `{"$schema", "project", "issues", "scan"}` — **both** candidate
   sections. Whichever lands, the schema-vs-code value-parity walk will not
-  cover this key, so `TestDataclassSectionMapCompleteness` /
-  `TestToDictSchemaParity` registration plus an explicit
-  `test_config.py` round-trip test carry the whole burden. Do not assume the
-  guard catches a schema-default/dataclass-default divergence here.
+  cover this key, so an explicit `test_config.py` round-trip test plus the
+  schema-default-equals-constant assertion in § Tests carry the whole burden.
+  (No `_DATACLASS_SECTION_MAP` registration is needed — this adds a field to
+  the existing `IssuesConfig`, not a new dataclass.) Do not assume the guard
+  catches a schema-default/dataclass-default divergence here.
 
 ### Call Path
 
@@ -658,8 +755,11 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
   gains the field + `from_dict()` entry, including the trailing-slash
   normalization described in Program Design § Prefix Matching Semantics
 - `scripts/little_loops/config/core.py` — `BRConfig.to_dict()`'s hardcoded
-  `"issues"` block (lines 737-748) enumerates keys by name; the new field is
-  invisible outside `IssuesConfig` until a line is added there
+  `"issues"` block (lines 744-755) enumerates keys by name; the new field is
+  invisible outside `IssuesConfig` until a line is added there. Note that block
+  *already* omits `next_issue`, `link_epics`, and `duplicate_detection`, so
+  there is no `IssuesConfig` round-trip test to copy — the one added here will
+  be the first
 - `scripts/little_loops/issues/research_triage.py` — denominator membership for
   the new verdict, same question as ENH-2999 raises. **Denominator tuples only**
   — no config import (§ Config Threading)
@@ -784,6 +884,20 @@ _Wiring pass added by `/ll:wire-issue`:_
   single highest-count entry at 28 refs) returns `untracked_by_design`, proving
   a full file path works as a `startswith` entry and that normalization left it
   unslashed
+- **`_GITIGNORE_ENTRIES` cross-check** (added 2026-09-02) — import
+  `_GITIGNORE_ENTRIES` from `little_loops.init.writers` and assert every entry
+  that is not a mid-string glob (`.ll/*.lock`), a `**/` rule, or a `!` negation
+  is covered by `DEFAULT_UNTRACKED_BY_DESIGN` (trailing-`*` entries compare by
+  stem). This pins the shipped default to the list `ll-init` writes into every
+  consumer; see Program Design § Source of truth
+- **Extensionless-file entry** (added 2026-09-02) — a ref to
+  `.ll/ll-context-handoff-needed` returns `untracked_by_design`, and the
+  normalized default still contains that entry *without* a trailing slash. This
+  is the guard for the hazard noted under § Shipped Default; it fails if the
+  directory-shape heuristic is applied naively to the constant
+- **Sqlite-sibling prefix** (added 2026-09-02) — refs to `.ll/history.db-wal`
+  and `.ll/queue.db-shm` return `untracked_by_design`, proving the
+  `.ll/history.db` / `.ll/queue.db` entries act as raw prefixes
 - `scripts/tests/test_research_triage.py::TestReferenceFiltering` (~lines
   227-287) — new test mirroring
   `test_ambiguous_ref_is_denominator_eligible_but_not_covering` (lines
@@ -832,7 +946,7 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
 - **Config-plumbing path is longer than the current Files-to-Modify list**: a new `config-schema.json` key alone does not reach consumers. The established path for every existing config section is schema entry → dataclass `from_dict()` (`ScanConfig` lives in `scripts/little_loops/config/features.py:304-324`) → assignment in `BRConfig._parse_config()` and a `to_dict()` entry (`scripts/little_loops/config/core.py:306, 375-377, 808-810`) → a completeness-guard registration in `scripts/tests/test_config_schema.py` (`_DATACLASS_SECTION_MAP`, `TestDataclassSectionMapCompleteness`, `TestToDictSchemaParity`). If Option B's config surface is added as a new `ScanConfig` field (or a new dataclass), `config/features.py` and `config/core.py` belong in Files to Modify alongside `config-schema.json`, and `scripts/tests/test_config_schema.py` belongs in Dependent Files alongside the two test files already listed.
 - **`scan` is excluded from the schema-vs-code parity guard** (`_SCHEMA_PARITY_EXCLUDED_SECTIONS` in `test_config_schema.py:1191` includes `"scan"`), and `scan.exclude_patterns`/`scan.focus_dirs` currently have zero runtime consumers anywhere in `scripts/little_loops/` — only `scan.exclude_patterns` reaches one consumer, `codequery/codegraph.py:_is_scan_relevant()`, for scan/touch relevance, not reference classification. A key added under `scan` inherits neither the parity check nor an existing reader; this is a fact for whichever design lands the config key, not a recommendation for where to put it.
-- **Placement resolved (2026-08-19)**: the key lands at `issues.untracked_by_design`, not under `scan` — see Program Design § Config Placement. The two bullets above should be read with that substitution: the config-plumbing path is the same shape but runs through `IssuesConfig` (`config/features.py:204-219`) and `BRConfig.to_dict()`'s `"issues"` block (`config/core.py:737-748`). Critically, `_SCHEMA_PARITY_EXCLUDED_SECTIONS` excludes **both** `"issues"` and `"scan"`, so the parity-guard gap noted above applies identically to the chosen placement and must be covered by an explicit test.
+- **Placement resolved (2026-08-19)**: the key lands at `issues.untracked_by_design`, not under `scan` — see Program Design § Config Placement. The two bullets above should be read with that substitution: the config-plumbing path is the same shape but runs through `IssuesConfig` (`config/features.py:204-219`) and `BRConfig.to_dict()`'s `"issues"` block (`config/core.py:744-755`). Critically, `_SCHEMA_PARITY_EXCLUDED_SECTIONS` excludes **both** `"issues"` and `"scan"`, so the parity-guard gap noted above applies identically to the chosen placement and must be covered by an explicit test.
 
 ## Implementation Steps
 
@@ -860,7 +974,10 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
    spuriously.
 
    Gates, expressed as deltas on one tree:
-   - **`stale` drops by ~267**, simulated against the exact
+   - **`stale` drops by *at least* ~267** (the 2026-09-02 additions to the
+     default — see § Source of truth — may suppress a few more; any extra must
+     be under a newly added entry, and `resolved` must still not move),
+     simulated against the pre-addition
      `DEFAULT_UNTRACKED_BY_DESIGN` list above on 2026-08-19: `thoughts/` 99,
      `.ll/` 109, `.loops/` 43, `postmortems/` 9, `logs/` 7.
    - **`untracked_by_design` rises by the same ~267**, and every other verdict's
@@ -896,7 +1013,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add the new `IssuesConfig` field (`config/features.py:204-219`) plus its
   `from_dict()` update and trailing-slash normalization, and add the matching
   key to `BRConfig.to_dict()`'s hardcoded `"issues"` block
-  (`config/core.py:737-748`), since neither happens automatically from a
+  (`config/core.py:744-755`), since neither happens automatically from a
   `config-schema.json` entry alone
 - Update both independent denominator tuples in `research_triage.py`
   (`qualified_ref_count()` line 215, `_triage_axis()` line 416) to exclude
@@ -964,13 +1081,16 @@ _Second wiring pass — 2026-08-19:_
 |----------|-----------|
 | `.claude/CLAUDE.md` | § Key Directories documents these dirs as real and gitignored |
 | `scripts/little_loops/text_utils.py` | `build_ref_index`'s tracked-files-only contract |
-| `.gitignore` | lines 21, 53-57, 77-85, 100-116, 122, 127, 132 — the authoritative granularity the default prefix list must mirror; `.loops/` is ignored only per-subdirectory and `.ll/` only per-file |
+| `.gitignore` | lines 21, 60-64, 81 (global `*-state.json`), 84-92, 107-125, 131, 136, 141, 163 — the granularity the default prefix list must mirror for *this repo*; `.loops/` is ignored only per-subdirectory and `.ll/` only per-file/per-subdirectory |
+| `scripts/little_loops/init/writers.py:59` | `_GITIGNORE_ENTRIES` — what `ll-init` writes into every consumer's `.gitignore`; the source of truth for the `.ll/` block of the shipped default (§ Source of truth) |
 
 ---
 
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (a new `stale_file_ref` verdict branch vs. the testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
+
+_Moot as of 2026-09-02: ENH-2966 is `done`, as are ENH-2999 and ENH-2971. Only the ENH-2990 reconciliation note at the end of this file is still live._
 
 ## Verification Notes
 
@@ -1012,6 +1132,22 @@ All other citations (including `research_triage.py:416`,
 content changed.
 
 ## Session Log
+- pre-implementation review - 2026-09-02 - found that the `.ll/` block of the
+  shipped default was corpus-built rather than derived from `ll-init`'s
+  `_GITIGNORE_ENTRIES` (`init/writers.py:59`), the canonical consumer-universal
+  ignore list; added the 10 missing entries (incl. `.ll/ll-session-events.jsonl`,
+  which the issue itself cites as the target of a near-miss typo), a
+  cross-check test, and an extensionless-file normalization hazard
+  (`.ll/ll-context-handoff-needed`). Corrected the "ignored per-file" rationale
+  (eight `*-state.json` entries are caught by the global rule at
+  `.gitignore:81`), refreshed all `.gitignore` and `config/core.py` line
+  citations, re-pointed the orphaned prose-cited `planned_new` gap (ENH-2971 is
+  done and did not touch `_PLANNED_NEW_RE`), dropped the moot
+  `_DATACLASS_SECTION_MAP` registration step, marked the ENH-2966
+  merge-collision note moot, and noted the `stale` delta gate may now exceed
+  ~267 because of the added entries. The file still carries three separate
+  "Codebase Research Findings" sections with superseded guidance; a further
+  `/ll:reconcile-issue` pass before implementation would help
 - `/ll:confidence-check` - 2026-09-02T20:43:16 - `39d84820-6142-436e-a022-2d67dd752172.jsonl`
 - `/ll:reconcile-issue` - 2026-09-02T20:32:59 - `62eddba7-ec09-476f-aa16-88e65bd2f581.jsonl`
 - `/ll:verify-issues` - 2026-09-02T20:26:35 - `596b078b-a7c0-4bdc-bd3a-515cb9746073.jsonl`
