@@ -16,8 +16,7 @@ labels:
 - measurement
 - cost
 verify_verdict: VALID
-depends_on:
-- ENH-3000
+depends_on: []
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 86
@@ -196,6 +195,19 @@ _Wiring pass added by `/ll:wire-issue`:_
   way `advisor_consults` is, it needs an analogous entry here (and a
   `VALID_KINDS`/`_KIND_TABLE` registration in `schema.py`, already a primary
   file) [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/history_reader.py` — the read-side half of the
+  `advisor_consults` pattern this issue copies: `query_advisor_consults()`
+  and `consult_stats()` (lines 3315, 3356) are the public API this issue's
+  own Implementation Step 4 ("read it back after enough autodev cycles have
+  accumulated") needs an analogue of; `docs/ARCHITECTURE.md`'s v45 row
+  (line 671) — the template row this issue's own doc edit is asked to
+  follow — explicitly names these two functions as what the row "enables,"
+  so the v46 row cannot follow that template without a corresponding
+  `history_reader.py` addition. `session_store/queries.py` (above) is a
+  separate module (`ll-session recent --kind` CLI surface) that does not
+  wrap or substitute for this one [graph-discovery: `ll-code callers-of
+  write_advisor_consult` surfaces `test_history_reader.py`; confirmed by
+  reading `history_reader.py:3308-3389`]
 
 ### Dependent Files (Callers/Importers)
 
@@ -291,6 +303,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   returned (used for `RefStatus`). No `assert_never`/exhaustiveness-check
   convention exists anywhere in this codebase to follow instead — confirmed
   by repo-wide search [Agent 3 finding]
+- `scripts/tests/test_history_reader.py::TestNewEventReaders::
+  test_query_advisor_consults_and_consult_stats` (lines 1982, 1996) — the
+  pattern to copy for a new `history_reader.py` read-API test once
+  `query_advisor_consults()`/`consult_stats()`-equivalent functions are
+  added for the new table [wire-issue finding]
 
 ### Codebase Research Findings
 
@@ -300,6 +317,12 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 - `cli_event_context()` wraps the entire `ll-issues` process once (`scripts/little_loops/cli/issues/__init__.py:21`), not per-subcommand — every one of `ll-issues`' ~90 subcommands writes `binary="ll-issues"`; a `research-triage` row is identifiable today only by parsing `args[0]` from its stored JSON array.
 - Event tables in this codebase that do model a closed-set outcome column enforce the set with a SQL `CHECK` constraint at the DB layer (`verdict_events.verdict`, `schema.py:768-781`/`:1202-1219`; the cross-column `abstention_reason` constraint) — independent of whatever Python-side type the value has before the INSERT. Relevant if the new reason code lands as its own `history.db` column.
 - ENH-3000 (`.issues/enhancements/P3-ENH-3000-*.md`) is still `status: open` and unimplemented — `RefStatus` (`scripts/little_loops/text_utils.py:161`) is the pre-ENH-3000 five-member `Literal`, with no `untracked_by_design` anywhere in `scripts/little_loops/` (repo-wide search, no hits). Confirms the reconciliation constraint this issue's own Scope Boundary note already flags.
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- **ENH-3000 has now shipped** (`status: done`, completed 2026-09-02T21:25:33Z) — this supersedes the two "still open"/"no hits" claims in this section's earlier Codebase Research Findings entry. `RefStatus` (`scripts/little_loops/text_utils.py:161-163`) is now the six-member `Literal["resolved", "stale", "unresolvable_form", "planned_new", "ambiguous", "untracked_by_design"]`, and `"untracked_by_design"` now appears in 6 files under `scripts/little_loops/` (`text_utils.py`, `config/core.py`, `config/features.py`, `config-schema.json`, `cli/issues/format_check.py`, `cli/issues/research_triage.py`) — not zero.
+- `docs/reference/CLI.md` § `ll-issues research-triage` (the file whose change triggered this pass's `locator` "stale" verdict): its Behavior bullets (line 1934) already document ENH-3000's `untracked_by_design` classification. The `--json` contract line itself (~1922, `{"covered": bool, "evidence": str}`) is unchanged and still needs the reason-code key added once implemented — only that one line still needs the doc edit this section calls for, not the whole section.
+- `SCHEMA_VERSION` confirmed still `45` (`scripts/little_loops/session_store/schema.py:25`) — no `v46` migration has landed. The Wiring Phase's "bump to 46" guidance is unchanged and still pending.
 
 ## Program Design
 
@@ -326,6 +349,14 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 - If the reason code is persisted as its own `history.db` column rather than staying in-process: existing closed-set outcome columns (`verdict_events.verdict`, `schema.py:768-781`/`:1202-1219`; the cross-column `abstention_reason` constraint) enforce the set with a SQL `CHECK` constraint at the DB layer, independent of the Python-side `Literal` type — the same pattern would apply here.
 - Escape hatch: the reason code is additive to `evidence`, not a replacement — `evidence`'s existing prose stays human-readable.
 - Reconciliation constraint (already flagged by this issue's own Scope Boundary note): ENH-3000 is still `status: open` and unimplemented — `RefStatus` (`text_utils.py:161`) is still the pre-ENH-3000 five-member `Literal` with no `untracked_by_design` value anywhere in `scripts/little_loops/` (repo-wide search, no hits). The reason-code taxonomy should leave room for that eventual sixth value rather than being finalized as a closed set independently of it.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- ENH-3000's wiring is one layer above this issue's target module, not inside it. `cmd_research_triage()` (`scripts/little_loops/cli/issues/research_triage.py:62-65`) calls `build_ref_index(config.project_root, untracked_by_design=config.issues.untracked_by_design)` and passes the resulting index into `triage_research_axes(...)`. The core logic module (`scripts/little_loops/issues/research_triage.py` — `_triage_axis`, `AxisCoverage`) contains zero references to `RefStatus` or `untracked_by_design`; it only gates on `status in ("resolved", "stale", "ambiguous")` (`_triage_axis:416`, `qualified_ref_count:215`), so `untracked_by_design`/other unmatched statuses already fall into the same "not eligible" bucket with no code change required. ENH-3000 shipping did not touch this issue's target functions.
+- `_triage_axis`'s branch structure (`:402-451`) reconfirmed exactly as this section's existing Decision Rules describe — no drift since that was written.
+- Error-handling precedent for the new fail-soft writer: `write_advisor_consult()` (`scripts/little_loops/session_store/writers.py:1823-1895`) opens its own connection, wraps insert+commit in `try`/`except sqlite3.Error`, logs via `logger.warning(exc_info=True)`, and returns `False` — never raises. `cmd_research_triage()` (`cli/issues/research_triage.py:46-75`) has exactly one existing failure branch (unresolved issue ID → exit 1) and its docstring commits to "exit 0 whenever the issue is readable, including when every axis is unmet" — a new telemetry write must not alter that contract on write failure.
 
 ## Implementation Steps
 
@@ -362,6 +393,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `commands/refine-issue.md` Step 3.0 to document the new JSON key
 - Add a row to `docs/ARCHITECTURE.md`'s `history.db` schema-versions table
   and to `docs/guides/HISTORY_SESSION_GUIDE.md`'s schema-history table
+- Add a read-API function (or functions) to `scripts/little_loops/
+  history_reader.py`, modeled on `query_advisor_consults()`/
+  `consult_stats()` (lines 3315, 3356) — required for the v46 doc row to
+  follow the v45 template, and for Implementation Step 4's "read it back"
+  to have something to call; add the matching test class to
+  `scripts/tests/test_history_reader.py` (copy `TestNewEventReaders::
+  test_query_advisor_consults_and_consult_stats`)
 
 ## Impact
 
@@ -388,6 +426,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-02T22:14:34 - `45cec2d5-6331-4821-b360-a7b6926c4a33.jsonl`
+- `/ll:refine-issue` - 2026-09-02T22:08:13 - `0654a055-4280-424a-9a1f-55a9966af38e.jsonl`
+- `/ll:refine-issue` - 2026-09-02T22:07:49 - `0654a055-4280-424a-9a1f-55a9966af38e.jsonl`
 - `/ll:confidence-check` - 2026-09-02T17:09:25 - `0b967ffb-47f4-465e-882a-47e8e31d96be.jsonl`
 - `/ll:wire-issue` - 2026-09-02T16:52:28 - `68e96fc1-615b-4baf-b426-514ab46b57c5.jsonl`
 - `/ll:decide-issue` - 2026-09-02T15:00:37 - `57e4152b-6dc7-4f50-8257-b25ad8c5fb2f.jsonl`
@@ -410,3 +451,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's reason-code taxonomy for `AxisCoverage` (distinguishing `stale` from coverage-side rejections) and ENH-3000's new `untracked_by_design` verdict/denominator status both touch coverage/denominator accounting in `scripts/little_loops/issues/research_triage.py`. When implementing, reconcile both into one consistent enum rather than two independently-evolving classification schemes in the same module.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- Codebase analysis (2026-09-02) suggests the reconciliation this note asks for is narrower than "merge into one enum." The two taxonomies classify different things at different granularities: `RefStatus` (`text_utils.py:161`) classifies one *reference* (`classify_file_ref`, per-ref), while this issue's proposed `below_threshold`/`no_qualified_refs`/`missing_symbol`/`stale` classifies one *axis's overall verdict* (`_triage_axis`, per-axis, aggregating many refs). They mostly don't collide — except both use the word **"stale" for two different meanings**: `RefStatus`'s `"stale"` means a `/`-qualified reference that doesn't resolve against the tracked-file index at all (`text_utils.py:388`); this issue's proposed axis-level `"stale"` means a reference that *did* resolve but its target changed after the issue's last refine (`_triage_axis:434-448`, existing `"stale: {tracked} changed …"` evidence string at `:445`). Recommend naming the new axis-level reason code something other than bare `stale` (e.g. `axis_stale`) to avoid conflating it with `RefStatus.stale` in logs/queries — not merging the two enums, since they operate at different levels.
