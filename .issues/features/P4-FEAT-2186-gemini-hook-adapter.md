@@ -104,6 +104,7 @@ alias is provided by Gemini for compatibility.
 ### Files to Modify
 - `ll:configure` command — add a `--gemini` path that injects the adapter's hook
   entries into `.gemini/settings.json` (see Implementation Step 8).
+  > ⚠ Superseded — `ll:configure` has no host wiring; real path is `ll-init --hosts gemini` → `_dispatch_host_adapters()` (see § Codebase Research Findings)
 
 ### New Files
 - See [API/Interface § New Files](#apiinterface) for the full list of adapter
@@ -129,6 +130,19 @@ alias is provided by Gemini for compatibility.
 ### Configuration
 - `.gemini/settings.json` — user-local file patched by `ll:configure --gemini`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- Runnable adapter files for existing hosts live under `scripts/little_loops/hooks/adapters/<host>/` (codex, kimi, qwen, omp), NOT the top-level `hooks/adapters/<host>/` — that top-level dir holds only a docs-only `README.md` for those four hosts (confirmed via `test_codex_adapter.py:34`, `test_kimi_adapter.py`'s `ADAPTER_DIR`, `test_qwen_adapter.py:36`, `test_omp_adapter.py:33-35,100` — the latter asserts `not (REPO_ROOT / "hooks" / "adapters" / "omp" / "index.ts").exists()`). `claude-code` and `opencode` are the two exceptions that keep both code and docs at the top-level `hooks/adapters/<host>/` (`test_claude_code_adapter.py:27,29`, `test_opencode_adapter.py:32-33`). No `hooks/adapters/gemini/` or `scripts/little_loops/hooks/adapters/gemini/` exists at either location today (confirmed via repo-wide glob, both paths).
+- `ll:configure` (`skills/configure/SKILL.md`) has no host or adapter awareness at all — 0 hits for `host`, `adapter`, or `gemini` in that file. The actual mechanism every other host uses to install its adapter is `ll-init --hosts <host>` → `_dispatch_host_adapters()` (`scripts/little_loops/init/cli.py:94-216`), an if/elif chain gated by the `_KNOWN_HOSTS` frozenset (`cli.py:48-50`, currently `{"claude-code", "codex", "opencode", "pi", "kimi-code", "qwen", "omp"}` — no `"gemini"`), which calls `install_codex_adapter`/`install_kimi_adapter`/`install_qwen_adapter` (all in `scripts/little_loops/init/writers.py`). The comment at `cli.py:41-47` states gemini is "deliberately absent because it has no install wiring and would warn 'Unknown host'."
+- The `.gemini/ll-config.json` config-dir probe is already implemented (prior/separate issue, ENH-2187) — `GEMINI_CONFIG_DIR = ".gemini"` and the `host == "gemini"` branch in `_config_candidates()` (`scripts/little_loops/config/core.py:56,144-145`) already exist and require no change for this issue.
+- The closest existing precedent for this issue's ratified Option A (inject managed hook entries into a JSON settings file the host itself owns, with no comment syntax available for markers) is `install_qwen_adapter` (`scripts/little_loops/init/writers.py:896`), which performs a structured JSON merge into `.qwen/settings.json`: managed hook entries are identified by an `"ll:"`-prefixed `name` field (`_QWEN_MANAGED_NAME_PREFIX`) and a `"ll-gen:{{LL_GEN_VERSION}}"` stamp inside each entry's `description`, rather than Kimi's comment-marker-span approach (which only works because TOML supports comments). `install_qwen_adapter`'s own docstring names this "ARCHITECTURE-046 'Option A' (settings injection) — first implementation, landed for Qwen" — the same decision ID this issue's Decision section cites.
+- `LLHookEvent.host` is populated once, at dispatch time, from `os.environ.get("LL_HOOK_HOST", "claude-code")` inside `main_hooks()` (`scripts/little_loops/hooks/__init__.py`). Every existing shell-based adapter shim sets this via `export LL_HOOK_HOST=<host>` before invoking `python -m little_loops.hooks <intent>` (e.g. `scripts/little_loops/hooks/adapters/codex/session-start.sh`).
+- `main_hooks()`'s `_dispatch_table()` only accepts ll-side intent names (`session_start`, `pre_compact`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, `session_end`, etc.) — there is no `pre_compress`/`before_agent`/`before_tool`/`after_tool` intent. This issue's own Event Mapping table's translation (Gemini event name → ll intent) must happen inside the adapter's own shell scripts, exactly mirroring how Codex's `hooks.json` maps its `"PreToolUse"` key to a script that invokes the `pre_tool_use` intent.
+- Fail-open/blockable-event exit-code contract already implemented host-agnostically: `pre_tool_use.py` → `learning_tests_gate.gate()` returns `LLHookResult(exit_code=2, feedback=...)` on a hard block, `exit_code=0` otherwise; `edit_batch_nudge.py:197-218` explicitly branches `if event.host == "claude-code": <emit hookSpecificOutput JSON> else: return LLHookResult(exit_code=2, feedback=_NUDGE)` with the comment "Other hosts translate exit codes; exit 2 stays their model-visible channel." A Gemini adapter lands in the non-`claude-code` branch and gets the same exit-2/stderr contract Codex and Kimi already get — no JSON `hookSpecificOutput` needed.
+- Each existing per-host adapter test module (`test_codex_adapter.py`, `test_kimi_adapter.py`, `test_qwen_adapter.py`, `test_omp_adapter.py`, `test_claude_code_adapter.py`, `test_opencode_adapter.py`) independently declares its own `ADAPTER_DIR`/`EXPECTED_SHIMS` constants and a `TestXAdapterSentinels` + `TestXAdapterIntegration` two-class split — there is no shared fixture/helper module a new `test_gemini_adapter.py` would import from.
+
 ## Implementation Steps
 
 1. Create `hooks/adapters/gemini/` directory.
@@ -142,6 +156,7 @@ alias is provided by Gemini for compatibility.
    mapping table.
 8. Create `ll:configure --gemini` extension (or document manual installation) to
    inject hook entries into `.gemini/settings.json`.
+   > ⚠ Superseded — no `ll:configure` host wiring exists; real path is `ll-init --hosts gemini` → `_dispatch_host_adapters()` (see § Codebase Research Findings)
 9. Add tests in `scripts/tests/test_gemini_adapter.py`.
 
 ## Acceptance Criteria
@@ -168,6 +183,47 @@ alias is provided by Gemini for compatibility.
 
 - `hooks/adapters/codex/` — pattern to follow
 - `hooks/adapters/claude-code/` — alternate reference
+
+## Program Design
+
+### Types
+
+N/A — no new data shape; reuses the existing `LLHookEvent`/`LLHookResult`
+dataclasses (`scripts/little_loops/hooks/types.py`) unchanged.
+
+### Signatures
+
+- `install_gemini_adapter(project_root: Path, plugin_root: Path, force: bool = False, dry_run: bool = False) -> bool | None`
+  — same signature shape as `install_codex_adapter`/`install_kimi_adapter`/`install_qwen_adapter`
+  (`scripts/little_loops/init/writers.py`); return `None` = template missing,
+  `False` = already installed at current gen-version, `True` = written.
+- Adapter shell scripts invoke the existing, unchanged entrypoint:
+  `python -m little_loops.hooks <intent>` (`scripts/little_loops/hooks/__main__.py`
+  → `main_hooks()` in `scripts/little_loops/hooks/__init__.py`).
+
+### Call Path
+
+Gemini native event (e.g. `BeforeTool`) → adapter shell script sets
+`LL_HOOK_HOST=gemini` and pipes stdin JSON to
+`python -m little_loops.hooks pre_tool_use` → `main_hooks()`
+(`scripts/little_loops/hooks/__init__.py`) builds
+`LLHookEvent(host="gemini", intent="pre_tool_use", ...)` →
+`_dispatch_table()["pre_tool_use"]` → `pre_tool_use.handle(event)` →
+`LLHookResult(exit_code=..., feedback=...)` → exit code/stderr propagated back
+to Gemini via the shim's `exit $?`.
+
+Install-time path: `ll-init --hosts gemini` → `_dispatch_host_adapters()`
+(`scripts/little_loops/init/cli.py`) → (new) `install_gemini_adapter()`
+(`scripts/little_loops/init/writers.py`) → renders the adapter's manifest
+template, substituting `{{LL_PLUGIN_ROOT}}`/`{{LL_GEN_VERSION}}`, and merges
+it into `.gemini/settings.json`.
+
+### Decision Rules
+
+N/A — no new decision logic. This issue is a translation/install layer; the
+event→intent mapping is a fixed table (already specified above), not a
+runtime classification rule, and the exit-code/fail-open contract is inherited
+unchanged from the existing host-agnostic handlers.
 
 ## Impact
 
@@ -200,6 +256,7 @@ _Run `/ll:normalize-issues` to discover and link additional relevant docs._
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-02T22:23:46 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:format-issue` - 2026-06-26T23:20:04 - `9c24a548-31d7-49d9-b376-2665d69b3ab4.jsonl`
