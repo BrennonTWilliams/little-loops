@@ -134,21 +134,48 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
 2. **Flagging rule (ATTRIBUTE phase)** — computed from `loop-fleet` aggregates only. A loop is
    flagged when **all** of: `attribution == "builtin"`, `runs >= --min-runs` (default 3), and
    (`success_pct < --threshold` (default 50) **or** `top_outcome in {"error", "max-steps",
-   "cycle"}`). Both knobs are flags on `fleet-review`, not config keys. There is no dismissal
-   list in v1: a false positive is handled by the maintainer skipping it in DIAGNOSE and noting
-   why in the report's "Reviewed, not fixed" section (free-text, written by hand after the run).
+   "stalled", "failed"}`). The failure set is the **actual vocabulary of
+   `_derive_loop_outcome()`** (`logs.py:1968`): it emits `converged | failed | error |
+   max-steps | stalled | interrupted | signal` — there is no `"cycle"` value (cycle detection
+   maps to `"stalled"`), and `"failed"` is the dominant failure on the live fleet (261 of 2448
+   runs at review time vs 13 `error` / 32 `max-steps`), so it must be in the set.
+   `interrupted` and `signal` are deliberately **not** in the set (operator/infra exits, not
+   loop-logic failures) but they still count against `success_pct` because the shared
+   `loop-fleet` definition is `converged / runs`; the per-loop `outcomes` counter (Decisions
+   #4) lets the maintainer discount them. Both knobs are flags on `fleet-review`, not config
+   keys. There is no dismissal list in v1: a false positive is handled by the maintainer
+   skipping it in DIAGNOSE and noting why in the report's "Reviewed, not fixed" section
+   (free-text, written by hand after the run).
 3. **`scan-failures` / `sequences` are context, not flagging inputs.** `scan-failures` clusters
    are keyed on `(cwd, tool, normalized_error_sig)` with no loop-name field; joining them to
    loops via `session_ids` → run folders would be a new feature. They are rendered verbatim as
    appendix tables under the flagged-loop section so the maintainer can eyeball them.
-4. **Baseline is a JSON sidecar, machine-local.** `.loops/diagnostics/fleet-review-<date>.json`
-   with `{"generated": ISO-ts, "window_days": N, "loops": {name: {runs, converged, success_pct,
-   top_outcome, projects}}}`. The delta is computed by loading the lexically-newest prior sidecar
-   — the count-per-stable-key shape of `write_baseline()`/`regressions()` in
+   **Neither has a reusable collector today**: `_cmd_scan_failures` (`logs.py:1193-1426`) is
+   one ~230-line function that mines, clusters, filters, and prints; `_cmd_sequences`
+   (`:630-684`) inlines project discovery and printing around `_count_ngrams` /
+   `_build_chain_results`. "In-process" therefore requires the extractions in Decisions #7 —
+   do **not** capture stdout via `contextlib.redirect_stdout` or re-parse printed output.
+4. **Baseline is a JSON sidecar, machine-local.**
+   `.loops/diagnostics/fleet-review-<stamp>.json` where `<stamp>` is `YYYYMMDDTHHMMSSZ` (UTC,
+   the shape `vega-viz-20260702T025053Z.md` already uses in that directory) — a bare date
+   collides on a second run the same day and would make the "newest prior" search pick a
+   same-day file as its own baseline. Shape:
+   `{"generated": ISO-ts, "window_days": N|null, "since": ISO|null, "until": ISO|null,
+   "projects_scanned": [abs paths], "loops": {name: {runs, converged, success_pct,
+   top_outcome, outcomes: {outcome: count}, projects: [abs paths]}}}`. `outcomes` is the
+   **full `Counter`** of `_derive_loop_outcome` values, not just the top one — it is free to
+   store and lets the delta table show Δfailed / Δmax-steps and discount `interrupted`.
+   `projects` are **absolute paths**, never `Path.name` (the `loop-fleet` table shortens for
+   display; the runbook's `cd <project>` must be copy-pasteable and two projects can share a
+   basename — e.g. this fleet has several `cards`-style names). The delta is computed by
+   loading the lexically-newest prior sidecar **excluding the file being written** — the
+   count-per-stable-key shape of `write_baseline()`/`regressions()` in
    `scripts/little_loops/cli/verify_private_refs.py:446-474`, keyed on loop name. `.loops/` is
    gitignored and excluded from `ll-verify-private-refs` (`_EXCLUDED_DIRS`), so the baseline is
    per-machine by design and may quote other projects' paths; the runbook's "Baseline /
-   Re-measure contract" section must say this explicitly.
+   Re-measure contract" section must say this explicitly. **`--json` prints the sidecar dict to
+   stdout and writes nothing** (no `.md`, no `.json`), so a scripted/JSON run never enters the
+   baseline chain.
 5. **`diagnose-evaluators` / `calibrate-budget` run in the source project, not here.** Both read
    `.loops/.history/*-<loop>/` under the *current* project's config-resolved `loops_dir`
    (`scripts/little_loops/cli/loop/info.py:1301-1380`), and `ll-loop` has no `--project` /
@@ -162,11 +189,40 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
    forensics to `postmortems/`; this report is a recurring, tool-generated artifact adjacent to
    the `loop-specialist` agent's per-loop diagnostics, and both dirs are gitignored and
    private-refs-exempt. Chosen for adjacency; recorded so a reviewer doesn't re-litigate it.
-7. **Pre-step: extract `loop-fleet` aggregation.** The success-rate / median-iterations /
-   top-outcome math exists only in the human-table branch of `_cmd_loop_fleet`
-   (`logs.py:2165-2183`). Extract it to `_aggregate_fleet_runs(runs: list[_LoopRunRecord]) ->
-   list[_LoopFleetAggregate]` and have both the table branch and `fleet-review` call it, so the
-   two cannot drift. Adding `--aggregate` to `loop-fleet -j` is optional.
+7. **Pre-step: extract the collectors `fleet-review` consumes.** Three extractions, each a
+   pure "existing `_cmd_*` becomes a thin printer over the new function" refactor with the
+   existing tests as the regression net:
+   - `_aggregate_fleet_runs(runs: list[_LoopRunRecord]) -> list[_LoopFleetAggregate]` from
+     the human-table branch of `_cmd_loop_fleet` (`logs.py:2165-2183`). **Deterministic
+     tie-break** for `top_outcome`: sort by `(-count, outcome)`, not `Counter.most_common(1)`
+     first-seen — first-seen depends on `iterdir()` order, which varies by filesystem and would
+     make the baseline and tests unstable. Adding `--aggregate` to `loop-fleet -j` is optional.
+   - `_collect_failure_clusters(args, logger) -> list[_FailureCluster]` from
+     `_cmd_scan_failures` (everything up to and including the `skill_filter` / `limit` steps;
+     `--capture` and printing stay in `_cmd_scan_failures`).
+   - `_collect_sequences(args, logger) -> list[<chain result>]` from `_cmd_sequences`
+     (project discovery + `_extract_ll_event_streams` + `_count_ngrams` +
+     `_build_chain_results`; printing stays in `_cmd_sequences`).
+8. **`validate` is called as a library, not via `cmd_validate`.** `cmd_validate`
+   (`cli/loop/config_cmds.py:14`) prints to stdout and returns an int, so its findings cannot
+   be embedded in the report without stdout capture. `fleet-review` calls
+   `load_and_validate(resolve_loop_path(name, loops_dir), raise_on_error=False, ...)`
+   directly (`little_loops.fsm.validation` / `little_loops.fsm.loop_paths`) and renders the
+   violations itself. `resolve_loop_path` already falls back to `get_builtin_loops_dir()`, and
+   `logs.py` already imports from `little_loops.cli.loop.info` (`:19`), so there is no
+   import-cycle risk. While there, `_get_builtin_loop_names()` should enumerate
+   `get_builtin_loops_dir()` rather than its own private `_LOOPS_DIR` (`logs.py:39`) so
+   `fleet-review` and `ll-loop` agree on what "built-in" means.
+9. **The source repo dominates the fleet — expose it, allow excluding it.** Measured at review
+   time: 1102 of 2247 built-in runs on this machine come from `little-loops` itself
+   (dev-iteration runs made while authoring the loops), so the "other projects as unbiased
+   oracle" premise only holds if self-runs are visible and excludable. Two consequences:
+   the flagged-loop table shows **runs per project** (not just the project list), and
+   `fleet-review` gains a repeatable `--exclude-project DIR` flag (path-compared after
+   `resolve()`) applied after `discover_all_projects()`. No default exclusion — the maintainer
+   decides per run; the runbook's HARVEST step recommends `--exclude-project .` when reviewing
+   from this repo. (`add_corpus_target_args()` has no exclusion primitive today; this is the
+   only new argparse surface beyond `--threshold`/`--min-runs`.)
 
 ## Runbook conventions (location decision)
 
@@ -203,7 +259,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Conventions in Force
 - All four HARVEST-phase `ll-logs` subcommands share three argparse helpers — `add_corpus_target_args()`, `add_window_args()`, `add_json_arg()` (`scripts/little_loops/cli_args.py`) — confirming `--all`, `--window-days N`, and `-j`/`--json` exist exactly as this issue's Deliverable #2 assumes, uniformly across `loop-fleet`, `scan-failures`, `sequences`, and `dead-skills`.
-- `ll-loop validate`, `diagnose-evaluators`, and `calibrate-budget` each take exactly one positional `loop` argument (`cmd_validate`, `cmd_diagnose_evaluators`, `cmd_calibrate_budget` in `scripts/little_loops/cli/loop/`) — there is no batch/glob form on the `ll-loop` side, so "run over the flagged loops" requires one invocation per flagged loop name. **`diagnose-evaluators` and `calibrate-budget` additionally read only the current project's `.loops/.history/`** (`info.py:1301-1380`) and `ll-loop` has no `--project`/`--loops-dir` flag — they must be run from inside the project that produced the runs (Decisions #5). Only `validate` (YAML-only) runs from this repo.
+- `ll-loop validate`, `diagnose-evaluators`, and `calibrate-budget` each take exactly one positional `loop` argument (`cmd_validate`, `cmd_diagnose_evaluators`, `cmd_calibrate_budget` in `scripts/little_loops/cli/loop/`) — there is no batch/glob form on the `ll-loop` side, so "run over the flagged loops" requires one invocation per flagged loop name. **`diagnose-evaluators` and `calibrate-budget` additionally read only the current project's `.loops/.history/`** (`info.py:1301-1380`) and `ll-loop` has no `--project`/`--loops-dir` flag — they must be run from inside the project that produced the runs (Decisions #5). Only `validate` (YAML-only) runs from this repo — and it is consumed via `load_and_validate()` directly, since `cmd_validate` prints rather than returns (Decisions #8).
+- `_cmd_scan_failures` and `_cmd_sequences` mine-and-print in one function each; there is no `_collect_*` that returns clusters/chains (Decisions #3, #7). `_capture_failure_clusters()` (`logs.py:1429`) is the only already-separated stage, and it is the `--capture` writer, not a reader.
+- The `loop-fleet` table shows `project_path.name` and truncates to three; `_LoopRunRecord.project_path` is the absolute `Path`. `fleet-review` must carry the absolute path through (Decisions #4).
+- `_derive_loop_outcome()` (`logs.py:1968`) is the single source of the outcome vocabulary; `docs/reference/CLI.md` does not enumerate it anywhere, so the runbook should list the seven values and which four count as flagging failures.
 - `ll-logs dead-skills` enumerates the `skills/` catalog via `_aggregate_skill_stats()` (`logs.py:1039-1093`); it has **no loop coverage** and is not part of this issue's HARVEST phase.
 - The only existing "diff current data against a stored baseline" mechanism in the codebase is `regressions()` / `write_baseline()` in `scripts/little_loops/cli/verify_private_refs.py:446-474`, which stores per-file **counts** in a checked-in JSON (`.ll/private-refs-baseline.json`, with an explanatory `_comment` field) and regenerates via a `--update-baseline` flag. This is a count-diff pattern over a JSON baseline, not a diff between two dated markdown reports — the closest analog found for the re-measurement contract, not a drop-in fit.
 - `docs/guides/*.md` (the class this issue's runbook is meant to read differently from) share a `# Title` + `> **When to use this**:` blockquote + `## Contents` TOC shape (e.g. `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:1-34`, `docs/guides/LOOPS_GUIDE.md:1-33`) — none use a labeled Purpose/Cadence/Phases header. `docs/observability/*.md` (e.g. `realized-savings-verification.md`, `des-audit.md`) is a third, already-in-use header shape (title + dated prose + results table) for one-off audit/closure reports — distinct from both `docs/guides/` and this issue's proposed runbook convention, so no doc in the repo currently uses the Purpose · Cadence · Phases · Baseline/Re-measure · In-scope header this issue proposes.
@@ -250,15 +309,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Program Design
 
 ### Types
-- `_LoopFleetAggregate` (new `@dataclass` in `logs.py`, next to `_LoopRunRecord` at `:1164`) — `loop_name: str`, `attribution: str`, `runs: int`, `converged: int`, `success_pct: int`, `median_iterations: int`, `top_outcome: str`, `projects: list[str]`. Produced by `_aggregate_fleet_runs()`; consumed by the `loop-fleet` table branch, the flagging rule, and the JSON sidecar.
-- JSON sidecar `.loops/diagnostics/fleet-review-<date>.json` — `{"generated": ISO-ts, "window_days": int, "loops": {loop_name: {runs, converged, success_pct, top_outcome, projects}}}`. Read back by the next run as the baseline (Decisions #4). Not a Python type; a `dict` round-tripped through `json`.
-- Report `.loops/diagnostics/fleet-review-<date>.md` sections, in order: **Summary** (window, project count, run count, prior baseline used or "none") · **Flagged loops** (table: loop, runs, success%, top outcome, projects; then per loop the `ll-loop validate` output and the `cd <project> && ll-loop diagnose-evaluators <loop>` command to run) · **Delta vs baseline** (table: loop, prior success%, current success%, Δconverged; loops absent from prior marked `new`) · **Zero-run built-ins** · **Appendix: scan-failures clusters** · **Appendix: sequences** · **Reviewed, not fixed** (empty heading for the maintainer to fill by hand).
+- `_LoopFleetAggregate` (new `@dataclass` in `logs.py`, next to `_LoopRunRecord` at `:1154`) — `loop_name: str`, `attribution: str`, `runs: int`, `converged: int`, `success_pct: int`, `median_iterations: float`, `top_outcome: str`, `outcomes: dict[str, int]` (full outcome counter), `projects: list[Path]` (absolute), `runs_by_project: dict[str, int]` (abs path → count). Produced by `_aggregate_fleet_runs()`; consumed by the `loop-fleet` table branch (which shortens `projects` to `.name` for display), the flagging rule, and the JSON sidecar.
+- JSON sidecar `.loops/diagnostics/fleet-review-<stamp>.json` — `{"generated": ISO-ts, "window_days": int|null, "since": ISO|null, "until": ISO|null, "projects_scanned": [abs], "excluded_projects": [abs], "loops": {loop_name: {runs, converged, success_pct, top_outcome, outcomes, projects: [abs], runs_by_project}}}`. Read back by the next run as the baseline (Decisions #4). Not a Python type; a `dict` round-tripped through `json`.
+- Report `.loops/diagnostics/fleet-review-<stamp>.md` sections, in order: **Summary** (window/since/until, projects scanned and excluded, run count, prior baseline path or "none", and a **window-mismatch warning** when the prior sidecar's `window_days`/`since`/`until` differ) · **Flagged loops** (table: loop, runs, success%, top outcome, outcome breakdown, runs-per-project; then per loop the rendered `load_and_validate` violations and the `cd <abs project> && ll-loop diagnose-evaluators <loop>` command per project) · **Delta vs baseline** (table: loop, prior→current success% with Δ, Δruns, Δconverged, Δ per failure outcome; loops absent from prior marked `new`; loops in prior but absent now under "dropped out of window") · **Zero-run built-ins** · **Appendix: scan-failures clusters** · **Appendix: sequences** · **Reviewed, not fixed** (empty heading for the maintainer to fill by hand).
 
 ### Signatures
-- `_aggregate_fleet_runs(runs: list[_LoopRunRecord]) -> list[_LoopFleetAggregate]` — new; extracted from the table branch of `_cmd_loop_fleet` (`logs.py:2165-2183`).
-- `_flag_loops(aggs: list[_LoopFleetAggregate], *, threshold: int, min_runs: int) -> list[_LoopFleetAggregate]` — new; the Decisions #2 rule, pure function so it is table-testable.
-- `_load_prior_baseline(diagnostics_dir: Path) -> dict | None` / `_write_baseline(path: Path, aggs: list[_LoopFleetAggregate], *, window_days: int) -> None` — new; newest prior sidecar by lexical filename order.
-- `_cmd_fleet_review(args: argparse.Namespace, logger: Logger) -> int` — new `ll-logs fleet-review [--project DIR | --all] [--window-days D | --since DATE] [--until DATE] [--threshold N=50] [--min-runs N=3] [--existing-only] [-j|--json]`; `--json` prints the sidecar dict to stdout instead of writing the markdown.
+- `_aggregate_fleet_runs(runs: list[_LoopRunRecord]) -> list[_LoopFleetAggregate]` — new; extracted from the table branch of `_cmd_loop_fleet` (`logs.py:2165-2183`); `top_outcome` tie-break is `sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]` (Decisions #7).
+- `_collect_failure_clusters(args: argparse.Namespace, logger: Logger) -> list[_FailureCluster]` / `_collect_sequences(args: argparse.Namespace, logger: Logger) -> list[...]` — new; extracted from `_cmd_scan_failures` / `_cmd_sequences` (Decisions #7). `fleet-review` builds a `Namespace` for each carrying only the corpus/window fields it inherited (`project`, `all`, `existing_only`, `window_days`, `since`, `until`) plus the collector's own defaults (`skill=None`, `limit=0`, `min_len`/`min_count`/`top` at their parser defaults).
+- `_flag_loops(aggs: list[_LoopFleetAggregate], *, threshold: int, min_runs: int) -> list[_LoopFleetAggregate]` — new; the Decisions #2 rule, pure function so it is table-testable. `_FLAG_OUTCOMES: frozenset[str] = frozenset({"error", "max-steps", "stalled", "failed"})` is a module constant next to it.
+- `_validate_builtin_loop(name: str) -> tuple[bool, list[Violation]]` — new thin wrapper over `resolve_loop_path(name, get_builtin_loops_dir())` + `load_and_validate(path, raise_on_error=False, orchestration_request_path=...)` (Decisions #8); `FileNotFoundError`/`ValueError`/`yaml.YAMLError` become a single synthetic error violation, mirroring `cmd_validate`'s `--json` branch.
+- `_load_prior_baseline(diagnostics_dir: Path, *, exclude: Path | None) -> tuple[Path, dict] | None` / `_write_baseline(path: Path, aggs: list[_LoopFleetAggregate], *, window_days: int | None, since: datetime | None, until: datetime | None, projects: list[Path], excluded: list[Path]) -> None` — new; newest prior sidecar by lexical filename order over `fleet-review-*.json`, skipping `exclude` (the sidecar this run is about to write).
+- `_cmd_fleet_review(args: argparse.Namespace, logger: Logger) -> int` — new `ll-logs fleet-review [--project DIR | --all] [--exclude-project DIR ...] [--window-days D | --since DATE] [--until DATE] [--threshold N=50] [--min-runs N=3] [--existing-only] [-j|--json]`; `--json` prints the sidecar dict to stdout and **writes no files** (Decisions #4). Output stamp is `datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")`.
 - `_cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int` (`scripts/little_loops/cli/logs.py:2108`) — implements `ll-logs loop-fleet`, the HARVEST phase's core data source.
 - `_cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int` (`scripts/little_loops/cli/logs.py:1193`) — implements `ll-logs scan-failures`.
 - `cmd_validate(loop_name: str, args: argparse.Namespace, loops_dir: Path, logger: Logger) -> int` (`scripts/little_loops/cli/loop/config_cmds.py`) — single-loop, no batch form.
@@ -269,14 +330,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `ll-loop validate <loop> [-j|--json]`, `ll-loop diagnose-evaluators <loop> [--threshold F] [--min-runs N] [-j|--json]`, `ll-loop calibrate-budget <loop> [--threshold F] [--min-runs N] [-j|--json]` — `cmd_validate`/`cmd_diagnose_evaluators`/`cmd_calibrate_budget` (`scripts/little_loops/cli/loop/config_cmds.py`, `scripts/little_loops/cli/loop/info.py`) — each takes exactly one positional `loop` (name or path); no fleet-wide/batch form exists on the `ll-loop` side.
 
 ### Call Path
-`ll-logs fleet-review --all --window-days N` -> `_cmd_fleet_review` -> `discover_all_projects()` -> per project the existing `loop-fleet` collector (`_collect_loop_runs`, `logs.py:2017`) -> `_aggregate_fleet_runs()` -> `_flag_loops()` (Decisions #2) -> per flagged loop: `cmd_validate(loop, ...)` called in-process -> zero-run set = `_get_builtin_loop_names()` − seen names -> `scan-failures` / `sequences` collectors run once for the appendices -> `_load_prior_baseline()` -> render markdown + `_write_baseline()`. The runbook (not the command) then drives DIAGNOSE: `cd <project> && ll-loop diagnose-evaluators <loop>` / `calibrate-budget <loop>` (Decisions #5) -> fix via `loop-specialist` -> next `fleet-review` run shows the delta.
+`ll-logs fleet-review --all [--exclude-project DIR] --window-days N` -> `_cmd_fleet_review` -> `discover_all_projects()` minus `--exclude-project` paths (Decisions #9) -> per project `_collect_loop_runs(proj, builtin_names)` **unwindowed** (`logs.py:2015`) -> zero-run set = `_get_builtin_loop_names()` − names seen in the unwindowed records -> window filter applied in memory on `ts` (same `cutoff`/`until` semantics as `_collect_loop_runs`) -> `_aggregate_fleet_runs()` -> `_flag_loops()` (Decisions #2) -> per flagged loop: `_validate_builtin_loop(name)` (Decisions #8) -> `_collect_failure_clusters()` / `_collect_sequences()` run once for the appendices (Decisions #7) -> `_load_prior_baseline(exclude=this run's sidecar path)` -> render markdown + `_write_baseline()` (skipped entirely under `--json`). The runbook (not the command) then drives DIAGNOSE: `cd <project> && ll-loop diagnose-evaluators <loop>` / `calibrate-budget <loop>` (Decisions #5) -> fix via `loop-specialist` -> next `fleet-review` run shows the delta.
 
 ### Decision Rules
-- **Flag** iff `attribution == "builtin"` AND `runs >= min_runs` AND (`success_pct < threshold` OR `top_outcome in {"error", "max-steps", "cycle"}`). Defaults `threshold=50`, `min_runs=3`. `success_pct` is `round(converged / runs * 100)`; `top_outcome` is `Counter(outcomes).most_common(1)`, ties broken by the existing `Counter` order (first seen). (Decisions #2)
+- **Flag** iff `attribution == "builtin"` AND `runs >= min_runs` AND (`success_pct < threshold` OR `top_outcome in _FLAG_OUTCOMES`), where `_FLAG_OUTCOMES = {"error", "max-steps", "stalled", "failed"}`. Defaults `threshold=50`, `min_runs=3`. `success_pct` is `round(converged / runs * 100)` (unchanged from `loop-fleet`; `interrupted`/`signal` count against it). `top_outcome` is the outcome with the highest count, ties broken by outcome name ascending (deterministic). Note the `top_outcome` clause is redundant at `threshold=50` (a non-converged plurality implies `success_pct < 50`) — it exists so lowering `--threshold` still catches loops where a failure mode is the plurality. (Decisions #2, #7)
 - **Not a flagging input**: `scan-failures` clusters, `sequences`, and anything from `dead-skills`. (Decisions #3)
-- **Delta**: for each loop in the current aggregates, `Δconverged = converged_now − converged_prior` and prior/current `success_pct` side by side; loops with no prior entry are marked `new`; loops in prior but absent now are listed under "dropped out of window". No prior sidecar → "no prior baseline" line, no table. (Decisions #4)
+- **Delta**: for each loop in the current aggregates, the **primary** column is `Δsuccess_pct = success_pct_now − success_pct_prior`, shown with `Δruns` beside it (sliding windows compare different run populations, so a raw `Δconverged` alone is misleading); also `Δconverged` and `Δ<outcome>` for each key in `_FLAG_OUTCOMES`. Loops with no prior entry are marked `new`; loops in prior but absent now are listed under "dropped out of window". The Summary emits a window-mismatch warning when the prior sidecar's `window_days`/`since`/`until` differ from this run's. No prior sidecar → "no prior baseline" line, no table. The sidecar this run writes is never its own baseline. (Decisions #4)
 - **False positive**: no dismissal list; the maintainer records it under "Reviewed, not fixed" in the report by hand. (Decisions #2)
-- **Zero-run built-in**: `_get_builtin_loop_names()` minus the set of `loop_name` values across all records, regardless of window. Listed, never flagged.
+- **Zero-run built-in**: `_get_builtin_loop_names()` minus the set of `loop_name` values across the **unwindowed** records (collect once with `cutoff=None, until=None`, then window-filter in memory for aggregation), so a windowed run does not list every loop that merely didn't run recently. Listed, never flagged.
+- **Excluded projects**: `--exclude-project` paths are removed after discovery and recorded in the sidecar's `excluded_projects`; they never contribute runs, zero-run evidence, or appendix rows. (Decisions #9)
 
 ## Use Case
 

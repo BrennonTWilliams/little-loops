@@ -287,7 +287,7 @@ own Integration Map (`config-schema.json — if Option B is config-driven`).
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 - **Verdict wiring precedent**: new `classify_file_ref()` verdicts are added as a member of the `RefStatus` `Literal` (`scripts/little_loops/text_utils.py:161`), slotted into the explicitly non-commutative "Resolution order" checks documented in the function's docstring (`text_utils.py:272-299`). The most recent additions (`ambiguous` for ENH-2999, `planned_new`) both followed this shape.
-- **Two wiring depths exist, and precedent does not settle which ENH-3000's new verdict needs**: `check_format_gaps()` only branches on verdicts it wants reported as drift — `resolved`/`planned_new`/`unresolvable_form` pass through with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` change (`scripts/little_loops/issue_parser.py`, the `if ref_index is not None:` block at ~:1022-1040 — the `:766-774` cited here originally no longer matches). A verdict meant to be *reported* (e.g. `ambiguous_file_ref` for ENH-2999) instead gets 5 coordinated sites: new `FormatGaps` field, OR'd into `has_gaps`, added to `to_dict()`, a docstring "Gap classes:" bullet, and rendering in `_print_gaps()`/CLI help (`issue_parser.py:315-559`; `scripts/little_loops/cli/issues/format_check.py:61-199`). Whether `untracked_by_design` is a suppressing verdict (shallow) or a reported one (all 5 sites) is an open call the design doesn't currently pin down. _(Resolved by the 2026-08-19 research pass below: suppressing verdict, shallow treatment.)_
+- **Two wiring depths exist, and precedent does not settle which ENH-3000's new verdict needs**: `check_format_gaps()` only branches on verdicts it wants reported as drift — `resolved`/`planned_new`/`unresolvable_form` pass through with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` change (`scripts/little_loops/issue_parser.py`, the `if ref_index is not None:` block at ~:1084-1099 — the `:766-774` cited here originally no longer matches). A verdict meant to be *reported* (e.g. `ambiguous_file_ref` for ENH-2999) instead gets 5 coordinated sites: new `FormatGaps` field, OR'd into `has_gaps`, added to `to_dict()`, a docstring "Gap classes:" bullet, and rendering in `_print_gaps()`/CLI help (`issue_parser.py:315-559`; `scripts/little_loops/cli/issues/format_check.py:61-199`). Whether `untracked_by_design` is a suppressing verdict (shallow) or a reported one (all 5 sites) is an open call the design doesn't currently pin down. _(Resolved by the 2026-08-19 research pass below: suppressing verdict, shallow treatment.)_
 - **A hardcoded, name-based directory-exclusion list already exists for these exact four directories**, and it disagrees with `scan.exclude_patterns`' shape — directly relevant to Option B's "config-driven" framing:
   ```python
   _EXCLUDED_DIRS = frozenset({..., "postmortems", ".loops", "thoughts", "logs"})
@@ -637,7 +637,7 @@ The design decision is closed (Option B, recorded in Decision Rationale above);
 
 _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
-- **Verdict wiring depth resolved**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py`, defined at :638; the ref-classification loop is the `if ref_index is not None:` block at ~:1022-1040) only branches on `stale` and `ambiguous` today; `resolved`, `unresolvable_form`, and `planned_new` pass through the loop with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` entry — they are silently non-gaps. Since `untracked_by_design` is a suppressing verdict (its purpose is to stop being reported as `stale`, not to be reported under a new category), it needs only the shallow treatment: a new `RefStatus` Literal member plus the step-5 fallback branch in `classify_file_ref` (this bullet originally said "form check"; superseded by Program Design § Check Ordering). It does not need the 5-site `FormatGaps`/`has_gaps`/`to_dict`/docstring/`_print_gaps()` treatment that `ambiguous_file_ref` (ENH-2999) required — that treatment is only for verdicts meant to be *surfaced* as a gap category.
+- **Verdict wiring depth resolved**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py`, defined at :670; the ref-classification loop is the `if ref_index is not None:` block at ~:1084-1099) only branches on `stale` and `ambiguous` today; `resolved`, `unresolvable_form`, and `planned_new` pass through the loop with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` entry — they are silently non-gaps. Since `untracked_by_design` is a suppressing verdict (its purpose is to stop being reported as `stale`, not to be reported under a new category), it needs only the shallow treatment: a new `RefStatus` Literal member plus the step-5 fallback branch in `classify_file_ref` (this bullet originally said "form check"; superseded by Program Design § Check Ordering). It does not need the 5-site `FormatGaps`/`has_gaps`/`to_dict`/docstring/`_print_gaps()` treatment that `ambiguous_file_ref` (ENH-2999) required — that treatment is only for verdicts meant to be *surfaced* as a gap category.
 - **Denominator eligibility resolved**: `qualified_ref_count()` (`research_triage.py:215`) and `_triage_axis()` (`research_triage.py:416`) both gate on the literal tuple `("resolved", "stale", "ambiguous")` — duplicated independently at each site, no shared constant. Per `qualified_ref_count`'s own docstring, eligibility means "survived the form filter"; only `unresolvable_form` and `planned_new` are excluded, both decided at the form-check stage before index lookup. `untracked_by_design` only fires where there is no git-tracked target at all — it replaces a would-be `stale`, so nothing exists to compare against for the staleness check (`research_triage.py:431-442`). It therefore belongs in the same excluded category as `unresolvable_form`/`planned_new`, not added to the eligible tuple. (This bullet originally justified the exclusion by "it is a form check that runs before index lookup" — that framing is superseded by Program Design § Check Ordering; the exclusion conclusion is unchanged, and its denominator consequence is spelled out in § Denominator Side Effect.) Both call sites' literal tuples need updating independently (or reconciled with ENH-2990's `AxisCoverage` reason-code work per this issue's own trailing Scope Boundary note).
 - **No shared prefix-matching helper exists** — three independent, shape-incompatible mechanisms already do adjacent things: (1) `_EXCLUDED_DIRS` (`verify_private_refs.py:75-90`) — hardcoded `frozenset` of bare directory *names*, matched via `any(part in _EXCLUDED_DIRS for part in rel_path.parts)`; (2) `file_matches_pattern()` (`git_operations.py:296+`) — full gitignore-glob semantics, the natural pairing for `scan.exclude_patterns` but currently has zero production callers for that config key (grep for `.scan.exclude_patterns` / `.scan.focus_dirs` returns nothing anywhere in `scripts/little_loops/`); (3) `_mirror_prefixes()` (`text_utils.py:198-214`) — a `@cache`d `tuple[str, ...]` of directory-prefix strings matched via plain `str.startswith(tuple)`, already used inside `classify_file_ref`'s own call chain (`suffix_match_candidates`, `text_utils.py:364`), though sourced from the host-capability registry rather than project config. This last one is the closest same-file precedent for "a cached tuple of directory prefixes consulted inside `text_utils.py`'s own classification logic."
 - **Config-location caveat**: `scan` is explicitly excluded from the schema-vs-code value parity walk — `_SCHEMA_PARITY_EXCLUDED_SECTIONS = {"$schema", "project", "issues", "scan"}` (`test_config_schema.py:1191`). A new key added under `scan` therefore would not get the cross-check other config sections get for free; the schema-vs-default drift that guard exists to catch would go undetected there specifically.
@@ -702,7 +702,7 @@ _Wiring pass added by `/ll:wire-issue` — 2026-08-19:_
   `extract_symbol_claims`); never constructs one and never reads a `RefStatus`.
   Inert under the new verdict **provided** `untracked_by_design` is a defaulted
   field, which Program Design § Signatures already specifies. No edit needed
-- `scripts/little_loops/issue_parser.py` (~`:1021-1037`, the `if ref_index is not
+- `scripts/little_loops/issue_parser.py` (~`:1084-1099`, the `if ref_index is not
   None:` block inside `check_format_gaps`) — **the runtime consumer whose output
   changes without any line being edited.** The ref-classification loop is an
   `if status == "stale": ... elif status == "ambiguous":` chain with no `else`,
@@ -918,7 +918,7 @@ _Second wiring pass — 2026-08-19:_
   test file is the only place that change is observable end-to-end
 - Add a regression assertion that an `untracked_by_design` verdict produces no
   `stale_file_ref` entry from `check_format_gaps` (`issue_parser.py`
-  ~`:1021-1037`). No line in that file changes; its *output* does, and nothing
+  ~`:1084-1099`). No line in that file changes; its *output* does, and nothing
   else in this issue's test list pins that
 - Confirm `test_symbol_claims.py` and `test_feat3048_symbol_cli_claim_gaps.py`
   stay inert — both construct `RefIndex(by_basename=...)` by keyword, so the
@@ -987,7 +987,25 @@ pass (2026-08-19) and were corrected in place:
 No substantive content changed; the Proposed Solution, Program Design, and
 Implementation Steps remain accurate as written.
 
+_Added by `/ll:verify-issues` — 2026-09-02 (second pass):_
+
+Verdict: **VALID**. Re-ran the full check battery (decisions log, evidence
+quotes via `ll-verify-evidence`, dependency refs, signatures) — all clean
+again, unchanged from the pass above. Two unrelated commits touching
+`scripts/little_loops/issue_parser.py` (`234366841`, `5d7f822b0`) shifted line
+numbers by 32-46 lines since the pass above; two more citations had drifted
+and were corrected in place:
+- `issue_parser.py:638` → `:670` for `check_format_gaps()`'s definition
+- `issue_parser.py:~1021-1037`/`~1022-1040` → `~1084-1099` for the
+  `if ref_index is not None:` ref-classification loop (3 occurrences)
+
+All other citations (including `research_triage.py:416`,
+`cli/issues/research_triage.py:61`, `format_check.py:574`, and the
+`text_utils.py` signature block) re-confirmed accurate. No substantive
+content changed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-02T20:26:35 - `596b078b-a7c0-4bdc-bd3a-515cb9746073.jsonl`
 - `/ll:verify-issues` - 2026-09-02T17:36:28 - `f3822202-1edc-4948-9375-b7a4b68307e4.jsonl`
 - `/ll:wire-issue` - 2026-08-20T00:18:27 - `73ca1a58-7749-4732-a724-9e42d23243f7.jsonl`
 - `/ll:confidence-check` - 2026-08-19T22:36:34 - `783bfe67-e43b-4aa3-9685-9db5e496d2c0.jsonl`
