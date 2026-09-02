@@ -15,10 +15,10 @@ decision_needed: false
 spike_attempted: true
 spike_completed: true
 confidence_score: 90
-outcome_confidence: 64
+outcome_confidence: 79
 score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -323,6 +323,7 @@ _Added by `/ll:confidence-check` on 2026-09-02_
 - Ambiguity (10/25, capped): see Concerns above — the `unapplied_decision` gap on `count_probes` caps this criterion regardless of the otherwise-low ambiguity in this issue.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T19:11:42 - `3a147a77-c572-4741-8be9-efbfc5354c69.jsonl`
 - `/ll:confidence-check` - 2026-09-02T18:25:12 - `84e0bbf3-d0f7-4d45-a3b6-ea9216ba3165.jsonl`
 - `/ll:confidence-check` - 2026-09-02T18:04:39 - `816beb27-9b86-42b0-9b64-63f61826d1c0.jsonl`
 - `/ll:confidence-check` - 2026-09-02T17:52:11 - `852881be-b9ae-4653-91cb-48f6a2940c2a.jsonl`
