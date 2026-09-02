@@ -19,6 +19,12 @@ verify_verdict: VALID
 depends_on:
 - ENH-3000
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 16
+score_test_coverage: 24
+score_ambiguity: 23
+score_change_surface: 23
 ---
 
 # ENH-2990: Measure the live re-refine skip rate for `research-triage`
@@ -382,6 +388,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T17:09:25 - `0b967ffb-47f4-465e-882a-47e8e31d96be.jsonl`
 - `/ll:wire-issue` - 2026-09-02T16:52:28 - `68e96fc1-615b-4baf-b426-514ab46b57c5.jsonl`
 - `/ll:decide-issue` - 2026-09-02T15:00:37 - `57e4152b-6dc7-4f50-8257-b25ad8c5fb2f.jsonl`
 - `/ll:decide-issue` - 2026-09-02T14:37:20 - `9308501c-41cd-4971-a426-00e3bbc69dd5.jsonl`
