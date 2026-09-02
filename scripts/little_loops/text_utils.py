@@ -158,7 +158,84 @@ def extract_file_paths(content: str) -> set[str]:
 # File Reference Classification (ENH-2983)
 # =============================================================================
 
-RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new", "ambiguous"]
+RefStatus = Literal[
+    "resolved", "stale", "unresolvable_form", "planned_new", "ambiguous", "untracked_by_design"
+]
+
+# Directories/files that are gitignored *by design* (ENH-3000) — a reference
+# into one of these cannot resolve against build_ref_index's tracked-only
+# index, but that is not drift. This is a post-lookup fallback (checked only
+# where the answer would otherwise be "stale"), never a form check: several of
+# these prefixes hold *some* tracked files too (thoughts/, .loops/*.yaml), and
+# those must keep resolving normally — see classify_file_ref's step 5.
+#
+# Directory-shaped entries end in "/"; file-shaped entries are exact repo-
+# relative paths (matched by startswith, so "-shm"/"-wal" sqlite siblings are
+# covered by their stem, e.g. ".ll/history.db"). ".ll/ll-context-handoff-needed"
+# has no extension and would be mis-normalized as a directory by
+# IssuesConfig's slash heuristic, so it carries an explicit trailing "*" —
+# see _normalize_untracked_prefix and _strip_untracked_prefix_marker.
+#
+# Source of truth for the .ll/ block: ll-init's _GITIGNORE_ENTRIES
+# (little_loops/init/writers.py) plus this repo's own .gitignore, which is a
+# superset (many of these are caught by the global "*-state.json" rule rather
+# than an individual _GITIGNORE_ENTRIES line). test_config.py cross-checks
+# _GITIGNORE_ENTRIES against this list so the two cannot silently drift.
+DEFAULT_UNTRACKED_BY_DESIGN: tuple[str, ...] = (
+    # Wholly-ignored directories.
+    "thoughts/",
+    "postmortems/",
+    "logs/",
+    # .loops/ is ignored per-subdirectory, not wholesale — tracked *.yaml and
+    # plans/, research/ must keep resolving/reporting normally.
+    ".loops/.running/",
+    ".loops/.history/",
+    ".loops/.queue/",
+    ".loops/tmp/",
+    ".loops/runs/",
+    ".loops/diagnostics/",
+    ".loops/reviews/",
+    ".loops/generated/",
+    ".loops/cli-anything/",
+    # Repo-root state files ll-init writes into every consumer's .gitignore.
+    ".auto-manage-state.json",
+    ".parallel-manage-state.json",
+    # .ll/ is ignored per-file / per-subdirectory, never wholesale.
+    # .ll/decisions.d/ and .ll/ll-config.json are tracked, and .ll/standards.md,
+    # .ll/program.md, .ll/prompts/, .ll/rubrics/ must keep reporting -- they
+    # are artifacts open issues propose to create, not drift (ENH-3000
+    # Motivation § The .ll/ Slice).
+    ".ll/.auto-manage-state.json",
+    ".ll/context-pressure-state.json",
+    ".ll/ll-auto-state.json",
+    ".ll/ll-context-state.json",
+    ".ll/ll-continue-prompt.md",
+    ".ll/ll-doc-drift-state.json",
+    ".ll/ll-edit-batch-state.json",
+    ".ll/ll-precompact-state.json",
+    ".ll/ll-session-state.json",
+    ".ll/ll-sprint-state.json",
+    ".ll/ll-state.json",
+    ".ll/ll-sync-state.json",
+    ".ll/ll.local.md",
+    ".ll/workflow-analysis/",
+    ".ll/ll-session-events.jsonl",
+    ".ll/history.db",
+    ".ll/queue.db",
+    ".ll/private-refs.local.txt",
+    ".ll/evidence-verdict-cache.json",
+    ".ll/ll-update-docs.watermark",
+    ".ll/ll-context-handoff-needed*",
+    ".ll/loop-suggestions/",
+    ".ll/advisor-budget/",
+    ".ll/design-tokens/",
+)
+
+
+def _strip_untracked_prefix_marker(prefix: str) -> str:
+    """Strip a raw-prefix "*" marker (extensionless-file escape hatch)."""
+    return prefix[:-1] if prefix.endswith("*") else prefix
+
 
 # Characters that mark a reference as a glob pattern rather than a literal
 # path (e.g. `skills/*/SKILL.md`) — always unresolvable_form. `{`/`}` added
@@ -224,9 +301,12 @@ class RefIndex:
     """
 
     by_basename: dict[str, list[str]]  # basename -> tracked repo-relative paths
+    untracked_by_design: tuple[str, ...] = ()
 
 
-def build_ref_index(root: Path) -> RefIndex:
+def build_ref_index(
+    root: Path, *, untracked_by_design: tuple[str, ...] = DEFAULT_UNTRACKED_BY_DESIGN
+) -> RefIndex:
     """Index tracked files by basename via a single ``git ls-files`` call.
 
     Follows the fail-*empty*-never-raise convention shared by the other
@@ -239,6 +319,9 @@ def build_ref_index(root: Path) -> RefIndex:
 
     Args:
         root: Repository root to run ``git ls-files`` from.
+        untracked_by_design: Prefixes classified ``untracked_by_design``
+            (ENH-3000) instead of ``stale`` when nothing else resolves them.
+            Defaults to :data:`DEFAULT_UNTRACKED_BY_DESIGN`.
 
     Returns:
         A :class:`RefIndex` mapping each tracked file's basename to the
@@ -253,9 +336,9 @@ def build_ref_index(root: Path) -> RefIndex:
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return RefIndex(by_basename=by_basename)
+        return RefIndex(by_basename=by_basename, untracked_by_design=untracked_by_design)
     if result.returncode != 0:
-        return RefIndex(by_basename=by_basename)
+        return RefIndex(by_basename=by_basename, untracked_by_design=untracked_by_design)
 
     names = result.stdout.decode("utf-8", errors="replace").split("\0")
     for name in names:
@@ -263,7 +346,7 @@ def build_ref_index(root: Path) -> RefIndex:
             continue
         basename = name.rsplit("/", 1)[-1]
         by_basename.setdefault(basename, []).append(name)
-    return RefIndex(by_basename=by_basename)
+    return RefIndex(by_basename=by_basename, untracked_by_design=untracked_by_design)
 
 
 def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus:
@@ -295,7 +378,14 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
        more-than-one is ``ambiguous`` (ambiguous matches must not silently
        resolve), except that generated host-adapter mirrors are tie-broken
        away first — see :func:`suffix_match_candidates`.
-    5. Otherwise ``stale`` — a ``/``-qualified path with no match, the
+    5. **New (ENH-3000)**: an unmatched ``/``-qualified ref that starts with
+       one of ``index.untracked_by_design``'s prefixes returns
+       ``untracked_by_design`` instead of ``stale``. This runs *after* index
+       lookup, not as a step-1 form check, because these prefixes are only
+       partially untracked — ``thoughts/`` and ``.loops/`` both hold tracked
+       files that must keep resolving at steps 3-4. Placing it earlier would
+       regress those resolutions.
+    6. Otherwise ``stale`` — a ``/``-qualified path with no match, the
        genuine-drift signal this classifier exists to surface.
 
     Args:
@@ -306,7 +396,7 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
 
     Returns:
         One of ``"resolved"``, ``"stale"``, ``"unresolvable_form"``,
-        ``"planned_new"``, or ``"ambiguous"``.
+        ``"planned_new"``, ``"ambiguous"``, or ``"untracked_by_design"``.
     """
     if any(ch in ref for ch in _GLOB_CHARS):
         return "unresolvable_form"
@@ -327,6 +417,11 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
         return "resolved"
     if len(candidates) > 1:
         return "ambiguous"
+    if any(
+        ref.startswith(_strip_untracked_prefix_marker(prefix))
+        for prefix in index.untracked_by_design
+    ):
+        return "untracked_by_design"
     return "stale"
 
 

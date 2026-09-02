@@ -10,6 +10,31 @@ import fnmatch
 from dataclasses import dataclass, field
 from typing import Any
 
+from little_loops.text_utils import DEFAULT_UNTRACKED_BY_DESIGN
+
+
+def _normalize_untracked_prefix(entry: str) -> str | None:
+    """Normalize one ``issues.untracked_by_design`` config entry (ENH-3000).
+
+    Directory-shaped entries must end in ``/`` so a bare ``thoughts`` cannot
+    match ``thoughts-archive/``. File-shaped entries (recognized by a ``.`` in
+    their final path component, dotfile-aware via ``final[1:]`` so
+    ``.auto-manage-state.json`` isn't mistaken for extensionless) are left
+    alone. An entry already ending in ``/`` or ``*`` (the extensionless-file
+    escape hatch — see ``DEFAULT_UNTRACKED_BY_DESIGN``) is untouched, so this
+    function is idempotent over every entry in that default. Empty/whitespace
+    and the bare root ``"/"`` are dropped: ``str.startswith(("",))`` matches
+    every ref, so one blank entry would silently suppress the whole ``stale``
+    corpus.
+    """
+    entry = entry.strip()
+    if not entry or entry == "/":
+        return None
+    if entry.endswith(("/", "*")):
+        return entry
+    final = entry.rsplit("/", 1)[-1]
+    return entry if "." in final[1:] else entry + "/"
+
 
 def feature_enabled(config_data: dict[str, Any], dot_path: str) -> bool:
     """Return whether the boolean flag at *dot_path* is enabled in *config_data*.
@@ -216,6 +241,9 @@ class IssuesConfig:
     link_epics: LinkEpicsConfig = field(default_factory=LinkEpicsConfig)
     auto_commit: bool = False
     auto_commit_prefix: str = "chore(issues)"
+    untracked_by_design: tuple[str, ...] = field(
+        default_factory=lambda: DEFAULT_UNTRACKED_BY_DESIGN
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IssuesConfig:
@@ -254,7 +282,15 @@ class IssuesConfig:
             link_epics=LinkEpicsConfig.from_dict(data.get("link_epics", {})),
             auto_commit=data.get("auto_commit", False),
             auto_commit_prefix=data.get("auto_commit_prefix", "chore(issues)"),
+            untracked_by_design=cls._parse_untracked_by_design(data),
         )
+
+    @staticmethod
+    def _parse_untracked_by_design(data: dict[str, Any]) -> tuple[str, ...]:
+        if "untracked_by_design" not in data:
+            return DEFAULT_UNTRACKED_BY_DESIGN
+        normalized = (_normalize_untracked_prefix(e) for e in data["untracked_by_design"])
+        return tuple(e for e in normalized if e is not None)
 
     def get_category_by_prefix(self, prefix: str) -> CategoryConfig | None:
         """Get category config by prefix (e.g., 'BUG', 'FEAT').

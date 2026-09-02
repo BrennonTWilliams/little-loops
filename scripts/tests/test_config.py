@@ -220,6 +220,112 @@ class TestIssuesConfig:
         assert config.next_issue.sort_keys is None
         assert config.auto_commit is False
         assert config.auto_commit_prefix == "chore(issues)"
+        from little_loops.text_utils import DEFAULT_UNTRACKED_BY_DESIGN
+
+        assert config.untracked_by_design == DEFAULT_UNTRACKED_BY_DESIGN
+
+
+class TestUntrackedByDesignConfig:
+    """ENH-3000: IssuesConfig.untracked_by_design normalization and defaults."""
+
+    def test_absent_key_yields_shipped_default(self) -> None:
+        from little_loops.text_utils import DEFAULT_UNTRACKED_BY_DESIGN
+
+        config = IssuesConfig.from_dict({})
+        assert config.untracked_by_design == DEFAULT_UNTRACKED_BY_DESIGN
+
+    def test_explicit_override_round_trips(self) -> None:
+        config = IssuesConfig.from_dict({"untracked_by_design": ["vendor/", "notes.md"]})
+        assert config.untracked_by_design == ("vendor/", "notes.md")
+
+    def test_directory_shaped_entry_gets_slashed(self) -> None:
+        config = IssuesConfig.from_dict({"untracked_by_design": ["thoughts"]})
+        assert config.untracked_by_design == ("thoughts/",)
+
+    def test_file_shaped_entry_unchanged(self) -> None:
+        config = IssuesConfig.from_dict({"untracked_by_design": [".ll/ll.local.md"]})
+        assert config.untracked_by_design == (".ll/ll.local.md",)
+
+    def test_dotfile_entry_unchanged(self) -> None:
+        """`.ll/.auto-manage-state.json`'s only `.` is the dotfile marker.
+
+        A naive `"." in final` (rather than `final[1:]`) would treat it as
+        file-shaped by accident here too, but the distinction matters for a
+        genuine extensionless dotfile — this pins the `final[1:]` slice.
+        """
+        config = IssuesConfig.from_dict({"untracked_by_design": [".ll/.auto-manage-state.json"]})
+        assert config.untracked_by_design == (".ll/.auto-manage-state.json",)
+
+    def test_explicit_trailing_slash_always_honored(self) -> None:
+        """Escape hatch for a directory whose own name contains a dot."""
+        config = IssuesConfig.from_dict({"untracked_by_design": [".ll/decisions.d/"]})
+        assert config.untracked_by_design == (".ll/decisions.d/",)
+
+    def test_default_is_normalization_idempotent(self) -> None:
+        """Normalizing the shipped default returns it unchanged, element for element."""
+        from little_loops.config.features import _normalize_untracked_prefix
+        from little_loops.text_utils import DEFAULT_UNTRACKED_BY_DESIGN
+
+        for entry in DEFAULT_UNTRACKED_BY_DESIGN:
+            assert _normalize_untracked_prefix(entry) == entry
+
+    @pytest.mark.parametrize("raw", ["", "  ", "/"])
+    def test_empty_and_root_entries_are_dropped(self, raw: str) -> None:
+        config = IssuesConfig.from_dict({"untracked_by_design": [raw, "thoughts/"]})
+        assert config.untracked_by_design == ("thoughts/",)
+
+    def test_empty_entry_does_not_suppress_whole_corpus(self) -> None:
+        """`startswith(("",))` matches every ref; the empty-entry guard must drop it.
+
+        A config-layer-only assertion would not prove the classifier is safe
+        end-to-end, so this also exercises classify_file_ref.
+        """
+        from little_loops.text_utils import RefIndex, classify_file_ref
+
+        config = IssuesConfig.from_dict({"untracked_by_design": [""]})
+        index = RefIndex(by_basename={}, untracked_by_design=config.untracked_by_design)
+        assert classify_file_ref("scripts/little_loops/session_store.py", index) == "stale"
+
+    def test_schema_default_matches_constant(self) -> None:
+        """`issues` is excluded from the schema-vs-code parity walk (test_config_schema.py),
+        so this key's default needs an explicit cross-check.
+        """
+        import json
+        from pathlib import Path
+
+        from little_loops.text_utils import DEFAULT_UNTRACKED_BY_DESIGN
+
+        schema_path = Path(__file__).resolve().parent.parent / "little_loops" / "config-schema.json"
+        schema = json.loads(schema_path.read_text())
+        schema_default = schema["properties"]["issues"]["properties"]["untracked_by_design"][
+            "default"
+        ]
+        assert tuple(schema_default) == DEFAULT_UNTRACKED_BY_DESIGN
+
+    def test_default_covers_ll_init_gitignore_entries(self) -> None:
+        """Pins DEFAULT_UNTRACKED_BY_DESIGN to ll-init's _GITIGNORE_ENTRIES.
+
+        The guard that keeps the two lists from drifting when someone adds a
+        new state file to ll-init. Mid-string globs (`.ll/*.lock`), `**/`
+        rules, and `!` negations have no prefix form and are out of scope;
+        trailing-`*` entries compare by stem.
+        """
+        from little_loops.init.writers import _GITIGNORE_ENTRIES
+        from little_loops.text_utils import DEFAULT_UNTRACKED_BY_DESIGN
+
+        stems = {e[:-1] for e in DEFAULT_UNTRACKED_BY_DESIGN if e.endswith("*")}
+        directories = {e for e in DEFAULT_UNTRACKED_BY_DESIGN if e.endswith("/")}
+        files = set(DEFAULT_UNTRACKED_BY_DESIGN) - directories - {f"{s}*" for s in stems}
+
+        for entry in _GITIGNORE_ENTRIES:
+            if entry.startswith("**/") or entry.startswith("!"):
+                continue  # negation/any-depth rule, not a real prefix
+            if entry.endswith("*") and "*" not in entry[:-1]:
+                assert entry[:-1] in stems or entry[:-1] in files, entry
+                continue
+            if "*" in entry:
+                continue  # mid-string glob, deliberately out of scope
+            assert entry in files or any(entry.startswith(d) for d in directories), entry
 
 
 class TestDuplicateDetectionConfig:

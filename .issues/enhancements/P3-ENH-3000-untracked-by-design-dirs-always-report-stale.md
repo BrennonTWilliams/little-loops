@@ -1,8 +1,9 @@
 ---
 id: ENH-3000
-status: open
+status: done
 priority: P3
 captured_at: '2026-08-02T14:06:00Z'
+completed_at: '2026-09-02T21:25:33Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 parent: EPIC-3023
@@ -307,6 +308,40 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 The two options place the mechanism in different layers; the signatures below
 cover both so the decision does not block on restating them.
+
+### Deviations
+
+_Added during implementation — 2026-09-02:_
+
+- **`research_triage.py`'s two denominator tuples needed no edit.** The
+  Integration Map/Wiring Phase listed `qualified_ref_count()` (line 215) and
+  `_triage_axis()` (line 416) as needing `untracked_by_design` excluded from
+  the eligible tuple. Both are already the literal `("resolved", "stale",
+  "ambiguous")` with no `else`/wildcard branch, so a brand-new `RefStatus`
+  member is excluded automatically by omission — verified by the new
+  `test_untracked_by_design_ref_is_denominator_ineligible` test
+  (`test_research_triage.py`) and the CLI-level
+  `test_untracked_by_design_ref_excluded_from_denominator`
+  (`test_ll_issues_research_triage.py`), not by editing either tuple.
+- **Adopted § Source of truth's optional trailing-`*` raw-prefix form**
+  (Resolution 1) for the one entry the directory-shape normalization
+  heuristic cannot express: `.ll/ll-context-handoff-needed*`. A small helper,
+  `_strip_untracked_prefix_marker()` in `text_utils.py`, strips the marker at
+  match time; it isn't named in the Signatures block below since it's a
+  private implementation detail of `classify_file_ref`'s new step-5 branch,
+  not part of the public `RefIndex`/`build_ref_index` surface.
+- **`DEFAULT_UNTRACKED_BY_DESIGN`'s `.ll/` block was rebuilt from this
+  repo's actual `.gitignore` and the actual (smaller) `_GITIGNORE_ENTRIES`
+  constant** (`init/writers.py`), not transcribed from the issue's literal
+  Shipped Default code block — that block predates several unrelated commits
+  and no longer matches current `_GITIGNORE_ENTRIES` line-for-line (it lists
+  entries like `.ll/ll-precompact-state.json` as if `_GITIGNORE_ENTRIES`
+  carried them individually; in current code they're covered by the *global*
+  `*-state.json` `.gitignore` rule, consistent with this same issue's own
+  "Correction (2026-09-02 review)" paragraph a few sections below). The
+  resulting list is identical in content to the issue's proposed block —
+  this is a provenance correction, not a content change — and is pinned
+  going forward by `test_default_covers_ll_init_gitignore_entries`.
 
 ### Signatures
 
@@ -1132,6 +1167,8 @@ All other citations (including `research_triage.py:416`,
 content changed.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-02T21:25:16 - `e5787f94-74ab-4df7-a14f-a9968e23b36b.jsonl`
+- `/ll:ready-issue` - 2026-09-02T21:01:31 - `5e05288b-ed75-42a0-aab8-d62e57a90a94.jsonl`
 - `/ll:confidence-check` - 2026-09-02T20:54:05 - `0b51df9f-5499-44fc-9d1b-54e3664c1368.jsonl`
 - pre-implementation review - 2026-09-02 - found that the `.ll/` block of the
   shipped default was corpus-built rather than derived from `ll-init`'s

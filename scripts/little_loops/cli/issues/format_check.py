@@ -571,7 +571,9 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     # is enforced. cli_index starts empty and populates lazily per tool on
     # first query (see cli_surface.py) rather than eagerly scraping every
     # registered ll-* tool's --help up front.
-    ref_index = build_ref_index(config.project_root)
+    ref_index = build_ref_index(
+        config.project_root, untracked_by_design=config.issues.untracked_by_design
+    )
     symbol_index = build_symbol_index(config.project_root)
     cli_index = build_cli_surface_index()
 

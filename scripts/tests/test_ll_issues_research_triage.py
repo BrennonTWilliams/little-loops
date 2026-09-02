@@ -103,6 +103,34 @@ class TestResearchTriageJson:
         assert payload["analyzer"]["covered"] is False
 
 
+class TestResearchTriageUntrackedByDesign:
+    """ENH-3000: cli/issues/research_triage.py:61 injects the config-sourced index.
+
+    A resolved ref plus a `thoughts/` ref: with the untracked-by-design list
+    threaded through, the `thoughts/` ref is denominator-ineligible, leaving
+    1/1 resolved (covered). Without the wiring it would count as an eligible
+    `stale` ref, dropping coverage to 1/2 = 0.5 < the 0.8 threshold (unmet) —
+    so this scenario fails loudly if `cli/issues/research_triage.py` regresses
+    to building an unconfigured index.
+    """
+
+    def test_untracked_by_design_ref_excluded_from_denominator(
+        self, triage_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write(
+            triage_project,
+            SPARSE
+            + "\n## Integration Map\n\n- `pkg/mod.py` — the file\n"
+            + "- `thoughts/some-plan.md` — untracked by design\n",
+        )
+
+        code = _invoke(["ll-issues", "research-triage", "ENH-1", "--json"])
+        payload = json.loads(capsys.readouterr().out)
+
+        assert code == 0
+        assert payload["locator"]["covered"] is True
+
+
 class TestResearchTriageText:
     """The default (non-JSON) rendering is one line per axis."""
 

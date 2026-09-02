@@ -906,7 +906,7 @@ Reports twenty-six gap classes on the returned `FormatGaps` dataclass (`missing`
 - **deprecated_key** (ENH-2876) — frontmatter carries a retired key (e.g. hand-authored `superseded_by`) or a coerced status synonym (e.g. `status: completed`), each paired with a mandatory prose reason from `little_loops.frontmatter.DEPRECATED_FRONTMATTER_KEYS`/`DEPRECATED_STATUS_VALUES`.
 - **multi_frontmatter** (BUG-2955) — the issue carries more than one YAML frontmatter block in its header region (`little_loops.frontmatter.has_multiple_frontmatter_blocks()`), e.g. an outer `score_*` block prepended by the confidence-check scoring path followed by the canonical `id:`-bearing block.
 - **testable** (ENH-2946, precision-tuned by ENH-2966) — the title + `## Summary` text trips 2+ distinct doc-only keyword signals (`doc`, `readme`, `changelog`, `typo`, etc.), word-boundary matched, while frontmatter has no explicit `testable:` key — an advisory that the issue is documentation-only. Advisory-only: it still renders in every output surface but does not fail `format-check`'s exit code (`FormatGaps.has_blocking_gaps`).
-- **stale_file_ref** (ENH-2983; reworded BUG-3194) — a file path reference extracted from the body (`little_loops.text_utils.classify_issue_refs()`) classifies as `stale`: a `/`-qualified path that is not git-tracked. This includes a present-but-gitignored file (it may exist on disk, just not tracked), not only a moved/deleted one — the printed line states the actual predicate rather than implying the file is missing. Reporting only — a moved file can't be safely re-pointed without knowing intent. A slash-joined pair of filenames (`ARCHITECTURE.md/CONTRIBUTING.md`) or a brace-expanded span (`{a,b}/SKILL.md`) is not one path and classifies `unresolvable_form` instead (BUG-3194 Finding 2), never `stale_file_ref`. Only reported when `ref_index` is given.
+- **stale_file_ref** (ENH-2983; reworded BUG-3194) — a file path reference extracted from the body (`little_loops.text_utils.classify_issue_refs()`) classifies as `stale`: a `/`-qualified path that is not git-tracked. This includes a present-but-gitignored file (it may exist on disk, just not tracked), not only a moved/deleted one — the printed line states the actual predicate rather than implying the file is missing. Reporting only — a moved file can't be safely re-pointed without knowing intent. A slash-joined pair of filenames (`ARCHITECTURE.md/CONTRIBUTING.md`) or a brace-expanded span (`{a,b}/SKILL.md`) is not one path and classifies `unresolvable_form` instead (BUG-3194 Finding 2), never `stale_file_ref`. A reference into a documented, gitignored-by-design directory (`thoughts/`, `.ll/ll.local.md`, …) classifies `untracked_by_design` instead (ENH-3000) and is likewise never reported here. Only reported when `ref_index` is given.
 - **ambiguous_file_ref** (ENH-2999) — a file path reference classifies as `ambiguous`: the unrooted suffix matches more than one tracked file after the host-adapter mirror tie-break, so it cannot be resolved without disambiguation. Distinct from `stale_file_ref` — the file wasn't deleted or moved, the reference just lacks enough path prefix to pick one of several real matches. Each entry names the candidate count and up to three candidate paths (elided with `…` beyond that). Only reported when `ref_index` is given.
 - **unmarked_superseded_directive** (ENH-2995) — an issue's `### Codebase Research Findings` block contains a correction phrase from a closed detection list while none of `## Implementation Steps`/`### Files to Modify`/`## Acceptance Criteria` carries a `⚠ Superseded` marker.
 - **duplicate_findings_block** (ENH-2993) — an H2 section carries more than one `### Codebase Research Findings` block; entries are `"<H2> (N)"`.
@@ -7730,7 +7730,7 @@ Text extraction utilities for issue content. Provides shared functions for extra
 | `extract_file_paths` | Extract file paths from issue content |
 | `strip_code_fences` | Remove fenced code blocks — the public form of the fence handling `extract_file_paths` applies, so callers scanning the same text for something else use identical semantics (ENH-2971) |
 | `build_ref_index` | Index tracked files by basename via a single `git ls-files` call (ENH-2983) |
-| `classify_file_ref` | Classify one extracted file path reference: `resolved`/`stale`/`unresolvable_form`/`planned_new`/`ambiguous` (ENH-2983, ENH-2999) |
+| `classify_file_ref` | Classify one extracted file path reference: `resolved`/`stale`/`unresolvable_form`/`planned_new`/`ambiguous`/`untracked_by_design` (ENH-2983, ENH-2999, ENH-3000) |
 | `suffix_match_candidates` | Candidate tracked paths a reference's suffix matches, after the mirror tie-break — 0 = absent, 1 = resolves, >1 = ambiguous; shared body behind both `resolve_ref_path` and `classify_file_ref` (ENH-2999) |
 | `resolve_ref_path` | Return the tracked repo-relative path a reference resolves to, or `None` — steps 3-4 of `classify_file_ref`'s resolution order, for callers needing the *target* rather than the verdict (ENH-2971) |
 | `classify_issue_refs` | Classify every file path reference extracted from one issue body (ENH-2983) |
@@ -7781,25 +7781,31 @@ print(paths)
 ### RefStatus / RefIndex
 
 ```python
-RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new", "ambiguous"]
+RefStatus = Literal[
+    "resolved", "stale", "unresolvable_form", "planned_new", "ambiguous", "untracked_by_design"
+]
 
 @dataclass(frozen=True)
 class RefIndex:
     by_basename: dict[str, list[str]]  # basename -> tracked repo-relative paths
+    untracked_by_design: tuple[str, ...] = ()
 ```
 
-`RefIndex` is the tracked-file index used by `classify_file_ref()`/`classify_issue_refs()` (ENH-2983). Built once per invocation and threaded through, never rebuilt per reference.
+`RefIndex` is the tracked-file index used by `classify_file_ref()`/`classify_issue_refs()` (ENH-2983). Built once per invocation and threaded through, never rebuilt per reference. `untracked_by_design` (ENH-3000) carries the prefix list — directory-shaped (`"thoughts/"`) or file-shaped (`".ll/ll.local.md"`) — classified `untracked_by_design` instead of `stale` when nothing else resolves the ref; defaults to `DEFAULT_UNTRACKED_BY_DESIGN`.
 
 ### build_ref_index
 
 ```python
-def build_ref_index(root: Path) -> RefIndex
+def build_ref_index(
+    root: Path, *, untracked_by_design: tuple[str, ...] = DEFAULT_UNTRACKED_BY_DESIGN
+) -> RefIndex
 ```
 
 Index tracked files by basename via a single `git ls-files -z` call. Fails open (empty index, never raises) when git is unavailable or exits non-zero, matching the convention of the other `git ls-files` call sites in this codebase (`cli/verify_private_refs.py`, `codequery/fallback.py`).
 
 **Parameters:**
 - `root` - Repository root to run `git ls-files` from.
+- `untracked_by_design` - Prefixes classified `untracked_by_design` (ENH-3000) instead of `stale`. Defaults to `DEFAULT_UNTRACKED_BY_DESIGN`; production callers thread `config.issues.untracked_by_design` through here instead.
 
 **Returns:** A `RefIndex` mapping each tracked file's basename to the list of repo-relative paths sharing that basename.
 
@@ -7809,14 +7815,14 @@ Index tracked files by basename via a single `git ls-files -z` call. Fails open 
 def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
 ```
 
-Classify one path reference extracted from issue prose. Resolution order (not commutative): form checks first (glob, `<placeholder>`, bare basename with no `/` — all `unresolvable_form`, checked before any suffix matching so a bare basename like `SKILL.md` cannot spuriously suffix-match dozens of tracked files); then `planned_new` from line context (a `(new)` marker); then an exact tracked-path match; then a suffix match against the basename-keyed index via `suffix_match_candidates()` — zero candidates is `stale`, exactly one is `resolved`, more than one is `ambiguous` (ENH-2999). A ref whose only match is a generated host-adapter mirror still resolves; a ref whose matches are 2+ non-mirror paths declines with `ambiguous` rather than picking one silently.
+Classify one path reference extracted from issue prose. Resolution order (not commutative): form checks first (glob, `<placeholder>`, bare basename with no `/` — all `unresolvable_form`, checked before any suffix matching so a bare basename like `SKILL.md` cannot spuriously suffix-match dozens of tracked files); then `planned_new` from line context (a `(new)` marker); then an exact tracked-path match; then a suffix match against the basename-keyed index via `suffix_match_candidates()` — zero candidates falls through to the `untracked_by_design` prefix check (ENH-3000, below) then `stale`, exactly one is `resolved`, more than one is `ambiguous` (ENH-2999). A ref whose only match is a generated host-adapter mirror still resolves; a ref whose matches are 2+ non-mirror paths declines with `ambiguous` rather than picking one silently. An unmatched ref that starts with one of `index.untracked_by_design`'s prefixes classifies `untracked_by_design` instead of `stale` — a post-lookup fallback, not a step-1 form check, since prefixes like `thoughts/`/`.loops/` hold some tracked files too and those must still resolve at the earlier steps.
 
 **Parameters:**
 - `ref` - The path reference as extracted from issue prose.
 - `index` - A `RefIndex` built once per invocation.
 - `line` - The source line the reference was found on, used only for `planned_new` detection.
 
-**Returns:** One of `"resolved"`, `"stale"`, `"unresolvable_form"`, `"planned_new"`, or `"ambiguous"`.
+**Returns:** One of `"resolved"`, `"stale"`, `"unresolvable_form"`, `"planned_new"`, `"ambiguous"`, or `"untracked_by_design"`.
 
 ### suffix_match_candidates
 

@@ -341,6 +341,7 @@ Issue management settings:
 | `next_issue.sort_keys` | `null` | Optional list of `{key, direction}` entries that overrides `strategy` with a custom sort order. |
 | `auto_commit` | `false` | When `true`, the `issue-auto-commit.sh` PostToolUse hook automatically commits issue file changes (Write/Edit) with no other staged files present. |
 | `auto_commit_prefix` | `"chore(issues)"` | Commit message prefix used by the auto-commit hook. Final message format is `<prefix>: <verb> <ISSUE_ID> <slug>` where `verb` is `capture` (Write) or `update` (Edit/Update) and `<ISSUE_ID>` + `<slug>` are parsed from the issue filename (`P[0-5]-TYPE-NNN-slug.md`). |
+| `untracked_by_design` | See `config-schema.json` | Path prefixes classified `untracked_by_design` instead of `stale` when a file reference in issue prose cannot resolve against the tracked-file index (ENH-3000) — e.g. `"thoughts/"`, `"postmortems/"`, `".loops/runs/"`, `".ll/ll.local.md"`. Directory entries end in `/`; file entries are exact repo-relative paths matched by prefix. Ships a non-empty default covering this repo's own gitignored-by-design directories and every `.ll/` path `ll-init` writes into a consumer's `.gitignore`; overriding replaces the whole array (no merge). |
 
 **Custom Categories**: The four core categories (bugs, features, enhancements, epics) are always included automatically. You can add custom categories and they will be merged with the required ones:
 

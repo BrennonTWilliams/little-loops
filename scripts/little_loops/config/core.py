@@ -752,6 +752,7 @@ class BRConfig:
                 "capture_template": self._issues.capture_template,
                 "auto_commit": self._issues.auto_commit,
                 "auto_commit_prefix": self._issues.auto_commit_prefix,
+                "untracked_by_design": list(self._issues.untracked_by_design),
             },
             "automation": {
                 "timeout_seconds": self._automation.timeout_seconds,

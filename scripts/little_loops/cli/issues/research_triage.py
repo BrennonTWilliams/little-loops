@@ -17,6 +17,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from little_loops.issues.research_triage import triage_research_axes
+from little_loops.text_utils import build_ref_index
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -58,7 +59,10 @@ def cmd_research_triage(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 1
 
-    coverages = triage_research_axes(path, config.project_root)
+    index = build_ref_index(
+        config.project_root, untracked_by_design=config.issues.untracked_by_design
+    )
+    coverages = triage_research_axes(path, config.project_root, index=index)
 
     if getattr(args, "json", False):
         print_json({c.axis: c.to_dict() for c in coverages})

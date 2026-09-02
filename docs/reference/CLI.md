@@ -1931,7 +1931,7 @@ Report which of `/ll:refine-issue`'s three research axes an issue already covers
 | `pattern_finder` | `## Proposed Solution` | a backtick-quoted symbol in the same section |
 
 **Behavior:**
-- Path references are extracted with `extract_file_paths()` (code fences stripped) and classified with `classify_file_ref()` — globs, `<placeholder>` paths and bare basenames come back `unresolvable_form` and are excluded from both sides of the fraction. `resolved`, `stale`, and `ambiguous` (ENH-2999) all stay denominator-eligible; only `resolved` counts toward the numerator.
+- Path references are extracted with `extract_file_paths()` (code fences stripped) and classified with `classify_file_ref()` — globs, `<placeholder>` paths and bare basenames come back `unresolvable_form` and are excluded from both sides of the fraction. `resolved`, `stale`, and `ambiguous` (ENH-2999) all stay denominator-eligible; only `resolved` counts toward the numerator. A reference into a documented, gitignored-by-design directory classifies `untracked_by_design` (ENH-3000) instead of `stale` and is excluded from the denominator too — it has no git-tracked target to compare against, so it's not evidence either way.
 - An axis is **covered** when **≥80%** of its qualified references resolve. The rule is fraction-based on purpose: per-path staleness is ~15% at every Integration Map size, so an "all must resolve" rule would compound to `0.85^k` and measure map *size* rather than currency.
 - **Staleness**: every resolved path's `max(git commit time, filesystem mtime)` is compared against the issue's most recent `` `/ll:refine-issue` `` `## Session Log` timestamp. A target that moved after that pass makes the axis uncovered, with `evidence` naming the stale path. Both clocks are needed — a git-only check misses uncommitted working-tree edits. An issue with no prior refine entry skips the comparison.
 - **Program Design gate override (BUG-3003)**: on a project where the Program Design gate is active for this issue (`.ll/program-design-cutover.json` stamped, issue not grandfathered, `program_design_not_applicable` not set), `analyzer` is forced `covered: false` — regardless of Root Cause/Current Behavior evidence — whenever `## Program Design` is missing, empty, boilerplate, or graded non-specific, with `evidence` naming the gate as the reason. Without this override, an already-refined issue with a resolving Root Cause would triage `analyzer: covered` and `/ll:refine-issue` would never re-spawn the analyzer agent needed to write the section.
@@ -2270,9 +2270,13 @@ implying the file is missing. A bare basename, glob (including brace
 expansion `{a,b}`), `<placeholder>`-bearing path, or a slash-joined pair of
 filenames (`ARCHITECTURE.md/CONTRIBUTING.md` — two filenames joined by
 prose, not one path) is `unresolvable_form` and never reported here; a path
-on a line marked `(new)` is `planned_new` and also never reported.
-Reporting only — a moved file can't be safely re-pointed without knowing
-intent.
+on a line marked `(new)` is `planned_new` and also never reported. A
+reference into a documented, gitignored-by-design directory (`thoughts/`,
+`postmortems/`, `.loops/runs/`, `.ll/ll.local.md`, …) classifies
+`untracked_by_design` (ENH-3000) instead of `stale` and is likewise never
+reported here — configurable via `issues.untracked_by_design`, which ships a
+non-empty default. Reporting only — a moved file can't be safely re-pointed
+without knowing intent.
 
 Also reports `ambiguous_file_ref` (ENH-2999): a file path reference classifies
 as `ambiguous` — the unrooted suffix matches more than one tracked file after

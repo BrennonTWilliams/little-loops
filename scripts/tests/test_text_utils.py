@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.text_utils import (
+    DEFAULT_UNTRACKED_BY_DESIGN,
     RefIndex,
     _mirror_prefixes,
     build_ref_index,
@@ -315,6 +316,91 @@ class TestClassifyFileRef:
         assert classify_file_ref("scripts/little_loops/gone.py", index, line=line) == "stale"
 
 
+class TestUntrackedByDesign:
+    """ENH-3000: refs into gitignored-by-design dirs report untracked_by_design."""
+
+    @pytest.mark.parametrize("prefix", DEFAULT_UNTRACKED_BY_DESIGN)
+    def test_default_prefix_suppresses_stale(self, prefix: str) -> None:
+        """Every entry in the shipped default classifies as untracked_by_design.
+
+        Exception: bare repo-root filenames (`.auto-manage-state.json`,
+        `.parallel-manage-state.json`) have no `/`, so step 1's bare-basename
+        form check claims them as `unresolvable_form` before step 5 is ever
+        reached — they document ll-init's `_GITIGNORE_ENTRIES` for the
+        cross-check test below but are inert as prose refs, since a ref with
+        no directory component is never `/`-qualified to begin with.
+        """
+        ref = prefix.rstrip("*") if prefix.endswith("*") else prefix
+        if ref.endswith("/"):
+            ref = ref + "some-file.md"
+        index = RefIndex(by_basename={}, untracked_by_design=DEFAULT_UNTRACKED_BY_DESIGN)
+        expected = "unresolvable_form" if "/" not in ref else "untracked_by_design"
+        assert classify_file_ref(ref, index) == expected
+
+    def test_tracked_file_under_prefix_stays_resolved(self) -> None:
+        """Negative control: the step-5-not-step-1 ordering guard.
+
+        A ref to a *tracked* file under an untracked-by-design prefix must
+        still resolve — this is the single most important test in ENH-3000:
+        63+ real `thoughts/`/`.loops/` resolutions must not regress.
+        """
+        index = RefIndex(
+            by_basename={
+                "FEAT-670-layout-engine-research.md": [
+                    "thoughts/FEAT-670-layout-engine-research.md"
+                ]
+            },
+            untracked_by_design=DEFAULT_UNTRACKED_BY_DESIGN,
+        )
+        assert classify_file_ref("thoughts/FEAT-670-layout-engine-research.md", index) == "resolved"
+
+    def test_loops_top_level_deleted_yaml_stays_stale(self) -> None:
+        """Granularity guard: `.loops/` is enumerated per-subdirectory, not bare.
+
+        A deleted top-level loop YAML must keep reporting `stale` — only the
+        specific ignored subdirectories (`.loops/runs/`, `.loops/tmp/`, ...)
+        suppress.
+        """
+        index = RefIndex(by_basename={}, untracked_by_design=DEFAULT_UNTRACKED_BY_DESIGN)
+        assert classify_file_ref(".loops/general-task.yaml", index) == "stale"
+
+    def test_ll_rubrics_stays_stale(self) -> None:
+        """Granularity guard: `.ll/` is enumerated per-file, not bare.
+
+        `.ll/rubrics/*.md` is proposed-but-unbuilt (cited by open issues that
+        propose creating it) — real signal, not drift, and must keep
+        reporting `stale` rather than being swallowed by a bare `.ll/` prefix.
+        """
+        index = RefIndex(by_basename={}, untracked_by_design=DEFAULT_UNTRACKED_BY_DESIGN)
+        assert classify_file_ref(".ll/rubrics/confidence-check.md", index) == "stale"
+
+    def test_ll_context_state_json_file_entry(self) -> None:
+        """The single highest-count entry (28 refs) resolves via a full file path."""
+        index = RefIndex(by_basename={}, untracked_by_design=DEFAULT_UNTRACKED_BY_DESIGN)
+        assert classify_file_ref(".ll/ll-context-state.json", index) == "untracked_by_design"
+
+    @pytest.mark.parametrize("suffix", ["-shm", "-wal"])
+    def test_sqlite_sibling_prefix_match(self, suffix: str) -> None:
+        """`.ll/history.db` / `.ll/queue.db` act as raw startswith prefixes."""
+        index = RefIndex(by_basename={}, untracked_by_design=DEFAULT_UNTRACKED_BY_DESIGN)
+        assert classify_file_ref(f".ll/history.db{suffix}", index) == "untracked_by_design"
+        assert classify_file_ref(f".ll/queue.db{suffix}", index) == "untracked_by_design"
+
+    def test_extensionless_file_entry_matches_without_slash(self) -> None:
+        """`.ll/ll-context-handoff-needed*`'s trailing `*` is a raw-prefix marker.
+
+        Without it, the directory-shape normalization heuristic would coerce
+        this extensionless file into a non-matching `.../` form.
+        """
+        index = RefIndex(by_basename={}, untracked_by_design=DEFAULT_UNTRACKED_BY_DESIGN)
+        assert classify_file_ref(".ll/ll-context-handoff-needed", index) == "untracked_by_design"
+
+    def test_empty_index_prefix_is_inert(self) -> None:
+        """A RefIndex built with no untracked_by_design list keeps old stale behavior."""
+        index = RefIndex(by_basename={})
+        assert classify_file_ref("thoughts/some-plan.md", index) == "stale"
+
+
 class TestMirrorTieBreak:
     """Generated host-adapter mirrors must not make a present file look stale."""
 
@@ -540,3 +626,24 @@ class TestBuildRefIndex:
         with patch("little_loops.text_utils.subprocess.run", side_effect=OSError("no git")):
             index = build_ref_index(tmp_path)
         assert index.by_basename == {}
+
+    def test_default_untracked_by_design_threaded_through(self, tmp_path: Path) -> None:
+        assert build_ref_index(tmp_path).untracked_by_design == DEFAULT_UNTRACKED_BY_DESIGN
+
+    def test_uncommitted_file_under_prefix_classifies_untracked_by_design(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-3000: an untracked file under a default prefix is not `stale`.
+
+        The file is absent from `index.by_basename` (never `git add`ed), so
+        this proves the classification comes from the prefix fallback, not
+        from an accidental index hit.
+        """
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        (tmp_path / "thoughts").mkdir()
+        (tmp_path / "thoughts" / "research.md").write_text("# notes\n")
+
+        index = build_ref_index(tmp_path)
+
+        assert "research.md" not in index.by_basename
+        assert classify_file_ref("thoughts/research.md", index) == "untracked_by_design"

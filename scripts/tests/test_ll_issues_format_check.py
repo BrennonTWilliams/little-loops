@@ -655,6 +655,28 @@ class TestStaleFileRef:
         assert result == 0
         assert "stale_file_ref" not in out
 
+    def test_all_does_not_report_for_untracked_by_design_prefix(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-3000: a ref into a gitignored-by-design dir is not stale_file_ref."""
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9406",
+            "See `thoughts/research/some-plan.md` for details.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "stale_file_ref" not in out
+
     def test_single_id_json_reports_stale_file_ref(
         self,
         temp_project_dir: Path,

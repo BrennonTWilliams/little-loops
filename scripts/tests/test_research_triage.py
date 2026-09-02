@@ -290,6 +290,25 @@ class TestReferenceFiltering:
         locator = _by_axis(triage_research_axes(issue, root))["locator"]
         assert locator.covered is False
 
+    def test_untracked_by_design_ref_is_denominator_ineligible(self, tmp_path: Path) -> None:
+        """ENH-3000: a ref with no git-tracked target isn't evidence either way.
+
+        `untracked_by_design` replaces what would otherwise be `stale`, so it
+        belongs alongside `unresolvable_form`/`planned_new` outside the
+        eligible tuple, not counted as a miss.
+        """
+        from little_loops.issues.research_triage import qualified_ref_count
+        from little_loops.text_utils import build_ref_index
+
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        issue = _write_issue(
+            root,
+            "# ENH-1\n\n## Integration Map\n\n- `thoughts/some-plan.md`\n",
+        )
+
+        index = build_ref_index(root)
+        assert qualified_ref_count(issue, "locator", index=index) == 0
+
 
 # ---------------------------------------------------------------------------
 # TestStalenessCheck
