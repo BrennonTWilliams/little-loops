@@ -46,9 +46,36 @@ def _make_mock_popen_factory(
         mock_proc.returncode = returncode
         mock_proc.wait.return_value = None
         mock_proc.kill.return_value = None
+        # FEAT-3182: this mock patches subprocess.Popen at the module level
+        # (little_loops.fsm.executor.subprocess IS the shared stdlib module),
+        # so it also intercepts _prepatch_git()'s subprocess.run(..., text=True)
+        # calls for run-time git-fact capture. subprocess.run() unpacks
+        # process.communicate() into a 2-tuple; an unconfigured MagicMock()
+        # return value isn't unpackable, so it must be stubbed here too.
+        mock_proc.communicate.return_value = ("", "")
+        # subprocess.run() enters the Popen result as a context manager
+        # (`with Popen(...) as process:`); MagicMock's default __enter__
+        # return value is a distinct mock lacking the stub above.
+        mock_proc.__enter__.return_value = mock_proc
         return mock_proc
 
     return factory
+
+
+def _action_popen_call_count(mock_popen: MagicMock) -> int:
+    """`mock_popen.call_count` minus FEAT-3182 run-time git-fact-capture calls.
+
+    `capture_git_facts=True` (set unconditionally by `cli/loop/run.py`) routes
+    `head_sha`/`branch`/`worktree_digest` reads through the same
+    module-global `subprocess.Popen` these tests mock, alongside the loop's
+    own shell actions. Callers that assert an exact action-invocation count
+    should use this instead of the raw `call_count`.
+    """
+    return sum(
+        1
+        for call in mock_popen.call_args_list
+        if not (call.args and call.args[0] and call.args[0][0] == "git")
+    )
 
 
 class TestEndToEndExecution:
@@ -146,7 +173,7 @@ states:
                 result = main_loop()
 
         assert result == 1  # Non-terminal exit
-        assert mock_popen.call_count == 2  # Ran exactly max_steps times
+        assert _action_popen_call_count(mock_popen) == 2  # Ran exactly max_steps times
 
         captured = capsys.readouterr()
         # Verify loop header and completion message
@@ -195,7 +222,7 @@ states:
                 result = main_loop()
 
         assert result == 1  # terminated_by=max_steps → exit code 1
-        assert mock_popen.call_count == 3  # 2 check iterations + 1 summarize
+        assert _action_popen_call_count(mock_popen) == 3  # 2 check iterations + 1 summarize
 
         captured = capsys.readouterr()
         assert "Running loop: test-max-summary" in captured.out
