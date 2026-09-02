@@ -3,10 +3,11 @@ id: ENH-3298
 type: ENH
 title: Baseline verdicts ignore the Wilson CIs they print
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-23'
 captured_at: '2026-08-23T06:03:35Z'
+completed_at: '2026-09-02T06:31:46Z'
 parent: EPIC-2087
 labels:
 - loops
@@ -291,12 +292,45 @@ Low risk, warning-level semantics, no behavior change to loop execution.
 - `docs/guides/EVALUATION_GUIDE.md:56,95` — the other Wilson-CI surface
 - `docs/reference/API.md:10914` — `little_loops.stats`
 
+## Resolution
+
+Added `paired_direction()` to `scripts/little_loops/stats.py` — a sign test
+on discordant per-item pairs (`b` = harness-pass/baseline-fail, `c` =
+baseline-pass/harness-fail), returning `"harness"`, `"baseline"`, or
+`"inconclusive"` via `wilson_ci(b, b + c)` bracketing 0.5.
+
+`_print_ab_summary` (`_helpers.py`) now derives `quality_verdict` from
+`paired_direction(results.per_item)` instead of the raw `results.delta`
+sign, printing `inconclusive at n=<n> (<b+c> discordant pairs)` or `<winner>
+wins on quality (<favor>/<discordant> discordant pairs favor <winner>)`.
+
+`_print_cross_host_table` now gates the `⚠ Ordering reversal` warning on
+both hosts' `paired_direction` results being non-inconclusive and disagreeing;
+when they differ but either is inconclusive, it prints a softened `Note:`
+line instead.
+
+Implementation matched the issue's Program Design exactly — no deviations.
+
+Updated `docs/reference/CLI.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`,
+`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, and `docs/reference/API.md`
+(new `paired_direction` subsection) to describe the three-way verdict.
+
+Added `TestPairedDirection` to `scripts/tests/test_stats.py` (6 cases: no
+discordant pairs, small-n inconclusive, both one-way-decisive directions, a
+majority-decisive case, and custom dict keys). Updated the three
+`TestABSummaryDisplay` tests in `scripts/tests/test_ll_loop_display.py` whose
+single-item fixtures now correctly resolve to `inconclusive` rather than a
+named winner. Cross-host tests (`test_cross_host_baseline.py`) needed no
+changes — their `n=10`, 8-discordant-pairs fixtures remain decisive under the
+new gate. Full suite: 22358 passed, 42 skipped.
+
 ## Status
 
-**Open** | Created: 2026-08-23 | Priority: P3
+**Done** | Created: 2026-08-23 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-02T06:31:38 - `4e6355cf-6e02-45e1-a227-f5f10eab416d.jsonl`
 - `/ll:confidence-check` - 2026-09-02T04:06:36 - `5c0bb0db-edd7-40d4-be88-a81699d7f3a8.jsonl`
 - `/ll:wire-issue` - 2026-09-02T03:54:37 - `951d4372-98bd-4efb-87f2-c6183621aa26.jsonl`
 - `/ll:refine-issue` - 2026-09-02T03:43:30 - `a609cc09-ff2a-486a-b930-aa4f07a62a30.jsonl`

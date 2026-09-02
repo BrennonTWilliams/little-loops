@@ -2035,7 +2035,7 @@ def _print_ab_summary(ab_path: Path) -> None:
         ab_path: Path to ab.json file written by the executor
     """
     from little_loops.ab_writer import read_ab_json
-    from little_loops.stats import wilson_ci
+    from little_loops.stats import paired_direction, wilson_ci
 
     results = read_ab_json(str(ab_path.parent))
     if results is None or not results.per_item:
@@ -2090,14 +2090,20 @@ def _print_ab_summary(ab_path: Path) -> None:
         f"({dur_dir}{abs(dur_ratio - 1) * 100:.0f}%)"
     )
 
-    # Verdict line
-    quality_verdict = (
-        "harness wins on quality"
-        if results.delta > 0
-        else "baseline wins on quality"
-        if results.delta < 0
-        else "no quality difference"
-    )
+    # Verdict line — paired sign test on discordant items (ENH-3298); the raw
+    # delta sign asserts a winner even when the two Wilson CIs overlap almost
+    # entirely, so the direction must instead be established by the CI on
+    # the discordant split itself.
+    direction, b, c = paired_direction(results.per_item)
+    discordant = b + c
+    if direction == "inconclusive":
+        quality_verdict = f"inconclusive at n={n} ({discordant} discordant pairs)"
+    else:
+        favor = b if direction == "harness" else c
+        quality_verdict = (
+            f"{direction} wins on quality "
+            f"({favor}/{discordant} discordant pairs favor {direction})"
+        )
     cost_verdict = (
         f"costs ~{abs(tokens_ratio - 1) * 100:.0f}% more tokens"
         if tokens_ratio > 1
@@ -2210,7 +2216,7 @@ def _print_cross_host_table(
     results2: Any,
 ) -> None:
     """Print a cross-host pass-rate comparison table with Wilson 95% CIs."""
-    from little_loops.stats import wilson_ci
+    from little_loops.stats import paired_direction, wilson_ci
 
     def _host_stats(results: Any) -> tuple[int, int, float, float, float]:
         n = len(results.per_item)
@@ -2229,16 +2235,21 @@ def _print_cross_host_table(
     print(f"  {host1:<20}  {rate1:>9.0f}%  [{lo1:.2f}, {hi1:.2f}]  {n1:>5}")
     print(f"  {host2:<20}  {rate2:>9.0f}%  [{lo2:.2f}, {hi2:.2f}]  {n2:>5}")
 
-    # Warn when the harness-vs-baseline ordering reverses between hosts
-    host1_harness_wins = results1.delta > 0
-    host2_harness_wins = results2.delta > 0
-    if host1_harness_wins != host2_harness_wins:
-        winner1 = "harness" if host1_harness_wins else "baseline"
-        winner2 = "harness" if host2_harness_wins else "baseline"
-        print()
+    # Warn on ordering reversal only when both runs independently establish a
+    # direction (ENH-3298) — otherwise a noisy disagreement between two
+    # inconclusive runs prints identically to a genuine host-specific effect.
+    direction1, _b1, _c1 = paired_direction(results1.per_item)
+    direction2, _b2, _c2 = paired_direction(results2.per_item)
+    print()
+    if direction1 != "inconclusive" and direction2 != "inconclusive" and direction1 != direction2:
         print(
-            f"  ⚠ Ordering reversal: {host1} shows {winner1} ahead, "
-            f"{host2} shows {winner2} ahead. "
+            f"  ⚠ Ordering reversal: {host1} shows {direction1} ahead, "
+            f"{host2} shows {direction2} ahead. "
             "Improvement may be host-specific."
+        )
+    elif direction1 != direction2:
+        print(
+            f"  Note: ordering differs between hosts, but neither run separates from "
+            f"chance (n={n1}, n={n2}) — not evidence of a host-specific effect."
         )
     print()

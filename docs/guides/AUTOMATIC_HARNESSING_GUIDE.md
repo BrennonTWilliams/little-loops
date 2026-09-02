@@ -1028,12 +1028,24 @@ A/B Summary (n=10)
 
   Median tokens:      harness=84k  baseline=42k  (+100%)
   Median duration:    harness=3.0s  baseline=1.0s  (+200%)
-  Verdict:            harness wins on quality, costs ~100% more tokens
+  Verdict:            harness wins on quality (9/10 discordant pairs favor harness), costs ~100% more tokens
 
 Per-item: .loops/runs/<run-id>/ab.json
 ```
 
-**Interpreting the delta:** A positive delta means the harness produces better output. Treat deltas below ~10pp with caution — judge variance at small sample sizes can produce noise at that level. Run with a larger `--items` count if you need a tighter confidence interval.
+At small `n`, the same summary reads:
+
+```
+  Verdict:            inconclusive at n=5 (2 discordant pairs), same token cost
+```
+
+**Interpreting the verdict:** The `Verdict:` line runs a paired sign test on
+the discordant items (`b` = harness-pass/baseline-fail, `c` =
+baseline-pass/harness-fail) rather than the raw delta sign (ENH-3298); it
+names a winner only when the Wilson CI on `b / (b + c)` excludes 0.5. A
+positive delta with `inconclusive` in the verdict means the pairing doesn't
+yet separate from chance — usually because too few items disagree between
+arms. Run with a larger `--items` count if you need the split to separate.
 
 **Interpreting the cost ratio:** A +30pp quality delta at +100% token cost is generally worth it for high-stakes automation (code changes, architecture decisions). It's likely not worth it for low-stakes batch tasks where "good enough" output is acceptable.
 

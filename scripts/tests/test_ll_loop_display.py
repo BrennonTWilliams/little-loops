@@ -4420,7 +4420,7 @@ class TestABSummaryDisplay:
         assert "Median tokens:" in captured.out
         assert "Median duration:" in captured.out
         assert "Verdict:" in captured.out
-        assert "harness wins on quality" in captured.out
+        assert "inconclusive at n=1" in captured.out
         assert "Per-item:" in captured.out
 
     def test_ab_summary_harness_loses_quality(
@@ -4447,7 +4447,7 @@ class TestABSummaryDisplay:
         _print_ab_summary(ab_path)
         captured = capsys.readouterr()
 
-        assert "baseline wins on quality" in captured.out
+        assert "inconclusive at n=1" in captured.out
         assert "Delta:" in captured.out
         assert "-40%" in captured.out
 
@@ -4475,7 +4475,7 @@ class TestABSummaryDisplay:
         _print_ab_summary(ab_path)
         captured = capsys.readouterr()
 
-        assert "no quality difference" in captured.out
+        assert "inconclusive at n=1 (0 discordant pairs)" in captured.out
         assert "same token cost" in captured.out
 
     def test_ab_summary_with_no_file_is_noop(self, capsys: pytest.CaptureFixture[str]) -> None:

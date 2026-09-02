@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from little_loops.stats import wilson_ci
+from little_loops.stats import paired_direction, wilson_ci
 
 
 class TestWilsonCI:
@@ -108,3 +108,65 @@ class TestWilsonCI:
         # 99% CI must be wider than 95%
         assert lo_99 < lo_95
         assert hi_99 > hi_95
+
+
+class TestPairedDirection:
+    """Tests for paired_direction() sign test on discordant pairs (ENH-3298)."""
+
+    def test_no_discordant_pairs_is_inconclusive(self) -> None:
+        """All-concordant items (b=c=0) carry no directional information."""
+        per_item = [
+            {"harness_pass": True, "baseline_pass": True},
+            {"harness_pass": False, "baseline_pass": False},
+        ]
+        direction, b, c = paired_direction(per_item)
+        assert direction == "inconclusive"
+        assert b == 0
+        assert c == 0
+
+    def test_small_n_inconclusive(self) -> None:
+        """n=5, b=2, c=0: too few discordant pairs to separate from chance."""
+        per_item = [
+            {"harness_pass": True, "baseline_pass": False},
+            {"harness_pass": True, "baseline_pass": False},
+            {"harness_pass": True, "baseline_pass": True},
+            {"harness_pass": False, "baseline_pass": False},
+            {"harness_pass": False, "baseline_pass": False},
+        ]
+        direction, b, c = paired_direction(per_item)
+        assert direction == "inconclusive"
+        assert b == 2
+        assert c == 0
+
+    def test_all_discordant_one_way_favors_harness(self) -> None:
+        """All discordant pairs favor harness: decisive in harness's favor."""
+        per_item = [{"harness_pass": True, "baseline_pass": False} for _ in range(8)]
+        direction, b, c = paired_direction(per_item)
+        assert direction == "harness"
+        assert b == 8
+        assert c == 0
+
+    def test_all_discordant_one_way_favors_baseline(self) -> None:
+        """All discordant pairs favor baseline: decisive in baseline's favor."""
+        per_item = [{"harness_pass": False, "baseline_pass": True} for _ in range(8)]
+        direction, b, c = paired_direction(per_item)
+        assert direction == "baseline"
+        assert b == 0
+        assert c == 8
+
+    def test_decisive_majority_favors_harness(self) -> None:
+        """9/10 discordant pairs favor harness: separates from chance."""
+        per_item = [{"harness_pass": True, "baseline_pass": False} for _ in range(9)]
+        per_item.append({"harness_pass": False, "baseline_pass": True})
+        direction, b, c = paired_direction(per_item)
+        assert direction == "harness"
+        assert b == 9
+        assert c == 1
+
+    def test_custom_keys(self) -> None:
+        """harness_key/baseline_key select alternate dict keys."""
+        per_item = [{"h": True, "b": False} for _ in range(8)]
+        direction, b, c = paired_direction(per_item, harness_key="h", baseline_key="b")
+        assert direction == "harness"
+        assert b == 8
+        assert c == 0

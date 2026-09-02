@@ -8,6 +8,7 @@ unreliable near 0 or 1.
 from __future__ import annotations
 
 import math
+from typing import Any, Literal
 
 
 def wilson_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -37,3 +38,46 @@ def wilson_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     center = (p + z2 / (2.0 * n)) / denominator
     margin = (z * math.sqrt(p * (1.0 - p) / n + z2 / (4.0 * n * n))) / denominator
     return max(0.0, center - margin), min(1.0, center + margin)
+
+
+def paired_direction(
+    per_item: list[dict[str, Any]],
+    *,
+    harness_key: str = "harness_pass",
+    baseline_key: str = "baseline_pass",
+) -> tuple[Literal["harness", "baseline", "inconclusive"], int, int]:
+    """Sign test on paired per-item results.
+
+    Concordant items (both arms agree) carry no directional information and
+    are dropped; only discordant pairs — where the arms disagree — are
+    tested. The direction is established only if the Wilson CI on the
+    discordant split excludes 0.5.
+
+    Args:
+        per_item: Per-item records, each carrying a harness and baseline
+            pass/fail flag.
+        harness_key: Dict key for the harness pass flag.
+        baseline_key: Dict key for the baseline pass flag.
+
+    Returns:
+        (direction, b, c) where direction is "harness", "baseline", or
+        "inconclusive"; b is the count of items where harness passed and
+        baseline failed, c is the count where baseline passed and harness
+        failed.
+    """
+    b = sum(
+        1
+        for item in per_item
+        if item.get(harness_key, False) and not item.get(baseline_key, False)
+    )
+    c = sum(
+        1
+        for item in per_item
+        if item.get(baseline_key, False) and not item.get(harness_key, False)
+    )
+    if b + c == 0:
+        return "inconclusive", b, c
+    lo, hi = wilson_ci(b, b + c)
+    if lo <= 0.5 <= hi:
+        return "inconclusive", b, c
+    return ("harness" if b > c else "baseline"), b, c

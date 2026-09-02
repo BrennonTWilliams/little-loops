@@ -472,10 +472,14 @@ Cross-host Comparison
   codex                        60%  [0.31, 0.83]           10
 ```
 
-If the harness-vs-baseline **ordering reverses** between hosts (harness wins on
-one, baseline wins on the other), the run prints an explicit
-`⚠ Ordering reversal` warning — treat the improvement as host-specific and
-don't bake it into a shared loop without a host guard.
+If the harness-vs-baseline **ordering reverses** between hosts — and *both*
+runs independently establish a direction via a paired sign test on their
+discordant items (ENH-3298) — the run prints an explicit `⚠ Ordering
+reversal` warning; treat the improvement as host-specific and don't bake it
+into a shared loop without a host guard. If either run is inconclusive (its
+discordant split doesn't separate from chance), the ordering difference is
+noise, not evidence, and a softer `Note: ordering differs between hosts, but
+neither run separates from chance` line is printed instead.
 
 If only one host binary is installed, the step is skipped with a notice
 (`Cross-host: only one host available`) — the primary baseline results are

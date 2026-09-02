@@ -11306,7 +11306,7 @@ Estimates cost in USD for a token usage event. Returns `None` if `model` is not 
 Statistical utilities for loop evaluation reporting. Provides Wilson 95% binomial confidence intervals for honest uncertainty reporting at small sample sizes, where naive ±√(p(1-p)/n) estimates are unreliable near 0 or 1.
 
 ```python
-from little_loops.stats import wilson_ci
+from little_loops.stats import paired_direction, wilson_ci
 ```
 
 ### wilson_ci
@@ -11326,6 +11326,41 @@ Computes the Wilson binomial confidence interval: `(p + z²/2n ± z√(p(1-p)/n 
 **Returns:** `(lower, upper)` bounds as floats, clamped to `[0, 1]`.
 
 **Raises:** `ValueError` if `n <= 0`, `k < 0`, or `k > n`.
+
+---
+
+### paired_direction
+
+```python
+def paired_direction(
+    per_item: list[dict[str, Any]],
+    *,
+    harness_key: str = "harness_pass",
+    baseline_key: str = "baseline_pass",
+) -> tuple[Literal["harness", "baseline", "inconclusive"], int, int]
+```
+
+Sign test on paired per-item results (ENH-3298). Concordant items (both arms
+agree) carry no directional information and are dropped; only discordant
+pairs are tested via `wilson_ci(b, b + c)` on the discordant split. Used to
+derive the `--baseline` A/B verdict and the `--cross-host` ordering-reversal
+warning from the same paired data that produced the CIs, instead of the raw
+delta sign.
+
+**Parameters:**
+
+- `per_item` — per-item records, each carrying a harness and baseline
+  pass/fail flag.
+- `harness_key` — dict key for the harness pass flag (default
+  `"harness_pass"`).
+- `baseline_key` — dict key for the baseline pass flag (default
+  `"baseline_pass"`).
+
+**Returns:** `(direction, b, c)` where `direction` is `"harness"`,
+`"baseline"`, or `"inconclusive"`; `b` is the count of items where harness
+passed and baseline failed, `c` is the count where baseline passed and
+harness failed. `"inconclusive"` is returned when there are no discordant
+pairs (`b + c == 0`) or `wilson_ci(b, b + c)` brackets `0.5`.
 
 ---
 
