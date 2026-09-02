@@ -9,7 +9,7 @@ discovered_date: 2026-08-01
 discovered_by: capture-issue
 parent: EPIC-2938
 blocked_by: []
-verify_verdict: PROPOSAL_UNSOUND
+verify_verdict: NON_VALID
 reconcile_attempted: true
 decision_needed: false
 confidence_score: 90
@@ -408,7 +408,7 @@ N/A — no new gap kind, gate, or threshold; `--deep` swaps the clustering mecha
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Execute the Step 2 invocation via `little_loops.host_runner.run_blocking_json(
-  invocation, schema=..., timeout=...)` (`host_runner.py:2114`), not a manual
+  invocation, schema=..., timeout=...)` (`host_runner.py:2130`), not a manual
   `subprocess.run(...)` call. `run_blocking_json` already handles the
   structured-output flag variants, the empty-stdout-with-exit-0 guard,
   JSON-envelope parsing, and `cleanup_paths` unlinking, raising
@@ -433,7 +433,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 - **Step 2's candidate-set algorithm, restated inline** (so a reader of this section alone has the full rule, not just a pointer): when `synthesize_clusters()` returns zero clusters with 2+ members, the LLM candidate set is the full `orphans: list[IssueInfo]` list, capped at 40 orphans. Above 40 orphans, `--deep` skips the full-list fallback entirely and returns the pure-Jaccard result without making the LLM call — it does not chunk the request across multiple calls (Program Design's "Candidate-set definition decided" finding has the full rationale).
-- **Step 2's batched-call response shape, defined** (no section previously pinned this, and it is required for the post-hoc key-set check Acceptance Criteria bullet 5 depends on): following `discover.py`'s `_DISCOVERY_SCHEMA`/`_DISCOVERY_KEYS` pattern (`discover.py:37-53`, `:433-437`), the response must have a top-level `clusters` array, each item carrying `member_ids` (`list[str]`), `placeholder_title` (`str`), and `evidence` (`list[str]`, capped at 3). Post-hoc validation asserts `{"clusters"}.issubset(response.keys())` and, per item, `{"member_ids", "placeholder_title", "evidence"}.issubset(item.keys())`; a response failing either check is the "fails the post-hoc key-set check" condition Acceptance Criteria bullet 5 and Step 7 above require to fail closed with `Error: ...` plus exit 1.
+- **Step 2's batched-call response shape, defined** (no section previously pinned this, and it is required for the post-hoc key-set check Acceptance Criteria bullet 5 depends on): following `discover.py`'s `_DISCOVERY_SCHEMA`/`_DISCOVERY_KEYS` pattern (`discover.py:37-80`, `:433-437`), the response must have a top-level `clusters` array, each item carrying `member_ids` (`list[str]`), `placeholder_title` (`str`), and `evidence` (`list[str]`, capped at 3). Post-hoc validation asserts `{"clusters"}.issubset(response.keys())` and, per item, `{"member_ids", "placeholder_title", "evidence"}.issubset(item.keys())`; a response failing either check is the "fails the post-hoc key-set check" condition Acceptance Criteria bullet 5 and Step 7 above require to fail closed with `Error: ...` plus exit 1.
 
 ## Scope Boundaries
 
@@ -535,6 +535,29 @@ the mitigation already designed into this issue.
 
 ## Verification Notes
 
+**2026-09-02** (`/ll:verify-issues`): NEEDS_UPDATE. The frontmatter's
+`verify_verdict: PROPOSAL_UNSOUND` was stale — it predated the 2026-08-29 and
+2026-09-02 refine passes that already resolved the gaps the earlier verify run
+flagged. Re-checked this pass: decisions log has no active required rules
+(clean skip); `ll-verify-evidence` reports 0 findings (clean); `blocked_by: []`
+so no dependency refs to validate; a proposal-vs-code consequence trace against
+current code (`run_blocking_json`'s exception contract, `build_blocking_json`'s
+kwarg signature, `TestSynthesizeClusters`/`test_synthesize_mode_json` fixture
+compatibility, `_placeholder_title`'s behavior) found no defect — every
+Implementation Step's assumption holds against the code as it stands today.
+Every citation checked (~25+ across `link_epics.py`, `text_utils.py`,
+`host_runner.py`, `discover.py`, `issue_parser.py`, `advisor.py`, docs,
+config-schema, tests) matched current code exactly except two internal
+citation-drift bugs, both fixed this pass: (1) Program Design's "Step 2's
+batched-call response shape, defined" bullet cited `discover.py:37-53` for
+`_DISCOVERY_SCHEMA`, undercounting its actual span (`37-80`) — the issue
+already cited `37-80` correctly for the same construct elsewhere, so this was
+an internal inconsistency, not code drift; corrected to `37-80`. (2) Wiring
+Phase cited `run_blocking_json()` at `host_runner.py:2114`, superseded by the
+function's actual current line (`2130`) — already flagged and corrected
+elsewhere in this issue's own 2026-09-02 refine pass, just not cleaned up in
+this one remaining spot; corrected to `2130`.
+
 **2026-08-10** (`/ll:verify-issues`): OUTDATED as of 2026-08-10: blocking
 dependency FEAT-2942 has landed (status: done), and as a result the Jaccard
 clustering logic this issue targets has moved out of
@@ -552,6 +575,7 @@ skill markdown.
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-02T17:24:30 - `f0731315-44f0-4375-9752-2de14eea3520.jsonl`
 - `/ll:refine-issue` - 2026-09-02T16:54:10 - `ce2608a1-58a5-4d87-8452-86bf408e6d36.jsonl`
 - `/ll:confidence-check` - 2026-08-29T21:48:18 - `c9c1c0a3-4ed0-4475-ae26-5a077ef3a172.jsonl`
 - `/ll:reconcile-issue` - 2026-08-29T21:45:28 - `322e1b2a-53a1-4728-8048-b3876fc3c8b8.jsonl`
