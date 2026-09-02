@@ -274,9 +274,7 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         "ab_comparison results (FEAT-1822), reporting the run-level aggregate.",
         {
             "harness_pass_rate": _number("Fraction of items where the harness arm passed (0-1)"),
-            "baseline_pass_rate": _number(
-                "Fraction of items where the baseline arm passed (0-1)"
-            ),
+            "baseline_pass_rate": _number("Fraction of items where the baseline arm passed (0-1)"),
             "delta": _number("Pass-rate difference (harness_pass_rate - baseline_pass_rate)"),
             "item_count": _int("Number of items included in the summary"),
         },
