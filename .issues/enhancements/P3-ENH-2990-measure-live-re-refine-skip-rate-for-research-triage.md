@@ -438,7 +438,10 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Export the new fail-soft writer from `scripts/little_loops/session_store/__init__.py`
+- Export `write_research_triage` from `scripts/little_loops/session_store/__init__.py`
+- Add the public `issue_refined_at(content)` helper to
+  `scripts/little_loops/issues/research_triage.py` and switch
+  `triage_research_axes` to it (Program Design § Signatures)
 - Register the new kind in `_KIND_TABLE`/`VALID_KINDS` (`schema.py`) and
   `scripts/little_loops/session_store/queries.py`, if the new table should
   be queryable via `ll-session recent --kind <X>`
@@ -490,6 +493,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- pre-implementation review - 2026-09-02T23:30:00 - added `issue_refined_at` helper (refined_at unreachable from CLI), explicit config gate (cli_event_context gate is dead), `program_design_unmet` exclusion, headline formulas, one-call-three-rows writer, row-based close threshold from measured volume, removed stale ENH-3000-open text
 - pre-implementation review - 2026-09-02T23:00:00 - added re-refine stratification, six-code taxonomy, `stale` naming decision, per-axis row shape, gating, read path, and Acceptance Criteria with a close condition
 - `/ll:wire-issue` - 2026-09-02T22:14:34 - `45cec2d5-6331-4821-b360-a7b6926c4a33.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:08:13 - `0654a055-4280-424a-9a1f-55a9966af38e.jsonl`
