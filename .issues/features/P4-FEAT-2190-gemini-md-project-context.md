@@ -47,12 +47,28 @@ A user initializes little-loops in a Gemini project: `ll-init --hosts gemini`.
 `ll-init` generates `GEMINI.md` with the same little-loops project instructions
 that `CLAUDE.md` provides for Claude Code users.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- No `write_gemini_md` function, `GEMINI.md` file constant, or `gemini` host branch exists anywhere in `scripts/little_loops/init/writers.py` or `scripts/little_loops/init/cli.py` — confirmed by repo-wide search. `gemini` is explicitly excluded today: absent from `_KNOWN_HOSTS` (`cli.py:48-50`), `AGENTS_MD_HOSTS` (`writers.py:612`), `_detect_hosts()` (`cli.py:73-91`, no `shutil.which("gemini")`/`.gemini` probe), the `--hosts` argparse help text (`cli.py:1023-1028`, enumerates only "claude-code, codex, opencode, kimi-code, pi, qwen"), and the `--plan` JSON's `host_options` dict (`cli.py:790-827`, no `has_gemini` key).
+- No `.j2`/template-file convention exists for CLAUDE.md/AGENTS.md-style content — `write_claude_md` (`writers.py:565-606`) and `write_agents_md` (`writers.py:615-659`) both build content from Python string constants (`_CLAUDE_MD_NEW_FILE_CONTENT`, `_AGENTS_MD_NEW_FILE_CONTENT`, `_CLAUDE_MD_COMMANDS_BLOCK`, `_AGENTS_MD_COMMANDS_BLOCK`), themselves rendered by one shared helper, `_render_commands_block(desc_overrides=None)` (`writers.py:242-248`). There is no top-level `templates/` directory in this repo (confirmed via glob); `scripts/little_loops/templates/` holds unrelated project-type/dashboard-template assets, none for CLAUDE.md/AGENTS.md/GEMINI.md. `.j2` files exist elsewhere in the codebase (`scripts/little_loops/templates/dashboard.llat/*.j2`) but for an unrelated artifact-dashboard feature, not project-instructions-file generation.
+- `write_claude_md` (`writers.py:565-606`) is the closer structural analog for a `GEMINI.md` writer than `write_agents_md`, since this issue wants GEMINI.md to be "the exact analog of CLAUDE.md" — a single dedicated file, not the AGENTS.md pattern shared across multiple hosts via the `AGENTS_MD_HOSTS` tuple. `write_claude_md`'s shape: detection order `.claude/CLAUDE.md` → root `CLAUDE.md` → default-create at `.claude/CLAUDE.md`; idempotency via `_CLAUDE_MD_SECTION_MARKER = "## little-loops"` (`writers.py:156`) — presence short-circuits with `return False`, no write; dry-run prints via `info()` and returns `True` without touching disk; writes go through `atomic_write` (not raw `Path.write_text`). Note: `write_agents_md` reuses this exact same `_CLAUDE_MD_SECTION_MARKER` constant for its own idempotency check rather than defining a distinct marker — i.e. one marker string is already shared across two files today.
+- The command-list content itself (not the file-write mechanics) is already host-generic at its base: `_LL_COMMANDS`' descriptions for `ll-messages`/`ll-logs` read "host session logs"/"host project logs" generically; `write_claude_md`'s block re-specializes only those two entries to "Claude Code logs"/"Claude project logs" via `_CLAUDE_MD_DESC_OVERRIDES` (`writers.py:233-239`). A `write_gemini_md` calling `_render_commands_block()` with no overrides (like `write_agents_md` does) would get the same host-generic base text `write_agents_md` already gets — no need to fork or duplicate the command list.
+- Three call sites invoke `write_claude_md`/`write_agents_md` today, all of which a `write_gemini_md` call would need to be added alongside: `_run_yes` (`cli.py:706-711`), `_run_apply` (`cli.py:918-923`), and the TUI wizard's file-writing function (`tui.py:~894-900`, additionally gated behind an interactive `claude_md_opt_in` boolean for the CLAUDE.md call only, `tui.py:571-585`). `write_claude_md` is called unconditionally at all three sites regardless of `--hosts` selection; `write_agents_md` is gated by `any(h in AGENTS_MD_HOSTS for h in hosts)`.
+- Dry-run reporting is not a separate "planned files" renderer — both existing writers print their own dry-run line inline via `info()` as they execute (`writers.py:595,601` for CLAUDE.md; `:648,654` for AGENTS.md). The post-run `_render_headless_summary` (`cli.py:421-449`) and `--plan` mode's JSON (`cli.py:743-829`) never enumerate CLAUDE.md/AGENTS.md by name — so "update `ll-init --dry-run` output to show GEMINI.md" (Implementation Step 5) means adding the same inline `info()` print inside the new writer itself, not modifying a separate summary function.
+- Test precedent: `TestWriteClaudeMd` (`scripts/tests/test_init_core.py:1444`) and `TestWriteAgentsMd` (`:1542`) are independent classes with hand-duplicated method sets (`test_creates_*_when_absent`, `test_appends_to_existing_*`, detection-order-preference test, `test_noop_when_section_present`, `test_dry_run_create`/`test_dry_run_append`, a content-genericity assertion) — no shared fixture or `@pytest.mark.parametrize` spans both. Separately, `TestHostDispatch` (`:2965`) covers per-host `--hosts` dispatch behavior (e.g. `test_hosts_codex_produces_agents_md`, `test_unknown_host_warns_and_skips`, `test_dry_run_codex_shows_write_line`) and `TestDetectHosts` (`:2866`) covers host auto-detection — a gemini branch would need parallel coverage in both classes, not just a new `TestWriteGeminiMd` class.
+- `GeminiRunner.describe_capabilities()` (`scripts/little_loops/host_runner.py:1220-1226`) already carries a `claude_md_suppression` capability entry whose rationale states: "gemini CLAUDE.md/GEMINI.md suppression support not confirmed; defer-until-confirmed, mirrors tool_allowlist posture" — relevant cross-reference, not a blocker.
+
 ## Implementation Steps
 
 1. Add `gemini` to `--hosts` multi-select in `ll-init` CLI
    (`scripts/little_loops/init/`).
 2. Add a `GEMINI.md` template in `templates/` (or generate from `CLAUDE.md`
    template by swapping Claude-specific references).
+   > ⚠ Superseded — no `.j2`/file-based template convention exists for this content; `write_claude_md`/`write_agents_md` build from Python string constants in `writers.py` (see § Codebase Research Findings)
 3. Wire `--hosts gemini` to generate `GEMINI.md` from the template.
 4. If the project already has a `GEMINI.md`, emit a warning and skip
    (don't overwrite user customizations).
@@ -82,6 +98,36 @@ that `CLAUDE.md` provides for Claude Code users.
 `GEMINI.md` is Gemini's exact analog of `CLAUDE.md` — same role, same location,
 loaded automatically on session start.
 
+## Program Design
+
+### Types
+
+N/A — no new data shape; a new project-instructions text file, same shape as
+the existing `CLAUDE.md`/`AGENTS.md` outputs.
+
+### Signatures
+
+- `write_gemini_md(project_root: Path, dry_run: bool = False) -> bool`
+  — mirrors `write_claude_md`'s signature exactly (`scripts/little_loops/init/writers.py:565`).
+
+### Call Path
+
+`ll-init --hosts gemini` → `_run_yes`/`_run_apply`
+(`scripts/little_loops/init/cli.py:706-711`, `:918-923`) and the TUI wizard
+(`scripts/little_loops/init/tui.py:~894-900`) → (new) `write_gemini_md()`
+(`scripts/little_loops/init/writers.py`) → `_render_commands_block()` (shared,
+no overrides — host-generic wording) for content → `atomic_write()` for I/O.
+Also requires adding `"gemini"` to `_KNOWN_HOSTS` (`cli.py:48-50`) and the
+`--hosts` argparse help text (`cli.py:1023-1028`) so the flag is recognized
+end to end (`_dispatch_host_adapters` is unaffected — no gemini adapter-install
+branch is implied by this issue; that is FEAT-2186's scope).
+
+### Decision Rules
+
+N/A — no new decision logic. This is a file-generation writer following an
+existing detection-order/idempotency-marker/dry-run shape; there is no new
+gate, threshold, or classification rule.
+
 ## Impact
 
 - **Effort**: S (2–4 hours)
@@ -106,5 +152,6 @@ loaded automatically on session start.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-02T22:23:46 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
 - `/ll:format-issue` - 2026-09-02T22:10:34 - `aff86587-4c3b-4b44-8aae-a8fb91813a11.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
