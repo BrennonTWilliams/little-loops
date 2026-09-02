@@ -15,11 +15,11 @@ decision_needed: false
 spike_attempted: true
 spike_completed: true
 confidence_score: 90
-outcome_confidence: 67
-score_complexity: 14
+outcome_confidence: 64
+score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 10
-score_change_surface: 25
+score_change_surface: 18
 ---
 
 ## Summary
@@ -257,7 +257,23 @@ python -m pytest scripts/tests/test_prepatch_check.py -v                   # 36 
 
 **Promotion**: move to `scripts/little_loops/cli/loop/evidence.py` (decided in `## Design Review`; `cli/artifact/` rejected), wired to real `history.db` reads, then delete the spike dir (step 3g). Note the spike fixture's probe-file placement inside the archive dir does not match production until step 3a lands — the promoted test fixture must build the archive dir the way the extended `archive_run()` does. Do not promote the spike's `loop_runs` column dump, the `len < 3` probe guard, or the bare `{evidentiary, context_non_evidentiary, gaps, has_gaps}` top level as-is; see `## Design Review (second pass)` items 6–8.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-02_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Concerns
+- Criterion 4 (Issue Well-Specified) capped at 10/20: `format-check`'s `stale_cli_flag` flags `ll-loop evidence (no such subcommand)` — expected for a not-yet-implemented CLI surface, not a real specification gap.
+- Criterion C (Ambiguity) capped at 10/25: `unapplied_decision` flags "Program Design still specifies `count_probes` (rejected option)". This reads as a likely false positive — `count_probes` is cited in `## Proposed Solution` → Decision Rationale as supporting evidence for the *winning* Option A, not as a rejected option's identifier left unmarked. Worth a quick look before trusting the cap, but not escalated to a blocking gap per policy.
+
+### Outcome Risk Factors
+- Change surface (18/25): `FSMExecutor`'s `loop_start`/`loop_complete` event payload changes (Implementation Steps 3, 3a) are read by 5 downstream consumers (`cli/logs.py`, `cli/loop/lifecycle.py`, `cli/loop/info.py`, `cli/loop/audit.py`, `analytics/variance.py`). Additive fields are low-risk for these dict-based readers, but this is not a fully isolated change — spot-check them after landing the executor changes.
+- Ambiguity (10/25, capped): see Concerns above — the `unapplied_decision` gap on `count_probes` caps this criterion regardless of the otherwise-low ambiguity in this issue.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-02T18:25:12 - `84e0bbf3-d0f7-4d45-a3b6-ea9216ba3165.jsonl`
 - `/ll:confidence-check` - 2026-09-02T18:04:39 - `816beb27-9b86-42b0-9b64-63f61826d1c0.jsonl`
 - `/ll:confidence-check` - 2026-09-02T17:52:11 - `852881be-b9ae-4653-91cb-48f6a2940c2a.jsonl`
 - `/ll:decide-issue` - 2026-09-02T17:43:55 - `b56fa4ef-4a26-4110-aa7f-162711184ed7.jsonl`
