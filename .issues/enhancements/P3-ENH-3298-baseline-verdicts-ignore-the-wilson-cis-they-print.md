@@ -144,6 +144,30 @@ direction before calling the disagreement a reversal.
   Wilson intervals and trial counts.
 - No change to `ab_writer.py`, `ab.json`'s schema, or the executor.
 
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_loop_display.py::TestABSummaryDisplay::test_ab_summary_contains_expected_labels` (~4392-4424) — fixture is a single discordant item favoring harness (`b=1, c=0`); `wilson_ci(1, 1)` brackets `0.5`, so under the new logic this becomes `inconclusive`, not `"harness wins on quality"` (assertion at line 4423) — update fixture/assertion. [Agent 1 + 3 finding]
+- `scripts/tests/test_ll_loop_display.py::TestABSummaryDisplay::test_ab_summary_harness_loses_quality` (~4426-4452) — same shape favoring baseline (`b=0, c=1`); also becomes `inconclusive`, not `"baseline wins on quality"` (assertion at line 4450) — update. [Agent 1 + 3 finding]
+- `scripts/tests/test_ll_loop_display.py::TestABSummaryDisplay::test_ab_summary_no_difference` (~4454-4479) — single concordant item (`b=0, c=0`); per the issue's own spec this is `inconclusive`, not `"no quality difference"` (assertion at line 4478 breaks; line 4479's `"same token cost"` is `cost_verdict`, out of scope, unaffected) — update. [Agent 1 + 3 finding]
+- Confirmed unaffected, no action needed: `test_ab_summary_with_no_file_is_noop` (4481), `test_ab_summary_shows_wilson_ci` (4489-4530, asserts only CI brackets, not verdict wording), and `test_cross_host_baseline.py::test_ordering_reversal_warning` (468) / `test_no_reversal_warning_when_consistent` (499) — both cross-host fixtures use `n=10` with 8 fully one-directional discordant pairs, so both remain decisive under the new "both runs must establish a direction" gate. [Agent 1 + 3 finding]
+- New-test insertion point: `scripts/tests/test_stats.py` currently holds exactly one class, `TestWilsonCI` (lines 10-111, 13 methods); `class TestPairedDirection` appends at line 112, immediately after it. [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:1026-1036` — not previously listed; its "Reading the Output" sample block quotes the old verdict wording verbatim (`Verdict: harness wins on quality, costs ~100% more tokens`, line 1031), and the prose immediately after ("Treat deltas below ~10pp with caution...") describes exactly the ad-hoc heuristic the new sign test formalizes — needs updating to the three-way wording. [Agent 1 + 2 finding]
+- `docs/reference/API.md` — the "Related Key Documentation" citation of `:10914` is stale (that line falls inside the unrelated `little_loops.testing`/`LLTestBus` section); the actual `## little_loops.stats` module section is at `API.md:11304-11330`, with `### wilson_ci` at `11312-11328` and the import example at `11309`. Add a new `### paired_direction` subsection there (mirroring `wilson_ci`'s Parameters/Returns structure) and add `paired_direction` to the import example. [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- Anchor drift confirmed: `_helpers.py:2074` (quality_verdict) is now at `_helpers.py:2094`; `_helpers.py:2213` (host1_harness_wins/host2_harness_wins) is now at `_helpers.py:2233-2234`; `_print_cross_host_table`'s definition (cited `:2186`) is now at `:2206`; `_helpers.py:2029-2032` (k_harness/k_baseline counts) is now at `:2044`, `:2049-2050`.
+- `docs/reference/CLI.md:638-641` does not contain the `--baseline`/`--cross-host` rows — those currently live at `docs/reference/CLI.md:718-720` (inside the `ll-loop run` options table); lines 638-641 are part of the unrelated `ll-sprint edit` options table.
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:368` does not describe Wilson intervals — that content is currently under the "Cross-host validation (`--cross-host`)" heading at line 445, with the Wilson-CI sentence at lines 464-465 and the ordering-reversal description at lines 475-478; line 368 is inside an unrelated meta-loop YAML example.
+- Confirmed via repo-wide grep: no caller besides `_print_ab_summary`/`_print_cross_host_table` reads `ABResults.delta`/`ab.json`'s `summary.delta` as a win/loss signal. `ll-loop diagnose-evaluators`/`calibrate-budget` (`cli/loop/info.py:1301-1409`, via `compute_evaluator_variance()` in `analytics/variance.py`) classify evaluator states by variance threshold, not by any delta sign — confirms the Scope Boundaries claim.
+
 ## Program Design
 
 ### Types
@@ -194,6 +218,14 @@ verdict string, in both `_print_ab_summary` (`_helpers.py:2011`) and
   `⚠` warning.
 - `cost_verdict` is untouched.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- `wilson_ci(k, n)` raises `ValueError` when `n <= 0` (confirmed by `test_invalid_n_zero`, `scripts/tests/test_stats.py:84-87`) — it does not return a sentinel. `paired_direction` must check `b + c == 0` and return `"inconclusive"` *before* calling `wilson_ci(b, b + c)`, never after. Existing precedent for this exact guard already exists at `_helpers.py:2219` (`_host_stats`): `lo, hi = wilson_ci(k, n) if n > 0 else (0.0, 0.0)`.
+- Categorical/three-way return values in this codebase are typed as plain strings under `Literal[...]` (aliased, e.g. `doctor_trim.py:66`'s `Verdict = Literal["keep", "trim", "review"]`, or inline, e.g. `learning_tests/gate.py:208-214`) — never a dataclass or enum. `paired_direction`'s `direction` element should be typed `Literal["harness", "baseline", "inconclusive"]` rather than bare `str` to match this convention.
+- `_print_cross_host_table`'s existing `_host_stats` helper (`_helpers.py:2215-2220`) only reads the `harness_pass` key per item; calling `paired_direction` there additionally requires `baseline_pass`, which `per_item` dicts already carry per the `_AB_SCHEMA` contract (`ab_writer.py:19-124`) — no schema change needed, but `_host_stats` (or its replacement) must read both keys.
+
 ## Implementation Steps
 
 1. Add `paired_direction` to `scripts/little_loops/stats.py`.
@@ -206,6 +238,21 @@ verdict string, in both `_print_ab_summary` (`_helpers.py:2011`) and
    one-way; the `n=5`, `b=2`, `c=0` case that must read inconclusive; a
    decisive case; and both cross-host branches (true reversal vs. noisy
    disagreement).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
+
+- `scripts/tests/test_stats.py` organizes one test class per function under test (`class TestWilsonCI` for `wilson_ci`, with `test_<scenario>` method names and one `test_invalid_*` per `ValueError` branch). A `class TestPairedDirection` alongside it, following the same naming and edge-case coverage style, keeps new tests consistent with the file's existing convention.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_ll_loop_display.py::TestABSummaryDisplay::test_ab_summary_contains_expected_labels`, `test_ab_summary_harness_loses_quality`, and `test_ab_summary_no_difference` — all three use single-item `per_item` fixtures that resolve to `inconclusive` under the new sign test; their fixtures and/or assertions must change to expect the new three-way wording instead of the retired `"harness wins on quality"` / `"baseline wins on quality"` / `"no quality difference"` strings.
+- Insert `class TestPairedDirection` at `scripts/tests/test_stats.py:112` (end of file, immediately after `TestWilsonCI`).
+- Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:1026-1036` — the "Reading the Output" sample block and its "treat deltas below ~10pp with caution" prose.
+- Add a `### paired_direction` subsection to `docs/reference/API.md` at the `little_loops.stats` section (`:11304-11330`, beside `### wilson_ci` at `:11312-11328`), and add `paired_direction` to the import example at `:11309`.
 
 ## Impact
 
@@ -241,3 +288,8 @@ Low risk, warning-level semantics, no behavior change to loop execution.
 ## Status
 
 **Open** | Created: 2026-08-23 | Priority: P3
+
+
+## Session Log
+- `/ll:wire-issue` - 2026-09-02T03:54:37 - `951d4372-98bd-4efb-87f2-c6183621aa26.jsonl`
+- `/ll:refine-issue` - 2026-09-02T03:43:30 - `a609cc09-ff2a-486a-b930-aa4f07a62a30.jsonl`
