@@ -53,6 +53,16 @@ production construction sites: `queue_store.py:247`, `cli/loop/run.py:132`,
 `extra` kwarg to inject `LL_PYTHON`, but no `env_allow`/deny-list argument, and no `HostInvocation`
 exists at this call site today; the function never calls `resolve_host()` anywhere.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- Construction-site line numbers have drifted since this section was last written; corrected against current code: `queue_store.py:254` (`_deserialize_action()`, not 247), `cli/action.py:242,295` (not 239,292), `cli/harness.py:825,859,901,934` — `cmd_skill`, `cmd_cmd` (the `RunnerType.CMD` site), `cmd_mcp`, `_run_prompt_action` respectively (not 735,769,811,844), `cli/queue.py:164,172,187,196` (not 163,171,186,195, each off by +1). `cli/loop/run.py:132` is unchanged.
+- `runner_spec.py`'s other two `project_child_env()` call sites — `_run_skill()` at line 223 and `_run_prompt()` at line 333 — already pass a real `HostInvocation` (`project_child_env(inv)`); `_run_cmd()` at line 249 is the only one of the three with no invocation in scope, confirming the issue's framing that this call site needs the standalone `env_allow` kwarg ENH-3233 adds to `project_child_env()` directly, not a `HostInvocation`-mediated path.
+- `scripts/tests/test_enh3184_spawn_site_guard.py` pins a per-module `subprocess.*` spawn-count table; its entry for `runner_spec.py` is `(3, 0)` — 3 total spawns, 0 exempted, matching lines 223, 249, 333. Adding an `env_allow=` kwarg to the existing `project_child_env(...)` call at line 249 keeps the call routed through the chokepoint, so this guard's count should not need updating for this issue's change alone.
+- `_run_cmd()` has no `try/except FileNotFoundError` around its `subprocess.Popen` call (`runner_spec.py:243-250`), unlike `_run_skill()` (line 228) and `_run_prompt()` (line 338), which both catch it. Not itself a gap this issue must close, but relevant if a scope-resolution raise is expected to surface through the same `RunnerResult` error path as a missing-binary failure — today it would propagate as an uncaught exception instead.
+- Confirmed via repo-wide grep: `env_allow` has zero matches under `scripts/` (only appears in `.issues/*.md` prose). `HostInvocation` (`host_runner.py:156-166`) has exactly 5 fields today (`binary`, `args`, `env`, `capabilities`, `cleanup_paths`) — no `env_allow`. ENH-3233 remains `status: open`; the parent ENH-3203 is `done` only via decomposition into its children (issue-tracker bookkeeping), not because any of this chokepoint work has landed. `blocked_by: ENH-3233` is current and accurate, not stale.
+
 ## Expected Behavior
 
 - `ActionSpec` gains a scope-declaration field naming the capabilities a task needs (resolved
@@ -82,6 +92,13 @@ registry at spec-construction or resolve time (AC3's fail-loud direct raise appl
 set → `project_child_env(env_allow=...)` (ENH-3233's kwarg; no `HostInvocation` at this call
 site) → `subprocess.*`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- The codebase has an established "resolve a declared name against a fixed registry, raise directly on miss" convention this issue's fail-loud resolution can follow: `adapters/core.py:63-81` (`resolve_emitter`), `queue_store.py:232-237` (`_priority_rank`), `pii.py:54-75` (`apply_pii_action`), `init/cli.py:346-366` (`_feature_choices_from_args`), `host_runner.py:601-619` (`CodexRunner._sandbox_args`) — each raises `ValueError` (or a subclass) directly, no `warnings.warn`, and names the offending value plus the valid set in the message. The one opposite-polarity counter-example in the same module family is `host_runner.py:116-124`'s `CapabilityNotSupported(UserWarning)` — warn-and-drop, not raise — for unsupported *host-feature* capability requests; ENH-3233's own issue text already distinguishes this by name as the wrong polarity for credential scopes.
+- Backward-compat testing precedent for widening a frozen dataclass already exists on `ActionSpec` itself: `test_runner_spec.py::TestActionSpecFrozen::test_timeout_none_is_constructible` (BUG-2928) is the existing regression test proving a prior field-behavior widening didn't break old construction sites — the natural model for an equivalent `scopes`-omitted-means-unscoped test under AC5.
+
 ## Acceptance Criteria
 
 - **AC1 (ActionSpec half).** An `ActionSpec` can declare the capability set a task requires.
@@ -93,11 +110,58 @@ site) → `subprocess.*`
 
 ## Program Design
 
+### Types
+- `ActionSpec.scopes: frozenset[str] | None = None` — new field, appended after `timeout`
+  (`runner_spec.py:95`), following the same defaulted-field-append convention already used on
+  this exact dataclass (`timeout` was widened `int` → `int | None = 120` for BUG-2928) and on its
+  sibling value objects (`RunnerResult.tool_trace: list[dict[str, Any]] | None = None`,
+  `runner_spec.py:80`; `HostCapabilities.workspace_sandboxed: bool = False`, `host_runner.py`) —
+  appending a defaulted field keeps every existing keyword-only `ActionSpec(...)` construction
+  site unaffected.
+- `HostInvocation.env_allow: frozenset[str] | None = None` — ENH-3233's field, not yet present on
+  `HostInvocation` (`host_runner.py:156-166`; currently 5 fields: `binary`, `args`, `env`,
+  `capabilities`, `cleanup_paths`). Never constructed at `_run_cmd()`'s call site — listed here
+  only to confirm the sibling shape this issue does not itself add.
+
+### Signatures
+- `project_child_env(invocation: HostInvocation | None = None, *, extra: dict[str, str] | None = None) -> dict[str, str]`
+  (`host_runner.py:1865`) — current signature. ENH-3233 adds `env_allow: frozenset[str] | None = None`
+  as an additional keyword-only parameter; that parameter does not exist in the tree yet
+  (confirmed via repo-wide grep — zero `env_allow` matches under `scripts/`).
+- `_run_cmd(spec: ActionSpec) -> RunnerResult` (`runner_spec.py:232`) — signature is unchanged by
+  this issue; the new logic lives in the function body, between the `spec.timeout` assertion
+  (line 241) and the `subprocess.Popen(...)` call (lines 243-250).
+
+### Call Path
+`ActionSpec(scopes=...)` construction site (e.g. `cli/harness.py:859`, `cli/queue.py:196`) →
+`run_action()` dispatch (`runner_spec.py:350`, via `_DISPATCH[RunnerType.CMD]`) → `_run_cmd()`
+(`runner_spec.py:232`) resolves `spec.scopes` against ENH-3233's registry (not yet implemented —
+ENH-3234's own Proposed Solution defers to it) → resolved `env_allow: frozenset[str]` →
+`project_child_env(extra={"LL_PYTHON": sys.executable}, env_allow=...)` (`runner_spec.py:249`,
+kwarg not yet available) → `subprocess.Popen(["bash", "-c", spec.target], ..., env=<projected dict>)`
+(`runner_spec.py:243-250`).
+
+### Decision Rules
+- **Resolution point not pinned down.** This issue's Proposed Solution states scopes are resolved
+  "at spec-construction or resolve time" (AC3's fail-loud raise applies either way) without
+  choosing between them. Construction-time validation rejects a bad scope name the moment a
+  caller builds the (frozen, immutable) `ActionSpec` — the earliest possible failure point, and
+  consistent with `ActionSpec` being documented as a value object that "crosses the runner/caller
+  boundary" (`runner_spec.py:87-89`). Resolve-time validation defers the raise to inside
+  `_run_cmd()`, immediately before building `env_allow`, and would need to run identically in any
+  other runner branch the field is later extended to. The issue does not state a default; this is
+  an open implementation decision.
+
 ### Tests
 - `scripts/tests/test_runner_spec.py::TestRunActionDispatch::test_cmd_dispatch_matches_legacy_shape`
-  (lines 172-176) — the closest existing real-subprocess `RunnerType.CMD` test (spawns `echo hi`,
-  no `Popen` mocking); the natural site to extend for AC7.2 (`monkeypatch.setenv(...)` + a shell
-  command that echoes the var, then assert absence).
+  (line 190, not lines 172-176 as previously cited — corrected against current code) — the
+  closest existing real-subprocess `RunnerType.CMD` test (spawns `echo hi`, no `Popen` mocking);
+  a candidate site to extend for AC7.2.
+- `scripts/tests/test_runner_spec.py::TestRunActionDispatch::test_cmd_dispatch_sets_ll_python_env`
+  (lines 196-206, ENH-3365) — closer precedent than the test above for AC7.2 specifically: it
+  already asserts on an env var's presence in `_run_cmd()`'s output via
+  `target="echo $LL_PYTHON"` + `result.stdout.strip() == sys.executable`. The AC7.2 test (assert
+  an *undeclared* var is *absent*) is the same shape inverted.
 - `scripts/tests/test_runner_spec.py`, `scripts/tests/test_subprocess_utils.py` — general
   coverage location per ENH-3203's Tests section.
 
@@ -147,5 +211,6 @@ Out of scope for this child:
   had no `## Blocks` section.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-03T19:08:53 - `14341300-8a35-47fc-8e9f-786c7178b7c9.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:54 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T16:32:35 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`

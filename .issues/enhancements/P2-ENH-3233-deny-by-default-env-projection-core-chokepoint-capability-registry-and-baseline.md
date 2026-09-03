@@ -52,6 +52,26 @@ env.update(extra)`. There is no way to withhold a variable from the child. `Host
 `LL_AUTOMATION_PROFILE` in place and never deletes a key; its docstring already names ENH-3203
 as the follow-on that changes this.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+Re-verified 2026-09-03. `scripts/little_loops/host_runner.py` — `project_child_env()` at line
+1865, `HostInvocation` at line 156, `_apply_automation_env()` at line 1898, `HostCapabilities`
+at line 128, `CapabilityNotSupported` at line 116. The module has no module-level `import os` or
+`import logging` today — both are net-new for this issue's DEBUG-logging requirement.
+
+`scripts/little_loops/worktree_utils.py` — BUG-3370 is `status: done`; its fix added
+`env.pop("LL_PYTHON", None)` directly after the `project_child_env()` call in
+`verify_epic_branch_before_merge()`, a call-site workaround rather than a chokepoint-level clear/
+deny primitive. `project_child_env()` itself is unchanged by that fix, so the comment this issue
+quotes there remains accurate.
+
+`scripts/little_loops/mcp_server/policy.py` — `MUTATING_TOOLS`, the nearest existing bare
+`frozenset[str]` allow-set precedent, is consulted via `tool_name in MUTATING_TOOLS` inside
+`check_tool_call()`; it carries no per-entry metadata and no fail-loud-on-unknown-name behavior,
+so it is a shape precedent only, not a reusable registry.
+
 ## Expected Behavior
 
 - `HostInvocation` gains `env_allow: frozenset[str] | None = None`, **and** `project_child_env()`
@@ -163,6 +183,36 @@ which is a different mechanism and stays as-is for AC3).
   forced-allow override (report-only alone denies nothing, so "green under report-only" would be
   vacuous). Full AC8 (deny mode fully wired end-to-end) closes once ENH-3234 and ENH-3235 land.
 
+## Integration Map
+
+### Dependent Files (Callers/Importers)
+
+With an `invocation` (env merge is `os.environ` + `invocation.env` + `extra`; these are the
+sites `env_allow` selection must account for):
+- `scripts/little_loops/runner_spec.py` — lines 223, 333
+- `scripts/little_loops/subprocess_utils.py` — line 529, the primary streaming path's actual
+  `subprocess.Popen(..., env=env)` call
+- `scripts/little_loops/session_store/lifecycle.py` — line 157
+- `scripts/little_loops/fsm/evaluators.py` — lines 1207, 1463
+- `scripts/little_loops/fsm/handoff_handler.py` — line 130
+- `scripts/little_loops/learning_tests/extractor.py` — line 134
+- `scripts/little_loops/cli/issues/decisions.py` — line 815
+- `scripts/little_loops/parallel/worker_pool.py` — line 859
+
+With no `invocation` (pure `os.environ` inheritance today; unaffected by `env_allow` since there
+is no `HostInvocation` to carry the field — these are exactly the two `bash -c` paths ENH-3234/
+ENH-3235 will need to synthesize a declaration for):
+- `scripts/little_loops/fsm/runners.py` — line 305
+- `scripts/little_loops/runner_spec.py` — line 249, `_run_cmd`
+- `scripts/little_loops/parallel/worker_pool.py` — line 106
+- `scripts/little_loops/cli/loop/runner.py` — line 297
+- `scripts/little_loops/cli/loop/summary.py` — line 185
+- `scripts/little_loops/mcp_call.py` — line 199
+- `scripts/little_loops/prepatch_check.py` — line 290
+- `scripts/little_loops/worktree_utils.py` — line 721, followed by `env.pop("LL_PYTHON", None)` at
+  line 730, the BUG-3370 call-site workaround (see Codebase Research Findings below)
+- `scripts/little_loops/git_operations.py` — line 728
+
 ## Program Design
 
 ### Signatures
@@ -179,6 +229,14 @@ which is a different mechanism and stays as-is for AC3).
   (ENH-3234/ENH-3235's job), and `project_child_env()` reads it — this issue only needs
   `project_child_env()` and `HostInvocation` to support the field; it does not populate it from
   any real declaration.
+
+### Call Path
+
+`HostRunner.build_*()` (e.g. `ClaudeCodeRunner.build_streaming()`, `host_runner.py:353-440`) ->
+constructs `HostInvocation` (`host_runner.py:156-173`) -> caller invokes
+`project_child_env(invocation, extra=...)` (`host_runner.py:1865-1895`) -> result passed as
+`subprocess.run`/`Popen(env=...)`, e.g. `run_blocking_json()` (`host_runner.py:2178`) and
+`verify_epic_branch_before_merge()` (`worktree_utils.py:721`).
 
 ### Codebase Research Findings
 
@@ -276,5 +334,6 @@ ENH-3203 effort per its Scope Boundaries section):
   but were absent from this issue's `## Blocks` section.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-03T18:57:37 - `81f9ded4-f3d7-410d-9fd5-2bd50814262a.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:54 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T16:32:34 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`
