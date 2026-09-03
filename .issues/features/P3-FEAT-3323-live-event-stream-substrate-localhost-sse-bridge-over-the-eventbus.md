@@ -13,6 +13,7 @@ relates_to:
 - ENH-3346
 - ENH-3351
 - BUG-3324
+- FEAT-1930
 depends_on: []
 learning_tests_required:
 - http.server
@@ -565,7 +566,12 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
    that cannot collide with a payload field — payloads are splatted at the top
    level of the envelope; grep the event catalog before choosing, and note
    `run_id` is reserved by ENH-3346 (planned on all `parallel.*` payloads;
-   not visible to a grep until it lands).
+   not visible to a grep until it lands). Also include FEAT-1930's
+   `human_approval_requested`/`human_response` payload fields in that grep
+   once FEAT-1930 fixes its `HumanResponse`/adapter-return dataclass name
+   collision (see § Relationship to FEAT-1930) — this bridge relays those two
+   event types unfiltered, so the chosen envelope key must not collide with
+   either one's fields either.
 2. Add the `events.bridge` config block (schema + dataclass + `EventsConfig`
    member + `to_dict()` mirror + `_DATACLASS_SECTION_MAP` entry), off by
    default.
@@ -705,6 +711,15 @@ listener. Defining the server here rather than leaving it to whichever lands
 first is what makes that reuse actually happen. Still not a blocking
 dependency in either direction — if FEAT-3321 lands first it owns the server
 instead, and this issue adds the `/events` route.
+
+## Relationship to FEAT-1930
+
+This bridge is read-only relay: it would surface `human_approval_requested` and
+`human_response` events (once FEAT-1930's EventBus adapter emits them) exactly
+like any other bus event, with no special-casing — a browser-side verdict
+adapter that lets an operator respond to a HITL prompt from the SSE page would
+be a separate, future FEAT layered on both this issue and FEAT-1930, not part
+of either's current scope.
 
 ## API/Interface
 

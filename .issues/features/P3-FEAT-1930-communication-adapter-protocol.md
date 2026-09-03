@@ -3,7 +3,7 @@ id: FEAT-1930
 title: Communication adapter protocol for async HITL channels
 type: FEAT
 priority: P3
-captured_at: "2026-06-04T00:00:00Z"
+captured_at: '2026-06-04T00:00:00Z'
 discovered_date: 2026-06-04
 discovered_by: scope-epic
 status: open
@@ -12,15 +12,16 @@ relates_to:
 - FEAT-1794
 - FEAT-1931
 - EPIC-2196
+- FEAT-3323
 blocks:
 - FEAT-2102
 - FEAT-1794
 - FEAT-1931
 labels:
-  - fsm
-  - harness
-  - hitl
-  - extension
+- fsm
+- harness
+- hitl
+- extension
 verify_verdict: VALID
 ---
 
@@ -66,6 +67,14 @@ be added later against the same protocol without touching `executor.py`.
 
 > Downstream: FEAT-1932 **cancelled**; FEAT-2102 (adapter-swap test) **deferred**
 > until the `eventbus` adapter lands, then retargeted to terminal↔eventbus.
+
+## Relationship to FEAT-3323
+
+FEAT-3323's localhost SSE bridge would relay this issue's `human_approval_requested`
+and `human_response` EventBus events read-only, like any other event — a
+browser-side verdict adapter letting an operator respond to a HITL prompt from
+that page would be a separate, future FEAT layered on both issues, not part of
+either's current scope.
 
 ## Current Behavior
 
