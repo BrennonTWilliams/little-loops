@@ -257,6 +257,16 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 Additional callers, precedent anchors, and config-wiring call sites found beyond what the sections above already cite:
 
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- Documentation anchors (line-level, beyond the file-only citations in `## Related Key Documentation`): `docs/ARCHITECTURE.md:586,594-599` (Extension Architecture & Event Flow — the table listing the 4 existing capability Protocols); `docs/reference/API.md:10790` (`class LLExtension(Protocol)`), `:10887` (`def wire_extensions`), `:10911-10929` (`LLHookIntentExtension` doc block, closest precedent for documenting a 5th Protocol); `docs/reference/CONFIGURATION.md:1359` (`### orchestration`, precedent section shape for documenting a new `hitl` namespace); `CONTRIBUTING.md:676` (`## Authoring Extensions`)
+- `scripts/little_loops/config/orchestration.py` — houses `OrchestrationConfig` *and* `AdvisorConfig` as sibling dataclasses in one module; precedent for where a `HitlConfig` dataclass could live rather than a dedicated new file
+- `scripts/little_loops/config/__init__.py` — package-level import/`__all__` list a new `HitlConfig` would need to join, alongside `OrchestrationConfig`/`AdvisorConfig`/`ClusterConfig`
+- `scripts/little_loops/templates/extension/test_extension.py.tmpl` — companion scaffold test template alongside `extension.py.tmpl`
+- Naming-note: a new `hitl` top-level config namespace shares its name with the pre-existing, unrelated `hitl-md`/`hitl-compare` built-in loop family (FEAT-1613/1545 human-review-of-markdown loops — `scripts/little_loops/loops/hitl-md.yaml`, `scripts/little_loops/loops/hitl-compare.yaml`, plus references in `fsm/persistence.py`, `fsm/schema.py`, `cli/output.py`). Different config surface (a loop name vs. a `BRConfig` namespace key), not a functional conflict, but the shared term is worth flagging for reader clarity when documenting `hitl.channel`.
+- `.issues/enhancements/P3-ENH-2249-rescope-epic-1929-post-hermes-and-track-curated-ll-artifacts.md` — post-Hermes rescoping enhancement for this issue's parent epic (EPIC-1929), not yet cross-referenced in this issue's own re-scope section
+- `.issues/bugs/P3-BUG-3192-config-schemajson-diverges-from-code-...` — documents prior `config-schema.json` vs. dataclass default drift for other namespaces (`learning_tests.enabled`, `sync.github.pull_limit`, `socket.max_clients`); relevant risk precedent for keeping `hitl.channel`'s default in sync across the schema and the `HitlConfig` dataclass
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/parallel.py:321` — calls `wire_extensions(event_bus, config.extensions)`
 - `scripts/little_loops/cli/sprint/run.py:800` — calls `wire_extensions(event_bus, config.extensions)`
@@ -283,6 +293,13 @@ Additional callers, precedent anchors, and config-wiring call sites found beyond
 _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 Concrete types, signatures, and the call path this protocol plugs into, derived from `extension.py`'s existing 4-Protocol capability pattern and `FSMExecutor`'s contributed-registry mechanics.
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- `EvaluateConfig.type: Literal[...]` (`scripts/little_loops/fsm/schema.py:95-112`) enumerates 16 existing evaluator type strings; `human_approval` is not among them — confirms no partial scaffolding exists as an evaluator type.
+- `StateConfig.action_type` (`scripts/little_loops/fsm/schema.py:694`) is typed `str | None`, not a closed `Literal`/enum — a new `human_approval`-style action type requires no FSM schema enum change, only executor-side dispatch plus extension wiring, consistent with how `_contributed_actions` extension actions are already looked up by arbitrary string key rather than a fixed set.
+- `wire_extensions()`'s four existing gates (`extension.py:246-273`) split into two structurally different sub-patterns: `InterceptorExtension`/`ActionProviderExtension`/`EvaluatorProviderExtension` are gated inside `if fsm_executor is not None:` (`:246-267`) and are inert when no `executor=` kwarg is passed; `LLHookIntentExtension`'s gate (`:269-273`) runs unconditionally in a separate loop and writes into a module-level registry in `hooks/__init__.py` (`_HOOK_INTENT_REGISTRY`), not onto `FSMExecutor` at all. A `CommunicationAdapterExtension` gate should follow the dict-with-conflict-check shape shared by actions/evaluators, inside the `fsm_executor is not None` block, since adapters are resolved by the `hitl.channel` config key the same way actions are resolved by `state.action_type`.
+- `scripts/little_loops/templates/extension/extension.py.tmpl` is confirmed dead code — not referenced anywhere in `create_extension.py` or elsewhere; the scaffold's actual output comes from the inline docstring string list in `create_extension.py:80-94` (`_render_extension()`), which is the only site a 5th Protocol name needs adding to (the `.tmpl` file's independent drift — missing `LLHookIntentExtension` — is pre-existing and out of this issue's scope).
 
 ### Types
 - `CommunicationAdapter` (abstract class, `scripts/little_loops/fsm/communication_adapter.py`, new file) — `send_alert()`/`await_response()`/`supports_async()`, per API/Interface above
@@ -390,6 +407,7 @@ open
 - `CONTRIBUTING.md` — adding a new extension-registered protocol (`CommunicationAdapterExtension`, `provided_adapters()`) is exactly the extension-authoring pattern (`LLExtension` protocol convention) this doc documents.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-03T23:44:55 - `aed94642-f109-4502-89a6-54feff7835ca.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:25:58 - `08ecfe64-9510-40b1-a733-9cb70ecbc67a.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:30 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
