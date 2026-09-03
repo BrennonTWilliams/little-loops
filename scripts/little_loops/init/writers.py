@@ -1001,6 +1001,152 @@ def install_qwen_adapter(
     return True
 
 
+def _gemini_template_path() -> Path:
+    """Return the in-package path to the Gemini adapter hooks.json template."""
+    return Path(__file__).parent.parent / "hooks" / "adapters" / "gemini" / "hooks.json"
+
+
+# ll-managed hook entries in .gemini/settings.json are identified the same
+# way as Qwen's (ARCHITECTURE-046 Option A): a ``ll:``-prefixed ``name``
+# field plus an ``ll-gen:<version>`` stamp in ``description`` — JSON has no
+# comments, so identity rides on documented hook-entry fields (FEAT-2186).
+_GEMINI_MANAGED_NAME_PREFIX = "ll:"
+_GEMINI_GEN_MARKER = "ll-gen:"
+
+
+def _gemini_is_managed_group(group: Any) -> bool:
+    """Return True when every hook entry in *group* is ll-managed."""
+    hooks = group.get("hooks") if isinstance(group, dict) else None
+    if not isinstance(hooks, list) or not hooks:
+        return False
+    return all(
+        isinstance(h, dict) and str(h.get("name", "")).startswith(_GEMINI_MANAGED_NAME_PREFIX)
+        for h in hooks
+    )
+
+
+def _gemini_managed_gen_version(hooks_obj: dict[str, Any]) -> str | None:
+    """Return the ``ll-gen:<version>`` stamp of the managed entries, or None."""
+    for groups in hooks_obj.values():
+        if not isinstance(groups, list):
+            continue
+        for group in groups:
+            if not _gemini_is_managed_group(group):
+                continue
+            for entry in group["hooks"]:
+                desc = str(entry.get("description", ""))
+                idx = desc.find(_GEMINI_GEN_MARKER)
+                if idx != -1:
+                    return desc[idx + len(_GEMINI_GEN_MARKER) :].strip().rstrip(")")
+    return None
+
+
+def install_gemini_adapter(
+    project_root: Path,
+    plugin_root: Path,
+    force: bool = False,
+    dry_run: bool = False,
+) -> bool | None:
+    """Install the Gemini hook adapter as managed entries in .gemini/settings.json.
+
+    ARCHITECTURE-046 "Option A" (settings injection), following the same
+    structured-JSON-merge shape as :func:`install_qwen_adapter`:
+    ``.gemini/settings.json`` is a shared file Gemini CLI owns, so the
+    writer parses it, removes exactly the ll-managed hook groups
+    (identified by their ``ll:``-prefixed ``name`` fields), appends the
+    freshly rendered groups from ``hooks/adapters/gemini/hooks.json``, and
+    never touches any other key or any third-party hook entries.
+
+    Idempotent: when the managed entries already carry the installed
+    package's ``ll-gen:<version>`` stamp, returns False without writing.
+    ``force`` re-merges regardless.
+
+    Args:
+        project_root: Project root directory (destination is
+            ``<project_root>/.gemini/settings.json``).
+        plugin_root: Unused; kept for call-site compatibility.
+        force: If True, re-merge even when the gen version already matches.
+        dry_run: If True, print planned write; do not modify files.
+
+    Returns:
+        True if written (or would be, for dry_run); False if already
+        installed at the same gen version without ``force``; None if the
+        source template is missing OR the existing settings.json is
+        unparseable (never touch a corrupted settings file).
+    """
+    template_path = _gemini_template_path()
+    if not template_path.exists():
+        return None
+
+    from little_loops.init.install_check import installed_package_version
+
+    package_root = str(Path(__file__).parent.parent)
+    gen_version = installed_package_version() or ""
+    rendered = (
+        template_path.read_text(encoding="utf-8")
+        .replace("{{LL_PLUGIN_ROOT}}", package_root)
+        .replace("{{LL_GEN_VERSION}}", gen_version)
+    )
+    try:
+        new_hooks = json.loads(rendered)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(new_hooks, dict):
+        return None
+
+    dest = project_root / ".gemini" / "settings.json"
+    settings: dict[str, Any]
+    if dest.exists():
+        existing_text = dest.read_text(encoding="utf-8")
+        if existing_text.strip():
+            try:
+                loaded = json.loads(existing_text)
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(loaded, dict):
+                return None
+            settings = loaded
+        else:
+            settings = {}
+    else:
+        settings = {}
+
+    hooks_obj = settings.get("hooks")
+    if not isinstance(hooks_obj, dict):
+        hooks_obj = {}
+
+    stamped = _gemini_managed_gen_version(hooks_obj)
+    if not force and gen_version and stamped == gen_version:
+        return False
+
+    if dry_run:
+        action = "refresh" if stamped is not None else "add"
+        info(f"write .gemini/settings.json ({action} little-loops managed hooks)")
+        return True
+
+    # Remove existing ll-managed groups, preserving every other entry.
+    for event in list(hooks_obj.keys()):
+        groups = hooks_obj[event]
+        if not isinstance(groups, list):
+            continue
+        kept = [g for g in groups if not _gemini_is_managed_group(g)]
+        if kept:
+            hooks_obj[event] = kept
+        else:
+            del hooks_obj[event]
+
+    for event, groups in new_hooks.items():
+        existing_groups = hooks_obj.get(event)
+        if not isinstance(existing_groups, list):
+            existing_groups = []
+        hooks_obj[event] = existing_groups + groups
+
+    settings["hooks"] = hooks_obj
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(dest, json.dumps(settings, indent=2) + "\n")
+    return True
+
+
 def read_adapter_gen_version(project_root: Path) -> str | None:
     """Return the gen-version stamp embedded in ``.codex/hooks.json``.
 

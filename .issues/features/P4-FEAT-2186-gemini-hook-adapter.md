@@ -3,13 +3,14 @@ id: FEAT-2186
 title: "Hook adapter \u2014 hooks/adapters/gemini/ translating gemini-cli events to\
   \ LLHookEvent"
 type: feature
-status: open
+status: done
 priority: P4
 parent: EPIC-2178
 decision_needed: false
 decision_ref: ARCHITECTURE-046
 verify_verdict: VALID
 captured_at: '2026-06-15T00:00:00Z'
+completed_at: '2026-09-03T01:07:25Z'
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 labels:
@@ -242,6 +243,22 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+- **2026-09-02**: The Integration Map's "New Files" list and Implementation
+  Steps 3–6 named only 4 adapter shell scripts (`session-start.sh`,
+  `pre-compact.sh`, `pre-tool-use.sh`, `post-tool-use.sh`). The Event
+  Mapping table and Acceptance Criteria ("`hooks.json` exists with all 6
+  event mappings") specify 6 gemini events including `BeforeAgent` →
+  `user_prompt_submit` and `SessionEnd` → `session_end`, which have no
+  script without further additions. Implemented all 6 shims (adding
+  `prompt-submit.sh` and `session-end.sh`, naming matched to the existing
+  Qwen adapter's convention) so `hooks.json` references a real script for
+  every event it lists — resolves the internal inconsistency in favor of
+  the explicit acceptance criterion and the fuller mapping table. Types,
+  Signatures, and Call Path below are unaffected — `install_gemini_adapter`
+  and the dispatch call path are exactly as specified.
+
 ### Types
 
 N/A — no new data shape; reuses the existing `LLHookEvent`/`LLHookResult`
@@ -308,10 +325,13 @@ _Run `/ll:normalize-issues` to discover and link additional relevant docs._
 
 - **2026-08-12** (`/ll:verify-issues`): VALID. `depends_on: [FEAT-2179, ENH-2184]` removed — both now `status: done`, so the issue is unblocked; `hooks/adapters/gemini/` remains absent.
 
+## Status
+
 **Open** | Created: 2026-06-15 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-03T01:07:13 - `b6b7a756-6d2e-46eb-bba4-2c0503e468fb.jsonl`
 - `/ll:confidence-check` - 2026-09-02T23:03:39 - `60db1b50-fe23-47d4-8b5d-f8c0cf6ef977.jsonl`
 - `/ll:reconcile-issue` - 2026-09-02T22:34:55 - `89e1b823-9c08-49e4-9fdf-cadf3dbc0d62.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:23:46 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`

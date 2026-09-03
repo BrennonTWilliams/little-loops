@@ -27,7 +27,7 @@ docs links here rather than restating one of them (BUG-3186).
 | `qwen` | ✓ | ✓ | ✓ | Adapter-wired |
 | `opencode` | ✓ | ✓ | ✗ | Recognized, adapter pending |
 | `pi` | ✓ | ✓ | ✗ | Recognized, adapter pending [^pi-epic] |
-| `gemini` | ✓ | ✗ | ✗ | Orchestration-only |
+| `gemini` | ✓ | ✓ | ✓ | Adapter-wired |
 | `omp` | ✓ | ✓ | ✗ | Recognized, adapter pending |
 
 
@@ -70,13 +70,13 @@ into `LLHookEvent` payloads.
 
 | Hook intent          | Claude Code | OpenCode      | Codex CLI     | Gemini CLI    | Kimi Code                                                            | Qwen Code | omp |
 | -------------------- | ----------- | ------------- | ------------- | ------------- | -------------------------------------------------------------------- | --------- | --- |
-| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | (deferred)[^gemini] — `SessionStart`; advisory only | ✓ — `transcript_path` absent (guarded)[^kimi]  | ✓ — fires under `qwen -p` headless (managed `.qwen/settings.json` block)[^qwen] | ✓ — `session_start`; advisory only, no cancel path[^omp] |
-| `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async | ✓[^kimi]                                         | ✓ (`manual\|auto` matcher)[^qwen] | (deferred)[^omp] — `session_before_compact`; blocking + custom-result override |
+| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | ✓[^gemini] — `SessionStart`, matcher=`startup`; advisory only | ✓ — `transcript_path` absent (guarded)[^kimi]  | ✓ — fires under `qwen -p` headless (managed `.qwen/settings.json` block)[^qwen] | ✓ — `session_start`; advisory only, no cancel path[^omp] |
+| `pre_compact`        | ✓           | ✓             | ✓             | ✓[^gemini] — `PreCompress`; advisory, async | ✓[^kimi]                                         | ✓ (`manual\|auto` matcher)[^qwen] | (deferred)[^omp] — `session_before_compact`; blocking + custom-result override |
 | `pre_compact_handoff` | ✓           | (deferred)    | (deferred)    | (deferred)[^gemini] | (deferred)[^kimi] | ✓[^qwen] | (deferred)[^omp] — second handler on `session_before_compact` (same event as `pre_compact`, no distinct native event on any host) |
-| `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` | ✓ (blockable; block-array prompt handled)[^kimi] | ✓ (blockable; string `prompt`)[^qwen] | (deferred)[^omp] — `before_agent_start`; injection-only, cannot block/reject |
-| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | ✓ (active)[^hot] | (deferred)[^gemini] — `BeforeTool` | ✓ (active, blockable)[^kimi]                     | ✓ (active, blockable; `write_file\|edit` runtime-id matcher)[^qwen] | (deferred)[^omp] — `tool_call`; blocking + input revision, no observed timeout |
-| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2974)[^kimi] | ✓ (fire-and-forget)[^qwen] | ✓ (fire-and-forget)[^omp] — `tool_result`; result-rewrite only |
-| `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort | ✓ — native `SessionEnd`; no SessionStart workaround needed[^kimi] | ✓ — native `SessionEnd` (interactive only; does **not** fire under `-p`[^qwenheadless]); headless cleanup rides the `Stop` legacy scripts[^qwen] | (deferred)[^omp] — `session_shutdown`; fires on both graceful-exit and signal paths, hard-timeout behavior unverified |
+| `user_prompt_submit` | ✓           | (deferred)    | ✓             | ✓[^gemini] — `BeforeAgent`; blockable | ✓ (blockable; block-array prompt handled)[^kimi] | ✓ (blockable; string `prompt`)[^qwen] | (deferred)[^omp] — `before_agent_start`; injection-only, cannot block/reject |
+| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | ✓ (active)[^hot] | ✓[^gemini] — `BeforeTool`, `.*` matcher; blockable | ✓ (active, blockable)[^kimi]                     | ✓ (active, blockable; `write_file\|edit` runtime-id matcher)[^qwen] | (deferred)[^omp] — `tool_call`; blocking + input revision, no observed timeout |
+| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | ✓[^gemini] — `AfterTool`, `.*` matcher; blockable | ✓ — `tool_output` payload tolerated (FEAT-2974)[^kimi] | ✓ (fire-and-forget)[^qwen] | ✓ (fire-and-forget)[^omp] — `tool_result`; result-rewrite only |
+| `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | ✓[^gemini] — native `SessionEnd`; best-effort (CLI won't wait) | ✓ — native `SessionEnd`; no SessionStart workaround needed[^kimi] | ✓ — native `SessionEnd` (interactive only; does **not** fire under `-p`[^qwenheadless]); headless cleanup rides the `Stop` legacy scripts[^qwen] | (deferred)[^omp] — `session_shutdown`; fires on both graceful-exit and signal paths, hard-timeout behavior unverified |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent | (deferred)[^kimi] — kimi fires `PostCompact`; unwired | N/A — no `PostCompact` event in Qwen's 17-event surface[^qwen] | N/A — no post-compact event in omp's `HookAPI`[^omp] |
 | `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only | (deferred)[^kimi] — kimi fires `PermissionRequest`/`Result`; unwired | (deferred)[^qwen] — Qwen fires native `PermissionRequest`/`PermissionDenied`; no ll consumer yet | N/A — no permission-request event in omp's `HookAPI`[^omp] |
 
@@ -141,10 +141,16 @@ into `LLHookEvent` payloads.
     var alias is provided by Gemini for Claude Code compatibility; `gemini hooks
     migrate --from-claude` command exists. Cells flip from `(deferred)` to ✓ as
     EPIC-2178 children land. **Landed so far:** `GeminiRunner` (ENH-2184 /
-    ENH-2185 — all four `build_*` methods wired) and the `.gemini/ll-config.json`
-    config probe (ENH-2187). Hook adapter (FEAT-2186) and `GEMINI.md` project
-    instructions (FEAT-2190) are still pending — hook-intent and discovery cells
-    stay `(deferred)` until those land.
+    ENH-2185 — all four `build_*` methods wired), the `.gemini/ll-config.json`
+    config probe (ENH-2187), and the hook adapter (FEAT-2186 — six intents
+    wired via a managed `ll:`-prefixed block in project `.gemini/settings.json`,
+    ARCHITECTURE-046 Option A, same structured-JSON-merge shape as Qwen's
+    FEAT-3158). `SessionStart`/`PreCompress` are advisory-only (cannot block);
+    `BeforeAgent`/`BeforeTool`/`AfterTool` are blockable; `SessionEnd` is
+    best-effort. `pre_compact_handoff` and `permission_request` stay
+    `(deferred)` — no distinct native Gemini event / no current ll consumer.
+    `GEMINI.md` project instructions (FEAT-2190) is still pending — discovery
+    cells stay `(deferred)` until it lands.
 
 [^kimi]: Kimi Code CLI (`kimi` binary) support is tracked by **EPIC-2910**.
     Research spike **FEAT-2911** (2026-07-29) machine-verified the full
@@ -601,7 +607,7 @@ the adapter.
 | Env var          | Description |
 | ---------------- | ----------- |
 | `LL_HOST_CLI`         | Override host runner selection (`claude-code`, `codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`, `qwen`). Takes precedence over binary probe and `orchestration.host_cli` config. |
-| `LL_HOOK_HOST`        | Identify the host to hook adapters (`claude-code`, `opencode`, `codex`, `kimi-code`, `qwen`, `omp`). Set by each adapter before invoking the Python hook layer. |
+| `LL_HOOK_HOST`        | Identify the host to hook adapters (`claude-code`, `opencode`, `codex`, `kimi-code`, `qwen`, `omp`, `gemini`). Set by each adapter before invoking the Python hook layer. |
 | `LL_STATE_DIR`        | Scope config probe to a host-specific directory (e.g. `.codex`). Affects config resolution only — other state paths are unaffected (see [^state]). |
 | `LL_HISTORY_DB`       | Override the default `.ll/history.db` session-store path (e.g. for test isolation). Takes precedence over the `history.db_path` config key, which is the persistent per-project alternative for a durable relocation. Also exported by `setup_worktree()` into the orchestrator's own `os.environ` (BUG-3112), so every descendant process spawned with `cwd=<worktree>` — host-CLI sessions, FSM shell actions, hooks, pytest runs — inherits the main repo's DB instead of resolving a throwaway `<worktree>/.ll/history.db` that worktree teardown deletes. |
 | `LL_NON_INTERACTIVE`  | Set to `"1"` by all `build_*` host runner methods to signal that a skill is running in a non-interactive automation context. Skills check this (via `[[ -n "${LL_NON_INTERACTIVE:-}" ]]`) to auto-enable `--auto` mode and skip `AskUserQuestion` prompts. Use `DANGEROUSLY_SKIP_PERMISSIONS` as a fallback during the migration period. |
@@ -620,6 +626,7 @@ the adapter.
   hooks are native Bun/TS modules loaded via `pi.on(event, handler)`, not a
   JSON-config or shell-shim protocol — closer to the OpenCode adapter's
   Bun-plugin shape than the Bash-shim hosts above.
+- Gemini CLI: [`scripts/little_loops/hooks/adapters/gemini/`](../../scripts/little_loops/hooks/adapters/gemini/) — Bash shims + `hooks.json` template (managed `ll:`-prefixed entries merged into project `.gemini/settings.json` by `ll-init`; six events: SessionStart, PreCompress, BeforeAgent, BeforeTool, AfterTool, SessionEnd)[^gemini]
 
 Each adapter is a thin transport (`spawn → set env → pipe stdin → exit`);
 all real logic lives in `scripts/little_loops/hooks/`.

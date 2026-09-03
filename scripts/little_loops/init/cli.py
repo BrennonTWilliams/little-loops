@@ -41,12 +41,12 @@ _TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
 # Recognized host names for --hosts validation. Only hosts with install
 # wiring (or an explicit graceful-degradation branch) in
 # _dispatch_host_adapters belong here — it does NOT mirror
-# _HOST_RUNNER_REGISTRY keys: gemini is deliberately absent because it has no
-# install wiring and would warn "Unknown host". omp (FEAT-2261) has a real
-# adapter directory (scripts/little_loops/hooks/adapters/omp/) but, like
-# opencode, no install wiring (Option B) — it still gets an info-only branch.
+# _HOST_RUNNER_REGISTRY keys. omp (FEAT-2261) has a real adapter directory
+# (scripts/little_loops/hooks/adapters/omp/) but, like opencode, no install
+# wiring (Option B) — it still gets an info-only branch. gemini (FEAT-2186)
+# has real install wiring via install_gemini_adapter().
 _KNOWN_HOSTS: frozenset[str] = frozenset(
-    {"claude-code", "codex", "opencode", "pi", "kimi-code", "qwen", "omp"}
+    {"claude-code", "codex", "opencode", "pi", "kimi-code", "qwen", "omp", "gemini"}
 )
 
 
@@ -102,6 +102,7 @@ def _dispatch_host_adapters(
     from little_loops.cli.output import error, info, warning
     from little_loops.init.writers import (
         install_codex_adapter,
+        install_gemini_adapter,
         install_kimi_adapter,
         install_qwen_adapter,
     )
@@ -156,6 +157,21 @@ def _dispatch_host_adapters(
                 info(
                     "Qwen: hooks take effect in new qwen sessions — interactive "
                     "and `qwen -p` headless alike."
+                )
+        elif host == "gemini":
+            installed = install_gemini_adapter(
+                project_root, plugin_root, force=force, dry_run=dry_run
+            )
+            if installed is None:
+                warning(
+                    "Gemini: adapter template missing or .gemini/settings.json is "
+                    "unparseable; managed hooks were not written."
+                )
+            elif installed and not dry_run:
+                info("Gemini: hook adapter installed to .gemini/settings.json (managed entries)")
+                info(
+                    "Gemini: SessionStart and PreCompress are advisory-only on Gemini "
+                    "(cannot block); BeforeAgent/BeforeTool/AfterTool can block/deny."
                 )
         elif host == "opencode":
             info("OpenCode: adapter not yet available — opencode orchestration not yet wired.")
@@ -1022,7 +1038,7 @@ Exit codes:
             default=None,
             help=(
                 "Host harnesses to install adapters for "
-                "(claude-code, codex, opencode, kimi-code, pi, qwen). Repeatable, "
+                "(claude-code, codex, opencode, kimi-code, pi, qwen, gemini). Repeatable, "
                 "and comma-separated values are accepted (--hosts claude-code,codex). "
                 "Defaults to auto-detected hosts."
             ),

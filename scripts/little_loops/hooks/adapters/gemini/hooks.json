@@ -1,0 +1,83 @@
+{
+  "SessionStart": [
+    {
+      "matcher": "startup",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/gemini/session-start.sh",
+          "name": "ll:session-start",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "PreCompress": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/gemini/pre-compact.sh",
+          "name": "ll:pre-compact",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "BeforeAgent": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/gemini/prompt-submit.sh",
+          "name": "ll:prompt-submit",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "BeforeTool": [
+    {
+      "matcher": ".*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/gemini/pre-tool-use.sh",
+          "name": "ll:pre-tool-use",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "AfterTool": [
+    {
+      "matcher": ".*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/gemini/post-tool-use.sh",
+          "name": "ll:post-tool-use",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/gemini/session-end.sh",
+          "name": "ll:session-end",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ]
+}
