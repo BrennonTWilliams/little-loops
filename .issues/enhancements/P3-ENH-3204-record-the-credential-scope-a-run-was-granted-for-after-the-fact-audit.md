@@ -44,6 +44,16 @@ Each run records the capability and variable names it was granted, queryable aft
 ### Tests
 - `scripts/tests/` — migration round-trip, plus a test asserting no credential *value* can reach the record.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- Spawn-site audit (2026-09-03): none of the 8 confirmed call sites into `project_child_env()`/`_apply_automation_env()` currently hold a genuine loop/spawn run identifier. The 6 `build_streaming()` methods (`host_runner.py:410,718,1127,1319,1515,1715`) are pure `HostInvocation`-construction factories with no run_id parameter; `run_blocking_json()` (`host_runner.py:2178`) and `verify_epic_branch_before_merge()` (`worktree_utils.py:721`) hold no loop-run context either. `FSMExecutor.run_id` (set at `fsm/executor.py:570`) is the nearest genuine run identifier, several stack frames above the actual spawn — it is not threaded down as a parameter today. See Open Decisions.
+- `subprocess_utils.run_claude_command()` (`subprocess_utils.py:422-445`) is the site closest to holding both a spawn context and the actual PID: it calls `project_child_env(invocation, extra=extra_env)` at line 529, then `subprocess.Popen(...)` at line 534-543 in the same function — but its signature has no `run_id` param, only `extra_env` and an `on_process_start` callback invoked with the live `Popen`.
+- Candidate writer-function siblings already in this codebase: `write_advisor_consult()` (`session_store/writers.py:1823-1897`) and `write_research_triage()` (`session_store/writers.py:1898-1942`) — both new-dedicated-table, live-write-only, fail-soft (`try/except sqlite3.Error: logger.warning(...); return False`) writers; a scope-record writer would follow this same shape.
+- Tests: migration test class shape is `TestSchemaV46ResearchTriageEvents` (`scripts/tests/test_session_store_schema.py:2653-2751` — columns, indexes, CHECK-constraint rejection, upgrade-from-prior-version, kind registration, rebuild-exclusion) and `test_schema_version_matches_migrations_length()` (`test_session_store_schema.py:2132`), both needing a v47 counterpart. Writer test shape is `TestWriteResearchTriage`/`TestWriteAdvisorConsult` (`test_session_store_writers.py:2712-2858`), including a `test_graceful_when_store_unwritable` fail-soft case.
+- No existing runtime helper or test enforces "value never leaks" anywhere in this codebase — `pii.py`/`redact_pii()` targets SFT-corpus text (email/phone/SSN), not env-var credentials, and no test of the form "assert secret value not in serialized record" exists today. The "names only" test this issue requires has no precedent to follow.
+
 ## Program Design
 
 ### Types
@@ -61,6 +71,16 @@ Spawn site (holds run identifier) → `project_child_env()` result (ENH-3233 cho
 - No record is written for undeclared specs, since there is no scope to report.
 - The write must **not** live inside `project_child_env()` itself: it is a pure helper with ~18 call sites, several of which have no run context at all (`worktree_utils.py`, `git_operations.py`, `mcp_call.py`). Invoke the writer from spawn sites that hold a run identifier.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- `_apply_automation_env()` has moved again: now at `host_runner.py:1898-1915` (previously cited 1882 — this section already anticipated drift). Signature confirmed unchanged: `_apply_automation_env(env: dict[str, str], automation: AutomationContext | None) -> None`.
+- `_apply_automation_env()` and `project_child_env()` are never called from the same call site: `_apply_automation_env()` runs inside each host runner's `build_streaming()` (populating `HostInvocation.env` at build time); `project_child_env()` runs later, in a different function, on the resulting `HostInvocation` (e.g. `subprocess_utils.py:529`, after `build_streaming()` already ran at line 517). They share no call relationship.
+- `HostInvocation` (`host_runner.py:156-173`) has 5 fields today (`binary`, `args`, `env`, `capabilities`, `cleanup_paths`) — no `env_allow` field exists yet (ENH-3233 unimplemented). `ActionSpec` (`runner_spec.py:77-89`) likewise has no `scopes` field yet (ENH-3234 unimplemented).
+- `project_child_env(invocation=None, *, extra=None) -> dict[str, str]` (`host_runner.py:1865-1895`) returns a flat variable-name to value dict with no separate "declared scope name" information, today or under ENH-3233's planned shape — the writer cannot derive scope names from this return value alone. It needs the caller to pass through both name-sets explicitly, which matches this section's existing "the writer itself takes ... two frozenset[str] name-sets" line.
+- Call Path correction: the existing "Spawn site (holds run identifier) -> ..." line assumes a run identifier is available at the spawn site. Confirmed: none of `run_claude_command()`, `DefaultActionRunner.run()`, `run_blocking_json()`, or `verify_epic_branch_before_merge()` currently accept or hold a loop/spawn run identifier. `FSMExecutor.run_id` (`fsm/executor.py:570`) is the only genuine run identifier in the chain, set several stack frames above the actual spawn and not threaded down today. See Open Decisions.
+
 ## Scope Boundaries
 
 Explicitly **out of scope**:
@@ -74,6 +94,12 @@ Explicitly **out of scope**:
 
 1. **Where does the record land?** A column on the existing `loop_events` ledger, or a new `.ll/history.db` table. `loop_events` is closest; a dedicated table is cleaner if the record is per-spawn rather than per-run.
 2. **Per-run or per-spawn granularity?** A single loop run makes many spawns with potentially different declarations.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+3. **How does the writer obtain a run/spawn identifier?** No confirmed call site into `project_child_env()`/`_apply_automation_env()` today holds a genuine run identifier (see Program Design → Codebase Research Findings). `FSMExecutor.run_id` exists (`fsm/executor.py:570`) but is not threaded down to `DefaultActionRunner.run()`/`run_claude_command()`/`run_blocking_json()`. Options: (a) thread `run_id` as a new parameter down this call chain to the actual spawn site, or (b) key the record by something already available at the spawn site (e.g. PID via `run_claude_command()`'s existing `on_process_start` callback, or a freshly-generated per-write identifier) instead of `FSMExecutor.run_id`. This is a prerequisite decision, not an implementation detail — it determines whether "per-run" granularity (Open Decision #2) is reachable without a signature change to `DefaultActionRunner.run()`.
 
 ## Impact
 
@@ -91,5 +117,6 @@ Explicitly **out of scope**:
 - `SCHEMA_VERSION` corrected 45→46; next migration is v47, not v46.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-03T19:32:09 - `d28ffd7a-ae9c-48b9-8cda-76e95a2c6507.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:56 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
