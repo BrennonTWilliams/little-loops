@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import pytest
 
-from little_loops.cli.loop._helpers import EXIT_CODES, run_foreground
 from little_loops.cli.loop.info import _render_fsm_diagram
 from little_loops.cli.loop.layout import (
     _ACTION_TYPE_BADGES,
@@ -20,6 +19,7 @@ from little_loops.cli.loop.layout import (
     _collect_edges,
     _get_state_badge,
 )
+from little_loops.cli.loop.runner import EXIT_CODES, run_foreground
 from little_loops.fsm.executor import ExecutionResult
 from little_loops.fsm.schema import (
     EvaluateConfig,
@@ -3835,7 +3835,7 @@ class TestShowDiagramsSubprocessReemit:
     ) -> list[str]:
         from unittest.mock import MagicMock
 
-        from little_loops.cli.loop._helpers import run_background
+        from little_loops.cli.loop.runner import run_background
 
         captured: dict[str, list[str]] = {}
 
@@ -3866,7 +3866,7 @@ class TestShowDiagramsSubprocessReemit:
         )
         mock_fsm = MagicMock()
         mock_fsm.scope = None
-        with patch("little_loops.cli.loop._helpers.load_loop", return_value=mock_fsm):
+        with patch("little_loops.cli.loop.runner.load_loop", return_value=mock_fsm):
             with patch("subprocess.Popen", side_effect=fake_popen):
                 with patch("builtins.open"):
                     with patch("pathlib.Path.write_text"):
@@ -4403,7 +4403,7 @@ class TestABSummaryDisplay:
     ) -> None:
         """_print_ab_summary prints expected sections: pass-rate, tokens, duration, verdict."""
         from little_loops.ab_writer import ABResults, write_ab_json
-        from little_loops.cli.loop._helpers import _print_ab_summary
+        from little_loops.cli.loop.summary import _print_ab_summary
 
         results = ABResults(
             harness_pass_rate=0.9,
@@ -4437,7 +4437,7 @@ class TestABSummaryDisplay:
     ) -> None:
         """When baseline wins on quality, the verdict reflects that."""
         from little_loops.ab_writer import ABResults, write_ab_json
-        from little_loops.cli.loop._helpers import _print_ab_summary
+        from little_loops.cli.loop.summary import _print_ab_summary
 
         results = ABResults(
             harness_pass_rate=0.4,
@@ -4465,7 +4465,7 @@ class TestABSummaryDisplay:
     ) -> None:
         """When both arms perform equally, verdict reflects no difference."""
         from little_loops.ab_writer import ABResults, write_ab_json
-        from little_loops.cli.loop._helpers import _print_ab_summary
+        from little_loops.cli.loop.summary import _print_ab_summary
 
         results = ABResults(
             harness_pass_rate=1.0,
@@ -4489,7 +4489,7 @@ class TestABSummaryDisplay:
 
     def test_ab_summary_with_no_file_is_noop(self, capsys: pytest.CaptureFixture[str]) -> None:
         """When ab.json doesn't exist, _print_ab_summary is a no-op."""
-        from little_loops.cli.loop._helpers import _print_ab_summary
+        from little_loops.cli.loop.summary import _print_ab_summary
 
         _print_ab_summary(Path("/nonexistent/ab.json"))
         captured = capsys.readouterr()
@@ -4500,7 +4500,7 @@ class TestABSummaryDisplay:
     ) -> None:
         """_print_ab_summary shows Wilson CI bounds alongside pass-rates (ENH-2084)."""
         from little_loops.ab_writer import ABResults, write_ab_json
-        from little_loops.cli.loop._helpers import _print_ab_summary
+        from little_loops.cli.loop.summary import _print_ab_summary
 
         per_items = [
             {

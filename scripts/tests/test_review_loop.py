@@ -1077,7 +1077,7 @@ class TestReviewLoopSimulation:
 
     def test_sim_exit_code_not_unique_for_sim3(self) -> None:
         """SIM-3 cannot be identified by exit code alone — must parse stdout."""
-        # From _helpers.py EXIT_CODES: exit code 1 covers max_steps, timeout, cycle_detected
+        # From runner.py EXIT_CODES: exit code 1 covers max_steps, timeout, cycle_detected
         exit_codes = {"terminal": 0, "max_steps": 1, "timeout": 1, "cycle_detected": 1}
         assert exit_codes["max_steps"] == exit_codes["timeout"]
         assert exit_codes["max_steps"] == exit_codes["cycle_detected"]

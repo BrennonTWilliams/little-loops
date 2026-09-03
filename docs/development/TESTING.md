@@ -533,7 +533,7 @@ def stable_snapshot_env(monkeypatch):
     monkeypatch.setattr("little_loops.cli.output.terminal_width", lambda **_kw: 80)
     # Also patch re-import sites if exercising sprint/loop paths:
     monkeypatch.setattr("little_loops.cli.sprint._helpers.terminal_width", lambda **_kw: 80)
-    monkeypatch.setattr("little_loops.cli.loop._helpers.terminal_width", lambda **_kw: 80)
+    monkeypatch.setattr("little_loops.cli.loop.feed.terminal_width", lambda **_kw: 80)
 ```
 
 #### Generating and updating golden files

@@ -139,7 +139,7 @@ def stub_spawn(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         (running_dir / f"{instance_id}.pid").write_text(str(os.getpid()))
         return 0
 
-    monkeypatch.setattr("little_loops.cli.loop._helpers.run_background", fake_run_background)
+    monkeypatch.setattr("little_loops.cli.loop.runner.run_background", fake_run_background)
     return spawned
 
 
@@ -257,7 +257,7 @@ def test_ac3b_scope_conflict_returns_tool_error_never_a_task_id(tmp_path, monkey
         print("Scope conflict with running loop: other-loop", file=sys.stderr)
         return 1
 
-    monkeypatch.setattr("little_loops.cli.loop._helpers.run_background", fake_run_background)
+    monkeypatch.setattr("little_loops.cli.loop.runner.run_background", fake_run_background)
 
     with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:
         response = _post(
@@ -419,7 +419,7 @@ def test_immediate_cancel_after_start_stops_the_starting_run(tmp_path, monkeypat
         (running_dir / f"{instance_id}.pid").write_text(str(child.pid))
         return 0
 
-    monkeypatch.setattr("little_loops.cli.loop._helpers.run_background", fake_run_background)
+    monkeypatch.setattr("little_loops.cli.loop.runner.run_background", fake_run_background)
 
     try:
         with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:

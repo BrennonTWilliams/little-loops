@@ -222,7 +222,7 @@ class TestCrossHostBackgroundForwarding:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """--cross-host is appended to the background subprocess command."""
-        from little_loops.cli.loop._helpers import run_background
+        from little_loops.cli.loop.runner import run_background
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
@@ -285,7 +285,7 @@ class TestCrossHostBackgroundForwarding:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """--cross-host is NOT added to background cmd when False."""
-        from little_loops.cli.loop._helpers import run_background
+        from little_loops.cli.loop.runner import run_background
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
@@ -370,7 +370,7 @@ class TestRunCrossHostValidation:
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
         """When only one host is available, prints a skip notice and returns."""
-        from little_loops.cli.loop._helpers import _run_cross_host_validation
+        from little_loops.cli.loop.summary import _run_cross_host_validation
 
         primary_dir = tmp_path / "runs" / "my-loop-001"
         primary_ab = _write_ab(primary_dir, _make_ab_results(harness_wins=True))
@@ -393,7 +393,7 @@ class TestRunCrossHostValidation:
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
         """Subprocess is called with LL_HOST_CLI set to the second host."""
-        from little_loops.cli.loop._helpers import _run_cross_host_validation
+        from little_loops.cli.loop.summary import _run_cross_host_validation
 
         primary_dir = tmp_path / "runs" / "my-loop-001"
         primary_ab = _write_ab(primary_dir, _make_ab_results(harness_wins=True))
@@ -432,7 +432,7 @@ class TestRunCrossHostValidation:
 
     def test_comparison_table_printed(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Comparison table includes per-host pass rates and CIs."""
-        from little_loops.cli.loop._helpers import _run_cross_host_validation
+        from little_loops.cli.loop.summary import _run_cross_host_validation
 
         primary_dir = tmp_path / "runs" / "my-loop-001"
         primary_ab = _write_ab(primary_dir, _make_ab_results(harness_wins=True, n=10))
@@ -467,7 +467,7 @@ class TestRunCrossHostValidation:
 
     def test_ordering_reversal_warning(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Warns when harness/baseline quality ordering reverses between hosts."""
-        from little_loops.cli.loop._helpers import _run_cross_host_validation
+        from little_loops.cli.loop.summary import _run_cross_host_validation
 
         # Primary: harness wins (delta > 0)
         primary_dir = tmp_path / "runs" / "my-loop-001"
@@ -500,7 +500,7 @@ class TestRunCrossHostValidation:
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
         """No reversal warning when both hosts agree on which arm wins."""
-        from little_loops.cli.loop._helpers import _run_cross_host_validation
+        from little_loops.cli.loop.summary import _run_cross_host_validation
 
         primary_dir = tmp_path / "runs" / "my-loop-001"
         primary_ab = _write_ab(primary_dir, _make_ab_results(harness_wins=True, n=10))
@@ -531,7 +531,7 @@ class TestRunCrossHostValidation:
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
         """When second-host run fails, prints a message and returns without crashing."""
-        from little_loops.cli.loop._helpers import _run_cross_host_validation
+        from little_loops.cli.loop.summary import _run_cross_host_validation
 
         primary_dir = tmp_path / "runs" / "my-loop-001"
         primary_ab = _write_ab(primary_dir, _make_ab_results(harness_wins=True))
@@ -559,7 +559,7 @@ class TestRunCrossHostValidation:
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
         """If second run produces no ab.json, prints a message and returns cleanly."""
-        from little_loops.cli.loop._helpers import _run_cross_host_validation
+        from little_loops.cli.loop.summary import _run_cross_host_validation
 
         primary_dir = tmp_path / "runs" / "my-loop-001"
         primary_ab = _write_ab(primary_dir, _make_ab_results(harness_wins=True))
@@ -585,7 +585,7 @@ class TestRunCrossHostValidation:
 
     def test_baseline_skill_forwarded_to_subprocess(self, tmp_path: Path) -> None:
         """--baseline-skill value is forwarded to the second-host subprocess command."""
-        from little_loops.cli.loop._helpers import _run_cross_host_validation
+        from little_loops.cli.loop.summary import _run_cross_host_validation
 
         primary_dir = tmp_path / "runs" / "my-loop-001"
         primary_ab = _write_ab(primary_dir, _make_ab_results(harness_wins=True))

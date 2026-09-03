@@ -681,7 +681,7 @@ def _tool_loop_start(arguments: dict[str, Any], *, project_root: Path) -> Any:
     from types import SimpleNamespace
     from typing import cast
 
-    from little_loops.cli.loop._helpers import run_background
+    from little_loops.cli.loop.runner import run_background
     from little_loops.mcp_server.tasks import _loops_dir, mint_start_instance_id
 
     loop_name = str(arguments.get("loop") or "").strip()

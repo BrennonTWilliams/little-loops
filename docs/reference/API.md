@@ -4398,12 +4398,12 @@ Entry point for `ll-loop` command. FSM-based automation loop execution.
 
 When `ll-loop run` is executing a loop in the foreground, the process
 registers POSIX signal handlers for `SIGINT` (Ctrl-C) and `SIGTERM`
-(`scripts/little_loops/cli/loop/_helpers.py:157-173`). The contract is:
+(`scripts/little_loops/cli/loop/signals.py`). The contract is:
 
 | Signal | Behavior |
 |--------|----------|
 | `SIGINT` (1st) / `SIGTERM` | Graceful shutdown: the executor completes its current state, then `PersistentExecutor.run` calls `archive_run()`. The audit trail (`events.jsonl`, `state.json`, `.history/<run_id>-<loop_name>/` archive) is complete. Exit code: `0`. |
-| `SIGINT` (2nd) | Force-exit: the signal handler calls `archive_run_only(terminated_by="interrupted_force")` *before* `sys.exit(1)` (ENH-2516, `scripts/little_loops/cli/loop/_helpers.py:103-107`). The `.history/<run_id>-<loop_name>/` archive still lands. Exit code: `1`. |
+| `SIGINT` (2nd) | Force-exit: the signal handler calls `archive_run_only(terminated_by="interrupted_force")` *before* `sys.exit(1)` (ENH-2516, `scripts/little_loops/cli/loop/signals.py`). The `.history/<run_id>-<loop_name>/` archive still lands. Exit code: `1`. |
 | `SIGKILL` (`kill -9`) | **Cannot be trapped.** Data already written via `_append_jsonl` (ENH-2515, `scripts/little_loops/fsm/persistence.py:129-145`) is durable, but the `.history/<run_id>-<loop_name>/` archive and the final `state.json` snapshot may not land. To prevent silent data loss, run `ll-loop run` under a supervisor (`systemd`, `supervisord`), a terminal multiplexer (`tmux`, `screen`), or `nohup` so the loop receives `SIGTERM` (which is trap-able) on shutdown rather than `SIGKILL`. |
 
 The end-to-end SIGINT contract is locked by
@@ -10115,7 +10115,7 @@ def project_child_env(
 
 **Behavior:**
 
-Default behavior is byte-identical to the pre-ENH-3184 status quo: full inheritance of the parent's `os.environ`, with `invocation.env` (when *invocation* is given) merged over it, then *extra* (for one-off keys a call site adds beyond what the `HostInvocation` carries, e.g. `LL_HOST_CLI` at `cli/loop/_helpers.py`) merged over that. Absence of a key at any layer means "inherit the parent's value" — this helper provides no way to clear or deny an inherited variable; that's deliberately out of scope (see ENH-3203).
+Default behavior is byte-identical to the pre-ENH-3184 status quo: full inheritance of the parent's `os.environ`, with `invocation.env` (when *invocation* is given) merged over it, then *extra* (for one-off keys a call site adds beyond what the `HostInvocation` carries, e.g. `LL_HOST_CLI` at `cli/loop/summary.py`) merged over that. Absence of a key at any layer means "inherit the parent's value" — this helper provides no way to clear or deny an inherited variable; that's deliberately out of scope (see ENH-3203).
 
 `invocation` is optional because two `bash -c` task-path spawns (`fsm/runners.py`'s `DefaultActionRunner` shell branch, `runner_spec.py::_run_cmd()`) never construct a `HostInvocation` at all — `project_child_env()` with no `invocation` is exactly today's implicit inheritance, made explicit and interceptable at this one seam.
 
@@ -12520,7 +12520,7 @@ def format_verify_detail(
 ) -> str
 ```
 
-Captures the diagnostic *tail* of a failed verify command (ENH-2641). Combines both streams in `stderr + stdout` order (matching the `merge_coordinator.py` idiom) so stdout — which carries pytest's `=== short test summary info ===` / `FAILED …` lines — lands at the tail rather than being dropped, then keeps the last `max_lines` lines bounded to `max_chars` (mirrors the scrollback cap in `cli/loop/_helpers.py`). Fixes BUG-2640, where the prior first-500-char prefix of `stderr or stdout` preferred stderr (pytest-benchmark/xdist warning banners) and clipped its head, losing the real failure summary.
+Captures the diagnostic *tail* of a failed verify command (ENH-2641). Combines both streams in `stderr + stdout` order (matching the `merge_coordinator.py` idiom) so stdout — which carries pytest's `=== short test summary info ===` / `FAILED …` lines — lands at the tail rather than being dropped, then keeps the last `max_lines` lines bounded to `max_chars` (mirrors the scrollback cap in `cli/loop/runner.py`). Fixes BUG-2640, where the prior first-500-char prefix of `stderr or stdout` preferred stderr (pytest-benchmark/xdist warning banners) and clipped its head, losing the real failure summary.
 
 **Returns:** The bounded diagnostic tail string.
 

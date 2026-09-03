@@ -242,7 +242,7 @@ def test_ac3_loop_start_denied_over_stdio_and_no_process_spawned(tmp_path, monke
         spawned.append(loop_name)
         return 0
 
-    monkeypatch.setattr("little_loops.cli.loop._helpers.run_background", fake_run_background)
+    monkeypatch.setattr("little_loops.cli.loop.runner.run_background", fake_run_background)
 
     async def run() -> None:
         server = build_server(transport="stdio")

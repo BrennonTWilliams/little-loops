@@ -55,7 +55,7 @@ def _fragments_dir(log_path: Path) -> Path:
 def _load_fragments(frag_dir: Path) -> list[AnyEntry]:
     """Read every ``*.json`` fragment in *frag_dir*, skipping malformed ones.
 
-    Mirrors ``cli/loop/_helpers.py::read_queue_entries()`` malformed-skip
+    Mirrors ``cli/loop/queue.py::read_queue_entries()`` malformed-skip
     semantics: a bad fragment (unparseable JSON, missing ``id``, unknown
     ``type``, or unreadable) is silently skipped rather than propagating an
     uncaught error out of ``load_decisions()``. Entries are returned sorted by

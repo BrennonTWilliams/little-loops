@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from little_loops.cli.loop._helpers import _print_usage_summary
+from little_loops.cli.loop.summary import _print_usage_summary
 
 
 def _make_usage_jsonl(path: Path, rows: list[dict]) -> None:

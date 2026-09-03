@@ -14,14 +14,14 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
-from little_loops.cli.loop._helpers import (
+from little_loops.cli.loop.feed import with_diagram_color
+from little_loops.cli.loop.queue import _is_earliest_waiter
+from little_loops.cli.loop.runner import (
     _make_instance_id,
     print_execution_plan,
     run_background,
     run_foreground,
 )
-from little_loops.cli.loop.feed import with_diagram_color
-from little_loops.cli.loop.queue import _is_earliest_waiter
 from little_loops.cli.loop.signals import register_loop_signal_handlers
 from little_loops.fsm.context_seed import inject_design_context, seed_confidence_thresholds
 from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes

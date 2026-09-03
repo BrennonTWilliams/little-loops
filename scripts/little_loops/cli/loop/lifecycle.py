@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from little_loops.cli.loop._helpers import run_background
+from little_loops.cli.loop.runner import run_background
 from little_loops.cli.loop.signals import register_loop_signal_handlers
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.fsm.context_seed import inject_design_context, seed_confidence_thresholds
@@ -740,7 +740,7 @@ def cmd_resume(
     # display-callback wiring that cmd_run gets via run_foreground. Without this
     # the FSM event bus has no subscriber on a resumed run, leaving the terminal
     # silent for the entire duration (no per-iteration lines, no FSM diagram).
-    from little_loops.cli.loop._helpers import run_foreground
+    from little_loops.cli.loop.runner import run_foreground
 
     _edge_label_colors = config.cli.colors.fsm_edge_labels.to_dict()
     _highlight_color = config.cli.colors.fsm_active_state

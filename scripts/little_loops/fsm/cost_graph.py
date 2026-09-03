@@ -87,7 +87,7 @@ class PerStateCost:
 
         Preserves the byte-identical column order/width of the legacy
         ``_print_usage_summary`` printer at
-        ``cli/loop/_helpers.py:1717-1724`` so the 8 existing
+        ``cli/loop/runner.py`` so the 8 existing
         ``TestPrintUsageSummary`` scenarios remain green.
 
         Columns: state (24w left), invoc (5w right), input (8w right),
@@ -126,7 +126,7 @@ class CostReport:
         """Render the existing CLI cost table (byte-identical to legacy output).
 
         Header and separator line widths match the original
-        ``_print_usage_summary`` at ``cli/loop/_helpers.py:1717-1718``:
+        ``_print_usage_summary`` at ``cli/loop/summary.py``:
         the separator is ``"-" * 68``. Rows are sorted by state name.
         """
         lines: list[str] = []

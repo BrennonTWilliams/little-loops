@@ -1874,7 +1874,7 @@ def project_child_env(
     full inheritance of the parent's ``os.environ``, with ``invocation.env``
     (when *invocation* is given) merged over it, then *extra* (for one-off
     keys a call site adds beyond what the ``HostInvocation`` carries, e.g.
-    ``LL_HOST_CLI`` at ``cli/loop/_helpers.py``) merged over that. Absence of
+    ``LL_HOST_CLI`` at ``cli/loop/summary.py``) merged over that. Absence of
     a key at any layer means "inherit the parent's value" — this helper
     provides no way to clear or deny an inherited variable; that is
     deliberately out of scope (see ENH-3203).

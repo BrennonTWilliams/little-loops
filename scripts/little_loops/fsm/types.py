@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 # exits with this distinct code, so shell scripts, cron wrappers and any
 # subprocess caller of `ll-loop run` can tell a failed loop from a successful
 # one. Kept separate from 1 (which covers the infra/limit terminations in
-# cli/loop/_helpers.py::EXIT_CODES) so callers can distinguish "the loop ran
+# cli/loop/runner.py::EXIT_CODES) so callers can distinguish "the loop ran
 # and reported failure" from "the loop never reached a terminal at all".
 # Lives here, not in cli/, so low-level consumers (parallel/, learning_tests/)
 # can import it without pulling in the CLI package.

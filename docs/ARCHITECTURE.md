@@ -158,7 +158,7 @@ little-loops/
         │   ├── output.py            # Shared CLI output utilities (colors, terminal width)
         │   ├── sprint/
         │   │   ├── __init__.py      # Entry point (main_sprint) + argparse
-        │   │   ├── _helpers.py      # Shared utilities
+        │   │   ├── _helpers.py      # Shared utilities (cli/sprint's own — unrelated to cli/loop)
         │   │   ├── create.py        # create subcommand
         │   │   ├── edit.py          # edit subcommand
         │   │   ├── manage.py        # delete, analyze subcommands
@@ -180,8 +180,13 @@ little-loops/
         │   │   └── epic_progress.py # epic-progress subcommand
         │   ├── loop/
         │   │   ├── __init__.py      # Entry point (main_loop) + argparse
-        │   │   ├── _helpers.py      # Shared utilities
         │   │   ├── run.py           # run subcommand
+        │   │   ├── runner.py        # background/foreground run orchestration, dry-run plan
+        │   │   ├── signals.py       # SIGINT/SIGTERM/SIGWINCH handling
+        │   │   ├── feed.py          # diagram/pinned-pane rendering + StateFeedRenderer
+        │   │   ├── header.py        # artifact/path header helpers
+        │   │   ├── summary.py       # run-completion summary printing (usage/A-B/cross-host)
+        │   │   ├── queue.py         # process-backed run queue
         │   │   ├── config_cmds.py   # validate, install
         │   │   ├── lifecycle.py     # status, stop, resume
         │   │   ├── info.py          # list, history, show

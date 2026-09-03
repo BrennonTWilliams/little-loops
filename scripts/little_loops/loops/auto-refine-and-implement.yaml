@@ -1153,7 +1153,7 @@ states:
       # BUG-2636: route the FSM terminal on the REAL outcome, not just "reached the
       # end". `ll-loop` derives success purely from the terminal state's NAME —
       # any terminal != `done` renders orange and surfaces this state's stdout as
-      # the failure reason (cli/loop/_helpers.py `_is_success`). Previously
+      # the failure reason (cli/loop/runner.py; no `_is_success` function exists — stale citation). Previously
       # finalize unconditionally routed to `done`, so a phantom run (attempted
       # work, closed nothing, left issues parked/not-closed/in-flight/errored)
       # reported green "done" — the exact mis-signal behind run 20260713T190717.

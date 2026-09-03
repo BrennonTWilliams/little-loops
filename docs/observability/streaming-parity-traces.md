@@ -55,8 +55,8 @@ reconciliation layer:
 1. `scripts/little_loops/fsm/persistence.py:710-727` — writer
 2. `scripts/little_loops/fsm/cost_graph.py:184-254` —
    `CostReport.from_usage_jsonl(...)` reader
-3. `scripts/little_loops/cli/loop/_helpers.py:1699-1702` →
-   `_print_usage_summary` at `:1742` — CLI table aggregator
+3. `scripts/little_loops/cli/loop/summary.py` →
+   `_print_usage_summary` — CLI table aggregator
 
 ## Test Strategy
 

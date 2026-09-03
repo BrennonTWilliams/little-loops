@@ -101,7 +101,7 @@ def mint_start_instance_id(loop_name: str, loops_dir: Path) -> str:
     check-and-bumps against `.running/` so the returned id is guaranteed free of
     both PID and state files at mint time.
     """
-    from little_loops.cli.loop._helpers import _make_instance_id
+    from little_loops.cli.loop.runner import _make_instance_id
 
     running_dir = loops_dir / ".running"
     base = _make_instance_id(loop_name)

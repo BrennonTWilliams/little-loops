@@ -485,7 +485,7 @@ states:
         (loops_dir / "test-background.yaml").write_text(loop_content)
 
         monkeypatch.chdir(tmp_path)
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 12345
             with patch.object(sys, "argv", ["ll-loop", "run", "test-background", "--background"]):
                 from little_loops.cli import main_loop

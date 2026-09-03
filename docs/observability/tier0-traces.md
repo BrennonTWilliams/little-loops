@@ -137,7 +137,7 @@ The fixture's per-state aggregates and totals are computed via the
 canonical consumer at
 `scripts/little_loops/fsm/cost_graph.py:CostReport.from_usage_jsonl`
 (`cost_graph.py:184-254`). The CLI table aggregator at
-`scripts/little_loops/cli/loop/_helpers.py:1742-1767`
+`scripts/little_loops/cli/loop/summary.py`
 (`_print_usage_summary`) is a thin delegator that calls
 `CostReport.from_usage_jsonl` and prints the pre-sorted table.
 
@@ -227,7 +227,7 @@ Downstream consumers of this fixture:
 
 - `scripts/little_loops/fsm/cost_graph.py:184-254` — `CostReport.from_usage_jsonl` (canonical aggregator)
 - `scripts/little_loops/fsm/cost_graph.py:71-82` — `PerStateCost.to_dict` (locked per-state shape)
-- `scripts/little_loops/cli/loop/_helpers.py:1742-1767` — `_print_usage_summary` (thin delegating wrapper)
+- `scripts/little_loops/cli/loop/summary.py` — `_print_usage_summary` (thin delegating wrapper)
 - `scripts/little_loops/pricing.py:15-80` — `MODEL_PRICING` constants
 - `scripts/tests/test_tier0_traces.py` — regression test gate
 - `scripts/tests/fixtures/policy_builder/conformance_corpus.json` — closest analog precedent (top-level indexed case-list)

@@ -612,7 +612,7 @@ def format_verify_detail(
     ``merge_coordinator.py`` idiom) so stdout — carrying the failure summary —
     lands at the tail, then keep the last ``max_lines`` lines bounded to
     ``max_chars`` (mirrors the ``splitlines()[-N:]`` scrollback cap in
-    ``cli/loop/_helpers.py``).
+    ``cli/loop/runner.py``).
     """
     combined = "\n".join(s for s in (stderr or "", stdout or "") if s.strip())
     tail = "\n".join(combined.splitlines()[-max_lines:]).strip()

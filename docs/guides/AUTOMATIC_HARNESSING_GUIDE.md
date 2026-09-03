@@ -1146,7 +1146,7 @@ two output strings.
 When validating or running a harness under `ll-loop run`, know how the
 loop reacts to POSIX signals — the audit trail's durability depends on
 it. The signal handlers live at
-`scripts/little_loops/cli/loop/_helpers.py:121-172` and are registered
+`scripts/little_loops/cli/loop/signals.py` and are registered
 for both `SIGINT` and `SIGTERM`.
 
 ### First Ctrl-C (or `SIGTERM`) — graceful shutdown
@@ -1164,7 +1164,7 @@ current state, then `PersistentExecutor.run`'s post-block calls
 
 If a second `SIGINT` arrives while the loop is still shutting down, the
 handler takes a force-exit branch (ENH-2516, in the
-`scripts/little_loops/cli/loop/_helpers.py` module around lines 126–148) that calls
+`scripts/little_loops/cli/loop/signals.py` module) that calls
 `PersistentExecutor.archive_run_only(terminated_by="interrupted_force")`
 *before* `sys.exit(1)`. The `.history/<run_id>-<loop_name>/` archive
 still lands. Exit code: `1`. This is the user-visible contract that

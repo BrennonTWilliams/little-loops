@@ -211,9 +211,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 42
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             result = run_background("my-loop", args, loops_dir)
 
@@ -238,9 +238,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 99
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -263,9 +263,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 99
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -287,9 +287,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -307,9 +307,9 @@ class TestRunBackground:
             max_steps=None, max_iterations=5, no_llm=False, llm_model=None, quiet=False, queue=False
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -327,9 +327,9 @@ class TestRunBackground:
             max_iterations=None, no_llm=True, llm_model=None, quiet=False, queue=False
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -351,9 +351,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -376,9 +376,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 7
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir, subcommand="resume")
 
@@ -401,9 +401,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -425,9 +425,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -449,9 +449,9 @@ class TestRunBackground:
             context=["issue_id=042", "mode=fast"],
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -476,9 +476,9 @@ class TestRunBackground:
             context=[],
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -500,9 +500,9 @@ class TestRunBackground:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 555
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -527,9 +527,9 @@ class TestRunBackground:
             handoff_threshold=40,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -552,9 +552,9 @@ class TestRunBackground:
             handoff_threshold=None,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -578,9 +578,9 @@ class TestRunBackground:
             program_md=program_md_path,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -603,9 +603,9 @@ class TestRunBackground:
             input="ENH-571",
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -630,9 +630,9 @@ class TestRunBackground:
             input=None,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -659,9 +659,9 @@ class TestRunBackground:
             program_md=None,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -691,9 +691,9 @@ class TestRunBackground:
         )
 
         with patch.object(LockManager, "_get_ancestry", return_value=set()):
-            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
                 mock_popen.return_value.pid = 42
-                from little_loops.cli.loop._helpers import run_background
+                from little_loops.cli.loop.runner import run_background
 
                 result = run_background("my-loop", args, loops_dir)
 
@@ -721,9 +721,9 @@ class TestRunBackground:
         )
 
         with patch.object(LockManager, "_get_ancestry", return_value=set()):
-            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
                 mock_popen.return_value.pid = 42
-                from little_loops.cli.loop._helpers import run_background
+                from little_loops.cli.loop.runner import run_background
 
                 result = run_background("my-loop", args, loops_dir)
 
@@ -753,9 +753,9 @@ class TestRunBackground:
         )
 
         with patch.object(LockManager, "_get_ancestry", return_value=set()):
-            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
                 mock_popen.return_value.pid = 42
-                from little_loops.cli.loop._helpers import run_background
+                from little_loops.cli.loop.runner import run_background
 
                 result = run_background("my-loop", args, loops_dir)
 
@@ -788,9 +788,9 @@ class TestRunBackground:
             context_limit=None,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 42
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -841,10 +841,10 @@ class TestRunBackground:
             context_limit=None,
         )
 
-        with patch("little_loops.cli.loop._helpers.load_loop", return_value=mock_fsm):
-            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.load_loop", return_value=mock_fsm):
+            with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
                 mock_popen.return_value.pid = 42
-                from little_loops.cli.loop._helpers import run_background
+                from little_loops.cli.loop.runner import run_background
 
                 result = run_background("rn-refine", args, loops_dir)
 
@@ -898,11 +898,11 @@ class TestRunBackground:
             context_limit=None,
         )
 
-        with patch("little_loops.cli.loop._helpers.load_loop", return_value=mock_fsm):
+        with patch("little_loops.cli.loop.runner.load_loop", return_value=mock_fsm):
             with patch.object(LockManager, "_get_ancestry", return_value=set()):
-                with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+                with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
                     mock_popen.return_value.pid = 42
-                    from little_loops.cli.loop._helpers import run_background
+                    from little_loops.cli.loop.runner import run_background
 
                     result = run_background("rn-refine", args, loops_dir)
 
@@ -927,9 +927,9 @@ class TestRunBackground:
             baseline=True,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -951,9 +951,9 @@ class TestRunBackground:
             baseline=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -975,9 +975,9 @@ class TestRunBackground:
             baseline_skill="my-optimize-skill",
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -1004,9 +1004,9 @@ class TestRunBackground:
             cost_output_json=tmp_path / "per-state.json",
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -1029,9 +1029,9 @@ class TestRunBackground:
             cost_output_json=None,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -1053,9 +1053,9 @@ class TestRunBackground:
             items=5,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 
@@ -1337,9 +1337,9 @@ class TestMainModuleEntryPoint:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 99
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             result = run_background("generated/test", args, loops_dir)
 
@@ -1384,14 +1384,14 @@ class TestMakeInstanceId:
         """Instance ID must match <loop_name>-YYYYMMDDTHHMMSS format."""
         import re
 
-        from little_loops.cli.loop._helpers import _make_instance_id
+        from little_loops.cli.loop.runner import _make_instance_id
 
         result = _make_instance_id("autodev")
         assert re.match(r"^autodev-\d{8}T\d{6}$", result), f"Unexpected format: {result!r}"
 
     def test_embeds_loop_name_prefix(self) -> None:
         """Instance ID must begin with the loop name."""
-        from little_loops.cli.loop._helpers import _make_instance_id
+        from little_loops.cli.loop.runner import _make_instance_id
 
         result = _make_instance_id("my-loop")
         assert result.startswith("my-loop-")
@@ -1405,7 +1405,7 @@ class TestMakeInstanceId:
         """
         from datetime import datetime
 
-        from little_loops.cli.loop import _helpers
+        from little_loops.cli.loop import runner as _helpers
 
         instants = iter(
             [
@@ -1453,9 +1453,9 @@ class TestRunBackgroundInstanceIdForwarding:
             queue=False,
         )
 
-        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+        with patch("little_loops.cli.loop.runner.subprocess.Popen") as mock_popen:
             mock_popen.return_value.pid = 1
-            from little_loops.cli.loop._helpers import run_background
+            from little_loops.cli.loop.runner import run_background
 
             run_background("my-loop", args, loops_dir)
 

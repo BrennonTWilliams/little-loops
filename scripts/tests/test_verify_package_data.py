@@ -109,7 +109,7 @@ class TestFileDepth:
     def test_two_subdir_file(self, tmp_path: Path) -> None:
         pkg = _make_pkg(tmp_path)
         (pkg / "cli" / "loop").mkdir(parents=True)
-        f = pkg / "cli" / "loop" / "_helpers.py"
+        f = pkg / "cli" / "loop" / "runner.py"
         f.touch()
         assert _file_depth(f, pkg) == 2
 
@@ -159,10 +159,10 @@ class TestLintFile:
         assert result.violations[0].depth == 1
 
     def test_no_violation_helpers_pattern(self, tmp_path: Path) -> None:
-        """depth=2, .parent×3 → count=3 → 3 > 3 is False → NOT flagged (_helpers.py pattern)."""
+        """depth=2, .parent×3 → count=3 → 3 > 3 is False → NOT flagged (runner.py pattern)."""
         pkg = _make_pkg(tmp_path)
         (pkg / "cli" / "loop").mkdir(parents=True)
-        f = pkg / "cli" / "loop" / "_helpers.py"
+        f = pkg / "cli" / "loop" / "runner.py"
         self._write(f, "loops_dir = Path(__file__).parent.parent.parent / 'loops'\n")
         result = _lint_file(f, pkg)
         assert not result.has_violations
