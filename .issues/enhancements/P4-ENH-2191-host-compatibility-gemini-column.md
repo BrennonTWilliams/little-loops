@@ -1,6 +1,6 @@
 ---
 id: ENH-2191
-title: HOST_COMPATIBILITY.md Gemini column — populate cells as children land
+title: "HOST_COMPATIBILITY.md Gemini column \u2014 populate cells as children land"
 type: enhancement
 status: open
 priority: P4
@@ -14,7 +14,7 @@ depends_on:
 - FEAT-2190
 - FEAT-2259
 - FEAT-2260
-captured_at: "2026-06-15T00:00:00Z"
+captured_at: '2026-06-15T00:00:00Z'
 discovered_date: 2026-06-15
 discovered_by: capture-issue
 labels:
@@ -22,6 +22,12 @@ labels:
 - host-compat
 - docs
 verify_verdict: VALID
+confidence_score: 95
+outcome_confidence: 89
+score_complexity: 24
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-2191: HOST_COMPATIBILITY.md Gemini column — populate cells as children land
@@ -126,7 +132,33 @@ This issue should be updated incrementally as children land. Final pass:
 
 - 2026-08-16: Tracking issue substance is accurate — Gemini column still has open deferred cells pending FEAT-2186/FEAT-2190, both still open. The Cell Update Map table remains stale relative to since-landed dependencies and needs a reconciliation pass; not attempted here. Verdict: NEEDS_UPDATE.
 
+- **2026-09-02** (`/ll:verify-issues`): All 8 `depends_on` issues are now
+  `done` — FEAT-2186 and FEAT-2190 both completed today, so this issue is
+  fully unblocked for the first time. The previous note's "FEAT-2186/FEAT-2190
+  still open" claim is now stale. Doc reality check against
+  `docs/reference/HOST_COMPATIBILITY.md`: **Slash-command discovery** (line
+  211) and **Skill discovery** (line 212) still read `(deferred)[^gemini]`,
+  but `scripts/little_loops/adapters/gemini.py:68` (`GeminiEmitter`) confirms
+  both are implemented (`.gemini/skills/<name>/SKILL.md`,
+  `.gemini/commands/<stem>.toml`), and the doc's own "Adapter Host
+  Capabilities" table (line 390) already shows ✓ for gemini skill/command
+  output — these two cells are stale and need to flip to ✓. The `[^gemini]`
+  footnote (line 152) still says `GEMINI.md` project instructions (FEAT-2190)
+  "is still pending" — also stale now. `pre_compact_handoff` (line 75) stays
+  correctly `(deferred)` uniformly across every host, not gemini-specifically,
+  so it's rightly excluded from this issue's Cell Update Map.
+  `json_schema`/Token reporting ✗[^gemini] cells (lines 259, 261) are
+  legitimate ✗ gaps outside this issue's map — no action needed. Still
+  unresolved from 2026-08-10: the Cell Update Map's "Project instructions ✓
+  (GEMINI.md)" row has no corresponding row in the actual doc table — map
+  needs reconciliation against the doc's real structure. Verdict:
+  NEEDS_UPDATE — issue is accurate and now fully actionable; the doc edit
+  itself (flip 2 cells + footnote + map reconciliation) is out of scope for
+  verification and remains to be done.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-03T02:10:48 - `530a68c3-069b-4c6c-b3fd-b695a90a9e2c.jsonl`
+- `/ll:verify-issues` - 2026-09-03T02:08:14 - `1a5710fd-de34-4cc6-b93d-c2bb79974725.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:11 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
