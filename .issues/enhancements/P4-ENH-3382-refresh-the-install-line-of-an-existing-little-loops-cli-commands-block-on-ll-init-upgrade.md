@@ -149,11 +149,15 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 ### Decision Rules
 - New gate: refresh fires only when `refresh is True` **and** the canonical `## little-loops CLI Commands` heading is found at a line start in `existing`. Inputs: `refresh: bool`, `existing: str`. Bound: from that heading line through the character before the next line starting with `## ` (H2, trailing space) or EOF. Escape hatch: `refresh=False` (the default, and what plain `ll-init` and the TUI pass) preserves the current marker-present noop exactly.
+- **Blank-line separator is preserved.** The region above swallows any blank lines between the old block and the next `## ` heading, and the rendered block ends with exactly one `\n` after the `Install:` line. The splice therefore re-emits one `"\n"` after the block whenever a following heading exists; otherwise the result reads `Install: \`…\`\n## Next Section` with no blank line. The idempotency fixture must place a user section *after* the block so this is exercised.
+- **No-op refresh returns `False` and does not write.** When the spliced text equals `existing` byte-for-byte (block already current), the writer returns `False` without calling `atomic_write` and without emitting `info(...)`, mirroring the existing "unchanged mtime" contract. Otherwise every `--upgrade` prints three spurious `update …` lines and bumps three mtimes. Pinned by a test asserting mtime unchanged and `False` on the second refresh.
+- **Heading match tolerates trailing whitespace and CRLF.** The heading is located by `line.rstrip() == "## little-loops CLI Commands"`, not by searching for `"## little-loops CLI Commands\n"`. Otherwise a CRLF file silently falls into the marker-present-no-heading branch and is never refreshed. The rest of the file's line endings are not normalized.
+- **Hand edits inside the block are discarded.** `--upgrade` replaces the block wholesale; customized descriptions or notes placed under the `Install:` line are lost. This is deliberate (the block is generated content, and refresh is opt-in via `--upgrade`), and must be stated in the `--upgrade` help text and the GETTING_STARTED row rather than left implicit.
 
 ## Scope Boundaries
 
 - **In scope**: `write_claude_md()`, `write_agents_md()`, `write_gemini_md()` gaining a `refresh` kwarg; `_run_yes()` and `_run_apply()` passing `refresh` from `upgrade`/`plan["requested_upgrade"]`; splicing the block bounded from the `## little-loops CLI Commands` heading to the next `## ` heading or EOF.
-- **Out of scope**: changes to `_render_commands_block()` itself (BUG-3380 already owns the per-`install_source` `Install:` line); refreshing any other CLAUDE.md/AGENTS.md/GEMINI.md content outside the marked block; behavior of plain `ll-init` without `--upgrade` (stays a no-op).
+- **Out of scope**: changes to `_render_commands_block()` itself (BUG-3380 already owns the per-`install_source` `Install:` line); refreshing any other CLAUDE.md/AGENTS.md/GEMINI.md content outside the marked block; behavior of plain `ll-init` without `--upgrade` (stays a no-op); preserving hand edits made inside the block (the block is generated content and is replaced wholesale on `--upgrade`); normalizing line endings of the surrounding file; extracting `decisions_sync.sync_to_local_md()`'s inline splice into a shared helper.
 
 ## Implementation Steps
 
@@ -162,11 +166,14 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 - Each of `write_claude_md()`, `write_agents_md()`, `write_gemini_md()` (`scripts/little_loops/init/writers.py:585-761`) accepts `refresh: bool = False`; with it off, every existing `TestWriteClaudeMd`/`TestWriteAgentsMd`/`TestWriteGeminiMd` case in `scripts/tests/test_init_core.py:1445-1821` passes unchanged.
-- With `refresh=True` and the canonical heading present, the region from `## little-loops CLI Commands` (line-anchored) to the next `## ` heading or EOF is replaced by the output of `_render_commands_block()` for the supplied `install_source`/`install_path`; content before and after the region is byte-identical; a second refresh with the same inputs is a byte-for-byte no-op. Verified by a per-writer test placed alongside the existing noop tests that asserts the old `Install:` line is gone, the new one is present, surrounding content is unchanged, and that the file is stable across two refreshes.
+- A single private `_splice_commands_block(existing, block) -> str | None` helper in `writers.py` (see Program Design → Splice Helper) implements the heading-bounded replace once; the three writers call it rather than each carrying its own copy.
+- With `refresh=True` and the canonical heading present, the region from `## little-loops CLI Commands` (line-anchored, matched via `rstrip()` so trailing whitespace/CRLF still hit) to the next `## ` heading or EOF is replaced by the output of `_render_commands_block()` for the supplied `install_source`/`install_path`, with its leading `\n` stripped and one `\n` separator re-emitted before a following heading; content before and after the region is byte-identical; a second refresh with the same inputs returns `False`, does not write, and leaves mtime unchanged. Verified by a per-writer test placed alongside the existing noop tests whose fixture has a user `## ` section *after* the block and asserts the old `Install:` line is gone, the new one is present, surrounding content (including the blank line before the following section) is unchanged, and the second refresh is a `False`/unchanged-mtime no-op.
+- A CRLF-file case (`"## little-loops CLI Commands\r\n"`) is refreshed rather than silently skipped; pinned by one test per writer or a parametrized case on the helper.
 - With `refresh=True` and the marker present but no canonical heading line (the `"## little-loops section here."` fixture at test_init_core.py:1506), the writer's outcome is defined and tested; the only outcome that keeps that fixture's existing assertion green is unchanged-file, `False`.
 - With `refresh=True, dry_run=True` the file is not written and the would-be refresh is reported via `info(...)`; `test_dry_run_noop_when_section_present` (test_init_core.py:1532) keeps passing for the default.
 - `_run_yes()` passes `refresh=upgrade` at its three writer calls (`scripts/little_loops/init/cli.py:707-728`) and `_run_apply()` passes `refresh=bool(plan.get("requested_upgrade"))` at :942-963; `_apply_config()` (tui.py:900-909) is left untouched. Covered by a `main_init(["--yes", "--upgrade", ...])`-driven test next to `test_yes_upgrades_when_pypi_stale_with_upgrade_flag` (test_init_core.py:2651) and an apply-side test next to `test_apply_honors_requested_upgrade` (`scripts/tests/test_init_audit_fixes.py:488`), each seeding a stale `Install:` line and asserting the refreshed one; a no-`--upgrade` counterpart asserts the stale line survives.
-- `docs/guides/GETTING_STARTED.md:101` and `docs/reference/CLI.md` (`ll-init`, :35-84) state that `--upgrade` also refreshes the commands block in CLAUDE.md/AGENTS.md/GEMINI.md.
+- `docs/guides/GETTING_STARTED.md:101` and `docs/reference/CLI.md` (`ll-init`, :35-84) state that `--upgrade` also refreshes the commands block in CLAUDE.md/AGENTS.md/GEMINI.md, and say explicitly that the block is replaced wholesale (hand edits inside it are not preserved).
+- Dry-run message for the refresh path: `info(f"update {rel} (refresh ## little-loops CLI Commands)")`, distinct from the append path's `(append …)` wording so `--dry-run` output distinguishes the two.
 - `python -m pytest scripts/tests/test_init_core.py scripts/tests/test_init_audit_fixes.py` exits 0.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -174,7 +181,7 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Update `skills/init/SKILL.md` § "5. Handle `--upgrade`" — reflect that `requested_upgrade` now also drives the commands-block refresh, not just host adapters
-- Update `scripts/little_loops/init/cli.py::main_init()` — the `--upgrade` argparse help string and the "Scope of `--force`" epilog text, both of which currently state the pre-refresh contract
+- Update `scripts/little_loops/init/cli.py::main_init()` — the `--upgrade` argparse help string (:1105-1110) and the "Scope of `--force`" epilog text (:1019, `"Does NOT rewrite a ## little-loops section already present…"`), both of which currently state the pre-refresh contract; the `--upgrade` help must mention that the commands block is replaced wholesale
 - Add `scripts/tests/test_init_tui.py::TestApplyConfigInstallSource` — a regression test seeding a stale `Install:` line and asserting it survives `_apply_config()` unchanged (TUI path stays `refresh=False`)
 - Add `**ENH-3382**: ...` under `### Changed` in `CHANGELOG.md` during release prep
 
@@ -195,6 +202,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-09-03 | Priority: P4
 
+
+## Review Notes
+
+_Pre-implementation review — 2026-09-02:_
+
+- BUG-3380 is `done` (commit `28a49a9de`), so the `depends_on` edge resolves; the issue is unblocked.
+- Four spec gaps were folded into Decision Rules / Implementation Steps: the splice boundary swallowed the blank line before the next `## ` heading; the no-op refresh return value was undefined (now `False`, no write); a CRLF/trailing-whitespace heading would silently miss the line-anchored match; and wholesale replacement of hand-edited blocks was implicit rather than stated in docs/help text.
+- Program Design → Call Path `_run_apply()` line ref corrected from :837 to :849; a named `_splice_commands_block()` helper was added so the three writers share one splice.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-03T02:24:32 - `0ede70ea-abc7-4e95-bfe6-24a012dc95a9.jsonl`
