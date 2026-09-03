@@ -1073,7 +1073,7 @@ class FSMExecutor:
         # so it must seed its own confidence-gate thresholds from config. Anything
         # already bound (with:, passthrough, or the child's own context: literals)
         # wins, matching the CLI path's precedence.
-        from little_loops.cli.loop._helpers import derive_input_hash, seed_confidence_thresholds
+        from little_loops.fsm.context_seed import derive_input_hash, seed_confidence_thresholds
 
         seed_confidence_thresholds(child_fsm.context)
 

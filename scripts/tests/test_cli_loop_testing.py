@@ -268,7 +268,7 @@ states:
         logger = Logger()
 
         # Load and check context is preserved (simulate doesn't overwrite)
-        from little_loops.cli.loop._helpers import load_loop
+        from little_loops.fsm.loop_paths import load_loop
         from little_loops.logger import Logger as L
 
         fsm = load_loop("custom-run-dir", loops_dir, L())

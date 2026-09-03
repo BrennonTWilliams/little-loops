@@ -3066,7 +3066,7 @@ class TestRefineToReadyIssueSubLoop:
         with the `ll-issues next-action` argparse fallbacks is asserted on the
         seeded result instead.
         """
-        from little_loops.cli.loop._helpers import seed_confidence_thresholds
+        from little_loops.fsm.context_seed import seed_confidence_thresholds
 
         ctx = dict(data.get("context") or {})
         assert "readiness_threshold" not in ctx
@@ -20567,7 +20567,7 @@ class TestConfidenceGateThresholdsNotHardcoded:
     @pytest.mark.parametrize("loop_name", LOOPS)
     def test_seeding_supplies_the_referenced_thresholds(self, loop_name: str) -> None:
         """Every ${context.*_threshold} reference resolves via config seeding."""
-        from little_loops.cli.loop._helpers import seed_confidence_thresholds
+        from little_loops.fsm.context_seed import seed_confidence_thresholds
 
         data = yaml.safe_load((BUILTIN_LOOPS_DIR / f"{loop_name}.yaml").read_text())
         ctx = dict(data.get("context") or {})

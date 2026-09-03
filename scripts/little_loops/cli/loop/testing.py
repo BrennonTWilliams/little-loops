@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli.loop._helpers import load_loop
+from little_loops.fsm.loop_paths import load_loop
 from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
 from little_loops.logger import Logger
 
@@ -215,7 +215,7 @@ def cmd_simulate(
     # simulation — the real runner does this in run.py before FSMExecutor is created.
     if "run_dir" not in fsm.context:
         fsm.context["run_dir"] = str(loops_dir / "runs" / f"{loop_name}-simulate") + "/"
-    from little_loops.cli.loop._helpers import derive_input_hash
+    from little_loops.fsm.context_seed import derive_input_hash
 
     derive_input_hash(fsm.context)
 

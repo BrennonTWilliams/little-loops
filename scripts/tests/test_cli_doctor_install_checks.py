@@ -440,7 +440,7 @@ class TestLoopValidity:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "little_loops.cli.loop._helpers.get_builtin_loops_dir",
+            "little_loops.fsm.loop_paths.get_builtin_loops_dir",
             lambda: tmp_path / "no-such-builtin-loops",
         )
 
@@ -462,7 +462,7 @@ class TestLoopValidity:
             encoding="utf-8",
         )
         monkeypatch.setattr(
-            "little_loops.cli.loop._helpers.get_builtin_loops_dir", lambda: builtin_dir
+            "little_loops.fsm.loop_paths.get_builtin_loops_dir", lambda: builtin_dir
         )
 
         data = doctor_mod._loop_validity_data()
@@ -481,7 +481,7 @@ class TestLoopValidity:
             encoding="utf-8",
         )
         monkeypatch.setattr(
-            "little_loops.cli.loop._helpers.get_builtin_loops_dir", lambda: builtin_dir
+            "little_loops.fsm.loop_paths.get_builtin_loops_dir", lambda: builtin_dir
         )
 
         data = doctor_mod._loop_validity_data()

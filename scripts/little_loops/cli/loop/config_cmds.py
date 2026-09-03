@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
+from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 from little_loops.logger import Logger
 
 

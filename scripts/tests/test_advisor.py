@@ -229,7 +229,7 @@ class TestConsult:
             patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
             patch("little_loops.advisor.run_blocking_json", return_value=verdict_dict),
             patch("little_loops.host_runner.dispatch_anthropic_request") as mock_dispatch,
-            patch("little_loops.cli.loop._helpers.derive_input_hash") as mock_hash,
+            patch("little_loops.fsm.context_seed.derive_input_hash") as mock_hash,
         ):
             consult(
                 question="q",

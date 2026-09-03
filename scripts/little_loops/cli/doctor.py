@@ -530,7 +530,7 @@ def _loop_validity_data() -> dict:
     Never executes a loop — purely a static-validation aggregation over the
     built-in loops directory plus a project-local `loops/` dir if present.
     """
-    from little_loops.cli.loop._helpers import get_builtin_loops_dir
+    from little_loops.fsm.loop_paths import get_builtin_loops_dir
     from little_loops.fsm.validation import (
         ValidationSeverity,
         is_runnable_loop,

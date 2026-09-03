@@ -13,14 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.cli.loop._helpers import (
-    inject_design_context,
-    load_loop,
     register_loop_signal_handlers,
-    resolve_loop_path,
     run_background,
-    seed_confidence_thresholds,
 )
 from little_loops.fsm.concurrency import _process_alive
+from little_loops.fsm.context_seed import inject_design_context, seed_confidence_thresholds
+from little_loops.fsm.loop_paths import load_loop, resolve_loop_path
 from little_loops.fsm.persistence import (
     LoopState,
     StatePersistence,
@@ -671,7 +669,7 @@ def cmd_resume(
         fsm.context["run_dir"] = str(loops_dir / "runs" / instance_id) + "/"
 
     # Re-inject input hash for checkpoint fingerprinting during resumed runs.
-    from little_loops.cli.loop._helpers import derive_input_hash
+    from little_loops.fsm.context_seed import derive_input_hash
 
     derive_input_hash(fsm.context)
 

@@ -12,8 +12,10 @@ relates_to:
 - FEAT-3304
 - ENH-3346
 - ENH-3351
-depends_on:
-- BUG-3324  # satisfied — done 2026-08-28
+- BUG-3324
+depends_on: []
+learning_tests_required:
+- http.server
 confidence_score: 93
 outcome_confidence: 69
 score_complexity: 13
@@ -125,6 +127,15 @@ identifier, so even a correctly merged multi-producer stream cannot be
 demultiplexed by a consumer. Stamping that identifier stays in this issue: it
 is a wire-format change serving the merged stream, not part of the binding
 fix.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- `LocalBridgeTransport` (ENH-3351, commit `94a676582`) is tracked as its own **completed** issue — `.issues/enhancements/P2-ENH-3351-ll-loop-run-serve-level-3-loopback-sse-bridge-for-live-fsm-dashboards.md` (`status: done`). The STALE NOTICE above cites the commit but not that it is a separate, finished issue already listed in this issue's own `relates_to`.
+- `--serve`/`--port` (`cli/loop/__init__.py:296`, `:306`) are **plain argparse flags on `ll-loop run`**, read directly via `getattr(args, "serve"/"port", ...)` (`cli/loop/run.py:585,593`) — they never read `events.*` config, and `LocalBridgeTransport` is never added to `_TRANSPORT_REGISTRY` (`transport.py:1126`) or dispatched from `wire_transports()` (`:1135`). It is constructed directly in `cli/loop/run.py:592` and attached with a standalone `executor.event_bus.add_transport(bridge)` call (`:628`), outside the `EventsConfig`-driven transport machinery every other built-in transport goes through.
+- `docs/reference/ARTIFACT_CONTROL_LEVELS.md` now documents a "Level 3" tier naming `ll-loop run --serve`'s SSE bridge and served dashboard page (lines 27, 58, 75) — new framing this issue's own docs work (`## Integration Map → Documentation`) should cross-reference rather than duplicate.
+- `.issues/features/P3-FEAT-3321-local-realtime-web-ui-for-live-querying-historydb.md:167` already references `ll-loop run --serve`/`LocalBridgeTransport` in its own text — that issue (status: open) has itself been updated to account for this landscape since this issue's `## Relationship to FEAT-3321` section was last written; worth a fresh read of FEAT-3321's current text before implementation to confirm the server-ownership resolution still holds.
 
 ## Expected Behavior
 
@@ -244,6 +255,20 @@ actionable. Make it config-driven. `port=0` (OS-assigned) is for tests only —
 there is no `port=0` precedent in the codebase and a user cannot guess an
 OS-assigned port.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- **Host-header guard: two non-interchangeable precedents, not one.** § Security currently cites only `mcp_server/server.py:86`'s `_LOOPBACK_HOSTS` frozenset as the model, but that set is a *construction-time branch input* (`server.py:109-131`, decides whether to hand the `mcp` SDK an explicit `TransportSecuritySettings(allowed_hosts=[f"{host}:*"], ...)`) — it is never itself compared against an incoming request's `Host` header in this codebase; that enforcement is delegated to the SDK. The codebase's only actual per-request `Host` check on a stdlib server is `LocalBridgeTransport._make_local_bridge_handler._expected_hosts()` (`transport.py:452-454`), which computes an exact `{f"127.0.0.1:{port}", f"localhost:{port}"}` set from the live server's own bound port (`transport._server.server_address[1]`) and compares it against `self.headers.get("Host")` on every `do_GET`/`do_POST` (`:466-468`, `:481-483`). It omits `::1` (which `_LOOPBACK_HOSTS` includes) but is the only in-repo example of the request-time enforcement this issue's bridge actually needs.
+- **No CORS-header precedent exists anywhere in the codebase.** `Access-Control-*` does not appear in any `.py` file outside this issue's own text — `LocalBridgeTransport`'s handler never sets it, and no test asserts its absence. § Security's "send no `Access-Control-Allow-Origin`" would be the first place in the codebase to state and test this rule, not an inherited convention.
+- **Token-prefix access control has no other precedent.** `LocalBridgeTransport.__init__` unconditionally generates `secrets.token_urlsafe(16)` and gates every route on a `/{token}/` prefix (`transport.py:618`, `_route()` at `:456`) as a *second* control alongside its Host guard (docstring `:570-578` frames both together, not as substitutes). A repo-wide grep for `secrets.token_urlsafe` inside `scripts/little_loops` returns only this one call site. This issue's current design has no token anywhere in its text (§ Program Design, § Security, § API/Interface) — whether that omission is deliberate (this bridge is read-only fan-in, arguably lower-value target than a bidirectional per-run bridge) or a gap is unresolved by anything in the codebase; nothing forces either answer.
+- **Reuse boundary for `LocalBridgeTransport`'s pieces**: `_sse_encode(text: str) -> bytes` (`transport.py:430`) is a pure function with no `LocalBridgeTransport` state dependency — directly importable. `_SSEClient` (`:418`) is a plain per-client container (queue, thread, drop counters) with no token/Host logic — also directly importable. `_make_local_bridge_handler(transport: LocalBridgeTransport)` (`:441`) and `LocalBridgeTransport` itself are **not** reusable via import for this issue's bridge: the handler closure references `transport._token`, `transport._inbound`, `transport._page_html` etc. directly, and `LocalBridgeTransport.send()` is literally the `Transport.send()` Protocol method invoked by `EventBus.emit()` — using it here would make the new bridge an `EventBus` transport, contradicting this issue's own § Proposed Solution ("not a fifth transport... not something `EventBus` ever holds a reference to"). The handler/route logic would need copy-adapting (drop `do_POST`/`_handle_interaction`, drop or repurpose the token prefix), not calling with different arguments.
+- **Drop/rejection accounting are per-instance methods, not standalone functions.** `UnixSocketTransport._record_drop`/`_record_rejection` (`transport.py:314`, `:335`) and `LocalBridgeTransport._record_drop` (`:734`) share an identical four-field bookkeeping shape (`*_total`, `*_since_log`, `last_*_log_ts`, `first_*_logged`) rate-limited via `_DROP_LOG_INTERVAL_SEC`/`_REJECT_LOG_INTERVAL_SEC` (5.0s each) — a new bridge class replicates this shape, it does not import a shared helper (none exists).
+- **A real-bound HTTP/SSE test harness now exists**: `TestLocalBridgeTransport` (`scripts/tests/test_transport.py:1019` onward, ~15 methods) binds a real `LocalBridgeTransport(port=0)` per test and drives it over the network via helpers `_lb_http_request` (raw `http.client.HTTPConnection`, `:940`-ish), `_sse_connect`/hand-rolled `_read_sse_headers`/`_read_sse_frame` (raw-socket SSE parsing, justified in-docstring by "no existing SSE-parsing helper in this codebase"). `test_bad_host_header_returns_403` and `test_wrong_token_returns_404` are direct models for this issue's own Host-guard and (if adopted) token tests. This confirms the STALE NOTICE's claim that the "must be built from scratch" risk factor is void — the § Confidence Check Notes below still list it as the dominant, carried-forward risk factor and should be re-scored via `/ll:confidence-check`.
+- **`events.*` config sub-block shape confirmed current**, evidenced by `SqliteEventsConfig` (`features.py:1286-1296`) as the freshest example of schema + dataclass `from_dict` + `EventsConfig` member + `_DATACLASS_SECTION_MAP` test entry. But the "`to_dict()` mirror" step is **not uniform** across existing sub-blocks: `EventsConfig` itself has no `to_dict()` method — `BRConfig.to_dict()` (`config/core.py:938-953`) hand-inlines `transports`/`socket`/`otel`/`webhook` field-by-field and currently **omits `sqlite` entirely** (a pre-existing gap unrelated to this issue), whereas `ObservabilityConfig`/`PrePatchCheckConfig` (`features.py:1213-1238`, `:1241-1264`) each implement their own `to_dict()` delegated from `core.py:954`. A new `events.bridge` mirror entry should pick one shape deliberately rather than copy the `sqlite` omission.
+- **Per-producer identifier field-name precedent**: `run_id` (stamped globally by `FSMExecutor._emit()`, `executor.py:3550-3560`, reserved for `parallel.*` by ENH-3346 per this issue's own note) is one existing identifier. A second, distinct one already reaches the wire today: `LoopState.pid` (`fsm/persistence.py:361`, OS process id, included in `LoopState.to_dict()` and therefore present on the `state_change` seed events `_make_seed_callback()` emits, `transport.py:1110-1123`). `pid` is a concrete existing field name to weigh against inventing a new key — it identifies the OS process rather than a run, which may or may not be the right granularity for this issue's "stable per-process identifier."
+- `_resolve_socket_path(configured: str, base: Path) -> Path` confirmed at `transport.py:1202-1216` (matches the STALE NOTICE's live-tree table), sole caller `wire_transports` (`:1176`). Probe-and-claim confirmed: `_claim_socket_path`/`_probe_socket_path` classify an occupant LIVE/ABSENT/RECLAIMABLE; a TOCTOU retry on `EADDRINUSE` re-claims with `force_suffix=True`; `close()` re-checks `_bound_id` (captured `(st_dev, st_ino)` at bind time) before unlinking so a slow-draining close never deletes a different producer's reclaimed socket at the same path.
+
 ## Integration Map
 
 ### Files to Modify
@@ -265,14 +290,37 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/pyproject.toml:74-129` (`[project.scripts]`) — register the new
   entry point following the `ll-<name> = "little_loops.<module>:main_<name>"`
   convention
+  > ⚠ Superseded — `ll-artifact` already exists; `serve` is a subcommand, not a new entry point
 - `scripts/pyproject.toml:140-198` (`[project.optional-dependencies]`) —
   if the bridge pulls in a dependency, add a justified pin comment next to
   it (per CLAUDE.md's minimize-dependencies rule) and a matching extras
   group, following the `otel = [...]` / `webhooks = [...]` shape
 - `scripts/little_loops/cli/__init__.py` — export the bridge's `main_*`
   function so `pyproject.toml` can reference it
+  > ⚠ Superseded — no new `main_*` needed; `main_artifact` already dispatches subcommands
 - `scripts/little_loops/config/__init__.py` — export any new bridge config
   dataclass and add it to `__all__`
+
+_Wiring pass added by `/ll:wire-issue` (2026-09-03, re-run):_
+- `scripts/little_loops/cli/artifact/serve.py` (new file) — the `serve`
+  subcommand module, following the one-module-per-subcommand convention
+  documented in `cli/artifact/__init__.py:22-27` (FEAT-3036 § Second-pass
+  decisions) and modeled on `dashboard.py`'s `add_dashboard_parser`/
+  `cmd_dashboard` shape
+- `scripts/little_loops/cli/artifact/__init__.py` — register the new
+  subcommand: import `add_serve_parser`/`cmd_serve` alongside the existing
+  per-subcommand imports (`:36-47`), call `add_serve_parser(subparsers)`
+  alongside `add_dashboard_parser(subparsers)` (`:174`), add an
+  `if args.command == "serve": return cmd_serve(args, logger)` dispatch
+  branch alongside the `dashboard` branch (`:195-196`), and add a bullet to
+  the module docstring's subcommand list (`:1-28`) plus `Examples:`/`Exit
+  codes:` entries in `main_artifact()`'s `epilog=` string
+- `scripts/little_loops/generate_schemas.py` — `_BASE_PROPS` hardcodes the
+  envelope's base fields (`event`, `ts`, `run_id`, `loop`) merged into every
+  generated per-event-type schema under `docs/reference/schemas/` (source of
+  truth per its own docstring: `docs/reference/EVENT-SCHEMA.md`). Add the new
+  producer-identifier key here too so generated schemas document it like
+  `run_id`/`loop` do, or explicitly note in the issue why it's omitted
 
 ### Dependent Files (Callers/Importers)
 - The four `wire_transports` call sites (`cli/loop/run.py:593`,
@@ -305,6 +353,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   `main_*` function (e.g. `main_config`, `main_history`) for
   `pyproject.toml` entry points; a new bridge CLI module needs an analogous
   `main_*` export wired here
+  > ⚠ Superseded — no new `main_*` needed; `main_artifact` already dispatches subcommands (see corrected § Files to Modify)
 - `scripts/tests/test_cli_doctor_install_checks.py:45-51`
   (`test_real_pyproject_all_entry_points_resolve`) — iterates every
   `[project.scripts]` entry and imports its module; automatically covers a
@@ -315,6 +364,30 @@ _Wiring pass added by `/ll:wire-issue`:_
   `UnixSocketTransport` as a deferred "sidecar" mitigation for hook
   latency; check this framing still holds once the transport gains a
   bridge consumer
+
+_Wiring pass added by `/ll:wire-issue` (2026-09-03, re-run):_
+- `scripts/little_loops/transport.py` — `_make_seed_callback`'s inner
+  `_seed()` (STALE NOTICE table: `:586` → live `:1110`) builds and enqueues
+  `state_change` seed frames directly via `json.dumps(event)`, bypassing
+  `UnixSocketTransport.send()` entirely — confirmed by two independent
+  traces. Since the bridge's fan-in connects to each producer socket as a
+  client (the exact trigger for `on_connect`/`_seed()`), every seed frame —
+  sent on first connect and on every reconnect per § Server mechanics — needs
+  the producer-identifier stamp applied here too, or a reconnecting client
+  silently loses attribution on seed events. Implementation Step 1 names only
+  `UnixSocketTransport`; this is a second envelope-construction site in the
+  same file with zero existing direct test coverage (see § Tests).
+- `scripts/little_loops/events.py` — `EventBus.emit()` passes the same
+  mutable `event` dict object to every registered transport's `.send()` in
+  one loop. If the producer-id stamp is implemented by mutating `event` in
+  place rather than constructing a copy, it leaks into every other transport
+  registered on the same bus (`JsonlTransport`, `SQLiteTransport`,
+  `OTelTransport`, `WebhookTransport`) whenever a project's
+  `events.transports` lists `"socket"` alongside another transport. Not a
+  file this issue edits, but a correctness constraint on how
+  `UnixSocketTransport.send()`'s stamp must be implemented (copy, not
+  mutate) — load-bearing for the "additive, not breaking" decision (§
+  Resolved Decisions) holding beyond the socket transport alone.
 
 ### Similar Patterns
 - `UnixSocketTransport`'s per-client bounded queue + daemon thread + drop
@@ -383,6 +456,47 @@ _Wiring pass added by `/ll:wire-issue`, revised by scope split:_
   include `"socket"` / no producer socket exists, rather than serving an empty
   stream as success (§ Considerations).
 
+_Wiring pass added by `/ll:wire-issue` (2026-09-03, re-run):_
+- `_make_seed_callback`'s `_seed()` (`transport.py`, live `:1110-1123`) has
+  **zero direct test coverage anywhere** in the suite. The existing
+  `test_on_connect_callback_seeds_new_client` (`test_transport.py:632-651`)
+  exercises a hand-written stand-in callback the test itself defines, not
+  this production function — it provides no coverage of `_seed()`'s actual
+  output shape. New test needed: a client seeded via the real
+  `_make_seed_callback()` output carries the producer-identifier stamp.
+- `scripts/tests/test_config.py:2621-2667`
+  (`TestEventsConfig::test_events_transport_sub_config_round_trips_through_to_dict`,
+  parametrized `["socket", "otel", "webhook"]`) — a second `BRConfig.to_dict()`
+  round-trip enumeration test, separate from `test_config_schema.py`'s guards.
+  Per § Program Design, `events.bridge` gates a server, not a transport, so it
+  should **not** by the same logic gain a `"bridge"` case in this
+  transport-keyed parametrize list — but this is the exact location exercising
+  the `to_dict()`-mirror non-uniformity risk already flagged in § Codebase
+  Research Findings, worth a deliberate check rather than a silent omission.
+- Confirmed no risk from exact-envelope dict-equality assertions on
+  `UnixSocketTransport.send()`: `test_transport.py`'s two full-dict-equality
+  assertions (`test_send_raw_json_frame_delivered_to_client`,
+  `test_close_delivers_final_frame_and_exits_handler_thread`) are inside
+  `TestLocalBridgeTransport` and assert against `LocalBridgeTransport.send()`
+  (ENH-3351's separate class), not `UnixSocketTransport.send()`. Every
+  assertion inside `TestUnixSocketTransport` checks only `["event"]`, not a
+  full key set — adding the producer-id key will not break these.
+- `scripts/little_loops/generate_schemas.py`'s `_BASE_PROPS` (see § Files to
+  Modify) — extend `scripts/tests/test_generate_schemas.py` if the new key is
+  added there.
+- No test in the suite enforces that every `@dataclass` in
+  `config/features.py` is also re-exported in `config/__init__.py`'s
+  `__all__`/import list (distinct from the BUG-3192 `to_dict()`/
+  `_DATACLASS_SECTION_MAP` guards, which do fail loudly). Missing the new
+  bridge dataclass's two-line addition there would go undetected — a manual
+  double-check, not a gap this issue needs to close.
+- Checked, not applicable: `scripts/tests/test_wiring_cli_registry.py:226-236`
+  (`test_cli_entry_point_coverage`, ENH-3195) fails only when a
+  `[project.scripts]` entry lacks a `docs/reference/CLI.md` section. Since the
+  corrected wiring (§ Files to Modify) makes `serve` a subcommand of the
+  existing `ll-artifact` entry rather than a new entry point, this gate does
+  not fire on this issue — CLI.md instead needs a subcommand-level mention.
+
 ### Documentation
 - `docs/reference/EVENT-SCHEMA.md` — § Wire Format gains the producer field
 - `docs/reference/CONFIGURATION.md:1559-1589` — `events.transports`,
@@ -434,6 +548,13 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 - `ll-mcp` is the only existing `[project.scripts]` entry point that starts a long-running server process; its `main_mcp()` (`scripts/little_loops/mcp_server/__init__.py:66`) lazily imports its server dependency inside the function (not at module scope) so the module still imports on a checkout without the optional extra installed, and dispatches via `anyio.run(...)`. No naming convention has been settled yet even for the sibling FEAT-3321 server entry point this issue may share a process with — that issue records only a provisional name (`.issues/features/P3-FEAT-3321-...md:108`).
 - Test precedent for the multi-producer/slow-consumer acceptance criteria already exists in `scripts/tests/test_transport.py`: `test_multi_client_each_receives_every_event` (`:458-479`) and `test_client_disconnect_does_not_affect_other_clients` (`:481-504`) are the direct models for "two producers reach one client" and "second producer does not disconnect an existing client." `test_max_clients_cap_rejects_extra_connection` (`:506-535`) and the drop-accounting/rate-limited-logging tests (`:585`, `:537`) are the models for the slow-consumer-drop acceptance criterion. All of these use a `short_tmp_path` fixture (`:52`) instead of `tmp_path`, because raw `AF_UNIX` socket paths have an OS length ceiling `tmp_path` can exceed. Separately, `scripts/tests/test_feat_3143_mcp_http_transport.py` tests its ASGI app via Starlette's in-process `TestClient` rather than a real socket bind — a pattern that would not transfer to a stdlib HTTP implementation, since `TestClient` drives the ASGI lifespan protocol this issue's server would not have.
 
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- Confirmed: `events.bridge` does not exist as a schema key, dataclass, or `EventsConfig` member anywhere in the current tree (`config-schema.json`, `config/features.py`) — this issue's planned config block is still unclaimed ground, not colliding with anything ENH-3351 added (ENH-3351 bypassed `events.*` config entirely — see § Current Behavior).
+- Files touching `LocalBridgeTransport`/`--serve` this issue should be aware of but does not modify (adjacent, not integration points): `scripts/little_loops/cli/loop/__init__.py:296,306` (`--serve`/`--port` argparse), `scripts/little_loops/templates/dashboard.llat/{manifest.yaml,partials.html.j2}` and `scripts/little_loops/assets/vendor/htmx/` (the served dashboard page's template/asset kit), `scripts/little_loops/observability/schema.py:379`, `docs/reference/ARTIFACT_CONTROL_LEVELS.md`, `docs/ARCHITECTURE.md:902-918` ("Artifact Control Layer" section), `CHANGELOG.md:85`.
+- `docs/reference/API.md` already documents `LocalBridgeTransport` (module table row + `### LocalBridgeTransport` section, line ~10649) — this issue's own API.md addition for the new bridge class should follow that existing entry's shape rather than invent a new one.
+- Related issue files for cross-reference, not code to modify: `.issues/enhancements/P2-ENH-3351-ll-loop-run-serve-level-3-loopback-sse-bridge-for-live-fsm-dashboards.md` (done — the precedent this issue's Program Design findings above draw from) and `.issues/features/P3-FEAT-3321-local-realtime-web-ui-for-live-querying-historydb.md` (open — already references `ll-loop run --serve`, see § Current Behavior).
+
 ## Implementation Steps
 
 0. ~~**Land BUG-3324 first.**~~ DONE (2026-08-28) — see STALE NOTICE. The
@@ -476,6 +597,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
   dependency — the entry-point-resolution test
   (`test_cli_doctor_install_checks.py::test_real_pyproject_all_entry_points_resolve`)
   fails on an eager import of a missing extra
+  > ⚠ Superseded — `ll-artifact` already exists as a single `[project.scripts]` entry (`ll-artifact = "little_loops.cli:main_artifact"`) dispatching subcommands; see the corrected bullet below
+- Add `scripts/little_loops/cli/artifact/serve.py` (`add_serve_parser`/
+  `cmd_serve`) following the documented one-module-per-subcommand convention
+  (`cli/artifact/__init__.py:22-27`) and register it in `main_artifact()`
+  alongside the `dashboard` subcommand (imports `:36-47`, parser registration
+  `:174`, dispatch branch `:195-196`); apply the lazy-import discipline
+  inside `cmd_serve` itself if it pulls in an optional dependency, since no
+  new top-level `main_*` entry point exists for
+  `test_real_pyproject_all_entry_points_resolve` to check
+- Stamp the producer identifier in `_make_seed_callback`'s `_seed()`
+  (`transport.py`, live `:1110-1123`) as well as in `UnixSocketTransport.send()`
+  — it is a second, bypassing envelope-construction site (see § Dependent
+  Files)
+- Implement the producer-id stamp in `UnixSocketTransport.send()` by copying
+  `event` before mutating, not mutating in place — `EventBus.emit()` shares
+  one `event` dict across every registered transport (see § Dependent Files)
+- Extend `generate_schemas.py`'s `_BASE_PROPS` with the new producer-id key
+  (or record why it's deliberately omitted), and its test
+  `test_generate_schemas.py` if changed
 - Export any new bridge config dataclass from
   `scripts/little_loops/config/__init__.py` and add it to `__all__`
 - Add the new dataclass's `to_dict()` mirror to `BRConfig.to_dict()`
@@ -750,6 +890,8 @@ scores.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T05:12:02 - `ca5d5b5d-2640-4a8f-b9c1-7d66de090028.jsonl`
+- `/ll:refine-issue` - 2026-09-03T04:53:23 - `ee893e9d-d66e-40e3-ac8c-32f272137cf4.jsonl`
 - `/ll:confidence-check` - 2026-08-26T15:05:26 - `527f3505-6fa7-4a25-937c-558cd9f06642.jsonl`
 - `/ll:confidence-check` - 2026-08-26T03:42:55 - `2361c366-3751-4d40-b3d8-0d881c047601.jsonl`
 - `/ll:wire-issue` - 2026-08-26T03:35:40 - `ad3eb4f0-b35e-4777-be61-e91603e9fcf0.jsonl`

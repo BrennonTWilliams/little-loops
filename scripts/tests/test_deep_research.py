@@ -191,7 +191,7 @@ class TestDeepResearchResolution:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """resolve_loop_path finds deep-research as a built-in loop."""
-        from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
+        from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 
         monkeypatch.chdir(tmp_path)
         result = resolve_loop_path("deep-research", get_builtin_loops_dir())

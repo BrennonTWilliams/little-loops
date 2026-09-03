@@ -305,7 +305,7 @@ class TestRnPlanExecution:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """ll-loop can resolve rn-plan as a built-in loop without local YAML."""
-        from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
+        from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 
         monkeypatch.chdir(tmp_path)
         result = resolve_loop_path("rn-plan", get_builtin_loops_dir())

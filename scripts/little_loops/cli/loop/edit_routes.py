@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli.loop._helpers import resolve_loop_path
+from little_loops.fsm.loop_paths import resolve_loop_path
 from little_loops.logger import Logger
 
 

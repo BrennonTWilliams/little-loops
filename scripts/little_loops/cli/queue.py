@@ -144,8 +144,8 @@ def _classify_action(
     default from :func:`_default_timeout_for` is resolved here, after the
     runner is known (BUG-2928). An explicit value always overrides.
     """
-    from little_loops.cli.loop._helpers import resolve_loop_path
     from little_loops.config.core import BRConfig
+    from little_loops.fsm.loop_paths import resolve_loop_path
     from little_loops.runner_spec import ActionSpec, RunnerType
     from little_loops.skill_expander import _find_plugin_root, _resolve_content_path
 

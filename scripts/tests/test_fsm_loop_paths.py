@@ -64,13 +64,6 @@ def test_resolve_loop_path_error_enumerates_candidates_tried(tmp_path):
     assert str(tmp_path / "runs" / "nope" / "workflow.yaml") in message
 
 
-def test_cli_helpers_reexports_resolve_loop_path_and_builtin_dir():
-    from little_loops.cli.loop import _helpers
-
-    assert _helpers.resolve_loop_path is resolve_loop_path
-    assert _helpers.get_builtin_loops_dir is get_builtin_loops_dir
-
-
 # ---------------------------------------------------------------------------
 # BUG-3367: workflow-generator draft resolution fallbacks
 # ---------------------------------------------------------------------------

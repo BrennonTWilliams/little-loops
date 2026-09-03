@@ -18,12 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from little_loops.cli.loop._helpers import (
-    get_builtin_loops_dir,
-    load_loop_with_spec,
-    resolve_loop_path,
-    with_diagram_color,
-)
+from little_loops.cli.loop._helpers import with_diagram_color
 from little_loops.cli.loop.diagram_modes import resolve_facets
 from little_loops.cli.loop.layout import (  # noqa: F401
     _EDGE_LABEL_COLORS,
@@ -47,7 +42,12 @@ from little_loops.cli.output import (
 from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.concurrency import resolve_scope
 from little_loops.fsm.fragments import resolve_inheritance
-from little_loops.fsm.loop_paths import draft_internal_name
+from little_loops.fsm.loop_paths import (
+    draft_internal_name,
+    get_builtin_loops_dir,
+    load_loop_with_spec,
+    resolve_loop_path,
+)
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
 from little_loops.logger import Logger
@@ -1706,7 +1706,7 @@ def cmd_show(
     # from commands.confidence_gate.*, so the literal spec alone is misleading.
     _gate_keys = ("readiness_threshold", "outcome_threshold")
     if any(f"context.{key}" in json.dumps(spec) for key in _gate_keys):
-        from little_loops.cli.loop._helpers import seed_confidence_thresholds
+        from little_loops.fsm.context_seed import seed_confidence_thresholds
 
         _resolved = dict(fsm.context)
         seed_confidence_thresholds(_resolved)

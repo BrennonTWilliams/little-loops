@@ -262,7 +262,7 @@ def audit_run(run_dir: Path, max_steps: int | None = None) -> RunAuditStats:
 def _resolve_max_steps(loop_name: str, loops_dir: Path) -> int | None:
     """Best-effort `max_steps` lookup for budget-utilization; never raises."""
     try:
-        from little_loops.cli.loop._helpers import load_loop_with_spec
+        from little_loops.fsm.loop_paths import load_loop_with_spec
         from little_loops.logger import Logger
 
         fsm, _spec = load_loop_with_spec(loop_name, loops_dir, Logger(verbose=False))

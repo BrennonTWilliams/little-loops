@@ -17,17 +17,15 @@ from pathlib import Path
 from little_loops.cli.loop._helpers import (
     _is_earliest_waiter,
     _make_instance_id,
-    get_builtin_loops_dir,
-    inject_design_context,
     print_execution_plan,
     register_loop_signal_handlers,
-    resolve_loop_path,
     run_background,
     run_foreground,
-    seed_confidence_thresholds,
     with_diagram_color,
 )
+from little_loops.fsm.context_seed import inject_design_context, seed_confidence_thresholds
 from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes
+from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 from little_loops.logger import Logger
 
 
@@ -201,7 +199,7 @@ def cmd_run(
 
     # Inject input hash for checkpoint fingerprinting.
     # --context input_hash=VALUE (already applied above) takes precedence.
-    from little_loops.cli.loop._helpers import derive_input_hash
+    from little_loops.fsm.context_seed import derive_input_hash
 
     derive_input_hash(fsm.context)
 

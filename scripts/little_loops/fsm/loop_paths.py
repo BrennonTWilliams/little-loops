@@ -1,17 +1,23 @@
-"""Loop file path resolution — shared by the FSM core and CLI layers.
+"""Loop file path resolution and loading — shared by the FSM core and CLI layers.
 
-Relocated from ``cli/loop/_helpers.py`` (ENH-2773) so ``fsm/validation.py``,
-``fsm/executor.py``, and ``fsm/fragments.py`` can resolve loop paths without a
-cli -> fsm -> cli import cycle. ``cli/loop/_helpers.py`` re-exports these names
-for backward compatibility.
+``resolve_loop_path``/``get_builtin_loops_dir`` relocated from
+``cli/loop/_helpers.py`` (ENH-2773); ``load_loop``/``load_loop_with_spec``
+relocated the same way (ENH-2776) so ``fsm/validation.py``, ``fsm/executor.py``,
+``fsm/fragments.py``, and ``analytics/variance.py`` can resolve/load loops
+without a cli -> fsm -> cli import cycle.
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from little_loops.fsm.schema import FSMLoop
+    from little_loops.logger import Logger
 
 
 def get_builtin_loops_dir() -> Path:
@@ -83,3 +89,41 @@ def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
         f"{run_dir_path} (generator-draft run dir), "
         f"{runs_root}/*/workflow.yaml (generator-draft internal name scan)"
     )
+
+
+def load_loop(name_or_path: str, loops_dir: Path, logger: Logger) -> FSMLoop:
+    """Load and validate a loop.
+
+    Raises:
+        FileNotFoundError: If loop not found.
+        ValueError: If loop is invalid.
+    """
+    from little_loops.fsm.validation import load_and_validate
+
+    path = resolve_loop_path(name_or_path, loops_dir)
+    fsm, _ = load_and_validate(path)
+    return fsm
+
+
+def load_loop_with_spec(
+    name_or_path: str, loops_dir: Path, logger: Logger
+) -> tuple[FSMLoop, dict[str, Any]]:
+    """Load a loop and return both the FSMLoop and raw spec dict.
+
+    Used by commands that need access to raw YAML fields (e.g., description).
+
+    Raises:
+        FileNotFoundError: If loop not found.
+        ValueError: If loop is invalid.
+    """
+    import yaml
+
+    from little_loops.fsm.validation import load_and_validate
+
+    path = resolve_loop_path(name_or_path, loops_dir)
+
+    with open(path) as f:
+        spec = yaml.safe_load(f)
+
+    fsm, _ = load_and_validate(path)
+    return fsm, spec

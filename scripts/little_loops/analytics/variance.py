@@ -221,7 +221,7 @@ def compute_evaluator_variance(
     # Load loop YAML to get evaluator configs
     evaluator_configs: dict[str, dict[str, Any]] = {}
     try:
-        from little_loops.cli.loop._helpers import load_loop
+        from little_loops.fsm.loop_paths import load_loop
         from little_loops.logger import Logger
 
         fsm = load_loop(loop_name, loops_dir, Logger(verbose=False))
