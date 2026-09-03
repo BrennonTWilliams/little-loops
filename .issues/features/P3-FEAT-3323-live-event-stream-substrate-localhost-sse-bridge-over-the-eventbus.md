@@ -17,12 +17,12 @@ relates_to:
 depends_on: []
 learning_tests_required:
 - http.server
-confidence_score: 93
-outcome_confidence: 69
-score_complexity: 13
-score_test_coverage: 16
-score_ambiguity: 23
-score_change_surface: 17
+confidence_score: 85
+outcome_confidence: 43
+score_complexity: 5
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 10
 reconcile_attempted: true
 ---
 
@@ -1058,7 +1058,55 @@ scores.
 **Open** | Created: 2026-08-26 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-03_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 43/100 → LOW
+
+(Supersedes the 2026-08-26 93/69 assessment further down, which item 12 of
+§ Pre-implementation Review Findings already flagged as predating ENH-3351.)
+
+### Concerns
+- Several directive sections still contradict this issue's own
+  § Pre-implementation Review Findings (2026-09-03) despite a
+  `/ll:reconcile-issue` pass having run afterward (Session Log,
+  2026-09-03T21:21:08): § Program Design → Types still says the producer id is
+  "recovered from its socket filename" (correction #1 says it is stamped from
+  `os.getpid()` and is never recovered — the unsuffixed single-producer path
+  carries no pid to recover); § Program Design → Port still argues from the
+  debunked "no `port=0` precedent" claim (correction #5); § Security still
+  lists only two controls though § Acceptance Criteria now requires a third
+  (token-prefix, correction #4); § Server mechanics → Reconnect semantics
+  still doesn't name the seed mechanism the bridge actually uses (correction
+  #3). An implementer following § Program Design literally would build the
+  pid-recovery logic wrong.
+- `stale_cli_flag`: `ll-artifact serve (no such subcommand)` (expected — this
+  issue creates it) caps Criterion 4 (Issue Well-Specified) at 10 per the
+  Parity/Claim/Structure rubric cap.
+
+### Outcome Risk Factors
+- Breadth is wide (16+ distinct change sites): two envelope-construction
+  sites in `transport.py` (`UnixSocketTransport.send()` and `_seed()`), the
+  new `events.bridge` config block (schema + dataclass + `EventsConfig`
+  member + `to_dict()` mirror + `_DATACLASS_SECTION_MAP` entry), a new CLI
+  subcommand module plus its registration, `generate_schemas.py`, and six
+  documentation files.
+- Depth is Moderate, not mechanical: the fan-in is one reader thread per
+  producer socket merging into a shared bounded queue that in turn feeds
+  per-SSE-client bounded queues — cross-thread shared state, not a contained
+  single-function change.
+- Ambiguity (Criterion C, scored 10/25): the unresolved Program
+  Design/Security/Port contradictions above mean an implementer must
+  reconcile the issue's own review findings against its still-stale
+  directive text before coding, not just satisfy the acceptance criteria.
+- The change touches multiple existing guarded contracts (two BUG-3192
+  schema-parity guard tests, the entry-point-resolution test) — each is
+  mechanical but a missed leaf fails loudly.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-03T21:26:10 - `242e594e-c4d8-419b-854d-4291b014ff22.jsonl`
 - `/ll:reconcile-issue` - 2026-09-03T21:21:08 - `a65ff5c9-09a4-4101-a67e-cc592584f289.jsonl`
 - `/ll:wire-issue` - 2026-09-03T05:12:02 - `ca5d5b5d-2640-4a8f-b9c1-7d66de090028.jsonl`
 - `/ll:refine-issue` - 2026-09-03T04:53:23 - `ee893e9d-d66e-40e3-ac8c-32f272137cf4.jsonl`
