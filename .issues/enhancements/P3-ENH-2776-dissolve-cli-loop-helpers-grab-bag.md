@@ -17,6 +17,12 @@ verify_verdict: VALID
 relates_to:
 - EPIC-2938
 - ENH-2773
+confidence_score: 97
+outcome_confidence: 72
+score_complexity: 11
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 21
 ---
 
 # ENH-2776: Dissolve cli/loop/_helpers.py grab-bag into named modules
@@ -503,6 +509,36 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
   comment goes stale on relocation even though the assertion itself won't
   break.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-02 (post-rewrite sweep
+against the new target module map):_
+- `scripts/tests/test_ll_loop_display.py:14` —
+  `from little_loops.cli.loop._helpers import EXIT_CODES, run_foreground`;
+  `EXIT_CODES` (`_helpers.py:70`) is asserted key-by-key at `:2854-2868`.
+  `EXIT_CODES` was not in any prior key-symbol list; the module map assigns
+  it to `runner.py`, so this import repoints there in step 3.
+- `scripts/tests/test_cli_loop_layout.py` imports `with_diagram_color` and
+  `MIN_ACTION_ROWS` directly — both go to `feed.py` in step 2.
+- `_format_history_event` (the cycle-break move out of `info.py:858`) has
+  **zero** test import or `patch()` sites; the only test mentions are
+  docstring prose at `test_ll_loop_display.py:4186,4204,4216`. The move is
+  unobserved by any white-box test, so it cannot silently break a patch —
+  low-risk.
+- `_TeeWriter` has zero references outside `_helpers.py` — moves to
+  `runner.py` with no repoints.
+- `terminal_width`/`terminal_size` patched at the `_helpers` site: 7 sites
+  total across `scripts/tests/` (the earlier list of six line numbers in
+  `test_ll_loop_display.py` is one short). All repoint to `feed.py`, which
+  must import both names from `cli.output` at module level.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml:1156` — a YAML
+  comment cites `cli/loop/_helpers.py` `` `_is_success` ``. No function of
+  that name exists anywhere in `scripts/little_loops/` (unfiltered grep);
+  the comment is already stale independent of this split. Fix or drop it
+  while touching docs in step 4.
+- Non-Python sweep (`skills/`, `commands/`, `agents/`, `hooks/`,
+  `scripts/little_loops/loops/`) found no other live references beyond the
+  already-recorded `skills/review-loop/reference.md:848` and the YAML
+  comment above — the non-`.py` surface is now fully enumerated.
+
 ### Behavior Parity
 
 | Artifact | Behavior | Disposition | Notes |
@@ -591,6 +627,8 @@ Boundaries, and Acceptance Criteria. The earlier NON_VALID verdict was for
 the dependency-direction fix, which has been applied. Verdict: VALID.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T03:56:30 - `7842a080-b0fe-422b-a8bd-a0e7be14b133.jsonl`
+- `/ll:confidence-check` - 2026-09-03T03:55:11 - `01821a2b-4cf7-4cc7-bdc4-16881b6cbd8f.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:32:07 - `b08d9181-74d3-46eb-8d3a-a167537e57ed.jsonl`
 - `/ll:refine-issue` - 2026-09-03T03:19:31 - `983e671b-5b21-4f7b-86e9-1898ea8c1563.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:06:46 - `e42909d5-e77d-478c-b142-52f1ba049345.jsonl`

@@ -16,6 +16,12 @@ parent: EPIC-2789
 relates_to:
 - ENH-3359
 verify_verdict: VALID
+confidence_score: 98
+outcome_confidence: 85
+score_complexity: 17
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-2775: Split history_reader.py into a subpackage along concern boundaries
@@ -437,6 +443,34 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
   file; `test_wiring_guides_and_meta.py`'s only `CLI.md` reference is
   unrelated) — they can go stale post-split with nothing to catch it.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-02 (post-rewrite sweep
+against the new submodule map):_
+- `scripts/little_loops/prepatch_check.py:7-8` — module docstring cites
+  `little_loops.history_reader.read_base_sha` and `.read_base_dirty` by
+  dotted path. Both exist (`history_reader.py:1829,1885`, inside the
+  orchestration-runs region, so they land in `runs.py`) and the dotted path
+  stays valid via `__init__.py` re-export — no action, but add both names to
+  the `__all__` checklist; they were not in any prior key-symbol list.
+- Full string-target sweep for `little_loops.history_reader.<name>` across
+  `scripts/tests/` and `scripts/little_loops/` (excluding
+  `test_history_reader.py`) finds exactly four distinct names:
+  `lookup_session_metadata` (`test_ll_logs.py:4730`), `sessions_for_issue`
+  (`test_cli_history.py:290`), `read_base_sha`, `read_base_dirty`
+  (`prepatch_check.py:7-8`, docstring only). The two `mock.patch` targets
+  already on record are the complete set.
+- Non-Python sweep (`skills/`, `commands/`, `agents/`, `hooks/`,
+  `scripts/little_loops/loops/`) found no live references beyond the
+  already-recorded `loops/sft-corpus.yaml:75` heredoc import — the non-`.py`
+  surface is fully enumerated.
+- `ll-code importers-of little_loops.history_reader` (re-run 2026-09-02)
+  returns 5 module-level hits, confirming the earlier note that it does not
+  index deferred imports; the grep-derived 17+20 importer set above remains
+  authoritative.
+- No config surface names the module: `scripts/pyproject.toml` has no
+  per-module mypy/ruff override for `history_reader`, and the hatch
+  `packages = ["little_loops"]` entry already ships `session_store/` and
+  `fsm/validation/` as subpackages, so no packaging change is needed.
+
 ### Behavior Parity
 
 | Artifact | Behavior | Disposition | Notes |
@@ -534,6 +568,8 @@ introducing no new gate, threshold, or classification rule.
   Acceptance Criteria. Verdict: VALID.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T03:56:29 - `7842a080-b0fe-422b-a8bd-a0e7be14b133.jsonl`
+- `/ll:confidence-check` - 2026-09-03T03:55:11 - `01821a2b-4cf7-4cc7-bdc4-16881b6cbd8f.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:32:07 - `b08d9181-74d3-46eb-8d3a-a167537e57ed.jsonl`
 - `/ll:refine-issue` - 2026-09-03T03:19:30 - `983e671b-5b21-4f7b-86e9-1898ea8c1563.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:06:46 - `e42909d5-e77d-478c-b142-52f1ba049345.jsonl`
