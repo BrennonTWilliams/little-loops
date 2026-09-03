@@ -171,9 +171,101 @@ one FEAT-3323 plans to build; the mount-point decision for this issue's
 query route should be confirmed when FEAT-3323 is re-refined against
 ENH-3351's machinery.
 
+## Pre-implementation Review Findings (2026-09-03)
+
+_Verified against the live tree after ENH-3351 (`94a676582`) landed. These
+supersede the Proposed Approach / Integration Map / Implementation Steps
+above where they conflict; fold them in via `/ll:refine-issue` once
+FEAT-3323's reconcile pass settles the server's route and token shape._
+
+### Re-scope against what ENH-3351 already built
+
+1. **The "deliberately not an `.llat` template" premise no longer holds.**
+   `ll-loop run --serve` already serves the `dashboard.llat` template live:
+   `build_dashboard_html(..., serve_context=ServeContext(events_url,
+   interaction_url))` (`cli/artifact/dashboard.py:133-145`, `:155`) renders
+   the same sql.js dashboard `ll-artifact dashboard` exports, plus htmx
+   partials swapped in from SSE fragments (`render_live_fragment`,
+   `:274-311`; wiring at `cli/loop/run.py:629-647`). This issue's page **is
+   that page**, served by `ll-artifact serve` (FEAT-3323's server) instead of
+   by a single loop process. Do not build a second page.
+2. **Drop the arbitrary-SQL "read-only query route".** Accepting SQL text
+   from the browser is a large surface, and `PRAGMA query_only` only stops
+   writes (it does not constrain `ATTACH`, function calls, or resource use).
+   The v1 route that reuses the most existing code is a
+   **filtered-export payload route**: it returns the same table payload
+   `build_dashboard_html` embeds at export time, produced by the existing
+   export path with `resolve_tables(None, local_mode=...)`
+   (`dashboard.py:75-105`), and the page re-loads it into the already-embedded
+   sql.js on a timer. SQL stays client-side, exactly as the dashboard works
+   today. SSE-triggered refresh (re-fetch on `loop_run`/`usage_event`-bearing
+   events from FEAT-3323's stream) is an optional v2 on top of polling.
+3. **Redaction: follow `artifacts.export.mode`, exactly as ENH-3351 does.**
+   `cli/loop/run.py:636-646` already gates the served page on
+   `_config.artifacts.export.mode == "local"` via `resolve_tables`. Reusing
+   that call resolves the apparent conflict with FEAT-3323's "no redaction on
+   the live path" decision: the SSE stream is unredacted bus data; the
+   history route obeys the same shareable/local switch the dashboard export
+   does. No new redaction config.
+4. **One config gate, not two.** The Integration Map's "new gating field in
+   the `artifacts` block" is withdrawn. FEAT-3323 defines `events.bridge`
+   for the shared server; this issue adds a sub-key `events.bridge.history`
+   (`bool`, default `false`) that mounts the history route. Both BUG-3192
+   schema guards (`test_config_schema.py:1283-1336`, `:1346-1411`) apply to
+   the new key; the dataclass field lives on FEAT-3323's bridge config
+   dataclass, not a new one.
+5. **`ServeContext` needs a no-interaction mode.** It currently requires
+   `interaction_url` (`dashboard.py:143-144`), which the template renders as a
+   Level 3 POST target. `ll-artifact serve` has no FSM executor behind it, so
+   either `interaction_url: str | None = None` (template omits the interaction
+   wiring when `None`) or the server 404s `POST .../interaction`. The former
+   is cleaner and keeps `docs/reference/ARTIFACT_CONTROL_LEVELS.md` honest.
+6. **`ARTIFACT_CONTROL_LEVELS.md` row required.** That doc makes a missing
+   row a contract violation for any new render target. Add
+   "`ll-artifact serve`'s history page — Level 1 (notify)" to "Declared
+   levels by render target".
+7. **"Provably read-only" is undercut by the cited opener.**
+   `history_reader/_base.py:73` calls `ensure_db(db_path)` *before* opening
+   `file:...?mode=ro` — `ensure_db` creates the file and runs migrations,
+   i.e. it writes. The route must open with `mode=ro` + `PRAGMA query_only`
+   **without** the `ensure_db` prelude; if the DB does not exist, the route
+   returns an empty payload / clear error rather than creating it. Note
+   `history.db` is WAL (`session_store/schema.py:1321`), so a `mode=ro`
+   reader still needs the `-shm` file to be writable by the same user, which
+   is the normal case here.
+8. **Write real Acceptance Criteria.** The deferred placeholder is now
+   actionable. Minimum set:
+   - [ ] `GET /{token}/history` (route name per FEAT-3323's final shape)
+         returns the filtered export payload for the configured tables and
+         mode; a test asserts the shareable-mode payload contains only
+         ENH-075 allowlisted columns and local mode contains all columns.
+   - [ ] The route's connection is opened `mode=ro` + `query_only` with no
+         `ensure_db` call; a test asserts a missing `history.db` is not
+         created by hitting the route, and that an `INSERT` through the
+         route's connection raises.
+   - [ ] The served page reloads the payload on a timer and new
+         `loop_run`/`usage_event` rows appear without page reload; asserted
+         by a test that inserts a row between two fetches and diffs the
+         payloads (the page-side swap is covered by the existing htmx kit).
+   - [ ] The page renders with `ServeContext(interaction_url=None)` and emits
+         no interaction POST; a test asserts the interaction wiring is absent
+         from the rendered HTML.
+   - [ ] Gated by `events.bridge.history` (default `false`); the route is
+         404 when the key is false; schema guards pass.
+   - [ ] `ARTIFACT_CONTROL_LEVELS.md` and `CLI.md` updated.
+
+### Sequencing
+
+- `depends_on: FEAT-3323` stands. Refine this issue (`/ll:refine-issue` →
+  `/ll:confidence-check`) only after FEAT-3323's reconcile pass fixes the
+  route prefix (token adoption), the `events.bridge` dataclass shape, and the
+  `ARTIFACT_CONTROL_LEVELS.md` row, since every item above keys off those.
+
 ## Related Key Documentation
 
 - `docs/reference/CLI.md` — `ll-artifact dashboard`
+- `docs/reference/ARTIFACT_CONTROL_LEVELS.md` — render-target level table
+  (row required, see Review Findings #6)
 
 ## Status
 
