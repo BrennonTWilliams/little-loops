@@ -17,11 +17,11 @@ relates_to:
 depends_on: []
 learning_tests_required:
 - http.server
-confidence_score: 85
-outcome_confidence: 43
+confidence_score: 90
+outcome_confidence: 58
 score_complexity: 5
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 10
 reconcile_attempted: true
 ---
@@ -748,19 +748,16 @@ _Settled 2026-08-26 during pre-implementation review, extended 2026-09-03._
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-03. Re-run required: the
-2026-09-03 reconcile below addressed every concern listed here._
+_Added by `/ll:confidence-check` on 2026-09-03. Re-run confirms the
+2026-09-03 reconcile addressed the prior contradictions._
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 43/100 → LOW
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
 
-### Concerns
-- Several directive sections still contradicted the issue's own review
-  findings (§ Program Design → Types, → Port, → Security, → Reconnect
-  semantics). **Addressed 2026-09-03**: the notice layers were folded into the
-  directive sections and deleted.
+### Gaps to Address (advisory, non-blocking)
 - `stale_cli_flag`: `ll-artifact serve (no such subcommand)`. Expected; this
-  issue creates it.
+  issue creates it. Caps Criterion 4 (Issue Well-Specified) at 10/20 per the
+  Parity/Claim/Structure cap regardless of otherwise-complete specification.
 
 ### Outcome Risk Factors
 - Breadth is wide (16+ change sites): `transport.py` (stamp, helper
@@ -770,6 +767,9 @@ _Added by `/ll:confidence-check` on 2026-09-03. Re-run required: the
 - Depth is Moderate: one reader thread per producer socket merging into a
   shared bounded queue that feeds per-SSE-client bounded queues. Cross-thread
   shared state, not a contained single-function change.
+- The wholly new consumer-side socket reader and fan-in loop have no in-repo
+  test precedent yet — the test plan is fully enumerated but not yet written,
+  which is why Test Coverage scores 18/25 rather than 25/25.
 - The change touches guarded contracts (two BUG-3192 schema-parity tests,
   `TestLocalBridgeTransport` across the refactor). Each is mechanical but a
   missed leaf fails loudly.
@@ -803,6 +803,7 @@ _Added by `/ll:confidence-check` on 2026-09-03. Re-run required: the
 **Open** | Created: 2026-08-26 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-03T22:07:57 - `a295750d-9358-46ca-aab5-a1817177b579.jsonl`
 - `/ll:confidence-check` - 2026-09-03T21:26:10 - `242e594e-c4d8-419b-854d-4291b014ff22.jsonl`
 - `/ll:reconcile-issue` - 2026-09-03T21:21:08 - `a65ff5c9-09a4-4101-a67e-cc592584f289.jsonl`
 - `/ll:wire-issue` - 2026-09-03T05:12:02 - `ca5d5b5d-2640-4a8f-b9c1-7d66de090028.jsonl`
