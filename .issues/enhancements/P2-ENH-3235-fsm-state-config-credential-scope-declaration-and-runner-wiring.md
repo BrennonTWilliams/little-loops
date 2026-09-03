@@ -170,11 +170,12 @@ registry; the registry's fail-loud/allow/deny rules are ENH-3233's surface, not 
 - FSM-path `ActionRunner` test doubles whose `.run()` signature may need a new kwarg if the
   per-state scope declaration is threaded through `.run()` (mirroring how `tools=`/`agent=` reach
   `fsm/executor.py:2284`): `RssActionRunner` (`scripts/tests/test_host_guard.py:55`),
-  `MockActionRunner` (`scripts/tests/test_fsm_persistence.py:766`,
-  `scripts/tests/test_usage_journal.py:17`, `scripts/tests/test_fsm_executor.py:37`),
-  `ShutdownAfterFirstActionRunner` / `_TamperingActionRunner` / `_ActionRunner`
-  (`scripts/tests/test_fsm_executor.py`). Kept optional (matching the `tools=` precedent), these
-  are unaffected — worth an explicit check pass either way.
+  `MockActionRunner` (`scripts/tests/test_fsm_persistence.py:825`,
+  `scripts/tests/test_usage_journal.py:17`, `scripts/tests/test_fsm_executor.py:41`),
+  `ShutdownAfterFirstActionRunner` (`scripts/tests/test_fsm_executor.py:3880`) /
+  `_TamperingActionRunner` (`scripts/tests/test_fsm_executor.py:11973`) / `_ActionRunner`
+  (`scripts/tests/test_fsm_executor.py:12329`). Kept optional (matching the `tools=` precedent),
+  these are unaffected — worth an explicit check pass either way.
 
 - Verify `scripts/tests/test_enh3184_spawn_site_guard.py` still passes against the modified
   `project_child_env()` chokepoint (landed in ENH-3233, but this issue's wiring is a new consumer
@@ -205,8 +206,8 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   (`RssActionRunner` — `test_host_guard.py:62`; `MockActionRunner` — `test_fsm_executor.py:56-73`,
   `test_fsm_persistence.py:833-845`, `test_usage_journal.py:25-37`,
   `test_cost_ceiling_enforcement.py:29`; `ShutdownAfterFirstActionRunner` —
-  `test_fsm_executor.py:3883-3895`; `_TamperingActionRunner` — `test_fsm_executor.py:3981-3995`;
-  `_ActionRunner` — `test_fsm_executor.py:12334`) — a new optional kwarg on `ActionRunner.run()` is
+  `test_fsm_executor.py:3880-3895`; `_TamperingActionRunner` — `test_fsm_executor.py:11973`;
+  `_ActionRunner` — `test_fsm_executor.py:12329`) — a new optional kwarg on `ActionRunner.run()` is
   additive-safe against every one of them.
 
 - `test_enh3184_spawn_site_guard.py`'s per-module spawn-count table already has entries for
@@ -275,7 +276,26 @@ Out of scope for this child:
 - Added missing `## Blocks` backlink: ENH-3204 and ENH-3205 both declare
   `blocked_by: ENH-3235` but this issue had no `## Blocks` section.
 
+## Verification Notes (2026-09-03, second pass)
+
+- `_TamperingActionRunner`'s citation was wrong, not just drifted: the same `refine-issue` pass
+  that corrected other lines introduced `test_fsm_executor.py:3981-3995` for it; the class is
+  actually at line 11973 (confirmed by both `grep` and `ll-code defines`). Corrected in the Tests
+  and Codebase Research Findings sections above.
+- The `fsm-loop-schema.json` `tools:`-block "correction" to lines 582-598 was also backwards: the
+  block is still at its originally-cited 590-596 (confirmed by `grep -n '"tools"'` and direct
+  read) — 582-598 spans the unrelated `agent`/`tools`/`pruning_profile` neighborhood, not the
+  `tools:` block itself. Left as-is above since the body text doesn't hard-cite the wrong range in
+  a way that needs a line edit, but flagging here so a future pass doesn't re-introduce it.
+- All other citations re-verified clean: `project_child_env()`/`HostInvocation` signatures
+  (`host_runner.py:1865-1895`, `156-173`), `StateConfig.tools` (`schema.py:727`, `831`, `952`),
+  `fsm/executor.py:2495-2505`'s prompt-mode gating, `ENH-3233` still `status: open`, decisions log
+  present with no active required-rule conflict, `ll-verify-evidence` clean (0 findings).
+- Verdict: **NEEDS_UPDATE** — the blocking dependency and technical claims all hold; only two
+  stale/incorrect line citations needed correction.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T20:03:03 - `e7ab64a8-d990-4865-a8d8-f889f6c44694.jsonl`
 - `/ll:refine-issue` - 2026-09-03T19:17:32 - `35fa9aa4-b416-4202-92c2-dce942749180.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T16:32:35 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`

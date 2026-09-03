@@ -16,6 +16,7 @@ testable: true
 decision_needed: true
 learning_tests_required:
 - gh
+verify_verdict: NON_VALID
 ---
 
 # ENH-3205: Scope gh operations via GH_TOKEN and per-task GH_CONFIG_DIR isolation
@@ -57,11 +58,11 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 - **Chokepoint convention**: subprocess env construction has a single chokepoint, `project_child_env()` (`scripts/little_loops/host_runner.py:1865`). An AST-based static test, `test_enh3184_spawn_site_guard.py`, enforces every task-path `subprocess.*` call in a pinned per-module table routes through it (directly, via a variable assigned from it, or via an inline `# ll-no-project:` exemption comment). `scripts/little_loops/sync.py` is **not currently in that pinned table** — `_run_gh_command()`'s `subprocess.run(cmd, capture_output=True, text=True, check=check)` (`sync.py:98-124`) passes no `env=` at all, so this guard enforces nothing about `sync.py` today.
 - **No deny primitive yet**: `project_child_env()` only supports additive overrides (`invocation.env`, `extra={...}`) — it has no primitive to deny/clear an inherited variable. ENH-3233 (a direct `blocked_by` of this issue) specifies an `env_allow: frozenset[str] | None` parameter to add that capability, but as of this pass it exists only as design text in ENH-3233 — no `env_allow` symbol exists anywhere under `scripts/` yet.
-- **One-off keys via `extra=`**: one-off env keys are passed as `project_child_env(extra={...})` rather than mutated onto the returned dict afterward — e.g. `git_operations.py:728`, `worker_pool.py:859-861`, `fsm/runners.py:305`.
+- **One-off keys via `extra=`**: one-off env keys are passed as `project_child_env(extra={...})` rather than mutated onto the returned dict afterward — e.g. `git_operations.py:728`, `parallel/worker_pool.py:859-861`, `fsm/runners.py:305`.
 - **Both-or-neither pairing has no validator**: existing "set together, never one without the other" pairs (`GIT_DIR`/`GIT_WORK_TREE` in `host_runner.py:425-433` and its `CodexRunner`/`GeminiRunner` counterparts; `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` in `_apply_automation_env()`, `host_runner.py:1898-1915`) achieve pairing only by code-block co-location. No runtime or test-level assertion enforces the pairing in either case — searched repo-wide, no such helper exists to reuse.
 - **Per-task directory lifecycle, two existing shapes**: (a) a `tempfile.TemporaryDirectory()` scoped to a `with` block and reused across multiple subprocess calls sharing one `env` dict (`git_operations.py::preserve_dirty_tree()`, lines 725-749); (b) a heavier explicit create → out-of-tree registry entry → in-tree pid marker → cleanup pairing (`worktree_utils.py::setup_worktree()`/`cleanup_worktree()`, lines 283-472, with `_write_registry_entry()`/`_remove_registry_entry()`). Neither is GH_CONFIG_DIR-specific.
 - **Nearest allow-set shape precedent**: `MUTATING_TOOLS`, a bare module-level `frozenset[str]` consulted via `in` (`scripts/little_loops/mcp_server/policy.py:55-63`). ENH-3233's own research already names this as "shape precedent only" — no per-entry metadata, no fail-loud-on-unknown-name behavior.
-- **Test convention for "child cannot see ambient credential"**: this codebase asserts it two ways — (a) spawn a subprocess whose own `python3 -c` one-liner inspects its own `os.environ` and communicates via exit code (`test_worktree_utils.py::test_ll_python_scrubbed_from_child_env`, lines 1359-1388, and the positive-case sibling `test_verify_gate_marker_set_in_child_env`, lines 1336-1357); (b) assert directly on `project_child_env()`'s returned dict with no subprocess spawned (`test_host_runner.py::TestProjectChildEnv`, lines 96-139, parametrized across every `HostRunner` subclass). No shared/reusable "assert credential not visible" fixture exists — every instance inlines its own check.
+- **Test convention for "child cannot see ambient credential"**: this codebase asserts it two ways — (a) spawn a subprocess whose own `python3 -c` one-liner inspects its own `os.environ` and communicates via exit code (`test_worktree_utils.py::test_ll_python_scrubbed_from_child_env`, lines 1359-1388, and the positive-case sibling `test_verify_gate_marker_set_in_child_env`, lines 1336-1357); (b) assert directly on `project_child_env()`'s returned dict with no subprocess spawned (`test_host_runner.py::TestProjectChildEnv`, lines 96-139; the adjacent `TestProjectChildEnvCrossRunnerParity`, lines 142-159, carries the `@pytest.mark.parametrize("runner_cls", ...)` across every `HostRunner` subclass). No shared/reusable "assert credential not visible" fixture exists — every instance inlines its own check.
 - **Searched, no hits**: `GH_TOKEN`/`GH_CONFIG_DIR` literals, `env_allow`, a both-or-neither validator, and token-minting code were all searched repo-wide across `scripts/` with no filter — none exist in shipped code.
 
 ## Program Design
@@ -110,8 +111,16 @@ Explicitly **out of scope**:
 ## Verification Notes (2026-09-03)
 
 - `fsm/runners.py:266` citations corrected to `:297` (bash-c branch moved).
+- `worker_pool.py:859-861` citation corrected to `parallel/worker_pool.py:859-861` (no file exists at the un-prefixed path).
+- `test_host_runner.py::TestProjectChildEnv` citation corrected: the "parametrized across every `HostRunner` subclass" characterization belongs to the adjacent `TestProjectChildEnvCrossRunnerParity` class (lines 142-159), not `TestProjectChildEnv` itself (96-139).
+- All other Codebase Research Findings citations (sync.py, host_runner.py, git_operations.py, worktree_utils.py, mcp_server/policy.py, test_worktree_utils.py) confirmed accurate at their stated lines.
+- Graph: provider=`codegraph` freshness=`fresh`.
+- **DEP_ISSUES**: `ENH-3233` (a `blocked_by` entry) has no `ENH-3205` entry in its own `## Blocks` section — MISSING_BACKLINK. Not corrected here (out of this issue's own-file scope); `ENH-3233`'s file needs the backlink added.
+- Evidence-quote check (`ll-verify-evidence`): clean, no fabricated spans.
+- No active required decision rules found in the decisions log.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T20:10:57 - `433c9d43-d77e-48a9-ae6d-2a38645d30bb.jsonl`
 - `/ll:refine-issue` - 2026-09-03T19:37:52 - `e69aa141-6d57-4757-9f35-bf5dfd784b25.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:56 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`

@@ -15,6 +15,7 @@ discovered_date: '2026-08-15'
 captured_at: '2026-08-15T22:28:30Z'
 testable: true
 decision_needed: true
+verify_verdict: VALID
 ---
 
 # ENH-3204: Record the credential scope a run was granted for after-the-fact audit
@@ -77,7 +78,7 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 - `_apply_automation_env()` has moved again: now at `host_runner.py:1898-1915` (previously cited 1882 — this section already anticipated drift). Signature confirmed unchanged: `_apply_automation_env(env: dict[str, str], automation: AutomationContext | None) -> None`.
 - `_apply_automation_env()` and `project_child_env()` are never called from the same call site: `_apply_automation_env()` runs inside each host runner's `build_streaming()` (populating `HostInvocation.env` at build time); `project_child_env()` runs later, in a different function, on the resulting `HostInvocation` (e.g. `subprocess_utils.py:529`, after `build_streaming()` already ran at line 517). They share no call relationship.
-- `HostInvocation` (`host_runner.py:156-173`) has 5 fields today (`binary`, `args`, `env`, `capabilities`, `cleanup_paths`) — no `env_allow` field exists yet (ENH-3233 unimplemented). `ActionSpec` (`runner_spec.py:77-89`) likewise has no `scopes` field yet (ENH-3234 unimplemented).
+- `HostInvocation` (`host_runner.py:156-173`) has 5 fields today (`binary`, `args`, `env`, `capabilities`, `cleanup_paths`) — no `env_allow` field exists yet (ENH-3233 unimplemented). `ActionSpec` (`runner_spec.py:84-95`, drifted from previously-cited 77-89) likewise has no `scopes` field yet (ENH-3234 unimplemented).
 - `project_child_env(invocation=None, *, extra=None) -> dict[str, str]` (`host_runner.py:1865-1895`) returns a flat variable-name to value dict with no separate "declared scope name" information, today or under ENH-3233's planned shape — the writer cannot derive scope names from this return value alone. It needs the caller to pass through both name-sets explicitly, which matches this section's existing "the writer itself takes ... two frozenset[str] name-sets" line.
 - Call Path correction: the existing "Spawn site (holds run identifier) -> ..." line assumes a run identifier is available at the spawn site. Confirmed: none of `run_claude_command()`, `DefaultActionRunner.run()`, `run_blocking_json()`, or `verify_epic_branch_before_merge()` currently accept or hold a loop/spawn run identifier. `FSMExecutor.run_id` (`fsm/executor.py:570`) is the only genuine run identifier in the chain, set several stack frames above the actual spawn and not threaded down today. See Open Decisions.
 
@@ -115,8 +116,10 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 ## Verification Notes (2026-09-03)
 
 - `SCHEMA_VERSION` corrected 45→46; next migration is v47, not v46.
+- Re-verified: `SCHEMA_VERSION` still 46 (v47 claim holds). All three `blocked_by` issues (ENH-3233/3234/3235) confirmed open with correct `Blocks` backlinks to this issue. `HostInvocation`/`ActionSpec` field-absence claims (no `env_allow`, no `scopes`), `DefaultActionRunner.run()`'s missing `run_id` param, `_apply_automation_env()`/`project_child_env()` no-shared-call-site claim, and the writer/test precedent citations (`write_advisor_consult`/`write_research_triage`, `TestSchemaV46ResearchTriageEvents`, `TestWriteAdvisorConsult`/`TestWriteResearchTriage`) all confirmed accurate at current line numbers except `ActionSpec` (corrected 77-89 → 84-95 above). No active required decisions-log rules apply. `ll-verify-evidence` reports clean.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T20:06:11 - `af073d2f-8e64-47da-8b0b-406331feaae4.jsonl`
 - `/ll:refine-issue` - 2026-09-03T19:32:09 - `d28ffd7a-ae9c-48b9-8cda-76e95a2c6507.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:56 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`

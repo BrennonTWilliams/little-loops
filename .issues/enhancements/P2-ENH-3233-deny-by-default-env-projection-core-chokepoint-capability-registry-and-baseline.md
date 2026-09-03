@@ -116,7 +116,7 @@ ENH-3235 each wire a declaration through it without re-deriving or duplicating d
 ## Proposed Solution
 
 ### Types
-- `HostInvocation` (`host_runner.py:148-166`, `@dataclass(frozen=True)`): add `env_allow:
+- `HostInvocation` (`host_runner.py:156-173`, `@dataclass(frozen=True)`): add `env_allow:
   frozenset[str] | None = None`. Every `HostInvocation(...)` construction site inside each
   runner class's `build_streaming`/`build_blocking_json`/`build_detached` needs to pass this
   through (not every consumption site — those just read `.env`/`.binary`/`.args`).
@@ -172,8 +172,8 @@ which is a different mechanism and stays as-is for AC3).
   in a comment next to the set.
 - **AC5.** `invocation.env_allow is None` (no declaration) preserves today's full-inherit
   behavior exactly. `scripts/tests/test_host_runner.py::TestProjectChildEnv::test_no_args_is_full_inherit`
-  (lines 94-98) and `TestProjectChildEnvCrossRunnerParity::test_matches_hand_rolled_merge`
-  (lines 145-152) must keep passing **unmodified** — if either needs to change, deny-by-default
+  (lines 101-105) and `TestProjectChildEnvCrossRunnerParity::test_matches_hand_rolled_merge`
+  (lines 152-159) must keep passing **unmodified** — if either needs to change, deny-by-default
   has leaked into the no-declaration case.
 - **AC6.** Denied variable names are logged at DEBUG level (names only, never values). The same
   code path in report-only mode produces the AC4 would-deny evidence (ambient names outside the
@@ -218,9 +218,12 @@ ENH-3235 will need to synthesize a declaration for):
 ### Signatures
 - `build_streaming(*, prompt, working_dir=None, resume=False, agent=None, tools=None, model=None,
   automation_profile=None, disable_background_tasks=False, workspace_root=None) -> HostInvocation`
-  (`host_runner.py:217-229`; note the ENH-3095 refactor has since collapsed
-  `automation_profile`/`disable_background_tasks` into `automation: AutomationContext | None` —
-  the guidance below stands unchanged) — **do not** add a `scope=`/`env_allow=` kwarg here.
+  (`host_runner.py:247-260`; the `HostRunner` Protocol signature — re-verified 2026-09-03:
+  `automation_profile`/`disable_background_tasks` were not removed by the ENH-3095 refactor, they
+  remain as deprecated keywords alongside the new `automation: AutomationContext | None = None`
+  param — supplying either alongside an explicit `automation` emits a `DeprecationWarning` and
+  `automation` wins; the guidance below stands unchanged) — **do not** add a `scope=`/`env_allow=`
+  kwarg here.
   Threading scope through it means editing ~32 signatures (4
   build methods × 8 runner classes) for a value none of them interpret, and it puts the scoping
   decision inside the per-host runners — the one place it must not live, since `RunnerType.CMD`
@@ -275,11 +278,11 @@ before implementing, as they were already noted as drifted once:_
   none) — follow the existing inline-keyword-construction convention.
 
 ### Documentation
-- `docs/reference/API.md` — the `### project_child_env` section (~line 9621-9637) reproduces the
+- `docs/reference/API.md` — the `### project_child_env` section (line 10104-10125) reproduces the
   docstring verbatim, including "this helper provides no way to clear or deny an inherited
-  variable; that is deliberately out of scope (see ENH-3203)" — rewrite this line, it names this
+  variable; that's deliberately out of scope (see ENH-3203)" — rewrite this line, it names this
   issue directly and goes stale the moment deny semantics land. The `### HostInvocation` section
-  (~line 9437-9458) needs the new `env_allow` field added to the field table.
+  (line 9919-9945) needs the new `env_allow` field added to the field table.
 - `docs/ARCHITECTURE.md` — the `HostInvocation` table row (~lines 835-848) needs `env_allow`
   appended if the field list stays enumerated there.
 
@@ -333,7 +336,37 @@ ENH-3203 effort per its Scope Boundaries section):
 - Added missing `## Blocks` backlinks: ENH-3204 and ENH-3205 both declare `blocked_by: ENH-3233`
   but were absent from this issue's `## Blocks` section.
 
+### Verification Notes (2026-09-03, /ll:verify-issues re-pass)
+
+Re-ran after the same day's `/ll:refine-issue` pass (18:57:37, later than this file's prior
+verify at 17:47:54); corrected drift the refine pass introduced or left unchecked. Graph:
+provider=`codegraph` freshness=`fresh`. `ll-verify-evidence --json` → `"ok": true, "count": 0`
+(no fabricated evidence spans). Decisions log gate: no active required rules found (query
+succeeded, empty result). All `## Blocks` backlinks (ENH-3234, ENH-3235, ENH-3204, ENH-3205)
+and all Integration Map call-site line citations (both "with invocation" and "with no
+invocation" buckets) confirmed accurate against current code — no further change needed there.
+
+Corrected in this pass (all citation-only; no claim about current behavior was false):
+- **Program Design > Signatures**: `build_streaming` Protocol citation was `host_runner.py:217-229`
+  (that range actually falls inside `CapabilityReport`'s docstring / the `HostRunner` Protocol's
+  class docstring, not the method signature) — corrected to `247-260`. Also corrected the claim
+  that ENH-3095 "collapsed `automation_profile`/`disable_background_tasks` into `automation`" —
+  both deprecated kwargs remain in the live signature alongside `automation`, folded internally
+  via `resolve_automation()` rather than removed; a `DeprecationWarning` fires if both are passed.
+- **Types section**: `HostInvocation` citation `host_runner.py:148-166` corrected to `156-173`
+  (matches the precise citation already used elsewhere in this same issue).
+- **AC5 test citations**: `test_no_args_is_full_inherit` was `lines 94-98`, actual `101-105`;
+  `test_matches_hand_rolled_merge` was `lines 145-152`, actual `152-159`.
+- **Documentation section**: `docs/reference/API.md`'s `### project_child_env` section was cited
+  `~line 9621-9637`, actual `10104-10125` (~480-line drift — the doc file grew since this citation
+  was written); `### HostInvocation` was cited `~line 9437-9458`, actual `9919-9945`.
+
+Verdict: **NEEDS_UPDATE** (now corrected) — the issue's factual claims about current behavior all
+held; only line-number citations had drifted, most since the 17:47 verify pass's `refine-issue`
+follow-on added or left them unchecked.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T19:57:33 - `4261573e-8608-488b-a923-28da6aae0cad.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:57:37 - `81f9ded4-f3d7-410d-9fd5-2bd50814262a.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:54 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T16:32:34 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`
