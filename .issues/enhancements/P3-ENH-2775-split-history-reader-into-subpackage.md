@@ -178,6 +178,21 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   `session_store/__init__.py` and `fsm/validation/__init__.py` explicitly
   re-export private names "for test access" (see Conventions in Force).
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
+- `scripts/little_loops/loops/sft-corpus.yaml:75` — the `enrich` state's
+  embedded Python heredoc contains a live runtime import,
+  `from little_loops.history_reader import lookup_session_metadata`. This is
+  a non-`.py` production dependency the grep-based importer sweeps miss; the
+  split must keep `lookup_session_metadata` resolvable at
+  `little_loops.history_reader.lookup_session_metadata`.
+- `scripts/little_loops/mcp_server/tools.py` — beyond the module-level import
+  already listed above, the `_TOOL_HANDLERS["history_search"]` registry entry
+  maps MCP tool name `history_search` to `_tool_history_search()`, whose
+  docstring states it "Wraps `history_reader.search()` directly" and which
+  lazy-imports `search` at call time. `search` must stay resolvable at
+  `little_loops.history_reader.search` for this MCP tool registration to keep
+  working.
+
 ### Conventions in Force
 - This codebase's established convention for splitting a god-module is a
   **subpackage**, not sibling flat files left alongside an unrenamed original:
@@ -203,6 +218,29 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   `TestSummaryDagRetrieval`) that map directly onto candidate submodule
   boundaries — the test-file split is a mechanical class-per-domain move.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
+- `scripts/tests/test_ll_logs.py:4730,4800` and `scripts/tests/test_cli_history.py:289,305`
+  — `unittest.mock.patch("little_loops.history_reader.<name>", ...)` targets
+  (`lookup_session_metadata`, `sessions_for_issue`) not in the prior importer
+  count. These are string-based patch targets, invisible to import-statement
+  greps; the new `__init__.py` must keep both names resolvable at the flat
+  `little_loops.history_reader.<name>` path for the patches to still apply.
+- `scripts/tests/test_verdict_grammar_regression.py::test_high_confidence_abstention_warns`
+  (~line 173) — asserts on `caplog.at_level("WARNING", logger="little_loops.history_reader")`
+  around `check_high_confidence_abstention()`, plus the exact message text
+  `"high-confidence abstention: ..."`. Whichever submodule ends up hosting
+  this function must log via `logging.getLogger("little_loops.history_reader")`
+  explicitly (not a bare `__name__`-derived child logger) or this test breaks.
+- Confirmed test-file layout for the two completed sibling splits is flat,
+  not subdirectory-nested (`scripts/tests/session_store/` and
+  `scripts/tests/fsm_validation/` do not exist) — the history_reader split's
+  `test_history_reader_<submodule>.py` files should likewise live flat under
+  `scripts/tests/`, matching the Suggested Approach's own naming, not nested.
+- No test file outside `test_history_reader.py` imports a private
+  (underscore-prefixed) `history_reader` name — all 20 known test importers
+  key off public functions only, so none need special handling for
+  private-name relocation.
+
 ### Documentation
 - `docs/reference/API.md` — the `little_loops.history_reader` entry (line 54)
   cites the current flat-module layout and needs updating to the new package
@@ -215,6 +253,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   `history_reader.py | history_reader.py | Public read API: 10 query
   functions, 7 dataclasses, ...` (L758), which states counts that presuppose a
   single flat file.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
+- `docs/guides/LOOPS_GUIDE.md` — cites `history_reader.read_prepatch_evidence(issue_id)`
+  by dotted name in the pre-patch-check section.
+- `CHANGELOG.md` — three historical entries name the module/functions verbatim
+  (`history_reader.cost_attribution()`, `` `history_reader` module ``,
+  `` `history_reader` `` in the ENH-3211 entry) — these are historical and
+  don't need editing, but a doc-sync check should confirm they aren't
+  mistaken for live references during the split.
 
 ### Behavior Parity
 
@@ -297,6 +344,7 @@ introducing no new gate, threshold, or classification rule.
   of scope for `/ll:verify-issues`). Verdict: OUTDATED.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T03:06:46 - `e42909d5-e77d-478c-b142-52f1ba049345.jsonl`
 - `/ll:refine-issue` - 2026-09-03T02:51:56 - `00f0e408-f05f-43a3-bdc7-1e52bd1f47ab.jsonl`
 - `/ll:verify-issues` - 2026-09-03T02:27:50 - `ec373f26-c22d-4cdb-bcd2-9da717f53d54.jsonl`
 - `/ll:confidence-check` - 2026-08-29T23:32:17 - `8d7bb2d0-d27b-4d28-89fe-e2d8b28cb272.jsonl`

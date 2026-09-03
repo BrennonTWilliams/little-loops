@@ -125,6 +125,41 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   only transitively, through `info.py`/`config_cmds.py`/`lifecycle.py` — not
   direct importers, no update required on their part.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
+- **Correction**: `test_cli_loop_lifecycle.py` above is misclassified as
+  transitive-only. It is a direct white-box importer: `:905` does
+  `from little_loops.cli.loop._helpers import _loop_signal_handler`, `:909`
+  does `import little_loops.cli.loop._helpers as _h` and mutates module
+  globals (`_h._loop_shutdown_requested`, `_h._loop_executor`,
+  `_h._loop_pid_file`, `_h._using_alt_screen`) before invoking the handler,
+  and `:3081,3117,3145` patch `little_loops.cli.loop._helpers.StateFeedRenderer`
+  directly inside `cmd_monitor` tests.
+- Additional deferred (function-local) import call sites in already-listed
+  importer files, beyond their known module-level import line: `cli/loop/audit.py:265`
+  (`load_loop_with_spec`), `cli/loop/info.py:1709` (`seed_confidence_thresholds`),
+  `cli/loop/testing.py:218` (`derive_input_hash`), `cli/loop/run.py:204`
+  (`derive_input_hash`), `cli/loop/lifecycle.py:674` (`derive_input_hash`),
+  `cli/loop/lifecycle.py:747` (`run_foreground`), `cli/loop/lifecycle.py:834`
+  (`StateFeedRenderer`, `_install_sigwinch_handler`, `_restore_sigwinch_handler`
+  — comment notes this is deliberately late-imported so test patches take
+  effect at call time).
+- New test-file importers not in the known list: `scripts/tests/test_deep_research_arxiv.py:221`
+  and `scripts/tests/test_deep_research.py:194` (re-export shim only:
+  `get_builtin_loops_dir`, `resolve_loop_path`); `scripts/tests/test_ll_loop_execution.py:488`
+  (`patch("little_loops.cli.loop._helpers.subprocess.Popen")`);
+  `scripts/tests/test_cli_loop_testing.py:271` (`load_loop`);
+  `scripts/tests/test_fsm_loop_paths.py:67-71` —
+  `test_cli_helpers_reexports_resolve_loop_path_and_builtin_dir` does
+  `from little_loops.cli.loop import _helpers` and asserts
+  `_helpers.resolve_loop_path is resolve_loop_path` /
+  `_helpers.get_builtin_loops_dir is get_builtin_loops_dir` — a re-export
+  identity test that must keep passing however the split lands;
+  `scripts/tests/test_cross_host_baseline.py:225,288,373-588` (`run_background`,
+  `_run_cross_host_validation`, 10 sites total).
+- `skills/review-loop/reference.md:848` — prose reference to
+  `` `scripts/little_loops/cli/loop/_helpers.py:EXIT_CODES` `` (skill
+  companion doc, not `SKILL.md` itself).
+
 ### Conventions in Force
 - Named modules under `cli/loop/` are titled after the subcommand verbs they
   own, one module per subcommand group — evidence: `lifecycle.py` ("status,
@@ -158,6 +193,59 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   `tests/helpers.py`'s `sgr_codes` utility, unrelated to
   `cli/loop/_helpers.py`.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
+- **Mutable module-global coupling** (new risk, not just import-path
+  coupling): `test_cli_loop_background.py::TestLoopSignalHandler` does
+  `import little_loops.cli.loop._helpers as helpers_module` and directly
+  pokes/reads module-level globals (`_loop_shutdown_requested`,
+  `_loop_executor`, `_loop_pid_file`, `_loop_marker_path`,
+  `_using_alt_screen`, `_needs_redraw`, `_original_sigwinch`);
+  `test_cli_loop_lifecycle.py:905-919` does the same via `_h.<global>`. These
+  globals must move together with `_loop_signal_handler`/
+  `register_loop_signal_handlers` to the same destination module, or the
+  split needs an explicit shared-state object.
+- `test_cli_loop_background.py` has ~40 call sites of
+  `patch("little_loops.cli.loop._helpers.subprocess.Popen")` — coupling to
+  `subprocess` being imported into `_helpers`'s own module namespace, not
+  wherever `run_background` ends up. All ~40 need repointing if `run_background`
+  moves to a different module.
+- **Cluster → test-file map** (which of the 13+ known test files exercises
+  which of the 8 responsibility clusters, so imports can be repointed
+  correctly): signal handling → `test_cli_loop_background.py`,
+  `test_cli_loop_lifecycle.py`; queue helpers → `test_cli_loop_queue.py`;
+  diagram/pinned-pane rendering → `test_cli_loop_layout.py`,
+  `test_loop_layout_alignment.py`, `test_ll_loop_display.py`,
+  `test_state_feed_renderer.py`, `test_cli_loop_lifecycle.py`
+  (`StateFeedRenderer` patches); artifact/path header helpers →
+  `test_state_feed_renderer.py` only; FSM-context seeding →
+  `test_builtin_loops.py`, `test_advisor.py`; loop loading →
+  `test_ll_loop_display.py`, `test_cli_loop_background.py`,
+  `test_cli_loop_testing.py`; run orchestration →
+  `test_cli_loop_background.py`, `test_ll_loop_display.py`,
+  `test_feat_3151_mcp_start_path.py`, `test_feat_3168_stdio_policy_enforcement.py`,
+  `test_cross_host_baseline.py`; summary printing → `test_usage_reporter.py`,
+  `test_ll_loop_display.py`.
+- **Untested functions** (no direct white-box test import found anywhere,
+  black-box coverage only or none): `print_execution_plan` (its own
+  `TestPrintExecutionPlan` class docstring is stale — claims the function is
+  "nested in `main_loop()`", but it's top-level at `_helpers.py:1492`),
+  `load_loop_with_spec`, `_print_cross_host_table`, `inject_design_context`,
+  `_relativize_to_cwd`, `_display_loop_path`, `_effort_code`. Flag these as
+  higher-risk relocations since no test will catch a signature/behavior
+  change directly.
+- **Precedent for this exact shape** (grab-bag reached mostly via scattered
+  white-box `patch()` strings, not one dedicated test file): `ENH-469`
+  (`cli/sprint.py` → `cli/sprint/` package, done 2026-02-24, already cited in
+  Conventions in Force) is the closer analogue than `session_store`/
+  `fsm_validation` — its resolution required literally repointing 9
+  `monkeypatch`/`patch` string targets like
+  `"little_loops.cli.sprint.ParallelOrchestrator"` to
+  `"little_loops.cli.sprint.run.ParallelOrchestrator"`, while a package-level
+  `__init__.py` re-export meant callers importing through the package needed
+  no change. The same two-tier strategy applies here: `_helpers`'s
+  module-qualified `patch()` strings need literal repointing; anything
+  importing through a future `_helpers.py` shim's re-export does not.
+
 ### Documentation
 - `docs/reference/API.md:4401,4406` — cites literal
   `scripts/little_loops/cli/loop/_helpers.py:157-173` and `:103-107` line
@@ -170,6 +258,28 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   `little_loops.cli.loop._helpers` directly (alongside the sibling
   `cli.sprint._helpers` example, an out-of-scope module sharing the same
   naming pattern).
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — cites `_helpers.py:121-172`
+  and `:126-148` for the SIGINT/SIGTERM handler and second-Ctrl-C force-exit
+  branch, independently of the `docs/reference/API.md:4401,4406` citations.
+- `docs/reference/OUTPUT_STYLING.md` — references `StateFeedRenderer.handle_event()`
+  and `print_execution_plan()` by name, tying `cli.colors.fsm_edge_labels`
+  behavior to those two functions.
+- `docs/ARCHITECTURE.md` — a location distinct from the known L161/183 tree
+  diagrams: the extension-wiring table's `ll-loop monitor` row names
+  `StateFeedRenderer` as the event-forwarding target.
+- `docs/reference/CLI.md` — the `ll-loop monitor` subcommand description
+  names `StateFeedRenderer` as shared with `ll-loop run`.
+- `docs/reference/API.md` — a location distinct from the known L4401/4406
+  citations: the advisor-consult API doc states it "structurally never
+  touches `derive_input_hash`" as a negative-coupling proof point.
+- `docs/guides/MCP_SERVER_GUIDE.md` — cites `mcp_server/tools.py:699-705`
+  wrapping `run_background()` in `redirect_stdout`/`redirect_stderr` as the
+  canonical "wrap a still-printing function" extraction example.
+- Note: `docs/guides/SPRINT_GUIDE.md` mentions a same-named but *different*
+  module, `cli/sprint/_helpers.py` — not this issue's target; flagged only to
+  avoid cross-contamination during a grep-driven migration.
 
 ### Behavior Parity
 
@@ -230,6 +340,7 @@ unrelated epic. Verdict: NON_VALID (dependency-reference fix; content
 otherwise accurate).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T03:06:46 - `e42909d5-e77d-478c-b142-52f1ba049345.jsonl`
 - `/ll:refine-issue` - 2026-09-03T02:56:56 - `00f0e408-f05f-43a3-bdc7-1e52bd1f47ab.jsonl`
 - `/ll:verify-issues` - 2026-09-03T02:27:51 - `ec373f26-c22d-4cdb-bcd2-9da717f53d54.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:57 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
