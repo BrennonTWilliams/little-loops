@@ -65,7 +65,8 @@ from the corpus instead of leaving it as a passive archive.
 
 ## Children
 
-- **FEAT-2379** — Fleet loop-review runbook + `make` target — continuous improvement of built-in loops from cross-project logs *(parented 2026-07-03 via unparented sweep)*
+- ~~**FEAT-2379** — Fleet loop-review runbook + `make` target — continuous improvement of built-in loops from cross-project logs *(parented 2026-07-03 via unparented sweep)*~~ **done**
+- ~~**ENH-2231** — Wire per-issue level-0 condensed summaries into ll-history-context (baseline-gated)~~ **done**
 
 - **ENH-1919** — `ll-logs sequences`: tool-chain n-gram extraction primitive (feeds loop-suggester / FEAT-1309)
 - **FEAT-1920** — `ll-logs eval-export`: turn real sessions into ll-harness / create-eval-from-issues fixtures
@@ -85,8 +86,8 @@ from the corpus instead of leaving it as a passive archive.
 - **ENH-2132** — Deduplicate ll-logs signal detection logic (_extract_tool_name / _extract_eval_invocation)
 - **ENH-2133** — ll-logs sequences _compute_edges rebuilds transition counter per n-gram (O(K·N²))
 - **ENH-2134** — ll-logs minor code cleanup bundle (double import, readlines vs streaming, Path wrap)
-- **ENH-2923** — Scope `ll-logs scan-failures` to a specific skill
-- **ENH-2926** — `ll-logs extract`: report what was written instead of succeeding silently
+- ~~**ENH-2923** — Scope `ll-logs scan-failures` to a specific skill~~ **done**
+- ~~**ENH-2926** — `ll-logs extract`: report what was written instead of succeeding silently~~ **done**
 
 ## Scope
 
@@ -163,6 +164,8 @@ open
 
 2026-06-19 (OUTDATED): ENH-2130/2131/2132/2133/2134 confirmed `status: done`; only ENH-2070/2071/2072 remain (correctly marked deferred). "Remaining open work" section updated to remove the 5 completed children.
 
+2026-09-03: FEAT-2379, ENH-2923, and ENH-2926 confirmed `status: done` but still shown unmarked in Children — marked. ENH-2231 (`done`, `parent: EPIC-1918`) was missing from Children entirely — added. Only ENH-2070/2071/2072 remain open (deferred). 23/26 children resolved.
+
 - 2026-08-10: Verified 2026-08-10: the epic's 'Implementation Status' section (last updated 2026-06-19/20) predates three later-parented children — ENH-2923, ENH-2926, FEAT-2379 — which are still open. Epic is not closable; Implementation Status section needs a refresh to include these.
 
 ## Verification Notes (2026-08-12)
@@ -172,6 +175,7 @@ _Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. Confirmed
 - 2026-08-16: Primary 9 children's Completed statuses match; ENH-2070/2071/2072 correctly Deferred. ENH-2923, ENH-2926, and FEAT-2379 remain open children not reflected in the Implementation Status section (stale since 2026-06-19/20) — these three were separately verified in this same pass: ENH-2923 VALID, ENH-2926 OUTDATED, FEAT-2379 VALID per those issues' own files. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:43:08 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:55 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

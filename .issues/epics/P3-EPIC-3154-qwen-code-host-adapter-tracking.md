@@ -19,6 +19,7 @@ relates_to:
 - FEAT-3160
 - ENH-3161
 - ENH-3162
+- BUG-3163
 labels:
 - epic
 - captured
@@ -160,7 +161,7 @@ succeeded (project `.qwen/settings.json` hooks fire under `qwen -p`), so
 the BUG-2921-analog fallback never became necessary. One narrower finding
 was absorbed into design instead: `SessionEnd` does not fire headless
 (documented in `[^qwenheadless]`; cleanup rides the `Stop` legacy scripts).
-- **BUG-3163** — ll-adapt --host qwen mirrors omit skill companion files (open)
+- ~~**BUG-3163** — ll-adapt --host qwen mirrors omit skill companion files~~ **done**
 
 
 ## Implementation Steps
@@ -282,7 +283,14 @@ normalization).
   the TUI). Deliberately not run autonomously: it spends model tokens and
   mutates issue state. Epic stays open until that smoke passes.
 
+2026-09-03 (`/ll:verify-issues`): BUG-3163 (ll-adapt --host qwen mirrors
+omit skill companion files) confirmed `done` since 2026-08-13 but was
+still shown "(open)" in Children and missing from `relates_to` — corrected
+both. 9/9 tracked children now resolved; epic correctly stays `open`
+pending the manual smoke-test gate noted above.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:45:22 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:capture-issue` - 2026-08-13T01:28:37Z - qwen-code host integration report capture
 

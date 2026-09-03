@@ -38,11 +38,12 @@ relates_to:
 - ENH-2739
 - ENH-2740
 - ENH-2741
+- ENH-2493
 labels:
 - epic
 - history-db
 - captured
-verify_verdict: NON_VALID
+verify_verdict: VALID
 depends_on:
 - EPIC-1707
 ---
@@ -115,9 +116,11 @@ graceful-degradation contract:
   batch lands as one coarse `cli_event`. *(P2 — highest-value new sibling;
   Python-orchestration analog of ENH-2458/2459, distinct from ENH-2463's FSM
   `loop_runs`.)*
-- **ENH-2493** — Persist `ll-harness` / DSL-eval structured outcomes (runner,
+- ~~**ENH-2493** — Persist `ll-harness` / DSL-eval structured outcomes (runner,
   target, semantic verdict, pass/fail, timeout) into a `harness_events` table;
-  today only the exit code survives. *(P3)*
+  today only the exit code survives. *(P3)*~~ **done** — decomposed into
+  ENH-2739 (schema/registration/recorder), ENH-2740 (producer wiring),
+  ENH-2741 (read API/CLI/docs), all `done`.
 - **ENH-2494** — Capture the non-pytest CI gates (`ruff`, `mypy`,
   `ruff format --check`) into a `check_events` table, generalizing ENH-2459's
   pytest-only `test_run_events`. *(P3)*
@@ -314,6 +317,8 @@ _Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)*
 
 - 2026-08-16: Content/status is accurate; the `scripts/little_loops/session_store.py` file citation under Sources was stale — it's now a package directory `scripts/little_loops/session_store/`, corrected above. Verdict: NEEDS_UPDATE.
 
+- 2026-09-03: ENH-2493 (`harness_events`) confirmed `done`, decomposed into ENH-2739/2740/2741 (all `done`, `parent: EPIC-2457`) — none of the four were in `relates_to` or the Children body list; added ENH-2493 to `relates_to` and marked it done inline with its decomposition note. Rollup: 21 done, 5 cancelled, 3 deferred (ENH-2464/2465/2580) of 29 total children — epic legitimately stays open on the 3 deferred items. `verify_verdict` corrected to VALID. Note: a previously-reported `issue_parser.py:294` stale citation for `stale_file_ref` was checked and does not exist anywhere in this file — that finding does not apply here.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — the source findings report this epic is derived from
@@ -331,6 +336,7 @@ _Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)*
 - `.claude/CLAUDE.md` — documents the `ll-session` CLI (`search --fts`, `recent --kind`, `backfill`, `rebuild`, `compact`) that surfaces each new event kind this epic's children add.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:44:28 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:55 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:16 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

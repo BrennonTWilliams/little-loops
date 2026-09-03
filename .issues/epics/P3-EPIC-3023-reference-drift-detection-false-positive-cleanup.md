@@ -45,20 +45,21 @@ flagged as a poor stand-in.
 
 ## Children
 
-- **ENH-3000** (P3, `decision_needed`) — untracked-by-design directory refs
+- ~~**ENH-3000** (P3) — untracked-by-design directory refs
   always report `stale`; needs an Option A (filesystem-existence fallback) vs.
   Option B (config-driven prefix allowlist) decision via `/ll:decide-issue`
-  before implementation.
-- **ENH-2990** (P3) — measure the live/production skip rate of ENH-2971's
+  before implementation.~~ **done** — decision resolved and implemented.
+- ~~**ENH-2990** (P3) — measure the live/production skip rate of ENH-2971's
   Staleness Check predicate (currently unknown within a 4x band: 8.6%–33.7%
   depending on measurement method), to decide whether the check needs
-  narrowing.
+  narrowing.~~ **done**
 
 No dependency edge between them — ENH-3000 narrows what counts as `stale` in
 the first place; ENH-2990 measures how often the existing predicate skips
 re-refine work. Resolving ENH-3000 will shift ENH-2990's baseline numbers, so
 sequencing ENH-3000 first is preferable but not required.
-- **ENH-3381** — Record ENH-2990 live skip rate (open)
+- **ENH-3381** — Record ENH-2990 live skip rate (open) — epic stays open
+  pending this child.
 
 
 ## Integration Map
@@ -109,10 +110,10 @@ reference resolution.
 
 ## Success Criteria
 
-- [ ] The ENH-3000 design decision is recorded and implemented; corpus
+- [x] The ENH-3000 design decision is recorded and implemented; corpus
       re-measurement shows the 315 untracked-by-design false positives
       leaving `stale`
-- [ ] ENH-2990's live/replayed skip-rate measurement is recorded in ENH-2971's
+- [x] ENH-2990's live/replayed skip-rate measurement is recorded in ENH-2971's
       Threshold Validation section alongside the existing corpus numbers
 - [ ] `python -m pytest scripts/tests/` passes
 
@@ -124,5 +125,15 @@ reference resolution.
   measurement ENH-2990 exists to supersede for the live case.
 
 
+## Verification Notes
+
+2026-09-03 (`/ll:verify-issues`): ENH-3000 and ENH-2990 both confirmed
+`status: done` but Children still framed ENH-3000 as needing a decision —
+marked both done. ENH-3381 confirmed still `open`, so the epic legitimately
+stays open. First two Success Criteria checkboxes checked (satisfied by the
+two done children); third (test suite green) left unchecked pending
+verification.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:46:08 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

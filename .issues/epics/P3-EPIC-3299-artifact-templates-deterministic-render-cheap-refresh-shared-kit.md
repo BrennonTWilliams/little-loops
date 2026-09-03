@@ -93,12 +93,15 @@ somewhere coherent.
   stamping, to be pulled out as its own callable unit
 - `ll-artifact` CLI — gains `render`, `extract`, `refresh`, `status`,
   `templatize` alongside the existing `policy-builder` and `design-md export`
-  subcommands (`scripts/little_loops/cli/artifact.py`, entry point at `:275`)
-- `scripts/little_loops/config/features.py:369-384` + `config-schema.json:1870-1880`
-  — `ArtifactsConfig` today has exactly one field (`default_output_dir`) and the
-  schema sets `additionalProperties: false`; the `artifacts.export` block that
-  FEAT-3036 and FEAT-3304 both treat as decided does not exist yet and must be
-  added to the schema before either can land
+  subcommands (now a package, `scripts/little_loops/cli/artifact/__init__.py`,
+  entry point `main_artifact()` at `:66`; the `render`/`templatize`/`extract`/
+  `refresh`/`status` subcommands already exist as `render.py`, `templatize.py`,
+  `extract.py`, `lockfile.py`, `status.py` in that package)
+- `scripts/little_loops/config/features.py:441` (`ArtifactsConfig`, now has
+  `default_output_dir`, `templatize_max_input_bytes`, and `promotion_dir`) and
+  `:405` (`ArtifactsExportConfig` — `mode`, `max_artifact_bytes` — FEAT-3304's
+  `artifacts.export` block; it now exists, contrary to this section's earlier
+  claim)
 - The HTML loop family — `html-website-generator.yaml:78`,
   `html-anything.yaml:133`, `interactive-component-generator.yaml:211,399`,
   `generative-art.yaml:104`, `pixi-generative-art.yaml:108`, `pixi-data-viz.yaml`,
@@ -106,13 +109,15 @@ somewhere coherent.
   `${run_dir}/index.html` and terminate. `hitl-md.yaml:256-263` and
   `vega-viz.yaml:505-513` already hand-code a `cp` out of the run dir: prior art
   that loop authors want the handoff FEAT-3309 provides
-- `cli/loop/_helpers.py:1258` (`_artifact_lines`) and
-  `fsm/persistence.py:552-598` (`archive_run`, copies only `summary.json`) — the
-  runner reports artifact paths but does not retain artifacts
-- `cli/loop/_helpers.py:1416-1424` — loops receive design tokens as *prompt text*
-  via `render_as_prompt_context`, so generated artifacts have token values baked
-  in as literals; the kit stamps them as CSS vars at render time. Two token paths
-  that must be reconciled (FEAT-3308)
+- `cli/loop/header.py:57` (`_artifact_lines`, moved from the now-dissolved
+  `cli/loop/_helpers.py`) and `fsm/persistence.py:552-598` (`archive_run`,
+  copies only `summary.json`) — the runner reports artifact paths but does not
+  retain artifacts
+- `design_tokens.py:572` (`render_as_prompt_context`, called from
+  `fsm/context_seed.py:66-73`, also moved out of the dissolved `_helpers.py`)
+  — loops receive design tokens as *prompt text*, so generated artifacts have
+  token values baked in as literals; the kit stamps them as CSS vars at render
+  time. Two token paths that must be reconciled (FEAT-3308)
 
 ## Impact
 
@@ -225,6 +230,31 @@ are scoped; Phase 4 is now FEAT-3308.
 - `.issues/features/P3-FEAT-3036-artifact-templates-design.md` — the design
   hub; read this before scoping any child
 
+## Verification Notes
+
+2026-09-03 (`/ll:verify-issues`): 14/15 children done, ENH-3322 correctly
+`deferred`. The `scripts/little_loops/cli/artifact.py:275` citation was
+stale — that module is now a package (`cli/artifact/`); corrected to the
+current entry point (`cli/artifact/__init__.py:66`, `main_artifact()`) and
+noted that the `render`/`extract`/`refresh`/`status`/`templatize`
+subcommands this epic scoped as goals already exist in that package.
+
+2026-09-03 (`/ll:verify-issues`, follow-up pass): three more stale/incorrect
+citations found and corrected. `cli/loop/_helpers.py:1258`/`:1416-1424` were
+stale — that module was dissolved into `cli/loop/header.py`, `runner.py`,
+`summary.py`, and `fsm/context_seed.py` during recent module decomposition;
+`_artifact_lines` is now at `header.py:57` and `render_as_prompt_context` is
+at `design_tokens.py:572` (called from `fsm/context_seed.py:66-73`). The
+claim that the `artifacts.export` config block "does not exist yet" is now
+**factually wrong**: `ArtifactsExportConfig` (`mode`, `max_artifact_bytes`)
+exists at `config/features.py:405`, and `ArtifactsConfig` moved to `:441`
+and gained two more fields (`templatize_max_input_bytes`, `promotion_dir`)
+since this epic was scoped.
+
 ## Status
 
 **Open** | Created: 2026-08-23 | Priority: P3
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:51:48 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
+- `/ll:verify-issues` - 2026-09-03T17:47:13 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
