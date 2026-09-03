@@ -44,7 +44,8 @@ project:
 
 | `install_source` | Rendered `Install:` line |
 |---|---|
-| `local-editable`, editable path resolved | `pip install -e "<editable-path>[dev]"` (absolute path from `pip show`) |
+| `local-editable`, editable path resolved and **inside** `project_root` | `pip install -e "./scripts[dev]"` — i.e. `./<relpath>[dev]`; byte-identical to today's output for the source repo |
+| `local-editable`, editable path resolved and **outside** `project_root` | `pip install -e "<relpath>[dev]"` where `<relpath>` is `os.path.relpath(install_path, project_root)` (e.g. `../brenentech/little-loops/scripts[dev]`); absolute path only if `relpath` raises (cross-drive on Windows) |
 | `local-editable`, path unresolvable | `pip install -e "./scripts[dev]"` (source-repo fallback) |
 | `pypi` | `pip install little-loops` |
 | `global-claude-code` / `project-claude-code` | `pip install little-loops` |
@@ -54,6 +55,23 @@ The line is never omitted: a Claude Code plugin install provides `/ll:*`
 commands but not the `ll-*` CLIs the block documents, and the TUI already
 states this (`tui.py:229-233`). `local-editable` is therefore the only
 special case.
+
+**Why relative, not absolute.** CLAUDE.md/AGENTS.md is a committed file.
+`pip show` reports the editable location as an absolute home path (on the
+maintainer's machine, `/Users/<name>/.../little-loops/scripts`), which is
+exactly the `abs_user_path` pattern `ll-verify-private-refs`
+(`scripts/little_loops/cli/verify_private_refs.py:135-141`) rejects and
+which runs as a pre-commit hook in this repo (`.pre-commit-config.yaml:14`).
+Rendering the absolute path would also change the source repo's own output
+from `./scripts[dev]` (the editable path *is* resolved there), contradicting
+the "preserves today's output for the source repo" claim under Impact. The
+in-tree/relpath rule keeps both properties.
+
+**`[dev]` extras are kept for every `local-editable` row.** They are
+arguably unnecessary for a consumer that is not developing little-loops, but
+the existing `--upgrade` path already installs `{editable_path}[dev]`
+(`cli.py:575`); the generated line matches that convention rather than
+introducing a second form. Do not relitigate this during implementation.
 
 ## Motivation
 
@@ -118,10 +136,23 @@ re-parses the same line for the `--upgrade` path. Extend
 (`install_path`) for `local-editable` installs — its docstring
 (`install_check.py:64-69`) currently says `install_path` is plugin-only and
 must be updated. Thread `install_path` alongside `install_source` into the
-writers so the `local-editable` branch can render the absolute path, falling
-back to `./scripts[dev]` when `install_path` is `None`. Do **not** write the
-`<editable-path>` placeholder that `tui.py:240` prints — that is acceptable
-in a console hint, not in a generated instructions file.
+writers so the `local-editable` branch can render the path per the Expected
+Behavior table (relative to `project_root`; never the raw absolute path),
+falling back to `./scripts[dev]` when `install_path` is `None`. Do **not**
+write the `<editable-path>` placeholder that `tui.py:240` prints — that is
+acceptable in a console hint, not in a generated instructions file.
+
+Overloading the third tuple element is safe: all three current callers
+discard `_install_path` (`cli.py:519`, `cli.py:935`, `tui.py:185`), so no
+code today treats a non-`None` `install_path` as "plugin install".
+
+**Dedupe the second `Editable project location:` parser.** Once
+`detect_installation()` returns the editable path, the `--upgrade` branch in
+`_run_yes()` (`cli.py:549-585`) must use the `_install_path` already in
+scope from `cli.py:519` instead of re-running `pip show` and re-parsing the
+line (`cli.py:551-566`). Replace that block with the returned value; keep
+the existing "could not determine editable install path" warning for the
+`None` case.
 
 > **Selected:** Option A — reuses the existing `detect_installation()`
 > unconditional-near-top call shape already used by `_run_yes()`
@@ -172,7 +203,8 @@ than trusted from the plan (`validate_deps` at `cli.py:927`).
   module-import-time.
 - `scripts/little_loops/init/cli.py` — `_run_apply()` (832-939): resolve
   `install_source` availability before `cli.py:918`/`923` (see Proposed
-  Solution Option A/B).
+  Solution Option A/B). `_run_yes()` (549-585): replace the inline
+  `pip show` re-parse with the `_install_path` returned at 519.
 - `scripts/little_loops/init/tui.py` — `_apply_config()` (819) and its call
   site in `run_tui()` (648-661): thread `install_source` (and `install_path`)
   through as new parameters.
@@ -285,9 +317,12 @@ N/A — no new data types introduced; the change threads an existing
   (`install_path`) becomes the parsed `Editable project location:` for
   `local-editable` installs instead of always `None` for pip installs.
 - `_render_commands_block(desc_overrides: dict[str, str] | None = None,
-  install_source: str | None = None, install_path: str | None = None) -> str`
+  install_source: str | None = None, install_path: str | None = None,
+  project_root: Path | None = None) -> str`
   (`writers.py:242`) — currently module-import-time only; moves to per-call
   invocation and emits the `Install:` line per the Expected Behavior table.
+  `project_root` is needed to relativize `install_path`; alternatively the
+  writers pre-compute the relative string and pass it as `install_path`.
 - `write_claude_md(project_root: Path, dry_run: bool = False,
   install_source: str | None = None, install_path: str | None = None) -> bool`
   (`writers.py:564`).
@@ -321,9 +356,13 @@ local at `tui.py:185` not passed into `_apply_config()`).
   `"global-claude-code"`, `"project-claude-code"` — plus `None`. The only
   branch is `install_source == "local-editable"` (matching the existing
   one-value-vs-else convention at `tui.py:239` and `cli.py:549`); inside it,
-  `install_path is not None` selects the absolute-path form over the
-  `./scripts[dev]` fallback. All other values, including `None`, render
-  `pip install little-loops`. The line is never omitted.
+  `install_path is not None` selects the path form over the `./scripts[dev]`
+  fallback, and the path form is always rendered relative to `project_root`
+  via `os.path.relpath` (in-tree yields `./scripts[dev]`; out-of-tree yields
+  `../.../scripts[dev]`; absolute only when `relpath` raises `ValueError`).
+  Never emit the raw absolute path — it trips `ll-verify-private-refs`. All
+  other values, including `None`, render `pip install little-loops`. The
+  line is never omitted.
 - Dry-run: `detect_installation()` must run in `_run_apply()` regardless of
   `dry_run`, since both writers are invoked under dry-run
   (`cli.py:918`/`923`) and their preview output should match the real run.
@@ -348,11 +387,18 @@ local at `tui.py:185` not passed into `_apply_config()`).
    invoked per-call from `write_claude_md()`/`write_agents_md()` rather than
    frozen once at module import (`writers.py:252`/`256`; the
    `_NEW_FILE_CONTENT` constants at 258-259 move per-call too). The
-   `Install:` line it emits follows the Expected Behavior table.
+   `Install:` line it emits follows the Expected Behavior table: the
+   `local-editable` path form is `os.path.relpath(install_path,
+   project_root)` (so `_render_commands_block()` also needs `project_root`,
+   or the writers pre-compute the relative string before calling it), with
+   a `./` prefix when the result has no leading `..`.
 3. `write_claude_md()` (`writers.py:564`) and `write_agents_md()`
    (`writers.py:615`) accept `install_source: str | None = None,
    install_path: str | None = None` and pass both through to
    `_render_commands_block()`.
+3a. `_run_yes()` (`cli.py:549-585`): delete the inline `pip show` re-parse
+   at 551-566 and use the `_install_path` returned at 519 (rename from
+   `_install_path` to `install_path` since it is no longer discarded).
 4. Both values reach every production call site of
    `write_claude_md`/`write_agents_md`: `_run_yes()` (`cli.py:706`/`711`,
    via `cli.py:519` — stop discarding `_install_path`); `_run_apply()`
@@ -366,12 +412,15 @@ local at `tui.py:185` not passed into `_apply_config()`).
    subprocesses.
 6. `TestWriteClaudeMd`/`TestWriteAgentsMd`
    (`scripts/tests/test_init_core.py:1444-1616`) gain one test method per
-   row of the Expected Behavior table (`local-editable` with path,
+   row of the Expected Behavior table (`local-editable` with in-tree path
+   -> exactly `./scripts[dev]`, `local-editable` with out-of-tree path ->
+   `..`-relative and containing no `/Users/`/`/home/` segment,
    `local-editable` without path, `pypi`, a `*-claude-code` value, `None`),
    following this file's one-test-method-per-value convention (see
    `TestDetectInstallation` in `test_init_install.py` for the precedent),
    plus a negative assertion that no non-source-repo row emits
-   `./scripts[dev]`.
+   `./scripts[dev]`. Note: no existing test asserts on the `Install:` line
+   at all, so nothing pins today's output until these land.
 7. `python -m pytest scripts/tests/test_init_core.py
    scripts/tests/test_init_install.py scripts/tests/test_init_tui.py -v`
    passes.
@@ -398,9 +447,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Effort**: Small - Four files, additive keyword parameters, one helper
   refactor in `install_check.py`, and test fixtures; no schema or config
   changes.
-- **Risk**: Low - New parameters default to `None` and preserve today's
-  output for the source repo; the only behavioral risk is the added
-  subprocess in `_run_apply()`, mitigated by test patching (step 5).
+- **Risk**: Low - New parameters default to `None`, and the in-tree relpath
+  rule keeps the source repo's rendered line byte-identical to today; the
+  only behavioral risk is the added subprocess in `_run_apply()`, mitigated
+  by test patching (step 5).
 - **Breaking Change**: No - Existing files are untouched (idempotency
   marker); only newly generated blocks change.
 
@@ -464,9 +514,9 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 - **Expected**: the install line reflects how the project actually installed
   little-loops — `pip install little-loops` for `pypi`/plugin/`None`, and
-  `pip install -e "<editable-path>[dev]"` for `local-editable` consumers
-  whose checkout lives outside the project (see the table in Expected
-  Behavior).
+  `pip install -e "<relative-editable-path>[dev]"` for `local-editable`
+  consumers whose checkout lives outside the project (see the table in
+  Expected Behavior).
 - **Actual**: every generated AGENTS.md/CLAUDE.md gets the same
   source-repo-only editable-dev-install command.
 
@@ -475,11 +525,13 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 Thread `install_source: str | None` and `install_path: str | None` into
 `_render_commands_block()` and into `write_claude_md()` /
 `write_agents_md()`; render the `Install:` line per the Expected Behavior
-table (`local-editable` is the only branch; the absolute editable path when
-known, `./scripts[dev]` as fallback; `pip install little-loops` for
-everything else, never omitted). Update the three call sites above to pass
-the detected values through instead of leaving them unused. See Proposed
-Solution for the editable-path resolution and `_run_apply()` plumbing.
+table (`local-editable` is the only branch; the editable path rendered
+relative to `project_root` when known, `./scripts[dev]` as fallback;
+`pip install little-loops` for everything else, never omitted). Update the
+three call sites above to pass the detected values through instead of
+leaving them unused, and drop the duplicate `pip show` re-parse in
+`_run_yes()`. See Proposed Solution for the editable-path resolution and
+`_run_apply()` plumbing.
 
 ## Related
 
