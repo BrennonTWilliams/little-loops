@@ -18,9 +18,9 @@ depends_on: []
 learning_tests_required:
 - http.server
 confidence_score: 90
-outcome_confidence: 58
+outcome_confidence: 65
 score_complexity: 5
-score_test_coverage: 18
+score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
 reconcile_attempted: true
@@ -1003,10 +1003,20 @@ precedent (`LocalBridgeTransport`, `_SSEClient`/`_sse_encode`,
 `BRConfig.to_dict()`'s `sqlite` omission, `list_running_loops`,
 `generate_schemas.py._BASE_PROPS`) checked out unchanged against the live
 tree, and no `SseBridge`/`serve_sse_bridge`/`events.bridge` code exists yet.
-Scores unchanged._
+Scores unchanged. Re-verified a fourth time 2026-09-03: `git log` shows no
+commits touching `transport.py`, `config/features.py`, or
+`config-schema.json` since the prior pass; the working tree is clean; the
+`http.server` learning test remains `proven` (6/0/0); `check-design` still
+passes; no `blocked_by` deps; `unproven_mechanism`/`spike_attempted` flags
+still unset. Scores unchanged. Re-scored a fifth time 2026-09-03 after test
+stubs were drafted (see Revision History): Criterion B (Test Coverage) moves
+18→25 now that `scripts/tests/test_feat3323_sse_bridge.py` (27 tests,
+skip-gated) and a real red test on `UnixSocketTransport.send()`'s
+`producer_pid` stamp exist for the previously-untested fan-in/bridge surface;
+Criteria A/C/D unchanged. Outcome Confidence 58→65 (LOW→MODERATE)._
 
 **Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 58/100 → LOW
+**Outcome Confidence**: 65/100 → MODERATE
 
 ### Gaps to Address (advisory, non-blocking)
 - `stale_cli_flag`: `ll-artifact serve (no such subcommand)`. Expected; this
@@ -1021,12 +1031,13 @@ Scores unchanged._
 - Depth is Moderate: one reader thread per producer socket merging into a
   shared bounded queue that feeds per-SSE-client bounded queues. Cross-thread
   shared state, not a contained single-function change.
-- The wholly new consumer-side socket reader and fan-in loop have no in-repo
-  test precedent yet — the test plan is fully enumerated but not yet written,
-  which is why Test Coverage scores 18/25 rather than 25/25.
 - The change touches guarded contracts (two BUG-3192 schema-parity tests,
   `TestLocalBridgeTransport` across the refactor). Each is mechanical but a
   missed leaf fails loudly.
+- Config/schema-side tests (`TestBridgeEventsConfig`, schema extension,
+  `generate_schemas` assertion) remain undrafted — direct copies of the
+  `TestSocketEventsConfig` pattern per the issue's own research findings, so
+  left for implementation time rather than raising Criterion B further.
 
 ## Revision History
 
@@ -1071,12 +1082,30 @@ Scores unchanged._
   wrongly said no test convention exists); `keepalive_s`/`rescan_s` schema
   type `number`; `EADDRINUSE` test throwaway must `listen()`. Merged-queue
   relay kept, noted as an optional simplification.
+- **2026-09-03 — test stubs drafted ahead of implementation (TDD).** Added
+  `scripts/tests/test_feat3323_sse_bridge.py`: 27 tests against the full
+  `## Tests` list (fan-in, seeding, server mechanics, security, lifecycle,
+  CLI), guarded by a `pytestmark` skipif on `SseBridge` import so the module
+  skips cleanly rather than failing collection until the bridge exists. Also
+  added `test_send_stamps_producer_pid_on_a_copy_not_the_callers_dict` to
+  `TestUnixSocketTransport` in `test_transport.py` — that one needs no new
+  symbol and runs **red today** against the actual missing `producer_pid`
+  stamp. Full suite verified: 81 pre-existing `test_transport.py` tests still
+  pass, only the new red test fails, the new file's 27 stubs skip cleanly.
+  Not drafted: `TestBridgeEventsConfig` / schema / `generate_schemas` tests —
+  the issue's own Codebase Research Findings call these direct copies of the
+  `TestSocketEventsConfig` pattern, low-risk enough to leave for
+  implementation time. This closes the "test plan enumerated but not yet
+  written" gap that had been capping Criterion B (Test Coverage) at 18/25;
+  re-scored to 25/25, raising Outcome Confidence 58→65 (LOW→MODERATE).
 
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-03T23:50:05 - `aed94642-f109-4502-89a6-54feff7835ca.jsonl`
+- `/ll:confidence-check` - 2026-09-03T23:28:33 - `aed94642-f109-4502-89a6-54feff7835ca.jsonl`
 - `/ll:confidence-check` - 2026-09-03T22:33:38 - `c4598621-fc70-4771-8b85-912ca5add2cd.jsonl`
 - `/ll:confidence-check` - 2026-09-03T22:07:57 - `a295750d-9358-46ca-aab5-a1817177b579.jsonl`
 - `/ll:confidence-check` - 2026-09-03T21:26:10 - `242e594e-c4d8-419b-854d-4291b014ff22.jsonl`

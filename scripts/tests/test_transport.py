@@ -588,6 +588,29 @@ class TestUnixSocketTransport:
                     pass
             t.close()
 
+    def test_send_stamps_producer_pid_on_a_copy_not_the_callers_dict(
+        self, short_tmp_path: Path
+    ) -> None:
+        """FEAT-3323: send() stamps producer_pid == os.getpid() without mutating caller's dict."""
+        t = UnixSocketTransport(short_tmp_path / "events.sock", max_clients=2)
+        try:
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.connect(str(t._path))
+            _wait_until(lambda: _client_count(t) == 1)
+
+            event = {"event": "first", "ts": "t1"}
+            t.send(event)
+
+            assert "producer_pid" not in event, "send() must copy before stamping, never mutate"
+
+            client.settimeout(5.0)
+            line = client.recv(4096).decode("utf-8").splitlines()[0]
+            received = json.loads(line)
+            assert received["producer_pid"] == os.getpid()
+            client.close()
+        finally:
+            t.close()
+
     def test_send_drops_when_queue_full_logs_warning(
         self, short_tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
