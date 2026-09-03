@@ -23,15 +23,40 @@ have no `scripts[dev]` to install and the command fails for them.
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Every `ll-init` write path (`--yes`, `apply --config`, and the TUI wizard)
+appends the same import-time-frozen `## little-loops CLI Commands` block to
+CLAUDE.md/AGENTS.md, ending in `Install: \`pip install -e "./scripts[dev]"\``.
+The value of `install_source` is detected (`cli.py:519`, `tui.py:185`) but
+never reaches the writers, so a PyPI consumer, a plugin consumer, and a
+`local-editable` consumer whose editable checkout lives elsewhere all get a
+command that references a `./scripts` directory they do not have.
 
 ## Expected Behavior
 
-[What should happen instead]
+The `Install:` line reflects how little-loops is actually installed for this
+project:
+
+| `install_source` | Rendered `Install:` line |
+|---|---|
+| `local-editable`, editable path resolved | `pip install -e "<editable-path>[dev]"` (absolute path from `pip show`) |
+| `local-editable`, path unresolvable | `pip install -e "./scripts[dev]"` (source-repo fallback) |
+| `pypi` | `pip install little-loops` |
+| `global-claude-code` / `project-claude-code` | `pip install little-loops` |
+| `None` | `pip install little-loops` |
+
+The line is never omitted: a Claude Code plugin install provides `/ll:*`
+commands but not the `ll-*` CLIs the block documents, and the TUI already
+states this (`tui.py:229-233`). `local-editable` is therefore the only
+special case.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+The generated instructions file is the first thing a consuming project's
+agent reads. A broken install command there is a visible defect on first
+run, and per `.claude/CLAUDE.md` every little-loops consumer on the
+maintainer's machine is `local-editable` against a checkout outside the
+consumer, so the current text is wrong for *all* local consumers, not just
+PyPI/plugin ones.
 
 ## Proposed Solution
 
@@ -71,10 +96,26 @@ call pattern already used by `_run_yes()` (`cli.py:519`) and `run_tui()`
 (`tui.py:185`) rather than introducing a new config-plumbing path through
 `_run_plan()`, which today has no `install_source` concept at all.
 
-The exact per-`install_source`-value wording of the `Install:` line is an
-implementation choice, not dictated by this research; `tui.py:228-242`
-shows existing precedent for a two-way message split (`local-editable` vs.
-everything else) that a fix could follow or depart from.
+The per-value wording of the `Install:` line is fixed by the table in
+Expected Behavior. Note that a plain two-way split (`local-editable` ->
+`./scripts[dev]`, else `pip install little-loops`) is **not sufficient**:
+`./scripts[dev]` is only correct when the editable checkout *is* the
+consuming project (i.e. the little-loops source repo). For every other
+`local-editable` consumer the editable location is elsewhere and must be
+resolved.
+
+**Editable-path resolution.** `_is_editable_install()`
+(`install_check.py:42-56`) already parses the `Editable project location:`
+line from `pip show little-loops` and discards the value; `cli.py:551-564`
+re-parses the same line for the `--upgrade` path. Extend
+`detect_installation()` to return that location as the third tuple element
+(`install_path`) for `local-editable` installs — its docstring
+(`install_check.py:64-69`) currently says `install_path` is plugin-only and
+must be updated. Thread `install_path` alongside `install_source` into the
+writers so the `local-editable` branch can render the absolute path, falling
+back to `./scripts[dev]` when `install_path` is `None`. Do **not** write the
+`<editable-path>` placeholder that `tui.py:240` prints — that is acceptable
+in a console hint, not in a generated instructions file.
 
 > **Selected:** Option A — reuses the existing `detect_installation()`
 > unconditional-near-top call shape already used by `_run_yes()`
@@ -127,8 +168,13 @@ than trusted from the plan (`validate_deps` at `cli.py:927`).
   `install_source` availability before `cli.py:918`/`923` (see Proposed
   Solution Option A/B).
 - `scripts/little_loops/init/tui.py` — `_apply_config()` (819) and its call
-  site in `run_tui()` (648-661): thread `install_source` through as a new
-  parameter.
+  site in `run_tui()` (648-661): thread `install_source` (and `install_path`)
+  through as new parameters.
+- `scripts/little_loops/init/install_check.py` — `detect_installation()`
+  (59-92) and `_is_editable_install()` (42-56): return the parsed
+  `Editable project location:` value as `install_path` for `local-editable`
+  installs; update the docstring at 64-69 which says `install_path` is
+  plugin-only.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/init/cli.py:706,711` — `_run_yes()` calls
@@ -176,6 +222,30 @@ than trusted from the plan (`validate_deps` at `cli.py:927`).
   (1023) — asserts schema enum contents; no change expected since the
   schema itself isn't changing.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- No existing test calls `_run_apply()` (`cli.py:832`) or `_apply_config()`
+  (`tui.py:819`) directly. `_run_apply()` is exercised indirectly via
+  `main_init(["--root", ..., "apply", "--config", <plan>])` in
+  `test_init_core.py` (roughly a dozen `test_apply_*` methods at 1908-2262,
+  e.g. `test_apply_writes_claude_md` at 2100); `_run_yes()` via
+  `main_init(["--yes", ...])`/`main_init(["--upgrade", ...])` (e.g.
+  `test_bare_upgrade_implies_yes_never_launches_wizard` at 2488,
+  `test_yes_consumer_path_never_uses_editable_bare_name` at 2506). None of
+  these assert on `install_source` propagating into the generated
+  CLAUDE.md/AGENTS.md Install line. A new test is needed to prove
+  `install_source` actually reaches the writer calls through the apply and
+  TUI paths, not just through `_run_yes()` [Agent 3 finding].
+- **Test isolation for the new unconditional `detect_installation()` call
+  in `_run_apply()`.** None of the existing `test_apply_*` tests mock
+  `detect_installation` (the only patches of it in `test_init_core.py` are
+  at 1787-1866, in the `--yes` tests). Option A adds a `pip show` subprocess
+  to each of them, and a `claude plugin list` probe with a 10s timeout
+  wherever the package is not importable. The implementation must patch
+  `little_loops.init.install_check.detect_installation` in those tests (a
+  class-level fixture, or extend the file's autouse
+  `_default_plugin_installed` fixture at `test_init_core.py:74`) so the
+  suite does not gain a dozen live subprocess spawns.
+
 ### Documentation
 - `docs/reference/CONFIGURATION.md:273-285` — documents the
   `install_source` enum and values; may want a note that the generated
@@ -186,6 +256,17 @@ than trusted from the plan (`validate_deps` at `cli.py:927`).
 ### Configuration
 - N/A — no config schema changes; `install_source` enum already exists.
 
+### Out of Scope: already-generated files
+Both writers return `False` without touching the file when
+`_CLAUDE_MD_SECTION_MARKER` (`"## little-loops"`, `writers.py:156`) is
+already present, and nothing in `--upgrade`, `apply`, or `skills/update`
+refreshes the block. Every consumer that ran `ll-init` before this fix
+therefore keeps the wrong `Install:` line; re-running `ll-init` will not
+correct it. This issue does **not** add an in-place rewrite of the line.
+File a follow-up (`ll-issues create`) for "refresh the `Install:` line of an
+existing `## little-loops CLI Commands` block on `--upgrade`" and link it
+under Related once created.
+
 ## Program Design
 
 ### Types
@@ -193,24 +274,33 @@ N/A — no new data types introduced; the change threads an existing
 `str | None` value already returned by `detect_installation()`.
 
 ### Signatures
-- `_render_commands_block(desc_overrides: dict[str, str] | None = None) -> str`
-  (`writers.py:242`) — currently module-import-time only; would need an
-  `install_source: str | None` parameter and to move to per-call invocation.
-- `write_claude_md(project_root: Path, dry_run: bool = False) -> bool`
-  (`writers.py:564`) — would need `install_source: str | None = None`.
-- `write_agents_md(project_root: Path, dry_run: bool = False) -> bool`
+- `detect_installation(project_root: Path) -> tuple[str | None, str | None, str | None]`
+  (`install_check.py:59`) — signature unchanged; the third element
+  (`install_path`) becomes the parsed `Editable project location:` for
+  `local-editable` installs instead of always `None` for pip installs.
+- `_render_commands_block(desc_overrides: dict[str, str] | None = None,
+  install_source: str | None = None, install_path: str | None = None) -> str`
+  (`writers.py:242`) — currently module-import-time only; moves to per-call
+  invocation and emits the `Install:` line per the Expected Behavior table.
+- `write_claude_md(project_root: Path, dry_run: bool = False,
+  install_source: str | None = None, install_path: str | None = None) -> bool`
+  (`writers.py:564`).
+- `write_agents_md(project_root: Path, dry_run: bool = False,
+  install_source: str | None = None, install_path: str | None = None) -> bool`
   (`writers.py:615`) — same.
 - `_apply_config(config, project_root, ll_dir, config_path, templates_dir,
   plugin_root, hosts, settings_target, force, console,
-  claude_md_opt_in=False, existing_config=None)` (`tui.py:819`) — would need
-  an `install_source: str | None = None` parameter threaded from its caller
-  `run_tui()` (`tui.py:648-661`).
+  claude_md_opt_in=False, existing_config=None, install_source=None,
+  install_path=None)` (`tui.py:819`) — threaded from its caller `run_tui()`
+  (`tui.py:648-661`), which already holds both as locals (`tui.py:185`,
+  currently `_install_path` is discarded).
 
 ### Call Path
-`detect_installation()` (`install_check.py:59`) -> `install_source` local ->
-`write_claude_md()`/`write_agents_md()` (`writers.py:564`/`615`) ->
-`_render_commands_block(desc_overrides, install_source)` (`writers.py:242`)
--> rendered `Install:` line text.
+`detect_installation()` (`install_check.py:59`) -> `install_source` +
+`install_path` locals -> `write_claude_md()`/`write_agents_md()`
+(`writers.py:564`/`615`) -> `_render_commands_block(desc_overrides,
+install_source, install_path)` (`writers.py:242`) -> rendered `Install:`
+line text.
 
 Reachable today: `_run_yes()` (`cli.py:519` -> `cli.py:706`/`711`). Not yet
 reachable, needs new plumbing: `_run_apply()` (`cli.py:918`/`923`,
@@ -219,14 +309,18 @@ reachable, needs new plumbing: `_run_apply()` (`cli.py:918`/`923`,
 local at `tui.py:185` not passed into `_apply_config()`).
 
 ### Decision Rules
-- Gap: what text renders per `install_source` value. Exact inputs: the four
-  non-null values `detect_installation()` actually returns —
-  `"local-editable"`, `"pypi"`, `"global-claude-code"`,
-  `"project-claude-code"` — plus `None`. Existing precedent for a two-way
-  split appears at `tui.py:239` (`== "local-editable"` vs. else) and
-  `cli.py:549`. No exhaustive per-value switch on `install_source` exists
-  anywhere in this codebase today; every existing branch checks one value
-  vs. an implicit else.
+- What text renders per `install_source` value: **resolved** — see the
+  table in Expected Behavior. Inputs are the four non-null values
+  `detect_installation()` actually returns — `"local-editable"`, `"pypi"`,
+  `"global-claude-code"`, `"project-claude-code"` — plus `None`. The only
+  branch is `install_source == "local-editable"` (matching the existing
+  one-value-vs-else convention at `tui.py:239` and `cli.py:549`); inside it,
+  `install_path is not None` selects the absolute-path form over the
+  `./scripts[dev]` fallback. All other values, including `None`, render
+  `pip install little-loops`. The line is never omitted.
+- Dry-run: `detect_installation()` must run in `_run_apply()` regardless of
+  `dry_run`, since both writers are invoked under dry-run
+  (`cli.py:918`/`923`) and their preview output should match the real run.
 - Gap: how `_run_apply()` obtains `install_source` before its writer calls
   at `cli.py:918`/`923`, given `detect_installation()` isn't invoked until
   `cli.py:935` and `_run_plan()` never populates `config["install_source"]`.
@@ -236,35 +330,73 @@ local at `tui.py:185` not passed into `_apply_config()`).
 
 ## Implementation Steps
 
-1. `_render_commands_block()` (`writers.py:242`) accepts an
-   `install_source: str | None` parameter and is invoked per-call from
-   `write_claude_md()`/`write_agents_md()` rather than frozen once at
-   module import (`writers.py:252`/`256`) — the `Install:` line it emits
-   varies with the value passed in.
-2. `write_claude_md()` (`writers.py:564`) and `write_agents_md()`
-   (`writers.py:615`) accept `install_source: str | None = None` and pass
-   it through to `_render_commands_block()`.
-3. `install_source` reaches every production call site of
-   `write_claude_md`/`write_agents_md`: it already does at `_run_yes()`
-   (`cli.py:706`/`711`, via `cli.py:519`); `_run_apply()`
-   (`cli.py:918`/`923`) and `_apply_config()` (`tui.py:895`/`900`, via a
-   new parameter threaded from `run_tui()`'s `tui.py:185` local) resolve
-   per the Proposed Solution decision.
-4. `TestWriteClaudeMd`/`TestWriteAgentsMd`
-   (`scripts/tests/test_init_core.py:1444-1616`) gain coverage for at
-   least one non-`local-editable` `install_source` value, following this
-   file's one-test-method-per-value convention (see `TestDetectInstallation`
-   in `test_init_install.py` for the precedent).
-5. `python -m pytest scripts/tests/test_init_core.py
+1. `detect_installation()` (`install_check.py:59-92`) returns the parsed
+   `Editable project location:` as `install_path` for `local-editable`
+   installs (refactor `_is_editable_install()` at 42-56 to return the
+   location or `None` rather than a bool, or add a sibling helper). Update
+   the docstring at 64-69. `TestDetectInstallation`
+   (`test_init_install.py:67-98`) gains an assertion that the editable path
+   is returned.
+2. `_render_commands_block()` (`writers.py:242`) accepts
+   `install_source: str | None` and `install_path: str | None` and is
+   invoked per-call from `write_claude_md()`/`write_agents_md()` rather than
+   frozen once at module import (`writers.py:252`/`256`; the
+   `_NEW_FILE_CONTENT` constants at 258-259 move per-call too). The
+   `Install:` line it emits follows the Expected Behavior table.
+3. `write_claude_md()` (`writers.py:564`) and `write_agents_md()`
+   (`writers.py:615`) accept `install_source: str | None = None,
+   install_path: str | None = None` and pass both through to
+   `_render_commands_block()`.
+4. Both values reach every production call site of
+   `write_claude_md`/`write_agents_md`: `_run_yes()` (`cli.py:706`/`711`,
+   via `cli.py:519` — stop discarding `_install_path`); `_run_apply()`
+   (`cli.py:918`/`923`, via an unconditional `detect_installation()` call
+   near the top, deduped against `cli.py:935`, and not gated on `dry_run`);
+   `_apply_config()` (`tui.py:895`/`900`, via new parameters threaded from
+   `run_tui()`'s `tui.py:185` locals).
+5. Patch `detect_installation` in the existing `test_apply_*` tests
+   (`test_init_core.py:1908-2262`) so the new unconditional call in
+   `_run_apply()` does not spawn live `pip show`/`claude plugin list`
+   subprocesses.
+6. `TestWriteClaudeMd`/`TestWriteAgentsMd`
+   (`scripts/tests/test_init_core.py:1444-1616`) gain one test method per
+   row of the Expected Behavior table (`local-editable` with path,
+   `local-editable` without path, `pypi`, a `*-claude-code` value, `None`),
+   following this file's one-test-method-per-value convention (see
+   `TestDetectInstallation` in `test_init_install.py` for the precedent),
+   plus a negative assertion that no non-source-repo row emits
+   `./scripts[dev]`.
+7. `python -m pytest scripts/tests/test_init_core.py
    scripts/tests/test_init_install.py scripts/tests/test_init_tui.py -v`
    passes.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add a test exercising `_run_apply()` (`cli.py:918`/`923`) that asserts a
+  non-`local-editable` `install_source` reaches the generated CLAUDE.md/
+  AGENTS.md Install line — no existing test calls `_run_apply()` directly.
+- Add a test exercising `_apply_config()` (`tui.py:895`/`900`) that asserts
+  the same for the TUI apply path — no existing test calls `_apply_config()`
+  directly.
+- Add a test exercising `_run_apply()` with `--dry-run` under a mocked
+  `detect_installation` proving detection still runs (the writers are called
+  in dry-run and preview text must match the real run).
+
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - Visible defect in every generated CLAUDE.md/AGENTS.md
+  outside the source repo, but the wrong line is documentation, not
+  executed code; no runtime behavior breaks.
+- **Effort**: Small - Four files, additive keyword parameters, one helper
+  refactor in `install_check.py`, and test fixtures; no schema or config
+  changes.
+- **Risk**: Low - New parameters default to `None` and preserve today's
+  output for the source repo; the only behavioral risk is the added
+  subprocess in `_run_apply()`, mitigated by test patching (step 5).
+- **Breaking Change**: No - Existing files are untouched (idempotency
+  marker); only newly generated blocks change.
 
 ## Root Cause
 
@@ -280,15 +412,20 @@ This runs once at module import time to build module-level constants
 Neither writer function accepts an `install_source` parameter, so the string
 never varies per project.
 
-`install_source` is already computed and in scope at every call site that
-could pass it through instead:
+`install_source` is already computed at one of the three call sites and
+merely not passed through; at the other two it is not in scope at all (see
+Codebase Research Findings below for the correction to the original claim):
 
-- `scripts/little_loops/init/cli.py:519-520` (`detect_installation(...)`)
-  before the writer calls at `cli.py:706` / `cli.py:711`
-- `scripts/little_loops/init/cli.py:918-936` (`_run_yes` path) before the
-  writer calls at `cli.py:918` / `cli.py:923`
-- `scripts/little_loops/init/tui.py:185-274` before the writer calls at
-  `tui.py:895` / `tui.py:900`
+- `scripts/little_loops/init/cli.py:519-520` (`_run_yes()`,
+  `detect_installation(...)`) — in scope before the writer calls at
+  `cli.py:706` / `cli.py:711`; `_install_path` is discarded.
+- `scripts/little_loops/init/cli.py:832-944` (`_run_apply()`) — **not** in
+  scope at the writer calls `cli.py:918` / `cli.py:923`;
+  `detect_installation()` runs only at `cli.py:935`, after them, gated on
+  `requested_upgrade`.
+- `scripts/little_loops/init/tui.py:185` (`run_tui()`) — detected here but
+  **not** passed into `_apply_config()` (`tui.py:819`), where the writer
+  calls at `tui.py:895` / `tui.py:900` live.
 
 Precedent for branching writer/CLI behavior on `install_source` already
 exists at `cli.py:247` (`== "project-claude-code"`) and `cli.py:549`
@@ -320,22 +457,29 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 ## Expected vs Actual
 
 - **Expected**: the install line reflects how the project actually installed
-  little-loops — e.g. `pip install little-loops` for `pypi`, no bare
-  `pip install -e "./scripts[dev]"` for plugin-based installs.
+  little-loops — `pip install little-loops` for `pypi`/plugin/`None`, and
+  `pip install -e "<editable-path>[dev]"` for `local-editable` consumers
+  whose checkout lives outside the project (see the table in Expected
+  Behavior).
 - **Actual**: every generated AGENTS.md/CLAUDE.md gets the same
   source-repo-only editable-dev-install command.
 
 ## Suggested Fix
 
-Thread `install_source: str | None` into `_render_commands_block()` and into
-`write_claude_md()` / `write_agents_md()`; branch the Install line so
-`pip install -e "./scripts[dev]"` renders only when
-`install_source == "local-editable"`, otherwise `pip install little-loops`
-(or omit the line for plugin-based `install_source` values, where there's no
-pip install to run at all). Update the three call sites above to pass the
-already-detected `install_source` through instead of leaving it unused.
+Thread `install_source: str | None` and `install_path: str | None` into
+`_render_commands_block()` and into `write_claude_md()` /
+`write_agents_md()`; render the `Install:` line per the Expected Behavior
+table (`local-editable` is the only branch; the absolute editable path when
+known, `./scripts[dev]` as fallback; `pip install little-loops` for
+everything else, never omitted). Update the three call sites above to pass
+the detected values through instead of leaving them unused. See Proposed
+Solution for the editable-path resolution and `_run_apply()` plumbing.
 
 ## Related
+
+Follow-up to file: refresh the `Install:` line inside an existing
+`## little-loops CLI Commands` block on `--upgrade` (see Integration Map ->
+Out of Scope). Link the new ID here once created.
 
 `P2-BUG-1071` / `P3-ENH-1020` cover a related but distinct instance of the
 same install_source-unaware problem class in `skills/init/SKILL.md` /
@@ -360,6 +504,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-02T23:07:19 - `5cfbabad-da25-40ab-bfb7-6d0233f02bb3.jsonl`
 - `/ll:decide-issue` - 2026-09-02T22:37:14 - `bea601b2-a6af-4ef3-8359-e10eab8b1a54.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:29:09 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
 - `/ll:capture-issue` - 2026-09-02T22:19:45 - `64850b61-eea3-464a-8dc5-33dc204c7fce.jsonl`
