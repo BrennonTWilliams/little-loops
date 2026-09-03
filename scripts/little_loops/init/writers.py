@@ -257,6 +257,9 @@ _AGENTS_MD_COMMANDS_BLOCK = _render_commands_block()
 
 _CLAUDE_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _CLAUDE_MD_COMMANDS_BLOCK
 _AGENTS_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _AGENTS_MD_COMMANDS_BLOCK
+# GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190); it gets the
+# same host-generic block as AGENTS.md, not the Claude-specific overrides.
+_GEMINI_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _AGENTS_MD_COMMANDS_BLOCK
 
 
 def load_existing_config(project_root: Path) -> dict[str, Any]:
@@ -655,6 +658,42 @@ def write_agents_md(project_root: Path, dry_run: bool = False) -> bool:
             return True
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(target, _AGENTS_MD_NEW_FILE_CONTENT)
+
+    return True
+
+
+def write_gemini_md(project_root: Path, dry_run: bool = False) -> bool:
+    """Append the canonical ## little-loops CLI Commands block to GEMINI.md.
+
+    GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190): a single
+    root-level project-instructions file, loaded automatically on session
+    start. Idempotent: returns False without writing if the section is
+    already present.
+
+    Args:
+        project_root: Project root directory.
+        dry_run: If True, print planned action; do not write files.
+
+    Returns:
+        True if the file was created or modified; False if no changes needed.
+    """
+    target = project_root / "GEMINI.md"
+    rel = str(target.relative_to(project_root))
+
+    if target.exists():
+        existing = target.read_text(encoding="utf-8")
+        if _CLAUDE_MD_SECTION_MARKER in existing:
+            return False
+        if dry_run:
+            info(f"update {rel} (append ## little-loops CLI Commands)")
+            return True
+        new_content = existing.rstrip("\n") + "\n" + _AGENTS_MD_COMMANDS_BLOCK
+        atomic_write(target, new_content)
+    else:
+        if dry_run:
+            info(f"write {rel} (ll- CLI command documentation)")
+            return True
+        atomic_write(target, _GEMINI_MD_NEW_FILE_CONTENT)
 
     return True
 

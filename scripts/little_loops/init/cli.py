@@ -513,6 +513,7 @@ def _run_yes(
         write_agents_md,
         write_claude_md,
         write_config,
+        write_gemini_md,
     )
 
     ll_dir = project_root / ".ll"
@@ -726,6 +727,10 @@ def _run_yes(
     if any(h in AGENTS_MD_HOSTS for h in hosts):
         write_agents_md(project_root, dry_run=dry_run)
 
+    # GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190).
+    if "gemini" in hosts:
+        write_gemini_md(project_root, dry_run=dry_run)
+
     if upgrade and not dry_run:
         # Host-parameterized surface refresh: force-regenerate adapters and run
         # the scope-aware claude-code plugin update (FEAT-2387).
@@ -880,6 +885,7 @@ def _run_apply(
         write_agents_md,
         write_claude_md,
         write_config,
+        write_gemini_md,
     )
 
     # Accept a file path or a raw JSON string
@@ -937,6 +943,10 @@ def _run_apply(
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
         write_agents_md(project_root, dry_run=dry_run)
+
+    # GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190).
+    if "gemini" in hosts:
+        write_gemini_md(project_root, dry_run=dry_run)
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force, dry_run=dry_run)
 

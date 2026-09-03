@@ -851,6 +851,7 @@ def _apply_config(
         write_agents_md,
         write_claude_md,
         write_config,
+        write_gemini_md,
     )
 
     # The wizard's host question is always an explicit user selection —
@@ -898,6 +899,10 @@ def _apply_config(
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
         write_agents_md(project_root)
+
+    # GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190).
+    if "gemini" in hosts:
+        write_gemini_md(project_root)
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 

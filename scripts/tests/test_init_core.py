@@ -48,6 +48,7 @@ from little_loops.init.writers import (
     write_agents_md,
     write_claude_md,
     write_config,
+    write_gemini_md,
 )
 from little_loops.issue_template import get_bundled_templates_dir
 
@@ -1617,6 +1618,82 @@ class TestWriteAgentsMd:
 
 
 # ===========================================================================
+# TestWriteGeminiMd
+# ===========================================================================
+
+
+class TestWriteGeminiMd:
+    """FEAT-2190: GEMINI.md is Gemini CLI's exact analog of CLAUDE.md."""
+
+    def test_creates_root_gemini_md_when_absent(self, tmp_path: Path) -> None:
+        result = write_gemini_md(tmp_path)
+        dest = tmp_path / "GEMINI.md"
+        assert result is True
+        assert dest.exists()
+        content = dest.read_text(encoding="utf-8")
+        assert "## little-loops CLI Commands" in content
+        assert "# Project Configuration" in content
+
+    def test_appends_to_existing_root_gemini_md(self, tmp_path: Path) -> None:
+        root_md = tmp_path / "GEMINI.md"
+        root_md.write_text("# My Project\n\nSome existing content.\n", encoding="utf-8")
+        result = write_gemini_md(tmp_path)
+        assert result is True
+        content = root_md.read_text(encoding="utf-8")
+        assert "# My Project" in content
+        assert "Some existing content." in content
+        assert "## little-loops CLI Commands" in content
+
+    def test_noop_when_section_present(self, tmp_path: Path) -> None:
+        dest = tmp_path / "GEMINI.md"
+        dest.write_text("# Config\n\n## little-loops CLI Commands\n\nAlready here.\n")
+        original_mtime = dest.stat().st_mtime
+        result = write_gemini_md(tmp_path)
+        assert result is False
+        assert dest.stat().st_mtime == original_mtime
+
+    def test_idempotent_second_run(self, tmp_path: Path) -> None:
+        assert write_gemini_md(tmp_path) is True
+        assert write_gemini_md(tmp_path) is False
+
+    def test_dry_run_create(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        result = write_gemini_md(tmp_path, dry_run=True)
+        assert result is True
+        assert not (tmp_path / "GEMINI.md").exists()
+        out = capsys.readouterr().out
+        assert "write " in out
+        assert "GEMINI.md" in out
+
+    def test_dry_run_append(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        dest = tmp_path / "GEMINI.md"
+        dest.write_text("# Existing\n", encoding="utf-8")
+        original = dest.read_text(encoding="utf-8")
+        result = write_gemini_md(tmp_path, dry_run=True)
+        assert result is True
+        assert dest.read_text(encoding="utf-8") == original  # unchanged
+        out = capsys.readouterr().out
+        assert "update " in out
+        assert "GEMINI.md" in out
+
+    def test_dry_run_noop_when_section_present(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        dest = tmp_path / "GEMINI.md"
+        dest.write_text("# Config\n\n## little-loops CLI Commands\n")
+        result = write_gemini_md(tmp_path, dry_run=True)
+        assert result is False
+        assert capsys.readouterr().out == ""
+
+    def test_content_is_host_generic(self, tmp_path: Path) -> None:
+        """GEMINI.md must not carry the Claude-specific description lines."""
+        write_gemini_md(tmp_path)
+        content = (tmp_path / "GEMINI.md").read_text(encoding="utf-8")
+        assert "Claude" not in content
+        for tool in ("ll-auto", "ll-loop", "ll-issues", "ll-logs", "ll-messages"):
+            assert f"`{tool}`" in content
+
+
+# ===========================================================================
 # TestValidateDeps
 # ===========================================================================
 
@@ -3028,6 +3105,22 @@ class TestHostDispatch:
         assert code == 0
         assert not (tmp_project / "AGENTS.md").exists()
 
+    def test_hosts_gemini_produces_gemini_md(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "gemini", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / "GEMINI.md").exists()
+
+    def test_hosts_claude_code_no_gemini_md(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "claude-code", "--root", str(tmp_project)])
+        assert code == 0
+        assert not (tmp_project / "GEMINI.md").exists()
+
     def test_hosts_pi_graceful_unavailable(
         self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -3090,6 +3183,18 @@ class TestHostDispatch:
             code = main_init(["--yes", "--dry-run", "--hosts", "codex", "--root", str(tmp_project)])
         assert code == 0
         assert ".codex/hooks.json" in capsys.readouterr().out
+
+    def test_dry_run_gemini_shows_write_line(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                ["--yes", "--dry-run", "--hosts", "gemini", "--root", str(tmp_project)]
+            )
+        assert code == 0
+        assert "GEMINI.md" in capsys.readouterr().out
 
     def test_dry_run_pi_shows_unavailable(
         self, tmp_project: Path, capsys: pytest.CaptureFixture[str]
