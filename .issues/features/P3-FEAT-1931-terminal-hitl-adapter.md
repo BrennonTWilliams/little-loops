@@ -20,6 +20,8 @@ labels:
   - hitl
   - adapter
 verify_verdict: VALID
+decision_needed: true
+unproven_mechanism: true
 ---
 
 # FEAT-1931: Terminal adapter for async HITL communication
@@ -96,6 +98,13 @@ timeout route.
 - [ ] `supports_async()` returns `False`
 - [ ] Tests: mock stdin/stdout, verify prompt format, verdict parsing, timeout
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- No shared helper exists in this codebase for case-insensitive prefix matching of free-text confirmation words (y/yes/approve style). The two nearest analogues are exact-string numeric matching (`SimulationActionRunner._prompt_result()`, `fsm/runners.py:530-556`) and LLM-output verdict extraction via regex/keyword search (`output_parsing.py:102-166` `_extract_verdict_from_text()`) — neither does prefix matching of a single free-typed word against a short alias set. This issue's verdict parser is new ground, not an existing pattern to follow.
+- The Acceptance Criteria specify accepted inputs (y/yes/approve, n/no/reject, e/edit) but do not specify behavior on unrecognized input — no re-prompt-vs-error decision is stated. `SimulationActionRunner._prompt_result()` (`fsm/runners.py:530-556`) is the nearest precedent and retries on invalid input inside a `while True` loop, but that is not confirmation this issue must do the same — left for the implementer.
+
 ## API/Interface
 
 ```python
@@ -127,6 +136,47 @@ class TerminalAdapter(CommunicationAdapter):
 The adapter receives pre-interpolated prompt text from the FSM state; it
 only renders, not resolves, variables.
 
+## Program Design
+
+### Types
+- No new dataclass/type is introduced by this issue itself — `HumanResponse`,
+  `TimeoutResponse`, and `EditResponse`/verdict field are FEAT-1930's types,
+  not defined here (FEAT-1930 is unimplemented; `grep -rn "class
+  CommunicationAdapter\|HumanResponse\|TimeoutResponse" scripts/` finds no
+  hits outside `.issues/` prose).
+
+### Signatures
+- `TerminalAdapter.send_alert(self, loop_name: str, state_name: str, prompt: str, captured_context: dict, timeout: float) -> str`
+- `TerminalAdapter.await_response(self, timeout: float) -> HumanResponse | TimeoutResponse` —
+  per the Scope Boundary note below, FEAT-1930's base protocol actually
+  defines `await_response(self, alert_id: str, timeout: float)`; this
+  issue's own `## API/Interface` has not yet been updated to add `alert_id`.
+- `TerminalAdapter.supports_async(self) -> bool` — returns `False`
+
+### Call Path
+`FSMExecutor._execute_state()` (`executor.py:1948`) → (once FEAT-1794 adds a
+`human_approval` dispatch branch structurally mirroring the existing
+`state.type == "learning"` branch at `:1973-1974`) → adapter resolved from a
+`_contributed_adapters` registry (not yet implemented, mirrors
+`_contributed_actions`/`_contributed_evaluators` at `executor.py:495-497`) →
+`TerminalAdapter.send_alert(...)` → `TerminalAdapter.await_response(...)`.
+`self.fsm.name` (loop_name) and `self.current_state`/`ctx.state_name`
+(state_name) are both available at the `_execute_state` call site, confirming
+those two protocol fields are satisfiable without new executor plumbing. No
+`prompt` field exists yet on `StateConfig` (`fsm/schema.py`) — sourcing
+`prompt`/`captured_context` at the call site is FEAT-1794's gap, not this
+issue's.
+
+### Decision Rules
+- **Accepted verdict keywords** (from Acceptance Criteria): `y`/`yes`/`approve` → approve,
+  `n`/`no`/`reject` → reject, `e`/`edit` → edit. Case-insensitive, unambiguous
+  prefix matching (the three aliases start with distinct letters, so no
+  collision is possible under prefix matching).
+- **Escape hatch on unrecognized input**: not specified by this issue's
+  Acceptance Criteria or Proposed Solution — left to the implementer. See the
+  Codebase Research Findings under Acceptance Criteria for the nearest
+  precedent (retry-loop behavior in `SimulationActionRunner._prompt_result()`).
+
 ## Proposed Solution
 
 Wrap `input()` in an `_interruptible_sleep()`-style polling loop (see
@@ -137,6 +187,20 @@ and signal handling.
 Format the prompt using the existing `${captured.<state>.<field>}` interpolation
 from the FSM context — the adapter receives pre-interpolated text from the FSM
 state, so it only needs to render, not resolve variables.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- **No existing technique combines the two mechanisms this issue's polling approach depends on.** `_interruptible_sleep()` (`executor.py:3833`) checks `self._shutdown_requested` between 100ms `time.sleep()` ticks — but that only works because `time.sleep()` naturally returns control every tick; a blocking `sys.stdin` read has no such checkpoint. The codebase's only bounded-timeout blocking-read technique (`selectors.DefaultSelector()` + `sel.select(timeout=...)`, used in `mcp_call.py:101-124` and `fsm/runners.py:284-349`) never checks `_shutdown_requested` inside its loop. No existing call site in the codebase exercises "selectors-bounded read on a file object" together with "shutdown-flag polling" — the combination this issue's Proposed Solution assumes works has no confirming precedent. ⚠ Unproven mechanism — no site combines selectors-bounded read with shutdown-flag polling
+- **Extension registration approach in Proposed Solution/Implementation Steps needs updating**: see the correction under Integration Map above — there is no "register as default adapter in extension.py" mechanism; the ratified path is a `TerminalAdapterExtension(CommunicationAdapterExtension)` implementing `provided_adapters()`.
+- **Terminal output formatting has two unreconciled existing conventions in this codebase — an implementer decision, not resolved by precedent:**
+
+**Option A**: Follow `scripts/little_loops/cli/output.py`'s convention — raw ANSI-escape `colorize()` plus `status_block()`/`table()` pure string-returning helpers (used by ~80 existing call sites for structured terminal output, e.g. `cli/harness.py:763-771`). Color gated on `NO_COLOR`/`FORCE_COLOR` env vars and `sys.stdout.isatty()`.
+
+**Option B**: Follow `scripts/little_loops/init/tui.py`'s convention — the third-party `rich` library's `console.print()` with `[color]...[/color]` markup, paired with `questionary` for confirmation prompts (`questionary.confirm(...).ask()` returning `bool | None`).
+
+No recommendation from research — both conventions are actively used elsewhere in the codebase for different subsystems (general CLI output vs. the init wizard specifically), and neither is deprecated relative to the other.
 
 ## Implementation Steps
 
@@ -153,6 +217,7 @@ state, so it only needs to render, not resolve variables.
 6. Implement edit verdict: prompt for edited text on secondary input, return
    `EditResponse` with captured text
 7. Register `TerminalAdapter` as default adapter in `extension.py`
+   > ⚠ Superseded — no such mechanism exists; see § Codebase Research Findings under Integration Map
 8. Write tests: mock stdin/stdout, verify prompt format, verdict parsing
    (approve/reject/edit), timeout handling, shutdown signal behavior
 
@@ -166,6 +231,7 @@ state, so it only needs to render, not resolve variables.
 ### Files to Modify
 - `scripts/little_loops/extension.py` — register `TerminalAdapter` as default
   adapter
+  > ⚠ Superseded — no such mechanism exists; see § Codebase Research Findings below
 - `scripts/little_loops/fsm/executor.py` — no changes (uses protocol interface)
 
 ### Similar Patterns
@@ -188,6 +254,20 @@ state, so it only needs to render, not resolve variables.
 
 ### Configuration
 - N/A — terminal adapter is always available with zero configuration
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- **`transport.py` path correction**: the "Similar Patterns" entry names `transport.py` implying `fsm/transport.py`; the real file is top-level `scripts/little_loops/transport.py` (`UnixSocketTransport` at `:133`). No `fsm/transport.py` exists.
+- **`extension.py` registration mechanism does not exist as described**: `grep -rn "class CommunicationAdapter" scripts/little_loops/` returns zero matches — the protocol FEAT-1930 defines is prose-only. The ratified registration shape (`.ll/decisions.yaml`, entry `ARCHITECTURE-027`) is a `CommunicationAdapterExtension` Protocol with `provided_adapters() -> list[type[CommunicationAdapter]]`, hasattr-gated in `wire_extensions()` (`extension.py:201`) exactly like the four existing capability Protocols (`ActionProviderExtension`, `EvaluatorProviderExtension`, `InterceptorExtension`, `LLHookIntentExtension` — `extension.py:38-132`, wired at `:246-273`). This issue would need to ship its own `TerminalAdapterExtension(CommunicationAdapterExtension)` returning `[TerminalAdapter]`, not a hardcoded default registered directly in `extension.py`. Note the four existing Protocols all return `dict[str, X]`; `list[type[X]]` (as FEAT-1930 specifies) has no existing precedent — flagged in FEAT-1930's own body already.
+- **Confirmed callers of `_interruptible_sleep`** (`executor.py:3833`, the pattern this issue's Proposed Solution cites): `executor.py:3626, :3640` (`_handle_rate_limit`), `:3699` (`_check_host_guard`), `:3831` (`_maybe_wait_for_circuit`), `:3919` (`_handle_api_error`), `:3955` (`_handle_infra_retry`) — all internal `FSMExecutor` methods; none are adapter-related, confirming no existing caller needs to change when `TerminalAdapter` is added.
+- **Confirmed importers of `extension.py`**: `testing.py:27`, `test_interceptor_extension.py:11`, `test_extension.py:11`, `little_loops/__init__.py:9`.
+- **Reusable formatting code**: `scripts/little_loops/cli/output.py` — `status_block()`, `table()`, `colorize()` (ANSI, gated on `NO_COLOR`/`isatty()`) are pure string-returning helpers used by ~80 files for structured terminal output. A contested alternative exists at `scripts/little_loops/init/tui.py` using the third-party `rich`+`questionary` stack instead — the two conventions are not reconciled elsewhere in the codebase (see Proposed Solution decision point below).
+- **Reusable timeout-bounded read code**: `scripts/little_loops/mcp_call.py:101-124` (`_send_request`) and `scripts/little_loops/fsm/runners.py:284-349` both use a `selectors.DefaultSelector()` + `sel.select(timeout=min(1.0, remaining))` deadline loop for bounded blocking reads on a file object — structurally reusable for `sys.stdin`, but neither existing instance checks `self._shutdown_requested` inside the loop (see Proposed Solution note on this gap).
+- **No countdown-to-deadline formatter exists**: `format_duration()` (`logger.py:115`), `_format_duration()` (`interpolation.py:473`, and a second independent same-named one at `cli/loop/info.py:854`), and `format_relative_time()` (`cli/output.py:232`) all format an already-known elapsed duration, none compute "time remaining until a future deadline."
+- **Test pattern precedent**: `scripts/tests/test_fsm_runners.py:185-223` (`TestSimulationActionRunnerPromptResult`) is the closest existing precedent for mocking blocking `sys.stdin` — two styles: `patch("sys.stdin", StringIO(text))` for literal input, and `patch("sys.stdin")` with `.readline.side_effect = EOFError`/`KeyboardInterrupt` for interrupt simulation.
+- **Extension conformance test shape**: `scripts/tests/test_extension.py:524-692` gives every existing capability Protocol exactly two tests — a smoke-import test and a "protocol satisfied" test using a minimal ad-hoc class assigned under `# type: ignore[assignment]` (never `isinstance()`, even for `@runtime_checkable` protocols). A future `CommunicationAdapterExtension` conformance test would follow this same two-test shape.
 
 ## Impact
 
@@ -242,6 +322,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-03T18:43:32 - `aa57eda6-6094-4ecb-9d7d-caa100953877.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:56 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:30 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
