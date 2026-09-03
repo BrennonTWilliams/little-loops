@@ -2,8 +2,8 @@
 id: EPIC-2257
 title: "Multi-host generalization \u2014 portfolio coordination"
 type: EPIC
-status: open
-verify_verdict: NON_VALID
+status: done
+verify_verdict: VALID
 priority: P4
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
@@ -195,6 +195,8 @@ portfolio work is in the tracked per-host epics below.
   "(open)" in the body when it's actually `status: done` — corrected above.
   Verdict: NEEDS_UPDATE.
 
+- **2026-09-03** (`/ll:verify-issues`): All directly-owned children resolved (done) per `ll-issues epic-progress` (10/10). Closed.
+
 ## Related Key Documentation
 
 - `.claude/CLAUDE.md` — the § Host CLI Abstraction section (`resolve_host()`, `LL_HOST_CLI`) is the exact shared infrastructure this coordination epic's generic-adapter decision (ARCHITECTURE-049) governs.
@@ -202,9 +204,10 @@ portfolio work is in the tracked per-host epics below.
 
 ## Status
 
-**Open** | Created: 2026-06-24 | Priority: P4
+**Done** | Created: 2026-06-24 | Priority: P4
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:43:41 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:50 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

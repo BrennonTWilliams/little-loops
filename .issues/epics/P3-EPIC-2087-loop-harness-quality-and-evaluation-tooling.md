@@ -3,7 +3,7 @@ id: EPIC-2087
 title: Loop Harness Quality & Evaluation Tooling
 type: EPIC
 priority: P3
-status: open
+status: done
 verify_verdict: VALID
 captured_at: '2026-06-10T18:37:38Z'
 discovered_date: '2026-06-10'
@@ -103,7 +103,10 @@ Delivery order suggestion:
 
   With ENH-3298 closed, this epic has no remaining work under its stated scope.
 
+- 2026-09-03 (`/ll:verify-issues`): All children resolved (done) per `ll-issues epic-progress` (10/10); closed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:43:41 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:16 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:08 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 <!-- ll-private-ok: repo-relative project slug for the local session-store path, not a private absolute path -->
@@ -113,4 +116,4 @@ Delivery order suggestion:
 
 ## Status
 
-open
+done

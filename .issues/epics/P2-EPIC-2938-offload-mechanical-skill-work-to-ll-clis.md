@@ -3,8 +3,8 @@ id: EPIC-2938
 title: 'Offload mechanical work from /ll: skills/commands into ll-* Python CLIs'
 type: EPIC
 priority: P2
-status: open
-verify_verdict: NON_VALID
+status: done
+verify_verdict: VALID
 discovered_by: skill-audit
 discovered_date: 2026-07-31
 relates_to:
@@ -141,7 +141,7 @@ In scope: the 15 children listed above — CLI subcommand additions/extensions i
 
 ## Status
 
-**Open** | Created: 2026-07-31 | Priority: P2
+**Done** | Created: 2026-07-31 | Priority: P2
 
 ## Success Criteria
 
@@ -163,6 +163,7 @@ In scope: the 15 children listed above — CLI subcommand additions/extensions i
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:43:40 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:53 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:51 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
@@ -181,3 +182,7 @@ In scope: the 15 children listed above — CLI subcommand additions/extensions i
 ## Verification Notes (2026-08-12)
 
 _Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. The epic body narrates ENH-2952 as resolved/dropped from scope (Option C — leave the 17-site flag-parse duplication as-is), but ENH-2952's own file still shows `status: open` — its frontmatter was never updated to match the narrated resolution. This is a reconciliation gap in ENH-2952 itself, flagged here for a separate follow-up pass; ENH-2952 was not modified as part of this verification (out of scope for this batch).
+
+## Verification Notes (2026-09-03)
+
+All children resolved (done/cancelled) per `ll-issues epic-progress` (18/18); closed via /ll:verify-issues on 2026-09-03.

@@ -4,7 +4,7 @@ type: EPIC
 title: Loop YAMLs interpolate untrusted text into Python string literals inside shell
   actions
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
@@ -302,7 +302,12 @@ file.
 
 ## Status
 
-**Open** | Created: 2026-08-27 | Priority: P2
+**Done** | Created: 2026-08-27 | Priority: P2
+
+## Verification Notes
+
+All children resolved (done) per `ll-issues epic-progress` (8/8); closed via /ll:verify-issues on 2026-09-03.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:43:40 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:44 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`

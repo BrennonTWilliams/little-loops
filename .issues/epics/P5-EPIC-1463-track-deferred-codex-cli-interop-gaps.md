@@ -2,8 +2,8 @@
 id: EPIC-1463
 title: Track deferred Codex CLI interop gaps
 type: EPIC
-status: open
-verify_verdict: NON_VALID
+status: done
+verify_verdict: VALID
 priority: P5
 captured_at: '2026-05-15T12:15:21Z'
 discovered_date: 2026-05-15
@@ -304,7 +304,10 @@ were filed for the genuine remaining depth gaps.
 
 2026-08-16 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. `ll-issues epic-progress EPIC-1463` matches the open-items list, but ENH-2121 in the Children list lacked a status marker and is actually `status: cancelled` — this repeats a pattern already flagged in this file's own prior Verification Notes. Added the `cancelled` marker above.
 
+2026-09-03 (`/ll:verify-issues`): All children resolved (done/cancelled) per `ll-issues epic-progress` (30/30: 24 done, 6 cancelled). Closed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:43:41 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:26 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:50 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
@@ -323,7 +326,7 @@ were filed for the genuine remaining depth gaps.
 
 ---
 
-**Open** | Created: 2026-05-15 | Priority: P5
+**Done** | Created: 2026-05-15 | Priority: P5
 
 **Progress**: run `ll-issues epic-progress EPIC-1463` for live counts. Codex core
 landed in production; the remaining open children are all polish/refinement — none

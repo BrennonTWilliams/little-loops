@@ -3,7 +3,7 @@ id: EPIC-3217
 type: EPIC
 title: Retrofit cannot_judge abstention handling across built-in FSM loops and tooling
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:26:39Z'
@@ -152,7 +152,11 @@ ENH-3185's stated purpose was to stop LLM-judged gates from coercing unobservabl
 
 ## Status
 
-**Open** | Created: 2026-08-16 | Priority: P2
+**Done** | Created: 2026-08-16 | Priority: P2
+
+## Verification Notes
+
+All children resolved (done/cancelled) per `ll-issues epic-progress` (10/10: 8 done, 2 cancelled); closed via /ll:verify-issues on 2026-09-03.
 
 ## Goal
 
@@ -182,5 +186,6 @@ Every LLM-judged gate in the built-in loops routes abstention deliberately, stat
 - `harness_eval_abstention_rate()` has at least one non-test consumer (currently zero).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:43:40 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:54 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:36 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`

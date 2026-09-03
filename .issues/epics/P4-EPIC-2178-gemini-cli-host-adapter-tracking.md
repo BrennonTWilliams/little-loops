@@ -2,8 +2,8 @@
 id: EPIC-2178
 title: Gemini CLI host adapter — tracking
 type: EPIC
-status: open
-verify_verdict: NON_VALID
+status: done
+verify_verdict: VALID
 priority: P4
 captured_at: "2026-06-15T17:09:51Z"
 discovered_date: 2026-06-15
@@ -183,11 +183,14 @@ generic tool with `--host gemini` once `GeminiRunner` lands:
 
 2026-08-12 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. ENH-2187 (config probe) is now `status: done`, but the `## Children` list and `## Implementation Steps` still described it as "open (XS, independent)" / pending. Updated both references above to mark ENH-2187 done.
 
+2026-09-03 (`/ll:verify-issues`): All children resolved (done/cancelled) per `ll-issues epic-progress` (10/10: 7 done, 3 cancelled) — FEAT-2186, FEAT-2190, and ENH-2191 (the three still marked "open" in the Children list above) are confirmed `status: done`. Closed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:43:41 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:50 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:17:24 - `7addc9bb-4a3e-4aad-bbbd-6f11fcae2b61.jsonl`
 - `/ll:capture-issue` - 2026-06-15T17:09:51Z - `63a402ce-7d2e-45a1-befc-4392e24ffc82.jsonl`
 
 ---
 
-**Open** | Created: 2026-06-15 | Priority: P4
+**Done** | Created: 2026-06-15 | Priority: P4
