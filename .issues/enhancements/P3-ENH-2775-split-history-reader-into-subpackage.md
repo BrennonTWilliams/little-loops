@@ -249,6 +249,14 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
   key off public functions only, so none need special handling for
   private-name relocation.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
+- `scripts/tests/test_wiring_reference_docs.py:87` — a `DOC_STRINGS_PRESENT`
+  row (ENH-1753) asserts the literal heading `"## little_loops.history_reader"`
+  exists in `docs/reference/API.md`. The split must either preserve that exact
+  heading text in `docs/reference/API.md`, or this test row needs updating in
+  lockstep. (Rows 88-91 in the same list check symbol names only — unaffected
+  by the module→package rename itself.)
+
 ### Documentation
 - `docs/reference/API.md` — the `little_loops.history_reader` entry (line 54)
   cites the current flat-module layout and needs updating to the new package
@@ -270,6 +278,24 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
   `` `history_reader` `` in the ENH-3211 entry) — these are historical and
   don't need editing, but a doc-sync check should confirm they aren't
   mistaken for live references during the split.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
+- `docs/reference/CLI.md` — four citations of history_reader functions by
+  name, missed by prior passes because this file never contains the literal
+  string `history_reader` (it documents CLI behavior, not the module): the
+  `ll-harness` JSON output field table (L256-262) and prose (L264) documenting
+  `prepatch_evidence`/`history_pass_rate`/`history_pass_rate_runs`/
+  `history_abstention_rate`/`history_judged_runs`/`history_since` (populated
+  from `read_prepatch_evidence`, `harness_eval_pass_rate`,
+  `harness_eval_abstention_rate`, `recent_harness_events`); the
+  `ll-issues set-status` "Side effect" paragraph (L2597) naming
+  `issue_effort()`; the `ll-history` `subagents --budget` flag row (L3755)
+  naming `subagent_budget`; and the `ll-history-context` "Effort Context
+  block" paragraph (L4022) naming `recent_issue_velocity()`. None of these
+  four are covered by either of the two doc-sync guard tests already on
+  record (`test_wiring_reference_docs.py` checks unrelated anchors in this
+  file; `test_wiring_guides_and_meta.py`'s only `CLI.md` reference is
+  unrelated) — they can go stale post-split with nothing to catch it.
 
 ### Behavior Parity
 
@@ -359,6 +385,7 @@ introducing no new gate, threshold, or classification rule.
   of scope for `/ll:verify-issues`). Verdict: OUTDATED.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T03:32:07 - `b08d9181-74d3-46eb-8d3a-a167537e57ed.jsonl`
 - `/ll:refine-issue` - 2026-09-03T03:19:30 - `983e671b-5b21-4f7b-86e9-1898ea8c1563.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:06:46 - `e42909d5-e77d-478c-b142-52f1ba049345.jsonl`
 - `/ll:refine-issue` - 2026-09-03T02:51:56 - `00f0e408-f05f-43a3-bdc7-1e52bd1f47ab.jsonl`

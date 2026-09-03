@@ -160,6 +160,52 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
   `` `scripts/little_loops/cli/loop/_helpers.py:EXIT_CODES` `` (skill
   companion doc, not `SKILL.md` itself).
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
+- **Correction**: `mcp_server/tasks.py`'s deferred import is at line 104, not
+  line 224 as previously recorded, and imports `_make_instance_id` — a symbol
+  not previously in the traced key-symbol list:
+  `from little_loops.cli.loop._helpers import _make_instance_id`.
+- `scripts/little_loops/cli/doctor.py:533,540` — imports and calls
+  `get_builtin_loops_dir()` directly (`loop_dirs = {get_builtin_loops_dir()}`);
+  `scripts/tests/test_cli_doctor_install_checks.py:443,465,484`
+  (`TestLoopValidity`) monkeypatches
+  `"little_loops.cli.loop._helpers.get_builtin_loops_dir"` to drive this — a
+  cross-package dependency (outside `cli/loop/`) not previously called out.
+- `scripts/tests/test_rn_plan.py:308` —
+  `from little_loops.cli.loop._helpers import get_builtin_loops_dir,
+  resolve_loop_path`, called directly to assert `rn-plan` resolves as a
+  built-in loop.
+- New `mock.patch` string targets on `little_loops.cli.loop._helpers.*` beyond
+  those already documented: `test_ll_loop_display.py:1724,1741,1758,1773,1822,1854`
+  (`terminal_width`, imported into `_helpers` from `cli.output` and patched at
+  the `_helpers` site), `test_ll_loop_display.py:2539,2632,2706,3860` and
+  `test_cli_loop_background.py:844,901` (`load_loop`), `test_advisor.py:232`
+  (`derive_input_hash`).
+- `scripts/tests/test_cli_loop_background.py:1408-1422` —
+  `monkeypatch.setattr(_helpers, "datetime", _FrozenDatetime)`, freezing the
+  `datetime` name imported into `_helpers`'s module namespace (used by
+  `_make_instance_id`). Whichever new module ends up owning `_make_instance_id`
+  must keep `datetime` patchable as a module-level name from the test's
+  perspective.
+- `scripts/tests/test_enh3184_spawn_site_guard.py:38` —
+  `_TASK_PATH_MODULES` pins the literal relative path
+  `"little_loops/cli/loop/_helpers.py"` to an exact AST-derived
+  subprocess-spawn count `(2, 0)`. This breaks the moment `_helpers.py` is
+  dissolved (the path stops existing) and needs repointing to wherever the 2
+  spawns relocate.
+- `scripts/tests/test_verify_package_data.py:112,161,165` — reuses the
+  `cli/loop/_helpers.py` path shape as a synthetic naming-pattern fixture
+  example (not a live import of the real file); weaker dependency, but the
+  example string should be updated for accuracy once the file no longer
+  exists.
+- `scripts/tests/test_fsm_signal_integration.py` — a black-box,
+  subprocess-based integration test (e.g. `test_second_signal_force_exit_archives`)
+  that spawns a real `ll-loop run` child and delivers real `SIGINT`/`SIGTERM`,
+  exercising `_loop_signal_handler`'s force-exit branch end-to-end. Cited only
+  in a comment (`:285-288`, `_helpers.py:172-173`), invisible to import-based
+  greps — a genuinely different coverage mode from the white-box tests
+  already listed for the signal-handling cluster.
+
 ### Conventions in Force
 - Named modules under `cli/loop/` are titled after the subcommand verbs they
   own, one module per subcommand group — evidence: `lifecycle.py` ("status,
@@ -281,6 +327,25 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
   module, `cli/sprint/_helpers.py` — not this issue's target; flagged only to
   avoid cross-contamination during a grep-driven migration.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
+- `docs/reference/CLI.md:872` — a separate location from the already-known
+  `ll-loop monitor`/`StateFeedRenderer` citation: the `ll-loop queue list`
+  section's "Pruning side effect" paragraph names `read_queue_entries()`
+  (`_helpers.py:181-209`) as the mechanism behind dead-PID entry cleanup.
+- `docs/observability/tier0-traces.md:138-142,230`,
+  `docs/observability/streaming-parity-traces.md:58-59`,
+  `docs/observability/otel-mapping.md:60` — all three cite
+  `_print_usage_summary` by name (two with explicit line-number anchors,
+  `_helpers.py:1742-1767`/`:1699-1702`, both already stale against the
+  current file — `_print_usage_summary` is now at line 2003 — independent of
+  this split but compounded by it).
+- `scripts/tests/test_review_loop.py:1078-1084` — hardcodes a literal
+  duplicate of a subset of `EXIT_CODES`'s semantics in a comment-cited
+  assertion (`# From _helpers.py EXIT_CODES: exit code 1 covers max_steps,
+  timeout, cycle_detected`) rather than importing the dict; the file-citation
+  comment goes stale on relocation even though the assertion itself won't
+  break.
+
 ### Behavior Parity
 
 | Artifact | Behavior | Disposition | Notes |
@@ -353,6 +418,7 @@ unrelated epic. Verdict: NON_VALID (dependency-reference fix; content
 otherwise accurate).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T03:32:07 - `b08d9181-74d3-46eb-8d3a-a167537e57ed.jsonl`
 - `/ll:refine-issue` - 2026-09-03T03:19:31 - `983e671b-5b21-4f7b-86e9-1898ea8c1563.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:06:46 - `e42909d5-e77d-478c-b142-52f1ba049345.jsonl`
 - `/ll:refine-issue` - 2026-09-03T02:56:56 - `00f0e408-f05f-43a3-bdc7-1e52bd1f47ab.jsonl`

@@ -364,6 +364,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Do not route the fleet-wide report through `session_store/writers.py::update_loop_run_diagnostics` — it is `run_id`-scoped and does not fit a multi-loop report (see Dependent Files above).
 - The runbook's DIAGNOSE step must instruct `cd <project>` before `diagnose-evaluators`/`calibrate-budget` (Decisions #5) and link `agents/loop-specialist.md` for the fix step.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- `docs/reference/CLI.md`: the `ll-logs` subcommand table / `loop-fleet` row is current at line 3505 (issue's "~3500" holds). The `loop-fleet` flags section has drifted to line 3609 (cited "~3604") and its examples to line 3651 (cited "~3646") — a ~5-line shift from an intervening unrelated edit to the file.
+- `README.md`, `CONTRIBUTING.md`, `mkdocs.yml`: confirmed still zero "runbook" references anywhere (issue's wiring claims hold).
+- `docs/runbooks/` and `scripts/little_loops/cli/logs.py`: confirmed no `fleet-review` subcommand, `_cmd_fleet_review`, `_aggregate_fleet_runs`, `_flag_loops`, `_collect_failure_clusters`, `_collect_sequences`, `_validate_builtin_loop`, `_load_prior_baseline`/`_write_baseline`, or shadowed-attribution branch exist anywhere in the repo — only the two names `_aggregate_fleet_runs`/`_flag_loops` appear, as forward-reference prose in `_LoopFleetAggregate`'s own docstring (`logs.py:1174-1176`), not as implementations. This matches the Session Log's "partial" claim exactly; nothing beyond the recorded prerequisite has landed.
+
 ## Program Design
 
 ### Types
@@ -401,6 +409,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Zero-run built-in**: `_get_builtin_loop_names()` minus the set of `loop_name` values across the **unwindowed** records (collect once with `cutoff=None, until=None`, then window-filter in memory for aggregation), so a windowed run does not list every loop that merely didn't run recently. Listed, never flagged.
 - **Excluded projects**: `--exclude-project` paths are removed after discovery and recorded in the sidecar's `excluded_projects`; they never contribute runs, zero-run evidence, or appendix rows. (Decisions #9)
 - **Shadowed**: a run is `shadowed` iff `project_path / ".loops" / f"{loop_name}.yaml"` exists at harvest time. Shadowed runs are never flagged, never count as zero-run evidence, and never enter `loops` in the sidecar; they are listed in the report and stored under `shadowed`. (Decisions #10)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- `scripts/little_loops/cli/logs.py` line citations in this section have drifted 3-36 lines because the already-landed `_builtin_loop_paths()`/`_get_builtin_loop_names()`/`_LoopFleetAggregate` insertion added ~30 lines above everything cited below it. Current locations: `_cmd_loop_fleet` `:2144` (cited `:2108`), its `_get_builtin_loop_names()` call `:2148`, its `_collect_loop_runs()` call `:2160`, the human-table aggregation branch that `_aggregate_fleet_runs()` extracts from `:2194-2218` (cited `:2165-2183`), `_derive_loop_outcome()` `:2004-2029` (cited `:1968`), `_cmd_scan_failures` `:1217-1450` (cited `:1193-1426`) with its `discover_all_projects()` call at `:1231` (cited `:1206`) and `_capture_failure_clusters` at `:1453` (cited `:1429`), `_cmd_sequences` `:633-686` (cited `:630-684`) with its `discover_all_projects()` call at `:646` (cited `:642`).
+- Confirmed unchanged and still accurate: `resolve_loop_path()`'s top-level-only built-in lookup (`fsm/loop_paths.py:50-53`) still fails to resolve nested `oracles/*` built-ins (Decisions #8's premise holds); `_derive_loop_outcome()`'s vocabulary is still exactly `converged | failed | error | max-steps | stalled | interrupted | signal`; the aggregation branch's `top_outcome` tie-break is still the non-deterministic `Counter(...).most_common(1)[0][0]` (now at `:2207`), so Decisions #7's deterministic-tie-break requirement remains live and necessary.
+- `_LoopFleetAggregate` (already landed, `logs.py:1170-1189`) has an exact field-for-field match to this section's dataclass spec — no correction needed there.
+- No repo precedent exists for the specific "split a combined mine-and-print `_cmd_*` into a pure `_collect_*`/`_aggregate_*` function plus a thinned printer" refactor as a completed change; the closest analogs (`_collect_rows()` in `cli/issues/deferred_triage.py:83-118`, `_aggregate_skill_stats()` in `cli/logs.py:904`) were already-separated designs from inception, not extractions. This is evidence the extraction pattern is consistent with the codebase's data/printer separation convention generally, not evidence of a specific template to copy.
 
 ## Use Case
 
@@ -497,6 +514,8 @@ path is recorded, not built.
 - `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-03T03:31:17 - `f50e85fd-ce6c-4861-9097-88bc17e644a8.jsonl`
+- `/ll:verify-issues` - 2026-09-03T03:22:07 - `65351393-3ea0-43ab-b76d-b7ff19a16432.jsonl`
 - `ll-auto` - 2026-09-02T21:47:29 - `6aafaae0-3b4d-4882-a9c3-b3e17aef4346.jsonl`
 - implementation session (partial) - 2026-09-02 - Landed only the Decisions #8 prerequisite: `_builtin_loop_paths()` (recursive, rooted at `get_builtin_loops_dir()`) added to `scripts/little_loops/cli/logs.py`, `_get_builtin_loop_names()` now derived from it, and the `_LoopFleetAggregate` dataclass stub added. Full suite green (21698 passed, 11 skipped). **Not implemented**: the `ll-logs fleet-review` subcommand, `_aggregate_fleet_runs`/`_collect_failure_clusters`/`_collect_sequences` extractions, `_flag_loops`, shadowed-attribution in `_collect_loop_runs`, baseline/delta sidecar + report writer, `docs/runbooks/FLEET_LOOP_REVIEW.md`, and all wiring (CLI.md, README, CONTRIBUTING, mkdocs.yml, test_wiring_skills_and_commands.py) and new tests. Status set to `in_progress`, not `done` — the Acceptance Criteria are unmet.
 - `/ll:ready-issue` - 2026-09-02T21:27:18 - `596a508f-cbf4-49ff-8da3-8b2d48d5ffad.jsonl`
