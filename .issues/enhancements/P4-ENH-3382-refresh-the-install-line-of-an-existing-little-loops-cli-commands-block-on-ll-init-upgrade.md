@@ -9,7 +9,13 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-03'
 captured_at: '2026-09-03T01:47:09Z'
 depends_on:
-  - BUG-3380
+- BUG-3380
+confidence_score: 97
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3382: Refresh the Install line of an existing little-loops CLI Commands block on ll-init --upgrade
@@ -212,6 +218,7 @@ _Pre-implementation review — 2026-09-02:_
 - Program Design → Call Path `_run_apply()` line ref corrected from :837 to :849; a named `_splice_commands_block()` helper was added so the three writers share one splice.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-03T02:34:04 - `deea8a81-d451-4d52-9e29-d1092e795ae7.jsonl`
 - `/ll:wire-issue` - 2026-09-03T02:24:32 - `0ede70ea-abc7-4e95-bfe6-24a012dc95a9.jsonl`
 - `/ll:refine-issue` - 2026-09-03T02:12:23 - `530a68c3-069b-4c6c-b3fd-b695a90a9e2c.jsonl`
 - `/ll:format-issue` - 2026-09-03T02:02:58 - `1a5710fd-de34-4cc6-b93d-c2bb79974725.jsonl`
