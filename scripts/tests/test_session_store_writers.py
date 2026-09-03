@@ -467,8 +467,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 45
-        assert int(row[0]) == 45
+        assert SCHEMA_VERSION == 46
+        assert int(row[0]) == 46
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1150,7 +1150,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 45
+        assert SCHEMA_VERSION == 46
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1280,7 +1280,7 @@ class TestPrepatchEvidence:
     """ENH-2997: prepatch_evidence table, writer, and reader round trip."""
 
     def test_v39_db_upgrades_gains_prepatch_evidence(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 45
+        assert SCHEMA_VERSION == 46
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 39)
         ensure_db(db)
@@ -1537,7 +1537,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 45
+        assert SCHEMA_VERSION == 46
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -1735,7 +1735,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 45
+        assert SCHEMA_VERSION == 46
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -2793,4 +2793,66 @@ class TestWriteAdvisorConsult:
             advisor_model="claude-opus-5",
             main_model="claude-sonnet-5",
             outcome="issued",
+        )
+
+
+class TestWriteResearchTriage:
+    """ENH-2990: write_research_triage() persists research_triage_events rows."""
+
+    def test_issued_consult_persists_all_axis_rows(self, tmp_path: Path) -> None:
+        from little_loops.session_store import write_research_triage
+
+        db = tmp_path / "history.db"
+        assert write_research_triage(
+            db,
+            issue_id="ENH-2990",
+            refined_at="2026-09-01T00:00:00Z",
+            session_id="s1",
+            axes=[
+                ("locator", True, None, "Integration Map → pkg/mod.py"),
+                ("analyzer", False, "missing_symbol", ""),
+                ("pattern_finder", False, "stale", "stale: pkg/mod.py changed …"),
+            ],
+        )
+        rows = recent(db, kind="research_triage", limit=10)
+        assert len(rows) == 3
+        by_axis = {r["axis"]: r for r in rows}
+        assert by_axis["locator"]["covered"] == 1
+        assert by_axis["locator"]["reason"] is None
+        assert by_axis["analyzer"]["reason"] == "missing_symbol"
+        assert by_axis["pattern_finder"]["reason"] == "stale"
+        assert all(r["issue_id"] == "ENH-2990" for r in rows)
+        assert all(r["refined_at"] == "2026-09-01T00:00:00Z" for r in rows)
+        # All three rows share one ts, written in a single transaction.
+        assert len({r["ts"] for r in rows}) == 1
+
+    def test_null_refined_at_for_first_refine(self, tmp_path: Path) -> None:
+        from little_loops.session_store import write_research_triage
+
+        db = tmp_path / "history.db"
+        assert write_research_triage(
+            db,
+            issue_id="ENH-1",
+            refined_at=None,
+            session_id=None,
+            axes=[("locator", False, "no_qualified_refs", "")],
+        )
+        rows = recent(db, kind="research_triage", limit=10)
+        assert rows[0]["refined_at"] is None
+
+    def test_graceful_when_store_unwritable(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.session_store as session_store
+
+        def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(session_store, "connect", boom)
+
+        db = tmp_path / "history.db"
+        assert not session_store.write_research_triage(
+            db,
+            issue_id="ENH-1",
+            refined_at=None,
+            session_id=None,
+            axes=[("locator", False, "no_qualified_refs", "")],
         )

@@ -156,13 +156,13 @@ fi
 - **`--full-rewrite`**: skip triage entirely and spawn all 3. Triage applies on **every other path**, including plain `--auto` — that is the dominant call site, and gating on `--gap-analysis` alone would exempt most invocations.
 - **Empty or unparseable `$TRIAGE`** (CLI missing, failed, any reason): spawn all 3. Fail open — the cost of failing open is today's behavior, the cost of failing closed is a silently under-researched issue.
 
-`$TRIAGE` is a three-key object; each value has `covered` (bool) and `evidence` (string):
+`$TRIAGE` is a three-key object; each value has `covered` (bool), `evidence` (string), and `reason` (string or `null`, ENH-2990 — a discriminating code for *why* an uncovered axis is uncovered; not needed to decide whether to spawn):
 
 ```json
 {
-  "locator":        {"covered": true,  "evidence": "Integration Map → commands/refine-issue.md"},
-  "analyzer":       {"covered": false, "evidence": ""},
-  "pattern_finder": {"covered": false, "evidence": ""}
+  "locator":        {"covered": true,  "evidence": "Integration Map → commands/refine-issue.md", "reason": null},
+  "analyzer":       {"covered": false, "evidence": "", "reason": "no_qualified_refs"},
+  "pattern_finder": {"covered": false, "evidence": "", "reason": "no_qualified_refs"}
 }
 ```
 

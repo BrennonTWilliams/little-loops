@@ -58,6 +58,8 @@ No dependency edge between them — ENH-3000 narrows what counts as `stale` in
 the first place; ENH-2990 measures how often the existing predicate skips
 re-refine work. Resolving ENH-3000 will shift ENH-2990's baseline numbers, so
 sequencing ENH-3000 first is preferable but not required.
+- **ENH-3381** — Record ENH-2990 live skip rate (open)
+
 
 ## Integration Map
 

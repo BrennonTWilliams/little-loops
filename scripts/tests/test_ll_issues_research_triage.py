@@ -84,7 +84,7 @@ class TestResearchTriageJson:
         assert code == 0, "an unmet issue is the common case, not an error"
         assert set(payload) == {"locator", "analyzer", "pattern_finder"}
         for axis in payload.values():
-            assert axis == {"covered": False, "evidence": ""}
+            assert axis == {"covered": False, "evidence": "", "reason": "no_qualified_refs"}
 
     def test_covered_axis_reports_evidence(
         self, triage_project: Path, capsys: pytest.CaptureFixture[str]
@@ -101,6 +101,78 @@ class TestResearchTriageJson:
         assert payload["locator"]["covered"] is True
         assert "pkg/mod.py" in payload["locator"]["evidence"]
         assert payload["analyzer"]["covered"] is False
+
+
+class TestResearchTriageTelemetry:
+    """ENH-2990: cmd_research_triage() writes research_triage_events rows."""
+
+    def test_invocation_writes_one_row_per_axis(
+        self, triage_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import recent, resolve_history_db
+
+        _write(triage_project, SPARSE)
+
+        code = _invoke(["ll-issues", "research-triage", "ENH-1", "--json"])
+        capsys.readouterr()
+
+        assert code == 0
+        rows = recent(resolve_history_db(), kind="research_triage", limit=10)
+        assert len(rows) == 3
+        assert {r["axis"] for r in rows} == {"locator", "analyzer", "pattern_finder"}
+        assert all(r["issue_id"] == "ENH-1" for r in rows)
+        assert all(r["reason"] == "no_qualified_refs" for r in rows)
+
+    def test_text_output_path_also_writes(
+        self, triage_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import recent, resolve_history_db
+
+        _write(triage_project, SPARSE)
+
+        code = _invoke(["ll-issues", "research-triage", "ENH-1"])
+        capsys.readouterr()
+
+        assert code == 0
+        rows = recent(resolve_history_db(), kind="research_triage", limit=10)
+        assert len(rows) == 3
+
+    def test_still_exits_zero_when_db_unwritable(
+        self, triage_project: Path, capsys: pytest.CaptureFixture[str], monkeypatch
+    ) -> None:
+        import sqlite3
+
+        import little_loops.session_store as session_store
+
+        def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(session_store, "connect", boom)
+        _write(triage_project, SPARSE)
+
+        code = _invoke(["ll-issues", "research-triage", "ENH-1", "--json"])
+        payload = json.loads(capsys.readouterr().out)
+
+        assert code == 0
+        assert set(payload) == {"locator", "analyzer", "pattern_finder"}
+
+    def test_gate_suppresses_write(
+        self, triage_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import recent, resolve_history_db
+
+        (triage_project / ".ll" / "ll-config.json").write_text(
+            json.dumps({"analytics": {"capture": {"cli_commands": ["ll-session"]}}}),
+            encoding="utf-8",
+        )
+        _write(triage_project, SPARSE)
+
+        code = _invoke(["ll-issues", "research-triage", "ENH-1", "--json"])
+        capsys.readouterr()
+
+        assert code == 0
+        rows = recent(resolve_history_db(), kind="research_triage", limit=10)
+        assert rows == []
 
 
 class TestResearchTriageUntrackedByDesign:

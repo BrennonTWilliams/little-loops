@@ -58,6 +58,20 @@ from little_loops.text_utils import (
 
 ResearchAxis = Literal["locator", "analyzer", "pattern_finder"]
 
+#: Closed set of discriminating reasons an axis is uncovered (ENH-2990). ``None``
+#: on a covered axis. ``no_qualified_refs``/``below_threshold``/``missing_symbol``
+#: are coverage-side rejections from :func:`_triage_axis`; ``stale`` is the
+#: Staleness Check; ``program_design_unmet`` and ``unreadable`` are the two
+#: overrides that live outside it (BUG-3003's gate, and the OSError fail-open).
+TriageReason = Literal[
+    "no_qualified_refs",
+    "below_threshold",
+    "missing_symbol",
+    "stale",
+    "program_design_unmet",
+    "unreadable",
+]
+
 #: Fraction of an axis's qualified path references that must resolve for the
 #: axis to count as covered. Measured against the issue corpus: ≥80% holds
 #: within an 8.2-point band across a 10x range of Integration Map sizes, where
@@ -101,10 +115,11 @@ class AxisCoverage:
     axis: ResearchAxis
     covered: bool
     evidence: str  # satisfying section + path, staleness reason, or "" when unmet
+    reason: TriageReason | None = None  # discriminating reason when uncovered; None when covered
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to the JSON shape ``ll-issues research-triage --json`` emits."""
-        return {"covered": self.covered, "evidence": self.evidence}
+        return {"covered": self.covered, "evidence": self.evidence, "reason": self.reason}
 
 
 @dataclass(frozen=True)
@@ -276,6 +291,21 @@ def _change_time(root: Path, rel_path: str, change_times: ChangeTimeIndex) -> da
     return max(candidates) if candidates else None
 
 
+def issue_refined_at(content: str) -> datetime | None:
+    """Most recent ``/ll:refine-issue`` or gap-refine Session Log timestamp, or ``None``.
+
+    Extracted from :func:`triage_research_axes` (ENH-2990) so a caller that
+    needs the timestamp on its own — e.g. to stamp a telemetry row — doesn't
+    have to re-derive it or change ``triage_research_axes``'s return type,
+    which :class:`TestCorpusBaseline` and the corpus sweep consume as a
+    bare axis tuple.
+    """
+    refined_at_full = last_command_timestamp(content, REFINE_COMMAND)
+    refined_at_gap = last_command_timestamp(content, GAP_REFINE_COMMAND)
+    candidates = [t for t in (refined_at_full, refined_at_gap) if t is not None]
+    return max(candidates) if candidates else None
+
+
 def triage_research_axes(
     issue_path: Path,
     root: Path,
@@ -311,18 +341,14 @@ def triage_research_axes(
     try:
         content = issue_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return tuple(AxisCoverage(axis=a, covered=False, evidence="") for a in AXES)
+        return tuple(
+            AxisCoverage(axis=a, covered=False, evidence="", reason="unreadable") for a in AXES
+        )
 
     if index is None:
         index = build_ref_index(root)
 
-    if check_staleness:
-        refined_at_full = last_command_timestamp(content, REFINE_COMMAND)
-        refined_at_gap = last_command_timestamp(content, GAP_REFINE_COMMAND)
-        candidates = [t for t in (refined_at_full, refined_at_gap) if t is not None]
-        refined_at = max(candidates) if candidates else None
-    else:
-        refined_at = None
+    refined_at = issue_refined_at(content) if check_staleness else None
     if refined_at is not None and (
         change_times is None or (change_times.floor is not None and change_times.floor > refined_at)
     ):
@@ -338,7 +364,9 @@ def triage_research_axes(
     if not unmet_reason:
         return coverages
     return tuple(
-        AxisCoverage(axis="analyzer", covered=False, evidence=unmet_reason)
+        AxisCoverage(
+            axis="analyzer", covered=False, evidence=unmet_reason, reason="program_design_unmet"
+        )
         if c.axis == "analyzer"
         else c
         for c in coverages
@@ -420,8 +448,10 @@ def _triage_axis(
             tracked = resolve_ref_path(ref, index) or ref
             resolved.append((heading, tracked))
 
-    if eligible == 0 or len(resolved) / eligible < COVERAGE_THRESHOLD:
-        return AxisCoverage(axis=axis, covered=False, evidence="")
+    if eligible == 0:
+        return AxisCoverage(axis=axis, covered=False, evidence="", reason="no_qualified_refs")
+    if len(resolved) / eligible < COVERAGE_THRESHOLD:
+        return AxisCoverage(axis=axis, covered=False, evidence="", reason="below_threshold")
 
     if _AXIS_NEEDS_SYMBOL[axis]:
         for heading in {h for h, _ in resolved}:
@@ -429,7 +459,7 @@ def _triage_axis(
                 heading_with_symbol.add(heading)
         resolved = [(h, p) for h, p in resolved if h in heading_with_symbol]
         if not resolved:
-            return AxisCoverage(axis=axis, covered=False, evidence="")
+            return AxisCoverage(axis=axis, covered=False, evidence="", reason="missing_symbol")
 
     # Staleness: a resolving reference whose target moved after the issue last
     # incorporated it is worse than an absent one — it looks like coverage.
@@ -445,6 +475,7 @@ def _triage_axis(
                         f"stale: {tracked} changed {changed.isoformat()}, "
                         f"issue last refined {refined_at.isoformat()} ({heading})"
                     ),
+                    reason="stale",
                 )
 
     heading, tracked = resolved[0]

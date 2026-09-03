@@ -354,6 +354,38 @@
       "partial": false,
       "unique": false
     },
+    "idx_research_triage_events_axis": {
+      "columns": [
+        "axis"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_research_triage_events_issue": {
+      "columns": [
+        "issue_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_research_triage_events_reason": {
+      "columns": [
+        "reason"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_research_triage_events_ts": {
+      "columns": [
+        "ts"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
     "idx_retirements_fingerprint": {
       "columns": [
         "topic_fingerprint"
@@ -1793,6 +1825,65 @@
       ],
       "type": "table"
     },
+    "research_triage_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "axis",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "covered",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "reason",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "refined_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "evidence",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
     "review_events": {
       "columns": [
         {
@@ -2567,5 +2658,5 @@
       "type": "table"
     }
   },
-  "schema_version": 45
+  "schema_version": 46
 }

@@ -3398,6 +3398,125 @@ def consult_stats(
 
 
 @dataclass
+class AxisRates:
+    """Production vs coverage-only skip rates for one axis or the aggregate (ENH-2990)."""
+
+    total: int
+    covered: int
+    stale: int
+    production_rate: float
+    coverage_only_rate: float
+
+
+@dataclass
+class ResearchTriageStats:
+    """Live re-refine skip-rate figures for ``ll-issues research-triage`` (ENH-2990)."""
+
+    first_refine_rows: int
+    re_refine_rows: int
+    program_design_unmet_count: int
+    per_axis: dict[str, AxisRates]
+    aggregate: AxisRates
+
+
+def research_triage_stats(db_path: Path | str = DEFAULT_DB_PATH) -> ResearchTriageStats:
+    """Aggregate ``research_triage_events`` into the ENH-2990 headline figures.
+
+    Only rows with ``refined_at IS NOT NULL`` (re-refine invocations) feed the
+    headline rates — the whole point of this issue is to isolate that
+    population from first-refine rows, which can never carry a ``stale``
+    verdict. Rows with ``reason = 'program_design_unmet'`` are excluded from
+    the rates (BUG-3003's override says nothing about whether coverage or
+    staleness would otherwise have passed); their count is reported
+    separately via ``program_design_unmet_count``. Returns an all-zero
+    :class:`ResearchTriageStats` on any read failure or missing/empty
+    database (graceful degradation).
+
+    Headline formulas (per axis, and in aggregate over all three axes):
+    production skip rate = ``covered / total``; coverage-only counterfactual
+    = ``(covered + stale) / total`` — the direct analogue of ENH-2971's
+    33.7%-coverage-only vs 8.6%-production corpus figures, now measured on
+    real invocations.
+
+    Equivalent SQL, for re-deriving the same grouping without Python::
+
+        SELECT axis, covered, reason, COUNT(*) FROM research_triage_events
+        WHERE refined_at IS NOT NULL
+          AND (reason IS NULL OR reason != 'program_design_unmet')
+        GROUP BY axis, covered, reason;
+    """
+    empty_axis = AxisRates(total=0, covered=0, stale=0, production_rate=0.0, coverage_only_rate=0.0)
+    empty = ResearchTriageStats(
+        first_refine_rows=0,
+        re_refine_rows=0,
+        program_design_unmet_count=0,
+        per_axis={},
+        aggregate=empty_axis,
+    )
+    db_path = Path(db_path)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return empty
+    try:
+        first_refine_rows = conn.execute(
+            "SELECT COUNT(*) FROM research_triage_events WHERE refined_at IS NULL"
+        ).fetchone()[0]
+        program_design_unmet_count = conn.execute(
+            "SELECT COUNT(*) FROM research_triage_events "
+            "WHERE refined_at IS NOT NULL AND reason = 'program_design_unmet'"
+        ).fetchone()[0]
+        rows = conn.execute(
+            "SELECT axis, covered, reason, COUNT(*) as n FROM research_triage_events "
+            "WHERE refined_at IS NOT NULL "
+            "AND (reason IS NULL OR reason != 'program_design_unmet') "
+            "GROUP BY axis, covered, reason"
+        ).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: research_triage_stats query failed", exc_info=True)
+        return empty
+    finally:
+        conn.close()
+
+    per_axis_counts: dict[str, dict[str, int]] = {}
+    re_refine_rows = 0
+    for row in rows:
+        n = row["n"]
+        re_refine_rows += n
+        counts = per_axis_counts.setdefault(row["axis"], {"total": 0, "covered": 0, "stale": 0})
+        counts["total"] += n
+        if row["covered"]:
+            counts["covered"] += n
+        elif row["reason"] == "stale":
+            counts["stale"] += n
+
+    def _rates(counts: dict[str, int]) -> AxisRates:
+        total = counts["total"]
+        covered = counts["covered"]
+        stale = counts["stale"]
+        return AxisRates(
+            total=total,
+            covered=covered,
+            stale=stale,
+            production_rate=covered / total if total else 0.0,
+            coverage_only_rate=(covered + stale) / total if total else 0.0,
+        )
+
+    per_axis = {axis: _rates(counts) for axis, counts in per_axis_counts.items()}
+    aggregate_counts = {"total": 0, "covered": 0, "stale": 0}
+    for counts in per_axis_counts.values():
+        for key in aggregate_counts:
+            aggregate_counts[key] += counts[key]
+
+    return ResearchTriageStats(
+        first_refine_rows=first_refine_rows,
+        re_refine_rows=re_refine_rows,
+        program_design_unmet_count=program_design_unmet_count,
+        per_axis=per_axis,
+        aggregate=_rates(aggregate_counts),
+    )
+
+
+@dataclass
 class HighConfidenceAbstention:
     """A ``cannot_judge`` row whose ``confidence`` exceeds the manual-review threshold (ENH-230).
 

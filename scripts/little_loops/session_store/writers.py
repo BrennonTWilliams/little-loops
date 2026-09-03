@@ -1895,6 +1895,53 @@ def write_advisor_consult(
     return True
 
 
+def write_research_triage(
+    db_path: Path | str,
+    *,
+    issue_id: str,
+    refined_at: str | None,
+    session_id: str | None,
+    axes: Sequence[tuple[str, bool, str | None, str]],
+    ts: str | None = None,
+) -> bool:
+    """Write one row per axis to ``research_triage_events`` in one transaction (ENH-2990).
+
+    Fail-soft, mirroring :func:`write_advisor_consult`: returns ``False`` (never
+    raises) on any ``sqlite3.Error``. All rows share one *ts* — Decision Rules
+    key an invocation on ``ts + issue_id``, which only holds if the rows are
+    written atomically here rather than as separate single-row calls. *axes*
+    are primitive ``(axis, covered, reason, evidence)`` tuples, not
+    ``AxisCoverage`` instances: this module has no top-level import of any
+    domain module, matching ``write_advisor_consult``'s own primitives-only
+    signature. Rows are not indexed into ``search_index`` — unlike
+    ``write_advisor_consult``, there is nothing in a measurement row worth
+    full-text search.
+    """
+    ts = ts or _now()
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _pkg.connect(db_path)
+        conn.executemany(
+            "INSERT INTO research_triage_events"
+            "(ts, session_id, issue_id, axis, covered, reason, refined_at, evidence)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (ts, session_id, issue_id, axis, int(covered), reason, refined_at, evidence)
+                for axis, covered, reason, evidence in axes
+            ],
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning(
+            "write_research_triage: insert failed for issue_id=%r", issue_id, exc_info=True
+        )
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+    return True
+
+
 def record_subagent_run_start(
     db_path: Path | str,
     *,

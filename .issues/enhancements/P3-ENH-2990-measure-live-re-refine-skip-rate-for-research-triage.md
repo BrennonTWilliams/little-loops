@@ -3,8 +3,9 @@ id: ENH-2990
 title: Measure the live re-refine skip rate for research-triage
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-02T05:14:22Z'
+completed_at: '2026-09-03T00:47:16Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 parent: EPIC-3023
@@ -514,6 +515,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-03T00:46:53 - `f2d59b82-c760-49ab-831c-620b7014291e.jsonl`
 - pre-implementation review - 2026-09-02T23:55:00 - fixed table/kind names (`research_triage_events`/`research_triage`, registration mandatory), no `search_index` indexing, primitive-tuple writer signature, `axis` CHECK, per-axis headline rates, `unreadable`+`refined_at` handling, corrected `test_no_sections_covers_nothing` non-breakage, corrected sample ETA (~3 weeks at 22–37/day)
 - `/ll:confidence-check` - 2026-09-02T23:02:19 - `d0684beb-384f-442a-8bf1-2102526cb87e.jsonl`
 - pre-implementation review - 2026-09-02T23:30:00 - added `issue_refined_at` helper (refined_at unreachable from CLI), explicit config gate (cli_event_context gate is dead), `program_design_unmet` exclusion, headline formulas, one-call-three-rows writer, row-based close threshold from measured volume, removed stale ENH-3000-open text

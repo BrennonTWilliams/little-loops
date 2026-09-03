@@ -163,6 +163,7 @@ from little_loops.session_store.writers import (
     update_loop_run_diagnostics,
     write_advisor_consult,
     write_file_event,
+    write_research_triage,
 )
 
 __all__ = [
@@ -229,6 +230,7 @@ __all__ = [
     "record_prompt_opt_event",
     "record_verdict_event",
     "write_advisor_consult",
+    "write_research_triage",
     # Private functions re-exported for test access
     "_MIGRATIONS",
     "_KIND_TABLE",

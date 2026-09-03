@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 45
+SCHEMA_VERSION = 46
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -49,6 +49,7 @@ VALID_KINDS: tuple[str, ...] = (
     "context_pressure",
     "review",
     "advisor_consult",
+    "research_triage",
 )
 
 _KIND_TABLE = {
@@ -76,6 +77,7 @@ _KIND_TABLE = {
     "context_pressure": "context_pressure_events",
     "review": "review_events",
     "advisor_consult": "advisor_consults",
+    "research_triage": "research_triage_events",
 }
 
 _KINDLESS_TABLES = frozenset(
@@ -1260,6 +1262,44 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_advisor_consults_ts ON advisor_consults(ts);
     CREATE INDEX IF NOT EXISTS idx_advisor_consults_signal ON advisor_consults(signal);
     CREATE INDEX IF NOT EXISTS idx_advisor_consults_outcome ON advisor_consults(outcome);
+    """,
+    # v46 (ENH-2990): live research-triage skip-rate telemetry. One row per
+    # axis per `ll-issues research-triage` invocation (three rows share one
+    # `ts` + `issue_id`, written in a single transaction by
+    # `write_research_triage`) -- turns the production/coverage-only skip
+    # rate into a `GROUP BY reason` query instead of the corpus-sweep proxy
+    # ENH-2971 shipped with. `axis` and `reason` are both closed sets
+    # enforced by CHECK, matching verdict_events.verdict -- a Python-side
+    # typo can never land a row the read query silently drops. `refined_at`
+    # is nullable: a first-refine invocation has no prior Session Log entry
+    # to stale-check against, and the read side conditions the headline rate
+    # on `refined_at IS NOT NULL` to isolate the re-refine population this
+    # issue exists to measure. Live-write-only, like advisor_consults --
+    # excluded from _REBUILD_TABLES/_REBUILD_SEARCH_KINDS
+    # (session_store/lifecycle.py); rows are not indexed into search_index.
+    """
+    CREATE TABLE IF NOT EXISTS research_triage_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        issue_id TEXT NOT NULL,
+        axis TEXT NOT NULL CHECK (axis IN ('locator', 'analyzer', 'pattern_finder')),
+        covered INTEGER NOT NULL,
+        reason TEXT CHECK (
+            reason IS NULL OR reason IN (
+                'no_qualified_refs', 'below_threshold', 'missing_symbol',
+                'stale', 'program_design_unmet', 'unreadable'
+            )
+        ),
+        refined_at TEXT,
+        evidence TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_research_triage_events_ts ON research_triage_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_research_triage_events_issue
+        ON research_triage_events(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_research_triage_events_axis ON research_triage_events(axis);
+    CREATE INDEX IF NOT EXISTS idx_research_triage_events_reason
+        ON research_triage_events(reason);
     """,
 ]
 

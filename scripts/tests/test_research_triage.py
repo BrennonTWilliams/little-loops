@@ -102,6 +102,7 @@ class TestSparseIssue:
         for coverage in by_axis.values():
             assert coverage.covered is False
             assert coverage.evidence == ""
+            assert coverage.reason == "no_qualified_refs"
 
     def test_sections_present_but_pathless_covers_nothing(self, tmp_path: Path) -> None:
         root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
@@ -568,6 +569,70 @@ def _corpus_sweep(check_staleness: bool) -> tuple[tuple[Path, tuple[AxisCoverage
         )
         for issue in _corpus_issues()
     )
+
+
+class TestTriageReason:
+    """ENH-2990: AxisCoverage.reason discriminates *why* an axis is uncovered."""
+
+    def test_covered_axis_reason_is_none(self, tmp_path: Path) -> None:
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        issue = _write_issue(root, "# ENH-1\n\n## Integration Map\n\n- `pkg/mod.py`\n")
+
+        assert _by_axis(triage_research_axes(issue, root))["locator"].reason is None
+
+    def test_no_qualified_refs_reason(self, tmp_path: Path) -> None:
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        issue = _write_issue(root, "# ENH-1\n\n## Summary\n\nNothing here.\n")
+
+        assert _by_axis(triage_research_axes(issue, root))["locator"].reason == "no_qualified_refs"
+
+    def test_below_threshold_reason(self, tmp_path: Path) -> None:
+        root = _make_repo(
+            tmp_path, {f"pkg/mod{i}.py": SOURCE for i in range(3)} | {"pkg/x.py": SOURCE}
+        )
+        issue = _write_issue(
+            root,
+            "# ENH-1\n\n## Integration Map\n\n"
+            "- `pkg/mod0.py`\n- `pkg/mod1.py`\n- `pkg/mod2.py`\n"
+            "- `pkg/gone.py`\n- `pkg/vanished.py`\n",
+        )
+
+        assert _by_axis(triage_research_axes(issue, root))["locator"].reason == "below_threshold"
+
+    def test_missing_symbol_reason(self, tmp_path: Path) -> None:
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        issue = _write_issue(root, "# ENH-1\n\n## Root Cause\n\nThe file pkg/mod.py is wrong.\n")
+
+        assert _by_axis(triage_research_axes(issue, root))["analyzer"].reason == "missing_symbol"
+
+    def test_stale_reason(self, tmp_path: Path) -> None:
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        past = datetime.now(UTC) - timedelta(days=2)
+        issue = _write_issue(
+            root,
+            "# ENH-1\n\n## Integration Map\n\n- `pkg/mod.py`\n" + _session_log(past),
+        )
+        (root / "pkg" / "mod.py").write_text(SOURCE + "# edited\n", encoding="utf-8")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "change")
+        old = (datetime.now(UTC) - timedelta(days=5)).timestamp()
+        os.utime(root / "pkg" / "mod.py", (old, old))
+
+        assert _by_axis(triage_research_axes(issue, root))["locator"].reason == "stale"
+
+    def test_unreadable_reason(self, tmp_path: Path) -> None:
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        missing = root / ".issues" / "enhancements" / "P3-ENH-1-gone.md"
+
+        by_axis = _by_axis(triage_research_axes(missing, root))
+        for coverage in by_axis.values():
+            assert coverage.reason == "unreadable"
+
+    def test_program_design_unmet_reason(self, tmp_path: Path) -> None:
+        root, issue = TestProgramDesignGateOverride()._gate_active_issue(tmp_path, "")
+
+        analyzer = _by_axis(triage_research_axes(issue, root))["analyzer"]
+        assert analyzer.reason == "program_design_unmet"
 
 
 # BUG-3056: each of these sweeps the whole .issues/ corpus, spawning a

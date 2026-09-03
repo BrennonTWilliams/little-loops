@@ -1214,6 +1214,33 @@ Pre-implementation review found and fixed five gaps:
    Steps contained assertions rather than steps; split into real steps plus
    an Acceptance Criteria section.
 
+## Threshold Validation (ENH-2990 — live)
+
+**Pending.** ENH-2990 instruments the real `ll-issues research-triage` call
+path (`research_triage_events`, `history.db` schema v46) so the skip rate can
+be measured on production invocations instead of this issue's corpus sweep —
+the Codebase Research Findings and Motivation sections above both note that
+the corpus method scores each issue in its *current* state, not the state at
+each historical refine, which is a poor proxy for the re-refine case.
+
+The figure fills in once ENH-2990's Acceptance Criteria close condition is met
+(**≥1,500 re-refine axis rows**, `refined_at IS NOT NULL`, ≈500 invocations —
+~3 weeks of `autodev.yaml` traffic at the measured 22–37 invocations/day
+steady-state rate). Read query (`history_reader.research_triage_stats()`'s
+equivalent SQL, per axis and in aggregate, `program_design_unmet` rows
+excluded from the rate and counted separately):
+
+```sql
+SELECT axis, covered, reason, COUNT(*) FROM research_triage_events
+WHERE refined_at IS NOT NULL
+  AND (reason IS NULL OR reason != 'program_design_unmet')
+GROUP BY axis, covered, reason;
+```
+
+Headline formulas: production skip rate = `covered / total`; coverage-only
+counterfactual = `(covered + reason='stale') / total` — the live analogues of
+this section's 8.6% (production) and 33.7% (coverage-only) corpus figures.
+
 ## Session Log
 - `/ll:manage-issue` - 2026-08-02T05:10:12 - `fe6a935b-97e2-4705-b250-8a27aff90aeb.jsonl`
 - `/ll:ready-issue` - 2026-08-02T04:37:21 - `90c62b49-68c4-4706-90d2-32e4beb7913e.jsonl`

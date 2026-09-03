@@ -20,7 +20,10 @@ from little_loops.issues.research_triage import triage_research_axes
 from little_loops.text_utils import build_ref_index
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from little_loops.config import BRConfig
+    from little_loops.issues.research_triage import AxisCoverage
 
 
 def add_research_triage_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:
@@ -64,6 +67,8 @@ def cmd_research_triage(config: BRConfig, args: argparse.Namespace) -> int:
     )
     coverages = triage_research_axes(path, config.project_root, index=index)
 
+    _record_research_triage(config, args.issue_id, path, coverages)
+
     if getattr(args, "json", False):
         print_json({c.axis: c.to_dict() for c in coverages})
         return 0
@@ -73,3 +78,49 @@ def cmd_research_triage(config: BRConfig, args: argparse.Namespace) -> int:
         suffix = f" — {coverage.evidence}" if coverage.evidence else ""
         print(f"{coverage.axis:15s} {state}{suffix}")
     return 0
+
+
+def _record_research_triage(
+    config: BRConfig,
+    issue_id: str,
+    issue_path: Path,
+    coverages: tuple[AxisCoverage, ...],
+) -> None:
+    """Best-effort telemetry write of this invocation's per-axis verdict (ENH-2990).
+
+    Runs on both the ``--json`` and text output paths. Gated explicitly on
+    ``config.analytics_capture.cli_commands`` rather than relying on
+    ``cli_event_context``'s own gate — that gate only applies when a caller
+    passes ``config``, and no ``ll-*`` entry point does, making it dead code
+    today (ENH-2932 regression, out of scope here). ``write_research_triage``
+    is itself fail-soft (never raises), so this never alters
+    :func:`cmd_research_triage`'s exit-0 contract.
+    """
+    import os
+
+    from little_loops.config.features import feature_enabled_for
+    from little_loops.issues.research_triage import issue_refined_at
+    from little_loops.session_store import resolve_history_db, write_research_triage
+
+    gate_open = feature_enabled_for(
+        {"cli_commands": config.analytics_capture.cli_commands}, "cli_commands", "ll-issues"
+    )
+    if not gate_open:
+        return
+
+    refined_at = None
+    try:
+        content = issue_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        content = None
+    if content is not None:
+        refined = issue_refined_at(content)
+        refined_at = refined.isoformat() if refined is not None else None
+
+    write_research_triage(
+        resolve_history_db(),
+        issue_id=issue_id,
+        refined_at=refined_at,
+        session_id=os.environ.get("CLAUDE_SESSION_ID"),
+        axes=[(c.axis, c.covered, c.reason, c.evidence) for c in coverages],
+    )

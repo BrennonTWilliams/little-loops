@@ -1919,7 +1919,7 @@ Report which of `/ll:refine-issue`'s three research axes an issue already covers
 
 | Flag | Description |
 |------|-------------|
-| `--json` / `-j` | Emit `{"locator": {...}, "analyzer": {...}, "pattern_finder": {...}}`, each value `{"covered": bool, "evidence": str}` |
+| `--json` / `-j` | Emit `{"locator": {...}, "analyzer": {...}, "pattern_finder": {...}}`, each value `{"covered": bool, "evidence": str, "reason": str \| null}` |
 | `--config` | Path to project root |
 
 **Axes and what satisfies them:**
@@ -1936,6 +1936,7 @@ Report which of `/ll:refine-issue`'s three research axes an issue already covers
 - **Staleness**: every resolved path's `max(git commit time, filesystem mtime)` is compared against the issue's most recent `` `/ll:refine-issue` `` `## Session Log` timestamp. A target that moved after that pass makes the axis uncovered, with `evidence` naming the stale path. Both clocks are needed — a git-only check misses uncommitted working-tree edits. An issue with no prior refine entry skips the comparison.
 - **Program Design gate override (BUG-3003)**: on a project where the Program Design gate is active for this issue (`.ll/program-design-cutover.json` stamped, issue not grandfathered, `program_design_not_applicable` not set), `analyzer` is forced `covered: false` — regardless of Root Cause/Current Behavior evidence — whenever `## Program Design` is missing, empty, boilerplate, or graded non-specific, with `evidence` naming the gate as the reason. Without this override, an already-refined issue with a resolving Root Cause would triage `analyzer: covered` and `/ll:refine-issue` would never re-spawn the analyzer agent needed to write the section.
 - **Exit 0 whenever the issue is readable, including when every axis is unmet** — a nonzero exit there would be indistinguishable from a missing issue. Only an unresolvable issue ID exits 1.
+- **`reason` (ENH-2990)**: `null` when `covered` is `true`; otherwise one of `no_qualified_refs` (zero eligible references), `below_threshold` (eligible references resolve below 80%), `missing_symbol` (coverage passes but no co-located symbol), `stale` (the Staleness Check), `program_design_unmet` (the BUG-3003 override, `analyzer` only), or `unreadable` (the issue file itself couldn't be read). Every invocation also writes one `research_triage_events` telemetry row per axis to `.ll/history.db`, gated on `analytics.capture.cli_commands`, so the live re-refine skip rate can be measured against production traffic instead of a corpus sweep.
 
 **Examples:**
 ```bash

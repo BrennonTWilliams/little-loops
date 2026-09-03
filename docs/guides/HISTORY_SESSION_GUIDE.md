@@ -103,6 +103,7 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v43 | BUG-3241 | Repairs databases missing `idx_assistant_messages_dedup` and/or `idx_summary_nodes_retention_dedup`; dedups any accumulated duplicate rows first, then re-creates the UNIQUE indexes, and re-asserts every non-UNIQUE index for good measure |
 | v44 | ENH-230 | `abstention_reason` column on `verdict_events` plus a CHECK constraint restricting `verdict` to `pass`/`fail`/`implement`/`cannot_judge` (table rebuilt via rename/copy/drop, since SQLite can't `ALTER TABLE` a CHECK onto an existing column) |
 | v45 | FEAT-3300 | `advisor_consults` table (advisor-consult telemetry) |
+| v46 | ENH-2990 | `research_triage_events` table (live research-triage skip-rate telemetry) |
 
 v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances. Migrations v37–v39 add columns without backfilling them, so rows written before those versions carry `NULL` in the new columns.
 
@@ -142,6 +143,7 @@ v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observabil
 | `review_events` | Reviewer/audit outcome telemetry. Live-write-only. Queryable via `ll-session recent --kind review` (ENH-2512, v35). |
 | `prepatch_evidence` | Pre-patch evidence captured during implementation runs: `issue_id`, `run_id`, `state`, `evidence_json`, `created_at`; indexed by `issue_id` (ENH-2997, v40). |
 | `advisor_consults` | One row per `consult_for_trigger()` invocation (`advisor.py`): `task_key`, `signal`, `advisor_host`, `advisor_model`, `main_model`, `floor_status`, `outcome` (`"issued"` or a `skipped_reason` value), `latency_ms`, `input_tokens`, `output_tokens`, `confidence`, `verdict_body` (nullable; only populated when `advisor.store_verdict_body` opts in). Live-write-only — no `raw_events` source exists, so the table is excluded from `rebuild()` (FEAT-3300, v45). |
+| `research_triage_events` | One row per axis per `ll-issues research-triage` invocation (three rows share one `ts` + `issue_id`, written atomically by `write_research_triage()`): `issue_id`, `axis` (CHECK: `locator`/`analyzer`/`pattern_finder`), `covered`, `reason` (nullable, CHECK: `no_qualified_refs`/`below_threshold`/`missing_symbol`/`stale`/`program_design_unmet`/`unreadable`), `refined_at` (nullable — NULL means a first-refine invocation), `evidence`. Gated on `analytics.capture.cli_commands`. Live-write-only, not indexed into `search_index` — excluded from `rebuild()`. Queryable via `ll-session recent --kind research_triage` and `history_reader.research_triage_stats()` (ENH-2990, v46). |
 
 Capture is controlled per-signal via `analytics.capture.*` config (`scripts/little_loops/config-schema.json`):
 - `analytics.capture.file_events` (bool, default `true`) — gate `file_events` recording

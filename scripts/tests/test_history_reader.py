@@ -2020,6 +2020,71 @@ class TestNewEventReaders:
         assert stats.total_tokens == 700
         assert stats.by_signal == {"confidence_gate": 1, "loop_stall": 1}
 
+    def test_research_triage_stats(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import research_triage_stats
+        from little_loops.session_store import write_research_triage
+
+        db = tmp_path / "history.db"
+        # A first-refine invocation: refined_at is None, excluded from the headline rates.
+        write_research_triage(
+            db,
+            issue_id="ENH-1",
+            refined_at=None,
+            session_id="s1",
+            axes=[("locator", False, "no_qualified_refs", "")],
+            ts="2026-08-24T09:00:00Z",
+        )
+        # Two re-refine invocations on the locator axis: one covered, one stale.
+        write_research_triage(
+            db,
+            issue_id="ENH-2",
+            refined_at="2026-08-23T00:00:00Z",
+            session_id="s1",
+            axes=[("locator", True, None, "Integration Map → pkg/mod.py")],
+            ts="2026-08-24T10:00:00Z",
+        )
+        write_research_triage(
+            db,
+            issue_id="ENH-3",
+            refined_at="2026-08-23T00:00:00Z",
+            session_id="s1",
+            axes=[("locator", False, "stale", "stale: pkg/mod.py changed …")],
+            ts="2026-08-24T11:00:00Z",
+        )
+        # A program_design_unmet override row: excluded from the rates, counted separately.
+        write_research_triage(
+            db,
+            issue_id="ENH-4",
+            refined_at="2026-08-23T00:00:00Z",
+            session_id="s1",
+            axes=[("analyzer", False, "program_design_unmet", "Program Design gate: missing")],
+            ts="2026-08-24T12:00:00Z",
+        )
+
+        stats = research_triage_stats(db)
+        assert stats.first_refine_rows == 1
+        assert stats.program_design_unmet_count == 1
+        assert stats.re_refine_rows == 2
+
+        locator = stats.per_axis["locator"]
+        assert locator.total == 2
+        assert locator.covered == 1
+        assert locator.stale == 1
+        assert locator.production_rate == 0.5
+        assert locator.coverage_only_rate == 1.0
+
+        assert stats.aggregate.total == 2
+        assert stats.aggregate.production_rate == 0.5
+
+    def test_research_triage_stats_empty_db_returns_zeros(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import research_triage_stats
+
+        stats = research_triage_stats(tmp_path / "missing.db")
+        assert stats.first_refine_rows == 0
+        assert stats.re_refine_rows == 0
+        assert stats.per_axis == {}
+        assert stats.aggregate.total == 0
+
     def test_consult_stats_empty_db_returns_zeros(self, tmp_path: Path) -> None:
         from little_loops.history_reader import consult_stats
 
