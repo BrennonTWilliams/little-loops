@@ -89,6 +89,16 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   single `queries.py` would comfortably hold; expect several query submodules
   (see Program Design -> Signatures).
 
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- Both completed sibling splits document their `__init__.py` with the same two-heading docstring shape — "Package layout" (submodule -> one-line concern) and "Public API" (re-exported names) — each citing the originating issue number in the parenthetical, evidence: `scripts/little_loops/session_store/__init__.py:16-24` and `scripts/little_loops/fsm/validation/__init__.py:9-39`.
+- Both re-export via one explicit `from .<submodule> import (...)` block per submodule (alphabetized, no star imports), followed by a single flat `__all__` list with a labeled "Private functions ... re-exported for test access" tail — every re-exported name appears in `__all__`, evidence: `session_store/__init__.py:64-167,169-271` and `fsm/validation/__init__.py:44-162,164-275`.
+- Intra-package dependencies form a DAG with exactly one leaf/shared module every other submodule may import from — never sibling-to-sibling — evidence: `session_store`'s `db.py`/`schema.py` are the leaves under `queries.py`/`writers.py`/`lifecycle.py`; `fsm/validation`'s `_base.py` is the single leaf every other submodule imports, with `structural_rules.py` at the top of the DAG hosting the entry points.
+- The two sibling splits **disagree** on whether the shared-internals leaf gets an underscore-prefixed name: `fsm/validation` names it `_base.py` and its docstring states explicitly it holds "cross-rule helpers used by 2+ rule families"; `session_store` has no underscore-prefixed shared module at all — its cross-cutting DB-path/connection logic lives in the non-underscore `db.py` instead, and that issue's own text states "no split has used exactly `schema.py`/`queries.py`/`lifecycle.py`/`db.py` before — this issue's naming is novel, not an established convention." `history_reader.py`'s own shared helpers (`_connect_readonly`, called at 64 sites, `_row_to_dataclass`, `logger`, `STALE_DAYS_DEFAULT`) are used by 2+ query-domain groups the same way `_base.py`'s contents are — a plausible `_base.py`-shaped candidate — but which naming convention to follow is a decision the implementer needs to make knowingly; the codebase does not settle it.
+- Neither split added a new shared `conftest.py` fixture file; each new test file redeclares its own copy of any shared test-local fixtures/helpers rather than centralizing them, evidence: `_module_tmp_parent` independently redefined across `test_session_store_{db,lifecycle,queries,schema,writers}.py`, and `make_state` independently redefined across `test_fsm_validation_{meta_rules,shell_safety,structural,reachability,evaluator_rules}.py`.
+- Test-file naming does not always exactly echo the production submodule name: `fsm/validation`'s `structural_rules.py` submodule is tested by `test_fsm_validation_structural.py`, not `..._structural_rules.py` — the per-submodule test-split convention allows a shortened suffix.
+- Neither split created a mirror test subdirectory (e.g. `scripts/tests/session_store/`); both kept flat, module-name-prefixed files directly under `scripts/tests/`.
+
 ## Impact Assessment
 
 - **Severity**: Medium
@@ -99,6 +109,12 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 ## Integration Map
 
 ### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- Additional documentation surface beyond the two already-cited files, found via broader research (2026-09-03): `docs/guides/HISTORY_SESSION_GUIDE.md` (cites `recent_orchestration_runs`/`aggregate_orchestration_runs`/`recent_loop_runs`/`find_loop_run`/`aggregate_loop_runs`/`lookup_session_metadata`), `docs/guides/EVALUATION_GUIDE.md` (cites `recent_harness_events`/`harness_eval_pass_rate`), `docs/guides/BUILTIN_HOOKS_GUIDE.md` (cites `subagent_tree`/`subagent_retries`/`subagent_budget`), `docs/observability/otel-mapping.md` (cites `cost_attribution`), `docs/reference/loops.md` (cites `lookup_session_metadata`), `CONTRIBUTING.md` (module-tree listing line citing "8 query functions, 7 dataclasses" — will go stale the same way `docs/ARCHITECTURE.md`'s component-table row does).
+- Two doc-sync test guards enforce these doc citations stay resolvable and must be checked after the split: `scripts/tests/test_wiring_reference_docs.py:87-91` (asserts `docs/reference/API.md`'s `## little_loops.history_reader` heading and named anchors resolve) and `scripts/tests/test_wiring_guides_and_meta.py:132-136` (asserts `docs/ARCHITECTURE.md`'s history_reader-related content resolves; already carries one `# REMOVED (stale/false-positive)` row for this module from a prior pass).
+- `docs/reference/API.md:8138-8189` — the `## little_loops.history_reader` entry re-exports the module's ~35-name public surface in one `from little_loops.history_reader import (...)` block; this needs restructuring to match whichever package layout the split lands on (mirrors how `docs/reference/API.md` documents `session_store`/`fsm.validation` post-split, per the Conventions in Force sibling examples).
 
 ### Files to Modify
 - `scripts/little_loops/history_reader.py` (3,706 lines currently — grown
@@ -131,6 +147,36 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   `from little_loops.history_reader import ...` importable unchanged across
   all of these — the re-export requirement the Proposed Solution already
   states.
+- **Corrected 2026-09-03 (`/ll:refine-issue`)**: grep-confirmed 17 non-test
+  importers (module-level or deferred `from little_loops.history_reader
+  import ...`): `cli/ctx_stats.py:178,192`, `cli/harness.py:576,602`,
+  `cli/history_context.py:31,366`, `cli/history.py:546`, `cli/logs.py:1885`,
+  `cli/loop/evidence.py:466`, `cli/session.py:40,50,601,793`,
+  `fsm/executor.py:1845`, `hooks/session_start.py:214`,
+  `issue_history/agent_quality.py:43`, `issue_history/collisions.py:28`,
+  `issue_history/evolution.py:17`, `issue_history/rework.py:20`,
+  `mcp_server/tools.py:159`, `user_messages.py:941`,
+  `work_verification.py:275` — plus 20 test files (`test_advisor.py`,
+  `test_assistant_messages.py`, `test_enh_2497_agent_type.py`,
+  `test_enh_2505_subagent_runs.py`, `test_enh_2511_mcp_telemetry.py`,
+  `test_fsm_executor.py`, `test_history_reader.py`, `test_hook_intents.py`,
+  `test_hook_session_start.py`, `test_hooks_integration.py`,
+  `test_issue_manager.py`, `test_loops_sft_corpus.py`,
+  `test_pre_compact_handoff.py`, `test_pre_compact.py`,
+  `test_record_hook_event_shim.py`, `test_session_store_writers.py`,
+  `test_sweep_stale_refs.py`, `test_verdict_grammar_regression.py`,
+  `test_worker_pool.py`, `test_worktree_utils.py`). Total 37 files. The
+  earlier `ll-code importers-of` count (8) missed 9 of these because they
+  use deferred (function-local) imports, which that query does not index.
+  `prepatch_check.py` was previously miscounted above as an importer — it
+  only mentions `history_reader` in a docstring, it does not import it.
+- Three files import the **private** `_connect_readonly` helper directly at
+  top level (`issue_history/collisions.py:28`, `issue_history/rework.py:20`,
+  `issue_history/agent_quality.py:43`), and one imports the private
+  `_stale_cutoff` (`issue_history/evolution.py:17`). The package split must
+  keep both underscore-prefixed names re-exported — matching how
+  `session_store/__init__.py` and `fsm/validation/__init__.py` explicitly
+  re-export private names "for test access" (see Conventions in Force).
 
 ### Conventions in Force
 - This codebase's established convention for splitting a god-module is a
@@ -186,6 +232,14 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - `find_user_corrections()` (`scripts/little_loops/history_reader.py:462`, first param `topic: str`, returns `list[UserCorrection]`) — corrections query, same relocation-only disposition.
 - `cost_attribution()` (`scripts/little_loops/history_reader.py:925`, first param `group_by: str`, returns `list[dict]`) — cost/waste-attribution domain exemplar.
 
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- The file has no `__all__` (confirmed by an unfiltered `^__all__` search) — only an informal "Public API" list in the module docstring. Both completed sibling splits (`session_store`, `fsm/validation`) add an explicit `__all__` as part of the split, including a labeled "Private functions ... re-exported for test access" tail — this is new structure the split introduces, not merely a relocation.
+- The region-comment boundaries this issue's own text uses for the 9 named query domains are coarser than the code's actual table/constant boundaries in two places: "usage aggregation" is really two separate table-backed clusters back-to-back with no separating comment — `tool_events` (`agent_usage`/`recent_tool_events`/`mcp_server_usage`/`mcp_failure_rate`, `history_reader.py:726-925`) vs. `usage_events` (`cost_attribution`/`waste_attribution`/`recent_usage_events`/`aggregate_usage`, `history_reader.py:925-1180`); and "orchestration/loop-run aggregation" is likewise two clusters (`orchestration_runs`: `history_reader.py:1735-1984`, then `loop_runs`: `history_reader.py:1984-2087`).
+- Four query domains exist in the unheadered tail (`history_reader.py:3137-3706`) that this issue's 9-domain list does not name at all: `verdict_events` (ENH-2504), `advisor_consults` (FEAT-3300), `research_triage`, and `review_events` (ENH-2512).
+- No circular import exists today in either direction between `history_reader.py` and its two module-level upstream dependencies: `session_store` does not import `history_reader` (only 3 code-comment mentions found, no import statement), and `fsm.verdicts` (source of the one cross-package import, `CANNOT_JUDGE`) has zero `little_loops.*` imports of its own — it is a leaf dependency, not part of a cycle. A split does not need to solve a cycle problem here, unlike ENH-2776's `_helpers.py`/`info.py` case.
+- The test file's own structure only partially maps onto the 9 named domains: of 25 `Test*` classes in `test_history_reader.py`, one — `TestNewEventReaders` (`test_history_reader.py:1753-2405`) — is itself a grab-bag class bundling the four unheadered tail domains (verdict events, advisor consults, research triage, review events) into a single class with no per-domain subclassing, so the "mechanical class-per-domain move" the Proposed Solution describes needs that one class split further, not just relocated.
+
 ### Types
 - No new data shape is introduced. The 27 dataclasses in `history_reader.py`
   (`UserCorrection`, `FileEvent`, `SearchResult`, ... `ReviewEvent`) are
@@ -202,6 +256,11 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   effort/velocity, session metadata, and grep/search formatting
   (`ll_grep`/`ll_expand`/`ll_describe`) — finer-grained than a single
   `queries.py` module would comfortably hold.
+- Representative signatures the split relocates unchanged (no shape change):
+  - `find_user_corrections(topic: str, *, limit: int = 10, include_stale: bool = False, db: Path | str = DEFAULT_DB_PATH) -> list[UserCorrection]` (`scripts/little_loops/history_reader.py:462`)
+  - `search(query: str, *, kind: str | None = None, limit: int = 10, db: Path | str = DEFAULT_DB_PATH) -> list[SearchResult]` (`scripts/little_loops/history_reader.py:530`)
+  - `cost_attribution(group_by: str = "gen_ai.invocation.id", *, since: str | None = None, db: Path | str = DEFAULT_DB_PATH) -> list[dict]` (`scripts/little_loops/history_reader.py:925`)
+- Shared internals every query function depends on: `_connect_readonly(db_path: Path) -> sqlite3.Connection | None` (`scripts/little_loops/history_reader.py:423`, called at 64 sites) and `_row_to_dataclass(row: sqlite3.Row, dc: type) -> Any` (`scripts/little_loops/history_reader.py:450`) — candidates for a shared internals module, see Proposed Solution → Codebase Research Findings for the naming disagreement between the two sibling splits on this point.
 
 ### Call Path
 - `cli/session.py:44` -> `history_reader.search()` (`scripts/little_loops/history_reader.py:529`) — representative importer path; after the split this resolves through `history_reader/__init__.py` re-exports with the import line unchanged.
@@ -238,6 +297,7 @@ introducing no new gate, threshold, or classification rule.
   of scope for `/ll:verify-issues`). Verdict: OUTDATED.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-03T02:51:56 - `00f0e408-f05f-43a3-bdc7-1e52bd1f47ab.jsonl`
 - `/ll:verify-issues` - 2026-09-03T02:27:50 - `ec373f26-c22d-4cdb-bcd2-9da717f53d54.jsonl`
 - `/ll:confidence-check` - 2026-08-29T23:32:17 - `8d7bb2d0-d27b-4d28-89fe-e2d8b28cb272.jsonl`
 - `/ll:verify-issues` - 2026-08-29T23:27:10 - `8d7bb2d0-d27b-4d28-89fe-e2d8b28cb272.jsonl`
