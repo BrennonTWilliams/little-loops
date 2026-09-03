@@ -22,12 +22,11 @@ decision_needed: false
 confidence_score: 90
 verify_verdict: VALID
 outcome_confidence: 89
-status: done
+status: in_progress
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
-completed_at: '2026-09-02T21:47:29Z'
 ---
 
 # FEAT-2379: Fleet loop-review runbook + repeatable target
@@ -512,23 +511,4 @@ path is recorded, not built.
 - `/ll:verify-issues` - 2026-08-13T03:08:31 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1918 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `/ll:audit-issue-conflicts` - 2026-06-29T01:47:32 - `0f8f08b1-212f-4f62-9ad9-264556960322.jsonl`
-
-
----
-
-## Resolution
-
-- **Action**: implement
-- **Completed**: 2026-09-02
-- **Status**: Completed (automated fallback)
-- **Implementation**: Command exited early but issue was addressed
-
-
-### Files Changed
-- See git history for details
-
-### Verification Results
-- Automated verification passed
-
-### Commits
-- See git log for details
+- `/ll:update-docs` - 2026-09-02 - Reopened to `in_progress`: the `ll-auto` run that stamped `done`/`completed_at` on 2026-09-02T21:47:29Z was an automated-fallback resolution that never matched the issue's own Session Log ("Not implemented: the `ll-logs fleet-review` subcommand ... `docs/runbooks/FLEET_LOOP_REVIEW.md` ... Status set to `in_progress`, not `done`"). Verified live: `ll-logs fleet-review` errors as an invalid subcommand choice and `docs/runbooks/` does not exist. Removed the stale `completed_at` and the bogus `## Resolution` section (which falsely claimed "Automated verification passed").
