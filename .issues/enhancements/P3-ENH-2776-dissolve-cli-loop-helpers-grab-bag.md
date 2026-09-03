@@ -310,10 +310,23 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-02:_
 - `cli/loop/run.py:346` (`cmd_run`) -> `_helpers.run_background()` (`scripts/little_loops/cli/loop/_helpers.py:1552`)
 - `cli/loop/info.py:21` (module-level) -> `_helpers.get_builtin_loops_dir`/`load_loop_with_spec`/`resolve_loop_path`/`with_diagram_color`; `_helpers.py:1845-1847` (inside `run_foreground`, deferred, `--follow`-gated) -> `info._format_history_event` — the confirmed current shape of the `_helpers`↔`info` cycle (line numbers corrected from the issue's original `_helpers.py:1847` ↔ `info.py:21,1709` citation; `info.py:1709`'s own deferred `_helpers` import is not part of the cycle — `info.py` already imports `_helpers` at module level, so that second deferred import adds no new circularity).
 - `fsm/executor.py:1076` (deferred, unconditional) -> `_helpers.derive_input_hash()`/`_helpers.seed_confidence_thresholds()` — the corrected core-code dependency (see Finding → Codebase Research Findings; supersedes the issue's original `fsm/validation.py:485,566` citation, which is stale).
+- `run_foreground()` (`_helpers.py:1724`) -> `StateFeedRenderer()` construction (`_helpers.py:1784`) -> `executor.event_bus.register(renderer.handle_event)` (`_helpers.py:1811`/`:1813`) — an undocumented edge from run orchestration into the diagram/pinned-pane cluster, currently same-file so no import is required; becomes a real inter-module import once the two clusters split.
+- `StateFeedRenderer.handle_event()` (`_helpers.py:920`) -> `load_loop()` (`_helpers.py:956`, loop-loading cluster) — one hop downstream of the edge above, for `state_enter` events on a child loop.
+- `cli/loop/lifecycle.py:834` (`cmd_monitor`, deferred import) -> `StateFeedRenderer`/`_install_sigwinch_handler`/`_restore_sigwinch_handler` — a second, independent path into the diagram cluster that does not go through `run_foreground` at all.
 
 ### Decision Rules
 N/A — no new decision logic; this issue is a structural module split
 introducing no new gate, threshold, or classification rule.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+- `run_foreground()` (`_helpers.py:1724`, ~280 lines, the "run orchestration" cluster's largest function) makes direct in-module calls into three other named clusters, not just its own: signal handling (`_install_sigwinch_handler:269`, `_restore_sigwinch_handler:284`, both alt-screen-branch-gated), artifact/path-header helpers (`_artifact_lines:1262`, `_effort_code:1309`, `_relativize_to_cwd:1224`), and summary printing (`_print_usage_summary:2003`, `_print_ab_summary:2031`, `_run_cross_host_validation:2121` which itself calls `_print_cross_host_table:2212`). It also directly constructs `StateFeedRenderer` (`:1784`, diagram/pinned-pane cluster) and registers `renderer.handle_event` on the event bus (`:1811`/`:1813`) — a same-file construction requiring no import today, but becoming a fourth inter-cluster edge once split. `run_foreground` therefore touches 4 of the 8 named clusters directly.
+- Module-global `_using_alt_screen` is a cross-cluster shared-mutable-state coupling independent of any function call: `run_foreground` sets it (`:1873`, `:1898`) while `_loop_signal_handler` (signal-handling cluster, `:139`) reads it — whichever module each ends up in, this global must stay shared or be replaced with an explicit shared-state object.
+- The SIGWINCH pair (`_install_sigwinch_handler:269-281`, `_restore_sigwinch_handler:284-299`) is a narrower sub-scope of "signal handling", distinct from the SIGINT/SIGTERM shutdown handling (`register_loop_signal_handlers`/`_loop_signal_handler`, `:226-250`/`:127-178`): different signal (`SIGWINCH`), different module globals (`_original_sigwinch`/`_needs_redraw`, vs. `_loop_shutdown_requested`/`_loop_executor`/`_loop_pid_file`/`_loop_marker_path`), and its only consumer of `_needs_redraw` is `StateFeedRenderer.handle_event()` (diagram cluster, `:925`), not the executor shutdown path.
+- A second, independent path into the diagram cluster exists beyond `run_foreground`: `cmd_monitor` (`cli/loop/lifecycle.py:834`, per the issue's own wiring-pass citation) reaches `StateFeedRenderer`/`_install_sigwinch_handler`/`_restore_sigwinch_handler` via its own deferred import, not through `run_foreground` at all.
+- `derive_input_hash` (`:1437-1451`) and `seed_confidence_thresholds` (`:1372-1398`) are confirmed fully self-contained leaves: neither calls the other or any other `_helpers.py` function; `derive_input_hash` calls only stdlib `hashlib`, and `seed_confidence_thresholds`'s only dependency is a deferred import of external `little_loops.config.BRConfig` (`:1390`) when `config` isn't passed in. Both can relocate independently with no internal `_helpers.py` coupling to carry along.
 
 ## Related Key Documentation
 
@@ -340,6 +353,7 @@ unrelated epic. Verdict: NON_VALID (dependency-reference fix; content
 otherwise accurate).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-03T03:19:31 - `983e671b-5b21-4f7b-86e9-1898ea8c1563.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:06:46 - `e42909d5-e77d-478c-b142-52f1ba049345.jsonl`
 - `/ll:refine-issue` - 2026-09-03T02:56:56 - `00f0e408-f05f-43a3-bdc7-1e52bd1f47ab.jsonl`
 - `/ll:verify-issues` - 2026-09-03T02:27:51 - `ec373f26-c22d-4cdb-bcd2-9da717f53d54.jsonl`
