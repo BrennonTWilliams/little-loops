@@ -73,6 +73,21 @@ the existing `--upgrade` path already installs `{editable_path}[dev]`
 (`cli.py:575`); the generated line matches that convention rather than
 introducing a second form. Do not relitigate this during implementation.
 
+**The bare form `pip install little-loops` is used for every
+non-`local-editable` row, not `pip install --upgrade little-loops`.** `pypi`
+is the primary consumer install path, and these rows also cover plugin
+installs and `None`. The `--upgrade` form exists in this codebase only in
+update contexts — the version-mismatch branch of `_run_yes()`
+(`cli.py:604-611`), `skills/configure/SKILL.md:86`, and
+`skills/update/SKILL.md:130` — and is not a precedent for an install
+instruction. The generated line is read by people who do not yet have the
+package: a contributor cloning the consuming repo (CLAUDE.md/AGENTS.md is
+committed), or a plugin-install consumer who has `/ll:*` but not the `ll-*`
+CLIs the block documents. `--upgrade` on a first install reads as a
+mistake. The bare form matches the not-yet-installed branch of `_run_yes()`
+(`cli.py:542`, `cli.py:550`). Do not relitigate this during implementation;
+the test for the `pypi` row asserts the exact bare string.
+
 ## Motivation
 
 The generated instructions file is the first thing a consuming project's
@@ -361,7 +376,8 @@ local at `tui.py:185` not passed into `_apply_config()`).
   via `os.path.relpath` (in-tree yields `./scripts[dev]`; out-of-tree yields
   `../.../scripts[dev]`; absolute only when `relpath` raises `ValueError`).
   Never emit the raw absolute path — it trips `ll-verify-private-refs`. All
-  other values, including `None`, render `pip install little-loops`. The
+  other values, including `None`, render the bare `pip install
+  little-loops` (never the `--upgrade` form — see Expected Behavior). The
   line is never omitted.
 - Dry-run: `detect_installation()` must run in `_run_apply()` regardless of
   `dry_run`, since both writers are invoked under dry-run
@@ -415,11 +431,13 @@ local at `tui.py:185` not passed into `_apply_config()`).
    row of the Expected Behavior table (`local-editable` with in-tree path
    -> exactly `./scripts[dev]`, `local-editable` with out-of-tree path ->
    `..`-relative and containing no `/Users/`/`/home/` segment,
-   `local-editable` without path, `pypi`, a `*-claude-code` value, `None`),
+   `local-editable` without path, `pypi` -> exactly
+   `pip install little-loops`, a `*-claude-code` value, `None`),
    following this file's one-test-method-per-value convention (see
    `TestDetectInstallation` in `test_init_install.py` for the precedent),
    plus a negative assertion that no non-source-repo row emits
-   `./scripts[dev]`. Note: no existing test asserts on the `Install:` line
+   `./scripts[dev]` and that no row emits `--upgrade`. Note: no existing
+   test asserts on the `Install:` line
    at all, so nothing pins today's output until these land.
 7. `python -m pytest scripts/tests/test_init_core.py
    scripts/tests/test_init_install.py scripts/tests/test_init_tui.py -v`
@@ -576,6 +594,7 @@ _(no Concerns or Gaps to Address — readiness scored 100/100)_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-03T00:24:19 - `f2d59b82-c760-49ab-831c-620b7014291e.jsonl`
 - `/ll:confidence-check` - 2026-09-03T00:05:53 - `4bf97e41-6b03-4e8d-9104-4e84d288cd4b.jsonl`
 - `/ll:wire-issue` - 2026-09-02T23:07:19 - `5cfbabad-da25-40ab-bfb7-6d0233f02bb3.jsonl`
 - `/ll:decide-issue` - 2026-09-02T22:37:14 - `bea601b2-a6af-4ef3-8359-e10eab8b1a54.jsonl`
