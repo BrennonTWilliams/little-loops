@@ -80,7 +80,8 @@ class TestDetectInstallation:
             source, version, install_path = detect_installation(tmp_path)
         assert source == "local-editable"
         assert version == "1.2.3"
-        assert install_path is None
+        expected_path = pip_show_out.splitlines()[-1].removeprefix("Editable project location: ")
+        assert install_path == expected_path
 
     def test_pypi_installation_detected(self, tmp_path: Path) -> None:
         pip_show_out = "Name: little-loops\nVersion: 1.2.3\n"  # No Editable line
@@ -152,7 +153,8 @@ class TestDetectInstallation:
             source, version, install_path = detect_installation(tmp_path)
         assert source == "local-editable"
         assert version == "1.2.3"
-        assert install_path is None
+        expected_path = pip_show_out.splitlines()[-1].removeprefix("Editable project location: ")
+        assert install_path == expected_path
 
     def test_global_cmd_timeout_returns_none_none(self, tmp_path: Path) -> None:
         with (

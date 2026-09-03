@@ -39,8 +39,8 @@ def installed_package_version(pkg_name: str = "little-loops") -> str | None:
         return None
 
 
-def _is_editable_install() -> bool:
-    """Return True if little-loops is installed as an editable (dev) install."""
+def _editable_install_location() -> str | None:
+    """Return the ``Editable project location:`` path from ``pip show``, or None."""
     try:
         # ll-no-project: pip introspection probe, not a host CLI/task spawn (ENH-3184 AC2)
         result = subprocess.run(
@@ -49,11 +49,12 @@ def _is_editable_install() -> bool:
             text=True,
             timeout=10,
         )
-        return any(
-            line.startswith("Editable project location:") for line in result.stdout.splitlines()
-        )
+        for line in result.stdout.splitlines():
+            if line.startswith("Editable project location:"):
+                return line.split(":", 1)[1].strip()
+        return None
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return False
+        return None
 
 
 def detect_installation(
@@ -66,13 +67,16 @@ def detect_installation(
         "local-editable", "pypi", "global-claude-code", "project-claude-code", or None
         (not found).  installed_version is the pip version string for pip-based installs,
         or the plugin version string for claude-code plugin installs.  install_path is the
-        installPath from the plugin JSON (claude-code installs only), or None otherwise.
+        ``Editable project location:`` path reported by ``pip show`` for "local-editable"
+        installs, the installPath from the plugin JSON for claude-code installs, or None
+        otherwise.
     """
     # Check pip metadata first.
     try:
         installed = importlib.metadata.version("little-loops")
-        source = "local-editable" if _is_editable_install() else "pypi"
-        return source, installed, None
+        editable_location = _editable_install_location()
+        source = "local-editable" if editable_location is not None else "pypi"
+        return source, installed, editable_location
     except importlib.metadata.PackageNotFoundError:
         pass
 

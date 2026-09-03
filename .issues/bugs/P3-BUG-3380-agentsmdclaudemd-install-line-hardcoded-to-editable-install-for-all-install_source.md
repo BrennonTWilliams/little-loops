@@ -3,11 +3,12 @@ id: BUG-3380
 type: BUG
 title: AGENTS.md/CLAUDE.md install line hardcoded to editable install for all install_source
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-02'
 captured_at: '2026-09-02T22:19:40Z'
-decision_needed: true
+completed_at: '2026-09-03T02:15:19Z'
+decision_needed: false
 confidence_score: 100
 outcome_confidence: 60
 score_complexity: 14
@@ -662,12 +663,52 @@ _2026-09-03, manual review against `main` at 2072fd19b:_
   `main` (all had drifted 3-21 lines after FEAT-2190).
 - Filed ENH-3382 for the existing-block refresh follow-up.
 
+## Resolution
+
+Implemented Option A per the Proposed Solution:
+
+- `install_check.py`: renamed `_is_editable_install() -> bool` to
+  `_editable_install_location() -> str | None`; `detect_installation()` now
+  returns the parsed `Editable project location:` path as `install_path` for
+  `local-editable` installs.
+- `writers.py`: added `_render_install_line()` implementing the Expected
+  Behavior table (relpath-based, both sides `.resolve()`d, `./` prefix for
+  in-tree, absolute fallback only on `ValueError`). `_render_commands_block()`
+  now takes `install_source`/`install_path`/`project_root` and is invoked
+  per-call from `write_claude_md()`/`write_agents_md()`/`write_gemini_md()`
+  instead of at module-import time; the frozen `_CLAUDE_MD_COMMANDS_BLOCK` /
+  `_AGENTS_MD_COMMANDS_BLOCK` / `*_NEW_FILE_CONTENT` constants were removed.
+- `cli.py`: `_run_yes()` no longer discards `_install_path`, and its
+  `--upgrade` branch reuses it instead of re-parsing `pip show`. `_run_apply()`
+  now calls `detect_installation()` unconditionally near the top (deduped
+  against the existing `requested_upgrade`-gated call) and threads
+  `install_source`/`install_path` into all three writer calls.
+- `tui.py`: `_apply_config()` gained `install_source`/`install_path`
+  parameters, threaded from `run_tui()`'s existing locals.
+- Tests: per-row `Install:` line coverage added to `TestWriteClaudeMd`/
+  `TestWriteAgentsMd` (all six Expected Behavior rows) and `TestWriteGeminiMd`
+  (pypi + in-tree local-editable); `TestDetectInstallation`'s two
+  local-editable tests now assert the returned path; new wiring tests prove
+  `install_source` reaches the generated CLAUDE.md through both `_run_apply()`
+  (`test_apply_propagates_install_source_to_claude_md`) and `_apply_config()`
+  (`TestApplyConfigInstallSource`, calling it directly since no prior test
+  did). The autouse `_default_plugin_installed` fixture in `test_init_core.py`
+  now also stubs `detect_installation` so the new unconditional call in
+  `_run_apply()` doesn't spawn live subprocesses across the `test_apply_*`
+  suite.
+
+Full suite (`python -m pytest scripts/tests/`) passes: 21772 passed, 11
+skipped. `ruff check`, `ruff format --check`, and `mypy
+scripts/little_loops/init/` all clean.
+
 ## Status
 
-**Open** | Created: 2026-09-02 | Priority: P3
+**Done** | Created: 2026-09-02 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-03T02:15:19 - `1a5710fd-de34-4cc6-b93d-c2bb79974725.jsonl`
+- `/ll:decide-issue` - 2026-09-03T01:59:29 - `1a5710fd-de34-4cc6-b93d-c2bb79974725.jsonl`
 - `/ll:ready-issue` - 2026-09-03T01:57:52 - `56e97453-f956-4b60-af83-bfa4c915222f.jsonl`
 - `/ll:confidence-check` - 2026-09-03T01:56:02 - `9c75187e-0701-4291-a5b8-2150f3aee90d.jsonl`
 - `/ll:decide-issue` - 2026-09-03T01:38:39 - `7596ad35-9667-4e93-a03c-f4eae524bb56.jsonl`

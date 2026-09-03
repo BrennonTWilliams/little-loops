@@ -182,7 +182,7 @@ def run_tui(
     _selected_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
 
     # --- Screen 1 / 7: Plugin Install ---
-    install_source, installed_version, _install_path = detect_installation(project_root)
+    install_source, installed_version, install_path = detect_installation(project_root)
     _needs_install = install_source is None
     _pkg_outdated = False
     _plugin_outdated = False
@@ -658,6 +658,8 @@ def run_tui(
         console=console,
         claude_md_opt_in=claude_md_opt_in,
         existing_config=existing_config,
+        install_source=install_source,
+        install_path=install_path,
     )
     return 0
 
@@ -829,6 +831,8 @@ def _apply_config(
     console: Console,
     claude_md_opt_in: bool = False,
     existing_config: dict[str, Any] | None = None,
+    install_source: str | None = None,
+    install_path: str | None = None,
 ) -> None:
     """Write all ll-init artifacts to disk."""
     from little_loops import __version__
@@ -893,16 +897,16 @@ def _apply_config(
         )
 
     if claude_md_opt_in:
-        write_claude_md(project_root)
+        write_claude_md(project_root, install_source=install_source, install_path=install_path)
 
     # AGENTS.md is the cross-tool convention read by codex / kimi-code / qwen
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
-        write_agents_md(project_root)
+        write_agents_md(project_root, install_source=install_source, install_path=install_path)
 
     # GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190).
     if "gemini" in hosts:
-        write_gemini_md(project_root)
+        write_gemini_md(project_root, install_source=install_source, install_path=install_path)
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 

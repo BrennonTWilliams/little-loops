@@ -1253,3 +1253,77 @@ class TestBuildFinalConfigParity:
         # No new top-level keys added by default
         assert "sync" not in config
         assert "commands" not in config
+
+
+# ---------------------------------------------------------------------------
+# _apply_config — install_source propagation (BUG-3380)
+# ---------------------------------------------------------------------------
+
+
+class TestApplyConfigInstallSource:
+    """BUG-3380: _apply_config() must thread install_source/install_path into
+    the generated CLAUDE.md Install: line — no existing test called
+    _apply_config() directly before this."""
+
+    @pytest.fixture
+    def generic_template(self, tmp_path: Path) -> object:
+        from little_loops.init.detect import detect_project_type
+
+        return detect_project_type(tmp_path, _TEMPLATES_DIR)
+
+    def _apply(
+        self,
+        tmp_path: Path,
+        generic_template: object,
+        install_source: str | None,
+        install_path: str | None,
+    ) -> Path:
+        from rich.console import Console
+
+        from little_loops.init.tui import _apply_config
+
+        config = _build_final_config(
+            template=generic_template,
+            name="proj",
+            src_dir="src/",
+            test_cmd="pytest",
+            lint_cmd="ruff",
+            type_cmd="",
+            format_cmd="",
+            selected_set=set(),
+            parallel_workers=4,
+        )
+        project_root = tmp_path
+        ll_dir = project_root / ".ll"
+        _apply_config(
+            config=config,
+            project_root=project_root,
+            ll_dir=ll_dir,
+            config_path=ll_dir / "ll-config.json",
+            templates_dir=_TEMPLATES_DIR,
+            plugin_root=_PLUGIN_ROOT,
+            hosts=[],
+            settings_target="skip",
+            force=False,
+            console=Console(),
+            claude_md_opt_in=True,
+            install_source=install_source,
+            install_path=install_path,
+        )
+        return project_root / ".claude" / "CLAUDE.md"
+
+    def test_pypi_install_source_reaches_claude_md(
+        self, tmp_path: Path, generic_template: object
+    ) -> None:
+        claude_md = self._apply(tmp_path, generic_template, "pypi", None)
+        content = claude_md.read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+        assert "./scripts[dev]" not in content
+
+    def test_local_editable_install_path_reaches_claude_md(
+        self, tmp_path: Path, generic_template: object
+    ) -> None:
+        editable_path = tmp_path / "scripts"
+        claude_md = self._apply(tmp_path, generic_template, "local-editable", str(editable_path))
+        content = claude_md.read_text(encoding="utf-8")
+        assert 'Install: `pip install -e "./scripts[dev]"`' in content

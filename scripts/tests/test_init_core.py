@@ -83,8 +83,19 @@ def _default_plugin_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     that exercise the install branch itself (`TestClaudeCodeAutoInstall`)
     override this via their own explicit `patch(...)`, which wins for the
     duration of their `with` block.
+
+    Also stubs `detect_installation` (BUG-3380): `_run_apply()` now calls it
+    unconditionally, before the writer calls, so every `test_apply_*` test
+    would otherwise spawn a live `pip show`/`claude plugin list` subprocess.
+    Tests exercising `detect_installation` directly override this via their
+    own explicit `patch(...)`, which wins for the duration of their `with`
+    block.
     """
     monkeypatch.setattr("little_loops.init.install_check.plugin_installed", lambda binary: True)
+    monkeypatch.setattr(
+        "little_loops.init.install_check.detect_installation",
+        lambda project_root: ("pypi", "1.0.0", None),
+    )
 
 
 @pytest.fixture
@@ -1534,6 +1545,61 @@ class TestWriteClaudeMd:
         for tool in ("ll-auto", "ll-loop", "ll-issues", "ll-logs"):
             assert f"`{tool}`" in content
 
+    # -- BUG-3380: Install: line varies by install_source ------------------
+
+    def test_local_editable_in_tree_install_line(self, tmp_path: Path) -> None:
+        editable_path = tmp_path / "scripts"
+        write_claude_md(
+            tmp_path,
+            install_source="local-editable",
+            install_path=str(editable_path),
+        )
+        content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        assert 'Install: `pip install -e "./scripts[dev]"`' in content
+
+    def test_local_editable_out_of_tree_install_line(self, tmp_path: Path) -> None:
+        editable_path = tmp_path.parent / "sibling-checkout" / "scripts"
+        write_claude_md(
+            tmp_path,
+            install_source="local-editable",
+            install_path=str(editable_path),
+        )
+        content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        install_line = next(line for line in content.splitlines() if line.startswith("Install:"))
+        assert "../sibling-checkout/scripts[dev]" in install_line
+        assert "/Users/" not in install_line
+        assert "/home/" not in install_line
+
+    def test_local_editable_without_path_falls_back(self, tmp_path: Path) -> None:
+        write_claude_md(tmp_path, install_source="local-editable", install_path=None)
+        content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        assert 'Install: `pip install -e "./scripts[dev]"`' in content
+
+    def test_pypi_install_line(self, tmp_path: Path) -> None:
+        write_claude_md(tmp_path, install_source="pypi")
+        content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+
+    def test_global_claude_code_install_line(self, tmp_path: Path) -> None:
+        write_claude_md(tmp_path, install_source="global-claude-code")
+        content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+
+    def test_none_install_source_install_line(self, tmp_path: Path) -> None:
+        write_claude_md(tmp_path, install_source=None)
+        content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+
+    def test_no_non_source_repo_row_emits_upgrade_or_bare_scripts(self, tmp_path: Path) -> None:
+        for source in (None, "pypi", "global-claude-code", "project-claude-code"):
+            subdir_name = source or "none"
+            project_root = tmp_path / subdir_name
+            project_root.mkdir(parents=True)
+            write_claude_md(project_root, install_source=source)
+            content = (project_root / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+            assert "--upgrade" not in content
+            assert "./scripts[dev]" not in content
+
 
 # ===========================================================================
 # TestWriteAgentsMd
@@ -1616,6 +1682,51 @@ class TestWriteAgentsMd:
         content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
         assert "Claude Code logs" in content
 
+    # -- BUG-3380: Install: line varies by install_source ------------------
+
+    def test_local_editable_in_tree_install_line(self, tmp_path: Path) -> None:
+        editable_path = tmp_path / "scripts"
+        write_agents_md(
+            tmp_path,
+            install_source="local-editable",
+            install_path=str(editable_path),
+        )
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert 'Install: `pip install -e "./scripts[dev]"`' in content
+
+    def test_local_editable_out_of_tree_install_line(self, tmp_path: Path) -> None:
+        editable_path = tmp_path.parent / "sibling-checkout" / "scripts"
+        write_agents_md(
+            tmp_path,
+            install_source="local-editable",
+            install_path=str(editable_path),
+        )
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        install_line = next(line for line in content.splitlines() if line.startswith("Install:"))
+        assert "../sibling-checkout/scripts[dev]" in install_line
+        assert "/Users/" not in install_line
+        assert "/home/" not in install_line
+
+    def test_local_editable_without_path_falls_back(self, tmp_path: Path) -> None:
+        write_agents_md(tmp_path, install_source="local-editable", install_path=None)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert 'Install: `pip install -e "./scripts[dev]"`' in content
+
+    def test_pypi_install_line(self, tmp_path: Path) -> None:
+        write_agents_md(tmp_path, install_source="pypi")
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+
+    def test_global_claude_code_install_line(self, tmp_path: Path) -> None:
+        write_agents_md(tmp_path, install_source="global-claude-code")
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+
+    def test_none_install_source_install_line(self, tmp_path: Path) -> None:
+        write_agents_md(tmp_path, install_source=None)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+
 
 # ===========================================================================
 # TestWriteGeminiMd
@@ -1691,6 +1802,23 @@ class TestWriteGeminiMd:
         assert "Claude" not in content
         for tool in ("ll-auto", "ll-loop", "ll-issues", "ll-logs", "ll-messages"):
             assert f"`{tool}`" in content
+
+    # -- BUG-3380: Install: line varies by install_source ------------------
+
+    def test_pypi_install_line(self, tmp_path: Path) -> None:
+        write_gemini_md(tmp_path, install_source="pypi")
+        content = (tmp_path / "GEMINI.md").read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+
+    def test_local_editable_in_tree_install_line(self, tmp_path: Path) -> None:
+        editable_path = tmp_path / "scripts"
+        write_gemini_md(
+            tmp_path,
+            install_source="local-editable",
+            install_path=str(editable_path),
+        )
+        content = (tmp_path / "GEMINI.md").read_text(encoding="utf-8")
+        assert 'Install: `pip install -e "./scripts[dev]"`' in content
 
 
 # ===========================================================================
@@ -2196,6 +2324,39 @@ class TestMainInit:
             code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
         assert code == 0
         assert (apply_dest / ".claude" / "CLAUDE.md").exists()
+
+    def test_apply_propagates_install_source_to_claude_md(
+        self, tmp_project: Path, tmp_path: Path
+    ) -> None:
+        """BUG-3380: _run_apply threads install_source into the Install: line."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(buf.getvalue())
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "1.0.0", None),
+            ),
+        ):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        content = (apply_dest / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+        assert "./scripts[dev]" not in content
 
     def test_apply_deploys_design_tokens_when_enabled(
         self, tmp_project: Path, tmp_path: Path

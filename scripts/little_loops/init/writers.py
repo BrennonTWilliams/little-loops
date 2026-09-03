@@ -239,27 +239,45 @@ _CLAUDE_MD_DESC_OVERRIDES: dict[str, str] = {
 }
 
 
-def _render_commands_block(desc_overrides: dict[str, str] | None = None) -> str:
+def _render_install_line(
+    install_source: str | None,
+    install_path: str | None,
+    project_root: Path | None,
+) -> str:
+    """Return the pip install command for the Install: line.
+
+    ``local-editable`` renders the editable path relative to *project_root*
+    (falling back to the source-repo form when the path is unresolvable);
+    every other value — including None — renders the bare PyPI install so
+    the line is never omitted (BUG-3380).
+    """
+    if install_source != "local-editable":
+        return "pip install little-loops"
+    if install_path is None or project_root is None:
+        return 'pip install -e "./scripts[dev]"'
+    try:
+        rel = os.path.relpath(Path(install_path).resolve(), project_root.resolve())
+    except ValueError:
+        # Cross-drive paths on Windows: relpath cannot express them relatively.
+        return f'pip install -e "{Path(install_path).resolve()}[dev]"'
+    if not rel.startswith(".."):
+        rel = f"./{rel}"
+    return f'pip install -e "{rel}[dev]"'
+
+
+def _render_commands_block(
+    desc_overrides: dict[str, str] | None = None,
+    install_source: str | None = None,
+    install_path: str | None = None,
+    project_root: Path | None = None,
+) -> str:
     """Render the canonical ## little-loops CLI Commands block."""
     overrides = desc_overrides or {}
     lines = ["", "## little-loops CLI Commands", ""]
     lines.extend(f"- `{name}` - {overrides.get(name, desc)}" for name, desc in _LL_COMMANDS)
-    lines.extend(["", 'Install: `pip install -e "./scripts[dev]"`', ""])
+    install_line = _render_install_line(install_source, install_path, project_root)
+    lines.extend(["", f"Install: `{install_line}`", ""])
     return "\n".join(lines)
-
-
-# Canonical CLI Commands block appended/created by write_claude_md (Step 11 of the skill)
-_CLAUDE_MD_COMMANDS_BLOCK = _render_commands_block(_CLAUDE_MD_DESC_OVERRIDES)
-
-# Host-generic variant appended/created by write_agents_md (AGENTS.md is the
-# cross-tool convention; Claude-specific wording stays in CLAUDE.md).
-_AGENTS_MD_COMMANDS_BLOCK = _render_commands_block()
-
-_CLAUDE_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _CLAUDE_MD_COMMANDS_BLOCK
-_AGENTS_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _AGENTS_MD_COMMANDS_BLOCK
-# GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190); it gets the
-# same host-generic block as AGENTS.md, not the Claude-specific overrides.
-_GEMINI_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _AGENTS_MD_COMMANDS_BLOCK
 
 
 def load_existing_config(project_root: Path) -> dict[str, Any]:
@@ -564,7 +582,12 @@ def deploy_issue_templates(
     return True
 
 
-def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
+def write_claude_md(
+    project_root: Path,
+    dry_run: bool = False,
+    install_source: str | None = None,
+    install_path: str | None = None,
+) -> bool:
     """Append the canonical ## little-loops CLI Commands block to CLAUDE.md.
 
     Detection order: .claude/CLAUDE.md, then CLAUDE.md. If neither exists,
@@ -574,6 +597,10 @@ def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
     Args:
         project_root: Project root directory.
         dry_run: If True, print planned action; do not write files.
+        install_source: Detected install_source (BUG-3380); varies the
+            rendered Install: line.
+        install_path: Editable install location for "local-editable"
+            installs; rendered relative to project_root.
 
     Returns:
         True if the file was created or modified; False if no changes needed.
@@ -597,14 +624,20 @@ def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
         if dry_run:
             info(f"update {rel} (append ## little-loops CLI Commands)")
             return True
-        new_content = existing.rstrip("\n") + "\n" + _CLAUDE_MD_COMMANDS_BLOCK
+        block = _render_commands_block(
+            _CLAUDE_MD_DESC_OVERRIDES, install_source, install_path, project_root
+        )
+        new_content = existing.rstrip("\n") + "\n" + block
         atomic_write(target, new_content)
     else:
         if dry_run:
             info(f"write {rel} (ll- CLI command documentation)")
             return True
         target.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write(target, _CLAUDE_MD_NEW_FILE_CONTENT)
+        block = _render_commands_block(
+            _CLAUDE_MD_DESC_OVERRIDES, install_source, install_path, project_root
+        )
+        atomic_write(target, "# Project Configuration\n" + block)
 
     return True
 
@@ -615,7 +648,12 @@ def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
 AGENTS_MD_HOSTS: tuple[str, ...] = ("codex", "kimi-code", "qwen")
 
 
-def write_agents_md(project_root: Path, dry_run: bool = False) -> bool:
+def write_agents_md(
+    project_root: Path,
+    dry_run: bool = False,
+    install_source: str | None = None,
+    install_path: str | None = None,
+) -> bool:
     """Append the canonical ## little-loops CLI Commands block to AGENTS.md.
 
     AGENTS.md is the cross-tool instructions convention read by Codex, Kimi
@@ -627,6 +665,10 @@ def write_agents_md(project_root: Path, dry_run: bool = False) -> bool:
     Args:
         project_root: Project root directory.
         dry_run: If True, print planned action; do not write files.
+        install_source: Detected install_source (BUG-3380); varies the
+            rendered Install: line.
+        install_path: Editable install location for "local-editable"
+            installs; rendered relative to project_root.
 
     Returns:
         True if the file was created or modified; False if no changes needed.
@@ -650,19 +692,30 @@ def write_agents_md(project_root: Path, dry_run: bool = False) -> bool:
         if dry_run:
             info(f"update {rel} (append ## little-loops CLI Commands)")
             return True
-        new_content = existing.rstrip("\n") + "\n" + _AGENTS_MD_COMMANDS_BLOCK
+        block = _render_commands_block(
+            install_source=install_source, install_path=install_path, project_root=project_root
+        )
+        new_content = existing.rstrip("\n") + "\n" + block
         atomic_write(target, new_content)
     else:
         if dry_run:
             info(f"write {rel} (ll- CLI command documentation)")
             return True
         target.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write(target, _AGENTS_MD_NEW_FILE_CONTENT)
+        block = _render_commands_block(
+            install_source=install_source, install_path=install_path, project_root=project_root
+        )
+        atomic_write(target, "# Project Configuration\n" + block)
 
     return True
 
 
-def write_gemini_md(project_root: Path, dry_run: bool = False) -> bool:
+def write_gemini_md(
+    project_root: Path,
+    dry_run: bool = False,
+    install_source: str | None = None,
+    install_path: str | None = None,
+) -> bool:
     """Append the canonical ## little-loops CLI Commands block to GEMINI.md.
 
     GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190): a single
@@ -673,6 +726,10 @@ def write_gemini_md(project_root: Path, dry_run: bool = False) -> bool:
     Args:
         project_root: Project root directory.
         dry_run: If True, print planned action; do not write files.
+        install_source: Detected install_source (BUG-3380); varies the
+            rendered Install: line.
+        install_path: Editable install location for "local-editable"
+            installs; rendered relative to project_root.
 
     Returns:
         True if the file was created or modified; False if no changes needed.
@@ -687,13 +744,19 @@ def write_gemini_md(project_root: Path, dry_run: bool = False) -> bool:
         if dry_run:
             info(f"update {rel} (append ## little-loops CLI Commands)")
             return True
-        new_content = existing.rstrip("\n") + "\n" + _AGENTS_MD_COMMANDS_BLOCK
+        block = _render_commands_block(
+            install_source=install_source, install_path=install_path, project_root=project_root
+        )
+        new_content = existing.rstrip("\n") + "\n" + block
         atomic_write(target, new_content)
     else:
         if dry_run:
             info(f"write {rel} (ll- CLI command documentation)")
             return True
-        atomic_write(target, _GEMINI_MD_NEW_FILE_CONTENT)
+        block = _render_commands_block(
+            install_source=install_source, install_path=install_path, project_root=project_root
+        )
+        atomic_write(target, "# Project Configuration\n" + block)
 
     return True
 

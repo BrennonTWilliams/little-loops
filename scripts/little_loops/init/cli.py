@@ -533,7 +533,7 @@ def _run_yes(
         )
 
     # Detect installation; notify-and-act (only with --upgrade) or warn-only.
-    install_source, installed_version, _install_path = detect_installation(project_root)
+    install_source, installed_version, install_path = detect_installation(project_root)
     if install_source is None:
         print("little-loops package not detected.", file=sys.stderr)
         if upgrade:
@@ -564,23 +564,7 @@ def _run_yes(
                 if upgrade:
                     print("  Upgrading...")
                     if install_source == "local-editable":
-                        # Resolve true editable path via pip show.
-                        _pip_show = _subprocess.run(
-                            [sys.executable, "-m", "pip", "show", "little-loops"],
-                            capture_output=True,
-                            text=True,
-                            timeout=10,
-                        )
-                        _editable_line = next(
-                            (
-                                line
-                                for line in _pip_show.stdout.splitlines()
-                                if line.startswith("Editable project location:")
-                            ),
-                            None,
-                        )
-                        if _editable_line:
-                            _editable_path = _editable_line.split(": ", 1)[1].strip()
+                        if install_path:
                             try:
                                 _subprocess.run(
                                     [
@@ -589,7 +573,7 @@ def _run_yes(
                                         "pip",
                                         "install",
                                         "-e",
-                                        f"{_editable_path}[dev]",
+                                        f"{install_path}[dev]",
                                     ],
                                     check=True,
                                 )
@@ -720,16 +704,28 @@ def _run_yes(
         extra_permissions = ["Skill(ll:explore-api)"]
     merge_settings(project_root, extra_permissions=extra_permissions, dry_run=dry_run)
 
-    write_claude_md(project_root, dry_run=dry_run)
+    write_claude_md(
+        project_root, dry_run=dry_run, install_source=install_source, install_path=install_path
+    )
 
     # AGENTS.md is the cross-tool convention read by codex / kimi-code / qwen
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
-        write_agents_md(project_root, dry_run=dry_run)
+        write_agents_md(
+            project_root,
+            dry_run=dry_run,
+            install_source=install_source,
+            install_path=install_path,
+        )
 
     # GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190).
     if "gemini" in hosts:
-        write_gemini_md(project_root, dry_run=dry_run)
+        write_gemini_md(
+            project_root,
+            dry_run=dry_run,
+            install_source=install_source,
+            install_path=install_path,
+        )
 
     if upgrade and not dry_run:
         # Host-parameterized surface refresh: force-regenerate adapters and run
@@ -908,6 +904,12 @@ def _run_apply(
     config = merge_with_existing(config, load_existing_config(project_root), force)
     _persist_host_selection(config, hosts, explicit=hosts_explicit)
 
+    # BUG-3380: resolve install_source/install_path unconditionally, before the
+    # writer calls below, so the generated Install: line reflects how this
+    # project actually installed little-loops. Reused at the requested_upgrade
+    # branch further down instead of calling detect_installation() twice.
+    install_source, _installed_version, install_path = detect_installation(project_root)
+
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
 
@@ -937,16 +939,28 @@ def _run_apply(
         extra_permissions = ["Skill(ll:explore-api)"]
     merge_settings(project_root, extra_permissions=extra_permissions, dry_run=dry_run)
 
-    write_claude_md(project_root, dry_run=dry_run)
+    write_claude_md(
+        project_root, dry_run=dry_run, install_source=install_source, install_path=install_path
+    )
 
     # AGENTS.md is the cross-tool convention read by codex / kimi-code / qwen
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
-        write_agents_md(project_root, dry_run=dry_run)
+        write_agents_md(
+            project_root,
+            dry_run=dry_run,
+            install_source=install_source,
+            install_path=install_path,
+        )
 
     # GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190).
     if "gemini" in hosts:
-        write_gemini_md(project_root, dry_run=dry_run)
+        write_gemini_md(
+            project_root,
+            dry_run=dry_run,
+            install_source=install_source,
+            install_path=install_path,
+        )
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force, dry_run=dry_run)
 
@@ -958,7 +972,6 @@ def _run_apply(
         print(msg, file=sys.stderr)
 
     if plan.get("requested_upgrade") and not dry_run:
-        install_source, _installed_version, _install_path = detect_installation(project_root)
         _dispatch_host_upgrade(hosts, project_root, plugin_root, install_source)
 
     if dry_run:
