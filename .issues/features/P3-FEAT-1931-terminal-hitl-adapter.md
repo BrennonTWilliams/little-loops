@@ -311,6 +311,8 @@ open
 
 - **2026-09-03** (/ll:verify-issues): `_interruptible_sleep` has drifted again — now `scripts/little_loops/fsm/executor.py:3833` (was :3378/:1955). `send_alert()`/`await_response()` signature-mismatch findings above remain open and correctly block implementation on FEAT-1930. Not editing the scattered body citations (lines 133, 217) — this note carries the current anchor for whoever implements next.
 
+- **2026-09-03** (/ll:verify-issues, re-check): Re-verified same-day, no drift since the note above. `scripts/little_loops/fsm/adapters/` still does not exist (confirmed via `ls`). `blocked_by: [FEAT-1930]` backlink confirmed on FEAT-1930's `blocks` list. No active decisions-log rules; `ll-verify-evidence` clean. Verdict: VALID (unchanged).
+
 ---
 
 ## Scope Boundary
@@ -322,6 +324,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:43:32 - `aa57eda6-6094-4ecb-9d7d-caa100953877.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:56 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:30 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

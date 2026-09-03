@@ -29,7 +29,7 @@ decision: >-
   deferred as future refactor. Note: transport is now delegated to the
   CommunicationAdapter protocol (FEAT-1930); the executor calls adapter.send_alert()
   / adapter.await_response() rather than hardcoding terminal I/O.
-verify_verdict: NON_VALID
+verify_verdict: VALID
 ---
 
 # FEAT-1794: HITL interrupt FSM state type (`action_type: human_approval`)
@@ -380,7 +380,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 - 2026-09-03 (`/ll:verify-issues`): Core gap confirmed still real — no `human_approval` action_type in `fsm/executor.py`/`fsm/schema.py`; issue stays valid. Line-number anchors drifted a fifth time — current: `_execute_state` :1948, `_run_action` :2312, `_action_mode` :3062, `_emit` :3550, `_interruptible_sleep` :3833. Not re-editing the scattered body citations per the 2026-08-16 recommendation above — function-name anchors are the stable reference; this note carries the current line numbers for whoever implements next.
 
+- 2026-09-03 (`/ll:verify-issues`, re-check): Re-verified same-day — no drift since the pass above (all anchors re-confirmed identical: `_execute_state` :1948, `_run_action` :2312, `_action_mode` :3062, `_emit` :3550, `_interruptible_sleep` :3833, `StateConfig` :621, `timeout` :708, `extra_routes` :730, `HostCapabilities` :128). Decisions log has no active required rules. `ll-verify-evidence` clean. Dependency backlinks with FEAT-1930 (blocked_by/blocks) and FEAT-1680 (Scope Boundary) confirmed consistent. Verdict updated from stale `NON_VALID` to `VALID` (persisted `verify_verdict` frontmatter now matches).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:12:55 - `fda4cd5c-a51b-4a98-bfeb-d76bd3f6c25a.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`

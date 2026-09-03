@@ -368,6 +368,8 @@ current `HumanResponse` shape.
 
 2026-06-18 (UNSTARTED): `scripts/little_loops/fsm/communication_adapter.py` does not exist. No `CommunicationAdapterExtension` in `extension.py`. No `hitl.channel` config key. FEAT-1794, FEAT-1931, FEAT-1932 remain correctly blocked on this issue. Dependency graph is accurate.
 
+2026-09-03 (`/ll:verify-issues`): Re-confirmed still unimplemented — no `class CommunicationAdapter`/`CommunicationAdapterExtension` anywhere in `scripts/little_loops/`. `blocks: [FEAT-2102, FEAT-1794, FEAT-1931]` all backlink correctly; FEAT-2102 is `deferred`/`blocked_by: [FEAT-1930]` as expected. No active decisions-log rules; `ll-verify-evidence` clean. Verdict: VALID (unchanged).
+
 ## Status
 
 open
@@ -379,6 +381,7 @@ open
 - `CONTRIBUTING.md` — adding a new extension-registered protocol (`CommunicationAdapterExtension`, `provided_adapters()`) is exactly the extension-authoring pattern (`LLExtension` protocol convention) this doc documents.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:25:58 - `08ecfe64-9510-40b1-a733-9cb70ecbc67a.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:30 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled since early June; epic downgraded rather than left distorting the P2 band).
