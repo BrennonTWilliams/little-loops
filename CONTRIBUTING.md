@@ -198,6 +198,8 @@ little-loops/
 │   │   ├── COMMANDS.md                  # Command reference
 │   │   ├── CONFIGURATION.md             # Configuration reference
 │   │   └── ISSUE_TEMPLATE.md            # Issue template guide
+│   ├── runbooks/                        # Operational procedures (cadence + baseline)
+│   │   └── FLEET_LOOP_REVIEW.md         # Cross-project loop-review cycle
 │   ├── guides/                          # User guides
 │   │   ├── GETTING_STARTED.md           # Getting started guide
 │   │   ├── ISSUE_MANAGEMENT_GUIDE.md    # Issue management workflow

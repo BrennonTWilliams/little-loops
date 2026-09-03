@@ -191,6 +191,9 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("agents/loop-specialist.md", "tools:", "FEAT-1532"),
     ("agents/loop-specialist.md", ".loops/diagnostics/", "FEAT-1532"),
     ("agents/loop-specialist.md", "ll-loop history", "FEAT-1532"),
+    ("docs/runbooks/FLEET_LOOP_REVIEW.md", "agents/loop-specialist.md", "FEAT-2379"),
+    ("docs/runbooks/FLEET_LOOP_REVIEW.md", "built-in loops are fixed here", "FEAT-2379"),
+    ("mkdocs.yml", "runbooks/FLEET_LOOP_REVIEW.md", "FEAT-2379"),
     ("skills/create-loop/loop-types.md", "assumption_gate", "ENH-2215"),
     ("skills/create-loop/loop-types.md", "assumption-firewall", "ENH-2215"),
     ("skills/create-loop/SKILL.md", "Policy router (decision table)", "ENH-2299"),
@@ -420,6 +423,7 @@ DOC_FILES_MUST_EXIST: list[tuple[str, str]] = [
     ("skills/review-epic/agents/openai.yaml", "FEAT-1856"),
     ("skills/scope-epic/SKILL.md", "FEAT-1857"),
     ("skills/scope-epic/agents/openai.yaml", "FEAT-1857"),
+    ("docs/runbooks/FLEET_LOOP_REVIEW.md", "FEAT-2379"),
 ]
 
 

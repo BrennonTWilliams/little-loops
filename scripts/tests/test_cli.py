@@ -3096,6 +3096,27 @@ class TestMainLogsIntegration:
 
         assert result == 0
 
+    def test_fleet_review_json_returns_0(self) -> None:
+        """ll-logs fleet-review --all -j returns 0 on success (no runs); writes no files."""
+        from little_loops.cli import main_logs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    ["ll-logs", "fleet-review", "--all", "--existing-only", "-j"],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+
     def test_discover_finds_ll_project(self, capsys) -> None:
         """ll-logs discover outputs paths for projects with ll activity."""
         import json

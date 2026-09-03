@@ -630,17 +630,35 @@ def _compute_edges(
     return edges
 
 
-def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
-    """Extract n-grams of ll invocations from JSONL log files."""
+def _collect_sequences(
+    args: argparse.Namespace,
+    logger: Logger,
+    *,
+    projects: list[Path] | None = None,
+) -> list[ChainResult]:
+    """Extract ranked n-gram chains of ll invocations from JSONL logs.
+
+    Extracted from ``_cmd_sequences`` (Decisions #7): project discovery +
+    ``_extract_ll_event_streams`` + ``_count_ngrams`` + ``_build_chain_results``;
+    printing stays in ``_cmd_sequences``. When *projects* is given, skips
+    ``discover_all_projects()`` and maps each path through
+    ``get_project_folder()`` instead (Decisions #11).
+    """
     import os as _os
 
     layout = host_layout_for(_os.environ.get("LL_HOOK_HOST", "claude-code"))
-    if args.project:
+    if projects is not None:
+        project_items = []
+        for decoded_path in projects:
+            folder = get_project_folder(decoded_path)
+            if folder is not None:
+                project_items.append((decoded_path, folder))
+    elif args.project:
         cwd_path: Path = args.project
         project_folder = get_project_folder(cwd_path)
         if project_folder is None:
             logger.error(f"No session project folder found for: {cwd_path}")
-            return 1
+            return []
         project_items = [(cwd_path, project_folder)]
     else:
         decoded_paths = discover_all_projects(logger)
@@ -667,7 +685,16 @@ def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
 
     # Count n-grams
     counter, unigram_counter = _count_ngrams(all_events, min_len=args.min_len)
-    results = _build_chain_results(counter, unigram_counter, min_count=args.min_count, top=args.top)
+    return _build_chain_results(counter, unigram_counter, min_count=args.min_count, top=args.top)
+
+
+def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
+    """Extract n-grams of ll invocations from JSONL log files."""
+    if args.project and get_project_folder(args.project) is None:
+        logger.error(f"No session project folder found for: {args.project}")
+        return 1
+
+    results = _collect_sequences(args, logger)
 
     if args.json:
         print_json([r.to_dict() for r in results])
@@ -1162,7 +1189,7 @@ class _LoopRunRecord:
     run_folder: str
     final_state: str
     iterations: int
-    outcome: str  # converged / failed / max-steps / stalled / interrupted / error
+    outcome: str  # converged / failed / error / max-steps / stalled / interrupted / signal
     ts: str
     attribution: str  # builtin / custom / shadowed (Decisions #10)
 
@@ -1186,6 +1213,82 @@ class _LoopFleetAggregate:
     outcomes: dict[str, int]  # full outcome Counter, not just the top one
     projects: list[Path]  # absolute paths, deduplicated, sorted
     runs_by_project: dict[str, int]  # str(abs path) -> run count
+
+
+def _aggregate_fleet_runs(runs: list[_LoopRunRecord]) -> list[_LoopFleetAggregate]:
+    """Aggregate loop runs into per-``(loop_name, attribution)`` fleet aggregates.
+
+    Extracted from the human-table branch of ``_cmd_loop_fleet`` (Decisions
+    #7). Grouping by ``(loop_name, attribution)`` rather than ``loop_name``
+    alone means a built-in loop that also runs as a shadowed copy elsewhere
+    (Decisions #10) yields two aggregates instead of one row with an
+    arbitrary attribution and a merged ``success_pct``. ``top_outcome`` uses a
+    deterministic tie-break (count descending, then outcome name ascending) —
+    NOT ``Counter.most_common(1)``, whose tie-break depends on insertion
+    order (itself dependent on filesystem ``iterdir()`` order).
+    """
+    import statistics as _statistics
+
+    by_key: dict[tuple[str, str], list[_LoopRunRecord]] = defaultdict(list)
+    for r in runs:
+        by_key[(r.loop_name, r.attribution)].append(r)
+
+    aggregates: list[_LoopFleetAggregate] = []
+    for (loop_name, attribution), group in by_key.items():
+        total = len(group)
+        converged = sum(1 for r in group if r.outcome == "converged")
+        success_pct = int(round(converged / total * 100)) if total else 0
+        iterations = [r.iterations for r in group]
+        med_iter = _statistics.median(iterations) if iterations else 0.0
+        outcome_counts = Counter(r.outcome for r in group)
+        top_outcome = sorted(outcome_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+        runs_by_project: dict[str, int] = defaultdict(int)
+        for r in group:
+            runs_by_project[str(r.project_path)] += 1
+        projects = sorted({r.project_path for r in group}, key=str)
+        aggregates.append(
+            _LoopFleetAggregate(
+                loop_name=loop_name,
+                attribution=attribution,
+                runs=total,
+                converged=converged,
+                success_pct=success_pct,
+                median_iterations=med_iter,
+                top_outcome=top_outcome,
+                outcomes=dict(outcome_counts),
+                projects=projects,
+                runs_by_project=dict(runs_by_project),
+            )
+        )
+
+    aggregates.sort(key=lambda a: (a.loop_name, a.attribution))
+    return aggregates
+
+
+_FLAG_OUTCOMES: frozenset[str] = frozenset({"error", "max-steps", "stalled", "failed"})
+
+
+def _flag_loops(
+    aggs: list[_LoopFleetAggregate], *, threshold: int, min_runs: int
+) -> list[_LoopFleetAggregate]:
+    """Return the ``builtin``-attribution aggregates that fail the flagging rule.
+
+    Flag iff ``attribution == "builtin"`` AND ``runs >= min_runs`` AND
+    (``success_pct < threshold`` OR ``top_outcome in _FLAG_OUTCOMES``).
+    ``interrupted``/``signal`` are deliberately excluded from
+    ``_FLAG_OUTCOMES`` (operator/infra exits, not loop-logic failures) but
+    still count against ``success_pct`` since that is simply
+    ``converged / runs`` (Decisions #2).
+    """
+    flagged: list[_LoopFleetAggregate] = []
+    for a in aggs:
+        if a.attribution != "builtin":
+            continue
+        if a.runs < min_runs:
+            continue
+        if a.success_pct < threshold or a.top_outcome in _FLAG_OUTCOMES:
+            flagged.append(a)
+    return flagged
 
 
 @dataclass
@@ -1214,18 +1317,37 @@ class _RawCluster:
     skill_sessions: dict[str | None, list[str]] = field(default_factory=dict)
 
 
-def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
-    """Mine failed ll-* Bash calls from interactive session JSONL logs."""
+def _collect_failure_clusters(
+    args: argparse.Namespace,
+    logger: Logger,
+    *,
+    projects: list[Path] | None = None,
+) -> list[_FailureCluster]:
+    """Mine and cluster failed ll-* Bash calls from session JSONL logs.
+
+    Extracted from ``_cmd_scan_failures`` (Decisions #7): everything through
+    the skill-filter/limit steps. ``--capture`` and printing stay in the
+    caller. When *projects* is given, skips ``discover_all_projects()`` and
+    maps each path through ``get_project_folder()`` instead (Decisions #11);
+    ``_cmd_scan_failures`` itself always calls with ``projects=None`` and
+    keeps its own ``--project``/``--all`` discovery unchanged.
+    """
     from little_loops.issue_lifecycle import FailureType, classify_failure
 
     _cli_allowlist = _load_cli_allowlist(Path.cwd())
 
-    if args.project:
+    if projects is not None:
+        project_items = []
+        for decoded_path in projects:
+            folder = get_project_folder(decoded_path)
+            if folder is not None:
+                project_items.append((decoded_path, folder))
+    elif args.project:
         cwd_path: Path = args.project
         project_folder = get_project_folder(cwd_path)
         if project_folder is None:
             logger.error(f"No session project folder found for: {cwd_path}")
-            return 1
+            return []
         project_items = [(cwd_path, project_folder)]
     else:
         decoded_paths = discover_all_projects(logger)
@@ -1412,6 +1534,17 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
     limit = getattr(args, "limit", 0) or 0
     if limit:
         clusters = clusters[:limit]
+
+    return clusters
+
+
+def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
+    """Mine failed ll-* Bash calls from interactive session JSONL logs."""
+    if args.project and get_project_folder(args.project) is None:
+        logger.error(f"No session project folder found for: {args.project}")
+        return 1
+
+    clusters = _collect_failure_clusters(args, logger)
 
     if not clusters:
         if not args.json:
@@ -2048,6 +2181,23 @@ def _parse_terminal_event(events_file: Path) -> dict | None:
     return None
 
 
+def _in_window(ts: str, cutoff: datetime | None, until: datetime | None) -> bool:
+    """Return True if *ts* falls within [cutoff, until] (FEAT-2379).
+
+    Mirrors the exact inline guard ``_collect_loop_runs`` has always applied:
+    an **empty** ``ts`` string passes any window (preserved quirk, not a bug
+    fix). Shared by ``_collect_loop_runs`` and ``fleet-review``'s in-memory
+    window filter so the two definitions cannot drift (Program Design).
+    """
+    if not ts:
+        return True
+    if cutoff is not None and _parse_iso_timestamp(ts) < cutoff:
+        return False
+    if until is not None and _parse_iso_timestamp(ts) > until:
+        return False
+    return True
+
+
 def _collect_loop_runs(
     project_path: Path,
     builtin_names: frozenset[str],
@@ -2056,10 +2206,33 @@ def _collect_loop_runs(
     cutoff: datetime | None = None,
     until: datetime | None = None,
 ) -> list[_LoopRunRecord]:
-    """Collect archived loop runs from a project's .loops/.history/ directory."""
+    """Collect archived loop runs from a project's .loops/.history/ directory.
+
+    Attribution is ``"builtin"`` when *loop_name* is in *builtin_names*,
+    ``"custom"`` otherwise, EXCEPT: when the project carries its own
+    ``.loops/<loop_name>.yaml`` or ``.loops/<loop_name>.fsm.yaml`` copy of a
+    built-in name, attribution is ``"shadowed"`` instead — that project's runs
+    executed its own modified copy, not this repo's built-in (Decisions #10).
+    The shadow-stem set is built once per project (a handful of ``exists()``
+    calls over ``builtin_names``), before the ``iterdir()`` loop, not per run.
+    """
     history_dir = project_path / ".loops" / ".history"
     if not history_dir.exists():
         return []
+
+    local_loops_dir = project_path / ".loops"
+    shadow_stems: set[str] = set()
+    if local_loops_dir.is_dir():
+        for name in builtin_names:
+            if (local_loops_dir / f"{name}.yaml").exists() or (
+                local_loops_dir / f"{name}.fsm.yaml"
+            ).exists():
+                shadow_stems.add(name)
+
+    def _attribution_for(loop_name: str) -> str:
+        if loop_name in shadow_stems:
+            return "shadowed"
+        return "builtin" if loop_name in builtin_names else "custom"
 
     records: list[_LoopRunRecord] = []
     visited: set[Path] = set()
@@ -2082,13 +2255,8 @@ def _collect_loop_runs(
             if terminal is None:
                 continue
             ts = terminal.get("ts", "")
-            if cutoff is not None and ts:
-                if _parse_iso_timestamp(ts) < cutoff:
-                    continue
-            if until is not None and ts:
-                if _parse_iso_timestamp(ts) > until:
-                    continue
-            attribution = "builtin" if loop_name in builtin_names else "custom"
+            if not _in_window(ts, cutoff, until):
+                continue
             records.append(
                 _LoopRunRecord(
                     loop_name=loop_name,
@@ -2098,7 +2266,7 @@ def _collect_loop_runs(
                     iterations=terminal.get("iterations", 0),
                     outcome=_derive_loop_outcome(terminal),
                     ts=ts,
-                    attribution=attribution,
+                    attribution=_attribution_for(loop_name),
                 )
             )
         else:
@@ -2118,13 +2286,8 @@ def _collect_loop_runs(
                 if terminal is None:
                     continue
                 ts = terminal.get("ts", "")
-                if cutoff is not None and ts:
-                    if _parse_iso_timestamp(ts) < cutoff:
-                        continue
-                if until is not None and ts:
-                    if _parse_iso_timestamp(ts) > until:
-                        continue
-                attribution = "builtin" if loop_name in builtin_names else "custom"
+                if not _in_window(ts, cutoff, until):
+                    continue
                 records.append(
                     _LoopRunRecord(
                         loop_name=loop_name,
@@ -2134,7 +2297,7 @@ def _collect_loop_runs(
                         iterations=terminal.get("iterations", 0),
                         outcome=_derive_loop_outcome(terminal),
                         ts=ts,
-                        attribution=attribution,
+                        attribution=_attribution_for(loop_name),
                     )
                 )
 
@@ -2143,8 +2306,6 @@ def _collect_loop_runs(
 
 def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
     """Aggregate cross-project loop-run outcomes for built-in loop improvement."""
-    import statistics as _statistics
-
     builtin_names = _get_builtin_loop_names()
     cutoff, until = _resolve_window(args)
     loop_filter: str | None = getattr(args, "loop", None)
@@ -2191,46 +2352,540 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
         )
         return 0
 
-    # Aggregate per loop name for human-readable table
-    by_loop: dict[str, list[_LoopRunRecord]] = defaultdict(list)
-    for r in all_runs:
-        by_loop[r.loop_name].append(r)
-
-    entries = []
-    for loop_name in sorted(by_loop):
-        runs = by_loop[loop_name]
-        total = len(runs)
-        converged = sum(1 for r in runs if r.outcome == "converged")
-        success_pct = int(round(converged / total * 100)) if total else 0
-        iterations = [r.iterations for r in runs]
-        med_iter = _statistics.median(iterations) if iterations else 0.0
-        top_outcome = Counter(r.outcome for r in runs).most_common(1)[0][0]
-        projects_list = sorted({r.project_path.name for r in runs})
-        attribution = runs[0].attribution
-        entries.append(
-            (loop_name, attribution, total, success_pct, med_iter, top_outcome, projects_list)
-        )
+    # Aggregate per (loop name, attribution) for the human-readable table
+    # (Decisions #7: _aggregate_fleet_runs, not an inline loop-name-only groupby).
+    aggs = _aggregate_fleet_runs(all_runs)
 
     sort_key = getattr(args, "sort", "success")
     if sort_key == "name":
-        entries.sort(key=lambda e: e[0])
+        aggs.sort(key=lambda a: a.loop_name)
     else:
-        entries.sort(key=lambda e: (e[3], e[0]))  # success ascending (worst first), tie-break name
+        aggs.sort(key=lambda a: (a.success_pct, a.loop_name))  # worst first, tie-break name
 
     rows = [
         [
-            loop_name,
-            attribution,
-            str(total),
-            f"{success_pct}%",
-            f"{med_iter:.1f}",
-            top_outcome,
-            ", ".join(projects_list[:3]) + ("…" if len(projects_list) > 3 else ""),
+            a.loop_name,
+            a.attribution,
+            str(a.runs),
+            f"{a.success_pct}%",
+            f"{a.median_iterations:.1f}",
+            a.top_outcome,
+            (
+                ", ".join(sorted(p.name for p in a.projects)[:3])
+                + ("…" if len(a.projects) > 3 else "")
+            ),
         ]
-        for loop_name, attribution, total, success_pct, med_iter, top_outcome, projects_list in entries
+        for a in aggs
     ]
 
     print(table(["Loop", "Type", "Runs", "Success%", "Med-Iter", "Top Outcome", "Projects"], rows))
+    return 0
+
+
+def _validate_builtin_loop(
+    name: str, *, orchestration_request_path: str | None
+) -> tuple[bool, list[ValidationError]]:
+    """Validate a built-in loop by name via ``load_and_validate()`` (Decisions #8).
+
+    Thin wrapper over ``_builtin_loop_paths()[name]`` +
+    ``load_and_validate(path, raise_on_error=False, orchestration_request_path=...)``.
+    Does NOT use ``resolve_loop_path`` (top-level only; misses nested
+    ``oracles/*`` built-ins) or ``cmd_validate`` (prints instead of
+    returning). An unknown name, ``ValueError``, ``yaml.YAMLError``, or
+    ``OSError`` becomes a single synthetic error ``ValidationError``,
+    mirroring ``cmd_validate``'s ``--json`` branch. ``valid`` is
+    ``not any(v.severity is ValidationSeverity.ERROR for v in violations)``.
+    """
+    import yaml
+
+    from little_loops.fsm.validation import ValidationError, ValidationSeverity, load_and_validate
+
+    path = _builtin_loop_paths().get(name)
+    if path is None:
+        violations: list[ValidationError] = [
+            ValidationError(
+                message=f"Unknown built-in loop: {name}",
+                path="<root>",
+                severity=ValidationSeverity.ERROR,
+            )
+        ]
+        return False, violations
+
+    try:
+        _fsm, violations = load_and_validate(
+            path,
+            raise_on_error=False,
+            orchestration_request_path=orchestration_request_path,
+        )
+    except (ValueError, yaml.YAMLError, OSError) as e:
+        violations = [
+            ValidationError(
+                message=str(e),
+                path="<root>",
+                severity=ValidationSeverity.ERROR,
+            )
+        ]
+        return False, violations
+
+    valid = not any(v.severity is ValidationSeverity.ERROR for v in violations)
+    return valid, violations
+
+
+def _build_fleet_sidecar(
+    *,
+    generated: datetime,
+    window_days: int | None,
+    since: datetime | None,
+    until: datetime | None,
+    projects: list[Path],
+    excluded: list[Path],
+    aggs: list[_LoopFleetAggregate],
+    shadowed: dict[str, dict[str, int]],
+) -> dict:
+    """Build the fleet-review JSON sidecar dict (Decisions #4).
+
+    ``loops`` holds only ``builtin``-attribution aggregates; ``shadowed`` is a
+    separate informational dict. ``Path`` values are stringified.
+    """
+    loops: dict[str, dict] = {}
+    for a in aggs:
+        if a.attribution != "builtin":
+            continue
+        loops[a.loop_name] = {
+            "runs": a.runs,
+            "converged": a.converged,
+            "success_pct": a.success_pct,
+            "top_outcome": a.top_outcome,
+            "outcomes": a.outcomes,
+            "projects": [str(p) for p in a.projects],
+            "runs_by_project": a.runs_by_project,
+        }
+    return {
+        "generated": generated.isoformat(),
+        "window_days": window_days,
+        "since": since.isoformat() if since is not None else None,
+        "until": until.isoformat() if until is not None else None,
+        "projects_scanned": [str(p) for p in projects],
+        "excluded_projects": [str(p) for p in excluded],
+        "loops": loops,
+        "shadowed": shadowed,
+    }
+
+
+def _load_prior_baseline(
+    diagnostics_dir: Path, *, exclude: Path | None
+) -> tuple[Path, dict] | None:
+    """Return ``(path, data)`` for the lexically-newest prior sidecar, or None.
+
+    Sidecars are named ``fleet-review-<YYYYMMDDTHHMMSSZ>.json`` — the UTC
+    stamp format sorts correctly lexically. Always skips *exclude* (the
+    sidecar this run is about to write), so a same-day second run baselines
+    against the first, never itself (Decisions #4).
+    """
+    if not diagnostics_dir.exists():
+        return None
+    candidates = sorted(diagnostics_dir.glob("fleet-review-*.json"))
+    if exclude is not None:
+        exclude_resolved = exclude.resolve()
+        candidates = [c for c in candidates if c.resolve() != exclude_resolved]
+    if not candidates:
+        return None
+    newest = candidates[-1]
+    try:
+        data = json.loads(newest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return newest, data
+
+
+def _write_baseline(
+    path: Path,
+    aggs: list[_LoopFleetAggregate],
+    *,
+    window_days: int | None,
+    since: datetime | None,
+    until: datetime | None,
+    projects: list[Path],
+    excluded: list[Path],
+    shadowed: dict[str, dict[str, int]] | None = None,
+) -> None:
+    """Write the JSON sidecar baseline for this fleet-review run (Decisions #4)."""
+    data = _build_fleet_sidecar(
+        generated=datetime.now(UTC),
+        window_days=window_days,
+        since=since,
+        until=until,
+        projects=projects,
+        excluded=excluded,
+        aggs=aggs,
+        shadowed=shadowed or {},
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _md_table(headers: list[str], rows: list[list[str]]) -> str:
+    """Render a minimal GitHub-flavored-markdown pipe table."""
+    lines = ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
+    for row in rows:
+        lines.append("| " + " | ".join(str(c) for c in row) + " |")
+    return "\n".join(lines)
+
+
+def _comparability_warning(prior: dict, current: dict) -> str | None:
+    """Return a warning string when prior/current sidecar run populations differ (Decisions #4).
+
+    Covers ``window_days``/``since``/``until`` (the window) AND
+    ``excluded_projects``/``projects_scanned`` (the run population) — a delta
+    between an excluded and a non-excluded run is meaningless and must not
+    render silently.
+    """
+    mismatched = [f for f in ("window_days", "since", "until") if prior.get(f) != current.get(f)]
+    if sorted(prior.get("excluded_projects", [])) != sorted(current.get("excluded_projects", [])):
+        mismatched.append("excluded_projects")
+    if sorted(prior.get("projects_scanned", [])) != sorted(current.get("projects_scanned", [])):
+        mismatched.append("projects_scanned")
+    if not mismatched:
+        return None
+    return (
+        f"prior baseline differs in: {', '.join(mismatched)} — the delta below may not "
+        "be meaningful"
+    )
+
+
+def _render_fleet_review_report(
+    *,
+    generated: datetime,
+    window_days: int | None,
+    since: datetime | None,
+    until: datetime | None,
+    projects: list[Path],
+    excluded: list[Path],
+    aggs: list[_LoopFleetAggregate],
+    flagged: list[_LoopFleetAggregate],
+    validations: dict[str, tuple[bool, list[ValidationError]]],
+    zero_run: list[str],
+    shadowed: dict[str, dict[str, int]],
+    clusters: list[_FailureCluster] | None,
+    sequences: list[ChainResult] | None,
+    appendix_top: int,
+    no_appendices: bool,
+    prior: tuple[Path, dict] | None,
+    sidecar: dict,
+) -> str:
+    """Render the fleet-review markdown report (Program Design → Types → Report)."""
+    lines: list[str] = [f"# Fleet loop review — {generated.strftime('%Y-%m-%d %H:%M:%S UTC')}", ""]
+
+    # --- Summary ---
+    lines.append("## Summary")
+    lines.append("")
+    if window_days is not None:
+        lines.append(f"- Window: last {window_days} day(s)")
+    elif since is not None or until is not None:
+        since_str = since.isoformat() if since is not None else "(none)"
+        until_str = until.isoformat() if until is not None else "(none)"
+        lines.append(f"- Window: since {since_str} until {until_str}")
+    else:
+        lines.append("- Window: all-time")
+    lines.append(f"- Projects scanned: {len(projects)} (excluded: {len(excluded)})")
+    lines.append(f"- Builtin runs in window: {sum(a.runs for a in aggs)}")
+    if prior is None:
+        lines.append("- Prior baseline: none")
+    else:
+        prior_path, prior_data = prior
+        lines.append(f"- Prior baseline: {prior_path}")
+        warning = _comparability_warning(prior_data, sidecar)
+        if warning:
+            lines.append(f"- **Comparability warning**: {warning}")
+    lines.append("")
+
+    # --- Flagged loops ---
+    lines.append("## Flagged loops")
+    lines.append("")
+    if not flagged:
+        lines.append("No loops flagged.")
+        lines.append("")
+    else:
+        headers = ["Loop", "Runs", "Success%", "Top Outcome", "Outcomes", "Runs by project"]
+        rows = []
+        for a in flagged:
+            outcomes_str = ", ".join(f"{k}:{v}" for k, v in sorted(a.outcomes.items()))
+            by_proj = ", ".join(f"{p}:{n}" for p, n in sorted(a.runs_by_project.items()))
+            rows.append(
+                [
+                    a.loop_name,
+                    str(a.runs),
+                    f"{a.success_pct}%",
+                    a.top_outcome,
+                    outcomes_str,
+                    by_proj,
+                ]
+            )
+        lines.append(_md_table(headers, rows))
+        lines.append("")
+        for a in flagged:
+            lines.append(f"### {a.loop_name}")
+            lines.append("")
+            valid, violations = validations.get(a.loop_name, (True, []))
+            lines.append(f"Validation: {'valid' if valid else 'INVALID'}")
+            for v in violations:
+                lines.append(f"- [{v.severity.value.upper()}] {v.path}: {v.message}")
+            for proj in sorted(a.projects, key=str):
+                lines.append(f"- `cd {proj} && ll-loop diagnose-evaluators {a.loop_name}`")
+            lines.append("")
+
+    # --- Delta vs baseline ---
+    lines.append("## Delta vs baseline")
+    lines.append("")
+    if prior is None:
+        lines.append("no prior baseline")
+        lines.append("")
+    else:
+        _prior_path, prior_data = prior
+        prior_loops: dict = prior_data.get("loops", {})
+        current_loops = {a.loop_name: a for a in aggs if a.attribution == "builtin"}
+        all_names = sorted(set(prior_loops) | set(current_loops))
+        outcome_keys = sorted(_FLAG_OUTCOMES)
+        headers = ["Loop", "Success% (prior→now, Δ)", "Δruns", "Δconverged"] + [
+            f"Δ{o}" for o in outcome_keys
+        ]
+        rows = []
+        for name in all_names:
+            cur = current_loops.get(name)
+            prev = prior_loops.get(name)
+            if prev is None:
+                rows.append([name, "new"] + [""] * (len(headers) - 2))
+                continue
+            if cur is None:
+                rows.append([name, "dropped out of window"] + [""] * (len(headers) - 2))
+                continue
+
+            def _signed(n: int) -> str:
+                return f"+{n}" if n >= 0 else str(n)
+
+            d_success = cur.success_pct - prev.get("success_pct", 0)
+            d_runs = cur.runs - prev.get("runs", 0)
+            d_converged = cur.converged - prev.get("converged", 0)
+            prev_outcomes = prev.get("outcomes", {})
+            row = [
+                name,
+                f"{prev.get('success_pct', 0)}% → {cur.success_pct}% ({_signed(d_success)})",
+                _signed(d_runs),
+                _signed(d_converged),
+            ]
+            for o in outcome_keys:
+                row.append(_signed(cur.outcomes.get(o, 0) - prev_outcomes.get(o, 0)))
+            rows.append(row)
+        lines.append(_md_table(headers, rows))
+        lines.append("")
+
+    # --- Zero-run built-ins ---
+    lines.append("## Zero-run built-ins")
+    lines.append("")
+    if not zero_run:
+        lines.append("None.")
+    else:
+        for name in zero_run:
+            lines.append(f"- {name}")
+    lines.append("")
+
+    # --- Shadowed built-ins ---
+    lines.append("## Shadowed built-ins")
+    lines.append("")
+    if not shadowed:
+        lines.append("None.")
+    else:
+        headers = ["Loop", "Project", "Runs"]
+        rows = []
+        for loop_name in sorted(shadowed):
+            for shadow_project, count in sorted(shadowed[loop_name].items()):
+                rows.append([loop_name, shadow_project, str(count)])
+        lines.append(_md_table(headers, rows))
+    lines.append("")
+
+    # --- Appendices (skipped under --no-appendices) ---
+    if not no_appendices:
+        lines.append("## Appendix: scan-failures clusters")
+        lines.append("")
+        cluster_rows = clusters or []
+        if appendix_top:
+            cluster_rows = cluster_rows[:appendix_top]
+        if not cluster_rows:
+            lines.append("No failure clusters.")
+        else:
+            headers = ["Tool", "Count", "Project", "Signature"]
+            rows = [
+                [c.tool_name, str(c.count), str(c.cwd_path), c.normalized_sig] for c in cluster_rows
+            ]
+            lines.append(_md_table(headers, rows))
+        lines.append("")
+
+        lines.append("## Appendix: sequences")
+        lines.append("")
+        seq_rows = sequences or []
+        if appendix_top:
+            seq_rows = seq_rows[:appendix_top]
+        if not seq_rows:
+            lines.append("No sequences.")
+        else:
+            headers = ["Chain", "Count"]
+            rows = [[" → ".join(r.chain), str(r.count)] for r in seq_rows]
+            lines.append(_md_table(headers, rows))
+        lines.append("")
+
+    # --- Reviewed, not fixed (empty; filled by hand) ---
+    lines.append("## Reviewed, not fixed")
+    lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
+def _cmd_fleet_review(args: argparse.Namespace, logger: Logger) -> int:
+    """Harvest fleet-wide built-in loop outcomes, flag unhealthy loops, and write a
+    dated diagnostic report plus a JSON baseline sidecar (FEAT-2379).
+
+    See the Call Path in the issue's Program Design section: discover projects
+    minus ``--exclude-project`` -> unwindowed ``_collect_loop_runs`` per
+    project -> zero-run derivation -> in-memory ``_in_window`` filter ->
+    ``_aggregate_fleet_runs`` over ``builtin`` records (``shadowed`` tallied
+    separately) -> ``_flag_loops`` -> ``_validate_builtin_loop`` per flagged
+    loop -> appendix collectors (unless ``--no-appendices``) ->
+    ``_load_prior_baseline`` -> render report + ``_write_baseline``.
+    ``--json`` prints the sidecar and writes no files at all.
+    """
+    builtin_names = _get_builtin_loop_names()
+
+    if args.project:
+        # Absolute paths throughout (Decisions #4/#9): the sidecar and report's
+        # `cd <project> && ...` lines must be copy-pasteable.
+        discovered = [Path(args.project).resolve()]
+    else:
+        discovered = discover_all_projects(logger, existing_only=args.existing_only)
+
+    exclude_raw = getattr(args, "exclude_project", None) or []
+    excluded_resolved = {Path(p).resolve() for p in exclude_raw}
+    projects = [p for p in discovered if p.resolve() not in excluded_resolved]
+    excluded = [p for p in discovered if p.resolve() in excluded_resolved]
+
+    # Unwindowed harvest — zero-run derivation and shadow attribution both
+    # need the full (unfiltered-by-window) picture (Decisions #2, #10).
+    unwindowed_runs: list[_LoopRunRecord] = []
+    for proj in projects:
+        unwindowed_runs.extend(_collect_loop_runs(proj, builtin_names))
+
+    cutoff, until = _resolve_window(args)
+    windowed_runs = [r for r in unwindowed_runs if _in_window(r.ts, cutoff, until)]
+
+    builtin_seen_unwindowed = {r.loop_name for r in unwindowed_runs if r.attribution == "builtin"}
+    zero_run = sorted(builtin_names - builtin_seen_unwindowed)
+
+    builtin_runs = [r for r in windowed_runs if r.attribution == "builtin"]
+    shadowed_runs = [r for r in windowed_runs if r.attribution == "shadowed"]
+
+    aggs = _aggregate_fleet_runs(builtin_runs)
+
+    shadowed_tally: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for r in shadowed_runs:
+        shadowed_tally[r.loop_name][str(r.project_path)] += 1
+    shadowed_tally = {k: dict(v) for k, v in shadowed_tally.items()}
+
+    window_days = getattr(args, "window_days", None)
+
+    if args.json:
+        sidecar = _build_fleet_sidecar(
+            generated=datetime.now(UTC),
+            window_days=window_days,
+            since=cutoff,
+            until=until,
+            projects=projects,
+            excluded=excluded,
+            aggs=aggs,
+            shadowed=shadowed_tally,
+        )
+        print_json(sidecar)
+        return 0
+
+    flagged = _flag_loops(aggs, threshold=args.threshold, min_runs=args.min_runs)
+
+    orchestration_request_path = BRConfig(Path.cwd()).orchestration.request_path
+    validations: dict[str, tuple[bool, list[ValidationError]]] = {}
+    for a in flagged:
+        validations[a.loop_name] = _validate_builtin_loop(
+            a.loop_name, orchestration_request_path=orchestration_request_path
+        )
+
+    clusters: list[_FailureCluster] | None = None
+    sequences_result: list[ChainResult] | None = None
+    if not args.no_appendices:
+        appendix_top_param = None if args.appendix_top == 0 else args.appendix_top
+        appendix_ns = argparse.Namespace(
+            project=None,
+            window_days=window_days,
+            since=getattr(args, "since", None),
+            until=getattr(args, "until", None),
+            skill=None,
+            limit=args.appendix_top,
+            min_len=2,
+            min_count=1,
+            top=appendix_top_param,
+        )
+        clusters = _collect_failure_clusters(appendix_ns, logger, projects=projects)
+        sequences_result = _collect_sequences(appendix_ns, logger, projects=projects)
+
+    generated = datetime.now(UTC)
+    stamp = generated.strftime("%Y%m%dT%H%M%SZ")
+    diagnostics_dir = Path.cwd() / ".loops" / "diagnostics"
+    md_path = diagnostics_dir / f"fleet-review-{stamp}.md"
+    json_path = diagnostics_dir / f"fleet-review-{stamp}.json"
+
+    prior = _load_prior_baseline(diagnostics_dir, exclude=json_path)
+
+    sidecar = _build_fleet_sidecar(
+        generated=generated,
+        window_days=window_days,
+        since=cutoff,
+        until=until,
+        projects=projects,
+        excluded=excluded,
+        aggs=aggs,
+        shadowed=shadowed_tally,
+    )
+
+    report = _render_fleet_review_report(
+        generated=generated,
+        window_days=window_days,
+        since=cutoff,
+        until=until,
+        projects=projects,
+        excluded=excluded,
+        aggs=aggs,
+        flagged=flagged,
+        validations=validations,
+        zero_run=zero_run,
+        shadowed=shadowed_tally,
+        clusters=clusters,
+        sequences=sequences_result,
+        appendix_top=args.appendix_top,
+        no_appendices=args.no_appendices,
+        prior=prior,
+        sidecar=sidecar,
+    )
+
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    md_path.write_text(report, encoding="utf-8")
+    _write_baseline(
+        json_path,
+        aggs,
+        window_days=window_days,
+        since=cutoff,
+        until=until,
+        projects=projects,
+        excluded=excluded,
+        shadowed=shadowed_tally,
+    )
+
+    logger.success(f"Wrote {md_path}")
+    print(str(md_path))
     return 0
 
 
@@ -2471,6 +3126,67 @@ Examples:
     )
     add_json_arg(loop_fleet_parser)
 
+    fleet_review_parser = subparsers.add_parser(
+        "fleet-review",
+        help=(
+            "Harvest fleet-wide built-in loop outcomes, flag unhealthy loops, and write a "
+            "dated diagnostic report + JSON baseline sidecar"
+        ),
+    )
+    add_corpus_target_args(
+        fleet_review_parser, all_help="Harvest across all projects with ll activity"
+    )
+    fleet_review_parser.add_argument(
+        "--exclude-project",
+        action="append",
+        type=Path,
+        default=[],
+        metavar="DIR",
+        dest="exclude_project",
+        help=(
+            "Exclude a project from the harvest (repeatable; both sides resolved before "
+            "comparison, e.g. --exclude-project .)"
+        ),
+    )
+    add_window_args(fleet_review_parser, noun="runs")
+    fleet_review_parser.add_argument(
+        "--existing-only",
+        action="store_true",
+        default=False,
+        help="Skip projects that no longer exist on disk (only meaningful with --all)",
+    )
+    fleet_review_parser.add_argument(
+        "--threshold",
+        type=int,
+        default=50,
+        metavar="N",
+        help="Flag a built-in loop when success%% is below N (default: 50)",
+    )
+    fleet_review_parser.add_argument(
+        "--min-runs",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Minimum runs required before a loop can be flagged (default: 3)",
+    )
+    fleet_review_parser.add_argument(
+        "--appendix-top",
+        type=int,
+        default=20,
+        metavar="N",
+        help="Cap each appendix to the top N rows (0 = unlimited; default: 20)",
+    )
+    fleet_review_parser.add_argument(
+        "--no-appendices",
+        action="store_true",
+        default=False,
+        help="Skip the scan-failures/sequences appendices entirely (faster re-measure runs)",
+    )
+    add_json_arg(
+        fleet_review_parser,
+        help_text="Print the JSON baseline sidecar to stdout and write no files",
+    )
+
     return parser
 
 
@@ -2534,5 +3250,8 @@ def main_logs() -> int:
 
         if args.command == "loop-fleet":
             return _cmd_loop_fleet(args, logger)
+
+        if args.command == "fleet-review":
+            return _cmd_fleet_review(args, logger)
 
         return 1

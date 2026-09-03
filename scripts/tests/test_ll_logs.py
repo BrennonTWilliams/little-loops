@@ -14,14 +14,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.cli.logs import (
+    _FLAG_OUTCOMES,
     ChainResult,
     Edge,
+    _aggregate_fleet_runs,
     _aggregate_skill_stats,
     _build_chain_results,
     _build_eval_fixture,
+    _builtin_loop_paths,
     _classify_outcome,
     _cmd_tail,
+    _collect_failure_clusters,
     _collect_loop_runs,
+    _collect_sequences,
+    _comparability_warning,
     _compute_session_diff,
     _count_ngrams,
     _derive_loop_outcome,
@@ -31,16 +37,24 @@ from little_loops.cli.logs import (
     _extract_eval_invocation,
     _extract_tool_name,
     _fixture_to_harness_argv,
+    _flag_loops,
     _get_builtin_loop_names,
+    _in_window,
     _InvocationSignal,
     _is_ll_relevant,
+    _load_prior_baseline,
+    _LoopFleetAggregate,
+    _LoopRunRecord,
     _parse_args,
     _parse_terminal_event,
     _redact_input_context,
     _resolve_session_log,
+    _validate_builtin_loop,
+    _write_baseline,
     discover_all_projects,
     main_logs,
 )
+from little_loops.fsm.validation import ValidationSeverity, load_and_validate
 from little_loops.session_store import ensure_db
 from little_loops.user_messages import encode_project_path, get_project_folder
 
@@ -5473,3 +5487,1067 @@ class TestLoopFleet:
         assert len(runs) == 1
         assert runs[0].loop_name == loop_name
         assert runs[0].attribution == "builtin"
+
+
+class TestFleetReview:
+    """Tests for the fleet-review subcommand (FEAT-2379)."""
+
+    # --- fixture helpers ---
+
+    def _make_history_run(
+        self,
+        project_path: Path,
+        run_folder: str,
+        events: list[dict],
+    ) -> None:
+        """Write .loops/.history/<run_folder>/events.jsonl with the given events."""
+        run_dir = project_path / ".loops" / ".history" / run_folder
+        run_dir.mkdir(parents=True, exist_ok=True)
+        with open(run_dir / "events.jsonl", "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+    def _loop_complete(
+        self,
+        final_state: str = "done",
+        iterations: int = 3,
+        terminated_by: str = "terminal",
+        ts: str = "2026-01-01T00:00:00+00:00",
+    ) -> dict:
+        return {
+            "event": "loop_complete",
+            "ts": ts,
+            "final_state": final_state,
+            "iterations": iterations,
+            "terminated_by": terminated_by,
+        }
+
+    def _run_record(
+        self,
+        loop_name: str,
+        project_path: Path,
+        attribution: str = "builtin",
+        outcome: str = "converged",
+        iterations: int = 1,
+        ts: str = "2026-01-01T00:00:00+00:00",
+    ) -> _LoopRunRecord:
+        return _LoopRunRecord(
+            loop_name=loop_name,
+            project_path=project_path,
+            run_folder="run",
+            final_state="done",
+            iterations=iterations,
+            outcome=outcome,
+            ts=ts,
+            attribution=attribution,
+        )
+
+    def _agg(
+        self,
+        loop_name: str = "myloop",
+        attribution: str = "builtin",
+        runs: int = 5,
+        converged: int = 3,
+        success_pct: int | None = None,
+        top_outcome: str = "converged",
+        outcomes: dict[str, int] | None = None,
+        projects: list[Path] | None = None,
+    ) -> _LoopFleetAggregate:
+        if success_pct is None:
+            success_pct = int(round(converged / runs * 100)) if runs else 0
+        return _LoopFleetAggregate(
+            loop_name=loop_name,
+            attribution=attribution,
+            runs=runs,
+            converged=converged,
+            success_pct=success_pct,
+            median_iterations=1.0,
+            top_outcome=top_outcome,
+            outcomes=outcomes or {top_outcome: runs},
+            projects=projects or [Path("/proj")],
+            runs_by_project={str(p): runs for p in (projects or [Path("/proj")])},
+        )
+
+    def _assistant_bash_record(
+        self,
+        command: str,
+        tool_use_id: str = "toolu_001",
+        session_id: str = "sess-1",
+        timestamp: str = "2026-01-01T00:00:00Z",
+    ) -> dict:
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": tool_use_id,
+                        "name": "Bash",
+                        "input": {"command": command},
+                    }
+                ],
+            },
+            "sessionId": session_id,
+            "timestamp": timestamp,
+        }
+
+    def _user_tool_result_record(
+        self,
+        tool_use_id: str = "toolu_001",
+        content: str = "Error output",
+        is_error: bool = True,
+        session_id: str = "sess-1",
+        timestamp: str = "2026-01-01T00:00:01Z",
+    ) -> dict:
+        return {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "is_error": is_error,
+                        "content": [{"type": "text", "text": content}],
+                    }
+                ],
+            },
+            "sessionId": session_id,
+            "timestamp": timestamp,
+        }
+
+    def _make_claude_project_dir(
+        self,
+        claude_projects: Path,
+        home: Path,
+        subpath: str,
+        records: list[dict],
+        session_id: str = "session-abc",
+    ) -> Path:
+        """Create a mock claude project dir with JSONL content (same pattern as
+        TestScanFailures/TestSequences)."""
+        project_path = home / subpath
+        project_path.mkdir(parents=True, exist_ok=True)
+
+        encoded = encode_project_path(str(project_path.resolve()))
+        proj_dir = claude_projects / encoded
+        proj_dir.mkdir(parents=True, exist_ok=True)
+
+        if records:
+            jsonl_file = proj_dir / "session.jsonl"
+            with open(jsonl_file, "w") as f:
+                for record in records:
+                    if "sessionId" not in record:
+                        record = {**record, "sessionId": session_id}
+                    if "cwd" not in record:
+                        record = {**record, "cwd": str(project_path)}
+                    f.write(json.dumps(record) + "\n")
+
+        return project_path
+
+    # --- argparse ---
+
+    def test_fleet_review_subcommand_parsed(self) -> None:
+        with patch("sys.argv", ["ll-logs", "fleet-review", "--all"]):
+            args = _parse_args()
+        assert args.command == "fleet-review"
+        assert args.all is True
+
+    def test_fleet_review_defaults(self) -> None:
+        with patch("sys.argv", ["ll-logs", "fleet-review", "--all"]):
+            args = _parse_args()
+        assert args.threshold == 50
+        assert args.min_runs == 3
+        assert args.appendix_top == 20
+        assert args.no_appendices is False
+        assert args.exclude_project == []
+
+    def test_fleet_review_exclude_project_repeatable(self) -> None:
+        with patch(
+            "sys.argv",
+            [
+                "ll-logs",
+                "fleet-review",
+                "--all",
+                "--exclude-project",
+                "/a",
+                "--exclude-project",
+                "/b",
+            ],
+        ):
+            args = _parse_args()
+        assert args.exclude_project == [Path("/a"), Path("/b")]
+
+    def test_fleet_review_flags_parsed(self) -> None:
+        with patch(
+            "sys.argv",
+            [
+                "ll-logs",
+                "fleet-review",
+                "--all",
+                "--threshold",
+                "30",
+                "--min-runs",
+                "5",
+                "--appendix-top",
+                "0",
+                "--no-appendices",
+                "--existing-only",
+                "-j",
+            ],
+        ):
+            args = _parse_args()
+        assert args.threshold == 30
+        assert args.min_runs == 5
+        assert args.appendix_top == 0
+        assert args.no_appendices is True
+        assert args.existing_only is True
+        assert args.json is True
+
+    def test_fleet_review_project_and_all_mutually_exclusive(self) -> None:
+        with patch("sys.argv", ["ll-logs", "fleet-review", "--project", "/tmp", "--all"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    # --- _in_window ---
+
+    def test_in_window_empty_ts_passes(self) -> None:
+        now = datetime.now(UTC)
+        assert _in_window("", now, now) is True
+
+    def test_in_window_before_cutoff_excluded(self) -> None:
+        now = datetime.now(UTC)
+        ts = (now - timedelta(days=10)).isoformat()
+        assert _in_window(ts, now - timedelta(days=1), None) is False
+
+    def test_in_window_after_until_excluded(self) -> None:
+        now = datetime.now(UTC)
+        assert _in_window(now.isoformat(), None, now - timedelta(days=1)) is False
+
+    def test_in_window_within_bounds(self) -> None:
+        now = datetime.now(UTC)
+        assert _in_window(now.isoformat(), now - timedelta(days=1), now + timedelta(days=1)) is True
+
+    # --- _aggregate_fleet_runs ---
+
+    def test_aggregate_fleet_runs_matches_table_branch(self, tmp_path, capsys) -> None:
+        """table branch (loop-fleet) and _aggregate_fleet_runs agree on success_pct."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-build",
+            [self._loop_complete(final_state="done", terminated_by="terminal")],
+        )
+        self._make_history_run(
+            project_path,
+            "2026-01-02T000000-rn-build",
+            [self._loop_complete(final_state="failed", terminated_by="terminal")],
+        )
+
+        runs = _collect_loop_runs(project_path, frozenset(["rn-build"]))
+        aggs = _aggregate_fleet_runs(runs)
+        assert len(aggs) == 1
+        assert aggs[0].runs == 2
+        assert aggs[0].success_pct == 50
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path)]):
+            result = main_logs()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "50%" in out
+
+    def test_aggregate_fleet_runs_groups_by_loop_and_attribution(self) -> None:
+        p1 = Path("/proj1")
+        p2 = Path("/proj2")
+        runs = [
+            self._run_record("myloop", p1, attribution="builtin", outcome="converged"),
+            self._run_record("myloop", p2, attribution="shadowed", outcome="failed"),
+        ]
+        aggs = _aggregate_fleet_runs(runs)
+        assert len(aggs) == 2
+        assert {a.attribution for a in aggs} == {"builtin", "shadowed"}
+
+    def test_aggregate_fleet_runs_tie_break_deterministic_both_orders(self) -> None:
+        p = Path("/proj")
+        runs_order_a = [
+            self._run_record("myloop", p, outcome="converged"),
+            self._run_record("myloop", p, outcome="converged"),
+            self._run_record("myloop", p, outcome="failed"),
+            self._run_record("myloop", p, outcome="failed"),
+        ]
+        runs_order_b = list(reversed(runs_order_a))
+        agg_a = _aggregate_fleet_runs(runs_order_a)[0]
+        agg_b = _aggregate_fleet_runs(runs_order_b)[0]
+        assert agg_a.top_outcome == "converged"
+        assert agg_b.top_outcome == "converged"
+
+    def test_loop_fleet_table_shows_two_rows_for_mixed_attribution(self, tmp_path, capsys) -> None:
+        proj_builtin = tmp_path / "builtin_proj"
+        proj_shadow = tmp_path / "shadow_proj"
+        proj_builtin.mkdir()
+        (proj_shadow / ".loops").mkdir(parents=True)
+        (proj_shadow / ".loops" / "general-task.yaml").write_text("name: general-task\n")
+        self._make_history_run(
+            proj_builtin, "2026-01-01T000000-general-task", [self._loop_complete()]
+        )
+        self._make_history_run(
+            proj_shadow, "2026-01-02T000000-general-task", [self._loop_complete()]
+        )
+
+        with (
+            patch("sys.argv", ["ll-logs", "loop-fleet", "--all"]),
+            patch(
+                "little_loops.cli.logs.discover_all_projects",
+                return_value=[proj_builtin, proj_shadow],
+            ),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["general-task"]),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert out.count("general-task") == 2
+        assert "shadowed" in out
+        assert "builtin" in out
+
+    # --- _flag_loops ---
+
+    def test_flag_loops_below_min_runs_never_flags(self) -> None:
+        agg = self._agg(runs=2, converged=0, success_pct=0, top_outcome="failed")
+        assert _flag_loops([agg], threshold=50, min_runs=3) == []
+
+    def test_flag_loops_custom_attribution_never_flags(self) -> None:
+        agg = self._agg(
+            attribution="custom", runs=10, converged=0, success_pct=0, top_outcome="failed"
+        )
+        assert _flag_loops([agg], threshold=50, min_runs=3) == []
+
+    def test_flag_loops_shadowed_attribution_never_flags(self) -> None:
+        agg = self._agg(
+            attribution="shadowed", runs=10, converged=0, success_pct=0, top_outcome="failed"
+        )
+        assert _flag_loops([agg], threshold=50, min_runs=3) == []
+
+    def test_flag_loops_success_pct_exactly_at_threshold_does_not_flag(self) -> None:
+        agg = self._agg(runs=10, converged=5, success_pct=50, top_outcome="converged")
+        assert _flag_loops([agg], threshold=50, min_runs=3) == []
+
+    @pytest.mark.parametrize("outcome", sorted(_FLAG_OUTCOMES))
+    def test_flag_loops_each_flag_outcome_flags_via_outcome_clause(self, outcome: str) -> None:
+        # success_pct=60 would NOT flag at threshold=30; only the outcome clause does.
+        agg = self._agg(
+            runs=10,
+            converged=6,
+            success_pct=60,
+            top_outcome=outcome,
+            outcomes={"converged": 6, outcome: 4},
+        )
+        assert _flag_loops([agg], threshold=30, min_runs=3) == [agg]
+
+    @pytest.mark.parametrize("outcome", ["interrupted", "signal"])
+    def test_flag_loops_interrupted_signal_do_not_flag_via_outcome_clause(
+        self, outcome: str
+    ) -> None:
+        agg = self._agg(
+            runs=10,
+            converged=6,
+            success_pct=60,
+            top_outcome=outcome,
+            outcomes={"converged": 6, outcome: 4},
+        )
+        assert _flag_loops([agg], threshold=30, min_runs=3) == []
+
+    # --- shadowed attribution ---
+
+    def test_collect_loop_runs_shadowed_via_yaml_copy(self, tmp_path) -> None:
+        project_path = tmp_path / "proj"
+        (project_path / ".loops").mkdir(parents=True)
+        (project_path / ".loops" / "general-task.yaml").write_text("name: general-task\n")
+        self._make_history_run(
+            project_path, "2026-01-01T000000-general-task", [self._loop_complete()]
+        )
+
+        runs = _collect_loop_runs(project_path, frozenset(["general-task"]))
+        assert len(runs) == 1
+        assert runs[0].attribution == "shadowed"
+
+    def test_collect_loop_runs_shadowed_via_fsm_yaml_copy(self, tmp_path) -> None:
+        project_path = tmp_path / "proj"
+        (project_path / ".loops").mkdir(parents=True)
+        (project_path / ".loops" / "general-task.fsm.yaml").write_text("name: general-task\n")
+        self._make_history_run(
+            project_path, "2026-01-01T000000-general-task", [self._loop_complete()]
+        )
+
+        runs = _collect_loop_runs(project_path, frozenset(["general-task"]))
+        assert len(runs) == 1
+        assert runs[0].attribution == "shadowed"
+
+    def test_collect_loop_runs_shadowed_legacy_nested_layout(self, tmp_path) -> None:
+        project_path = tmp_path / "proj"
+        (project_path / ".loops").mkdir(parents=True)
+        (project_path / ".loops" / "general-task.yaml").write_text("name: general-task\n")
+        run_subdir = project_path / ".loops" / ".history" / "general-task" / "2026-01-01T000000"
+        run_subdir.mkdir(parents=True)
+        (run_subdir / "events.jsonl").write_text(json.dumps(self._loop_complete()) + "\n")
+
+        runs = _collect_loop_runs(project_path, frozenset(["general-task"]))
+        assert len(runs) == 1
+        assert runs[0].attribution == "shadowed"
+
+    def test_collect_loop_runs_no_copy_still_builtin(self, tmp_path) -> None:
+        project_path = tmp_path / "proj"
+        self._make_history_run(
+            project_path, "2026-01-01T000000-general-task", [self._loop_complete()]
+        )
+        runs = _collect_loop_runs(project_path, frozenset(["general-task"]))
+        assert runs[0].attribution == "builtin"
+
+    def test_aggregate_mixed_attribution_two_aggregates(self, tmp_path) -> None:
+        proj_builtin = tmp_path / "builtin_proj"
+        proj_shadow = tmp_path / "shadow_proj"
+        proj_builtin.mkdir()
+        (proj_shadow / ".loops").mkdir(parents=True)
+        (proj_shadow / ".loops" / "general-task.yaml").write_text("name: general-task\n")
+
+        self._make_history_run(
+            proj_builtin, "2026-01-01T000000-general-task", [self._loop_complete()]
+        )
+        self._make_history_run(
+            proj_shadow, "2026-01-02T000000-general-task", [self._loop_complete()]
+        )
+
+        builtin_names = frozenset(["general-task"])
+        runs = _collect_loop_runs(proj_builtin, builtin_names) + _collect_loop_runs(
+            proj_shadow, builtin_names
+        )
+        aggs = _aggregate_fleet_runs(runs)
+        assert len(aggs) == 2
+        assert {a.attribution for a in aggs} == {"builtin", "shadowed"}
+        # Shadowed copy never flagged even with runs >= min_runs and success_pct == 0.
+        flagged = _flag_loops(aggs, threshold=101, min_runs=1)
+        assert all(a.attribution != "shadowed" for a in flagged)
+
+    def test_zero_run_shadowed_only_loop_still_zero_run(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        proj = tmp_path / "proj"
+        (proj / ".loops").mkdir(parents=True)
+        (proj / ".loops" / "general-task.yaml").write_text("name: general-task\n")
+        self._make_history_run(proj, "2026-01-01T000000-general-task", [self._loop_complete()])
+
+        with (
+            patch("sys.argv", ["ll-logs", "fleet-review", "--project", str(proj)]),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["general-task"]),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        text = list((tmp_path / ".loops" / "diagnostics").glob("*.md"))[0].read_text()
+        zero_run_section = text.split("## Zero-run built-ins")[1].split("## Shadowed built-ins")[0]
+        assert "general-task" in zero_run_section
+
+    def test_shadowed_section_lists_loop_project_runs(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        proj = tmp_path / "proj"
+        (proj / ".loops").mkdir(parents=True)
+        (proj / ".loops" / "general-task.yaml").write_text("name: general-task\n")
+        self._make_history_run(proj, "2026-01-01T000000-general-task", [self._loop_complete()])
+
+        with (
+            patch("sys.argv", ["ll-logs", "fleet-review", "--project", str(proj)]),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["general-task"]),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        text = list((tmp_path / ".loops" / "diagnostics").glob("*.md"))[0].read_text()
+        shadow_section = text.split("## Shadowed built-ins")[1].split("## Appendix")[0]
+        assert "general-task" in shadow_section
+        assert str(proj.resolve()) in shadow_section
+
+    # --- _validate_builtin_loop ---
+
+    def test_validate_builtin_loop_unknown_name(self) -> None:
+        valid, violations = _validate_builtin_loop(
+            "no-such-loop-xyz-does-not-exist", orchestration_request_path=None
+        )
+        assert valid is False
+        assert len(violations) == 1
+        assert violations[0].severity is ValidationSeverity.ERROR
+
+    def test_validate_builtin_loop_matches_load_and_validate_directly(self) -> None:
+        name = "rn-build"
+        path = _builtin_loop_paths()[name]
+        _fsm, expected_violations = load_and_validate(
+            path, raise_on_error=False, orchestration_request_path=None
+        )
+        valid, violations = _validate_builtin_loop(name, orchestration_request_path=None)
+        expected_valid = not any(
+            v.severity is ValidationSeverity.ERROR for v in expected_violations
+        )
+        assert valid == expected_valid
+        assert violations == expected_violations
+
+    def test_validate_builtin_loop_nested_oracle_resolves(self) -> None:
+        """Regression test for Decisions #8's nested-lookup fix: oracles/* built-ins resolve."""
+        valid, violations = _validate_builtin_loop("code-run-gate", orchestration_request_path=None)
+        assert valid is True
+        assert isinstance(violations, list)
+
+    def test_builtin_loop_paths_keys_match_get_builtin_loop_names(self) -> None:
+        assert set(_builtin_loop_paths().keys()) == _get_builtin_loop_names()
+        assert "code-run-gate" in _builtin_loop_paths()
+
+    # --- collector projects= tests ---
+
+    def test_collect_failure_clusters_projects_param_skips_discovery(self, tmp_path) -> None:
+        home = tmp_path / "home"
+        claude_projects = home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+
+        project_path = self._make_claude_project_dir(
+            claude_projects,
+            home,
+            "p1",
+            [
+                self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                self._user_tool_result_record("t1", "ll-issues: error: sig", is_error=True),
+            ],
+        )
+        (home / "p2").mkdir()
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch(
+                "little_loops.cli.logs.discover_all_projects",
+                side_effect=AssertionError("should not be called"),
+            ),
+        ):
+            args = argparse.Namespace(
+                project=None, window_days=None, since=None, until=None, skill=None, limit=0
+            )
+            clusters = _collect_failure_clusters(args, MagicMock(), projects=[project_path])
+
+        assert len(clusters) == 1
+        assert clusters[0].cwd_path == project_path
+
+    def test_collect_sequences_projects_param_skips_discovery(self, tmp_path) -> None:
+        home = tmp_path / "home"
+        claude_projects = home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+        project_path = self._make_claude_project_dir(
+            claude_projects,
+            home,
+            "p1",
+            [
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "content": "/ll:scan-codebase",
+                    "sessionId": "s1",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                },
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "content": "/ll:refine-issue",
+                    "sessionId": "s1",
+                    "timestamp": "2026-01-01T00:01:00Z",
+                },
+            ],
+        )
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch(
+                "little_loops.cli.logs.discover_all_projects",
+                side_effect=AssertionError("should not be called"),
+            ),
+        ):
+            args = argparse.Namespace(
+                project=None,
+                window_days=None,
+                since=None,
+                until=None,
+                min_len=2,
+                min_count=1,
+                top=None,
+            )
+            results = _collect_sequences(args, MagicMock(), projects=[project_path])
+
+        assert len(results) == 1
+        assert results[0].chain == ["scan-codebase", "refine-issue"]
+
+    # --- baseline / delta ---
+
+    def test_load_prior_baseline_empty_dir_returns_none(self, tmp_path) -> None:
+        assert _load_prior_baseline(tmp_path / "diagnostics", exclude=None) is None
+
+    def test_load_prior_baseline_picks_lexically_newest(self, tmp_path) -> None:
+        d = tmp_path / "diagnostics"
+        d.mkdir()
+        (d / "fleet-review-20260901T100000Z.json").write_text(json.dumps({"generated": "a"}))
+        (d / "fleet-review-20260901T110000Z.json").write_text(json.dumps({"generated": "b"}))
+        result = _load_prior_baseline(d, exclude=None)
+        assert result is not None
+        path, data = result
+        assert path.name == "fleet-review-20260901T110000Z.json"
+        assert data["generated"] == "b"
+
+    def test_load_prior_baseline_excludes_own_path(self, tmp_path) -> None:
+        d = tmp_path / "diagnostics"
+        d.mkdir()
+        (d / "fleet-review-20260901T100000Z.json").write_text(json.dumps({"generated": "a"}))
+        own = d / "fleet-review-20260901T110000Z.json"
+        own.write_text(json.dumps({"generated": "b"}))
+        result = _load_prior_baseline(d, exclude=own)
+        assert result is not None
+        path, _data = result
+        assert path.name == "fleet-review-20260901T100000Z.json"
+
+    def test_write_baseline_shape(self, tmp_path) -> None:
+        agg = self._agg(
+            loop_name="myloop",
+            runs=5,
+            converged=3,
+            success_pct=60,
+            top_outcome="converged",
+            outcomes={"converged": 3, "failed": 2},
+            projects=[Path("/proj")],
+        )
+        path = tmp_path / "diagnostics" / "fleet-review-x.json"
+        _write_baseline(
+            path,
+            [agg],
+            window_days=7,
+            since=None,
+            until=None,
+            projects=[Path("/proj")],
+            excluded=[],
+            shadowed={"other": {"/proj2": 2}},
+        )
+        data = json.loads(path.read_text())
+        assert data["window_days"] == 7
+        assert data["loops"]["myloop"]["runs"] == 5
+        assert data["shadowed"]["other"]["/proj2"] == 2
+        assert data["projects_scanned"] == ["/proj"]
+
+    def test_comparability_warning_window_mismatch(self) -> None:
+        prior = {
+            "window_days": 7,
+            "since": None,
+            "until": None,
+            "excluded_projects": [],
+            "projects_scanned": ["/a"],
+        }
+        current = {**prior, "window_days": 30}
+        warning = _comparability_warning(prior, current)
+        assert warning is not None
+        assert "window_days" in warning
+
+    def test_comparability_warning_population_mismatch(self) -> None:
+        prior = {
+            "window_days": None,
+            "since": None,
+            "until": None,
+            "excluded_projects": [],
+            "projects_scanned": ["/a"],
+        }
+        current = {
+            "window_days": None,
+            "since": None,
+            "until": None,
+            "excluded_projects": ["/a"],
+            "projects_scanned": ["/b"],
+        }
+        warning = _comparability_warning(prior, current)
+        assert warning is not None
+        assert "excluded_projects" in warning
+        assert "projects_scanned" in warning
+
+    def test_comparability_warning_none_when_matching(self) -> None:
+        d = {
+            "window_days": None,
+            "since": None,
+            "until": None,
+            "excluded_projects": [],
+            "projects_scanned": ["/a"],
+        }
+        assert _comparability_warning(d, dict(d)) is None
+
+    def test_no_prior_baseline_message(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        with patch("sys.argv", ["ll-logs", "fleet-review", "--project", str(proj)]):
+            result = main_logs()
+        assert result == 0
+        md_files = list((tmp_path / ".loops" / "diagnostics").glob("*.md"))
+        assert len(md_files) == 1
+        assert "no prior baseline" in md_files[0].read_text()
+
+    def test_delta_vs_baseline_shows_new_dropped_and_positive_delta(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        diagnostics_dir = tmp_path / ".loops" / "diagnostics"
+        diagnostics_dir.mkdir(parents=True)
+        prior = {
+            "generated": "2026-01-01T00:00:00+00:00",
+            "window_days": None,
+            "since": None,
+            "until": None,
+            "projects_scanned": [],
+            "excluded_projects": [],
+            "loops": {
+                "improved-loop": {
+                    "runs": 10,
+                    "converged": 3,
+                    "success_pct": 30,
+                    "top_outcome": "failed",
+                    "outcomes": {"converged": 3, "failed": 7},
+                    "projects": [],
+                    "runs_by_project": {},
+                },
+                "dropped-loop": {
+                    "runs": 5,
+                    "converged": 5,
+                    "success_pct": 100,
+                    "top_outcome": "converged",
+                    "outcomes": {"converged": 5},
+                    "projects": [],
+                    "runs_by_project": {},
+                },
+            },
+            "shadowed": {},
+        }
+        (diagnostics_dir / "fleet-review-20260101T000000Z.json").write_text(json.dumps(prior))
+
+        proj = tmp_path / "proj"
+        for i in range(8):
+            self._make_history_run(
+                proj,
+                f"2026-06-01T{i:06d}-improved-loop",
+                [self._loop_complete(final_state="done", terminated_by="terminal")],
+            )
+        for i in range(2):
+            self._make_history_run(
+                proj,
+                f"2026-06-02T{i:06d}-improved-loop",
+                [self._loop_complete(final_state="failed", terminated_by="terminal")],
+            )
+        self._make_history_run(proj, "2026-06-03T000000-new-loop", [self._loop_complete()])
+
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "fleet-review",
+                    "--project",
+                    str(proj),
+                    "--min-runs",
+                    "3",
+                    "--threshold",
+                    "0",
+                ],
+            ),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["improved-loop", "new-loop", "dropped-loop"]),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        md_files = list(diagnostics_dir.glob("fleet-review-*.md"))
+        assert len(md_files) == 1
+        text = md_files[0].read_text()
+        assert "30% → 80%" in text
+        assert "new" in text
+        assert "dropped out of window" in text
+
+    def test_same_day_second_run_baselines_against_first_not_itself(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import time as _time
+
+        monkeypatch.chdir(tmp_path)
+        proj = tmp_path / "proj"
+        self._make_history_run(
+            proj,
+            "2026-06-01T000000-myloop",
+            [self._loop_complete(final_state="done", terminated_by="terminal")],
+        )
+
+        with (
+            patch("sys.argv", ["ll-logs", "fleet-review", "--project", str(proj)]),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["myloop"]),
+            ),
+        ):
+            assert main_logs() == 0
+
+        _time.sleep(1.1)
+
+        with (
+            patch("sys.argv", ["ll-logs", "fleet-review", "--project", str(proj)]),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["myloop"]),
+            ),
+        ):
+            assert main_logs() == 0
+
+        diagnostics_dir = tmp_path / ".loops" / "diagnostics"
+        md_files = sorted(diagnostics_dir.glob("fleet-review-*.md"))
+        json_files = sorted(diagnostics_dir.glob("fleet-review-*.json"))
+        assert len(md_files) == 2
+        assert len(json_files) == 2
+        second_report = md_files[1].read_text()
+        assert "no prior baseline" not in second_report
+        assert str(json_files[0]) in second_report
+
+    def test_json_run_writes_no_files(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        proj = tmp_path / "proj"
+        self._make_history_run(proj, "2026-01-01T000000-myloop", [self._loop_complete()])
+        with patch("sys.argv", ["ll-logs", "fleet-review", "--project", str(proj), "--json"]):
+            result = main_logs()
+        assert result == 0
+        assert not (tmp_path / ".loops" / "diagnostics").exists()
+
+    # --- zero-run / window ---
+
+    def test_zero_run_window_excludes_recent_only_not_old_run(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        now = datetime.now(UTC)
+        old_ts = (now - timedelta(days=100)).isoformat()
+        proj = tmp_path / "proj"
+        self._make_history_run(proj, "2026-01-01T000000-old-loop", [self._loop_complete(ts=old_ts)])
+
+        with (
+            patch(
+                "sys.argv",
+                ["ll-logs", "fleet-review", "--project", str(proj), "--window-days", "30"],
+            ),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["old-loop"]),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        text = list((tmp_path / ".loops" / "diagnostics").glob("*.md"))[0].read_text()
+        assert "Builtin runs in window: 0" in text
+        zero_run_section = text.split("## Zero-run built-ins")[1].split("## Shadowed built-ins")[0]
+        assert "old-loop" not in zero_run_section
+
+    # --- appendix caps ---
+
+    def _setup_appendix_fixture(self, tmp_path: Path) -> tuple[Path, Path]:
+        home = tmp_path / "home"
+        claude_projects = home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+
+        records: list[dict] = []
+        for i in range(3):
+            tool_id = f"t{i}"
+            records.append(
+                self._assistant_bash_record(
+                    f"ll-tool-{i} run", tool_use_id=tool_id, session_id=f"s{i}"
+                )
+            )
+            records.append(
+                self._user_tool_result_record(
+                    tool_id, f"ll-tool-{i}: error: sig-{i}", is_error=True, session_id=f"s{i}"
+                )
+            )
+        for i in range(3):
+            records.append(
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "content": f"/ll:skill-a-{i}",
+                    "sessionId": f"seq{i}",
+                    "timestamp": f"2026-01-01T00:0{i}:00Z",
+                }
+            )
+            records.append(
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "content": f"/ll:skill-b-{i}",
+                    "sessionId": f"seq{i}",
+                    "timestamp": f"2026-01-01T00:0{i}:05Z",
+                }
+            )
+
+        project_path = self._make_claude_project_dir(claude_projects, home, "proj", records)
+        return project_path, home
+
+    def test_appendix_cap_exact_n_rows(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        project_path, home = self._setup_appendix_fixture(tmp_path)
+
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "fleet-review",
+                    "--project",
+                    str(project_path),
+                    "--appendix-top",
+                    "2",
+                ],
+            ),
+            patch("pathlib.Path.home", return_value=home),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        text = list((tmp_path / ".loops" / "diagnostics").glob("*.md"))[0].read_text()
+        clusters_section = text.split("## Appendix: scan-failures clusters")[1].split(
+            "## Appendix: sequences"
+        )[0]
+        cluster_rows = [ln for ln in clusters_section.splitlines() if ln.startswith("| ll-tool")]
+        assert len(cluster_rows) == 2
+        sequences_section = text.split("## Appendix: sequences")[1].split("## Reviewed, not fixed")[
+            0
+        ]
+        seq_rows = [ln for ln in sequences_section.splitlines() if ln.startswith("| skill-a")]
+        assert len(seq_rows) == 2
+
+    def test_appendix_top_zero_renders_all(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        project_path, home = self._setup_appendix_fixture(tmp_path)
+
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "fleet-review",
+                    "--project",
+                    str(project_path),
+                    "--appendix-top",
+                    "0",
+                ],
+            ),
+            patch("pathlib.Path.home", return_value=home),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        text = list((tmp_path / ".loops" / "diagnostics").glob("*.md"))[0].read_text()
+        clusters_section = text.split("## Appendix: scan-failures clusters")[1].split(
+            "## Appendix: sequences"
+        )[0]
+        cluster_rows = [ln for ln in clusters_section.splitlines() if ln.startswith("| ll-tool")]
+        assert len(cluster_rows) == 3
+        sequences_section = text.split("## Appendix: sequences")[1].split("## Reviewed, not fixed")[
+            0
+        ]
+        seq_rows = [ln for ln in sequences_section.splitlines() if ln.startswith("| skill-a")]
+        assert len(seq_rows) == 3
+
+    def test_no_appendices_skips_collectors_but_writes_sidecar(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        proj = tmp_path / "proj"
+        self._make_history_run(proj, "2026-01-01T000000-myloop", [self._loop_complete()])
+
+        with (
+            patch(
+                "sys.argv", ["ll-logs", "fleet-review", "--project", str(proj), "--no-appendices"]
+            ),
+            patch(
+                "little_loops.cli.logs._collect_failure_clusters",
+                side_effect=AssertionError("should not be called"),
+            ),
+            patch(
+                "little_loops.cli.logs._collect_sequences",
+                side_effect=AssertionError("should not be called"),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        diagnostics_dir = tmp_path / ".loops" / "diagnostics"
+        assert list(diagnostics_dir.glob("*.json"))
+        text = list(diagnostics_dir.glob("*.md"))[0].read_text()
+        assert "Appendix: scan-failures clusters" not in text
+        assert "Appendix: sequences" not in text
+
+    # --- --exclude-project ---
+
+    def test_exclude_project_removes_runs_and_records_in_sidecar(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        proj_a = tmp_path / "proj_a"
+        proj_b = tmp_path / "proj_b"
+        self._make_history_run(proj_a, "2026-01-01T000000-only-in-a", [self._loop_complete()])
+        self._make_history_run(proj_b, "2026-01-01T000000-only-in-b", [self._loop_complete()])
+
+        with (
+            patch(
+                "sys.argv",
+                ["ll-logs", "fleet-review", "--all", "--exclude-project", str(proj_a)],
+            ),
+            patch("little_loops.cli.logs.discover_all_projects", return_value=[proj_a, proj_b]),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["only-in-a", "only-in-b"]),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        json_path = list((tmp_path / ".loops" / "diagnostics").glob("*.json"))[0]
+        data = json.loads(json_path.read_text())
+        assert str(proj_a.resolve()) in data["excluded_projects"]
+        assert "only-in-a" not in data["loops"]
+        assert "only-in-b" in data["loops"]
+        text = list((tmp_path / ".loops" / "diagnostics").glob("*.md"))[0].read_text()
+        zero_run_section = text.split("## Zero-run built-ins")[1].split("## Shadowed built-ins")[0]
+        assert "only-in-a" in zero_run_section
+
+    def test_exclude_project_symlink_resolves(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        proj_a = tmp_path / "proj_a"
+        self._make_history_run(proj_a, "2026-01-01T000000-only-in-a", [self._loop_complete()])
+        link = tmp_path / "proj_a_link"
+        link.symlink_to(proj_a)
+
+        with (
+            patch(
+                "sys.argv",
+                ["ll-logs", "fleet-review", "--all", "--exclude-project", str(link)],
+            ),
+            patch("little_loops.cli.logs.discover_all_projects", return_value=[proj_a]),
+            patch(
+                "little_loops.cli.logs._get_builtin_loop_names",
+                return_value=frozenset(["only-in-a"]),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        json_path = list((tmp_path / ".loops" / "diagnostics").glob("*.json"))[0]
+        data = json.loads(json_path.read_text())
+        assert data["loops"] == {}
+        assert str(proj_a.resolve()) in data["excluded_projects"]

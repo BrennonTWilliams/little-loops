@@ -212,6 +212,15 @@ Every user-facing guide lives in [`docs/guides/`](docs/guides/). Start with [Get
 | [Examples Mining](docs/guides/EXAMPLES_MINING_GUIDE.md) | You want prompts that improve from your own session history |
 | [Workflow Analysis](docs/guides/WORKFLOW_ANALYSIS_GUIDE.md) | You want automation opportunities mined from message history |
 
+## Runbooks
+
+Runbooks document **operational procedures run on a cadence** (with a checklist and a recorded
+baseline) — distinct from the feature-oriented guides above.
+
+| Runbook | Read it when… |
+|---------|---------------|
+| [Fleet Loop Review](docs/runbooks/FLEET_LOOP_REVIEW.md) | You want to use other projects' loop-run history as a test fleet to find and fix failing built-in loops |
+
 ## Documentation router
 
 | You need… | Go to |

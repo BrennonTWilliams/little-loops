@@ -3503,6 +3503,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `diff` | Compare two sessions' ll-invocation behavior: skills added/removed, per-skill count deltas, and unified sequence diff |
 | `eval-export` | Export EvalFixture v1 records reconstructed from session logs for use with `ll-harness` |
 | `loop-fleet` | Aggregate cross-project loop-run outcomes for built-in loop improvement |
+| `fleet-review` | Harvest `loop-fleet`/`scan-failures`/`sequences` in-process, flag underperforming built-in loops, and write a dated report + JSON baseline sidecar (see `docs/runbooks/FLEET_LOOP_REVIEW.md`) |
 
 **`discover` flags:**
 
@@ -3619,7 +3620,31 @@ zero records says so explicitly rather than looking like a no-op.
 | `--existing-only` | | Skip projects that no longer exist on disk (only meaningful with `--all`) |
 | `--sort {success,name}` | | Sort by success rate ascending (worst first) or alphabetically (default: success) |
 | `--limit N` | | Cap `--json` output to N most recent per-run rows (0 = unlimited, default); does not affect the aggregated table |
-| `--json` | `-j` | Output as JSON: one row per run — `[{"loop_name": str, "project": str, "run_folder": str, "final_state": str, "iterations": int, "outcome": str, "ts": str, "attribution": "builtin"\|"custom"}]` |
+| `--json` | `-j` | Output as JSON: one row per run — `[{"loop_name": str, "project": str, "run_folder": str, "final_state": str, "iterations": int, "outcome": str, "ts": str, "attribution": "builtin"\|"custom"\|"shadowed"}]`. `shadowed` means the run executed a project-local `.loops/<name>.yaml`/`.loops/<name>.fsm.yaml` copy that shares the built-in's name — the human-readable table's Type column carries the same three values, one row per `(loop, attribution)` pair (never merged) |
+
+**`fleet-review` flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | | Aggregate across all projects with ll activity |
+| `--project DIR` | | Working directory of the target project |
+| `--window-days D` | | Only consider runs within D days of latest run |
+| `--since DATE` | | Only consider runs on or after DATE (YYYY-MM-DD); mutually exclusive with `--window-days` |
+| `--until DATE` | | Only consider runs on or before DATE (YYYY-MM-DD) |
+| `--existing-only` | | Skip projects that no longer exist on disk (only meaningful with `--all`); avoids stderr spam from stale pytest temp projects |
+| `--exclude-project DIR` | | Exclude a project from the run, evidence, and appendices (repeatable). Compared with both sides resolved, so a symlink still matches. Recorded in the sidecar's `excluded_projects` |
+| `--threshold N` | | A `builtin` loop is flagged when `success_pct < N` (default: `50`) |
+| `--min-runs N` | | A `builtin` loop is only eligible for flagging once it has at least N runs (default: `3`) |
+| `--appendix-top N` | | Cap each of the `scan-failures`/`sequences` appendices to the top N rows by count; `0` = unlimited (default: `20`) |
+| `--no-appendices` | | Skip the `scan-failures`/`sequences` collectors entirely (faster RE-MEASURE-only run); the sidecar and flagged-loop table are unaffected |
+| `--json` | `-j` | Print the sidecar dict to stdout; writes no `.md`/`.json` files and never enters the baseline chain |
+
+`fleet-review` writes `.loops/diagnostics/fleet-review-<stamp>.md` and
+`.loops/diagnostics/fleet-review-<stamp>.json` under `Path.cwd()/.loops/diagnostics/`, where
+`<stamp>` is `YYYYMMDDTHHMMSSZ` (UTC). Each run automatically diffs against the
+lexically-newest prior sidecar in that directory (excluding the one it is about to write); see
+`docs/runbooks/FLEET_LOOP_REVIEW.md` for the full HARVEST → ATTRIBUTE → DIAGNOSE → RE-MEASURE
+cycle this command drives.
 
 **Examples:**
 ```bash
@@ -3651,6 +3676,10 @@ ll-logs scan-failures --project . --skill review-epic --json  # Failures attribu
 ll-logs loop-fleet --all                            # Loop success-rate table, worst-first
 ll-logs loop-fleet --project . --sort name          # Alphabetical instead of success-rate order
 ll-logs loop-fleet --all --json --limit 50          # Most recent 50 per-run JSON rows
+ll-logs fleet-review --all --existing-only --exclude-project .  # Harvest + flag; writes .loops/diagnostics/fleet-review-20260902T214729Z.{md,json}
+ll-logs fleet-review --all --threshold 30 --min-runs 5   # Stricter flagging thresholds
+ll-logs fleet-review --all --no-appendices               # Fast RE-MEASURE run, sidecar only
+ll-logs fleet-review --all --json                        # Print sidecar to stdout; writes nothing
 ll-logs diff SESSION_A SESSION_B                    # Compare behavioral diff between two sessions
 ll-logs diff SESSION_A SESSION_B --json             # Diff output as JSON
 ll-logs eval-export --project .                     # Export all fixtures from current project (YAML)

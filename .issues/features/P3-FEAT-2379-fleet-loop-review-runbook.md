@@ -5,6 +5,7 @@ title: "Fleet loop-review runbook + `ll-logs fleet-review` \u2014 continuous imp
   \ of built-in loops from cross-project logs"
 priority: P3
 captured_at: '2026-06-28T20:54:00Z'
+completed_at: '2026-09-03T04:42:14Z'
 discovered_date: 2026-06-28
 discovered_by: user-report
 parent: EPIC-1918
@@ -22,7 +23,7 @@ decision_needed: false
 confidence_score: 90
 verify_verdict: VALID
 outcome_confidence: 89
-status: in_progress
+status: done
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
@@ -540,9 +541,64 @@ of a self-graded claim.
   built-in loop) already goes through normal review.
 - **Breaking Change**: No.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-03
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/logs.py`: extracted `_aggregate_fleet_runs()` (from `_cmd_loop_fleet`'s
+  table branch, grouped by `(loop_name, attribution)`, deterministic `top_outcome` tie-break),
+  `_collect_failure_clusters()`/`_collect_sequences()` (from `_cmd_scan_failures`/`_cmd_sequences`,
+  both accepting `projects=`); added `_in_window()`, `_FLAG_OUTCOMES`/`_flag_loops()`,
+  `_validate_builtin_loop()` (wraps `load_and_validate()` via `_builtin_loop_paths()`, resolving
+  nested `oracles/*` built-ins), shadowed-attribution in `_collect_loop_runs()` at both the flat
+  and legacy-nested sites, `_build_fleet_sidecar`/`_load_prior_baseline`/`_write_baseline`,
+  `_md_table`/`_comparability_warning`/`_render_fleet_review_report`, and `_cmd_fleet_review()`
+  wired as the new `ll-logs fleet-review` subcommand (`--exclude-project`, `--threshold`,
+  `--min-runs`, `--appendix-top`, `--no-appendices`, `--existing-only`, `--json`).
+- `docs/runbooks/FLEET_LOOP_REVIEW.md`: new runbook (first in `docs/runbooks/`) with the
+  Purpose · Cadence · Phases · Baseline/Re-measure contract · In-scope rule header.
+- `docs/reference/CLI.md`, `README.md`, `scripts/README.md`, `CONTRIBUTING.md`, `mkdocs.yml`:
+  wiring per the Wiring Phase (subcommand row/flags/examples, runbooks index entry, docs-tree
+  entry, nav entry).
+- `scripts/tests/test_ll_logs.py`, `scripts/tests/test_cli.py`,
+  `scripts/tests/test_wiring_skills_and_commands.py`: full coverage per the Acceptance Criteria
+  (flagging-rule table tests, shadowed-attribution fixtures, collector `projects=` isolation,
+  baseline/delta rendering, appendix caps, `--exclude-project`, doc-wiring assertions).
+
+### Verification Results
+- Tests: PASS (22621 passed, 42 skipped, full `scripts/tests/` suite)
+- Lint: PASS (`ruff check` on all touched files)
+- Types: PASS (`mypy scripts/little_loops/cli/logs.py`)
+- Live run: `ll-logs fleet-review --all --existing-only --exclude-project .` executed from this
+  repo on 2026-09-03, wrote
+  `.loops/diagnostics/fleet-review-20260903T044101Z.md` (+ `.json` sidecar), flagging
+  `sprint-build-and-validate` (10 runs, 20% success) with validation output and
+  per-project `diagnose-evaluators` commands, as the runbook's first real cycle.
+
+### Acceptance Criteria Met
+- [x] `ll-logs fleet-review --all` runs end-to-end and writes the stamped report + sidecar;
+  `--json` writes no files.
+- [x] `_aggregate_fleet_runs`/`_collect_failure_clusters`/`_collect_sequences` extracted;
+  existing `loop-fleet`/`scan-failures`/`sequences` tests pass unchanged; deterministic
+  tie-break; mixed-attribution aggregates.
+- [x] `_flag_loops()` pure function with table-driven boundary tests.
+- [x] Validation via `load_and_validate()` directly; nested `oracles/*` built-ins resolve.
+- [x] Shadowed attribution at both history layouts, never flagged, listed separately.
+- [x] Collectors accept `projects=`; exclusion proven absent from appendices.
+- [x] Baseline/delta tests (new/dropped/comparability warnings/same-day non-self-baseline).
+- [x] Appendix caps and `--no-appendices` behavior tested.
+- [x] Zero-run derived unwindowed; `--exclude-project` removes a project from all evidence.
+- [x] Absolute project paths throughout.
+- [x] Runbook exists with required header and content.
+- [x] CLI.md/README/CONTRIBUTING/mkdocs.yml/wiring test updated.
+- [x] One real first-cycle run performed and recorded above.
+
 ## Status
 
-**In Progress** | Created: 2026-06-28 | Priority: P3
+**Completed** | Created: 2026-06-28 | Priority: P3
 
 ## Dependencies
 
@@ -564,6 +620,7 @@ path is recorded, not built.
 - `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-03T04:41:16 - `8b0e3f18-fa55-4064-ae29-d590a00f6e40.jsonl`
 - `/ll:confidence-check` - 2026-09-03T03:54:36 - `7842a080-b0fe-422b-a8bd-a0e7be14b133.jsonl`
 - pre-implementation review #5 - 2026-09-02 - Verified against code and a timed live-fleet run: (1) appendices at parser defaults are unbounded — 106,925 sequence chains / 790 clusters on this machine — so added `--appendix-top N` (default 20) and `--no-appendices` (Decisions #3; collectors cost ~30s + ~12s per run); (2) baseline comparability warning now covers `excluded_projects`/`projects_scanned`, not just the window (Decisions #4); (3) `_validate_builtin_loop`'s `orchestration_request_path` is `str | None`, matching `load_and_validate` and `OrchestrationConfig.request_path: str`; (4) this repo's own tracked `.loops/rl-rlhf.yaml` is a sixth shadow site (Decisions #10); (5) `main_logs()` dispatch branch and `--existing-only` in the runbook's HARVEST command listed explicitly; (6) Status body aligned with frontmatter. Dry run of the flagging rule at defaults flags `outer-loop-eval` (4 runs, 25%), `rl-rlhf` (3, 33%, shadowed), `sprint-build-and-validate` (10, 20%) — the rule yields signal, not noise.
 - pre-implementation review #4 - 2026-09-02 - Verified against code: (1) `_aggregate_fleet_runs` must group by `(loop_name, attribution)` — the table branch's `runs[0].attribution` (`logs.py:2209`) would merge `builtin` and `shadowed` runs of one loop into a single mislabeled row; (2) shadow check applies at both attribution sites in `_collect_loop_runs` (`:2091`, `:2127`) and must also honor `.loops/<name>.fsm.yaml` since `resolve_loop_path` prefers it (`fsm/loop_paths.py:41-48`); (3) `orchestration_request_path` resolved once in `_cmd_fleet_review`, passed into `_validate_builtin_loop`; (4) `--exclude-project` resolves both sides (`/private/tmp` vs `/tmp`); (5) corrected the "outcome clause is redundant at 50" note — banker's rounding makes 99/200 read as 50%. Added matching tests/AC wording. Confirmed no overlap with in-flight ENH-2775/ENH-2776 (they touch `logs.py:20`/`:1885` only).
