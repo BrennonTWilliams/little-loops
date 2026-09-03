@@ -191,13 +191,13 @@ class TestQueueFifoOrdering:
 
     def test_is_earliest_when_queue_dir_missing(self, tmp_path: Path) -> None:
         """Returns True when queue directory does not exist."""
-        from little_loops.cli.loop._helpers import _is_earliest_waiter
+        from little_loops.cli.loop.queue import _is_earliest_waiter
 
         assert _is_earliest_waiter("any-id", tmp_path / ".queue")
 
     def test_is_earliest_when_queue_is_empty(self, tmp_path: Path) -> None:
         """Returns True when queue directory exists but contains no entries."""
-        from little_loops.cli.loop._helpers import _is_earliest_waiter
+        from little_loops.cli.loop.queue import _is_earliest_waiter
 
         queue_dir = tmp_path / ".queue"
         queue_dir.mkdir()
@@ -208,7 +208,7 @@ class TestQueueFifoOrdering:
         import json
         import uuid
 
-        from little_loops.cli.loop._helpers import _is_earliest_waiter
+        from little_loops.cli.loop.queue import _is_earliest_waiter
 
         queue_dir = tmp_path / ".queue"
         queue_dir.mkdir()
@@ -230,7 +230,7 @@ class TestQueueFifoOrdering:
         import json
         import uuid
 
-        from little_loops.cli.loop._helpers import _is_earliest_waiter
+        from little_loops.cli.loop.queue import _is_earliest_waiter
 
         queue_dir = tmp_path / ".queue"
         queue_dir.mkdir()
@@ -269,7 +269,7 @@ class TestQueueFifoOrdering:
         import json
         import uuid
 
-        from little_loops.cli.loop._helpers import _is_earliest_waiter
+        from little_loops.cli.loop.queue import _is_earliest_waiter
 
         queue_dir = tmp_path / ".queue"
         queue_dir.mkdir()
@@ -288,13 +288,13 @@ class TestReadQueueEntries:
 
     def test_missing_dir_returns_empty(self, tmp_path: Path) -> None:
         """Returns [] when the queue directory does not exist."""
-        from little_loops.cli.loop._helpers import read_queue_entries
+        from little_loops.cli.loop.queue import read_queue_entries
 
         assert read_queue_entries(tmp_path / ".queue") == []
 
     def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
         """Returns [] when the queue directory exists but is empty."""
-        from little_loops.cli.loop._helpers import read_queue_entries
+        from little_loops.cli.loop.queue import read_queue_entries
 
         queue_dir = tmp_path / ".queue"
         queue_dir.mkdir()
@@ -305,7 +305,7 @@ class TestReadQueueEntries:
         import json
         import uuid
 
-        from little_loops.cli.loop._helpers import read_queue_entries
+        from little_loops.cli.loop.queue import read_queue_entries
 
         queue_dir = tmp_path / ".queue"
         queue_dir.mkdir()
@@ -327,7 +327,7 @@ class TestReadQueueEntries:
         import json
         import uuid
 
-        from little_loops.cli.loop._helpers import read_queue_entries
+        from little_loops.cli.loop.queue import read_queue_entries
 
         queue_dir = tmp_path / ".queue"
         queue_dir.mkdir()
@@ -363,7 +363,7 @@ class TestReadQueueEntries:
         import json
         import uuid
 
-        from little_loops.cli.loop._helpers import read_queue_entries
+        from little_loops.cli.loop.queue import read_queue_entries
 
         queue_dir = tmp_path / ".queue"
         queue_dir.mkdir()

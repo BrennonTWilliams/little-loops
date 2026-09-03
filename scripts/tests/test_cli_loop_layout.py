@@ -239,7 +239,7 @@ class TestWithDiagramColor:
 
     def test_flips_to_true_when_enabled(self, monkeypatch):
         from little_loops.cli import output as _output
-        from little_loops.cli.loop._helpers import with_diagram_color
+        from little_loops.cli.loop.feed import with_diagram_color
 
         monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
         with with_diagram_color(True):
@@ -248,7 +248,7 @@ class TestWithDiagramColor:
 
     def test_no_op_when_disabled(self, monkeypatch):
         from little_loops.cli import output as _output
-        from little_loops.cli.loop._helpers import with_diagram_color
+        from little_loops.cli.loop.feed import with_diagram_color
 
         monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
         with with_diagram_color(False):
@@ -256,7 +256,7 @@ class TestWithDiagramColor:
 
     def test_no_color_env_overrides(self, monkeypatch):
         from little_loops.cli import output as _output
-        from little_loops.cli.loop._helpers import with_diagram_color
+        from little_loops.cli.loop.feed import with_diagram_color
 
         monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
         monkeypatch.setenv("NO_COLOR", "1")
@@ -268,7 +268,7 @@ class TestWithDiagramColor:
 
     def test_restores_previous_value_even_on_exception(self, monkeypatch):
         from little_loops.cli import output as _output
-        from little_loops.cli.loop._helpers import with_diagram_color
+        from little_loops.cli.loop.feed import with_diagram_color
 
         monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
         try:
@@ -888,37 +888,37 @@ class TestCountDisplayLines:
 
     def test_empty_string(self) -> None:
         """Empty string has zero lines."""
-        from little_loops.cli.loop._helpers import _count_display_lines
+        from little_loops.cli.loop.feed import _count_display_lines
 
         assert _count_display_lines("") == 0
 
     def test_single_line_no_trailing_newline(self) -> None:
         """Single line without trailing newline counts as 1."""
-        from little_loops.cli.loop._helpers import _count_display_lines
+        from little_loops.cli.loop.feed import _count_display_lines
 
         assert _count_display_lines("hello") == 1
 
     def test_single_line_with_trailing_newline(self) -> None:
         """Trailing newline is not counted as an extra row."""
-        from little_loops.cli.loop._helpers import _count_display_lines
+        from little_loops.cli.loop.feed import _count_display_lines
 
         assert _count_display_lines("hello\n") == 1
 
     def test_multiline(self) -> None:
         """Multiple newlines produce correct count."""
-        from little_loops.cli.loop._helpers import _count_display_lines
+        from little_loops.cli.loop.feed import _count_display_lines
 
         assert _count_display_lines("line1\nline2\nline3") == 3
 
     def test_multiline_with_trailing_newline(self) -> None:
         """Multiple lines with trailing newline — trailing not counted."""
-        from little_loops.cli.loop._helpers import _count_display_lines
+        from little_loops.cli.loop.feed import _count_display_lines
 
         assert _count_display_lines("line1\nline2\nline3\n") == 3
 
     def test_only_newlines(self) -> None:
         """String of only newlines counts each line."""
-        from little_loops.cli.loop._helpers import _count_display_lines
+        from little_loops.cli.loop.feed import _count_display_lines
 
         assert _count_display_lines("\n\n") == 2  # trailing \n not counted as extra
         assert _count_display_lines("\n") == 1
@@ -934,7 +934,7 @@ class TestRenderSingleLineStatus:
 
     def test_valid_active_state(self) -> None:
         """Active state with preds and succs renders correctly."""
-        from little_loops.cli.loop._helpers import _render_single_line_status
+        from little_loops.cli.loop.feed import _render_single_line_status
 
         fsm = make_test_fsm(
             states={
@@ -950,7 +950,7 @@ class TestRenderSingleLineStatus:
 
     def test_none_active_state(self) -> None:
         """None active state shows '?' placeholder."""
-        from little_loops.cli.loop._helpers import _render_single_line_status
+        from little_loops.cli.loop.feed import _render_single_line_status
 
         fsm = make_test_fsm()
         result = _render_single_line_status(fsm, None)
@@ -959,7 +959,7 @@ class TestRenderSingleLineStatus:
 
     def test_unknown_active_state(self) -> None:
         """Active state not in FSM states shows the name but with '·' preds/succs."""
-        from little_loops.cli.loop._helpers import _render_single_line_status
+        from little_loops.cli.loop.feed import _render_single_line_status
 
         fsm = make_test_fsm()
         result = _render_single_line_status(fsm, "nonexistent")
@@ -969,7 +969,7 @@ class TestRenderSingleLineStatus:
 
     def test_no_preds_or_succs(self) -> None:
         """State with no predecessors or successors shows '·'."""
-        from little_loops.cli.loop._helpers import _render_single_line_status
+        from little_loops.cli.loop.feed import _render_single_line_status
 
         fsm = make_test_fsm(
             states={
@@ -982,7 +982,7 @@ class TestRenderSingleLineStatus:
 
     def test_format_matches_expected_pattern(self) -> None:
         """Output matches 'fsm: <preds> → [<active>] → <succs>' pattern."""
-        from little_loops.cli.loop._helpers import _render_single_line_status
+        from little_loops.cli.loop.feed import _render_single_line_status
 
         fsm = make_test_fsm()
         result = _render_single_line_status(fsm, "start")

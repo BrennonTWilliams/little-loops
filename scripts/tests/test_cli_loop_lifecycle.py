@@ -902,11 +902,11 @@ class TestCmdResume:
 
     def test_resume_signal_handler_triggers_graceful_shutdown(self, tmp_path: Path) -> None:
         """Ctrl-C during resume calls request_shutdown() instead of raising KeyboardInterrupt."""
-        from little_loops.cli.loop._helpers import _loop_signal_handler
+        from little_loops.cli.loop.signals import _loop_signal_handler
 
         mock_executor = MagicMock()
 
-        import little_loops.cli.loop._helpers as _h
+        import little_loops.cli.loop.signals as _h
 
         _h._loop_shutdown_requested = False
         _h._loop_executor = mock_executor
@@ -3078,7 +3078,7 @@ class TestCmdMonitor:
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
             patch(
-                "little_loops.cli.loop._helpers.StateFeedRenderer",
+                "little_loops.cli.loop.feed.StateFeedRenderer",
                 return_value=mock_renderer,
             ),
             patch("little_loops.cli.loop.lifecycle.time.sleep", side_effect=fake_sleep),
@@ -3114,7 +3114,7 @@ class TestCmdMonitor:
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
             patch(
-                "little_loops.cli.loop._helpers.StateFeedRenderer",
+                "little_loops.cli.loop.feed.StateFeedRenderer",
                 return_value=mock_renderer,
             ),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
@@ -3142,7 +3142,7 @@ class TestCmdMonitor:
             ),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
-            patch("little_loops.cli.loop._helpers.StateFeedRenderer"),
+            patch("little_loops.cli.loop.feed.StateFeedRenderer"),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_monitor(args, tmp_path)

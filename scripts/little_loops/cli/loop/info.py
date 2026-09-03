@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 
 # Drop redundant filesystem prefixes from loop-name display. These mirror the
 # directory layout (tmp/=examples, generated/=per-host scaffolds,
@@ -18,8 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from little_loops.cli.loop._helpers import with_diagram_color
 from little_loops.cli.loop.diagram_modes import resolve_facets
+from little_loops.cli.loop.feed import _format_history_event, with_diagram_color
 from little_loops.cli.loop.layout import (  # noqa: F401
     _EDGE_LABEL_COLORS,
     _box_inner_lines,
@@ -753,9 +752,6 @@ def _shared_desc_prefix(descs: list[str], min_share: int = 3, min_len: int = 16)
     return best
 
 
-_EVENT_TYPE_WIDTH = 16  # width of "handoff_detected"
-
-
 def _truncate(text: str, max_len: int) -> str:
     """Display-width-aware truncation (delegates to layout._truncate_to_width).
 
@@ -853,158 +849,6 @@ def _detect_subgroups(group: list[dict[str, Any]]) -> list[tuple[str, list[dict[
         flat.sort(key=lambda lp: lp["name"])
         subgroups.append(("", flat))
     return subgroups
-
-
-def _format_history_event(
-    event: dict[str, Any], verbose: bool, width: int, full: bool = False
-) -> str | None:
-    """Format a single history event. Returns None to skip the event."""
-    raw_ts = event.get("ts", "")
-    try:
-        ts = datetime.fromisoformat(raw_ts).strftime("%H:%M:%S")
-    except (ValueError, TypeError):
-        ts = raw_ts[:8] if len(raw_ts) >= 8 else raw_ts.ljust(8)
-
-    event_type = event.get("event", "unknown")
-
-    if event_type == "action_output" and not verbose:
-        return None
-
-    ts_str = colorize(ts, "90")
-    etype_padded = event_type.ljust(_EVENT_TYPE_WIDTH)
-    etype_color = "0"
-    detail = ""
-    extra_lines: list[str] = []
-
-    # Indentation prefix for verbose sub-lines (aligns under event detail column)
-    _indent = " " * (8 + 2 + _EVENT_TYPE_WIDTH + 2)
-
-    if event_type == "loop_start":
-        etype_color = "1"
-        detail = event.get("loop", "")
-
-    elif event_type == "loop_complete":
-        etype_color = "1"
-        final_state = event.get("final_state", "")
-        iterations = event.get("iterations", "")
-        terminated_by = event.get("terminated_by", "")
-        detail = f"{final_state}  {iterations} iter  [{terminated_by}]"
-        if error := event.get("error"):
-            detail += f"  {colorize(error, '31')}"
-
-    elif event_type == "loop_resume":
-        etype_color = "1"
-        from_state = event.get("from_state", "")
-        iteration = event.get("iteration", "")
-        detail = f"from={from_state}  iter={iteration}"
-
-    elif event_type == "state_enter":
-        etype_color = "34"
-        state = event.get("state", "")
-        iteration = event.get("iteration", "")
-        detail = f"{colorize(state, '1')}  (iter {iteration})"
-
-    elif event_type == "action_start":
-        action = event.get("action", "")
-        is_prompt = event.get("is_prompt", False)
-        kind_label = "prompt" if is_prompt else "shell"
-        kind_str = colorize(f"[{kind_label}]", "90")
-        first_line = (
-            next((ln.strip() for ln in action.splitlines() if ln.strip()), "")
-            if is_prompt
-            else action
-        )
-        avail = width - 8 - 2 - _EVENT_TYPE_WIDTH - 2 - len(kind_label) - 2 - 2
-        detail = f"{_truncate(first_line, max(avail, 20))}  {kind_str}"
-
-    elif event_type == "action_output":
-        # Only reached in verbose mode
-        etype_color = "90"
-        detail = colorize("\u2502 " + event.get("line", ""), "90")
-
-    elif event_type == "action_complete":
-        exit_code = event.get("exit_code", 0)
-        duration_ms = event.get("duration_ms", 0)
-        if exit_code == 0:
-            etype_color = "90"
-            status_str = colorize("\u2713", "32")
-        else:
-            etype_color = "38;5;208"
-            status_str = colorize(f"\u2717 exit={exit_code}", "38;5;208")
-        detail = f"{status_str}  {duration_ms}ms"
-        is_prompt = event.get("is_prompt", False)
-        session_jsonl = event.get("session_jsonl") if is_prompt else None
-        if session_jsonl:
-            session_display = session_jsonl if verbose else os.path.basename(session_jsonl)
-            detail += f"  session={colorize(session_display, '2')}"
-        if verbose:
-            output_preview = event.get("output_preview", "")
-            if output_preview:
-                avail_w = width - len(_indent) - 2
-                preview_text = (
-                    output_preview if full else _truncate(output_preview, max(avail_w, 40))
-                )
-                for preview_line in preview_text.splitlines()[:5]:
-                    extra_lines.append(colorize(_indent + "\u2502 " + preview_line, "90"))
-
-    elif event_type == "evaluate":
-        verdict = event.get("verdict", "")
-        confidence = event.get("confidence", "")
-        reason = event.get("reason", "")
-        if verdict == "yes":
-            etype_color = "32"
-            verdict_str = colorize("\u2713 yes", "32")
-        else:
-            etype_color = "38;5;208"
-            verdict_str = colorize(f"\u2717 {verdict}", "38;5;208")
-        conf_part = f"  confidence={confidence}" if confidence != "" else ""
-        avail = width - 8 - 2 - _EVENT_TYPE_WIDTH - 2 - len("\u2713 yes") - len(conf_part) - 2
-        reason_part = f"  {_truncate(reason, max(avail, 20))}" if reason else ""
-        detail = f"{verdict_str}{conf_part}{reason_part}"
-        if verbose:
-            llm_model = event.get("llm_model", "")
-            llm_latency_ms = event.get("llm_latency_ms", "")
-            llm_prompt = event.get("llm_prompt", "")
-            llm_raw_output = event.get("llm_raw_output", "")
-            if llm_model or llm_prompt:
-                meta_parts = []
-                if llm_model:
-                    meta_parts.append(f"model={llm_model}")
-                if llm_latency_ms != "":
-                    meta_parts.append(f"latency={llm_latency_ms}ms")
-                meta_str = "  ".join(meta_parts)
-                extra_lines.append(
-                    colorize(_indent + colorize("LLM Call", "90") + "  " + meta_str, "90")
-                )
-                avail_w = width - len(_indent) - len("Prompt:   ") - 2
-                if llm_prompt:
-                    prompt_text = llm_prompt if full else _truncate(llm_prompt, max(avail_w, 40))
-                    extra_lines.append(colorize(_indent + "Prompt:   " + prompt_text, "90"))
-                if llm_raw_output:
-                    resp_text = (
-                        llm_raw_output if full else _truncate(llm_raw_output, max(avail_w, 40))
-                    )
-                    extra_lines.append(colorize(_indent + "Response: " + resp_text, "90"))
-
-    elif event_type == "route":
-        etype_color = "90"
-        from_state = event.get("from", "")
-        to_state = event.get("to", "")
-        detail = f"{from_state} \u2192 {colorize(to_state, '34')}"
-
-    elif event_type == "handoff_detected":
-        etype_color = "33"
-        detail = f"state={event.get('state', '')}  iter={event.get('iteration', '')}"
-
-    else:
-        details = {k: v for k, v in event.items() if k not in ("event", "ts")}
-        detail = "  ".join(f"{k}={v}" for k, v in details.items())
-
-    etype_str = colorize(etype_padded, etype_color)
-    main_line = f"{ts_str}  {etype_str}  {detail}"
-    if extra_lines:
-        return "\n".join([main_line] + extra_lines)
-    return main_line
 
 
 def _format_duration(ms: int) -> str:

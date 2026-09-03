@@ -12,10 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from little_loops.cli.loop._helpers import (
-    register_loop_signal_handlers,
-    run_background,
-)
+from little_loops.cli.loop._helpers import run_background
+from little_loops.cli.loop.signals import register_loop_signal_handlers
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.fsm.context_seed import inject_design_context, seed_confidence_thresholds
 from little_loops.fsm.loop_paths import load_loop, resolve_loop_path
@@ -827,13 +825,10 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         loop_path = None
 
     # Late import: tests patch StateFeedRenderer at its module-of-origin
-    # (little_loops.cli.loop._helpers.StateFeedRenderer); using a function-local
+    # (little_loops.cli.loop.feed.StateFeedRenderer); using a function-local
     # import ensures the patch takes effect at call time.
-    from little_loops.cli.loop._helpers import (
-        StateFeedRenderer,
-        _install_sigwinch_handler,
-        _restore_sigwinch_handler,
-    )
+    from little_loops.cli.loop.feed import StateFeedRenderer
+    from little_loops.cli.loop.signals import _install_sigwinch_handler, _restore_sigwinch_handler
     from little_loops.config import BRConfig
 
     _config = BRConfig(Path.cwd())

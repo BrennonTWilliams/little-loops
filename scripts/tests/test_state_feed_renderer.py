@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from little_loops.cli.loop._helpers import StateFeedRenderer
+from little_loops.cli.loop.feed import StateFeedRenderer
 from little_loops.fsm.schema import FSMLoop, StateConfig
 
 
@@ -371,7 +371,7 @@ class TestArtifactLines:
 
     def test_extracts_path_like_context_values(self) -> None:
         """_artifact_lines extracts context values that look like filesystem paths."""
-        from little_loops.cli.loop._helpers import _artifact_lines
+        from little_loops.cli.loop.header import _artifact_lines
 
         fsm = FSMLoop(
             name="test-loop",
@@ -399,7 +399,7 @@ class TestArtifactLines:
 
     def test_no_loop_path_omits_loop_entry(self) -> None:
         """_artifact_lines with loop_path=None excludes the 'loop' key."""
-        from little_loops.cli.loop._helpers import _artifact_lines
+        from little_loops.cli.loop.header import _artifact_lines
 
         fsm = _make_test_fsm()
         result = _artifact_lines(fsm, None)
@@ -408,7 +408,7 @@ class TestArtifactLines:
 
     def test_no_context_returns_only_loop_path(self) -> None:
         """_artifact_lines with empty context returns only the loop path entry."""
-        from little_loops.cli.loop._helpers import _artifact_lines
+        from little_loops.cli.loop.header import _artifact_lines
 
         fsm = _make_test_fsm()
         loop_path = Path("loops/test.yaml")
@@ -417,7 +417,7 @@ class TestArtifactLines:
 
     def test_root_paths_are_extracted(self) -> None:
         """_artifact_lines extracts absolute and home-dir paths."""
-        from little_loops.cli.loop._helpers import _artifact_lines
+        from little_loops.cli.loop.header import _artifact_lines
 
         fsm = FSMLoop(
             name="test-loop",
@@ -436,10 +436,8 @@ class TestArtifactLines:
 
     def test_builtin_loop_shows_filename_only(self) -> None:
         """A built-in FSM loop path is displayed by filename only."""
-        from little_loops.cli.loop._helpers import (
-            _artifact_lines,
-            get_builtin_loops_dir,
-        )
+        from little_loops.cli.loop.header import _artifact_lines
+        from little_loops.fsm.loop_paths import get_builtin_loops_dir
 
         fsm = _make_test_fsm()
         loop_path = get_builtin_loops_dir() / "general-task.yaml"
@@ -450,7 +448,7 @@ class TestArtifactLines:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A project-level loop under cwd is displayed relative to cwd."""
-        from little_loops.cli.loop._helpers import _artifact_lines
+        from little_loops.cli.loop.header import _artifact_lines
 
         monkeypatch.chdir(tmp_path)
         loops_dir = tmp_path / ".loops"
@@ -466,7 +464,7 @@ class TestArtifactLines:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An absolute context path under cwd is shown relative, keeping trailing slash."""
-        from little_loops.cli.loop._helpers import _artifact_lines
+        from little_loops.cli.loop.header import _artifact_lines
 
         monkeypatch.chdir(tmp_path)
         run_dir = str(tmp_path / ".loops" / "runs" / "general-task-20260709T182714") + "/"
@@ -486,7 +484,7 @@ class TestArtifactLines:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An absolute context path outside cwd is left unchanged."""
-        from little_loops.cli.loop._helpers import _artifact_lines
+        from little_loops.cli.loop.header import _artifact_lines
 
         monkeypatch.chdir(tmp_path)
         fsm = FSMLoop(
@@ -505,27 +503,27 @@ class TestResolveInputValue:
     """Tests for _resolve_input_value (ENH-2596)."""
 
     def test_returns_value_from_input_key(self) -> None:
-        from little_loops.cli.loop._helpers import _resolve_input_value
+        from little_loops.cli.loop.header import _resolve_input_value
 
         fsm = _make_test_fsm()
         fsm.context["input"] = "some task string"
         assert _resolve_input_value(fsm, show_input=True) == "some task string"
 
     def test_returns_none_when_show_input_false(self) -> None:
-        from little_loops.cli.loop._helpers import _resolve_input_value
+        from little_loops.cli.loop.header import _resolve_input_value
 
         fsm = _make_test_fsm()
         fsm.context["input"] = "some task string"
         assert _resolve_input_value(fsm, show_input=False) is None
 
     def test_returns_none_when_absent(self) -> None:
-        from little_loops.cli.loop._helpers import _resolve_input_value
+        from little_loops.cli.loop.header import _resolve_input_value
 
         fsm = _make_test_fsm()
         assert _resolve_input_value(fsm, show_input=True) is None
 
     def test_returns_none_when_empty_string(self) -> None:
-        from little_loops.cli.loop._helpers import _resolve_input_value
+        from little_loops.cli.loop.header import _resolve_input_value
 
         fsm = _make_test_fsm()
         fsm.context["input"] = ""
@@ -533,14 +531,14 @@ class TestResolveInputValue:
 
     def test_returns_none_for_dict_spread_case(self) -> None:
         """When --input's dict keys matched existing context, no scalar was stored."""
-        from little_loops.cli.loop._helpers import _resolve_input_value
+        from little_loops.cli.loop.header import _resolve_input_value
 
         fsm = _make_test_fsm()
         fsm.context["foo"] = "bar"
         assert _resolve_input_value(fsm, show_input=True) is None
 
     def test_custom_input_key(self) -> None:
-        from little_loops.cli.loop._helpers import _resolve_input_value
+        from little_loops.cli.loop.header import _resolve_input_value
 
         fsm = _make_test_fsm()
         fsm.input_key = "task"
@@ -552,7 +550,7 @@ class TestRenderArtifactHeaderLines:
     """Tests for _render_artifact_header_lines (ENH-2596)."""
 
     def test_input_packed_onto_loop_line(self) -> None:
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
 
         fsm = _make_test_fsm()
         loop_path = Path("loops/test.yaml")
@@ -563,7 +561,7 @@ class TestRenderArtifactHeaderLines:
         assert "hello world" in lines[0]
 
     def test_no_input_segment_when_absent(self) -> None:
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
 
         fsm = _make_test_fsm()
         loop_path = Path("loops/test.yaml")
@@ -572,7 +570,7 @@ class TestRenderArtifactHeaderLines:
         assert "input:" not in lines[0]
 
     def test_model_packed_onto_run_dir_line(self) -> None:
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
 
         fsm = FSMLoop(
             name="test-loop",
@@ -589,14 +587,14 @@ class TestRenderArtifactHeaderLines:
 
     def test_model_standalone_line_when_no_run_dir(self) -> None:
         """No run_dir context value → model: falls back to its own line."""
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
 
         fsm = _make_test_fsm()
         lines = _render_artifact_header_lines(fsm, None, "claude-opus-4-8", None, 200)
         assert any(ln.strip().startswith("model:") for ln in lines)
 
     def test_long_input_truncated_to_width(self) -> None:
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
         from little_loops.cli.output import strip_ansi
 
         fsm = _make_test_fsm()
@@ -608,7 +606,7 @@ class TestRenderArtifactHeaderLines:
         assert visible.endswith("…")
 
     def test_both_input_and_model_packed(self) -> None:
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
 
         fsm = FSMLoop(
             name="test-loop",
@@ -626,7 +624,7 @@ class TestRenderArtifactHeaderLines:
 
     def test_all_four_merge_onto_one_line_when_width_allows(self) -> None:
         """loop/input/run_dir/model all fit on one line at a wide enough width."""
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
         from little_loops.cli.output import strip_ansi
 
         fsm = FSMLoop(
@@ -655,7 +653,7 @@ class TestRenderArtifactHeaderLines:
         self,
     ) -> None:
         """When both pairs don't fit on one line, each stays whole (no truncation) on its own line."""
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
         from little_loops.cli.output import strip_ansi
 
         fsm = FSMLoop(
@@ -677,7 +675,7 @@ class TestRenderArtifactHeaderLines:
 
     def test_effort_appended_as_code_to_model_value(self) -> None:
         """ENH-2869: effort is appended to model as ' <CODE>' — no separate label."""
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
 
         fsm = _make_test_fsm()
         lines = _render_artifact_header_lines(fsm, None, "claude-opus-4-8", None, 200, effort="low")
@@ -687,7 +685,7 @@ class TestRenderArtifactHeaderLines:
 
     def test_no_effort_suffix_when_effort_is_none(self) -> None:
         """When effort is None, the model: value is unchanged (bare)."""
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
 
         fsm = _make_test_fsm()
         lines = _render_artifact_header_lines(fsm, None, "claude-opus-4-8", None, 200)
@@ -697,7 +695,7 @@ class TestRenderArtifactHeaderLines:
 
     def test_effort_suffix_on_run_dir_packed_model_line(self) -> None:
         """The effort-code suffix also applies when model is packed onto run_dir:."""
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
 
         fsm = FSMLoop(
             name="test-loop",
@@ -714,7 +712,7 @@ class TestRenderArtifactHeaderLines:
 
     def test_both_pairs_truncated_independently_when_neither_fits_alone(self) -> None:
         """Very narrow width still truncates each row independently, same as before."""
-        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.loop.header import _render_artifact_header_lines
         from little_loops.cli.output import strip_ansi
 
         fsm = FSMLoop(

@@ -16,9 +16,53 @@ from pathlib import Path
 
 import psutil
 
-from little_loops.cli.loop._helpers import read_queue_entries
 from little_loops.cli.output import colorize, print_json
 from little_loops.fsm.concurrency import _process_alive
+
+
+def read_queue_entries(queue_dir: Path) -> list[dict]:
+    """Return the live, sorted queue entries in queue_dir, pruning dead ones.
+
+    Reads every ``*.json`` entry, drops (and unlinks) any whose ``context.pid``
+    references a process that is no longer alive so orphaned queue files from
+    crashed processes do not linger (BUG-1360), and returns the surviving
+    entries sorted ascending by ``enqueuedAt``. Malformed or unreadable entries
+    are skipped. Returns ``[]`` when queue_dir does not exist.
+
+    This is the single source of truth for "what's actually in the queue right
+    now," shared by ``_is_earliest_waiter()`` and the ``ll-loop queue``
+    subcommands (ENH-2617).
+    """
+    if not queue_dir.exists():
+        return []
+    entries: list[dict] = []
+    for f in queue_dir.glob("*.json"):
+        try:
+            with open(f) as fh:
+                data = json.load(fh)
+            pid = data.get("context", {}).get("pid")
+            if pid is not None and not _process_alive(pid):
+                f.unlink(missing_ok=True)
+                continue
+            entries.append(data)
+        except (json.JSONDecodeError, KeyError, FileNotFoundError, OSError):
+            continue
+    entries.sort(key=lambda d: d.get("enqueuedAt", ""))
+    return entries
+
+
+def _is_earliest_waiter(entry_id: str, queue_dir: Path) -> bool:
+    """Return True if entry_id is the earliest-enqueued waiter in queue_dir.
+
+    Returns True when this waiter is first or the queue is empty/unreadable,
+    allowing it to proceed with acquire(). Non-first waiters return False and
+    should back off to yield to the earlier waiter (ENH-1332).
+
+    Stale entries (dead PIDs) are removed on the fly so orphaned queue files
+    from crashed processes do not block live waiters indefinitely (BUG-1360).
+    """
+    entries = read_queue_entries(queue_dir)
+    return not entries or entries[0].get("id") == entry_id
 
 
 def cmd_queue_list(args: argparse.Namespace, loops_dir: Path) -> int:

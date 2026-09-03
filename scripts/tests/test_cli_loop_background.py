@@ -11,12 +11,12 @@ import pytest
 
 
 class TestLoopSignalHandler:
-    """Tests for loop signal handler (state lives in _helpers since BUG-600)."""
+    """Tests for loop signal handler (state lives in cli/loop/signals.py, ENH-2776)."""
 
     @classmethod
     def setup_class(cls) -> None:
         """Import module for signal handler access."""
-        import little_loops.cli.loop._helpers as helpers_module
+        import little_loops.cli.loop.signals as helpers_module
 
         cls.helpers = helpers_module
 
