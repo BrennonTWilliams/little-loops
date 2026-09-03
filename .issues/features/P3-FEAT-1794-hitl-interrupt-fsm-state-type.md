@@ -342,7 +342,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 - 2026-08-16: Core gap confirmed still real — no `human_approval` action_type anywhere in `fsm/executor.py`/`fsm/schema.py`. This file's line-number citations have now drifted across at least four prior verification passes; recommend future updates cite functions by name (e.g. `_execute_state`, `_run_action`) rather than line numbers, since line numbers churn too fast to stay accurate between passes. Verdict: OUTDATED.
 
+- 2026-09-03 (`/ll:verify-issues`): Core gap confirmed still real — no `human_approval` action_type in `fsm/executor.py`/`fsm/schema.py`; issue stays valid. Line-number anchors drifted a fifth time — current: `_execute_state` :1948, `_run_action` :2312, `_action_mode` :3062, `_emit` :3550, `_interruptible_sleep` :3833. Not re-editing the scattered body citations per the 2026-08-16 recommendation above — function-name anchors are the stable reference; this note carries the current line numbers for whoever implements next.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:30 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled chain; root FEAT-1930 unstarted).

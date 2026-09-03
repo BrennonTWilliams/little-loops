@@ -48,9 +48,10 @@ into `_run_skill`/`_run_cmd`/`_run_mcp`/`_run_prompt` via `spec.args.get(...)`. 
 production construction sites: `queue_store.py:247`, `cli/loop/run.py:132`,
 `cli/action.py:239,292`, `cli/harness.py:735,769,811,844`, `cli/queue.py:163,171,186,195`.
 
-`runner_spec.py::_run_cmd()` (`runner_spec.py:214-286`) calls `project_child_env()` with **zero
-arguments** at lines 225-232 — no `HostInvocation` exists at this call site today, and the
-function never calls `resolve_host()` anywhere.
+`runner_spec.py::_run_cmd()` (`runner_spec.py:232-303`) calls
+`project_child_env(extra={"LL_PYTHON": sys.executable})` at line 249 — it already passes an
+`extra` kwarg to inject `LL_PYTHON`, but no `env_allow`/deny-list argument, and no `HostInvocation`
+exists at this call site today; the function never calls `resolve_host()` anywhere.
 
 ## Expected Behavior
 
@@ -59,7 +60,8 @@ function never calls `resolve_host()` anywhere.
 - Every production `ActionSpec` construction site (listed above) can populate it.
 - `runner_spec.py::_run_cmd()` resolves the declared scopes into an `env_allow` set and passes
   it via the explicit kwarg ENH-3233 provides for invocation-less call sites —
-  `project_child_env(env_allow=...)` — so everything not declared is denied. No synthetic
+  `project_child_env(extra={"LL_PYTHON": sys.executable}, env_allow=...)` — so everything not
+  declared is denied, alongside the existing `LL_PYTHON` injection. No synthetic
   `HostInvocation` is constructed.
 - `ActionSpec`s with no declaration keep today's coarse (full-inherit) behavior — the `env_allow`
   path is opt-in per spec, matching ENH-3233's `env_allow=None` no-op default.
@@ -127,9 +129,23 @@ Out of scope for this child:
   extended to them later (out of scope here — AC7.2 only requires the `_run_cmd()` shell path).
 - **Breaking Change**: No — declaration is opt-in per `ActionSpec`.
 
+## Blocks
+
+- ENH-3204
+
 ## Status
 
 **Open** | Created: 2026-08-17 | Priority: P2 | Blocked by: ENH-3233
 
+## Verification Notes (2026-09-03)
+
+- `runner_spec.py::_run_cmd()` re-verified at line 232 (was cited 214-286); its
+  `project_child_env()` call is line 249, not 225-232.
+- Corrected the factual claim that the call passes "zero arguments" — it already passes
+  `extra={"LL_PYTHON": sys.executable}`; only `env_allow` is missing.
+- Added missing `## Blocks` backlink: ENH-3204 declares `blocked_by: ENH-3234` but this issue
+  had no `## Blocks` section.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:47:54 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T16:32:35 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`

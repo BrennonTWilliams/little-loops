@@ -61,7 +61,7 @@ See Proposed Approach below (kept as the working sketch); firm up via
 
 ## Integration Map
 
-- `scripts/little_loops/history_reader.py:440-442` — source of the
+- `scripts/little_loops/history_reader/_base.py:78-80` — source of the
   read-only-connection pattern to reuse (`file:...?mode=ro` +
   `PRAGMA query_only = ON`; same pattern in `codequery/codegraph.py:86-88`
   and `issue_history/evolution.py:41-43`)
@@ -77,7 +77,7 @@ See Proposed Approach below (kept as the working sketch); firm up via
 ## Implementation Steps
 
 1. Mount a read-only query route on FEAT-3323's `ll-artifact serve` server
-   (per the Scope Boundary below), reusing `history_reader.py:440-442`'s
+   (per the Scope Boundary below), reusing `history_reader/_base.py:78-80`'s
    read-only connection pattern and `cli/artifact/dashboard.py:76-105`'s
    ENH-075 redaction logic.
 2. Add the polling page and the config gate (`artifacts`-adjacent block in
@@ -107,7 +107,7 @@ manually re-exporting a dashboard every few minutes.
   of the `ll-artifact render`/`templatize`/`extract`/`refresh` pipeline —
   this is a localhost dev-server experience, not a portable artifact.
 - Reuse the existing read-only connection pattern from
-  `scripts/little_loops/history_reader.py:440-442` (`file:...?mode=ro`,
+  `scripts/little_loops/history_reader/_base.py:78-80` (`file:...?mode=ro`,
   `PRAGMA query_only = ON`; same pattern in `codequery/codegraph.py:86-88`
   and `issue_history/evolution.py:41-43`) so serving `.ll/history.db`
   live cannot mutate it.
@@ -179,7 +179,12 @@ ENH-3351's machinery.
 
 **Open** | Created: 2026-08-26 | Priority: P3
 
+## Verification Notes (2026-09-03)
+
+- `scripts/little_loops/history_reader.py` no longer exists — split into a subpackage
+  (commit `a25e1d688`). All 3 citations corrected to `history_reader/_base.py:78-80`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:47:56 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:59 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-26T21:32:44 - `ce0d899f-b243-4b9b-9802-1a5047cda0de.jsonl`

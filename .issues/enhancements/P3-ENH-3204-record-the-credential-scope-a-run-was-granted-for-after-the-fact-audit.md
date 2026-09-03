@@ -38,7 +38,7 @@ Each run records the capability and variable names it was granted, queryable aft
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` is currently **45** (line 25, verified 2026-08-28), so a new migration is **v46**. Confirm the current value before writing the migration; it moves (it already drifted from 40 since this issue was written).
+- `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` is currently **46** (line 25, verified 2026-09-03), so a new migration is **v47**. Confirm the current value before writing the migration; it moves (it already drifted from 40, then 45, since this issue was written).
 - The projection helper in `scripts/little_loops/host_runner.py` — emits the granted-names record at spawn time.
 
 ### Tests
@@ -86,6 +86,10 @@ Explicitly **out of scope**:
 
 **Open** | Created: 2026-08-15 | Priority: P3
 
+## Verification Notes (2026-09-03)
+
+- `SCHEMA_VERSION` corrected 45→46; next migration is v47, not v46.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:56 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`

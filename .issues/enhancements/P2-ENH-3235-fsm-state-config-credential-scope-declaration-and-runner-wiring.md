@@ -21,7 +21,7 @@ relates_to:
 
 Add a per-state scope-declaration field to loop YAML (`StateConfig`), following the existing
 `tools:` allowlist precedent, and wire it into `DefaultActionRunner`'s shell branch
-(`fsm/runners.py:266`) — the primary FSM-loop consumer — so a declaring state is denied every
+(`fsm/runners.py:297`) — the primary FSM-loop consumer — so a declaring state is denied every
 undeclared credential variable using the deny-capable `project_child_env()`/
 `HostInvocation.env_allow` chokepoint landed in ENH-3233.
 
@@ -38,9 +38,11 @@ explicitly out of scope for ENH-3203.
 
 ## Current Behavior
 
-`fsm/runners.py`'s `DefaultActionRunner` shell branch (`fsm/runners.py:266-275`) builds
-`cmd = ["bash", "-c", action]` and calls `subprocess.Popen(cmd, ..., env=project_child_env())`
-with **zero arguments** — no `HostInvocation`, no scope, full inherit.
+`fsm/runners.py`'s `DefaultActionRunner` shell branch (`fsm/runners.py:297-305`) builds
+`cmd = ["bash", "-c", action]` and calls
+`subprocess.Popen(cmd, ..., env=project_child_env(extra={"LL_PYTHON": sys.executable}))` — it
+already passes an `extra` kwarg to inject `LL_PYTHON`, but no `env_allow`/deny-list argument;
+no `HostInvocation`, no scope, full inherit otherwise.
 
 The `tools:` per-state allowlist (`fsm-loop-schema.json:590-596`, `StateConfig.tools: list[str] |
 None = None`, `schema.py:686`) is the closest existing per-state declaration precedent: it flows
@@ -56,8 +58,9 @@ that honor it read the flag directly (`ClaudeCodeRunner.build_streaming`, `host_
   dataclass: `StateConfig`, `schema.py`), resolved against ENH-3233's capability registry.
 - `fsm/runners.py`'s `DefaultActionRunner` shell branch resolves the declared scopes into an
   `env_allow` set and passes it via the explicit kwarg ENH-3233 provides for invocation-less
-  call sites — `project_child_env(env_allow=...)` — so everything not declared is denied. No
-  synthetic `HostInvocation` is constructed.
+  call sites — `project_child_env(extra={"LL_PYTHON": sys.executable}, env_allow=...)` — so
+  everything not declared is denied, alongside the existing `LL_PYTHON` injection. No synthetic
+  `HostInvocation` is constructed.
 - States with no declaration keep today's coarse (full-inherit) behavior — opt-in per state,
   matching ENH-3233's `env_allow=None` no-op default.
 
@@ -66,7 +69,7 @@ that honor it read the flag directly (`ClaudeCodeRunner.build_streaming`, `host_
 Follow the `tools:` per-state precedent structurally (array/optional field in the schema, mirror
 in the dataclass), but note the wiring gap the parent issue's research already surfaced: the
 `tools:` field's existing wiring only reaches prompt-mode states via `build_streaming()`
-(`fsm/executor.py:2284`) — the shell branch (`fsm/runners.py:266-275`) reads none of
+(`fsm/executor.py:2284`) — the shell branch (`fsm/runners.py:297-305`) reads none of
 `tools`/`agent`/`model`/`automation_profile` today. This issue must wire the new scope field into
 the shell branch directly (not by reusing the `tools:` flow), since AC7.1 is specifically about
 `DefaultActionRunner`'s `bash -c` path, which the `tools:` precedent does not already reach.
@@ -87,7 +90,7 @@ round-trip tests).
 
 - **AC1 (StateConfig half).** A loop-YAML state can declare the capability set its `bash -c`
   action requires.
-- **AC7.1.** `fsm/runners.py:266` (`DefaultActionRunner` shell branch) — the FSM-loop path, the
+- **AC7.1.** `fsm/runners.py:297` (`DefaultActionRunner` shell branch) — the FSM-loop path, the
   primary consumer — is covered by the same projection as the host-CLI paths, with a test proving
   an undeclared credential variable is absent from the shell action's environment. Mandatory:
   covering only the `ActionSpec` path (ENH-3234) leaves FSM loops unscoped.
@@ -156,9 +159,23 @@ Out of scope for this child:
   own `loops/*.yaml` first.
 - **Breaking Change**: No — declaration is opt-in per state.
 
+## Blocks
+
+- ENH-3204
+- ENH-3205
+
 ## Status
 
 **Open** | Created: 2026-08-17 | Priority: P2 | Blocked by: ENH-3233
 
+## Verification Notes (2026-09-03)
+
+- `fsm/runners.py` shell branch re-verified at lines 297-305 (was cited 266-275).
+- Corrected the factual claim that the `project_child_env()` call passes "zero arguments" — it
+  already passes `extra={"LL_PYTHON": sys.executable}`; only `env_allow` is missing.
+- Added missing `## Blocks` backlink: ENH-3204 and ENH-3205 both declare
+  `blocked_by: ENH-3235` but this issue had no `## Blocks` section.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T16:32:35 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`

@@ -43,12 +43,12 @@ that context is unchanged and not repeated here.
 
 ## Current Behavior
 
-`project_child_env(invocation=None, *, extra=None)` (`scripts/little_loops/host_runner.py:1786-1816`,
+`project_child_env(invocation=None, *, extra=None)` (`scripts/little_loops/host_runner.py:1865-1896`,
 ENH-3184's deliverable) is additive/override-only: `env = os.environ.copy(); env.update(invocation.env);
 env.update(extra)`. There is no way to withhold a variable from the child. `HostInvocation`
-(`host_runner.py:148-166`, frozen dataclass) has no field expressing an allow-set today.
+(`host_runner.py:155-173`, frozen dataclass) has no field expressing an allow-set today.
 
-`_apply_automation_env()` (`host_runner.py:1819-1834`) sets only `LL_AUTOMATION`/
+`_apply_automation_env()` (`host_runner.py:1898-1917`) sets only `LL_AUTOMATION`/
 `LL_AUTOMATION_PROFILE` in place and never deletes a key; its docstring already names ENH-3203
 as the follow-on that changes this.
 
@@ -185,14 +185,16 @@ which is a different mechanism and stays as-is for AC3).
 _Carried forward from ENH-3203's `/ll:refine-issue`/`/ll:wire-issue` passes — verify line numbers
 before implementing, as they were already noted as drifted once:_
 
-- `project_child_env()` call sites confirmed: with an `invocation` — `runner_spec.py:205,315`,
-  `subprocess_utils.py:450` (the actual `subprocess.Popen(..., env=env)` call for the primary
-  streaming path), `session_store/lifecycle.py:157`, `fsm/evaluators.py:1152,1370,1626`,
-  `fsm/handoff_handler.py:130`, `learning_tests/extractor.py:134`, `cli/issues/decisions.py:815`,
-  `parallel/worker_pool.py:812`. With no invocation (pure `os.environ` inheritance) —
-  `fsm/runners.py:274`, `runner_spec.py:231` (`_run_cmd`), `worker_pool.py:105`,
-  `cli/loop/_helpers.py:1670,2106`, `mcp_call.py:197`, `prepatch_check.py:290`,
-  `worktree_utils.py:570`, `git_operations.py:728`. None of these sites need to change for this
+- `project_child_env()` call sites confirmed (re-verified 2026-09-03; `cli/loop/_helpers.py` no
+  longer exists — dissolved into `runner.py`/`summary.py`, commits `fc4f65436`/`43c762c64`):
+  with an `invocation` — `runner_spec.py:223,333`,
+  `subprocess_utils.py:529` (the actual `subprocess.Popen(..., env=env)` call for the primary
+  streaming path), `session_store/lifecycle.py:157`, `fsm/evaluators.py:1207,1463` (2 sites, not
+  3), `fsm/handoff_handler.py:130`, `learning_tests/extractor.py:134`, `cli/issues/decisions.py:815`,
+  `parallel/worker_pool.py:859`. With no invocation (pure `os.environ` inheritance) —
+  `fsm/runners.py:305`, `runner_spec.py:249` (`_run_cmd`), `worker_pool.py:106`,
+  `cli/loop/runner.py:297`, `cli/loop/summary.py:185`, `mcp_call.py:199`, `prepatch_check.py:290`,
+  `worktree_utils.py:721`, `git_operations.py:728`. None of these sites need to change for this
   issue — they continue passing `env_allow=None` implicitly (via `HostInvocation`'s default) or
   no invocation at all, and get today's behavior.
 - `HostCapabilities` (`host_runner.py:119-144`) is the closest existing "declared support" shape
@@ -230,7 +232,7 @@ ENH-3203 effort per its Scope Boundaries section):
 
 - Populating `env_allow` from a real per-task declaration — no `ActionSpec` or `StateConfig`
   field exists yet; this issue only makes the chokepoint capable of honoring the field when set.
-- Wiring either `bash -c` path (`fsm/runners.py:266`, `runner_spec.py::_run_cmd()`) to construct
+- Wiring either `bash -c` path (`fsm/runners.py:297`, `runner_spec.py::_run_cmd()`) to construct
   an `HostInvocation` with `env_allow` populated — that's ENH-3234 (action path) and ENH-3235
   (FSM path).
 - Disk-backed/keyring-backed credentials, token minting, MCP server credentials, secrets
@@ -255,10 +257,24 @@ ENH-3203 effort per its Scope Boundaries section):
 
 - ENH-3234
 - ENH-3235
+- ENH-3204
+- ENH-3205
 
 ## Status
 
 **Open** | Created: 2026-08-17 | Priority: P2
 
+## Verification Notes (2026-09-03)
+
+- Re-verified all `project_child_env()`/`HostInvocation`/`_apply_automation_env()` line citations
+  against current code; several had drifted (function bodies moved ~80 lines since last check).
+- `cli/loop/_helpers.py:1670,2106` no longer exists — that file was dissolved into
+  `cli/loop/runner.py` and `cli/loop/summary.py` (commits `fc4f65436`/`43c762c64`); citations
+  updated to `runner.py:297` and `summary.py:185`.
+- `fsm/evaluators.py` now has 2 `project_child_env(invocation)` sites (`:1207,1463`), not 3.
+- Added missing `## Blocks` backlinks: ENH-3204 and ENH-3205 both declare `blocked_by: ENH-3233`
+  but were absent from this issue's `## Blocks` section.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:47:54 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T16:32:34 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`

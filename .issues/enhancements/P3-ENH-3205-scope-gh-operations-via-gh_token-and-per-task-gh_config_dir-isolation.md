@@ -31,7 +31,7 @@ This is the one place where ENH-3203's guarantee visibly does not reach, and gh 
 ## Current Behavior
 
 - `scripts/little_loops/sync.py` — `_run_gh_command()`/`_check_gh_auth()` shell out to gh directly, bypassing the host-runner layer entirely, and inherit whatever session the operator logged in with.
-- FSM loops invoke gh through `DefaultActionRunner`'s `bash -c` branch (`fsm/runners.py:266`), so the shell-action path is the larger surface, not `sync.py`.
+- FSM loops invoke gh through `DefaultActionRunner`'s `bash -c` branch (`fsm/runners.py:297`), so the shell-action path is the larger surface, not `sync.py`.
 - Even under ENH-3203's projection, stripping `GITHUB_TOKEN` from a child changes nothing: gh falls back to the keyring / `~/.config/gh/hosts.yml`, which `HOME` still points at.
 
 ## Expected Behavior
@@ -61,7 +61,7 @@ If this is not implemented, ENH-3203 must state plainly that gh is unscoped rath
 ### Call Path
 `resolve_host` → projection helper → `_run_gh_command` / `_check_gh_auth`
 
-The shell branch `DefaultActionRunner` (`fsm/runners.py:266`) reaches the same CLI by the same route, which is why the redirect belongs in the helper rather than in the sync layer.
+The shell branch `DefaultActionRunner` (`fsm/runners.py:297`) reaches the same CLI by the same route, which is why the redirect belongs in the helper rather than in the sync layer.
 
 ### Decision Rules
 - Both `GH_TOKEN` and `GH_CONFIG_DIR` are set, or neither is. Setting only the token leaves the ambient login reachable and produces the appearance of scoping without the fact of it.
@@ -92,6 +92,10 @@ Explicitly **out of scope**:
 
 **Open** | Created: 2026-08-15 | Priority: P3
 
+## Verification Notes (2026-09-03)
+
+- `fsm/runners.py:266` citations corrected to `:297` (bash-c branch moved).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:56 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`

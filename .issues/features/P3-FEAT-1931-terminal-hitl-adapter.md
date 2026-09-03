@@ -229,6 +229,8 @@ open
 
 - **2026-06-26** (/ll:verify-issues): Aligned `API/Interface` `send_alert()` to FEAT-1930's ratified protocol `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> str`; corrected `_interruptible_sleep` body reference to `scripts/little_loops/fsm/executor.py:1955`. Baseline (no `fsm/adapters/` yet, blocked on FEAT-1930) unchanged.
 
+- **2026-09-03** (/ll:verify-issues): `_interruptible_sleep` has drifted again — now `scripts/little_loops/fsm/executor.py:3833` (was :3378/:1955). `send_alert()`/`await_response()` signature-mismatch findings above remain open and correctly block implementation on FEAT-1930. Not editing the scattered body citations (lines 133, 217) — this note carries the current anchor for whoever implements next.
+
 ---
 
 ## Scope Boundary
@@ -240,6 +242,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T17:47:56 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:30 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled chain; root FEAT-1930 unstarted).
