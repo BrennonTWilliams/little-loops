@@ -13,9 +13,10 @@ labels:
 - refactoring
 - auto-generated
 parent: EPIC-2789
-verify_verdict: NON_VALID
+verify_verdict: VALID
 relates_to:
 - EPIC-2938
+- ENH-2773
 ---
 
 # ENH-2776: Dissolve cli/loop/_helpers.py grab-bag into named modules
@@ -32,14 +33,43 @@ are depended on well beyond the CLI layer.
 - **Line(s)**: 1-2156 (entire file)
 - **Module**: `little_loops.cli.loop._helpers`
 
+## Current Behavior
+
+`cli/loop/_helpers.py` is a 2,255-line underscore-"private" module holding
+eight unrelated clusters (signal handling with seven mutable module globals,
+queue helpers, pinned-pane/diagram rendering + `StateFeedRenderer`, artifact
+header helpers, FSM-context seeding, loop loading, run orchestration, summary
+printing) plus an ENH-2773 re-export shim. It is imported by 7 modules at
+module level, 7 more via deferred imports — including two from **outside the
+CLI layer** (`fsm/executor.py`, `analytics/variance.py`) — and ~20 test files
+that reach private names and mock-patch its module namespace (~34
+`_helpers.subprocess.Popen` patches, a `_helpers.datetime` monkeypatch, direct
+writes to `_helpers._loop_*` globals). It sits in a deferred-import 2-cycle
+with `info.py` and another with `layout.py`.
+
+## Expected Behavior
+
+`_helpers.py` no longer exists. Its clusters live in named modules under
+`cli/loop/`, and the three self-contained FSM-context seeders plus
+`load_loop` move to `fsm/` so no `fsm/` or `analytics/` code imports from
+`cli/`. Both deferred-import cycles are gone (module-level imports point
+strictly downward). Every production caller and every test import/patch
+string is repointed to the new owner module, and a guard test asserts the
+old path never reappears.
+
 ## Finding
 
 ### Current State
 
-- 2,255 lines, 36 top-level defs behind an underscore-private "helpers" name.
-- Imported by core code (`fsm/validation.py:485,566` — see ENH-2773) and by
-  `cli/loop/info.py` in a 2-cycle (`_helpers.py:1847` ↔ `info.py:21,1709`)
-  held apart by deferred imports.
+- 2,255 lines, 37 top-level defs (35 functions + `_TeeWriter`/`StateFeedRenderer`)
+  behind an underscore-private "helpers" name.
+- Imported by core code — `fsm/executor.py:1076` (deferred, unconditional:
+  `derive_input_hash`, `seed_confidence_thresholds`) and
+  `analytics/variance.py:224` (deferred: `load_loop`) — and by
+  `cli/loop/info.py` in a 2-cycle (`_helpers.py:1847` ↔ `info.py:21`) held
+  apart by deferred imports. _(The original `fsm/validation.py:485,566`
+  citation is stale; that import was removed by ENH-2773/ENH-2774 — see
+  Codebase Research Findings.)_
 - The name gives no signal about ownership, so unrelated functionality keeps
   landing here by default.
 
@@ -61,18 +91,96 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 ## Proposed Solution
 
-Split by actual responsibility into named modules (e.g. loop-path resolution —
-moving to `fsm/` per ENH-2773 — run inspection, output formatting), leaving
-`_helpers.py` as a temporary re-export shim before deleting it.
+Split by actual responsibility into named modules under `cli/loop/`, move
+the layer-violating leaves into `fsm/`, repoint every caller and test, and
+delete `_helpers.py` outright with a guard test — **no re-export shim** (see
+Decisions below for why a shim is unsafe here specifically).
 
 ### Suggested Approach
 
-1. Inventory the 37 defs and cluster by concern; land `resolve_loop_path`'s
-   move with ENH-2773 first.
-2. Create named modules under `cli/loop/` for the remaining clusters; update
-   importers (`__init__.py`, `info.py`, `lifecycle.py`, `layout.py`).
-3. Break the `_helpers ↔ info` 2-cycle as part of the split; delete the shim
-   once no importers remain.
+_Rewritten 2026-09-02 to reconcile with the research findings below. The
+earlier draft's step 1 (`resolve_loop_path` move) was completed by ENH-2773;
+its step 2 importer list was wrong (`layout.py` is imported **by**
+`_helpers`, not the reverse; the real set is in Integration Map ->
+Dependent Files)._
+
+**Target module map** (from the def inventory at `_helpers.py`, 2026-09-02):
+
+| New home | Moves there | Notes |
+|---|---|---|
+| `fsm/context_seed.py` (new) | `seed_confidence_thresholds`, `derive_input_hash`, `inject_design_context` | Self-contained leaves (research-confirmed); this removes the `fsm/executor.py:1076` core->CLI import. Same layering fix ENH-2773 made for `resolve_loop_path`. `seed_confidence_thresholds`'s deferred `BRConfig` import is fine — `fsm/executor.py`/`evaluators.py` already import `little_loops.config`. |
+| `fsm/loop_paths.py` (existing) | `load_loop`, `load_loop_with_spec` | Both are `resolve_loop_path` + `load_and_validate`; removes the `analytics/variance.py:224` cross-layer import. Keep `load_and_validate` import deferred inside the function as it is today (`fsm.validation` -> `fsm.loop_paths` direction must stay clean). |
+| `cli/loop/signals.py` (new) | `_loop_signal_handler`, `register_loop_signal_handlers`, `_sigwinch_handler`, `_install_sigwinch_handler`, `_restore_sigwinch_handler`, **and all seven module globals** (`_loop_shutdown_requested`, `_loop_executor`, `_loop_pid_file`, `_loop_marker_path`, `_using_alt_screen`, `_needs_redraw`, `_original_sigwinch`) | Globals must move with the handlers — tests mutate them by module attribute. `run_foreground` writes `signals._using_alt_screen`; `StateFeedRenderer` reads `signals._needs_redraw`. |
+| `cli/loop/queue.py` (existing) | `read_queue_entries`, `_is_earliest_waiter` | Only callers are `queue.py` itself and `run.py`; `queue.py` imports nothing from `run.py`, so no cycle. |
+| `cli/loop/feed.py` (new) | `with_diagram_color`, `MIN_ACTION_ROWS`, `_count_display_lines`, `_choose_pinned_layout`, `_classify_fsm_topology`, `_variant_width`, `_build_fallback_ladder`, `_render_single_line_status`, `_build_pinned_pane`, `_render_pinned_pane`, `_render_streaming_diagram`, `StateFeedRenderer`, **plus `_format_history_event` moved out of `info.py:858`** | Moving `_format_history_event` here is the `_helpers`↔`info` cycle break: `info.py` and `runner.py` both import it downward. `layout.py` does not import `_helpers`, so the three deferred `layout` imports become module-level here (second cycle gone). |
+| `cli/loop/header.py` (new) | `_relativize_to_cwd`, `_display_loop_path`, `_artifact_lines`, `_resolve_input_value`, `_EFFORT_CODES`, `_effort_code`, `_render_artifact_header_lines` | |
+| `cli/loop/runner.py` (new) | `_TeeWriter`, `_make_instance_id`, `run_background`, `run_foreground`, `print_execution_plan`, `EXIT_CODES` | Must `import subprocess` and `from datetime import datetime` at module level — tests patch `<module>.subprocess.Popen` and monkeypatch `<module>.datetime`. |
+| `cli/loop/summary.py` (new) | `_print_usage_summary`, `_print_ab_summary`, `_run_cross_host_validation`, `_print_cross_host_table` | |
+
+Resulting import DAG (all module-level, no deferred imports needed):
+`runner -> {signals, feed, header, summary, fsm.loop_paths, fsm.context_seed}`;
+`feed -> {signals, layout, fsm.loop_paths}`; `info -> {feed, fsm.loop_paths}`;
+`lifecycle -> {feed, signals, runner}`; `run -> {runner, feed, queue, header}`.
+
+**Steps** (three independently-green commits):
+
+1. **fsm-layer moves.** Create `fsm/context_seed.py`; append `load_loop`/
+   `load_loop_with_spec` to `fsm/loop_paths.py`. Repoint the deferred imports
+   in `fsm/executor.py:1076`, `analytics/variance.py:224`, and
+   `cli/loop/{run,testing,lifecycle,info,audit}.py`. Repoint the `mock.patch`
+   string targets for `derive_input_hash` in `test_advisor.py:232` and for
+   `load_loop` in `test_ll_loop_display.py` and `test_cli_loop_background.py`,
+   plus the import in `test_cli_loop_testing.py:271`. Repoint the ENH-2773 shim consumers
+   (`info.py`, `lifecycle.py`, `config_cmds.py`, `edit_routes.py`,
+   `cli/queue.py:147`, `cli/doctor.py:533`, `test_rn_plan.py:308`,
+   `test_deep_research*.py`, `test_cli_doctor_install_checks.py` patch
+   strings) to `fsm.loop_paths` directly. Update
+   `test_fsm_loop_paths.py:67-71` (the `_helpers` re-export identity test) to
+   assert the new import sites instead, or delete it.
+2. **signals + feed + header + queue.** Create the four modules, move
+   `_format_history_event` out of `info.py`, convert the deferred `layout`
+   imports to module-level. Repoint `test_cli_loop_background.py::TestLoopSignalHandler`
+   and `test_cli_loop_lifecycle.py:905-919,3081-3145` (globals + `StateFeedRenderer`
+   patches), `test_state_feed_renderer.py`, `test_cli_loop_layout.py`,
+   `test_loop_layout_alignment.py`, `test_ll_loop_display.py` (`terminal_width`
+   patch strings -> `feed.terminal_width`), `test_cli_loop_queue.py`.
+3. **runner + summary + delete.** Create the two modules, repoint the ~34
+   `patch("little_loops.cli.loop._helpers.subprocess.Popen")` sites in
+   `test_cli_loop_background.py` and the one in `test_ll_loop_execution.py:488`,
+   the `_helpers.datetime` monkeypatch at `test_cli_loop_background.py:1408`,
+   `mcp_server/tools.py:684`, `mcp_server/tasks.py:104`,
+   `test_cross_host_baseline.py` (10 sites), `test_feat_3151_mcp_start_path.py`,
+   `test_feat_3168_stdio_policy_enforcement.py`, `test_usage_reporter.py`.
+   Repoint `test_enh3184_spawn_site_guard.py:38`'s path pin to
+   `little_loops/cli/loop/runner.py` with the same `(2, 0)` count. Delete
+   `_helpers.py`. Add `scripts/tests/test_enh2776_no_loop_helpers_module.py`
+   asserting (a) the file does not exist and (b) no `.py` under
+   `scripts/little_loops/` or `scripts/tests/` contains the string
+   `cli.loop._helpers` — mirror of `test_enh3097_no_mixed_automation_kwargs.py`.
+4. **Docs** (all in step 3's commit): the eleven locations in Integration
+   Map -> Documentation, plus `skills/review-loop/reference.md:848`,
+   `test_review_loop.py:1078` comment, `test_verify_package_data.py` example
+   string, `fsm/cost_graph.py:90,129` and `fsm/types.py:21` docstring cites.
+
+### Decisions (resolved 2026-09-02)
+
+- **No re-export shim; delete `_helpers.py` in this issue.** The research
+  correctly notes codebase practice skews "keep shims indefinitely", but a
+  shim is actively hazardous for this specific module, not merely untidy:
+  (a) `patch("little_loops.cli.loop._helpers.subprocess.Popen")` would keep
+  *succeeding* through a shim but stop affecting `run_background`'s real
+  module, so ~34 tests would silently spawn real `ll-loop` subprocesses;
+  (b) tests that assign `_h._loop_shutdown_requested = True` through a shim
+  write to the shim's namespace, not the module the handler reads — a
+  silent no-op; (c) `test_enh3184_spawn_site_guard.py` pins the literal
+  path. A shim that satisfies imports but not patches is the worst outcome.
+  The ENH-3097 "remove + permanent guard test" precedent is the right one.
+- **Cycle break = move `_format_history_event` down into `feed.py`**, not
+  keep the deferred import. It is a pure formatter over an event dict with
+  no `info.py`-internal dependencies.
+- **`load_loop` goes to `fsm/`, not a new loader module under `cli/loop/`.**
+  It is two lines over `resolve_loop_path`, already in `fsm/loop_paths.py`,
+  and has a non-CLI caller.
 
 ### Codebase Research Findings
 
@@ -84,12 +192,61 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - ENH-2773's prior move of `resolve_loop_path`/`get_builtin_loops_dir` out of `_helpers.py` left a permanent re-export shim behind (`_helpers.py:27`: `from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path`) rather than updating the sibling importers to the new location — `info.py`, `lifecycle.py`, `config_cmds.py`, `edit_routes.py`, and the top-level `cli/queue.py` (deferred) all still import these two names from `_helpers`, not from `fsm.loop_paths`, today. This is direct precedent that "moved but re-exported from the old location" is this codebase's actual behavior for a partial extraction, not merely a stated intent.
 - No codebase precedent was found for actually **deleting** a whole-module re-export shim once its importers migrate. The two comparable whole-module shims found (`cli/adapt_skills_for_codex.py`, `cli/loop/queue.py`/`queue_store.py`) state in their own docstrings that they are kept **indefinitely** as compatibility surfaces, not pending removal. The one "removed once migrated" precedent found (ENH-3097/ENH-3261) operated at the function-kwarg level, not the whole-module level, and was paired with a permanent regression test (`test_enh3097_no_mixed_automation_kwargs.py`) asserting the legacy shape never reappears. This is a live tension with this issue's own plan to "delete the shim once no importers remain" (item 3 above) — the codebase's revealed practice for shims skews toward "kept indefinitely," not "deleted."
 
-## Impact Assessment
+## Impact
 
 - **Severity**: Medium
-- **Effort**: Medium
-- **Risk**: Low
-- **Breaking Change**: No
+- **Effort**: Large (re-rated 2026-09-02 from Medium) — 7 new/extended
+  modules, 14 production importers, ~20 test files with ~50 individual
+  patch-string/import repoints, ~15 doc citations.
+- **Risk**: Medium (re-rated 2026-09-02 from Low) — signal handlers,
+  mutable module globals, and subprocess spawning are the clusters most
+  likely to pass a vacuous test if a patch target is mis-repointed; the
+  three-commit sequencing and the no-shim decision exist to keep each
+  failure loud.
+- **Breaking Change**: No (no public CLI or config surface changes;
+  `little_loops.cli.loop._helpers` was underscore-private).
+
+## Scope Boundaries
+
+- **In scope**: everything in Suggested Approach steps 1-4; the
+  `_format_history_event` move out of `info.py`; the ENH-2773 shim
+  consumers' repoint to `fsm.loop_paths`.
+- **Out of scope**: `cli/sprint/_helpers.py` (same name, different module —
+  see Documentation note); any behavior change inside the moved functions;
+  splitting `run_foreground` (~280 lines) itself; ENH-2943's and ENH-3233's
+  own `_helpers.py` line citations (refresh those issues after this lands,
+  not as part of it); the `fsm/cost_graph.py` docstring's stale line numbers
+  beyond repointing the module name.
+
+## Acceptance Criteria
+
+- [ ] `scripts/little_loops/cli/loop/_helpers.py` does not exist.
+- [ ] `grep -rn "cli.loop._helpers" scripts/ docs/ skills/` returns zero
+      hits (the new guard test enforces the `scripts/` half permanently).
+- [ ] No file under `scripts/little_loops/fsm/` or
+      `scripts/little_loops/analytics/` imports from `little_loops.cli`
+      (`grep -rn "from little_loops.cli" scripts/little_loops/fsm scripts/little_loops/analytics` is empty).
+- [ ] No deferred (function-local) import exists between any two of
+      `cli/loop/{signals,feed,header,runner,summary,info,layout}.py` — all
+      imports among them are module-level and acyclic.
+- [ ] `grep -c "cli.loop.runner.subprocess.Popen" scripts/tests/test_cli_loop_background.py`
+      reports at least 33 (the current `_helpers.subprocess.Popen` count),
+      `grep -rn "_helpers.subprocess" scripts/tests/` is empty, and
+      `test_cli_loop_background.py` passes — i.e. every Popen patch was
+      repointed, none dropped.
+- [ ] `test_cli_loop_background.py::TestLoopSignalHandler` and
+      `test_cli_loop_lifecycle.py` signal tests pass while mutating globals
+      on `cli.loop.signals`, not a shim.
+- [ ] `test_fsm_signal_integration.py` (black-box real-signal test) passes.
+- [ ] `test_enh3184_spawn_site_guard.py` passes with its path pin repointed
+      and count unchanged at `(2, 0)`.
+- [ ] `test_fsm_loop_paths.py` no longer asserts a `_helpers` re-export.
+- [ ] All doc citations in Integration Map -> Documentation reference the
+      new module names; `docs/ARCHITECTURE.md`'s two `cli/loop/` tree
+      diagrams list the new modules.
+- [ ] `python -m pytest scripts/tests/`, `ruff check scripts/`,
+      `python -m mypy scripts/little_loops/` all exit 0 after **each** of
+      the three commits, not only the last.
 
 ## Integration Map
 
@@ -109,8 +266,8 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - Deferred (function-local) importers (7, invisible to `ll-code
   importers-of`): `cli/loop/audit.py:104`, `cli/doctor.py:533`,
   `cli/queue.py:147` (the top-level `cli/queue.py`, distinct from
-  `cli/loop/queue.py`), `mcp_server/tools.py:684`, `mcp_server/tasks.py:224`,
-  `fsm/executor.py:1076`, `analytics/variance.py:265`.
+  `cli/loop/queue.py`), `mcp_server/tools.py:684`, `mcp_server/tasks.py:104`,
+  `fsm/executor.py:1076`, `analytics/variance.py:224`.
 - Test importers (13+): `test_ll_loop_display.py:14`,
   `test_usage_reporter.py:8`, `test_state_feed_renderer.py:8`,
   `test_cli_loop_background.py:19`, `test_cli_loop_layout.py`,
@@ -354,7 +511,9 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
 | `cli/loop/_helpers.py` | Diagram/pinned-pane rendering (`StateFeedRenderer` + 9 helper functions) | PRESERVED | Relocates; no external production importer today, only `test_state_feed_renderer.py` |
 | `cli/loop/_helpers.py` | Loop loading (`load_loop`, `load_loop_with_spec`) | PRESERVED | Relocates; both call the re-exported `resolve_loop_path` |
 | `cli/loop/_helpers.py` | Run orchestration (`run_background`, `run_foreground`, `print_execution_plan`) | PRESERVED | Relocates; `run_foreground`'s deferred `info._format_history_event` import must move with it |
-| `cli/loop/_helpers.py` | `resolve_loop_path`/`get_builtin_loops_dir` re-export (ENH-2773 shim) | PRESERVED, shim not yet dropped | Stays a pass-through from `fsm/loop_paths.py` until `info.py`, `lifecycle.py`, `config_cmds.py`, `edit_routes.py`, and `cli/queue.py` are repointed — no codebase precedent shows a whole-module shim like this actually being deleted (see Conventions in Force / Proposed Solution) |
+| `cli/loop/_helpers.py` | `resolve_loop_path`/`get_builtin_loops_dir` re-export (ENH-2773 shim) | REMOVED (consumers repointed) | Step 1 repoints `info.py`, `lifecycle.py`, `config_cmds.py`, `edit_routes.py`, `cli/queue.py`, `cli/doctor.py` and the test patch strings to `fsm.loop_paths`; the shim goes with the file. Decision rationale in Proposed Solution -> Decisions. |
+| `cli/loop/_helpers.py` | FSM-context seeding (`seed_confidence_thresholds`, `derive_input_hash`, `inject_design_context`) | PRESERVED, relocated to `fsm/context_seed.py` | Removes the last core->CLI import (`fsm/executor.py:1076`) |
+| `cli/loop/info.py` | `_format_history_event` | PRESERVED, relocated to `cli/loop/feed.py` | The `_helpers`↔`info` cycle break; `info.py` imports it back downward |
 
 ## Program Design
 
@@ -416,6 +575,20 @@ EPIC-2938's new `cli/loop/*` additions, not that this issue is blocked on
 EPIC-2938 first. `depends_on` as written would stall this refactor on an
 unrelated epic. Verdict: NON_VALID (dependency-reference fix; content
 otherwise accurate).
+
+**2026-09-02** (pre-implementation review): re-verified the def inventory
+(37 defs at the cited lines), the cross-layer importers (`fsm/executor.py:1076`,
+`analytics/variance.py:224` — the latter was mis-cited as `:265`),
+`mcp_server/tasks.py:104`, that `layout.py` does not import `_helpers` (so
+that cycle is one-directional and disappears once rendering moves), that
+`_format_history_event` (`info.py:858`) is a self-contained formatter, and
+that the stale `epic/epic-2938` branch has no unmerged `cli/loop/` changes.
+Reconciled the Suggested Approach with the research (removed the completed
+ENH-2773 step, fixed the wrong importer list, added a concrete module map and
+three-commit plan), decided against a re-export shim with rationale, re-rated
+Effort to Large and Risk to Medium, added Current/Expected Behavior, Scope
+Boundaries, and Acceptance Criteria. The earlier NON_VALID verdict was for
+the dependency-direction fix, which has been applied. Verdict: VALID.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-03T03:32:07 - `b08d9181-74d3-46eb-8d3a-a167537e57ed.jsonl`

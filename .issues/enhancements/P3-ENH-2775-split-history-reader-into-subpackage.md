@@ -15,7 +15,7 @@ labels:
 parent: EPIC-2789
 relates_to:
 - ENH-3359
-verify_verdict: NON_VALID
+verify_verdict: VALID
 ---
 
 # ENH-2775: Split history_reader.py into a subpackage along concern boundaries
@@ -41,6 +41,27 @@ a top-tier large file accreting unrelated concerns.
   at capture, still growing)
 - **Module**: `little_loops.history_reader`
 
+## Current Behavior
+
+`history_reader.py` is one 3,706-line flat module: 27 dataclasses, ~64
+independent read-only SQL query functions spanning 13 backing tables/views,
+a Summary-DAG retrieval layer, project-digest section providers, and a small
+`ll_grep`/`ll_expand`/`ll_describe` formatting layer. Concern boundaries exist
+only as region comments and a four-domain unheadered tail. It has no
+`__all__`. It is imported by 17 non-test modules, 20 test files, one YAML
+heredoc, and four `unittest.mock.patch` string targets — all via the flat
+`little_loops.history_reader.<name>` path.
+
+## Expected Behavior
+
+`little_loops.history_reader` is a package: `history_reader/__init__.py`
+re-exports the full existing public surface (plus the four private names
+external code reaches for) with an explicit `__all__`, and each backing
+table/view's query functions live in their own named submodule. Every
+existing import line, `patch()` string target, and YAML heredoc import keeps
+working unchanged. Tests split one-file-per-submodule under flat
+`scripts/tests/`. Doc-sync tests stay green.
+
 ## Finding
 
 ### Current State
@@ -62,17 +83,89 @@ completed EPIC-2789 siblings.
 
 ### Suggested Approach
 
-1. `history_reader` → package: `history_reader/__init__.py` (re-exports full
-   public surface) plus concern submodules, e.g. `parsing.py` (JSONL/event
-   decoding), `discovery.py` (session file location), query modules,
-   `formatting.py`.
-2. `__init__.py` docstring documents "Package layout" and "Public API"
-   sections, matching `session_store/__init__.py` and
-   `fsm/validation/__init__.py`.
-3. Split `scripts/tests/test_history_reader.py` one-for-one into per-submodule
-   test files (`test_history_reader_<submodule>.py`), following commit
-   `9a4977a14`'s precedent.
-4. Full test suite green with no importer changes.
+_Rewritten 2026-09-02 to reconcile with the research findings below. The
+earlier draft named `parsing.py`/`discovery.py` submodules; research confirmed
+no JSONL-parsing or file-discovery code exists in this file, so those are
+dropped._
+
+**Grouping rule**: one submodule per backing table/view (or tightly-coupled
+table pair). This is the rule future readers use to answer "where does a new
+reader go" — write it into the `__init__.py` docstring.
+
+1. Convert `history_reader.py` -> `history_reader/` package with this layout:
+
+   | Submodule | Contents (by current region / backing table) |
+   |---|---|
+   | `_base.py` | `_connect_readonly`, `_row_to_dataclass`, `_stale_cutoff`, `STALE_DAYS_DEFAULT`, the shared `logger` (see step 3), `CANNOT_JUDGE` re-import, any other cross-domain constants |
+   | `models.py` | all 27 dataclasses (`UserCorrection` ... `ReviewEvent`) |
+   | `search.py` | `search`, `find_user_corrections`, `recent_file_events` (FTS + corrections + file_events) |
+   | `usage.py` | `tool_events` cluster (`agent_usage`, `recent_tool_events`, `mcp_server_usage`, `mcp_failure_rate`) and `usage_events` cluster (`cost_attribution`, `waste_attribution`, `recent_usage_events`, `aggregate_usage`, `_WASTED_RUN_PREDICATE`) |
+   | `runs.py` | `orchestration_runs` cluster + `loop_runs` cluster (`recent_orchestration_runs`, `aggregate_orchestration_runs`, `recent_loop_runs`, `find_loop_run`, `aggregate_loop_runs`) |
+   | `sessions.py` | session metadata, issue events, issue effort/velocity, lifecycle/handoff, worktree summaries (`lookup_session_metadata`, `sessions_for_issue`, `related_issue_events`, `find_session_for_issue_transition`, `issue_effort`, `recent_issue_velocity`, handoff/worktree readers) |
+   | `subagents.py` | `subagent_tree`, `subagent_retries`, `subagent_budget` and the subagent_runs readers |
+   | `context.py` | context-pressure curves, commit events, prompt-opt events, learning tests (`find_learning_test`) |
+   | `summary_dag.py` | region `Summary DAG retrieval` (FEAT-1712) incl. `condensed_nodes_for_issue` |
+   | `digest.py` | region `Project digest — section providers` (ENH-1907) + `project_digest`, `render_project_context` |
+   | `hooks.py` | region `Hook execution telemetry` (ENH-2506), `hook_failure_rate` |
+   | `harness.py` | region `ll-harness / eval outcome telemetry` (`recent_harness_events`, `harness_eval_pass_rate`, `harness_eval_abstention_rate`, `check_high_confidence_abstention`, `read_prepatch_evidence`) |
+   | `events.py` | the unheadered tail: `verdict_events` (ENH-2504), `advisor_consults` (FEAT-3300), `research_triage`, `review_events` (ENH-2512) |
+   | `formatting.py` | `ll_grep`, `ll_expand`, `ll_describe` |
+
+   Exact membership of `sessions.py`/`context.py` is the implementer's call
+   at inventory time; the rule is "by backing table", and a submodule may
+   host two adjacent tables when they share a join (the three cross-domain
+   JOINs in the research findings do **not** require merging modules — the
+   SQL references a table name, not a Python symbol).
+
+2. `__init__.py`: one explicit `from .<submodule> import (...)` block per
+   submodule (alphabetized, no star imports), a single flat `__all__` with the
+   labeled "Private functions ... re-exported for test access" tail listing
+   `_connect_readonly`, `_stale_cutoff`, `_row_to_dataclass`. Docstring has
+   the "Package layout" and "Public API" headings, matching
+   `session_store/__init__.py` and `fsm/validation/__init__.py`, and states
+   the grouping rule from above.
+
+3. Logger: define
+   `logger = logging.getLogger("little_loops.history_reader")` once in
+   `_base.py` and import it into every submodule. Do **not** use
+   `getLogger(__name__)` in submodules — keeps the 67 existing
+   `"history_reader: <func> query failed"` warnings on the logger name that
+   `test_verdict_grammar_regression.py` asserts against.
+
+4. Intra-package imports form a DAG: every submodule may import from
+   `_base.py` and `models.py` only; never sibling-to-sibling. (`digest.py`
+   is the one expected exception if `project_digest` aggregates other
+   domains' readers — if so, it imports downward from those siblings and
+   nothing imports `digest.py`.)
+
+5. Split `scripts/tests/test_history_reader.py` one-file-per-submodule
+   (`test_history_reader_<submodule>.py`, flat under `scripts/tests/`).
+   `TestNewEventReaders` is itself a grab-bag of the four tail domains; move
+   it whole into `test_history_reader_events.py` rather than re-splitting the
+   class. Redeclare shared fixtures per file (no new conftest), matching
+   commit `9a4977a14`.
+
+6. Docs in lockstep (see Integration Map -> Documentation): restructure the
+   `docs/reference/API.md` entry under the **unchanged** literal heading
+   `## little_loops.history_reader`; update the `docs/ARCHITECTURE.md`
+   component-table row and Read Path node; update the `CONTRIBUTING.md`
+   module-tree line.
+
+7. Land as a single short-lived branch merged same day. `history_reader.py`
+   averaged a commit every 3 days over the last month (last touch
+   2026-09-02) and P1 EPIC-3214 / ENH-3381 will keep adding readers; do not
+   run this in parallel with EPIC-3214 children.
+
+### Decisions (resolved 2026-09-02)
+
+- **Shared-leaf naming**: `_base.py` (underscore). Two of the three
+  precedents (`fsm/validation/_base.py`, `issue_history/_utils.py`) use the
+  underscore for a leaf every sibling imports; `session_store/db.py` is the
+  outlier and its issue text calls its own naming novel.
+- **Test split shape**: one-file-per-submodule, not grouped. The
+  `issue_history` 5-modules-per-test-file precedent is the older, larger
+  package; the two EPIC-2789 siblings are the pattern this issue is
+  explicitly mirroring.
 
 ### Codebase Research Findings
 
@@ -107,12 +200,59 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - `issue_history/` is the closest existing precedent for a query-heavy split (independent read-only `analyze_*`/`detect_*` functions grouped by domain, the same shape as `history_reader.py`'s query functions) rather than fsm/validation's rule-based or session_store's CRUD-based organization. At its 16-submodule scale, its test-file mapping is not strict 1:1: `scripts/tests/test_issue_history_advanced_analytics.py` alone covers 5 different source submodules (`hotspots.py`, `coupling.py`, `regressions.py`, `quality.py`, `debt.py`) via 8 `Test*` classes — a data point against assuming the two EPIC-2789 siblings' flat one-for-one test-split convention holds at `history_reader.py`'s larger domain count (9-13 domains).
 - A third data point on the underscore-vs-non-underscore shared-leaf naming disagreement (beyond the `fsm/validation`/`session_store` split already on record): `issue_history/_utils.py` (underscore-prefixed) is imported by 8 of 16 submodules (~50% fan-in) and its own docstring states it was extracted "so `rework.py` and `agent_quality.py` share one convention instead of forking it" — a fan-in lower than `history_reader.py`'s own `_connect_readonly` (64 call sites, effectively 100% of query functions) yet still named with a leading underscore, unlike `session_store/db.py`'s ~80%-fan-in non-underscore precedent. No subpackage in the repo promotes such a shared helper into `__init__.py` itself, regardless of fan-in.
 
-## Impact Assessment
+## Impact
 
 - **Severity**: Medium
-- **Effort**: Medium
-- **Risk**: Low
+- **Effort**: Medium — mechanical moves, but ~13 submodules, a 3,304-line
+  test file to split, and six doc files to touch.
+- **Risk**: Low — no behavior change; every importer path is preserved by
+  re-export; the two doc-sync tests and the logger-name test catch the
+  known failure modes.
 - **Breaking Change**: No
+
+## Scope Boundaries
+
+- **In scope**: package conversion, `__all__`, test-file split, doc updates
+  listed in Integration Map -> Documentation, the `CONTRIBUTING.md` line.
+- **Out of scope**: changing any query's SQL or signature; deduplicating the
+  "rate" wrappers that reimplement their sibling's SQL (`mcp_failure_rate`,
+  `hook_failure_rate`, etc.) — file a follow-up if wanted; adding a
+  `conftest.py`; the `fsm/executor.py` split (ENH-3359, deferred); the four
+  `docs/reference/CLI.md` function-name citations that no test guards (they
+  cite function names, not the module path, so they do not go stale on this
+  split — leave them).
+
+## Acceptance Criteria
+
+- [ ] `scripts/little_loops/history_reader.py` no longer exists;
+      `scripts/little_loops/history_reader/__init__.py` plus the submodules
+      in Suggested Approach step 1 do.
+- [ ] Every name in the pre-split module docstring's "Public API" list, plus
+      `_connect_readonly`, `_stale_cutoff`, `_row_to_dataclass`, is listed in
+      `history_reader/__init__.py.__all__` and importable via
+      `from little_loops.history_reader import <name>`.
+- [ ] Zero edits to any of the 17 non-test importers or 20 test importers
+      listed in Integration Map -> Dependent Files (verify with
+      `git diff --stat` against the branch base).
+- [ ] `unittest.mock.patch("little_loops.history_reader.lookup_session_metadata")`
+      and `...sessions_for_issue` in `test_ll_logs.py`/`test_cli_history.py`
+      still apply (those tests pass unmodified).
+- [ ] `loops/sft-corpus.yaml`'s heredoc
+      `from little_loops.history_reader import lookup_session_metadata`
+      resolves (`python -c` smoke check).
+- [ ] `test_verdict_grammar_regression.py::test_high_confidence_abstention_warns`
+      passes unmodified.
+- [ ] `test_wiring_reference_docs.py` and `test_wiring_guides_and_meta.py`
+      pass; `docs/reference/API.md` still contains the literal heading
+      `## little_loops.history_reader`.
+- [ ] No submodule imports a sibling other than `_base.py`/`models.py`
+      (`digest.py` exception per step 4); no submodule calls
+      `logging.getLogger(__name__)`.
+- [ ] `scripts/tests/test_history_reader.py` is replaced by
+      `test_history_reader_<submodule>.py` files with the same `Test*`
+      classes; collected test count is unchanged.
+- [ ] `python -m pytest scripts/tests/`, `ruff check scripts/`,
+      `python -m mypy scripts/little_loops/` all exit 0.
 
 ## Integration Map
 
@@ -383,6 +523,15 @@ introducing no new gate, threshold, or classification rule.
   finds 18+ non-test importers alone; needs a re-run of the `ll-code
   importers-of`/`impact-of` research, not attempted here (`impact-of` is out
   of scope for `/ll:verify-issues`). Verdict: OUTDATED.
+- 2026-09-02 (pre-implementation review): re-verified line count (3,706),
+  importer set, the `test_enh3184`-style path-pin sweep (none pin
+  `history_reader.py`), hatch `packages = ["little_loops"]` includes
+  subpackages (session_store already ships this way), and that the stale
+  `epic/epic-2938` branch has no unmerged changes here. Reconciled the
+  Suggested Approach with the research (dropped `parsing.py`/`discovery.py`,
+  added a concrete submodule map), resolved the two open naming/test-shape
+  decisions, added Current/Expected Behavior, Scope Boundaries, and
+  Acceptance Criteria. Verdict: VALID.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-03T03:32:07 - `b08d9181-74d3-46eb-8d3a-a167537e57ed.jsonl`
