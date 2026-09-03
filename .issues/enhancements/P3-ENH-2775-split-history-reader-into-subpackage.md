@@ -15,6 +15,7 @@ labels:
 parent: EPIC-2789
 relates_to:
 - ENH-3359
+verify_verdict: NON_VALID
 ---
 
 # ENH-2775: Split history_reader.py into a subpackage along concern boundaries
@@ -36,7 +37,7 @@ a top-tier large file accreting unrelated concerns.
 
 ## Location
 
-- **File**: `scripts/little_loops/history_reader.py` — 3,585 lines (was 3,099
+- **File**: `scripts/little_loops/history_reader.py` — 3,706 lines (was 3,099
   at capture, still growing)
 - **Module**: `little_loops.history_reader`
 
@@ -100,8 +101,8 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 ### Codebase Research Findings
 
 ### Files to Modify
-- `scripts/little_loops/history_reader.py` (3,585 lines currently — grown
-  further since capture, was 3,351) — flat module; existing region comments
+- `scripts/little_loops/history_reader.py` (3,706 lines currently — grown
+  further since capture, was 3,585) — flat module; existing region comments
   already mark `Dataclasses` (L104), `Helpers` (L412), `Query API` (L456,
   spans ~1,930 lines through L2386 and covers at least 9 distinguishable query
   domains — not one homogeneous group), `Summary DAG retrieval` (L2389,
@@ -115,8 +116,18 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   `issue_history/evolution.py`, `issue_history/rework.py`,
   `tests/test_assistant_messages.py`, `tests/test_enh_2505_subagent_runs.py`,
   `tests/test_history_reader.py`.
+
+  **Stale as of 2026-09-02** — a grep for `history_reader` imports now finds
+  18+ non-test importers (adds at least `cli/ctx_stats.py`, `cli/harness.py`,
+  `cli/history.py`, `cli/logs.py`, `cli/loop/evidence.py`, `fsm/executor.py`,
+  `hooks/session_start.py`, `issue_history/agent_quality.py`,
+  `mcp_server/tools.py`, `prepatch_check.py`, `user_messages.py`,
+  `work_verification.py`) plus ~20 test files. Needs a re-run of the
+  `ll-code importers-of`/`impact-of` research this section was built from —
+  the count below is very likely stale too.
 - Transitive impact set (`ll-code impact-of`) is 16 files (reaches
-  `cli/__init__.py`, `issue_history/analysis.py`). The split must keep
+  `cli/__init__.py`, `issue_history/analysis.py`) — **unverified as of
+  2026-09-02**, see stale-importer note above. The split must keep
   `from little_loops.history_reader import ...` importable unchanged across
   all of these — the re-export requirement the Proposed Solution already
   states.
@@ -154,9 +165,9 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md` — carries structural, not just conceptual, file-path
   references that go stale on a split. Specific spots: the Read Path mermaid
-  diagram's `HR[history_reader.py]` node (L723); the Components table row
+  diagram's `HR[history_reader.py]` node (L730); the Components table row
   `history_reader.py | history_reader.py | Public read API: 10 query
-  functions, 7 dataclasses, ...` (L751), which states counts that presuppose a
+  functions, 7 dataclasses, ...` (L758), which states counts that presuppose a
   single flat file.
 
 ### Behavior Parity
@@ -171,9 +182,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-- `search()` (`scripts/little_loops/history_reader.py:529`, first param `query: str`, returns `list[SearchResult]`) — FTS5 full-text query entry point, representative of the Query API surface the split relocates unchanged.
-- `find_user_corrections()` (`scripts/little_loops/history_reader.py:461`, first param `topic: str`, returns `list[UserCorrection]`) — corrections query, same relocation-only disposition.
-- `cost_attribution()` (`scripts/little_loops/history_reader.py:924`, first param `group_by: str`, returns `list[dict]`) — cost/waste-attribution domain exemplar.
+- `search()` (`scripts/little_loops/history_reader.py:530`, first param `query: str`, returns `list[SearchResult]`) — FTS5 full-text query entry point, representative of the Query API surface the split relocates unchanged.
+- `find_user_corrections()` (`scripts/little_loops/history_reader.py:462`, first param `topic: str`, returns `list[UserCorrection]`) — corrections query, same relocation-only disposition.
+- `cost_attribution()` (`scripts/little_loops/history_reader.py:925`, first param `group_by: str`, returns `list[dict]`) — cost/waste-attribution domain exemplar.
 
 ### Types
 - No new data shape is introduced. The 27 dataclasses in `history_reader.py`
@@ -217,8 +228,17 @@ introducing no new gate, threshold, or classification rule.
 - 2026-08-29: Rescoped to `history_reader` only; `fsm/executor.py` half moved
   to ENH-3359 (deferred). Prior verify verdict and confidence scores removed —
   they measured the bundled two-file scope.
+- 2026-09-02: Core issue still real; file has grown further —
+  `history_reader.py` is now 3,706 lines (was 3,585). Corrected drifted line
+  citations for `search()`, `find_user_corrections()`, `cost_attribution()`,
+  and the two `docs/ARCHITECTURE.md` cites. Flagged the Integration Map's
+  "8 direct importers" / "16 transitive impact" counts as stale — a grep now
+  finds 18+ non-test importers alone; needs a re-run of the `ll-code
+  importers-of`/`impact-of` research, not attempted here (`impact-of` is out
+  of scope for `/ll:verify-issues`). Verdict: OUTDATED.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T02:27:50 - `ec373f26-c22d-4cdb-bcd2-9da717f53d54.jsonl`
 - `/ll:confidence-check` - 2026-08-29T23:32:17 - `8d7bb2d0-d27b-4d28-89fe-e2d8b28cb272.jsonl`
 - `/ll:verify-issues` - 2026-08-29T23:27:10 - `8d7bb2d0-d27b-4d28-89fe-e2d8b28cb272.jsonl`
 - `/ll:wire-issue` - 2026-08-29T23:19:32 - `3877ebdc-d9d3-4449-9bcf-1a7f4ef3ce26.jsonl`

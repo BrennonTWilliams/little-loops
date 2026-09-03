@@ -13,8 +13,8 @@ labels:
 - refactoring
 - auto-generated
 parent: EPIC-2789
-verify_verdict: VALID
-depends_on:
+verify_verdict: NON_VALID
+relates_to:
 - EPIC-2938
 ---
 
@@ -36,9 +36,9 @@ are depended on well beyond the CLI layer.
 
 ### Current State
 
-- 2,156 lines, 37 top-level defs behind an underscore-private "helpers" name.
+- 2,255 lines, 36 top-level defs behind an underscore-private "helpers" name.
 - Imported by core code (`fsm/validation.py:485,566` — see ENH-2773) and by
-  `cli/loop/info.py` in a 2-cycle (`_helpers.py:1768` ↔ `info.py:20,1566`)
+  `cli/loop/info.py` in a 2-cycle (`_helpers.py:1847` ↔ `info.py:21,1709`)
   held apart by deferred imports.
 - The name gives no signal about ownership, so unrelated functionality keeps
   landing here by default.
@@ -85,7 +85,20 @@ exists at ~2,183 lines (grown from 2,156). `resolve_loop_path` has already
 moved to fsm/loop_paths.py per ENH-2773 (status: done) — that specific
 sub-step is complete; remaining decomposition work is still open.
 
+**2026-09-02** (`/ll:verify-issues`): Core finding still real; `_helpers.py`
+now 2,255 lines (36 top-level defs), the `info.py` deferred-import cycle
+still exists, `resolve_loop_path` confirmed still re-exported from
+`fsm/loop_paths.py`. Corrected drifted cycle line citations. Also changed
+`depends_on: EPIC-2938` to `relates_to: EPIC-2938` in frontmatter — the
+direction was backwards: `EPIC-2789`'s and `EPIC-2938`'s own
+`/ll:audit-issue-conflicts` notes both say ENH-2776 should sequence *before*
+EPIC-2938's new `cli/loop/*` additions, not that this issue is blocked on
+EPIC-2938 first. `depends_on` as written would stall this refactor on an
+unrelated epic. Verdict: NON_VALID (dependency-reference fix; content
+otherwise accurate).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-03T02:27:51 - `ec373f26-c22d-4cdb-bcd2-9da717f53d54.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:57 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:27 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
