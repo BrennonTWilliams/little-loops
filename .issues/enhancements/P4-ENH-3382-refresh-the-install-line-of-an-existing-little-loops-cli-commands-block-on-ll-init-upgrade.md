@@ -81,10 +81,16 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - `scripts/little_loops/init/writers.py` — the three writers `write_claude_md()` (:585-642), `write_agents_md()` (:651-710), `write_gemini_md()` (:713-761). Each short-circuits on `if _CLAUDE_MD_SECTION_MARKER in existing: return False` (:622, :690, :742) **before** the `dry_run` branch, so today the noop fires identically with or without `--dry-run`. The three differ only in target resolution: `.claude/CLAUDE.md` → `CLAUDE.md` → default `.claude/CLAUDE.md` (:611-616); AGENTS.md under the `.kimi-code` directory → root `AGENTS.md` → default root `AGENTS.md` (:679-684); fixed `GEMINI.md` (:737). `write_claude_md` passes `_CLAUDE_MD_DESC_OVERRIDES` to the renderer (:627-629, :637-639); the other two use default descriptions.
 - `scripts/little_loops/init/cli.py` — `_run_yes()` (def :468, `upgrade: bool = False` at :476) calls the writers at :707/:714/:723; `_run_apply()` (def :849, not :837 as cited in Program Design → Call Path) calls them at :942/:949/:958. Both already resolve `install_source, installed_version, install_path = detect_installation(project_root)` before the writer calls (:536 and :911, the latter carrying a BUG-3380 comment), so a refresh renders with post-upgrade install values without extra plumbing.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/cli.py` — `main_init()`'s `--upgrade` argparse help string (`"Act on version drift automatically (install or upgrade). Default headless behaviour is warn-only."`) and its "Scope of `--force`" epilog text (`"Does NOT rewrite a ## little-loops section already present in CLAUDE.md/AGENTS.md."`) both describe the pre-refresh contract and go stale once `--upgrade` also splices the commands block. Neither is mentioned in Program Design or Implementation Steps, which cite only `_run_yes()`/`_run_apply()`. [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/init/tui.py:900,905,909` — `_apply_config()` (def :821) is a **third caller** of all three writers, not mentioned in the issue. Its signature has no `upgrade`/`refresh`/`dry_run` parameter and the TUI never performs an upgrade inline; its only upgrade notion is the Screen-1 hint `console.print("  Refresh: [cyan]ll-init --upgrade[/cyan]")` (tui.py:257) that redirects to the headless CLI. A defaulted `refresh=False` kwarg leaves this caller's behavior unchanged, which is the intent.
 - `scripts/little_loops/init/__init__.py:20`, `scripts/little_loops/cli/verify_cli_allowlist.py:23`, `scripts/tests/test_deploy_issue_templates.py:9` — import from `writers`; none call the three writers.
 - `_dispatch_host_upgrade()` (cli.py:234-285) is the existing `--upgrade`-only refresh path (runs at cli.py:730-733 and :974-975 when `upgrade and not dry_run` / `plan.get("requested_upgrade") and not dry_run`). It force-regenerates hook adapters and the Claude Code plugin; it does **not** touch CLAUDE.md/AGENTS.md/GEMINI.md and the writers are not in its dispatch table. The two paths stay disjoint.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_init_tui.py` — `TestApplyConfigInstallSource` (:1263-1330) is a **fourth caller site to test** (not a fourth production caller): it calls `_apply_config()` directly and asserts `Install:` line content, but never passes/asserts a `refresh` argument since `_apply_config()` has none. Not previously listed as a test for the `_apply_config()` no-op-stays-`False` guarantee. [Agent 1 / Agent 3 finding]
 
 ### Conventions in Force
 - The marker constant is `_CLAUDE_MD_SECTION_MARKER = "## little-loops"` (writers.py:156) — the short prefix, not the full `## little-loops CLI Commands` heading — and the presence check is a bare `str in str`, not line-anchored. `TestWriteClaudeMd::test_noop_when_section_present_in_root_claude_md` (test_init_core.py:1506-1510) deliberately plants `"## little-loops section here."` and asserts `False`, so the loose match is a tested contract. A refresh splice therefore cannot reuse the marker's `in` hit as its start offset; it must locate the heading at a line start, and must decide what to do when the marker matches but the canonical `## little-loops CLI Commands` heading line is absent (see Proposed Solution findings).
@@ -96,10 +102,19 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - `scripts/tests/test_init_core.py` — `TestWriteClaudeMd` (:1445), `TestWriteAgentsMd` (:1597), `TestWriteGeminiMd` (:1724). Every "section present" test asserts `result is False` and/or unchanged mtime: `test_noop_when_section_present_in_dot_claude_md` (:1497), `test_noop_when_section_present_in_root_claude_md` (:1506), `test_dry_run_noop_when_section_present` (:1532), `test_noop_when_section_present` (:1639, :1757), `test_idempotent_second_run` (:1647, :1765). None exercise a replace path; all must keep passing with the kwarg defaulted off.
 - `_run_yes()`/`_run_apply()` have no direct-call tests; all `--upgrade` coverage drives them through `main_init(argv)`: `test_yes_upgrades_when_pypi_stale_with_upgrade_flag` (test_init_core.py:2651), `test_bare_upgrade_implies_yes_never_launches_wizard` (:2681), `test_plan_upgrade_surfaces_requested_upgrade` (:2178, asserts `plan["requested_upgrade"] is True`), and `test_apply_honors_requested_upgrade` / `test_apply_ignores_requested_upgrade_in_dry_run` (`scripts/tests/test_init_audit_fixes.py:488`, :505 — both patch `little_loops.init.cli._dispatch_host_upgrade`). A caller-level refresh test follows the same `main_init([...])` shape.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_init_tui.py::TestApplyConfigInstallSource` (:1263-1330) — owns the only existing `_apply_config()`-calling fixture/helper (`self._apply(...)`, :1268-1281). The natural place for a regression test seeding a stale `Install:` line and asserting it survives `_apply_config()` unchanged (proving the TUI path never refreshes, per Scope Boundaries). [Agent 3 finding]
+- `scripts/tests/test_decisions.py::TestSyncToLocalMd` (:491-631) — direct test precedent for the heading-bounded splice this issue adds: `test_replaces_existing_section` (:519) and `test_replaces_last_active_rules_section_when_multiple_present` (:604) are the closest existing model for "old text gone, new text present, content before the section preserved verbatim." Its `"\n##"` boundary (any `##`/`###`/`####` line) is broader than this issue's "next `## ` heading" (H2 only) bound — already flagged in Conventions in Force — so a mirrored test must assert the narrower boundary, not copy the precedent's boundary claim. [Agent 3 finding]
+- No fixture/constant for a "stale pre-BUG-3380 `Install:` line" exists anywhere in `scripts/tests/`; every writer test constructs pre-existing content inline via `dest.write_text(...)`. New refresh tests follow that same inline convention rather than importing a shared builder. [Agent 3 finding]
+
 ### Documentation
 - `docs/guides/GETTING_STARTED.md:101` — describes what `--upgrade` refreshes today (host adapters, plugin); the commands block is not listed.
 - `docs/reference/CLI.md:35-84` — `ll-init` section; `ll-init --yes --upgrade` example at :84.
 - `skills/update/SKILL.md` — despite the Summary naming it, this skill only wraps `claude plugin update` / `pip install --upgrade` and never references the writers or the marker; it is not a code path this issue changes.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/init/SKILL.md` § "5. Handle `--upgrade`" (~lines 106-115) — states today's narrower contract in prose: "`ll-init apply` honors `requested_upgrade` in the plan by refreshing host adapters after the writes, but it does not upgrade the package or plugin itself." This sentence goes stale once `requested_upgrade` also drives the commands-block splice via `refresh=`. A separate doc surface from `GETTING_STARTED.md`/`CLI.md`. [Agent 1 / Agent 2 finding]
+- `CHANGELOG.md` — no entry is currently planned; per project convention (entries promoted into a concrete `## [X.Y.Z] - DATE` section, never `[Unreleased]`) this needs a `**ENH-3382**: ...` bullet under `### Changed` in the next release section during release prep. [Agent 2 finding]
 
 ## Program Design
 
@@ -113,7 +128,13 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 `_run_yes()` (`scripts/little_loops/init/cli.py:468`) -> `write_claude_md(..., refresh=upgrade)` -> `_render_commands_block()` (`scripts/little_loops/init/writers.py:268`)
 
-`_run_apply()` (`scripts/little_loops/init/cli.py:837`) -> `write_claude_md(..., refresh=bool(plan.get("requested_upgrade")))` -> `_render_commands_block()`
+`_run_apply()` (`scripts/little_loops/init/cli.py:849`) -> `write_claude_md(..., refresh=bool(plan.get("requested_upgrade")))` -> `_render_commands_block()`
+
+### Splice Helper
+
+One private helper in `writers.py` shared by all three writers, so the splice is written once:
+
+- `_splice_commands_block(existing: str, block: str) -> str | None` — returns the new file text, or `None` when no line-anchored `## little-loops CLI Commands` heading is present. Locates the heading by comparing each line's `rstrip()` to the canonical heading (so trailing whitespace and CRLF files still match); region runs from that line through the character before the next line starting with `## ` or EOF; replacement is `block.lstrip("\n")`, plus a single `"\n"` separator when a following heading exists so the blank line above the next section is preserved.
 
 ### Codebase Research Findings
 
@@ -148,6 +169,15 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - `docs/guides/GETTING_STARTED.md:101` and `docs/reference/CLI.md` (`ll-init`, :35-84) state that `--upgrade` also refreshes the commands block in CLAUDE.md/AGENTS.md/GEMINI.md.
 - `python -m pytest scripts/tests/test_init_core.py scripts/tests/test_init_audit_fixes.py` exits 0.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `skills/init/SKILL.md` § "5. Handle `--upgrade`" — reflect that `requested_upgrade` now also drives the commands-block refresh, not just host adapters
+- Update `scripts/little_loops/init/cli.py::main_init()` — the `--upgrade` argparse help string and the "Scope of `--force`" epilog text, both of which currently state the pre-refresh contract
+- Add `scripts/tests/test_init_tui.py::TestApplyConfigInstallSource` — a regression test seeding a stale `Install:` line and asserting it survives `_apply_config()` unchanged (TUI path stays `refresh=False`)
+- Add `**ENH-3382**: ...` under `### Changed` in `CHANGELOG.md` during release prep
+
 ## Impact
 
 - **Priority**: P4 - Cosmetic drift (stale `Install:` line) with a manual `--upgrade` workaround already available; not blocking.
@@ -167,5 +197,6 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T02:24:32 - `0ede70ea-abc7-4e95-bfe6-24a012dc95a9.jsonl`
 - `/ll:refine-issue` - 2026-09-03T02:12:23 - `530a68c3-069b-4c6c-b3fd-b695a90a9e2c.jsonl`
 - `/ll:format-issue` - 2026-09-03T02:02:58 - `1a5710fd-de34-4cc6-b93d-c2bb79974725.jsonl`
