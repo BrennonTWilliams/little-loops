@@ -106,9 +106,11 @@ headless flow and previews each planned write.)
 ### 5. Handle `--upgrade`
 
 `ll-init apply` honors `requested_upgrade` in the plan by refreshing host
-adapters after the writes, but it does not upgrade the package or plugin
-itself. If `UPGRADE` is true, after Apply completes run the upgrade side
-effects as a separate step:
+adapters after the writes, and (ENH-3382) by splicing an already-present
+`## little-loops CLI Commands` block in CLAUDE.md/AGENTS.md/GEMINI.md
+wholesale (hand edits inside it are discarded) — but it does not upgrade the
+package or plugin itself. If `UPGRADE` is true, after Apply completes run
+the upgrade side effects as a separate step:
 
 ```bash
 ll-init --yes --upgrade $HOSTS_FLAG $CODEX_FLAG

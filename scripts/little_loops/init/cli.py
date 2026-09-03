@@ -704,8 +704,15 @@ def _run_yes(
         extra_permissions = ["Skill(ll:explore-api)"]
     merge_settings(project_root, extra_permissions=extra_permissions, dry_run=dry_run)
 
+    # ENH-3382: --upgrade also refreshes an already-present commands block
+    # (e.g. a stale pre-BUG-3380 Install: line) in place; plain re-init stays
+    # a no-op so hand-edited blocks aren't clobbered.
     write_claude_md(
-        project_root, dry_run=dry_run, install_source=install_source, install_path=install_path
+        project_root,
+        dry_run=dry_run,
+        install_source=install_source,
+        install_path=install_path,
+        refresh=upgrade,
     )
 
     # AGENTS.md is the cross-tool convention read by codex / kimi-code / qwen
@@ -716,6 +723,7 @@ def _run_yes(
             dry_run=dry_run,
             install_source=install_source,
             install_path=install_path,
+            refresh=upgrade,
         )
 
     # GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190).
@@ -725,6 +733,7 @@ def _run_yes(
             dry_run=dry_run,
             install_source=install_source,
             install_path=install_path,
+            refresh=upgrade,
         )
 
     if upgrade and not dry_run:
@@ -939,8 +948,16 @@ def _run_apply(
         extra_permissions = ["Skill(ll:explore-api)"]
     merge_settings(project_root, extra_permissions=extra_permissions, dry_run=dry_run)
 
+    # ENH-3382: requested_upgrade also refreshes an already-present commands
+    # block in place (mirrors _run_yes()'s refresh=upgrade); a plan without
+    # requested_upgrade stays a no-op so hand-edited blocks aren't clobbered.
+    _refresh = bool(plan.get("requested_upgrade"))
     write_claude_md(
-        project_root, dry_run=dry_run, install_source=install_source, install_path=install_path
+        project_root,
+        dry_run=dry_run,
+        install_source=install_source,
+        install_path=install_path,
+        refresh=_refresh,
     )
 
     # AGENTS.md is the cross-tool convention read by codex / kimi-code / qwen
@@ -951,6 +968,7 @@ def _run_apply(
             dry_run=dry_run,
             install_source=install_source,
             install_path=install_path,
+            refresh=_refresh,
         )
 
     # GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190).
@@ -960,6 +978,7 @@ def _run_apply(
             dry_run=dry_run,
             install_source=install_source,
             install_path=install_path,
+            refresh=_refresh,
         )
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force, dry_run=dry_run)
@@ -1017,7 +1036,8 @@ Scope of --force:
   Resets .ll/ll-config.json to template defaults and redeploys bundled
   artifacts (goals, issue section templates, design-token profiles,
   learning-tests placeholder); regenerates host adapters. Does NOT rewrite
-  a ## little-loops section already present in CLAUDE.md/AGENTS.md.
+  a ## little-loops section already present in CLAUDE.md/AGENTS.md/GEMINI.md
+  — use --upgrade for that (see below).
 
 Exit codes:
   0 - Success
@@ -1106,7 +1126,9 @@ Exit codes:
             action="store_true",
             help=(
                 "Act on version drift automatically (install or upgrade). "
-                "Default headless behaviour is warn-only."
+                "Also refreshes an already-present ## little-loops CLI Commands "
+                "section in CLAUDE.md/AGENTS.md/GEMINI.md wholesale (hand edits "
+                "inside it are discarded). Default headless behaviour is warn-only."
             ),
         )
         parser.add_argument(

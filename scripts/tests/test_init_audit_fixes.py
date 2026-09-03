@@ -528,6 +528,61 @@ class TestApplyDryRunAndUpgrade:
         assert code == 0
         upgrade_mock.assert_not_called()
 
+    def test_apply_requested_upgrade_refreshes_stale_commands_block(self, tmp_path: Path) -> None:
+        """ENH-3382: requested_upgrade splices a stale block, mirroring --yes --upgrade."""
+        src = tmp_path / "src"
+        src.mkdir()
+        plan = _plan_for(src)
+        plan["requested_upgrade"] = True
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(plan))
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        claude_md = dest / ".claude" / "CLAUDE.md"
+        claude_md.parent.mkdir(parents=True)
+        claude_md.write_text(
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n',
+            encoding="utf-8",
+        )
+
+        with patch("little_loops.init.cli._dispatch_host_upgrade"):
+            code = _run(
+                ["--hosts", "claude-code", "--root", str(dest), "apply", "--config", str(plan_file)]
+            )
+        assert code == 0
+        content = claude_md.read_text(encoding="utf-8")
+        assert 'Install: `pip install -e "./scripts[dev]"`' not in content
+
+    def test_apply_without_requested_upgrade_leaves_stale_commands_block(
+        self, tmp_path: Path
+    ) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(_plan_for(src)))
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        claude_md = dest / ".claude" / "CLAUDE.md"
+        claude_md.parent.mkdir(parents=True)
+        stale = (
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n'
+        )
+        claude_md.write_text(stale, encoding="utf-8")
+
+        code = _run(
+            ["--hosts", "claude-code", "--root", str(dest), "apply", "--config", str(plan_file)]
+        )
+        assert code == 0
+        assert claude_md.read_text(encoding="utf-8") == stale
+
 
 # ===========================================================================
 # M-8: host_options is complete

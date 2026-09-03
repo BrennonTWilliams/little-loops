@@ -1600,6 +1600,92 @@ class TestWriteClaudeMd:
             assert "--upgrade" not in content
             assert "./scripts[dev]" not in content
 
+    # -- ENH-3382: refresh=True splices an already-present block in place --
+
+    _STALE_CLAUDE_MD = (
+        "# Config\n"
+        "\n"
+        "## little-loops CLI Commands\n"
+        "\n"
+        "- `ll-auto` - Process all backlog issues sequentially in priority order\n"
+        "\n"
+        'Install: `pip install -e "./scripts[dev]"`\n'
+        "\n"
+        "## User Section\n"
+        "\n"
+        "Keep me.\n"
+    )
+
+    def test_refresh_replaces_stale_install_line(self, tmp_path: Path) -> None:
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text(self._STALE_CLAUDE_MD, encoding="utf-8")
+        result = write_claude_md(tmp_path, install_source="pypi", refresh=True)
+        assert result is True
+        content = dest.read_text(encoding="utf-8")
+        assert 'Install: `pip install -e "./scripts[dev]"`' not in content
+        assert "Install: `pip install little-loops`" in content
+        # Content outside the block is byte-identical, including the single
+        # blank line separating the block from the following section.
+        assert "# Config\n\n## little-loops CLI Commands" in content
+        assert content.endswith("## User Section\n\nKeep me.\n")
+        assert "\n\n\n" not in content
+
+    def test_refresh_second_run_is_noop(self, tmp_path: Path) -> None:
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text(self._STALE_CLAUDE_MD, encoding="utf-8")
+        assert write_claude_md(tmp_path, install_source="pypi", refresh=True) is True
+        mtime_after_first = dest.stat().st_mtime
+        result = write_claude_md(tmp_path, install_source="pypi", refresh=True)
+        assert result is False
+        assert dest.stat().st_mtime == mtime_after_first
+
+    def test_refresh_false_leaves_stale_block_untouched(self, tmp_path: Path) -> None:
+        """Plain re-init (no --upgrade) must never rewrite an existing block."""
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text(self._STALE_CLAUDE_MD, encoding="utf-8")
+        result = write_claude_md(tmp_path, install_source="pypi")
+        assert result is False
+        assert dest.read_text(encoding="utf-8") == self._STALE_CLAUDE_MD
+
+    def test_refresh_marker_present_without_canonical_heading_is_noop(self, tmp_path: Path) -> None:
+        root_md = tmp_path / "CLAUDE.md"
+        content = "# Config\n\n## little-loops section here.\n"
+        root_md.write_text(content, encoding="utf-8")
+        result = write_claude_md(tmp_path, install_source="pypi", refresh=True)
+        assert result is False
+        assert root_md.read_text(encoding="utf-8") == content
+
+    def test_refresh_dry_run_reports_and_does_not_write(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        dest = tmp_path / ".claude" / "CLAUDE.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text(self._STALE_CLAUDE_MD, encoding="utf-8")
+        result = write_claude_md(tmp_path, install_source="pypi", dry_run=True, refresh=True)
+        assert result is True
+        assert dest.read_text(encoding="utf-8") == self._STALE_CLAUDE_MD
+        out = capsys.readouterr().out
+        assert "refresh ## little-loops CLI Commands" in out
+
+    def test_refresh_crlf_heading_is_refreshed(self, tmp_path: Path) -> None:
+        dest = tmp_path / "CLAUDE.md"
+        content = (
+            "# Config\r\n"
+            "\r\n"
+            "## little-loops CLI Commands\r\n"
+            "\r\n"
+            'Install: `pip install -e "./scripts[dev]"`\r\n'
+        )
+        dest.write_text(content, encoding="utf-8", newline="")
+        result = write_claude_md(tmp_path, install_source="pypi", refresh=True)
+        assert result is True
+        new_content = dest.read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in new_content
+        assert 'Install: `pip install -e "./scripts[dev]"`' not in new_content
+
 
 # ===========================================================================
 # TestWriteAgentsMd
@@ -1727,6 +1813,38 @@ class TestWriteAgentsMd:
         content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
         assert "Install: `pip install little-loops`" in content
 
+    # -- ENH-3382: refresh=True splices an already-present block in place --
+
+    def test_refresh_replaces_stale_install_line(self, tmp_path: Path) -> None:
+        dest = tmp_path / "AGENTS.md"
+        dest.write_text(
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n',
+            encoding="utf-8",
+        )
+        result = write_agents_md(tmp_path, install_source="pypi", refresh=True)
+        assert result is True
+        content = dest.read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+        assert 'Install: `pip install -e "./scripts[dev]"`' not in content
+
+    def test_refresh_false_leaves_stale_block_untouched(self, tmp_path: Path) -> None:
+        dest = tmp_path / "AGENTS.md"
+        stale = (
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n'
+        )
+        dest.write_text(stale, encoding="utf-8")
+        result = write_agents_md(tmp_path, install_source="pypi")
+        assert result is False
+        assert dest.read_text(encoding="utf-8") == stale
+
 
 # ===========================================================================
 # TestWriteGeminiMd
@@ -1819,6 +1937,38 @@ class TestWriteGeminiMd:
         )
         content = (tmp_path / "GEMINI.md").read_text(encoding="utf-8")
         assert 'Install: `pip install -e "./scripts[dev]"`' in content
+
+    # -- ENH-3382: refresh=True splices an already-present block in place --
+
+    def test_refresh_replaces_stale_install_line(self, tmp_path: Path) -> None:
+        dest = tmp_path / "GEMINI.md"
+        dest.write_text(
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n',
+            encoding="utf-8",
+        )
+        result = write_gemini_md(tmp_path, install_source="pypi", refresh=True)
+        assert result is True
+        content = dest.read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+        assert 'Install: `pip install -e "./scripts[dev]"`' not in content
+
+    def test_refresh_false_leaves_stale_block_untouched(self, tmp_path: Path) -> None:
+        dest = tmp_path / "GEMINI.md"
+        stale = (
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n'
+        )
+        dest.write_text(stale, encoding="utf-8")
+        result = write_gemini_md(tmp_path, install_source="pypi")
+        assert result is False
+        assert dest.read_text(encoding="utf-8") == stale
 
 
 # ===========================================================================
@@ -2740,6 +2890,68 @@ class TestMainInit:
         # headless _run_yes path executed instead.
         assert code == 0
         assert (tmp_project / ".ll" / "ll-config.json").exists()
+
+    def test_yes_upgrade_refreshes_stale_commands_block(self, tmp_project: Path) -> None:
+        """ENH-3382: --upgrade splices a stale Install: line in an existing block."""
+        from little_loops.init.cli import main_init
+
+        claude_md = tmp_project / ".claude" / "CLAUDE.md"
+        claude_md.parent.mkdir(parents=True)
+        claude_md.write_text(
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n',
+            encoding="utf-8",
+        )
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "1.0.0", None),
+            ),
+            patch(
+                "little_loops.init.install_check.fetch_latest_pypi",
+                return_value="1.0.0",
+            ),
+        ):
+            code = main_init(["--yes", "--upgrade", "--root", str(tmp_project)])
+        assert code == 0
+        content = claude_md.read_text(encoding="utf-8")
+        assert "Install: `pip install little-loops`" in content
+        assert 'Install: `pip install -e "./scripts[dev]"`' not in content
+
+    def test_yes_without_upgrade_leaves_stale_commands_block(self, tmp_project: Path) -> None:
+        """Plain --yes (no --upgrade) never rewrites an existing commands block."""
+        from little_loops.init.cli import main_init
+
+        claude_md = tmp_project / ".claude" / "CLAUDE.md"
+        claude_md.parent.mkdir(parents=True)
+        stale = (
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n'
+        )
+        claude_md.write_text(stale, encoding="utf-8")
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "1.0.0", None),
+            ),
+            patch(
+                "little_loops.init.install_check.fetch_latest_pypi",
+                return_value="1.0.0",
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        assert claude_md.read_text(encoding="utf-8") == stale
 
     def test_yes_consumer_path_never_uses_editable_bare_name(self, tmp_project: Path) -> None:
         """pip install -e <bare-package-name> must never be constructed for PyPI installs."""

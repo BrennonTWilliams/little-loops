@@ -280,6 +280,32 @@ def _render_commands_block(
     return "\n".join(lines)
 
 
+def _splice_commands_block(existing: str, block: str) -> str | None:
+    """Replace an existing ``## little-loops CLI Commands`` block with *block*.
+
+    Locates the heading at the start of a line — matched via ``rstrip()`` so
+    trailing whitespace and CRLF line endings still hit — and bounds the
+    region from that line through the character before the next line
+    starting with ``## `` (H2, trailing space) or EOF. Returns ``None`` when
+    no such line-anchored heading is found (e.g. the marker only matched a
+    look-alike heading such as ``## little-loops section here.``).
+    """
+    heading = "## little-loops CLI Commands"
+    lines = existing.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines) if line.rstrip() == heading), None)
+    if start is None:
+        return None
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if lines[i].startswith("## "):
+            end = i
+            break
+    before = "".join(lines[:start])
+    after = "".join(lines[end:])
+    replacement = block.lstrip("\n")
+    return before + replacement + ("\n" + after if after else "")
+
+
 def load_existing_config(project_root: Path) -> dict[str, Any]:
     """Load the existing ll-config.json for *project_root* as a dict.
 
@@ -587,12 +613,13 @@ def write_claude_md(
     dry_run: bool = False,
     install_source: str | None = None,
     install_path: str | None = None,
+    refresh: bool = False,
 ) -> bool:
     """Append the canonical ## little-loops CLI Commands block to CLAUDE.md.
 
     Detection order: .claude/CLAUDE.md, then CLAUDE.md. If neither exists,
     creates .claude/CLAUDE.md. Idempotent: returns False without writing if
-    the section is already present.
+    the section is already present, unless *refresh* is set (ENH-3382).
 
     Args:
         project_root: Project root directory.
@@ -601,6 +628,10 @@ def write_claude_md(
             rendered Install: line.
         install_path: Editable install location for "local-editable"
             installs; rendered relative to project_root.
+        refresh: If True and the section is already present, replace it
+            in place with a freshly rendered block (ENH-3382) instead of
+            leaving it untouched. Wholesale replacement — hand edits inside
+            the block are discarded.
 
     Returns:
         True if the file was created or modified; False if no changes needed.
@@ -620,7 +651,19 @@ def write_claude_md(
     if target.exists():
         existing = target.read_text(encoding="utf-8")
         if _CLAUDE_MD_SECTION_MARKER in existing:
-            return False
+            if not refresh:
+                return False
+            block = _render_commands_block(
+                _CLAUDE_MD_DESC_OVERRIDES, install_source, install_path, project_root
+            )
+            spliced = _splice_commands_block(existing, block)
+            if spliced is None or spliced == existing:
+                return False
+            if dry_run:
+                info(f"update {rel} (refresh ## little-loops CLI Commands)")
+                return True
+            atomic_write(target, spliced)
+            return True
         if dry_run:
             info(f"update {rel} (append ## little-loops CLI Commands)")
             return True
@@ -653,6 +696,7 @@ def write_agents_md(
     dry_run: bool = False,
     install_source: str | None = None,
     install_path: str | None = None,
+    refresh: bool = False,
 ) -> bool:
     """Append the canonical ## little-loops CLI Commands block to AGENTS.md.
 
@@ -660,7 +704,7 @@ def write_agents_md(
     Code, and other non-Claude hosts (see AGENTS_MD_HOSTS). Detection order:
     .kimi-code/AGENTS.md, then AGENTS.md. If neither exists, creates root
     AGENTS.md. Idempotent: returns False without writing if the section is
-    already present.
+    already present, unless *refresh* is set (ENH-3382).
 
     Args:
         project_root: Project root directory.
@@ -669,6 +713,10 @@ def write_agents_md(
             rendered Install: line.
         install_path: Editable install location for "local-editable"
             installs; rendered relative to project_root.
+        refresh: If True and the section is already present, replace it
+            in place with a freshly rendered block (ENH-3382) instead of
+            leaving it untouched. Wholesale replacement — hand edits inside
+            the block are discarded.
 
     Returns:
         True if the file was created or modified; False if no changes needed.
@@ -688,7 +736,21 @@ def write_agents_md(
     if target.exists():
         existing = target.read_text(encoding="utf-8")
         if _CLAUDE_MD_SECTION_MARKER in existing:
-            return False
+            if not refresh:
+                return False
+            block = _render_commands_block(
+                install_source=install_source,
+                install_path=install_path,
+                project_root=project_root,
+            )
+            spliced = _splice_commands_block(existing, block)
+            if spliced is None or spliced == existing:
+                return False
+            if dry_run:
+                info(f"update {rel} (refresh ## little-loops CLI Commands)")
+                return True
+            atomic_write(target, spliced)
+            return True
         if dry_run:
             info(f"update {rel} (append ## little-loops CLI Commands)")
             return True
@@ -715,13 +777,14 @@ def write_gemini_md(
     dry_run: bool = False,
     install_source: str | None = None,
     install_path: str | None = None,
+    refresh: bool = False,
 ) -> bool:
     """Append the canonical ## little-loops CLI Commands block to GEMINI.md.
 
     GEMINI.md is Gemini CLI's exact analog of CLAUDE.md (FEAT-2190): a single
     root-level project-instructions file, loaded automatically on session
     start. Idempotent: returns False without writing if the section is
-    already present.
+    already present, unless *refresh* is set (ENH-3382).
 
     Args:
         project_root: Project root directory.
@@ -730,6 +793,10 @@ def write_gemini_md(
             rendered Install: line.
         install_path: Editable install location for "local-editable"
             installs; rendered relative to project_root.
+        refresh: If True and the section is already present, replace it
+            in place with a freshly rendered block (ENH-3382) instead of
+            leaving it untouched. Wholesale replacement — hand edits inside
+            the block are discarded.
 
     Returns:
         True if the file was created or modified; False if no changes needed.
@@ -740,7 +807,21 @@ def write_gemini_md(
     if target.exists():
         existing = target.read_text(encoding="utf-8")
         if _CLAUDE_MD_SECTION_MARKER in existing:
-            return False
+            if not refresh:
+                return False
+            block = _render_commands_block(
+                install_source=install_source,
+                install_path=install_path,
+                project_root=project_root,
+            )
+            spliced = _splice_commands_block(existing, block)
+            if spliced is None or spliced == existing:
+                return False
+            if dry_run:
+                info(f"update {rel} (refresh ## little-loops CLI Commands)")
+                return True
+            atomic_write(target, spliced)
+            return True
         if dry_run:
             info(f"update {rel} (append ## little-loops CLI Commands)")
             return True

@@ -1327,3 +1327,25 @@ class TestApplyConfigInstallSource:
         claude_md = self._apply(tmp_path, generic_template, "local-editable", str(editable_path))
         content = claude_md.read_text(encoding="utf-8")
         assert 'Install: `pip install -e "./scripts[dev]"`' in content
+
+    def test_stale_commands_block_survives_unchanged(
+        self, tmp_path: Path, generic_template: object
+    ) -> None:
+        """ENH-3382: the TUI path never passes refresh=True — _apply_config()
+        redirects users to `ll-init --upgrade` for refreshes (see the Screen-1
+        hint), so an existing block (with a stale Install: line) must be left
+        byte-identical."""
+        claude_md_path = tmp_path / ".claude" / "CLAUDE.md"
+        claude_md_path.parent.mkdir(parents=True)
+        stale = (
+            "# Config\n"
+            "\n"
+            "## little-loops CLI Commands\n"
+            "\n"
+            'Install: `pip install -e "./scripts[dev]"`\n'
+        )
+        claude_md_path.write_text(stale, encoding="utf-8")
+
+        claude_md = self._apply(tmp_path, generic_template, "pypi", None)
+        assert claude_md == claude_md_path
+        assert claude_md.read_text(encoding="utf-8") == stale
