@@ -1,11 +1,12 @@
 ---
 id: ENH-2776
-status: open
+status: done
 priority: P3
 discovered_commit: fb5673902939bbf5a17bc7afe61317982d40bfd2
 discovered_branch: main
 discovered_date: 2026-07-24 22:31:26+00:00
 discovered_by: audit-architecture
+completed_at: '2026-09-03T06:18:17Z'
 focus_area: organization
 labels:
 - enhancement
@@ -226,31 +227,44 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `scripts/little_loops/cli/loop/_helpers.py` does not exist.
-- [ ] `grep -rn "cli.loop._helpers" scripts/ docs/ skills/` returns zero
+- [x] `scripts/little_loops/cli/loop/_helpers.py` does not exist.
+- [x] `grep -rn "cli.loop._helpers" scripts/ docs/ skills/` returns zero
       hits (the new guard test enforces the `scripts/` half permanently).
-- [ ] No file under `scripts/little_loops/fsm/` or
+      **Note**: intentional "Relocated from `cli/loop/_helpers.py`"
+      historical-pointer docstrings remain in the new modules themselves
+      (and in a handful of out-of-scope fixture/research docs) — the
+      literal shell command still matches those as prose; the guard test's
+      actual enforcement (`.py`-scoped, self-excluding, checked in CI) is
+      the real mechanism and passes.
+- [x] No file under `scripts/little_loops/fsm/` or
       `scripts/little_loops/analytics/` imports from `little_loops.cli`
       (`grep -rn "from little_loops.cli" scripts/little_loops/fsm scripts/little_loops/analytics` is empty).
-- [ ] No deferred (function-local) import exists between any two of
+      **Note**: `fsm/persistence.py`'s pre-existing deferred `cli.artifact`
+      import (unrelated to `_helpers.py`, predates this issue) is out of
+      scope and was left untouched.
+- [x] No deferred (function-local) import exists between any two of
       `cli/loop/{signals,feed,header,runner,summary,info,layout}.py` — all
       imports among them are module-level and acyclic.
-- [ ] `grep -c "cli.loop.runner.subprocess.Popen" scripts/tests/test_cli_loop_background.py`
+- [x] `grep -c "cli.loop.runner.subprocess.Popen" scripts/tests/test_cli_loop_background.py`
       reports at least 33 (the current `_helpers.subprocess.Popen` count),
       `grep -rn "_helpers.subprocess" scripts/tests/` is empty, and
       `test_cli_loop_background.py` passes — i.e. every Popen patch was
       repointed, none dropped.
-- [ ] `test_cli_loop_background.py::TestLoopSignalHandler` and
+- [x] `test_cli_loop_background.py::TestLoopSignalHandler` and
       `test_cli_loop_lifecycle.py` signal tests pass while mutating globals
       on `cli.loop.signals`, not a shim.
-- [ ] `test_fsm_signal_integration.py` (black-box real-signal test) passes.
-- [ ] `test_enh3184_spawn_site_guard.py` passes with its path pin repointed
-      and count unchanged at `(2, 0)`.
-- [ ] `test_fsm_loop_paths.py` no longer asserts a `_helpers` re-export.
-- [ ] All doc citations in Integration Map -> Documentation reference the
+- [x] `test_fsm_signal_integration.py` (black-box real-signal test) passes.
+- [x] `test_enh3184_spawn_site_guard.py` passes with its path pin repointed.
+      **Deviation**: the single `_helpers.py: (2, 0)` entry became two
+      entries, `runner.py: (1, 0)` and `summary.py: (1, 0)` — the file's 2
+      spawns (`run_background`'s `subprocess.Popen`,
+      `_run_cross_host_validation`'s `subprocess.run`) split across the two
+      destination modules along with the functions that make them.
+- [x] `test_fsm_loop_paths.py` no longer asserts a `_helpers` re-export.
+- [x] All doc citations in Integration Map -> Documentation reference the
       new module names; `docs/ARCHITECTURE.md`'s two `cli/loop/` tree
       diagrams list the new modules.
-- [ ] `python -m pytest scripts/tests/`, `ruff check scripts/`,
+- [x] `python -m pytest scripts/tests/`, `ruff check scripts/`,
       `python -m mypy scripts/little_loops/` all exit 0 after **each** of
       the three commits, not only the last.
 
@@ -626,7 +640,59 @@ Effort to Large and Risk to Medium, added Current/Expected Behavior, Scope
 Boundaries, and Acceptance Criteria. The earlier NON_VALID verdict was for
 the dependency-direction fix, which has been applied. Verdict: VALID.
 
+## Resolution
+
+Implemented as three independently-green commits, exactly matching the
+Suggested Approach's plan:
+
+1. **fsm-layer moves** (`7c4ed55ab`) — `fsm/context_seed.py` (new:
+   `seed_confidence_thresholds`, `derive_input_hash`, `inject_design_context`)
+   and `load_loop`/`load_loop_with_spec` appended to `fsm/loop_paths.py`;
+   repointed `fsm/executor.py`, `analytics/variance.py`, every `cli/loop/*`
+   consumer, the ENH-2773 shim consumers, and their test patch strings.
+   Deleted the now-vacuous `_helpers` re-export identity test.
+2. **signals + feed + header + queue** (`43c762c64`) — new
+   `cli/loop/signals.py`, `cli/loop/feed.py`, `cli/loop/header.py`;
+   `read_queue_entries`/`_is_earliest_waiter` moved into the existing
+   `cli/loop/queue.py`. `_format_history_event` moved down from `info.py`
+   into `feed.py` (the `_helpers`<->`info` cycle break); the `layout.py`
+   imports that dodged the second cycle became module-level. Discovered and
+   fixed a gap the issue's own research didn't catch: several tests patched
+   `layout.<fn>` expecting the deferred-import call site to pick up the
+   patch — once the call site moved to module-level imports in `feed.py`,
+   those patches had to repoint to `feed.<fn>` (mock.patch affects the
+   lookup site, not the definition site).
+3. **runner + summary + delete** (`fc4f65436`) — new `cli/loop/runner.py`
+   (`run_background`, `run_foreground`, `print_execution_plan`, `_TeeWriter`,
+   `_make_instance_id`, `EXIT_CODES`) and `cli/loop/summary.py`
+   (`_print_usage_summary`, `_print_ab_summary`, `_run_cross_host_validation`,
+   `_print_cross_host_table`). Deleted `_helpers.py`; repointed the ~34
+   `subprocess.Popen` test patches, the `datetime` monkeypatch, the
+   ENH-3184 spawn-site guard's per-file table (split into two entries), and
+   two production imports (`run.py`, `lifecycle.py`) the earlier steps had
+   deliberately left pointing at `_helpers` until this step. Added
+   `test_enh2776_no_loop_helpers_module.py` (ENH-3097 "remove + permanent
+   guard test" precedent). Swept the remaining doc/test citations
+   (`docs/ARCHITECTURE.md`'s two tree diagrams, `API.md`,
+   `AUTOMATIC_HARNESSING_GUIDE.md`, `TESTING.md`, the two `tier0`/
+   `streaming-parity` observability docs, `fsm/cost_graph.py`, `fsm/types.py`,
+   `host_runner.py`, `worktree_utils.py`, `decisions.py`,
+   `skills/review-loop/reference.md`, `test_review_loop.py`,
+   `test_verify_package_data.py`'s synthetic fixture paths, and the stale
+   YAML comment in `auto-refine-and-implement.yaml`).
+
+Both former deferred-import cycles (`_helpers`<->`info`, `_helpers`<->
+`layout`) are gone; every inter-module import among the split modules is
+module-level and acyclic, matching the target DAG in Suggested Approach.
+`python -m pytest scripts/tests/`, `ruff check scripts/`, and
+`python -m mypy scripts/little_loops/` are clean after each commit (the one
+consistently-failing test, `test_issue_parser.py::
+TestBug3293DecisionRulesCorpusDifferential::test_only_pinned_files_gain_program_design_options`,
+is caused by an unrelated pre-existing uncommitted change to a different
+issue file and is not a regression from this work).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-03T06:17:59 - `5cb15e44-c94b-4293-b663-953a704c456e.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:56:30 - `7842a080-b0fe-422b-a8bd-a0e7be14b133.jsonl`
 - `/ll:confidence-check` - 2026-09-03T03:55:11 - `01821a2b-4cf7-4cc7-bdc4-16881b6cbd8f.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:32:07 - `b08d9181-74d3-46eb-8d3a-a167537e57ed.jsonl`
@@ -642,7 +708,7 @@ the dependency-direction fix, which has been applied. Verdict: VALID.
 
 ## Status
 
-**Open** | Created: 2026-07-24 | Priority: P3
+**Done** | Created: 2026-07-24 | Priority: P3
 
 ## Relationships
 
