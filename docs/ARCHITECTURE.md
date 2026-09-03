@@ -727,7 +727,7 @@ sequenceDiagram
 ```mermaid
 flowchart TB
     DB[history.db]
-    HR[history_reader.py]
+    HR[history_reader/]
     DB --> HR
     HR --> HC["ll-history-context CLI<br/>find_user_corrections + recent_file_events<br/>→ ## Historical Context block"]
     HR --> LS["ll-session CLI<br/>search + related_issue_events<br/>+ sessions_for_issue"]
@@ -755,7 +755,7 @@ flowchart TB
 | `pre_compact` hook | `hooks/pre_compact.py` | Writes a `compaction` `session_lifecycle_events` row after `.ll/ll-precompact-state.json` persists (ENH-2495) |
 | `sweep_stale_refs` hook | `hooks/sweep_stale_refs.py` | Writes one `stale_ref_sweep` `session_lifecycle_events` row per invocation, including zero findings (ENH-2495) |
 | `cli_event_context()` | `session_store/writers.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849). Honors `LL_HISTORY_DB` env var for path override. |
-| `history_reader.py` | `history_reader.py` | Public read API: 10 query functions, 7 dataclasses, `ll_grep` / `ll_expand` / `ll_describe` (FEAT-1712), `project_digest` / `render_project_context` (ENH-1907) |
+| `history_reader/` | `history_reader/__init__.py` | Public read API package (ENH-2775 split from the former flat `history_reader.py`): ~65 query functions across 13 concern submodules (`search.py`, `sessions.py`, `usage.py`, `runs.py`, `context.py`, `subagents.py`, `hooks.py`, `harness.py`, `events.py`, `summary_dag.py`, `digest.py`, `formatting.py` for `ll_grep`/`ll_expand`/`ll_describe` (FEAT-1712) and `project_digest`/`render_project_context` (ENH-1907)) plus a shared `models.py` (dataclasses) and `_base.py` (connection/row-mapping helpers) |
 | `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: `## Historical Context` block (issue mode) + project digest dry-run (`--project`) |
 | `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions, `grep`/`expand`/`describe` (FEAT-1712) |
 | Skills | `commands/refine-issue.md` etc. | Call `ll-history-context` for agent context injection |

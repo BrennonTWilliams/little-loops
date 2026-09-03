@@ -1,6 +1,6 @@
 ---
 id: ENH-2775
-status: open
+status: done
 priority: P3
 discovered_commit: fb5673902939bbf5a17bc7afe61317982d40bfd2
 discovered_branch: main
@@ -22,6 +22,7 @@ score_complexity: 17
 score_test_coverage: 23
 score_ambiguity: 23
 score_change_surface: 22
+completed_at: '2026-09-03T05:19:16Z'
 ---
 
 # ENH-2775: Split history_reader.py into a subpackage along concern boundaries
@@ -230,34 +231,34 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `scripts/little_loops/history_reader.py` no longer exists;
+- [x] `scripts/little_loops/history_reader.py` no longer exists;
       `scripts/little_loops/history_reader/__init__.py` plus the submodules
       in Suggested Approach step 1 do.
-- [ ] Every name in the pre-split module docstring's "Public API" list, plus
+- [x] Every name in the pre-split module docstring's "Public API" list, plus
       `_connect_readonly`, `_stale_cutoff`, `_row_to_dataclass`, is listed in
       `history_reader/__init__.py.__all__` and importable via
       `from little_loops.history_reader import <name>`.
-- [ ] Zero edits to any of the 17 non-test importers or 20 test importers
+- [x] Zero edits to any of the 17 non-test importers or 20 test importers
       listed in Integration Map -> Dependent Files (verify with
       `git diff --stat` against the branch base).
-- [ ] `unittest.mock.patch("little_loops.history_reader.lookup_session_metadata")`
+- [x] `unittest.mock.patch("little_loops.history_reader.lookup_session_metadata")`
       and `...sessions_for_issue` in `test_ll_logs.py`/`test_cli_history.py`
       still apply (those tests pass unmodified).
-- [ ] `loops/sft-corpus.yaml`'s heredoc
+- [x] `loops/sft-corpus.yaml`'s heredoc
       `from little_loops.history_reader import lookup_session_metadata`
       resolves (`python -c` smoke check).
-- [ ] `test_verdict_grammar_regression.py::test_high_confidence_abstention_warns`
+- [x] `test_verdict_grammar_regression.py::test_high_confidence_abstention_warns`
       passes unmodified.
-- [ ] `test_wiring_reference_docs.py` and `test_wiring_guides_and_meta.py`
+- [x] `test_wiring_reference_docs.py` and `test_wiring_guides_and_meta.py`
       pass; `docs/reference/API.md` still contains the literal heading
       `## little_loops.history_reader`.
-- [ ] No submodule imports a sibling other than `_base.py`/`models.py`
+- [x] No submodule imports a sibling other than `_base.py`/`models.py`
       (`digest.py` exception per step 4); no submodule calls
       `logging.getLogger(__name__)`.
-- [ ] `scripts/tests/test_history_reader.py` is replaced by
+- [x] `scripts/tests/test_history_reader.py` is replaced by
       `test_history_reader_<submodule>.py` files with the same `Test*`
       classes; collected test count is unchanged.
-- [ ] `python -m pytest scripts/tests/`, `ruff check scripts/`,
+- [x] `python -m pytest scripts/tests/`, `ruff check scripts/`,
       `python -m mypy scripts/little_loops/` all exit 0.
 
 ## Integration Map
@@ -567,7 +568,67 @@ introducing no new gate, threshold, or classification rule.
   decisions, added Current/Expected Behavior, Scope Boundaries, and
   Acceptance Criteria. Verdict: VALID.
 
+## Resolution
+
+Converted `scripts/little_loops/history_reader.py` (3,706 lines) into
+`scripts/little_loops/history_reader/` — a 14-file subpackage mirroring the
+ENH-2772/ENH-2774 sibling splits:
+
+- `_base.py` — shared `_connect_readonly`/`_row_to_dataclass`/`_stale_cutoff`/
+  `STALE_DAYS_DEFAULT` plus the fixed `logger = logging.getLogger(
+  "little_loops.history_reader")` and re-imported cross-package names
+  (`session_store`'s `DEFAULT_DB_PATH`/`ensure_db`/`fts_phrase`/
+  `normalize_issue_id`, `fsm.verdicts.CANNOT_JUDGE`).
+- `models.py` — the 20 dataclasses from the file's original `# Dataclasses`
+  region. The 9 additional dataclasses defined inline within a single
+  domain's region (`HookEvent`, `HarnessEvent`, `HighConfidenceAbstention`,
+  `VerdictEvent`, `AdvisorConsultRow`, `ConsultStats`, `AxisRates`,
+  `ResearchTriageStats`, `ReviewEvent`) were co-located with that domain's
+  submodule instead, per the issue's own suggested judgment call for
+  `HookEvent` applied consistently.
+- `search.py`, `sessions.py`, `usage.py`, `subagents.py`, `context.py`,
+  `runs.py`, `summary_dag.py`, `digest.py`, `hooks.py`, `harness.py`,
+  `events.py`, `formatting.py` — one submodule per backing table/view (or
+  tightly-coupled cluster), matching the Suggested Approach's submodule map
+  (re-derived from a fresh AST-level inventory of the file rather than the
+  issue's line citations, which had drifted).
+- `digest.py` needed no DAG exception: its `project_digest`/
+  `render_project_context` section-provider queries hit `file_events`/
+  `issue_events`/`user_corrections` directly by table name rather than
+  calling another submodule's function, so it imports only from
+  `_base.py`/`models.py` like every other sibling.
+- `__init__.py` re-exports the full public surface (98 names in `__all__`,
+  including every name from the pre-split docstring's "Public API" list, the
+  three private test-access names, `STALE_DAYS_DEFAULT` (`cli/history_context.py`
+  imports it directly — found via a from-scratch importer sweep, not listed
+  in the issue's importer inventory), and `read_base_sha`/`read_base_dirty`).
+
+Test file `scripts/tests/test_history_reader.py` (3,304 lines, 25 `Test*`
+classes) split one-for-one into 11 `test_history_reader_<submodule>.py`
+files (no dedicated file for `subagents.py`/`models.py` — the original file
+had no test classes for those). `TestNewEventReaders` was moved whole into
+`test_history_reader_events.py` per the Suggested Approach, even though a
+fresh inspection shows it actually spans more domains (skill/commit/
+prompt-opt/learning-test/orchestration/loop-run tests, not just the four
+`events.py` tail domains) than the issue's research described — the file
+had grown since that research was captured. Collected test count is
+unchanged: 181 before and after.
+
+Verified: full suite (`python -m pytest scripts/tests/`) — 22,620 passed, 42
+skipped, 1 pre-existing unrelated failure (`test_issue_parser.py::
+TestBug3293DecisionRulesCorpusDifferential::test_only_pinned_files_gain_program_design_options`,
+caused by an already-staged, unrelated FEAT-3323 issue-file edit predating
+this session — confirmed via `git diff --cached` showing no history_reader
+content). `ruff check scripts/` and `python -m mypy scripts/little_loops/`
+both exit 0. The `git diff --stat` sweep confirms none of the 17 non-test /
+20 test importer files changed. Docs updated in the same commit:
+`docs/reference/API.md` (restructured `## little_loops.history_reader`
+entry, heading text unchanged), `docs/ARCHITECTURE.md` (Read Path mermaid
+node + Components table row), `CONTRIBUTING.md` (module-tree listing).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-03T05:18:58 - `ca5d5b5d-2640-4a8f-b9c1-7d66de090028.jsonl`
+- `/ll:manage-issue` - 2026-09-03T05:18:33 - `ca5d5b5d-2640-4a8f-b9c1-7d66de090028.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:56:29 - `7842a080-b0fe-422b-a8bd-a0e7be14b133.jsonl`
 - `/ll:confidence-check` - 2026-09-03T03:55:11 - `01821a2b-4cf7-4cc7-bdc4-16881b6cbd8f.jsonl`
 - `/ll:wire-issue` - 2026-09-03T03:32:07 - `b08d9181-74d3-46eb-8d3a-a167537e57ed.jsonl`
@@ -586,4 +647,4 @@ introducing no new gate, threshold, or classification rule.
 
 ## Status
 
-**Open** | Created: 2026-07-24 | Priority: P3
+**Completed** | Created: 2026-07-24 | Completed: 2026-09-03 | Priority: P3

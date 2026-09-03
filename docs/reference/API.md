@@ -8137,7 +8137,9 @@ bus.register(my_callback)
 
 ## little_loops.history_reader
 
-Typed read-only query module for `.ll/history.db` (ENH-1752). Provides the common queries that ll skills and agents need to consume the session database without importing ad-hoc SQL into every caller. All functions degrade gracefully: missing/empty/corrupt databases return empty lists, never raise.
+Typed read-only query package for `.ll/history.db` (ENH-1752). Provides the common queries that ll skills and agents need to consume the session database without importing ad-hoc SQL into every caller. All functions degrade gracefully: missing/empty/corrupt databases return empty lists, never raise.
+
+**Package layout** (ENH-2775 split from the former flat `history_reader.py`): one submodule per backing table/view — `_base.py` (shared `_connect_readonly`/`_row_to_dataclass`/`_stale_cutoff` internals), `models.py` (dataclasses), `search.py`, `sessions.py`, `usage.py`, `subagents.py`, `context.py`, `runs.py`, `summary_dag.py`, `digest.py`, `hooks.py`, `harness.py`, `events.py`, `formatting.py`. Every name below stays importable at the flat `little_loops.history_reader.<name>` path via `__init__.py` re-exports — no caller needs to change.
 
 > **Session store:** For the write-side schema, `SQLiteTransport`, and backfill functions, see [`little_loops.session_store`](#little_loopssession_store).
 
@@ -8153,23 +8155,46 @@ from little_loops.history_reader import (
     recent_skill_events,     # ENH-2460
     summarize_skills,        # ENH-2460
     recent_commit_events,    # ENH-2458
+    commit_issue_for_sha,    # FEAT-2867
     recent_test_runs,        # ENH-2459
     OrchestrationRun,        # ENH-2492
     recent_orchestration_runs,    # ENH-2492
     aggregate_orchestration_runs, # ENH-2492
+    read_base_sha,           # ENH-2866
+    read_base_dirty,         # ENH-3142
+    read_prepatch_evidence,  # ENH-2997
+    LoopRun,                 # ENH-2463
+    recent_loop_runs,        # ENH-2463
+    find_loop_run,           # ENH-2463
+    aggregate_loop_runs,     # ENH-2463
     find_session_for_issue_transition,  # ENH-2462
+    issue_effort,            # ENH-1943
+    recent_issue_velocity,   # ENH-1943
     agent_usage,             # ENH-2497
     recent_tool_events,      # ENH-2497
+    mcp_server_usage,        # ENH-2511
+    mcp_failure_rate,        # ENH-2511
+    cost_attribution,        # FEAT-2478
+    waste_attribution,       # ENH-2722
+    recent_usage_events,     # ENH-2461
+    aggregate_usage,         # ENH-2461
+    context_pressure_curve,  # ENH-2507
+    pressure_crossings,      # ENH-2507
+    pressure_summary,        # ENH-2507
     LearningTestEvent,       # ENH-2466
     recent_learning_tests,   # ENH-2466
     find_learning_test,      # ENH-2466
     LifecycleEvent,          # ENH-2495
     recent_lifecycle_events, # ENH-2495
     handoff_frequency,       # ENH-2495
+    worktree_summary,        # ENH-2509
     SubagentRun,             # ENH-2505
     subagent_tree,           # ENH-2505
     subagent_retries,        # ENH-2505
     subagent_budget,         # ENH-2505
+    ll_grep, ll_expand, ll_describe,  # FEAT-1712
+    condensed_nodes_for_issue,        # FEAT-1712
+    project_digest, render_project_context,  # ENH-1907
     HookEvent,               # ENH-2506
     recent_hook_events,      # ENH-2506
     hook_failure_rate,       # ENH-2506
@@ -8177,12 +8202,19 @@ from little_loops.history_reader import (
     HarnessEvent,            # ENH-2741
     recent_harness_events,   # ENH-2741
     harness_eval_pass_rate,  # ENH-2741
+    harness_eval_abstention_rate,  # ENH-3185
+    HighConfidenceAbstention,      # ENH-230
+    check_high_confidence_abstention,  # ENH-230
     PromptOptEvent,          # ENH-2498
     recent_prompt_opt_events, # ENH-2498
     prompt_opt_offer_rate,   # ENH-2498
     VerdictEvent,            # ENH-2504
     recent_verdict_events,   # ENH-2504
     verdict_pass_rate,       # ENH-2504
+    AdvisorConsultRow, ConsultStats,  # FEAT-3300
+    query_advisor_consults, consult_stats,  # FEAT-3300
+    AxisRates, ResearchTriageStats,   # ENH-2990
+    research_triage_stats,           # ENH-2990
     ReviewEvent,             # ENH-2512
     recent_review_events,    # ENH-2512
     review_velocity,         # ENH-2512

@@ -294,7 +294,22 @@ little-loops/
         ├── compression/         # Zero-dependency heuristic prompt compressor (sub-package, FEAT-2675)
         │   ├── __init__.py      #   Re-exports for the compression/heuristic.py surface
         │   └── heuristic.py     #   3 extractive passes + compress()/compress_action_text() (window-relative trigger, len//4)
-        ├── history_reader.py    # Typed read-only query API for .ll/history.db (8 query functions, 7 dataclasses)
+        ├── history_reader/      # Typed read-only query API for .ll/history.db (sub-package, ENH-2775)
+        │   ├── __init__.py      #   Re-exports the full public surface + 4 private test-access names
+        │   ├── _base.py         #   _connect_readonly, _row_to_dataclass, _stale_cutoff, shared logger
+        │   ├── models.py        #   Dataclasses shared across 2+ query domains
+        │   ├── search.py        #   Full-text search, corrections, file events
+        │   ├── sessions.py      #   Session metadata, issue events/effort/velocity, lifecycle, worktrees
+        │   ├── usage.py         #   tool_events + usage_events queries
+        │   ├── subagents.py     #   subagent_runs spawn tree/retries/budget
+        │   ├── context.py       #   Skill/commit/prompt-opt/learning-test/context-pressure queries
+        │   ├── runs.py          #   Test-run, orchestration-run, and loop-run queries
+        │   ├── summary_dag.py   #   Summary-DAG retrieval (FEAT-1712)
+        │   ├── digest.py        #   Project-digest section providers (ENH-1907)
+        │   ├── hooks.py         #   Hook execution telemetry (ENH-2506)
+        │   ├── harness.py       #   ll-harness / eval outcome telemetry
+        │   ├── events.py        #   verdict/advisor-consult/research-triage/review events
+        │   └── formatting.py    #   ll_grep / ll_expand / ll_describe
         ├── file_utils.py        # Shared file I/O utilities (atomic writes)
         ├── user_messages.py     # User message extraction
         ├── workflow_sequence/   # Workflow analysis (ll-workflows, sub-package)
