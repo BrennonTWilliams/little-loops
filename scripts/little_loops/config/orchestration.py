@@ -121,6 +121,8 @@ class AdvisorConfig:
     enabled: bool = False
     host: str | None = None
     model: str = "opus"
+    base_url: str | None = None
+    api_key: str | None = None
     min_tier: str | None = None
     timeout_seconds: int = 180
     triggers: list[str] = field(default_factory=list)
@@ -134,6 +136,8 @@ class AdvisorConfig:
             enabled=data.get("enabled", False),
             host=data.get("host"),
             model=data.get("model", "opus"),
+            base_url=data.get("base_url"),
+            api_key=data.get("api_key"),
             min_tier=data.get("min_tier"),
             timeout_seconds=data.get("timeout_seconds", 180),
             triggers=list(data.get("triggers", [])),

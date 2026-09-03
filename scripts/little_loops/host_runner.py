@@ -58,6 +58,7 @@ __all__ = [
     "HostRunner",
     "KimiRunner",
     "OmpRunner",
+    "OpenAIGenericRunner",
     "OpenCodeRunner",
     "PiRunner",
     "QwenRunner",
@@ -1809,6 +1810,138 @@ class QwenRunner:
         )
 
 
+def _with_schema_instruction(prompt: str, json_schema: dict[str, Any] | None) -> str:
+    """Append a JSON-shape instruction when a schema is supplied.
+
+    The OpenAI-compatible transport has no inline structured-output flag, so
+    the shape is requested via the prompt and recovered by the client's
+    fence-stripping parse (``_openai_compat_client._extract_verdict``).
+    """
+    props = json_schema.get("properties") if isinstance(json_schema, dict) else None
+    if not isinstance(props, dict) or not props:
+        return prompt
+    keys = ", ".join(sorted(props))
+    return (
+        f"{prompt}\n\nRespond with a single JSON object and nothing else. It must "
+        f"contain exactly these keys: {keys}. Do not wrap the JSON in code fences."
+    )
+
+
+class OpenAIGenericRunner:
+    """``HostRunner`` for any OpenAI-compatible chat-completions endpoint.
+
+    Config-driven, not PATH-probed: there is no CLI binary to detect — the
+    runner shells out to the interpreter with a bundled stdlib client
+    (:mod:`little_loops._openai_compat_client`). Connection details come from
+    ``OPENAI_BASE_URL`` / ``OPENAI_API_KEY``, which ``advisor.consult`` exports
+    from the ``advisor`` block's ``base_url`` / ``api_key`` (or the user sets
+    them directly). Points at DeepSeek, LM Studio, Ollama, vLLM, OpenRouter, …
+    — anything that speaks ``/chat/completions``.
+
+    Blocking-only: ``build_blocking_json`` is the transport the advisor uses;
+    ``build_streaming``/``build_detached`` raise ``HostNotConfigured`` because
+    a stateless HTTP endpoint has no turn-by-turn CLI session to stream.
+    """
+
+    name = "openai"
+
+    capabilities = HostCapabilities(
+        streaming=False,
+        permission_skip=False,
+        agent_select=False,
+        tool_allowlist=False,
+        structured_output=False,  # no inline schema flag; prompt-and-parse only
+    )
+
+    def detect(self) -> bool:
+        # No CLI binary to probe; availability is configuration, not PATH.
+        return False
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> HostInvocation:
+        import os
+
+        base_url = os.environ.get("OPENAI_BASE_URL", "").strip()
+        if not base_url:
+            raise HostNotConfigured(
+                "openai runner needs OPENAI_BASE_URL (or advisor.base_url) — set "
+                "the OpenAI-compatible /chat/completions endpoint, e.g. "
+                "https://api.deepseek.com/v1"
+            )
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+
+        prompt = _with_schema_instruction(prompt, json_schema)
+        client = Path(__file__).resolve().parent / "_openai_compat_client.py"
+        env = {"OPENAI_API_KEY": api_key} if api_key else {}
+        return HostInvocation(
+            binary=sys.executable,
+            args=[str(client), base_url, model or "", prompt],
+            env=env,
+            capabilities=self.capabilities,
+        )
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+        model: str | None = None,
+        automation: AutomationContext | None = None,
+        automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
+        workspace_root: Path | None = None,
+    ) -> HostInvocation:
+        raise HostNotConfigured(
+            "openai runner is blocking-only — a stateless HTTP endpoint has no "
+            "streaming session. Use it as an advisor host (build_blocking_json)."
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        return HostInvocation(
+            binary=sys.executable,
+            args=["-c", "print('openai (generic OpenAI-compatible)')"],
+            capabilities=self.capabilities,
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        raise HostNotConfigured(
+            "openai runner is blocking-only — build_detached is not supported."
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="openai",
+            version="",
+            capabilities=[
+                CapabilityEntry(
+                    "blocking_json",
+                    "full",
+                    "chat-completions HTTP transport over a configurable base_url",
+                ),
+                CapabilityEntry(
+                    "streaming",
+                    "unsupported",
+                    "stateless HTTP endpoint; no turn-by-turn CLI session",
+                ),
+                CapabilityEntry(
+                    "structured_output",
+                    "partial",
+                    "no inline schema flag; schema requested via prompt and parsed "
+                    "fence-tolerantly by the bundled client",
+                ),
+            ],
+        )
+
+
 # Built-in host runners keyed by their ``name`` attribute. Extensions may
 # register additional runners but built-ins always win on collision —
 # mirrors ``hooks/__init__.py:_dispatch_table`` (built-ins shadow extensions).
@@ -1821,6 +1954,7 @@ _HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]] = {
     "omp": OmpRunner,
     "kimi-code": KimiRunner,
     "qwen": QwenRunner,
+    "openai": OpenAIGenericRunner,
 }
 
 # Order of probing when no explicit host is configured. Matches the binary
