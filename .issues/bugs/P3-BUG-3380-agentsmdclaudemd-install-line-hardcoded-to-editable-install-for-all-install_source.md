@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-02'
 captured_at: '2026-09-02T22:19:40Z'
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 60
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # BUG-3380: AGENTS.md/CLAUDE.md install line hardcoded to editable install for all install_source
@@ -498,12 +504,27 @@ _Added by `/ll:refine-issue` — 2026-09-02 — based on codebase analysis:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-02_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 60/100 → MODERATE
+
+### Outcome Risk Factors
+- Change touches 4 files across 3 modules (`writers.py`, `cli.py`, `tui.py`, `install_check.py`) with a control-flow edit in `_run_apply()` (moving/deduping the `detect_installation()` call) rather than a purely mechanical substitution — expect some iteration reconciling the dedup against the existing `cli.py:935` call.
+- `unapplied_decision` gap flagged in Program Design / Proposed Solution / Implementation Steps / Files to Modify: rejected-option (Option B) identifiers (`config["install_source"]`, `_run_plan()`, and several shared terms like `detect_installation()`, `local-editable`) still appear unmarked in directive sections alongside the selected Option A text. Likely a false positive of the phrase-based checker picking up vocabulary shared between the contrasted options rather than a true unresolved decision, but caps Criterion C at 10 per rubric — worth a quick scan to confirm no stray Option-B-only guidance survived in a directive section before implementing.
+- No existing test calls `_run_apply()` or `_apply_config()` directly (writers.py and install_check.py are well-covered; the two new call sites are not) — the issue's own Wiring Phase already schedules the tests needed to close this gap.
+
+_(no Concerns or Gaps to Address — readiness scored 100/100)_
+
 ## Status
 
 **Open** | Created: 2026-09-02 | Priority: P3
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-03T00:05:53 - `4bf97e41-6b03-4e8d-9104-4e84d288cd4b.jsonl`
 - `/ll:wire-issue` - 2026-09-02T23:07:19 - `5cfbabad-da25-40ab-bfb7-6d0233f02bb3.jsonl`
 - `/ll:decide-issue` - 2026-09-02T22:37:14 - `bea601b2-a6af-4ef3-8359-e10eab8b1a54.jsonl`
 - `/ll:refine-issue` - 2026-09-02T22:29:09 - `25d94b5b-402d-469f-a07b-24795969ce49.jsonl`
