@@ -748,6 +748,8 @@ current `HumanResponse` shape.
 
 2026-09-03 (`/ll:verify-issues`): Re-confirmed still unimplemented — no `class CommunicationAdapter`/`CommunicationAdapterExtension` anywhere in `scripts/little_loops/`. `blocks: [FEAT-2102, FEAT-1794, FEAT-1931]` all backlink correctly; FEAT-2102 is `deferred`/`blocked_by: [FEAT-1930]` as expected. No active decisions-log rules; `ll-verify-evidence` clean. Verdict: VALID (unchanged).
 
+2026-09-04 (`/ll:verify-issues`): Re-confirmed still unimplemented — no `communication_adapter.py`, `CommunicationAdapter`/`CommunicationAdapterExtension`, `hitl.channel`/`HitlConfig`, or `resolve_communication_adapter` call site anywhere in `scripts/little_loops/`; no git activity since the 2026-09-04 Pre-implementation Review touched `fsm/`, `extension.py`, or `config/`. Dependency graph clean: FEAT-1794/FEAT-1931/FEAT-2102/EPIC-1929 all exist and backlink correctly, no cycles. The `FEAT: EventBus HITL adapter` follow-up child (AC item / Pre-implementation Review #7) has not been created yet — open AC, not a defect. Sibling drift claims in `## Pre-implementation Review` re-verified accurate: FEAT-1794 still emits `human_approval_request` (no `-ed`) at lines 200/285/319; FEAT-1931's `## API/Interface` still shows `await_response(self, timeout)` missing `alert_id`; FEAT-3323 already uses the canonical event names. No active decisions-log rules; `ll-verify-evidence` clean (`ok: true, count: 0`). Spot-checked ~10 line citations across `extension.py`, `executor.py`, `config/core.py`, `config/orchestration.py`, `host_runner.py`, `test_extension.py`, `create_extension.py` — all match current code. Verdict: VALID (unchanged).
+
 ## Status
 
 open
@@ -759,6 +761,7 @@ open
 - `CONTRIBUTING.md` — adding a new extension-registered protocol (`CommunicationAdapterExtension`, `provided_adapters()`) is exactly the extension-authoring pattern (`LLExtension` protocol convention) this doc documents.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-04T06:27:52 - `6171b6cf-c484-42e3-b817-793cf904522b.jsonl`
 - `/ll:wire-issue` - 2026-09-04T06:06:42 - `b9f5c7d9-a2cc-4071-8c3e-2bf509c70d40.jsonl`
 - `/ll:refine-issue` - 2026-09-04T05:55:26 - `2d6e7cfa-0898-45b8-9b3b-c77badcb19a4.jsonl`
 - `/ll:confidence-check` - 2026-09-04T05:49:05 - `0e16f2cb-978a-4796-8ce2-588b8c0efeb2.jsonl`
