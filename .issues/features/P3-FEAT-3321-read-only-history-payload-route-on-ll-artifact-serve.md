@@ -83,22 +83,45 @@ live-querying history.db", with an arbitrary-SQL query route and its own
 
 ## Expected Behavior
 
-- `ll-artifact serve` serves the `dashboard.llat` page at `GET /{token}/`
-  rendered with `ServeContext(events_url=..., interaction_url=None)`, so the
-  page has the SSE sentinel but no Level 3 interaction POST.
+- `events.bridge.history` (default `false`) gates the **whole feature**, page
+  included. With it `false`, `ll-artifact serve` behaves exactly as FEAT-3323
+  shipped it: `GET /{token}/` is the static `_SSE_BRIDGE_PAGE_HTML`
+  placeholder and `GET /{token}/history` is 404. Serving the dashboard page
+  without the route would hand every default user a multi-MB page whose
+  snapshot is frozen at server start and never refreshes — strictly worse and
+  more misleading than the placeholder, so the page swap and the route are
+  one switch, not two.
+- With `events.bridge.history: true`, `ll-artifact serve` serves the
+  `dashboard.llat` page at `GET /{token}/` rendered with
+  `ServeContext(events_url=..., interaction_url=None, history_url=...)`, so
+  the page has the SSE sentinel and the refresh timer but no Level 3
+  interaction POST.
 - `GET /{token}/history` returns a JSON payload
   `{"snapshot_gzip_b64", "exported_at", "source_schema_version",
   "export_mode", "filter_tables"}` produced by the same
   `build_snapshot_db` path the export uses, filtered by
   `artifacts.export.mode`.
-- The page re-fetches `./history` every N seconds (default 5) and replaces
-  the sql.js `db` instance (`template.html.j2:169`) in place, so new rows
-  appear in the query box without reload.
-- The route is mounted only when `events.bridge.history` is `true`
-  (default `false`); otherwise `GET /{token}/history` is 404 and the served
-  page carries no timer.
+- The page re-fetches `./history` every 5 seconds, reassigns the module-level
+  `snapshotBytes` and re-runs the template's existing `instantiate()`
+  (`template.html.j2:168-170`), so new rows appear in the query box without a
+  reload, the `PRAGMA query_only` guardrail is re-applied, and the "Reset
+  snapshot" button resets to the *latest* snapshot rather than the startup one.
 - The route's connection is opened `mode=ro` and never runs migrations; a
   missing `history.db` yields an empty payload and does not create the file.
+- A page-render failure never prevents the bridge from serving. If
+  `build_dashboard_html` raises (oversized snapshot, manifest/data error), the
+  server logs a warning and falls back to the placeholder page; the SSE stream
+  and the bridge's exit codes are unchanged from FEAT-3323.
+- Repeated polls do not rebuild the snapshot per request: the route caches the
+  built payload keyed on the source db's `(st_mtime_ns, st_size)` behind a
+  lock, so N open tabs cost one build per change, and serves `304` to a
+  matching `If-None-Match`.
+
+`ll-artifact serve` gains no `--local` flag; the route follows
+`artifacts.export.mode`, whose default is `shareable` (ENH-075 column
+allowlist). A project that has set `mode: local` serves unredacted history
+rows on the loopback port, gated only by FEAT-3323's Host check and URL token
+— the same exposure `ll-loop run --serve` already has.
 
 ## Motivation
 
@@ -115,9 +138,13 @@ A user starts a long `ll-sprint` run, then runs `ll-artifact serve` in a
 second terminal and opens the printed URL. The page shows the live SSE
 state badges from every producer socket in the project, and the sql.js
 query box below refreshes on a timer, so a query like
-`SELECT loop, state, ended_at FROM loop_run ORDER BY started_at DESC LIMIT 20`
+`SELECT loop, final_state, ended_at FROM loop_runs ORDER BY started_at DESC LIMIT 20`
 re-run a minute later shows the runs that finished in between, with no
-re-export and no reload. Closing and re-opening the tab, or restarting an
+re-export and no reload. (Note the table name: `loop_run`/`usage_event` are
+`_EXPORT_TABLE_MAP` *type* names taken by `--tables` and `resolve_tables`;
+the snapshot's actual SQLite tables are `loop_runs` / `usage_events`
+(`session_store/queries.py:102`), which is what the page's predefined queries
+already use.) Closing and re-opening the tab, or restarting an
 individual loop, does not affect the server. The user never edits config
 beyond setting `events.bridge.history: true` once.
 
@@ -130,15 +157,21 @@ New and changed Python surface; all names live in existing modules.
 
 @dataclass(frozen=True)
 class HistoryPayload:
+    """Exactly five fields. `to_dict()` is the route's JSON body and performs
+    the one key rename: `source_version` -> `"source_schema_version"`, matching
+    the template data key `build_dashboard_html` already stamps."""
+
     snapshot_gzip_b64: str
     source_version: str | None
     exported_at: str
     export_mode: str
     filter_tables: list[str]
 
+    def to_dict(self) -> dict[str, Any]: ...
+
 def build_history_payload(
     *, db_path: Path, config: BRConfig, tables: list[str],
-    since_iso: str | None, mode: str, allow_missing: bool,
+    since_iso: str | None, mode: str, allow_missing: bool = False,
 ) -> HistoryPayload:
     ...
 
@@ -151,12 +184,16 @@ class ServeContext:
 ```
 
 - `HistoryPayload` — the snapshot-plus-metadata value both the route and
-  the page render consume; `to_dict()` is the JSON body of the route.
+  the page render consume. The dataclass field is `source_version` (matching
+  `build_snapshot_db`'s return); the JSON key and the template data key are
+  both `source_schema_version`. Do not introduce a third spelling.
 - `build_history_payload(...)` — extracted from the snapshot block of
   `build_dashboard_html`; calls `build_snapshot_db` (read-only opener),
   applies the `max_artifact_bytes` pre-check, raises `ValueError` on
   overflow. `allow_missing=True` returns an empty gzip payload when the db
-  file is absent instead of raising, matching the serve-context branch.
+  file is absent instead of raising, matching the serve-context branch;
+  `build_dashboard_html` passes `allow_missing=serve_context is not None` so
+  the `file://` path keeps raising.
 - `ServeContext` — `interaction_url` becomes optional so a server with no
   FSM executor renders no Level 3 wiring; `history_url` and
   `history_poll_s` drive the page-side timer and are `None`/unused when the
@@ -172,19 +209,48 @@ def make_history_route(config: BRConfig) -> Callable[[BaseHTTPRequestHandler], N
 - `make_history_route(config)` — returns the handler mounted at
   `"history"`; resolves tables via `resolve_tables(None, local_mode=...)`,
   calls `build_history_payload(allow_missing=True)`, writes JSON with
-  `Cache-Control: no-store`; maps `ValueError` to 413.
+  `Cache-Control: no-store` and an `ETag`; maps `ValueError` to 413.
+- **Caching and concurrency.** The closure holds
+  `(cache_key, payload_json, etag)` plus a `threading.Lock`. `cache_key` is
+  `(st_mtime_ns, st_size)` of `db_path`, or `None` when absent. On each
+  request: stat, and if the key is unchanged reuse the cached body; otherwise
+  rebuild under the lock (double-checked, so N concurrent pollers cost one
+  build). If `If-None-Match` matches the current ETag, return `304` with no
+  body. Without this, each `GET /history` runs a full ATTACH +
+  `CREATE TABLE … AS SELECT` + gzip + base64 over the whole db, and
+  `ThreadingHTTPServer` will happily run one per open tab every 5s with no
+  bound — `max_clients` covers the SSE stream only, not `_routes`.
 
 ```python
 # scripts/little_loops/transport.py
 
 class SseBridge:
     def set_page_html(self, page_html: str) -> None: ...
+
+def serve_sse_bridge(
+    config: EventsConfig,
+    port: int | None = None,
+    *,
+    routes: dict[str, Callable[[BaseHTTPRequestHandler], None]] | None = None,
+    page_html_factory: Callable[[SseBridge], str] | None = None,
+) -> int:
+    ...
 ```
 
 - `SseBridge.set_page_html(page_html)` — replaces the static placeholder
   served at `GET /{token}/`, mirroring the existing
   `LocalBridgeTransport.set_page_html`; needed because the page embeds
   `bridge.url`, which exists only after the bind.
+- `serve_sse_bridge` is **extended, not moved**. Its existing signature and
+  print-and-block body stay put: `test_feat3323_sse_bridge.py:799` calls
+  `serve_sse_bridge(config, port=0)` positionally, and the
+  `"socket" not in transports` / no-producer-socket stderr notices
+  (`transport.py:1455-1477`) belong to it. The two new keyword-only
+  parameters are passed through to `SseBridge(...)` and to a
+  `set_page_html` call made after the bind. `page_html_factory` takes the
+  bound bridge so the page can embed `bridge.url`, and **any exception it
+  raises is caught, logged as a warning, and swallowed** — the placeholder
+  page stays, the bridge keeps serving (see § Expected Behavior).
 
 ```python
 # scripts/little_loops/config/features.py
@@ -203,14 +269,26 @@ class BridgeEventsConfig:
 
 ### Call Path
 
-Server startup:
-`cmd_serve()` (`cli/artifact/serve.py:36-64`) → `BRConfig` → `make_history_route(config)` (new, same module; only when `config.events.bridge.history`) → `SseBridge.__init__(config.events, port=port, routes={"history": ...})` (`transport.py:1248-1277`) → `resolve_tables(None, local_mode=...)` (`cli/artifact/dashboard.py:75`) → `build_dashboard_html(..., serve_context=ServeContext(events_url=bridge.url + "events", interaction_url=None, history_url=bridge.url + "history"))` (`dashboard.py:155`) → `build_history_payload(...)` (new, extracted from `dashboard.py:176-198`) → `build_snapshot_db(...)` (`session_store/queries.py`, via `_connect_readonly`) → `SseBridge.set_page_html(rendered.html)` (new, mirrors `transport.py:808-817`) → `serve_sse_bridge` print-and-block body (`transport.py:1439-1478`)
+Server startup (only when `config.events.bridge.history` is `true`; otherwise
+`cmd_serve` calls `serve_sse_bridge(config.events, port=port)` exactly as it
+does today and nothing below runs):
+`cmd_serve()` (`cli/artifact/serve.py:36-64`) → `BRConfig` → `make_history_route(config)` (new, same module) → `serve_sse_bridge(config.events, port=port, routes={"history": ...}, page_html_factory=...)` (`transport.py:1439-1478`) → `SseBridge.__init__(..., routes=...)` (`transport.py:1248-1277`) → factory, in a try/except that falls back to the placeholder: `resolve_tables(None, local_mode=...)` (`cli/artifact/dashboard.py:75`) → `build_dashboard_html(..., serve_context=ServeContext(events_url=bridge.url + "events", interaction_url=None, history_url=bridge.url + "history"))` (`dashboard.py:155`) → `build_history_payload(...)` (new, extracted from `dashboard.py:176-198`) → `build_snapshot_db(...)` (`session_store/queries.py:246`, via `_connect_readonly`) → `SseBridge.set_page_html(rendered.html)` (new, mirrors `transport.py:808-817`) → print-and-block body
 
 Per request:
-`_make_sse_bridge_handler.<locals>._Handler.do_GET` (`transport.py:1209-1230`) → Host check (`_expected_hosts`) → token-prefix check → `bridge._routes["history"]` → `make_history_route.<locals>.handler` → `resolve_tables` → `build_history_payload(allow_missing=True)` → `build_snapshot_db` → JSON response (`Cache-Control: no-store`); `ValueError` → 413
+`_make_sse_bridge_handler.<locals>._Handler.do_GET` (`transport.py:1209-1230`) → Host check (`_expected_hosts`, 403) → token-prefix check (404) → `bridge._routes["history"]` → `make_history_route.<locals>.handler` → stat `db_path` → cache hit (or `If-None-Match` → 304) → else under lock: `resolve_tables` → `build_history_payload(allow_missing=True)` → `build_snapshot_db` → JSON response (`Cache-Control: no-store`, `ETag`); `ValueError` → 413
 
 Page side (`templates/dashboard.llat/template.html.j2`):
-existing sql.js boot (`:302` `initSqlJs` → `:169` `new SQL.Database`) → new timer block (only when `serve_history_url` stamped) → `fetch(history_url)` → existing base64/gunzip helpers → `db.close()` → `db = new SQL.Database(bytes)`; interaction block (`:342-366`) skipped when `serve_interaction_url_js` is `null`.
+existing sql.js boot (`:302` `initSqlJs` → `:307` `snapshotBytes = results[0]` → `:168-170` `instantiate()`) → new timer block (rendered only under a Jinja conditional on `serve_history_enabled`) → `fetch(serve_history_url_js)` → existing `decodeBase64` (`:146`) / `gunzip` (`:157`) helpers → `db.close()` → **`snapshotBytes = bytes; instantiate(); buildViews();`** → update the exported-at label. The interaction block (`:342-366`) is omitted entirely by a Jinja conditional, not merely inert.
+
+**Do not** write `db = new SQL.Database(bytes)` directly at `:169`'s site. That
+skips `instantiate()`'s `db.run("PRAGMA query_only = 1")` (`:170`) — which the
+template's own comment at `:163-167` identifies as the actual write rejection,
+the `textCheck` at `:174-176` being message-only — and leaves the
+"Reset snapshot" button (`:106`, handler at `:287-296`) restoring the *startup*
+bytes forever, because Reset re-runs `instantiate()` off the module-level
+`snapshotBytes` (`:136`). Reassigning `snapshotBytes` and calling
+`instantiate()` fixes both; `buildViews()` (`:268`) is re-run because the
+visible table set can change between snapshots.
 
 Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-loop run --serve`), which still passes a non-null `interaction_url` and no `history_url`.
 
@@ -224,9 +302,18 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
   serves a static constant. Needs a `set_page_html` mirroring
   `LocalBridgeTransport.set_page_html` (`transport.py:808-817`), because the
   page needs `bridge.url` (token) which is only known after construction.
-- `scripts/little_loops/transport.py:1439-1478` — `serve_sse_bridge`;
-  builds the bridge and blocks. Page rendering and route registration wire
-  in here (or in `cli/artifact/serve.py:cmd_serve`, which calls it).
+- `scripts/little_loops/transport.py:1439-1478` — `serve_sse_bridge`; builds
+  the bridge and blocks, and owns the `"socket" not in transports` /
+  no-producer-socket stderr notices. Extend it with keyword-only `routes=`
+  and `page_html_factory=`; do **not** move its body into `cmd_serve`
+  (`test_feat3323_sse_bridge.py:799` calls it directly, and the AC requires
+  that file to pass unchanged).
+- `scripts/little_loops/cli/artifact/dashboard.py:~250` — the D18 escaping
+  block. `serve_events_url` uses `html.escape` because it lands in an HTML
+  attribute (`hx-sse:connect`); `serve_interaction_url_js` uses `json.dumps`
+  because it lands in a JS string literal. The history URL is consumed by
+  `fetch()` inside `<script>`, so it follows the **`json.dumps`** pattern and
+  is named `serve_history_url_js`. Do not `html.escape` it.
 - `scripts/little_loops/cli/artifact/serve.py:36-64` — `cmd_serve`; already
   resolves `BRConfig` and port.
 - `scripts/little_loops/cli/artifact/dashboard.py:133-144` — `ServeContext`;
@@ -248,8 +335,20 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
   interaction form and POST, to be wrapped in a conditional on the
   interaction URL being present.
 - `scripts/little_loops/templates/dashboard.llat/manifest.yaml:37-44` —
-  serve-mode data keys; add `serve_history_url` and `serve_history_poll_s`,
-  make `serve_interaction_url_js` optional or emit `null`.
+  serve-mode data keys; add `serve_history_enabled` (boolean),
+  `serve_history_url_js` (string) and `serve_history_poll_s` (integer) to
+  `properties`. None of them go in `required` (the `file://` path stamps
+  none of them), matching how the existing `serve_*` keys are declared.
+- `scripts/little_loops/artifact_templates.py:277` — the frozen Jinja
+  environment sets `undefined=StrictUndefined`. **Every `serve_*` key the
+  template body references inside `[[% if serve_enabled %]]` must be stamped
+  unconditionally whenever `serve_enabled` is true**, using `"null"` / `false`
+  / `0` for the unused case — never omitted. Omitting one raises at render
+  time, which is the most likely first-run failure of this change.
+- `scripts/little_loops/artifact_templates.py:259-279` + FEAT-3308 — the
+  frozen delimiter set and the byte-exact round-trip contract. Editing
+  `template.html.j2` / `manifest.yaml` puts `ll-artifact templatize` /
+  `extract` / `render` round-trip tests in the blast radius; run them.
 - `scripts/little_loops/config/features.py:1300-1326` — `BridgeEventsConfig`;
   add `history: bool = False`.
 - `scripts/little_loops/config-schema.json` — `events.bridge.properties`;
@@ -270,46 +369,69 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
 1. **Extract the payload builder.** Move `build_dashboard_html`'s
    snapshot-to-base64 block (`dashboard.py:176-198`, including the
    missing-db-with-serve-context branch and the `max_artifact_bytes`
-   pre-check) into `build_history_payload(db_path, config, tables,
-   since_iso, mode) -> HistoryPayload` (frozen dataclass:
-   `snapshot_gzip_b64`, `source_version`, `exported_at`). Have
-   `build_dashboard_html` call it. No behavior change for `dashboard` or
-   `ll-loop run --serve`.
-2. **Relax `ServeContext`.** `interaction_url: str | None = None`. In
-   `build_dashboard_html`, stamp `serve_interaction_url_js` as `"null"` when
-   `None`. Add `serve_history_url: str | None` and `serve_history_poll_s:
-   int` to `ServeContext` and the stamped data. Update `manifest.yaml`.
+   pre-check) into `build_history_payload(*, db_path, config, tables,
+   since_iso, mode, allow_missing=False) -> HistoryPayload` — the five-field
+   frozen dataclass from § Program Design, plus `to_dict()`. Have
+   `build_dashboard_html` call it with
+   `allow_missing=serve_context is not None`. No behavior change for
+   `dashboard` or `ll-loop run --serve`.
+2. **Relax `ServeContext`.** `interaction_url: str | None = None`; add
+   `history_url: str | None = None` and `history_poll_s: int = 5`. In
+   `build_dashboard_html`, whenever `serve_context is not None`, stamp **all**
+   serve keys unconditionally (`StrictUndefined` — see § Integration Map):
+   `serve_interaction_enabled` (bool), `serve_interaction_url_js`
+   (`json.dumps(url)` or the literal `"null"`), `serve_history_enabled`
+   (bool), `serve_history_url_js` (`json.dumps(url)` or `"null"`), and
+   `serve_history_poll_s` (int). Update `manifest.yaml` `properties`
+   accordingly; leave them out of `required`.
 3. **Template.** Wrap the interaction form and its script
-   (`template.html.j2:342-366`) in a JS guard on the interaction URL being
-   non-null (or a Jinja conditional on a new `serve_interaction_enabled`
-   flag). Add a timer block, active only when `serve_history_url` is set,
-   that fetches the URL, base64-decodes and gunzips with the existing
-   helpers, closes the old `db`, assigns `db = new SQL.Database(bytes)`, and
-   updates the exported-at label. Keep the user's current query text and
-   results untouched until they re-run.
+   (`template.html.j2:342-366`) in a **Jinja** conditional on
+   `serve_interaction_enabled` so the markup is absent, not merely inert —
+   a JS-only guard leaves `ll-interaction-send` in the HTML and fails the
+   corresponding AC. Add a timer block under a Jinja conditional on
+   `serve_history_enabled` that fetches `serve_history_url_js` every
+   `serve_history_poll_s` seconds, base64-decodes and gunzips with the
+   existing `decodeBase64`/`gunzip` helpers, then
+   `if (db) db.close(); snapshotBytes = bytes; instantiate(); buildViews();`
+   and updates the exported-at label. Going through `instantiate()` (rather
+   than assigning `db` directly) is what preserves `PRAGMA query_only` and
+   keeps "Reset snapshot" pointed at the latest snapshot — see § Call Path.
+   A failed fetch sets the status line and leaves the current `db` in place;
+   the timer keeps running. Keep the user's query text and rendered results
+   untouched until they re-run.
 4. **Route.** In `cli/artifact/serve.py` (or a sibling `history_route.py`),
    define `make_history_route(config) -> Callable[[handler], None]` that
-   calls `build_history_payload` with
+   calls `build_history_payload(allow_missing=True)` with
    `resolve_tables(None, local_mode=config.artifacts.export.mode == "local")`
-   and writes JSON with `Content-Type: application/json` and
-   `Cache-Control: no-store`. A `ValueError` from the size pre-check becomes
-   a 413 with the message body.
-5. **Bridge page hook.** Add `SseBridge.set_page_html(html: str)` mirroring
-   `LocalBridgeTransport.set_page_html`; `_serve_page` reads the instance
-   attribute instead of the module constant.
-6. **Wire `cmd_serve`.** Construct `SseBridge(config.events, port=port,
-   routes={"history": route} if config.events.bridge.history else None)`,
-   then render the page with
+   and writes JSON with `Content-Type: application/json`,
+   `Cache-Control: no-store`, and an `ETag`. A `ValueError` from the size
+   pre-check becomes a 413 with the message body.
+5. **Cache the payload.** Give the closure a `threading.Lock` and a
+   `(cache_key, body, etag)` slot, `cache_key = (st_mtime_ns, st_size)` of
+   `db_path` or `None` when absent. Reuse on an unchanged key; rebuild under
+   the lock with a double-check; return `304` on a matching `If-None-Match`.
+   This is not an optimization — without it the route rebuilds the whole
+   snapshot per tab per 5s, unbounded, since `max_clients` gates only the SSE
+   stream.
+6. **Bridge page hook.** Add `SseBridge.set_page_html(html: str)` mirroring
+   `LocalBridgeTransport.set_page_html` (`transport.py:808-817`);
+   `_serve_page` reads the instance attribute, initialized to
+   `_SSE_BRIDGE_PAGE_HTML`, instead of the module constant.
+7. **Wire `serve_sse_bridge` and `cmd_serve`.** Add keyword-only `routes=`
+   and `page_html_factory=` to `serve_sse_bridge`, passing `routes` through to
+   `SseBridge(...)` and calling `bridge.set_page_html(factory(bridge))` after
+   the bind, inside a `try/except Exception` that logs a warning and leaves
+   the placeholder in place. `cmd_serve` builds both only when
+   `config.events.bridge.history` is true, with
    `ServeContext(events_url=bridge.url + "events", interaction_url=None,
-   serve_history_url=bridge.url + "history" if enabled else None, ...)` and
-   call `bridge.set_page_html(rendered.html)`. Refactor `serve_sse_bridge`
-   to accept a pre-built bridge, or move its print-and-block body into
-   `cmd_serve`.
-7. **Config.** `BridgeEventsConfig.history: bool = False`;
-   `config-schema.json` `events.bridge.properties.history`. Run the
-   BUG-3192 guards.
-8. **Docs.** `ARTIFACT_CONTROL_LEVELS.md` row and `CLI.md` section.
-9. **Tests** (see Acceptance Criteria).
+   history_url=bridge.url + "history")`; when the gate is false it calls
+   `serve_sse_bridge(config.events, port=port)` unchanged.
+8. **Config.** `BridgeEventsConfig.history: bool = False` — in the dataclass
+   field list *and* in `from_dict` (`features.py:1316-1324`, which enumerates
+   every key explicitly); `config-schema.json` `events.bridge.properties.history`
+   with `default: false`. Run the BUG-3192 guards.
+9. **Docs.** `ARTIFACT_CONTROL_LEVELS.md` row and `CLI.md` section.
+10. **Tests** (see Acceptance Criteria).
 
 ## API/Interface
 
@@ -325,16 +447,36 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
   }
   ```
 
-- Config: `events.bridge.history` (`bool`, default `false`).
-- Python: `build_history_payload(...)` in `cli/artifact/dashboard.py`;
-  `ServeContext.interaction_url: str | None`; `SseBridge.set_page_html`.
+  Response headers: `Content-Type: application/json`,
+  `Cache-Control: no-store`, `ETag: "<mtime_ns>-<size>"`. `If-None-Match`
+  matching that ETag returns `304` with no body. `413` when the raw snapshot
+  exceeds `artifacts.export.max_artifact_bytes`, with the same message the
+  export path prints. `403` on a bad `Host` and `404` without the token
+  prefix, both inherited from `_make_sse_bridge_handler`.
+
+  Note `snapshot_gzip_b64` decodes to a SQLite file whose tables are
+  `loop_runs` / `usage_events`; `filter_tables` carries the
+  `_EXPORT_TABLE_MAP` *type* names (`loop_run`, `usage_event`), which is what
+  the existing dashboard stamps.
+
+- Config: `events.bridge.history` (`bool`, default `false`). Gates the route
+  *and* the dashboard page; with it false `ll-artifact serve` is byte-for-byte
+  FEAT-3323 behavior. No `history_poll_s` config key — the interval is a
+  5-second default on `ServeContext.history_poll_s`; add a key only if asked.
+- Python: `build_history_payload(...)` / `HistoryPayload` in
+  `cli/artifact/dashboard.py`; `ServeContext.interaction_url: str | None`,
+  `.history_url`, `.history_poll_s`; `SseBridge.set_page_html`;
+  `serve_sse_bridge(..., routes=, page_html_factory=)`;
+  `make_history_route(config)` in `cli/artifact/serve.py`.
 
 ## Acceptance Criteria
 
 - [ ] `GET /{token}/history` returns the JSON payload above. A test loads
       the decoded snapshot with `sqlite3` and asserts that in shareable mode
-      only ENH-075 allowlisted columns are present for `loop_run` and
-      `usage_event`, and in local mode all columns are present.
+      only ENH-075 allowlisted columns are present on the `loop_runs` and
+      `usage_events` **tables** (the `loop_run` / `usage_event` type names
+      appear in `filter_tables`, not as table names), and in local mode all
+      columns are present.
 - [ ] The route never migrates or creates the database. A test points the
       bridge at a project dir with no `history.db`, hits the route, asserts a
       200 with an empty snapshot, and asserts the file still does not exist.
@@ -342,19 +484,49 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
       on that connection raises `sqlite3.OperationalError`).
 - [ ] New rows appear without reload. A test inserts a `loop_run` row via
       `session_store` between two route fetches and asserts the second
-      decoded snapshot contains it and the first does not.
+      decoded snapshot contains it and the first does not. Because the route
+      caches on `(st_mtime_ns, st_size)`, the test must not rely on
+      coarse-grained mtime — assert on the decoded rows, and if the fixture
+      writes fast enough to collide, `os.utime` the file or assert via the
+      changed `size`.
+- [ ] Repeated identical polls do not rebuild. A test monkeypatches or
+      wraps `build_snapshot_db`, fetches the route three times with no
+      intervening write, and asserts exactly one build; a fourth fetch with
+      `If-None-Match` set to the returned `ETag` returns `304` with an empty
+      body. A concurrency test fires N simultaneous fetches against a cold
+      cache and asserts a single build.
+- [ ] A page-render failure does not take down the server. A test forces
+      `build_dashboard_html` to raise (e.g. `max_artifact_bytes=1`), starts
+      the bridge, and asserts `GET /{token}/` returns 200 with the
+      `_SSE_BRIDGE_PAGE_HTML` placeholder, `GET /{token}/events` still
+      streams, and the process did not exit non-zero.
 - [ ] The served page renders with `interaction_url=None` and emits no
       interaction POST: a test asserts the rendered HTML contains
-      `hx-sse:connect` and the history timer, and does not contain
-      `ll-interaction-send`.
-- [ ] `ll-loop run --serve` output is byte-identical before and after
-      (interaction wiring still present, no history timer), guarded by the
-      existing ENH-3351 render tests.
-- [ ] `events.bridge.history` defaults to `false`; with it false the route
-      is 404 and the page has no timer. BUG-3192 Guards 1 and 2 pass.
-- [ ] Existing `test_feat3323_sse_bridge.py` passes unchanged (Host/token
-      checks apply to the new route; a request without the token prefix is
-      404).
+      `hx-sse:connect` and the history timer, and does **not** contain
+      `ll-interaction-send` (i.e. the interaction markup is omitted by the
+      Jinja conditional, not merely guarded in JS).
+- [ ] The refreshed page keeps its guardrails: a test asserts the timer
+      block reassigns `snapshotBytes` and calls `instantiate()` (so
+      `PRAGMA query_only` is re-applied and "Reset snapshot" restores the
+      latest snapshot), rather than assigning `new SQL.Database(...)` to `db`
+      directly.
+- [ ] `serve_history_url_js` is stamped via `json.dumps`, not `html.escape`:
+      a test renders with a URL containing `&` and `'` and asserts the
+      stamped value is a valid JS string literal with no HTML entities.
+- [ ] `ll-loop run --serve` output is unchanged modulo the `exported_at`
+      timestamp (interaction wiring still present, no history timer),
+      guarded by the existing ENH-3351 render tests passing unchanged.
+- [ ] `events.bridge.history` defaults to `false`; with it false, `GET
+      /{token}/history` is 404 **and** `GET /{token}/` serves the
+      `_SSE_BRIDGE_PAGE_HTML` placeholder (no dashboard page, no timer).
+      BUG-3192 Guards 1 and 2 pass.
+- [ ] Existing `test_feat3323_sse_bridge.py` passes unchanged, including its
+      positional `serve_sse_bridge(config, port=0)` call. New tests assert the
+      history route inherits both gates: a request with a foreign `Host`
+      header is 403, and a request without the token prefix is 404.
+- [ ] FEAT-3308 round-trip tests for `ll-artifact templatize`/`extract`/
+      `render` pass unchanged after the `template.html.j2` + `manifest.yaml`
+      edits.
 - [ ] `docs/reference/ARTIFACT_CONTROL_LEVELS.md` render-target table and
       `docs/reference/CLI.md` `ll-artifact serve` section updated.
 
@@ -368,12 +540,17 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
   `refresh`; the `file://` export path is untouched.
 - Multi-user or remote access; loopback-only via FEAT-3323's controls.
 - A `provided_routes` extension protocol for out-of-tree pages.
+- A `--local` flag on `ll-artifact serve`; the route reads
+  `artifacts.export.mode` only.
+- An `events.bridge.history_poll_s` config key (see § Open Questions).
+- Carrying `schema_version_warning` in the refresh payload.
 
 ## Impact
 
 - **Priority**: P3 - developer-experience live view; no correctness impact.
-- **Effort**: Small-Medium - the route and timer are small; the extraction
-  in step 1 and the `ServeContext` relaxation touch the template, manifest,
+- **Effort**: Medium - the route and timer are small, but the extraction in
+  step 1, the payload cache, the render-failure fallback, and the
+  `ServeContext` relaxation touch the template, manifest, `serve_sse_bridge`,
   and two render callers.
 - **Risk**: Low - read-only opener already proven by the export path;
   loopback and token gating inherited from FEAT-3323; off by default.
@@ -381,13 +558,22 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
 
 ## Open Questions
 
-1. Poll interval: fixed default of 5s, or a `events.bridge.history_poll_s`
-   key? Recommendation: fixed 5s constant in v1, no config; add the key only
-   if someone asks.
-2. Should the payload include `row_cap`-style truncation info when the
-   snapshot exceeds `max_artifact_bytes`, or just 413? Recommendation: 413
-   with the same message the export prints; the page shows it in the
-   warning banner.
+None outstanding. Both prior questions are resolved in the body:
+
+1. **Poll interval** — resolved 2026-09-03: fixed 5s, carried as
+   `ServeContext.history_poll_s: int = 5` and stamped as
+   `serve_history_poll_s`. No `events.bridge.history_poll_s` config key in
+   v1; add one only if asked.
+2. **Oversize behavior** — resolved 2026-09-03: `413` with the same message
+   the export path prints, no `row_cap`-style truncation metadata. The page
+   surfaces it in the status line and keeps the previous snapshot loaded.
+
+One deliberate limitation, recorded rather than asked: `schema_version_warning`
+is stamped once at render time from the startup snapshot and is **not** carried
+in the payload, so it does not track refreshes. Acceptable because the source
+db's schema version cannot change while the server runs without the installed
+code also changing; revisit only if `ll-artifact serve` ever survives an
+in-place upgrade.
 
 ## Related Key Documentation
 
@@ -410,6 +596,26 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
 - 2026-09-03: FEAT-3323 completed (`92670a9de`); `SseBridge` shipped with a
   `routes=` mount point for this issue. Issue rewritten and retitled to
   match the re-scope; review findings folded into the body above.
+- 2026-09-03: second pre-implementation review against the tree. Three design
+  decisions settled — (a) `events.bridge.history` now gates the page as well
+  as the route, so the default path stays the FEAT-3323 placeholder rather
+  than a frozen multi-MB dashboard; (b) a page-render failure falls back to
+  the placeholder instead of preventing the bridge from starting; (c) the
+  route caches on `(st_mtime_ns, st_size)` with an `ETag`/`304` and a lock,
+  since an uncached route rebuilds the whole snapshot per tab per poll with
+  no bound. Plan defects corrected — the refresh goes through the template's
+  `instantiate()` (preserving `PRAGMA query_only` and "Reset snapshot");
+  `serve_history_url_js` uses `json.dumps`, not `html.escape`; the
+  interaction block is removed by a Jinja conditional, not a JS guard (a JS
+  guard failed its own AC); `StrictUndefined` requires all `serve_*` keys be
+  stamped unconditionally; `loop_run`/`usage_event` type names vs
+  `loop_runs`/`usage_events` table names disambiguated in the Use Case and
+  ACs; `HistoryPayload`'s field list and `allow_missing` reconciled between
+  § Program Design and § Implementation Steps; `serve_sse_bridge` is extended
+  rather than moved, since `test_feat3323_sse_bridge.py:799` calls it
+  directly. Both Open Questions closed; FEAT-3308 round-trip blast radius,
+  the absent `--serve --local` flag, and the render-time-only
+  `schema_version_warning` recorded. Effort raised Small-Medium → Medium.
 
 ## Status
 
