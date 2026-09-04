@@ -23,6 +23,12 @@ labels:
 - hitl
 - extension
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-1930: Communication adapter protocol for async HITL channels
@@ -409,6 +415,12 @@ Additional callers, precedent anchors, and config-wiring call sites found beyond
 - `.issues/enhancements/P3-ENH-2249-rescope-epic-1929-post-hermes-and-track-curated-ll-artifacts.md` — post-Hermes rescoping enhancement for this issue's parent epic (EPIC-1929), not yet cross-referenced in this issue's own re-scope section
 - `.issues/bugs/P3-BUG-3192-config-schemajson-diverges-from-code-...` — documents prior `config-schema.json` vs. dataclass default drift for other namespaces (`learning_tests.enabled`, `sync.github.pull_limit`, `socket.max_clients`); relevant risk precedent for keeping `hitl.channel`'s default in sync across the schema and the `HitlConfig` dataclass
 
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+- **Additional testing precedent for resolver-miss behavior** (beyond the extension-wiring tests already cited): `scripts/tests/test_codequery_core.py:10-25` (`TestResolveProvider`) and `scripts/tests/test_adapters.py:90-102` (`TestResolveEmitter`) share a 4-test shape for a config-key resolver — a known-good key returns the right concrete type, an unknown key raises the module's exception via `pytest.raises(..., match="not registered")`, the returned instance satisfies the relevant `@runtime_checkable` Protocol via `isinstance()`, and (codequery only) a special-case fallback key resolves to something available. `test_extension.py`'s `TestNewProtocols`/`TestWireExtensions` (already cited) cover Protocol structural-typing and extension-wiring conflict detection, not this resolver-lookup shape — `resolve_communication_adapter()`'s own tests are closer to this pattern.
+- Confirmed (2026-09-04 stale-triage re-check): `scripts/little_loops/cli/verify_kinds.py` and `scripts/little_loops/extensions/reference_interceptor.py` (surfaced by a code-graph impact-of query on `extension.py`) are false positives — neither references `CommunicationAdapter`/`provided_adapters`/`extension` imports; not relevant to this issue.
+- Confirmed (2026-09-04 stale-triage re-check): all previously-cited `config/core.py` anchors (`332-333`, `461-463`, `863`) are unchanged by the 2026-09-03 SSE-bridge commit (`92670a9de`) — its only `config/core.py` change is a new `"bridge"` sub-block inside the existing `"events"` block (~938-959), which sits after the cited anchors and does not shift them. `to_dict()` itself (the method definition, distinct from the `"orchestration"` serialization block cited at `863`) is at line `725`.
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/parallel.py:321` — calls `wire_extensions(event_bus, config.extensions)`
 - `scripts/little_loops/cli/sprint/run.py:800` — calls `wire_extensions(event_bus, config.extensions)`
@@ -479,6 +491,52 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
   list). Add `test_extension_py_lists_communication_adapter_protocol` asserting
   `"CommunicationAdapterExtension" in ext_content`.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-04:_
+
+- `scripts/tests/test_wiring_reference_docs.py` — the `DOC_STRINGS_PRESENT`
+  table (from line 20; `test_string_present_in_doc` at 230 consumes it) is the
+  established doc-wiring-completeness gate every capability-Protocol issue has
+  used to lock in its API.md/CONFIGURATION.md prose, e.g.
+  `("docs/reference/API.md", "### LLHookIntentExtension", "FEAT-1459")` (:33),
+  `("docs/reference/API.md", "provided_hook_intents", "FEAT-1459")` (:34),
+  `("docs/reference/CONFIGURATION.md", "LLHookIntentExtension", "FEAT-1459")`
+  (:52), and `("docs/reference/API.md", "### little_loops.fsm.rate_limit_circuit",
+  "ENH-1138")` (:104, the precedent for the new Submodule Overview row above).
+  No row currently references `CommunicationAdapter`/`CommunicationAdapterExtension`/
+  `hitl.channel` — add rows for the new Protocol name, `provided_adapters`,
+  `hitl.channel`, and the new `### little_loops.fsm.communication_adapter`
+  API.md heading.
+- `scripts/tests/test_wiring_cli_registry.py` — same table shape keyed to
+  `docs/reference/CLI.md`, e.g. `("docs/reference/CLI.md",
+  "LLHookIntentExtension", "FEAT-1457")` — needs a row for the
+  `ll-create-extension` scaffold-list edit already tracked above.
+- `scripts/tests/test_wiring_skills_and_commands.py` — same table shape keyed
+  to `create_extension.py`/`SKILL.md`/`docs/claude-code/write-a-hook.md` — add
+  a row if any skill/command doc gains `CommunicationAdapterExtension` text.
+- `scripts/tests/test_wiring_guides_and_meta.py` — same table shape keyed to
+  `CONTRIBUTING.md`/`docs/ARCHITECTURE.md` — add a row for whichever guide
+  prose names the new Protocol.
+- `scripts/tests/test_config_schema.py:1204-1250` — `TestToDictSchemaParity`
+  (BUG-3012 guard, **distinct** from the already-cited
+  `_DATACLASS_SECTION_MAP`/`_discover_dataclasses()` guard at 1423-1448 and
+  from `TestSchemaValueParity`). `test_to_dict_emits_every_schema_section`
+  (1219-1239) diffs `config-schema.json`'s top-level `properties` keys against
+  `BRConfig(...).to_dict().keys()` — adding `hitl` to the schema without a
+  matching `"hitl"` entry in `to_dict()` (`config/core.py:863+`, already cited)
+  fails this test immediately. `test_to_dict_emits_no_key_absent_from_schema`
+  (1241-1250) is the reverse guard.
+- `scripts/tests/test_fsm_executor.py:6800-6855`
+  (`test_action_mode_returns_contributed_when_registered` et al.) and
+  `scripts/tests/test_ll_loop_execution.py:2145-2214`
+  (`test_contributed_evaluator_called_when_type_registered` et al.) — a third,
+  more direct precedent for `resolve_communication_adapter()`'s own unit
+  tests, beyond the already-cited `test_codequery_core.py`/`test_adapters.py`
+  resolver-shape and `test_extension.py::TestWireExtensions` wiring-through-
+  `wire_extensions()` patterns: construct `FSMExecutor` directly and assign
+  `executor._contributed_adapters["channel"] = mock_adapter`, bypassing
+  extension wiring entirely — the closest match since this issue scopes the
+  resolver as executor-only with no wiring call site yet.
+
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
@@ -490,6 +548,16 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
   bullet for the `hitl.channel` warning (see Files to Modify)
 - `scripts/little_loops/__init__.py` public API docstrings/exports — see Files
   to Modify
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-04:_
+
+- `docs/reference/API.md:5620-5644` — `## little_loops.fsm` `### Submodule
+  Overview` table enumerates every `fsm/*.py` file with a one-line purpose
+  (distinct from the already-cited extension-Protocol doc anchors at
+  10790/10887/10911-10929). The new `communication_adapter.py` needs its own
+  row, following the shape of the existing `little_loops.fsm.rate_limit_circuit`
+  row (added for ENH-1138). The adjacent `### Quick Import` block does not
+  need a change — these types aren't re-exported from `fsm/__init__.py`.
 
 ### Additional Confirmed Anchors
 - `scripts/little_loops/extension.py:103-111` — `LLHookIntentExtension`, the most recently added of the 4 capability Protocols; nearest structural precedent for a new `CommunicationAdapterExtension`
@@ -516,6 +584,10 @@ Concrete types, signatures, and the call path this protocol plugs into, derived 
 - `StateConfig.action_type` (`scripts/little_loops/fsm/schema.py:694`) is typed `str | None`, not a closed `Literal`/enum — a new `human_approval`-style action type requires no FSM schema enum change, only executor-side dispatch plus extension wiring, consistent with how `_contributed_actions` extension actions are already looked up by arbitrary string key rather than a fixed set.
 - `wire_extensions()`'s four existing gates (`extension.py:246-273`) split into two structurally different sub-patterns: `InterceptorExtension`/`ActionProviderExtension`/`EvaluatorProviderExtension` are gated inside `if fsm_executor is not None:` (`:246-267`) and are inert when no `executor=` kwarg is passed; `LLHookIntentExtension`'s gate (`:269-273`) runs unconditionally in a separate loop and writes into a module-level registry in `hooks/__init__.py` (`_HOOK_INTENT_REGISTRY`), not onto `FSMExecutor` at all. A `CommunicationAdapterExtension` gate should follow the dict-with-conflict-check shape shared by actions/evaluators, inside the `fsm_executor is not None` block, since adapters are resolved by the `hitl.channel` config key the same way actions are resolved by `state.action_type`.
 - `scripts/little_loops/templates/extension/extension.py.tmpl` is confirmed dead code — not referenced anywhere in `create_extension.py` or elsewhere; the scaffold's actual output comes from the inline docstring string list in `create_extension.py:80-94` (`_render_extension()`), which is the only site a 5th Protocol name needs adding to (the `.tmpl` file's independent drift — missing `LLHookIntentExtension` — is pre-existing and out of this issue's scope).
+
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+- **Contested convention — resolver-miss exception design**: three patterns coexist in this codebase for "resolve by registry key, raise on miss," none of which this issue's drafted `CommunicationAdapterNotFound(LookupError)` fully matches. (a) `HostNotConfigured` (`host_runner.py:107`) / `AdvisorNotConfigured` (`advisor.py:176`) — dedicated `*NotConfigured` subclass of `RuntimeError`. (b) `CodeQueryError` (`codequery/core.py:35`) / `AdapterError` (`adapters/core.py:25`) — a single umbrella exception per module, not miss-specific, reused for the registry-miss case. Both (a) and (b)'s registry-miss call sites share one message template, `f"{Kind} {name!r} is not registered. Available: {sorted(REGISTRY)}."` (`host_runner.py:2015-2023` `resolve_host`, `codequery/core.py:135-140` `_instantiate`, `adapters/core.py:76-78` `resolve_emitter`) — a precedent this issue's own citations (`host_runner.py:74` `HostCapabilities`) don't include. This issue's drafted message (`f"hitl.channel={channel!r} has no registered adapter; registered: {sorted(self._contributed_adapters) or 'none'}"`, `## API/Interface`) differs from that 3-precedent template, and its `LookupError` base matches neither (a) nor (b). Left for the implementer to reconcile or knowingly diverge from.
 
 ### Types
 - `CommunicationAdapter` (abstract class, `scripts/little_loops/fsm/communication_adapter.py`, new file) — `send_alert()`/`await_response()`/`supports_async()`, per API/Interface above
@@ -595,6 +667,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - ~~Add a `"hitl-channel"` entry to `CATEGORY_PATTERNS` in
   `scripts/tests/test_builtin_loops.py`'s `TestValidatorWarningBudget`
   (16657-16669)~~ — moved to FEAT-1794 with the validate warning
+- Add a `### little_loops.fsm.communication_adapter` row to the Submodule
+  Overview table in `docs/reference/API.md:5620-5644`, following the
+  `little_loops.fsm.rate_limit_circuit` row's shape
+- Add `DOC_STRINGS_PRESENT` rows to `scripts/tests/test_wiring_reference_docs.py`
+  for `CommunicationAdapterExtension`, `provided_adapters`, `hitl.channel`, and
+  the new API.md Submodule Overview heading; add matching rows to
+  `scripts/tests/test_wiring_cli_registry.py` (`ll-create-extension` CLI.md
+  edit) and, if applicable, `test_wiring_skills_and_commands.py` /
+  `test_wiring_guides_and_meta.py`
+- Confirm `TestToDictSchemaParity`
+  (`scripts/tests/test_config_schema.py:1204-1250`) stays green once `hitl` is
+  added to `config-schema.json` — it fails independently of the already-cited
+  `_DATACLASS_SECTION_MAP` guard if `BRConfig.to_dict()` doesn't also gain a
+  `"hitl"` entry
 
 ## Impact
 
@@ -673,6 +759,9 @@ open
 - `CONTRIBUTING.md` — adding a new extension-registered protocol (`CommunicationAdapterExtension`, `provided_adapters()`) is exactly the extension-authoring pattern (`LLExtension` protocol convention) this doc documents.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-04T06:06:42 - `b9f5c7d9-a2cc-4071-8c3e-2bf509c70d40.jsonl`
+- `/ll:refine-issue` - 2026-09-04T05:55:26 - `2d6e7cfa-0898-45b8-9b3b-c77badcb19a4.jsonl`
+- `/ll:confidence-check` - 2026-09-04T05:49:05 - `0e16f2cb-978a-4796-8ce2-588b8c0efeb2.jsonl`
 - pre-implementation review - 2026-09-04 - Folded 10 review decisions into `## Pre-implementation Review`: `AdapterResponse` rename + `verdict` literal, `provided_adapters()` → dict, `alert_id` kept, canonical event constants, validate-warning AC moved to FEAT-1794, resolver-only executor scope with `CommunicationAdapterNotFound`, eventbus adapter to its own child issue, `send_alert` drops `timeout`, `HitlConfig` in `config/core.py`, Impact P2→P3. Sibling edits (FEAT-1794 event name, FEAT-1931 `await_response` signature) still pending.
 - `/ll:wire-issue` - 2026-09-03T23:58:41 - `11c94de0-8f35-4de1-a272-34e45de9321f.jsonl`
 - `/ll:refine-issue` - 2026-09-03T23:44:55 - `aed94642-f109-4502-89a6-54feff7835ca.jsonl`
