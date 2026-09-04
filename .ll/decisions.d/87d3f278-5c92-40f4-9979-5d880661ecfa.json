@@ -1,0 +1,12 @@
+{
+  "id": "7fbce2d7-3f8b-4584-a63f-ccd2573982d8",
+  "type": "decision",
+  "timestamp": "2026-09-04T17:23:02Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "cli/output.py is the dominant, dependency-free, actively-tested convention with ~80 existing call sites in the exact 'dict -> status_block() -> print()' shape needed; rich/questionary is scoped only to the init wizard, has no timeout-capable .ask() precedent (a direct mismatch with this issue's shutdown-signal acceptance criterion), and its API surface for this use is unproven (learning_tests_required flag).",
+  "rule": "Terminal adapter formatted-prompt rendering uses cli/output.py (colorize/status_block/table), not rich+questionary",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: rich+questionary (init/tui.py convention)",
+  "issue": "FEAT-1931"
+}

@@ -18,7 +18,7 @@ labels:
 - hitl
 - adapter
 verify_verdict: VALID
-decision_needed: true
+decision_needed: false
 unproven_mechanism: true
 learning_tests_required:
 - rich
@@ -210,6 +210,8 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 **Option A**: Follow `scripts/little_loops/cli/output.py`'s convention — raw ANSI-escape `colorize()` plus `status_block()`/`table()` pure string-returning helpers (used by ~80 existing call sites for structured terminal output, e.g. `cli/harness.py:763-771`). Color gated on `NO_COLOR`/`FORCE_COLOR` env vars and `sys.stdout.isatty()`.
 
+> **Selected:** Option A — dominant, dependency-free, actively-tested convention with ~80 existing call sites; Option B's rich/questionary usage is scoped to a single file and has no proven timeout-compatible primitive.
+
 **Option B**: Follow `scripts/little_loops/init/tui.py`'s convention — the third-party `rich` library's `console.print()` with `[color]...[/color]` markup, paired with `questionary` for confirmation prompts (`questionary.confirm(...).ask()` returning `bool | None`).
 
 No recommendation from research — both conventions are actively used elsewhere in the codebase for different subsystems (general CLI output vs. the init wizard specifically), and neither is deprecated relative to the other.
@@ -217,6 +219,24 @@ No recommendation from research — both conventions are actively used elsewhere
 _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 
 - **`await_response()` re-entrancy contract narrows the "unproven mechanism" concern** (see `## Program Design` → Codebase Research Findings for the full docstring): the protocol does not require an adapter to internally combine a selectors-bounded stdin read with shutdown-flag polling in one call — the executor is expected to call `await_response()` repeatedly with short per-call timeouts. This does not clear `unproven_mechanism: true` (that requires `/ll:spike`), but the implementer should re-derive the simplest viable `await_response()` shape from this contract before assuming the selectors+shutdown-polling combination is required.
+
+### Decision Rationale
+
+_Added by `/ll:decide-issue` — 2026-09-04:_
+
+**Selected**: Option A — follow `scripts/little_loops/cli/output.py`'s `colorize()`/`status_block()`/`table()` convention for the terminal adapter's formatted-prompt rendering.
+
+**Reasoning**: Two parallel `ll:codebase-pattern-finder` evidence passes (one per option) found both options equally unable to cover this issue's hardest requirement — the timeout countdown and bounded-timeout stdin read, neither of which has precedent in either module (the FEAT-1931 spike proved that mechanism with raw `selectors`/`sys.stdin`, independent of formatting library). On the half each option does cover — static formatted rendering — Option A is the clearly better codebase fit: `status_block()`/`colorize()` are pure, dependency-free, string-returning helpers with ~80 existing call sites across the CLI (three of them the near-identical "assemble dict → `status_block()` → `print()`" shape this adapter needs, e.g. `cli/harness.py:763-771`, `cli/queue.py:295-317`, `init/cli.py:457`), backed by dedicated test suites (`test_cli_output.py`, `test_snapshot_output_primitives.py`). Option B's `rich`/`questionary` stack, while already a core dependency, is used nowhere in the codebase outside the single-purpose init wizard (`init/tui.py`) and its test file, and its `.ask()` calls block indefinitely with no timeout parameter — a direct mismatch with this issue's "respects FSM shutdown signal during blocking input" acceptance criterion for the edit-verdict secondary prompt, and the source of the still-unresolved `learning_tests_required: [rich, questionary]` frontmatter flag.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A: `cli/output.py` (`colorize`/`status_block`/`table`) | 3 | 3 | 3 | 2 | 11/12 |
+| B: `rich`+`questionary` (`init/tui.py` convention) | 1 | 1 | 1 | 1 | 4/12 |
+
+**Key evidence**:
+- `status_block()` (`cli/output.py:347-359`, the selected convention) matches 3+ existing call sites in the exact shape needed (`cli/harness.py:763-771`, `cli/queue.py:295-317`, `init/cli.py:457`); module has zero `deprecated`/legacy markers and active recent additions (`ENH-2539`).
+- The rejected `rich`/`questionary` convention's usage is confirmed (repo-wide grep) limited to `init/tui.py` + its test file only; no `.ask()` call anywhere in the codebase passes a timeout; `rich.live.Live`/countdown widgets have zero usage.
+- Neither convention's module has a countdown-to-deadline formatter or a bounded-timeout stdin-read precedent — that piece is net-new regardless of which was chosen (confirmed independently by the FEAT-1931 spike, which used raw `selectors`, not either formatting library).
 
 ## Implementation Steps
 
@@ -379,6 +399,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-04T17:23:32 - `c44d62f6-fc1d-40b3-bdf0-f62b5b1b46ac.jsonl`
 - `/ll:spike` - 2026-09-04T17:07:00 - `996a4184-d64a-4718-acaf-3c2b33b6304f.jsonl`
 - `/ll:refine-issue` - 2026-09-04T17:00:36 - `f3346010-0c2d-44a4-8a0e-3cc848bc8952.jsonl`
 - `/ll:verify-issues` - 2026-09-04T16:49:24 - `32d87180-d8bc-4b79-9b7f-315760a0277d.jsonl`
