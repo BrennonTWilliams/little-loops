@@ -20,12 +20,15 @@ labels:
 verify_verdict: VALID
 decision_needed: false
 unproven_mechanism: true
-learning_tests_required:
-- rich
-- questionary
 spike_attempted: true
 spike_completed: true
 reconcile_attempted: true
+confidence_score: 75
+outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # FEAT-1931: Terminal adapter for async HITL communication
@@ -420,7 +423,27 @@ open
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-04_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (hard override)
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- Requirements clarity (Criterion 3): behavior on unrecognized stdin input (retry vs. hard error) is explicitly left unspecified by Acceptance Criteria; nearest precedent (`SimulationActionRunner._prompt_result()`, `fsm/runners.py:530-556`) retries in a loop, but this issue doesn't confirm that's required.
+- `questionary` learning-test record is `proven` but carries 2 failing claims (partial-answer behavior on EOF via `questionary.prompt()`; `Separator()`/`Choice` typing) — moot if Option A (the selected convention) stands, since neither library is used by the chosen implementation.
+
+### Gaps to Address
+- **Learning Test Hard Override**: `rich` has no learning-test record (`missing`), forcing STOP regardless of aggregate score. This issue's Decision Rationale (2026-09-04) already selected Option A (`cli/output.py`'s `colorize`/`status_block`/`table`) over the rich/questionary-based Option B — `rich` (and likely `questionary`) is no longer a real dependency of the chosen approach. Recommend clearing both from `learning_tests_required` frontmatter (or via `/ll:decide-issue`) rather than running `/ll:explore-api rich` to prove an assumption for an abandoned option.
+- **Decision Cap** (Criterion C capped at 10/25): `ll-issues format-check` flags `unapplied_decision` — `await_response()` still appears, unmarked, in `## Program Design` and `## Implementation Steps` as if it were a rejected option. This may be a detector false-positive (the issue's only ratified `> **Selected:**` decision concerns the output-formatting convention, not `await_response()`, which is the real protocol method being implemented) — worth a quick verification pass before treating it as a real unresolved decision.
+
+### Outcome Risk Factors
+_(none — 71/100 is above this project's configured `outcome_threshold` of 65)_
+
 ## Session Log
+- `/ll:explore-api` - 2026-09-04 - Skipped exploration and cleared `learning_tests_required: [rich, questionary]` from frontmatter per this issue's own 2026-09-04 Confidence Check note: Option A (`cli/output.py` convention) was selected over the rich/questionary-based Option B, so neither library is a real dependency of the chosen implementation.
+- `/ll:confidence-check` - 2026-09-04T17:34:47 - `6ce3bc7e-5cc0-4c07-bc92-274906ec8f9b.jsonl`
 - `/ll:reconcile-issue` - 2026-09-04T17:28:24 - `9c215218-0709-4612-905a-d94c22135410.jsonl`
 - `/ll:decide-issue` - 2026-09-04T17:23:32 - `c44d62f6-fc1d-40b3-bdf0-f62b5b1b46ac.jsonl`
 - `/ll:spike` - 2026-09-04T17:07:00 - `996a4184-d64a-4718-acaf-3c2b33b6304f.jsonl`
