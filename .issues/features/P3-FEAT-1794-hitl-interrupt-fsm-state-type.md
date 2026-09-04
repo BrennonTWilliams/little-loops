@@ -29,6 +29,12 @@ decision: "Option A \u2014 hardcoded dispatch following the mcp_tool pattern. Si
   \ / adapter.await_response() rather than hardcoding terminal I/O."
 verify_verdict: VALID
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1794: HITL interrupt FSM state type (`action_type: human_approval`)
@@ -397,6 +403,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - 2026-09-03 (`/ll:verify-issues`, re-check): Re-verified same-day — no drift since the pass above (all anchors re-confirmed identical: `_execute_state` :1948, `_run_action` :2312, `_action_mode` :3062, `_emit` :3550, `_interruptible_sleep` :3833, `StateConfig` :621, `timeout` :708, `extra_routes` :730, `HostCapabilities` :128). Decisions log has no active required rules. `ll-verify-evidence` clean. Dependency backlinks with FEAT-1930 (blocked_by/blocks) and FEAT-1680 (Scope Boundary) confirmed consistent. Verdict updated from stale `NON_VALID` to `VALID` (persisted `verify_verdict` frontmatter now matches).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-04T19:40:12 - `16be6d3d-b797-4958-b3aa-7f5ae8374599.jsonl`
 - `/ll:reconcile-issue` - 2026-09-04T19:24:35 - `2e7a26f2-b8bf-48e7-b3ea-48fd933d6045.jsonl`
 - `/ll:refine-issue` - 2026-09-04T19:12:55 - `4a1099fd-9d48-4f02-88bf-6554245a52cb.jsonl`
 - `/ll:manage-issue` - 2026-09-04T07:19:43 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`
