@@ -2663,14 +2663,22 @@ class FSMExecutor:
 
         Reads the config-selected channel (default ``"terminal"``) via
         ``_get_br_config()`` and looks it up in the extension-contributed
-        registry — never imports a specific adapter directly. No call site
-        exists in this issue's own tree; FEAT-1794 adds the ``human_approval``
-        branch that calls this.
+        registry. When the channel is ``"terminal"`` and no extension has
+        registered one, lazily seeds the built-in ``TerminalAdapter`` so the
+        default channel works with zero configuration — an extension
+        registering its own ``"terminal"`` adapter still wins, since
+        ``wire_extensions()`` populates the registry before any resolve call.
         """
         channel = self._get_br_config().hitl.channel
         try:
             return self._contributed_adapters[channel]
         except KeyError:
+            if channel == "terminal":
+                from little_loops.fsm.adapters.terminal_adapter import TerminalAdapter
+
+                adapter = TerminalAdapter()
+                self._contributed_adapters[channel] = adapter
+                return adapter
             raise CommunicationAdapterNotFound(
                 f"Communication adapter {channel!r} is not registered. "
                 f"Available: {sorted(self._contributed_adapters)}."

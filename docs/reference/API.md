@@ -11076,27 +11076,27 @@ class CommunicationAdapterExtension(Protocol):
 **Behavior:**
 - `wire_extensions()` merges each extension's `provided_adapters()` into `executor._contributed_adapters`, keyed by channel name — the same dict-with-conflict-check shape as `_contributed_actions`/`_contributed_evaluators`.
 - Duplicate channel names across extensions raise `ValueError: "Extension conflict: communication adapter '<name>' already registered by another extension"`.
-- `FSMExecutor.resolve_communication_adapter()` reads the active channel from `hitl.channel` (via the memoized `_get_br_config()`) and looks it up in `_contributed_adapters`; a miss raises `CommunicationAdapterNotFound`. See [`little_loops.fsm.communication_adapter`](#little_loopsfsmcommunication_adapter) for the `CommunicationAdapter` ABC, `AdapterResponse`/`TimeoutResponse`, and the two event-name constants.
+- `FSMExecutor.resolve_communication_adapter()` reads the active channel from `hitl.channel` (via the memoized `_get_br_config()`) and looks it up in `_contributed_adapters`; a miss raises `CommunicationAdapterNotFound`, **except** for `channel == "terminal"`: with no extension registered, the resolver lazily seeds the built-in `little_loops.fsm.adapters.terminal_adapter.TerminalAdapter` (FEAT-1931) so the default channel works with zero configuration. An extension that registers its own `"terminal"` adapter still wins, since `wire_extensions()` populates `_contributed_adapters` before any resolve call. See [`little_loops.fsm.communication_adapter`](#little_loopsfsmcommunication_adapter) for the `CommunicationAdapter` ABC, `AdapterResponse`/`TimeoutResponse`, and the two event-name constants.
 
-**Usage:**
+**Usage** (contributing a *non-default* channel, e.g. a push-notification adapter):
 
 ```python
 from little_loops.fsm.communication_adapter import CommunicationAdapter, AdapterResponse
 
-class TerminalAdapter(CommunicationAdapter):
+class PushNotificationAdapter(CommunicationAdapter):
     def send_alert(self, loop_name, state_name, prompt, captured_context) -> str: ...
     def await_response(self, alert_id, timeout): ...
     def supports_async(self) -> bool:
-        return False
+        return True
 
 class MyAdapterExtension:
-    """Extension contributing a 'terminal' HITL communication adapter."""
+    """Extension contributing a 'push' HITL communication adapter."""
 
     def provided_adapters(self) -> dict:
-        return {"terminal": TerminalAdapter()}
+        return {"push": PushNotificationAdapter()}
 ```
 
-Register via the same `extensions` config key or entry-point group as any other `LLExtension`, then select it with `hitl.channel` — see [Configuration → `hitl`](CONFIGURATION.md#hitl).
+Register via the same `extensions` config key or entry-point group as any other `LLExtension`, then select it with `hitl.channel` — see [Configuration → `hitl`](CONFIGURATION.md#hitl). The `"terminal"` channel needs none of this: it is built in.
 
 ### Configuration
 

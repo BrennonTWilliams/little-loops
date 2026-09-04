@@ -1582,9 +1582,11 @@ Extensions can also be auto-discovered via Python entry points — see [API Refe
 
 Human-in-the-loop communication channel selection (FEAT-1930). `hitl.channel` selects the active `CommunicationAdapter`, resolved by `FSMExecutor.resolve_communication_adapter()` from adapters registered via `CommunicationAdapterExtension` (see [API Reference → `CommunicationAdapterExtension`](API.md#communicationadapterextension)). Not to be confused with the unrelated `hitl-md`/`hitl-compare` built-in loop family — those are loop names, not a config namespace.
 
+The default channel, `"terminal"`, is built in (FEAT-1931) and needs no extension or config entry: it prints a formatted prompt to stdout and blocks on stdin for the operator's `approve`/`reject`/`edit` verdict. Any other channel value must be contributed by an extension's `CommunicationAdapterExtension.provided_adapters()`.
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `hitl.channel` | `string` | `"terminal"` | Registry key for the active communication adapter. Falls back to `"terminal"` if unset or if no adapter is registered for the configured channel (a miss raises `CommunicationAdapterNotFound` at resolve time). |
+| `hitl.channel` | `string` | `"terminal"` | Registry key for the active communication adapter. Unset resolves to the built-in `"terminal"` adapter. A non-`"terminal"` value with no matching extension raises `CommunicationAdapterNotFound` at resolve time. |
 
 ```json
 {

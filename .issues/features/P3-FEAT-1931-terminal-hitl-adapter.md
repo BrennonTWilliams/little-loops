@@ -4,9 +4,10 @@ title: Terminal adapter for async HITL communication
 type: FEAT
 priority: P3
 captured_at: '2026-06-04T00:00:00Z'
+completed_at: '2026-09-04T19:02:47Z'
 discovered_date: 2026-06-04
 discovered_by: scope-epic
-status: open
+status: done
 parent: EPIC-1929
 relates_to:
 - FEAT-1930
@@ -101,40 +102,40 @@ and follows its configured timeout route.
 
 ## Acceptance Criteria
 
-- [ ] Implements `CommunicationAdapter` protocol (`send_alert`,
+- [x] Implements `CommunicationAdapter` protocol (`send_alert`,
   `await_response`, `supports_async`, plus a `cancel_alert` override)
-- [ ] Formatted prompt output includes: loop name, state name, prompt text,
+- [x] Formatted prompt output includes: loop name, state name, prompt text,
   captured context, valid response keys. Time remaining is rendered **only**
   if `captured_context` carries an optional `deadline` key (monotonic-clock
   float, supplied by FEAT-1794's caller); otherwise it is omitted — the
   adapter has no other way to learn the overall deadline (`send_alert()`
   carries no timeout and `await_response()` only sees per-tick budgets)
-- [ ] Accepts `y`/`yes`/`approve`, `n`/`no`/`reject`, `e`/`edit` (case-
+- [x] Accepts `y`/`yes`/`approve`, `n`/`no`/`reject`, `e`/`edit` (case-
   insensitive, unambiguous prefix matching); optional trailing text after a
   reject alias (`n too risky`) populates `AdapterResponse.reason`
-- [ ] Empty line or unrecognized input: prints a one-line hint, the alert
+- [x] Empty line or unrecognized input: prints a one-line hint, the alert
   stays pending, and the current call returns `TimeoutResponse`. No default
   on bare Enter (never silently approve); no internal retry loop
-- [ ] Edit verdict: after `e`, the adapter prompts for a single line of
+- [x] Edit verdict: after `e`, the adapter prompts for a single line of
   replacement text on a second bounded read. If that read times out, the
   alert stays in an awaiting-edit-text state and the next
   `await_response()` call for the same `alert_id` resumes there
-- [ ] Never catches `KeyboardInterrupt` or `EOFError` — `ll-loop run` relies
+- [x] Never catches `KeyboardInterrupt` or `EOFError` — `ll-loop run` relies
   on `KeyboardInterrupt` propagating (`cli/loop/lifecycle.py:881`); each call
   blocks at most `timeout` seconds so the executor's between-call shutdown
   checks stay responsive
-- [ ] Closed or non-interactive stdin (EOF, e.g. `ll-auto`/detached runs):
+- [x] Closed or non-interactive stdin (EOF, e.g. `ll-auto`/detached runs):
   latches a closed flag, logs once, and every subsequent call sleeps for
   `timeout` before returning `TimeoutResponse` — never busy-loops until the
   executor's deadline
-- [ ] Timeout returns `TimeoutResponse` (not `AdapterResponse`)
-- [ ] `cancel_alert()` prints a withdrawn notice to the operator and clears
+- [x] Timeout returns `TimeoutResponse` (not `AdapterResponse`)
+- [x] `cancel_alert()` prints a withdrawn notice to the operator and clears
   the alert's pending state
-- [ ] `supports_async()` returns `False`
-- [ ] Zero config: `hitl.channel: terminal` (the default) resolves with no
+- [x] `supports_async()` returns `False`
+- [x] Zero config: `hitl.channel: terminal` (the default) resolves with no
   pyproject entry point and no `ll-config.json` entry; an extension
   registering its own `"terminal"` adapter still overrides the built-in
-- [ ] Tests: inject `os.pipe()`-backed streams through the constructor
+- [x] Tests: inject `os.pipe()`-backed streams through the constructor
   (`StringIO` has no file descriptor, so `selectors` rejects it); verify
   prompt format, verdict parsing incl. reason capture, unrecognized input,
   edit flow incl. resumption after a timed-out second read, timeout, EOF
@@ -187,6 +188,29 @@ The adapter receives pre-interpolated prompt text from the FSM state; it
 only renders, not resolves, variables.
 
 ## Program Design
+
+### Deviations
+
+_Added by `/ll:manage-issue` — 2026-09-04:_
+
+- **`_read_line()` does not call `stream.readline()`** (spec text: "the spike's
+  `await_line_single_read()` body: one `selectors` wait bounded by `timeout`,
+  then `readline()`"). Implemented instead: raw `os.read(fd, 4096)` into an
+  instance-owned `bytes` buffer (`self._read_buffer`), with lines split off
+  manually. Reason: a real bug found during implementation, not caught by the
+  spike or its tests — `TextIOWrapper.readline()` performs internal chunk
+  read-ahead, so if two lines are already available on the fd (e.g. an
+  operator types/pastes the edit-flow's verdict line and replacement line
+  together, or two `send_alert()`/`await_response()` pairs are answered
+  back-to-back), the *first* `readline()` call can pull both lines off the OS
+  pipe/tty in one read, leaving nothing for the *second* call's
+  `selectors.select()` to see — causing a false timeout on already-available
+  input. The spike's own tests never exercised two sequential reads on the
+  same stream instance with both lines pre-written, so this didn't surface
+  there. Signature (`_read_line(self, timeout: float) -> str | None`),
+  call path, and external behavior (timeout/EOF semantics) are unchanged;
+  only the internal read mechanism differs. Regression test:
+  `scripts/tests/test_terminal_adapter.py::TestReadAhead`.
 
 ### Types
 - No new dataclass/type is introduced by this issue itself — `AdapterResponse`
@@ -486,6 +510,33 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 - **Risk**: Low — I/O core proven by the 2026-09-04 spike
 - **Breaking Change**: No
 
+## Resolution
+
+_Added by `/ll:manage-issue` — 2026-09-04:_
+
+Implemented `TerminalAdapter` (`scripts/little_loops/fsm/adapters/terminal_adapter.py`)
+per the ratified `## Program Design`. Zero-config seeding added to
+`FSMExecutor.resolve_communication_adapter()` (`executor.py:2661`) as
+specified — no `TerminalAdapterExtension`/entry-point was created, matching
+Implementation Step 8's superseded-registration note.
+
+Found and fixed a real bug during implementation not caught by the
+2026-09-04 spike: see `## Program Design` → `### Deviations` for
+`_read_line()`'s raw-fd manual line buffering (replacing
+`stream.readline()`) to avoid `TextIOWrapper` read-ahead causing false
+timeouts on already-buffered input.
+
+22 new tests in `scripts/tests/test_terminal_adapter.py`, all passing.
+Full suite: `python -m pytest scripts/tests/` — 22760 passed, 43 skipped, 1
+pre-existing unrelated failure (`test_prose_dep_sweep_gate.py` — FEAT-1794
+prose drift against FEAT-1930, confirmed present on `main` before this
+change via `git stash`; out of scope for this issue). `ruff check` and
+`mypy` clean on all changed/new files.
+
+Reconciled `docs/reference/API.md` (`CommunicationAdapterExtension` usage
+snippet) and `docs/reference/CONFIGURATION.md` (`hitl` section) to describe
+the built-in zero-config `"terminal"` channel per Implementation Step 10.
+
 ## Related Key Documentation
 
 - [ARCHITECTURE.md](../../docs/ARCHITECTURE.md) — FSM and adapter architecture
@@ -607,6 +658,7 @@ Re-run `/ll:confidence-check` before implementing — the recorded 75/100 is
 below this project's `readiness_threshold` of 85.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-04T19:01:27 - `a8753b0f-28e6-4493-9607-3f7aa213017c.jsonl`
 - `/ll:confidence-check` - 2026-09-04T17:51:49 - `94c5757c-d9f5-4eca-9c07-95f38c364ba5.jsonl`
 - manual pre-implementation review - 2026-09-04 - see `## Pre-implementation Review (2026-09-04)`
 - `/ll:explore-api` - 2026-09-04 - Skipped exploration and cleared `learning_tests_required: [rich, questionary]` from frontmatter per this issue's own 2026-09-04 Confidence Check note: Option A (`cli/output.py` convention) was selected over the rich/questionary-based Option B, so neither library is a real dependency of the chosen implementation.
