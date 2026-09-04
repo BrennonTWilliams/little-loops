@@ -76,6 +76,64 @@ browser-side verdict adapter letting an operator respond to a HITL prompt from
 that page would be a separate, future FEAT layered on both issues, not part of
 either's current scope.
 
+## Pre-implementation Review (2026-09-04)
+
+Review pass before implementation. Decisions below are authoritative where they
+conflict with older prose in this file; sibling issues still need matching edits.
+
+1. **Adapter return type finalized** — `HumanResponse` is renamed
+   `AdapterResponse` and carries `verdict: Literal["approve", "reject", "edit"]`
+   (plus `edited_text`) instead of `approved: bool`. This applies the resolution
+   recorded in `## Scope Boundary` since 2026-06-25. FEAT-1794's event-bus type
+   `HumanResponse(LLEvent)` keeps its name. See `## API/Interface`.
+2. **`provided_adapters()` returns `dict[str, CommunicationAdapter]`**, keyed by
+   channel name, not `list[type[CommunicationAdapter]]`. The executor registry is
+   keyed by the `hitl.channel` value, and a list of classes carries no key. This
+   also matches all four existing capability Protocols and lets the
+   `wire_extensions()` conflict guard be copied verbatim.
+3. **`await_response(alert_id, timeout)` keeps `alert_id`.** The eventbus adapter
+   needs it to correlate the inbound `human_response` event. **FEAT-1931 drift:**
+   its `## API/Interface` shows `await_response(self, timeout)` and must be
+   updated to include `alert_id`.
+4. **Canonical event names** — `human_approval_requested` and `human_response`,
+   exported as module-level string constants from `communication_adapter.py`
+   (`HUMAN_APPROVAL_REQUESTED_EVENT`, `HUMAN_RESPONSE_EVENT`) following the
+   `RATE_LIMIT_WAITING_EVENT` convention. **FEAT-1794 drift:** it emits
+   `human_approval_request` (no `-ed`) at its lines ~200, ~285, ~319 and must be
+   corrected to import these constants. FEAT-3323 already uses the canonical names.
+5. **AC "validate warns on non-interactive host" moved to FEAT-1794.**
+   `ll-loop validate` cannot know a loop uses HITL until the `human_approval`
+   state type exists (FEAT-1794), "unset" is not a failure condition because it
+   defaults to `terminal`, and `HostCapabilities` has no interactivity field to
+   key on. The correct check is "resolved adapter reports `supports_async() ==
+   False` while the host is non-interactive", which belongs where the state is
+   introduced. The `validate_fsm` parameter threading, `CATEGORY_PATTERNS`
+   ratchet entry, and `CLI.md` rule bullet move with it.
+6. **Executor scope here is a resolver, not dispatch.** This issue adds
+   `FSMExecutor.resolve_communication_adapter() -> CommunicationAdapter` that
+   reads `hitl.channel` (default `"terminal"`) and looks up
+   `_contributed_adapters`. On a miss it raises `CommunicationAdapterNotFound`
+   (new, in `communication_adapter.py`) naming the requested channel and the
+   registered channel names — never a bare `KeyError`. It has **no call site**
+   until FEAT-1794 adds the `human_approval` branch. Because FEAT-1931 ships
+   `TerminalAdapter`, the default channel resolves to nothing in this issue's
+   own tree; that is expected and covered by the miss-path test.
+7. **Eventbus adapter is not implemented here.** The 2026-06-20 re-scope says it
+   is "folded into FEAT-1930", but nothing in the ACs builds it and ENH-2249
+   flagged it as untracked. Decision: scope it as its own child of EPIC-1929
+   (`FEAT: EventBus HITL adapter`), `blocked_by: [FEAT-1930]`, and add it to this
+   issue's `blocks` when created. This keeps this issue at its stated "Small"
+   effort. FEAT-2102's "deferred until eventbus lands" retargets to that issue.
+8. **`send_alert()` no longer takes `timeout`.** The wait budget belongs to
+   `await_response()`. Adapters that want to show the deadline to the operator
+   receive it via `await_response()`'s own argument before blocking, or render
+   it from `captured_context`.
+9. **`HitlConfig` lives in `config/core.py`**, so the BUG-3192
+   `_discover_dataclasses()` guard sees it without extending the walker.
+10. Minor: Impact priority corrected P2 → P3 to match frontmatter;
+    `TimeoutResponse.timed_out` kept as a constant-`True` discriminator field and
+    documented as such.
+
 ## Current Behavior
 
 The FSM executor currently has no abstraction layer for human-in-the-loop (HITL)
@@ -86,17 +144,23 @@ extension-based discovery, and no config-driven channel selection.
 ## Expected Behavior
 
 1. A `CommunicationAdapter` abstract class / protocol defining:
-   - `send_alert(loop_name, state_name, prompt, captured_context, timeout) → alert_id`
-   - `await_response(alert_id, timeout) → HumanResponse | TimeoutResponse`
+   - `send_alert(loop_name, state_name, prompt, captured_context) → alert_id`
+   - `await_response(alert_id, timeout) → AdapterResponse | TimeoutResponse`
    - `supports_async() → bool` — whether the channel can reach an operator who
      isn't watching the terminal
 2. Adapters register via the extension system through a new
    `CommunicationAdapterExtension` Protocol (decided 2026-06-12 — see
-   Decision Rationale in Proposed Solution).
+   Decision Rationale in Proposed Solution) whose `provided_adapters()` returns
+   `dict[str, CommunicationAdapter]` keyed by channel name.
 3. Config-driven channel selection: `.ll/ll-config.json` key `hitl.channel`
    selects the active adapter (default: `terminal`).
-4. The FSM executor resolves the configured adapter and calls the protocol
-   methods — it never imports a specific adapter directly.
+4. The FSM executor exposes `resolve_communication_adapter()` which looks the
+   configured channel up in the extension registry — it never imports a
+   specific adapter directly. Dispatch (calling `send_alert` /
+   `await_response` from a `human_approval` state) is FEAT-1794's scope.
+5. Canonical event-name constants `HUMAN_APPROVAL_REQUESTED_EVENT =
+   "human_approval_requested"` and `HUMAN_RESPONSE_EVENT = "human_response"`
+   are exported for FEAT-1794, the eventbus adapter, and FEAT-3323 to share.
 
 ## Motivation
 
@@ -127,17 +191,27 @@ local dev is the same one-line config change.
 ## Acceptance Criteria
 
 - [ ] `CommunicationAdapter` abstract interface defined with `send_alert()`,
-  `await_response()`, and `supports_async()`
+  `await_response()`, and `supports_async()`; `AdapterResponse` carries
+  `verdict: Literal["approve", "reject", "edit"]` (no `approved: bool`)
+- [ ] `HUMAN_APPROVAL_REQUESTED_EVENT` / `HUMAN_RESPONSE_EVENT` string constants
+  exported from `communication_adapter.py`
 - [ ] Extension registration path established (adapter discovery via
-  `wire_extensions()` or equivalent)
+  `wire_extensions()`; `provided_adapters()` returns
+  `dict[str, CommunicationAdapter]`; duplicate channel name raises `ValueError`
+  like actions/evaluators)
 - [ ] Config schema: `hitl.channel` in `.ll/ll-config.json` selects active
-  adapter; falls back to `terminal` if unset
-- [ ] FSM executor resolves adapter via config + extension registry, not
-  hardcoded import
-- [ ] `ll-loop validate` warns when `hitl.channel` is unset and host is
-  non-interactive (no adapter can reach the operator)
-- [ ] Tests: mock adapter implementation, verify executor calls protocol methods
-  not transport-specific code
+  adapter; falls back to `terminal` if unset; `HitlConfig` in `config/core.py`
+- [ ] `FSMExecutor.resolve_communication_adapter()` resolves via config +
+  extension registry, not hardcoded import; a miss raises
+  `CommunicationAdapterNotFound` listing requested and registered channels
+- [ ] ~~`ll-loop validate` warns when `hitl.channel` is unset and host is
+  non-interactive~~ — moved to FEAT-1794 (see Pre-implementation Review #5)
+- [ ] Tests: mock adapter registered through a `CommunicationAdapterExtension`,
+  resolver returns it for its channel name, miss path raises the named
+  exception, conflict path raises `ValueError`
+- [ ] Follow-up issue `FEAT: EventBus HITL adapter` created under EPIC-1929
+  with `blocked_by: [FEAT-1930]` and added to this issue's `blocks`
+  (Pre-implementation Review #7)
 
 ## Proposed Solution
 
@@ -175,20 +249,42 @@ Decided by `/ll:decide-issue` on 2026-06-12.
 
 The `CommunicationAdapter` abstract protocol defines the public contract:
 
+_Revised 2026-09-04 per Pre-implementation Review #1, #3, #4, #6, #8._
+
 ```python
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal
+
+# Canonical event names shared by FEAT-1794 (emitter), the eventbus adapter,
+# and FEAT-3323 (read-only relay). Follows the RATE_LIMIT_WAITING_EVENT
+# string-constant convention; LLEvent is never subclassed in this codebase.
+HUMAN_APPROVAL_REQUESTED_EVENT = "human_approval_requested"
+HUMAN_RESPONSE_EVENT = "human_response"
+
+Verdict = Literal["approve", "reject", "edit"]
 
 @dataclass
-class HumanResponse:
-    approved: bool
-    reason: Optional[str] = None
-    modified_prompt: Optional[str] = None
+class AdapterResponse:
+    """Operator verdict returned by an adapter. Named to avoid colliding with
+    FEAT-1794's ``HumanResponse`` event-bus payload."""
+    verdict: Verdict
+    edited_text: str | None = None   # populated for "edit"
+    reason: str | None = None
 
 @dataclass
 class TimeoutResponse:
+    """Returned when no verdict arrived within ``timeout``.
+
+    ``timed_out`` is always True; it exists as a cheap discriminator so callers
+    can ``match``/``isinstance`` without importing both types.
+    """
     timed_out: bool = True
     elapsed_seconds: float = 0.0
+
+class CommunicationAdapterNotFound(LookupError):
+    """Raised by the executor resolver when ``hitl.channel`` names no
+    registered adapter. Message lists the requested channel and the
+    registered channel names."""
 
 class CommunicationAdapter:
     """Abstract protocol for async HITL communication channels."""
@@ -199,15 +295,14 @@ class CommunicationAdapter:
         state_name: str,
         prompt: str,
         captured_context: dict,
-        timeout: float,
     ) -> str:
         """Deliver an approval request to the operator. Returns alert_id."""
         ...
 
     def await_response(
         self, alert_id: str, timeout: float
-    ) -> HumanResponse | TimeoutResponse:
-        """Block until the operator responds or timeout expires."""
+    ) -> AdapterResponse | TimeoutResponse:
+        """Block until the operator responds to ``alert_id`` or timeout expires."""
         ...
 
     def supports_async(self) -> bool:
@@ -216,15 +311,36 @@ class CommunicationAdapter:
 ```
 
 Extension registration (via the new `CommunicationAdapterExtension` — see
-Decision Rationale):
+Decision Rationale). `provided_adapters()` returns a **dict keyed by channel
+name**, matching `provided_actions()` / `provided_evaluators()`:
 
 ```python
-class TerminalAdapter(CommunicationAdapter):
+class CommunicationAdapterExtension(Protocol):
+    def provided_adapters(self) -> dict[str, CommunicationAdapter]: ...
+
+class TerminalAdapter(CommunicationAdapter):   # FEAT-1931
     ...
 
-class TerminalAdapterExtension(CommunicationAdapterExtension):
-    def provided_adapters(self) -> list[type[CommunicationAdapter]]:
-        return [TerminalAdapter]
+class TerminalAdapterExtension:
+    def provided_adapters(self) -> dict[str, CommunicationAdapter]:
+        return {"terminal": TerminalAdapter()}
+```
+
+Executor resolver (this issue; no call site until FEAT-1794):
+
+```python
+class FSMExecutor:
+    _contributed_adapters: dict[str, CommunicationAdapter]
+
+    def resolve_communication_adapter(self) -> CommunicationAdapter:
+        channel = self._config.hitl.channel  # default "terminal"
+        try:
+            return self._contributed_adapters[channel]
+        except KeyError:
+            raise CommunicationAdapterNotFound(
+                f"hitl.channel={channel!r} has no registered adapter; "
+                f"registered: {sorted(self._contributed_adapters) or 'none'}"
+            ) from None
 ```
 
 ## Integration Map
@@ -284,8 +400,6 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 Additional callers, precedent anchors, and config-wiring call sites found beyond what the sections above already cite:
-
-_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 - Documentation anchors (line-level, beyond the file-only citations in `## Related Key Documentation`): `docs/ARCHITECTURE.md:586,594-599` (Extension Architecture & Event Flow — the table listing the 4 existing capability Protocols); `docs/reference/API.md:10790` (`class LLExtension(Protocol)`), `:10887` (`def wire_extensions`), `:10911-10929` (`LLHookIntentExtension` doc block, closest precedent for documenting a 5th Protocol); `docs/reference/CONFIGURATION.md:1359` (`### orchestration`, precedent section shape for documenting a new `hitl` namespace); `CONTRIBUTING.md:676` (`## Authoring Extensions`)
 - `scripts/little_loops/config/orchestration.py` — houses `OrchestrationConfig` *and* `AdvisorConfig` as sibling dataclasses in one module; precedent for where a `HitlConfig` dataclass could live rather than a dedicated new file
@@ -398,8 +512,6 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 Concrete types, signatures, and the call path this protocol plugs into, derived from `extension.py`'s existing 4-Protocol capability pattern and `FSMExecutor`'s contributed-registry mechanics.
 
-_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
-
 - `EvaluateConfig.type: Literal[...]` (`scripts/little_loops/fsm/schema.py:95-112`) enumerates 16 existing evaluator type strings; `human_approval` is not among them — confirms no partial scaffolding exists as an evaluator type.
 - `StateConfig.action_type` (`scripts/little_loops/fsm/schema.py:694`) is typed `str | None`, not a closed `Literal`/enum — a new `human_approval`-style action type requires no FSM schema enum change, only executor-side dispatch plus extension wiring, consistent with how `_contributed_actions` extension actions are already looked up by arbitrary string key rather than a fixed set.
 - `wire_extensions()`'s four existing gates (`extension.py:246-273`) split into two structurally different sub-patterns: `InterceptorExtension`/`ActionProviderExtension`/`EvaluatorProviderExtension` are gated inside `if fsm_executor is not None:` (`:246-267`) and are inert when no `executor=` kwarg is passed; `LLHookIntentExtension`'s gate (`:269-273`) runs unconditionally in a separate loop and writes into a module-level registry in `hooks/__init__.py` (`_HOOK_INTENT_REGISTRY`), not onto `FSMExecutor` at all. A `CommunicationAdapterExtension` gate should follow the dict-with-conflict-check shape shared by actions/evaluators, inside the `fsm_executor is not None` block, since adapters are resolved by the `hitl.channel` config key the same way actions are resolved by `state.action_type`.
@@ -407,8 +519,9 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 ### Types
 - `CommunicationAdapter` (abstract class, `scripts/little_loops/fsm/communication_adapter.py`, new file) — `send_alert()`/`await_response()`/`supports_async()`, per API/Interface above
-- `CommunicationAdapterExtension(Protocol)` (new, `scripts/little_loops/extension.py`) — single method `provided_adapters() -> list[type[CommunicationAdapter]]`; note this return shape (`list[type[X]]`) has no existing precedent — all 4 current capability Protocols (`provided_actions`, `provided_evaluators`, `provided_hook_intents`) return `dict[str, X]`, never a list
-- The adapter-return dataclass currently named `HumanResponse` in this issue's own API/Interface collides with `HumanResponse(LLEvent)` already defined in FEAT-1794's API/Interface (`verdict: Literal["approve","reject","edit"]`) — both would import into `executor.py`'s namespace. This issue's own `## Scope Boundary` section (added 2026-06-25) already records this and calls for renaming to `AdapterResponse`/`HumanApprovalDecision` plus adding a `verdict: Literal[...]` field; reconfirmed as still unresolved on both issues as of 2026-09-03 — see Scope Boundary section below
+- `CommunicationAdapterExtension(Protocol)` (new, `scripts/little_loops/extension.py`) — single method `provided_adapters() -> dict[str, CommunicationAdapter]` (revised 2026-09-04 from `list[type[...]]`, which had no precedent and no channel key; now matches all 4 existing capability Protocols)
+- `AdapterResponse` / `TimeoutResponse` / `CommunicationAdapterNotFound` (new, `communication_adapter.py`) — see API/Interface; the former `HumanResponse` name is retired here to avoid colliding with FEAT-1794's `HumanResponse(LLEvent)` (resolved 2026-09-04)
+- `HitlConfig` (new dataclass, `config/core.py`, field `channel: str = "terminal"`) plus `BRConfig.hitl` property and `to_dict()` entry
 
 ### Signatures
 - `wire_extensions(bus: EventBus, config_paths: list[str] | None = None, executor: FSMExecutor | PersistentExecutor | None = None) -> list[LLExtension]` (`extension.py:201`) — existing signature the new `hasattr(ext, "provided_adapters")` gate plugs into; the executor-registry effect is an in-place mutation of the passed `executor=` kwarg, not the return value
@@ -431,14 +544,23 @@ N/A — no new gap kind, gate, keyword list, or threshold; `hitl.channel` is a p
    `extension.py` (decided; see Decision Rationale)
 3. Wire adapter discovery into `wire_extensions()` so the executor can
    resolve registered adapters
-4. Update FSM executor in `executor.py` to resolve the configured adapter
-   from config + registry and call protocol methods (never a direct import)
-5. Add `hitl.channel` key to `.ll/ll-config.json` schema with `terminal`
-   default
-6. Add `ll-loop validate` warning when `hitl.channel` is unset on a
-   non-interactive host
-7. Write protocol contract tests with a mock adapter implementation,
-   verifying the executor calls protocol methods not transport-specific code
+4. Add `_contributed_adapters` and `resolve_communication_adapter()` to
+   `FSMExecutor` (`executor.py`); raise `CommunicationAdapterNotFound` on a
+   miss. No call site in this issue — FEAT-1794 adds the `human_approval`
+   branch that calls it.
+5. Add `hitl.channel` key to `config-schema.json` with `"default": "terminal"`
+   and `HitlConfig` in `config/core.py` (+ `BRConfig.hitl`, `to_dict()`)
+6. ~~Add `ll-loop validate` warning when `hitl.channel` is unset on a
+   non-interactive host~~ — moved to FEAT-1794 (Pre-implementation Review #5)
+7. Write protocol contract tests with a mock adapter registered via a
+   `CommunicationAdapterExtension`: resolver hit, resolver miss, duplicate
+   channel conflict, `AdapterResponse` verdict literals
+8. Export `CommunicationAdapter`, `CommunicationAdapterExtension`,
+   `AdapterResponse`, `TimeoutResponse`, `CommunicationAdapterNotFound`, and
+   the two event constants from `little_loops/__init__.py`
+9. Create the `FEAT: EventBus HITL adapter` child issue under EPIC-1929 and
+   apply the FEAT-1794 / FEAT-1931 signature and event-name fixes listed in
+   Pre-implementation Review #3 and #4
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -449,12 +571,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
   the public package API
 - Update `docs/reference/CLI.md:4629-4644` — second independent copy of the
   scaffold Protocol-list docstring (`ll-create-extension` reference)
-- Update `docs/reference/CLI.md:904-933` — add a bullet for the new
-  `hitl.channel` unset-on-non-interactive-host warning
-- Place `HitlConfig` in `config/core.py`, OR extend
-  `_discover_dataclasses()` in `scripts/tests/test_config_schema.py:1423-1448`
-  to walk `config/orchestration.py` — otherwise BUG-3192's
-  `TestDataclassSectionMapCompleteness` guard silently misses it
+- ~~Update `docs/reference/CLI.md:904-933` — add a bullet for the new
+  `hitl.channel` unset-on-non-interactive-host warning~~ — moved to FEAT-1794
+- Place `HitlConfig` in `config/core.py` (decided 2026-09-04) so BUG-3192's
+  `TestDataclassSectionMapCompleteness` guard sees it without extending
+  `_discover_dataclasses()` (`scripts/tests/test_config_schema.py:1423-1448`)
 - Add `HitlConfig` to `_DATACLASS_SECTION_MAP`
   (`scripts/tests/test_config_schema.py:1346-1411`)
 - Add `TestHitlConfig`/`TestBRConfigHitl`/`test_to_dict_hitl*` to
@@ -467,16 +588,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `scripts/tests/test_extension.py`'s `TestWireExtensions`
 - Add `test_extension_py_lists_communication_adapter_protocol` to
   `scripts/tests/test_create_extension.py`
-- Thread a `hitl_channel`/host-interactivity parameter through
+- ~~Thread a `hitl_channel`/host-interactivity parameter through
   `validate_fsm()` and `cmd_validate` (`cli/loop/config_cmds.py:14-37`),
-  mirroring the `orchestration_request_path` pattern (MR-12 precedent)
-- Add a `"hitl-channel"` entry to `CATEGORY_PATTERNS` in
+  mirroring the `orchestration_request_path` pattern (MR-12 precedent)~~ —
+  moved to FEAT-1794 with the validate warning
+- ~~Add a `"hitl-channel"` entry to `CATEGORY_PATTERNS` in
   `scripts/tests/test_builtin_loops.py`'s `TestValidatorWarningBudget`
-  (16657-16669) so the new warning is tracked by the no-regrowth ratchet
+  (16657-16669)~~ — moved to FEAT-1794 with the validate warning
 
 ## Impact
 
-- **Priority**: P2 — prerequisite for FEAT-1794, FEAT-1931, and the EventBus adapter
+- **Priority**: P3 (matches frontmatter; downgraded with EPIC-1929 on 2026-07-03) — prerequisite for FEAT-1794, FEAT-1931, and the EventBus adapter
 - **Effort**: Small — abstract class, registration hook, config key
 - **Risk**: Low — no user-facing change until adapters are implemented
 - **Breaking Change**: No
@@ -496,6 +618,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+
+**Resolved on this side 2026-09-04**: `## API/Interface` now defines
+`AdapterResponse` with `verdict: Literal["approve", "reject", "edit"]` and
+`edited_text`. FEAT-1794 keeps `HumanResponse` for its event payload; FEAT-1931's
+Scope Boundary note (express edit via `verdict`, no third response type) is
+satisfied by this shape. The 2026-09-03 record below is kept for history.
 
 **Reconfirmed 2026-09-03**: both open conflicts remain unresolved on both sides.
 This issue's `## API/Interface` section still defines `HumanResponse` with
@@ -545,6 +673,7 @@ open
 - `CONTRIBUTING.md` — adding a new extension-registered protocol (`CommunicationAdapterExtension`, `provided_adapters()`) is exactly the extension-authoring pattern (`LLExtension` protocol convention) this doc documents.
 
 ## Session Log
+- pre-implementation review - 2026-09-04 - Folded 10 review decisions into `## Pre-implementation Review`: `AdapterResponse` rename + `verdict` literal, `provided_adapters()` → dict, `alert_id` kept, canonical event constants, validate-warning AC moved to FEAT-1794, resolver-only executor scope with `CommunicationAdapterNotFound`, eventbus adapter to its own child issue, `send_alert` drops `timeout`, `HitlConfig` in `config/core.py`, Impact P2→P3. Sibling edits (FEAT-1794 event name, FEAT-1931 `await_response` signature) still pending.
 - `/ll:wire-issue` - 2026-09-03T23:58:41 - `11c94de0-8f35-4de1-a272-34e45de9321f.jsonl`
 - `/ll:refine-issue` - 2026-09-03T23:44:55 - `aed94642-f109-4502-89a6-54feff7835ca.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
