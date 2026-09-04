@@ -14,7 +14,7 @@ labels:
 - hitl
 - extension
 blocked_by: []
-decision_needed: true
+decision_needed: false
 ---
 
 # FEAT-3384: EventBus HITL adapter
@@ -69,13 +69,41 @@ FEAT-3384's own Acceptance Criteria states registration should be "consistent wi
 
 **Option B**: Implement a `CommunicationAdapterExtension` (e.g. an `EventBusAdapterExtension.provided_adapters() -> {"eventbus": EventBusAdapter(...)}`) and register it through the standard `wire_extensions()` path. This exercises the protocol the codebase was explicitly built to support for exactly this case (decoupling adapter registration from `executor.py`), but has zero production precedent today — every `provided_adapters()` implementation that exists is a test fixture.
 
+> **Selected:** Option B — scored 8/12 vs. Option A's 4/12; matches the documented extension-registration contract (`CONFIGURATION.md:1585`, `API.md:6894`) and avoids the `FSMExecutor` constructor-surface change Option A requires. See Decision Rationale below.
+
 **Recommended**: Option B — `resolve_communication_adapter()`'s hardcoded fallback reads as a zero-config bootstrap for the single built-in `terminal` channel (FEAT-1930's own scoping), not a pattern meant to grow with every new adapter; a second hardcoded `elif` starts down a path the extension protocol was purpose-built to avoid. Extension registration also gives the adapter a natural place to receive the live `EventBus` instance it needs, without `executor.py` reaching into adapter construction.
+
+### Decision Rationale
+
+**Selected:** Option B — implement `EventBusAdapterExtension.provided_adapters()` and register it via `wire_extensions()`, rather than a hardcoded `elif channel == "eventbus":` branch in `resolve_communication_adapter()`.
+
+**Reasoning:** Two parallel `ll:codebase-pattern-finder` passes (one per option) found that Option A's "mirror the terminal branch" premise doesn't hold structurally: `FSMExecutor` has zero references to `event_bus`/`EventBus` anywhere in `executor.py` — the live `EventBus` instance lives on the outer `PersistentExecutor` (`persistence.py:976`), not on the class `resolve_communication_adapter()` is defined on. Making `self.event_bus` resolvable there requires threading a new constructor parameter through `FSMExecutor.__init__`, which ripples to `PersistentExecutor` and every other direct `FSMExecutor(...)` construction site — a materially larger change than "add one `elif`." Option A also directly contradicts three already-published docs that name `"eventbus"` as the worked example of a channel requiring extension registration (`docs/reference/CONFIGURATION.md:1585,1594`, `docs/reference/API.md:6894`, `scripts/little_loops/config-schema.json:1913`), and would break two existing tests (`test_communication_adapter.py:170-185`) that use `hitl_channel="eventbus"` specifically as their not-yet-registered-channel fixture.
+
+Option B has a real gap too — `ExtensionLoader.from_config()`/`.from_entry_points()` construct extensions with a zero-arg `cls()` call (`extension.py:166,189`) before `wire_extensions()` even has `bus` in scope, so `provided_adapters()` cannot receive the live `EventBus` exactly as `EventBusAdapter(self.event_bus)` is written in this issue's own Program Design section. But that fix is localized: `wire_extensions()` already holds `bus` when it merges `_contributed_adapters` (`extension.py:274-281`), so a small addition there (e.g. an optional bus-injection hook checked before calling `provided_adapters()`) closes the gap without touching `FSMExecutor`'s constructor surface. Option B also matches 3 other shipped capability-Protocol precedents (`ActionProviderExtension`, `EvaluatorProviderExtension`, `LLHookIntentExtension`), the ratified FEAT-1930 decision record (`.ll/decisions.yaml:343-346`), and has directly reusable test scaffolding (`TestWireExtensionsAdapters`, `test_communication_adapter.py:188-228`).
+
+**Implementation note:** Step 4 of Implementation Steps ("resolve Option A vs. B before writing this step") must additionally design the bus-injection hook into `wire_extensions()`/`EventBusAdapterExtension` — this was not previously called out and has no existing precedent to copy.
+
+**Scoring summary:**
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 1 | 2 |
+| Simplicity | 1 | 2 |
+| Testability | 1 | 2 |
+| Risk | 1 | 2 |
+| **Total** | **4/12** | **8/12** |
+
+**Key evidence:**
+- Against the hardcoded-`elif` approach: `executor.py` has zero `event_bus`/`EventBus` references (confirmed by repo-wide grep); `TerminalAdapter()` is zero-arg-constructible, `EventBusAdapter(event_bus)` is not, under the current `FSMExecutor` shape.
+- Against the hardcoded-`elif` approach: `CONFIGURATION.md:1585` — "Any other channel value must be contributed by an extension's `CommunicationAdapterExtension.provided_adapters()`" — uses `"eventbus"` as the literal example this approach would contradict.
+- For the extension-registration approach: `wire_extensions()`'s `provided_adapters` merge/conflict-check path (`extension.py:274-281`) is already implemented and tested — zero changes needed there for the base registration flow.
+- For the extension-registration approach: `ExtensionLoader` zero-arg construction (`extension.py:166,189`) means the `EventBus` injection this issue's own `EventBusAdapter.__init__(self, event_bus: EventBus)` signature assumes has no existing mechanism — new, scoped design work required before Step 4 can be written.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/fsm/adapters/eventbus_adapter.py` (new) — `EventBusAdapter(CommunicationAdapter)` implementing `send_alert()`/`await_response()`/`supports_async()`/`cancel_alert()`, constructed with an `EventBus` instance
-- `scripts/little_loops/extension.py` (only if Option B) — a new `EventBusAdapterExtension` class, following `CommunicationAdapterExtension`'s Protocol shape — or `scripts/little_loops/fsm/executor.py:2661` `resolve_communication_adapter()` (only if Option A) — add an `elif channel == "eventbus":` branch
+- `scripts/little_loops/extension.py` — a new `EventBusAdapterExtension` class, following `CommunicationAdapterExtension`'s Protocol shape (Option B, selected — see Proposed Solution → Decision Rationale); also needs the bus-injection hook into `wire_extensions()` this decision surfaced as unspecified work (`extension.py:274-281`)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py:2661` — `resolve_communication_adapter()`: the resolution chokepoint either registration path ultimately feeds
@@ -171,5 +199,6 @@ N/A — no new decision logic (gate/threshold/keyword classification). This issu
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-04T19:26:43 - `2e7a26f2-b8bf-48e7-b3ea-48fd933d6045.jsonl`
 - `/ll:refine-issue` - 2026-09-04T19:18:04 - `4a1099fd-9d48-4f02-88bf-6554245a52cb.jsonl`
 - `/ll:manage-issue` - 2026-09-04T07:19:43 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`

@@ -1,0 +1,12 @@
+{
+  "id": "d74c1207-33c5-4040-911b-d838b26cdf35",
+  "type": "decision",
+  "timestamp": "2026-09-04T19:25:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A (hardcoded elif) requires threading a new event_bus parameter through FSMExecutor's constructor (FSMExecutor has zero event_bus references today; the live EventBus lives on PersistentExecutor), ripples to every direct FSMExecutor(...) construction site, contradicts 3 published docs naming eventbus as the extension-path worked example, and breaks 2 existing tests. Option B matches 3 shipped capability-Protocol precedents and the ratified FEAT-1930 decision record; its EventBus-injection gap (ExtensionLoader zero-arg construction) is fixable with a small, localized addition to wire_extensions() instead. Scored 8/12 vs 4/12.",
+  "rule": "EventBus HITL adapter registers via CommunicationAdapterExtension.provided_adapters()/wire_extensions(), not a hardcoded elif in resolve_communication_adapter()",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: hardcoded elif channel == \"eventbus\" branch in resolve_communication_adapter(), mirroring the terminal fallback",
+  "issue": "FEAT-3384"
+}
