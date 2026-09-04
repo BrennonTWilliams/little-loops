@@ -296,6 +296,7 @@ class TestBuiltinLoopFiles:
             "interactive-component-generator",
             "workflow-generator",
             "rn-stepwise",
+            "stepwise-task",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -16917,12 +16918,15 @@ class TestGeneralTaskLoop:
         )
 
     # ENH-2246: timeout-split tests
-    def test_do_work_retry_exhausted_routes_to_capture_work_exit(self, data: dict) -> None:
-        """do_work.on_retry_exhausted must route to capture_work_exit, not continue_work (ENH-2246)."""
+    def test_do_work_errors_route_to_capture_work_exit(self, data: dict) -> None:
+        """do_work.on_error routes straight to capture_work_exit (no self-retry): a
+        batched pass that errors — canonically exit 124 — has its size halved there
+        rather than being retried whole (ENH-2246 shape, retry budget removed)."""
         state = data["states"].get("do_work", {})
-        assert state.get("on_retry_exhausted") == "capture_work_exit", (
-            f"do_work.on_retry_exhausted should be 'capture_work_exit', got {state.get('on_retry_exhausted')!r}"
+        assert state.get("on_error") == "capture_work_exit", (
+            f"do_work.on_error should be 'capture_work_exit', got {state.get('on_error')!r}"
         )
+        assert "on_retry_exhausted" not in state
 
     def test_capture_work_exit_state_exists(self, data: dict) -> None:
         """capture_work_exit state must be present (ENH-2246)."""
@@ -16946,11 +16950,15 @@ class TestGeneralTaskLoop:
         )
 
     def test_capture_work_exit_routes_to_continue_work(self, data: dict) -> None:
-        """capture_work_exit.next must route to continue_work (ENH-2246)."""
+        """capture_work_exit routes to continue_work by default (ENH-2246); with a
+        non-empty completed-steps.txt ledger it emits PARTIAL_CREDIT and routes
+        through verify_step so the finished part of a batched pass is credited."""
         state = data["states"].get("capture_work_exit", {})
-        assert state.get("next") == "continue_work", (
-            f"capture_work_exit.next should be 'continue_work', got {state.get('next')!r}"
+        assert state.get("on_no") == "continue_work", (
+            f"capture_work_exit.on_no should be 'continue_work', got {state.get('on_no')!r}"
         )
+        assert state.get("on_yes") == "verify_step"
+        assert state.get("evaluate", {}).get("pattern") == "PARTIAL_CREDIT"
 
     def test_capture_work_exit_on_error_routes_to_continue_work(self, data: dict) -> None:
         """capture_work_exit.on_error must route to continue_work so errors don't stall (ENH-2246)."""
@@ -16989,13 +16997,16 @@ class TestGeneralTaskLoop:
         )
 
     # ENH-2293: OOM resilience tests
-    def test_do_work_retryable_exit_codes_is_124_only(self, data: dict) -> None:
-        """do_work.retryable_exit_codes must be [124] to limit retry budget to timeout exits (ENH-2293)."""
+    def test_do_work_has_no_retry_budget(self, data: dict) -> None:
+        """do_work routes every error to capture_work_exit with no self-retry.
+
+        ENH-2293 limited the retry budget to exit 124; batched passes remove it
+        entirely — retrying an oversized pass wastes up to 3x the timeout, and
+        capture_work_exit's mechanical pass-shrink is the correct 124 response.
+        """
         state = data["states"].get("do_work", {})
-        assert state.get("retryable_exit_codes") == [124], (
-            "do_work.retryable_exit_codes should be [124] — prevents non-timeout exits "
-            "from consuming the full retry budget (ENH-2293)"
-        )
+        assert "retryable_exit_codes" not in state
+        assert state.get("on_error") == "capture_work_exit"
 
     def test_continue_work_prompt_detects_oom_exit_code(self, data: dict) -> None:
         """continue_work prompt must reference exit -9 / OOM / SIGKILL for OOM detection (ENH-2293)."""

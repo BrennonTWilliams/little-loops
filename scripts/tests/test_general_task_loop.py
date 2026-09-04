@@ -11,6 +11,7 @@ against regression via prompt-content assertions:
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -116,9 +117,10 @@ class TestChange2CheckDoneReconcileAndSampleVerify:
         assert "## Sample Verification" in action, (
             "check_done.action must reference the `## Sample Verification` section in the DoD"
         )
-        # Must independently re-verify up to min(3, total_checked) already-[x] criteria.
-        assert "min(3" in action or "up to 3" in action.lower(), (
-            "check_done.action must sample up to 3 already-[x] criteria for re-verification"
+        # Must independently re-verify exactly ONE already-[x] criterion per pass:
+        # the min(3, total_checked) sample was the dominant per-pass cost.
+        assert "exactly ONE" in action, (
+            "check_done.action must sample exactly one already-[x] criterion for re-verification"
         )
 
     def test_check_done_replaces_not_appends_sample_verification(self, raw_data: dict) -> None:
@@ -312,10 +314,13 @@ class TestChange6SampleVerificationPreserved:
             "check_done.action must still append a `## Sample Verification` section"
         )
 
-    def test_check_done_still_uses_min3_sample_size(self, raw_data: dict) -> None:
+    def test_check_done_samples_exactly_one_criterion(self, raw_data: dict) -> None:
         action = raw_data["states"]["check_done"]["action"]
-        assert "min(3" in action or "up to 3" in action.lower(), (
-            "check_done.action must still sample up to min(3, total_checked) criteria"
+        assert "exactly ONE" in action, (
+            "check_done.action must sample exactly one already-[x] criterion per pass"
+        )
+        assert "min(3" not in action, (
+            "the min(3, total_checked) sample was the dominant per-pass cost"
         )
 
 
@@ -439,10 +444,16 @@ class TestBug3270FinalVerifySpinGate:
     def test_do_work_routes_to_verify_step(self, raw_data: dict) -> None:
         assert raw_data["states"]["do_work"]["next"] == "verify_step"
 
-    def test_do_work_retries_on_error(self, raw_data: dict) -> None:
-        assert raw_data["states"]["do_work"]["on_error"] == "do_work"
-        assert raw_data["states"]["do_work"]["max_retries"] == 2
-        assert raw_data["states"]["do_work"]["on_retry_exhausted"] == "capture_work_exit"
+    def test_do_work_errors_route_to_capture_work_exit(self, raw_data: dict) -> None:
+        # Batched passes: a do_work error (canonically exit 124 on an oversized
+        # pass) goes straight to capture_work_exit, which halves the pass size.
+        # Retrying the same batch would burn up to 3x the timeout for the same
+        # result, so the old self-retry (on_error: do_work, max_retries: 2) is gone.
+        do_work = raw_data["states"]["do_work"]
+        assert do_work["on_error"] == "capture_work_exit"
+        assert "max_retries" not in do_work
+        assert "retryable_exit_codes" not in do_work
+        assert "on_retry_exhausted" not in do_work
 
     def test_continue_work_retries_on_error(self, raw_data: dict) -> None:
         assert raw_data["states"]["continue_work"]["on_error"] == "continue_work"
@@ -451,8 +462,8 @@ class TestBug3270FinalVerifySpinGate:
 
     def test_do_work_timeout(self, raw_data: dict) -> None:
         timeout = raw_data["states"]["do_work"].get("timeout", 0)
-        assert timeout > 0, "do_work must have an explicit timeout to bound per-step cost"
-        assert timeout <= 900, "do_work timeout should be ≤900s (15 min) to prevent SIGKILL"
+        assert timeout > 0, "do_work must have an explicit timeout to bound per-pass cost"
+        assert timeout <= 3600, "do_work timeout should be ≤3600s (a pass can be the whole plan)"
 
     def test_verify_step_routes_yes_to_mark_done(self, raw_data: dict) -> None:
         assert raw_data["states"]["verify_step"]["on_yes"] == "mark_done"
@@ -495,11 +506,22 @@ class TestBug3270FinalVerifySpinGate:
 # ---------------------------------------------------------------------------
 
 
-def _load_state_script(state_name: str) -> str:
-    """Extract the shell action from a named state."""
+def _load_state_script(state_name: str, context_overrides: dict | None = None) -> str:
+    """Extract the shell action from a named state.
+
+    Every `context:` key of the loop is interpolated (both the bare
+    `${context.key}` form and the MR-11 `${context.key:shell}` form) using the
+    YAML defaults, overridden by `context_overrides`. `${context.run_dir}` and
+    `${context.input_hash}` are runner-injected and left for the caller.
+    """
     with open(LOOP_FILE) as f:
         data = yaml.safe_load(f)
-    return data["states"][state_name]["action"]
+    script = data["states"][state_name]["action"]
+    ctx = {**data.get("context", {}), **(context_overrides or {})}
+    for key, val in ctx.items():
+        script = script.replace(f"${{context.{key}:shell}}", str(val))
+        script = script.replace(f"${{context.{key}}}", str(val))
+    return script
 
 
 def _setup_run_dir(tmp_path: Path) -> Path:
@@ -1807,8 +1829,7 @@ class TestCheckBaselineTestsShellAction:
         self, tmp_path: Path, *, context_test_cmd: str = ""
     ) -> subprocess.CompletedProcess[str]:
         run_dir = _setup_run_dir(tmp_path)
-        script = _load_state_script("check_baseline_tests")
-        script = script.replace("${context.test_cmd}", context_test_cmd)
+        script = _load_state_script("check_baseline_tests", {"test_cmd": context_test_cmd})
         script = script.replace("${context.run_dir}", str(run_dir))
         return _bash(script, cwd=tmp_path)
 
@@ -2033,11 +2054,16 @@ class TestCheckDoneErrorRoutingBUG1960:
 class TestENH2293OOMResilience:
     """ENH-2293: OOM-aware post-mortem — token-budget / SIGKILL resilience in general-task.yaml."""
 
-    def test_do_work_retryable_exit_codes(self, raw_data: dict) -> None:
-        """do_work must have retryable_exit_codes: [124] to avoid wasting retries on non-timeout exits."""
-        assert raw_data["states"]["do_work"].get("retryable_exit_codes") == [124], (
-            "do_work.retryable_exit_codes must be [124] (ENH-2293)"
-        )
+    def test_do_work_has_no_retry_budget(self, raw_data: dict) -> None:
+        """do_work no longer self-retries: every error routes to capture_work_exit.
+
+        ENH-2293 limited the retry budget to exit 124; batched passes remove the
+        budget entirely (retrying an oversized pass is pure waste — the shrink
+        path in capture_work_exit is the correct 124 response).
+        """
+        do_work = raw_data["states"]["do_work"]
+        assert "retryable_exit_codes" not in do_work
+        assert do_work["on_error"] == "capture_work_exit"
 
     def test_continue_work_handles_oom_exit_code(self, raw_data: dict) -> None:
         """continue_work.action must reference OOM/SIGKILL signal for the exit -9 branch."""
@@ -2621,3 +2647,249 @@ class TestENH2859HarnessWorkaroundAndConsistencySweep:
         assert "LAST_STEP" in check_done_action
         assert "LAST_FILES" in check_done_action
         assert "## Final Verification" in final_verify_action
+
+
+# ---------------------------------------------------------------------------
+# Batched passes + stepwise-task thin entry
+# ---------------------------------------------------------------------------
+
+
+class TestBatchedPasses:
+    """general-task executes plan steps in batched passes (steps_per_pass, default 0 = all).
+
+    select_step writes one or more lines to current-step.txt; do_work implements them all
+    and keeps a per-step ledger (completed-steps.txt) so a pass may span several host
+    sessions via the /ll:handoff -> CONTEXT_HANDOFF -> spawn -> ll-loop resume chain;
+    mark_done credits the ledger (or every line); capture_work_exit halves the pass on a
+    multi-step timeout and routes partial passes through verify_step for credit.
+    """
+
+    PLAN4 = "# Task Plan\n- [ ] Step 1: a\n- [ ] Step 2: b\n- [ ] Step 3: c\n- [ ] Step 4: d\n"
+
+    def _run(
+        self,
+        tmp_path: Path,
+        state: str,
+        *,
+        exit_code: str = "0",
+        **overrides: object,
+    ) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
+        script = _load_state_script(state, dict(overrides))
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.input_hash}", "abc123def456")
+        script = script.replace("${captured.work_result.exit_code:default=0}", exit_code)
+        return _bash(script, cwd=tmp_path)
+
+    # --- context / wiring -------------------------------------------------
+
+    def test_steps_per_pass_defaults_to_all(self, raw_data: dict) -> None:
+        assert raw_data["context"]["steps_per_pass"] == 0
+
+    def test_shell_refs_to_new_knob_use_shell_suffix(self, raw_data: dict) -> None:
+        # MR-11 remedy: `${context.steps_per_pass:shell}` — no new mr11-ok residual markers.
+        for name, state in raw_data["states"].items():
+            if state.get("action_type") != "shell":
+                continue
+            action = state["action"]
+            assert "${context.steps_per_pass}" not in action, name
+            assert "mr11-ok(context.steps_per_pass)" not in action, name
+
+    def test_capture_work_exit_routes_partial_credit_to_verify_step(self, raw_data: dict) -> None:
+        state = raw_data["states"]["capture_work_exit"]
+        assert state["evaluate"]["pattern"] == "PARTIAL_CREDIT"
+        assert state["on_yes"] == "verify_step"
+        assert state["on_no"] == "continue_work"
+        assert state["on_error"] == "continue_work"
+
+    def test_do_work_prompt_describes_ledger_and_handoff_chain(self, raw_data: dict) -> None:
+        action = raw_data["states"]["do_work"]["action"]
+        for needle in (
+            "completed-steps.txt",
+            "pass-started.txt",
+            "/ll:handoff",
+            "/ll:resume",
+            "one per line",
+        ):
+            assert needle in action, needle
+        assert "Do NOT modify" in action and "plan.md" in action and "dod.md" in action
+
+    def test_continue_work_timeout_branch_distinguishes_pass_from_step(
+        self, raw_data: dict
+    ) -> None:
+        action = raw_data["states"]["continue_work"]["action"]
+        assert "PASS_SHRUNK" in action
+        assert "split" in action.lower()  # single-line case still splits the step
+
+    def test_stepwise_task_delegates_with_steps_per_pass_one(self, raw_data: dict) -> None:
+        path = LOOP_FILE.parent / "stepwise-task.yaml"
+        with open(path) as f:
+            child = yaml.safe_load(f)
+        run = child["states"]["run"]
+        assert run["loop"] == "general-task"
+        assert run["with"]["steps_per_pass"] == 1
+        # with: keys are not statically validated (general-task has no parameters:
+        # block), so pin them to general-task's context names here.
+        for key in run["with"]:
+            assert key in raw_data["context"] or key == "input", key
+        assert child["required_inputs"] == ["input"]
+        assert "scope" in child
+
+    # --- select_step --------------------------------------------------------
+
+    def test_select_all_remaining_by_default(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(self.PLAN4)
+        result = self._run(tmp_path, "select_step")
+        assert result.returncode == 0, result.stderr
+        assert "SELECTED_STEP: - [ ] Step 1: a" in result.stdout
+        assert "SELECTED_COUNT: 4" in result.stdout
+        lines = (run_dir / "current-step.txt").read_text().splitlines()
+        assert lines == ["- [ ] Step 1: a", "- [ ] Step 2: b", "- [ ] Step 3: c", "- [ ] Step 4: d"]
+        assert (run_dir / "steps-per-pass.txt").read_text() == "0"
+        assert (run_dir / "pass-started.txt").exists()
+        assert not (run_dir / "completed-steps.txt").exists()
+        checkpoint = json.loads((run_dir / "checkpoint.json").read_text())
+        assert checkpoint["in_flight_step"] == "- [ ] Step 1: a"
+        assert checkpoint["in_flight_count"] == 4
+
+    def test_select_honours_steps_per_pass(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(self.PLAN4)
+        result = self._run(tmp_path, "select_step", steps_per_pass=2)
+        assert result.returncode == 0, result.stderr
+        assert "SELECTED_COUNT: 2" in result.stdout
+        lines = (run_dir / "current-step.txt").read_text().splitlines()
+        assert lines == ["- [ ] Step 1: a", "- [ ] Step 2: b"]
+        attempts = (run_dir / "step-attempts.txt").read_text().splitlines()
+        assert attempts == ["- [ ] Step 1: a", "- [ ] Step 2: b"]
+
+    def test_persisted_pass_size_wins_over_context(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(self.PLAN4)
+        (run_dir / "steps-per-pass.txt").write_text("1")
+        result = self._run(tmp_path, "select_step")  # context says 0 (all)
+        assert "SELECTED_COUNT: 1" in result.stdout
+        assert (run_dir / "current-step.txt").read_text() == "- [ ] Step 1: a\n"
+
+    def test_select_skips_exhausted_lines_beyond_first(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(self.PLAN4)
+        (run_dir / "step-attempts.txt").write_text("- [ ] Step 2: b\n" * 3)
+        result = self._run(tmp_path, "select_step")
+        assert "SELECTED_COUNT: 3" in result.stdout
+        lines = (run_dir / "current-step.txt").read_text().splitlines()
+        assert lines == ["- [ ] Step 1: a", "- [ ] Step 3: c", "- [ ] Step 4: d"]
+        plan = (run_dir / "plan.md").read_text()
+        assert "- [ ] Step 2: b" in plan, "skipped, not abandoned, until it is the first line"
+
+    def test_first_line_abandonment_unchanged_under_batching(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(self.PLAN4)
+        (run_dir / "step-attempts.txt").write_text("- [ ] Step 1: a\n" * 3)
+        result = self._run(tmp_path, "select_step")
+        assert "STEP_ABANDONED:" in result.stdout
+        assert "SELECTED_STEP:" not in result.stdout
+        assert "- [!] Step 1: a" in (run_dir / "plan.md").read_text()
+
+    # --- mark_done ------------------------------------------------------------
+
+    def test_mark_done_credits_every_line_of_full_pass(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(self.PLAN4)
+        (run_dir / "current-step.txt").write_text(
+            "- [ ] Step 1: a\n- [ ] Step 2: b\n- [ ] Step 3: c\n"
+        )
+        result = self._run(tmp_path, "mark_done")
+        assert result.returncode == 0, result.stderr
+        lines = (run_dir / "plan.md").read_text().splitlines()
+        assert lines[1:] == [
+            "- [x] Step 1: a",
+            "- [x] Step 2: b",
+            "- [x] Step 3: c",
+            "- [ ] Step 4: d",
+        ]
+        assert (run_dir / "current-step.txt").exists(), "never removed here"
+
+    def test_mark_done_credits_only_ledger_and_refunds_undone(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text(self.PLAN4)
+        (run_dir / "current-step.txt").write_text(
+            "- [ ] Step 1: a\n- [ ] Step 2: b\n- [ ] Step 3: c\n"
+        )
+        (run_dir / "completed-steps.txt").write_text("- [ ] Step 1: a\n- [ ] Step 2: b\n")
+        (run_dir / "step-attempts.txt").write_text(
+            "- [ ] Step 3: c\n- [ ] Step 1: a\n- [ ] Step 2: b\n- [ ] Step 3: c\n"
+        )
+        result = self._run(tmp_path, "mark_done")
+        assert result.returncode == 0, result.stderr
+        lines = (run_dir / "plan.md").read_text().splitlines()
+        assert lines[1:] == [
+            "- [x] Step 1: a",
+            "- [x] Step 2: b",
+            "- [ ] Step 3: c",
+            "- [ ] Step 4: d",
+        ]
+        attempts = (run_dir / "step-attempts.txt").read_text().splitlines()
+        assert attempts.count("- [ ] Step 3: c") == 1, "one attempt refunded for the undone step"
+        assert not (run_dir / "completed-steps.txt").exists(), "ledger is per pass"
+        assert not (run_dir / "checkpoint.json").exists()
+
+    # --- capture_work_exit ------------------------------------------------------
+
+    def test_timeout_on_multi_step_pass_halves_pass_and_refunds(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "current-step.txt").write_text(
+            "- [ ] Step 1: a\n- [ ] Step 2: b\n- [ ] Step 3: c\n- [ ] Step 4: d\n"
+        )
+        (run_dir / "step-attempts.txt").write_text(
+            "- [ ] Step 1: a\n- [ ] Step 2: b\n- [ ] Step 3: c\n- [ ] Step 4: d\n"
+        )
+        (run_dir / "steps-per-pass.txt").write_text("0")
+        result = self._run(tmp_path, "capture_work_exit", exit_code="124")
+        assert result.returncode == 0, result.stderr
+        assert "PASS_SHRUNK: 4 -> 2" in result.stdout
+        assert "PARTIAL_CREDIT" not in result.stdout
+        assert (run_dir / "steps-per-pass.txt").read_text() == "2"
+        assert (run_dir / "step-attempts.txt").read_text() == ""
+        assert (run_dir / "last-exit-code.txt").read_text().strip() == "124"
+
+    def test_timeout_with_partial_ledger_shrinks_remaining_and_credits(
+        self, tmp_path: Path
+    ) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "current-step.txt").write_text(
+            "- [ ] Step 1: a\n- [ ] Step 2: b\n- [ ] Step 3: c\n- [ ] Step 4: d\n"
+        )
+        (run_dir / "completed-steps.txt").write_text("- [ ] Step 1: a\n")
+        (run_dir / "step-attempts.txt").write_text("- [ ] Step 2: b\n")
+        result = self._run(tmp_path, "capture_work_exit", exit_code="124")
+        assert "PASS_SHRUNK: 3 -> 1" in result.stdout
+        assert "PARTIAL_CREDIT" in result.stdout
+        # refund is mark_done's job on the partial path (single refund per path)
+        assert (run_dir / "step-attempts.txt").read_text() == "- [ ] Step 2: b\n"
+
+    def test_timeout_on_single_step_leaves_pass_size_alone(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: a\n")
+        (run_dir / "steps-per-pass.txt").write_text("1")
+        (run_dir / "step-attempts.txt").write_text("- [ ] Step 1: a\n")
+        result = self._run(tmp_path, "capture_work_exit", exit_code="124")
+        assert result.stdout.strip() == ""
+        assert (run_dir / "steps-per-pass.txt").read_text() == "1"
+        assert (run_dir / "step-attempts.txt").read_text() == "- [ ] Step 1: a\n"
+
+    def test_non_timeout_exit_only_records_code(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: a\n- [ ] Step 2: b\n")
+        result = self._run(tmp_path, "capture_work_exit", exit_code="1")
+        assert result.stdout.strip() == ""
+        assert (run_dir / "last-exit-code.txt").read_text().strip() == "1"
+        assert not (run_dir / "steps-per-pass.txt").exists()
+
+    def test_non_timeout_exit_with_ledger_emits_partial_credit(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "current-step.txt").write_text("- [ ] Step 1: a\n- [ ] Step 2: b\n")
+        (run_dir / "completed-steps.txt").write_text("- [ ] Step 1: a\n")
+        result = self._run(tmp_path, "capture_work_exit", exit_code="1")
+        assert result.stdout.strip() == "PARTIAL_CREDIT"
