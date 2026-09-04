@@ -4,8 +4,7 @@ type: FEAT
 title: HITL interrupt FSM state type (action_type human_approval)
 priority: P3
 status: open
-blocked_by:
-- FEAT-1930
+blocked_by: []
 captured_at: '2026-05-29T20:37:23Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
@@ -215,6 +214,12 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - **`loops/examples/` does not exist** anywhere in the repo (confirmed via glob) — Implementation Steps #7's "add example loop under `loops/examples/`" names a proposed new location, not an existing one.
 - **FEAT-1930 (`CommunicationAdapter` protocol) reconfirmed 0% implemented**: no `communication_adapter.py`, no `CommunicationAdapterExtension` Protocol in `extension.py` (which defines `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`, `LLHookIntentExtension` only), no `send_alert`/`await_response`/`HumanResponse`/`AdapterResponse` symbols anywhere outside `.issues/` prose. This issue's `blocked_by: FEAT-1930` remains accurate and current.
 
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+**Correction to the 2026-09-03 pass's "FEAT-1930 reconfirmed 0% implemented" finding above — that finding is now stale.** As of this pass, `scripts/little_loops/fsm/communication_adapter.py` fully exists: `CommunicationAdapter(ABC)` with `send_alert()`, `await_response()`, `supports_async()`, `cancel_alert()`, plus `AdapterResponse`/`TimeoutResponse` dataclasses and the `HUMAN_APPROVAL_REQUESTED_EVENT`/`HUMAN_RESPONSE_EVENT` constants. `CommunicationAdapterExtension` Protocol exists in `extension.py:115` and is wired through `wire_extensions()` (`extension.py:274-281`). `FSMExecutor.resolve_communication_adapter()` exists at `executor.py:2661`. `TerminalAdapter(CommunicationAdapter)` (FEAT-1931) is fully implemented at `scripts/little_loops/fsm/adapters/terminal_adapter.py` with its own test suite (`scripts/tests/test_terminal_adapter.py`). FEAT-1930 and FEAT-1931 both show `status: Completed` via `ll-issues show`. `blocked_by: FEAT-1930` has been unlinked from this issue's frontmatter this pass (resolved dependency).
+- **Still confirmed unimplemented (this issue's actual scope):** `resolve_communication_adapter()` has zero production callers — only two test files call it (`test_terminal_adapter.py`, `test_communication_adapter.py`). No `action_type == "human_approval"` or `state.type == "human_approval"` branch exists anywhere in `executor.py`/`schema.py`. `TerminalAdapter.send_alert()`/`await_response()` are never invoked from FSM state execution. This confirms the gap this issue tracks is entirely open, isolated to: the executor dispatch branch, the schema round-trip for `on_edit`/`on_timeout`, the validator warning, and the `HostCapabilities.interactive` flag.
+- **Existing interim workaround, pre-dating this issue:** `scripts/little_loops/loops/loop-router.yaml:345-380` (`present_choices` state) uses `action_type: prompt` + `timeout:` + an `output_contains` evaluator as a manual HITL substitute — a human types a keyword back and the FSM routes on it. `scripts/little_loops/loops/harness-plan-research-implement-report.yaml:47-58` has a commented-out block explicitly noting "Until FEAT-1794 lands, use the workaround pattern from loop-router.yaml". This is evidence of real demand for this feature but is not a design precedent to copy — it doesn't use `CommunicationAdapter` at all.
+
 ## API/Interface
 
 New FSM state schema (`action_type: human_approval`):
@@ -301,9 +306,22 @@ accept the default.
 - `.ll/ll-config.json` — optional `hitl.default_timeout` and `hitl.notification_channel` keys (defer if not needed for v1)
 - `LL_HOST_CLI` env var — already used by `host_runner.py:751` `resolve_host()` for host detection; headless hosts (codex) should force timeout path
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+**Test anchor drift (2026-09-04 pass):** `TestActionTypeMcpTool` is now at `scripts/tests/test_fsm_executor.py:685` (Implementation Steps cites `:401`, now stale). `TestMcpToolSchema` is now at `scripts/tests/test_fsm_schema.py:2062` (Implementation Steps cites `:1801`, now stale). Both classes' internal test structure is unchanged — model `TestActionTypeHumanApproval` on `TestActionTypeMcpTool`'s pattern (private `_make_*_fsm()` helper, mock `_run_subprocess`/action runner, assert on `executor.run().final_state`), and `TestHumanApprovalSchema` on `TestMcpToolSchema`'s pattern (field-acceptance test + `to_dict()`/`from_dict()` round-trip test).
+- `HostCapabilities` reconfirmed at `host_runner.py:128-152`; fields present: `streaming`, `permission_skip`, `agent_select`, `tool_allowlist`, `structured_output`, `workspace_sandboxed`. No `interactive` field. The only `isatty()` precedent in the codebase is `sys.stdin.isatty()` at `hooks/__init__.py:194` (gates stdin-read for a hook payload, unrelated subsystem) — there is no existing `HostCapabilities`-level interactivity check to model the new flag after; it would be new territory for that dataclass.
+- `action_type` has no enum constraint in `fsm-loop-schema.json` — it's a free-text string with a `description` field (`fsm-loop-schema.json:436-444`) documenting the recognized values in prose. Adding `human_approval` support means extending that description string, not adding an enum member.
+
 ## Program Design
 
 ### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+**Re-confirmed 2026-09-04 (fresh pass, all anchors re-grepped):** `_action_mode()` :3093 (was :3062), `_execute_state()` :1953 (was :1948), `_run_action()` :2317 (was :2312), `_emit()` :3581 (was :3550), `_interruptible_sleep()` :3864 (was :3833), `resolve_communication_adapter()` :2661. `StateConfig` :621, `timeout` field :708, `extra_routes` field :730 — unchanged since the prior pass. `on_yes`/`on_no` are separate declared dataclass fields (`schema.py:698-699`), not part of `extra_routes` — only unrecognized `on_*` keys (which today excludes `on_yes`/`on_no`/`on_success`/`on_failure`/etc. per `_known_on_keys`, `schema.py:896-908`) fall into `extra_routes`.
+- **New architectural finding — `await_response()`'s re-entrant contract requires a net-new executor-side tick loop.** `CommunicationAdapter.await_response()`'s docstring (`communication_adapter.py:70-78`) states the intended calling contract explicitly: "the executor polls this in short ticks so shutdown stays responsive... a verdict that arrives between calls must be retained and returned on the next call." No code anywhere currently implements that tick loop — `_interruptible_sleep()` is the closest existing shape (100ms-tick `while` loop checking `self._shutdown_requested`) but nothing today calls `await_response()` from inside such a loop. The `_execute_human_approval_state()` handler this issue adds must build this loop itself, e.g. repeatedly calling `adapter.await_response(alert_id, tick_duration)` inside an `_interruptible_sleep()`-shaped `while` guarding on `state.timeout` and `self._shutdown_requested`, rather than a single call with the full timeout (which would defeat shutdown responsiveness).
 
 ### Types
 - No new data type is structurally required for routing: `StateConfig.extra_routes: dict[str, str]` (`schema.py:730`) is the existing container that can carry `edit`/`timeout` verdict targets — see Proposed Solution → Codebase Research Findings for why dedicated `on_edit`/`on_timeout` fields are not required.
@@ -332,6 +350,7 @@ accept the default.
 4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, resolve the active `CommunicationAdapter` from config + extension registry (FEAT-1930), call `adapter.send_alert()` to deliver the prompt, call `adapter.await_response()` to block for verdict (using `_interruptible_sleep()`-style polling — see `_interruptible_sleep()` in `executor.py`), route based on verdict/timeout. The executor never imports a specific adapter — it only calls the protocol methods.
 5. **Host capability** (`host_runner.py:74`): Add `interactive: bool` flag to `HostCapabilities`. Set based on `sys.stdin.isatty()` (existing pattern in `hooks/__init__.py:111`). In the HITL handler, if not interactive, short-circuit to `on_timeout`/`on_no`.
 6. **Tests**: Add `TestActionTypeHumanApproval` in `test_fsm_executor.py` (model after `TestActionTypeMcpTool` at line 401) — mock event callback, verify approve/reject/edit/timeout routing. Add `TestHumanApprovalSchema` in `test_fsm_schema.py` (model after `TestMcpToolSchema` at line 1801). Add timeout-warning test in `test_fsm_validation.py`.
+   > ⚠ Superseded — `test_fsm_validation.py` no longer exists; timeout-warning test belongs in `test_fsm_validation_structural.py` (companion to `structural_rules.py`); see § Codebase Research Findings under Integration Map
 7. **Docs**: Add HITL phase section to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`; document `human_approval` action_type and new routing fields in `skills/create-loop/reference.md:415`; add example loop under `loops/examples/`.
    > ⚠ Superseded — `loops/examples/` doesn't exist yet, must be created; see § Codebase Research Findings under Proposed Solution
 8. **EPIC-1929 siblings** (separate issues, not in this FEAT's scope): Terminal adapter (FEAT-1931), PushNotification adapter (FEAT-1932), future adapters (Slack, Telegram, webhook).
@@ -369,7 +388,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 **Verdict: UPDATED (2026-06-12, epic audit)** — Integration Map line references refreshed to current `executor.py` anchors: `_execute_state` :838, `_run_action` :1053, `_action_mode` :1421, `_emit` :1642, `_interruptible_sleep` :1766 (with the learning-state dispatch at :863). These drift quickly; prefer the function-name anchors over raw numbers when implementing.
 
-2026-06-13: Line number drift detected in executor.py. `_interruptible_sleep` is now at :1766 (was :1647/1735). `_emit` at :1642, `_execute_state` at :838, `_action_mode` at :1421 are accurate. Core architectural assumptions remain sound. Issue correctly blocked on FEAT-1930.
+2026-06-13: Line number drift detected in executor.py. `_interruptible_sleep` is now at :1766 (was :1647/1735). `_emit` at :1642, `_execute_state` at :838, `_action_mode` at :1421 are accurate. Core architectural assumptions remain sound. At the time of this 2026-06-13 note, FEAT-1930 was an unresolved prerequisite; FEAT-1930 has since completed (2026-09-04 `/ll:refine-issue` pass unlinked `blocked_by` and confirmed the `CommunicationAdapter` protocol is now implemented — see Proposed Solution → Codebase Research Findings).
 
 2026-06-17: Further drift — `_execute_state` :942 (was :838), `_run_action` :1157 (was :1053), `_action_mode` :1541 (was :1421), `_emit` :1762 (was :1642), `_interruptible_sleep` :1886 (was :1766). Use function-name anchors rather than line numbers when implementing.
 
@@ -382,6 +401,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - 2026-09-03 (`/ll:verify-issues`, re-check): Re-verified same-day — no drift since the pass above (all anchors re-confirmed identical: `_execute_state` :1948, `_run_action` :2312, `_action_mode` :3062, `_emit` :3550, `_interruptible_sleep` :3833, `StateConfig` :621, `timeout` :708, `extra_routes` :730, `HostCapabilities` :128). Decisions log has no active required rules. `ll-verify-evidence` clean. Dependency backlinks with FEAT-1930 (blocked_by/blocks) and FEAT-1680 (Scope Boundary) confirmed consistent. Verdict updated from stale `NON_VALID` to `VALID` (persisted `verify_verdict` frontmatter now matches).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-04T19:12:55 - `4a1099fd-9d48-4f02-88bf-6554245a52cb.jsonl`
 - `/ll:manage-issue` - 2026-09-04T07:19:43 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:12:55 - `fda4cd5c-a51b-4a98-bfeb-d76bd3f6c25a.jsonl`
