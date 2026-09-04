@@ -25,6 +25,7 @@ learning_tests_required:
 - questionary
 spike_attempted: true
 spike_completed: true
+reconcile_attempted: true
 ---
 
 # FEAT-1931: Terminal adapter for async HITL communication
@@ -241,26 +242,35 @@ _Added by `/ll:decide-issue` — 2026-09-04:_
 ## Implementation Steps
 
 1. Study the `CommunicationAdapter` protocol definition (FEAT-1930) and the
-   `_interruptible_sleep()` polling pattern in `executor.py`
+   proven `await_line_single_read()` shape from the FEAT-1931 spike
+   (`scripts/tests/spike/terminal_hitl_await/`)
 2. Implement `TerminalAdapter` class with `send_alert()`, `await_response()`,
    and `supports_async()` methods
-3. Implement formatted prompt rendering: state name, prompt text, captured
-   context, timeout countdown, valid response keys
-4. Implement stdin reading loop using `sys.stdin` with shutdown-signal-aware
-   polling (check shutdown event between reads)
+3. Implement formatted prompt rendering using `cli/output.py`'s
+   `colorize()`/`status_block()`/`table()` convention (Decision Rationale:
+   Option A)
+4. Implement `await_response()` using the spike-proven
+   `await_line_single_read()` shape: one bounded `selectors`-timed
+   `sys.stdin` read per call, no internal shutdown-flag polling loop —
+   matches the re-entrant short-timeout contract documented in
+   `communication_adapter.py`. Fall back to the combined
+   `await_line_polling()` shape (bounded read + internal shutdown-flag
+   checks) only if FEAT-1794's executor ends up calling `await_response()`
+   with one long timeout instead of short repeated ticks.
 5. Implement verdict parsing: case-insensitive unambiguous prefix matching
    for `approve`/`y`/`yes`, `reject`/`n`/`no`, `edit`/`e`
-6. Implement edit verdict: prompt for edited text on secondary input, return
-   `EditResponse` with captured text
-7. Register `TerminalAdapter` as default adapter in `extension.py`
-   > ⚠ Superseded — no such mechanism exists; see § Codebase Research Findings under Integration Map
+6. Implement edit verdict: prompt for edited text on secondary input, express
+   it via `AdapterResponse.verdict == "edit"` plus the captured text — there
+   is no separate `EditResponse` type (FEAT-1930's protocol only adds a
+   `verdict: Literal["approve", "reject", "edit"]` field)
+7. Implement `TerminalAdapterExtension(CommunicationAdapterExtension)` with
+   `provided_adapters()` returning a dict keyed exactly `{"terminal":
+   TerminalAdapter()}` (matching `HitlConfig.channel`'s default), registered
+   under `[project.entry-points."little_loops.extensions"]` in
+   `scripts/pyproject.toml` — this is the actual zero-config registration
+   mechanism; there is no "register in `extension.py`" mechanism
 8. Write tests: mock stdin/stdout, verify prompt format, verdict parsing
    (approve/reject/edit), timeout handling, shutdown signal behavior
-9. `TerminalAdapterExtension.provided_adapters()` returns a dict keyed exactly
-   `{"terminal": TerminalAdapter()}` (matching `HitlConfig.channel`'s default),
-   registered under `[project.entry-points."little_loops.extensions"]` in
-   `scripts/pyproject.toml` — this is what makes the channel resolve with zero
-   user configuration; see § Codebase Research Findings under Integration Map
 
 ## Integration Map
 
@@ -270,32 +280,44 @@ _Added by `/ll:decide-issue` — 2026-09-04:_
 - `scripts/tests/test_terminal_adapter.py`
 
 ### Files to Modify
-- `scripts/little_loops/extension.py` — register `TerminalAdapter` as default
-  adapter
-  > ⚠ Superseded — no such mechanism exists; see § Codebase Research Findings below
 - `scripts/little_loops/fsm/executor.py` — no changes (uses protocol interface)
 - `scripts/pyproject.toml` — add `TerminalAdapterExtension` under
   `[project.entry-points."little_loops.extensions"]` (`:131-134`, currently
-  empty); this is the actual zero-config registration mechanism — see
-  § Codebase Research Findings below
+  empty); this is the actual zero-config registration mechanism —
+  `scripts/little_loops/extension.py` itself needs no modification (it has
+  no "register default adapter" mechanism; `wire_extensions()` discovers
+  extensions generically via entry points)
 
 ### Similar Patterns
+- `scripts/little_loops/mcp_call.py:101-124` (`_send_request`) and
+  `scripts/little_loops/fsm/runners.py:284-349` —
+  `selectors.DefaultSelector()` + `sel.select(timeout=...)` bounded-read
+  pattern; the spike's proven `await_line_single_read()` shape (recommended
+  default) is built directly on this, not on `_interruptible_sleep()`
 - `executor.py` — `_interruptible_sleep()`: polling-with-shutdown-signal
-  pattern
-- `transport.py` — `UnixSocketTransport`: blocking I/O with timeout
+  pattern; relevant only to the fallback `await_line_polling()` shape (see
+  Implementation Steps)
+- `scripts/little_loops/transport.py` — `UnixSocketTransport`: blocking I/O
+  with timeout (path corrected — not `fsm/transport.py`)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — will call adapter through
-  `CommunicationAdapter` protocol interface (no direct import of
-  `TerminalAdapter` needed)
-- `scripts/little_loops/extension.py` — will import and register
-  `TerminalAdapter`
+  `CommunicationAdapter` protocol interface via
+  `resolve_communication_adapter()` (no direct import of `TerminalAdapter`
+  needed)
+- `scripts/pyproject.toml` — references `TerminalAdapterExtension` by dotted
+  entry-point path
+  (`little_loops.fsm.adapters.terminal_adapter:TerminalAdapterExtension`),
+  not a Python import; no file statically imports `TerminalAdapter` outside
+  its own module and tests
 
 ### Tests
 - `scripts/tests/test_terminal_adapter.py` — new test file (mock stdin/stdout)
 
 ### Documentation
-- `docs/reference/API.md` — add `TerminalAdapter` entry under FSM adapters
+- `docs/reference/API.md:11061-11099` — reconcile the existing illustrative
+  `TerminalAdapter` code example (inside the `CommunicationAdapterExtension`
+  section) with the real implementation; this is not a new entry from scratch
 
 ### Configuration
 - N/A — terminal adapter is always available with zero configuration
@@ -399,6 +421,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-04T17:28:24 - `9c215218-0709-4612-905a-d94c22135410.jsonl`
 - `/ll:decide-issue` - 2026-09-04T17:23:32 - `c44d62f6-fc1d-40b3-bdf0-f62b5b1b46ac.jsonl`
 - `/ll:spike` - 2026-09-04T17:07:00 - `996a4184-d64a-4718-acaf-3c2b33b6304f.jsonl`
 - `/ll:refine-issue` - 2026-09-04T17:00:36 - `f3346010-0c2d-44a4-8a0e-3cc848bc8952.jsonl`
