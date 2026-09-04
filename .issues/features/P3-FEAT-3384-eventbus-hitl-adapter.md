@@ -15,6 +15,12 @@ labels:
 - extension
 blocked_by: []
 decision_needed: false
+confidence_score: 85
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # FEAT-3384: EventBus HITL adapter
@@ -228,7 +234,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-09-04 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-04_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Concerns
+- Criterion 4 (Issue Well-Specified) capped at 10/20: `template_placeholders`/`boilerplate` gap in `Current Behavior`/`Expected Behavior`/`Impact` — these are unfilled template boilerplate, not load-bearing for implementation, but worth a `format-check --fix` pass.
+- Criterion C (Ambiguity) capped at 10/25: `unapplied_decision` flags `TerminalAdapter` still appearing unmarked in Proposed Solution/Program Design/Implementation Steps/Files to Modify. Most of these are legitimate pattern-reference mentions (e.g. `uuid.uuid4().hex` convention, test-shape modeling), not restatements of the rejected Option A (hardcoded `elif` branch) — only the Acceptance Criteria bullet needed (and received) a superseded marker. Verify with `/ll:decide-issue` if this should be suppressed, or leave as-is since it doesn't block implementation.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-04T19:46:20 - `2408c918-9fd9-4316-bbc3-17cce9e381e1.jsonl`
 - `/ll:wire-issue` - 2026-09-04T19:41:11 - `16be6d3d-b797-4958-b3aa-7f5ae8374599.jsonl`
 - `/ll:decide-issue` - 2026-09-04T19:26:43 - `2e7a26f2-b8bf-48e7-b3ea-48fd933d6045.jsonl`
 - `/ll:refine-issue` - 2026-09-04T19:18:04 - `4a1099fd-9d48-4f02-88bf-6554245a52cb.jsonl`
