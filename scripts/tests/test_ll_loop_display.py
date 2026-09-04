@@ -2291,6 +2291,27 @@ class TestDisplayProgressEvents:
         assert "Failure reason:" in out
         assert "ERROR: Spec file not found: PROJECT-SPEC.md" in out
 
+    def test_failure_reason_falls_back_to_stderr_preview(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A shell guard that refuses via `echo ... >&2; exit 1` must not fail silently."""
+        executor = self._failing_executor(
+            events=[
+                {
+                    "event": "action_complete",
+                    "state": "preflight",
+                    "exit_code": 1,
+                    "output_preview": None,
+                    "stderr_preview": "built-in loops dir has uncommitted changes",
+                }
+            ]
+        )
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args())
+        out = capsys.readouterr().out
+        assert "Failure reason:" in out
+        assert "built-in loops dir has uncommitted changes" in out
+
     def test_failure_reason_surfaces_action_error(self, capsys: pytest.CaptureFixture[str]) -> None:
         """An on_error/exception route (empty prev_result) surfaces the action_error message."""
         executor = self._failing_executor(

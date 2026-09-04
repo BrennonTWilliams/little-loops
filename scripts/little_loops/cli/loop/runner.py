@@ -411,7 +411,14 @@ def run_foreground(
             if ev == "action_error" and event.get("error"):
                 _failure_capture["error"] = str(event["error"])
             elif ev == "action_complete" and event.get("exit_code") not in (0, None):
-                out = event.get("output") or event.get("output_preview") or ""
+                # Fall back to stderr: a shell guard that reports its refusal
+                # with `echo ... >&2; exit 1` would otherwise fail silently.
+                out = (
+                    event.get("output")
+                    or event.get("output_preview")
+                    or event.get("stderr_preview")
+                    or ""
+                )
                 if out:
                     _failure_capture["output"] = str(out)
 
