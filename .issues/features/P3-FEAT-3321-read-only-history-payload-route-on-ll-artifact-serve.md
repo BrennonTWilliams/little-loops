@@ -3,10 +3,11 @@ id: FEAT-3321
 type: FEAT
 title: Read-only history payload route on `ll-artifact serve`
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T01:39:46Z'
+completed_at: '2026-09-04T03:02:40Z'
 relates_to:
 - FEAT-3323
 - ENH-3351
@@ -149,6 +150,26 @@ individual loop, does not affect the server. The user never edits config
 beyond setting `events.bridge.history: true` once.
 
 ## Program Design
+
+### Deviations
+
+- 2026-09-03 (implementation): `serve_history_enabled` is stamped
+  **unconditionally in `build_dashboard_html`'s base `data` dict**, not only
+  inside the `if serve_context is not None:` block that stamps
+  `serve_interaction_enabled`/`serve_interaction_url_js`/
+  `serve_history_url_js`/`serve_history_poll_s`. Reason: the Call Path's
+  history-refresh timer must reassign the base query-box script's
+  closure-local `db`/`snapshotBytes` and call its `instantiate()`/
+  `buildViews()` directly (not via `window.*`, which those `var`s are never
+  attached to) — so the timer's Jinja conditional necessarily lives inside
+  the *base* `<script>` IIFE (the one that always renders, sql.js query box),
+  not inside the `[[% if serve_enabled %]]`-gated region. `StrictUndefined`
+  then requires `serve_history_enabled` present on every render, including
+  the `file://` `dashboard` path where `serve_context is None` — mirroring
+  how `serve_enabled` itself is already stamped unconditionally. The other
+  four `serve_history_*`/`serve_interaction_*` keys stay inside the
+  `serve_context is not None` block exactly as designed, since they're only
+  referenced from inside `[[% if serve_enabled %]]`.
 
 New and changed Python surface; all names live in existing modules.
 
@@ -476,63 +497,63 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
 
 ## Acceptance Criteria
 
-- [ ] `GET /{token}/history` returns the JSON payload above. A test loads
+- [x] `GET /{token}/history` returns the JSON payload above. A test loads
       the decoded snapshot with `sqlite3` and asserts that in shareable mode
       only ENH-075 allowlisted columns are present on the `loop_runs` and
       `usage_events` **tables** (the `loop_run` / `usage_event` type names
       appear in `filter_tables`, not as table names), and in local mode all
       columns are present.
-- [ ] The route never migrates or creates the database. A test points the
+- [x] The route never migrates or creates the database. A test points the
       bridge at a project dir with no `history.db`, hits the route, asserts a
       200 with an empty snapshot, and asserts the file still does not exist.
       A second test asserts `_connect_readonly` is the opener (an `INSERT`
       on that connection raises `sqlite3.OperationalError`).
-- [ ] New rows appear without reload. A test inserts a `loop_run` row via
+- [x] New rows appear without reload. A test inserts a `loop_run` row via
       `session_store` between two route fetches and asserts the second
       decoded snapshot contains it and the first does not. Because the route
       caches on `(st_mtime_ns, st_size)`, the test must not rely on
       coarse-grained mtime — assert on the decoded rows, and if the fixture
       writes fast enough to collide, `os.utime` the file or assert via the
       changed `size`.
-- [ ] Repeated identical polls do not rebuild. A test monkeypatches or
+- [x] Repeated identical polls do not rebuild. A test monkeypatches or
       wraps `build_snapshot_db`, fetches the route three times with no
       intervening write, and asserts exactly one build; a fourth fetch with
       `If-None-Match` set to the returned `ETag` returns `304` with an empty
       body. A concurrency test fires N simultaneous fetches against a cold
       cache and asserts a single build.
-- [ ] A page-render failure does not take down the server. A test forces
+- [x] A page-render failure does not take down the server. A test forces
       `build_dashboard_html` to raise (e.g. `max_artifact_bytes=1`), starts
       the bridge, and asserts `GET /{token}/` returns 200 with the
       `_SSE_BRIDGE_PAGE_HTML` placeholder, `GET /{token}/events` still
       streams, and the process did not exit non-zero.
-- [ ] The served page renders with `interaction_url=None` and emits no
+- [x] The served page renders with `interaction_url=None` and emits no
       interaction POST: a test asserts the rendered HTML contains
       `hx-sse:connect` and the history timer, and does **not** contain
       `ll-interaction-send` (i.e. the interaction markup is omitted by the
       Jinja conditional, not merely guarded in JS).
-- [ ] The refreshed page keeps its guardrails: a test asserts the timer
+- [x] The refreshed page keeps its guardrails: a test asserts the timer
       block reassigns `snapshotBytes` and calls `instantiate()` (so
       `PRAGMA query_only` is re-applied and "Reset snapshot" restores the
       latest snapshot), rather than assigning `new SQL.Database(...)` to `db`
       directly.
-- [ ] `serve_history_url_js` is stamped via `json.dumps`, not `html.escape`:
+- [x] `serve_history_url_js` is stamped via `json.dumps`, not `html.escape`:
       a test renders with a URL containing `&` and `'` and asserts the
       stamped value is a valid JS string literal with no HTML entities.
-- [ ] `ll-loop run --serve` output is unchanged modulo the `exported_at`
+- [x] `ll-loop run --serve` output is unchanged modulo the `exported_at`
       timestamp (interaction wiring still present, no history timer),
       guarded by the existing ENH-3351 render tests passing unchanged.
-- [ ] `events.bridge.history` defaults to `false`; with it false, `GET
+- [x] `events.bridge.history` defaults to `false`; with it false, `GET
       /{token}/history` is 404 **and** `GET /{token}/` serves the
       `_SSE_BRIDGE_PAGE_HTML` placeholder (no dashboard page, no timer).
       BUG-3192 Guards 1 and 2 pass.
-- [ ] Existing `test_feat3323_sse_bridge.py` passes unchanged (see §
+- [x] Existing `test_feat3323_sse_bridge.py` passes unchanged (see §
       Verification Notes on its `:799` stub). New tests assert the
       history route inherits both gates: a request with a foreign `Host`
       header is 403, and a request without the token prefix is 404.
-- [ ] FEAT-3308 round-trip tests for `ll-artifact templatize`/`extract`/
+- [x] FEAT-3308 round-trip tests for `ll-artifact templatize`/`extract`/
       `render` pass unchanged after the `template.html.j2` + `manifest.yaml`
       edits.
-- [ ] `docs/reference/ARTIFACT_CONTROL_LEVELS.md` render-target table and
+- [x] `docs/reference/ARTIFACT_CONTROL_LEVELS.md` render-target table and
       `docs/reference/CLI.md` `ll-artifact serve` section updated.
 
 ## Out of Scope
@@ -672,11 +693,28 @@ in-place upgrade.
   (`92670a9de`, `94a676582`) exist and touch the claimed files. Nothing this
   issue proposes as new already exists in the tree.
 
+## Resolution
+
+Implemented per § Program Design / § Implementation Steps, with one recorded
+deviation (see § Program Design → Deviations): `serve_history_enabled` is
+stamped unconditionally rather than only inside the `serve_context is not
+None` block, because the refresh timer must live inside the base query-box
+`<script>` IIFE (not the `[[% if serve_enabled %]]`-gated region) to reach
+its closure-local `db`/`snapshotBytes`/`instantiate`/`buildViews`.
+
+All Acceptance Criteria pass with new tests in `test_feat3304_artifact_dashboard.py`
+(`TestBuildHistoryPayload`, `TestServeContextRelaxation`) and
+`test_feat3323_sse_bridge.py` (`TestHistoryRoute`, `TestPageHtmlFactoryFallback`,
+`TestCmdServeHistoryGate`). Full suite: `python -m pytest scripts/tests/` —
+22676 passed, 43 skipped, 0 failed. `ruff check scripts/` and
+`python -m mypy scripts/little_loops/` both clean.
+
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-04T03:01:54 - `7d2a9c3e-7b09-4945-b21f-1cd41c9099d8.jsonl`
 - `/ll:confidence-check` - 2026-09-04T02:18:58 - `30019f0e-09fb-48fa-82e7-9bf0c84b9638.jsonl`
 - `/ll:verify-issues` - 2026-09-04T02:16:09 - `371c81cf-6cd1-4bb0-94f4-43941447dbc7.jsonl`
 - `/ll:confidence-check` - 2026-09-04T01:56:22 - `01d833b6-5f4d-404a-bfc0-c03d3ef153b3.jsonl`

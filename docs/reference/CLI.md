@@ -4864,6 +4864,30 @@ no producer socket present yet, `ll-artifact serve` prints a plain one-line
 notice and **keeps serving** rather than presenting an empty stream as
 success — a producer may start later.
 
+**Read-only history route (`events.bridge.history`, FEAT-3321).** With
+`events.bridge.history: true` (default `false`), `ll-artifact serve` also
+mounts `GET /{token}/history` — a read-only JSON snapshot of `.ll/history.db`,
+built by the same `build_snapshot_db` path `ll-artifact dashboard` uses,
+filtered by `artifacts.export.mode` (default `shareable`, the ENH-075 column
+allowlist; no separate `--local` flag — the route always follows the
+project's export mode) — and serves the `dashboard.llat` page at
+`GET /{token}/` in place of the FEAT-3323 placeholder. The page's embedded
+`sql.js` query box re-fetches `./history` on a 5-second timer and reloads the
+snapshot in place (preserving the `PRAGMA query_only` guardrail and "Reset
+snapshot"), so new `loop_runs`/`usage_events` rows appear without a reload.
+The route never migrates or creates `.ll/history.db` (a missing file yields
+an empty snapshot); it caches the built payload behind a lock keyed on the
+source db's `(st_mtime_ns, st_size)`, returning `304` for a matching
+`If-None-Match` and `413` if the raw snapshot exceeds
+`artifacts.export.max_artifact_bytes`. With the gate `false` (the default),
+`ll-artifact serve` is byte-for-byte FEAT-3323 behavior: the route is `404`
+and `GET /{token}/` stays the placeholder page. A page-render failure (e.g.
+an oversized snapshot) never prevents the bridge from serving — it logs a
+warning and falls back to the placeholder page. See
+[ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md) — the served
+dashboard page declares **Level 1 (notify)** here too (no `interaction_url`,
+so the Level 3 host-owned form is omitted from the page entirely).
+
 #### ll-artifact templatize
 
 Decomposed from FEAT-3308. Given an artifact plus a region map, splices the located spans into Jinja2 expressions/blocks, derives `data.json` and `data_schema` from the artifact bytes at each span, and verifies a **byte-exact round trip** before promoting the result into a `.llat/` template directory. The region map is either hand-written (`--regions <map.json>`, Phase A / FEAT-3314, deterministic, no LLM call) or LLM-discovered when `--regions` is omitted (Phase B / FEAT-3315, `discover_regions`) — both paths converge on the same `{regions, groups}` shape and the same splice/verify/promote pipeline below.

@@ -1306,12 +1306,17 @@ class BridgeEventsConfig:
     a name in `events.transports`. No `enabled` key (a config flag that refuses
     an explicit command is bad UX and has no precedent) and no `host` key (the
     server binds `127.0.0.1` unconditionally, matching `LocalBridgeTransport`).
+
+    `history` (default `False`, FEAT-3321) gates the read-only
+    `GET /{token}/history` route *and* the dashboard page it's served with —
+    with it off, `ll-artifact serve` is byte-for-byte FEAT-3323 behavior.
     """
 
     port: int = 8766
     max_clients: int = 8
     keepalive_s: float = 15.0
     rescan_s: float = 2.0
+    history: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BridgeEventsConfig:
@@ -1321,6 +1326,7 @@ class BridgeEventsConfig:
             max_clients=data.get("max_clients", 8),
             keepalive_s=data.get("keepalive_s", 15.0),
             rescan_s=data.get("rescan_s", 2.0),
+            history=data.get("history", False),
         )
 
 

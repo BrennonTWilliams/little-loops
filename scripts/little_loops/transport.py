@@ -1269,6 +1269,7 @@ class SseBridge:
         self._fanin_last_drop_log_ts = 0.0
         self._fanin_first_drop_logged = False
 
+        self._page_html = _SSE_BRIDGE_PAGE_HTML
         self._routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] = {
             "": self._serve_page,
             "events": self._serve_events,
@@ -1316,8 +1317,19 @@ class SseBridge:
         port = self._server.server_address[1]
         return f"http://127.0.0.1:{port}/{self._token}/"
 
+    def set_page_html(self, page_html: str) -> None:
+        """Replace the HTML served at ``GET /{token}/`` after construction (FEAT-3321).
+
+        Mirrors `LocalBridgeTransport.set_page_html`; needed because the
+        FEAT-3321 dashboard page embeds `self.url` (token), known only once
+        the server is bound. Initialized to `_SSE_BRIDGE_PAGE_HTML` in
+        `__init__` and never called at all when `events.bridge.history` is
+        off, so the default path stays byte-for-byte FEAT-3323 behavior.
+        """
+        self._page_html = page_html
+
     def _serve_page(self, handler: http.server.BaseHTTPRequestHandler) -> None:
-        body = _SSE_BRIDGE_PAGE_HTML.encode("utf-8")
+        body = self._page_html.encode("utf-8")
         handler.send_response(200)
         handler.send_header("Content-Type", "text/html; charset=utf-8")
         handler.send_header("Content-Length", str(len(body)))
@@ -1436,7 +1448,13 @@ class SseBridge:
             self._serve_thread.join(timeout=max(0.0, deadline - time.monotonic()))
 
 
-def serve_sse_bridge(config: EventsConfig, port: int | None = None) -> int:
+def serve_sse_bridge(
+    config: EventsConfig,
+    port: int | None = None,
+    *,
+    routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] | None = None,
+    page_html_factory: Callable[[SseBridge], str] | None = None,
+) -> int:
     """Blocking CLI wrapper: construct `SseBridge`, print its URL, block until Ctrl-C.
 
     `ll-artifact serve`'s `cmd_serve` calls this after resolving `--port` and
@@ -1451,8 +1469,24 @@ def serve_sse_bridge(config: EventsConfig, port: int | None = None) -> int:
     is present yet, prints a plain one-line notice to stderr rather than
     silently serving an empty stream as success — but keeps serving, since a
     producer may start later (§ Considerations).
+
+    `routes`/`page_html_factory` are FEAT-3321's optional history-route hook:
+    `routes` is passed through to `SseBridge(...)`, and once bound,
+    `page_html_factory(bridge)` (which needs `bridge.url` for the token) is
+    called and its result installed via `bridge.set_page_html`. Any exception
+    `page_html_factory` raises is caught, logged as a warning, and swallowed —
+    the placeholder page stays and the bridge keeps serving; a page-render
+    failure must never prevent the bridge from starting.
     """
-    bridge = SseBridge(config, port=port)
+    bridge = SseBridge(config, port=port, routes=routes)
+    if page_html_factory is not None:
+        try:
+            bridge.set_page_html(page_html_factory(bridge))
+        except Exception:
+            logger.warning(
+                "SseBridge: page_html_factory failed; serving the placeholder page instead",
+                exc_info=True,
+            )
     print(bridge.url)
     if "socket" not in config.transports:
         print(

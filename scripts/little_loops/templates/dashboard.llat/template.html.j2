@@ -314,6 +314,43 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
     .catch(function (err) {
       setStatus("Failed to load the embedded snapshot: " + String(err.message || err), true);
     });
+
+  [[% if serve_history_enabled %]]
+  // Refetches the snapshot on a timer and reinstates it through the query
+  // box's own instantiate() (defined above) rather than assigning `db`
+  // directly, so PRAGMA query_only is re-applied on every refresh and
+  // "Reset snapshot" restores the *latest* snapshot, not the one loaded at
+  // page-open (see the issue's Call Path / Program Design). A failed fetch
+  // sets the status line and leaves the current db in place; the timer
+  // keeps running, and the user's query text/results are left untouched.
+  function refreshHistory() {
+    fetch([[= serve_history_url_js =]])
+      .then(function (resp) {
+        if (!resp.ok) {
+          throw new Error("history fetch failed: " + resp.status);
+        }
+        return resp.json();
+      })
+      .then(function (body) {
+        return gunzip(decodeBase64(body.snapshot_gzip_b64)).then(function (bytes) {
+          return { bytes: bytes, body: body };
+        });
+      })
+      .then(function (result) {
+        if (db) {
+          db.close();
+        }
+        snapshotBytes = result.bytes;
+        instantiate();
+        buildViews();
+        setStatus("Snapshot refreshed at " + result.body.exported_at + ".");
+      })
+      .catch(function (err) {
+        setStatus("History refresh failed: " + String(err.message || err), true);
+      });
+  }
+  setInterval(refreshHistory, [[= serve_history_poll_s =]] * 1000);
+  [[% endif %]]
 })();
 </script>
 [[% if serve_enabled %]]
@@ -334,11 +371,14 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
   <div class="scroll" style="max-height:30vh;">
     <pre id="ll-log-tail" style="margin:0;padding:.5rem;white-space:pre-wrap;font-size:.78rem;"></pre>
   </div>
+  [[% if serve_interaction_enabled %]]
   <div>
     <input id="ll-interaction-text" type="text" placeholder="note (POSTs artifact_interaction)" style="width:60%;">
     <button id="ll-interaction-send" type="button">Send</button>
   </div>
+  [[% endif %]]
 </section>
+[[% if serve_interaction_enabled %]]
 <script>
 (function () {
   "use strict";
@@ -358,6 +398,7 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
   });
 })();
 </script>
+[[% endif %]]
 [[% endif %]]
 </body>
 </html>

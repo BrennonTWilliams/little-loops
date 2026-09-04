@@ -1721,6 +1721,7 @@ and no `wire_transports` branch for `"bridge"`, and listing it under
 | `events.bridge.max_clients` | `integer` | `8` | Maximum concurrent SSE client connections. Each holds a thread for the connection's life; a connection over the cap gets `503`. |
 | `events.bridge.keepalive_s` | `number` | `15` | Interval, in seconds, between SSE keepalive comment frames (`: ping`) on a quiet bus. Also sets the per-connection write timeout (`2 × keepalive_s`) that reclaims a handler thread pinned by a peer that is alive but not reading. |
 | `events.bridge.rescan_s` | `number` | `2` | Interval, in seconds, at which the bridge rescans the producer socket directory for new/dead sockets. Also the base of the per-path connect-then-immediate-EOF backoff (doubles per consecutive flap, capped at 60s). |
+| `events.bridge.history` | `boolean` | `false` | FEAT-3321. Gates the read-only `GET /{token}/history` route plus the `dashboard.llat` page served in place of the FEAT-3323 placeholder. Off by default; the route follows `artifacts.export.mode` — no separate `--local` flag. |
 
 There is **no `enabled` key and no `host` key**. A config flag that refuses
 an explicit command (`enabled`) is bad UX with no precedent (`ll-loop run
@@ -1734,7 +1735,8 @@ unconditionally (`host`), matching `LocalBridgeTransport`.
       "port": 8766,
       "max_clients": 8,
       "keepalive_s": 15,
-      "rescan_s": 2
+      "rescan_s": 2,
+      "history": false
     }
   }
 }

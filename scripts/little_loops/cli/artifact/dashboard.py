@@ -131,17 +131,26 @@ def schema_version_warning(source_version: str | None) -> str:
 
 @dataclass(frozen=True)
 class ServeContext:
-    """Serve-mode template data for ``ll-loop run --serve`` (ENH-3351).
+    """Serve-mode template data for ``ll-loop run --serve`` (ENH-3351) and
+    ``ll-artifact serve`` (FEAT-3321).
 
-    Supplied by the loop process's CLI wiring, which constructs the
-    ``LocalBridgeTransport`` first (so its per-run token and bound port are
-    known) and derives both URLs from ``bridge.url``. ``cmd_dashboard``'s
-    ``file://`` path always calls :func:`build_dashboard_html` with
+    Supplied by the caller's CLI wiring, which constructs the bridge
+    transport first (so its per-run token and bound port are known) and
+    derives the URLs from ``bridge.url``. ``cmd_dashboard``'s ``file://``
+    path always calls :func:`build_dashboard_html` with
     ``serve_context=None``, which keeps default output htmx-free.
+    ``interaction_url`` is ``None`` when the server has no FSM executor to
+    deliver a Level 3 POST to (FEAT-3321's ``ll-artifact serve``); the
+    interaction block is then omitted from the page by a Jinja conditional,
+    not merely inert. ``history_url``/``history_poll_s`` drive the page's
+    history-refresh timer and are unused/``None`` when the caller has no
+    history route (``ll-loop run --serve``).
     """
 
     events_url: str
-    interaction_url: str
+    interaction_url: str | None = None
+    history_url: str | None = None
+    history_poll_s: int = 5
 
 
 @dataclass(frozen=True)
@@ -152,32 +161,59 @@ class RenderedDashboard:
     schema_version_warning: str
 
 
-def build_dashboard_html(
+@dataclass(frozen=True)
+class HistoryPayload:
+    """The snapshot-plus-metadata value both the ``/history`` route and the
+    page render consume (FEAT-3321).
+
+    The dataclass field is ``source_version`` (matching
+    :func:`~little_loops.session_store.queries.build_snapshot_db`'s return
+    value); :meth:`to_dict` performs the one key rename to
+    ``source_schema_version``, matching the template data key
+    :func:`build_dashboard_html` already stamps. Do not introduce a third
+    spelling.
+    """
+
+    snapshot_gzip_b64: str
+    source_version: str | None
+    exported_at: str
+    export_mode: str
+    filter_tables: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "snapshot_gzip_b64": self.snapshot_gzip_b64,
+            "source_schema_version": self.source_version,
+            "exported_at": self.exported_at,
+            "export_mode": self.export_mode,
+            "filter_tables": self.filter_tables,
+        }
+
+
+def build_history_payload(
     *,
     db_path: Path,
     config: BRConfig,
     tables: list[str],
     since_iso: str | None,
     mode: str,
-    serve_context: ServeContext | None = None,
-) -> RenderedDashboard:
-    """Render the history dashboard page (ENH-3351 extraction of ``cmd_dashboard``).
+    allow_missing: bool = False,
+) -> HistoryPayload:
+    """Build the snapshot payload shared by the ``/history`` route and the page render.
 
-    A pure(ish) renderer: raises ``ValueError`` for the conditions
-    ``cmd_dashboard`` used to ``return 1`` for (missing db, oversized
-    snapshot, template/manifest errors) — the caller decides how to report
-    them. The one behavior split: a missing ``db_path`` raises when
-    ``serve_context is None`` (the ``file://`` path's existing behavior)
-    but renders with an empty snapshot when ``serve_context`` is set, since
-    ``--serve``'s live SSE regions are the point and the query box is a
-    bonus (first-ever-run has no ``history.db`` yet).
+    Extracted from :func:`build_dashboard_html`'s snapshot-to-base64 block.
+    Raises ``ValueError`` when the raw snapshot exceeds
+    ``artifacts.export.max_artifact_bytes`` (D16's cheap pre-check). When
+    ``allow_missing`` is ``True`` and ``db_path`` does not exist, returns an
+    empty gzip payload instead of raising (the serve-context branch);
+    :func:`build_dashboard_html` passes ``allow_missing=serve_context is not
+    None`` so the ``file://`` path keeps raising.
     """
     local_mode = mode == "local"
-    export_cfg = config.artifacts.export
-    max_bytes = export_cfg.max_artifact_bytes
+    max_bytes = config.artifacts.export.max_artifact_bytes
 
     if not db_path.is_file():
-        if serve_context is None:
+        if not allow_missing:
             raise ValueError(f"history database not found: {db_path}")
         source_version: str | None = None
         # gzip's mtime header would otherwise stamp wall-clock time, making
@@ -209,6 +245,46 @@ def build_dashboard_html(
                 gzip.compress(snapshot_path.read_bytes(), mtime=0)
             ).decode("ascii")
 
+    return HistoryPayload(
+        snapshot_gzip_b64=snapshot_b64,
+        source_version=source_version,
+        exported_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        export_mode=mode,
+        filter_tables=list(tables),
+    )
+
+
+def build_dashboard_html(
+    *,
+    db_path: Path,
+    config: BRConfig,
+    tables: list[str],
+    since_iso: str | None,
+    mode: str,
+    serve_context: ServeContext | None = None,
+) -> RenderedDashboard:
+    """Render the history dashboard page (ENH-3351 extraction of ``cmd_dashboard``).
+
+    A pure(ish) renderer: raises ``ValueError`` for the conditions
+    ``cmd_dashboard`` used to ``return 1`` for (missing db, oversized
+    snapshot, template/manifest errors) — the caller decides how to report
+    them. The one behavior split: a missing ``db_path`` raises when
+    ``serve_context is None`` (the ``file://`` path's existing behavior)
+    but renders with an empty snapshot when ``serve_context`` is set, since
+    ``--serve``'s live SSE regions are the point and the query box is a
+    bonus (first-ever-run has no ``history.db`` yet).
+    """
+    payload = build_history_payload(
+        db_path=db_path,
+        config=config,
+        tables=tables,
+        since_iso=since_iso,
+        mode=mode,
+        allow_missing=serve_context is not None,
+    )
+    source_version = payload.source_version
+    snapshot_b64 = payload.snapshot_gzip_b64
+
     wasm_b64 = base64.b64encode(
         _packaged_path(*_VENDOR_PARTS, "sql-wasm.wasm").read_bytes()
     ).decode("ascii")
@@ -234,7 +310,7 @@ def build_dashboard_html(
         "snapshot_gzip_b64": snapshot_b64,
         "sql_wasm_b64": wasm_b64,
         "sql_wasm_js": wasm_js,
-        "exported_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "exported_at": payload.exported_at,
         "filter_tables": html.escape(", ".join(tables)),
         "filter_since": html.escape(since_iso) if since_iso else "all history",
         "export_mode": mode,
@@ -244,6 +320,12 @@ def build_dashboard_html(
         "schema_version_warning": html.escape(warning_text),
         "row_cap": RENDER_ROW_CAP,
         "serve_enabled": serve_context is not None,
+        # StrictUndefined (artifact_templates.py) requires this present even
+        # when serve_context is None: the base query-box script (outside the
+        # `[[% if serve_enabled %]]` region) references it unconditionally to
+        # decide whether to install the history-refresh timer.
+        "serve_history_enabled": serve_context is not None
+        and serve_context.history_url is not None,
     }
     if serve_context is not None:
         import json as _json
@@ -255,8 +337,12 @@ def build_dashboard_html(
         data["serve_events_url"] = html.escape(serve_context.events_url)
         # Embedded inside an inline <script> as a JS string literal, not an
         # HTML attribute — json.dumps gives correct JS-string quoting rather
-        # than HTML-attribute escaping.
+        # than HTML-attribute escaping. json.dumps(None) == "null", which is
+        # exactly the literal the disabled case needs — no special-casing.
+        data["serve_interaction_enabled"] = serve_context.interaction_url is not None
         data["serve_interaction_url_js"] = _json.dumps(serve_context.interaction_url)
+        data["serve_history_url_js"] = _json.dumps(serve_context.history_url)
+        data["serve_history_poll_s"] = serve_context.history_poll_s
 
     try:
         validate_top_level_data(data, manifest["data_schema"])

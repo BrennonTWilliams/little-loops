@@ -28,6 +28,7 @@ import argparse
 import json
 import shutil
 import socket
+import sqlite3
 import tempfile
 import threading
 import time
@@ -866,3 +867,438 @@ class TestCmdServeCli:
         Event, or run in a thread and call bridge.close()).
         """
         pytest.skip("drafted; needs cmd_serve's real call shape to drive non-interactively")
+
+
+# ---------------------------------------------------------------------------
+# FEAT-3321: read-only history payload route on `ll-artifact serve`
+# ---------------------------------------------------------------------------
+
+
+def _build_history_db(path: Path) -> None:
+    """Minimal synthetic history.db shaped like session_store/schema.py's DDL.
+
+    Column lists match the ENH-075 shareable-mode split (`error` and
+    `diagnostics_path` are excluded from `loop_runs` in shareable mode).
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE loop_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT, loop_name TEXT, started_at TEXT, ended_at TEXT,
+            final_state TEXT, iterations INTEGER, terminated_by TEXT,
+            error TEXT, evaluator_score REAL, diagnostics_path TEXT,
+            head_sha TEXT, branch TEXT, failure_terminal INTEGER
+        );
+        CREATE TABLE usage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT, session_id TEXT, model TEXT, state TEXT,
+            input_tokens INTEGER, output_tokens INTEGER,
+            cache_read_input_tokens INTEGER, cache_creation_input_tokens INTEGER,
+            cost_usd REAL, invocation_id TEXT, provider_vendor TEXT, run_id TEXT
+        );
+        """
+    )
+    conn.execute("INSERT INTO meta (key, value) VALUES ('schema_version', '1')")
+    conn.executemany(
+        "INSERT INTO loop_runs (run_id, loop_name, started_at, ended_at, final_state, "
+        "iterations, error, diagnostics_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                "r-1",
+                "loop-a",
+                "2026-08-01T00:00:00Z",
+                "2026-08-01T01:00:00Z",
+                "done",
+                1,
+                "secret failure text",
+                "/opt/synthetic-fixture/diag.json",
+            )
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+
+def _history_project(project_root: Path):
+    """A minimal project root with a synthetic `.ll/history.db`, as a `BRConfig`."""
+    from little_loops.config.core import BRConfig
+
+    (project_root / ".ll").mkdir(parents=True, exist_ok=True)
+    (project_root / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+    _build_history_db(project_root / ".ll" / "history.db")
+    return BRConfig(project_root)
+
+
+def _history_request(
+    port: int,
+    path: str,
+    *,
+    host: str | None = None,
+    if_none_match: str | None = None,
+    timeout: float = 5.0,
+) -> tuple[int, dict[str, str], bytes]:
+    """Like `_lb_http_request`, but also returns response headers (for ETag)."""
+    import http.client
+
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        conn.putrequest("GET", path, skip_host=True)
+        conn.putheader("Host", host if host is not None else f"127.0.0.1:{port}")
+        if if_none_match is not None:
+            conn.putheader("If-None-Match", if_none_match)
+        conn.endheaders()
+        resp = conn.getresponse()
+        data = resp.read()
+        return resp.status, dict(resp.getheaders()), data
+    finally:
+        conn.close()
+
+
+@pytest.mark.skipif(
+    not _HAS_SSE_BRIDGE,
+    reason="FEAT-3323: SseBridge/serve_sse_bridge/BridgeEventsConfig not implemented yet",
+)
+class TestHistoryRoute:
+    def test_returns_payload_json_and_inherits_host_and_token_gates(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        from little_loops.cli.artifact.serve import make_history_route
+
+        config = _history_project(tmp_path / "project")
+        bridge = SseBridge(
+            _make_config(),
+            port=0,
+            base=short_tmp_path,
+            loops_dir=tmp_path / "loops",
+            routes={"history": make_history_route(config)},
+        )
+        try:
+            token = _bridge_token(bridge)
+            port = _bridge_port(bridge)
+
+            status, headers, body = _history_request(port, f"/{token}/history")
+            assert status == 200
+            assert headers["Content-Type"] == "application/json"
+            assert headers["Cache-Control"] == "no-store"
+            assert "ETag" in headers
+            payload = json.loads(body)
+            assert set(payload) == {
+                "snapshot_gzip_b64",
+                "exported_at",
+                "source_schema_version",
+                "export_mode",
+                "filter_tables",
+            }
+            assert payload["export_mode"] == "shareable"
+            assert sorted(payload["filter_tables"]) == ["loop_run", "usage_event"]
+
+            import base64
+            import gzip
+            import sqlite3
+
+            dest = tmp_path / "recovered.db"
+            dest.write_bytes(gzip.decompress(base64.b64decode(payload["snapshot_gzip_b64"])))
+            conn = sqlite3.connect(dest)
+            columns = [row[1] for row in conn.execute("PRAGMA table_info(loop_runs)")]
+            assert "error" not in columns
+            assert "diagnostics_path" not in columns
+
+            status, _, _ = _history_request(port, f"/{token}/history", host="evil.example.com")
+            assert status == 403
+            status, _, _ = _history_request(port, "/not-the-real-token/history")
+            assert status == 404
+        finally:
+            bridge.close()
+
+    def test_never_migrates_or_creates_missing_db(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        from little_loops.cli.artifact.serve import make_history_route
+        from little_loops.config.core import BRConfig
+
+        project = tmp_path / "project"
+        (project / ".ll").mkdir(parents=True)
+        (project / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        config = BRConfig(project)
+        bridge = SseBridge(
+            _make_config(),
+            port=0,
+            base=short_tmp_path,
+            loops_dir=tmp_path / "loops",
+            routes={"history": make_history_route(config)},
+        )
+        try:
+            token = _bridge_token(bridge)
+            status, _, body = _history_request(_bridge_port(bridge), f"/{token}/history")
+            assert status == 200
+            import base64
+            import gzip
+
+            payload = json.loads(body)
+            assert gzip.decompress(base64.b64decode(payload["snapshot_gzip_b64"])) == b""
+            assert not (project / ".ll" / "history.db").exists()
+        finally:
+            bridge.close()
+
+    def test_repeated_polls_do_not_rebuild_and_matching_etag_returns_304(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        import little_loops.cli.artifact.dashboard as dashboard_mod
+        from little_loops.cli.artifact.serve import make_history_route
+
+        config = _history_project(tmp_path / "project")
+        bridge = SseBridge(
+            _make_config(),
+            port=0,
+            base=short_tmp_path,
+            loops_dir=tmp_path / "loops",
+            routes={"history": make_history_route(config)},
+        )
+        try:
+            token = _bridge_token(bridge)
+            port = _bridge_port(bridge)
+            with mock.patch.object(
+                dashboard_mod, "build_snapshot_db", wraps=dashboard_mod.build_snapshot_db
+            ) as spy:
+                status1, headers1, _ = _history_request(port, f"/{token}/history")
+                status2, _, _ = _history_request(port, f"/{token}/history")
+                status3, _, _ = _history_request(port, f"/{token}/history")
+                assert status1 == status2 == status3 == 200
+                assert spy.call_count == 1
+
+                etag = headers1["ETag"]
+                status4, _, body4 = _history_request(port, f"/{token}/history", if_none_match=etag)
+                assert status4 == 304
+                assert body4 == b""
+                assert spy.call_count == 1
+        finally:
+            bridge.close()
+
+    def test_new_rows_appear_without_reload(self, short_tmp_path: Path, tmp_path: Path) -> None:
+        import base64
+        import gzip
+        import sqlite3
+
+        from little_loops.cli.artifact.serve import make_history_route
+
+        project = tmp_path / "project"
+        config = _history_project(project)
+        bridge = SseBridge(
+            _make_config(),
+            port=0,
+            base=short_tmp_path,
+            loops_dir=tmp_path / "loops",
+            routes={"history": make_history_route(config)},
+        )
+        try:
+            token = _bridge_token(bridge)
+            port = _bridge_port(bridge)
+            status1, _, body1 = _history_request(port, f"/{token}/history")
+            assert status1 == 200
+            payload1 = json.loads(body1)
+            db1 = tmp_path / "snap1.db"
+            db1.write_bytes(gzip.decompress(base64.b64decode(payload1["snapshot_gzip_b64"])))
+            rows1 = sqlite3.connect(db1).execute("SELECT run_id FROM loop_runs").fetchall()
+            assert ("r-new",) not in rows1
+
+            conn = sqlite3.connect(project / ".ll" / "history.db")
+            conn.execute(
+                "INSERT INTO loop_runs (run_id, loop_name, started_at, ended_at, final_state, "
+                "iterations) VALUES ('r-new', 'loop-b', '2026-08-02T00:00:00Z', "
+                "'2026-08-02T01:00:00Z', 'done', 1)"
+            )
+            conn.commit()
+            conn.close()
+            import os
+
+            os.utime(project / ".ll" / "history.db", None)
+
+            status2, _, body2 = _history_request(port, f"/{token}/history")
+            assert status2 == 200
+            payload2 = json.loads(body2)
+            db2 = tmp_path / "snap2.db"
+            db2.write_bytes(gzip.decompress(base64.b64decode(payload2["snapshot_gzip_b64"])))
+            rows2 = sqlite3.connect(db2).execute("SELECT run_id FROM loop_runs").fetchall()
+            assert ("r-new",) in rows2
+        finally:
+            bridge.close()
+
+    def test_oversize_returns_413(self, short_tmp_path: Path, tmp_path: Path) -> None:
+        from little_loops.cli.artifact.serve import make_history_route
+
+        project = tmp_path / "project"
+        (project / ".ll").mkdir(parents=True)
+        (project / ".ll" / "ll-config.json").write_text(
+            json.dumps({"artifacts": {"export": {"max_artifact_bytes": 1}}}), encoding="utf-8"
+        )
+        _build_history_db(project / ".ll" / "history.db")
+        from little_loops.config.core import BRConfig
+
+        config = BRConfig(project)
+        bridge = SseBridge(
+            _make_config(),
+            port=0,
+            base=short_tmp_path,
+            loops_dir=tmp_path / "loops",
+            routes={"history": make_history_route(config)},
+        )
+        try:
+            token = _bridge_token(bridge)
+            status, _, _ = _history_request(_bridge_port(bridge), f"/{token}/history")
+            assert status == 413
+        finally:
+            bridge.close()
+
+    def test_readonly_opener_rejects_writes(self, tmp_path: Path) -> None:
+        """The route's snapshot build goes through `_connect_readonly` (D19)."""
+        from little_loops.session_store.queries import _connect_readonly
+
+        db_path = tmp_path / "history.db"
+        _build_history_db(db_path)
+        conn = _connect_readonly(db_path)
+        try:
+            with pytest.raises(sqlite3.OperationalError):
+                conn.execute("INSERT INTO loop_runs (run_id) VALUES ('x')")
+        finally:
+            conn.close()
+
+    def test_concurrent_fetches_against_cold_cache_build_once(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        import little_loops.cli.artifact.dashboard as dashboard_mod
+        from little_loops.cli.artifact.serve import make_history_route
+
+        config = _history_project(tmp_path / "project")
+        bridge = SseBridge(
+            _make_config(),
+            port=0,
+            base=short_tmp_path,
+            loops_dir=tmp_path / "loops",
+            routes={"history": make_history_route(config)},
+        )
+        try:
+            token = _bridge_token(bridge)
+            port = _bridge_port(bridge)
+            with mock.patch.object(
+                dashboard_mod, "build_snapshot_db", wraps=dashboard_mod.build_snapshot_db
+            ) as spy:
+                statuses: list[int] = []
+                threads = [
+                    threading.Thread(
+                        target=lambda: statuses.append(
+                            _history_request(port, f"/{token}/history")[0]
+                        )
+                    )
+                    for _ in range(8)
+                ]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=10.0)
+                assert statuses == [200] * 8
+                assert spy.call_count == 1
+        finally:
+            bridge.close()
+
+    def test_history_route_absent_and_placeholder_page_when_no_routes_mounted(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        """Mirrors the default `events.bridge.history: false` gate: no routes mounted."""
+        from little_loops.transport import _SSE_BRIDGE_PAGE_HTML  # type: ignore[attr-defined]
+
+        bridge = SseBridge(_make_config(), port=0, base=short_tmp_path, loops_dir=tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            port = _bridge_port(bridge)
+            status, _, _ = _history_request(port, f"/{token}/history")
+            assert status == 404
+            status, body = _lb_http_request(port, "GET", f"/{token}/")
+            assert status == 200
+            assert body.decode("utf-8") == _SSE_BRIDGE_PAGE_HTML
+        finally:
+            bridge.close()
+
+
+@pytest.mark.skipif(
+    not _HAS_SSE_BRIDGE,
+    reason="FEAT-3323: SseBridge/serve_sse_bridge/BridgeEventsConfig not implemented yet",
+)
+class TestPageHtmlFactoryFallback:
+    def test_raising_factory_falls_back_to_placeholder_and_keeps_serving(
+        self, short_tmp_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A page_html_factory failure must never take down the bridge (FEAT-3321)."""
+        import little_loops.transport as transport_mod
+        from little_loops.transport import _SSE_BRIDGE_PAGE_HTML  # type: ignore[attr-defined]
+
+        real_bridge = SseBridge(_make_config(), port=0, base=short_tmp_path, loops_dir=tmp_path)
+        monkeypatch.setattr(transport_mod, "SseBridge", lambda *a, **kw: real_bridge)
+
+        def factory(bridge: SseBridge) -> str:
+            raise ValueError("boom")
+
+        result: dict[str, int] = {}
+
+        def run() -> None:
+            result["code"] = transport_mod.serve_sse_bridge(
+                _make_config(), port=0, page_html_factory=factory
+            )
+
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        try:
+            _wait_until(lambda: real_bridge._serve_thread.is_alive())
+            time.sleep(0.2)  # let the (synchronous) factory call in serve_sse_bridge run
+            token = _bridge_token(real_bridge)
+            status, body = _lb_http_request(_bridge_port(real_bridge), "GET", f"/{token}/")
+            assert status == 200
+            assert body.decode("utf-8") == _SSE_BRIDGE_PAGE_HTML
+
+            sock = _sse_connect(_bridge_port(real_bridge), token)
+            try:
+                _read_sse_headers(sock)  # SSE stream still routes; would hang/error if dead
+            finally:
+                sock.close()
+        finally:
+            real_bridge.close()
+            t.join(timeout=5.0)
+        assert result.get("code") == 0
+
+
+@pytest.mark.skipif(
+    not _HAS_SERVE_CLI,
+    reason="FEAT-3323: cli/artifact/serve.py (cmd_serve) not implemented yet",
+)
+class TestCmdServeHistoryGate:
+    def test_history_disabled_by_default_passes_no_routes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr("pathlib.Path.cwd", lambda: tmp_path)
+        with mock.patch("little_loops.transport.serve_sse_bridge", return_value=0) as spy:
+            code = cmd_serve(argparse.Namespace(port=None), Logger(use_color=False))  # type: ignore[name-defined]
+        assert code == 0
+        spy.assert_called_once()
+        assert spy.call_args.kwargs["routes"] is None
+        assert spy.call_args.kwargs["page_html_factory"] is None
+
+    def test_history_enabled_passes_route_and_factory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"events": {"bridge": {"history": True}}}), encoding="utf-8"
+        )
+        monkeypatch.setattr("pathlib.Path.cwd", lambda: tmp_path)
+        with mock.patch("little_loops.transport.serve_sse_bridge", return_value=0) as spy:
+            code = cmd_serve(argparse.Namespace(port=None), Logger(use_color=False))  # type: ignore[name-defined]
+        assert code == 0
+        spy.assert_called_once()
+        assert spy.call_args.kwargs["routes"] is not None
+        assert "history" in spy.call_args.kwargs["routes"]
+        assert spy.call_args.kwargs["page_html_factory"] is not None

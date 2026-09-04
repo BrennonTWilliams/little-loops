@@ -30,10 +30,12 @@ from little_loops.artifact_templates import (
 )
 from little_loops.cli.artifact.dashboard import (
     RENDER_ROW_CAP,
+    HistoryPayload,
     RenderedDashboard,
     ServeContext,
     _packaged_path,
     build_dashboard_html,
+    build_history_payload,
     cmd_dashboard,
     parse_since,
     render_live_fragment,
@@ -608,6 +610,8 @@ class TestTemplatePipeline:
         assert set(re.findall(r"\[\[%\s*(.*?)\s*%\]\]", body)) == {
             "if schema_version_warning",
             "if serve_enabled",
+            "if serve_history_enabled",
+            "if serve_interaction_enabled",
             "endif",
         }
         assert "[[#" not in body
@@ -916,6 +920,191 @@ class TestServeModeBuildDashboardHtml:
             first = build_dashboard_html(**kwargs)
             second = build_dashboard_html(**kwargs)
         assert first.html == second.html
+
+
+# ---------------------------------------------------------------------------
+# FEAT-3321: build_history_payload / HistoryPayload / ServeContext relaxation
+# ---------------------------------------------------------------------------
+
+
+class TestBuildHistoryPayload:
+    def test_shareable_mode_redacts_columns(self, project: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        config = BRConfig(project)
+        payload = build_history_payload(
+            db_path=project / ".ll" / "history.db",
+            config=config,
+            tables=list(_SHAREABLE_EXPORT_TYPES),
+            since_iso=None,
+            mode="shareable",
+        )
+        assert isinstance(payload, HistoryPayload)
+        dest = project / "recovered-shareable.db"
+        dest.write_bytes(gzip.decompress(base64.b64decode(payload.snapshot_gzip_b64)))
+        conn = sqlite3.connect(dest)
+        columns = _table_columns(conn, "loop_runs")
+        assert "error" not in columns
+        assert "diagnostics_path" not in columns
+
+    def test_local_mode_keeps_all_columns(self, project: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        config = BRConfig(project)
+        payload = build_history_payload(
+            db_path=project / ".ll" / "history.db",
+            config=config,
+            tables=list(_SHAREABLE_EXPORT_TYPES),
+            since_iso=None,
+            mode="local",
+        )
+        dest = project / "recovered-local.db"
+        dest.write_bytes(gzip.decompress(base64.b64decode(payload.snapshot_gzip_b64)))
+        conn = sqlite3.connect(dest)
+        columns = _table_columns(conn, "loop_runs")
+        assert "error" in columns
+        assert "diagnostics_path" in columns
+
+    def test_allow_missing_true_returns_empty_payload_without_creating_file(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.config.core import BRConfig
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        config = BRConfig(tmp_path)
+        db_path = tmp_path / ".ll" / "history.db"
+        payload = build_history_payload(
+            db_path=db_path,
+            config=config,
+            tables=list(_SHAREABLE_EXPORT_TYPES),
+            since_iso=None,
+            mode="shareable",
+            allow_missing=True,
+        )
+        assert payload.source_version is None
+        assert not db_path.exists()
+
+    def test_allow_missing_false_raises_on_missing_db(self, tmp_path: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        config = BRConfig(tmp_path)
+        with pytest.raises(ValueError, match="history database not found"):
+            build_history_payload(
+                db_path=tmp_path / ".ll" / "history.db",
+                config=config,
+                tables=list(_SHAREABLE_EXPORT_TYPES),
+                since_iso=None,
+                mode="shareable",
+                allow_missing=False,
+            )
+
+    def test_oversize_raises_value_error(self, project: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        _set_export_config(project, max_artifact_bytes=1)
+        config = BRConfig(project)
+        with pytest.raises(ValueError, match="max_artifact_bytes"):
+            build_history_payload(
+                db_path=project / ".ll" / "history.db",
+                config=config,
+                tables=list(_SHAREABLE_EXPORT_TYPES),
+                since_iso=None,
+                mode="shareable",
+            )
+
+    def test_to_dict_renames_source_version_key(self) -> None:
+        payload = HistoryPayload(
+            snapshot_gzip_b64="abc",
+            source_version="12",
+            exported_at="2026-09-03T00:00:00Z",
+            export_mode="shareable",
+            filter_tables=["loop_run"],
+        )
+        body = payload.to_dict()
+        assert body["source_schema_version"] == "12"
+        assert "source_version" not in body
+        assert body["snapshot_gzip_b64"] == "abc"
+
+
+class TestServeContextRelaxation:
+    def test_defaults(self) -> None:
+        ctx = ServeContext(events_url="http://x/events")
+        assert ctx.interaction_url is None
+        assert ctx.history_url is None
+        assert ctx.history_poll_s == 5
+
+    def test_history_only_page_omits_interaction_markup_and_wires_history_timer(
+        self, project: Path
+    ) -> None:
+        from little_loops.config.core import BRConfig
+
+        config = BRConfig(project)
+        result = build_dashboard_html(
+            db_path=project / ".ll" / "history.db",
+            config=config,
+            tables=list(_SHAREABLE_EXPORT_TYPES),
+            since_iso=None,
+            mode="shareable",
+            serve_context=ServeContext(
+                events_url="http://127.0.0.1:9/tok/events",
+                interaction_url=None,
+                history_url="http://127.0.0.1:9/tok/history",
+            ),
+        )
+        assert "hx-sse:connect" in result.html
+        assert "ll-interaction-send" not in result.html
+        assert "refreshHistory" in result.html
+        assert "http://127.0.0.1:9/tok/history" in result.html
+        # Guardrail: the refresh must go through instantiate() (PRAGMA
+        # query_only + "Reset snapshot" pointing at the latest snapshot), not
+        # a second direct `new SQL.Database(...)` assignment to `db`.
+        timer_body = result.html.split("function refreshHistory()")[1].split("})();")[0]
+        assert "instantiate();" in timer_body
+        assert "buildViews();" in timer_body
+        assert "new SQL.Database" not in timer_body
+        assert result.html.count("new SQL.Database(snapshotBytes)") == 1
+
+    def test_serve_history_url_js_uses_json_dumps_not_html_escape(self, project: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        config = BRConfig(project)
+        result = build_dashboard_html(
+            db_path=project / ".ll" / "history.db",
+            config=config,
+            tables=list(_SHAREABLE_EXPORT_TYPES),
+            since_iso=None,
+            mode="shareable",
+            serve_context=ServeContext(
+                events_url="http://127.0.0.1:9/tok/events",
+                interaction_url=None,
+                history_url="http://127.0.0.1:9/tok/history?a=1&b='x'",
+            ),
+        )
+        assert "&amp;" not in result.html.split("refreshHistory")[1][:400]
+        assert json.dumps("http://127.0.0.1:9/tok/history?a=1&b='x'") in result.html
+
+    def test_default_file_url_path_renders_with_no_serve_context_and_no_strict_undefined_error(
+        self, project: Path
+    ) -> None:
+        """Regression: serve_history_enabled is read outside `serve_enabled`'s
+        Jinja block, so it must be stamped even when serve_context is None —
+        otherwise StrictUndefined raises on the file:// export path."""
+        from little_loops.config.core import BRConfig
+
+        config = BRConfig(project)
+        result = build_dashboard_html(
+            db_path=project / ".ll" / "history.db",
+            config=config,
+            tables=list(_SHAREABLE_EXPORT_TYPES),
+            since_iso=None,
+            mode="shareable",
+            serve_context=None,
+        )
+        assert "refreshHistory" not in result.html
+        assert "ll-interaction-send" not in result.html
 
 
 class TestRenderLiveFragment:

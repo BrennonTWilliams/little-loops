@@ -1727,6 +1727,11 @@
               "type": "number",
               "default": 2,
               "description": "Interval, in seconds, at which the bridge rescans the producer socket directory for new/dead sockets. Also the base of the per-path connect-then-immediate-EOF backoff (doubles per consecutive flap, capped at 60s)."
+            },
+            "history": {
+              "type": "boolean",
+              "default": false,
+              "description": "Gate for FEAT-3321's read-only GET /{token}/history route, plus the dashboard.llat page served in place of the FEAT-3323 placeholder. Off by default; the route follows artifacts.export.mode (no separate --local flag)."
             }
           },
           "additionalProperties": false
