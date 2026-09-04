@@ -18,6 +18,10 @@ Provides:
   ``.ll/history.db`` embedded gzip+base64 into a single HTML file alongside
   an inlined ``sql.js``, so the page runs arbitrary read-only SQL over
   ``file://`` with no network access.
+- ``serve`` (FEAT-3323): a long-lived, loopback-only HTTP/SSE bridge that
+  fans in every live ``UnixSocketTransport`` producer socket in the project
+  and relays bus events to a browser in real time — the live-consumption
+  analogue of ``dashboard``'s frozen-at-export snapshot.
 
 One module per subcommand (``policy_builder.py``, ``design_md.py``,
 ``render.py``, ``status.py``), following the ``cli/issues/`` / ``cli/loop/``
@@ -43,6 +47,7 @@ from little_loops.cli.artifact.extract import (
 )
 from little_loops.cli.artifact.policy_builder import cmd_policy_builder
 from little_loops.cli.artifact.render import add_render_parser, cmd_render
+from little_loops.cli.artifact.serve import add_serve_parser, cmd_serve
 from little_loops.cli.artifact.status import add_status_parser, cmd_status
 from little_loops.cli.artifact.templatize import add_templatize_parser, cmd_templatize
 from little_loops.cli.output import configure_output, use_color_enabled
@@ -59,6 +64,7 @@ __all__ = [
     "cmd_refresh",
     "cmd_status",
     "cmd_dashboard",
+    "cmd_serve",
     "_themed_css_vars",
 ]
 
@@ -96,6 +102,8 @@ Examples:
   %(prog)s dashboard --since 2026-07-26          # queryable history.db snapshot, shareable mode
   %(prog)s dashboard --tables loop_run --since 2026-07-26 -o build/
   %(prog)s dashboard --local --since 2026-08-01   # unredacted, personal use — stamped "local"
+  %(prog)s serve                                  # live SSE bridge on events.bridge.port (8766)
+  %(prog)s serve --port 9000                      # override the bound port
 
 Exit codes:
   0 - Artifact generated successfully
@@ -117,6 +125,12 @@ Status exit codes (ll-artifact status):
   0 - every reported (template, source) pair is FRESH (an empty report is vacuously FRESH)
   1 - any pair is STALE/SOURCE-MISSING/OUTPUT-MISSING/NO-LOCK, an unresolvable <template>, or a
       malformed lockfile
+
+Serve exit codes (ll-artifact serve):
+  0 - clean shutdown on Ctrl-C
+  1 - the bound port is already in use (another ll-artifact serve?), or AF_UNIX is
+      unavailable on this platform (e.g. Windows)
+  2 - argparse usage error (inherited)
 """,
         )
         subparsers = parser.add_subparsers(dest="command", required=True)
@@ -172,6 +186,7 @@ Status exit codes (ll-artifact status):
         add_refresh_parser(subparsers)
         add_status_parser(subparsers)
         add_dashboard_parser(subparsers)
+        add_serve_parser(subparsers)
 
         args = parser.parse_args()
 
@@ -194,5 +209,7 @@ Status exit codes (ll-artifact status):
             return cmd_status(args, logger)
         if args.command == "dashboard":
             return cmd_dashboard(args, logger)
+        if args.command == "serve":
+            return cmd_serve(args, logger)
         parser.error(f"unknown command: {args.command}")
         return 1

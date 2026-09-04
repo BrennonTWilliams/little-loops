@@ -4685,7 +4685,7 @@ python -m pytest tests/   # Run starter tests
 
 ### ll-artifact
 
-Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document. `render` (FEAT-3036 Phase 1) deterministically stamps a user-authored `.llat/` artifact template against a `data.json`, with zero LLM cost per render. `templatize` (FEAT-3314 Phase A) turns a generated artifact back into a reusable `.llat/` template via a hand-written region map, with a byte-exact round-trip guarantee. `extract` (FEAT-3310 Phase 2) derives `data.json` from a source document via one LLM call, schema-checked; `refresh` composes `extract` + `render` against a template's bound source and records the render in `<template>.llat.lock`.
+Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document. `render` (FEAT-3036 Phase 1) deterministically stamps a user-authored `.llat/` artifact template against a `data.json`, with zero LLM cost per render. `templatize` (FEAT-3314 Phase A) turns a generated artifact back into a reusable `.llat/` template via a hand-written region map, with a byte-exact round-trip guarantee. `extract` (FEAT-3310 Phase 2) derives `data.json` from a source document via one LLM call, schema-checked; `refresh` composes `extract` + `render` against a template's bound source and records the render in `<template>.llat.lock`. `serve` (FEAT-3323) is the odd one out — it doesn't write a file at all, but starts a long-lived localhost SSE bridge streaming live EventBus events, the live-consumption analogue of `dashboard`'s frozen-at-export snapshot.
 
 **Subcommands:**
 
@@ -4699,6 +4699,7 @@ Generate self-contained, human-facing artifacts from project data. `policy-build
 | `refresh` | `extract` + `render` composed against a template's bound source, recording `<template>.llat.lock` |
 | `status` | Lockfile staleness detection: FRESH/STALE/SOURCE-MISSING/OUTPUT-MISSING/NO-LOCK per `(template, source)` pair |
 | `dashboard` | Export a filtered, redacted `.ll/history.db` snapshot into a single self-contained HTML page that runs read-only SQL client-side via an inlined `sql.js` |
+| `serve` | Serve live EventBus events over a localhost SSE bridge that fans in every `UnixSocketTransport` producer socket in the project |
 
 **Exit codes:** `0` = artifact generated successfully, `1` = error (see `templatize` below for its distinct `2`, and `status` / `dashboard` below for their own exit-code rules)
 
@@ -4808,6 +4809,60 @@ ll-artifact dashboard --local --since 2026-08-01               # unredacted, per
 ```
 
 **Exit codes:** `0` = `history-dashboard.html` written, `1` = the raw snapshot or the final rendered HTML exceeded `artifacts.export.max_artifact_bytes` (default `8000000` — both messages name the measured size, the limit, and `--since` as the remedy, and **no file is written**), a `--tables` selection that would widen the ENH-075 allowlist in `shareable` mode, an unknown export type, an unparseable `--since`, a missing history database, or `-o` naming an existing file.
+
+#### ll-artifact serve
+
+FEAT-3323. The live-consumption analogue of `dashboard`'s frozen-at-export
+snapshot: a long-lived, loopback-only HTTP/SSE bridge that fans in every
+live `UnixSocketTransport` producer socket in the project (the configured
+`events.socket.path` plus its BUG-3324 pid-suffixed siblings) and relays bus
+events to a browser in real time, with no polling and no page reload. See
+[ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md) — the served page is
+declared **Level 1 (notify)**: display-only, no interaction routes back to
+any FSM executor.
+
+`ll-artifact serve` claims `events.bridge` (sibling to `events.socket`) and
+serves `GET /{token}/` (the minimal page) and `GET /{token}/events` (the SSE
+stream) under a per-start unguessable token prefix. It binds `127.0.0.1`
+only; a request with a non-loopback `Host` header gets `403`, a wrong or
+missing token gets `404`, and no `Access-Control-Allow-Origin` header is
+ever sent. Concurrent SSE clients are capped at `events.bridge.max_clients`
+(default `8`); a connection over the cap gets `503` without disturbing
+existing clients. See
+[CONFIGURATION.md § `events.bridge`](CONFIGURATION.md#eventsbridge) for the
+full key table, the no-redaction decision and its revisit trigger, the
+no-replay reconnect contract, and the seed-then-live duplicate-not-loss
+contract.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--port <N>` | TCP port to bind (default: `events.bridge.port`, `8766`) |
+
+**Examples:**
+```bash
+ll-artifact serve                # live SSE bridge on events.bridge.port (8766)
+ll-artifact serve --port 9000    # override the bound port
+```
+
+**Producer attribution:** every relayed live event carries `producer_pid`
+(the emitting process's `os.getpid()`, stamped by `UnixSocketTransport.send()`
+on a copy of the event — see
+[EVENT-SCHEMA.md § Wire Format](EVENT-SCHEMA.md#wire-format)), so a browser
+tab watching two concurrent producers (e.g. an `ll-loop run` and an
+`ll-sprint run`) can tell their events apart. An SSE client connecting
+mid-run receives bridge-built `state_change` seed frames — one per entry in
+`.loops/.running/` — before live traffic, on every connect including
+reconnects.
+
+**Exit codes:** `0` = clean shutdown on Ctrl-C; `1` = the bound port is
+already in use (prints one line naming the port and `--port`, no traceback)
+or `AF_UNIX` is unavailable on this platform (e.g. Windows); `2` = argparse
+usage error (inherited). With `"socket"` absent from `events.transports`, or
+no producer socket present yet, `ll-artifact serve` prints a plain one-line
+notice and **keeps serving** rather than presenting an empty stream as
+success — a producer may start later.
 
 #### ll-artifact templatize
 

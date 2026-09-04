@@ -104,6 +104,15 @@ class TestSchemaDefinitions:
         for field in ("seq", "pending", "active", "completed", "failed", "skipped"):
             assert field in schema["required"]
 
+    def test_producer_pid_in_every_schema_and_never_required(self) -> None:
+        """FEAT-3323: producer_pid is a _BASE_PROPS entry — present everywhere, optional."""
+        for event_type, schema in SCHEMA_DEFINITIONS.items():
+            assert "producer_pid" in schema["properties"], f"{event_type} missing producer_pid"
+            assert schema["properties"]["producer_pid"]["type"] == "integer"
+            assert "producer_pid" not in schema["required"], (
+                f"{event_type} must not require producer_pid"
+            )
+
 
 class TestGenerateSchemas:
     """Tests for generate_schemas() output."""

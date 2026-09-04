@@ -41,6 +41,16 @@ _BASE_PROPS: dict[str, Any] = {
             "Not required for the same reason as run_id."
         ),
     },
+    "producer_pid": {
+        "type": "integer",
+        "description": (
+            "FEAT-3323: the emitting process's own os.getpid(), stamped onto a copy of "
+            "every event by UnixSocketTransport.send() (never mutating the caller's dict). "
+            "Absent — never null — on a bridge-built state_change seed frame whose "
+            "LoopState recorded no pid; when present on a seed frame it equals that "
+            "frame's own pid key. Optional everywhere else."
+        ),
+    },
 }
 
 _BASE_REQUIRED = ["event", "ts"]

@@ -1704,6 +1704,79 @@ The session store is a SQLite database with an FTS5 full-text index. `SQLiteTran
 }
 ```
 
+### `events.bridge`
+
+FEAT-3323. Configuration for `ll-artifact serve` — a localhost HTTP/SSE
+bridge that fans in every `UnixSocketTransport` producer socket in the
+project and relays bus events to a browser in real time. Unlike
+`events.socket`/`events.otel`/`events.webhook`/`events.sqlite`, this block
+gates a **server**, not a transport: there is no `_TRANSPORT_REGISTRY` entry
+and no `wire_transports` branch for `"bridge"`, and listing it under
+`events.transports` has no effect. The user opts in by running
+`ll-artifact serve` directly.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `events.bridge.port` | `integer` | `8766` | TCP port on `127.0.0.1` to bind. Fixed (not `0`/ephemeral) so the printed URL is stable across restarts, adjacent to `ll-mcp`'s `8765`; `0` is the test path. `--port` overrides. |
+| `events.bridge.max_clients` | `integer` | `8` | Maximum concurrent SSE client connections. Each holds a thread for the connection's life; a connection over the cap gets `503`. |
+| `events.bridge.keepalive_s` | `number` | `15` | Interval, in seconds, between SSE keepalive comment frames (`: ping`) on a quiet bus. Also sets the per-connection write timeout (`2 × keepalive_s`) that reclaims a handler thread pinned by a peer that is alive but not reading. |
+| `events.bridge.rescan_s` | `number` | `2` | Interval, in seconds, at which the bridge rescans the producer socket directory for new/dead sockets. Also the base of the per-path connect-then-immediate-EOF backoff (doubles per consecutive flap, capped at 60s). |
+
+There is **no `enabled` key and no `host` key**. A config flag that refuses
+an explicit command (`enabled`) is bad UX with no precedent (`ll-loop run
+--serve` and `ll-mcp` have none); the server binds `127.0.0.1`
+unconditionally (`host`), matching `LocalBridgeTransport`.
+
+```json
+{
+  "events": {
+    "bridge": {
+      "port": 8766,
+      "max_clients": 8,
+      "keepalive_s": 15,
+      "rescan_s": 2
+    }
+  }
+}
+```
+
+**No redaction on the live path.** ENH-075's column allowlist is applied at
+*export* time in `cli/artifact/dashboard.py`; there is no equivalent
+redaction on the bus, and `ll-artifact serve` does not add one. This is safe
+because the stream is the user's own project data, the listener is
+loopback-only, the `Host` header guard blocks DNS rebinding, a per-start
+unguessable token prefix blocks blind requests, no
+`Access-Control-Allow-Origin` header is sent, and the capability is opt-in
+twice: `events.transports` is `[]` by default and the user must explicitly
+start `ll-artifact serve`. **Revisit trigger:** any change that makes the
+endpoint reachable off-host, or any multi-user access, must re-open this
+decision.
+
+**No-replay reconnect contract.** The bridge sends `retry: 2000` (2s) once at
+stream open and never emits an SSE `id:` line — there is no durable buffer to
+replay from, and pretending otherwise would silently lie about completeness.
+A reconnect re-seeds (below) and resumes live; events emitted during the gap
+between disconnect and reconnect are lost by design.
+
+**Seed-then-live may duplicate, never lose.** On every SSE connect (including
+reconnects), the bridge registers the client's queue in the fan-out set
+*first*, then snapshots `list_running_loops(Path(".loops"))` and writes one
+`state_change` frame per state directly to the wire, and only then starts
+draining the queue. A live event emitted while the seed snapshot is being
+taken is therefore already waiting in the queue rather than dropped — the
+cost is a possible **duplicate**, never a loss: a `state_enter` queued during
+the snapshot may describe a transition the seed frame already reflects, so a
+client can see the seed at state B and then a live `state_enter` for B.
+Consumers must treat seed frames as idempotent snapshots, not a bug report.
+
+**Seed scope: FSM loops only.** `ll-sprint run` and `ll-parallel` producers
+write no state files, so a mid-run SSE connect gets no seed for them —
+matching today's socket seed. `list_running_loops` also runs
+`_reconcile_stale_running` on its read path (BUG-3232), which can rewrite a
+stale `running` state file to `interrupted`; the bridge process therefore
+writes into `.loops/.running/` on every SSE connect, the same side effect
+every producer's socket-connect seed already has.
+
 See [API Reference → little_loops.transport](API.md#little_loopstransport) for the `Transport` Protocol and how to author custom transports.
 
 ---

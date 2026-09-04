@@ -40,12 +40,20 @@ import logging
 import os
 import secrets
 import socket
+import sys
 import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
 from queue import Empty, Full, Queue
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+# FEAT-3323: module-level (not lazy, unlike _make_seed_callback's own import of
+# the same function) so the seed-to-live race test can
+# mock.patch.object(little_loops.transport, "list_running_loops", ...) — a
+# patch target that only exists as a module-level binding. Probed clean against
+# the package init, fsm.persistence, cli.loop, and cli.artifact (no cycle).
+from little_loops.fsm.persistence import list_running_loops
 
 if TYPE_CHECKING:
     from little_loops.config.features import EventsConfig
@@ -75,6 +83,13 @@ _LOCAL_BRIDGE_DEFAULT_PAGE_HTML = (
     '<!doctype html><html><head><meta charset="utf-8"></head>'
     "<body><p>LocalBridgeTransport: no page_html supplied.</p></body></html>"
 )
+
+# FEAT-3323: SseBridge (ll-artifact serve) constants.
+_SSE_BRIDGE_CLOSE_TIMEOUT = 10.0
+_SSE_BRIDGE_THREAD_JOIN_TIMEOUT = 2.0
+_PRODUCER_READ_POLL_TIMEOUT = 0.5
+_FANIN_CONNECT_TIMEOUT = 0.2
+_FANIN_MAX_BACKOFF_S = 60.0
 
 
 @runtime_checkable
@@ -302,7 +317,13 @@ class UnixSocketTransport:
             conn.setblocking(True)
 
     def send(self, event: dict[str, Any]) -> None:
-        payload = (json.dumps(event) + "\n").encode("utf-8")
+        # FEAT-3323: stamp producer_pid onto a *copy* of event, never the
+        # caller's own dict — EventBus.emit() passes the same mutable dict to
+        # every registered transport, and a mutating stamp here would leak
+        # producer_pid into JsonlTransport/SQLiteTransport/OTelTransport/
+        # WebhookTransport whenever "socket" is listed alongside them.
+        stamped = {**event, "producer_pid": os.getpid()}
+        payload = (json.dumps(stamped) + "\n").encode("utf-8")
         with self._clients_lock:
             snapshot = list(self._clients)
         for client in snapshot:
@@ -438,6 +459,167 @@ def _sse_encode(text: str) -> bytes:
     return frame.encode("utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Shared HTTP/SSE handler helpers (FEAT-3323)
+#
+# Extracted from `_make_local_bridge_handler`'s closure so `SseBridge`
+# (`_make_sse_bridge_handler`, below) can reuse the Host check, the SSE write
+# loop, and per-client drop accounting without depending on a
+# `LocalBridgeTransport` instance — that would make the bridge an `EventBus`
+# transport, contradicting § Proposed Solution (FEAT-3323 is an out-of-process
+# consumer, not a sixth transport). `TestLocalBridgeTransport` pins this
+# refactor: it must stay green unmodified.
+# ---------------------------------------------------------------------------
+
+
+def _expected_hosts(port: int) -> set[str]:
+    """The two `Host` header values a loopback-bound server at `port` accepts.
+
+    `::1` is deliberately absent: both bridges bind IPv4 loopback only, so a
+    `Host: [::1]:<port>` request cannot legitimately arrive.
+    """
+    return {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+
+def _record_sse_client_drop(client: _SSEClient, log_prefix: str) -> None:
+    """Rate-limited drop-count bookkeeping for a per-SSE-client bounded queue.
+
+    Shared by `LocalBridgeTransport` (ENH-3351) and `SseBridge` (FEAT-3323);
+    `log_prefix` names the calling class so log lines stay attributable —
+    text is otherwise identical to the pre-extraction per-class methods.
+    """
+    client.dropped_total += 1
+    client.dropped_since_log += 1
+    now = time.monotonic()
+    if not client.first_drop_logged:
+        logger.warning(
+            "%s: dropping events for slow SSE client (queue full at %d)",
+            log_prefix,
+            _CLIENT_QUEUE_MAXSIZE,
+        )
+        client.first_drop_logged = True
+        client.last_drop_log_ts = now
+        client.dropped_since_log = 0
+        return
+    if now - client.last_drop_log_ts >= _DROP_LOG_INTERVAL_SEC:
+        logger.warning(
+            "%s: dropped %d events for slow SSE client",
+            log_prefix,
+            client.dropped_since_log,
+        )
+        client.last_drop_log_ts = now
+        client.dropped_since_log = 0
+
+
+def _serve_sse_stream(
+    handler: http.server.BaseHTTPRequestHandler,
+    clients: list[_SSEClient],
+    clients_lock: threading.Lock,
+    *,
+    closed: Callable[[], bool],
+    max_clients: int | None = None,
+    keepalive_s: float | None = None,
+    send_retry: bool = False,
+    seed: Callable[[], list[bytes]] | None = None,
+) -> None:
+    """Register `handler` as an SSE client, stream frames, then deregister.
+
+    Generalizes `_make_local_bridge_handler`'s original `_serve_events`
+    (ENH-3351) with optional client cap / keepalive / `retry:` / seed
+    parameters, all defaulting to off so `LocalBridgeTransport`'s existing
+    behavior (no cap, no keepalive, no retry line, no seed) is unchanged.
+
+    - `max_clients`: when given and already reached, responds `503` and
+      returns *without* registering a client or writing stream headers.
+    - `keepalive_s`: when given, writes an SSE comment frame (`: ping\\n\\n`)
+      whenever the queue has been idle for this long.
+    - `send_retry`: when True, a `retry: 2000` line (2s; no `id:` line is ever
+      sent — there is no durable buffer to replay) is merged onto the first
+      block actually written to the wire — a seed frame, a live frame, or a
+      keepalive ping, whichever comes first — as an extra line inside that
+      same blank-line-terminated SSE block, rather than sent as its own
+      field-less block. This keeps a client that reads "one blank-line-
+      terminated block = one frame" correct even when the very next real
+      content is unknown at stream-open time (an empty seed, then a wait for
+      the first live event).
+    - `seed`: when given, called once — after the client is registered in
+      `clients` (so a concurrently-relayed live event is already queued
+      rather than lost) but before the queue is drained — and its returned
+      frames are written directly to the wire.
+    """
+    if max_clients is not None:
+        with clients_lock:
+            if len(clients) >= max_clients:
+                handler.send_error(503, "Too many SSE clients")
+                return
+
+    client = _SSEClient()
+    client.thread = threading.current_thread()
+    with clients_lock:
+        clients.append(client)
+    pending_prefix = b"retry: 2000\n" if send_retry else b""
+    try:
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header("Cache-Control", "no-cache")
+        handler.end_headers()
+        if seed is not None:
+            frames = seed()
+            if frames:
+                try:
+                    handler.wfile.write(pending_prefix + frames[0])
+                    for frame in frames[1:]:
+                        handler.wfile.write(frame)
+                    handler.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    return
+                pending_prefix = b""
+
+        next_keepalive = time.monotonic() + keepalive_s if keepalive_s else None
+        while True:
+            timeout = _CLIENT_QUEUE_POLL_TIMEOUT
+            if next_keepalive is not None:
+                timeout = min(timeout, max(0.0, next_keepalive - time.monotonic()))
+            try:
+                frame = client.queue.get(timeout=timeout)
+            except Empty:
+                if closed():
+                    return
+                if next_keepalive is not None and time.monotonic() >= next_keepalive:
+                    try:
+                        handler.wfile.write(pending_prefix + b": ping\n\n")
+                        handler.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError, OSError):
+                        return
+                    pending_prefix = b""
+                    assert keepalive_s is not None  # narrowed by next_keepalive is not None above
+                    next_keepalive = time.monotonic() + keepalive_s
+                continue
+            if frame is _SHUTDOWN:
+                # A never-consumed pending_prefix (retry: 2000, merged onto
+                # whatever real content arrives first) is simply dropped here
+                # rather than written alone: a bare "retry: 2000\n" with no
+                # blank-line terminator is neither a complete SSE frame nor
+                # nothing, and a client tearing down expects the stream to
+                # just end.
+                return
+            try:
+                handler.wfile.write(pending_prefix + frame)
+                handler.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+            pending_prefix = b""
+    finally:
+        # This connection is a one-shot indefinite stream, never reused for a
+        # subsequent request — see the original comment this replaces at
+        # `_make_local_bridge_handler._serve_events` for why `close_connection`
+        # must be forced True here.
+        handler.close_connection = True
+        with clients_lock:
+            if client in clients:
+                clients.remove(client)
+
+
 def _make_local_bridge_handler(
     transport: LocalBridgeTransport,
 ) -> type[http.server.BaseHTTPRequestHandler]:
@@ -450,8 +632,7 @@ def _make_local_bridge_handler(
             logger.debug("LocalBridgeTransport: " + format, *args)
 
         def _expected_hosts(self) -> set[str]:
-            port = transport._server.server_address[1]
-            return {f"127.0.0.1:{port}", f"localhost:{port}"}
+            return _expected_hosts(transport._server.server_address[1])
 
         def _route(self) -> str | None:
             """Return the path suffix after `/{token}/`, or None if the prefix doesn't match."""
@@ -500,40 +681,12 @@ def _make_local_bridge_handler(
             self.wfile.write(body)
 
         def _serve_events(self) -> None:
-            client = _SSEClient()
-            client.thread = threading.current_thread()
-            with transport._clients_lock:
-                transport._clients.append(client)
-            try:
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Cache-Control", "no-cache")
-                self.end_headers()
-                while True:
-                    try:
-                        frame = client.queue.get(timeout=_CLIENT_QUEUE_POLL_TIMEOUT)
-                    except Empty:
-                        if transport._closed:
-                            return
-                        continue
-                    if frame is _SHUTDOWN:
-                        return
-                    try:
-                        self.wfile.write(frame)
-                        self.wfile.flush()
-                    except (BrokenPipeError, ConnectionResetError, OSError):
-                        return
-            finally:
-                # This connection is a one-shot indefinite stream, never reused
-                # for a subsequent request. Without this, BaseHTTPRequestHandler's
-                # send_header("Connection", ...) bookkeeping can leave
-                # close_connection False, and handle()'s keep-alive loop would
-                # block forever on the next readline() after this method
-                # returns — leaking the handler thread instead of exiting it.
-                self.close_connection = True
-                with transport._clients_lock:
-                    if client in transport._clients:
-                        transport._clients.remove(client)
+            _serve_sse_stream(
+                self,
+                transport._clients,
+                transport._clients_lock,
+                closed=lambda: transport._closed,
+            )
 
         def _handle_interaction(self) -> None:
             length_header = self.headers.get("Content-Length")
@@ -732,25 +885,7 @@ class LocalBridgeTransport:
         return _sse_encode(text)
 
     def _record_drop(self, client: _SSEClient) -> None:
-        client.dropped_total += 1
-        client.dropped_since_log += 1
-        now = time.monotonic()
-        if not client.first_drop_logged:
-            logger.warning(
-                "LocalBridgeTransport: dropping events for slow SSE client (queue full at %d)",
-                _CLIENT_QUEUE_MAXSIZE,
-            )
-            client.first_drop_logged = True
-            client.last_drop_log_ts = now
-            client.dropped_since_log = 0
-            return
-        if now - client.last_drop_log_ts >= _DROP_LOG_INTERVAL_SEC:
-            logger.warning(
-                "LocalBridgeTransport: dropped %d events for slow SSE client",
-                client.dropped_since_log,
-            )
-            client.last_drop_log_ts = now
-            client.dropped_since_log = 0
+        _record_sse_client_drop(client, "LocalBridgeTransport")
 
     def _record_inbound_drop(self, reason: str) -> None:
         self._inbound_drops_total += 1
@@ -769,6 +904,578 @@ class LocalBridgeTransport:
             )
             self._last_inbound_drop_log_ts = now
             self._inbound_drops_since_log = 0
+
+
+# ---------------------------------------------------------------------------
+# SseBridge (FEAT-3323): out-of-process localhost SSE consumer of
+# UnixSocketTransport. Not a Transport, never held by an EventBus — it
+# fans in every live producer socket in the project and relays the merged
+# stream to browser SSE clients. See the issue's § Program Design / § Server
+# mechanics / § Fan-in / § Seeding for the authoritative design.
+# ---------------------------------------------------------------------------
+
+_SSE_BRIDGE_PAGE_HTML = """<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>little-loops: live event stream</title>
+<style>
+  body { font-family: ui-monospace, Menlo, Consolas, monospace; margin: 1rem; }
+  .line { border-bottom: 1px solid #eee; padding: 2px 0; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>little-loops: live event stream</h1>
+<p id="status">connecting...</p>
+<div id="log"></div>
+<script>
+(function () {
+  var statusEl = document.getElementById("status");
+  var logEl = document.getElementById("log");
+  var sseUrl = location.pathname.replace(/\\/?$/, "/") + "events";
+  var source = new EventSource(sseUrl);
+  source.addEventListener("open", function () {
+    statusEl.textContent = "connected";
+  });
+  source.addEventListener("error", function () {
+    statusEl.textContent = "reconnecting...";
+  });
+  source.addEventListener("message", function (event) {
+    var line = document.createElement("div");
+    line.className = "line";
+    line.textContent = event.data;
+    logEl.appendChild(line);
+  });
+})();
+</script>
+</body>
+</html>"""
+
+
+class _ProducerReader:
+    """One per connected producer socket: the socket, its reader thread, and
+    the bookkeeping `_fan_in_producer_sockets` needs to detect death and the
+    connect-then-immediate-EOF backoff case (§ Fan-in → Backoff)."""
+
+    def __init__(self, path: Path, sock: socket.socket) -> None:
+        self.path = path
+        self.sock = sock
+        self.thread: threading.Thread | None = None
+        self.connected_at = time.monotonic()
+        self.forwarded_any = False
+
+
+class _FanInPathState:
+    """Per-path backoff bookkeeping for `_fan_in_producer_sockets` (§ Fan-in → Backoff)."""
+
+    __slots__ = ("interval", "next_attempt", "warned")
+
+    def __init__(self, interval: float) -> None:
+        self.interval = interval
+        self.next_attempt = 0.0
+        self.warned = False
+
+
+def _read_producer_socket(
+    sock: socket.socket,
+    out: Queue[bytes],
+    stop: threading.Event,
+    *,
+    on_forward: Callable[[], None] | None = None,
+    on_drop: Callable[[], None] | None = None,
+) -> None:
+    """Reader thread body for one connected producer socket (§ Fan-in).
+
+    Reads newline-delimited JSON lines, splits on ``\\n``, forwards each
+    complete line unchanged to the shared bounded queue `out` (drop-newest
+    when full, via `on_drop`) and keeps the trailing partial line for the
+    next `recv()`. `state_change` lines are filtered: that event exists only
+    as a producer's socket-connect seed (`_make_seed_callback`) — with N
+    producers the bridge would otherwise receive N unstamped copies of the
+    same seed set — and the bridge rebuilds its own seed per SSE client
+    instead (`_sse_bridge_seed_frames`). A line that fails to parse as JSON
+    is skipped with a warning. Returns (thread exit) on EOF or any socket
+    error; the caller detects this via `reader.thread.is_alive()` on its next
+    rescan.
+    """
+    sock.settimeout(_PRODUCER_READ_POLL_TIMEOUT)
+    buffer = b""
+    while not stop.is_set():
+        try:
+            chunk = sock.recv(4096)
+        except TimeoutError:
+            continue
+        except OSError:
+            return
+        if not chunk:
+            return
+        buffer += chunk
+        while b"\n" in buffer:
+            line, _, buffer = buffer.partition(b"\n")
+            if not line:
+                continue
+            try:
+                parsed = json.loads(line)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                logger.warning("SseBridge: skipping non-JSON line from a producer socket")
+                continue
+            if isinstance(parsed, dict) and parsed.get("event") == "state_change":
+                continue
+            try:
+                out.put_nowait(line + b"\n")
+            except Full:
+                if on_drop is not None:
+                    on_drop()
+                continue
+            if on_forward is not None:
+                on_forward()
+
+
+def _candidate_producer_paths(socket_path: Path) -> list[Path]:
+    """Every path the bridge should fan in from: `socket_path` and its BUG-3324 siblings.
+
+    ``{stem}{suffix}`` (the configured, un-suffixed path) union
+    ``{stem}-*{suffix}`` (pid-suffixed concurrent-producer siblings,
+    `_claim_socket_path`). Matched by exact filename comparison rather than
+    `Path.glob()` so a `stem` containing a glob-special character can't turn
+    this into an unintended wildcard.
+    """
+    directory = socket_path.parent
+    stem = socket_path.stem
+    suffix = socket_path.suffix
+    sibling_prefix = f"{stem}-"
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return []
+    candidates = [
+        p
+        for p in entries
+        if p.name == socket_path.name
+        or (p.name.startswith(sibling_prefix) and p.name.endswith(suffix))
+    ]
+    return sorted(candidates)
+
+
+def _fan_in_producer_sockets(
+    socket_path: Path,
+    out: Queue[bytes],
+    stop: threading.Event,
+    rescan_s: float = 2.0,
+    *,
+    readers: dict[Path, _ProducerReader] | None = None,
+    on_drop: Callable[[], None] | None = None,
+) -> None:
+    """Rescan loop: discover producer sockets, connect, and merge their events into `out`.
+
+    Runs until `stop` is set. Owns the `_ProducerReader` set (`readers`, keyed
+    by bound path — bridge-owned, so `SseBridge.close()` can reach every
+    producer client socket directly) and detects reader death via
+    `reader.thread.is_alive()` on each rescan.
+
+    Connect is the probe: a path already in `readers` is never re-probed
+    (that would consume one of the producer's `max_clients` slots and
+    re-trigger its `on_connect` seed). A stale file (`ECONNREFUSED` /
+    `ENOTSOCK`) is skipped and never unlinked — reclaiming a dead socket file
+    is the producer's job. A reader that dies within one `rescan_s` of
+    connecting without forwarding a single line marks its path "flapping"
+    (§ Fan-in → Backoff): the retry interval doubles each consecutive flap,
+    capped at 60s, logs once per path, and resets on the first forwarded
+    line.
+    """
+    readers = readers if readers is not None else {}
+    path_state: dict[Path, _FanInPathState] = {}
+    stale_logged: set[Path] = set()
+
+    while not stop.is_set():
+        now = time.monotonic()
+
+        # Reap dead readers and update backoff state.
+        for path in list(readers):
+            reader = readers[path]
+            if reader.thread is not None and reader.thread.is_alive():
+                continue
+            del readers[path]
+            try:
+                reader.sock.close()
+            except OSError:
+                pass
+            state = path_state.setdefault(path, _FanInPathState(rescan_s))
+            elapsed = now - reader.connected_at
+            if not reader.forwarded_any and elapsed < rescan_s:
+                state.interval = min(state.interval * 2, _FANIN_MAX_BACKOFF_S)
+                if not state.warned:
+                    logger.warning(
+                        "SseBridge: producer at %s closed the connection immediately; "
+                        "at max_clients?",
+                        path,
+                    )
+                    state.warned = True
+            else:
+                state.interval = rescan_s
+                state.warned = False
+            state.next_attempt = now + state.interval
+
+        # Discover and connect to new candidates.
+        for path in _candidate_producer_paths(socket_path):
+            if path in readers:
+                continue
+            existing_state = path_state.get(path)
+            if existing_state is not None and now < existing_state.next_attempt:
+                continue
+
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                probe.settimeout(_FANIN_CONNECT_TIMEOUT)
+                probe.connect(str(path))
+            except OSError as exc:
+                probe.close()
+                if exc.errno in (errno.ECONNREFUSED, errno.ENOTSOCK):
+                    if path not in stale_logged:
+                        logger.debug("SseBridge: stale socket file %s, skipping", path)
+                        stale_logged.add(path)
+                continue
+            stale_logged.discard(path)
+            probe.settimeout(None)
+
+            reader = _ProducerReader(path, probe)
+            reader.connected_at = now
+            readers[path] = reader
+
+            def _on_forward(reader: _ProducerReader = reader, path: Path = path) -> None:
+                if not reader.forwarded_any:
+                    reader.forwarded_any = True
+                    fwd_state = path_state.get(path)
+                    if fwd_state is not None:
+                        fwd_state.interval = rescan_s
+                        fwd_state.warned = False
+
+            reader.thread = threading.Thread(
+                target=_read_producer_socket,
+                args=(probe, out, stop),
+                kwargs={"on_forward": _on_forward, "on_drop": on_drop},
+                name="sse-bridge-producer-reader",
+                daemon=True,
+            )
+            reader.thread.start()
+
+        stop.wait(timeout=rescan_s)
+
+
+def _sse_bridge_seed_frames(loops_dir: Path) -> list[bytes]:
+    """One encoded `state_change` SSE frame per running-loop state file (§ Seeding).
+
+    Bridge-owned seeding: producers seed a client only once, at socket-connect
+    time, and the bridge is a long-lived socket client, so an SSE tab that
+    (re)connects would get nothing unless the bridge rebuilds the seed itself
+    from `list_running_loops` on every connect. `producer_pid` is set to
+    `state.pid` (the loop's owning process — the honest attribution, since the
+    bridge and not a producer emitted this frame) when that is not `None`,
+    and omitted — never `null` — otherwise, matching `LoopState.to_dict()`'s
+    own omission of an unset `pid`. `to_dict()` already emits `pid` when set,
+    so a seed frame carries both `pid` and `producer_pid` with the same value
+    — the redundancy is deliberate (one demux key on every frame).
+    """
+    frames: list[bytes] = []
+    for state in list_running_loops(loops_dir):
+        event: dict[str, Any] = {"event": "state_change", **state.to_dict()}
+        if state.pid is not None:
+            event["producer_pid"] = state.pid
+        frames.append(_sse_encode(json.dumps(event)))
+    return frames
+
+
+def _make_sse_bridge_handler(bridge: SseBridge) -> type[http.server.BaseHTTPRequestHandler]:
+    """Build a `BaseHTTPRequestHandler` subclass bound to `bridge` via closure.
+
+    Dispatches through `bridge._routes` (page `""`, SSE `"events"`, plus any
+    caller-supplied routes — the FEAT-3321 mount point) after the Host and
+    token checks, rather than hardcoding the two routes the way
+    `_make_local_bridge_handler` does.
+    """
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        server_version = "ll-sse-bridge/1.0"
+        # § Server mechanics → Write timeout: bounds how long a peer that is
+        # alive but not reading can pin this handler thread on a blocked
+        # wfile.write() — StreamRequestHandler.setup() applies this as
+        # settimeout() on the connection, so a wedged write raises
+        # TimeoutError (an OSError, already caught by the SSE write loop).
+        timeout = 2 * bridge._config.keepalive_s
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            logger.debug("SseBridge: " + format, *args)
+
+        def do_GET(self) -> None:  # noqa: N802
+            port = bridge._server.server_address[1]
+            if self.headers.get("Host") not in _expected_hosts(port):
+                self.send_error(403, "Forbidden host")
+                return
+            path = self.path.split("?", 1)[0]
+            prefix = f"/{bridge._token}"
+            if path == prefix:
+                # § Page → Trailing slash: a relative `./events` resolves to
+                # `/events` from the slash-less form and 404s.
+                self.send_response(301)
+                self.send_header("Location", prefix + "/")
+                self.end_headers()
+                return
+            if not path.startswith(prefix + "/"):
+                self.send_error(404, "Not found")
+                return
+            route = path[len(prefix) + 1 :]
+            handler_fn = bridge._routes.get(route)
+            if handler_fn is None:
+                self.send_error(404, "Not found")
+                return
+            handler_fn(self)
+
+    return _Handler
+
+
+class SseBridge:
+    """Out-of-process localhost SSE bridge over `UnixSocketTransport` (FEAT-3323).
+
+    Mirrors `LocalBridgeTransport`'s shape (constructor binds, `.url`,
+    `.close()`) so tests get a handle, but is **not** a `Transport` and is
+    never added to an `EventBus` — it is a client of every live producer
+    socket in the project, not a sixth transport. See the issue's
+    § Program Design for the full design; § Server mechanics / § Fan-in /
+    § Seeding for the mechanics this class composes.
+    """
+
+    def __init__(
+        self,
+        config: EventsConfig,
+        port: int | None = None,
+        *,
+        base: Path | None = None,
+        loops_dir: Path | None = None,
+        routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] | None = None,
+    ) -> None:
+        self._config = config.bridge
+        self._loops_dir = loops_dir if loops_dir is not None else Path(".loops")
+        self._token = secrets.token_urlsafe(16)
+        self._closed = False
+        self._stop = threading.Event()
+
+        self._clients: list[_SSEClient] = []
+        self._clients_lock = threading.Lock()
+
+        self._fanin_queue: Queue[bytes] = Queue(maxsize=_CLIENT_QUEUE_MAXSIZE)
+        self._producer_readers: dict[Path, _ProducerReader] = {}
+        self._fanin_dropped_total = 0
+        self._fanin_dropped_since_log = 0
+        self._fanin_last_drop_log_ts = 0.0
+        self._fanin_first_drop_logged = False
+
+        self._routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] = {
+            "": self._serve_page,
+            "events": self._serve_events,
+        }
+        if routes:
+            self._routes.update(routes)
+
+        bind_port = port if port is not None else self._config.port
+
+        # § Startup and shutdown → Bind before starting threads: construct the
+        # ThreadingHTTPServer (the bind) first. A bind failure (e.g. EADDRINUSE)
+        # then leaves nothing to clean up; starting the fan-in/relay threads
+        # first would leak a fan-in thread scanning the socket directory on
+        # every port-in-use failure.
+        handler_cls = _make_sse_bridge_handler(self)
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", bind_port), handler_cls)
+        self._server.daemon_threads = True
+
+        base_dir = base if base is not None else Path(".ll")
+        socket_path = _resolve_socket_path(config.socket.path, base_dir)
+
+        self._serve_thread = threading.Thread(
+            target=self._server.serve_forever,
+            name="sse-bridge-serve",
+            daemon=True,
+        )
+        self._fanin_thread = threading.Thread(
+            target=_fan_in_producer_sockets,
+            args=(socket_path, self._fanin_queue, self._stop, self._config.rescan_s),
+            kwargs={"readers": self._producer_readers, "on_drop": self._record_fanin_drop},
+            name="sse-bridge-fanin",
+            daemon=True,
+        )
+        self._relay_thread = threading.Thread(
+            target=self._relay_loop,
+            name="sse-bridge-relay",
+            daemon=True,
+        )
+        self._serve_thread.start()
+        self._fanin_thread.start()
+        self._relay_thread.start()
+
+    @property
+    def url(self) -> str:
+        port = self._server.server_address[1]
+        return f"http://127.0.0.1:{port}/{self._token}/"
+
+    def _serve_page(self, handler: http.server.BaseHTTPRequestHandler) -> None:
+        body = _SSE_BRIDGE_PAGE_HTML.encode("utf-8")
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/html; charset=utf-8")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+
+    def _serve_events(self, handler: http.server.BaseHTTPRequestHandler) -> None:
+        _serve_sse_stream(
+            handler,
+            self._clients,
+            self._clients_lock,
+            closed=lambda: self._closed,
+            max_clients=self._config.max_clients,
+            keepalive_s=self._config.keepalive_s,
+            send_retry=True,
+            seed=lambda: _sse_bridge_seed_frames(self._loops_dir),
+        )
+
+    def _relay_loop(self) -> None:
+        """Pop raw producer lines off the merged queue, SSE-encode, and fan out.
+
+        `_fan_in_producer_sockets`/`_read_producer_socket` forward each
+        producer line *unchanged* into `self._fanin_queue` (it is already the
+        serialized envelope, per § Fan-in → Reader loop); this is the one
+        place that wraps it as an SSE `data:` frame before it reaches any
+        per-client queue.
+        """
+        while not self._stop.is_set():
+            try:
+                payload = self._fanin_queue.get(timeout=_CLIENT_QUEUE_POLL_TIMEOUT)
+            except Empty:
+                continue
+            frame = _sse_encode(payload.decode("utf-8").rstrip("\n"))
+            with self._clients_lock:
+                snapshot = list(self._clients)
+            for client in snapshot:
+                try:
+                    client.queue.put_nowait(frame)
+                except Full:
+                    _record_sse_client_drop(client, "SseBridge")
+
+    def _record_fanin_drop(self) -> None:
+        """Rate-limited drop accounting for the merged fan-in queue (§ Fan-in → Shared queue)."""
+        self._fanin_dropped_total += 1
+        self._fanin_dropped_since_log += 1
+        now = time.monotonic()
+        if not self._fanin_first_drop_logged:
+            logger.warning(
+                "SseBridge: dropping fan-in events (merged queue full at %d)",
+                _CLIENT_QUEUE_MAXSIZE,
+            )
+            self._fanin_first_drop_logged = True
+            self._fanin_last_drop_log_ts = now
+            self._fanin_dropped_since_log = 0
+            return
+        if now - self._fanin_last_drop_log_ts >= _DROP_LOG_INTERVAL_SEC:
+            logger.warning(
+                "SseBridge: dropped %d fan-in events (merged queue full)",
+                self._fanin_dropped_since_log,
+            )
+            self._fanin_last_drop_log_ts = now
+            self._fanin_dropped_since_log = 0
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._stop.set()
+
+        # Close every producer client socket: each producer's _client_loop
+        # then retires the slot via _peer_closed (transport.py:274), and any
+        # reader thread blocked in recv() wakes immediately.
+        for reader in list(self._producer_readers.values()):
+            try:
+                reader.sock.close()
+            except OSError:
+                pass
+
+        with self._clients_lock:
+            snapshot = list(self._clients)
+        for client in snapshot:
+            try:
+                client.queue.put_nowait(_SHUTDOWN)
+            except Full:
+                pass
+
+        try:
+            self._server.shutdown()
+        except Exception:
+            pass
+        try:
+            self._server.server_close()
+        except Exception:
+            pass
+
+        deadline = time.monotonic() + _SSE_BRIDGE_CLOSE_TIMEOUT
+        for reader in list(self._producer_readers.values()):
+            t = reader.thread
+            if t is not None and t.is_alive():
+                budget = min(_SSE_BRIDGE_THREAD_JOIN_TIMEOUT, max(0.0, deadline - time.monotonic()))
+                t.join(timeout=budget)
+        for client in snapshot:
+            t = client.thread
+            if t is not None and t.is_alive():
+                budget = min(_SSE_BRIDGE_THREAD_JOIN_TIMEOUT, max(0.0, deadline - time.monotonic()))
+                t.join(timeout=budget)
+                if t.is_alive():
+                    logger.warning(
+                        "SseBridge: SSE handler thread did not exit within %.1fs", budget
+                    )
+        if self._fanin_thread.is_alive():
+            self._fanin_thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        if self._relay_thread.is_alive():
+            self._relay_thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        if self._serve_thread.is_alive():
+            self._serve_thread.join(timeout=max(0.0, deadline - time.monotonic()))
+
+
+def serve_sse_bridge(config: EventsConfig, port: int | None = None) -> int:
+    """Blocking CLI wrapper: construct `SseBridge`, print its URL, block until Ctrl-C.
+
+    `ll-artifact serve`'s `cmd_serve` calls this after resolving `--port` and
+    checking for an existing `events.transports`/producer-socket setup.
+    Binds `127.0.0.1` only (the `SseBridge` constructor's own default).
+    Returns `0` on a clean `KeyboardInterrupt` shutdown. A bind failure
+    (`OSError`, e.g. `EADDRINUSE`) or `AF_UNIX` unavailability propagates to
+    the caller, which translates it into the documented exit codes (§ Startup
+    and shutdown).
+
+    If `"socket"` is absent from `config.transports`, or no producer socket
+    is present yet, prints a plain one-line notice to stderr rather than
+    silently serving an empty stream as success — but keeps serving, since a
+    producer may start later (§ Considerations).
+    """
+    bridge = SseBridge(config, port=port)
+    print(bridge.url)
+    if "socket" not in config.transports:
+        print(
+            '"socket" is not in events.transports; no producer is reachable until a '
+            "run adds it. Serving anyway — a producer may start later.",
+            file=sys.stderr,
+        )
+    else:
+        resolved = _resolve_socket_path(config.socket.path, Path(".ll"))
+        if not _candidate_producer_paths(resolved):
+            print(
+                f"no producer socket found at {resolved} (or its BUG-3324 pid-suffixed "
+                "siblings); serving anyway — a producer may start later.",
+                file=sys.stderr,
+            )
+    try:
+        while bridge._serve_thread.is_alive():
+            bridge._serve_thread.join(timeout=0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        bridge.close()
+    return 0
 
 
 def _stat_id(path: Path) -> tuple[int, int]:

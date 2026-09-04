@@ -1297,6 +1297,34 @@ class SqliteEventsConfig:
 
 
 @dataclass
+class BridgeEventsConfig:
+    """SseBridge (`ll-artifact serve`, FEAT-3323) configuration.
+
+    Gates a server, not a transport: unlike `socket`/`otel`/`webhook`/`sqlite`,
+    there is no `_TRANSPORT_REGISTRY` entry and no `wire_transports` branch for
+    `bridge` — the user opts in by running `ll-artifact serve`, not by listing
+    a name in `events.transports`. No `enabled` key (a config flag that refuses
+    an explicit command is bad UX and has no precedent) and no `host` key (the
+    server binds `127.0.0.1` unconditionally, matching `LocalBridgeTransport`).
+    """
+
+    port: int = 8766
+    max_clients: int = 8
+    keepalive_s: float = 15.0
+    rescan_s: float = 2.0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BridgeEventsConfig:
+        """Create BridgeEventsConfig from dictionary."""
+        return cls(
+            port=data.get("port", 8766),
+            max_clients=data.get("max_clients", 8),
+            keepalive_s=data.get("keepalive_s", 15.0),
+            rescan_s=data.get("rescan_s", 2.0),
+        )
+
+
+@dataclass
 class EventsConfig:
     """Event transport configuration.
 
@@ -1310,6 +1338,7 @@ class EventsConfig:
     otel: OTelEventsConfig = field(default_factory=OTelEventsConfig)
     webhook: WebhookEventsConfig = field(default_factory=WebhookEventsConfig)
     sqlite: SqliteEventsConfig = field(default_factory=SqliteEventsConfig)
+    bridge: BridgeEventsConfig = field(default_factory=BridgeEventsConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EventsConfig:
@@ -1320,6 +1349,7 @@ class EventsConfig:
             otel=OTelEventsConfig.from_dict(data.get("otel", {})),
             webhook=WebhookEventsConfig.from_dict(data.get("webhook", {})),
             sqlite=SqliteEventsConfig.from_dict(data.get("sqlite", {})),
+            bridge=BridgeEventsConfig.from_dict(data.get("bridge", {})),
         )
 
 

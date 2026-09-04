@@ -28,6 +28,7 @@ All events are emitted as flat Python dicts and serialized to JSON:
 | `ts` | `str` | ISO 8601 timestamp, UTC |
 | `run_id` | `str` | Run-scoped identity, stable across a run (including pause/resume). Present on every event emitted through `FSMExecutor._emit()` (ENH-3345) and, additively, on every `parallel.*` event (ENH-3346) — **required** in the schema for the `parallel.*` namespace specifically; `issue.*` emitters don't yet stamp it. For FSM-path events, derived once per run from `started_at` + `loop` name (see below) — **cannot be split on `-`**: the date portion keeps its own `-` separators and loop names may themselves contain dashes, so consumers must group on the full string. **Known limitation:** two concurrent runs of the *same loop* started in the same second collide (the derivation truncates to second precision); this is an accepted limitation also present in `.history/<run_id>-<loop>` archive folder naming. `parallel.*`'s `run_id` is `ParallelOrchestrator.run_id` (a `uuid4().hex` by default), a distinct derivation from the FSM path's. |
 | `loop` | `str` | Loop name. Same presence/requiredness caveat as `run_id`. |
+| `producer_pid` | `int` | **FEAT-3323.** The emitting process's own `os.getpid()`, stamped onto a *copy* of every event by `UnixSocketTransport.send()` (never mutating the caller's dict, so other transports on the same bus never see this key). Always present on socket-relayed live frames. On a bridge-built `state_change` seed frame (see below) it is `LoopState.pid` instead — the loop's owning process, since the bridge and not a producer emitted that frame — and is **omitted, never `null`,** when the state recorded no pid. Not `pid` (already taken by `handoff_spawned`'s spawned-child pid and by `state_change`'s `LoopState.pid`) and not `run_id` (ENH-3346); never recovered from the socket filename. |
 | *(payload fields)* | varies | Type-specific fields documented per event |
 
 When received by an `LLExtension`, the raw dict is wrapped into an `LLEvent` dataclass:
@@ -1660,6 +1661,23 @@ new client's queue, so unlike every other event in this document it carries **no
 `ts` key**, is not visible to `LLExtension` observers or any other transport, and
 is silently dropped if the client's queue is already full. Treat it as a
 connection-time snapshot, not part of the event stream.
+
+**FEAT-3323: the SSE bridge (`ll-artifact serve`) owns its own seeding and
+filters this event on the way in.** `SseBridge` fans in every producer socket
+in the project; with N producers it would otherwise receive N unstamped
+copies of the same `state_change` seed set. Instead it drops every
+socket-side `state_change` line and rebuilds the seed itself
+(`_sse_bridge_seed_frames`) on every SSE connect (including reconnects) from
+`list_running_loops(Path(".loops"))`, writing one frame per state with
+`producer_pid` set to that state's `LoopState.pid` when not `None`. Since
+`to_dict()` already emits `pid` when set, a bridge-built seed frame carries
+**both** `pid` and `producer_pid` with the same value — the redundancy is
+deliberate (one demux key, `producer_pid`, on every frame regardless of
+source). The seed covers FSM loops only (`ll-sprint`/`ll-parallel` write no
+state files, matching today's socket seed); see
+[CONFIGURATION.md § `events.bridge`](CONFIGURATION.md#eventsbridge) for the
+no-replay reconnect contract and the seed-then-live duplicate-not-loss
+contract.
 
 ### `OTelTransport`
 

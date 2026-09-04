@@ -813,6 +813,23 @@ class TestConfigSchema:
         assert sqlite_block.get("additionalProperties") is False
         assert sqlite_block["properties"]["path"]["default"] == ".ll/history.db"
 
+        assert "bridge" in events_props, (
+            "events.bridge is not declared (FEAT-3323); configs using events.bridge will be "
+            "rejected by additionalProperties: false on the events block"
+        )
+        bridge_block = events_props["bridge"]
+        assert bridge_block["type"] == "object"
+        assert bridge_block.get("additionalProperties") is False
+        bridge_props = bridge_block["properties"]
+        assert bridge_props["port"]["type"] == "integer"
+        assert bridge_props["port"]["default"] == 8766
+        assert bridge_props["max_clients"]["type"] == "integer"
+        assert bridge_props["max_clients"]["default"] == 8
+        assert bridge_props["keepalive_s"]["type"] == "number"
+        assert bridge_props["keepalive_s"]["default"] == 15
+        assert bridge_props["rescan_s"]["type"] == "number"
+        assert bridge_props["rescan_s"]["default"] == 2
+
     def test_issues_relationship_fields_not_in_schema(self) -> None:
         """Per-issue-frontmatter fields must NOT be declared in global issues config.
 
@@ -1387,6 +1404,7 @@ _DATACLASS_SECTION_MAP: dict[str, str | None] = {
     "PrePatchCheckConfig": "prepatch_check",
     "WebhookEventsConfig": "events",
     "SqliteEventsConfig": "events",
+    "BridgeEventsConfig": "events",
     "EventsConfig": "events",
     "SessionDigestConfig": "history",
     "AutomationPruningConfig": "history",

@@ -31,6 +31,10 @@
       "type": "string",
       "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
     },
+    "producer_pid": {
+      "type": "integer",
+      "description": "FEAT-3323: the emitting process's own os.getpid(), stamped onto a copy of every event by UnixSocketTransport.send() (never mutating the caller's dict). Absent \u2014 never null \u2014 on a bridge-built state_change seed frame whose LoopState recorded no pid; when present on a seed frame it equals that frame's own pid key. Optional everywhere else."
+    },
     "edge": {
       "type": "string",
       "description": "Edge key (from_state->to_state) that triggered detection"

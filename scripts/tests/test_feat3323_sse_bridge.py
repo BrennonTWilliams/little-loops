@@ -206,8 +206,14 @@ class TestSseBridgeFanIn:
             sock = _sse_connect(_bridge_port(bridge), _bridge_token(bridge))
             try:
                 leftover = _read_sse_headers(sock)
+                # timeout=5.0 (default is 2.0): the fan-in thread must connect
+                # to *two* producer sockets via real syscalls before this
+                # condition holds; under heavy parallel-suite CPU contention
+                # the default budget is occasionally too tight (matches the
+                # timeout=3.0 headroom other fan-in tests in this file use).
                 _wait_until(
-                    lambda: _client_count(producer_a) == 1 and _client_count(producer_b) == 1
+                    lambda: _client_count(producer_a) == 1 and _client_count(producer_b) == 1,
+                    timeout=5.0,
                 )
 
                 with mock.patch("little_loops.transport.os.getpid", return_value=1111):
@@ -217,7 +223,12 @@ class TestSseBridgeFanIn:
 
                 seen_pids = set()
                 for _ in range(2):
-                    text, leftover = _read_sse_frame(sock, leftover)
+                    # timeout=15.0 (default is 5.0): each event crosses five
+                    # thread hops (producer client_loop -> bridge reader ->
+                    # relay -> SSE write loop -> this socket) before this test
+                    # ever sees a byte; under heavy parallel-suite CPU
+                    # contention the default budget is occasionally too tight.
+                    text, leftover = _read_sse_frame(sock, leftover, timeout=15.0)
                     seen_pids.add(json.loads(text)["producer_pid"])
                 assert seen_pids == {1111, 2222}
             finally:
@@ -679,8 +690,22 @@ class TestSseBridgeLifecycle:
             drainer = threading.Thread(target=_drain, daemon=True)
             drainer.start()
             padding = "x" * 1024
-            for i in range(6000):
-                producer.send({"event": "spam", "i": i, "pad": padding})
+            # Paced in small batches rather than one tight 6000-iteration loop:
+            # an unpaced burst is pure in-memory Queue.put_nowait() (tens of
+            # microseconds each), which fills the *producer's own* per-client
+            # queue (UnixSocketTransport._CLIENT_QUEUE_MAXSIZE, also 1024 —
+            # the fan-in hop this issue's architecture adds ahead of the SSE
+            # hop under test) faster than any real thread scheduling can drain
+            # it, so most of the flood never reaches the bridge at all. A tiny
+            # sleep between batches gives the reader/relay threads real
+            # wall-clock time to keep the upstream hop draining, so the full
+            # padded volume actually reaches the SSE clients and the *intended*
+            # hop (the never-drained `slow` client's queue) is the one that
+            # overflows.
+            for batch_start in range(0, 6000, 200):
+                for i in range(batch_start, batch_start + 200):
+                    producer.send({"event": "spam", "i": i, "pad": padding})
+                time.sleep(0.01)
 
             # Drop-newest on the slow client's bounded queue: the counter moves
             # and the queue never exceeds its bound.

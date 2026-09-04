@@ -96,7 +96,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.test_file_patterns` | Test-file classification shared across gates — `is_test_file(path, config=None)` and `filter_test_files(paths, config=None)`. |
 | `little_loops.test_tamper_guard` | Test-weakening detection core (ENH-2933) — `snapshot_test_paths()` / `snapshot_test_paths_at_ref()`, `compare_snapshots()`, `measure_test_strength()`, `is_weakening()`, `filter_weakening_findings()`,
 `extract_test_functions()`, with `TamperFinding` / `TamperReport` / `TestStrength` / `ConfigTarget` dataclasses. |
-| `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`, and `LocalBridgeTransport` (ENH-3351 — loopback-only SSE bridge for `ll-loop run --serve`) sinks. |
+| `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`, and `LocalBridgeTransport` (ENH-3351 — loopback-only SSE bridge for `ll-loop run --serve`) sinks. Also `SseBridge`/`serve_sse_bridge` (FEAT-3323 — the out-of-process localhost SSE bridge for `ll-artifact serve`), which is not a `Transport` and consumes `UnixSocketTransport`'s output rather than adding one. |
 | `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, `ll-loop`, the FSM executor's pre-patch check hook (ENH-2997), and `work_verification`'s non-FSM pre-patch check adapter (ENH-2998). See [WORKTREES.md](WORKTREES.md) for the file-copy contract. |
 | `little_loops.prepatch_check` | Pre-patch check core (ENH-3142) — `run_prepatch_check()`, `collect_candidates()`, and the `PrePatchCandidate` / `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses. Deterministic, no LLM/FSM/CLI/database access; runs candidate tests from a step diff against the pre-patch worktree ENH-3141's `setup_prepatch_worktree()` produces to flag evidence that passes without the change it claims to demonstrate. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
@@ -10574,7 +10574,7 @@ nc -U .ll/events.sock | jq
 
 | Method | Description |
 |--------|-------------|
-| `send(event: dict[str, Any]) -> None` | Enqueue the serialized event into every connected client's outbound queue. Non-blocking — if a client's queue is full, the newest event is dropped (preserving causal order) and a rate-limited warning is logged. |
+| `send(event: dict[str, Any]) -> None` | Stamps `producer_pid = os.getpid()` onto a *copy* of `event` (FEAT-3323 — never mutates the caller's dict, so other transports on the same `EventBus` never see this key) before serializing, then enqueues into every connected client's outbound queue. Non-blocking — if a client's queue is full, the newest event is dropped (preserving causal order) and a rate-limited warning is logged. |
 | `close() -> None` | Set the shutdown event, join the accept thread (≤2s) and each client thread (≤1s, 10s ceiling overall), close the server socket, and unlink the socket file — but only if it is still the same inode this instance bound (BUG-3324): if another producer reclaimed the path during the drain window, that producer's socket is left alone. |
 
 **Platform support:** Requires `AF_UNIX` (POSIX). On Windows, [`wire_transports`](#wire_transports) raises `RuntimeError` rather than registering the transport.
@@ -10728,6 +10728,67 @@ Every request is checked against the per-run token (`secrets.token_urlsafe(16)`,
 | `close() -> None` | Push a final `run_complete`-derived frame (plus a shutdown sentinel) into every connected client's queue so each SSE handler exits cleanly, then `shutdown()`/`server_close()` the HTTP server and join handler threads within a bounded budget. Delivers the final frame and leaves no handler threads behind — asserted in tests, not just intended. |
 | `set_page_html(page_html: str) -> None` | Replace the HTML served at `GET /{token}/` after construction — the served page typically embeds this transport's own `url` (for its SSE/interaction endpoints), which is only known once the server is bound, so callers construct first, build the page from `url`, then call this instead of passing `page_html` to `__init__`. |
 | `url` (property) | `http://127.0.0.1:<bound-port>/<token>/` — the page URL. Derive the events/interaction endpoints by appending `events` / `interaction`. |
+
+### SseBridge
+
+Out-of-process localhost SSE bridge over `UnixSocketTransport` (FEAT-3323), backing `ll-artifact serve`. Mirrors `LocalBridgeTransport`'s shape (constructor binds, `.url`, `.close()`) but is **not** a `Transport` and is never added to an `EventBus` — it is a separate process that fans in every live producer socket in the project directory (the configured path and its BUG-3324 pid-suffixed siblings) rather than a sixth transport or a new emit path. Stdlib-only (`http.server.ThreadingHTTPServer` + `socket.AF_UNIX` client connections), no new dependency.
+
+```python
+from pathlib import Path
+
+from little_loops.config.core import BRConfig
+from little_loops.transport import SseBridge
+
+config = BRConfig(Path.cwd())
+bridge = SseBridge(config.events, port=0)
+print(bridge.url)  # http://127.0.0.1:<bound-port>/<token>/
+bridge.close()
+```
+
+#### Constructor
+
+```python
+SseBridge(
+    config: EventsConfig,
+    port: int | None = None,
+    *,
+    base: Path | None = None,
+    loops_dir: Path | None = None,
+    routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] | None = None,
+)
+```
+
+**Parameters:**
+- `config` - `EventsConfig` whose `.bridge` (`BridgeEventsConfig`) supplies `max_clients`/`keepalive_s`/`rescan_s`, and whose `.socket.path` is resolved (via `_resolve_socket_path`) to find the producer socket directory.
+- `port` - TCP port on `127.0.0.1` to bind. `None` (default) uses `config.bridge.port` (`8766`); `0` is the test path — the actual bound port is read back via `.url`.
+- `base` - Socket-directory root passed to `_resolve_socket_path`, mirroring `wire_transports(log_dir=...)`. `None` (default) resolves against `Path(".ll")`, the real project socket directory; tests pass a `short_tmp_path` fixture so producer-socket-directory assertions never touch repo state.
+- `loops_dir` - Seed source passed to `list_running_loops`. `None` (default) resolves against `Path(".loops")`; tests pass a `tmp_path` fixture so seed and `.loops/.running/`-untouched assertions never touch repo state.
+- `routes` - Extra `GET` routes under `/{token}/`, keyed by path suffix, dispatched by the shared handler after the Host and token checks — the FEAT-3321 mount point. This bridge always registers `""` (the Level 1 page) and `"events"` (the SSE stream); caller-supplied routes are merged in alongside them.
+
+Binds loopback (`127.0.0.1`) unconditionally — there is no host-override parameter. Binding happens synchronously in `__init__` (before the fan-in/relay/serve threads start), so a bind failure (`OSError`, e.g. `EADDRINUSE`) leaves nothing to clean up.
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `url` (property) | `http://127.0.0.1:<bound-port>/<token>/` — the page URL. The SSE endpoint is `url + "events"`. |
+| `close() -> None` | Sets a shared stop `Event` (fan-in loop and reader threads exit on their next `recv`/rescan timeout), closes every connected producer client socket (each producer's `_client_loop` then retires the slot via `_peer_closed`), pushes the `_SHUTDOWN` sentinel to every SSE client queue, shuts the HTTP server down, and joins every thread within a bounded budget. Touches nothing in the producer socket directory or `.loops/.running/`. |
+
+**Security:** every request is checked against a per-start token (`secrets.token_urlsafe(16)`) and the `Host` header (`403` unless exactly `127.0.0.1:<port>` or `localhost:<port>`); a missing/wrong token is `404`. No `Access-Control-Allow-Origin` header is ever sent (`EventSource` respects CORS, so cross-origin reads are blocked by omission). `GET /{token}` (no trailing slash) redirects `301` to `/{token}/`.
+
+**Fan-in:** `_fan_in_producer_sockets(socket_path, out, stop, rescan_s=2.0)` runs the directory-rescan loop in its own thread, owning one `_ProducerReader` (one `_read_producer_socket` thread each) per connected producer. Connect is the probe — a path already connected is never re-probed, and a stale socket file is skipped and never unlinked (reclaiming a dead socket is the producer's job). A reader that dies within one `rescan_s` of connecting without forwarding a single line (a producer at `max_clients` accepting-then-closing) marks its path "flapping": the retry interval doubles per consecutive flap (capped at 60s) and resets on the first forwarded line, so a producer sitting at capacity doesn't get re-probed — and its rejection count re-logged — every `rescan_s`. Socket-side `state_change` lines are filtered (see below); everything else is forwarded unchanged into a shared bounded queue that a relay thread SSE-encodes and fans out to every connected SSE client's own bounded queue.
+
+**Seeding:** on every SSE connect (including reconnects), `_sse_bridge_seed_frames(loops_dir)` calls `list_running_loops(loops_dir)` and writes one `state_change` frame per state directly to the wire — `producer_pid` (and `pid`, from `LoopState.to_dict()`) set to `state.pid` when not `None`, omitted (never `null`) otherwise. The client's queue is registered in the fan-out set *before* the seed snapshot is taken, so a live event emitted during seeding is queued rather than lost (possible duplicate, never loss — see [CONFIGURATION.md § `events.bridge`](../reference/CONFIGURATION.md#eventsbridge)). `_make_seed_callback` (the producer-side socket seed) is unmodified; the bridge drops every socket-side `state_change` line it receives instead.
+
+### serve_sse_bridge
+
+The blocking CLI wrapper behind `ll-artifact serve`: constructs `SseBridge`, prints its `.url`, and blocks until `KeyboardInterrupt`.
+
+```python
+def serve_sse_bridge(config: EventsConfig, port: int | None = None) -> int
+```
+
+Prints a one-line stderr notice — but keeps serving, since a producer may start later — when `"socket"` is absent from `config.transports` or no producer socket is present yet. On `KeyboardInterrupt`, calls `SseBridge.close()` and returns `0`. A bind failure (`OSError`, e.g. `EADDRINUSE`) propagates to the caller (`cmd_serve` in `cli/artifact/serve.py`), which prints the one-line port-in-use message and exits `1`.
 
 ### wire_transports
 

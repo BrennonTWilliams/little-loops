@@ -14,6 +14,7 @@ from little_loops.config import (
     AdvisorConfig,
     AutomationConfig,
     BRConfig,
+    BridgeEventsConfig,
     CaptureIssueConfig,
     CategoryConfig,
     CliColorsConfig,
@@ -2500,6 +2501,36 @@ class TestSocketEventsConfig:
         assert config.max_clients == 16
 
 
+class TestBridgeEventsConfig:
+    """Tests for BridgeEventsConfig dataclass (FEAT-3323, `ll-artifact serve`)."""
+
+    def test_defaults(self) -> None:
+        """BridgeEventsConfig defaults match the documented values."""
+        config = BridgeEventsConfig.from_dict({})
+
+        assert config.port == 8766
+        assert config.max_clients == 8
+        assert config.keepalive_s == 15.0
+        assert config.rescan_s == 2.0
+
+    def test_from_dict_with_overrides(self) -> None:
+        """Explicit values override defaults."""
+        config = BridgeEventsConfig.from_dict(
+            {"port": 9000, "max_clients": 4, "keepalive_s": 5.0, "rescan_s": 1.0}
+        )
+
+        assert config.port == 9000
+        assert config.max_clients == 4
+        assert config.keepalive_s == 5.0
+        assert config.rescan_s == 1.0
+
+    def test_reexported_from_config_package(self) -> None:
+        # A missing config/__init__.py re-export must be caught here.
+        from little_loops.config import BridgeEventsConfig as _BEC
+
+        assert _BEC is BridgeEventsConfig
+
+
 class TestOTelEventsConfig:
     """Tests for OTelEventsConfig dataclass."""
 
@@ -2665,6 +2696,32 @@ class TestBRConfigEventsIntegration:
 
         assert result["events"]["transports"] == [transport]
         assert result["events"][transport] == expected
+
+    def test_events_bridge_sub_config_round_trips_through_to_dict(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """events.bridge round-trips through BRConfig.to_dict() (FEAT-3323).
+
+        `events.bridge` gates a server, not a transport, so it does not join
+        the parametrized `transport` list above (it's never named in
+        `events.transports`) — a separate assertion instead.
+        """
+        sample_config["events"] = {
+            "transports": [],
+            "bridge": {"port": 9000, "max_clients": 4, "keepalive_s": 5.0, "rescan_s": 1.0},
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["events"]["bridge"] == {
+            "port": 9000,
+            "max_clients": 4,
+            "keepalive_s": 5.0,
+            "rescan_s": 1.0,
+        }
 
 
 class TestScoringWeightsConfig:

@@ -3,7 +3,7 @@ id: FEAT-3323
 type: FEAT
 title: 'Live event stream substrate: localhost SSE bridge over the EventBus'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T03:08:21Z'
@@ -24,6 +24,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
 reconcile_attempted: true
+completed_at: '2026-09-04T01:10:23Z'
 ---
 
 # FEAT-3323: Live event stream substrate: localhost SSE bridge over the EventBus
@@ -953,74 +954,74 @@ _Settled 2026-08-26 during pre-implementation review, extended 2026-09-03._
 
 ## Acceptance Criteria
 
-- [ ] A browser page on loopback receives bus events over SSE as they are
+- [x] A browser page on loopback receives bus events over SSE as they are
       emitted by a running loop, with no polling and no page reload.
-- [ ] Two concurrent producers (e.g. `ll-loop run` and `ll-sprint run`) both
+- [x] Two concurrent producers (e.g. `ll-loop run` and `ll-sprint run`) both
       stream to a single connected SSE client, each event carrying its own
       producer's `producer_pid`, asserted by a test over two producer sockets
       in one directory.
-- [ ] A producer that starts *after* the bridge is already serving is picked up
+- [x] A producer that starts *after* the bridge is already serving is picked up
       by the directory rescan and its events reach an attached client; the
       rescan opens no extra connections to producers already connected, and
       never unlinks a socket file.
-- [ ] Producer EOF is handled: the reader exits, and a new producer at the same
+- [x] Producer EOF is handled: the reader exits, and a new producer at the same
       path is reconnected on a later rescan. A producer that closes the
       connection immediately (at `max_clients`) is retried with per-path
       backoff so its rejection count grows sub-linearly, asserted by a test.
-- [ ] Every relayed live event carries `producer_pid == os.getpid()` of its
+- [x] Every relayed live event carries `producer_pid == os.getpid()` of its
       producer, stamped on a copy (other transports on the same bus see no
       `producer_pid`), documented in `EVENT-SCHEMA.md` and present in
       `generate_schemas.py`'s `_BASE_PROPS`.
-- [ ] Socket-side `state_change` frames are not relayed; instead an SSE client
+- [x] Socket-side `state_change` frames are not relayed; instead an SSE client
       connecting while a loop is mid-run receives bridge-built `state_change`
       frames (with `producer_pid == LoopState.pid`, or no `producer_pid` key
       when the state recorded no pid) before live traffic, on every connect
       including reconnects; a live event emitted during the seed write is
       delivered after the seed, not lost.
-- [ ] `SseBridge` exposes `.url` and `.close()`; `close()` releases every
+- [x] `SseBridge` exposes `.url` and `.close()`; `close()` releases every
       producer slot, ends every SSE stream, leaves the socket directory and
       `.loops/.running/` untouched, and leaves no bridge thread alive after
       its join budget. `SseBridge(routes=...)` dispatches an extra `GET`
       route under `/{token}/` after the Host and token checks;
       `SseBridge(base=..., loops_dir=...)` redirects the socket directory and
       seed source so tests never touch the repo's own state dirs.
-- [ ] `GET /{token}` without a trailing slash returns `301` to `/{token}/`,
+- [x] `GET /{token}` without a trailing slash returns `301` to `/{token}/`,
       and the page constant derives its SSE URL from `location.pathname`
       rather than a bare relative `./events`.
-- [ ] `ll-artifact serve` on an in-use port prints one line naming the port
+- [x] `ll-artifact serve` on an in-use port prints one line naming the port
       and `--port` and exits `1` with no traceback; Ctrl-C exits `0`; the
       exit codes are in the `ll-artifact` epilog.
-- [ ] The Level 1 page renders event data through `textContent` only (no
+- [x] The Level 1 page renders event data through `textContent` only (no
       `innerHTML` / `outerHTML` / `insertAdjacentHTML`), asserted by a test.
-- [ ] A consumer that stops reading is dropped without unbounded buffering in
+- [x] A consumer that stops reading is dropped without unbounded buffering in
       the bridge and without stalling or failing the producing run; a peer
       that is alive but not reading cannot pin a handler thread past the
       connection write timeout (§ Server mechanics → Write timeout).
-- [ ] The listener binds loopback only; a test asserts the signature default.
-- [ ] A request with a non-loopback `Host` header gets `403`; a request with a
+- [x] The listener binds loopback only; a test asserts the signature default.
+- [x] A request with a non-loopback `Host` header gets `403`; a request with a
       wrong or missing token prefix gets `404`; no
       `Access-Control-Allow-Origin` header is sent. All three asserted against
       a really-bound server.
-- [ ] Concurrent SSE clients are capped at `events.bridge.max_clients`; the
+- [x] Concurrent SSE clients are capped at `events.bridge.max_clients`; the
       connection over the cap gets `503` and existing clients are undisturbed.
-- [ ] A keepalive comment frame arrives within `keepalive_s` on a quiet bus;
+- [x] A keepalive comment frame arrives within `keepalive_s` on a quiet bus;
       `retry: 2000` is sent once at stream open; no `id:` is ever sent.
-- [ ] The server starts on `events.bridge.port` (default `8766`, `--port`
+- [x] The server starts on `events.bridge.port` (default `8766`, `--port`
       overrides) and prints the full tokenized URL; with `"socket"` absent from
       `events.transports` or no producer socket present it says so plainly and
       keeps serving.
-- [ ] `events.bridge` (`port`, `max_clients`, `keepalive_s`, `rescan_s`) is in
+- [x] `events.bridge` (`port`, `max_clients`, `keepalive_s`, `rescan_s`) is in
       `config-schema.json` (`keepalive_s`/`rescan_s` typed `number`),
       `BridgeEventsConfig`, `EventsConfig`, `BRConfig.to_dict()`,
       `_DATACLASS_SECTION_MAP`, and `config/__init__.py` (the re-export
       asserted by `test_reexported_from_config_package`), and both BUG-3192
       schema guards pass.
-- [ ] `TestLocalBridgeTransport` passes unmodified after the helper
+- [x] `TestLocalBridgeTransport` passes unmodified after the helper
       extraction.
-- [ ] `docs/reference/ARTIFACT_CONTROL_LEVELS.md` has a Level 1 row for the
+- [x] `docs/reference/ARTIFACT_CONTROL_LEVELS.md` has a Level 1 row for the
       minimal page, and `CLI.md` has an `ll-artifact serve` section linking
       to it.
-- [ ] The redaction decision, its revisit trigger, the no-replay reconnect
+- [x] The redaction decision, its revisit trigger, the no-replay reconnect
       contract, the seed-then-live duplicate-not-loss contract, and the
       FSM-loops-only seed scope are recorded in
       `docs/reference/CONFIGURATION.md`; `EVENT-SCHEMA.md` states that a seed
@@ -1156,6 +1157,7 @@ Criteria A/C/D unchanged. Outcome Confidence 58→65 (LOW→MODERATE)._
 **Open** | Created: 2026-08-26 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-04T01:10:05 - `7189986e-17b4-4b08-be33-d7faab2d91aa.jsonl`
 - `/ll:confidence-check` - 2026-09-03T23:50:05 - `aed94642-f109-4502-89a6-54feff7835ca.jsonl`
 - `/ll:confidence-check` - 2026-09-03T23:28:33 - `aed94642-f109-4502-89a6-54feff7835ca.jsonl`
 - `/ll:confidence-check` - 2026-09-03T22:33:38 - `c4598621-fc70-4771-8b85-912ca5add2cd.jsonl`

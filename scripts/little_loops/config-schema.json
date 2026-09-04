@@ -1703,6 +1703,33 @@
             }
           },
           "additionalProperties": false
+        },
+        "bridge": {
+          "type": "object",
+          "description": "SseBridge configuration (FEAT-3323, `ll-artifact serve`). Gates a server, not a transport: no entry in events.transports enables it — the user opts in by running the command. Fans in every UnixSocketTransport producer socket in the project directory and relays the merged stream to browser SSE clients over a loopback-only, token-prefixed HTTP endpoint.",
+          "properties": {
+            "port": {
+              "type": "integer",
+              "default": 8766,
+              "description": "TCP port on 127.0.0.1 to bind. Fixed (not 0/ephemeral) so the printed URL is stable across restarts; 0 is the test path. `--port` overrides."
+            },
+            "max_clients": {
+              "type": "integer",
+              "default": 8,
+              "description": "Maximum concurrent SSE client connections. Each holds a thread for the connection's life; a connection over the cap gets 503."
+            },
+            "keepalive_s": {
+              "type": "number",
+              "default": 15,
+              "description": "Interval, in seconds, between SSE keepalive comment frames (`: ping`) on a quiet bus. Also sets the per-connection write timeout (2x this value) that reclaims a handler thread pinned by a peer that is alive but not reading."
+            },
+            "rescan_s": {
+              "type": "number",
+              "default": 2,
+              "description": "Interval, in seconds, at which the bridge rescans the producer socket directory for new/dead sockets. Also the base of the per-path connect-then-immediate-EOF backoff (doubles per consecutive flap, capped at 60s)."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

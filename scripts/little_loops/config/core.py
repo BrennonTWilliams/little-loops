@@ -950,6 +950,12 @@ class BRConfig:
                     "batch_ms": self._events.webhook.batch_ms,
                     "headers": dict(self._events.webhook.headers),
                 },
+                "bridge": {
+                    "port": self._events.bridge.port,
+                    "max_clients": self._events.bridge.max_clients,
+                    "keepalive_s": self._events.bridge.keepalive_s,
+                    "rescan_s": self._events.bridge.rescan_s,
+                },
             },
             "observability": self._observability.to_dict(),
             "history": {

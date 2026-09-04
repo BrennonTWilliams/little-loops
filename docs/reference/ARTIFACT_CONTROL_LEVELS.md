@@ -56,6 +56,7 @@ contract violation reviewers can point at.
 | `html-anything.yaml` dashboards | 1 (notify) |
 | ENH-3306's `ui://` resources | 1 (notify) |
 | `ll-loop run --serve`'s dashboard page (ENH-3351) | 3 (host-owned) |
+| `ll-artifact serve`'s live event stream page (FEAT-3323) | 1 (notify) |
 
 **Binding now:** every render target MUST declare its supported level(s) in
 prose, in its own canonical doc, and MUST link back to this document for the
