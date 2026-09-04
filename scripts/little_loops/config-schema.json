@@ -1903,6 +1903,18 @@
       },
       "additionalProperties": false
     },
+    "hitl": {
+      "type": "object",
+      "description": "Human-in-the-loop communication channel selection (FEAT-1930). Distinct from the unrelated hitl-md/hitl-compare built-in loop family, which are loop names, not a config namespace.",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "default": "terminal",
+          "description": "Registry key for the active CommunicationAdapter, resolved by FSMExecutor.resolve_communication_adapter() via the extension-contributed adapter registry. Falls back to 'terminal' when unset."
+        }
+      },
+      "additionalProperties": false
+    },
     "design_tokens": {
       "type": "object",
       "description": "Design system tokens consumed by built-in artifact-generating loops",

@@ -182,6 +182,24 @@ def resolve_config_path(project_root: Path) -> Path | None:
 
 
 @dataclass
+class HitlConfig:
+    """Human-in-the-loop communication channel selection (FEAT-1930).
+
+    ``channel`` selects the active ``CommunicationAdapter`` resolved by
+    ``FSMExecutor.resolve_communication_adapter()``. Distinct from the
+    unrelated ``hitl-md``/``hitl-compare`` built-in loop family, which are
+    loop names, not a config namespace.
+    """
+
+    channel: str = "terminal"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HitlConfig:
+        """Create HitlConfig from dictionary."""
+        return cls(channel=data.get("channel", "terminal"))
+
+
+@dataclass
 class ProjectConfig:
     """Project-level configuration."""
 
@@ -333,6 +351,7 @@ class BRConfig:
             self._raw_config.get("orchestration", {})
         )
         self._advisor = AdvisorConfig.from_dict(self._raw_config.get("advisor", {}))
+        self._hitl = HitlConfig.from_dict(self._raw_config.get("hitl", {}))
         self._design_tokens = DesignTokensConfig.from_dict(
             self._raw_config.get("design_tokens", {})
         )
@@ -466,6 +485,11 @@ class BRConfig:
     def advisor(self) -> AdvisorConfig:
         """Get advisor configuration (FEAT-3043)."""
         return self._advisor
+
+    @property
+    def hitl(self) -> HitlConfig:
+        """Get HITL communication adapter channel configuration (FEAT-1930)."""
+        return self._hitl
 
     @property
     def design_tokens(self) -> DesignTokensConfig:
@@ -888,6 +912,9 @@ class BRConfig:
                 "triggers": list(self._advisor.triggers),
                 "max_consults_per_task": self._advisor.max_consults_per_task,
                 "store_verdict_body": self._advisor.store_verdict_body,
+            },
+            "hitl": {
+                "channel": self._hitl.channel,
             },
             # --- never-modelled sections: raw passthrough, no BRConfig dataclass (BUG-3012) ---
             **{

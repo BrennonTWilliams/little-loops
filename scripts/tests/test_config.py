@@ -43,6 +43,7 @@ from little_loops.config import (
     GitHubSyncConfig,
     GoNoGoConfig,
     HistoryConfig,
+    HitlConfig,
     IssuesConfig,
     LearningTestsConfig,
     LoopsConfig,
@@ -1237,6 +1238,30 @@ class TestBRConfig:
         assert result["advisor"]["timeout_seconds"] == 180
         assert result["advisor"]["triggers"] == []
         assert result["advisor"]["max_consults_per_task"] == 3
+
+    def test_to_dict_hitl(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
+        """to_dict emits hitl block with configured values (FEAT-1930)."""
+        sample_config["hitl"] = {"channel": "eventbus"}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["hitl"]["channel"] == "eventbus"
+        assert config.resolve_variable("hitl.channel") == "eventbus"
+
+    def test_to_dict_hitl_defaults_when_unset(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """hitl appears with dataclass defaults even when absent from config (FEAT-1930)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["hitl"]["channel"] == "terminal"
         assert result["advisor"]["store_verdict_body"] is False
 
     def test_to_dict_never_modelled_sections_raw_passthrough(
@@ -3983,6 +4008,54 @@ class TestBRConfigAdvisor:
         config = BRConfig(temp_project_dir)
         assert config.advisor.enabled is True
         assert config.advisor.host == "codex"
+
+
+class TestHitlConfig:
+    """Tests for HitlConfig dataclass (FEAT-1930)."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        config = HitlConfig.from_dict({})
+        assert config.channel == "terminal"
+
+    def test_from_dict_with_values(self) -> None:
+        config = HitlConfig.from_dict({"channel": "eventbus"})
+        assert config.channel == "eventbus"
+
+    def test_from_dict_partial_override_defaults_rest(self) -> None:
+        config = HitlConfig.from_dict({})
+        assert config.channel == "terminal"
+
+
+class TestBRConfigHitl:
+    """Extend TestBRConfig with hitl property coverage (FEAT-1930)."""
+
+    def test_hitl_property_from_file(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """BRConfig.hitl returns HitlConfig from file."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert isinstance(config.hitl, HitlConfig)
+        assert config.hitl.channel == "terminal"
+
+    def test_hitl_channel_from_file(self, temp_project_dir: Path) -> None:
+        """BRConfig.hitl.channel is read from ll-config.json."""
+        cfg = {"hitl": {"channel": "eventbus"}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+
+        config = BRConfig(temp_project_dir)
+        assert config.hitl.channel == "eventbus"
+
+    def test_hitl_defaults_when_key_absent(self, temp_project_dir: Path) -> None:
+        """BRConfig.hitl.channel falls back to 'terminal' when the key is absent."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps({}))
+
+        config = BRConfig(temp_project_dir)
+        assert config.hitl.channel == "terminal"
 
     def test_advisor_defaults_when_key_absent(self, temp_project_dir: Path) -> None:
         """BRConfig.advisor returns defaults when advisor key is absent."""

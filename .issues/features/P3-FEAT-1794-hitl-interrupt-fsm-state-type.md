@@ -3,18 +3,18 @@ id: FEAT-1794
 type: FEAT
 title: HITL interrupt FSM state type (action_type human_approval)
 priority: P3
-status: blocked
+status: open
 blocked_by:
 - FEAT-1930
 captured_at: '2026-05-29T20:37:23Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 labels:
-  - captured
-  - fsm
-  - harness
-  - hitl
-  - loops
+- captured
+- fsm
+- harness
+- hitl
+- loops
 parent: EPIC-1929
 relates_to:
 - FEAT-1545
@@ -23,12 +23,11 @@ relates_to:
 - FEAT-1931
 - FEAT-1932
 decision_needed: false
-decision: >-
-  Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file
-  executor change, follows existing conventions. Extension-based path (Option B)
-  deferred as future refactor. Note: transport is now delegated to the
-  CommunicationAdapter protocol (FEAT-1930); the executor calls adapter.send_alert()
-  / adapter.await_response() rather than hardcoding terminal I/O.
+decision: "Option A \u2014 hardcoded dispatch following the mcp_tool pattern. Simpler\
+  \ single-file executor change, follows existing conventions. Extension-based path\
+  \ (Option B) deferred as future refactor. Note: transport is now delegated to the\
+  \ CommunicationAdapter protocol (FEAT-1930); the executor calls adapter.send_alert()\
+  \ / adapter.await_response() rather than hardcoding terminal I/O."
 verify_verdict: VALID
 ---
 
@@ -197,7 +196,7 @@ Implement as a contributed action via the extension protocol:
 
 **Reusable infrastructure identified:**
 - `_interruptible_sleep()` at `executor.py:3378` — polling sleep with shutdown-signal respect, directly reusable for the HITL wait loop
-- `_emit()` at `executor.py:3178` — event emission, emit `human_approval_request` on state entry
+- `_emit()` at `executor.py:3178` — event emission, emit `HUMAN_APPROVAL_REQUESTED_EVENT` (`"human_approval_requested"`, imported from `little_loops.fsm.communication_adapter` — FEAT-1930) on state entry
 - `EventBus.register()` at `events.py:81` — subscribe to `human_response` events with glob filter
 - `UnixSocketTransport._accept_loop()` at `transport.py:177` — socket-based polling with timeout, pattern for out-of-band response channel
 - `SignalDetector` in `signal_detector.py` — detects in-band signals from action output; a `human_response` signal type could reuse this path
@@ -282,7 +281,7 @@ accept the default.
 ### Similar Patterns
 - `action_type: mcp_tool` was added across 4 files (schema + executor + validator + JSON schema) — the exact pattern to follow. See `_action_mode()` for the mode classification branch, `_run_action()` for the dispatch, `_validate_state_action()` in `validation.py` for the `params`-only-with-mcp_tool check.
 - `_interruptible_sleep()` in `executor.py` — polling-with-timeout pattern for blocking while respecting shutdown signals — directly reusable for the HITL wait loop
-- `_emit()` in `executor.py` — event emission pattern — emit `human_approval_request` on state entry
+- `_emit()` in `executor.py` — event emission pattern — emit `HUMAN_APPROVAL_REQUESTED_EVENT` (`"human_approval_requested"`, imported from `little_loops.fsm.communication_adapter` — FEAT-1930) on state entry
 - `events.py:70` — `EventBus` with `register()`/`emit()`/`add_transport()`: existing pub/sub infrastructure
 - `transport.py:115` — `UnixSocketTransport._accept_loop()`: socket polling with timeout — pattern for out-of-band response channel
 - `schema.py:389` — `extra_routes: dict[str, str]`: catches unrecognized `on_*` keys — `on_edit` could be handled via `extra_routes` instead of a dedicated field, simplifying the schema change
@@ -316,7 +315,7 @@ accept the default.
 - `FSMExecutor._emit(self, event: str, data: dict[str, Any]) -> None` (`executor.py:3550`) — event emission; takes a flat event-name string and a payload dict, not an `LLEvent` subclass (see Proposed Solution → Codebase Research Findings: `LLEvent` is never subclassed in this codebase).
 
 ### Call Path
-`FSMExecutor.run()` -> `_execute_state()` [new `human_approval` branch beside the `state.type == "learning"` branch] -> new `_execute_human_approval_state()` -> `_emit("human_approval_request", ...)` -> blocking wait shaped like `_interruptible_sleep()`, polling the FEAT-1930 `CommunicationAdapter.await_response()` (not yet implemented — this issue stays `blocked_by: FEAT-1930`) -> route via `state.on_yes` / `state.on_no` / `state.extra_routes["edit"]` / `state.extra_routes["timeout"]`.
+`FSMExecutor.run()` -> `_execute_state()` [new `human_approval` branch beside the `state.type == "learning"` branch] -> new `_execute_human_approval_state()` -> `_emit(HUMAN_APPROVAL_REQUESTED_EVENT, ...)` -> `adapter = self.resolve_communication_adapter()` -> `adapter.send_alert(...)` -> blocking wait shaped like `_interruptible_sleep()`, polling `adapter.await_response(alert_id, timeout)` (FEAT-1930, implemented — `CommunicationAdapter`/`resolve_communication_adapter()` now exist in `little_loops.fsm.communication_adapter`/`executor.py`; this issue no longer needs `blocked_by: FEAT-1930`) -> on the timeout route, call `adapter.cancel_alert(alert_id)` (FEAT-1930 Pre-implementation Review #15) -> route via `state.on_yes` / `state.on_no` / `state.extra_routes["edit"]` / `state.extra_routes["timeout"]`.
 
 ### Decision Rules
 - Gate: `ll-loop validate` warning when a `human_approval` state has no `timeout:`.
@@ -383,6 +382,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - 2026-09-03 (`/ll:verify-issues`, re-check): Re-verified same-day — no drift since the pass above (all anchors re-confirmed identical: `_execute_state` :1948, `_run_action` :2312, `_action_mode` :3062, `_emit` :3550, `_interruptible_sleep` :3833, `StateConfig` :621, `timeout` :708, `extra_routes` :730, `HostCapabilities` :128). Decisions log has no active required rules. `ll-verify-evidence` clean. Dependency backlinks with FEAT-1930 (blocked_by/blocks) and FEAT-1680 (Scope Boundary) confirmed consistent. Verdict updated from stale `NON_VALID` to `VALID` (persisted `verify_verdict` frontmatter now matches).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-04T07:19:43 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:12:55 - `fda4cd5c-a51b-4a98-bfeb-d76bd3f6c25a.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`

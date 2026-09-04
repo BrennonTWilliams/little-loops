@@ -74,6 +74,10 @@ Public exports:
 """
 
 from little_loops.ab_writer import ABResults, calculate_ab_summary, write_ab_json
+from little_loops.fsm.communication_adapter import (
+    HUMAN_APPROVAL_REQUESTED_EVENT,
+    HUMAN_RESPONSE_EVENT,
+)
 from little_loops.fsm.concurrency import (
     LockManager,
     ScopeLock,
@@ -176,6 +180,8 @@ __all__ = [
     "CostCeilingConfig",
     "CostReport",
     "PerStateCost",
+    "HUMAN_APPROVAL_REQUESTED_EVENT",
+    "HUMAN_RESPONSE_EVENT",
     "PROMPT_SIZE_WARN_EVENT",
     "RATE_LIMIT_EXHAUSTED_EVENT",
     "RATE_LIMIT_STORM_EVENT",

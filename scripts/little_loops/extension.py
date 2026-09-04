@@ -23,6 +23,7 @@ from little_loops.events import EventBus, EventCallback, LLEvent
 from little_loops.issue_parser import IssueInfo
 
 if TYPE_CHECKING:
+    from little_loops.fsm.communication_adapter import CommunicationAdapter
     from little_loops.fsm.executor import FSMExecutor, RouteContext, RouteDecision
     from little_loops.fsm.persistence import PersistentExecutor
     from little_loops.fsm.runners import ActionRunner
@@ -109,6 +110,17 @@ class LLHookIntentExtension(Protocol):
     """
 
     def provided_hook_intents(self) -> dict[str, Callable[[LLHookEvent], LLHookResult]]: ...
+
+
+class CommunicationAdapterExtension(Protocol):
+    """Protocol for extensions that contribute HITL communication adapters.
+
+    Detected via hasattr() in wire_extensions() — no @runtime_checkable needed.
+    """
+
+    def provided_adapters(self) -> dict[str, CommunicationAdapter]:
+        """Return a mapping of channel name → CommunicationAdapter for injection into the executor."""
+        ...
 
 
 class NoopLoggerExtension:
@@ -211,8 +223,8 @@ def wire_extensions(
 
     When ``executor`` is provided, a second pass populates
     ``executor._contributed_actions``, ``executor._contributed_evaluators``,
-    and ``executor._interceptors`` from each extension that implements the
-    corresponding protocols.
+    ``executor._contributed_adapters``, and ``executor._interceptors`` from
+    each extension that implements the corresponding protocols.
 
     Args:
         bus: EventBus to register extension callbacks on
@@ -259,6 +271,14 @@ def wire_extensions(
                             f"Extension conflict: evaluator '{name}' already registered by another extension"
                         )
                 fsm_executor._contributed_evaluators.update(ext.provided_evaluators())
+            if hasattr(ext, "provided_adapters"):
+                for name in ext.provided_adapters():
+                    if name in fsm_executor._contributed_adapters:
+                        raise ValueError(
+                            f"Extension conflict: communication adapter '{name}' "
+                            "already registered by another extension"
+                        )
+                fsm_executor._contributed_adapters.update(ext.provided_adapters())
             if (
                 hasattr(ext, "before_route")
                 or hasattr(ext, "after_route")

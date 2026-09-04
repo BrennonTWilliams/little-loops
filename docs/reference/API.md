@@ -5636,6 +5636,7 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | `little_loops.fsm.handoff_handler` | Context handoff signal handling |
 | `little_loops.fsm.concurrency` | Scope-based lock management for concurrent loops |
 | `little_loops.fsm.rate_limit_circuit` | Shared circuit-breaker state file for cross-worktree 429 coordination |
+| `little_loops.fsm.communication_adapter` | `CommunicationAdapter` ABC for HITL channels (`send_alert`/`await_response`/`supports_async`/`cancel_alert`), `AdapterResponse`/`TimeoutResponse`, `CommunicationAdapterNotFound`, and the `HUMAN_APPROVAL_REQUESTED_EVENT`/`HUMAN_RESPONSE_EVENT` constants (FEAT-1930) |
 | `little_loops.fsm.signal_detector` | Pattern-based signal detection in action output |
 | `little_loops.fsm.host_guard` | Adaptive host memory-pressure guard: `HostGuardConfig`, `HostGuard`, `RssSampler`, memory probes (ENH-2452/ENH-2453) |
 | `little_loops.fsm.stall_detector` | `StallDetector` and `Stall` dataclass for circuit-breaker stall detection |
@@ -6885,6 +6886,48 @@ File-backed circuit-breaker for shared 429 backoff coordination. The `path` argu
 | `get_estimated_recovery()` | `float \| None` | Epoch-seconds timestamp of estimated recovery, or `None` if the entry is stale or the file is absent |
 | `is_stale()` | `bool` | `True` when `last_seen` is older than `STALE_THRESHOLD_SECONDS` (3600s); `False` if the file is absent |
 | `clear()` | `None` | Remove the state file; no-op if already absent |
+
+---
+
+### little_loops.fsm.communication_adapter
+
+Communication adapter protocol for async HITL channels (FEAT-1930). Decouples the FSM `human_approval` state from transport-specific I/O; adapters register through `CommunicationAdapterExtension` (see [Extension → CommunicationAdapterExtension](#communicationadapterextension)) and are selected at runtime via `hitl.channel` (see [Configuration → `hitl`](CONFIGURATION.md#hitl)).
+
+```python
+HUMAN_APPROVAL_REQUESTED_EVENT = "human_approval_requested"
+HUMAN_RESPONSE_EVENT = "human_response"
+
+Verdict = Literal["approve", "reject", "edit"]
+
+@dataclass
+class AdapterResponse:
+    verdict: Verdict
+    edited_text: str | None = None   # populated for "edit"
+    reason: str | None = None
+
+@dataclass
+class TimeoutResponse:
+    timed_out: bool = True
+    elapsed_seconds: float = 0.0
+
+class CommunicationAdapterNotFound(LookupError): ...
+
+class CommunicationAdapter(ABC):
+    @abstractmethod
+    def send_alert(self, loop_name: str, state_name: str, prompt: str, captured_context: dict) -> str: ...
+    @abstractmethod
+    def await_response(self, alert_id: str, timeout: float) -> AdapterResponse | TimeoutResponse: ...
+    @abstractmethod
+    def supports_async(self) -> bool: ...
+    def cancel_alert(self, alert_id: str) -> None: ...  # concrete no-op default
+```
+
+**Behavior:**
+- `CommunicationAdapter` is an `abc.ABC` — a subclass missing `send_alert`, `await_response`, or `supports_async` raises `TypeError` at instantiation, not at first call. `cancel_alert()` is concrete with a no-op default; override to withdraw a pending alert (e.g. on the timeout route).
+- `await_response(alert_id, timeout)` is **re-entrant per alert**: the executor polls it in short ticks so shutdown stays responsive. Repeat calls for the same `alert_id` are expected; a verdict that arrives between calls must be retained and returned on the next call. A `TimeoutResponse` never invalidates the alert — only `cancel_alert()` does.
+- `AdapterResponse.verdict` is a three-way `Literal["approve", "reject", "edit"]` (not a bare `approved: bool`), matching FEAT-1794's `on_yes`/`on_no`/`on_edit` FSM routing. `edited_text` is populated only for the `"edit"` verdict.
+- `FSMExecutor.resolve_communication_adapter()` (`executor.py`) resolves the active adapter from `hitl.channel` (default `"terminal"`) against `_contributed_adapters`; a miss raises `CommunicationAdapterNotFound` with message `"Communication adapter '<channel>' is not registered. Available: [...]."`.
+- This module ships the protocol and executor-side resolver only — no `human_approval` state dispatch call site exists yet (added by FEAT-1794).
 
 ---
 
@@ -11014,6 +11057,46 @@ my_hook_intents = "my_package:MyHookIntents"
 ```
 
 After installation, `python -m little_loops.hooks license_check` dispatches to `MyHookIntents._license_check`.
+
+### CommunicationAdapterExtension
+
+Optional mixin Protocol that extensions implement to contribute HITL communication adapters (FEAT-1930). Detected by `wire_extensions()` via `hasattr(ext, "provided_adapters")` (same duck-typing pattern as `ActionProviderExtension`, `EvaluatorProviderExtension`, `InterceptorExtension`, and `LLHookIntentExtension`).
+
+```python
+class CommunicationAdapterExtension(Protocol):
+    def provided_adapters(self) -> dict[str, CommunicationAdapter]: ...
+```
+
+**Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `provided_adapters() -> dict[str, CommunicationAdapter]` | Return a mapping of channel name → `CommunicationAdapter` instance. Called once at wire time. |
+
+**Behavior:**
+- `wire_extensions()` merges each extension's `provided_adapters()` into `executor._contributed_adapters`, keyed by channel name — the same dict-with-conflict-check shape as `_contributed_actions`/`_contributed_evaluators`.
+- Duplicate channel names across extensions raise `ValueError: "Extension conflict: communication adapter '<name>' already registered by another extension"`.
+- `FSMExecutor.resolve_communication_adapter()` reads the active channel from `hitl.channel` (via the memoized `_get_br_config()`) and looks it up in `_contributed_adapters`; a miss raises `CommunicationAdapterNotFound`. See [`little_loops.fsm.communication_adapter`](#little_loopsfsmcommunication_adapter) for the `CommunicationAdapter` ABC, `AdapterResponse`/`TimeoutResponse`, and the two event-name constants.
+
+**Usage:**
+
+```python
+from little_loops.fsm.communication_adapter import CommunicationAdapter, AdapterResponse
+
+class TerminalAdapter(CommunicationAdapter):
+    def send_alert(self, loop_name, state_name, prompt, captured_context) -> str: ...
+    def await_response(self, alert_id, timeout): ...
+    def supports_async(self) -> bool:
+        return False
+
+class MyAdapterExtension:
+    """Extension contributing a 'terminal' HITL communication adapter."""
+
+    def provided_adapters(self) -> dict:
+        return {"terminal": TerminalAdapter()}
+```
+
+Register via the same `extensions` config key or entry-point group as any other `LLExtension`, then select it with `hitl.channel` — see [Configuration → `hitl`](CONFIGURATION.md#hitl).
 
 ### Configuration
 

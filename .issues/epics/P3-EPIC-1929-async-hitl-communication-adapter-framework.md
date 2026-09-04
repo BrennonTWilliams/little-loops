@@ -13,7 +13,7 @@ relates_to:
 - FEAT-1794
 - FEAT-1930
 - FEAT-1931
-- FEAT-1932
+- FEAT-3384
 - FEAT-2102
 - FEAT-1545
 - FEAT-1613
@@ -109,11 +109,15 @@ When this epic is done:
 
 ## Children
 
-Dependency order (audit note 2026-06-12): **FEAT-1930 first** — its
-`CommunicationAdapterExtension` interface (decided 2026-06-12, see FEAT-1930
-Decision Rationale) gates the other three, which carry
-`blocked_by: [FEAT-1930]`. FEAT-2102 (adapter-swap integration test, added
-2026-06-12) owns this epic's two cross-cutting acceptance gates and lands last.
+Dependency order (audit note 2026-06-12, updated 2026-09-04 post-FEAT-1930
+implementation): **FEAT-1930 first** — its `CommunicationAdapterExtension`
+interface (decided 2026-06-12, see FEAT-1930 Decision Rationale) gates
+FEAT-1794, FEAT-1931, and FEAT-3384, which carry `blocked_by: [FEAT-1930]`.
+FEAT-1932 (PushNotification adapter) is cancelled — superseded by FEAT-3384
+(EventBus adapter), per the 2026-06-20 re-scope below. FEAT-2102
+(adapter-swap integration test, added 2026-06-12) owns this epic's two
+cross-cutting acceptance gates and lands last, deferred until FEAT-3384
+lands.
 
 - **FEAT-1930** — Communication adapter protocol: abstract interface, extension
   registration, config schema, channel selection
@@ -121,12 +125,13 @@ Decision Rationale) gates the other three, which carry
   schema, executor dispatch, timeout/verdict routing, event emission
 - **FEAT-1931** — Terminal adapter: stdin/stdout `CommunicationAdapter`
   implementation
-- **FEAT-1932** — PushNotification adapter: push-based `CommunicationAdapter`
-  with response callback (file-poller decided 2026-06-12, see its Decision
-  Rationale)
+- **FEAT-3384** — EventBus HITL adapter: emits `human_approval_requested`,
+  resumes on a matching `human_response` event — the async channel Hermes
+  relays to. Replaces the cancelled FEAT-1932.
 - **FEAT-2102** — Adapter-swap integration test for `human_approval`: same
   loop YAML against both adapters with only `hitl.channel` changed (owns the
   epic's config-only-swap and no-executor-changes acceptance gates)
+
 
 ## Dependency Order
 
@@ -134,11 +139,11 @@ Decision Rationale) gates the other three, which carry
 FEAT-1930 (protocol)
     ├── FEAT-1794 (FSM state — depends on protocol interface)
     ├── FEAT-1931 (terminal adapter — implements protocol)
-    └── FEAT-1932 (push adapter — implements protocol)
+    └── FEAT-3384 (eventbus adapter — implements protocol)
 ```
 
 FEAT-1930 must be designed first (or at least its interface stabilized) so
-FEAT-1794, FEAT-1931, and FEAT-1932 can be built against it. The three
+FEAT-1794, FEAT-1931, and FEAT-3384 can be built against it. The three
 implementation children can then proceed in parallel.
 
 ## Open Questions
@@ -217,6 +222,8 @@ EventBus adapter; read "PushNotification" as "EventBus / Hermes-relay" throughou
 open
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-04T07:19:43 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`
+- `/ll:manage-issue` - 2026-09-04 - FEAT-1930 implemented. Created FEAT-3384 (EventBus HITL adapter, `blocked_by: [FEAT-1930]`) as its own child per FEAT-1930 Pre-implementation Review #7, replacing the cancelled FEAT-1932 in Children/Dependency Order/relates_to.
 - `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with active children (FEAT-1930/1794/1931): root FEAT-1930 unstarted since early June; downgrade keeps the P2 band meaningful. Re-raise when FEAT-1930 is scheduled. See also ENH-2249 (post-Hermes rescope).

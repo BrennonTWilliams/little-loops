@@ -30,7 +30,7 @@ from little_loops.config.cli import (
     CliConfig,
     RefineStatusConfig,
 )
-from little_loops.config.core import BRConfig, CLConfig, ProjectConfig
+from little_loops.config.core import BRConfig, CLConfig, HitlConfig, ProjectConfig
 
 # Note: `resolve_config_path` (config.core) and `feature_enabled` (config.features)
 # are intentionally NOT re-exported via __all__ — callers import them via direct
@@ -91,6 +91,7 @@ from little_loops.config.orchestration import (
 __all__ = [
     "BRConfig",
     "CLConfig",
+    "HitlConfig",
     "AdvisorConfig",
     "ClusterConfig",
     "ComposerAdaptiveConfig",

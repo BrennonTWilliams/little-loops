@@ -830,6 +830,10 @@ _ALLOWED_UNTOUCHED_SECTIONS = frozenset(
         "dependency_mapping",
         "events",
         "extensions",
+        # FEAT-1930: hitl.channel defaults to "terminal" — a project only needs
+        # this section to opt into a non-default HITL communication adapter,
+        # same posture as advisor/tamper_guard.
+        "hitl",
         # FEAT-3149: the ll-mcp transport policy's defaults (HTTP denies mutations, stdio
         # allows them) are the correct posture for a fresh project, so init has nothing to
         # write — a project only needs this section to *loosen* the default.

@@ -3,10 +3,10 @@ id: FEAT-1931
 title: Terminal adapter for async HITL communication
 type: FEAT
 priority: P3
-captured_at: "2026-06-04T00:00:00Z"
+captured_at: '2026-06-04T00:00:00Z'
 discovered_date: 2026-06-04
 discovered_by: scope-epic
-status: blocked
+status: open
 blocked_by:
 - FEAT-1930
 parent: EPIC-1929
@@ -15,10 +15,10 @@ relates_to:
 - FEAT-1794
 - FEAT-1932
 labels:
-  - fsm
-  - harness
-  - hitl
-  - adapter
+- fsm
+- harness
+- hitl
+- adapter
 verify_verdict: VALID
 decision_needed: true
 unproven_mechanism: true
@@ -121,11 +121,10 @@ class TerminalAdapter(CommunicationAdapter):
         state_name: str,
         prompt: str,
         captured_context: dict,
-        timeout: float,
     ) -> str:
         """Render formatted prompt + context to stdout."""
 
-    def await_response(self, timeout: float) -> HumanResponse | TimeoutResponse:
+    def await_response(self, alert_id: str, timeout: float) -> AdapterResponse | TimeoutResponse:
         """Block on stdin with shutdown-signal awareness, parse verdict."""
 
     def supports_async(self) -> bool:
@@ -139,26 +138,29 @@ only renders, not resolves, variables.
 ## Program Design
 
 ### Types
-- No new dataclass/type is introduced by this issue itself — `HumanResponse`,
-  `TimeoutResponse`, and `EditResponse`/verdict field are FEAT-1930's types,
-  not defined here (FEAT-1930 is unimplemented; `grep -rn "class
-  CommunicationAdapter\|HumanResponse\|TimeoutResponse" scripts/` finds no
-  hits outside `.issues/` prose).
+- No new dataclass/type is introduced by this issue itself — `AdapterResponse`
+  and `TimeoutResponse` are FEAT-1930's types (implemented 2026-09-04 in
+  `scripts/little_loops/fsm/communication_adapter.py`). The verdict is
+  expressed via `AdapterResponse.verdict: Literal["approve", "reject", "edit"]`
+  — there is no separate `EditResponse` type.
 
 ### Signatures
-- `TerminalAdapter.send_alert(self, loop_name: str, state_name: str, prompt: str, captured_context: dict, timeout: float) -> str`
-- `TerminalAdapter.await_response(self, timeout: float) -> HumanResponse | TimeoutResponse` —
-  per the Scope Boundary note below, FEAT-1930's base protocol actually
-  defines `await_response(self, alert_id: str, timeout: float)`; this
-  issue's own `## API/Interface` has not yet been updated to add `alert_id`.
+- `TerminalAdapter.send_alert(self, loop_name: str, state_name: str, prompt: str, captured_context: dict) -> str`
+  — no `timeout` parameter; FEAT-1930 Pre-implementation Review #8 moved the
+  wait budget to `await_response()`.
+- `TerminalAdapter.await_response(self, alert_id: str, timeout: float) -> AdapterResponse | TimeoutResponse` —
+  matches FEAT-1930's base protocol (`communication_adapter.py`), which
+  defines `await_response(self, alert_id: str, timeout: float)`, re-entrant
+  per `alert_id`.
 - `TerminalAdapter.supports_async(self) -> bool` — returns `False`
 
 ### Call Path
 `FSMExecutor._execute_state()` (`executor.py:1948`) → (once FEAT-1794 adds a
 `human_approval` dispatch branch structurally mirroring the existing
-`state.type == "learning"` branch at `:1973-1974`) → adapter resolved from a
-`_contributed_adapters` registry (not yet implemented, mirrors
-`_contributed_actions`/`_contributed_evaluators` at `executor.py:495-497`) →
+`state.type == "learning"` branch at `:1973-1974`) → adapter resolved via
+`FSMExecutor.resolve_communication_adapter()` (implemented, `executor.py`;
+reads `_contributed_adapters`, itself populated by `wire_extensions()` from a
+`CommunicationAdapterExtension.provided_adapters()`) →
 `TerminalAdapter.send_alert(...)` → `TerminalAdapter.await_response(...)`.
 `self.fsm.name` (loop_name) and `self.current_state`/`ctx.state_name`
 (state_name) are both available at the `_execute_state` call site, confirming
@@ -313,6 +315,8 @@ open
 
 - **2026-09-03** (/ll:verify-issues, re-check): Re-verified same-day, no drift since the note above. `scripts/little_loops/fsm/adapters/` still does not exist (confirmed via `ls`). `blocked_by: [FEAT-1930]` backlink confirmed on FEAT-1930's `blocks` list. No active decisions-log rules; `ll-verify-evidence` clean. Verdict: VALID (unchanged).
 
+- **2026-09-04** (`/ll:manage-issue` FEAT-1930 implementation): FEAT-1930 is now implemented (`scripts/little_loops/fsm/communication_adapter.py`, `CommunicationAdapterExtension` in `extension.py`, `FSMExecutor.resolve_communication_adapter()`). `send_alert()`/`await_response()` signature drift (Scope Boundary notes below) fixed in `## API/Interface` and `## Program Design` above: `send_alert()` drops `timeout` (moved to `await_response()` per FEAT-1930 Review #8), `await_response()` gains `alert_id` as its first parameter, and the response type is `AdapterResponse` (not `HumanResponse`/`EditResponse`) carrying `verdict: Literal["approve", "reject", "edit"]`. `blocked_by: [FEAT-1930]` cleared; status flipped `blocked` → `open`.
+
 ---
 
 ## Scope Boundary
@@ -324,6 +328,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-04T07:19:43 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:43:32 - `aa57eda6-6094-4ecb-9d7d-caa100953877.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:56 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`

@@ -1426,6 +1426,7 @@ _DATACLASS_SECTION_MAP: dict[str, str | None] = {
     "CommandsConfig": "commands",
     "ScoringWeightsConfig": "dependency_mapping",
     "DependencyMappingConfig": "dependency_mapping",
+    "HitlConfig": "hitl",
 }
 
 

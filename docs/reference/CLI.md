@@ -4633,7 +4633,8 @@ class MyDashboardExt:
 
     Implement on_event to handle little-loops lifecycle events.
     Optional mixin Protocols (InterceptorExtension, ActionProviderExtension,
-    EvaluatorProviderExtension, LLHookIntentExtension) are opt-in — implement
+    EvaluatorProviderExtension, LLHookIntentExtension,
+    CommunicationAdapterExtension) are opt-in — implement
     their methods to activate.
     """
 

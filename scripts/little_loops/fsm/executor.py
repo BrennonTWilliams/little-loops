@@ -27,6 +27,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from little_loops.fsm.communication_adapter import (
+    CommunicationAdapter,
+    CommunicationAdapterNotFound,
+)
 from little_loops.fsm.continuity import summarize_completed_state
 from little_loops.fsm.cost_graph import CostReport
 from little_loops.fsm.evaluators import (
@@ -494,6 +498,7 @@ class FSMExecutor:
         # Extension hook registries — populated by wire_extensions()
         self._contributed_actions: dict[str, ActionRunner] = {}
         self._contributed_evaluators: dict[str, Evaluator] = {}
+        self._contributed_adapters: dict[str, CommunicationAdapter] = {}
         self._interceptors: list[Any] = []
 
         # FEAT-2671: content-hash fragment-stability store. Record-only —
@@ -2652,6 +2657,24 @@ class FSMExecutor:
 
             self._br_config = BRConfig(self.working_dir or Path.cwd())
         return self._br_config
+
+    def resolve_communication_adapter(self) -> CommunicationAdapter:
+        """Resolve the active HITL communication adapter from ``hitl.channel``.
+
+        Reads the config-selected channel (default ``"terminal"``) via
+        ``_get_br_config()`` and looks it up in the extension-contributed
+        registry — never imports a specific adapter directly. No call site
+        exists in this issue's own tree; FEAT-1794 adds the ``human_approval``
+        branch that calls this.
+        """
+        channel = self._get_br_config().hitl.channel
+        try:
+            return self._contributed_adapters[channel]
+        except KeyError:
+            raise CommunicationAdapterNotFound(
+                f"Communication adapter {channel!r} is not registered. "
+                f"Available: {sorted(self._contributed_adapters)}."
+            ) from None
 
     def _compact_continuity_summary(self, session_id: str) -> str | None:
         """Synchronously backfill+compact a just-finished continuity-chain session.

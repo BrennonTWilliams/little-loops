@@ -1578,6 +1578,24 @@ Extensions can also be auto-discovered via Python entry points — see [API Refe
 
 ---
 
+### `hitl`
+
+Human-in-the-loop communication channel selection (FEAT-1930). `hitl.channel` selects the active `CommunicationAdapter`, resolved by `FSMExecutor.resolve_communication_adapter()` from adapters registered via `CommunicationAdapterExtension` (see [API Reference → `CommunicationAdapterExtension`](API.md#communicationadapterextension)). Not to be confused with the unrelated `hitl-md`/`hitl-compare` built-in loop family — those are loop names, not a config namespace.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `hitl.channel` | `string` | `"terminal"` | Registry key for the active communication adapter. Falls back to `"terminal"` if unset or if no adapter is registered for the configured channel (a miss raises `CommunicationAdapterNotFound` at resolve time). |
+
+```json
+{
+  "hitl": {
+    "channel": "eventbus"
+  }
+}
+```
+
+---
+
 ### `events.transports`
 
 List of transports to wire onto the EventBus at runtime. Transports are additive sinks that receive every event emitted on the bus (no filtering at the transport layer). Names are resolved against the registry in `little_loops.transport.wire_transports`; unknown names log a warning and are skipped so a typo never prevents the loop from starting.

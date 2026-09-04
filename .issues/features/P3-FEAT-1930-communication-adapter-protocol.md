@@ -4,9 +4,10 @@ title: Communication adapter protocol for async HITL channels
 type: FEAT
 priority: P3
 captured_at: '2026-06-04T00:00:00Z'
+completed_at: '2026-09-04T07:19:17Z'
 discovered_date: 2026-06-04
 discovered_by: scope-epic
-status: open
+status: done
 parent: EPIC-1929
 relates_to:
 - FEAT-1794
@@ -17,6 +18,7 @@ blocks:
 - FEAT-2102
 - FEAT-1794
 - FEAT-1931
+- FEAT-3384
 labels:
 - fsm
 - harness
@@ -244,36 +246,36 @@ local dev is the same one-line config change.
 
 ## Acceptance Criteria
 
-- [ ] `CommunicationAdapter` is an `abc.ABC` with abstract `send_alert()`,
+- [x] `CommunicationAdapter` is an `abc.ABC` with abstract `send_alert()`,
   `await_response()`, and `supports_async()` plus a concrete no-op
   `cancel_alert()`; instantiating a subclass missing an abstract method raises
   `TypeError`; `AdapterResponse` carries
   `verdict: Literal["approve", "reject", "edit"]` (no `approved: bool`)
-- [ ] `await_response()` docstring states the re-entrancy contract (repeat
+- [x] `await_response()` docstring states the re-entrancy contract (repeat
   calls for one `alert_id`; unconsumed verdict retained across a
   `TimeoutResponse`); contract test proves it with the mock adapter
-- [ ] `HUMAN_APPROVAL_REQUESTED_EVENT` / `HUMAN_RESPONSE_EVENT` string constants
+- [x] `HUMAN_APPROVAL_REQUESTED_EVENT` / `HUMAN_RESPONSE_EVENT` string constants
   exported from `communication_adapter.py`
-- [ ] Extension registration path established (adapter discovery via
+- [x] Extension registration path established (adapter discovery via
   `wire_extensions()`; `provided_adapters()` returns
   `dict[str, CommunicationAdapter]`; duplicate channel name raises `ValueError`
   like actions/evaluators)
-- [ ] Config schema: `hitl.channel` in `.ll/ll-config.json` selects active
+- [x] Config schema: `hitl.channel` in `.ll/ll-config.json` selects active
   adapter; falls back to `terminal` if unset; `HitlConfig` in `config/core.py`
-- [ ] `FSMExecutor.resolve_communication_adapter()` resolves via
+- [x] `FSMExecutor.resolve_communication_adapter()` resolves via
   `_get_br_config().hitl.channel` + extension registry, not hardcoded import;
   a miss raises `CommunicationAdapterNotFound` whose message matches
   `"not registered"` and lists requested and available channels
 - [ ] ~~`ll-loop validate` warns when `hitl.channel` is unset and host is
   non-interactive~~ — moved to FEAT-1794 (see Pre-implementation Review #5)
-- [ ] Tests: mock adapter registered through a `CommunicationAdapterExtension`,
+- [x] Tests: mock adapter registered through a `CommunicationAdapterExtension`,
   resolver returns it for its channel name, miss path raises the named
   exception, conflict path raises `ValueError`
-- [ ] Follow-up issue `FEAT: EventBus HITL adapter` created under EPIC-1929
+- [x] Follow-up issue `FEAT: EventBus HITL adapter` created under EPIC-1929
   with `blocked_by: [FEAT-1930]` and added to this issue's `blocks`
   (Pre-implementation Review #7); EPIC-1929's children list and dependency
   tree updated to drop FEAT-1932 and add the new child (Review #17)
-- [ ] `HUMAN_APPROVAL_REQUESTED_EVENT` / `HUMAN_RESPONSE_EVENT` also
+- [x] `HUMAN_APPROVAL_REQUESTED_EVENT` / `HUMAN_RESPONSE_EVENT` also
   re-exported from `fsm/__init__.py` (Review #16)
 
 ## Proposed Solution
@@ -837,9 +839,13 @@ current `HumanResponse` shape.
 
 2026-09-04 (`/ll:verify-issues`): Re-confirmed still unimplemented — no `communication_adapter.py`, `CommunicationAdapter`/`CommunicationAdapterExtension`, `hitl.channel`/`HitlConfig`, or `resolve_communication_adapter` call site anywhere in `scripts/little_loops/`; no git activity since the 2026-09-04 Pre-implementation Review touched `fsm/`, `extension.py`, or `config/`. Dependency graph clean: FEAT-1794/FEAT-1931/FEAT-2102/EPIC-1929 all exist and backlink correctly, no cycles. The `FEAT: EventBus HITL adapter` follow-up child (AC item / Pre-implementation Review #7) has not been created yet — open AC, not a defect. Sibling drift claims in `## Pre-implementation Review` re-verified accurate: FEAT-1794 still emits `human_approval_request` (no `-ed`) at lines 200/285/319; FEAT-1931's `## API/Interface` still shows `await_response(self, timeout)` missing `alert_id`; FEAT-3323 already uses the canonical event names. No active decisions-log rules; `ll-verify-evidence` clean (`ok: true, count: 0`). Spot-checked ~10 line citations across `extension.py`, `executor.py`, `config/core.py`, `config/orchestration.py`, `host_runner.py`, `test_extension.py`, `create_extension.py` — all match current code. Verdict: VALID (unchanged).
 
+## Resolution
+
+Implemented `CommunicationAdapter` (`abc.ABC`) with abstract `send_alert()`/`await_response()`/`supports_async()` and a concrete no-op `cancel_alert()`, plus `AdapterResponse`/`TimeoutResponse`/`CommunicationAdapterNotFound` and the `HUMAN_APPROVAL_REQUESTED_EVENT`/`HUMAN_RESPONSE_EVENT` constants, in new `scripts/little_loops/fsm/communication_adapter.py`. Added `CommunicationAdapterExtension` Protocol to `extension.py` and wired `provided_adapters()` into `wire_extensions()` (dict-merge with conflict `ValueError`, matching the actions/evaluators pattern). Added `FSMExecutor._contributed_adapters` and `resolve_communication_adapter()` (`executor.py`), resolving `hitl.channel` via the memoized `_get_br_config()` and raising `CommunicationAdapterNotFound` on a miss (no call site yet — FEAT-1794's scope). Added `HitlConfig` (`config/core.py`, `channel: str = "terminal"`) with `BRConfig.hitl` property and `to_dict()`/schema entries, plus `hitl.channel` in `config-schema.json`. Re-exported the two event constants from `fsm/__init__.py`; exported the full public surface from `little_loops/__init__.py`. Updated the `ll-create-extension` scaffold docstring (`cli/create_extension.py` + its `docs/reference/CLI.md` mirror) to list the 5th Protocol. Documented in `docs/reference/API.md` (new `### CommunicationAdapterExtension` section, `### little_loops.fsm.communication_adapter` module section, Submodule Overview row) and `docs/reference/CONFIGURATION.md` (new `### hitl` section). Created follow-up child `FEAT-3384` (EventBus HITL adapter) under EPIC-1929 with `blocked_by: [FEAT-1930]`; updated EPIC-1929's Children/Dependency Order/`relates_to` to drop the cancelled FEAT-1932 and add FEAT-3384. Applied the FEAT-1930 Pre-implementation Review's sibling-drift fixes to FEAT-1794 (event constant name/import) and FEAT-1931 (`await_response(alert_id, timeout)` signature, `AdapterResponse` type, dropped `timeout` from `send_alert()`); unblocked both (`blocked` → `open`). Added `hitl` to `_ALLOWED_UNTOUCHED_SECTIONS` in `test_init_audit_fixes.py`'s schema-coverage guard (off-by-default section, same posture as `advisor`/`tamper_guard`). 14 new tests in `test_communication_adapter.py` (ABC contract, re-entrancy, resolver hit/miss/config-selection, extension wiring/conflict) plus additions to `test_extension.py`, `test_config.py`, `test_config_schema.py`, `test_create_extension.py`, `test_wiring_reference_docs.py`, `test_wiring_cli_registry.py`. Full suite: 22732 passed, 43 skipped.
+
 ## Status
 
-open
+done
 
 ## Related Key Documentation
 
@@ -848,6 +854,7 @@ open
 - `CONTRIBUTING.md` — adding a new extension-registered protocol (`CommunicationAdapterExtension`, `provided_adapters()`) is exactly the extension-authoring pattern (`LLExtension` protocol convention) this doc documents.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-04T07:18:53 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`
 - pre-implementation review (second pass) - 2026-09-04 - Added Review #11–#17: resolver reads config via `_get_br_config()` (no `self._config` exists), `await_response()` re-entrancy contract, `CommunicationAdapter` as `abc.ABC`, miss-exception message adopts the 3-precedent "not registered" template, optional no-op `cancel_alert()`, event constants re-exported from `fsm/__init__.py`, EPIC-1929 stale-children update + `hitl` naming disambiguation. Struck stale prose (`HumanResponse` in Files to Create, Option A/B hedge, validate-warning items in Files to Modify / Tests).
 - `/ll:confidence-check` - 2026-09-04T06:38:34 - `74f231b2-8c53-4096-9a3b-94decf14de3c.jsonl`
 - `/ll:verify-issues` - 2026-09-04T06:27:52 - `6171b6cf-c484-42e3-b817-793cf904522b.jsonl`

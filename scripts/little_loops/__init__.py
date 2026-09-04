@@ -8,6 +8,7 @@ from little_loops.config import BRConfig
 from little_loops.events import EventBus, LLEvent
 from little_loops.extension import (
     ActionProviderExtension,
+    CommunicationAdapterExtension,
     EvaluatorProviderExtension,
     ExtensionLoader,
     InterceptorExtension,
@@ -17,6 +18,14 @@ from little_loops.extension import (
     wire_extensions,
 )
 from little_loops.fsm import RouteContext, RouteDecision
+from little_loops.fsm.communication_adapter import (
+    HUMAN_APPROVAL_REQUESTED_EVENT,
+    HUMAN_RESPONSE_EVENT,
+    AdapterResponse,
+    CommunicationAdapter,
+    CommunicationAdapterNotFound,
+    TimeoutResponse,
+)
 from little_loops.git_operations import check_git_status
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.host_runner import (
@@ -92,6 +101,7 @@ __all__ = [
     "apply_host_cli_from_config",
     # extensions
     "ActionProviderExtension",
+    "CommunicationAdapterExtension",
     "EvaluatorProviderExtension",
     "ExtensionLoader",
     "InterceptorExtension",
@@ -99,6 +109,13 @@ __all__ = [
     "LLHookIntentExtension",
     "NoopLoggerExtension",
     "wire_extensions",
+    # communication adapters (FEAT-1930)
+    "HUMAN_APPROVAL_REQUESTED_EVENT",
+    "HUMAN_RESPONSE_EVENT",
+    "AdapterResponse",
+    "CommunicationAdapter",
+    "CommunicationAdapterNotFound",
+    "TimeoutResponse",
     # testing
     "LLTestBus",
     # observability (FEAT-2478)

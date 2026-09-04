@@ -444,6 +444,68 @@ class TestWireExtensions:
             with pytest.raises(ValueError, match="evaluator 'shared_eval' already registered"):
                 wire_extensions(bus, executor=executor_obj)
 
+    def test_wire_extensions_with_executor_populates_adapters(self) -> None:
+        """When executor is provided, provided_adapters() are added to _contributed_adapters."""
+        from unittest.mock import MagicMock
+
+        class AdapterExt:
+            def on_event(self, event: LLEvent) -> None:
+                pass
+
+            def provided_adapters(self) -> dict:
+                return {"mock": MagicMock()}
+
+        executor = type(
+            "Executor",
+            (),
+            {
+                "_contributed_actions": {},
+                "_contributed_evaluators": {},
+                "_contributed_adapters": {},
+                "_interceptors": [],
+            },
+        )()
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[AdapterExt()]):
+            wire_extensions(bus, executor=executor)
+
+        assert "mock" in executor._contributed_adapters
+
+    def test_wire_extensions_conflict_detection_adapters(self) -> None:
+        """Duplicate communication adapter channel names across extensions raise ValueError."""
+        from unittest.mock import MagicMock
+
+        adapter = MagicMock()
+
+        class ExtA:
+            def provided_adapters(self) -> dict:
+                return {"shared_channel": adapter}
+
+        class ExtB:
+            def provided_adapters(self) -> dict:
+                return {"shared_channel": adapter}
+
+        executor_obj = type(
+            "Executor",
+            (),
+            {
+                "_contributed_actions": {},
+                "_contributed_evaluators": {},
+                "_contributed_adapters": {},
+                "_interceptors": [],
+            },
+        )()
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[ExtA(), ExtB()]):
+            import pytest
+
+            with pytest.raises(
+                ValueError, match="communication adapter 'shared_channel' already registered"
+            ):
+                wire_extensions(bus, executor=executor_obj)
+
     def test_wire_extensions_registers_hook_intents(self, monkeypatch) -> None:
         """wire_extensions populates _HOOK_INTENT_REGISTRY for extensions exposing
         provided_hook_intents().
@@ -689,3 +751,20 @@ class TestNewProtocols:
 
         provider = MyHookIntentProvider()
         _: LLHookIntentExtension = provider  # type: ignore[assignment]
+
+    def test_smoke_import_communication_adapter_extension(self) -> None:
+        """Importing CommunicationAdapterExtension from public API succeeds (no circular import)."""
+        from little_loops import CommunicationAdapterExtension  # noqa: F401
+
+        assert CommunicationAdapterExtension is not None
+
+    def test_communication_adapter_extension_protocol_satisfied(self) -> None:
+        """A class with provided_adapters() satisfies CommunicationAdapterExtension."""
+        from little_loops.extension import CommunicationAdapterExtension
+
+        class MyAdapterProvider:
+            def provided_adapters(self) -> dict:
+                return {}
+
+        provider = MyAdapterProvider()
+        _: CommunicationAdapterExtension = provider  # type: ignore[assignment]
