@@ -68,10 +68,11 @@ terminal (defeats the point) or trusts the LLM judge in isolation
 
 A state with `action_type: human_approval` should:
 
-1. Render a prompt (the state's `prompt:` field) plus any captured
-   context (e.g., `${captured.execute.output}`) to a notification
-   channel — minimally the terminal/TUI, ideally also `PushNotification`
-   or an IM adapter (Slack/Telegram per the IM-gateway adjacency).
+1. Render a prompt (the state's `action:` field — the same slot
+   `action_type: prompt` uses; `StateConfig` has no `prompt` field, see
+   Pre-implementation Review #3) plus any captured context (e.g.,
+   `${captured.execute.output}`) to the configured `CommunicationAdapter`
+   — terminal by default, `eventbus` (FEAT-3384) for out-of-band relay.
 2. Block FSM execution while waiting for a response.
 3. Accept at least three verdicts:
    - `approve` → take `on_yes`
@@ -80,16 +81,20 @@ A state with `action_type: human_approval` should:
      state to consume via `${captured.<state>.edit}`
 4. Honor a `timeout:` field — on timeout, take `on_timeout` (default to
    `on_no` if unspecified). This is critical for unattended `ll-auto`
-   runs that must not deadlock if the human is away.
-5. Emit a `LLEvent` so the operator can be paged via the existing event
-   bus instead of polling.
+   runs that must not deadlock if the human is away. When the state has
+   no `timeout:`, the wait is bounded by `hitl.default_timeout` (config,
+   default 1800s) — never by the loop's `default_timeout`, which is the
+   action-subprocess timeout (Second Review #13).
+5. Emit `human_approval_requested` (once, from the executor, carrying the
+   adapter-assigned `alert_id`) so the operator can be paged via the
+   existing event bus instead of polling.
 
-Example shape (TBD on exact field names):
+Example shape:
 
 ```yaml
 check_human:
   action_type: human_approval
-  prompt: >
+  action: >
     The execute step modified 240 lines. Threshold is 50.
     Diff summary: ${captured.check_invariants.output}
     Approve to continue, reject to retry execute, edit to adjust the diff.
@@ -137,14 +142,15 @@ deadlock.
 
 ## Acceptance Criteria
 
-- [ ] FSM runner recognizes `action_type: human_approval` and dispatches to the HITL handler
-- [ ] Prompt text plus captured context (e.g., `${captured.execute.output}`) is rendered to the notification channel
-- [ ] FSM execution blocks while waiting for a human response (no CPU spin, no premature advance)
-- [ ] Three verdicts are accepted: `approve` (→ `on_yes`), `reject` (→ `on_no`), `edit` (→ `on_edit` with edited text captured as `${captured.<state>.edit}`)
-- [ ] `timeout:` field is honored; on timeout, takes `on_timeout` (defaults to `on_no` if `on_timeout` unspecified)
-- [ ] An `LLEvent` is emitted on state entry so the operator can be paged via the event bus rather than polling
-- [ ] `ll-loop validate` warns (unconditionally) when a `human_approval` state has no `timeout:` — a "referenced by unattended automation" scoping check is infeasible since `ll-auto`/`ll-sprint` don't directly load FSM loop YAMLs (confirmed finding); the warning fires regardless of caller context and is suppressible via `timeout: 0`
-- [ ] Headless/non-interactive contexts (e.g., `LL_HOST_CLI=codex`) take a safe default without deadlocking
+- [ ] FSM runner recognizes `action_type: human_approval` and dispatches to the HITL handler from `_execute_state()`; `_action_mode()` also returns a distinct `"human_approval"` mode so the shell/prompt heuristics consulted outside dispatch (the BUG-1226 flush at `executor.py:674`, tamper guard, host guard, circuit wait) never classify the state as `"shell"` and run the prompt text through bash (Second Review #11)
+- [ ] Prompt text (the state's `action:` field, interpolated) plus captured context (e.g., `${captured.execute.output}`) is rendered via `adapter.send_alert()`; `captured_context` includes a monotonic `deadline` key (the `TerminalAdapter` renders "Time remaining" from it)
+- [ ] FSM execution blocks while waiting for a human response (no CPU spin, no premature advance); each tick calls `self._drain_inbound()` so an inbound `human_response` posted via `ll-loop run --serve` reaches the bus during the wait (FEAT-3384 Review #1)
+- [ ] Three verdicts are accepted: `approve` (→ `on_yes`), `reject` (→ `on_no`), `edit` (→ `on_edit` with edited text captured as `${captured.<state>.edit}`); `captured[<state>]` also carries `verdict`, `reason` (reject reason from `AdapterResponse.reason`), and `output` (= edited text or empty). Routing goes through the existing `_route()` (`executor.py:2973`) with verdict strings `yes`/`no`/`edit`/`timeout`, so `route:` tables, `advance`/`done`, and `${...}` targets work exactly as for evaluate states (Second Review #12)
+- [ ] Effective timeout is `state.timeout` if set, else `hitl.default_timeout` (new `HitlConfig` field, default 1800) — NOT `fsm.default_timeout`, which is the action-subprocess timeout (Second Review #13); on timeout, calls `adapter.cancel_alert()` then takes `on_timeout` (defaults to `on_no` if `on_timeout` unspecified)
+- [ ] `human_approval_requested` is emitted exactly once by the executor via `_emit()`, after `send_alert()` returns, carrying `alert_id`, `state`, `prompt`, `timeout`, and a wall-clock ISO `deadline_ts` (the monotonic `deadline` stays in `captured_context` only — it is meaningless to out-of-process consumers, Second Review #14) — the adapter never emits it itself (FEAT-3384 Review #2); `human_approval_resolved` is emitted after routing with `verdict`, `elapsed_seconds`, `route`
+- [ ] `ll-loop validate` warns (unconditionally) when a `human_approval` state has no `timeout:` — message names the `hitl.default_timeout` fallback that will apply. A "referenced by unattended automation" scoping check is infeasible since `ll-auto`/`ll-sprint` don't directly load FSM loop YAMLs (confirmed finding); the warning fires regardless of caller context. `timeout: 0` is NOT a suppression idiom (see Pre-implementation Review #5). The validator requires a non-empty `action` and either `on_yes`+`on_no` or a `route:` table with `yes`/`no` keys
+- [ ] Headless/non-interactive contexts take a safe default without deadlocking: when `not adapter.supports_async()` and stdin is non-interactive (`sys.stdin is None or sys.stdin.closed or not sys.stdin.isatty()` — `TerminalAdapter._read_line()` calls `fileno()` and raises on a closed stream, Second Review #15), the handler cancels the alert and routes `on_timeout` immediately. An async adapter (`eventbus`) is never short-circuited — headless is exactly where it is needed
+- [ ] On `_shutdown_requested` mid-wait, the handler calls `adapter.cancel_alert()` and returns `None` so `run()`'s existing interrupted-save branch fires; a resumed run re-enters the state and re-sends the alert
 
 ## Proposed Solution
 
@@ -235,56 +241,68 @@ New FSM state schema (`action_type: human_approval`):
 # In loop YAML definitions
 check_human:
   action_type: human_approval
-  prompt: "string — rendered to operator; supports ${captured.<state>.<field>} interpolation"
-  timeout: 1800          # seconds; optional but warned if absent for unattended contexts
+  action: "string — rendered to operator; supports ${captured.<state>.<field>} interpolation"
+  timeout: 1800          # seconds; falls back to hitl.default_timeout (config, 1800); warned if absent
   on_yes: advance        # transition when operator approves
   on_no: execute         # transition when operator rejects
   on_edit: re_execute    # transition when operator edits; edit captured at ${captured.<state>.edit}
   on_timeout: advance    # fallback transition; defaults to on_no if unspecified
 ```
 
-New LLEvent types:
+Events (flat `_emit()` dicts — `LLEvent` is never subclassed in this codebase;
+the previous `HumanApprovalRequest(LLEvent)`/`HumanResponse(LLEvent)` sketch is
+withdrawn, see Pre-implementation Review #4):
 
 ```python
-@dataclass
-class HumanApprovalRequest(LLEvent):
-    """Emitted when a human_approval state is entered."""
-    loop_name: str
-    state_name: str
-    prompt: str
-    timeout: int
-    captured_context: dict
-
-@dataclass
-class HumanResponse(LLEvent):
-    """Emitted when the operator responds to a human_approval request."""
-    loop_name: str
-    state_name: str
-    verdict: Literal["approve", "reject", "edit"]
-    edited_text: str | None  # populated for edit verdict
+# On entry, after adapter.send_alert() returns — emitted ONCE, by the executor only
+self._emit(HUMAN_APPROVAL_REQUESTED_EVENT, {
+    "state": state_name, "alert_id": alert_id, "prompt": rendered_prompt,
+    "timeout": effective_timeout,
+    "deadline_ts": iso_utc(now + effective_timeout),  # wall-clock; NOT the monotonic deadline
+    "captured_context": {...},                          # minus the monotonic "deadline" key
+})
+# After routing. Deliberately NOT named "human_response": that name is the
+# INBOUND verdict event the eventbus adapter subscribes to (FEAT-3384); an
+# executor echo under the same name would re-trigger the adapter's observer.
+self._emit("human_approval_resolved", {
+    "state": state_name, "alert_id": alert_id, "verdict": verdict,   # approve|reject|edit|timeout|shutdown
+    "elapsed_seconds": elapsed, "route": next_state,
+})
 ```
 
 Validator rules: `ll-loop validate` SHALL warn (not error) when `action_type:
-human_approval` is present without `timeout:` AND the loop is referenced by
-unattended automation config (ll-auto, ll-sprint). This is a safety gate, not a
-hard block — the loop author can suppress it with `timeout: 0` to explicitly
-accept the default.
+human_approval` is present without `timeout:` (the loop-level
+`default_timeout:` does NOT count — it is the action-subprocess timeout,
+Second Review #13). Unconditional — no caller-context scoping (see Decision
+Rules). Suppression is by supplying `timeout:`, not by `timeout: 0`.
+
+Config (`.ll/ll-config.json`):
+
+```json
+"hitl": { "channel": "terminal", "default_timeout": 1800 }
+```
+
+`default_timeout` is a new `HitlConfig` field (`config/core.py:185`); the
+run is never unbounded — a state without `timeout:` waits at most this long.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/fsm/schema.py` — no `StateConfig` field changes needed: `extra_routes: dict[str, str]` (`:730`) already captures unrecognized `on_edit`/`on_timeout` keys and round-trips through `to_dict()`/`from_dict()`/`get_referenced_states()` with zero further code change (confirmed finding; precedented by ENH-3019's sub-loop timeout routing, `executor.py:~1271`)
 - `scripts/little_loops/fsm/executor.py` — `_execute_state()`: add a dispatch branch for `action_type == "human_approval"` near the top of the method, alongside the existing `state.type == "learning"` check — not inside the generic action-and-evaluate fallthrough — calling a new `_execute_human_approval_state()` method (mcp_tool's `_action_mode()`/`_run_action()`/`_evaluate()` specialization doesn't apply here because mcp_tool never blocks mid-state and human_approval does)
-- `scripts/little_loops/fsm/executor.py` — `_action_mode()`: add `"human_approval"` to mode classification
-- `scripts/little_loops/fsm/executor.py` — new method `_execute_human_approval_state()`: emit `HUMAN_APPROVAL_REQUESTED_EVENT`, resolve the adapter via `resolve_communication_adapter()`, call `adapter.send_alert()`, then poll `adapter.await_response()` in an `_interruptible_sleep()`-shaped tick loop (not a single full-timeout call), calling `adapter.cancel_alert()` on the timeout route, then route by verdict
-- `scripts/little_loops/fsm/validation/structural_rules.py:406` — `_validate_state_action()`: add human_approval validations (warn if no `timeout`, require `on_yes`/`on_no`) (module split from `fsm/validation.py` in commit `9a4977a1`)
-- `scripts/little_loops/fsm/validation/_base.py:65` — Add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness (it IS a non-LLM evaluator per MR-1)
+- `scripts/little_loops/fsm/executor.py` — `_action_mode()` (`:3093`): add `if state.action_type == "human_approval": return "human_approval"` ahead of the `"shell"` fallthrough. **Reinstated** (Second Review #11, reversing Pre-implementation Review #9): the branch is not for dispatch — `_action_mode()` is consulted independently of `_execute_state()` at the BUG-1226 wall-clock flush (`:674`, `== "shell"` gate → `_flush_pending_shell_state()` would bash the prompt text), the tamper-guard snapshot (`:1998`), `_check_host_guard` (`:3708`) and `_maybe_wait_for_circuit` (`:3855`). Without it a `human_approval` state whose prompt doesn't start with `/` classifies as `"shell"`
+- `scripts/little_loops/fsm/executor.py` — new method `_execute_human_approval_state()`: resolve the adapter via `resolve_communication_adapter()`, headless short-circuit (`not adapter.supports_async()` and stdin non-interactive — `None`/closed/not a tty), call `adapter.send_alert()` (with `deadline` in `captured_context`), THEN emit `HUMAN_APPROVAL_REQUESTED_EVENT` with the returned `alert_id` and a wall-clock `deadline_ts`, then poll `adapter.await_response()` in an `_interruptible_sleep()`-shaped tick loop (not a single full-timeout call) that also calls `self._drain_inbound()` each tick, calling `adapter.cancel_alert()` on the timeout/shutdown routes, write `captured[<state>]`, emit `human_approval_resolved`, then route via `self._route(state, verdict_word, ctx)` where `verdict_word` ∈ `yes`/`no`/`edit`/`timeout` (`timeout` and `edit` fall back to `no`/`yes` respectively when `_route()` returns `None`)
+- `scripts/little_loops/config/core.py:185` — `HitlConfig`: add `default_timeout: int = 1800` (+ `from_dict`, `to_dict` at `:916`); `scripts/little_loops/config-schema.json` `hitl` object: add the key (Second Review #13)
+- `scripts/little_loops/fsm/validation/structural_rules.py:406` — `_validate_state_action()`: add human_approval validations — WARNING if no state `timeout` (message names the `hitl.default_timeout` fallback); ERROR unless a non-empty `action` and either `on_yes`+`on_no` or a `route:` table with `yes` and `no` keys (mirrors what `_route()` accepts). Loop-level `default_timeout` is irrelevant to this check (module split from `fsm/validation.py` in commit `9a4977a1`)
+- `scripts/little_loops/fsm/validation/meta_rules.py:96` — MR-1: treat any state with `action_type == "human_approval"` as satisfying the non-LLM-evaluator requirement, and mention it in the MR-1 message. NOT via `NON_LLM_EVALUATOR_TYPES` in `_base.py` — that set holds `evaluate.type` values and is intersected against `state.evaluate.type`; a `human_approval` state has no `evaluate:` block, so adding the string there is a no-op (Pre-implementation Review #6)
 - `scripts/little_loops/fsm/fsm-loop-schema.json:247` — Document `human_approval` in the `action_type` description string (no enum constraint exists to update — `fsm-loop-schema.json:436-444` documents allowed values in prose); no new `on_edit`/`on_timeout` properties needed since they route via `extra_routes`
-- `scripts/little_loops/host_runner.py:128` — `HostCapabilities`: add `interactive: bool` flag for headless detection (dataclass moved from the previously-cited `:74`)
+- ~~`scripts/little_loops/host_runner.py:128` — `HostCapabilities`: add `interactive: bool` flag~~ — dropped (Pre-implementation Review #2): `HostCapabilities` is a frozen per-host-CLI descriptor built at six sites; `stdin.isatty()` is a per-process runtime fact and lives in the handler instead
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add a new "HITL phase" section
 - `skills/create-loop/reference.md:415` — document `human_approval` action_type and new routing fields
+- `docs/reference/CONFIGURATION.md:1581` § `hitl` — document `default_timeout` (FEAT-3384 also edits this section for `channel: eventbus`; coordinate)
 
 ### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/executor.py:1170-1191` — `_execute_sub_loop()` builds the child `FSMExecutor` without copying `_contributed_adapters`. A `human_approval` state inside a `loop:` child therefore works only for the `terminal` channel (lazy fallback in `resolve_communication_adapter()`); the `eventbus` channel raises `CommunicationAdapterNotFound` there. Propagation is scoped to FEAT-3384 (its Second Review #6); this issue's tests need not cover sub-loop nesting
 - Option A (hardcoded dispatch, decided — see frontmatter `decision`) touches no extension-registration callers: `scripts/little_loops/extension.py:81` (`ActionProviderExtension`), `extension.py:246` (`wire_extensions()` → `_contributed_actions`), and `cli/loop/run.py:391` (`wire_extensions()`) are the deferred Option B's dependent files, not this issue's.
 - `scripts/little_loops/fsm/schema.py` — `get_referenced_states()` (`:539`) already includes `extra_routes` values in its output; `on_edit`/`on_timeout` targets flow through automatically once `extra_routes` captures them — no code change needed here (confirmed finding)
 
@@ -308,8 +326,9 @@ accept the default.
 - `skills/create-loop/reference.md` (FSM field reference, line ~415 for `action_type` docs)
 
 ### Configuration
-- `.ll/ll-config.json` — optional `hitl.default_timeout` and `hitl.notification_channel` keys (defer if not needed for v1)
-- `LL_HOST_CLI` env var — already used by `host_runner.py:751` `resolve_host()` for host detection; headless hosts (codex) should force timeout path
+- `.ll/ll-config.json` — `hitl.default_timeout` (int seconds, default 1800) is now in scope (Second Review #13); `hitl.notification_channel` remains deferred
+- `LL_HOST_CLI` env var — not consulted by this feature (Pre-implementation Review #2): headlessness is a property of the process's stdin and the adapter's `supports_async()`, not of the host CLI
+- `hitl.channel` (`HitlConfig`, `config/core.py:185`) — selects the adapter via `resolve_communication_adapter()`; `eventbus` (FEAT-3384) needs `ll-loop run --serve` for out-of-process verdicts
 
 ### Codebase Research Findings
 
@@ -332,30 +351,65 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 - No new data type is structurally required for routing: `StateConfig.extra_routes: dict[str, str]` (`schema.py:730`) is the existing container that can carry `edit`/`timeout` verdict targets — see Proposed Solution → Codebase Research Findings for why dedicated `on_edit`/`on_timeout` fields are not required.
 
 ### Signatures
-- `FSMExecutor._action_mode(self, state: StateConfig) -> str` (`executor.py:3062`) — classification chokepoint; a `human_approval` branch is one `if state.action_type == "human_approval": return "human_approval"` added ahead of the `/`-prefix heuristic fallback, following the `mcp_tool` precedent.
+- `FSMExecutor._action_mode(self, state: StateConfig) -> str` (`executor.py:3093`) — returns `"human_approval"` for the new state type. Modified after all (Second Review #11 reverses Pre-implementation Review #9): it is consulted by the wall-clock flush, tamper guard, host guard and circuit wait independently of `_execute_state()` dispatch.
+- `FSMExecutor._route(self, state: StateConfig, verdict: str, ctx: InterpolationContext) -> str | None` (`executor.py:2973`) — the existing verdict router; the handler feeds it `yes`/`no`/`edit`/`timeout` instead of reading `on_yes`/`extra_routes` directly, so `route:` tables and `_resolve_route()`'s `advance`/`done`/interpolation apply (Second Review #12). The interceptor `before_route`/`after_route` hooks (`executor.py:2292/2312`) live in the generic action path and are bypassed, as the learning-state and sub-loop handlers already do.
+- `HitlConfig.default_timeout: int = 1800` (`config/core.py:185`) — new field; read via `self._get_br_config().hitl.default_timeout` next to the existing `.hitl.channel` read in `resolve_communication_adapter()`.
+- `FSMExecutor._drain_inbound(self) -> None` (`executor.py:549`) — called once per HITL tick so `--serve` inbound verdicts are re-emitted onto the bus while the state is blocked (Pre-implementation Review #7).
 - `FSMExecutor._execute_state(self, state: StateConfig) -> str` (`executor.py:1948`) — per-state dispatcher. The `human_approval` branch must sit near the top of this method, alongside the existing `state.type == "learning"` check (`executor.py:1973-1974`), not inside the generic action-and-evaluate fallthrough `mcp_tool` uses — `mcp_tool`'s specialization lives entirely in `_action_mode`/`_run_action`/`_evaluate` because it never blocks mid-state, but `human_approval` does.
 - `FSMExecutor._interruptible_sleep(self, duration: float, on_heartbeat: Callable[[float], None] | None = None) -> float` (`executor.py:3833`) — existing blocking-wait-with-shutdown-respect primitive, already reused by two unrelated call sites (`_check_host_guard`, `_maybe_wait_for_circuit`).
 - `FSMExecutor._emit(self, event: str, data: dict[str, Any]) -> None` (`executor.py:3550`) — event emission; takes a flat event-name string and a payload dict, not an `LLEvent` subclass (see Proposed Solution → Codebase Research Findings: `LLEvent` is never subclassed in this codebase).
 
 ### Call Path
-`FSMExecutor.run()` -> `_execute_state()` [new `human_approval` branch beside the `state.type == "learning"` branch] -> new `_execute_human_approval_state()` -> `_emit(HUMAN_APPROVAL_REQUESTED_EVENT, ...)` -> `adapter = self.resolve_communication_adapter()` -> `adapter.send_alert(...)` -> blocking wait shaped like `_interruptible_sleep()`, polling `adapter.await_response(alert_id, timeout)` (FEAT-1930, implemented — `CommunicationAdapter`/`resolve_communication_adapter()` now exist in `little_loops.fsm.communication_adapter`/`executor.py`; this issue no longer needs `blocked_by: FEAT-1930`) -> on the timeout route, call `adapter.cancel_alert(alert_id)` (FEAT-1930 Pre-implementation Review #15) -> route via `state.on_yes` / `state.on_no` / `state.extra_routes["edit"]` / `state.extra_routes["timeout"]`.
+`FSMExecutor.run()` -> `_execute_state()` [new `human_approval` branch beside the `state.type == "learning"` branch] -> new `_execute_human_approval_state()` -> `adapter = self.resolve_communication_adapter()` -> headless short-circuit check -> `alert_id = adapter.send_alert(...)` -> `_emit(HUMAN_APPROVAL_REQUESTED_EVENT, {alert_id, ...})` (sole emitter) -> blocking wait shaped like `_interruptible_sleep()`: each tick `self._drain_inbound()` then `adapter.await_response(alert_id, tick)` (FEAT-1930, implemented) -> on the timeout/shutdown routes, call `adapter.cancel_alert(alert_id)` (FEAT-1930 Pre-implementation Review #15) -> write `captured[<state>]` -> `_emit("human_approval_resolved", ...)` -> `self._route(state, "yes"|"no"|"edit"|"timeout", ctx)` (which itself resolves `on_yes`/`on_no`, `route:` tables and `extra_routes["edit"|"timeout"]`), falling back to `_route(state, "no", ctx)` for an unrouted `timeout` and `_route(state, "yes", ctx)` for an unrouted `edit`.
 
 ### Decision Rules
-- Gate: `ll-loop validate` warning when a `human_approval` state has no `timeout:`.
-- Exact input: `state.action_type == "human_approval" and state.timeout is None` — reuses the existing `timeout: int | None` field on `StateConfig` (`schema.py:708`); no new field needed for the duration itself.
-- Scoping: unconditional. Prior research (Proposed Solution → Codebase Research Findings, existing) found `ll-auto`/`ll-sprint` do not directly load FSM loop YAMLs, so a "referenced by unattended automation" cross-reference check is infeasible for v1 — warn whenever the field is absent, regardless of caller context.
-- Escape hatch: WARNING, not ERROR — loop author suppresses by setting `timeout: 0` to explicitly accept the default fallback (`on_timeout`, defaulting to `on_no`) per the existing Validator rules in `## API/Interface`.
+- Gate: `ll-loop validate` warning when a `human_approval` state has no explicit `timeout:`.
+- Exact input: `state.action_type == "human_approval" and state.timeout is None` — reuses the existing `timeout: int | None` field on `StateConfig` (`schema.py:708`). The loop-level `default_timeout` (`schema.py:1396`) is deliberately NOT consulted: every executor use of it (`executor.py:2417/2437/2502/3453`) is the action-subprocess timeout, so a loop that sets `default_timeout: 600` for its LLM actions would otherwise silently cap human waits at ten minutes and suppress this warning (Second Review #13).
+- Runtime: `effective = state.timeout if state.timeout is not None else hitl.default_timeout` (config, default 1800). The wait is therefore never unbounded. `0` is treated as an immediate timeout, consistent with its literal meaning; it is NOT a suppression idiom (Pre-implementation Review #5).
+- Headless: `not adapter.supports_async()` and (`sys.stdin is None or sys.stdin.closed or not sys.stdin.isatty()`) → `cancel_alert()` and route `timeout` immediately, without waiting out the timeout (the `TerminalAdapter` would otherwise sleep the full duration on closed stdin, and raises from `fileno()` on a closed stream).
+- Scoping: unconditional. Prior research (Proposed Solution → Codebase Research Findings, existing) found `ll-auto`/`ll-sprint` do not directly load FSM loop YAMLs, so a "referenced by unattended automation" cross-reference check is infeasible for v1 — warn whenever the state timeout is absent, regardless of caller context.
+- Escape hatch: WARNING, not ERROR — loop author suppresses by supplying `timeout:` on the state.
+- Routing shape: accept `on_yes`+`on_no` OR a `route:` table containing `yes` and `no`; ERROR otherwise. `_route()` handles both at runtime.
 
 ## Implementation Steps
 
-1. **Schema**: No `StateConfig` field changes needed — `extra_routes: dict[str, str]` (`schema.py:730`) already captures unrecognized `on_edit`/`on_timeout` keys and round-trips through `to_dict()`/`from_dict()`/`get_referenced_states()` with zero further code change (confirmed 2026-09-03; precedented by ENH-3019's sub-loop timeout routing, `executor.py:~1271`). Only update `fsm-loop-schema.json:247` to document `human_approval` in the `action_type` description string (no enum constraint exists — `action_type` is free text, `fsm-loop-schema.json:436-444`).
-2. **Validator** (`fsm/validation/structural_rules.py:406`): In `_validate_state_action()`, add: require `on_yes`/`on_no` when `action_type == "human_approval"`; WARNING if no `timeout` is set; add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness in `fsm/validation/_base.py:65` (it IS a non-LLM evaluator per MR-1).
-3. **Executor dispatch** (`fsm/executor.py`): Add `"human_approval"` to `_action_mode()` (before the heuristic fallthrough). In `_execute_state()`, add a dispatch branch before the generic action path — follow the learning-state dispatch pattern at the top of the method: `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`.
-4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, resolve the active `CommunicationAdapter` via `resolve_communication_adapter()` (`executor.py:2661`, FEAT-1930 — implemented), call `adapter.send_alert()` to deliver the prompt, then poll `adapter.await_response(alert_id, tick_duration)` inside an `_interruptible_sleep()`-shaped tick loop guarding on `state.timeout` and `self._shutdown_requested` — a single call with the full timeout would defeat shutdown responsiveness (confirmed architectural finding). On the timeout route, call `adapter.cancel_alert(alert_id)` before routing. Route based on verdict via `on_yes`/`on_no`/`extra_routes["edit"]`/`extra_routes["timeout"]`. The executor never imports a specific adapter — it only calls the protocol methods.
-5. **Host capability** (`host_runner.py:128`): Add `interactive: bool` flag to `HostCapabilities` (dataclass moved from the previously-cited `:74`). Set based on `sys.stdin.isatty()` (existing pattern in `hooks/__init__.py:194`, was `:111` — the only isatty() precedent in the codebase; no existing HostCapabilities-level interactivity check exists to model after, so this is new territory for that dataclass). In the HITL handler, if not interactive, short-circuit to `on_timeout`/`on_no`.
-6. **Tests**: Add `TestActionTypeHumanApproval` in `test_fsm_executor.py` (model after `TestActionTypeMcpTool`, now at line `:685`) — mock event callback, verify approve/reject/edit/timeout routing. Add `TestHumanApprovalSchema` in `test_fsm_schema.py` (model after `TestMcpToolSchema`, now at line `:2062`). Add the timeout-warning test in `test_fsm_validation_structural.py` (companion to `structural_rules.py`).
-7. **Docs**: Add HITL phase section to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`; document `human_approval` action_type and new routing fields in `skills/create-loop/reference.md:415`; add example loop under `loops/examples/`.
+1. **Schema**: No `StateConfig` field changes needed — the prompt text lives in the existing `action: str | None` field (`schema.py:693`, same slot `action_type: prompt` uses; there is no `StateConfig.prompt` — the `prompt` at `schema.py:119` belongs to `EvaluateConfig`), and `extra_routes: dict[str, str]` (`schema.py:730`) already captures unrecognized `on_edit`/`on_timeout` keys and round-trips through `to_dict()`/`from_dict()`/`get_referenced_states()` with zero further code change (confirmed 2026-09-03; precedented by ENH-3019's sub-loop timeout routing, `executor.py:~1271`). Only update `fsm-loop-schema.json:247` to document `human_approval` in the `action_type` description string (no enum constraint exists — `action_type` is free text, `fsm-loop-schema.json:436-444`).
+2. **Validator** (`fsm/validation/structural_rules.py:406`): In `_validate_state_action()`, add for `action_type == "human_approval"`: ERROR unless a non-empty `action` and either `on_yes`+`on_no` or a `route:` table with `yes`/`no` keys; WARNING if `state.timeout is None` (message: "no timeout: — waits fall back to hitl.default_timeout"). No `FSMLoop` threading needed — the loop-level `default_timeout` is not consulted (Second Review #13). In `fsm/validation/meta_rules.py:96`, make MR-1 pass when any state has `action_type == "human_approval"` and add it to the MR-1 message's list — do NOT touch `NON_LLM_EVALUATOR_TYPES` (see Integration Map).
+3. **Executor dispatch** (`fsm/executor.py`): In `_execute_state()`, add a dispatch branch before the generic action path — follow the learning-state dispatch pattern at the top of the method: `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`. ALSO add `if state.action_type == "human_approval": return "human_approval"` to `_action_mode()` (`:3093`) before the `"shell"` fallthrough — not for dispatch, but so the `== "shell"` / `!= "prompt"` heuristics at `:674` (BUG-1226 flush → `_flush_pending_shell_state()`), `:1998`, `:3708`, `:3855` never treat the prompt text as a shell command (Second Review #11).
+4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render `state.action` with `${captured.*}` interpolation, resolve the active `CommunicationAdapter` via `resolve_communication_adapter()` (`executor.py:2661`, FEAT-1930 — implemented). Compute `effective_timeout` per Decision Rules (`state.timeout` else `hitl.default_timeout`) and `deadline = time.monotonic() + effective_timeout`. Headless short-circuit: if `not adapter.supports_async()` and stdin is non-interactive (`sys.stdin is None or sys.stdin.closed or not sys.stdin.isatty()`), route `timeout` immediately (emit `human_approval_resolved` with `verdict: "timeout"`, no alert sent). Otherwise call `adapter.send_alert(loop_name, state_name, prompt, {"deadline": deadline, ...})`, THEN `self._emit(HUMAN_APPROVAL_REQUESTED_EVENT, {alert_id, state, prompt, timeout, deadline_ts (ISO wall-clock), captured_context minus "deadline"})` — the executor is the sole emitter of this event; adapters never emit it (FEAT-3384 Review #2). Poll `adapter.await_response(alert_id, tick)` inside an `_interruptible_sleep()`-shaped tick loop guarding on `deadline` and `self._shutdown_requested`; call `self._drain_inbound()` at the top of each tick so `--serve` inbound verdicts reach the bus mid-wait. On timeout: `adapter.cancel_alert(alert_id)`, `next = self._route(state, "timeout", ctx) or self._route(state, "no", ctx)`. On shutdown: `adapter.cancel_alert(alert_id)`, emit resolved with `verdict: "shutdown"`, return `None`. On verdict: write `self.captured[state_name] = {"output": edited_text or "", "verdict": verdict, "edit": edited_text, "reason": reason}`, emit `human_approval_resolved`, then `next = self._route(state, {"approve": "yes", "reject": "no", "edit": "edit"}[verdict], ctx)`; if `edit` resolves to `None` (no `on_edit`), fall back to `_route(state, "yes", ctx)` and log a warning. `_route()` already covers `route:` tables, `extra_routes`, and `_resolve_route()`'s `advance`/`done`/`${...}` handling (Second Review #12). The executor never imports a specific adapter — it only calls the protocol methods.
+5. **Config**: add `default_timeout: int = 1800` to `HitlConfig` (`config/core.py:185`, `from_dict`, and the `to_dict` block at `:916`) and to the `hitl` object in `config-schema.json` (Second Review #13). Host-capability flag remains dropped (Pre-implementation Review #2).
+6. **Tests**: Add `TestActionTypeHumanApproval` in `test_fsm_executor.py` (model after `TestActionTypeMcpTool`, now at line `:685`) — inject a mock adapter into `executor._contributed_adapters`, verify approve/reject/edit/timeout/shutdown routing (including a `route:`-table variant and an `advance` target), the single `human_approval_requested` emission (with `alert_id` and `deadline_ts`) plus `human_approval_resolved`, the `captured[<state>]` shape, the headless short-circuit for a sync adapter (including `sys.stdin = None`), that an async adapter is NOT short-circuited under non-TTY stdin, that `_action_mode()` returns `"human_approval"`, and that the `hitl.default_timeout` fallback (not `fsm.default_timeout`) bounds the wait. Add `TestHumanApprovalSchema` in `test_fsm_schema.py` (model after `TestMcpToolSchema`, now at line `:2062`). Add the timeout-warning tests (state timeout present / absent; loop `default_timeout` present must NOT suppress) and the routing-shape tests in `test_fsm_validation_structural.py`, an MR-1 test in `test_fsm_validation_meta_rules.py`, and a `HitlConfig` round-trip test next to the existing config tests.
+7. **Docs**: Add HITL phase section to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`; document `human_approval` action_type and routing fields in `skills/create-loop/reference.md:415`; add an example loop under `scripts/little_loops/loops/` with `visibility: example` and replace the commented-out workaround block in `scripts/little_loops/loops/harness-plan-research-implement-report.yaml:47-58` with a real `human_approval` state; add both events to `docs/reference/EVENT-SCHEMA.md` / `observability/schema.py`.
+   > ⚠ Superseded — this step originally directed the example loop to `loops/examples/`. That directory does not exist anywhere in the repo (confirmed via glob) and was never a real location; corrected to `scripts/little_loops/loops/` with `visibility: example`.
 8. **EPIC-1929 siblings** (separate issues, not in this FEAT's scope): Terminal adapter (FEAT-1931), PushNotification adapter (FEAT-1932), future adapters (Slack, Telegram, webhook).
+
+## Pre-implementation Review (2026-09-04)
+
+_Manual review against the codebase before implementation. Each item below has already been folded into the sections above; this list is the index of what changed and why._
+
+1. **Event ownership (cross-issue with FEAT-3384 Review #2).** `human_approval_requested` is emitted exactly once, by the executor via `_emit()`, after `send_alert()` returns so it carries `alert_id`, `run_id`, `loop`, `ts`. Adapters never emit it. Previously both this issue (AC5) and FEAT-3384 (`send_alert()`) emitted it on the same bus (`wire_extensions` receives `executor.event_bus`, which `_handle_event` fans every executor event into), producing two events with complementary missing fields.
+2. **Headless detection moved out of `HostCapabilities`.** That dataclass is frozen, per-host-CLI, and constructed at six sites; `stdin.isatty()` is a per-process fact. More importantly, "not interactive → `on_timeout`" would have defeated the `eventbus` adapter under `ll-auto`/`nohup` — the exact context it exists for. Rule is now `not adapter.supports_async() and not sys.stdin.isatty()`.
+3. **`prompt:` is not a `StateConfig` field.** `schema.py:119`'s `prompt` belongs to `EvaluateConfig`; `StateConfig.from_dict` silently drops an unknown `prompt:` key. The prompt text uses `action:`, matching `action_type: prompt` and the loop-router workaround.
+4. **API/Interface rewritten as flat `_emit()` dicts.** The `HumanApprovalRequest(LLEvent)`/`HumanResponse(LLEvent)` subclasses contradicted the issue's own finding that `LLEvent` is never subclassed. The post-verdict event is named `human_approval_resolved`, not `human_response`: `human_response` is the inbound verdict event the eventbus adapter subscribes to (filter `HUMAN_RESPONSE_EVENT`), so an executor echo under that name would re-trigger the adapter's own observer.
+5. **`timeout: 0` dropped as a suppression idiom.** Every `state.timeout or self.fsm.default_timeout or N` idiom in the executor treats 0 as unset, and a literal 0 means "time out now". Effective timeout is state, then loop-level `default_timeout`; the validator warns only when both are absent.
+6. **MR-1 wiring corrected.** `NON_LLM_EVALUATOR_TYPES` is derived from `EVALUATOR_REQUIRED_FIELDS` and intersected with `state.evaluate.type` (`meta_rules.py:96`); a `human_approval` state has no `evaluate:` block, so adding the string there was a no-op. MR-1 now checks `action_type == "human_approval"` directly.
+7. **Inbound verdicts during the wait (cross-issue with FEAT-3384 Review #1).** `_drain_inbound()` (`executor.py:549`) runs once per iteration between states; nothing drains during a blocking wait. The HITL tick loop calls it each tick so a `--serve` POST reaches the bus while the state is blocked.
+8. **Handler details that were unspecified**: pass `captured_context["deadline"]` (monotonic; `TerminalAdapter` renders "Time remaining" from it); persist `verdict`/`edit`/`reason`/`output` under `captured[<state>]` (reject `reason` was being dropped); on shutdown cancel the alert and return `None` so `run()`'s interrupted-save branch (`executor.py:923`) fires.
+9. **`_action_mode()` change dropped** — dispatch happens in `_execute_state()` before `_action_mode()` is consulted; the branch would be dead code. `loops/examples/` replaced with `scripts/little_loops/loops/` + `visibility: example`.
+10. **Scope Boundary #1/#2 with FEAT-1930 marked resolved** — `AdapterResponse` with three-way `Verdict` shipped.
+
+Recommended order: implement this issue first against the `TerminalAdapter`, then FEAT-3384; items 1 and 7 are the contract FEAT-3384 builds on.
+
+## Second Review (2026-09-04, post-confidence-check)
+
+_Verified against the working tree after the confidence check scored this issue 100/100. Each item is already folded into the sections above; this is the index. Numbering continues from the first review._
+
+11. **Pre-implementation Review #9 reversed — `_action_mode()` needs a `"human_approval"` branch.** The first review dropped it as dead code because dispatch happens in `_execute_state()`. But `_action_mode()` is also called from `run()`'s BUG-1226 wall-clock flush (`executor.py:674`, gated on `== "shell"`), the tamper-guard snapshot (`:1998`), `_check_host_guard` (`:3708`) and `_maybe_wait_for_circuit` (`:3855`). Its fallthrough returns `"shell"` for any unknown `action_type` whose action doesn't start with `/`, so if `fsm.timeout` fires in the route→`state_enter` window with a `human_approval` state pending, `_flush_pending_shell_state()` would run the operator prompt through bash. Returning a distinct mode excludes it from every such heuristic.
+12. **Route through `_route()`.** The handler was reading `state.on_yes`/`extra_routes[...]` directly, which silently ignores a `route:` table and bypasses `_resolve_route()` (`advance`/`done`/`${...}`). `_route()` (`executor.py:2973`) already resolves all three, including dynamic `extra_routes` verdicts — feed it `yes`/`no`/`edit`/`timeout`. The validator accepts a `route:` table as an alternative to `on_yes`+`on_no` for the same reason.
+13. **`fsm.default_timeout` dropped from the timeout chain; `hitl.default_timeout` added.** Every executor use of the loop-level `default_timeout` (`executor.py:2417/2437/2502/3453`) is the action-subprocess timeout; only one built-in loop sets it (`14400`). Falling back to it would let `default_timeout: 600` (a reasonable LLM-action bound) cap human waits at ten minutes and, worse, suppress the validator warning. The new `HitlConfig.default_timeout` (1800) is the fallback instead, so the wait is never unbounded and the warning only asks the author to be explicit.
+14. **`deadline` is monotonic; the event needs a wall-clock `deadline_ts`.** `time.monotonic()` is process-local, so the value the `TerminalAdapter` renders "Time remaining" from is meaningless to SSE/socket/JSONL consumers of `human_approval_requested`. Keep `deadline` in `captured_context` for the adapter; emit `timeout` plus an ISO `deadline_ts` on the bus.
+15. **Headless guard hardened.** `sys.stdin` can be `None` (no console) or closed; `TerminalAdapter._read_line()` calls `stream.fileno()` and raises `ValueError` on a closed stream. The rule is `sys.stdin is None or sys.stdin.closed or not sys.stdin.isatty()`.
+16. **Sub-loop nesting noted, scoped to FEAT-3384.** `_execute_sub_loop()` (`executor.py:1170-1191`) doesn't copy `_contributed_adapters` into the child executor. `terminal` still works there via the lazy fallback; `eventbus` would raise `CommunicationAdapterNotFound`. Recorded under Dependent Files; propagation is FEAT-3384's Second Review #6.
 
 ## Impact
 
@@ -403,6 +457,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - 2026-09-03 (`/ll:verify-issues`, re-check): Re-verified same-day — no drift since the pass above (all anchors re-confirmed identical: `_execute_state` :1948, `_run_action` :2312, `_action_mode` :3062, `_emit` :3550, `_interruptible_sleep` :3833, `StateConfig` :621, `timeout` :708, `extra_routes` :730, `HostCapabilities` :128). Decisions log has no active required rules. `ll-verify-evidence` clean. Dependency backlinks with FEAT-1930 (blocked_by/blocks) and FEAT-1680 (Scope Boundary) confirmed consistent. Verdict updated from stale `NON_VALID` to `VALID` (persisted `verify_verdict` frontmatter now matches).
 
 ## Session Log
+- second-review - 2026-09-04 - manual review against working tree; see § Second Review (items 11–16; reverses Pre-implementation Review #9, replaces `fsm.default_timeout` fallback with `hitl.default_timeout`)
+- `/ll:format-issue` - 2026-09-04T20:11:10 - `0f3f14f4-cb49-45c9-a835-dd9786829027.jsonl`
+- `/ll:confidence-check` - 2026-09-04T20:07:16 - `5b74e11a-f7b6-41ec-809e-9c5477863193.jsonl`
+- pre-implementation-review - 2026-09-04 - manual review; see § Pre-implementation Review (10 items, cross-linked with FEAT-3384)
 - `/ll:confidence-check` - 2026-09-04T19:40:12 - `16be6d3d-b797-4958-b3aa-7f5ae8374599.jsonl`
 - `/ll:reconcile-issue` - 2026-09-04T19:24:35 - `2e7a26f2-b8bf-48e7-b3ea-48fd933d6045.jsonl`
 - `/ll:refine-issue` - 2026-09-04T19:12:55 - `4a1099fd-9d48-4f02-88bf-6554245a52cb.jsonl`
@@ -434,6 +492,8 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 ---
 
 ## Scope Boundary
+
+**Resolved 2026-09-04** (pre-implementation review): FEAT-1930 shipped `AdapterResponse` (not `HumanResponse`) with a three-way `Verdict = Literal["approve", "reject", "edit"]` (`communication_adapter.py:21-34`), and this issue no longer defines an `LLEvent` subclass named `HumanResponse` (see API/Interface). Both conflicts below are closed; kept for history.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-25): Two conflicts with FEAT-1930 require coordination at implementation time:
 
