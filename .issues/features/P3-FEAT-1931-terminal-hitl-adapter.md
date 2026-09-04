@@ -7,8 +7,6 @@ captured_at: '2026-06-04T00:00:00Z'
 discovered_date: 2026-06-04
 discovered_by: scope-epic
 status: open
-blocked_by:
-- FEAT-1930
 parent: EPIC-1929
 relates_to:
 - FEAT-1930
@@ -22,6 +20,11 @@ labels:
 verify_verdict: VALID
 decision_needed: true
 unproven_mechanism: true
+learning_tests_required:
+- rich
+- questionary
+spike_attempted: true
+spike_completed: true
 ---
 
 # FEAT-1931: Terminal adapter for async HITL communication
@@ -179,6 +182,13 @@ issue's.
   Codebase Research Findings under Acceptance Criteria for the nearest
   precedent (retry-loop behavior in `SimulationActionRunner._prompt_result()`).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+- **`_interruptible_sleep()` (`executor.py:3856`) is not reusable as-is by a standalone adapter**: it is a bound method reading `self._shutdown_requested` (an `FSMExecutor` instance attribute), not a free function — a `TerminalAdapter` class cannot call it without either being handed the executor instance, an extracted free-function equivalent, or duplicating the loop. It also only wraps `time.sleep()` ticks; it has no mechanism for interrupting a blocking `sys.stdin` read.
+- **`await_response()`'s re-entrancy contract, exact docstring** (`communication_adapter.py`): "Block up to `timeout` seconds for the operator's verdict on `alert_id`. Re-entrant per alert: the executor polls this in short ticks so shutdown stays responsive. Repeat calls for the same `alert_id` are expected; a verdict that arrives between calls must be retained and returned on the next call. A `TimeoutResponse` does not invalidate the alert — only `cancel_alert()` does." This means an adapter is not contractually required to internally combine a selectors-bounded read with shutdown-flag polling in one blocking call (the combination the Proposed Solution's `⚠ Unproven mechanism` finding says has no precedent) — it only needs to honor one bounded `timeout` per call and retain any verdict arriving outside that window for the next call. This narrows, but does not resolve, `unproven_mechanism` (only `/ll:spike` resolves it).
+
 ## Proposed Solution
 
 Wrap `input()` in an `_interruptible_sleep()`-style polling loop (see
@@ -204,6 +214,10 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 No recommendation from research — both conventions are actively used elsewhere in the codebase for different subsystems (general CLI output vs. the init wizard specifically), and neither is deprecated relative to the other.
 
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+- **`await_response()` re-entrancy contract narrows the "unproven mechanism" concern** (see `## Program Design` → Codebase Research Findings for the full docstring): the protocol does not require an adapter to internally combine a selectors-bounded stdin read with shutdown-flag polling in one call — the executor is expected to call `await_response()` repeatedly with short per-call timeouts. This does not clear `unproven_mechanism: true` (that requires `/ll:spike`), but the implementer should re-derive the simplest viable `await_response()` shape from this contract before assuming the selectors+shutdown-polling combination is required.
+
 ## Implementation Steps
 
 1. Study the `CommunicationAdapter` protocol definition (FEAT-1930) and the
@@ -222,6 +236,11 @@ No recommendation from research — both conventions are actively used elsewhere
    > ⚠ Superseded — no such mechanism exists; see § Codebase Research Findings under Integration Map
 8. Write tests: mock stdin/stdout, verify prompt format, verdict parsing
    (approve/reject/edit), timeout handling, shutdown signal behavior
+9. `TerminalAdapterExtension.provided_adapters()` returns a dict keyed exactly
+   `{"terminal": TerminalAdapter()}` (matching `HitlConfig.channel`'s default),
+   registered under `[project.entry-points."little_loops.extensions"]` in
+   `scripts/pyproject.toml` — this is what makes the channel resolve with zero
+   user configuration; see § Codebase Research Findings under Integration Map
 
 ## Integration Map
 
@@ -235,6 +254,10 @@ No recommendation from research — both conventions are actively used elsewhere
   adapter
   > ⚠ Superseded — no such mechanism exists; see § Codebase Research Findings below
 - `scripts/little_loops/fsm/executor.py` — no changes (uses protocol interface)
+- `scripts/pyproject.toml` — add `TerminalAdapterExtension` under
+  `[project.entry-points."little_loops.extensions"]` (`:131-134`, currently
+  empty); this is the actual zero-config registration mechanism — see
+  § Codebase Research Findings below
 
 ### Similar Patterns
 - `executor.py` — `_interruptible_sleep()`: polling-with-shutdown-signal
@@ -271,6 +294,14 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - **Test pattern precedent**: `scripts/tests/test_fsm_runners.py:185-223` (`TestSimulationActionRunnerPromptResult`) is the closest existing precedent for mocking blocking `sys.stdin` — two styles: `patch("sys.stdin", StringIO(text))` for literal input, and `patch("sys.stdin")` with `.readline.side_effect = EOFError`/`KeyboardInterrupt` for interrupt simulation.
 - **Extension conformance test shape**: `scripts/tests/test_extension.py:524-692` gives every existing capability Protocol exactly two tests — a smoke-import test and a "protocol satisfied" test using a minimal ad-hoc class assigned under `# type: ignore[assignment]` (never `isinstance()`, even for `@runtime_checkable` protocols). A future `CommunicationAdapterExtension` conformance test would follow this same two-test shape.
 
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+- **Zero-config default registration mechanism located**: `scripts/pyproject.toml:131-134` declares `[project.entry-points."little_loops.extensions"]`, currently empty (placeholder comment only) — this is the entry-points group `ExtensionLoader.from_entry_points()` (`extension.py:170-186`) reads via `ENTRY_POINT_GROUP = "little_loops.extensions"`. `ExtensionLoader.from_config()` / ad-hoc `config_paths` require a user's `ll-config.json` entry and are NOT how a "zero configuration" default channel is achieved. A `TerminalAdapterExtension` needs an entry here (e.g. `terminal_adapter = "little_loops.fsm.adapters.terminal_adapter:TerminalAdapterExtension"`) for the Motivation section's "works out of the box with zero configuration" claim to hold — add `scripts/pyproject.toml` to Files to Modify.
+- **`resolve_communication_adapter()`'s exact channel-resolution key confirmed**: `channel = self._get_br_config().hitl.channel` (a flat dict lookup into `_contributed_adapters[channel]`, `executor.py:2661-2677`); `HitlConfig.channel` (`scripts/little_loops/config/core.py:185`) defaults to the literal string `"terminal"`. `TerminalAdapterExtension.provided_adapters()` must return a dict keyed exactly `{"terminal": ...}` for the config default to resolve it — any other key requires the user to set `hitl.channel` explicitly.
+- **`docs/reference/API.md:11061-11099` already contains a `TerminalAdapter` code example** (`class TerminalAdapter(CommunicationAdapter):` at `:11086`) as an illustrative usage snippet inside the `CommunicationAdapterExtension` documentation section — it is not a reference to a real shipped class. The Documentation task is to reconcile this illustrative snippet with the real implementation, not to add a new doc entry from scratch.
+- **`ExtensionLoader.from_config()`/`.from_entry_points()` swallow load failures** (`extension.py:147-192`): a malformed extension (e.g. one whose `__init__` raises) is caught, logged via `logger.warning(..., exc_info=True)`, and skipped — it never appears in `_contributed_adapters`. A broken `TerminalAdapterExtension` would surface downstream as `CommunicationAdapterNotFound: Communication adapter 'terminal' is not registered` at `resolve_communication_adapter()`, not as the original load-time exception.
+- **Existing reference-extension package convention**: `scripts/little_loops/extensions/reference_interceptor.py` (`ReferenceInterceptorExtension`) is the one existing example of a top-level `extensions/` package holding a concrete extension implementation — a location precedent, not a template to copy (its own use case is unrelated).
+
 ## Impact
 
 - **Priority**: P2 — default channel, required for FEAT-1794 to function
@@ -285,6 +316,24 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - [HOST_COMPATIBILITY.md](../../docs/reference/HOST_COMPATIBILITY.md) — host CLI abstraction layer
 
 ---
+
+## Spike Results
+
+_Added by `/ll:spike` on 2026-09-04_
+
+**Retired risks**
+
+| Risk (from Proposed Solution's ⚠ Unproven mechanism finding) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| Combined selectors-bounded stdin read + shutdown-flag polling has no precedent | `TestPollingMechanism::test_polling_returns_line_when_available_before_timeout`, `test_polling_returns_none_on_pure_timeout_no_shutdown`, `test_polling_exits_promptly_on_shutdown_signal_mid_block` | ✓ pass — a shutdown flag flipped from another thread interrupts a blocking `selectors`-bounded read within ~one tick (100ms), combining cleanly with the `mcp_call.py`-style deadline loop |
+| Whether internal shutdown polling is even required, given `await_response()`'s documented re-entrant short-timeout contract | `TestSingleReadMechanism::test_single_read_returns_line_when_available_before_timeout`, `test_single_read_returns_none_on_timeout`, `test_repeated_short_timeout_calls_satisfy_reentrant_contract` | ✓ pass — a single bounded `selectors` read per call, invoked repeatedly with short timeouts and the shutdown flag checked by the *caller* between calls, achieves equivalent responsiveness with no internal polling loop and loses no in-flight verdict |
+| Isolation guard | `TestSpikeIsolation::test_spike_does_not_import_production_adapter_modules` | ✓ pass |
+
+**Finding for the implementer**: both candidate shapes work. `await_line_single_read()` (the simpler shape, no internal shutdown-flag loop) is recommended as the default for `TerminalAdapter.await_response()` — it matches the `communication_adapter.py` re-entrant contract precisely and is less code, deferring shutdown responsiveness to however FEAT-1794's executor loop ends up calling `await_response()`. Fall back to the combined `await_line_polling()` shape only if FEAT-1794 turns out to call `await_response()` with one long timeout instead of short repeated ticks.
+
+**Spike location**: `scripts/tests/spike/terminal_hitl_await/`
+**Verification**: 7 tests pass in the spike suite; 104 tests pass across the two named regression suites (`test_fsm_runners.py`, `test_extension.py`).
+**Promotion**: the proven `await_line_single_read()` shape is intended to be copied directly into `TerminalAdapter.await_response()` during FEAT-1931 implementation; `scripts/tests/spike/terminal_hitl_await/` need not be promoted verbatim to `scripts/little_loops/spike/`.
 
 ## Blocks
 
@@ -307,15 +356,17 @@ open
 
 2026-06-17: `_interruptible_sleep` has drifted further to :1886 (was :1766). `send_alert()` signature mismatch with FEAT-1930 protocol still unresolved — missing `loop_name`, `state_name` params. `scripts/little_loops/fsm/adapters/terminal_adapter.py` does not exist (expected).
 
-2026-06-19: `_interruptible_sleep` has drifted to :1911 (was :1886). `send_alert()` signature mismatch with FEAT-1930 protocol still unresolved — missing `loop_name`, `state_name` params. `fsm/adapters/terminal_adapter.py` does not exist (expected, blocked on FEAT-1930).
+2026-06-19: `_interruptible_sleep` has drifted to :1911 (was :1886). `send_alert()` signature mismatch with FEAT-1930 protocol still unresolved — missing `loop_name`, `state_name` params. `fsm/adapters/terminal_adapter.py` does not exist (expected, pending FEAT-1930).
 
-- **2026-06-26** (/ll:verify-issues): Aligned `API/Interface` `send_alert()` to FEAT-1930's ratified protocol `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> str`; corrected `_interruptible_sleep` body reference to `scripts/little_loops/fsm/executor.py:1955`. Baseline (no `fsm/adapters/` yet, blocked on FEAT-1930) unchanged.
+- **2026-06-26** (/ll:verify-issues): Aligned `API/Interface` `send_alert()` to FEAT-1930's ratified protocol `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> str`; corrected `_interruptible_sleep` body reference to `scripts/little_loops/fsm/executor.py:1955`. Baseline (no `fsm/adapters/` yet, pending FEAT-1930) unchanged.
 
 - **2026-09-03** (/ll:verify-issues): `_interruptible_sleep` has drifted again — now `scripts/little_loops/fsm/executor.py:3833` (was :3378/:1955). `send_alert()`/`await_response()` signature-mismatch findings above remain open and correctly block implementation on FEAT-1930. Not editing the scattered body citations (lines 133, 217) — this note carries the current anchor for whoever implements next.
 
 - **2026-09-03** (/ll:verify-issues, re-check): Re-verified same-day, no drift since the note above. `scripts/little_loops/fsm/adapters/` still does not exist (confirmed via `ls`). `blocked_by: [FEAT-1930]` backlink confirmed on FEAT-1930's `blocks` list. No active decisions-log rules; `ll-verify-evidence` clean. Verdict: VALID (unchanged).
 
 - **2026-09-04** (`/ll:manage-issue` FEAT-1930 implementation): FEAT-1930 is now implemented (`scripts/little_loops/fsm/communication_adapter.py`, `CommunicationAdapterExtension` in `extension.py`, `FSMExecutor.resolve_communication_adapter()`). `send_alert()`/`await_response()` signature drift (Scope Boundary notes below) fixed in `## API/Interface` and `## Program Design` above: `send_alert()` drops `timeout` (moved to `await_response()` per FEAT-1930 Review #8), `await_response()` gains `alert_id` as its first parameter, and the response type is `AdapterResponse` (not `HumanResponse`/`EditResponse`) carrying `verdict: Literal["approve", "reject", "edit"]`. `blocked_by: [FEAT-1930]` cleared; status flipped `blocked` → `open`.
+
+- **2026-09-04** (`/ll:verify-issues`): Frontmatter still carried `blocked_by: [FEAT-1930]` despite the note above claiming it was cleared — removed it now (FEAT-1930 confirmed `status: Completed`; backlink on FEAT-1930's `blocks` list still holds informationally). Line drift: `_interruptible_sleep` now `executor.py:3856` (was :3833); `_execute_state` def now `:1953` (issue's Call Path cites :1948); `state.type == "learning"` sibling branch now `:1978` (issue cites :1973-1974) — not editing the scattered body citations, this note carries the current anchors. New finding from `communication_adapter.py`'s implemented docstring (not available at the 2026-09-03 pass): `await_response()` is documented "Re-entrant per alert: the executor polls this in short ticks" — i.e. FEAT-1794's caller is expected to call `await_response()` repeatedly with short per-call timeouts and do its own shutdown-checking between calls, closer to the executor-level `_interruptible_sleep` pattern than to a single long-blocking call. This doesn't contradict this issue's Proposed Solution (an adapter satisfying `await_response(alert_id, timeout)` may still block internally up to `timeout`), but it weakens the "unproven mechanism" framing: if FEAT-1794 calls with short timeouts, `TerminalAdapter.await_response()` may not need its own internal shutdown-signal polling loop at all — worth the implementer re-checking once FEAT-1794 lands, rather than building the selectors+shutdown-flag combination pre-emptively. Confirmed via code: `provided_adapters(self) -> dict[str, CommunicationAdapter]` (`extension.py:121`) matches the four existing capability Protocols' `dict[str, X]` convention, resolving the `list[type[X]]` ambiguity flagged in the Integration Map findings — no further action needed there. `await_response` still has zero callers anywhere in the codebase (FEAT-1794 is `status: Open`, unimplemented) — the human_approval dispatch branch this issue depends on for its Call Path still doesn't exist. `ll-verify-evidence` clean; no active decisions-log rules. Verdict: **VALID** (unchanged — findings are informational/anchor-drift, not claim defects).
 
 ---
 
@@ -328,6 +379,9 @@ open
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
 ## Session Log
+- `/ll:spike` - 2026-09-04T17:07:00 - `996a4184-d64a-4718-acaf-3c2b33b6304f.jsonl`
+- `/ll:refine-issue` - 2026-09-04T17:00:36 - `f3346010-0c2d-44a4-8a0e-3cc848bc8952.jsonl`
+- `/ll:verify-issues` - 2026-09-04T16:49:24 - `32d87180-d8bc-4b79-9b7f-315760a0277d.jsonl`
 - `/ll:manage-issue` - 2026-09-04T07:19:43 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:43:32 - `aa57eda6-6094-4ecb-9d7d-caa100953877.jsonl`
