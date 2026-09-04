@@ -88,7 +88,8 @@ Install a loop into your project for customization: `ll-loop install <name>`
 
 | Loop | Description |
 |---|---|
-| `general-task` | Execute any ad-hoc task with auto-generated definition of done and verification |
+| `general-task` | Execute any ad-hoc task with auto-generated definition of done and verification; plan steps run in batched passes (`steps_per_pass`, default all) |
+| `stepwise-task` | One-step-at-a-time variant of `general-task` — thin entry binding `steps_per_pass: 1`, for plans whose steps are risky or strongly interdependent |
 
 ## Quality Monitoring
 

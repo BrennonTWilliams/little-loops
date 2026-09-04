@@ -1,0 +1,47 @@
+name: stepwise-task
+category: harness
+visibility: public
+description: |
+  One-step-at-a-time variant of general-task: each plan step is implemented
+  and delta-verified (check_done) before the next step is selected. Slower
+  than general-task's default batched passes, but drift is caught and
+  corrected per step instead of per pass — use it for plans whose steps are
+  risky, strongly interdependent, or individually expensive to get wrong.
+
+  This is a thin entry point: it does NOT fork general-task's DoD, plan,
+  verify, or summary machinery. It binds steps_per_pass=1 and delegates the
+  entire run to general-task.yaml via a `loop:` state (the rn-stepwise ->
+  rn-refine pattern). See general-task.yaml's select_step / do_work /
+  mark_done / check_done chain for the actual per-step mechanics.
+
+  Run as: ll-loop run stepwise-task "<task description>"
+initial: run
+scope:
+  - "."
+max_steps: 5
+timeout: 28800
+on_handoff: spawn
+required_inputs: ["input"]
+
+context:
+  input: ""    # populated from the positional CLI arg (default input_key: input)
+
+states:
+  run:
+    # Delegation pattern per rn-stepwise.yaml: a `loop:` state binds `with:`
+    # keys onto the sub-loop's own context names (input / steps_per_pass match
+    # general-task.yaml's context: block verbatim). The child derives its own
+    # input_hash from `input` (fsm/context_seed.derive_input_hash).
+    loop: general-task
+    with:
+      input: "${context.input}"
+      steps_per_pass: 1
+    on_success: done
+    on_failure: failed
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

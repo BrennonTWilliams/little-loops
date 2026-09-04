@@ -1,5 +1,5 @@
 name: "general-task"
-description: "General-purpose task loop: writes a Definition of Done, decomposes the task into steps, executes one step at a time, and loops until all DoD criteria are verified."
+description: "General-purpose task loop: writes a Definition of Done, decomposes the task into steps, executes the steps in batched passes (all remaining steps per pass by default; steps_per_pass=1 is the one-step-at-a-time variant exposed as stepwise-task), and loops until all DoD criteria are verified."
 category: harness
 initial: check_baseline_tests
 scope:
@@ -28,6 +28,15 @@ context:
   # the THIRD identical lap trips the gate (0, 1, 2 -> 2 lt 2 is false) — see
   # final_verify_spin_gate's State contract for the off-by-one.
   max_final_verify_spins: 2
+  # Batched passes: how many unchecked plan steps select_step hands to a
+  # single do_work session. 0 = all remaining steps (default — the per-pass
+  # check_done was the dominant wall-clock cost of the old one-step-at-a-time
+  # shape); 1 = one step per pass (the stepwise-task thin entry sets this).
+  # The effective value is persisted to ${context.run_dir}/steps-per-pass.txt
+  # on first selection and halved mechanically by capture_work_exit whenever a
+  # multi-step pass times out (exit 124), so an oversized pass degrades toward
+  # stepwise instead of retrying the same batch.
+  steps_per_pass: 0
 
 circuit:
   repeated_failure:
@@ -218,6 +227,10 @@ states:
         echo "RESUME_CLEAN"
         exit 0
       fi
+      # Batched passes: current-step.txt may hold several lines (one per step in
+      # the pass). Nothing below depends on it being single-line — only its
+      # existence and the LAST_FILES list are consulted — and mark_done credits
+      # completed-steps.txt (or every line) on the RESUME_SKIP path.
       # Fix 2: Inconsistent file set — checkpoint exists but current-step.txt doesn't.
       # mark_done deletes the checkpoint (BUG-2538 inverted the lifecycle: current-step.txt
       # is now overwritten by the next select_step rather than rm'd mid-loop, so that
@@ -321,10 +334,42 @@ states:
       fi
       echo "$STEP" >> "$ATTEMPTS"
       rm -f "$SPIN_COUNTER"
-      echo "$STEP" > "${context.run_dir}/current-step.txt"
+      # Batched passes: the FIRST unchecked line above went through the full
+      # attempt-cap / abandonment / blocker-halt path unchanged. Now extend the
+      # selection with further unchecked lines (plan order) that have NOT
+      # exhausted max_step_attempts, up to steps_per_pass total (0 = all).
+      # Exhausted lines are skipped here, never abandoned — they get abandoned
+      # when they become the first line on a later pass, so the [!] rewrite and
+      # ENH-2857 halt semantics stay single-line and exact. The effective pass
+      # size is read from steps-per-pass.txt (seeded from the context knob on
+      # first selection, halved by capture_work_exit on a batch timeout).
+      CURRENT="${context.run_dir}/current-step.txt"
+      PASS_FILE="${context.run_dir}/steps-per-pass.txt"
+      MAX_ATTEMPTS="${context.max_step_attempts:shell}"
+      N=$(cat "$PASS_FILE" 2>/dev/null || echo "${context.steps_per_pass:shell}")
+      case "$N" in ''|*[!0-9]*) N=0 ;; esac
+      [ -f "$PASS_FILE" ] || printf '%s' "$N" > "$PASS_FILE"
+      printf '%s\n' "$STEP" > "$CURRENT"
+      COUNT=1
+      if [ "$N" -eq 0 ] || [ "$N" -gt 1 ]; then
+        while IFS= read -r line; do
+          if [ "$N" -gt 0 ] && [ "$COUNT" -ge "$N" ]; then break; fi
+          PRIOR_LINE=$(grep -Fx -- "$line" "$ATTEMPTS" 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$PRIOR_LINE" -ge "$MAX_ATTEMPTS" ]; then continue; fi
+          printf '%s\n' "$line" >> "$CURRENT"
+          echo "$line" >> "$ATTEMPTS"
+          COUNT=$((COUNT + 1))
+        done < <(grep '^- \[ \]' "$PLAN" | grep -Fxv -- "$STEP")
+      fi
+      # Per-pass progress ledger (see do_work): a fresh pass starts with no
+      # completed steps; pass-started.txt lets a re-entered do_work session
+      # tell a handoff prompt written for THIS pass from a stale one.
+      rm -f "${context.run_dir}/completed-steps.txt"
+      : > "${context.run_dir}/pass-started.txt"
       CHECKPOINT="${context.run_dir}/checkpoint.json"
-      printf '{"in_flight_step":"%s","timestamp":"%s","task_hash":"%s"}\n' \
-        "$STEP" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${context.input_hash}" > "$CHECKPOINT"  # ll-lint: mr11-ok(context.input_hash) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      printf '{"in_flight_step":"%s","in_flight_count":%s,"timestamp":"%s","task_hash":"%s"}\n' \
+        "$STEP" "$COUNT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${context.input_hash}" > "$CHECKPOINT"  # ll-lint: mr11-ok(context.input_hash) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "SELECTED_COUNT: $COUNT"
       echo "SELECTED_STEP: $STEP"
     action_type: shell
     capture: selected_step
@@ -448,32 +493,115 @@ states:
     on_error: continue_work
 
   do_work:
+    # Batched, context-bounded pass. current-step.txt holds one or more plan
+    # step lines (exactly one under stepwise-task). A pass may span several host
+    # sessions: when the context monitor reports the handoff threshold, the
+    # worker runs /ll:handoff, which prints the CONTEXT_HANDOFF marker; the
+    # executor (on_handoff: spawn) launches a fresh session that re-enters THIS
+    # state from scratch. Nothing from the old session is injected into the
+    # prompt, so progress lives in run_dir files: completed-steps.txt (the
+    # ledger mark_done credits) and last-files.txt. pass-started.txt (touched
+    # by select_step) tells a re-entered session whether .ll/ll-continue-prompt.md
+    # belongs to this pass.
     action: |
       Your task is: ${context.input}
 
-      The step you must complete is in ${context.run_dir}/current-step.txt.
-      Read that file to learn exactly which step to implement.
+      The steps for this pass are listed one per line in
+      ${context.run_dir}/current-step.txt. Read that file. Work through the
+      steps in order. Implement ONLY those steps. Do NOT modify
+      ${context.run_dir}/plan.md or ${context.run_dir}/dod.md.
 
-      Implement ONLY that step. Do NOT modify ${context.run_dir}/plan.md
-      or ${context.run_dir}/dod.md.
+      FIRST — re-entry check. If ${context.run_dir}/completed-steps.txt exists,
+      every line in it is a step an earlier session of this same pass already
+      finished: skip those lines. If .ll/ll-continue-prompt.md exists and is
+      newer than ${context.run_dir}/pass-started.txt, run /ll:resume to load the
+      previous session's handoff notes before continuing.
 
-      After completing the step, write exactly one line to
-      ${context.run_dir}/last-files.txt:
-      LAST_FILES: <space-separated list of files you created or modified>
+      Progress ledger — do this after finishing EACH step, not at the end, because
+      a later session may take over mid-pass:
+      1. Append the step's exact line (copied verbatim from current-step.txt) to
+         ${context.run_dir}/completed-steps.txt.
+      2. Rewrite ${context.run_dir}/last-files.txt as exactly one line:
+         LAST_FILES: <space-separated list of every file created or modified so
+         far in this pass>
+
+      Handoff chain — if the context monitor reports usage at or above the
+      handoff threshold ("[ll] Context ~N% used ... Run /ll:handoff"), do NOT
+      start another step. Make sure completed-steps.txt and last-files.txt are
+      current, then run /ll:handoff and end your turn. The loop spawns a fresh
+      session that re-enters this pass and skips the completed steps.
     action_type: prompt
     capture: work_result
     next: verify_step
-    on_error: do_work
-    max_retries: 2
-    retryable_exit_codes: [124]
-    on_retry_exhausted: capture_work_exit
-    timeout: 900
+    # A do_work error (canonically exit 124 = the pass was too large for one
+    # session) routes straight to capture_work_exit, which halves the persisted
+    # pass size mechanically. Retrying the same oversized batch here would
+    # burn up to 3x the timeout for the same result.
+    on_error: capture_work_exit
+    timeout: 3600
 
   capture_work_exit:
+    # Records the do_work exit code for continue_work, and on a timeout (124)
+    # of a MULTI-step pass shrinks the pass: the not-yet-completed part of
+    # current-step.txt is halved (integer, min 1) into steps-per-pass.txt, and
+    # one attempt per line in that part is refunded from step-attempts.txt — a
+    # batch timeout is not evidence against any individual step, and without
+    # the refund a step could be abandoned after 3 batch timeouts without ever
+    # running alone. A single-step timeout leaves both files untouched so
+    # continue_work can split the step as before.
+    #
+    # Partial credit: if the worker's completed-steps.txt ledger is non-empty,
+    # the pass finished SOME steps before it died. Those must not be lost or
+    # re-implemented, so this state emits PARTIAL_CREDIT and routes through
+    # verify_step -> mark_done (which marks exactly the ledger lines and
+    # refunds the attempts of the undone ones) -> check_done -> ... ->
+    # continue_work, which still sees the 124 exit code and the multi-line
+    # current-step.txt and therefore prints PASS_SHRUNK rather than splitting.
+    # The attempt refund happens in exactly one place per path: here when the
+    # ledger is empty (mark_done is skipped), in mark_done when it is not.
+    # No bash ${VAR} for locals (FSM interpolates the action first — see
+    # final_verify_spin_gate).
     action: |
-      echo "${captured.work_result.exit_code:default=0}" > "${context.run_dir}/last-exit-code.txt"  # ll-lint: mr11-ok(captured.work_result.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      EXIT="${captured.work_result.exit_code:default=0}"  # ll-lint: mr11-ok(captured.work_result.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      echo "$EXIT" > "${context.run_dir}/last-exit-code.txt"
+      CURRENT="${context.run_dir}/current-step.txt"
+      COMPLETED="${context.run_dir}/completed-steps.txt"
+      ATTEMPTS="${context.run_dir}/step-attempts.txt"
+      PASS_FILE="${context.run_dir}/steps-per-pass.txt"
+      PARTIAL=0
+      [ -s "$COMPLETED" ] && PARTIAL=1
+      if [ "$EXIT" = "124" ] && [ -f "$CURRENT" ]; then
+        REMAINING="${context.run_dir}/pass-remaining.tmp"
+        if [ "$PARTIAL" = "1" ]; then
+          grep -Fxv -f "$COMPLETED" "$CURRENT" > "$REMAINING" 2>/dev/null || true
+        else
+          cp "$CURRENT" "$REMAINING"
+        fi
+        C=$(grep -c . "$REMAINING" 2>/dev/null || true)
+        [ -z "$C" ] && C=0
+        if [ "$C" -gt 1 ]; then
+          NEW=$((C / 2))
+          [ "$NEW" -lt 1 ] && NEW=1
+          printf '%s' "$NEW" > "$PASS_FILE"
+          if [ "$PARTIAL" = "0" ] && [ -f "$ATTEMPTS" ]; then
+            awk 'NR==FNR { refund[$0]++; next } ($0 in refund) && refund[$0] > 0 { refund[$0]--; next } 1' \
+              "$REMAINING" "$ATTEMPTS" > "$ATTEMPTS.tmp" && mv "$ATTEMPTS.tmp" "$ATTEMPTS"
+          fi
+          echo "PASS_SHRUNK: $C -> $NEW"
+        fi
+        rm -f "$REMAINING"
+      fi
+      if [ "$PARTIAL" = "1" ]; then
+        echo "PARTIAL_CREDIT"
+      fi
     action_type: shell
-    next: continue_work
+    capture: work_exit_result
+    evaluate:
+      type: output_contains
+      source: "${captured.work_exit_result.output}"
+      pattern: "PARTIAL_CREDIT"
+    on_yes: verify_step
+    on_no: continue_work
     on_error: continue_work
 
   verify_step:
@@ -526,12 +654,40 @@ states:
       # NOT just the first unchecked line. This decouples marking from selection order
       # so the two states can never desync (BUG-1766). $0==target is an exact string
       # compare, so bracket/slash chars in the step text are literal and safe.
-      STEP_TEXT=$(cat "$STEP_FILE" 2>/dev/null)
-      if [ -n "$STEP_TEXT" ]; then
-        awk -v target="$STEP_TEXT" 'found==0 && $0==target && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+      # Batched passes: current-step.txt holds one line per selected step. The
+      # lines to credit come from completed-steps.txt (do_work's per-step
+      # ledger) when it is non-empty — a pass that stopped early via the
+      # handoff chain or a worker that ran out of steps — otherwise every line
+      # of current-step.txt (a full pass, or a worker that never wrote the
+      # ledger). Lines selected but NOT completed stay [ ] and are re-selected
+      # next pass, with one attempt refunded from step-attempts.txt so a step
+      # that never ran is not charged for the pass. current-step.txt itself is
+      # never removed here (check_done / continue_work read it downstream).
+      COMPLETED="${context.run_dir}/completed-steps.txt"
+      ATTEMPTS="${context.run_dir}/step-attempts.txt"
+      if [ -s "$STEP_FILE" ]; then
+        if [ -s "$COMPLETED" ]; then
+          SOURCE="$COMPLETED"
+        else
+          SOURCE="$STEP_FILE"
+        fi
+        while IFS= read -r STEP_TEXT; do
+          [ -n "$STEP_TEXT" ] || continue
+          awk -v target="$STEP_TEXT" 'found==0 && $0==target && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+        done < "$SOURCE"
+        if [ "$SOURCE" = "$COMPLETED" ] && [ -f "$ATTEMPTS" ]; then
+          UNDONE="${context.run_dir}/pass-undone.tmp"
+          grep -Fxv -f "$COMPLETED" "$STEP_FILE" > "$UNDONE" 2>/dev/null || true
+          if [ -s "$UNDONE" ]; then
+            awk 'NR==FNR { refund[$0]++; next } ($0 in refund) && refund[$0] > 0 { refund[$0]--; next } 1' \
+              "$UNDONE" "$ATTEMPTS" > "$ATTEMPTS.tmp" && mv "$ATTEMPTS.tmp" "$ATTEMPTS"
+          fi
+          rm -f "$UNDONE"
+        fi
       else
         awk 'found==0 && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
       fi
+      rm -f "$COMPLETED"
       rm -f "${context.run_dir}/checkpoint.json"
     action_type: shell
     next: check_done
@@ -547,11 +703,13 @@ states:
       from ballooning over a long run — the markers below are all check_done needs.
 
       Read these two bounded marker files to recover the delta context:
-      - ${context.run_dir}/current-step.txt — the step that was selected (LAST_STEP:
-        the single "- [ ] Step N: ..." line select_step wrote before do_work ran).
+      - ${context.run_dir}/current-step.txt — the step lines selected for the last
+        pass (LAST_STEP: one "- [ ] Step N: ..." line per selected step, one per
+        line; exactly one line under stepwise-task). Every line counts as part of
+        the delta.
       - ${context.run_dir}/last-files.txt — the LAST_FILES line do_work wrote,
-        listing the files created or modified by the step (may be absent/empty if
-        the step produced no files).
+        listing the files created or modified across the pass (may be absent/empty
+        if the pass produced no files).
 
       Read both task artifacts:
       - ${context.run_dir}/dod.md — Definition of Done (criteria)
@@ -572,7 +730,7 @@ states:
       Step 2 — Delta-scoped criterion verification:
       Use LAST_STEP and LAST_FILES from the step selection and work result above to scope verification:
       - For DoD criteria that mention or depend on any file in LAST_FILES, OR that are
-        plausibly affected by LAST_STEP: VERIFY BY EVIDENCE now (filesystem read /
+        plausibly affected by ANY step line in LAST_STEP: VERIFY BY EVIDENCE now (filesystem read /
         command run / file read). Update each criterion to [x] if verified, or leave
         [ ] with a one-line note on what is missing.
       - For previously-[x] criteria NOT plausibly affected by LAST_STEP or LAST_FILES:
@@ -588,15 +746,23 @@ states:
         a note instead of [x].
 
       Step 3 — Sample re-verification:
-      Pick up to min(3, total_checked) already-[x] DoD criteria and INDEPENDENTLY
-      re-verify each by re-running the command / re-reading the file / re-checking
-      the filesystem. Replace the `## Sample Verification` section in the DoD file:
+      Pick exactly ONE already-[x] DoD criterion (prefer one NOT listed in the
+      existing `## Sample Verification` section, so successive passes rotate through
+      the checked set) and INDEPENDENTLY re-verify it by re-running the command /
+      re-reading the file / re-checking the filesystem. One criterion, not more:
+      this sample was the dominant per-pass cost, and final_verify re-verifies every
+      criterion from scratch before terminal done. If no criterion is [x] yet, skip
+      the sample and write the section header with a single line "- (none checked
+      yet)". Replace the `## Sample Verification` section in the DoD file:
       if one already exists, remove it entirely before writing the new one; if none
       exists, create it. Write exactly one section in this exact format:
       ```
       ## Sample Verification
       - [x] <criterion>: <evidence>
-      - [x] <criterion>: <evidence>
+      ```
+      or, on failure:
+      ```
+      ## Sample Verification
       - [ ] <criterion>: FAILED — <what happened>
       ```
       If any sampled criterion fails re-verification, flip the corresponding criterion
@@ -975,12 +1141,21 @@ states:
 
       The previous do_work exit code was: ${captured.work_result.exit_code:default=0}
 
-      If the exit code is 124 (timeout): the previous step was too large to complete
-      within the timeout window. Read ${context.run_dir}/current-step.txt to see
-      which step timed out, then split it into 2–3 smaller independently-completable
-      sub-steps and insert them (as unchecked - [ ] lines) before the next unchecked
-      step in ${context.run_dir}/plan.md. Do NOT append a remediation step for a DoD
-      criterion — the step was sound but oversized. Print a summary of the split.
+      If the exit code is 124 (timeout): read ${context.run_dir}/current-step.txt
+      and count its lines.
+      - Every line is already marked [x] in plan.md: the work finished before the
+        timeout fired and nothing was lost. Do NOT split and do NOT append; print
+        PASS_SHRUNK on its own line and stop.
+      - MORE than one line: the pass was oversized, not any single step. Its size
+        has already been halved mechanically (capture_work_exit wrote the new
+        steps-per-pass.txt). Do NOT split any step and do NOT append a remediation
+        step. Print exactly this on its own line and stop:
+        PASS_SHRUNK
+      - Exactly one line: that step was too large to complete within the timeout
+        window. Split it into 2–3 smaller independently-completable sub-steps and
+        insert them (as unchecked - [ ] lines) before the next unchecked step in
+        ${context.run_dir}/plan.md. Do NOT append a remediation step for a DoD
+        criterion — the step was sound but oversized. Print a summary of the split.
 
       If the exit code is -9 (OOM/SIGKILL): the worker was killed by the operating
       system due to memory pressure, not a task or code failure. Do NOT append a
@@ -988,7 +1163,7 @@ states:
       describing which step was being executed and that memory pressure caused the
       kill. Then print exactly this on its own line:
       DIAGNOSE_OOM
-      The loop will route to diagnose via retry exhaustion for operator review.
+      The loop surfaces this to the operator through the diagnose state.
       The operator should reduce the scope of the step or run on a system with more
       available memory.
 
@@ -1143,7 +1318,7 @@ states:
       Diagnose what happened:
       - If ${context.run_dir}/plan.md exists, read it and summarize completed steps.
       - If ${context.run_dir}/dod.md exists, report which done-criteria were met.
-      - Identify the most likely failure cause and which state failed (define_done, plan, resume_check, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, run_final_tests, count_final, summarize_success, continue_work, or summarize_partial).
+      - Identify the most likely failure cause and which state failed (define_done, plan, resume_check, select_step, do_work, capture_work_exit, verify_step, mark_done, check_done, count_done, final_verify, run_final_tests, count_final, summarize_success, continue_work, or summarize_partial).
 
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the task description.
     next: failed

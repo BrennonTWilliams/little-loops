@@ -1068,6 +1068,10 @@ The `count_done` shell gate applies the following logic:
 
 Override `min_pass_rate` per run to require 100% satisfaction: `ll-loop run general-task --context min_pass_rate=1.0`. Loops that omit `min_pass_rate` from `context:` default to 0.95.
 
+**Batched Passes (`steps_per_pass` — `general-task` loops)**
+
+`general-task` hands `select_step`'s selection to one `do_work` session as a *pass*. `context.steps_per_pass` sets how many unchecked plan steps a pass contains: `0` (default) = all remaining, `1` = one step per pass (the `stepwise-task` thin entry binds this). The effective value is persisted to `${context.run_dir}/steps-per-pass.txt` and halved by `capture_work_exit` whenever a multi-step pass times out, so an oversized pass degrades toward stepwise mechanically. Within a pass the worker keeps a `completed-steps.txt` ledger and hands off via `/ll:handoff` when the context monitor fires; the spawned continuation re-enters `do_work` and skips ledgered steps, so a pass is bounded by context, not by a single session.
+
 **Step-Cap Summary Hook (`on_max_steps` — ENH-1631)**
 
 When a `general-task` run exhausts its step budget before all DoD criteria are satisfied, the `on_max_steps: summarize_partial` hook fires. The `summarize_partial` state reads the DoD and plan artifacts, then writes a one-paragraph summary to `.loops/tmp/general-task-summary.md` covering: what was accomplished, which DoD criteria remain unmet, and recommended next actions. The loop then terminates with `terminated_by: max_steps`.
