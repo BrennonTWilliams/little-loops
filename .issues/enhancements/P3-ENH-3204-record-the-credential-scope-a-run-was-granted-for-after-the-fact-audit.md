@@ -8,13 +8,12 @@ parent: EPIC-3212
 epic: EPIC-3212
 blocked_by:
 - ENH-3233
-- ENH-3234
 - ENH-3235
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T22:28:30Z'
 testable: true
-decision_needed: true
+decision_needed: false
 verify_verdict: VALID
 ---
 
@@ -26,7 +25,7 @@ Nothing anywhere records what authority a given run held. Once a task can declar
 
 Record the declared scope with the run. The record stores **scope and variable *names* only — never values**.
 
-**Dependency status**: ENH-3203 was closed by *decomposition* into ENH-3233/3234/3235 — no declaration code has landed yet. The enforcement chokepoint is ENH-3233; the declaration surfaces this issue records arrive with ENH-3234 (`ActionSpec`) and ENH-3235 (`StateConfig`). All three are in `blocked_by`; scope *names* in the record only exist once at least one declaration surface ships.
+**Dependency status**: ENH-3203 was closed by *decomposition* into ENH-3233/3234/3235 — no declaration code has landed yet. The enforcement chokepoint is ENH-3233; the declaration surface this issue records is ENH-3235 (`StateConfig.scopes`, the loop-YAML path). `blocked_by` is ENH-3233 + ENH-3235 only (ENH-3234 dropped 2026-09-04): the record is written from `FSMExecutor`, which never sees an `ActionSpec`. Recording for the `ll-action`/`ll-queue` path is a follow-on once ENH-3234 lands, not a prerequisite.
 
 ## Current Behavior
 
@@ -39,11 +38,15 @@ Each run records the capability and variable names it was granted, queryable aft
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` is currently **46** (line 25, verified 2026-09-03), so a new migration is **v47**. Confirm the current value before writing the migration; it moves (it already drifted from 40, then 45, since this issue was written).
-- The projection helper in `scripts/little_loops/host_runner.py` — emits the granted-names record at spawn time.
+- `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` is currently **46** (line 25, re-verified 2026-09-04), so a new migration is **v47**. Confirm the current value before writing the migration; it moves (it already drifted from 40, then 45, since this issue was written).
+- `scripts/little_loops/session_store/writers.py` — new `write_credential_scope()` in the `write_research_triage()` shape (fail-soft, names only).
+- `scripts/little_loops/fsm/executor.py` — the dispatch call site (`:2495-2505`, immediately before `self.action_runner.run(...)`) is the **write site**: it holds `self.run_id`, the state name, and `state.scopes`. **Not** `host_runner.py` — the projection helper has no run context (see Decision 3, resolved).
 
 ### Tests
-- `scripts/tests/` — migration round-trip, plus a test asserting no credential *value* can reach the record.
+- `scripts/tests/test_session_store_schema.py` — `TestSchemaV47CredentialScopeEvents` mirroring the v46 class (columns, indexes, upgrade-from-46, kind registration, rebuild-exclusion) + bump in `test_schema_version_matches_migrations_length`.
+- `scripts/tests/test_session_store_writers.py` — `TestWriteCredentialScope` incl. `test_graceful_when_store_unwritable`.
+- **Names-only test**: plant `GH_TOKEN=SENTINEL_VALUE_9f3a` in `os.environ` (monkeypatch), run one declaring state through `FSMExecutor` with a mock runner, then assert `SENTINEL_VALUE_9f3a` appears nowhere in the raw bytes of the written row (`SELECT * FROM credential_scope_events` serialized via `json.dumps`). The writer signature makes this structurally impossible (it takes only name-sets), but the test guards against a future "helpful" refactor.
+- Executor test: an undeclared state writes no row; a declaring state writes exactly one row per dispatch with the correct `run_id`/`state`/`scopes`.
 
 ### Codebase Research Findings
 
@@ -65,12 +68,15 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - The writer itself takes a run identifier plus two `frozenset[str]` name-sets (scopes, variables) and returns `None`. Indicative shape; no value-bearing parameter may exist.
 
 ### Call Path
-Spawn site (holds run identifier) → `project_child_env()` result (ENH-3233 chokepoint) → scope-record writer → `loop_events` (or new table, per Open Decision #1)
+`FSMExecutor` dispatch (`fsm/executor.py:2495`, holds `self.run_id` + `state.name` + `state.scopes`) → `resolve_scopes(state.scopes)` (ENH-3233's pure registry function → `frozenset[str]` of var names) → `write_credential_scope(store, run_id=..., state=..., scopes=..., var_names=...)` → new `credential_scope_events` table (v47) → `self.action_runner.run(..., scopes=state.scopes)` proceeds as ENH-3235 wires it.
+
+The write happens *before* the spawn and independently of it — the record says what the state was granted, which is fully determined by the declaration, not by anything the child does.
 
 ### Decision Rules
 - Names only, never values — enforced by test, not convention.
-- No record is written for undeclared specs, since there is no scope to report.
-- The write must **not** live inside `project_child_env()` itself: it is a pure helper with ~18 call sites, several of which have no run context at all (`worktree_utils.py`, `git_operations.py`, `mcp_call.py`). Invoke the writer from spawn sites that hold a run identifier.
+- No record is written for undeclared states (`state.scopes is None`), since there is no scope to report.
+- The write must **not** live inside `project_child_env()` itself: it is a pure helper with ~18 call sites, several of which have no run context at all (`worktree_utils.py`, `git_operations.py`, `mcp_call.py`). It also must not live in `fsm/runners.py` — the runner has no `run_id` either. The executor is the only frame that holds both the run identity and the declaration.
+- Writer is fail-soft (`try/except sqlite3.Error: logger.warning(...); return False`) — an audit write must never fail a loop run.
 
 ### Codebase Research Findings
 
@@ -91,16 +97,17 @@ Explicitly **out of scope**:
 - **Retention, pruning, or compaction of the new record.** Per project policy, `raw_events`-style deletion stays a manually-run CLI action; this issue adds no automatic pruning.
 - **Any surfacing UI or `ll-*` query command.** Follow-on if wanted.
 
-## Open Decisions
+## Decisions (resolved 2026-09-04, pre-implementation epic review)
 
-1. **Where does the record land?** A column on the existing `loop_events` ledger, or a new `.ll/history.db` table. `loop_events` is closest; a dedicated table is cleaner if the record is per-spawn rather than per-run.
-2. **Per-run or per-spawn granularity?** A single loop run makes many spawns with potentially different declarations.
+1. **Where does the record land?** — **New table `credential_scope_events`** in `.ll/history.db`, migration v47, following the `research_triage_events` (v46) shape: `id`, `run_id`, `state`, `ts`, `scopes` (JSON array of scope names), `var_names` (JSON array of env-var names), with an index on `run_id`. Not a `loop_events` column: the record is per-dispatch, and `loop_events` is per-run.
+2. **Per-run or per-spawn granularity?** — **Per-dispatch** (one row per declaring state execution). Falls out of Decision 3: the executor writes at each dispatch, so a run that re-enters a state N times gets N rows, each stamped with the same `run_id`. Per-run views are a `GROUP BY run_id` away.
+3. **How does the writer obtain a run identifier?** — **Write from `FSMExecutor` at dispatch** (`fsm/executor.py:2495-2505`), where `self.run_id` (`:575`), `state.name`, and `state.scopes` (ENH-3235) all already exist. Neither option previously listed is needed: no `run_id` parameter is threaded down through `ActionRunner.run()`/`run_claude_command()`, and no PID keying. The executor already writes `run_id`-stamped rows at archive time (`:4031`, `:4060`), so the store handle and pattern are in scope there. Consequence: this issue covers the loop-YAML path only; `ll-action`/`ll-queue` recording is a follow-on after ENH-3234 (no run identity exists on that path today).
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis (retained; superseded by Decision 3 above):_
 
-3. **How does the writer obtain a run/spawn identifier?** No confirmed call site into `project_child_env()`/`_apply_automation_env()` today holds a genuine run identifier (see Program Design → Codebase Research Findings). `FSMExecutor.run_id` exists (`fsm/executor.py:570`) but is not threaded down to `DefaultActionRunner.run()`/`run_claude_command()`/`run_blocking_json()`. Options: (a) thread `run_id` as a new parameter down this call chain to the actual spawn site, or (b) key the record by something already available at the spawn site (e.g. PID via `run_claude_command()`'s existing `on_process_start` callback, or a freshly-generated per-write identifier) instead of `FSMExecutor.run_id`. This is a prerequisite decision, not an implementation detail — it determines whether "per-run" granularity (Open Decision #2) is reachable without a signature change to `DefaultActionRunner.run()`.
+- No confirmed call site into `project_child_env()`/`_apply_automation_env()` holds a genuine run identifier; `FSMExecutor.run_id` (`fsm/executor.py:575`) is the only one in the chain. This is why the write moved up to the executor rather than down to a spawn site.
 
 ## Impact
 
@@ -117,6 +124,15 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 - `SCHEMA_VERSION` corrected 45→46; next migration is v47, not v46.
 - Re-verified: `SCHEMA_VERSION` still 46 (v47 claim holds). All three `blocked_by` issues (ENH-3233/3234/3235) confirmed open with correct `Blocks` backlinks to this issue. `HostInvocation`/`ActionSpec` field-absence claims (no `env_allow`, no `scopes`), `DefaultActionRunner.run()`'s missing `run_id` param, `_apply_automation_env()`/`project_child_env()` no-shared-call-site claim, and the writer/test precedent citations (`write_advisor_consult`/`write_research_triage`, `TestSchemaV46ResearchTriageEvents`, `TestWriteAdvisorConsult`/`TestWriteResearchTriage`) all confirmed accurate at current line numbers except `ActionSpec` (corrected 77-89 → 84-95 above). No active required decisions-log rules apply. `ll-verify-evidence` reports clean.
+
+## Review Notes (2026-09-04, pre-implementation epic review)
+
+- All three Open Decisions resolved (new v47 table; per-dispatch; write from `FSMExecutor` at
+  dispatch). `decision_needed` flipped to `false`.
+- `blocked_by` narrowed to ENH-3233 + ENH-3235; ENH-3234 removed (executor path never sees an
+  `ActionSpec`). ENH-3234's `## Blocks` updated to match.
+- Files to Modify corrected: write site is `fsm/executor.py`, not `host_runner.py`.
+- Tests section made concrete, including the names-only sentinel test.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-09-03T20:06:11 - `af073d2f-8e64-47da-8b0b-406331feaae4.jsonl`

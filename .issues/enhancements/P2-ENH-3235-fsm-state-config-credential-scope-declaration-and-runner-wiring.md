@@ -85,6 +85,18 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   `HostInvocation` is constructed.
 - States with no declaration keep today's coarse (full-inherit) behavior — opt-in per state,
   matching ENH-3233's `env_allow=None` no-op default.
+- **Field name pinned (2026-09-04): `scopes`.** Same name as ENH-3234's `ActionSpec.scopes` and
+  the column ENH-3204 records, so all three surfaces agree. YAML: `scopes: [github]`.
+- **Fail at validate/load time, not mid-run.** An unknown scope name must be rejected by
+  `ll-loop validate` (a new structural rule in `fsm/validation/structural_rules.py`, resolving
+  each state's `scopes` against ENH-3233's registry) and by FSM load in
+  `StateConfig.from_dict()`/`FSMConfig` validation, so a typo surfaces before the loop starts —
+  not as a `ValueError` inside the shell branch after N states have already run and mutated the
+  tree. The run-time resolution in the shell branch stays as the last line of defence, but is
+  never the *first* place a bad name is caught.
+- `fsm-loop-schema.json` gains a `scopes` property on the state object (array of strings,
+  optional), adjacent to the `tools` block at lines 590-596, so schema-driven tooling and docs see
+  the field even though the state object tolerates unknown keys today.
 
 ## Proposed Solution
 
@@ -118,13 +130,27 @@ round-trip tests).
   covering only the `ActionSpec` path (ENH-3234) leaves FSM loops unscoped.
 - **AC5 (this surface).** States without a declaration keep working with today's coarse behavior —
   no regression to any existing loop YAML in `loops/*.yaml`.
+- **AC9.** `ll-loop validate` reports an ERROR for a state whose `scopes` names a scope absent
+  from ENH-3233's registry; the loop never starts. Test: a fixture YAML with `scopes: [githb]`
+  fails validation with a message naming `githb`.
 
 ## Program Design
 
 ### Types
-- `StateConfig.<new-field>: list[str] | None = None` — mirrors the existing
+- `StateConfig.scopes: list[str] | None = None` — mirrors the existing
   `StateConfig.tools: list[str] | None = None` (`fsm/schema.py:727`, drifted from the field's
-  earlier `schema.py:686` citation); field name is not fixed here, only the shape.
+  earlier `schema.py:686` citation). Name pinned 2026-09-04 (was "not fixed here").
+
+### Files to Modify
+- `scripts/little_loops/fsm/schema.py` — `StateConfig.scopes` + `to_dict`/`from_dict` lines.
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — `scopes` property on the state object.
+- `scripts/little_loops/fsm/validation/structural_rules.py` — new rule: every declared scope
+  name resolves against ENH-3233's registry; unknown name is an ERROR.
+- `scripts/little_loops/fsm/runners.py` — `ActionRunner.run()` Protocol + `DefaultActionRunner`
+  shell branch (`:297-305`) + `SimulationActionRunner.run()` `del` list.
+- `scripts/little_loops/fsm/executor.py` — dispatch call site (`:2495-2505`) passes
+  `scopes=state.scopes` **ungated** by `action_mode`.
+- `docs/guides/LOOPS_GUIDE.md` — per-state field table (see Documentation).
 
 ### Signatures
 - `project_child_env(invocation: HostInvocation | None = None, *, extra: dict[str, str] | None = None) -> dict[str, str]`
@@ -293,6 +319,16 @@ Out of scope for this child:
   present with no active required-rule conflict, `ll-verify-evidence` clean (0 findings).
 - Verdict: **NEEDS_UPDATE** — the blocking dependency and technical claims all hold; only two
   stale/incorrect line citations needed correction.
+
+## Review Notes (2026-09-04, pre-implementation epic review)
+
+- Field name pinned to `scopes` (matches ENH-3234 and ENH-3204).
+- Added validate/load-time rejection of unknown scope names (AC9, new structural rule) — run-time
+  resolution alone would fail mid-loop after earlier states already ran.
+- Added `fsm-loop-schema.json` property and a consolidated Files to Modify list.
+- Doc note for LOOPS_GUIDE: a declaring shell state that spawns a nested host CLI (`claude -p`,
+  `ll-loop`, `ll-auto`) loses env-borne API keys unless it declares the matching `*-api` scope;
+  Keychain-backed OAuth is unaffected (see ENH-3233's honesty note).
 
 ## Session Log
 - `/ll:verify-issues` - 2026-09-03T20:03:03 - `e7ab64a8-d990-4865-a8d8-f889f6c44694.jsonl`

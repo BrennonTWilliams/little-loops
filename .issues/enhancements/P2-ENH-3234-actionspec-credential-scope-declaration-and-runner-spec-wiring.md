@@ -76,6 +76,12 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   `HostInvocation` is constructed.
 - `ActionSpec`s with no declaration keep today's coarse (full-inherit) behavior — the `env_allow`
   path is opt-in per spec, matching ENH-3233's `env_allow=None` no-op default.
+- **Queue round-trip preserves the field.** `queue_store.py::_serialize_action()` (line 240-250)
+  and `_deserialize_action()` (line 252-260) enumerate `ActionSpec` fields by hand
+  (`name`/`runner`/`target`/`args`/`timeout`); a `scopes` field added to the dataclass alone
+  **silently vanishes** for every action that goes through `ll-queue`. Both functions must gain
+  a `scopes` line (serialize `sorted(scopes)` or `None`; deserialize back to `frozenset` or
+  `None`), with a round-trip test. (Review 2026-09-04 — this was missing from every prior pass.)
 
 ## Proposed Solution
 
@@ -143,17 +149,36 @@ kwarg not yet available) → `subprocess.Popen(["bash", "-c", spec.target], ...,
 (`runner_spec.py:243-250`).
 
 ### Decision Rules
-- **Resolution point not pinned down.** This issue's Proposed Solution states scopes are resolved
-  "at spec-construction or resolve time" (AC3's fail-loud raise applies either way) without
-  choosing between them. Construction-time validation rejects a bad scope name the moment a
-  caller builds the (frozen, immutable) `ActionSpec` — the earliest possible failure point, and
-  consistent with `ActionSpec` being documented as a value object that "crosses the runner/caller
-  boundary" (`runner_spec.py:87-89`). Resolve-time validation defers the raise to inside
-  `_run_cmd()`, immediately before building `env_allow`, and would need to run identically in any
-  other runner branch the field is later extended to. The issue does not state a default; this is
-  an open implementation decision.
+- **Resolution point — decided (2026-09-04): resolve in `_run_cmd()`, not at construction.**
+  `ActionSpec` is not only built by callers; it is deserialized in bulk from the queue
+  (`queue_store.py::_deserialize_action()`, called per row at line 298). A construction-time
+  raise (`__post_init__`) on one bad scope name would abort the *entire* queue load rather than
+  fail that one action. Resolve-time validation inside `_run_cmd()`, immediately before building
+  `env_allow`, confines the blast radius to the offending action. The raise is still ENH-3233's
+  direct `ValueError` — only *where* it fires changes.
+- **Error surfacing — decided:** `_run_cmd()` catches the resolution `ValueError` and returns a
+  failed `RunnerResult` (non-zero exit, message naming the unknown scope), mirroring how
+  `_run_skill()`/`_run_prompt()` turn `FileNotFoundError` into a `RunnerResult` error (lines
+  228, 338) rather than letting it propagate uncaught. A queue worker must never die on one bad
+  entry.
+- **CLI surface — decided: out of scope here.** No `--scope` flag is added to `ll-action`/
+  `ll-queue`/`ll-harness` in this issue; AC1 is satisfied programmatically (dataclass field +
+  queue JSON round-trip). A `--scope <name>` flag on `ll-queue add` (and `ll-harness`'s
+  `cmd` subcommand) is a follow-on once ENH-3235's loop-YAML surface has proven the declaration shape; file it when
+  this lands rather than widening this issue.
+
+### Files to Modify
+- `scripts/little_loops/runner_spec.py` — `ActionSpec.scopes` field; `_run_cmd()` resolution +
+  `env_allow=` kwarg + `ValueError` → `RunnerResult` handling.
+- `scripts/little_loops/queue_store.py` — `_serialize_action()`/`_deserialize_action()`
+  (lines 240-260) gain the `scopes` field.
+- `scripts/tests/test_runner_spec.py`, `scripts/tests/test_queue_store.py` (round-trip).
 
 ### Tests
+- `scripts/tests/test_queue_store.py` — round-trip: enqueue an `ActionSpec(scopes=frozenset({"github"}))`,
+  dequeue, assert `scopes` survives; and `scopes=None` round-trips to `None` (not empty set).
+- `scripts/tests/test_runner_spec.py` — `_run_cmd()` with an unknown scope returns a failed
+  `RunnerResult` naming the scope and spawns nothing.
 - `scripts/tests/test_runner_spec.py::TestRunActionDispatch::test_cmd_dispatch_matches_legacy_shape`
   (line 190, not lines 172-176 as previously cited — corrected against current code) — the
   closest existing real-subprocess `RunnerType.CMD` test (spawns `echo hi`, no `Popen` mocking);
@@ -196,11 +221,21 @@ Out of scope for this child:
 
 ## Blocks
 
-- ENH-3204
+_None._ (ENH-3204 previously listed here; dropped 2026-09-04 — the audit record is written from
+`FSMExecutor` on the loop-YAML path and needs only ENH-3233 + ENH-3235. ActionSpec-path
+recording is a follow-on to ENH-3204, not a blocker relationship.)
 
 ## Status
 
 **Open** | Created: 2026-08-17 | Priority: P2 | Blocked by: ENH-3233
+
+## Review Notes (2026-09-04, pre-implementation epic review)
+
+- Added the `queue_store.py` serialization gap (field would silently drop on `ll-queue` round-trip).
+- Pinned the open resolution-point decision: resolve in `_run_cmd()`, `ValueError` → failed
+  `RunnerResult`. Rationale: bulk queue deserialization must not abort on one bad entry.
+- Pinned CLI `--scope` flag as out of scope / follow-on.
+- Removed ENH-3204 from `## Blocks` (see ENH-3204's `blocked_by` change).
 
 ## Verification Notes (2026-09-03)
 

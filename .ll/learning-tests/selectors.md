@@ -1,17 +1,20 @@
 ---
 target: selectors
-date: '2026-08-04'
+date: '2026-09-04'
 status: proven
 assertions:
-- claim: selectors.DefaultSelector() resolves to KqueueSelector on this platform (macOS)
+- claim: sel.select(timeout=0) returns an empty list immediately without blocking, distinct
+    from timeout=None which blocks indefinitely
   result: pass
-- claim: sel.select(timeout=1.0) returns an empty list when no registered fileobj has data ready within the timeout window, rather than blocking indefinitely
+- claim: SelectorKey is a namedtuple exposing .fileobj, .fd, .events, and .data by attribute
+    access
   result: pass
-- claim: readline() on a ready pipe fileobj returns "" (empty string, falsy) exactly at EOF, distinguishing it from a blank line ("\n")
+- claim: sel.unregister() on a fileobj that was never registered raises KeyError
   result: pass
-- claim: key.fileobj returned by sel.select() is identity-equal (is) to the object originally passed to sel.register()
+- claim: sel.modify(fileobj, events) without a data argument resets key.data to None, discarding
+    the previously registered data
   result: pass
-- claim: sel.get_map() becomes empty (falsy) once all registered fileobjs have been unregister()-ed, so `while sel.get_map():` terminates the loop without an extra blocking select() call
+- claim: sel.get_key(fileobj) returns the same SelectorKey as the one returned by sel.register()
   result: pass
 raw_output_path: .ll/learning-tests/raw/selectors.txt
 ---

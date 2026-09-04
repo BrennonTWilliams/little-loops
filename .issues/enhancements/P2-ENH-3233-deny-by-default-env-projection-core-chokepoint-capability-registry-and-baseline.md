@@ -81,10 +81,28 @@ so it is a shape precedent only, not a reusable registry.
   synthesize a fake invocation just to carry the field would be worse. If both are supplied, the
   explicit kwarg wins.
 - With an allow-set in effect, `project_child_env()` constructs the child environment as: the
-  names in the allow-set, selected from the **merged** `os.environ` + `invocation.env` + `extra`
-  — ambient `os.environ` is the normal source of a declared credential (e.g. `GITHUB_TOKEN` from
-  the operator's shell), so a declared name present only in `os.environ` **must** reach the
-  child — plus the fixed baseline, and nothing else.
+  names in the allow-set **selected from ambient `os.environ`** — the normal source of a declared
+  credential (e.g. `GITHUB_TOKEN` from the operator's shell), so a declared name present only in
+  `os.environ` **must** reach the child — plus the fixed baseline (also selected from
+  `os.environ`), plus **every key in `invocation.env` and `extra`, unconditionally**. The
+  allow-set filters *inheritance* only; caller-supplied keys are explicit intent, never ambient
+  leakage, and must not be subject to it. (Review 2026-09-04: without this rule deny mode drops
+  `GIT_DIR`/`GIT_WORK_TREE` (`host_runner.py:432-433,726-727,1068-1069`),
+  `DANGEROUSLY_SKIP_PERMISSIONS` (`:409`), `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` (`:422-424`),
+  `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` (`_apply_automation_env`), and the `LL_PYTHON` `extra`
+  both `bash -c` sites pass — unless every one is hand-listed in the baseline. It also lets
+  ENH-3205 inject `GH_TOKEN`/`GH_CONFIG_DIR` via `extra=` with no registry change.)
+- **Baseline shape**: the baseline is *not* a plain `frozenset[str]` of exact names — the curated
+  list below needs prefix families (`LL_*`, `XDG_*`, `HOMEBREW_*`). Specify it as exact names
+  plus prefixes (e.g. `_BASELINE_NAMES: frozenset[str]` + `_BASELINE_PREFIXES: tuple[str, ...]`,
+  matched via `str.startswith`). Verified 2026-09-04: no `LL_*` variable referenced under
+  `scripts/little_loops/` carries a credential (`grep -rhoE '\bLL_[A-Z_]*(KEY|TOKEN|SECRET|PASS)'`
+  hits only `LL_ARG_MAX_TOKENS`-style false positives), so the `LL_*` prefix is safe to inherit
+  wholesale. `env_allow` itself (the per-task declaration) stays exact-name `frozenset[str]`.
+- **Override polarity rule**: the only environment-driven override the chokepoint honors is the
+  AC4 test-only *narrowing* override (`LL_ENV_PROJECTION_FORCE_ALLOW`, below). No env var may
+  ever *widen* an allow-set or disable deny mode — `LL_*` is baseline-inherited into every
+  descendant, so a widening knob would propagate silently through the whole process tree.
 - No allow-set in effect (`invocation.env_allow is None` and no kwarg — the default) preserves
   today's full-inherit behavior exactly — this is the escape hatch the two consumer issues rely
   on for undeclared specs.
@@ -96,9 +114,29 @@ so it is a shape precedent only, not a reusable registry.
   uses the capability vocabulary for host-feature support (`HostCapabilities`, `CapabilityEntry`,
   `CapabilityNotSupported`, `describe_capabilities`) — a second meaning of "capability" in the
   same module invites confusion. Use "scope" (e.g. `CREDENTIAL_SCOPES`, `resolve_scopes(...)`).
-- The registry ships with an initial entry set so ENH-3234/ENH-3235 don't each invent their own
-  (e.g. `github → {GH_TOKEN, GITHUB_TOKEN}`, `anthropic-api → {ANTHROPIC_API_KEY}`); finalize
-  the list during implementation with a justification comment per entry.
+- The registry ships with an initial entry set so ENH-3234/ENH-3235 don't each invent their own.
+  **Enumerate it from the credential names the codebase already references** (repo-wide grep
+  2026-09-04, `\b(ANTHROPIC|CLAUDE|OPENAI|GEMINI|GITHUB|GH|CODEX|KIMI|QWEN|OPENCODE)_[A-Z_]*(KEY|TOKEN|SECRET)\b`
+  under `scripts/little_loops/`), not from two examples. Starting set:
+  - `github` → `{GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN,
+    GITHUB_ACCESS_TOKEN}`
+  - `anthropic-api` → `{ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_OAUTH_TOKEN,
+    CLAUDE_CODE_OAUTH_TOKEN}`
+  - `openai-api` → `{OPENAI_API_KEY, OPENAI_CODEX_OAUTH_TOKEN}`
+  - `gemini-api` → `{GEMINI_API_KEY}`
+  - `kimi-api` → `{KIMI_API_KEY}`
+  - `qwen-api` → `{QWEN_OAUTH_TOKEN, QWEN_PORTAL_API_KEY}`
+  - `opencode-api` → `{OPENCODE_API_KEY}`
+
+  Finalize during implementation with a justification comment per entry; drop any name that
+  turns out to be a non-credential (`*_STATE_KEY`, `*_METADATA_KEY`, `*_CLIENT_KEY` hits from the
+  same grep are deliberately excluded above).
+- **Honesty note (mirror of ENH-3205's gh caveat)**: on macOS the host CLIs' own OAuth sessions
+  (Claude Code, Codex, Gemini) live in the Keychain or under `$HOME`, not in env. Env projection
+  therefore does **not** scope the host CLI's own auth when a declaring `bash -c` state spawns a
+  nested `claude -p`/`ll-loop`/`ll-auto`; it only withholds the env-var-borne credentials in the
+  registry. State this plainly in the `project_child_env()` docstring and the API.md section so
+  nobody reads "deny-by-default" as "the child cannot reach the operator's Claude session".
 - When projection denies a variable, the helper logs the denied variable **names** at DEBUG
   level (names only, never values).
 - A report-only mode runs the same diff logic without denying anything, for empirically deriving
@@ -161,9 +199,15 @@ which is a different mechanism and stays as-is for AC3).
 ## Acceptance Criteria
 
 - **AC2.** The projection helper projects a declared `env_allow` into the child environment at
-  invocation; a variable not in the allow-set is *absent from the child process*, not merely
-  discouraged. Covered by direct calls to `project_child_env(invocation, ...)` — no consumer
-  surface required.
+  invocation; an *inherited* variable not in the allow-set is *absent from the child process*,
+  not merely discouraged. Covered by direct calls to `project_child_env(invocation, ...)` — no
+  consumer surface required.
+- **AC2b.** With `env_allow` in effect, every key in `invocation.env` and `extra` still reaches
+  the child unchanged (caller-supplied keys bypass the allow-set — see Expected Behavior). Test:
+  `project_child_env(HostInvocation(..., env={"GIT_DIR": ...}, env_allow=frozenset()),
+  extra={"LL_PYTHON": ...})` yields both keys.
+- **AC2c.** The baseline matches prefix families (`LL_*`, `XDG_*`, `HOMEBREW_*`) as well as exact
+  names; a test plants `LL_SENTINEL_X=1` in `os.environ` and asserts it survives deny mode.
 - **AC3.** Resolving a scope name not in the credential-scope registry fails loudly at resolve
   time via direct raise, naming the scope (see "Failure polarity" — pins ENH-3203 Open
   Decision #3).
@@ -364,6 +408,17 @@ Corrected in this pass (all citation-only; no claim about current behavior was f
 Verdict: **NEEDS_UPDATE** (now corrected) — the issue's factual claims about current behavior all
 held; only line-number citations had drifted, most since the 17:47 verify pass's `refine-issue`
 follow-on added or left them unchecked.
+
+## Review Notes (2026-09-04, pre-implementation epic review)
+
+- Expected Behavior gained three pinned rules: caller-supplied keys (`invocation.env`/`extra`)
+  bypass the allow-set; the baseline is exact-names-plus-prefixes, not a bare `frozenset[str]`;
+  no env var may widen an allow-set. AC2b/AC2c added to enforce the first two.
+- Registry starting set enumerated from the credential names already referenced under
+  `scripts/little_loops/` (7 scopes) instead of two examples.
+- Added the macOS Keychain honesty note: projection withholds env-borne credentials only.
+- Also resolves a wiring consequence for ENH-3205: `GH_CONFIG_DIR` injection via `extra=` needs
+  no registry entry once caller-supplied keys pass through.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-09-03T19:57:33 - `4261573e-8608-488b-a923-28da6aae0cad.jsonl`

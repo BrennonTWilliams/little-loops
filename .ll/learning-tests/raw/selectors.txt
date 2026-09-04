@@ -1,11 +1,10 @@
-DefaultSelector class: KqueueSelector
-got line repr='line1\n' elapsed=0.014 identity_ok=True
-select returned empty at elapsed=0.115
-select returned empty at elapsed=0.216
-select returned empty at elapsed=0.317
-got line repr='line2\n' elapsed=0.319 identity_ok=True
-EOF empty-string detected at elapsed=0.328, identity_ok=True
-get_map after loop (should be empty/falsy): {}
-empty_select_seen (proves select() can return [] without data): True
-total lines collected: ['line1\n', 'line2\n']
-proc exit code: 0
+claim2_fileobj_attr: 4
+claim2_fd_attr: 4
+claim2_events_attr: 1
+claim2_data_attr: hello
+claim1_events_empty: True
+claim1_elapsed_fast: True 1.6291998690576293e-05
+claim5_same_key: True
+claim4_data_reset_none: True
+claim3_raised_keyerror: True
+done
