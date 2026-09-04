@@ -1,0 +1,330 @@
+name: fleet-loop-improve
+category: optimization
+description: |
+  Meta-loop that automates docs/runbooks/FLEET_LOOP_REVIEW.md: harvest every
+  other project's run history with `ll-logs fleet-review`, pick the worst
+  flagged built-in loop, diagnose it inside the projects that ran it, have the
+  loop-specialist agent write a diagnosis artifact and apply the smallest fix,
+  gate the fix deterministically (validate + built-in loop tests), and commit.
+
+  One cycle per run, with a durable ledger. RE-MEASURE cannot happen in the
+  same run — the fleet's success rate only moves after other projects
+  accumulate fresh runs on the fix — so every run FIRST measures the fixes
+  recorded by earlier runs (measure_externally, from the new harvest's delta
+  against each fix's recorded baseline) and records this run's fix as
+  `pending` in .loops/diagnostics/fleet-loop-improve-ledger.jsonl for the
+  next run to judge. Regressions are recorded and printed, never auto-reverted.
+
+  Run ONLY from the little-loops source checkout (the editable install that
+  every fleet project resolves built-ins from); preflight refuses otherwise.
+  A flagged loop whose built-in YAML has uncommitted changes is skipped for
+  this run (not fatal): gate/revert/commit need that one file clean.
+  Because all projects on the machine are local-editable, a committed fix is
+  live fleet-wide immediately. No LLM self-grading anywhere: every evaluator
+  is exit_code or output_contains, and all logic lives in
+  `python3 -m little_loops.fleet_improve`.
+initial: preflight
+scope:
+  - "."
+max_steps: 60
+timeout: 7200
+on_handoff: spawn
+
+context:
+  threshold: 50            # flag when success_pct < threshold (runbook ATTRIBUTE rule)
+  min_runs: 3              # ... and the loop has at least this many fleet runs
+  min_new_runs: 3          # new fleet runs needed before a pending fix gets a verdict
+  dismiss_ttl_days: 30     # days before a dismissed/needs-human/rejected loop is retried
+  max_fixes_per_run: 1     # cycles per invocation; each lands one commit
+  harvest_appendices: "false"  # "true" = keep the ~45s scan-failures/sequences appendices
+  auto_commit: "true"      # "false" = leave the fix uncommitted in the working tree
+
+states:
+  # Guard: this loop edits the package's built-in loops, so the package must
+  # resolve to THIS checkout (editable install), never to a site-packages copy.
+  # Refusal reasons go to STDOUT: the CLI's "Failure reason:" block only
+  # surfaces a failing state's stdout. The clean-tree check is per selected
+  # target (select_target skips a loop whose YAML is dirty), not dir-wide —
+  # a dir-wide guard blocked every run while any other loop was being authored.
+  preflight:
+    action_type: shell
+    action: |
+      set -e
+      command -v ll-logs >/dev/null || { echo "ll-logs not on PATH"; exit 1; }
+      command -v ll-loop >/dev/null || { echo "ll-loop not on PATH"; exit 1; }
+      LOOPS_DIR=$(python3 -c 'from little_loops.fsm.loop_paths import get_builtin_loops_dir; print(get_builtin_loops_dir().resolve())')
+      case "$LOOPS_DIR" in
+        "$(pwd -P)"/*) ;;
+        *) echo "built-in loops resolve to $LOOPS_DIR, not under $(pwd -P): run from the little-loops source checkout"; exit 1 ;;
+      esac
+      mkdir -p ${context.run_dir}
+      echo "$LOOPS_DIR"
+    evaluate:
+      type: exit_code
+    on_yes: harvest
+    on_no: diagnose_failure
+    on_error: diagnose_failure
+
+  # HARVEST (read-only, cross-project). Flags are pinned so consecutive
+  # sidecars stay comparable (runbook Baseline / Re-measure contract).
+  # fleet-review's last stdout line is the report path (its "Wrote ..."
+  # success line precedes it on stdout), hence `tail -n 1`.
+  harvest:
+    action_type: shell
+    timeout: 900
+    action: |
+      set -e
+      if [ "${context.harvest_appendices:shell}" = "true" ]; then
+        REPORT=$(ll-logs fleet-review --all --existing-only --exclude-project . | tail -n 1)
+      else
+        REPORT=$(ll-logs fleet-review --all --existing-only --exclude-project . --no-appendices | tail -n 1)
+      fi
+      SIDECAR=$(printf '%s' "$REPORT" | sed 's/\.md$/.json/')
+      [ -f "$SIDECAR" ] || { echo "sidecar not found: $SIDECAR"; exit 1; }
+      cp "$SIDECAR" ${context.run_dir}/harvest.json
+      printf '%s' "$SIDECAR" > ${context.run_dir}/harvest-path.txt
+      echo "$REPORT"
+    evaluate:
+      type: exit_code
+    on_yes: measure_externally
+    on_no: diagnose_failure
+    on_error: diagnose_failure
+
+  # MEASURE-EXTERNALLY: the acceptance signal for fixes recorded by EARLIER
+  # runs is this harvest's delta against each fix's recorded baseline.
+  measure_externally:
+    action_type: shell
+    action: |
+      python3 -m little_loops.fleet_improve measure \
+        --run-dir ${context.run_dir} \
+        --sidecar ${context.run_dir}/harvest.json \
+        --min-new-runs ${context.min_new_runs:shell}
+    next: select_target
+    on_error: diagnose_failure
+
+  # ATTRIBUTE: apply the runbook flagging rule to the sidecar; skip loops with
+  # a pending (unmeasured) fix, a recent dismissal, or uncommitted changes in
+  # their built-in YAML (gate/revert/commit need that one file clean).
+  # Exit 1 = nothing to do.
+  select_target:
+    action_type: shell
+    action: |
+      python3 -m little_loops.fleet_improve select \
+        --run-dir ${context.run_dir} \
+        --sidecar ${context.run_dir}/harvest.json \
+        --threshold ${context.threshold:shell} \
+        --min-runs ${context.min_runs:shell} \
+        --dismiss-ttl-days ${context.dismiss_ttl_days:shell} \
+        --max-fixes ${context.max_fixes_per_run:shell}
+    evaluate:
+      type: exit_code
+    on_yes: diagnose
+    on_no: done
+    on_error: diagnose_failure
+
+  # DIAGNOSE: diagnose-evaluators / calibrate-budget run INSIDE each project
+  # that produced the failing runs (they only read the cwd's history), plus a
+  # pre-fix validate snapshot that becomes the gate's warning baseline.
+  diagnose:
+    action_type: shell
+    timeout: 600
+    action: |
+      python3 -m little_loops.fleet_improve diagnose --run-dir ${context.run_dir}
+    evaluate:
+      type: exit_code
+    on_yes: propose
+    on_no: diagnose_failure
+    on_error: diagnose_failure
+
+  # PROPOSE: the specialist writes the diagnosis artifact ONLY. No YAML edit
+  # here — "never modify a loop without writing the artifact first".
+  propose:
+    action_type: prompt
+    agent: loop-specialist
+    timeout: 900
+    on_blocked: $current
+    max_retries: 1
+    on_retry_exhausted: diagnose_failure
+    action: |
+      You are diagnosing one of this repo's built-in loops that the fleet of
+      other projects keeps failing on. Read, in this order:
+
+      1. ${context.run_dir}/target.json — the flagged loop (`loop`), its fleet
+         aggregate (`runs`, `converged`, `success_pct`, `top_outcome`,
+         `outcomes`), the projects that ran it (`projects`), the built-in YAML
+         to diagnose (`yaml_path`), and the exact artifact path you must write
+         (`artifact`).
+      2. ${context.run_dir}/diagnose/<loop>.md — the dossier: per-project
+         `diagnose-evaluators` / `calibrate-budget` output and the pre-fix
+         `ll-loop validate` report. Each project's raw run history is under
+         `<project>/.loops/.history/*-<loop>/events.jsonl` if you need more.
+      3. The built-in YAML at `yaml_path`.
+
+      Follow your Monitor -> Analyze -> Contract -> Refine steps and write the
+      diagnosis artifact to EXACTLY the `artifact` path from target.json, with
+      all six required sections (`## Failure modes observed`, `## Evidence`,
+      `## Intended contract`, `## Proposed change`, `## Verification`,
+      `## Open questions`). Classify with the failure-mode taxonomy and quote
+      evidence verbatim from the dossier or history.
+
+      `## Proposed change` must be the smallest viable YAML change, written
+      concretely enough that a second pass can apply it without judgement
+      (state name, key, before/after text). No architectural rewrites.
+
+      `## Verification`: write "Deferred to fleet re-measure: the next
+      fleet-loop-improve run compares post-fix fleet runs against the
+      recorded baseline." Do NOT run `ll-loop run` — this loop already holds
+      the project lock, and a child run would deadlock on it.
+
+      Do NOT edit any YAML in this step. Do NOT put other projects' absolute
+      paths or names into `## Proposed change` (they must not enter the YAML).
+
+      End the artifact with exactly one line, on its own:
+        Verdict: fix            — a concrete built-in YAML change is proposed
+        Verdict: not-a-loop-bug — the failures are operator/project-side or
+                                  a false positive of the flagging rule
+        Verdict: needs-human    — a fix exists but is too large or risky to
+                                  apply unattended
+    next: check_proposal
+
+  # Deterministic checkpoint: artifact exists at the exact path with the six
+  # sections, a non-empty proposal, and a Verdict line. Prints one token.
+  check_proposal:
+    action_type: shell
+    action: |
+      python3 -m little_loops.fleet_improve check-proposal --run-dir ${context.run_dir}
+    capture: verdict
+    next: route_fix
+    on_error: diagnose_failure
+
+  route_fix:
+    evaluate:
+      type: output_contains
+      source: "${captured.verdict.output}"
+      pattern: "VERDICT_FIX"
+    on_yes: apply
+    on_no: route_dismiss
+    on_error: diagnose_failure
+
+  route_dismiss:
+    evaluate:
+      type: output_contains
+      source: "${captured.verdict.output}"
+      pattern: "VERDICT_NOT_A_LOOP_BUG"
+    on_yes: dismiss
+    on_no: needs_human
+    on_error: diagnose_failure
+
+  # APPLY: exactly the artifact's proposal, nothing more.
+  apply:
+    action_type: prompt
+    agent: loop-specialist
+    timeout: 600
+    on_blocked: $current
+    max_retries: 1
+    on_retry_exhausted: diagnose_failure
+    action: |
+      Read ${context.run_dir}/target.json for `yaml_path` and `artifact`, then
+      apply EXACTLY the `## Proposed change` section of the artifact to the
+      built-in YAML at `yaml_path`. Smallest viable edit; do not touch other
+      states, do not reformat, do not add other projects' absolute paths or
+      names to the file (the commit hook rejects private references).
+
+      Do NOT run `ll-loop run` (project-lock deadlock). The next state runs
+      `ll-loop validate` and the built-in loop test gate; the fleet re-measure
+      on the next run is the real verification.
+
+      Finish by stating the file you edited and the state(s) you changed.
+    next: gate
+
+  # GATE (non-LLM): a change exists, YAML parses, validate is error-free with
+  # no new warnings, and the built-in loop test gates still pass.
+  gate:
+    action_type: shell
+    timeout: 1800
+    action: |
+      python3 -m little_loops.fleet_improve gate --run-dir ${context.run_dir}
+    evaluate:
+      type: exit_code
+    on_yes: commit
+    on_no: revert
+    on_error: revert
+
+  commit:
+    action_type: shell
+    action: |
+      set -e
+      TARGET=${context.run_dir}/target.json
+      YAML=$(jq -r .yaml_path "$TARGET")
+      LOOP=$(jq -r .loop "$TARGET")
+      PCT=$(jq -r .success_pct "$TARGET")
+      RUNS=$(jq -r .runs "$TARGET")
+      if [ "${context.auto_commit:shell}" = "true" ]; then
+        git add -- "$YAML"
+        git commit -q -m "fix(loops): $LOOP: fleet-loop-improve cycle ($PCT% success over $RUNS fleet runs)"
+        git rev-parse --short HEAD
+      else
+        echo "auto_commit=false: fix left uncommitted at $YAML"
+      fi
+      python3 -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status pending \
+        --reason "applied; awaiting fleet re-measure"
+    evaluate:
+      type: exit_code
+    on_yes: select_target
+    on_no: revert
+    on_error: revert
+
+  revert:
+    action_type: shell
+    action: |
+      YAML=$(jq -r .yaml_path ${context.run_dir}/target.json)
+      git restore -- "$YAML" || true
+      git reset -q -- "$YAML" || true
+      python3 -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status rejected \
+        --reason "gate or commit hook rejected the change; reverted"
+    next: select_target
+    on_error: diagnose_failure
+
+  dismiss:
+    action_type: shell
+    action: |
+      python3 -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status dismissed \
+        --reason "specialist verdict: not-a-loop-bug (see artifact)"
+    next: select_target
+    on_error: diagnose_failure
+
+  needs_human:
+    action_type: shell
+    action: |
+      python3 -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status needs-human \
+        --reason "specialist verdict: needs-human (see artifact)"
+      echo "needs-human: review $(jq -r .artifact ${context.run_dir}/target.json)"
+    next: select_target
+    on_error: diagnose_failure
+
+  # ENH-2825: diagnostic predecessor for `failed` — a terminal runs no action.
+  # Everything goes to stdout so the operator sees it in the CLI's
+  # "Failure reason:" block; `${prev.*}` is the state that routed here.
+  diagnose_failure:
+    action_type: shell
+    action: |
+      echo "fleet-loop-improve: aborted in state '${prev.state}' (exit ${prev.exit_code})"
+      echo "--- ${prev.state} output ---"
+      cat <<'LL_PREV_OUTPUT'
+      ${prev.output?}
+      LL_PREV_OUTPUT
+      echo "--- artifacts ---"
+      echo "see ${context.run_dir}/ (harvest.json, target.json, diagnose/, gate-baseline.json) and the ledger .loops/diagnostics/fleet-loop-improve-ledger.jsonl"
+      if [ -f ${context.run_dir}/target.json ]; then
+        echo "target: $(jq -r .loop ${context.run_dir}/target.json) at $(jq -r .yaml_path ${context.run_dir}/target.json)"
+      fi
+      exit 1
+    next: failed
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
+    failure: true

@@ -52,6 +52,7 @@ from little_loops.cli.logs import (
     _validate_builtin_loop,
     _write_baseline,
     discover_all_projects,
+    is_flagged,
     main_logs,
 )
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate
@@ -6551,3 +6552,35 @@ class TestFleetReview:
         data = json.loads(json_path.read_text())
         assert data["loops"] == {}
         assert str(proj_a.resolve()) in data["excluded_projects"]
+
+
+class TestIsFlaggedParity:
+    """``is_flagged`` is the public twin of ``_flag_loops`` used by the
+    ``fleet-loop-improve`` meta-loop against JSON sidecars; the two must
+    agree on every (runs, success_pct, top_outcome) combination."""
+
+    @pytest.mark.parametrize("runs", [0, 2, 3, 10])
+    @pytest.mark.parametrize("success_pct", [0, 49, 50, 100])
+    @pytest.mark.parametrize(
+        "top_outcome",
+        ["converged", "failed", "error", "max-steps", "stalled", "interrupted", "signal"],
+    )
+    def test_parity_with_flag_loops(self, runs: int, success_pct: int, top_outcome: str) -> None:
+        agg = _LoopFleetAggregate(
+            loop_name="x",
+            attribution="builtin",
+            runs=runs,
+            converged=0,
+            success_pct=success_pct,
+            top_outcome=top_outcome,
+            outcomes={},
+            median_iterations=0,
+            projects=[],
+            runs_by_project={},
+        )
+        expected = bool(_flag_loops([agg], threshold=50, min_runs=3))
+        assert is_flagged(runs, success_pct, top_outcome, threshold=50, min_runs=3) is expected
+
+    def test_attribution_is_not_checked_here(self) -> None:
+        """Sidecar ``loops`` are builtin-only; callers with aggregates filter themselves."""
+        assert is_flagged(10, 0, "failed", threshold=50, min_runs=3) is True

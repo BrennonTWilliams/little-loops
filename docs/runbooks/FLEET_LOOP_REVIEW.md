@@ -28,12 +28,25 @@ for that loop, not a self-graded claim that a fix "looks right."
 
 ## Cadence
 
-**On-demand, run manually.** This is not a cron job and not a built-in meta-loop — both were
-considered and deferred (see the issue's Decisions #1). Run it whenever you suspect a built-in
-loop is misbehaving, before/after landing a loop fix, or periodically as general maintenance
-hygiene. If this proves valuable enough to warrant scheduling, promoting it to a recurring
-capture or a `diagnose → propose → apply → measure-externally` meta-loop is a future extension,
-not something this runbook does today.
+**On-demand, run manually — or as one cycle of the `fleet-loop-improve` built-in meta-loop.**
+This is not a cron job. Run it whenever you suspect a built-in loop is misbehaving, before/after
+landing a loop fix, or periodically as general maintenance hygiene.
+
+The automated form of the whole cycle is:
+
+```bash
+ll-loop run fleet-loop-improve      # from this repo only; preflight refuses elsewhere.
+                                    # A flagged loop whose YAML is dirty is skipped, not fatal.
+```
+
+It runs HARVEST with the flags above, applies the ATTRIBUTE rule, runs DIAGNOSE inside each
+project that produced the runs, has the `loop-specialist` agent write its artifact and apply
+the smallest fix, gates the fix with `ll-loop validate` plus the built-in loop tests, commits,
+and records the fix as `pending` in `.loops/diagnostics/fleet-loop-improve-ledger.jsonl`. Its
+RE-MEASURE is deliberately one invocation late: the *next* run's `measure_externally` state
+compares the fresh harvest against each pending fix's recorded baseline (see § 4). See
+[`docs/guides/LOOPS_REFERENCE.md#fleet-loop-improve`](../guides/LOOPS_REFERENCE.md#fleet-loop-improve)
+for its states and knobs. A scheduled capture (cron) remains deferred.
 
 ## Phases
 
@@ -132,6 +145,13 @@ loop you fixed is the acceptance signal — proof against real fleet data, not a
 claim that the fix "should" help. This is the meta-loop "measure-externally" step required by
 `.claude/CLAUDE.md`.
 
+`fleet-loop-improve` performs this step automatically at the start of every run: for each
+ledger entry still `pending`, it takes the new sidecar's `runs`/`converged` minus the values
+recorded when the fix landed and, once at least `min_new_runs` (default 3) fresh runs exist,
+records `improved` / `regressed` / `unchanged`. A harvest with a different `window_days` or
+`--exclude-project` set is reported as not comparable and the entry stays `pending`.
+Regressions are recorded and printed, never auto-reverted — reverting is your call.
+
 ## Baseline / Re-measure contract
 
 - The baseline is a **machine-local, gitignored JSON sidecar**:
@@ -153,6 +173,9 @@ claim that the fix "should" help. This is the meta-loop "measure-externally" ste
   when it appears rather than trusting the delta table blindly.
 - A run with no prior sidecar in the directory renders a "no prior baseline" line instead of a
   delta table — this is expected on the very first run.
+- `fleet-loop-improve` writes its harvest through the same command, so a loop-driven sidecar
+  is the newest baseline for your next manual run too. The loop keeps its own per-fix
+  baselines in the ledger and does not depend on this delta table.
 
 ## In-scope rule
 

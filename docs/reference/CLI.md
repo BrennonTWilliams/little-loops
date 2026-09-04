@@ -3644,7 +3644,9 @@ zero records says so explicitly rather than looking like a no-op.
 `<stamp>` is `YYYYMMDDTHHMMSSZ` (UTC). Each run automatically diffs against the
 lexically-newest prior sidecar in that directory (excluding the one it is about to write); see
 `docs/runbooks/FLEET_LOOP_REVIEW.md` for the full HARVEST → ATTRIBUTE → DIAGNOSE → RE-MEASURE
-cycle this command drives.
+cycle this command drives. The built-in `fleet-loop-improve` meta-loop (`ll-loop run
+fleet-loop-improve`, source checkout only) runs that cycle end-to-end on top of this command;
+its helpers live in `python3 -m little_loops.fleet_improve`.
 
 **Examples:**
 ```bash

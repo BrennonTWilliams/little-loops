@@ -1268,27 +1268,40 @@ def _aggregate_fleet_runs(runs: list[_LoopRunRecord]) -> list[_LoopFleetAggregat
 _FLAG_OUTCOMES: frozenset[str] = frozenset({"error", "max-steps", "stalled", "failed"})
 
 
+def is_flagged(
+    runs: int, success_pct: int, top_outcome: str, *, threshold: int, min_runs: int
+) -> bool:
+    """The fleet-review flagging rule on one loop's aggregate numbers.
+
+    Flag iff ``runs >= min_runs`` AND (``success_pct < threshold`` OR
+    ``top_outcome in _FLAG_OUTCOMES``). ``interrupted``/``signal`` are
+    deliberately excluded from ``_FLAG_OUTCOMES`` (operator/infra exits, not
+    loop-logic failures) but still count against ``success_pct`` since that
+    is simply ``converged / runs`` (Decisions #2).
+
+    Attribution is NOT checked here: callers that hold in-memory aggregates
+    (``_flag_loops``) filter to ``builtin`` themselves, and the JSON sidecar's
+    ``loops`` dict is already builtin-only. Public so the
+    ``fleet-loop-improve`` meta-loop (``little_loops.fleet_improve``) applies
+    the identical rule to a sidecar instead of re-deriving it.
+    """
+    if runs < min_runs:
+        return False
+    return success_pct < threshold or top_outcome in _FLAG_OUTCOMES
+
+
 def _flag_loops(
     aggs: list[_LoopFleetAggregate], *, threshold: int, min_runs: int
 ) -> list[_LoopFleetAggregate]:
-    """Return the ``builtin``-attribution aggregates that fail the flagging rule.
-
-    Flag iff ``attribution == "builtin"`` AND ``runs >= min_runs`` AND
-    (``success_pct < threshold`` OR ``top_outcome in _FLAG_OUTCOMES``).
-    ``interrupted``/``signal`` are deliberately excluded from
-    ``_FLAG_OUTCOMES`` (operator/infra exits, not loop-logic failures) but
-    still count against ``success_pct`` since that is simply
-    ``converged / runs`` (Decisions #2).
-    """
-    flagged: list[_LoopFleetAggregate] = []
-    for a in aggs:
-        if a.attribution != "builtin":
-            continue
-        if a.runs < min_runs:
-            continue
-        if a.success_pct < threshold or a.top_outcome in _FLAG_OUTCOMES:
-            flagged.append(a)
-    return flagged
+    """Return the ``builtin``-attribution aggregates that fail ``is_flagged``."""
+    return [
+        a
+        for a in aggs
+        if a.attribution == "builtin"
+        and is_flagged(
+            a.runs, a.success_pct, a.top_outcome, threshold=threshold, min_runs=min_runs
+        )
+    ]
 
 
 @dataclass

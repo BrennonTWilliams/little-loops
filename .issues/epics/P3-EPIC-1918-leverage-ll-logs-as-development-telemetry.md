@@ -88,6 +88,8 @@ from the corpus instead of leaving it as a passive archive.
 - **ENH-2134** — ll-logs minor code cleanup bundle (double import, readlines vs streaming, Path wrap)
 - ~~**ENH-2923** — Scope `ll-logs scan-failures` to a specific skill~~ **done**
 - ~~**ENH-2926** — `ll-logs extract`: report what was written instead of succeeding silently~~ **done**
+- **FEAT-3386** — fleet-loop-improve built-in meta-loop — automate the fleet loop-review runbook (harvest → diagnose → propose → apply → measure-externally) (done)
+
 
 ## Scope
 

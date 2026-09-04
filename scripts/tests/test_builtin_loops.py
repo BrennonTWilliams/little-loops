@@ -297,6 +297,7 @@ class TestBuiltinLoopFiles:
             "workflow-generator",
             "rn-stepwise",
             "stepwise-task",
+            "fleet-loop-improve",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -20617,3 +20618,129 @@ class TestSubLoopStateTimeoutAudit:
             "Add a deliberate budget plus an on_timeout salvage route (ENH-3019), "
             "then extend ALLOWED here."
         )
+
+
+class TestFleetLoopImproveLoop:
+    """Structural tests for the fleet-loop-improve meta-loop (FEAT-2379 follow-up).
+
+    Automates docs/runbooks/FLEET_LOOP_REVIEW.md as harvest -> measure-externally
+    -> select -> diagnose -> propose -> apply -> gate -> commit, one cycle per
+    run with a durable ledger. Every evaluator is non-LLM; all logic lives in
+    ``python3 -m little_loops.fleet_improve``.
+    """
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "fleet-loop-improve.yaml"
+    SPINE = [
+        ("preflight", "harvest"),
+        ("harvest", "measure_externally"),
+        ("measure_externally", "select_target"),
+        ("select_target", "diagnose"),
+        ("diagnose", "propose"),
+        ("propose", "check_proposal"),
+        ("check_proposal", "route_fix"),
+        ("route_fix", "apply"),
+        ("apply", "gate"),
+        ("gate", "commit"),
+        ("commit", "select_target"),
+    ]
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @staticmethod
+    def _yes_edge(state: dict) -> str:
+        return state.get("on_yes") or state.get("next") or ""
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data["name"] == "fleet-loop-improve"
+        assert data["initial"] == "preflight"
+        assert data["on_handoff"] == "spawn"
+        assert data["max_steps"] > 0 and data["timeout"] > 0
+
+    def test_spine_order(self, data: dict) -> None:
+        states = data["states"]
+        for src, dst in self.SPINE:
+            assert self._yes_edge(states[src]) == dst, f"{src} should continue to {dst}"
+        assert states["select_target"]["on_no"] == "done"
+        assert states["gate"]["on_no"] == "revert"
+        assert states["route_dismiss"]["on_yes"] == "dismiss"
+        assert states["route_dismiss"]["on_no"] == "needs_human"
+
+    def test_no_llm_self_grading(self, data: dict) -> None:
+        for name, state in data["states"].items():
+            ev = state.get("evaluate") or {}
+            assert ev.get("type") not in ("check_semantic", "llm_structured"), name
+
+    def test_agent_states_use_loop_specialist_and_forbid_child_run(self, data: dict) -> None:
+        for name in ("propose", "apply"):
+            state = data["states"][name]
+            assert state["action_type"] == "prompt"
+            assert state["agent"] == "loop-specialist"
+            assert "Do NOT run `ll-loop run`" in state["action"]
+            assert state["on_retry_exhausted"] == "diagnose_failure"
+        assert "Do NOT edit any YAML" in data["states"]["propose"]["action"]
+
+    def test_verdict_routing_reads_captured_token(self, data: dict) -> None:
+        states = data["states"]
+        assert states["check_proposal"]["capture"] == "verdict"
+        for name, pattern in (
+            ("route_fix", "VERDICT_FIX"),
+            ("route_dismiss", "VERDICT_NOT_A_LOOP_BUG"),
+        ):
+            ev = states[name]["evaluate"]
+            assert ev["type"] == "output_contains"
+            assert ev["source"] == "${captured.verdict.output}"
+            assert ev["pattern"] == pattern
+
+    def test_every_error_edge_avoids_success_terminal(self, data: dict) -> None:
+        states = data["states"]
+        for name, state in states.items():
+            for key in ("on_error", "on_no", "on_retry_exhausted"):
+                target = state.get(key)
+                if target and name != "select_target":
+                    assert target != "done", f"{name}.{key} must not reach the success terminal"
+        assert states["failed"].get("failure") is True
+        assert states["diagnose_failure"]["next"] == "failed"
+
+    def test_shell_states_call_helper_module_not_inline_logic(self, data: dict) -> None:
+        helper = "python3 -m little_loops.fleet_improve"
+        for name in (
+            "measure_externally",
+            "select_target",
+            "diagnose",
+            "check_proposal",
+            "gate",
+            "commit",
+            "revert",
+            "dismiss",
+            "needs_human",
+        ):
+            assert helper in data["states"][name]["action"], name
+
+    def test_no_captured_interpolation_in_shell_bodies(self, data: dict) -> None:
+        for name, state in data["states"].items():
+            if state.get("action_type") == "shell":
+                assert "${captured." not in state.get("action", ""), name
+
+    def test_preflight_has_no_dir_wide_clean_tree_guard(self, data: dict) -> None:
+        """The clean check is per selected target (select_target skips dirty YAMLs).
+
+        A dir-wide `git status --porcelain` in preflight blocked every run while
+        any other built-in loop was being authored in this repo.
+        """
+        action = data["states"]["preflight"]["action"]
+        assert "status --porcelain" not in action
+        assert "get_builtin_loops_dir" in action  # editable-install guard stays
+
+    def test_failure_reasons_go_to_stdout(self, data: dict) -> None:
+        """The CLI's "Failure reason:" block surfaces a failing state's stdout only."""
+        for name in ("preflight", "harvest", "diagnose_failure"):
+            assert ">&2" not in data["states"][name]["action"], name
+        diag = data["states"]["diagnose_failure"]["action"]
+        assert "${prev.state}" in diag and "${prev.output?}" in diag
+
+    def test_harvest_flags_pinned_for_comparability(self, data: dict) -> None:
+        action = data["states"]["harvest"]["action"]
+        assert action.count("ll-logs fleet-review --all --existing-only --exclude-project .") == 2

@@ -18,6 +18,7 @@ Run any loop with `ll-loop run <name>`. Copy one into your project to customize 
 - [Prompt Optimization Loops (APO)](#prompt-optimization-loops-apo)
 - [Evaluation Loops](#evaluation-loops)
 - [`harness-optimize` with `.ll/program.md`](#harness-optimize-with-llprogrammd)
+- [`fleet-loop-improve`](#fleet-loop-improve) — fleet-driven built-in loop repair with a cross-run ledger
 - [Built-in Fragment Libraries](#built-in-fragment-libraries)
 
 ---
@@ -1488,6 +1489,7 @@ run_eval → score_results → analyze_failures
 | `harness-single-shot` | Annotated single-shot harness example — all evaluation phases with commented-out optional gates |
 | `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
 | `harness-plan-research-implement-report` | Annotated specialist-role pipeline example (Variant C) --- Plan -> Research -> Implement -> Report decomposition with full evaluation chain; optional HITL gate as commented-out block |
+| `fleet-loop-improve` | Meta-loop that automates the fleet loop-review runbook — harvests other projects' run history (`ll-logs fleet-review`), picks the worst flagged built-in loop, diagnoses it inside the projects that ran it, has `loop-specialist` write a diagnosis artifact and apply the smallest fix, gates it with `ll-loop validate` + the built-in loop tests, and commits. One cycle per run; each run first re-measures earlier fixes against the fresh harvest and records its own as `pending` in a ledger. Source-checkout only. See [`fleet-loop-improve`](#fleet-loop-improve) below. |
 | `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs. Also supports **state mode**: set `targets` to a loop YAML with a `targets.states` list to optimize individual state `action:` blocks independently. |
 | `html-anything` | Generalized HTML artifact harness — classifies artifact type (email, social card, résumé, dashboard, etc.) from a description, writes a platform-specific brief and dynamic scoring rubric, then iteratively generates and refines `index.html` via Playwright CLI |
 | `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a self-contained interactive HTML page with comparison controls, write-in custom options, and an "Export selections" affordance |
@@ -3414,6 +3416,57 @@ State mode activates when `context.targets` points to a loop YAML file whose `ta
 See [harness-optimize reference](../reference/loops.md#harness-optimize) for the full state graph showing the `check_queue` / `dequeue_state` dispatch.
 
 ---
+
+## `fleet-loop-improve`
+
+Automates [`docs/runbooks/FLEET_LOOP_REVIEW.md`](../runbooks/FLEET_LOOP_REVIEW.md) as a
+`harvest → measure-externally → select → diagnose → propose → apply → gate → commit` meta-loop.
+Run it **from the little-loops source checkout only** (the editable install every fleet project
+resolves built-ins from; `preflight` refuses anywhere else):
+
+```bash
+ll-loop run fleet-loop-improve
+```
+
+**Why one cycle per run.** RE-MEASURE cannot happen in the same run — the fleet's success rate
+only moves after other projects accumulate fresh runs on the fix. So every run first
+*measures* the fixes recorded by earlier runs (`measure_externally`: this harvest's runs and
+converged counts minus each fix's recorded baseline, once `min_new_runs` new runs exist →
+`improved` / `regressed` / `unchanged`), then performs one new cycle and records it as
+`pending` in `.loops/diagnostics/fleet-loop-improve-ledger.jsonl` for the next run to judge.
+Regressions are recorded and printed, never auto-reverted. Because every project on the
+machine is `local-editable` against this checkout, a committed fix is live fleet-wide at once.
+
+**States.** `preflight` (editable-install guard; refusal reasons on stdout) → `harvest` (`ll-logs fleet-review
+--all --existing-only --exclude-project .`, flags pinned so sidecars stay comparable) →
+`measure_externally` → `select_target` (runbook flagging rule over the sidecar; skips loops with
+a `pending` fix, a `dismissed`/`needs-human`/`rejected` entry newer than `dismiss_ttl_days`, or
+uncommitted changes in their built-in YAML — skipped, not fatal; highest fleet `runs` first) → `diagnose` (`ll-loop diagnose-evaluators` / `calibrate-budget`
+run *inside* each project that produced the runs, plus a pre-fix `ll-loop validate` warning
+baseline) → `propose` (`loop-specialist` writes the diagnosis artifact at the exact path in
+`target.json`, ending with `Verdict: fix | not-a-loop-bug | needs-human`; no YAML edits) →
+`check_proposal` (deterministic: six sections, non-empty proposal, verdict token) →
+`apply` (`loop-specialist` applies exactly the proposal) → `gate` (a diff exists, YAML parses,
+validate is error-free with no new warnings, `test_builtin_loops.py` +
+`test_builtin_loop_hardcode_gate.py` pass) → `commit` → back to `select_target` until
+`max_fixes_per_run` is reached. Every evaluator is `exit_code`/`output_contains`; all logic is
+in `python3 -m little_loops.fleet_improve` (`select`, `diagnose`, `measure`, `check-proposal`,
+`gate`, `record`) so the YAML never interpolates an untrusted value into a shell body.
+
+| Context | Default | Meaning |
+|---|---|---|
+| `threshold` / `min_runs` | `50` / `3` | Runbook flagging rule (`success_pct < threshold` or a failure `top_outcome`, with at least `min_runs` fleet runs) |
+| `min_new_runs` | `3` | Fresh fleet runs required before a `pending` fix gets a verdict |
+| `dismiss_ttl_days` | `30` | Days before a `dismissed`/`needs-human`/`rejected` loop is retried |
+| `max_fixes_per_run` | `1` | Cycles (commits) per invocation |
+| `harvest_appendices` | `"false"` | `"true"` keeps the ~45s `scan-failures`/`sequences` appendices |
+| `auto_commit` | `"true"` | `"false"` leaves the fix uncommitted |
+
+Per-run artifacts live under `${context.run_dir}/` (`harvest.json`, `target.json`,
+`diagnose/<loop>.md`, `gate-baseline.json`); the specialist's artifact and the ledger live in
+`.loops/diagnostics/` beside the `fleet-review-<stamp>.{md,json}` reports. A loop-driven
+harvest becomes the lexically-newest sidecar, i.e. the baseline for the next manual
+`ll-logs fleet-review` run too.
 
 ## Built-in Fragment Libraries
 

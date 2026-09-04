@@ -615,6 +615,10 @@ If the on-demand runbook proves valuable, promote it to a scheduled capture
 meta-loop following `diagnose → propose → apply → measure-externally`. Captured here so the
 path is recorded, not built.
 
+**Update 2026-09-04:** the meta-loop half was built — `loops/fleet-loop-improve.yaml` with
+helpers in `little_loops/fleet_improve.py` (see `docs/guides/LOOPS_REFERENCE.md#fleet-loop-improve`
+and the runbook's Cadence section). The scheduled-capture half remains deferred.
+
 ## Related Key Documentation
 
 - `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
