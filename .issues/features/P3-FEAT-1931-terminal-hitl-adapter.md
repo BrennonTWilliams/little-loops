@@ -56,13 +56,20 @@ requiring human judgment have no mechanism to request it.
 1. Implements `CommunicationAdapter.send_alert()`: renders the prompt + captured
    context to stdout with clear formatting (state name, timeout remaining, valid
    responses).
-2. Implements `CommunicationAdapter.await_response()`: blocks on stdin (respecting
-   the FSM's shutdown signal via existing `_interruptible_sleep()` pattern),
-   parses `approve`/`reject`/`edit` (with flexible matching: `y`/`yes`/`approve`,
-   `n`/`no`/`reject`, `e`/`edit`), returns a `HumanResponse`.
-3. On timeout (no input within deadline), returns `TimeoutResponse`.
+2. Implements `CommunicationAdapter.await_response()`: one bounded
+   `selectors`-timed stdin read per call (the spike-proven
+   `await_line_single_read()` shape), parses `approve`/`reject`/`edit` (with
+   flexible matching: `y`/`yes`/`approve`, `n`/`no`/`reject`, `e`/`edit`),
+   returns an `AdapterResponse`. Shutdown responsiveness comes from the
+   executor's re-entrant short-tick calling pattern plus `KeyboardInterrupt`
+   propagating uncaught — not from an internal polling loop.
+3. On timeout (no input within this call's `timeout`), returns
+   `TimeoutResponse`; the alert stays pending for the next call.
 4. `supports_async()` returns `False` — the operator must be present at the
    terminal.
+5. Zero configuration: the executor seeds the terminal adapter in-process
+   when `hitl.channel` is `"terminal"` (the default) and no extension has
+   registered one — no packaging entry point, no `ll-config.json` entry.
 
 ## Motivation
 
@@ -87,23 +94,51 @@ current state, context, available responses, and timeout. The developer
 reads the prompt, decides, and types `approve`, `reject`, or `edit` (with
 unambiguous prefix matching).
 
-**Outcome**: The FSM receives a parsed `HumanResponse` (approve/reject) or
-`EditResponse` (with edited text), and continues execution. On timeout with
-no input, the FSM receives a `TimeoutResponse` and follows its configured
-timeout route.
+**Outcome**: The FSM receives a parsed `AdapterResponse` (verdict
+approve/reject, or edit with `edited_text` populated), and continues
+execution. On timeout with no input, the FSM receives a `TimeoutResponse`
+and follows its configured timeout route.
 
 ## Acceptance Criteria
 
-- [ ] Implements `CommunicationAdapter` protocol
-- [ ] Formatted prompt output includes: state name, prompt text, captured
-  context, timeout countdown (or deadline), valid response keys
+- [ ] Implements `CommunicationAdapter` protocol (`send_alert`,
+  `await_response`, `supports_async`, plus a `cancel_alert` override)
+- [ ] Formatted prompt output includes: loop name, state name, prompt text,
+  captured context, valid response keys. Time remaining is rendered **only**
+  if `captured_context` carries an optional `deadline` key (monotonic-clock
+  float, supplied by FEAT-1794's caller); otherwise it is omitted — the
+  adapter has no other way to learn the overall deadline (`send_alert()`
+  carries no timeout and `await_response()` only sees per-tick budgets)
 - [ ] Accepts `y`/`yes`/`approve`, `n`/`no`/`reject`, `e`/`edit` (case-
-  insensitive, unambiguous prefix matching)
-- [ ] Edit verdict captures the edited text from a secondary input prompt
-- [ ] Respects FSM shutdown signal during blocking input (doesn't hang on ^C)
-- [ ] Timeout returns `TimeoutResponse` (not `HumanResponse`)
+  insensitive, unambiguous prefix matching); optional trailing text after a
+  reject alias (`n too risky`) populates `AdapterResponse.reason`
+- [ ] Empty line or unrecognized input: prints a one-line hint, the alert
+  stays pending, and the current call returns `TimeoutResponse`. No default
+  on bare Enter (never silently approve); no internal retry loop
+- [ ] Edit verdict: after `e`, the adapter prompts for a single line of
+  replacement text on a second bounded read. If that read times out, the
+  alert stays in an awaiting-edit-text state and the next
+  `await_response()` call for the same `alert_id` resumes there
+- [ ] Never catches `KeyboardInterrupt` or `EOFError` — `ll-loop run` relies
+  on `KeyboardInterrupt` propagating (`cli/loop/lifecycle.py:881`); each call
+  blocks at most `timeout` seconds so the executor's between-call shutdown
+  checks stay responsive
+- [ ] Closed or non-interactive stdin (EOF, e.g. `ll-auto`/detached runs):
+  latches a closed flag, logs once, and every subsequent call sleeps for
+  `timeout` before returning `TimeoutResponse` — never busy-loops until the
+  executor's deadline
+- [ ] Timeout returns `TimeoutResponse` (not `AdapterResponse`)
+- [ ] `cancel_alert()` prints a withdrawn notice to the operator and clears
+  the alert's pending state
 - [ ] `supports_async()` returns `False`
-- [ ] Tests: mock stdin/stdout, verify prompt format, verdict parsing, timeout
+- [ ] Zero config: `hitl.channel: terminal` (the default) resolves with no
+  pyproject entry point and no `ll-config.json` entry; an extension
+  registering its own `"terminal"` adapter still overrides the built-in
+- [ ] Tests: inject `os.pipe()`-backed streams through the constructor
+  (`StringIO` has no file descriptor, so `selectors` rejects it); verify
+  prompt format, verdict parsing incl. reason capture, unrecognized input,
+  edit flow incl. resumption after a timed-out second read, timeout, EOF
+  latch, `cancel_alert`, and the zero-config executor resolution
 
 ### Codebase Research Findings
 
@@ -118,9 +153,15 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 class TerminalAdapter(CommunicationAdapter):
     """Stdin/stdout implementation of the HITL communication protocol.
 
-    Synchronous adapter: blocks the FSM on input() until a response is
-    received or timeout expires. Always available with zero configuration.
+    Synchronous adapter: one bounded stdin read per await_response() call.
+    Always available with zero configuration.
     """
+
+    def __init__(self, stdin: IO[str] | None = None, stdout: IO[str] | None = None) -> None:
+        """Streams default to sys.stdin/sys.stdout resolved at call time.
+
+        Tests inject os.pipe()-backed streams; selectors needs a real fd.
+        """
 
     def send_alert(
         self,
@@ -137,6 +178,9 @@ class TerminalAdapter(CommunicationAdapter):
     def supports_async(self) -> bool:
         """Terminal adapter is synchronous — operator must be present."""
         return False
+
+    def cancel_alert(self, alert_id: str) -> None:
+        """Print a withdrawn notice and drop the alert's pending state."""
 ```
 
 The adapter receives pre-interpolated prompt text from the FSM state; it
@@ -150,16 +194,33 @@ only renders, not resolves, variables.
   `scripts/little_loops/fsm/communication_adapter.py`). The verdict is
   expressed via `AdapterResponse.verdict: Literal["approve", "reject", "edit"]`
   — there is no separate `EditResponse` type.
+- Private per-adapter state (no public type): `_pending: dict[str, _PendingAlert]`
+  keyed by `alert_id`, where `_PendingAlert` is a small module-private
+  dataclass holding `state_name: str` and `awaiting_edit_text: bool`; plus
+  `_stdin_closed: bool` (EOF latch, starts `False`).
 
 ### Signatures
+- `TerminalAdapter.__init__(self, stdin: IO[str] | None = None, stdout: IO[str] | None = None) -> None`
+  — `None` means resolve `sys.stdin`/`sys.stdout` at call time (so `capsys`
+  and `patch("sys.stdout")` work); tests pass `os.pipe()`-backed streams.
 - `TerminalAdapter.send_alert(self, loop_name: str, state_name: str, prompt: str, captured_context: dict) -> str`
   — no `timeout` parameter; FEAT-1930 Pre-implementation Review #8 moved the
-  wait budget to `await_response()`.
+  wait budget to `await_response()`. Returns a fresh `uuid4().hex` alert id
+  and records it in `_pending`.
 - `TerminalAdapter.await_response(self, alert_id: str, timeout: float) -> AdapterResponse | TimeoutResponse` —
   matches FEAT-1930's base protocol (`communication_adapter.py`), which
   defines `await_response(self, alert_id: str, timeout: float)`, re-entrant
-  per `alert_id`.
+  per `alert_id`. Unknown `alert_id` raises `KeyError` (programming error,
+  not an operator outcome).
+- `TerminalAdapter.cancel_alert(self, alert_id: str) -> None` — prints a
+  withdrawn notice, pops `_pending[alert_id]` (no-op if absent).
 - `TerminalAdapter.supports_async(self) -> bool` — returns `False`
+- `TerminalAdapter._read_line(self, timeout: float) -> str | None` — the
+  spike's `await_line_single_read()` body: one `selectors` wait bounded by
+  `timeout`, then `readline()`; returns `None` on timeout. Empty string from
+  `readline()` (EOF) sets `_stdin_closed` and returns `None`.
+- `_parse_verdict(line: str) -> AdapterResponse | None` — module-level pure
+  function; `None` means unrecognized.
 
 ### Call Path
 `FSMExecutor._execute_state()` (`executor.py:1948`) → (once FEAT-1794 adds a
@@ -176,15 +237,49 @@ those two protocol fields are satisfiable without new executor plumbing. No
 `prompt`/`captured_context` at the call site is FEAT-1794's gap, not this
 issue's.
 
+Zero-config seeding (this issue's one executor change): on the `KeyError`
+branch of `resolve_communication_adapter()` (`executor.py:2661-2677`), when
+`channel == "terminal"`, lazily import `TerminalAdapter`, store it in
+`_contributed_adapters["terminal"]`, and return it. Extensions registered by
+`wire_extensions()` populate the dict *before* any resolve call, so an
+extension contributing its own `"terminal"` wins without tripping the
+extension-vs-extension conflict check. Update the method docstring, which
+currently says it "never imports a specific adapter directly".
+
 ### Decision Rules
 - **Accepted verdict keywords** (from Acceptance Criteria): `y`/`yes`/`approve` → approve,
   `n`/`no`/`reject` → reject, `e`/`edit` → edit. Case-insensitive, unambiguous
   prefix matching (the three aliases start with distinct letters, so no
   collision is possible under prefix matching).
-- **Escape hatch on unrecognized input**: not specified by this issue's
-  Acceptance Criteria or Proposed Solution — left to the implementer. See the
-  Codebase Research Findings under Acceptance Criteria for the nearest
-  precedent (retry-loop behavior in `SimulationActionRunner._prompt_result()`).
+- **Prefix matching, exactly**: lowercase and strip the line; split off the
+  first whitespace-delimited token; the token matches an alias if it is a
+  non-empty prefix of one of `yes`, `approve`, `no`, `reject`, `edit` (so
+  `y`, `a`, `ap`, `n`, `r`, `e` all resolve). Any remaining text after a
+  reject alias becomes `AdapterResponse.reason`; trailing text after
+  approve/edit is ignored.
+- **Unrecognized or empty input** (decided 2026-09-04 pre-implementation
+  review): write one hint line (`Expected y/yes/approve, n/no/reject, e/edit`)
+  to stdout, leave the alert pending, return `TimeoutResponse` from this
+  call. Do **not** copy `SimulationActionRunner._prompt_result()`'s internal
+  `while True` retry loop — the executor's re-entrant tick loop is the retry
+  loop. Bare Enter has no default.
+- **Edit flow state machine**: on `e`, print `Enter replacement text (one
+  line):`, set `awaiting_edit_text=True`, and immediately attempt a second
+  `_read_line()` with whatever `timeout` budget remains in this call. If it
+  returns text → `AdapterResponse(verdict="edit", edited_text=text)` and pop
+  `_pending`. If it times out → `TimeoutResponse`; the next call for this
+  `alert_id` sees `awaiting_edit_text` and goes straight to reading the
+  text (no re-prompt for a verdict). Single-line only in this issue.
+- **EOF / non-interactive stdin**: once `_stdin_closed` is set, every
+  subsequent `await_response()` call does `time.sleep(timeout)` and returns
+  `TimeoutResponse` — this keeps the executor's overall deadline honest
+  without a hot loop. Log a single `logger.warning` the first time.
+- **Signals**: never wrap `_read_line()` in `except (EOFError,
+  KeyboardInterrupt)` — `cli/loop/lifecycle.py:881` catches
+  `KeyboardInterrupt` at the top level and that is the documented ^C path.
+- **Deadline rendering**: only when `captured_context.get("deadline")` is a
+  number; render `int(deadline - time.monotonic())` seconds. FEAT-1794 owns
+  whether the caller supplies it. No countdown widget — a single static line.
 
 ### Codebase Research Findings
 
@@ -195,16 +290,25 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 
 ## Proposed Solution
 
-Wrap `input()` in an `_interruptible_sleep()`-style polling loop (see
-`_interruptible_sleep()` at `scripts/little_loops/fsm/executor.py:3378`) that checks the shutdown signal between reads.
-Use `sys.stdin` directly rather than `input()` for finer control over blocking
-and signal handling.
+Use the spike-proven `await_line_single_read()` shape
+(`scripts/tests/spike/terminal_hitl_await/awaiter.py`): one
+`selectors`-bounded read of the injected stdin stream per `await_response()`
+call, no internal shutdown polling. The executor's re-entrant short-tick
+calling pattern (documented on `CommunicationAdapter.await_response()`) plus
+an uncaught `KeyboardInterrupt` provide shutdown responsiveness. The
+`_interruptible_sleep()` polling pattern (`executor.py:3856`) is relevant
+only to the fallback `await_line_polling()` shape, which is not needed unless
+FEAT-1794 calls `await_response()` with one long timeout.
 
 Format the prompt using the existing `${captured.<state>.<field>}` interpolation
 from the FSM context — the adapter receives pre-interpolated text from the FSM
 state, so it only needs to render, not resolve variables.
 
 ### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+- **`await_response()` re-entrancy contract narrows the "unproven mechanism" concern** (see `## Program Design` → Codebase Research Findings for the full docstring): the protocol does not require an adapter to internally combine a selectors-bounded stdin read with shutdown-flag polling in one call — the executor is expected to call `await_response()` repeatedly with short per-call timeouts. Resolved by the 2026-09-04 spike (see `## Spike Results`): the single-read shape is the selected default.
 
 _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
@@ -219,10 +323,6 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 **Option B**: Follow `scripts/little_loops/init/tui.py`'s convention — the third-party `rich` library's `console.print()` with `[color]...[/color]` markup, paired with `questionary` for confirmation prompts (`questionary.confirm(...).ask()` returning `bool | None`).
 
 No recommendation from research — both conventions are actively used elsewhere in the codebase for different subsystems (general CLI output vs. the init wizard specifically), and neither is deprecated relative to the other.
-
-_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
-
-- **`await_response()` re-entrancy contract narrows the "unproven mechanism" concern** (see `## Program Design` → Codebase Research Findings for the full docstring): the protocol does not require an adapter to internally combine a selectors-bounded stdin read with shutdown-flag polling in one call — the executor is expected to call `await_response()` repeatedly with short per-call timeouts. This does not clear `unproven_mechanism: true` (that requires `/ll:spike`), but the implementer should re-derive the simplest viable `await_response()` shape from this contract before assuming the selectors+shutdown-polling combination is required.
 
 ### Decision Rationale
 
@@ -247,49 +347,78 @@ _Added by `/ll:decide-issue` — 2026-09-04:_
 1. Study the `CommunicationAdapter` protocol definition (FEAT-1930) and the
    proven `await_line_single_read()` shape from the FEAT-1931 spike
    (`scripts/tests/spike/terminal_hitl_await/`)
-2. Implement `TerminalAdapter` class with `send_alert()`, `await_response()`,
-   and `supports_async()` methods
+2. Create `scripts/little_loops/fsm/adapters/__init__.py` and
+   `terminal_adapter.py`; implement `TerminalAdapter(stdin=None, stdout=None)`
+   with `send_alert()`, `await_response()`, `supports_async()`, and a
+   `cancel_alert()` override, plus the private `_pending`/`_stdin_closed`
+   state from `## Program Design`
 3. Implement formatted prompt rendering using `cli/output.py`'s
    `colorize()`/`status_block()`/`table()` convention (Decision Rationale:
-   Option A)
-4. Implement `await_response()` using the spike-proven
-   `await_line_single_read()` shape: one bounded `selectors`-timed
-   `sys.stdin` read per call, no internal shutdown-flag polling loop —
-   matches the re-entrant short-timeout contract documented in
-   `communication_adapter.py`. Fall back to the combined
-   `await_line_polling()` shape (bounded read + internal shutdown-flag
-   checks) only if FEAT-1794's executor ends up calling `await_response()`
-   with one long timeout instead of short repeated ticks.
-5. Implement verdict parsing: case-insensitive unambiguous prefix matching
-   for `approve`/`y`/`yes`, `reject`/`n`/`no`, `edit`/`e`
-6. Implement edit verdict: prompt for edited text on secondary input, express
-   it via `AdapterResponse.verdict == "edit"` plus the captured text — there
-   is no separate `EditResponse` type (FEAT-1930's protocol only adds a
-   `verdict: Literal["approve", "reject", "edit"]` field)
-7. Implement `TerminalAdapterExtension(CommunicationAdapterExtension)` with
-   `provided_adapters()` returning a dict keyed exactly `{"terminal":
-   TerminalAdapter()}` (matching `HitlConfig.channel`'s default), registered
-   under `[project.entry-points."little_loops.extensions"]` in
-   `scripts/pyproject.toml` — this is the actual zero-config registration
-   mechanism; there is no "register in `extension.py`" mechanism
-8. Write tests: mock stdin/stdout, verify prompt format, verdict parsing
-   (approve/reject/edit), timeout handling, shutdown signal behavior
+   Option A). Include loop name, state name, prompt, captured context, the
+   valid-response line, and a remaining-seconds line only when
+   `captured_context["deadline"]` is present
+4. Implement `_read_line()` from the spike-proven `await_line_single_read()`
+   shape: one bounded `selectors`-timed read per call on the injected stdin,
+   no internal shutdown-flag polling loop — matches the re-entrant
+   short-timeout contract documented in `communication_adapter.py`. Set
+   `_stdin_closed` on EOF. Do not catch `KeyboardInterrupt`/`EOFError`.
+   Fall back to the combined `await_line_polling()` shape only if FEAT-1794's
+   executor ends up calling `await_response()` with one long timeout instead
+   of short repeated ticks.
+5. Implement `_parse_verdict()`: case-insensitive unambiguous prefix matching
+   for `approve`/`y`/`yes`, `reject`/`n`/`no`, `edit`/`e`; trailing text
+   after a reject alias → `AdapterResponse.reason`. Unrecognized/empty →
+   hint line + `TimeoutResponse` for this call (alert stays pending).
+6. Implement the edit flow: on `e`, prompt for one line of replacement text
+   with the remaining call budget; express it via
+   `AdapterResponse(verdict="edit", edited_text=...)` — there is no separate
+   `EditResponse` type. Persist `awaiting_edit_text` across calls so a timed-
+   out second read resumes at the text prompt on the next call.
+7. Implement the EOF latch (sleep `timeout` then `TimeoutResponse` once
+   `_stdin_closed`, single warning log) and `cancel_alert()` (withdrawn notice
+   + pop pending state).
+8. Zero-config registration: in `FSMExecutor.resolve_communication_adapter()`
+   (`executor.py:2661`), on `KeyError` with `channel == "terminal"`, lazily
+   import and cache `TerminalAdapter()` in `_contributed_adapters`, then
+   return it. Update the docstring. Do **not** add a
+   `[project.entry-points."little_loops.extensions"]` entry — ⚠ Superseded
+   (2026-09-04 pre-implementation review): entry-point metadata only refreshes
+   on `pip install -e`, so every `local-editable` consumer on this machine
+   would hit `CommunicationAdapterNotFound: 'terminal'` until reinstalled, and
+   `ExtensionLoader` swallows load failures. A `TerminalAdapterExtension`
+   class is still fine to ship as an *example* but must not be the default's
+   only registration path.
+9. Write tests (`scripts/tests/test_terminal_adapter.py`) with
+   `os.pipe()`-backed streams (copy the spike's `pipe` fixture): prompt
+   format, verdict parsing incl. reason, unrecognized input, edit flow incl.
+   resumption, timeout, EOF latch timing, `cancel_alert`, and an executor
+   test that `resolve_communication_adapter()` returns a `TerminalAdapter`
+   with an empty `_contributed_adapters` and default config
+10. Reconcile the illustrative `TerminalAdapter` snippet in
+    `docs/reference/API.md` (`CommunicationAdapterExtension` section) and note
+    the built-in default under `docs/reference/CONFIGURATION.md#hitl`
 
 ## Integration Map
 
 ### Files to Create
+- `scripts/little_loops/fsm/adapters/__init__.py` — new subpackage
 - `scripts/little_loops/fsm/adapters/terminal_adapter.py` —
   `TerminalAdapter(CommunicationAdapter)`
 - `scripts/tests/test_terminal_adapter.py`
 
 ### Files to Modify
-- `scripts/little_loops/fsm/executor.py` — no changes (uses protocol interface)
-- `scripts/pyproject.toml` — add `TerminalAdapterExtension` under
-  `[project.entry-points."little_loops.extensions"]` (`:131-134`, currently
-  empty); this is the actual zero-config registration mechanism —
-  `scripts/little_loops/extension.py` itself needs no modification (it has
-  no "register default adapter" mechanism; `wire_extensions()` discovers
-  extensions generically via entry points)
+- `scripts/little_loops/fsm/executor.py` — `resolve_communication_adapter()`
+  (`:2661-2677`): seed the built-in `TerminalAdapter` on the `KeyError`
+  branch when `channel == "terminal"`; update the docstring
+- `docs/reference/API.md` — reconcile the illustrative snippet (see
+  Documentation below)
+- `docs/reference/CONFIGURATION.md` — `hitl` section: state that `terminal`
+  is built in and needs no extension
+- ~~`scripts/pyproject.toml` — add `TerminalAdapterExtension` under
+  `[project.entry-points."little_loops.extensions"]`~~ — ⚠ Superseded
+  (2026-09-04 pre-implementation review): not the zero-config path; see
+  Implementation Step 8. `scripts/little_loops/extension.py` needs no
+  modification.
 
 ### Similar Patterns
 - `scripts/little_loops/mcp_call.py:101-124` (`_send_request`) and
@@ -308,14 +437,15 @@ _Added by `/ll:decide-issue` — 2026-09-04:_
   `CommunicationAdapter` protocol interface via
   `resolve_communication_adapter()` (no direct import of `TerminalAdapter`
   needed)
-- `scripts/pyproject.toml` — references `TerminalAdapterExtension` by dotted
-  entry-point path
-  (`little_loops.fsm.adapters.terminal_adapter:TerminalAdapterExtension`),
-  not a Python import; no file statically imports `TerminalAdapter` outside
-  its own module and tests
+- `scripts/little_loops/fsm/executor.py` — one lazy, function-local import
+  of `TerminalAdapter` inside `resolve_communication_adapter()` (keeps the
+  module import graph acyclic); no other file imports it outside its own
+  module and tests
 
 ### Tests
-- `scripts/tests/test_terminal_adapter.py` — new test file (mock stdin/stdout)
+- `scripts/tests/test_terminal_adapter.py` — new test file; stdin via
+  `os.pipe()` (not `StringIO` — `selectors` needs a real fd; see the spike's
+  `pipe` fixture), stdout via an injected `io.StringIO`
 
 ### Documentation
 - `docs/reference/API.md:11061-11099` — reconcile the existing illustrative
@@ -349,9 +479,11 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 
 ## Impact
 
-- **Priority**: P2 — default channel, required for FEAT-1794 to function
-- **Effort**: Small — single adapter implementation, ~100-150 lines
-- **Risk**: Low — well-understood I/O pattern
+- **Priority**: P3 — default channel, required for FEAT-1794 to function
+  (downgraded from P2 with parent EPIC-1929 on 2026-07-03; see Session Log)
+- **Effort**: Small — single adapter implementation plus a ~10-line executor
+  seed, ~150-200 lines
+- **Risk**: Low — I/O core proven by the 2026-09-04 spike
 - **Breaking Change**: No
 
 ## Related Key Documentation
@@ -417,6 +549,10 @@ open
 
 ## Scope Boundary
 
+_All three notes below were resolved on 2026-09-04 when FEAT-1930 landed;
+`## API/Interface` and `## Program Design` now carry the ratified
+signatures. Retained for provenance only._
+
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The `API/Interface` section above shows `TerminalAdapter.send_alert(prompt, context, timeout)` but the `CommunicationAdapter` protocol in FEAT-1930 defines `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> None`. Align this issue's `send_alert()` signature with FEAT-1930's protocol **before** implementing — add `loop_name: str` and `state_name: str` as the first two parameters to match the base protocol. This allows the terminal adapter to display the state name in the formatted prompt output without requiring the caller to pre-interpolate it.
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's edit-verdict handling returns an `EditResponse` type that does not exist in FEAT-1930's base protocol — `await_response()` there is typed `HumanResponse | TimeoutResponse` only. Do not introduce a third response type; express the edit verdict via the `verdict: Literal["approve", "reject", "edit"]` field FEAT-1930 is adding to its `HumanResponse`/`AdapterResponse` dataclass instead.
@@ -441,7 +577,37 @@ _Added by `/ll:confidence-check` on 2026-09-04_
 ### Outcome Risk Factors
 _(none — 71/100 is above this project's configured `outcome_threshold` of 65)_
 
+## Pre-implementation Review (2026-09-04)
+
+Manual review before `/ll:manage-issue`. Changes applied to the body above:
+
+- **Deadline AC was unsatisfiable**: `send_alert()` carries no timeout and
+  `await_response()` only sees per-tick budgets, so the adapter cannot render a
+  countdown on its own. Replaced with an optional `captured_context["deadline"]`
+  contract owned by FEAT-1794.
+- **Entry-point registration replaced by executor seeding**: pyproject entry
+  points only refresh on reinstall, which would break every `local-editable`
+  consumer, and `wire_extensions()`'s conflict check would make the built-in
+  un-overridable. Zero-config now means a lazy seed in
+  `resolve_communication_adapter()`.
+- **Decided previously-open behavior**: unrecognized/empty input (hint +
+  `TimeoutResponse`, alert stays pending), edit flow resumption across calls,
+  EOF latch to avoid a busy loop under non-interactive stdin, uncaught
+  `KeyboardInterrupt` as the ^C path, `cancel_alert()` behavior, optional
+  reject reason.
+- **Testability**: constructor stream injection; tests use `os.pipe()` since
+  `selectors` rejects `StringIO`.
+- Housekeeping: Impact priority aligned to P3; `_interruptible_sleep`
+  citation in Proposed Solution corrected to `:3856`; the 2026-09-04
+  re-entrancy finding moved out of the Option B block (it was tripping
+  `unapplied_decision` as a rejected-option mention); Scope Boundary notes
+  marked resolved.
+
+Re-run `/ll:confidence-check` before implementing — the recorded 75/100 is
+below this project's `readiness_threshold` of 85.
+
 ## Session Log
+- manual pre-implementation review - 2026-09-04 - see `## Pre-implementation Review (2026-09-04)`
 - `/ll:explore-api` - 2026-09-04 - Skipped exploration and cleared `learning_tests_required: [rich, questionary]` from frontmatter per this issue's own 2026-09-04 Confidence Check note: Option A (`cli/output.py` convention) was selected over the rich/questionary-based Option B, so neither library is a real dependency of the chosen implementation.
 - `/ll:confidence-check` - 2026-09-04T17:34:47 - `6ce3bc7e-5cc0-4c07-bc92-274906ec8f9b.jsonl`
 - `/ll:reconcile-issue` - 2026-09-04T17:28:24 - `9c215218-0709-4612-905a-d94c22135410.jsonl`
