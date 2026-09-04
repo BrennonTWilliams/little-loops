@@ -654,6 +654,29 @@ ll-loop run rn-stepwise "path/to/plan.md"
 
 ---
 
+## `stepwise-task`
+
+One-step-at-a-time variant of `general-task` (`category: harness`): each
+plan step is implemented and delta-verified (`check_done`) before the next
+step is selected. Slower than `general-task`'s default batched passes, but
+drift is caught per step instead of per pass — use it for plans whose steps
+are risky, strongly interdependent, or individually expensive to get wrong.
+
+This is a thin entry point: it does not fork `general-task`'s DoD, plan,
+verify, or summary machinery. It binds `steps_per_pass: 1` and delegates the
+entire run to `general-task.yaml` via a `loop:` state (the `rn-stepwise` →
+`rn-refine` pattern). `general-task` itself defaults to `steps_per_pass: 0`
+(all remaining steps per pass), halves the pass mechanically on a multi-step
+timeout, and spans host sessions inside a pass through the `/ll:handoff` →
+`CONTEXT_HANDOFF` → `on_handoff: spawn` → `ll-loop resume` chain with a
+per-step `completed-steps.txt` ledger.
+
+```bash
+ll-loop run stepwise-task "<task description>"
+```
+
+---
+
 ## `oracles/generator-evaluator-cli`
 
 **Category**: oracle sub-loop
