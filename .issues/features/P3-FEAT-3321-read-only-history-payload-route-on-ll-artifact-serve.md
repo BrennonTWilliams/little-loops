@@ -242,10 +242,12 @@ def serve_sse_bridge(
   `LocalBridgeTransport.set_page_html`; needed because the page embeds
   `bridge.url`, which exists only after the bind.
 - `serve_sse_bridge` is **extended, not moved**. Its existing signature and
-  print-and-block body stay put: `test_feat3323_sse_bridge.py:799` calls
-  `serve_sse_bridge(config, port=0)` positionally, and the
+  print-and-block body stay put: it owns the
   `"socket" not in transports` / no-producer-socket stderr notices
-  (`transport.py:1455-1477`) belong to it. The two new keyword-only
+  (`transport.py:1457-1470`). (`test_feat3323_sse_bridge.py:799` does **not**
+  currently call `serve_sse_bridge` — see § Verification Notes; the
+  extend-not-move decision stands on the stderr-notice ownership and the
+  print-and-block body alone.) The two new keyword-only
   parameters are passed through to `SseBridge(...)` and to a
   `set_page_html` call made after the bind. `page_html_factory` takes the
   bound bridge so the page can embed `bridge.url`, and **any exception it
@@ -272,19 +274,19 @@ class BridgeEventsConfig:
 Server startup (only when `config.events.bridge.history` is `true`; otherwise
 `cmd_serve` calls `serve_sse_bridge(config.events, port=port)` exactly as it
 does today and nothing below runs):
-`cmd_serve()` (`cli/artifact/serve.py:36-64`) → `BRConfig` → `make_history_route(config)` (new, same module) → `serve_sse_bridge(config.events, port=port, routes={"history": ...}, page_html_factory=...)` (`transport.py:1439-1478`) → `SseBridge.__init__(..., routes=...)` (`transport.py:1248-1277`) → factory, in a try/except that falls back to the placeholder: `resolve_tables(None, local_mode=...)` (`cli/artifact/dashboard.py:75`) → `build_dashboard_html(..., serve_context=ServeContext(events_url=bridge.url + "events", interaction_url=None, history_url=bridge.url + "history"))` (`dashboard.py:155`) → `build_history_payload(...)` (new, extracted from `dashboard.py:176-198`) → `build_snapshot_db(...)` (`session_store/queries.py:246`, via `_connect_readonly`) → `SseBridge.set_page_html(rendered.html)` (new, mirrors `transport.py:808-817`) → print-and-block body
+`cmd_serve()` (`cli/artifact/serve.py:36-64`) → `BRConfig` → `make_history_route(config)` (new, same module) → `serve_sse_bridge(config.events, port=port, routes={"history": ...}, page_html_factory=...)` (`transport.py:1439-1478`) → `SseBridge.__init__(..., routes=...)` (`transport.py:1248-1277`) → factory, in a try/except that falls back to the placeholder: `resolve_tables(None, local_mode=...)` (`cli/artifact/dashboard.py:75`) → `build_dashboard_html(..., serve_context=ServeContext(events_url=bridge.url + "events", interaction_url=None, history_url=bridge.url + "history"))` (`dashboard.py:155`) → `build_history_payload(...)` (new, extracted from `dashboard.py:176-210`) → `build_snapshot_db(...)` (`session_store/queries.py:246`, via `_connect_readonly`) → `SseBridge.set_page_html(rendered.html)` (new, mirrors `transport.py:808-817`) → print-and-block body
 
 Per request:
 `_make_sse_bridge_handler.<locals>._Handler.do_GET` (`transport.py:1209-1230`) → Host check (`_expected_hosts`, 403) → token-prefix check (404) → `bridge._routes["history"]` → `make_history_route.<locals>.handler` → stat `db_path` → cache hit (or `If-None-Match` → 304) → else under lock: `resolve_tables` → `build_history_payload(allow_missing=True)` → `build_snapshot_db` → JSON response (`Cache-Control: no-store`, `ETag`); `ValueError` → 413
 
 Page side (`templates/dashboard.llat/template.html.j2`):
-existing sql.js boot (`:302` `initSqlJs` → `:307` `snapshotBytes = results[0]` → `:168-170` `instantiate()`) → new timer block (rendered only under a Jinja conditional on `serve_history_enabled`) → `fetch(serve_history_url_js)` → existing `decodeBase64` (`:146`) / `gunzip` (`:157`) helpers → `db.close()` → **`snapshotBytes = bytes; instantiate(); buildViews();`** → update the exported-at label. The interaction block (`:342-366`) is omitted entirely by a Jinja conditional, not merely inert.
+existing sql.js boot (`:302` `initSqlJs` → `:307` `snapshotBytes = results[0]` → `:168-170` `instantiate()`) → new timer block (rendered only under a Jinja conditional on `serve_history_enabled`) → `fetch(serve_history_url_js)` → existing `decodeBase64` (`:147`) / `gunzip` (`:156`) helpers → `db.close()` → **`snapshotBytes = bytes; instantiate(); buildViews();`** → update the exported-at label. The interaction block (button at `:337-340`, handler script at `:342-360`) is omitted entirely by a Jinja conditional, not merely inert.
 
 **Do not** write `db = new SQL.Database(bytes)` directly at `:169`'s site. That
 skips `instantiate()`'s `db.run("PRAGMA query_only = 1")` (`:170`) — which the
 template's own comment at `:163-167` identifies as the actual write rejection,
-the `textCheck` at `:174-176` being message-only — and leaves the
-"Reset snapshot" button (`:106`, handler at `:287-296`) restoring the *startup*
+the `textCheck` at `:177` being message-only — and leaves the
+"Reset snapshot" button (`:106`, handler at `:286-296`) restoring the *startup*
 bytes forever, because Reset re-runs `instantiate()` off the module-level
 `snapshotBytes` (`:136`). Reassigning `snapshotBytes` and calling
 `instantiate()` fixes both; `buildViews()` (`:268`) is re-run because the
@@ -306,8 +308,9 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
   the bridge and blocks, and owns the `"socket" not in transports` /
   no-producer-socket stderr notices. Extend it with keyword-only `routes=`
   and `page_html_factory=`; do **not** move its body into `cmd_serve`
-  (`test_feat3323_sse_bridge.py:799` calls it directly, and the AC requires
-  that file to pass unchanged).
+  (`test_feat3323_sse_bridge.py:799`'s docstring names it as the intended
+  call for that stub's not-yet-written body — see § Verification Notes —
+  and the AC requires that file to pass unchanged).
 - `scripts/little_loops/cli/artifact/dashboard.py:~250` — the D18 escaping
   block. `serve_events_url` uses `html.escape` because it lands in an HTML
   attribute (`hx-sse:connect`); `serve_interaction_url_js` uses `json.dumps`
@@ -319,7 +322,7 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
 - `scripts/little_loops/cli/artifact/dashboard.py:133-144` — `ServeContext`;
   `interaction_url: str` becomes `str | None = None`.
 - `scripts/little_loops/cli/artifact/dashboard.py:155-262` —
-  `build_dashboard_html`; the snapshot-building block (`:176-198`) is the
+  `build_dashboard_html`; the snapshot-building block (`:176-210`) is the
   code to extract into a shared payload helper so the route and the page
   render share one implementation. `:253-259` stamps the serve data keys.
 - `scripts/little_loops/cli/artifact/dashboard.py:75-105` — `resolve_tables`
@@ -331,9 +334,11 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
   first, which creates the file and runs migrations.
 - `scripts/little_loops/templates/dashboard.llat/template.html.j2:119,169`
   — `SNAPSHOT_B64` constant and `db = new SQL.Database(snapshotBytes)`;
-  the timer replaces `db` here. `:319-366` — serve block; `:342-366` is the
-  interaction form and POST, to be wrapped in a conditional on the
-  interaction URL being present.
+  the timer replaces `db` here. `:319-360` — serve block; `:337-340` is the
+  interaction form button (`id="ll-interaction-send"`), `:342-360` its
+  click-handler script and POST — both must be wrapped in the conditional on
+  the interaction URL being present; wrapping only `:342-360` leaves the
+  button rendered and fails the corresponding AC.
 - `scripts/little_loops/templates/dashboard.llat/manifest.yaml:37-44` —
   serve-mode data keys; add `serve_history_enabled` (boolean),
   `serve_history_url_js` (string) and `serve_history_poll_s` (integer) to
@@ -367,7 +372,7 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
 ## Implementation Steps
 
 1. **Extract the payload builder.** Move `build_dashboard_html`'s
-   snapshot-to-base64 block (`dashboard.py:176-198`, including the
+   snapshot-to-base64 block (`dashboard.py:176-210`, including the
    missing-db-with-serve-context branch and the `max_artifact_bytes`
    pre-check) into `build_history_payload(*, db_path, config, tables,
    since_iso, mode, allow_missing=False) -> HistoryPayload` — the five-field
@@ -385,7 +390,7 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
    `serve_history_poll_s` (int). Update `manifest.yaml` `properties`
    accordingly; leave them out of `required`.
 3. **Template.** Wrap the interaction form and its script
-   (`template.html.j2:342-366`) in a **Jinja** conditional on
+   (`template.html.j2:337-360`) in a **Jinja** conditional on
    `serve_interaction_enabled` so the markup is absent, not merely inert —
    a JS-only guard leaves `ll-interaction-send` in the HTML and fails the
    corresponding AC. Add a timer block under a Jinja conditional on
@@ -520,8 +525,8 @@ Unchanged caller that must stay byte-identical: `cli/loop/run.py:625-647` (`ll-l
       /{token}/history` is 404 **and** `GET /{token}/` serves the
       `_SSE_BRIDGE_PAGE_HTML` placeholder (no dashboard page, no timer).
       BUG-3192 Guards 1 and 2 pass.
-- [ ] Existing `test_feat3323_sse_bridge.py` passes unchanged, including its
-      positional `serve_sse_bridge(config, port=0)` call. New tests assert the
+- [ ] Existing `test_feat3323_sse_bridge.py` passes unchanged (see §
+      Verification Notes on its `:799` stub). New tests assert the
       history route inherits both gates: a request with a foreign `Host`
       header is 403, and a request without the token prefix is 404.
 - [ ] FEAT-3308 round-trip tests for `ll-artifact templatize`/`extract`/
@@ -616,12 +621,63 @@ in-place upgrade.
   directly. Both Open Questions closed; FEAT-3308 round-trip blast radius,
   the absent `--serve --local` flag, and the render-time-only
   `schema_version_warning` recorded. Effort raised Small-Medium → Medium.
+- 2026-09-03: `/ll:verify-issues` re-verified all file:line citations against
+  the tree. Six minor line-drift corrections applied throughout (see §
+  Verification Notes). Two material corrections: the interaction-block Jinja
+  conditional now targets `template.html.j2:337-360` (was `:342-366`, which
+  excluded the `id="ll-interaction-send"` button itself and would have
+  failed the corresponding AC); and the "extend, not move" justification for
+  `serve_sse_bridge` no longer cites `test_feat3323_sse_bridge.py:799` as an
+  existing positional caller — that line is a stub whose body calls
+  `SseBridge(...)` directly, with the cited call string appearing only in a
+  TODO docstring for not-yet-written test code. The extend-not-move
+  conclusion is unchanged; it now rests on `serve_sse_bridge` owning the
+  stderr producer-socket notices and the print-and-block body, not on a
+  currently-nonexistent test dependency.
+
+## Verification Notes
+
+- **Line-drift corrections** (content confirmed present, cited line numbers
+  off by a few): `dashboard.py` snapshot-to-base64 block is `:176-210` (was
+  `:176-198`); `transport.py` stderr producer-socket notices are `:1457-1470`
+  (was `:1455-1477`); `template.html.j2` `textCheck` starts `:177` (was
+  `:174-176`); its reset handler starts `:286` (was `:287`); `decodeBase64`
+  is `:147` (was `:146`); `gunzip` is `:156` (was `:157`).
+- **Material correction — interaction block range.** `template.html.j2` is
+  363 lines total. The interaction form's button
+  (`id="ll-interaction-send"`) is at `:337-340`; its click-handler script and
+  POST are at `:342-360`. The issue previously cited only `:342-366` for the
+  Jinja conditional, which would have wrapped the script but left the button
+  rendered — failing the AC that requires `ll-interaction-send` to be absent
+  from the HTML entirely. Corrected throughout to `:337-360`.
+- **Material correction — `test_feat3323_sse_bridge.py:799`.** The issue
+  cited this line three times as proof that `serve_sse_bridge(config,
+  port=0)` is called positionally today, used to justify extending rather
+  than relocating `serve_sse_bridge`. Verified false: line 799 is
+  `test_serve_sse_bridge_binds_loopback_and_prints_url`, a stub whose body
+  calls `SseBridge(...)` directly; `serve_sse_bridge` is invoked nowhere in
+  that file. The cited call string exists only inside a `TODO(FEAT-3323)`
+  docstring describing test code not yet written. Corrected throughout; the
+  design decision to extend `serve_sse_bridge` in place still holds (it owns
+  the stderr notices and print-and-block body cited elsewhere in the issue),
+  it just no longer depends on this false premise.
+- All other checked citations (≈30 items across `dashboard.py`, `serve.py`,
+  `transport.py`, `config/features.py`, `session_store/queries.py`,
+  `history_reader/_base.py`, `manifest.yaml`, `cli/loop/run.py`,
+  `extension.py`, `config-schema.json`, `ARTIFACT_CONTROL_LEVELS.md`,
+  `CLI.md`, and the `test_config_schema.py` BUG-3192 guards) matched exactly.
+  `ll-verify-evidence` and the decisions-log check both came back clean; no
+  active required decision rules exist to violate. Both `relates_to` issues
+  (FEAT-3323, ENH-3351) are confirmed `done`, and their cited fix commits
+  (`92670a9de`, `94a676582`) exist and touch the claimed files. Nothing this
+  issue proposes as new already exists in the tree.
 
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-04T02:16:09 - `371c81cf-6cd1-4bb0-94f4-43941447dbc7.jsonl`
 - `/ll:confidence-check` - 2026-09-04T01:56:22 - `01d833b6-5f4d-404a-bfc0-c03d3ef153b3.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:56 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:59 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
