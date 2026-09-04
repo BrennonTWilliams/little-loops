@@ -105,12 +105,20 @@ Option B has a real gap too — `ExtensionLoader.from_config()`/`.from_entry_poi
 - `scripts/little_loops/fsm/adapters/eventbus_adapter.py` (new) — `EventBusAdapter(CommunicationAdapter)` implementing `send_alert()`/`await_response()`/`supports_async()`/`cancel_alert()`, constructed with an `EventBus` instance
 - `scripts/little_loops/extension.py` — a new `EventBusAdapterExtension` class, following `CommunicationAdapterExtension`'s Protocol shape (Option B, selected — see Proposed Solution → Decision Rationale); also needs the bus-injection hook into `wire_extensions()` this decision surfaced as unspecified work (`extension.py:274-281`)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/__init__.py` — add `EventBusAdapter` and `EventBusAdapterExtension` to the public re-export list, following the existing pattern for `CommunicationAdapterExtension`/`TerminalAdapter`-sibling symbols (import block at lines 9-19, 21-28; `__all__` listing at lines 102-111, 112-118) [Agent 1 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py:2661` — `resolve_communication_adapter()`: the resolution chokepoint either registration path ultimately feeds
 - `scripts/little_loops/extension.py:274-281` — `wire_extensions()`: the registration/conflict-check path, relevant if Option B
 - `scripts/little_loops/fsm/communication_adapter.py` — `CommunicationAdapter` ABC, `AdapterResponse`/`TimeoutResponse`, `HUMAN_APPROVAL_REQUESTED_EVENT`/`HUMAN_RESPONSE_EVENT` constants this adapter imports and reuses
 - `scripts/little_loops/events.py:70` — `EventBus`: `register()`/`unregister()`/`emit()` — the pub/sub surface this adapter is the first request/response consumer of
 - `.issues/features/P3-FEAT-1794-hitl-interrupt-fsm-state-type.md` — the emitter side (`HUMAN_APPROVAL_REQUESTED_EVENT`), currently unimplemented; this adapter's `await_response()` has nothing to correlate against in a live FSM run until FEAT-1794's executor dispatch also lands, though the adapter itself can be built and unit-tested independently by emitting/consuming test events directly against a bare `EventBus`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/extensions/reference_interceptor.py` — the one real (non-test-fixture) shipped `LLExtension` implementation relying on the current zero-arg `cls()` construction contract; the bus-injection hook must stay additive so this class keeps constructing with no args [Agent 2 finding]
+- `scripts/little_loops/cli/create_extension.py:70-95` (`_render_extension()`) — scaffold generator's doc-comment enumerates the opt-in mixin Protocols (`InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`, `LLHookIntentExtension`, `CommunicationAdapterExtension`); `EventBusAdapterExtension` is a concrete registration, not a generic opt-in mixin, so it does not belong in this list — confirmed no change needed, called out so it isn't flagged as missed in review [Agent 1/2 finding]
+- `scripts/little_loops/cli/loop/run.py:619-623`, `scripts/little_loops/cli/loop/lifecycle.py:709,736`, `scripts/little_loops/cli/sprint/run.py:794-800`, `scripts/little_loops/cli/parallel.py:313-321` — the four production `wire_extensions()` call sites; confirmed unaffected since all four already pass a live `EventBus` positionally, in scope before `wire_extensions()` runs — the bus-injection gap is strictly internal, between `wire_extensions()` and `ExtensionLoader.load_all()` not forwarding `bus` into `from_config()`/`from_entry_points()` [Agent 1/2 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/fsm/adapters/terminal_adapter.py` — the only existing `CommunicationAdapter` implementation; matches on per-alert pending-state bookkeeping (`_pending: dict[str, _PendingAlert]`), `alert_id = uuid.uuid4().hex` generation, and popping the pending entry only on a terminal verdict — diverges on the wait mechanism itself (`selectors` fd read vs. an `EventBus` observer + tick loop), since there is no fd to select on for an in-process bus
@@ -120,9 +128,20 @@ Option B has a real gap too — `ExtensionLoader.from_config()`/`.from_entry_poi
 - `scripts/tests/test_terminal_adapter.py` — the only adapter test file; model a new `test_eventbus_adapter.py` on its class-per-concern shape (`TestSendAlert`, `TestCancelAlert`, `TestSupportsAsync`, plus re-entrancy tests), substituting a bare `EventBus()` fixture for the `os.pipe()` fixture `TerminalAdapter`'s tests use
 - `scripts/tests/test_communication_adapter.py` — `TestAwaitResponseReentrancy` (retained-verdict contract test pattern via a hand-rolled `_MockAdapter`); `TestWireExtensionsAdapters` (conflict-check test pattern, relevant if Option B) and `TestResolveCommunicationAdapter` (relevant if Option A) — model the new adapter's registration tests after whichever pair applies once the option is decided
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_extension.py::TestExtensionLoader` (lines 84-133: `test_from_config_empty`, `test_from_config_loads_valid_path`, `test_from_config_invalid_path_skips`, `test_from_config_multiple`, `test_from_entry_points_empty`, `test_load_all_combines_sources`, `test_load_all_no_config`) — the only tests exercising the real (unmocked) `cls()` construction path the bus-injection hook touches; all call `from_config`/`from_entry_points`/`load_all` with no `bus` argument, so they break with `TypeError` only if the hook adds a required positional `bus` param — keep the hook additive/optional, or update these 7 tests to pass one [Agent 2/3 finding]
+- New test needed in `scripts/tests/test_extension.py` (unmocked — no `patch.object(ExtensionLoader, "load_all", ...)`) proving the bus-injection hook actually delivers the live `EventBus` into a bus-dependent extension's constructor — two independent agent passes confirmed zero existing tests exercise this mechanism; every `TestWireExtensions*`/`TestWireExtensionsAdapters` test bypasses it via mocking [Agent 2/3 finding]
+- New test needed in `scripts/tests/test_communication_adapter.py`, modeled on `TestWireExtensionsAdapters.test_populates_contributed_adapters` (lines 191-207), asserting `EventBusAdapterExtension.provided_adapters()` receives the same `bus` instance passed into `wire_extensions(bus, executor=executor)` — the existing fixture there uses an adapter with no bus dependency, so it doesn't model this [Agent 3 finding]
+- `scripts/tests/test_communication_adapter.py::TestResolveCommunicationAdapter` (`test_miss_raises_communication_adapter_not_found`, `test_miss_message_lists_requested_and_available_channels`, lines 149-186, both use `hitl_channel="eventbus"` as their "not-yet-registered-channel" fixture) — confirmed unaffected under the selected Option B: both build a bare `FSMExecutor` via `__new__` and never call `wire_extensions()`, so registering `EventBusAdapterExtension` in production code has no effect on them — no update needed, verified rather than assumed [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/CONFIGURATION.md:1581` — `### hitl` section documents `hitl.channel` selection and its default (`"terminal"`); add `"eventbus"` as a recognized value once implemented
 - `docs/reference/API.md:11061-11099` — `CommunicationAdapterExtension` doc example currently illustrates a hypothetical `PushNotificationAdapter`; consider updating or adding a real `EventBusAdapter` example once Option A/B is decided
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` § `### ExtensionLoader` (~lines 10944-10971) — prose states "the class is instantiated with no arguments" for both `from_config()` and `from_entry_points()`; needs updating once the bus-injection hook lands [Agent 2 finding]
+- `docs/reference/API.md` § `### wire_extensions` Behavior bullets (~lines 11005-11006) — already stale independent of this issue (omits the `_contributed_adapters`/`provided_adapters()` merge pass added for FEAT-1930); this issue's bus-injection hook is a second reason to update this section — fold both fixes into one pass [Agent 2 finding]
+- `docs/claude-code/write-a-hook.md:148` — states "each entry-point class is instantiated with `cls()` (no constructor arguments)"; needs updating for the bus-injection hook, and its `extension.py:103-111` line citation should be re-checked for drift if new classes are inserted above that range [Agent 2 finding]
 
 ### Configuration
 - `hitl.channel: "eventbus"` — selects this adapter via the existing `HitlConfig` (`scripts/little_loops/config/core.py:184-199`); no new config keys are needed, the `channel` key already exists
@@ -156,6 +175,17 @@ N/A — no new decision logic (gate/threshold/keyword classification). This issu
 4. Register the adapter under the `"eventbus"` channel — resolve Option A vs. B (Proposed Solution) before writing this step; both are compatible with the same `EventBusAdapter` class, only the wiring site differs.
 5. Add `scripts/tests/test_eventbus_adapter.py`, modeled on `test_terminal_adapter.py`'s class-per-concern shape, covering: correct event shape on `send_alert()`, verdict resolution from a matching `human_response` event, re-entrancy across repeated `await_response()` calls (including retained-verdict-across-timeout per the ABC contract), and `cancel_alert()` withdrawal — this is the Acceptance Criteria's test bullet made concrete.
 6. Verification: `python -m pytest scripts/tests/test_eventbus_adapter.py scripts/tests/test_communication_adapter.py -v` passes.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/__init__.py` — add `EventBusAdapter`/`EventBusAdapterExtension` to the public re-export list and `__all__`, following the existing `CommunicationAdapterExtension` pattern
+- Design the bus-injection hook as additive/optional (e.g. inject only when the target class's `__init__` accepts a `bus`/`event_bus` parameter) so `scripts/tests/test_extension.py::TestExtensionLoader`'s 7 existing zero-arg-construction tests keep passing unmodified — if a required param is chosen instead, update those 7 tests to pass a `bus`
+- Add a new unmocked test proving `ExtensionLoader.from_config()`/`.load_all()` actually delivers the live `EventBus` into a bus-dependent extension's constructor — no existing test covers this mechanism
+- Add a new test in `scripts/tests/test_communication_adapter.py`, modeled on `TestWireExtensionsAdapters.test_populates_contributed_adapters`, asserting `EventBusAdapterExtension.provided_adapters()` receives the `bus` passed into `wire_extensions(bus, ...)`
+- Update `docs/reference/API.md`'s `### ExtensionLoader` and `### wire_extensions` sections to reflect the bus-injection hook (and fix the pre-existing FEAT-1930 gap omitting `_contributed_adapters` from the `wire_extensions` Behavior bullets)
+- Update `docs/claude-code/write-a-hook.md:148`'s zero-arg-construction-contract statement and verify its `extension.py:103-111` line citation
 
 ## Impact
 
@@ -199,6 +229,7 @@ N/A — no new decision logic (gate/threshold/keyword classification). This issu
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-04T19:41:11 - `16be6d3d-b797-4958-b3aa-7f5ae8374599.jsonl`
 - `/ll:decide-issue` - 2026-09-04T19:26:43 - `2e7a26f2-b8bf-48e7-b3ea-48fd933d6045.jsonl`
 - `/ll:refine-issue` - 2026-09-04T19:18:04 - `4a1099fd-9d48-4f02-88bf-6554245a52cb.jsonl`
 - `/ll:manage-issue` - 2026-09-04T07:19:43 - `edcf388a-123e-4783-8b95-eba3c9e4b3da.jsonl`
