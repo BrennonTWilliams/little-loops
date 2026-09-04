@@ -31,7 +31,7 @@ import socket
 import tempfile
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
@@ -40,7 +40,8 @@ from urllib.parse import urlparse
 import pytest
 
 from little_loops.fsm.persistence import RUNNING_DIR
-from little_loops.transport import UnixSocketTransport
+from little_loops.logger import Logger
+from little_loops.transport import _CLIENT_QUEUE_MAXSIZE, UnixSocketTransport, _SocketClient
 from tests.test_transport import (
     _client_count,
     _lb_http_request,
@@ -167,9 +168,24 @@ def _write_loop_state_file(
     return path
 
 
-def _make_producer(base: Path, max_clients: int = 4) -> UnixSocketTransport:
+def _make_producer(
+    base: Path,
+    max_clients: int = 4,
+    on_connect: Callable[[_SocketClient], None] | None = None,
+) -> UnixSocketTransport:
     """A producer bound where SseBridge(base=...) will glob for it."""
-    return UnixSocketTransport(base / "events.sock", max_clients=max_clients)
+    return UnixSocketTransport(base / "events.sock", max_clients=max_clients, on_connect=on_connect)
+
+
+def _seed_state_change_on_connect(client: _SocketClient) -> None:
+    """An `on_connect` that mimics `_make_seed_callback`'s `_seed` with one fixed frame.
+
+    The real callback reads the CWD-relative `.loops/.running/`; this one
+    enqueues a `state_change` line directly so the test controls the payload
+    without touching the repo's own state dir.
+    """
+    event = {"event": "state_change", "loop_name": "seeded-loop", "status": "running", "pid": 99}
+    client.queue.put_nowait((json.dumps(event) + "\n").encode("utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -322,17 +338,24 @@ class TestSseBridgeFanIn:
     def test_socket_side_state_change_is_not_relayed(
         self, short_tmp_path: Path, tmp_path: Path
     ) -> None:
-        """The producer's socket-connect seed (`state_change`) never reaches an SSE client."""
-        producer = _make_producer(short_tmp_path)
+        """The producer's socket-connect seed (`state_change`) never reaches an SSE client.
+
+        The producer is built with an `on_connect` seed (as `wire_transports`
+        does via `_make_seed_callback`); without one this test is vacuous
+        because no `state_change` line is ever sent for the bridge to filter.
+        """
+        producer = _make_producer(short_tmp_path, on_connect=_seed_state_change_on_connect)
         bridge = SseBridge(_make_config(), port=0, base=short_tmp_path, loops_dir=tmp_path)
         try:
             sock = _sse_connect(_bridge_port(bridge), _bridge_token(bridge))
             try:
                 leftover = _read_sse_headers(sock)
                 _wait_until(lambda: _client_count(producer) == 1)
-                # The bridge's own connect to `producer` just triggered producer's
-                # _seed() -> a state_change frame on that socket. It must be
-                # filtered, so the next thing the SSE client sees is this event.
+                # The bridge's connect to `producer` just triggered its on_connect
+                # seed -> a state_change line on that socket. It must be filtered,
+                # so the first thing the SSE client sees is this live event (the
+                # seed line was enqueued on the producer side before send() ran,
+                # so ordering on the wire is seed-then-live).
                 producer.send({"event": "not-a-seed"})
                 text, leftover = _read_sse_frame(sock, leftover)
                 assert json.loads(text)["event"] == "not-a-seed"
@@ -412,6 +435,12 @@ class TestSseBridgeSeeding:
         Drives the race by patching `list_running_loops` (as imported into
         `little_loops.transport`) to emit a producer event mid-call, proving the
         client's queue was registered before the seed snapshot was taken.
+
+        Depends on `transport.py` importing `list_running_loops` at module
+        level (the issue's § Seeding says so; a module-level import was probed
+        against the package init, `fsm.persistence`, `cli.loop`, and
+        `cli.artifact` with no cycle). `_make_seed_callback`'s lazy import is
+        the pattern NOT to copy here, or this patch target silently misses.
         """
         _write_loop_state_file(tmp_path, "my-loop", pid=4242)
         producer = _make_producer(short_tmp_path)
@@ -464,9 +493,8 @@ class TestSseBridgeServerMechanics:
     def test_page_constant_uses_textcontent_only(self) -> None:
         """The page string never assigns innerHTML/outerHTML/insertAdjacentHTML.
 
-        TODO(FEAT-3323): rename `_SSE_BRIDGE_PAGE_HTML` below to match whatever
-        module-level constant name the implementation actually uses for the
-        Level 1 page string (§ Page).
+        `_SSE_BRIDGE_PAGE_HTML` lives in `little_loops.transport` beside
+        `_LOCAL_BRIDGE_DEFAULT_PAGE_HTML`, per the issue's § Page.
         """
         from little_loops.transport import _SSE_BRIDGE_PAGE_HTML  # type: ignore[attr-defined]
 
@@ -630,14 +658,37 @@ class TestSseBridgeLifecycle:
             _wait_until(lambda: _bridge_client_count(bridge) == 2)
             _wait_until(lambda: _client_count(producer) == 1)
 
-            # Never drain `slow`'s recv buffer: its per-client queue should fill
-            # and drop-newest, per the bounded-queue contract, without
-            # disturbing `healthy`.
-            for i in range(2000):
-                producer.send({"event": "spam", "i": i})
+            # Drain `healthy` continuously in the background so it stays healthy;
+            # never drain `slow`. Payloads are padded so the total volume (~6MB)
+            # exceeds the kernel socket buffer plus the 1024-slot queue — 2000
+            # tiny events fit entirely in those buffers and never trip a drop.
+            healthy_frames = 0
+            stop_draining = threading.Event()
 
-            text, healthy_leftover = _read_sse_frame(healthy, healthy_leftover)
-            assert json.loads(text)["event"] == "spam"
+            def _drain() -> None:
+                nonlocal healthy_frames, healthy_leftover
+                while not stop_draining.is_set():
+                    try:
+                        _, healthy_leftover = _read_sse_frame(
+                            healthy, healthy_leftover, timeout=0.5
+                        )
+                        healthy_frames += 1
+                    except TimeoutError:
+                        continue
+
+            drainer = threading.Thread(target=_drain, daemon=True)
+            drainer.start()
+            padding = "x" * 1024
+            for i in range(6000):
+                producer.send({"event": "spam", "i": i, "pad": padding})
+
+            # Drop-newest on the slow client's bounded queue: the counter moves
+            # and the queue never exceeds its bound.
+            _wait_until(lambda: any(c.dropped_total > 0 for c in bridge._clients), timeout=10.0)
+            assert all(c.queue.qsize() <= _CLIENT_QUEUE_MAXSIZE for c in bridge._clients)
+            _wait_until(lambda: healthy_frames > 0, timeout=10.0)
+            stop_draining.set()
+            drainer.join(timeout=2.0)
             slow.close()
             healthy.close()
         finally:
@@ -689,7 +740,9 @@ class TestSseBridgeLifecycle:
         baseline_threads = threading.active_count()
         bridge.close()
 
-        assert _client_count(producer) == 0
+        # The producer retires the slot on its next idle poll
+        # (_CLIENT_QUEUE_POLL_TIMEOUT = 0.5s) via _peer_closed, not synchronously.
+        _wait_until(lambda: _client_count(producer) == 0, timeout=3.0)
         sock.settimeout(2.0)
         assert sock.recv(4096) == b""  # stream ends
         _wait_until(lambda: threading.active_count() <= baseline_threads, timeout=15.0)
@@ -746,24 +799,34 @@ class TestServeSseBridgeCli:
     reason="FEAT-3323: cli/artifact/serve.py (cmd_serve) not implemented yet",
 )
 class TestCmdServeCli:
-    def test_port_in_use_prints_one_line_and_returns_1(self, tmp_path: Path) -> None:
+    def test_port_in_use_prints_one_line_and_returns_1(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """EADDRINUSE names the port and --port, with no traceback, exit code 1.
 
-        TODO(FEAT-3323): adjust the cmd_serve(args) call below once
-        cli/artifact/serve.py's add_serve_parser() argparse.Namespace shape is
-        implemented — this stub assumes a `port: int | None` attribute mirroring
-        every other `cli/artifact/*` subcommand.
+        `cmd_serve(args, logger)` follows the `cli/artifact` convention
+        (`cmd_dashboard(args, logger)`, dispatched from `main_artifact()`).
+        This stub assumes a `port: int | None` attribute on the Namespace,
+        mirroring every other `cli/artifact/*` subcommand.
         """
         thrower = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         thrower.bind(("127.0.0.1", 0))
-        thrower.listen(1)
+        thrower.listen(1)  # bound-but-not-listening is ambiguous under SO_REUSEADDR
         port = thrower.getsockname()[1]
         try:
             args = argparse.Namespace(port=port)
-            exit_code = cmd_serve(args)  # type: ignore[name-defined]
+            exit_code = cmd_serve(args, Logger(use_color=False))  # type: ignore[name-defined]
             assert exit_code == 1
         finally:
             thrower.close()
+
+        captured = capsys.readouterr()
+        text = captured.out + captured.err
+        assert str(port) in text, "message must name the port"
+        assert "--port" in text, "message must name the --port override"
+        assert "Traceback" not in text
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        assert len(lines) == 1, f"expected exactly one line, got {lines!r}"
 
     def test_no_producer_socket_prints_plain_message_and_keeps_serving(
         self,

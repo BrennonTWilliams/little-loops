@@ -314,6 +314,13 @@ Consequences to state in docs and tests:
 - `_make_seed_callback` is **not modified**. The withdrawn idea of stamping
   `producer_pid` inside `_seed()` is unnecessary once the bridge filters
   socket-side `state_change` frames.
+- **Import `list_running_loops` at module level** in `transport.py`
+  (`from little_loops.fsm.persistence import list_running_loops`), not
+  lazily the way `_make_seed_callback` does. The seed-to-live race test
+  patches `little_loops.transport.list_running_loops`, which only exists as
+  a patch target with a module-level binding. Probed 2026-09-03: a
+  module-level import imports cleanly from the package init,
+  `fsm.persistence`, `cli.loop`, and `cli.artifact` (no cycle).
 
 ### Server mechanics
 
@@ -339,6 +346,18 @@ they stay bridge-only:
   `keepalive_s`. The precedent notices a vanished tab only on the next failed
   event write; on a quiet bus that could be minutes. Keepalive bounds the
   detection latency so the thread and queue are reclaimed promptly.
+- **Write timeout on the connection.** Keepalive only detects a peer that
+  is *gone* (the write fails). A peer that is alive but not reading (a
+  suspended `curl`, a stopped `nc`) fills the kernel send buffer, after
+  which `wfile.write` blocks the handler thread indefinitely; the bounded
+  queue then drops newest but the thread and its `max_clients` slot are
+  pinned forever. Set the handler class attribute `timeout` (which
+  `StreamRequestHandler.setup()` applies as `settimeout` on the
+  connection) to `2 * keepalive_s` so a wedged write raises
+  `TimeoutError` (an `OSError`, already caught by the write loop) and the
+  slot is reclaimed. This is what makes "a consumer that stops reading is
+  dropped" true rather than "its events are dropped". `LocalBridgeTransport`
+  has the same gap; leave its default in place (out of scope).
 - **Reconnect semantics.** Send `retry: 2000` once at stream open (2 s; the
   browser default is typically 3 s, and the value only matters after a
   bridge restart, when the token has changed and the page must be reloaded
@@ -358,6 +377,12 @@ True` on stream exit so the handler thread does not leak (`:525-536`), the
 `LocalBridgeTransport` has neither concern because `ll-loop run` owns its
 process lifetime. `ll-artifact serve` is the process, so both are specified:
 
+- **Bind before starting threads.** `SseBridge.__init__` constructs the
+  `ThreadingHTTPServer` (the bind) **first** and starts the serve, fan-in,
+  and relay threads only after it succeeds. A bind failure then leaves
+  nothing to clean up; the reverse order leaks a fan-in thread scanning the
+  socket directory (the repo's real `.ll/` when `base` is `None`) on every
+  port-in-use failure.
 - **Port in use.** With a fixed default port, a second `ll-artifact serve`
   (or a stale one from another terminal) hits `OSError` `EADDRINUSE` from
   `ThreadingHTTPServer.__init__`. `cmd_serve` catches it and prints one line
@@ -441,7 +466,10 @@ through a jinja `Environment(autoescape=True)`. This page renders raw JSON
 client-side, so it must build every node with `document.createTextNode` /
 `textContent` and must never assign `innerHTML`, `outerHTML`, or
 `insertAdjacentHTML` from event data. The page is a single string constant
-in `cli/artifact/serve.py`; a test asserts the string contains `textContent`
+`_SSE_BRIDGE_PAGE_HTML` in `transport.py`, beside
+`_LOCAL_BRIDGE_DEFAULT_PAGE_HTML` (`:74`), because `SseBridge` registers the
+`""` route itself and the test imports the constant from
+`little_loops.transport`; a test asserts the string contains `textContent`
 and none of the three sink names, and a bound-server test serves an event
 whose payload contains `<script>` and asserts the SSE frame delivers it as
 JSON-escaped data (the page-side assertion is static because there is no
@@ -507,7 +535,10 @@ the live tree. Only findings still true and still load-bearing are kept._
 - `scripts/little_loops/cli/artifact/__init__.py` — import alongside `:36-47`,
   `add_serve_parser(subparsers)` alongside `:174`, dispatch branch alongside
   `:195-196`, docstring bullet (`:1-28`), `Examples:`/`Exit codes:` epilog
-  entries. `ll-artifact` is already a `[project.scripts]` entry; **no new
+  entries. `cmd_serve(args: argparse.Namespace, logger: Logger) -> int`
+  takes the same two arguments as every other `cli/artifact` command
+  (`cmd_dashboard`, `dashboard.py:312`) and is dispatched the same way.
+  `ll-artifact` is already a `[project.scripts]` entry; **no new
   entry point, no `pyproject.toml` change, no new `main_*` export.**
 - `scripts/little_loops/generate_schemas.py:25` — add `producer_pid` to
   `_BASE_PROPS` alongside `run_id`, `"type": "integer"`, optional (not in
@@ -618,11 +649,14 @@ loops_dir=<tmp_path>)` (constructed in a fixture, `.close()`d in teardown,
   `404`s (the FEAT-3321 mount point).
 - `SseBridge` on a port already bound by a throwaway socket: `cmd_serve`
   prints the port-in-use message naming `--port` and returns `1`, with no
-  traceback.
+  traceback (asserted via `capsys`: exactly one non-empty line, containing
+  the port and `--port`, no `Traceback`).
 - `SseBridge.close()` with one producer and one SSE client attached: the
-  producer's `_clients` drains to 0, the SSE stream ends, the socket
-  directory and `.loops/.running/` are unchanged, and no bridge thread is
-  alive after the join budget.
+  producer's `_clients` drains to 0 (waited, not asserted synchronously: the
+  producer retires the slot on its next `_CLIENT_QUEUE_POLL_TIMEOUT` idle
+  poll via `_peer_closed`), the SSE stream ends, the socket directory and
+  `.loops/.running/` are unchanged, and no bridge thread is alive after the
+  join budget.
 - The page constant contains `textContent` and none of `innerHTML`,
   `outerHTML`, `insertAdjacentHTML`; an event whose payload contains
   `<script>` reaches the SSE client as JSON-escaped data (§ Page).
@@ -635,7 +669,13 @@ loops_dir=<tmp_path>)` (constructed in a fixture, `.close()`d in teardown,
   existing readers keep receiving. Model on
   `test_max_clients_cap_rejects_extra_connection`.
 - A client that stops reading is dropped (drop counter increments, queue stays
-  bounded) without disturbing a second healthy client.
+  bounded) without disturbing a second healthy client. The healthy client is
+  drained continuously in a background thread and payloads are padded so the
+  total volume exceeds the kernel send buffer plus the 1024-slot queue;
+  2000 tiny events fit in those buffers and never trip a drop.
+- Socket-side `state_change` filter test: the producer is constructed with
+  an `on_connect` seed (as `wire_transports` does); without one no
+  `state_change` line is ever sent and the test is vacuous.
 - A keepalive comment frame arrives within `keepalive_s` on a quiet bus, and
   `retry:` appears once at stream open with no `id:` lines.
 - `serve_sse_bridge` binds `127.0.0.1` only (signature default, modeled on
@@ -953,7 +993,9 @@ _Settled 2026-08-26 during pre-implementation review, extended 2026-09-03._
 - [ ] The Level 1 page renders event data through `textContent` only (no
       `innerHTML` / `outerHTML` / `insertAdjacentHTML`), asserted by a test.
 - [ ] A consumer that stops reading is dropped without unbounded buffering in
-      the bridge and without stalling or failing the producing run.
+      the bridge and without stalling or failing the producing run; a peer
+      that is alive but not reading cannot pin a handler thread past the
+      connection write timeout (§ Server mechanics → Write timeout).
 - [ ] The listener binds loopback only; a test asserts the signature default.
 - [ ] A request with a non-loopback `Host` header gets `403`; a request with a
       wrong or missing token prefix gets `404`; no
@@ -1098,6 +1140,16 @@ Criteria A/C/D unchanged. Outcome Confidence 58→65 (LOW→MODERATE)._
   implementation time. This closes the "test plan enumerated but not yet
   written" gap that had been capping Criterion B (Test Coverage) at 18/25;
   re-scored to 25/25, raising Outcome Confidence 58→65 (LOW→MODERATE).
+- **2026-09-03 — pre-implementation review, fourth pass (stubs).** Five stub
+  defects fixed: the `state_change` filter test was vacuous (producer had no
+  `on_connect` seed); the close test asserted producer slot release
+  synchronously (it is polled at `_CLIENT_QUEUE_POLL_TIMEOUT`); the slow-client
+  test asserted no drop and sent too little to cause one; the port-in-use
+  test called `cmd_serve(args)` (convention is `(args, logger)`) and checked
+  only the exit code; the page constant was named in two places. Spec
+  additions: module-level `list_running_loops` import (patch target, cycle
+  probed clean); bind before starting threads; connection write timeout so a
+  non-reading peer cannot pin a handler thread; `cmd_serve` signature.
 
 ## Status
 
