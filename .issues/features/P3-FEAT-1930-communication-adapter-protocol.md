@@ -243,6 +243,34 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 - `scripts/little_loops/fsm/executor.py` — resolve adapter from config +
   registry
 - `.ll/ll-config.json` schema — add `hitl.channel` key
+- `scripts/little_loops/__init__.py:9-18,94-101` — `/ll:wire-issue` finding:
+  public API export block (`from little_loops.extension import (...)`) and the
+  `__all__` list under the `# extensions` comment enumerate
+  `ActionProviderExtension`/`EvaluatorProviderExtension`/`InterceptorExtension`/
+  `LLHookIntentExtension` by name; `CommunicationAdapter` and
+  `CommunicationAdapterExtension` need entries in both if they join the public
+  `little_loops` API (note: neither is re-exported from `fsm/__init__.py` today
+  — only the top-level package re-exports capability Protocols, so
+  `fsm/__init__.py` needs no change)
+- `docs/reference/CLI.md:4629-4644` — `ll-create-extension` command reference
+  embeds a **second, independent copy** of the scaffold docstring's
+  Protocol-name list (distinct from `templates/extension/extension.py.tmpl:8-14`
+  already cited above) — drifts separately, needs its own edit
+- `docs/reference/CLI.md:904-933` — `ll-loop validate` section is an
+  exhaustively enumerated bullet list of every validation rule by name/severity/
+  suppress-flag; the new `hitl.channel` unset-on-non-interactive-host warning
+  needs a bullet here in the same phrasing convention
+  (`"Does not block validation. Suppressed by `<flag>: true`."`)
+- `scripts/tests/test_config_schema.py:1423-1448` — `_discover_dataclasses()`
+  (backing the BUG-3192 `TestDataclassSectionMapCompleteness` guard) ast-walks
+  only `config/features.py`, `config/automation.py`, `config/core.py` — **it
+  does not scan `config/orchestration.py`**, so `OrchestrationConfig`/
+  `AdvisorConfig` already have no entries in `_DATACLASS_SECTION_MAP` and the
+  guard is structurally blind to that whole module. If `HitlConfig` lands in
+  `config/orchestration.py` per the Proposed Solution's suggested location, the
+  drift guard will never detect it as unmapped — either extend
+  `_discover_dataclasses()` to walk `config/orchestration.py` too, or place
+  `HitlConfig` in `config/core.py` instead, or add a documented exemption.
 
 ### Similar Patterns
 - `transport.py:115` — `UnixSocketTransport._accept_loop()`: transport
@@ -272,6 +300,82 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - `scripts/little_loops/cli/sprint/run.py:800` — calls `wire_extensions(event_bus, config.extensions)`
 - `scripts/little_loops/cli/loop/run.py:622` — calls `wire_extensions(executor.event_bus, _config.extensions, executor=executor)`
 - `scripts/little_loops/cli/loop/lifecycle.py:736` — calls `wire_extensions(executor.event_bus, config.extensions, executor=executor)`
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
+
+- `scripts/tests/test_extension.py` — `class TestNewProtocols` (524-691) is
+  the 1:1 precedent: each capability Protocol gets exactly two hand-written
+  methods, a `test_smoke_import_*_extension` (import + not-None) and a
+  `test_*_extension_protocol_satisfied` (local minimal class assigned to a
+  `: ProtocolName`-annotated variable to prove structural typing). Add
+  `test_smoke_import_communication_adapter_extension` and
+  `test_communication_adapter_extension_protocol_satisfied` following this
+  exact shape.
+- `scripts/tests/test_extension.py` — `class TestWireExtensions` (135-522) is
+  **not** table-driven; each capability slot gets separate individually-named
+  methods (`test_wire_extensions_with_executor_populates_actions` :315,
+  `..._conflict_detection_actions` :385, same pattern for evaluators). Add
+  `test_wire_extensions_with_executor_populates_adapters` and
+  `test_wire_extensions_conflict_detection_adapters` — no existing test breaks
+  by adding a 5th slot.
+- `scripts/tests/test_interceptor_extension.py:196-235` —
+  `TestReferenceInterceptorWiring` is scoped exclusively to
+  `ReferenceInterceptorExtension`; only needs a change if a
+  `ReferenceCommunicationAdapterExtension` analog is added to
+  `little_loops/extensions/` — otherwise out of scope, no update required.
+- `scripts/tests/test_config.py` — `TestAdvisorConfig`/`TestOrchestrationConfig`
+  (3709-3906) plus the `to_dict()` roundtrip pair `test_to_dict_advisor` /
+  `test_to_dict_advisor_defaults_when_unset` (1155-1234) are the pattern a new
+  `TestHitlConfig` (from_dict defaults / with values / partial override),
+  `TestBRConfigHitl` (property-from-file / defaults-when-key-absent), and
+  `test_to_dict_hitl` / `test_to_dict_hitl_defaults_when_unset` should follow.
+- `scripts/tests/test_config_schema.py` — `_SCHEMA_DEFAULT_ALLOWLIST`
+  (1239-1249) exempts dotted paths with no schema `"default"`; `hitl.channel`
+  states a `"terminal"` default so should NOT need this allowlist — but if the
+  schema entry omits `"default"`, `TestSchemaValueParity.
+  test_to_dict_values_match_schema_defaults` (1283) will fail until it's added.
+  `_DATACLASS_SECTION_MAP` / `_discover_dataclasses()` (1346-1448) — see the
+  blind-spot finding under Files to Modify above; `HitlConfig` must be added to
+  `_DATACLASS_SECTION_MAP` explicitly regardless of which module it lives in,
+  since the guard can silently miss it either way.
+- `scripts/tests/test_fsm_validation_evaluator_rules.py:706-954` —
+  `TestPruningProfileCoverageValidation` (MR-12) is the precedent for a warning
+  driven by an orchestration-level config value threaded through
+  `validate_fsm(fsm, orchestration_request_path=...)`
+  (`fsm/validation/structural_rules.py:1000-1002,1182`) and `cmd_validate`
+  (`cli/loop/config_cmds.py:14-37`, which reads
+  `BRConfig(Path.cwd()).orchestration.request_path`). The new `hitl.channel`
+  warning needs an analogous parameter (e.g. `hitl_channel` plus a host-
+  interactivity signal) threaded the same way, with tests mirroring
+  `test_fires_when_orchestration_request_path_sdk_invoking_skill` (843) and
+  `test_fires_end_to_end_via_validate_fsm` (938).
+- `scripts/tests/test_builtin_loops.py` — `class TestValidatorWarningBudget`
+  (16647-16776): `CATEGORY_PATTERNS` (16657-16669) maps a category name to a
+  message substring, and `_classify()`/`_collect_findings()` (16730-16748)
+  **silently discard** any warning whose message doesn't match a known
+  category. The new `hitl.channel` warning needs a `"hitl-channel": "<substring>"`
+  entry added here or `test_deterministic_warning_categories_do_not_regrow`
+  will not track it (no existing test breaks without this — it's an opt-in
+  ratchet, not a required update, but coverage is incomplete without it).
+- `scripts/tests/test_create_extension.py:115-126` —
+  `test_extension_py_lists_hook_intent_protocol` is the precedent (asserts the
+  generated scaffold contains the literal Protocol name string, not a closed
+  list). Add `test_extension_py_lists_communication_adapter_protocol` asserting
+  `"CommunicationAdapterExtension" in ext_content`.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-03:_
+
+- `docs/reference/CLI.md:4629-4644` — `ll-create-extension` reference embeds
+  the scaffold docstring's Protocol-name list verbatim (separate copy from
+  `extension.py.tmpl`, see Files to Modify)
+- `docs/reference/CLI.md:904-933` — `ll-loop validate` rule catalog needs a new
+  bullet for the `hitl.channel` warning (see Files to Modify)
+- `scripts/little_loops/__init__.py` public API docstrings/exports — see Files
+  to Modify
 
 ### Additional Confirmed Anchors
 - `scripts/little_loops/extension.py:103-111` — `LLHookIntentExtension`, the most recently added of the 4 capability Protocols; nearest structural precedent for a new `CommunicationAdapterExtension`
@@ -335,6 +439,40 @@ N/A — no new gap kind, gate, keyword list, or threshold; `hitl.channel` is a p
    non-interactive host
 7. Write protocol contract tests with a mock adapter implementation,
    verifying the executor calls protocol methods not transport-specific code
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Export `CommunicationAdapter`/`CommunicationAdapterExtension` from
+  `scripts/little_loops/__init__.py` (import block + `__all__`) if they join
+  the public package API
+- Update `docs/reference/CLI.md:4629-4644` — second independent copy of the
+  scaffold Protocol-list docstring (`ll-create-extension` reference)
+- Update `docs/reference/CLI.md:904-933` — add a bullet for the new
+  `hitl.channel` unset-on-non-interactive-host warning
+- Place `HitlConfig` in `config/core.py`, OR extend
+  `_discover_dataclasses()` in `scripts/tests/test_config_schema.py:1423-1448`
+  to walk `config/orchestration.py` — otherwise BUG-3192's
+  `TestDataclassSectionMapCompleteness` guard silently misses it
+- Add `HitlConfig` to `_DATACLASS_SECTION_MAP`
+  (`scripts/tests/test_config_schema.py:1346-1411`)
+- Add `TestHitlConfig`/`TestBRConfigHitl`/`test_to_dict_hitl*` to
+  `scripts/tests/test_config.py`, following the `TestAdvisorConfig` pattern
+- Add `test_smoke_import_communication_adapter_extension` +
+  `test_communication_adapter_extension_protocol_satisfied` to
+  `scripts/tests/test_extension.py`'s `TestNewProtocols`
+- Add `test_wire_extensions_with_executor_populates_adapters` +
+  `test_wire_extensions_conflict_detection_adapters` to
+  `scripts/tests/test_extension.py`'s `TestWireExtensions`
+- Add `test_extension_py_lists_communication_adapter_protocol` to
+  `scripts/tests/test_create_extension.py`
+- Thread a `hitl_channel`/host-interactivity parameter through
+  `validate_fsm()` and `cmd_validate` (`cli/loop/config_cmds.py:14-37`),
+  mirroring the `orchestration_request_path` pattern (MR-12 precedent)
+- Add a `"hitl-channel"` entry to `CATEGORY_PATTERNS` in
+  `scripts/tests/test_builtin_loops.py`'s `TestValidatorWarningBudget`
+  (16657-16669) so the new warning is tracked by the no-regrowth ratchet
 
 ## Impact
 
@@ -407,6 +545,7 @@ open
 - `CONTRIBUTING.md` — adding a new extension-registered protocol (`CommunicationAdapterExtension`, `provided_adapters()`) is exactly the extension-authoring pattern (`LLExtension` protocol convention) this doc documents.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-03T23:58:41 - `11c94de0-8f35-4de1-a272-34e45de9321f.jsonl`
 - `/ll:refine-issue` - 2026-09-03T23:44:55 - `aed94642-f109-4502-89a6-54feff7835ca.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:30:24 - `057585fb-7ab7-4b15-b42a-aa3dc8fffb40.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:25:58 - `08ecfe64-9510-40b1-a733-9cb70ecbc67a.jsonl`
