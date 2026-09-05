@@ -17,6 +17,7 @@ blocked_by: []
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 67
+verify_verdict: NON_VALID
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 10
@@ -168,8 +169,8 @@ Option B has a real gap too — `ExtensionLoader.from_config()`/`.from_entry_poi
 - `scripts/little_loops/extension.py:213-281` — `wire_extensions()`: before the `provided_actions`/`provided_evaluators`/`provided_adapters` passes, call `ext.bind_event_bus(bus)` on every extension that has it (Pre-implementation Review #3). `ExtensionLoader` is untouched — `cls()` stays zero-arg
 - ~~`scripts/pyproject.toml:131` — `[project.entry-points."little_loops.extensions"]`: add `eventbus = ...`~~ — superseded (Second Review #8): discovery is a `BUILTIN_EXTENSIONS: tuple[type, ...]` constant in `extension.py`, consulted by `ExtensionLoader.load_all()` alongside config paths and entry points. No pyproject change, no reinstall step, no entry-point leakage into tests
 - `scripts/little_loops/extension.py:195` — `ExtensionLoader.load_all()`: instantiate each class in `BUILTIN_EXTENSIONS` (zero-arg, same as the other two sources) and prepend them to the returned list; `from_config()`/`from_entry_points()` untouched
-- `scripts/little_loops/fsm/executor.py:549` — `_drain_inbound()`: an inbound item with `item.get("event") == HUMAN_RESPONSE_EVENT and "alert_id" in item` is re-emitted as `self._emit(HUMAN_RESPONSE_EVENT, {k: item[k] for k in ("alert_id", "verdict", "edited_text", "reason") if k in item})` (still recorded in `inbound_events`); everything else keeps today's `artifact_interaction` path (Pre-implementation Review #1, Second Review #5). Do NOT spread the raw body — `_emit()`'s `**data` would let it overwrite `event`/`ts`/`run_id`/`loop`. FEAT-1794's tick loop calls `_drain_inbound()` each tick
-- `scripts/little_loops/fsm/executor.py:1170-1191` — `_execute_sub_loop()`: after constructing `child_executor`, copy `self._contributed_adapters` (and, for consistency, `_contributed_actions`/`_contributed_evaluators`/`_interceptors`) onto it so a `human_approval` state inside a sub-loop resolves the parent's `eventbus` adapter instead of raising `CommunicationAdapterNotFound` (Second Review #6). The adapter instance is shared, which is correct: it observes the one bus
+- `scripts/little_loops/fsm/executor.py:557` — `_drain_inbound()`: an inbound item with `item.get("event") == HUMAN_RESPONSE_EVENT and "alert_id" in item` is re-emitted as `self._emit(HUMAN_RESPONSE_EVENT, {k: item[k] for k in ("alert_id", "verdict", "edited_text", "reason") if k in item})` (still recorded in `inbound_events`); everything else keeps today's `artifact_interaction` path (Pre-implementation Review #1, Second Review #5). Do NOT spread the raw body — `_emit()`'s `**data` would let it overwrite `event`/`ts`/`run_id`/`loop`. FEAT-1794's tick loop calls `_drain_inbound()` each tick
+- `scripts/little_loops/fsm/executor.py:1198-1213` — `_execute_sub_loop()`: after constructing `child_executor`, copy `self._contributed_adapters` (and, for consistency, `_contributed_actions`/`_contributed_evaluators`/`_interceptors`) onto it so a `human_approval` state inside a sub-loop resolves the parent's `eventbus` adapter instead of raising `CommunicationAdapterNotFound` (Second Review #6). The adapter instance is shared, which is correct: it observes the one bus
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/__init__.py` — add `EventBusAdapter` and `EventBusAdapterExtension` to the public re-export list, following the existing pattern for `CommunicationAdapterExtension`/`TerminalAdapter`-sibling symbols (import block at lines 9-19, 21-28; `__all__` listing at lines 102-111, 112-118) [Agent 1 finding]
@@ -295,8 +296,8 @@ Order: FEAT-1794 first (against `TerminalAdapter`), then this issue; #1 and #2 a
 
 _Verified against the working tree after the confidence check scored this issue 85/100. Already folded into the sections above; this is the index. Numbering continues from the first review._
 
-5. **`_drain_inbound()` already spoofs event names.** `_emit()` builds `{"event": name, "ts", "run_id", "loop", **data}` (`executor.py:3583`), so `self._emit("artifact_interaction", item)` lets any body key overwrite the envelope — a body with `"event": "human_response"` is re-emitted under that name today, not wrapped. Review #1's "wrapped as `artifact_interaction`" premise was wrong for such bodies, and the fix must not inherit the hole: the verdict branch builds a whitelisted payload (`alert_id`, `verdict`, `edited_text`, `reason`). The general impersonation (any POST can emit `loop_complete`, etc.) is pre-existing and is tracked as BUG-3387; not fixed here beyond the verdict path.
-6. **Sub-loops don't inherit contributed adapters.** `_execute_sub_loop()` (`executor.py:1170-1191`) builds the child `FSMExecutor` with `inbound=self.inbound` but never copies `_contributed_adapters` (nor actions/evaluators/interceptors — a pre-existing gap for contributed actions too). A `human_approval` state inside a `loop:` child works with `terminal` only via the lazy fallback; `eventbus` raises `CommunicationAdapterNotFound`. Added propagation as Step 5b.
+5. **`_drain_inbound()` already spoofs event names.** `_emit()` builds `{"event": name, "ts", "run_id", "loop", **data}` (`executor.py:3583`), so `self._emit("artifact_interaction", item)` lets any body key overwrite the envelope — a body with `"event": "human_response"` is re-emitted under that name today, not wrapped. Review #1's "wrapped as `artifact_interaction`" premise was wrong for such bodies, and the fix must not inherit the hole: the verdict branch builds a whitelisted payload (`alert_id`, `verdict`, `edited_text`, `reason`). The general impersonation (any POST can emit `loop_complete`, etc.) is pre-existing and is tracked as BUG-3387; not fixed here beyond the verdict path. **Superseded by `/ll:verify-issues` 2026-09-05: BUG-3387 is now Completed** — see Verification Notes below.
+6. **Sub-loops don't inherit contributed adapters.** `_execute_sub_loop()` (`executor.py:1198-1213`) builds the child `FSMExecutor` with `inbound=self.inbound` but never copies `_contributed_adapters` (nor actions/evaluators/interceptors — a pre-existing gap for contributed actions too). A `human_approval` state inside a `loop:` child works with `terminal` only via the lazy fallback; `eventbus` raises `CommunicationAdapterNotFound`. Added propagation as Step 5b.
 7. **The extension must not define `on_event`.** `wire_extensions()` registers every extension that has one as a bus observer (`extension.py:246-248`); a no-op `on_event` on a registration-only shim would subscribe it to every event on every `ll-loop`/`ll-sprint`/`ll-parallel` run. Nothing runtime-checks the `LLExtension` Protocol, so leaving it off is safe.
 8. **Entry-point discovery replaced with a built-in list.** `importlib.metadata` entry points refresh only on reinstall, which this repo's local-editable workflow (every consuming project on this machine points at this checkout) makes easy to miss — `hitl.channel: eventbus` would raise `CommunicationAdapterNotFound` in every project until someone reruns `python -m pip install -e` (and `pip` ≠ `python` here). It also leaks into any unpatched `from_entry_points()` test. A `BUILTIN_EXTENSIONS` tuple consulted by `ExtensionLoader.load_all()` keeps Option B's registration shape with none of that. Review #4's resolution is superseded.
 9. **Observer must not unregister from inside its callback.** `EventBus.emit()` iterates `_observers` live and `unregister()` deletes by index (`events.py:98-132`); self-removal mid-dispatch skips the next observer. Unregister only from `await_response()`/`cancel_alert()`; added a two-observer test to guard it.
@@ -352,6 +353,35 @@ _Verified against the working tree after the confidence check scored this issue 
 - [ ] `docs/reference/CONFIGURATION.md` § `hitl` documents `eventbus`, the
   `--serve` requirement for out-of-process verdicts, and the POST body shape
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-09-05:_
+
+**Verdict: NEEDS_UPDATE.** The Proposed Solution, Decision Rationale, Program
+Design, Integration Map, and Implementation Steps were all re-verified against
+current HEAD and remain accurate and buildable — `EventBusAdapter` still does
+not exist (`scripts/little_loops/fsm/adapters/eventbus_adapter.py` absent),
+no `BUILTIN_EXTENSIONS`-style constant exists anywhere in the repo, and
+`_execute_sub_loop()` still does not propagate `_contributed_adapters` to the
+child executor. The one defect: **BUG-3387 — cited in the "Current Behavior"
+section as "independent of this feature" and still open — is now `status:
+Completed`.** Its fix makes `_drain_inbound()` (`executor.py:557-586`)
+unconditionally strip `event`/`ts`/`run_id`/`loop`/`depth` from every inbound
+body before re-emitting it as `artifact_interaction`, so the section's claim
+"a body with `\"event\": \"human_response\"` is not actually wrapped as
+`artifact_interaction` today; it is re-emitted under the spoofed name" is now
+false — it IS wrapped (with `event` stripped) today. This does **not**
+invalidate this issue's plan: the dedicated whitelisted `human_response`
+branch this issue still needs to add to `_drain_inbound()` is genuinely
+absent from the BUG-3387 fix (which only stripped keys on the generic
+`artifact_interaction` path), so Implementation Step 5 remains required
+work. Two stale `_execute_sub_loop()` line citations (`:1170-1191`) and one
+stale `_drain_inbound()` citation (`:549`) were corrected to their current
+anchors (`:1198-1213` / `:557`) in this pass. Recommend a follow-up
+`/ll:reconcile-issue` pass (or manual edit) to rewrite the "Current Behavior"
+prose itself to describe the post-BUG-3387 baseline rather than the
+pre-fix vulnerability.
+
 ## Related Key Documentation
 
 - `scripts/little_loops/fsm/communication_adapter.py` — `CommunicationAdapter`
@@ -378,6 +408,7 @@ _Added by `/ll:confidence-check` on 2026-09-04_
 - Criterion C (Ambiguity) capped at 10/25: `unapplied_decision` flags `TerminalAdapter` still appearing unmarked in Proposed Solution/Program Design/Implementation Steps/Files to Modify. Most of these are legitimate pattern-reference mentions (e.g. `uuid.uuid4().hex` convention, test-shape modeling), not restatements of the rejected Option A (hardcoded `elif` branch) — only the Acceptance Criteria bullet needed (and received) a superseded marker. Verify with `/ll:decide-issue` if this should be suppressed, or leave as-is since it doesn't block implementation.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-05T23:38:33 - `161a68e7-1fed-48cb-8c40-28051a0cd1ac.jsonl`
 - `/ll:refine-issue` - 2026-09-05T23:24:41 - `182fc9b6-abae-4d60-a265-d4ec9a1cc50e.jsonl`
 - second-review - 2026-09-04 - manual review against working tree; see § Second Review (items 5–9; supersedes Pre-implementation Review #4's entry-point discovery, corrects #1's `artifact_interaction` premise)
 - `/ll:confidence-check` - 2026-09-04T20:06:36 - `14bfc7bf-c190-4cad-96e1-061fbfdc3e5e.jsonl`
