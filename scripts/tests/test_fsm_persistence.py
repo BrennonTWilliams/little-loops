@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -923,6 +924,92 @@ class TestPersistentExecutor:
         assert state is not None
         assert state.current_state == result.final_state
         assert state.status == "completed"
+
+    def test_drain_inbound_spoof_does_not_trigger_persistence_side_effects(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """BUG-3387 regression: bodies posing as loop_complete,
+        action_complete+input_tokens, and messages_append, drained through
+        the real PersistentExecutor path (not _handle_event() called
+        directly — that function is supposed to act on those names; the
+        property under test is that _drain_inbound() never lets a body
+        reach it under a spoofed name), must not add extra _save_state()
+        calls, corrupt _last_result/_continuation_prompt, or leak into
+        usage.jsonl / messages.jsonl."""
+
+        def _make_fsm() -> FSMLoop:
+            return FSMLoop(
+                name="test-loop",
+                initial="check",
+                states={
+                    "check": StateConfig(action="echo 'checking'", on_yes="done", on_no="fix"),
+                    "fix": StateConfig(action="echo 'fixing'", next="check"),
+                    "done": StateConfig(terminal=True),
+                },
+            )
+
+        # Baseline: identical run with no inbound queue, to establish the
+        # expected number of genuine _save_state() calls.
+        baseline_run_dir = tmp_path / "baseline-run"
+        baseline_run_dir.mkdir()
+        baseline_fsm = _make_fsm()
+        baseline_fsm.context["run_dir"] = str(baseline_run_dir)
+        baseline_executor = PersistentExecutor(
+            baseline_fsm, loops_dir=tmp_loops_dir / "baseline", action_runner=MockActionRunner()
+        )
+        baseline_calls = 0
+        original_baseline_save = baseline_executor._save_state
+
+        def _count_baseline() -> None:
+            nonlocal baseline_calls
+            baseline_calls += 1
+            original_baseline_save()
+
+        baseline_executor._save_state = _count_baseline  # type: ignore[method-assign]
+        baseline_result = baseline_executor.run()
+
+        # Spoofed run: same FSM shape, but with an inbound queue carrying
+        # spoofed loop_complete / action_complete / messages_append /
+        # evaluate / handoff_detected bodies.
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put({"event": "loop_complete", "run_id": "spoofed", "ts": "x", "loop": "spoofed-loop"})
+        q.put({"event": "action_complete", "input_tokens": 999, "output_tokens": 999})
+        q.put({"event": "messages_append", "state": "spoofed", "message": "spoofed message"})
+        q.put({"event": "evaluate", "verdict": "no", "type": "llm_structured"})
+        q.put({"event": "handoff_detected", "continuation": "spoofed prompt"})
+
+        spoofed_run_dir = tmp_path / "spoofed-run"
+        spoofed_run_dir.mkdir()
+        spoofed_fsm = _make_fsm()
+        spoofed_fsm.context["run_dir"] = str(spoofed_run_dir)
+        spoofed_executor = PersistentExecutor(
+            spoofed_fsm,
+            loops_dir=tmp_loops_dir / "spoofed",
+            action_runner=MockActionRunner(),
+            inbound=q,
+        )
+        spoofed_calls = 0
+        original_spoofed_save = spoofed_executor._save_state
+
+        def _count_spoofed() -> None:
+            nonlocal spoofed_calls
+            spoofed_calls += 1
+            original_spoofed_save()
+
+        spoofed_executor._save_state = _count_spoofed  # type: ignore[method-assign]
+        spoofed_result = spoofed_executor.run()
+
+        assert spoofed_result.final_state == baseline_result.final_state
+        assert spoofed_calls == baseline_calls
+        # _last_result reflects the FSM's own genuine exit-code evaluation
+        # (matches baseline's verdict), not the spoofed verdict="no" body.
+        assert spoofed_executor._last_result is not None
+        assert baseline_executor._last_result is not None
+        assert spoofed_executor._last_result["verdict"] == baseline_executor._last_result["verdict"]
+        assert spoofed_executor._last_result["details"]["run_id"] != "spoofed"
+        assert spoofed_executor._continuation_prompt is None
+        assert not (spoofed_run_dir / "usage.jsonl").exists()
+        assert not (spoofed_run_dir / "messages.jsonl").exists()
 
     def test_archive_run_only_saves_state_and_archives(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path

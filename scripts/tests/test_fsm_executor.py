@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import queue
 import shlex
 import shutil
@@ -13258,6 +13259,125 @@ class TestInboundEvents:
         assert artifact_events[0]["during"] == "subloop"
         # depth=1: forwarded from the immediate child sub-loop executor.
         assert artifact_events[0]["depth"] == 1
+
+    def test_inbound_spoofed_envelope_keys_stripped(self) -> None:
+        """BUG-3387: a queued body carrying event/ts/run_id/loop keys does
+        not overwrite the emitted artifact_interaction envelope — the
+        executor's own values win. Non-envelope keys (e.g. the documented
+        artifact_id/level/action contract) stay top-level, unchanged."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put(
+            {
+                "event": "loop_complete",
+                "ts": "spoofed-ts",
+                "run_id": "spoofed-run",
+                "loop": "spoofed-loop",
+                "artifact_id": "a1",
+                "level": "info",
+                "action": "ack",
+            }
+        )
+        events: list[dict[str, Any]] = []
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm(), action_runner=runner, event_callback=events.append, inbound=q
+        )
+        executor.run()
+
+        artifact_events = [e for e in events if e.get("event") == "artifact_interaction"]
+        assert len(artifact_events) == 1
+        emitted = artifact_events[0]
+        assert emitted["run_id"] == executor.run_id
+        assert emitted["run_id"] != "spoofed-run"
+        assert emitted["loop"] == "test"
+        assert emitted["ts"] != "spoofed-ts"
+        assert emitted["artifact_id"] == "a1"
+        assert emitted["level"] == "info"
+        assert emitted["action"] == "ack"
+        # Raw item is still recorded unchanged (pre-stripping) in inbound_events.
+        assert executor.inbound_events[0]["event"] == "loop_complete"
+        assert executor.inbound_events[0]["run_id"] == "spoofed-run"
+
+    def test_inbound_depth_spoof_stripped_in_subloop(self, tmp_path: Path) -> None:
+        """BUG-3387: a body claiming depth=0 while a sub-loop is running
+        cannot pose as a parent-level event — _drain_inbound() strips the
+        executor-owned depth key before the spread, so _sub_event_callback's
+        real depth still gets injected."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: s1\nstates:\n"
+            "  s1:\n    action: s1_action\n    on_yes: s2\n    on_no: s2\n"
+            "  s2:\n    action: s2_action\n    on_yes: done\n    on_no: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="success", on_no="fail"),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        runner = _QueueingActionRunner(
+            q=q, trigger="s1_action", payload={"during": "subloop", "depth": 0}
+        )
+        runner.always_return(exit_code=0)
+        events: list[dict[str, Any]] = []
+
+        executor = FSMExecutor(
+            parent_fsm,
+            loops_dir=loops_dir,
+            action_runner=runner,
+            event_callback=events.append,
+            inbound=q,
+        )
+        result = executor.run()
+
+        assert result.final_state == "success"
+        artifact_events = [e for e in events if e.get("event") == "artifact_interaction"]
+        assert len(artifact_events) == 1
+        assert artifact_events[0]["during"] == "subloop"
+        # Real sub-loop depth (1) wins over the spoofed depth=0 in the body.
+        assert artifact_events[0]["depth"] == 1
+
+    def test_inbound_stripped_keys_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """BUG-3387: when any executor-owned key is stripped from a body,
+        one warning is logged naming the stripped keys."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put({"event": "loop_complete", "run_id": "spoofed", "artifact_id": "a1"})
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm(), action_runner=runner, event_callback=lambda e: None, inbound=q
+        )
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.fsm.executor"):
+            executor.run()
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "event" in warnings[0].message
+        assert "run_id" in warnings[0].message
+
+    def test_inbound_clean_body_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A body with no executor-owned keys drains without logging a
+        warning."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put({"artifact_id": "a1", "level": "info", "action": "ack"})
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm(), action_runner=runner, event_callback=lambda e: None, inbound=q
+        )
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.fsm.executor"):
+            executor.run()
+
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
 
 
 @dataclass

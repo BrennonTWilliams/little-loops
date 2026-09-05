@@ -4,10 +4,11 @@ type: BUG
 title: inbound interaction POST body overwrites _emit() envelope (event name spoofing
   via _drain_inbound)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-04'
 captured_at: '2026-09-04T20:40:10Z'
+completed_at: '2026-09-05T04:58:09Z'
 labels:
 - fsm
 - security
@@ -193,12 +194,41 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 2. `curl -X POST <bridge.url>interaction -d '{"event":"loop_complete","run_id":"spoofed","note":"x"}'`
 3. Observe `events.jsonl` (and any SSE/socket consumer) receives an event named `loop_complete` with `run_id: spoofed`, and `PersistentExecutor._handle_event` calls `_save_state()` for it.
 
+## Resolution
+
+Implemented Option B per the Decision Rationale: `_drain_inbound()`
+(`scripts/little_loops/fsm/executor.py:549`) now strips the five
+executor-owned keys (`event`, `ts`, `run_id`, `loop`, `depth`) from the
+inbound body before spreading it into `self._emit("artifact_interaction",
+...)`. Every other body key (`artifact_id`/`level`/`action`/etc.) stays
+top-level, unchanged. A `logging.getLogger(__name__)` warning names any
+stripped keys; clean bodies log nothing. The raw item is still appended to
+`inbound_events` unchanged. `_emit()` itself was left untouched, as scoped.
+
+Added coverage:
+- `scripts/tests/test_fsm_executor.py::TestInboundEvents` — envelope-key
+  stripping, sub-loop `depth` spoof stripping, and the stripped-keys
+  warning (present/absent).
+- `scripts/tests/test_fsm_persistence.py::TestPersistentExecutor::test_drain_inbound_spoof_does_not_trigger_persistence_side_effects`
+  — drives spoofed `loop_complete`/`action_complete`/`messages_append`/
+  `evaluate`/`handoff_detected` bodies through a real `PersistentExecutor`
+  run and asserts no extra `_save_state()` calls, no `_last_result`/
+  `_continuation_prompt` corruption, and no `usage.jsonl`/`messages.jsonl`
+  leakage.
+
+Full suite: `python -m pytest scripts/tests/` — 23118 passed, 43 skipped, 6
+pre-existing failures unrelated to this change (skill-mirror drift for
+gemini/kimi-code/qwen hosts, confirmed present on `main` before this fix).
+`ruff check` and `mypy` clean on all changed files.
+
 ## Status
 
 **Open** | Created: 2026-09-04 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-05T04:57:29 - `9a288b01-52c9-4f8f-a5e0-523e41896fc2.jsonl`
+- `/ll:ready-issue` - 2026-09-05T04:44:47 - `7ad2c895-8f68-4859-96fb-41e7c667e5b1.jsonl`
 - `/ll:confidence-check` - 2026-09-05T04:41:03 - `4edf6d3c-5d54-450d-a8f2-eb96eef0d54b.jsonl`
 - `/ll:confidence-check` - 2026-09-04T21:10:35 - `a0e94d5f-76a9-4089-9549-a69de7658b21.jsonl`
 - `/ll:verify-issues` - 2026-09-04T21:06:56 - `a0e94d5f-76a9-4089-9549-a69de7658b21.jsonl`

@@ -13,6 +13,7 @@ from __future__ import annotations
 import collections
 import hashlib
 import json
+import logging
 import os
 import queue
 import random
@@ -89,6 +90,13 @@ from little_loops.subprocess_utils import (
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig, CompressionConfig, OrchestrationConfig
+
+logger = logging.getLogger(__name__)
+
+# Envelope keys _emit() assigns and the sub-loop depth tag (_sub_event_callback);
+# an inbound POST body may not set any of these (BUG-3387 — event-name spoofing
+# via _drain_inbound()).
+_INBOUND_EXECUTOR_OWNED_KEYS: tuple[str, ...] = ("event", "ts", "run_id", "loop", "depth")
 
 # Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3
@@ -553,6 +561,12 @@ class FSMExecutor:
         Modeled on WebhookTransport._flush() (transport.py): a non-blocking
         full-drain loop via get_nowait()/queue.Empty, so a single call drains
         everything queued so far in one pass without blocking the FSM loop.
+
+        BUG-3387: the executor-owned envelope keys (event/ts/run_id/loop) and
+        the sub-loop depth tag are stripped from the body before it is spread
+        into ``self._emit(...)``, so an inbound POST can never spoof another
+        event name or masquerade as a parent-level event. The raw item is
+        still recorded in ``inbound_events`` unchanged.
         """
         if self.inbound is None:
             return
@@ -561,7 +575,14 @@ class FSMExecutor:
                 event = self.inbound.get_nowait()
             except queue.Empty:
                 break
-            self._emit("artifact_interaction", event)
+            stripped_keys = [k for k in _INBOUND_EXECUTOR_OWNED_KEYS if k in event]
+            if stripped_keys:
+                logger.warning(
+                    "_drain_inbound: stripped executor-owned key(s) from inbound body: %s",
+                    ", ".join(stripped_keys),
+                )
+            payload = {k: v for k, v in event.items() if k not in _INBOUND_EXECUTOR_OWNED_KEYS}
+            self._emit("artifact_interaction", payload)
             self.inbound_events.append(event)
 
     def run(self) -> ExecutionResult:
