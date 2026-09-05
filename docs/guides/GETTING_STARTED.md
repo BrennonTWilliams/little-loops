@@ -64,13 +64,13 @@ ll-auto --help
 
 ## Set Up Your Project
 
-Run `ll-init` once per project. It auto-detects your project type and generates a starter configuration.
+Run `ll-init` once per project. It auto-detects your project type, reads what the repo already declares about its tooling, and shows you a **Detected setup** panel — every value with the evidence behind it (`declared: [tool.pytest.ini_options] present`, `inferred: Makefile target 'test'`). Pick **Accept detected setup** and you are done in two prompts; pick **Customize** to walk through project, scan, features, hosts, and advanced screens.
 
 ```bash
 ll-init
 ```
 
-**Detected project types:** Python, JavaScript/TypeScript, Go, Rust, Java (Maven or Gradle), and .NET. For each type, it infers sensible defaults for test commands, lint commands, and source directories. Unrecognized projects fall back to a generic template.
+**Detected project types:** Python, JavaScript/TypeScript, Go, Rust, Java (Maven or Gradle), and .NET. Commands come from the manifest first (`pyproject.toml` `[tool.*]` tables, `package.json` scripts), then task-runner targets (Makefile, justfile, tox, nox), then tool config files (`tsconfig.json`, eslint/biome/prettier, vitest/jest), then ecosystem conventions (`go.mod`, `Cargo.toml`, `pom.xml`, Gradle, `.sln`); unrecognized projects fall back to a generic template. The headless `ll-init --yes` and the wizard's *Accept* path write the same config.
 
 **What gets created:**
 
@@ -81,9 +81,14 @@ ll-init
   enhancements/
   epics/
 .ll/ll-config.json
+.claude/settings.local.json     # ll tool permissions (claude-code host; --settings)
+.claude/CLAUDE.md               # ## little-loops CLI Commands block (claude-code host; --no-claude-md)
+AGENTS.md                        # same block for codex / kimi-code / qwen hosts
+.codex/hooks.json, .qwen/settings.json, .gemini/settings.json   # hook adapters per selected host
+.codegraph/                      # code-graph index when built (gitignored)
 ```
 
-**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` so runtime state never ends up committed: `.auto-manage-state.json`, `.parallel-manage-state.json`, `.ll/ll-context-state.json`, `.ll/ll-sync-state.json`, `.ll/ll-session-events.jsonl`, `.ll/history.db*`, `.ll/queue.db*`, `.ll/*.lock`, `.ll/ll-continue-prompt.md`, `.ll/private-refs.local.txt`, `.ll/evidence-verdict-cache.json`, and the nested-`.ll/` stray guards `**/.ll/` followed by `!/.ll/`.
+**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` so runtime state never ends up committed: `.auto-manage-state.json`, `.parallel-manage-state.json`, `.ll/ll-context-state.json`, `.ll/ll-sync-state.json`, `.ll/ll-session-events.jsonl`, `.ll/history.db*`, `.ll/queue.db*`, `.ll/*.lock`, `.ll/ll-continue-prompt.md`, `.ll/private-refs.local.txt`, `.ll/evidence-verdict-cache.json`, `.codegraph/` (the machine-local code-graph index), and the nested-`.ll/` stray guards `**/.ll/` followed by `!/.ll/`.
 
 The `.ll/` handling follows the `.claude/` model: the repo-root directory is tracked (the decisions log, the learning-test registry, `templates/`, `ll-goals.md` — curated artifacts a team shares) with machine-local state ignored file-by-file, while every *nested* `.ll/` is ignored outright as a stray created by running an `ll-*` command from a subdirectory. **Entry order is load-bearing**: git is last-match-wins, so `!/.ll/` must follow `**/.ll/`. `.ll/ll-continue-prompt.md` and `.ll/private-refs.local.txt` are ignored *because* `ll-verify-private-refs` exempts them from the private-reference gate — the ignore rule and the exemption are a matched pair, and exempting a file without also ignoring it would let a real leak reach a commit.
 
@@ -91,8 +96,11 @@ The `.ll/` handling follows the `.claude/` model: the repo-root directory is tra
 
 | Flag | What it does | When to use it |
 |------|-------------|---------------|
-| _(none)_ | Launches an interactive TUI to configure options step by step | Default — works for most projects |
-| `--yes` | Accepts all auto-detected defaults without any confirmation prompts | Fastest path when auto-detection gets it right |
+| _(none)_ | Launches the express-first wizard: detected-setup panel → *Accept* / *Customize* / *Cancel* | Default — works for most projects |
+| `--yes` | Accepts all auto-detected defaults without any confirmation prompts (also what runs when stdin is not a TTY) | Fastest path when auto-detection gets it right, CI |
+| `--code-graph MODE` | Code-graph index for `ll-code`: `auto` (default — index if `codegraph` is installed, else print the commands), `install`, `index`, `commands`, `skip` | Pass `install` to let ll-init run `npm install -g @colbymchenry/codegraph` for you |
+| `--settings {local,shared,skip}` / `--no-settings` | Where ll tool permissions go when claude-code is a host (`.claude/settings.local.json` by default) | Team-shared permissions, or none |
+| `--no-claude-md` | Skip the `## little-loops CLI Commands` block in CLAUDE.md | Projects that manage CLAUDE.md by hand |
 | `--force` | Overwrites an existing `.ll/ll-config.json` (TUI now pre-populates from existing values automatically, so `--force` is rarely needed) | Forcing a full template reset regardless of existing config |
 | `--dry-run` | Previews what would be generated without writing any files | Checking what `ll-init` would produce before committing |
 | `--plan` | Emits a JSON plan `{detected, proposed_config, host_options, warnings, provenance, ambiguities}` without writing anything; `provenance` tags each introspected field `declared`/`inferred`/`default`, and a re-init prints a stderr warning (stdout stays pure JSON) when a `declared` value diverges from the stored config | CI pipelines, inspection before applying, or piping into `ll-init apply --config` |
@@ -100,12 +108,32 @@ The `.ll/` handling follows the `.claude/` model: the repo-root directory is tra
 | `--disable FEATURE` | Disable a feature (same valid names as `--enable`) | Turning off a feature that was auto-enabled |
 | `--upgrade` | Act on version drift automatically, then refresh every active host's integration surface: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`), scope-aware-update the claude-code plugin, and (ENH-3382) splice an already-present `## little-loops CLI Commands` block in CLAUDE.md/AGENTS.md/GEMINI.md wholesale — hand edits inside the block are discarded. Default headless mode is warn-only. Passing it alone (no `--yes`/`--dry-run`/`--plan`) implies `--yes` and runs headlessly | CI pipelines or automation where you want hands-free upgrades |
 | `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |
-| `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `kimi-code`, `qwen` (adapter-wired); `opencode`, `pi`, `omp` (recognized, adapter pending). `gemini` is orchestration-only and not valid here — see the canonical [host tier table](../reference/HOST_COMPATIBILITY.md#host-tiers) | Only needed if you use little-loops with multiple AI coding tools |
+| `--hosts HOST` | Wire adapters for specific host CLIs (repeatable or comma-separated: `--hosts claude-code,codex`): `claude-code`, `codex`, `gemini`, `kimi-code`, `qwen` (adapter-wired); `opencode`, `pi`, `omp` (recognized, adapter pending). Defaults to every detected host; the primary is persisted to `orchestration.host_cli`. `kimi-code` writes a user-global file and is confirmed first in the wizard — see the canonical [host tier table](../reference/HOST_COMPATIBILITY.md#host-tiers) | Only needed if you use little-loops with multiple AI coding tools |
 
 **Ambiguous or monorepo layouts:** rather than piping `--plan` into `apply --config`
 by hand, run `/ll:init` inside Claude Code — it drives this same seam but reads your
 repo to settle whichever fields introspection tagged `inferred`/`default` or listed
 under `ambiguities` before applying.
+
+### Code graph (optional, recommended)
+
+`ll-code` — and the graph-seeded discovery phases in `/ll:refine-issue`, `/ll:wire-issue`
+and `/ll:verify-issues` — answer "who calls / imports / is impacted by X" from a
+**codegraph** index when one exists, and from a grep/AST fallback otherwise. `ll-init`
+detects the [`@colbymchenry/codegraph`](https://github.com/colbymchenry/codegraph) tool
+and offers to build the index (the wizard asks; `--yes` builds it when the binary is already
+installed and otherwise prints the commands; `--code-graph install` does the npm install too).
+To set it up by hand:
+
+```bash
+npm install -g @colbymchenry/codegraph   # needs Node.js / npm
+codegraph init .                          # builds .codegraph/codegraph.db (gitignored)
+ll-code status                            # → provider: codegraph, freshness: fresh
+```
+
+`ll-doctor` reports the index under **Code Graph (ll-code)**; a stale index refreshes
+with `codegraph sync .` (and automatically on the next `ll-code` read when
+`code_query.codegraph.auto_sync` is on).
 
 ### Key Config Fields
 
@@ -131,9 +159,9 @@ Start with the auto-detected defaults.
 | PyPI consumer install (`pip install little-loops`) | Reads the installed version; checks PyPI for drift |
 | Version mismatch (installed ≠ PyPI latest) | Prints a notice with the upgrade command; **warns only** by default — pass `--upgrade` to upgrade automatically |
 | Stale adapter (generated gen-version ≠ installed package version) | Prints a hint for the affected host (e.g. codex); **warns only** by default — pass `--upgrade` to force-regenerate the adapter |
-| Up to date | Proceeds silently |
+| Up to date | Shows a one-line environment status (`little-loops v1.2.3 (pypi) · host: Claude Code · git: yes`) and proceeds |
 
-When an existing `.ll/ll-config.json` is found, the TUI pre-populates every field from its current values so a re-run always starts from your actual config rather than defaults. Use `--force` to reset to template defaults instead of merging.
+When an existing `.ll/ll-config.json` is found, every field is pre-populated from its current values so a re-run always starts from your actual config rather than defaults, and re-running `ll-init --yes` is idempotent (features you never enabled stay off; tuned sub-config is preserved). Use `--force` to reset to template defaults instead of merging.
 
 ### After Setup
 

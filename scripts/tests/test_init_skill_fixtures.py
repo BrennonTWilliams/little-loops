@@ -33,6 +33,29 @@ pytestmark = pytest.mark.integration
 _NO_INSTALL = "little_loops.init.install_check.detect_installation"
 
 
+@pytest.fixture(autouse=True)
+def _no_codegraph_on_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report "no codegraph, no npm" so init tests never shell out to codegraph/npm.
+
+    The dev machine has codegraph on PATH; without this guard every --yes run
+    would build a real index in the tmp project (slow, and not what these tests
+    exercise). test_init_codegraph.py covers the real detection paths.
+    """
+    from little_loops.init.codegraph import CodegraphStatus
+
+    def _none(project_root: Path, db_path: str | None = None) -> CodegraphStatus:
+        return CodegraphStatus(
+            binary=None,
+            index_present=(Path(project_root) / ".codegraph" / "codegraph.db").is_file(),
+            db_path=Path(project_root) / ".codegraph" / "codegraph.db",
+            node=None,
+            npm=None,
+            npx=None,
+        )
+
+    monkeypatch.setattr("little_loops.init.codegraph.detect_codegraph", _none)
+
+
 def _run_init(argv: list[str]) -> int:
     from little_loops.init.cli import main_init
 
@@ -115,10 +138,10 @@ class TestUnambiguousPlanFixture:
 class TestAmbiguousSrcDirMakefileFixture:
     """Two top-level packages (ambiguous src_dir) + a Makefile-driven test target.
 
-    `introspect()` has no Makefile support, so `test_cmd` stays `default` here
-    even though a human (or the skill's Inspect step) reading the Makefile
-    would settle it to `make test`. This is exactly the long-tail case
-    FEAT-2705's Summary calls out.
+    `introspect()` reads Makefile targets as *inferred* evidence (not
+    *declared*), so `test_cmd` is proposed as `make test` with the Makefile
+    named as evidence — the skill's Inspect step still reviews every
+    inferred value. The src_dir ambiguity remains for the skill to settle.
     """
 
     def _build(self, tmp_path: Path) -> Path:
@@ -138,8 +161,10 @@ class TestAmbiguousSrcDirMakefileFixture:
         assert "src_dir" in ambiguous_fields
         assert set(ambiguous_fields["src_dir"]["candidates"]) == {"service_a/", "service_b/"}
 
-    def test_plan_leaves_test_cmd_at_default_despite_makefile(self, tmp_path: Path) -> None:
+    def test_plan_infers_test_cmd_from_makefile_target(self, tmp_path: Path) -> None:
         project = self._build(tmp_path)
         plan = _plan_for(project)
         provenance = {p["field"]: p for p in plan["provenance"]}
-        assert provenance["project.test_cmd"].get("provenance") == "default"
+        assert provenance["project.test_cmd"]["provenance"] == "inferred"
+        assert provenance["project.test_cmd"]["value"] == "make test"
+        assert "Makefile" in provenance["project.test_cmd"]["evidence"]

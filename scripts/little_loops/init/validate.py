@@ -19,6 +19,28 @@ class DepWarning:
     install_hint: str | None = None
 
 
+_JQ_DOWNLOAD_URL = "https://jqlang.github.io/jq/download/"
+
+
+def _jq_install_hint() -> str:
+    """Platform-aware one-liner for installing jq (falls back to the download page)."""
+    if sys.platform == "darwin":
+        return "brew install jq"
+    if sys.platform.startswith("linux"):
+        for manager, cmd in (
+            ("apt-get", "sudo apt-get install jq"),
+            ("dnf", "sudo dnf install jq"),
+            ("pacman", "sudo pacman -S jq"),
+            ("apk", "sudo apk add jq"),
+        ):
+            if shutil.which(manager):
+                return cmd
+        return _JQ_DOWNLOAD_URL
+    if sys.platform == "win32":
+        return "winget install jqlang.jq"
+    return _JQ_DOWNLOAD_URL
+
+
 def _check_jq() -> DepWarning | None:
     """Check that jq is on PATH (required by all Claude Code hook adapters)."""
     if shutil.which("jq") is None:
@@ -29,7 +51,7 @@ def _check_jq() -> DepWarning | None:
                 "Adapters parse the host JSON envelope with jq before invoking "
                 "the Python handlers in little_loops.hooks."
             ),
-            install_hint="https://stedolan.github.io/jq/download/",
+            install_hint=_jq_install_hint(),
         )
     return None
 

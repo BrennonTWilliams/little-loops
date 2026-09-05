@@ -48,6 +48,29 @@ def _default_plugin_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("little_loops.init.install_check.plugin_installed", lambda binary: True)
 
 
+@pytest.fixture(autouse=True)
+def _no_codegraph_on_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report "no codegraph, no npm" so init tests never shell out to codegraph/npm.
+
+    The dev machine has codegraph on PATH; without this guard every --yes run
+    would build a real index in the tmp project (slow, and not what these tests
+    exercise). test_init_codegraph.py covers the real detection paths.
+    """
+    from little_loops.init.codegraph import CodegraphStatus
+
+    def _none(project_root: Path, db_path: str | None = None) -> CodegraphStatus:
+        return CodegraphStatus(
+            binary=None,
+            index_present=(Path(project_root) / ".codegraph" / "codegraph.db").is_file(),
+            db_path=Path(project_root) / ".codegraph" / "codegraph.db",
+            node=None,
+            npm=None,
+            npx=None,
+        )
+
+    monkeypatch.setattr("little_loops.init.codegraph.detect_codegraph", _none)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -63,6 +86,7 @@ def _mock_ask(value: object) -> MagicMock:
 def _wire_q(
     mock_q: MagicMock,
     *,
+    path: str = "customize",
     name: str = "myproject",
     src_dir: str = "src/",
     test_cmd: str = "pytest",
@@ -77,27 +101,38 @@ def _wire_q(
     worktree_files: list[str] | None = None,
     use_feature_branches: bool = False,
     use_epic_branches: bool = False,
+    design_token_profile: str = "default",
+    advanced: bool = True,
     session_digest: bool = True,
     prompt_optimization: bool = True,
     loop_clear_default: bool = True,
+    diagram_mode: str = "clean",
     hosts: list[str] | None = None,
     settings: str = "local",
+    claude_md: str = "yes",
+    code_graph: str = "skip",
     install_confirmed: bool = True,
     confirmed: bool | None = True,
+    kimi_confirm: bool = True,
+    ctrl_c_at: str | None = None,
 ) -> None:
-    """Wire a questionary mock for a complete TUI interaction.
+    """Wire a questionary mock for a complete wizard interaction.
 
-    Screen flow (7 screens):
-      1. Plugin Install: install_confirmed (confirm) — fires when detect_installation returns (None,None)
-      2. Project Basics: name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd (text)
-      3. Scan: focus_dirs (text), add_excludes (confirm), [custom_excludes (text) if add_excludes]
-      4. Features: features (checkbox), [workers (text) + worktree_files (checkbox) if parallel],
-                   [use_feature_branches (confirm) + use_epic_branches (confirm) if parallel],
-                   session_digest (confirm), prompt_optimization (confirm), loop_clear_default (confirm)
-      4b. Loop run defaults: loop_show_diagrams_default (select, via shared return_value)
-      5. Hosts: hosts (checkbox)
-      6. Settings: settings (select, via shared return_value)
-      7. CLAUDE.md: (select, via shared return_value)
+    Prompts are answered by *message*, not by position, so the harness is
+    independent of screen order. Express-first flow (2026-09 audit):
+
+      env line + Detected setup panel → "How do you want to proceed?" (select:
+      ``path`` = accept | customize | cancel)
+      Customize: Project (text/select) → Scan (text, confirm) → Features
+      (checkbox + parallel/design-token follow-ups) → Hosts (checkbox,
+      kimi confirm) → Claude Code (settings select, CLAUDE.md select; only
+      when claude-code selected) → Advanced (gate confirm, then 3 confirms +
+      diagram select)
+      Both: Code graph (select, only when codegraph/npm available) →
+      summary → "Apply this configuration?" (confirm)
+
+    ``ctrl_c_at`` returns ``None`` (Ctrl-C) for the first prompt whose
+    message contains that substring.
     """
     if features is None:
         features = ["parallel", "product", "learning_tests", "analytics", "context_monitor"]
@@ -106,39 +141,77 @@ def _wire_q(
     if worktree_files is None:
         worktree_files = []
 
-    # Text calls: Screen 2 (6 fields) + Screen 3 focus_dirs
-    text_returns = [name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd, focus_dirs]
-    if add_excludes:
-        text_returns.append(custom_excludes)
-    if "parallel" in features:
-        text_returns.append(workers)
+    def _answer(message: str, value: object) -> MagicMock:
+        if ctrl_c_at is not None and ctrl_c_at in message:
+            return _mock_ask(None)
+        return _mock_ask(value)
 
-    mock_q.text.side_effect = [_mock_ask(v) for v in text_returns]
+    def text(message: str = "", **kw: object) -> MagicMock:
+        table: list[tuple[str, object]] = [
+            ("Project name", name),
+            ("Source directory", src_dir),
+            ("Test command", test_cmd),
+            ("Lint command", lint_cmd),
+            ("Type-check", type_cmd),
+            ("Format command", format_cmd),
+            ("Focus directories", focus_dirs),
+            ("Custom exclude", custom_excludes),
+            ("Max parallel workers", workers),
+            ("Custom profile path", design_token_profile),
+        ]
+        for key, value in table:
+            if message.startswith(key):
+                return _answer(message, value)
+        return _answer(message, kw.get("default", ""))
 
-    # Checkbox calls: features, [worktree_files if parallel], hosts
-    checkbox_returns: list[list[str]] = [features]
-    if "parallel" in features:
-        checkbox_returns.append(worktree_files)
-    checkbox_returns.append(hosts)
-    mock_q.checkbox.side_effect = [_mock_ask(v) for v in checkbox_returns]
+    def confirm(message: str = "", **kw: object) -> MagicMock:
+        table: list[tuple[str, object]] = [
+            ("Proceed with wizard", install_confirmed),
+            ("Add custom exclude", add_excludes),
+            ("feature-branch", use_feature_branches),
+            ("per-EPIC", use_epic_branches),
+            ("Configure advanced", advanced),
+            ("session digest", session_digest),
+            ("prompt optimization", prompt_optimization),
+            ("--clear", loop_clear_default),
+            ("Kimi", kimi_confirm),
+            ("Apply this configuration", confirmed),
+        ]
+        for key, value in table:
+            if key in message:
+                return _answer(message, value)
+        return _answer(message, kw.get("default", True))
 
-    # Select: loop_show_diagrams_default (screen 4b) + settings (screen 6) + CLAUDE.md (screen 7)
-    # — shared return_value means all three get the same value; "local" is a valid diagram preset
-    # so this works for both the new loop_show_diagrams question and the settings/CLAUDE.md selects.
-    # (no curated menus since tests use generic.json which has no command_options;
-    #  and design_tokens not in default features so no profile select)
-    mock_q.select.return_value.ask.return_value = settings
+    def checkbox(message: str = "", **kw: object) -> MagicMock:
+        if "Enable features" in message:
+            return _answer(message, list(features))
+        if "Copy these files" in message:
+            return _answer(message, list(worktree_files))
+        if "host harnesses" in message:
+            return _answer(message, list(hosts))
+        return _answer(message, [])
 
-    # Confirm: install_confirmed (screen 1, ENH-2253), add_excludes (screen 3),
-    # [use_feature_branches + use_epic_branches if parallel] (screen 4), session_digest (screen 4),
-    # prompt_optimization (screen 4), loop_clear_default (screen 4, ENH-2243), apply (final)
-    confirm_returns = [install_confirmed, add_excludes]
-    if "parallel" in features:
-        confirm_returns.append(use_feature_branches)
-        confirm_returns.append(use_epic_branches)
-    confirm_returns.extend([session_digest, prompt_optimization, loop_clear_default, confirmed])
-    mock_q.confirm.side_effect = [_mock_ask(v) for v in confirm_returns]
+    def select(message: str = "", **kw: object) -> MagicMock:
+        table: list[tuple[str, object]] = [
+            ("How do you want to proceed", path),
+            ("Test command", test_cmd),
+            ("Lint command", lint_cmd),
+            ("Format command", format_cmd),
+            ("Design-token profile", design_token_profile),
+            ("diagram mode", diagram_mode),
+            ("permissions", settings),
+            ("CLAUDE.md", claude_md),
+            ("codegraph", code_graph),
+        ]
+        for key, value in table:
+            if key in message:
+                return _answer(message, value)
+        return _answer(message, kw.get("default"))
 
+    mock_q.text.side_effect = text
+    mock_q.confirm.side_effect = confirm
+    mock_q.checkbox.side_effect = checkbox
+    mock_q.select.side_effect = select
     # Choice is used only to build checkbox/select lists; let it return a plain MagicMock
     mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
 
@@ -149,18 +222,41 @@ def _wire_q(
 
 
 class TestNonTTY:
-    def test_non_tty_returns_1(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_non_tty_falls_back_to_headless(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """No TTY → the headless --yes flow runs with the same defaults (2026-09 audit)."""
+        with (
+            patch("sys.stdin") as mock_stdin,
+            patch("little_loops.init.cli._run_yes", return_value=0) as run_yes,
+        ):
+            mock_stdin.isatty.return_value = False
+            rc = run_tui(
+                tmp_path,
+                _TEMPLATES_DIR,
+                _PLUGIN_ROOT,
+                hosts=["codex"],
+                code_graph="skip",
+                settings_target="shared",
+                claude_md=False,
+            )
+
+        assert rc == 0
+        run_yes.assert_called_once()
+        kwargs = run_yes.call_args.kwargs
+        assert kwargs["project_root"] == tmp_path
+        assert kwargs["hosts"] == ["codex"]
+        assert kwargs["settings_target"] == "shared"
+        assert kwargs["claude_md"] is False
+        assert kwargs["code_graph"] == "skip"
+        assert "not a TTY" in capsys.readouterr().out
+
+    def test_non_tty_writes_config_end_to_end(self, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = False
-            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
-
-        assert rc == 1
-        assert "--yes" in capsys.readouterr().err
-
-
-# ---------------------------------------------------------------------------
-# Happy path
-# ---------------------------------------------------------------------------
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, hosts=["claude-code"])
+        assert rc == 0
+        assert (tmp_path / ".ll" / "ll-config.json").exists()
 
 
 class TestHappyPath:
@@ -413,26 +509,11 @@ class TestCtrlC:
     def test_ctrl_c_on_features_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
-            # Screen 1: 6 basics, Screen 2: focus_dirs, Screen 2 confirm: add_excludes=False
-            # Then features checkbox Ctrl-C
-            mock_q.text.side_effect = [
-                _mock_ask("myapp"),
-                _mock_ask("src/"),
-                _mock_ask("pytest"),
-                _mock_ask("ruff check ."),
-                _mock_ask("mypy"),
-                _mock_ask("ruff format ."),
-                _mock_ask("src/"),  # focus_dirs
-            ]
-            mock_q.confirm.side_effect = [
-                _mock_ask(True),  # install_confirmed (screen 1, ENH-2253)
-                _mock_ask(False),  # add_excludes
-            ]
-            mock_q.checkbox.side_effect = [_mock_ask(None)]  # features Ctrl-C
-            mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
+            _wire_q(mock_q, ctrl_c_at="Enable features")
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         assert rc == 130
+        assert not (tmp_path / ".ll").exists()
 
     @patch("little_loops.init.tui.questionary")
     def test_ctrl_c_on_confirm_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
@@ -699,30 +780,7 @@ class TestHostSelection:
     def test_ctrl_c_on_hosts_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
-            # Screen 1: 6 basics, Screen 2: focus_dirs + add_excludes=False confirm,
-            # Screen 3: features=["analytics"] (no parallel/design_tokens) + session_digest confirm,
-            # then hosts checkbox Ctrl-C
-            mock_q.text.side_effect = [
-                _mock_ask("myapp"),
-                _mock_ask("src/"),
-                _mock_ask("pytest"),
-                _mock_ask("ruff check ."),
-                _mock_ask("mypy"),
-                _mock_ask("ruff format ."),
-                _mock_ask("src/"),  # focus_dirs
-            ]
-            mock_q.confirm.side_effect = [
-                _mock_ask(True),  # install_confirmed (screen 1, ENH-2253)
-                _mock_ask(False),  # add_excludes
-                _mock_ask(True),  # session_digest
-                _mock_ask(True),  # prompt_optimization
-                _mock_ask(True),  # loop_clear_default (ENH-2243)
-            ]
-            mock_q.checkbox.side_effect = [
-                _mock_ask(["analytics"]),  # features
-                _mock_ask(None),  # hosts — Ctrl-C
-            ]
-            mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
+            _wire_q(mock_q, features=["analytics"], ctrl_c_at="host harnesses")
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         assert rc == 130
@@ -791,6 +849,63 @@ class TestHostSelection:
         out = capsys.readouterr().out
         assert "Codex adapter outdated" in out
         assert "0.0.1" in out
+
+    @patch("little_loops.init.tui.questionary")
+    def test_kimi_selection_requires_confirm(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        """Declining the user-global write drops kimi-code from the selection."""
+        with (
+            patch("sys.stdin") as mock_stdin,
+            patch("little_loops.init.writers.install_kimi_adapter") as install_kimi,
+        ):
+            mock_stdin.isatty.return_value = True
+            _wire_q(
+                mock_q,
+                features=["analytics"],
+                hosts=["claude-code", "kimi-code"],
+                kimi_confirm=False,
+            )
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert rc == 0
+        install_kimi.assert_not_called()
+        confirm_messages = [c.args[0] for c in mock_q.confirm.call_args_list if c.args]
+        assert any("user-global" in m for m in confirm_messages)
+
+    @patch("little_loops.init.tui.questionary")
+    def test_settings_screen_skipped_without_claude_code(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], hosts=["codex"])
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert rc == 0
+        select_messages = [c.args[0] for c in mock_q.select.call_args_list if c.args]
+        assert not any("permissions" in m for m in select_messages)
+        assert not any("CLAUDE.md" in m for m in select_messages)
+        assert not (tmp_path / ".claude").exists()
+        assert (tmp_path / "AGENTS.md").exists()
+
+    @patch("little_loops.init.tui.questionary")
+    def test_host_choices_show_availability(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with (
+            patch("sys.stdin") as mock_stdin,
+            patch(
+                "little_loops.init.cli.shutil.which",
+                side_effect=lambda b: b if b == "claude" else None,
+            ),
+        ):
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        labels = [c.args[0] for c in mock_q.Choice.call_args_list if c.args]
+        assert any(label.startswith("Claude Code") and "[detected]" in label for label in labels)
+        assert any(label.startswith("Codex") and "[not on PATH]" in label for label in labels)
+        assert any(label.startswith("Gemini") for label in labels)
+        pi = next(c for c in mock_q.Choice.call_args_list if c.args and c.args[0].startswith("Pi"))
+        assert pi.kwargs.get("disabled")
 
     @patch("little_loops.init.tui.questionary")
     def test_detection_seeded_defaults_shown(self, mock_q: MagicMock, tmp_path: Path) -> None:
@@ -937,38 +1052,12 @@ class TestDesignTokenProfilePicker:
     def test_profile_warm_paper_written_to_config(self, mock_q: MagicMock, tmp_path: Path) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
-
-            # Wire basics (no parallel → 7 text calls), then design_tokens feature selected
-            # Profile select must fire before session_digest confirm and settings select
-            text_returns = [
-                "proj",
-                "src/",
-                "pytest",
-                "ruff check .",
-                "mypy",
-                "ruff format .",
-                "src/",
-            ]
-            mock_q.text.side_effect = [_mock_ask(v) for v in text_returns]
-            mock_q.checkbox.side_effect = [
-                _mock_ask(["design_tokens", "analytics"]),  # features
-                _mock_ask(["claude-code"]),  # hosts
-            ]
-            mock_q.select.side_effect = [
-                _mock_ask("warm-paper"),  # profile picker (screen 3)
-                _mock_ask("clean"),  # loop_show_diagrams_default (ENH-2243)
-                _mock_ask("local"),  # settings (screen 5)
-                _mock_ask("skip"),  # CLAUDE.md (screen 6)
-            ]
-            mock_q.confirm.side_effect = [
-                _mock_ask(True),  # install_confirmed (screen 1, ENH-2253)
-                _mock_ask(False),  # add_excludes
-                _mock_ask(True),  # session_digest
-                _mock_ask(True),  # prompt_optimization
-                _mock_ask(True),  # loop_clear_default (ENH-2243)
-                _mock_ask(True),  # apply
-            ]
-            mock_q.Choice.side_effect = lambda *a, **kw: MagicMock()
+            _wire_q(
+                mock_q,
+                features=["design_tokens", "analytics"],
+                design_token_profile="warm-paper",
+                claude_md="skip",
+            )
             rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         assert rc == 0
@@ -1349,3 +1438,230 @@ class TestApplyConfigInstallSource:
         claude_md = self._apply(tmp_path, generic_template, "pypi", None)
         assert claude_md == claude_md_path
         assert claude_md.read_text(encoding="utf-8") == stale
+
+
+# ---------------------------------------------------------------------------
+# Wizard seeds its defaults from manifest introspection (audit finding A)
+# ---------------------------------------------------------------------------
+
+
+class TestWizardSeedsFromIntrospection:
+    @patch("little_loops.init.tui.questionary")
+    def test_prompts_default_to_introspected_values_with_evidence(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.pytest.ini_options]\n[tool.ruff]\n[tool.mypy]\n"
+        )
+        pkg = tmp_path / "mypkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").touch()
+        (tmp_path / "tests").mkdir()
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        text_calls = mock_q.text.call_args_list
+        # "Source directory:" is the second text prompt
+        assert text_calls[1].kwargs["default"] == "mypkg/"
+        assert "inferred" in (text_calls[1].kwargs.get("instruction") or "")
+        # "Type-check command (optional):" carries the [tool.mypy] evidence
+        type_call = next(c for c in text_calls if c.args and c.args[0].startswith("Type-check"))
+        assert type_call.kwargs["default"] == "mypy"
+        assert "[tool.mypy]" in (type_call.kwargs.get("instruction") or "")
+        # Test/Lint commands go through select with the declared value pre-selected
+        select_calls = mock_q.select.call_args_list
+        test_call = next(c for c in select_calls if c.args and c.args[0] == "Test command:")
+        assert test_call.kwargs["default"] == "pytest"
+        assert "[tool.pytest.ini_options]" in (test_call.kwargs.get("instruction") or "")
+        # Focus dirs seeded from the adopted src_dir + tests/
+        focus_call = next(c for c in text_calls if c.args and c.args[0].startswith("Focus"))
+        assert focus_call.kwargs["default"] == "mypkg/, tests/"
+
+    @patch("little_loops.init.tui.questionary")
+    def test_detected_command_outside_curated_menu_is_inserted(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+        (tmp_path / "Makefile").write_text("test:\n\tpytest\n")
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        test_call = next(
+            c for c in mock_q.select.call_args_list if c.args and c.args[0] == "Test command:"
+        )
+        assert test_call.kwargs["default"] == "make test"
+        choice_labels = [c.args[0] for c in mock_q.Choice.call_args_list if c.args]
+        assert "make test" in choice_labels
+
+
+# ---------------------------------------------------------------------------
+# Express-first flow: accept path + advanced gate (2026-09 audit, finding E)
+# ---------------------------------------------------------------------------
+
+
+class TestAcceptPath:
+    @patch("little_loops.init.tui.questionary")
+    def test_accept_writes_proposal_unchanged(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\n[tool.ruff]\n")
+        pkg = tmp_path / "mypkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").touch()
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, path="accept")
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, hosts=["claude-code"])
+
+        assert rc == 0
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["project"]["test_cmd"] == "pytest"
+        assert config["project"]["lint_cmd"] == "ruff check ."
+        assert config["project"]["src_dir"] == "mypkg/"
+        assert config["context_monitor"]["enabled"] is True  # recommended feature
+        # No customization prompts fired: just the fork select and the final confirm.
+        assert mock_q.text.call_count == 0
+        assert mock_q.checkbox.call_count == 0
+        confirm_messages = [c.args[0] for c in mock_q.confirm.call_args_list if c.args]
+        assert confirm_messages[-1] == "Apply this configuration?"
+        # Only the (patched-as-missing) install notice precedes it — no customization prompts.
+        assert all(
+            m.startswith(("Proceed with wizard", "Apply this configuration"))
+            for m in confirm_messages
+        )
+        # Claude surfaces written with the CLI defaults (settings local, CLAUDE.md on).
+        assert (tmp_path / ".claude" / "settings.local.json").exists()
+        assert (tmp_path / ".claude" / "CLAUDE.md").exists()
+
+    @patch("little_loops.init.tui.questionary")
+    def test_accept_matches_headless_yes(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        """Accept path and `ll-init --yes` write the same config."""
+        from little_loops.init.cli import main_init
+
+        wizard = tmp_path / "wizard"
+        headless = tmp_path / "headless"
+        for project in (wizard, headless):
+            project.mkdir()
+            (project / "pyproject.toml").write_text("[tool.ruff]\n[tool.mypy]\n")
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, path="accept")
+            assert run_tui(wizard, _TEMPLATES_DIR, _PLUGIN_ROOT, hosts=["claude-code"]) == 0
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PLUGIN_ROOT),
+            patch("little_loops.init.install_check.plugin_installed", return_value=True),
+        ):
+            assert (
+                main_init(
+                    [
+                        "--yes",
+                        "--hosts",
+                        "claude-code",
+                        "--code-graph",
+                        "skip",
+                        "--root",
+                        str(headless),
+                    ]
+                )
+                == 0
+            )
+        w = json.loads((wizard / ".ll" / "ll-config.json").read_text())
+        h = json.loads((headless / ".ll" / "ll-config.json").read_text())
+        for key in ("project", "scan", "learning_tests", "context_monitor", "history", "loops"):
+            w_section = {k: v for k, v in w[key].items() if k != "name"}
+            h_section = {k: v for k, v in h[key].items() if k != "name"}
+            assert w_section == h_section, key
+
+    @patch("little_loops.init.tui.questionary")
+    def test_accept_respects_no_claude_md_and_settings_flags(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, path="accept")
+            rc = run_tui(
+                tmp_path,
+                _TEMPLATES_DIR,
+                _PLUGIN_ROOT,
+                hosts=["claude-code"],
+                settings_target="skip",
+                claude_md=False,
+            )
+        assert rc == 0
+        assert not (tmp_path / ".claude").exists()
+
+    @patch("little_loops.init.tui.questionary")
+    def test_cancel_at_fork_writes_nothing(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, path="cancel")
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+        assert rc == 1
+        assert not (tmp_path / ".ll").exists()
+
+    @patch("little_loops.init.tui.questionary")
+    def test_ctrl_c_at_fork_returns_130(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, ctrl_c_at="How do you want to proceed")
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+        assert rc == 130
+
+    @patch("little_loops.init.tui.questionary")
+    def test_detection_panel_shows_evidence(
+        self, mock_q: MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n")
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, path="accept")
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT, hosts=["claude-code"])
+        out = capsys.readouterr().out
+        assert "Detected setup" in out
+        assert "[tool.ruff]" in out
+        assert "How do you want to proceed" not in out  # the prompt is questionary's, not ours
+
+
+class TestAdvancedGate:
+    @patch("little_loops.init.tui.questionary")
+    def test_advanced_skipped_by_default(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], advanced=False)
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+        assert rc == 0
+        confirm_messages = [c.args[0] for c in mock_q.confirm.call_args_list if c.args]
+        assert any("Configure advanced" in m for m in confirm_messages)
+        assert not any(m.startswith("Enable ambient session digest") for m in confirm_messages)
+        select_messages = [c.args[0] for c in mock_q.select.call_args_list if c.args]
+        assert not any("diagram mode" in m for m in select_messages)
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        # defaults still written
+        assert config["history"]["session_digest"]["enabled"] is True
+        assert config["loops"]["run_defaults"] == {"clear": True, "show_diagrams": "clean"}
+
+    @patch("little_loops.init.tui.questionary")
+    def test_advanced_answers_are_applied(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(
+                mock_q,
+                features=["analytics"],
+                advanced=True,
+                session_digest=False,
+                prompt_optimization=True,
+                loop_clear_default=False,
+                diagram_mode="__disabled__",
+            )
+            rc = run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+        assert rc == 0
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["history"]["session_digest"]["enabled"] is False
+        assert config["prompt_optimization"]["enabled"] is True
+        assert config["loops"]["run_defaults"] == {"clear": False}

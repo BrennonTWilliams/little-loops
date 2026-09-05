@@ -34,6 +34,7 @@ def summary_rows(
         ("lint_cmd", "Lint"),
         ("type_cmd", "Type-check"),
         ("format_cmd", "Format"),
+        ("build_cmd", "Build"),
     ):
         val = proj.get(field)
         if val:

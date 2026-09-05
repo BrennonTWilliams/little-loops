@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +31,45 @@ def info(msg: str) -> None:
     from little_loops.cli.output import info as _output_info
 
     _output_info(msg)
+
+
+# Project root used by display_path() to render dry-run paths relative to
+# the project instead of as long absolute paths. Set for the duration of a
+# write block via the display_root() context manager.
+_DISPLAY_ROOT: Path | None = None
+
+
+@contextmanager
+def display_root(project_root: Path) -> Iterator[None]:
+    """Render every ``display_path()`` inside the block relative to *project_root*."""
+    global _DISPLAY_ROOT
+    previous = _DISPLAY_ROOT
+    _DISPLAY_ROOT = project_root
+    try:
+        yield
+    finally:
+        _DISPLAY_ROOT = previous
+
+
+def set_display_root(project_root: Path | None) -> None:
+    """Set (or clear, with ``None``) the root ``display_path()`` renders relative to."""
+    global _DISPLAY_ROOT
+    _DISPLAY_ROOT = project_root
+
+
+def display_path(path: Path) -> str:
+    """Return *path* relative to the active display root, or unchanged when outside it.
+
+    Paths outside the project (e.g. the user-global kimi config) stay absolute
+    so the reader can see exactly which file will be touched.
+    """
+    root = _DISPLAY_ROOT
+    if root is None:
+        return str(path)
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path)
 
 
 # Entries added to .gitignore by ll-init (idempotently).
@@ -71,6 +112,9 @@ _GITIGNORE_ENTRIES: tuple[str, ...] = (
     # machine-local working-tree hashes. The *baseline* it complements
     # (.ll/evidence-baseline.json) is deliberately tracked — that one is policy.
     ".ll/evidence-verdict-cache.json",
+    # codegraph's SQLite index is machine-local (the tool also drops its own
+    # nested .gitignore); ll-init/--code-graph builds it per checkout.
+    ".codegraph/",
     # Nested .ll/ strays — ignore at any depth, keep the repo-root .ll/ tracked.
     "**/.ll/",
     "!/.ll/",
@@ -211,6 +255,11 @@ _LL_COMMANDS: tuple[tuple[str, str], ...] = (
         "log entries from host project logs",
     ),
     ("ll-doctor", "Check host CLI capability support for little-loops features"),
+    (
+        "ll-code",
+        "Structural code queries (status, callers-of, callees-of, importers-of, "
+        "defines, references, impact-of) over the codegraph index, with a grep/AST fallback",
+    ),
     (
         "ll-ctx-stats",
         "Show context-window analytics for the current project (per-tool byte vs. "
@@ -361,8 +410,11 @@ def write_config(config: dict[str, Any], ll_dir: Path, dry_run: bool = False) ->
             full config dump the old implementation emitted here was replaced
             by the run-level summary (audit U-4).
     """
+    # None leaves mean "unset" (the wizard emits them for cleared commands);
+    # never persist them so headless and wizard configs are byte-comparable.
+    config = strip_none_leaves(config)
     if dry_run:
-        info(f"write {ll_dir / 'll-config.json'}")
+        info(f"write {display_path(ll_dir / 'll-config.json')}")
         return
     ll_dir.mkdir(parents=True, exist_ok=True)
     atomic_write_json(ll_dir / "ll-config.json", config)
@@ -471,7 +523,7 @@ def make_issue_dirs(base_dir: Path, dry_run: bool = False) -> None:
     """
     if dry_run:
         for sd in _ISSUE_SUBDIRS:
-            info(f"mkdir {base_dir / sd}")
+            info(f"mkdir {display_path(base_dir / sd)}")
         return
     for sd in _ISSUE_SUBDIRS:
         (base_dir / sd).mkdir(parents=True, exist_ok=True)
@@ -494,7 +546,7 @@ def make_learning_tests_dir(ll_dir: Path, dry_run: bool = False, force: bool = F
     if lt_dir.exists() and not force:
         return False
     if dry_run:
-        info(f"mkdir {lt_dir}")
+        info(f"mkdir {display_path(lt_dir)}")
         return True
     lt_dir.mkdir(parents=True, exist_ok=True)
     (lt_dir / ".gitkeep").touch()
@@ -525,7 +577,7 @@ def deploy_goals(
         print(f"  Warning: goals template source not found at {src}", file=sys.stderr)
         return False
     if dry_run:
-        info(f"write {dest} (from {src.name})")
+        info(f"write {display_path(dest)} (from {src.name})")
         return True
     ll_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(dest, src.read_text(encoding="utf-8"))
@@ -567,7 +619,7 @@ def deploy_design_tokens(
         )
         return False
     if dry_run:
-        info(f"write {dest_profiles}/ (design-token profiles)")
+        info(f"write {display_path(dest_profiles)}/ (design-token profiles)")
         return True
     if dest_profiles.exists():
         shutil.rmtree(dest_profiles)
@@ -600,7 +652,7 @@ def deploy_issue_templates(
         print(f"Warning: no *-sections.json files found in {templates_dir}", file=sys.stderr)
         return False
     if dry_run:
-        info(f"write {dest}/ (issue section templates)")
+        info(f"write {display_path(dest)}/ (issue section templates)")
         return True
     dest.mkdir(parents=True, exist_ok=True)
     for f in section_files:

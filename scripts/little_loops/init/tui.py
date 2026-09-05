@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from little_loops.init.core import schema_default
+from little_loops.init.core import (
+    _TOGGLEABLE_FEATURES,
+    RECOMMENDED_FEATURES,
+    existing_feature_choices,
+    schema_default,
+)
 
 # Feature choices in display order for the multi-select screen
 _FEATURE_CHOICES: list[tuple[str, str]] = [
@@ -30,9 +36,15 @@ _FEATURE_CHOICES: list[tuple[str, str]] = [
     ("Session event capture  (PreCompact handoff)", "session_capture"),
 ]
 
-_DEFAULT_FEATURES: frozenset[str] = frozenset(
-    {"parallel", "product", "learning_tests", "analytics", "context_monitor"}
-)
+# Pre-checked on a fresh wizard run. Derived from the same recommended set
+# the headless path applies so `ll-init --yes` and an accepted wizard run
+# write the same feature config.
+_DEFAULT_FEATURES: frozenset[str] = frozenset(RECOMMENDED_FEATURES)
+
+# build_config choice key -> wizard feature key (they differ only for sync).
+_CHOICE_TO_FEATURE: dict[str, str] = {
+    f"{name}_enabled": ("github_sync" if name == "sync" else name) for name in _TOGGLEABLE_FEATURES
+}
 
 _FEATURE_LABELS: dict[str, str] = {
     "parallel": "Parallel processing",
@@ -50,21 +62,29 @@ _FEATURE_LABELS: dict[str, str] = {
     "session_capture": "Session event capture",
 }
 
-# Host choices for the multi-select screen
+# Host display order + what selecting each one writes. Every _KNOWN_HOSTS
+# entry appears here; availability ("detected" / "not on PATH") and the
+# adapter-pending state are rendered at prompt time from init.cli.
 _HOST_CHOICES: list[tuple[str, str]] = [
     ("Claude Code  (global plugin — no adapter file needed)", "claude-code"),
     ("Codex CLI  (writes .codex/hooks.json)", "codex"),
-    ("Kimi Code  (managed block in ~/.kimi-code/config.toml)", "kimi-code"),
+    ("Gemini CLI  (managed hooks in .gemini/settings.json)", "gemini"),
+    ("Kimi Code  (managed block in ~/.kimi-code/config.toml — user-global)", "kimi-code"),
     ("Qwen Code  (managed hooks in .qwen/settings.json)", "qwen"),
-    ("Pi  (not yet available — EPIC-1622)", "pi"),
+    ("OpenCode  (adapter not yet available)", "opencode"),
+    ("Pi  (adapter not yet available — EPIC-1622)", "pi"),
+    ("omp  (adapter not yet available — manual setup)", "omp"),
 ]
 
 _HOST_LABELS: dict[str, str] = {
     "claude-code": "Claude Code",
     "codex": "Codex CLI",
+    "gemini": "Gemini CLI",
     "kimi-code": "Kimi Code",
     "qwen": "Qwen Code",
+    "opencode": "OpenCode",
     "pi": "Pi",
+    "omp": "omp",
 }
 
 # Sentinel used in curated command menus for the free-text fallthrough
@@ -80,457 +100,91 @@ _DESIGN_TOKEN_PROFILES: list[tuple[str, str]] = [
 
 
 def _features_from_existing_config(cfg: dict[str, Any]) -> frozenset[str]:
-    """Extract which TUI feature keys are enabled from an existing ll-config.json."""
-    enabled: set[str] = set()
-    if cfg.get("parallel"):
-        enabled.add("parallel")
-    for key in (
-        "product",
-        "documents",
-        "design_tokens",
-        "learning_tests",
-        "analytics",
-        "context_monitor",
-        "decisions",
-        "scratch_pad",
-        "session_capture",
-    ):
-        if cfg.get(key, {}).get("enabled"):
-            enabled.add(key)
-    if cfg.get("sync", {}).get("enabled"):
-        enabled.add("github_sync")
-    if cfg.get("commands", {}).get("confidence_gate", {}).get("enabled"):
-        enabled.add("confidence_gate")
-    if cfg.get("commands", {}).get("tdd_mode"):
-        enabled.add("tdd")
-    return frozenset(enabled)
+    """Extract which TUI feature keys are enabled from an existing ll-config.json.
+
+    Thin mapping over :func:`existing_feature_choices` so the wizard and the
+    headless path agree on what "enabled" means for every section.
+    """
+    choices = existing_feature_choices(cfg)
+    return frozenset(
+        feature
+        for choice_key, feature in _CHOICE_TO_FEATURE.items()
+        if choices.get(choice_key) and feature in _FEATURE_LABELS
+    )
 
 
-def _ask_command(label: str, default: str, options: list[str] | None) -> str | None:
+def _ask_command(
+    label: str, default: str, options: list[str] | None, evidence: str = ""
+) -> str | None:
     """Ask for a command field using a curated menu when options are provided.
 
-    Falls through to free-text if the user selects "Custom…" or if no options are given.
-    Returns None on Ctrl-C.
+    A detected *default* that is not in the curated *options* is inserted at
+    the top of the menu so the introspected value is what gets pre-selected.
+    *evidence* (e.g. ``"declared: [tool.ruff] present"``) is shown as the
+    prompt's instruction text. Falls through to free-text if the user selects
+    "Custom…" or if no options are given. Returns None on Ctrl-C.
     """
+    instruction = f"({evidence})" if evidence else None
     if options:
-        sel_default = default if default in options else options[0]
-        choices = [questionary.Choice(o, value=o) for o in options]
+        menu = list(options)
+        if default and default not in menu:
+            menu.insert(0, default)
+        sel_default = default if default in menu else menu[0]
+        choices = [questionary.Choice(o, value=o) for o in menu]
         choices.append(questionary.Choice(_CUSTOM_SENTINEL, value=_CUSTOM_SENTINEL))
-        chosen = questionary.select(label, choices=choices, default=sel_default).ask()
+        chosen = questionary.select(
+            label, choices=choices, default=sel_default, instruction=instruction
+        ).ask()
         if chosen is None:
             return None
         if chosen == _CUSTOM_SENTINEL:
             return questionary.text(f"{label} (enter custom value):", default=default).ask()
         return chosen
-    return questionary.text(label, default=default).ask()
+    return questionary.text(label, default=default, instruction=instruction).ask()
 
 
-def run_tui(
-    project_root: Path,
-    templates_dir: Path,
-    plugin_root: Path,
-    force: bool = False,
-    hosts: list[str] | None = None,
-    color_choice: bool | None = None,
-) -> int:
-    """Run the interactive TUI for ll-init.
+def _ask_hosts(project_root: Path, default_hosts: frozenset[str]) -> list[str] | None:
+    """Host multi-select with availability labels; confirms user-global writes.
 
-    Args:
-        hosts: Detection-seeded default host list shown pre-checked.
-               When None, defaults to ["claude-code"].
-        color_choice: Explicit --color/--no-color from the parser. True
-            forces rich terminal output, False forces no_color, None lets
-            rich auto-detect (which itself honors NO_COLOR).
-
-    Returns:
-        0 on success, 1 on user-abort/config-exists/error, 130 on Ctrl-C.
+    Returns the selected host list, or ``None`` on Ctrl-C.
     """
-    if not sys.stdin.isatty():
-        print(
-            "stdin is not a TTY. Run 'll-init --yes' for non-interactive setup.",
-            file=sys.stderr,
+    from little_loops.init.cli import _ADAPTER_PENDING_HOSTS, available_hosts
+
+    available = available_hosts(project_root)
+    choices = []
+    for label, val in _HOST_CHOICES:
+        status = "detected" if available.get(val) else "not on PATH"
+        choices.append(
+            questionary.Choice(
+                f"{label}  [{status}]",
+                value=val,
+                checked=(val in default_hosts),
+                disabled="adapter not yet available" if val in _ADAPTER_PENDING_HOSTS else None,
+            )
         )
-        return 1
+    selected: list[str] | None = questionary.checkbox(
+        "Which host harnesses should ll-init wire adapters for?", choices=choices
+    ).ask()
+    if selected is None:
+        return None
+    selected = list(selected)
+    if "kimi-code" in selected:
+        from little_loops.init.writers import kimi_config_path
 
-    from little_loops.logo import print_logo
-
-    if sys.stdout.isatty():
-        print_logo()
-
-    from little_loops.init.detect import detect_project_type_all, format_detection_summary
-    from little_loops.init.install_check import (
-        InstallStatus,
-        check_version,
-        detect_installation,
-        fetch_latest_plugin,
-        fetch_latest_pypi,
-    )
-    from little_loops.init.writers import load_existing_config
-
-    if color_choice is False:
-        console = Console(no_color=True)
-    elif color_choice is True:
-        console = Console(force_terminal=True)
-    else:
-        console = Console()
-    ll_dir = project_root / ".ll"
-    config_path = ll_dir / "ll-config.json"
-
-    # Load existing config for pre-population and the merge in _apply_config.
-    existing_config = load_existing_config(project_root)
-
-    _selected_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
-
-    # --- Screen 1 / 7: Plugin Install ---
-    install_source, installed_version, install_path = detect_installation(project_root)
-    _needs_install = install_source is None
-    _pkg_outdated = False
-    _plugin_outdated = False
-    _pkg_latest: str | None = None
-    _plugin_latest: str | None = None
-
-    if install_source in ("local-editable", "pypi") and installed_version is not None:
-        _pkg_latest = fetch_latest_pypi()
-        if _pkg_latest is not None:
-            _pkg_outdated = check_version(installed_version, _pkg_latest) == InstallStatus.OutOfDate
-
-    if "claude-code" in _selected_hosts and install_source in (
-        "global-claude-code",
-        "project-claude-code",
-    ):
-        _plugin_latest = fetch_latest_plugin()
-        if installed_version is not None and _plugin_latest is not None:
-            _plugin_outdated = (
-                check_version(installed_version, _plugin_latest) == InstallStatus.OutOfDate
-            )
-
-    # Adapter-staleness rows for non-Claude hosts (codex today), symmetric with
-    # the package/plugin rows above (FEAT-2387). The gen-version stamp embedded
-    # in .codex/hooks.json is compared against the installed package version.
-    _adapter_stale = False
-    _adapter_stamp: str | None = None
-    if "codex" in _selected_hosts and installed_version is not None:
-        from little_loops.init.writers import read_adapter_gen_version
-
-        _adapter_stamp = read_adapter_gen_version(project_root)
-        _adapter_stale = _adapter_stamp is not None and _adapter_stamp != installed_version
-
-    if _needs_install or _pkg_outdated or _plugin_outdated or _adapter_stale:
-        # Screen numbering (audit U-5): this Plugin Install screen is
-        # conditional on staleness, so a healthy install has six screens.
-        # The labels used to be hardcoded "1 / 7"…"7 / 7", making a
-        # healthy run visibly start at "2 / 7" — reading as a bug on the
-        # first frame of the first-run experience.
-        _total_screens = 7
-        _screen_offset = 0
-        console.print()
-        console.rule(f"[bold]{1 - _screen_offset} / {_total_screens}  Plugin Install[/bold]")
-        if _needs_install:
-            console.print(
-                "[yellow]little-loops package not detected.[/yellow] "
-                "ll-* CLI tools require the pip package to be installed."
-            )
-            console.print("  Install: [cyan]pip install little-loops[/cyan]")
-        if _pkg_outdated:
-            console.print(
-                f"[yellow]Package outdated:[/yellow] installed [cyan]{installed_version}[/cyan], "
-                f"latest [cyan]{_pkg_latest}[/cyan]."
-            )
-            if install_source == "local-editable":
-                console.print("  Upgrade: [cyan]pip install -e <editable-path>[dev][/cyan]")
-            else:
-                console.print("  Upgrade: [cyan]pip install --upgrade little-loops[/cyan]")
-        if _plugin_outdated:
-            console.print(
-                f"[yellow]Plugin outdated:[/yellow] installed [cyan]{installed_version}[/cyan], "
-                f"latest [cyan]{_plugin_latest}[/cyan]."
-            )
-            console.print(
-                "  Upgrade: [cyan]claude plugin marketplace update little-loops "
-                "&& claude plugin update ll@little-loops[/cyan]"
-            )
-        if _adapter_stale:
-            console.print(
-                f"[yellow]Codex adapter outdated:[/yellow] generated against "
-                f"[cyan]{_adapter_stamp}[/cyan], package is [cyan]{installed_version}[/cyan]."
-            )
-            console.print("  Refresh: [cyan]ll-init --upgrade[/cyan]")
-
-        _proceed: bool | None = questionary.confirm(
-            "Proceed with wizard? (install/upgrade separately after)",
-            default=True,
+        ok: bool | None = questionary.confirm(
+            f"Kimi Code hooks are written to {kimi_config_path()} — user-global, outside "
+            "this project. Continue?",
+            default=False,
         ).ask()
-        if _proceed is None:
-            return 130
-        if not _proceed:
-            console.print("[yellow]Aborted — no changes made.[/yellow]")
-            return 1
-    else:
-        _total_screens = 6
-        _screen_offset = 1
-        if install_source is not None:
-            _status_mark = " ✓" if console.color_system else ""
-            console.print(
-                f"[dim]Plugin status: {install_source} "
-                f"{'v' + installed_version if installed_version else '(version unknown)'}"
-                f"{_status_mark}[/dim]"
-            )
+        if ok is None:
+            return None
+        if not ok:
+            selected.remove("kimi-code")
+    return selected
 
-    candidates = detect_project_type_all(project_root, templates_dir)
-    template = candidates[0]
-    project_data = template.data.get("project", {})
-    cmd_options: dict[str, list[str]] = template.meta.get("command_options", {})
 
-    console.print(
-        f"\n[bold blue]little-loops setup[/bold blue] — {format_detection_summary(candidates)}\n"
-    )
-
-    default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
-
-    # --- Screen 2: Project Basics ---
-    console.rule(f"[bold]{2 - _screen_offset} / {_total_screens}  Project Basics[/bold]")
-
-    _ex_proj = existing_config.get("project", {})
-
-    name = questionary.text(
-        "Project name:",
-        default=_ex_proj.get("name") or project_root.name,
-    ).ask()
-    if name is None:
-        return 130
-
-    src_dir = questionary.text(
-        "Source directory:",
-        default=_ex_proj.get("src_dir") or project_data.get("src_dir", "src/"),
-    ).ask()
-    if src_dir is None:
-        return 130
-
-    test_cmd = _ask_command(
-        "Test command:",
-        default=_ex_proj.get("test_cmd") or project_data.get("test_cmd") or "",
-        options=cmd_options.get("test_cmd"),
-    )
-    if test_cmd is None:
-        return 130
-
-    lint_cmd = _ask_command(
-        "Lint command:",
-        default=_ex_proj.get("lint_cmd") or project_data.get("lint_cmd") or "",
-        options=cmd_options.get("lint_cmd"),
-    )
-    if lint_cmd is None:
-        return 130
-
-    type_cmd = questionary.text(
-        "Type-check command (optional):",
-        default=_ex_proj.get("type_cmd") or project_data.get("type_cmd") or "",
-    ).ask()
-    if type_cmd is None:
-        return 130
-
-    format_cmd = _ask_command(
-        "Format command (optional):",
-        default=_ex_proj.get("format_cmd") or project_data.get("format_cmd") or "",
-        options=cmd_options.get("format_cmd"),
-    )
-    if format_cmd is None:
-        return 130
-
-    # --- Screen 3: Scan ---
-    console.print()
-    console.rule(f"[bold]{3 - _screen_offset} / {_total_screens}  Scan[/bold]")
-
-    _scan_data = template.data.get("scan", {})
-    _ex_focus = existing_config.get("scan", {}).get("focus_dirs")
-    _default_focus = ", ".join(_ex_focus if _ex_focus else _scan_data.get("focus_dirs", ["src/"]))
-    focus_dirs_str = questionary.text(
-        "Focus directories (comma-separated):",
-        default=_default_focus,
-    ).ask()
-    if focus_dirs_str is None:
-        return 130
-
-    add_excludes: bool | None = questionary.confirm(
-        "Add custom exclude patterns?", default=False
-    ).ask()
-    if add_excludes is None:
-        return 130
-
-    custom_excludes_str = ""
-    if add_excludes:
-        custom_excludes_str = questionary.text(
-            "Custom exclude patterns (comma-separated glob patterns):",
-            default="",
-        ).ask()
-        if custom_excludes_str is None:
-            return 130
-
-    # --- Screen 4: Features ---
-    console.print()
-    console.rule(f"[bold]{4 - _screen_offset} / {_total_screens}  Features[/bold]")
-
-    _pre_checked_features = (
-        _features_from_existing_config(existing_config) if existing_config else _DEFAULT_FEATURES
-    )
-    selected_features: list[str] | None = questionary.checkbox(
-        "Enable features:",
-        choices=[
-            questionary.Choice(label, value=val, checked=(val in _pre_checked_features))
-            for label, val in _FEATURE_CHOICES
-        ],
-    ).ask()
-    if selected_features is None:
-        return 130
-
-    selected_set = set(selected_features)
-
-    # Conditional: parallel worker count, worktree copy files, and feature-branch mode
-    _ex_parallel = existing_config.get("parallel", {})
-    # Schema default, not a literal: the "write only non-defaults" comparison
-    # in _build_final_config uses the same source, so accepting the prompt
-    # default must round-trip to the value the user was shown (audit H-4 —
-    # the old literal 4 disagreed with the schema default and silently
-    # dropped the user's choice).
-    _default_workers = int(schema_default("parallel.max_workers"))
-    parallel_workers: int = _default_workers
-    worktree_copy_files: list[str] = []
-    use_feature_branches: bool = False
-    use_epic_branches: bool = False
-    if "parallel" in selected_set:
-        workers_str = questionary.text(
-            "Max parallel workers:",
-            default=str(_ex_parallel.get("max_workers", _default_workers)),
-        ).ask()
-        if workers_str is None:
-            return 130
-        try:
-            parallel_workers = int(workers_str)
-            if parallel_workers < 1:
-                raise ValueError("must be positive")
-        except ValueError:
-            console.print(
-                f"[yellow]Invalid worker count; defaulting to {_default_workers}.[/yellow]"
-            )
-            parallel_workers = _default_workers
-
-        _ex_wt_files = set(_ex_parallel.get("worktree_copy_files", []))
-        wt_files: list[str] | None = questionary.checkbox(
-            "Copy these files into each worktree:",
-            choices=[
-                questionary.Choice(".env", value=".env", checked=(".env" in _ex_wt_files)),
-                questionary.Choice(
-                    ".env.local", value=".env.local", checked=(".env.local" in _ex_wt_files)
-                ),
-                questionary.Choice(
-                    ".secrets", value=".secrets", checked=(".secrets" in _ex_wt_files)
-                ),
-            ],
-        ).ask()
-        if wt_files is None:
-            return 130
-        worktree_copy_files = wt_files
-
-        fb_val: bool | None = questionary.confirm(
-            "Enable feature-branch mode (branch-per-issue)?",
-            default=_ex_parallel.get("use_feature_branches", False),
-        ).ask()
-        if fb_val is None:
-            return 130
-        use_feature_branches = fb_val
-
-        eb_val: bool | None = questionary.confirm(
-            "Enable per-EPIC integration-branch mode (children of an EPIC share one branch)?",
-            default=_ex_parallel.get("epic_branches", {}).get("enabled", False),
-        ).ask()
-        if eb_val is None:
-            return 130
-        use_epic_branches = eb_val
-
-    # Conditional: design-token profile picker
-    _ex_dt_profile = existing_config.get("design_tokens", {}).get("active", "default")
-    design_token_profile = "default"
-    if "design_tokens" in selected_set:
-        _profile: str | None = questionary.select(
-            "Design-token profile:",
-            choices=[questionary.Choice(label, value=val) for label, val in _DESIGN_TOKEN_PROFILES],
-            default=_ex_dt_profile,
-        ).ask()
-        if _profile is None:
-            return 130
-        if _profile == "_custom":
-            _custom_path = questionary.text("Custom profile path:").ask()
-            if _custom_path is None:
-                return 130
-            design_token_profile = _custom_path
-        else:
-            design_token_profile = _profile
-
-    # Session digest toggle (always asked)
-    _ex_session_digest = (
-        existing_config.get("history", {}).get("session_digest", {}).get("enabled", True)
-    )
-    session_digest_enabled: bool | None = questionary.confirm(
-        "Enable ambient session digest?", default=_ex_session_digest
-    ).ask()
-    if session_digest_enabled is None:
-        return 130
-
-    # Prompt optimization opt-in (default-off feature; always asked)
-    _ex_prompt_opt = existing_config.get("prompt_optimization", {}).get("enabled", False)
-    prompt_optimization_enabled: bool | None = questionary.confirm(
-        "Enable automatic prompt optimization?", default=_ex_prompt_opt
-    ).ask()
-    if prompt_optimization_enabled is None:
-        return 130
-
-    # Loop run defaults — --clear
-    _ex_loop_clear = existing_config.get("loops", {}).get("run_defaults", {}).get("clear", True)
-    loop_clear_default: bool | None = questionary.confirm(
-        "Enable --clear by default for ll-loop run? (recommended)", default=_ex_loop_clear
-    ).ask()
-    if loop_clear_default is None:
-        return 130
-
-    # Loop run defaults — --show-diagrams
-    _SHOW_DIAGRAMS_CHOICES = [
-        questionary.Choice("clean  (recommended)", value="clean"),
-        questionary.Choice("summary", value="summary"),
-        questionary.Choice("layered", value="layered"),
-        questionary.Choice("inline", value="inline"),
-        questionary.Choice("Disabled", value="__disabled__"),
-    ]
-    _ex_sd = (
-        existing_config.get("loops", {}).get("run_defaults", {}).get("show_diagrams") or "clean"
-    )
-    _raw_sd: str | None = questionary.select(
-        "Default diagram mode for ll-loop run:",
-        choices=_SHOW_DIAGRAMS_CHOICES,
-        default=_ex_sd if _ex_sd in ("clean", "summary", "layered", "inline") else "clean",
-    ).ask()
-    if _raw_sd is None:
-        return 130
-    loop_show_diagrams_default: str | None = None if _raw_sd == "__disabled__" else _raw_sd
-
-    # --- Screen 5: Hosts ---
-    console.print()
-    console.rule(f"[bold]{5 - _screen_offset} / {_total_screens}  Hosts[/bold]")
-
-    selected_hosts: list[str] | None = questionary.checkbox(
-        "Which host harnesses should ll-init wire adapters for?",
-        choices=[
-            questionary.Choice(label, value=val, checked=(val in default_hosts))
-            for label, val in _HOST_CHOICES
-        ],
-    ).ask()
-    if selected_hosts is None:
-        return 130
-
-    # --- Screen 6: Settings target ---
-    console.print()
-    console.rule(f"[bold]{6 - _screen_offset} / {_total_screens}  Settings[/bold]")
-
-    settings_target: str | None = questionary.select(
+def _ask_settings_target() -> str | None:
+    return questionary.select(
         "Where should ll tool permissions be written?",
         choices=[
             questionary.Choice(
@@ -547,93 +201,801 @@ def run_tui(
             ),
         ],
     ).ask()
-    if settings_target is None:
-        return 130
 
-    # --- Screen 7: CLAUDE.md ---
-    console.print()
-    console.rule(f"[bold]{7 - _screen_offset} / {_total_screens}  CLAUDE.md[/bold]")
 
+def _ask_claude_md(console: Console, project_root: Path) -> tuple[bool, bool] | None:
+    """Ask whether to add the CLI-commands block; returns (opt_in, section_present)."""
     _dot_claude_md = project_root / ".claude" / "CLAUDE.md"
     _root_claude_md = project_root / "CLAUDE.md"
-    _claude_md_section_present = False
     _yes_label = "Yes, create .claude/CLAUDE.md"
 
     for _candidate in (_dot_claude_md, _root_claude_md):
         if _candidate.exists():
             if "## little-loops" in _candidate.read_text(encoding="utf-8"):
-                _claude_md_section_present = True
-            else:
-                _rel = str(_candidate.relative_to(project_root))
-                _yes_label = f"Yes, append to {_rel}"
+                console.print(
+                    "[dim]CLAUDE.md already contains a ## little-loops section — skipping.[/dim]"
+                )
+                return (False, True)
+            _rel = str(_candidate.relative_to(project_root))
+            _yes_label = f"Yes, append to {_rel}"
             break
 
-    claude_md_opt_in = False
-    if _claude_md_section_present:
-        console.print("[dim]CLAUDE.md already contains a ## little-loops section — skipping.[/dim]")
-    else:
-        _claude_md_choice: str | None = questionary.select(
-            "Append ll- CLI commands to CLAUDE.md?",
+    choice: str | None = questionary.select(
+        "Append ll- CLI commands to CLAUDE.md?",
+        choices=[
+            questionary.Choice(_yes_label, value="yes"),
+            questionary.Choice("Skip", value="skip"),
+        ],
+        default="yes",
+    ).ask()
+    if choice is None:
+        return None
+    return (choice == "yes", False)
+
+
+def _ask_code_graph(console: Console, project_root: Path, mode: str) -> str | None:
+    """Code-graph screen: offer to index/install codegraph, show commands, or skip.
+
+    Returns the resolved ``--code-graph`` mode for ``_apply_config``, or
+    ``None`` on Ctrl-C. An explicit CLI mode skips the question.
+    """
+    from little_loops.init.codegraph import (
+        CODEGRAPH_PACKAGE,
+        detect_codegraph,
+        manual_commands,
+    )
+
+    console.print()
+    console.rule("[bold]Code graph[/bold]")
+    status = detect_codegraph(project_root)
+    if mode != "auto":
+        return mode
+    if status.index_present:
+        console.print("[dim]codegraph index found at .codegraph/ — ll-code will use it.[/dim]")
+        return "auto"
+
+    console.print(
+        "[dim]codegraph gives ll-code (and the graph-seeded issue skills) an indexed call "
+        "graph; without it a grep/AST fallback is used.[/dim]"
+    )
+    if status.binary:
+        choice: str | None = questionary.select(
+            "codegraph is installed but this project isn't indexed yet. Build the index now?",
             choices=[
-                questionary.Choice(_yes_label, value="yes"),
+                questionary.Choice("Index now  (codegraph init .)", value="index"),
+                questionary.Choice("Show me the commands", value="commands"),
                 questionary.Choice("Skip", value="skip"),
             ],
-            default="yes",
+            default="index",
         ).ask()
-        if _claude_md_choice is None:
-            return 130
-        claude_md_opt_in = _claude_md_choice == "yes"
+    elif status.npm:
+        choice = questionary.select(
+            "codegraph isn't installed. Install it and index this project now?",
+            choices=[
+                questionary.Choice(
+                    f"Install & index now  (npm install -g {CODEGRAPH_PACKAGE}, then codegraph init .)",
+                    value="install",
+                ),
+                questionary.Choice("Show me the commands", value="commands"),
+                questionary.Choice("Skip", value="skip"),
+            ],
+            default="install",
+        ).ask()
+    else:
+        console.print("[dim]Node.js/npm not found — to add it later:[/dim]")
+        for cmd in manual_commands(status):
+            console.print(f"  [cyan]{cmd}[/cyan]")
+        return "commands"
+    if choice is None:
+        return None
+    return choice if choice in ("index", "install", "commands", "skip") else "skip"
 
-    # --- Compute documents categories ---
+
+@dataclass
+class WizardAnswers:
+    """Everything the wizard needs to build and apply a config.
+
+    Seeded from the :class:`Proposal` (so the *Accept detected setup* path
+    needs no prompts) and refined screen by screen on the *Customize* path.
+    """
+
+    name: str
+    src_dir: str
+    test_cmd: str
+    lint_cmd: str
+    type_cmd: str
+    format_cmd: str
+    build_cmd: str
+    focus_dirs: list[str]
+    custom_excludes: list[str] = field(default_factory=list)
+    features: set[str] = field(default_factory=set)
+    parallel_workers: int = 2
+    worktree_copy_files: list[str] = field(default_factory=list)
+    use_feature_branches: bool = False
+    use_epic_branches: bool = False
+    design_token_profile: str = "default"
+    session_digest: bool = True
+    prompt_optimization: bool = False
+    loop_clear: bool = True
+    loop_show_diagrams: str | None = "clean"
+    hosts: list[str] = field(default_factory=list)
+    settings_target: str = "local"
+    claude_md_opt_in: bool = True
+    claude_md_section_present: bool = False
+
+
+def _claude_md_state(project_root: Path) -> tuple[bool, str]:
+    """``(section_present, yes_label)`` for the CLAUDE.md screen / accept path."""
+    for candidate in (project_root / ".claude" / "CLAUDE.md", project_root / "CLAUDE.md"):
+        if candidate.exists():
+            if "## little-loops" in candidate.read_text(encoding="utf-8"):
+                return True, ""
+            return False, f"Yes, append to {candidate.relative_to(project_root)}"
+    return False, "Yes, create .claude/CLAUDE.md"
+
+
+def _answers_from_proposal(
+    proposal: Any,
+    existing_config: dict[str, Any],
+    hosts: list[str],
+    *,
+    project_root: Path,
+    settings_target: str,
+    claude_md: bool,
+) -> WizardAnswers:
+    """Seed the answers from the proposal, the existing config, and CLI flags."""
+    template = proposal.template
+    project_data = template.data.get("project", {})
+    scan_data = template.data.get("scan", {})
+    choices = proposal.choices
+
+    def _seed(flat_key: str, fallback: str = "") -> str:
+        value = choices.get(flat_key)
+        return str(value) if value else fallback
+
+    ex_parallel = existing_config.get("parallel", {})
+    ex_loops = existing_config.get("loops", {}).get("run_defaults", {})
+    section_present, _ = _claude_md_state(project_root)
+    claude_selected = "claude-code" in hosts
+    return WizardAnswers(
+        name=_seed("project_name", project_root.name),
+        src_dir=_seed("src_dir", project_data.get("src_dir", "src/")),
+        test_cmd=_seed("test_cmd"),
+        lint_cmd=_seed("lint_cmd"),
+        type_cmd=_seed("type_cmd"),
+        format_cmd=_seed("format_cmd"),
+        build_cmd=_seed("build_cmd"),
+        focus_dirs=list(choices.get("scan_focus_dirs") or scan_data.get("focus_dirs", ["src/"])),
+        features=set(
+            _features_from_existing_config(existing_config)
+            if existing_config
+            else _DEFAULT_FEATURES
+        ),
+        parallel_workers=int(
+            ex_parallel.get("max_workers", schema_default("parallel.max_workers"))
+        ),
+        worktree_copy_files=list(ex_parallel.get("worktree_copy_files", [])),
+        use_feature_branches=bool(ex_parallel.get("use_feature_branches", False)),
+        use_epic_branches=bool(ex_parallel.get("epic_branches", {}).get("enabled", False)),
+        design_token_profile=str(existing_config.get("design_tokens", {}).get("active", "default")),
+        session_digest=bool(
+            existing_config.get("history", {}).get("session_digest", {}).get("enabled", True)
+        ),
+        prompt_optimization=bool(
+            existing_config.get("prompt_optimization", {}).get("enabled", False)
+        ),
+        loop_clear=bool(ex_loops.get("clear", True)),
+        loop_show_diagrams=ex_loops.get("show_diagrams", "clean"),
+        hosts=list(hosts),
+        settings_target=settings_target if claude_selected else "skip",
+        claude_md_opt_in=bool(claude_md and claude_selected and not section_present),
+        claude_md_section_present=section_present,
+    )
+
+
+def _render_env_line(
+    console: Console,
+    *,
+    install_source: str | None,
+    installed_version: str | None,
+    primary_host: str,
+    is_git_repo: bool,
+) -> None:
+    """One dim status line: package version/source, primary host, git."""
+    if install_source is None:
+        pkg = "little-loops package not detected"
+    else:
+        version = f" v{installed_version}" if installed_version else ""
+        pkg = f"little-loops{version} ({install_source})"
+    git = "git: yes" if is_git_repo else "git: no (run git init for auto-commit / worktrees)"
+    console.print(
+        f"[dim]{pkg} · host: {_HOST_LABELS.get(primary_host, primary_host)} · {git}[/dim]",
+        highlight=False,
+    )
+
+
+def _code_graph_status_text(codegraph: Any) -> str:
+    if codegraph is None:
+        return "unknown"
+    if codegraph.index_present:
+        return "indexed (.codegraph/) — ll-code will use it"
+    if codegraph.binary:
+        return "codegraph installed, project not indexed yet"
+    return "not installed (grep/AST fallback) — optional"
+
+
+def _render_detection_panel(console: Console, proposal: Any, answers: WizardAnswers) -> None:
+    """What ll-init detected, with the evidence for every non-default value."""
+    table = Table(show_header=False, box=None, padding=(0, 1))
+    table.add_column("Key", style="bold cyan", min_width=14)
+    table.add_column("Value")
+    table.add_column("Evidence", style="dim")
+
+    from rich.markup import escape
+
+    from little_loops.init.detect import format_detection_summary
+
+    table.add_row("Project type", escape(format_detection_summary(proposal.candidates)), "")
+    table.add_row("Project", escape(answers.name), "")
+    for label, value, evidence in proposal.provenance_rows(include_default=True):
+        # evidence strings like "[tool.ruff] present" would otherwise be eaten as markup
+        table.add_row(label, escape(value), escape(evidence))
+    feature_labels = [_FEATURE_LABELS[k] for k in _FEATURE_LABELS if k in answers.features]
+    table.add_row("Features", ", ".join(feature_labels) if feature_labels else "none", "")
+    if proposal.documents_categories:
+        n_docs = sum(len(c.get("files", [])) for c in proposal.documents_categories.values())
+        table.add_row(
+            "Documents", f"{n_docs} docs in {len(proposal.documents_categories)} categories", ""
+        )
+    table.add_row("Hosts", ", ".join(_HOST_LABELS.get(h, h) for h in answers.hosts), "")
+    table.add_row("Code graph", _code_graph_status_text(proposal.codegraph), "")
+    console.print(Panel(table, title="[bold]Detected setup[/bold]", border_style="blue"))
+
+
+def _ask_project(
+    console: Console, proposal: Any, answers: WizardAnswers, cmd_options: dict[str, list[str]]
+) -> bool:
+    """Project basics screen. Returns False on Ctrl-C."""
+    console.print()
+    console.rule("[bold]Project[/bold]")
+
+    def _hint(key: str) -> str:
+        pf = proposal.field_for(key)
+        return pf.label if pf is not None and pf.provenance != "default" else ""
+
+    def _instruction(key: str) -> str | None:
+        hint = _hint(key)
+        return f"({hint})" if hint else None
+
+    name = questionary.text("Project name:", default=answers.name).ask()
+    if name is None:
+        return False
+    answers.name = name
+
+    src_dir = questionary.text(
+        "Source directory:", default=answers.src_dir, instruction=_instruction("project.src_dir")
+    ).ask()
+    if src_dir is None:
+        return False
+    answers.src_dir = src_dir
+
+    test_cmd = _ask_command(
+        "Test command:",
+        default=answers.test_cmd,
+        options=cmd_options.get("test_cmd"),
+        evidence=_hint("project.test_cmd"),
+    )
+    if test_cmd is None:
+        return False
+    answers.test_cmd = test_cmd
+
+    lint_cmd = _ask_command(
+        "Lint command:",
+        default=answers.lint_cmd,
+        options=cmd_options.get("lint_cmd"),
+        evidence=_hint("project.lint_cmd"),
+    )
+    if lint_cmd is None:
+        return False
+    answers.lint_cmd = lint_cmd
+
+    type_cmd = questionary.text(
+        "Type-check command (optional):",
+        default=answers.type_cmd,
+        instruction=_instruction("project.type_cmd"),
+    ).ask()
+    if type_cmd is None:
+        return False
+    answers.type_cmd = type_cmd
+
+    format_cmd = _ask_command(
+        "Format command (optional):",
+        default=answers.format_cmd,
+        options=cmd_options.get("format_cmd"),
+        evidence=_hint("project.format_cmd"),
+    )
+    if format_cmd is None:
+        return False
+    answers.format_cmd = format_cmd
+    return True
+
+
+def _ask_scan(console: Console, proposal: Any, answers: WizardAnswers) -> bool:
+    """Scan screen (focus dirs + custom excludes). Returns False on Ctrl-C."""
+    console.print()
+    console.rule("[bold]Scan[/bold]")
+    pf = proposal.field_for("scan.focus_dirs")
+    hint = pf.label if pf is not None and pf.provenance != "default" else ""
+    focus_dirs_str = questionary.text(
+        "Focus directories (comma-separated):",
+        default=", ".join(answers.focus_dirs),
+        instruction=f"({hint})" if hint else None,
+    ).ask()
+    if focus_dirs_str is None:
+        return False
+    answers.focus_dirs = [d.strip() for d in focus_dirs_str.split(",") if d.strip()]
+
+    add_excludes: bool | None = questionary.confirm(
+        "Add custom exclude patterns?", default=False
+    ).ask()
+    if add_excludes is None:
+        return False
+    if add_excludes:
+        custom = questionary.text(
+            "Custom exclude patterns (comma-separated glob patterns):", default=""
+        ).ask()
+        if custom is None:
+            return False
+        answers.custom_excludes = [p.strip() for p in custom.split(",") if p.strip()]
+    return True
+
+
+def _ask_features(console: Console, answers: WizardAnswers) -> bool:
+    """Features screen + the conditional parallel / design-token follow-ups."""
+    console.print()
+    console.rule("[bold]Features[/bold]")
+    selected: list[str] | None = questionary.checkbox(
+        "Enable features:",
+        choices=[
+            questionary.Choice(label, value=val, checked=(val in answers.features))
+            for label, val in _FEATURE_CHOICES
+        ],
+    ).ask()
+    if selected is None:
+        return False
+    answers.features = set(selected)
+
+    if "parallel" in answers.features:
+        default_workers = int(schema_default("parallel.max_workers"))
+        workers_str = questionary.text(
+            "Max parallel workers:", default=str(answers.parallel_workers)
+        ).ask()
+        if workers_str is None:
+            return False
+        try:
+            answers.parallel_workers = int(workers_str)
+            if answers.parallel_workers < 1:
+                raise ValueError("must be positive")
+        except ValueError:
+            console.print(
+                f"[yellow]Invalid worker count; defaulting to {default_workers}.[/yellow]"
+            )
+            answers.parallel_workers = default_workers
+
+        current = set(answers.worktree_copy_files)
+        wt_files: list[str] | None = questionary.checkbox(
+            "Copy these files into each worktree:",
+            choices=[
+                questionary.Choice(name, value=name, checked=(name in current))
+                for name in (".env", ".env.local", ".secrets")
+            ],
+        ).ask()
+        if wt_files is None:
+            return False
+        answers.worktree_copy_files = list(wt_files)
+
+        fb_val: bool | None = questionary.confirm(
+            "Enable feature-branch mode (branch-per-issue)?", default=answers.use_feature_branches
+        ).ask()
+        if fb_val is None:
+            return False
+        answers.use_feature_branches = fb_val
+
+        eb_val: bool | None = questionary.confirm(
+            "Enable per-EPIC integration-branch mode (children of an EPIC share one branch)?",
+            default=answers.use_epic_branches,
+        ).ask()
+        if eb_val is None:
+            return False
+        answers.use_epic_branches = eb_val
+
+    if "design_tokens" in answers.features:
+        profile: str | None = questionary.select(
+            "Design-token profile:",
+            choices=[questionary.Choice(label, value=val) for label, val in _DESIGN_TOKEN_PROFILES],
+            default=(
+                answers.design_token_profile
+                if answers.design_token_profile in {v for _, v in _DESIGN_TOKEN_PROFILES}
+                else "default"
+            ),
+        ).ask()
+        if profile is None:
+            return False
+        if profile == "_custom":
+            custom_path = questionary.text("Custom profile path:").ask()
+            if custom_path is None:
+                return False
+            answers.design_token_profile = custom_path
+        else:
+            answers.design_token_profile = profile
+    return True
+
+
+_SHOW_DIAGRAMS_VALUES: tuple[str, ...] = ("clean", "summary", "layered", "inline")
+
+
+def _ask_advanced(console: Console, answers: WizardAnswers) -> bool:
+    """Advanced toggles, behind a single opt-in confirm. Returns False on Ctrl-C."""
+    console.print()
+    console.rule("[bold]Advanced[/bold]")
+    wants: bool | None = questionary.confirm(
+        "Configure advanced options (session digest, prompt optimization, ll-loop run defaults)?",
+        default=False,
+    ).ask()
+    if wants is None:
+        return False
+    if not wants:
+        return True
+
+    session_digest: bool | None = questionary.confirm(
+        "Enable ambient session digest?", default=answers.session_digest
+    ).ask()
+    if session_digest is None:
+        return False
+    answers.session_digest = session_digest
+
+    prompt_opt: bool | None = questionary.confirm(
+        "Enable automatic prompt optimization?", default=answers.prompt_optimization
+    ).ask()
+    if prompt_opt is None:
+        return False
+    answers.prompt_optimization = prompt_opt
+
+    loop_clear: bool | None = questionary.confirm(
+        "Enable --clear by default for ll-loop run? (recommended)", default=answers.loop_clear
+    ).ask()
+    if loop_clear is None:
+        return False
+    answers.loop_clear = loop_clear
+
+    raw_sd: str | None = questionary.select(
+        "Default diagram mode for ll-loop run:",
+        choices=[
+            questionary.Choice("clean  (recommended)", value="clean"),
+            questionary.Choice("summary", value="summary"),
+            questionary.Choice("layered", value="layered"),
+            questionary.Choice("inline", value="inline"),
+            questionary.Choice("Disabled", value="__disabled__"),
+        ],
+        default=(
+            answers.loop_show_diagrams
+            if answers.loop_show_diagrams in _SHOW_DIAGRAMS_VALUES
+            else "clean"
+        ),
+    ).ask()
+    if raw_sd is None:
+        return False
+    answers.loop_show_diagrams = None if raw_sd == "__disabled__" else raw_sd
+    return True
+
+
+def _ask_claude_surfaces(console: Console, project_root: Path, answers: WizardAnswers) -> bool:
+    """Settings target + CLAUDE.md screens (claude-code selected only)."""
+    if "claude-code" not in answers.hosts:
+        answers.settings_target = "skip"
+        answers.claude_md_opt_in = False
+        return True
+    console.print()
+    console.rule("[bold]Claude Code[/bold]")
+    settings = _ask_settings_target()
+    if settings is None:
+        return False
+    answers.settings_target = settings
+    claude = _ask_claude_md(console, project_root)
+    if claude is None:
+        return False
+    answers.claude_md_opt_in, answers.claude_md_section_present = claude
+    return True
+
+
+def _render_install_status(
+    console: Console,
+    *,
+    install_source: str | None,
+    installed_version: str | None,
+    selected_hosts: frozenset[str],
+    project_root: Path,
+) -> bool | None:
+    """Plugin/package staleness block. Returns True to continue, False to abort, None on Ctrl-C."""
+    from little_loops.init.install_check import (
+        InstallStatus,
+        check_version,
+        fetch_latest_plugin,
+        fetch_latest_pypi,
+    )
+
+    needs_install = install_source is None
+    pkg_outdated = plugin_outdated = adapter_stale = False
+    pkg_latest: str | None = None
+    plugin_latest: str | None = None
+    adapter_stamp: str | None = None
+
+    if install_source in ("local-editable", "pypi") and installed_version is not None:
+        with console.status("Checking PyPI for a newer release…"):
+            pkg_latest = fetch_latest_pypi()
+        if pkg_latest is not None:
+            pkg_outdated = check_version(installed_version, pkg_latest) == InstallStatus.OutOfDate
+
+    if "claude-code" in selected_hosts and install_source in (
+        "global-claude-code",
+        "project-claude-code",
+    ):
+        with console.status("Checking the plugin marketplace…"):
+            plugin_latest = fetch_latest_plugin()
+        if installed_version is not None and plugin_latest is not None:
+            plugin_outdated = (
+                check_version(installed_version, plugin_latest) == InstallStatus.OutOfDate
+            )
+
+    # Adapter-staleness rows for non-Claude hosts (codex today), symmetric with
+    # the package/plugin rows above (FEAT-2387).
+    if "codex" in selected_hosts and installed_version is not None:
+        from little_loops.init.writers import read_adapter_gen_version
+
+        adapter_stamp = read_adapter_gen_version(project_root)
+        adapter_stale = adapter_stamp is not None and adapter_stamp != installed_version
+
+    if not (needs_install or pkg_outdated or plugin_outdated or adapter_stale):
+        return True
+
+    console.print()
+    console.rule("[bold]Plugin Install[/bold]")
+    if needs_install:
+        console.print(
+            "[yellow]little-loops package not detected.[/yellow] "
+            "ll-* CLI tools require the pip package to be installed."
+        )
+        console.print("  Install: [cyan]pip install little-loops[/cyan]")
+    if pkg_outdated:
+        console.print(
+            f"[yellow]Package outdated:[/yellow] installed [cyan]{installed_version}[/cyan], "
+            f"latest [cyan]{pkg_latest}[/cyan]."
+        )
+        if install_source == "local-editable":
+            console.print("  Upgrade: [cyan]pip install -e <editable-path>[dev][/cyan]")
+        else:
+            console.print("  Upgrade: [cyan]pip install --upgrade little-loops[/cyan]")
+    if plugin_outdated:
+        console.print(
+            f"[yellow]Plugin outdated:[/yellow] installed [cyan]{installed_version}[/cyan], "
+            f"latest [cyan]{plugin_latest}[/cyan]."
+        )
+        console.print(
+            "  Upgrade: [cyan]claude plugin marketplace update little-loops "
+            "&& claude plugin update ll@little-loops[/cyan]"
+        )
+    if adapter_stale:
+        console.print(
+            f"[yellow]Codex adapter outdated:[/yellow] generated against "
+            f"[cyan]{adapter_stamp}[/cyan], package is [cyan]{installed_version}[/cyan]."
+        )
+        console.print("  Refresh: [cyan]ll-init --upgrade[/cyan]")
+
+    proceed: bool | None = questionary.confirm(
+        "Proceed with wizard? (install/upgrade separately after)", default=True
+    ).ask()
+    if proceed is None:
+        return None
+    return bool(proceed)
+
+
+def run_tui(
+    project_root: Path,
+    templates_dir: Path,
+    plugin_root: Path,
+    force: bool = False,
+    hosts: list[str] | None = None,
+    color_choice: bool | None = None,
+    code_graph: str = "auto",
+    settings_target: str = "local",
+    claude_md: bool = True,
+) -> int:
+    """Run the interactive wizard for ll-init.
+
+    Express-first: after a one-line environment status and a *Detected
+    setup* panel (every value labelled with its evidence), the user picks
+    **Accept detected setup** (writes immediately) or **Customize** (walks
+    the Project → Scan → Features → Hosts → Claude Code → Advanced screens).
+    Both paths end with the Code graph screen, a summary, and a confirm.
+
+    Args:
+        hosts: Detection-seeded default host list shown pre-checked.
+               When None, defaults to ["claude-code"].
+        color_choice: Explicit --color/--no-color from the parser. True
+            forces rich terminal output, False forces no_color, None lets
+            rich auto-detect (which itself honors NO_COLOR).
+        code_graph: ``--code-graph`` mode; ``auto`` asks interactively on the
+            Code graph screen, any explicit mode skips the question.
+        settings_target: ``--settings`` value used by the accept path.
+        claude_md: ``--no-claude-md`` inverse, used by the accept path.
+
+    Returns:
+        0 on success, 1 on user-abort/error, 130 on Ctrl-C. When stdin is
+        not a TTY the headless ``--yes`` flow runs instead (same defaults the
+        accept path would write) and its exit code is returned.
+    """
+    hosts = list(hosts or ["claude-code"])
+    if not sys.stdin.isatty():
+        from little_loops.cli.output import info
+        from little_loops.init.cli import _run_yes
+
+        info("stdin is not a TTY — running non-interactive setup (same as ll-init --yes).")
+        return _run_yes(
+            project_root=project_root,
+            templates_dir=templates_dir,
+            plugin_root=plugin_root,
+            force=force,
+            dry_run=False,
+            hosts=hosts,
+            settings_target=settings_target,
+            claude_md=claude_md,
+            code_graph=code_graph,
+        )
+
+    from little_loops.logo import print_logo
+
+    if sys.stdout.isatty():
+        print_logo()
+
+    from little_loops.init.cli import _state_dir
+    from little_loops.init.install_check import detect_installation
+    from little_loops.init.proposal import build_proposal
+    from little_loops.init.writers import load_existing_config
+
+    if color_choice is False:
+        console = Console(no_color=True)
+    elif color_choice is True:
+        console = Console(force_terminal=True)
+    else:
+        console = Console()
+
+    ll_dir = _state_dir(project_root)
+    config_path = ll_dir / "ll-config.json"
+    existing_config = load_existing_config(project_root)
+
+    # --- Environment: package / plugin / adapter staleness -----------------
+    install_source, installed_version, install_path = detect_installation(project_root)
+    with console.status("Detecting project…"):
+        proposal = build_proposal(
+            project_root, templates_dir, force=force, existing_config=existing_config
+        )
+    _render_env_line(
+        console,
+        install_source=install_source,
+        installed_version=installed_version,
+        primary_host=hosts[0],
+        is_git_repo=proposal.is_git_repo,
+    )
+    proceed = _render_install_status(
+        console,
+        install_source=install_source,
+        installed_version=installed_version,
+        selected_hosts=frozenset(hosts),
+        project_root=project_root,
+    )
+    if proceed is None:
+        return 130
+    if not proceed:
+        console.print("[yellow]Aborted — no changes made.[/yellow]")
+        return 1
+
+    answers = _answers_from_proposal(
+        proposal,
+        existing_config,
+        hosts,
+        project_root=project_root,
+        settings_target=settings_target,
+        claude_md=claude_md,
+    )
+    template = proposal.template
+    cmd_options: dict[str, list[str]] = template.meta.get("command_options", {})
+
+    # --- Detected setup + fork ------------------------------------------------
+    console.print()
+    _render_detection_panel(console, proposal, answers)
+    console.print()
+    fork: str | None = questionary.select(
+        "How do you want to proceed?",
+        choices=[
+            questionary.Choice("Accept detected setup", value="accept"),
+            questionary.Choice("Customize", value="customize"),
+            questionary.Choice("Cancel", value="cancel"),
+        ],
+        default="accept",
+    ).ask()
+    if fork is None:
+        return 130
+    if fork == "cancel":
+        console.print("[yellow]Aborted — no changes made.[/yellow]")
+        return 1
+
+    if fork != "accept":
+        if not _ask_project(console, proposal, answers, cmd_options):
+            return 130
+        if not _ask_scan(console, proposal, answers):
+            return 130
+        if not _ask_features(console, answers):
+            return 130
+        console.print()
+        console.rule("[bold]Hosts[/bold]")
+        selected_hosts = _ask_hosts(project_root, frozenset(answers.hosts))
+        if selected_hosts is None:
+            return 130
+        answers.hosts = selected_hosts
+        if not _ask_claude_surfaces(console, project_root, answers):
+            return 130
+        if not _ask_advanced(console, answers):
+            return 130
+
+    # --- Code graph (both paths) ---------------------------------------------
+    code_graph_mode = _ask_code_graph(console, project_root, code_graph)
+    if code_graph_mode is None:
+        return 130
+
+    # --- Build config ---------------------------------------------------------
     from little_loops.init.detect import detect_documents
 
     documents_categories: dict[str, Any] = {}
-    if "documents" in selected_set:
+    if "documents" in answers.features:
         documents_categories = detect_documents(project_root)
 
-    # --- Parse scan inputs ---
-    scan_focus_dirs = [d.strip() for d in focus_dirs_str.split(",") if d.strip()]
-    scan_custom_excludes = [p.strip() for p in custom_excludes_str.split(",") if p.strip()]
-
-    # --- Build config ---
-    # install_source captured from the Round 1 detection above (closure).
     config = _build_final_config(
         template=template,
-        name=name,
-        src_dir=src_dir,
-        test_cmd=test_cmd,
-        lint_cmd=lint_cmd,
-        type_cmd=type_cmd,
-        format_cmd=format_cmd,
-        selected_set=selected_set,
-        parallel_workers=parallel_workers,
-        scan_focus_dirs=scan_focus_dirs,
-        scan_custom_excludes=scan_custom_excludes,
-        worktree_copy_files=worktree_copy_files,
-        use_feature_branches=use_feature_branches,
-        use_epic_branches=use_epic_branches,
-        design_token_profile=design_token_profile,
+        name=answers.name,
+        src_dir=answers.src_dir,
+        test_cmd=answers.test_cmd,
+        lint_cmd=answers.lint_cmd,
+        type_cmd=answers.type_cmd,
+        format_cmd=answers.format_cmd,
+        build_cmd=answers.build_cmd,
+        selected_set=answers.features,
+        parallel_workers=answers.parallel_workers,
+        scan_focus_dirs=answers.focus_dirs,
+        scan_custom_excludes=answers.custom_excludes,
+        worktree_copy_files=answers.worktree_copy_files,
+        use_feature_branches=answers.use_feature_branches,
+        use_epic_branches=answers.use_epic_branches,
+        design_token_profile=answers.design_token_profile,
         documents_categories=documents_categories,
-        session_digest_enabled=bool(session_digest_enabled),
-        prompt_optimization_enabled=bool(prompt_optimization_enabled),
-        loop_clear_default=bool(loop_clear_default),
-        loop_show_diagrams_default=loop_show_diagrams_default,
+        session_digest_enabled=answers.session_digest,
+        prompt_optimization_enabled=answers.prompt_optimization,
+        loop_clear_default=answers.loop_clear,
+        loop_show_diagrams_default=answers.loop_show_diagrams,
     )
-
     if install_source:
         config["install_source"] = install_source
 
-    # --- Summary ---
+    # --- Summary + confirm ----------------------------------------------------
     console.print()
     _render_summary(
         console,
         config,
         project_root,
-        selected_set,
-        selected_hosts,
-        settings_target,
-        claude_md_opt_in=claude_md_opt_in,
-        claude_md_section_present=_claude_md_section_present,
+        answers.features,
+        answers.hosts,
+        answers.settings_target,
+        claude_md_opt_in=answers.claude_md_opt_in,
+        claude_md_section_present=answers.claude_md_section_present,
     )
     console.print()
 
@@ -644,7 +1006,6 @@ def run_tui(
         console.print("[yellow]Aborted — no changes made.[/yellow]")
         return 1
 
-    # --- Apply ---
     _apply_config(
         config=config,
         project_root=project_root,
@@ -652,14 +1013,15 @@ def run_tui(
         config_path=config_path,
         templates_dir=templates_dir,
         plugin_root=plugin_root,
-        hosts=selected_hosts,
-        settings_target=settings_target,
+        hosts=answers.hosts,
+        settings_target=answers.settings_target,
         force=force,
         console=console,
-        claude_md_opt_in=claude_md_opt_in,
+        claude_md_opt_in=answers.claude_md_opt_in,
         existing_config=existing_config,
         install_source=install_source,
         install_path=install_path,
+        code_graph=code_graph_mode,
     )
     return 0
 
@@ -685,6 +1047,7 @@ def _build_final_config(
     prompt_optimization_enabled: bool = False,
     loop_clear_default: bool = True,
     loop_show_diagrams_default: str | None = "clean",
+    build_cmd: str = "",
 ) -> dict[str, Any]:
     """Build the ll-config.json dict from TUI answers."""
     from little_loops.init.core import build_config
@@ -714,6 +1077,7 @@ def _build_final_config(
         ("lint_cmd", lint_cmd),
         ("type_cmd", type_cmd),
         ("format_cmd", format_cmd),
+        ("build_cmd", build_cmd),
     ]:
         config["project"][key] = val or None
 
@@ -833,13 +1197,16 @@ def _apply_config(
     existing_config: dict[str, Any] | None = None,
     install_source: str | None = None,
     install_path: str | None = None,
+    code_graph: str = "auto",
 ) -> None:
     """Write all ll-init artifacts to disk."""
     from little_loops import __version__
     from little_loops.init.cli import (
+        _code_graph_step,
         _dispatch_host_adapters,
         _is_git_repo,
         _persist_host_selection,
+        next_steps,
     )
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
@@ -866,6 +1233,12 @@ def _apply_config(
     config = merge_with_existing(config, existing_config or {}, force)
 
     issues_base = project_root / config.get("issues", {}).get("base_dir", ".issues")
+
+    if code_graph in ("index", "install"):
+        with console.status("Building the codegraph index…"):
+            cg_status = _code_graph_step(code_graph, project_root, config, dry_run=False)
+    else:
+        cg_status = _code_graph_step(code_graph, project_root, config, dry_run=False)
 
     write_config(config, ll_dir)
     make_issue_dirs(issues_base)
@@ -916,7 +1289,8 @@ def _apply_config(
         if w.install_hint:
             console.print(f"  Install/fix: {w.install_hint}")
 
-    if not _is_git_repo(project_root):
+    is_git_repo = _is_git_repo(project_root)
+    if not is_git_repo:
         console.print(
             "[yellow]Note: this directory isn't a git repository; git-dependent "
             "features (auto-commit, worktree-based parallel epics) won't work "
@@ -929,9 +1303,9 @@ def _apply_config(
     console.print(f"  Config: [cyan]{config_path}[/cyan]")
 
     # Next steps — the same hints the headless paths print (audit U-3).
-    from little_loops.init.cli import _NEXT_STEPS
-
+    steps = next_steps(config, hosts=hosts, codegraph=cg_status, is_git_repo=is_git_repo)
+    width = max((len(cmd) for cmd, _ in steps), default=0)
     console.print()
     console.print("[bold]Next steps:[/bold]")
-    for step in _NEXT_STEPS:
-        console.print(f"  [dim]{step}[/dim]")
+    for cmd, desc in steps:
+        console.print(f"  [dim]{cmd.ljust(width)}  — {desc}[/dim]")

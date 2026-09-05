@@ -10,33 +10,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from little_loops.init.codegraph import CODE_GRAPH_MODES
+from little_loops.init.core import _TOGGLEABLE_FEATURES
 from little_loops.issue_template import get_bundled_templates_dir
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
-# Feature keys toggleable via --enable/--disable in the headless path. These
-# map to the ``*_enabled`` choice keys honored by build_config(). Sections
-# with sub-config (parallel, documents, design_tokens, sync, confidence_gate,
-# tdd) are written in their schema-default shapes when enabled; the TUI
-# remains the place to fine-tune sub-values interactively (audit M-1).
-_TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
-    {
-        "product",
-        "analytics",
-        "context_monitor",
-        "learning_tests",
-        "decisions",
-        "scratch_pad",
-        "session_capture",
-        "session_digest",
-        "prompt_optimization",
-        "parallel",
-        "documents",
-        "design_tokens",
-        "sync",
-        "confidence_gate",
-        "tdd",
-    }
-)
+# _TOGGLEABLE_FEATURES (re-exported from init/core.py) lists the feature keys
+# toggleable via --enable/--disable in the headless path. These map to the
+# ``*_enabled`` choice keys honored by build_config(). Sections with
+# sub-config (parallel, documents, design_tokens, sync, confidence_gate, tdd)
+# are written in their schema-default shapes when enabled; the TUI remains
+# the place to fine-tune sub-values interactively (audit M-1).
+__all__ = ["_TOGGLEABLE_FEATURES", "main_init"]
 
 # Recognized host names for --hosts validation. Only hosts with install
 # wiring (or an explicit graceful-degradation branch) in
@@ -51,9 +36,21 @@ _KNOWN_HOSTS: frozenset[str] = frozenset(
 
 
 def _plugin_version() -> str:
+    """Version the plugin manifest declares, falling back to the package version.
+
+    Reading ``.claude-plugin/plugin.json`` (when the plugin root has one) makes
+    ``validate_deps``'s package-vs-plugin comparison meaningful for plugin
+    installs; comparing the package to its own ``__version__`` never fires.
+    """
     from little_loops import __version__
 
-    return __version__
+    manifest = _plugin_root() / ".claude-plugin" / "plugin.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return __version__
+    version = data.get("version") if isinstance(data, dict) else None
+    return version if isinstance(version, str) and version else __version__
 
 
 def _plugin_root() -> Path:
@@ -70,25 +67,100 @@ def _plugin_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent.parent
 
 
+# Hosts that are recognised but whose adapter is not wired yet. They are
+# still listed/detected (an info line explains the gap) but never become the
+# *primary* host: a stray `pi` binary on PATH must not make pi the
+# orchestration host for a Claude Code project.
+_ADAPTER_PENDING_HOSTS: frozenset[str] = frozenset({"pi", "opencode", "omp"})
+
+# Project-local marker directories that count as host evidence even when the
+# binary is absent (a teammate initialised the project for that host).
+_PROJECT_MARKER_DIRS: dict[str, str] = {
+    "codex": ".codex",
+    "kimi-code": ".kimi-code",
+    "qwen": ".qwen",
+    "gemini": ".gemini",
+}
+
+# Detection order. Append-only: the order decides the adapter list (and the
+# primary fallback) when several host CLIs share PATH, so inserting mid-list
+# would change resolution for existing users.
+_DETECT_ORDER: tuple[str, ...] = (
+    "claude-code",
+    "codex",
+    "opencode",
+    "pi",
+    "kimi-code",
+    "qwen",
+    "gemini",
+    "omp",
+)
+
+
+def _host_binary(name: str) -> str | None:
+    """Binary basename for a registered host, via the runner registry (no literals)."""
+    from little_loops.host_runner import _HOST_RUNNER_REGISTRY
+
+    runner_cls = _HOST_RUNNER_REGISTRY.get(name)
+    if runner_cls is None:
+        return None
+    try:
+        return runner_cls().describe_capabilities().binary
+    except Exception:  # pragma: no cover - defensive: a runner without capabilities
+        return None
+
+
+def available_hosts(project_root: Path) -> dict[str, bool]:
+    """Availability of every known host: binary on PATH or project marker dir present."""
+    result: dict[str, bool] = {}
+    for name in _DETECT_ORDER:
+        binary = _host_binary(name)
+        on_path = bool(binary and shutil.which(binary))
+        marker = _PROJECT_MARKER_DIRS.get(name)
+        in_project = bool(marker and (project_root / marker).exists())
+        result[name] = on_path or in_project
+    return result
+
+
+def default_hosts(project_root: Path, existing_config: dict[str, Any] | None = None) -> list[str]:
+    """Hosts to wire when ``--hosts`` is not given, primary first.
+
+    Every available host is kept (adapters are cheap and project-local; the
+    one user-global write, kimi, is announced before it happens). The primary
+    slot — persisted as ``orchestration.host_cli`` — is chosen as:
+
+    1. the existing config's ``orchestration.host_cli``;
+    2. else ``resolve_host()`` (``LL_HOST_CLI``, then the runner probe order),
+       provided it was detected and has a wired adapter;
+    3. else the first detected host with a wired adapter;
+    4. else ``claude-code``.
+    """
+    from little_loops.host_runner import HostNotConfigured, resolve_host
+
+    available = available_hosts(project_root)
+    detected = [name for name in _DETECT_ORDER if available.get(name)]
+
+    primary: str | None = None
+    configured = (existing_config or {}).get("orchestration", {}).get("host_cli")
+    if isinstance(configured, str) and configured in _KNOWN_HOSTS:
+        primary = configured
+    else:
+        try:
+            resolved = resolve_host().name
+        except HostNotConfigured:
+            resolved = None
+        if resolved in detected and resolved not in _ADAPTER_PENDING_HOSTS:
+            primary = resolved
+    if primary is None:
+        primary = next((h for h in detected if h not in _ADAPTER_PENDING_HOSTS), None)
+    if primary is None:
+        primary = detected[0] if detected else "claude-code"
+    return [primary, *[h for h in detected if h != primary]]
+
+
 def _detect_hosts(project_root: Path) -> list[str]:
-    """Return list of detected host harnesses based on installed binaries and project dirs."""
-    detected: list[str] = []
-    if shutil.which("claude"):
-        detected.append("claude-code")
-    if shutil.which("codex") or (project_root / ".codex").exists():
-        detected.append("codex")
-    if shutil.which("opencode"):
-        detected.append("opencode")
-    if shutil.which("pi"):
-        detected.append("pi")
-    # Appended LAST for auto-detection stability — inserting mid-list would
-    # change resolution for users who happen to install the kimi binary.
-    if shutil.which("kimi") or (project_root / ".kimi-code").exists():
-        detected.append("kimi-code")
-    # EPIC-3154: appended after kimi-code, same stability rule.
-    if shutil.which("qwen") or (project_root / ".qwen").exists():
-        detected.append("qwen")
-    return detected or ["claude-code"]
+    """Backward-compatible alias for :func:`default_hosts` (no existing config)."""
+    return default_hosts(project_root)
 
 
 def _dispatch_host_adapters(
@@ -127,6 +199,13 @@ def _dispatch_host_adapters(
                     "Hooks are silently skipped (HookRunStatus::Untrusted) until trusted."
                 )
         elif host == "kimi-code":
+            from little_loops.init.writers import kimi_config_path
+
+            if not dry_run:
+                warning(
+                    f"Kimi: writing a managed hooks block to {kimi_config_path()} "
+                    "(user-global, outside this project)."
+                )
             installed = install_kimi_adapter(
                 project_root, plugin_root, force=force, dry_run=dry_run
             )
@@ -136,8 +215,6 @@ def _dispatch_host_adapters(
                     "kimi config.toml managed block was not written."
                 )
             elif installed and not dry_run:
-                from little_loops.init.writers import kimi_config_path
-
                 info(f"Kimi: hook adapter installed to {kimi_config_path()} (managed block)")
                 info(
                     "Kimi: hooks are user-level (kimi has no project-local hook "
@@ -202,6 +279,7 @@ def _dispatch_host_adapters(
                     if (plugin_root / ".claude-plugin" / "plugin.json").exists()
                     else "BrennonTWilliams/little-loops"
                 )
+                info("Claude Code: installing the ll@little-loops plugin (may take a minute)...")
                 try:
                     # Best-effort: fails benignly when the marketplace is
                     # already added (mirrors fetch_latest_plugin's precedent).
@@ -321,26 +399,69 @@ def _is_git_repo(project_root: Path) -> bool:
     return False
 
 
-def _warn_config_drift(existing_config: dict[str, Any], introspection: Any) -> None:
+def _warn_config_drift(
+    existing_config: dict[str, Any],
+    introspection: Any,
+    *,
+    stream: Any = None,
+) -> None:
     """Warn when a freshly-introspected declared value diverges from stored config.
 
     Warn-only, like :func:`_warn_adapter_staleness`: only ``declared`` provenance
     (a manifest unambiguously states the value) triggers a warning — ``inferred``
     values are too noisy to surface here. The existing config value is always
     kept (BUG-2310); this is purely informational.
+
+    A stored command that runs the *same tool* as the declared one (``python -m
+    pytest -q`` vs ``pytest``) is a stylistic variant, not drift, and is
+    skipped via :func:`introspect.base_tool_token`.
+
+    Args:
+        stream: When given (``--plan``), print plain ``Warning:`` lines to that
+            stream so stdout stays pure JSON. Otherwise emit through the shared
+            ``cli.output.warning`` helper on stdout so the message lands in
+            order with the rest of the run's output.
     """
+    from little_loops.cli.output import warning
+    from little_loops.init.introspect import base_tool_token
+
     for dotted_key, iv in introspection.values.items():
         if iv.provenance != "declared":
             continue
         section, field = dotted_key.split(".", 1)
         existing_value = existing_config.get(section, {}).get(field)
-        if existing_value and existing_value != iv.value:
-            print(
-                f"Warning: config has {field} {existing_value!r} but {iv.evidence} declares "
-                f"{iv.value!r} — keeping existing config value.\n"
-                "  Review: ll-init --plan",
-                file=sys.stderr,
-            )
+        if not existing_value or existing_value == iv.value:
+            continue
+        if (
+            isinstance(existing_value, str)
+            and isinstance(iv.value, str)
+            and base_tool_token(existing_value) == base_tool_token(iv.value)
+        ):
+            continue
+        msg = (
+            f"config has {field} {existing_value!r} but {iv.evidence} declares "
+            f"{iv.value!r} — keeping existing config value.\n"
+            "  Review: ll-init --plan"
+        )
+        if stream is not None:
+            print(f"Warning: {msg}", file=stream)
+        else:
+            warning(msg)
+
+
+def _state_dir(project_root: Path) -> Path:
+    """Directory that receives ``ll-config.json`` and the other init artifacts.
+
+    Honors ``LL_STATE_DIR`` (relative to *project_root*) so the write side
+    agrees with :func:`little_loops.config.core.resolve_config_path`, which
+    already probes that directory first on the read side. Defaults to ``.ll``.
+    """
+    import os
+
+    state = os.environ.get("LL_STATE_DIR")
+    if state:
+        return project_root / state
+    return project_root / ".ll"
 
 
 def _feature_choices_from_args(enable: list[str], disable: list[str]) -> dict[str, Any]:
@@ -401,7 +522,12 @@ def _persist_host_selection(config: dict[str, Any], hosts: list[str], explicit: 
     Auto-detected hosts are NOT persisted: detection reflects the machine,
     not a user decision.
     """
-    if not explicit or not hosts:
+    # ``explicit`` is retained for signature stability; since the 2026-09
+    # audit the selection is persisted whether it came from --hosts, the
+    # wizard, or auto-detection — otherwise resolve_host() could later pick
+    # a different host than the one whose adapters were written.
+    del explicit
+    if not hosts:
         return
     from little_loops.init.core import schema_enum
 
@@ -413,14 +539,49 @@ def _persist_host_selection(config: dict[str, Any], hosts: list[str], explicit: 
         config.setdefault("hooks", {})["host"] = primary
 
 
-_NEXT_STEPS: tuple[str, ...] = (
-    "/ll:scan-codebase  — index the codebase for context-aware skills",
-    "ll-doctor          — verify host integration and capabilities",
-    "/ll:help           — browse every command and skill",
-)
+_ADAPTER_MIRROR_HOSTS: dict[str, str] = {
+    "codex": "Codex CLI",
+    "gemini": "Gemini CLI",
+    "kimi-code": "Kimi Code",
+    "qwen": "Qwen Code",
+}
 
 
-def _print_next_steps() -> None:
+def next_steps(
+    config: dict[str, Any],
+    *,
+    hosts: list[str],
+    codegraph: Any = None,
+    is_git_repo: bool = True,
+) -> list[tuple[str, str]]:
+    """Onboarding hints tailored to what this run configured.
+
+    Returns ``(command, description)`` pairs; :func:`_print_next_steps`
+    aligns them. Shared by the headless completion footer and the wizard.
+    """
+    from little_loops.init.codegraph import manual_commands
+
+    steps: list[tuple[str, str]] = [
+        ('/ll:capture-issue "..."', "file your first issue from a plain-English description"),
+        ("/ll:scan-codebase", "scan the codebase and file bug/enhancement/feature issues"),
+    ]
+    if codegraph is not None and not codegraph.index_present:
+        cmds = [c for c in manual_commands(codegraph) if c != "ll-code status"]
+        steps.append((" && ".join(cmds), "build the code-graph index that ll-code queries"))
+    else:
+        steps.append(("ll-code status", "check the code-graph index behind ll-code"))
+    if not is_git_repo:
+        steps.append(("git init", "enable auto-commit and worktree-based parallel work"))
+    for host in hosts:
+        label = _ADAPTER_MIRROR_HOSTS.get(host)
+        if label:
+            steps.append((f"ll-adapt --host {host} --apply", f"mirror skills/commands for {label}"))
+    steps.append(("ll-doctor", "verify host integration and capabilities"))
+    steps.append(("/ll:help", "browse every command and skill"))
+    return steps
+
+
+def _print_next_steps(steps: list[tuple[str, str]]) -> None:
     """Print the onboarding next-steps footer (audit U-3).
 
     Shared by every headless completion path; the TUI renders the same hints
@@ -428,10 +589,11 @@ def _print_next_steps() -> None:
     """
     from little_loops.cli.output import colorize
 
+    width = max((len(cmd) for cmd, _ in steps), default=0)
     print()
     print(colorize("Next steps:", "1"))
-    for step in _NEXT_STEPS:
-        print(colorize(f"  {step}", "90"))
+    for cmd, desc in steps:
+        print(colorize(f"  {cmd.ljust(width)}  — {desc}", "90"))
 
 
 def _render_headless_summary(
@@ -440,6 +602,8 @@ def _render_headless_summary(
     hosts: list[str],
     config_path: Path | None = None,
     dry_run: bool = False,
+    codegraph: Any = None,
+    is_git_repo: bool = True,
 ) -> None:
     """Print the completion summary for headless runs (audit rec-5/rec-11/U-4).
 
@@ -453,6 +617,15 @@ def _render_headless_summary(
 
     rows = summary_rows(config, project_root)
     rows.append(("Hosts", ", ".join(hosts) if hosts else "none"))
+    if codegraph is not None:
+        rows.append(
+            (
+                "Code graph",
+                "indexed (.codegraph/)"
+                if codegraph.index_present
+                else "not indexed — see next steps",
+            )
+        )
     print()
     print(status_block(dict(rows)))
     print()
@@ -462,7 +635,55 @@ def _render_headless_summary(
         success(f"little-loops initialized in {project_root}")
         if config_path is not None:
             info(f"Config: {config_path}")
-    _print_next_steps()
+    _print_next_steps(next_steps(config, hosts=hosts, codegraph=codegraph, is_git_repo=is_git_repo))
+
+
+_SETTINGS_FILES: dict[str, str] = {
+    "local": ".claude/settings.local.json",
+    "shared": ".claude/settings.json",
+}
+
+
+def _write_claude_surfaces(
+    project_root: Path,
+    config: dict[str, Any],
+    hosts: list[str],
+    *,
+    settings_target: str,
+    claude_md: bool,
+    dry_run: bool,
+    install_source: str | None,
+    install_path: str | None,
+    refresh: bool,
+) -> None:
+    """Write the Claude Code-specific artifacts when claude-code is a selected host.
+
+    ``settings_target`` is ``local`` (``.claude/settings.local.json``,
+    gitignored), ``shared`` (``.claude/settings.json``) or ``skip``;
+    ``claude_md`` gates the ``## little-loops CLI Commands`` block.
+    """
+    from little_loops.init.writers import merge_settings, write_claude_md
+
+    if "claude-code" not in hosts:
+        return
+    if settings_target in _SETTINGS_FILES:
+        extra_permissions: list[str] | None = None
+        if config.get("learning_tests", {}).get("enabled"):
+            extra_permissions = ["Skill(ll:explore-api)"]
+        merge_settings(
+            project_root,
+            settings_file=_SETTINGS_FILES[settings_target],
+            extra_permissions=extra_permissions,
+            dry_run=dry_run,
+        )
+    if claude_md:
+        write_claude_md(
+            project_root,
+            dry_run=dry_run,
+            install_source=install_source,
+            install_path=install_path,
+            refresh=refresh,
+        )
 
 
 def _run_yes(
@@ -475,6 +696,9 @@ def _run_yes(
     feature_choices: dict[str, Any] | None = None,
     upgrade: bool = False,
     hosts_explicit: bool = False,
+    settings_target: str = "local",
+    claude_md: bool = True,
+    code_graph: str = "auto",
 ) -> int:
     """Execute the non-interactive --yes init flow."""
     from little_loops.logo import print_logo
@@ -485,19 +709,14 @@ def _run_yes(
     if sys.stdout.isatty():
         print_logo()
 
-    from little_loops.init.core import build_config
-    from little_loops.init.detect import (
-        detect_documents,
-        detect_project_type_all,
-        format_detection_summary,
-    )
+    from little_loops.init.detect import format_detection_summary
     from little_loops.init.install_check import (
         InstallStatus,
         check_version,
         detect_installation,
         fetch_latest_pypi,
     )
-    from little_loops.init.introspect import introspect
+    from little_loops.init.proposal import build_proposal
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
         AGENTS_MD_HOSTS,
@@ -507,17 +726,17 @@ def _run_yes(
         load_existing_config,
         make_issue_dirs,
         make_learning_tests_dir,
-        merge_settings,
-        merge_with_existing,
+        set_display_root,
         update_gitignore,
         write_agents_md,
-        write_claude_md,
         write_config,
         write_gemini_md,
     )
 
-    ll_dir = project_root / ".ll"
+    ll_dir = _state_dir(project_root)
     config_path = ll_dir / "ll-config.json"
+    # Dry-run "write ..." lines render relative to the project root.
+    set_display_root(project_root)
 
     # Load existing config as baseline for pre-population (and the merge below).
     existing_config = load_existing_config(project_root)
@@ -552,6 +771,7 @@ def _run_yes(
                 file=sys.stderr,
             )
     elif installed_version is not None:
+        _out_info("Checking PyPI for a newer little-loops release...")
         _latest = fetch_latest_pypi()
         if _latest is not None:
             _status = check_version(installed_version, _latest)
@@ -605,79 +825,36 @@ def _run_yes(
                         file=sys.stderr,
                     )
 
-    candidates = detect_project_type_all(project_root, templates_dir)
-    template = candidates[0]
-    print(format_detection_summary(candidates))
+    # One pipeline for every surface (headless, --plan, wizard): detection,
+    # introspection, existing-config layering, feature defaults, flags, merge.
+    proposal = build_proposal(
+        project_root,
+        templates_dir,
+        feature_choices=feature_choices,
+        force=force,
+        existing_config=existing_config,
+    )
+    print(format_detection_summary(proposal.candidates))
 
-    documents_categories = detect_documents(project_root)
+    documents_categories = proposal.documents_categories
     if documents_categories:
         n_arch = len(documents_categories.get("architecture", {}).get("files", []))
         n_product = len(documents_categories.get("product", {}).get("files", []))
         print(f"Detected {n_arch} architecture docs, {n_product} product docs")
 
-    introspection = introspect(project_root, template)
-    _print_introspection_summary(introspection)
+    _print_introspection_summary(proposal.introspection)
     if existing_config:
-        _warn_config_drift(existing_config, introspection)
+        _warn_config_drift(existing_config, proposal.introspection)
 
-    # Build choices: introspection fills gaps first (lowest priority), then
-    # existing config values win, then explicit CLI overrides win.
-    choices: dict[str, Any] = {"project_name": project_root.name}
-    for dotted_key, iv in introspection.values.items():
-        section, field = dotted_key.split(".", 1)
-        flat_key = f"scan_{field}" if section == "scan" else field
-        choices[flat_key] = iv.value
-    if existing_config:
-        _ex_proj = existing_config.get("project", {})
-        if _ex_proj.get("name"):
-            choices["project_name"] = _ex_proj["name"]
-        if _ex_proj.get("src_dir"):
-            choices["src_dir"] = _ex_proj["src_dir"]
-        for _field in ("test_cmd", "lint_cmd", "format_cmd", "type_cmd"):
-            if _ex_proj.get(_field):
-                choices[_field] = _ex_proj[_field]
-        if existing_config.get("scan", {}).get("focus_dirs"):
-            choices["scan_focus_dirs"] = existing_config["scan"]["focus_dirs"]
-        choices.update(
-            {
-                "product_enabled": existing_config.get("product", {}).get("enabled", True),
-                "analytics_enabled": existing_config.get("analytics", {}).get("enabled", False),
-                "context_monitor_enabled": existing_config.get("context_monitor", {}).get(
-                    "enabled", True
-                ),
-                "learning_tests_enabled": existing_config.get("learning_tests", {}).get(
-                    "enabled", True
-                ),
-                "decisions_enabled": existing_config.get("decisions", {}).get("enabled", False),
-                "scratch_pad_enabled": existing_config.get("scratch_pad", {}).get("enabled", False),
-                "session_capture_enabled": existing_config.get("session_capture", {}).get(
-                    "enabled", False
-                ),
-                "session_digest_enabled": existing_config.get("history", {})
-                .get("session_digest", {})
-                .get("enabled", True),
-                "prompt_optimization_enabled": existing_config.get("prompt_optimization", {}).get(
-                    "enabled", False
-                ),
-            }
-        )
-    if feature_choices:
-        choices.update(feature_choices)
-    # documents: route detected categories through build_config (ENH-2701),
-    # guarding against clobbering an existing documents section in the
-    # new_config-wins merge below. --enable/--disable documents flows through
-    # feature_choices as documents_enabled.
-    if documents_categories and not existing_config.get("documents"):
-        choices["documents_categories"] = documents_categories
-    config = build_config(template, choices)
-
-    # Preserve any config keys build_config does not model (BUG-2310); --force
-    # bypasses the merge to reset to template defaults.
-    config = merge_with_existing(config, existing_config, force)
+    config = proposal.config
 
     if install_source:
         config["install_source"] = install_source
     _persist_host_selection(config, hosts, explicit=hosts_explicit)
+
+    # Code graph: index (or print the commands) before the config write so
+    # the code_query block lands in the same write when an index exists.
+    cg_status = _code_graph_step(code_graph, project_root, config, dry_run=dry_run)
 
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
@@ -699,16 +876,15 @@ def _run_yes(
 
     update_gitignore(project_root, dry_run=dry_run)
 
-    extra_permissions: list[str] | None = None
-    if config.get("learning_tests", {}).get("enabled"):
-        extra_permissions = ["Skill(ll:explore-api)"]
-    merge_settings(project_root, extra_permissions=extra_permissions, dry_run=dry_run)
-
-    # ENH-3382: --upgrade also refreshes an already-present commands block
-    # (e.g. a stale pre-BUG-3380 Install: line) in place; plain re-init stays
-    # a no-op so hand-edited blocks aren't clobbered.
-    write_claude_md(
+    # Claude-specific surfaces (tool permissions, CLAUDE.md) only when
+    # claude-code is among the selected hosts; a codex-only project gets
+    # AGENTS.md instead.
+    _write_claude_surfaces(
         project_root,
+        config,
+        hosts,
+        settings_target=settings_target,
+        claude_md=claude_md,
         dry_run=dry_run,
         install_source=install_source,
         install_path=install_path,
@@ -747,23 +923,59 @@ def _run_yes(
 
     # Dependency validation is read-only and one of the things a dry-run
     # preview is most useful for, so it runs in both modes (audit U-4).
-    print("\nValidating dependencies...")
-    warnings = validate_deps(config, _plugin_version(), project_root)
-    for w in warnings:
-        msg = f"Warning: {w.message}"
-        if w.install_hint:
-            msg += f"\n  Install/fix: {w.install_hint}"
-        print(msg, file=sys.stderr)
+    _report_dependency_warnings(validate_deps(config, _plugin_version(), project_root))
     if not dry_run and not _is_git_repo(project_root):
-        print(
-            "Note: this directory isn't a git repository; git-dependent features "
-            "(auto-commit, worktree-based parallel epics) won't work until you run "
-            "git init.",
-            file=sys.stderr,
+        _out_warning(
+            "This directory isn't a git repository; git-dependent features "
+            "(auto-commit, worktree-based parallel epics) won't work until you run git init."
         )
 
-    _render_headless_summary(config, project_root, hosts, config_path=config_path, dry_run=dry_run)
+    _render_headless_summary(
+        config,
+        project_root,
+        hosts,
+        config_path=config_path,
+        dry_run=dry_run,
+        codegraph=cg_status,
+        is_git_repo=_is_git_repo(project_root),
+    )
     return 0
+
+
+def _code_graph_step(
+    mode: str, project_root: Path, config: dict[str, Any], *, dry_run: bool
+) -> Any:
+    """Run the code-graph step and attach ``code_query`` to *config* when indexed."""
+    from little_loops.init.codegraph import code_query_section, run_code_graph_step
+
+    status, result = run_code_graph_step(mode, project_root, dry_run=dry_run)
+    if status.index_present or (result is not None and result.ok):
+        config.setdefault("code_query", code_query_section())
+    return status
+
+
+def _report_dependency_warnings(warnings: list[Any]) -> None:
+    """Print the dependency-validation block: every warning, or a single success line."""
+    from little_loops.cli.output import success
+
+    print()
+    print("Validating dependencies...")
+    for w in warnings:
+        _out_warning(w.message + (f"\n  Install/fix: {w.install_hint}" if w.install_hint else ""))
+    if not warnings:
+        success("All dependencies found")
+
+
+def _out_info(msg: str) -> None:
+    from little_loops.cli.output import info
+
+    info(msg)
+
+
+def _out_warning(msg: str) -> None:
+    from little_loops.cli.output import warning
+
+    warning(msg)
 
 
 def _run_plan(
@@ -780,77 +992,34 @@ def _run_plan(
     the plan is the contract it claims to be: what lands on disk after
     ``apply``, not a pre-merge draft (audit M-6).
     """
-    from little_loops.init.core import build_config
-    from little_loops.init.detect import detect_documents, detect_project_type_all
-    from little_loops.init.introspect import introspect
-    from little_loops.init.validate import validate_deps
-    from little_loops.init.writers import (
-        DEFAULT_SETTINGS_FILE,
-        load_existing_config,
-        merge_with_existing,
+    from little_loops.init.proposal import build_proposal
+    from little_loops.init.writers import DEFAULT_SETTINGS_FILE
+
+    proposal = build_proposal(
+        project_root,
+        templates_dir,
+        feature_choices=feature_choices,
+        force=force,
+        plugin_version=_plugin_version(),
     )
+    if proposal.existing_config:
+        _warn_config_drift(proposal.existing_config, proposal.introspection, stream=sys.stderr)
 
-    candidates = detect_project_type_all(project_root, templates_dir)
-    template = candidates[0]
-    runner_up = next((c for c in candidates[1:] if c.match_count > 0), None)
-    documents_categories = detect_documents(project_root)
-    introspection = introspect(project_root, template)
-    existing_config = load_existing_config(project_root)
-    if existing_config:
-        _warn_config_drift(existing_config, introspection)
-    choices: dict[str, Any] = {"project_name": project_root.name}
-    for dotted_key, iv in introspection.values.items():
-        section, field = dotted_key.split(".", 1)
-        flat_key = f"scan_{field}" if section == "scan" else field
-        choices[flat_key] = iv.value
-    if feature_choices:
-        choices.update(feature_choices)
-    # Same documents guard as _run_yes: never advertise categories that apply
-    # would discard in favor of an existing documents section (audit M-6).
-    if documents_categories and not existing_config.get("documents"):
-        choices["documents_categories"] = documents_categories
-    config = build_config(template, choices)
-    config = merge_with_existing(config, existing_config, force)
-    warnings = validate_deps(config, _plugin_version(), project_root)
-
-    plan: dict[str, Any] = {
-        "detected": {
-            "template_name": template.filename,
-            "project_type": template.name,
-            "project_name": project_root.name,
-            "match_count": template.match_count,
-            "runner_up": (
-                {"project_type": runner_up.name, "match_count": runner_up.match_count}
-                if runner_up
-                else None
-            ),
-        },
-        "proposed_config": config,
-        "requested_upgrade": upgrade,
-        "host_options": {
-            "has_claude_code": bool(shutil.which("claude")),
-            "has_codex": bool(shutil.which("codex")),
-            "has_opencode": bool(shutil.which("opencode")),
-            "has_pi": bool(shutil.which("pi")),
-            "has_kimi_code": bool(shutil.which("kimi")),
-            "has_qwen": bool(shutil.which("qwen")),
-            "suggested_settings_file": DEFAULT_SETTINGS_FILE,
-        },
-        "warnings": [{"message": w.message, "install_hint": w.install_hint} for w in warnings],
-        "provenance": [
-            {
-                "field": dotted_key,
-                "value": iv.value,
-                "provenance": iv.provenance,
-                "evidence": iv.evidence,
-            }
-            for dotted_key, iv in introspection.values.items()
-        ],
-        "ambiguities": [
-            {"field": a.field, "candidates": a.candidates, "note": a.note}
-            for a in introspection.ambiguities
-        ],
+    available = available_hosts(project_root)
+    defaults = default_hosts(project_root, proposal.existing_config)
+    host_options = {
+        "available": available,
+        "default": defaults,
+        "primary": defaults[0],
+        "has_claude_code": bool(shutil.which("claude")),
+        "has_codex": bool(shutil.which("codex")),
+        "has_opencode": bool(shutil.which("opencode")),
+        "has_pi": bool(shutil.which("pi")),
+        "has_kimi_code": bool(shutil.which("kimi")),
+        "has_qwen": bool(shutil.which("qwen")),
+        "suggested_settings_file": DEFAULT_SETTINGS_FILE,
     }
+    plan = proposal.to_plan_dict(requested_upgrade=upgrade, host_options=host_options)
     print(json.dumps(plan, indent=2))
     return 0
 
@@ -864,6 +1033,9 @@ def _run_apply(
     force: bool,
     dry_run: bool = False,
     hosts_explicit: bool = False,
+    settings_target: str = "local",
+    claude_md: bool = True,
+    code_graph: str = "auto",
 ) -> int:
     """Apply writes from a --plan JSON (file path or raw JSON string).
 
@@ -884,11 +1056,10 @@ def _run_apply(
         load_existing_config,
         make_issue_dirs,
         make_learning_tests_dir,
-        merge_settings,
         merge_with_existing,
+        set_display_root,
         update_gitignore,
         write_agents_md,
-        write_claude_md,
         write_config,
         write_gemini_md,
     )
@@ -907,7 +1078,8 @@ def _run_apply(
         return 2
 
     config: dict[str, Any] = plan.get("proposed_config") or plan
-    ll_dir = project_root / ".ll"
+    ll_dir = _state_dir(project_root)
+    set_display_root(project_root)
 
     # Preserve any config keys the plan does not model (BUG-2310); --force resets.
     config = merge_with_existing(config, load_existing_config(project_root), force)
@@ -918,6 +1090,10 @@ def _run_apply(
     # project actually installed little-loops. Reused at the requested_upgrade
     # branch further down instead of calling detect_installation() twice.
     install_source, _installed_version, install_path = detect_installation(project_root)
+    if install_source:
+        config["install_source"] = install_source
+
+    cg_status = _code_graph_step(code_graph, project_root, config, dry_run=dry_run)
 
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
@@ -943,17 +1119,16 @@ def _run_apply(
 
     update_gitignore(project_root, dry_run=dry_run)
 
-    extra_permissions: list[str] | None = None
-    if config.get("learning_tests", {}).get("enabled"):
-        extra_permissions = ["Skill(ll:explore-api)"]
-    merge_settings(project_root, extra_permissions=extra_permissions, dry_run=dry_run)
-
     # ENH-3382: requested_upgrade also refreshes an already-present commands
     # block in place (mirrors _run_yes()'s refresh=upgrade); a plan without
     # requested_upgrade stays a no-op so hand-edited blocks aren't clobbered.
     _refresh = bool(plan.get("requested_upgrade"))
-    write_claude_md(
+    _write_claude_surfaces(
         project_root,
+        config,
+        hosts,
+        settings_target=settings_target,
+        claude_md=claude_md,
         dry_run=dry_run,
         install_source=install_source,
         install_path=install_path,
@@ -983,12 +1158,7 @@ def _run_apply(
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force, dry_run=dry_run)
 
-    warnings = validate_deps(config, _plugin_version(), project_root)
-    for w in warnings:
-        msg = f"Warning: {w.message}"
-        if w.install_hint:
-            msg += f"\n  Install/fix: {w.install_hint}"
-        print(msg, file=sys.stderr)
+    _report_dependency_warnings(validate_deps(config, _plugin_version(), project_root))
 
     if plan.get("requested_upgrade") and not dry_run:
         _dispatch_host_upgrade(hosts, project_root, plugin_root, install_source)
@@ -998,7 +1168,9 @@ def _run_apply(
         info("Re-run without --dry-run to apply this plan.")
     else:
         success(f"Applied init plan to {project_root}")
-    _print_next_steps()
+    _print_next_steps(
+        next_steps(config, hosts=hosts, codegraph=cg_status, is_git_repo=_is_git_repo(project_root))
+    )
     return 0
 
 
@@ -1024,6 +1196,8 @@ Examples:
   %(prog)s apply --config plan.json --dry-run   # Preview a plan application
   %(prog)s --yes --enable decisions --enable session_capture
   %(prog)s --yes --enable parallel --enable sync
+  %(prog)s --yes --code-graph install  # Install codegraph and build the ll-code index
+  %(prog)s --yes --hosts codex --no-claude-md
 
 Feature flags (headless --yes / --plan only):
   --enable / --disable accept: product, analytics, context_monitor,
@@ -1040,9 +1214,10 @@ Scope of --force:
   — use --upgrade for that (see below).
 
 Exit codes:
-  0 - Success
-  1 - Error (template missing, stdin not a TTY, etc.)
-  2 - Usage error
+  0   - Success
+  1   - Error (template missing, unreadable config, etc.)
+  2   - Usage error
+  130 - Interrupted (Ctrl-C in the interactive wizard)
 """,
         )
         parser.add_argument(
@@ -1144,6 +1319,39 @@ Exit codes:
             dest="root",
             help="Project root directory (default: current directory)",
         )
+        _settings_group = parser.add_mutually_exclusive_group()
+        _settings_group.add_argument(
+            "--settings",
+            choices=("local", "shared", "skip"),
+            default="local",
+            help=(
+                "Where to write ll tool permissions when claude-code is a host: "
+                "local (.claude/settings.local.json, gitignored; default), "
+                "shared (.claude/settings.json), or skip."
+            ),
+        )
+        _settings_group.add_argument(
+            "--no-settings",
+            action="store_true",
+            help="Alias for --settings skip.",
+        )
+        parser.add_argument(
+            "--no-claude-md",
+            action="store_true",
+            help="Do not add the ## little-loops CLI Commands block to CLAUDE.md.",
+        )
+        parser.add_argument(
+            "--code-graph",
+            choices=CODE_GRAPH_MODES,
+            default="auto",
+            help=(
+                "Code-graph index for ll-code (codegraph): auto (default; build the index "
+                "when the codegraph binary is installed, otherwise print the commands), "
+                "install (npm install -g @colbymchenry/codegraph, then index), index "
+                "(build the index; uses npx if the binary is absent), commands (print "
+                "the commands only), skip."
+            ),
+        )
 
         subparsers = parser.add_subparsers(dest="command")
         apply_parser = subparsers.add_parser(
@@ -1213,8 +1421,13 @@ Exit codes:
                 hosts = ["codex"]
                 hosts_explicit = True
             else:
-                hosts = _detect_hosts(project_root)
+                from little_loops.init.writers import load_existing_config
+
+                hosts = default_hosts(project_root, load_existing_config(project_root))
                 hosts_explicit = False
+            settings_target = "skip" if args.no_settings else args.settings
+            claude_md = not args.no_claude_md
+            code_graph: str = args.code_graph
 
             if args.command == "apply":
                 return _run_apply(
@@ -1230,6 +1443,9 @@ Exit codes:
                     dry_run=getattr(args, "dry_run", False)
                     or getattr(args, "apply_dry_run", False),
                     hosts_explicit=hosts_explicit,
+                    settings_target=settings_target,
+                    claude_md=claude_md,
+                    code_graph=code_graph,
                 )
 
             # Resolve --enable/--disable feature flags (headless / plan paths only).
@@ -1266,6 +1482,9 @@ Exit codes:
                     feature_choices=feature_choices,
                     upgrade=args.upgrade,
                     hosts_explicit=hosts_explicit,
+                    settings_target=settings_target,
+                    claude_md=claude_md,
+                    code_graph=code_graph,
                 )
 
             from little_loops.init.tui import run_tui
@@ -1277,7 +1496,20 @@ Exit codes:
                 force=args.force,
                 hosts=hosts,
                 color_choice=color_choice,
+                code_graph=code_graph,
+                settings_target=settings_target,
+                claude_md=claude_md,
             )
+        except KeyError as exc:
+            # schema_default()/schema_enum() raise KeyError when the bundled
+            # config-schema.json and build_config() disagree — an install
+            # problem, not a user error, so say so instead of a traceback.
+            print(
+                f"Error: little-loops config schema is out of sync with this install "
+                f"({exc}). Try: pip install --upgrade little-loops",
+                file=sys.stderr,
+            )
+            return 1
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             # ValueError included: version strings compared during init come
             # from pip/plugin output and are external input (audit H-3).

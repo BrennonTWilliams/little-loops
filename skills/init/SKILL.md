@@ -11,7 +11,7 @@ allowed-tools:
   - Bash
 arguments:
   - name: flags
-    description: "Optional flags: --force, --dry-run, --hosts, --codex, --upgrade"
+    description: "Optional flags: --force, --dry-run, --hosts, --upgrade, --code-graph, --settings, --no-settings, --no-claude-md"
     required: false
 metadata:
   short-description: Use when asked to initialize little-loops, set up ll for a project, or bootstrap
@@ -28,8 +28,9 @@ fully-declared repo (all `provenance: declared`) is nearly as fast as
 `ll-init --yes` — there's nothing to settle, so Inspect is a no-op.
 
 This skill drives the **headless** seam. A user who wants the interactive
-7-screen wizard should run `ll-init` with no arguments directly in a
-terminal — it is not reachable through this skill.
+express-first wizard (detected-setup panel → Accept / Customize) should run
+`ll-init` with no arguments directly in a terminal — it is not reachable
+through this skill.
 
 ## Process
 
@@ -43,8 +44,8 @@ FLAGS="${flags:-}"
 FORCE_FLAG=""
 DRY_RUN=false
 HOSTS_FLAG=""
-CODEX_FLAG=""
 UPGRADE=false
+PASS_FLAGS=""   # --code-graph/--settings/--no-settings/--no-claude-md, forwarded verbatim
 
 if [[ "$FLAGS" == *"--force"* ]]; then FORCE_FLAG="--force"; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
@@ -53,8 +54,17 @@ if [[ "$FLAGS" == *"--hosts "* ]]; then
     HOSTS_VALUE="${_after_hosts%% *}"   # first whitespace-delimited token
     if [[ -n "$HOSTS_VALUE" ]]; then HOSTS_FLAG="--hosts $HOSTS_VALUE"; fi
 fi
-if [[ "$FLAGS" == *"--codex"* ]]; then CODEX_FLAG="--codex"; fi
 if [[ "$FLAGS" == *"--upgrade"* ]]; then UPGRADE=true; fi
+if [[ "$FLAGS" == *"--code-graph "* ]]; then
+    _after_cg="${FLAGS#*--code-graph }"
+    PASS_FLAGS="$PASS_FLAGS --code-graph ${_after_cg%% *}"
+fi
+if [[ "$FLAGS" == *"--settings "* ]]; then
+    _after_settings="${FLAGS#*--settings }"
+    PASS_FLAGS="$PASS_FLAGS --settings ${_after_settings%% *}"
+fi
+if [[ "$FLAGS" == *"--no-settings"* ]]; then PASS_FLAGS="$PASS_FLAGS --no-settings"; fi
+if [[ "$FLAGS" == *"--no-claude-md"* ]]; then PASS_FLAGS="$PASS_FLAGS --no-claude-md"; fi
 ```
 
 ### 2. Plan
@@ -62,11 +72,16 @@ if [[ "$FLAGS" == *"--upgrade"* ]]; then UPGRADE=true; fi
 Run the plan and capture its JSON:
 
 ```bash
-ll-init --plan $HOSTS_FLAG $CODEX_FLAG
+ll-init --plan $HOSTS_FLAG
 ```
 
 Parse `detected`, `proposed_config`, `host_options`, `warnings`, `provenance`,
-and `ambiguities` from stdout.
+and `ambiguities` from stdout. Two additive keys are also present: `fields`
+(full provenance of every proposed value, including `existing`/`flag`/
+`recommended` sources — `provenance` stays limited to manifest introspection)
+and `code_graph` (codegraph binary/index/npm status, `recommended_action`,
+and the `manual_commands` a user would run). `proposed_config` already
+layers the existing config the way `ll-init --yes` does.
 
 ### 3. Inspect
 
@@ -95,8 +110,12 @@ Write the corrected plan JSON (same shape returned by step 2, with
 `proposed_config` edited in place) to a temp file, then:
 
 ```bash
-ll-init apply --config <plan.json> $FORCE_FLAG
+ll-init apply --config <plan.json> $FORCE_FLAG $HOSTS_FLAG $PASS_FLAGS
 ```
+
+`apply` runs the code-graph step (`--code-graph`, default `auto`: index only
+when the `codegraph` binary is installed, otherwise print the commands) and
+honors `--settings`/`--no-settings`/`--no-claude-md` exactly like `--yes`.
 
 **`--dry-run`**: stop here instead — print the corrected plan and exit
 without calling `apply`. Nothing is written. (This is a *plan-only* stop:
@@ -113,7 +132,7 @@ package or plugin itself. If `UPGRADE` is true, after Apply completes run
 the upgrade side effects as a separate step:
 
 ```bash
-ll-init --yes --upgrade $HOSTS_FLAG $CODEX_FLAG
+ll-init --yes --upgrade $HOSTS_FLAG $PASS_FLAGS
 ```
 
 ### 6. Verify (Smoke Check)
@@ -146,6 +165,7 @@ installed, and the Verify pass/fail per command (or `SKIP` if unconfigured).
 /ll:init --dry-run       # plan -> inspect -> print corrected plan; writes nothing
 /ll:init --hosts codex   # also install Codex hook adapter
 /ll:init --upgrade       # apply, then run `ll-init --yes --upgrade` for adapter/package upgrade
+/ll:init --code-graph install   # also npm-install codegraph and build the ll-code index
 ```
 
 ## Related

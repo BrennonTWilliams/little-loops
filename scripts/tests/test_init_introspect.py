@@ -252,3 +252,250 @@ class TestFocusDirsDetection:
         iv = result.values["scan.focus_dirs"]
         assert iv.provenance == "default"
         assert iv.value == python_template.data["scan"]["focus_dirs"]
+
+
+class TestBaseToolToken:
+    @pytest.mark.parametrize(
+        ("cmd", "expected"),
+        [
+            ("pytest", "pytest"),
+            ("python -m pytest -q", "pytest"),
+            ("python3 -m pytest scripts/tests/", "pytest"),
+            ("uv run pytest", "pytest"),
+            ("poetry run ruff check .", "ruff"),
+            ("npx tsc --noEmit", "tsc"),
+            ("npm run lint", "lint"),
+            ("pnpm run test", "test"),
+            ("npm test", "test"),
+            ("./gradlew test", "gradlew"),
+            ("CI=1 pytest", "pytest"),
+            ("cargo test", "cargo"),
+            ("", ""),
+        ],
+    )
+    def test_strips_launchers(self, cmd: str, expected: str) -> None:
+        from little_loops.init.introspect import base_tool_token
+
+        assert base_tool_token(cmd) == expected
+
+    def test_unbalanced_quotes_fall_back_to_split(self) -> None:
+        from little_loops.init.introspect import base_tool_token
+
+        assert base_tool_token("pytest -k 'unterminated") == "pytest"
+
+
+def _template_for(tmp_path: Path, marker: str, templates_dir: Path) -> object:
+    """Detect the project-type template a *marker* file selects, then remove it."""
+    path = tmp_path / marker
+    path.parent.mkdir(parents=True, exist_ok=True)
+    created = not path.exists()
+    path.touch()
+    match = detect_project_type(tmp_path, templates_dir)
+    if created:
+        path.unlink()
+    return match
+
+
+class TestNodeConfigFileDetection:
+    def _node_template(self, tmp_path: Path, templates_dir: Path) -> object:
+        return _template_for(tmp_path, "tsconfig.json", templates_dir)
+
+    def test_tsconfig_without_typecheck_script_infers_tsc(
+        self, tmp_path: Path, templates_dir: Path
+    ) -> None:
+        (tmp_path / "package.json").write_text(json.dumps({"scripts": {}}))
+        (tmp_path / "tsconfig.json").write_text("{}")
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        iv = result.values["project.type_cmd"]
+        assert iv.provenance == "inferred"
+        assert "tsc" in iv.value
+        assert "tsconfig.json" in iv.evidence
+
+    def test_declared_typecheck_script_beats_tsconfig(
+        self, tmp_path: Path, templates_dir: Path
+    ) -> None:
+        (tmp_path / "package.json").write_text(json.dumps({"scripts": {"typecheck": "tsc -p ."}}))
+        (tmp_path / "tsconfig.json").write_text("{}")
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        iv = result.values["project.type_cmd"]
+        assert iv.provenance == "declared"
+        assert iv.value == "npm run typecheck"
+
+    def test_eslint_and_prettier_config_files(self, tmp_path: Path, templates_dir: Path) -> None:
+        (tmp_path / "package.json").write_text(json.dumps({"scripts": {}}))
+        (tmp_path / "eslint.config.js").touch()
+        (tmp_path / ".prettierrc").touch()
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        assert "eslint" in result.values["project.lint_cmd"].value
+        assert result.values["project.lint_cmd"].provenance == "inferred"
+        assert "prettier" in result.values["project.format_cmd"].value
+
+    def test_biome_config_covers_lint_and_format(self, tmp_path: Path, templates_dir: Path) -> None:
+        (tmp_path / "package.json").write_text(json.dumps({"scripts": {}}))
+        (tmp_path / "biome.json").write_text("{}")
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        assert "biome" in result.values["project.lint_cmd"].value
+        assert "biome" in result.values["project.format_cmd"].value
+
+    def test_vitest_and_jest_configs(self, tmp_path: Path, templates_dir: Path) -> None:
+        (tmp_path / "package.json").write_text(json.dumps({"scripts": {}}))
+        (tmp_path / "vitest.config.ts").touch()
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        assert "vitest" in result.values["project.test_cmd"].value
+        (tmp_path / "vitest.config.ts").unlink()
+        (tmp_path / "jest.config.js").touch()
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        assert "jest" in result.values["project.test_cmd"].value
+
+    def test_vite_config_only_implies_vitest_with_dependency(
+        self, tmp_path: Path, templates_dir: Path
+    ) -> None:
+        (tmp_path / "vite.config.ts").touch()
+        (tmp_path / "package.json").write_text(json.dumps({"scripts": {}}))
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        assert result.values["project.test_cmd"].provenance == "default"
+        (tmp_path / "package.json").write_text(
+            json.dumps({"scripts": {}, "devDependencies": {"vitest": "^1"}})
+        )
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        assert "vitest" in result.values["project.test_cmd"].value
+
+    def test_package_manager_field_beats_lockfile(
+        self, tmp_path: Path, templates_dir: Path
+    ) -> None:
+        (tmp_path / "package.json").write_text(
+            json.dumps({"scripts": {"test": "x"}, "packageManager": "pnpm@9.0.0"})
+        )
+        (tmp_path / "yarn.lock").touch()
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        assert result.values["project.test_cmd"].value == "pnpm run test"
+
+    def test_bun_lock_text_variant(self, tmp_path: Path, templates_dir: Path) -> None:
+        (tmp_path / "package.json").write_text(json.dumps({"scripts": {"test": "x"}}))
+        (tmp_path / "bun.lock").touch()
+        result = introspect(tmp_path, self._node_template(tmp_path, templates_dir))
+        assert result.values["project.test_cmd"].value == "bun run test"
+
+
+class TestTaskRunnerDetection:
+    def test_makefile_targets(self, tmp_path: Path, python_template: object) -> None:
+        (tmp_path / "Makefile").write_text(
+            ".PHONY: test lint\ntest:\n\tpytest\nlint:\n\truff check .\nfmt:\n\truff format .\n"
+        )
+        result = introspect(tmp_path, python_template)
+        assert result.values["project.test_cmd"].value == "make test"
+        assert result.values["project.test_cmd"].provenance == "inferred"
+        assert "Makefile target 'test'" in result.values["project.test_cmd"].evidence
+        assert result.values["project.lint_cmd"].value == "make lint"
+        assert result.values["project.format_cmd"].value == "make fmt"
+
+    def test_makefile_ignores_variable_assignments(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "Makefile").write_text("test := 1\nbuild:\n\techo\n")
+        result = introspect(tmp_path, python_template)
+        assert result.values["project.test_cmd"].provenance == "default"
+        assert result.values["project.build_cmd"].value == "make build"
+
+    def test_justfile_recipes(self, tmp_path: Path, python_template: object) -> None:
+        (tmp_path / "justfile").write_text("test:\n    pytest\nlint flag='':\n    ruff\n")
+        result = introspect(tmp_path, python_template)
+        assert result.values["project.test_cmd"].value == "just test"
+        assert result.values["project.lint_cmd"].value == "just lint"
+
+    def test_tox_envs(self, tmp_path: Path, python_template: object) -> None:
+        (tmp_path / "tox.ini").write_text("[tox]\n[testenv]\ncommands = pytest\n[testenv:lint]\n")
+        result = introspect(tmp_path, python_template)
+        assert result.values["project.test_cmd"].value == "tox"
+        assert result.values["project.lint_cmd"].value == "tox -e lint"
+
+    def test_noxfile_sessions(self, tmp_path: Path, python_template: object) -> None:
+        (tmp_path / "noxfile.py").write_text(
+            "import nox\n@nox.session\ndef tests(session):\n    pass\n"
+            "@nox.session\ndef typecheck(session):\n    pass\n"
+        )
+        result = introspect(tmp_path, python_template)
+        assert result.values["project.test_cmd"].value == "nox -s tests"
+        assert result.values["project.type_cmd"].value == "nox -s typecheck"
+
+    def test_declared_manifest_beats_task_runner(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\n")
+        (tmp_path / "Makefile").write_text("test:\n\tpytest\n")
+        result = introspect(tmp_path, python_template)
+        assert result.values["project.test_cmd"].provenance == "declared"
+        assert result.values["project.test_cmd"].value == "pytest"
+
+
+class TestEcosystemDetection:
+    def test_go_conventions(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "go.mod", templates_dir)
+        (tmp_path / "go.mod").write_text("module example.com/x\n")
+        result = introspect(tmp_path, template)
+        assert result.values["project.test_cmd"].value == "go test ./..."
+        assert result.values["project.test_cmd"].provenance == "inferred"
+        assert result.values["project.lint_cmd"].value == "go vet ./..."
+        assert result.values["project.build_cmd"].value == "go build ./..."
+        (tmp_path / ".golangci.yml").touch()
+        result = introspect(tmp_path, template)
+        assert "golangci-lint" in result.values["project.lint_cmd"].value
+
+    def test_rust_conventions(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "Cargo.toml", templates_dir)
+        (tmp_path / "Cargo.toml").write_text("[package]\nname='x'\n")
+        result = introspect(tmp_path, template)
+        assert result.values["project.test_cmd"].value == "cargo test"
+        assert "clippy" in result.values["project.lint_cmd"].value
+        assert result.values["project.build_cmd"].value == "cargo build"
+        assert result.values["project.build_cmd"].provenance == "inferred"
+
+    def test_gradle_wrapper_preferred(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "build.gradle", templates_dir)
+        (tmp_path / "build.gradle").touch()
+        result = introspect(tmp_path, template)
+        assert result.values["project.test_cmd"].value == "gradle test"
+        (tmp_path / "gradlew").touch()
+        result = introspect(tmp_path, template)
+        assert result.values["project.test_cmd"].value == "./gradlew test"
+
+    def test_dotnet_conventions(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "app.csproj", templates_dir)
+        (tmp_path / "app.csproj").touch()
+        result = introspect(tmp_path, template)
+        assert result.values["project.test_cmd"].value == "dotnet test"
+        assert result.values["project.build_cmd"].value == "dotnet build"
+
+
+class TestBuildCmd:
+    def test_node_build_script_declared(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "tsconfig.json", templates_dir)
+        (tmp_path / "package.json").write_text(json.dumps({"scripts": {"build": "vite build"}}))
+        result = introspect(tmp_path, template)
+        assert result.values["project.build_cmd"].value == "npm run build"
+        assert result.values["project.build_cmd"].provenance == "declared"
+
+    def test_build_cmd_reaches_config(self, tmp_path: Path, templates_dir: Path) -> None:
+        from little_loops.init.core import build_config
+
+        template = _template_for(tmp_path, "pyproject.toml", templates_dir)
+        config = build_config(template, {"build_cmd": "make build"})
+        assert config["project"]["build_cmd"] == "make build"
+
+
+class TestFocusDirsEvidence:
+    def test_evidence_names_only_detected_parts(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        pkg = tmp_path / "mypkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").touch()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["scan.focus_dirs"]
+        assert iv.evidence == "adopted src_dir"
+        (tmp_path / "tests").mkdir()
+        result = introspect(tmp_path, python_template)
+        assert (
+            result.values["scan.focus_dirs"].evidence
+            == "adopted src_dir + detected tests/ directory"
+        )

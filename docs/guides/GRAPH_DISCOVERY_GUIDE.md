@@ -103,6 +103,15 @@ transient rather than steady-state — the provider self-heals via `codegraph sy
 the one-time straggler before the next `status()` reports `fresh` again. It is still
 observable in practice, so the widening above is a live path, not a formality.
 
+## Setup
+
+`ll-init` detects the [`@colbymchenry/codegraph`](https://github.com/colbymchenry/codegraph)
+tool and offers to build the index (wizard prompt; `ll-init --yes` indexes when the binary is
+already installed, `ll-init --code-graph install` also runs the npm install). By hand:
+`npm install -g @colbymchenry/codegraph && codegraph init .`, then `ll-code status`.
+`ll-doctor`'s **Code Graph (ll-code)** section reports fresh / stale / missing with the
+commands to fix it.
+
 ## Provider note
 
 Both providers are real today: `FallbackProvider` (grep/AST, no index, always

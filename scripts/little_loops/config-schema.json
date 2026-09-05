@@ -273,7 +273,8 @@
             ".ll/ll-context-handoff-needed*",
             ".ll/loop-suggestions/",
             ".ll/advisor-budget/",
-            ".ll/design-tokens/"
+            ".ll/design-tokens/",
+            ".codegraph/"
           ]
         }
       },

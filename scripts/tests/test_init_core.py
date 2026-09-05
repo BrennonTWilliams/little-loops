@@ -57,6 +57,29 @@ from little_loops.issue_template import get_bundled_templates_dir
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _no_codegraph_on_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report "no codegraph, no npm" so init tests never shell out to codegraph/npm.
+
+    The dev machine has codegraph on PATH; without this guard every --yes run
+    would build a real index in the tmp project (slow, and not what these tests
+    exercise). test_init_codegraph.py covers the real detection paths.
+    """
+    from little_loops.init.codegraph import CodegraphStatus
+
+    def _none(project_root: Path, db_path: str | None = None) -> CodegraphStatus:
+        return CodegraphStatus(
+            binary=None,
+            index_present=(Path(project_root) / ".codegraph" / "codegraph.db").is_file(),
+            db_path=Path(project_root) / ".codegraph" / "codegraph.db",
+            node=None,
+            npm=None,
+            npx=None,
+        )
+
+    monkeypatch.setattr("little_loops.init.codegraph.detect_codegraph", _none)
+
+
 _PROJECT_ROOT = Path(__file__).parent.parent.parent  # scripts/tests/.. → project root
 
 
@@ -784,6 +807,58 @@ class TestBuildConfig:
 # ===========================================================================
 # TestBuildConfigSchemaParity
 # ===========================================================================
+
+
+class TestFeatureChoices:
+    """existing_feature_choices / recommended_feature_choices (re-init idempotency)."""
+
+    def test_absent_sections_resolve_to_schema_defaults(self) -> None:
+        from little_loops.init.core import existing_feature_choices, schema_default
+
+        choices = existing_feature_choices({})
+        assert choices["product_enabled"] is bool(schema_default("product.enabled"))
+        assert choices["learning_tests_enabled"] is bool(schema_default("learning_tests.enabled"))
+        assert choices["context_monitor_enabled"] is bool(schema_default("context_monitor.enabled"))
+        assert choices["parallel_enabled"] is False
+        assert choices["design_tokens_enabled"] is False
+        # tri-state: absent documents leaves the key unset so detection decides
+        assert "documents_enabled" not in choices
+
+    def test_present_sections_are_read(self) -> None:
+        from little_loops.init.core import existing_feature_choices
+
+        choices = existing_feature_choices(
+            {
+                "product": {"enabled": True},
+                "parallel": {"max_workers": 3},
+                "design_tokens": {"active": "warm-paper"},
+                "sync": {"enabled": True},
+                "commands": {"confidence_gate": {"enabled": True}, "tdd_mode": True},
+                "history": {"session_digest": {"enabled": False}},
+                "documents": {"enabled": True},
+            }
+        )
+        assert choices["product_enabled"] is True
+        assert choices["parallel_enabled"] is True
+        assert choices["design_tokens_enabled"] is True  # BUG-3274 presence default
+        assert choices["sync_enabled"] is True
+        assert choices["confidence_gate_enabled"] is True
+        assert choices["tdd_enabled"] is True
+        assert choices["session_digest_enabled"] is False
+        assert choices["documents_enabled"] is True
+
+    def test_reinit_choices_drop_subconfig_sections(self) -> None:
+        from little_loops.init.core import SUBCONFIG_FEATURE_CHOICES, reinit_feature_choices
+
+        choices = reinit_feature_choices({"commands": {"confidence_gate": {"enabled": True}}})
+        assert not (set(choices) & SUBCONFIG_FEATURE_CHOICES)
+
+    def test_recommended_overlays_schema_defaults(self) -> None:
+        from little_loops.init.core import RECOMMENDED_FEATURES, recommended_feature_choices
+
+        choices = recommended_feature_choices()
+        for feature in RECOMMENDED_FEATURES:
+            assert choices[f"{feature}_enabled"] is True
 
 
 class TestBuildConfigSchemaParity:
@@ -1977,6 +2052,29 @@ class TestWriteGeminiMd:
 
 
 class TestValidateDeps:
+    def test_jq_hint_platform_aware(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.init import validate
+
+        monkeypatch.setattr(validate.sys, "platform", "darwin")
+        assert validate._jq_install_hint() == "brew install jq"
+        monkeypatch.setattr(validate.sys, "platform", "linux")
+        monkeypatch.setattr(
+            validate.shutil, "which", lambda b: "/usr/bin/apt-get" if b == "apt-get" else None
+        )
+        assert validate._jq_install_hint() == "sudo apt-get install jq"
+        monkeypatch.setattr(validate.shutil, "which", lambda b: None)
+        assert validate._jq_install_hint().startswith("https://")
+        monkeypatch.setattr(validate.sys, "platform", "win32")
+        assert validate._jq_install_hint() == "winget install jqlang.jq"
+
+    def test_jq_missing_uses_platform_hint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.init import validate
+
+        monkeypatch.setattr(validate.sys, "platform", "darwin")
+        with patch("little_loops.init.validate.shutil.which", return_value=None):
+            w = validate._check_jq()
+        assert w is not None and w.install_hint == "brew install jq"
+
     def test_no_warnings_when_all_present(self) -> None:
         with (
             patch("little_loops.init.validate.shutil.which", return_value="/usr/bin/jq"),
@@ -2123,15 +2221,21 @@ class TestIsGitRepo:
 
 
 class TestMainInit:
-    def test_no_args_launches_tui_non_tty(self, capsys: pytest.CaptureFixture) -> None:
+    def test_no_args_non_tty_falls_back_to_headless(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
         # No flags → TUI path. In a non-TTY test runner stdin.isatty() returns False,
-        # so run_tui exits with 1 and emits a --yes hint to stderr.
+        # so run_tui prints a notice and delegates to the headless --yes flow.
         from little_loops.init.cli import main_init
 
-        with patch.object(sys, "argv", ["ll-init"]):
-            code = main_init([])
-        assert code == 1
-        assert "--yes" in capsys.readouterr().err
+        with (
+            patch.object(sys, "argv", ["ll-init"]),
+            patch("little_loops.init.cli._run_yes", return_value=0) as run_yes,
+        ):
+            code = main_init(["--root", str(tmp_project)])
+        assert code == 0
+        run_yes.assert_called_once()
+        assert "not a TTY" in capsys.readouterr().out
 
     def test_dry_run_yes_exits_zero(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
@@ -3163,8 +3267,8 @@ class TestMainInit:
         ):
             code = main_init(["--yes", "--root", str(tmp_project)])
         assert code == 0
-        err = capsys.readouterr().err
-        assert err.count("isn't a git repository") == 1
+        out = capsys.readouterr().out
+        assert out.count("isn't a git repository") == 1
         assert (tmp_project / ".gitignore").exists()
 
     def test_git_repo_prints_no_notice(
@@ -3405,6 +3509,62 @@ class TestDetectHosts:
             hosts = _detect_hosts(tmp_path)
         assert "claude-code" in hosts
         assert "codex" in hosts
+
+    def test_gemini_binary_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        with patch(
+            "little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "gemini" else None
+        ):
+            hosts = _detect_hosts(tmp_path)
+        assert "gemini" in hosts
+
+    def test_gemini_dir_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        (tmp_path / ".gemini").mkdir()
+        with patch("little_loops.init.cli.shutil.which", return_value=None):
+            hosts = _detect_hosts(tmp_path)
+        assert "gemini" in hosts
+
+    def test_pi_never_primary(self, tmp_path: Path) -> None:
+        """An adapter-pending host on PATH is listed but never takes the primary slot."""
+        from little_loops.init.cli import default_hosts
+
+        with patch(
+            "little_loops.init.cli.shutil.which",
+            side_effect=lambda b: b if b in ("pi", "codex") else None,
+        ):
+            hosts = default_hosts(tmp_path)
+        assert hosts[0] == "codex"
+        assert "pi" in hosts
+
+    def test_only_pending_hosts_still_listed(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import default_hosts
+
+        with patch(
+            "little_loops.init.cli.shutil.which", side_effect=lambda b: b if b == "pi" else None
+        ):
+            hosts = default_hosts(tmp_path)
+        assert hosts == ["pi"]
+
+    def test_existing_host_cli_first(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import default_hosts
+
+        with patch(
+            "little_loops.init.cli.shutil.which",
+            side_effect=lambda b: b if b in ("claude", "qwen") else None,
+        ):
+            hosts = default_hosts(tmp_path, {"orchestration": {"host_cli": "qwen"}})
+        assert hosts == ["qwen", "claude-code"]
+
+    def test_available_hosts_lists_every_known_host(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _KNOWN_HOSTS, available_hosts
+
+        with patch("little_loops.init.cli.shutil.which", return_value=None):
+            available = available_hosts(tmp_path)
+        assert set(available) == set(_KNOWN_HOSTS)
+        assert not any(available.values())
 
 
 # ===========================================================================
@@ -3960,17 +4120,56 @@ class TestDispatchHostUpgrade:
         introspection = IntrospectResult(
             values={
                 "project.test_cmd": IntrospectedValue(
-                    value="python -m pytest scripts/tests/",
+                    value="pytest",
                     provenance="declared",
                     evidence="[tool.pytest.ini_options] in pyproject.toml",
                 )
             },
             ambiguities=[],
         )
-        _warn_config_drift({"project": {"test_cmd": "pytest"}}, introspection)
-        err = capsys.readouterr().err
-        assert "pytest" in err and "python -m pytest scripts/tests/" in err
-        assert "ll-init --plan" in err
+        _warn_config_drift({"project": {"test_cmd": "make test"}}, introspection)
+        out = capsys.readouterr().out
+        assert "pytest" in out and "make test" in out
+        assert "ll-init --plan" in out
+
+    def test_warn_config_drift_stream_routes_to_stderr(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--plan passes stream=sys.stderr so stdout stays pure JSON."""
+        from little_loops.init.cli import _warn_config_drift
+        from little_loops.init.introspect import IntrospectedValue, IntrospectResult
+
+        introspection = IntrospectResult(
+            values={
+                "project.test_cmd": IntrospectedValue(
+                    value="pytest", provenance="declared", evidence="[tool.pytest.ini_options]"
+                )
+            },
+            ambiguities=[],
+        )
+        _warn_config_drift({"project": {"test_cmd": "make test"}}, introspection, stream=sys.stderr)
+        captured = capsys.readouterr()
+        assert "make test" in captured.err
+        assert captured.out == ""
+
+    def test_warn_config_drift_silent_for_launcher_variant(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`python -m pytest -q` and `pytest` run the same tool — not drift."""
+        from little_loops.init.cli import _warn_config_drift
+        from little_loops.init.introspect import IntrospectedValue, IntrospectResult
+
+        introspection = IntrospectResult(
+            values={
+                "project.test_cmd": IntrospectedValue(
+                    value="pytest", provenance="declared", evidence="[tool.pytest.ini_options]"
+                )
+            },
+            ambiguities=[],
+        )
+        _warn_config_drift({"project": {"test_cmd": "python -m pytest -q"}}, introspection)
+        captured = capsys.readouterr()
+        assert captured.out == "" and captured.err == ""
 
     def test_warn_config_drift_silent_when_matched(
         self, capsys: pytest.CaptureFixture[str]

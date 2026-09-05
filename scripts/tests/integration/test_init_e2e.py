@@ -37,6 +37,29 @@ _NO_INSTALL = ("little_loops.init.install_check.detect_installation",)
 _LOGO_MARKER = (get_logo("full") or "").strip().splitlines()[0]
 
 
+@pytest.fixture(autouse=True)
+def _no_codegraph_on_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report "no codegraph, no npm" so init tests never shell out to codegraph/npm.
+
+    The dev machine has codegraph on PATH; without this guard every --yes run
+    would build a real index in the tmp project (slow, and not what these tests
+    exercise). test_init_codegraph.py covers the real detection paths.
+    """
+    from little_loops.init.codegraph import CodegraphStatus
+
+    def _none(project_root: Path, db_path: str | None = None) -> CodegraphStatus:
+        return CodegraphStatus(
+            binary=None,
+            index_present=(Path(project_root) / ".codegraph" / "codegraph.db").is_file(),
+            db_path=Path(project_root) / ".codegraph" / "codegraph.db",
+            node=None,
+            npm=None,
+            npx=None,
+        )
+
+    monkeypatch.setattr("little_loops.init.codegraph.detect_codegraph", _none)
+
+
 def _run_init(argv: list[str]) -> int:
     """Invoke main_init with a clean no-install probe."""
     from little_loops.init.cli import main_init
@@ -312,15 +335,36 @@ class TestInitHeadlessIntrospection:
         )
 
         (project / ".ll").mkdir()
+        existing = {"project": {"test_cmd": "make test"}}
+        (project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
+
+        assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+
+        out = capsys.readouterr().out
+        assert "test_cmd" in out
+        assert "make test" in out
+        assert "ll-init --plan" in out
+        config = json.loads((project / ".ll" / "ll-config.json").read_text())
+        assert config["project"]["test_cmd"] == "make test"
+
+    def test_yes_reinit_no_warning_for_launcher_variant(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`python -m pytest -q` vs declared `pytest` is the same tool — no drift warning."""
+        project = tmp_path / "drift_variant"
+        project.mkdir()
+        (project / "pyproject.toml").write_text(
+            '[tool.pytest.ini_options]\ntestpaths = ["scripts/tests"]\n'
+        )
+        (project / ".ll").mkdir()
         existing = {"project": {"test_cmd": "python -m pytest scripts/tests/ -v"}}
         (project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
 
         assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
 
-        err = capsys.readouterr().err
-        assert "test_cmd" in err
-        assert "python -m pytest scripts/tests/ -v" in err
-        assert "ll-init --plan" in err
+        captured = capsys.readouterr()
+        assert "keeping existing config value" not in captured.out
+        assert "keeping existing config value" not in captured.err
         config = json.loads((project / ".ll" / "ll-config.json").read_text())
         assert config["project"]["test_cmd"] == "python -m pytest scripts/tests/ -v"
 
@@ -338,7 +382,7 @@ class TestInitHeadlessIntrospection:
         )
 
         (project / ".ll").mkdir()
-        existing = {"project": {"test_cmd": "python -m pytest scripts/tests/ -v"}}
+        existing = {"project": {"test_cmd": "make test"}}
         (project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
 
         buf = io.StringIO()
@@ -349,7 +393,7 @@ class TestInitHeadlessIntrospection:
 
         err = capsys.readouterr().err
         assert "test_cmd" in err
-        assert "python -m pytest scripts/tests/ -v" in err
+        assert "make test" in err
 
 
 class TestInitLogoBanner:

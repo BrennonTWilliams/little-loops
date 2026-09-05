@@ -49,6 +49,29 @@ def _plan_for(project: Path) -> dict:
     return json.loads(buf.getvalue())
 
 
+@pytest.fixture(autouse=True)
+def _no_codegraph_on_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report "no codegraph, no npm" so init tests never shell out to codegraph/npm.
+
+    The dev machine has codegraph on PATH; without this guard every --yes run
+    would build a real index in the tmp project (slow, and not what these tests
+    exercise). test_init_codegraph.py covers the real detection paths.
+    """
+    from little_loops.init.codegraph import CodegraphStatus
+
+    def _none(project_root: Path, db_path: str | None = None) -> CodegraphStatus:
+        return CodegraphStatus(
+            binary=None,
+            index_present=(Path(project_root) / ".codegraph" / "codegraph.db").is_file(),
+            db_path=Path(project_root) / ".codegraph" / "codegraph.db",
+            node=None,
+            npm=None,
+            npx=None,
+        )
+
+    monkeypatch.setattr("little_loops.init.codegraph.detect_codegraph", _none)
+
+
 # ===========================================================================
 # H-1: --force must survive the apply subparser (both flag positions)
 # ===========================================================================
@@ -598,6 +621,86 @@ class TestHostOptionsComplete:
         for key in ("has_claude_code", "has_codex", "has_opencode", "has_pi", "has_kimi_code"):
             assert key in opts, f"host_options missing {key}"
         assert opts["suggested_settings_file"] == ".claude/settings.local.json"
+        # additive keys (2026-09 audit): full availability map + resolved default list
+        from little_loops.init.cli import _KNOWN_HOSTS
+
+        assert set(opts["available"]) == set(_KNOWN_HOSTS)
+        assert opts["default"] and opts["primary"] == opts["default"][0]
+
+
+class TestHeadlessSettingsFlags:
+    def test_settings_skip_writes_no_claude_dir(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert (
+            _run(["--yes", "--settings", "skip", "--hosts", "claude-code", "--root", str(project)])
+            == 0
+        )
+        assert not (project / ".claude" / "settings.local.json").exists()
+        assert not (project / ".claude" / "settings.json").exists()
+        assert (project / ".claude" / "CLAUDE.md").exists()  # CLAUDE.md is separate
+
+    def test_no_settings_alias(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert (
+            _run(["--yes", "--no-settings", "--hosts", "claude-code", "--root", str(project)]) == 0
+        )
+        assert not (project / ".claude" / "settings.local.json").exists()
+
+    def test_settings_shared(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert (
+            _run(
+                ["--yes", "--settings", "shared", "--hosts", "claude-code", "--root", str(project)]
+            )
+            == 0
+        )
+        assert (project / ".claude" / "settings.json").exists()
+        assert not (project / ".claude" / "settings.local.json").exists()
+
+    def test_no_claude_md(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert (
+            _run(["--yes", "--no-claude-md", "--hosts", "claude-code", "--root", str(project)]) == 0
+        )
+        assert not (project / ".claude" / "CLAUDE.md").exists()
+        assert (project / ".claude" / "settings.local.json").exists()
+
+    def test_codex_only_writes_no_claude_surfaces(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert _run(["--yes", "--hosts", "codex", "--root", str(project)]) == 0
+        assert not (project / ".claude").exists()
+        assert (project / "AGENTS.md").exists()
+        assert (project / ".codex" / "hooks.json").exists()
+
+    def test_apply_honors_settings_flags(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(_plan_for(src)))
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        assert (
+            _run(
+                [
+                    "--hosts",
+                    "claude-code",
+                    "--no-settings",
+                    "--no-claude-md",
+                    "--root",
+                    str(dest),
+                    "apply",
+                    "--config",
+                    str(plan_file),
+                ]
+            )
+            == 0
+        )
+        assert not (dest / ".claude").exists()
 
 
 # ===========================================================================
@@ -673,15 +776,27 @@ class TestHostSelectionPersisted:
         # codex is inside hooks.host's enum.
         assert config["hooks"]["host"] == "codex"
 
-    def test_auto_detected_hosts_not_persisted(self, tmp_path: Path) -> None:
+    def test_auto_detected_hosts_persisted(self, tmp_path: Path) -> None:
+        """Auto-detected hosts persist too, so resolve_host() later agrees with
+        the adapters that were written (2026-09 audit, finding C)."""
         project = tmp_path / "proj"
         project.mkdir()
-        # No --hosts: detection reflects the machine, not a decision.
-        with patch("little_loops.init.cli._detect_hosts", return_value=["claude-code"]):
+        with patch("little_loops.init.cli.default_hosts", return_value=["claude-code", "codex"]):
             assert _run(["--yes", "--root", str(project)]) == 0
         config = json.loads((project / ".ll" / "ll-config.json").read_text())
-        assert "orchestration" not in config
-        assert "hooks" not in config
+        assert config["orchestration"]["host_cli"] == "claude-code"
+        assert config["hooks"]["host"] == "claude-code"
+
+    def test_existing_host_cli_stays_primary_on_reinit(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import default_hosts
+
+        with patch(
+            "little_loops.init.cli.shutil.which",
+            side_effect=lambda b: b if b in ("claude", "codex") else None,
+        ):
+            hosts = default_hosts(tmp_path, {"orchestration": {"host_cli": "codex"}})
+        assert hosts[0] == "codex"
+        assert "claude-code" in hosts
 
     def test_host_outside_hooks_enum_skipped(self, tmp_path: Path) -> None:
         project = tmp_path / "proj"
@@ -715,7 +830,36 @@ class TestOutputLayer:
         assert "little-loops initialized" in out
         assert "Next steps:" in out
         assert "/ll:scan-codebase" in out
+        assert "scan the codebase and file" in out  # no longer claims to "index"
         assert "ll-doctor" in out
+        assert "/ll:capture-issue" in out
+        assert "codegraph init" in out  # no index on this (patched) machine
+        assert "git init" in out  # tmp project is not a repo
+
+    def test_dry_run_paths_are_relative(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert _run(["--yes", "--dry-run", "--hosts", "claude-code", "--root", str(project)]) == 0
+        out = capsys.readouterr().out
+        write_lines = [
+            ln for ln in out.splitlines() if ln.lstrip("ℹ ").startswith(("write ", "mkdir "))
+        ]
+        assert write_lines, out
+        assert all(str(project) not in ln for ln in write_lines), write_lines
+        assert any(".ll/ll-config.json" in ln for ln in write_lines)
+
+    def test_dependency_block_reports_success(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        with patch("little_loops.init.validate.validate_deps", return_value=[]):
+            assert _run(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+        out = capsys.readouterr().out
+        assert "Validating dependencies..." in out
+        assert "All dependencies found" in out
 
     def test_apply_completion_string(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         src = tmp_path / "src"
@@ -782,6 +926,314 @@ class TestOutputLayer:
 
 
 # ===========================================================================
+# Re-init idempotency (ll-init audit 2026-09-04, finding B)
+# ===========================================================================
+
+
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text())
+
+
+class TestHeadlessIdempotent:
+    """`ll-init --yes` twice must produce byte-identical artifacts."""
+
+    def _init(self, project: Path, *extra: str) -> None:
+        assert _run(["--yes", "--hosts", "claude-code", "--root", str(project), *extra]) == 0
+
+    def test_yes_twice_produces_identical_artifacts(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / "pyproject.toml").write_text("[tool.ruff]\n")
+        self._init(project)
+        first = {
+            name: (project / name).read_text()
+            for name in (".ll/ll-config.json", ".claude/settings.local.json", ".gitignore")
+        }
+        first_goals = (project / ".ll" / "ll-goals.md").exists()
+        self._init(project)
+        for name, content in first.items():
+            assert (project / name).read_text() == content, name
+        assert (project / ".ll" / "ll-goals.md").exists() == first_goals
+
+    def test_reinit_does_not_reenable_default_off_features(self, tmp_path: Path) -> None:
+        from little_loops.init.core import schema_default
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        self._init(project)
+        self._init(project)
+        config = _read_json(project / ".ll" / "ll-config.json")
+        assert config.get("product", {}).get("enabled", False) is bool(
+            schema_default("product.enabled")
+        )
+        assert config["learning_tests"]["enabled"] is bool(schema_default("learning_tests.enabled"))
+
+    def test_reinit_preserves_explicitly_enabled_features(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        self._init(project, "--enable", "product", "--enable", "learning_tests")
+        self._init(project)
+        config = _read_json(project / ".ll" / "ll-config.json")
+        assert config["product"]["enabled"] is True
+        assert config["learning_tests"]["enabled"] is True
+
+    def test_reinit_preserves_subconfig_values(self, tmp_path: Path) -> None:
+        """Enabled sub-config sections are not rebuilt from schema defaults."""
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / ".ll").mkdir()
+        (project / ".ll" / "ll-config.json").write_text(
+            json.dumps(
+                {
+                    "commands": {"confidence_gate": {"enabled": True, "readiness_threshold": 91}},
+                    "design_tokens": {"enabled": True, "active": "warm-paper"},
+                    "parallel": {"max_workers": 3, "use_feature_branches": True},
+                }
+            )
+        )
+        self._init(project)
+        config = _read_json(project / ".ll" / "ll-config.json")
+        assert config["commands"]["confidence_gate"]["readiness_threshold"] == 91
+        assert config["design_tokens"]["active"] == "warm-paper"
+        assert config["parallel"] == {"max_workers": 3, "use_feature_branches": True}
+
+
+# ===========================================================================
+# Robustness (audit finding F)
+# ===========================================================================
+
+
+class TestRobustness:
+    def test_keyerror_from_schema_default_is_friendly(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        with patch(
+            "little_loops.init.core.schema_default",
+            side_effect=KeyError("config-schema.json has no property at 'x'"),
+        ):
+            rc = _run(["--yes", "--hosts", "claude-code", "--root", str(project)])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Error:" in err and "schema" in err
+        assert "Traceback" not in err
+
+    def test_apply_stamps_install_source(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(_plan_for(src)))
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=("pypi", "1.0.0", None),
+            ),
+            patch("little_loops.init.install_check.plugin_installed", return_value=True),
+        ):
+            rc = main_init(
+                ["--hosts", "claude-code", "--root", str(dest), "apply", "--config", str(plan_file)]
+            )
+        assert rc == 0
+        assert _read_json(dest / ".ll" / "ll-config.json")["install_source"] == "pypi"
+
+    def test_ll_state_dir_redirects_writes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        monkeypatch.setenv("LL_STATE_DIR", ".codex")
+        assert _run(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+        assert (project / ".codex" / "ll-config.json").exists()
+        assert not (project / ".ll" / "ll-config.json").exists()
+
+    def test_help_documents_exit_130(self, capsys: pytest.CaptureFixture) -> None:
+        from little_loops.init.cli import main_init
+
+        with pytest.raises(SystemExit):
+            main_init(["--help"])
+        assert "130" in capsys.readouterr().out
+
+
+# ===========================================================================
+# Code graph step (2026-09 audit, finding D)
+# ===========================================================================
+
+
+class TestCodeGraphHeadless:
+    def _index(self, project: Path) -> None:
+        (project / ".codegraph").mkdir()
+        (project / ".codegraph" / "codegraph.db").write_bytes(b"")
+
+    def test_skip_writes_no_section(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert (
+            _run(
+                ["--yes", "--code-graph", "skip", "--hosts", "claude-code", "--root", str(project)]
+            )
+            == 0
+        )
+        assert "code_query" not in _read_json(project / ".ll" / "ll-config.json")
+
+    def test_commands_mode_prints_commands(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert (
+            _run(
+                [
+                    "--yes",
+                    "--code-graph",
+                    "commands",
+                    "--hosts",
+                    "claude-code",
+                    "--root",
+                    str(project),
+                ]
+            )
+            == 0
+        )
+        out = capsys.readouterr().out
+        assert "npm install -g @colbymchenry/codegraph" in out
+        assert "codegraph init ." in out
+        assert "code_query" not in _read_json(project / ".ll" / "ll-config.json")
+
+    def test_existing_index_writes_code_query(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        self._index(project)
+        assert _run(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+        config = _read_json(project / ".ll" / "ll-config.json")
+        assert config["code_query"] == {"provider": "auto"}
+
+    def test_existing_index_summary_and_next_steps(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        self._index(project)
+        assert _run(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+        out = capsys.readouterr().out
+        assert "indexed (.codegraph/)" in out
+        assert "ll-code status" in out
+        assert "codegraph init" not in out
+
+    def test_plan_includes_code_graph(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        plan = _plan_for(project)
+        assert plan["code_graph"]["index_present"] is False
+        assert plan["code_graph"]["recommended_action"] == "commands"
+        assert "codegraph init ." in plan["code_graph"]["manual_commands"]
+        self._index(project)
+        plan = _plan_for(project)
+        assert plan["code_graph"]["index_present"] is True
+        assert plan["proposed_config"]["code_query"] == {"provider": "auto"}
+
+    def test_gitignore_covers_codegraph(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert _run(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+        assert ".codegraph/" in (project / ".gitignore").read_text().splitlines()
+
+    def test_claude_md_lists_ll_code(self, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert _run(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+        assert "`ll-code`" in (project / ".claude" / "CLAUDE.md").read_text()
+
+    def test_index_mode_runs_and_writes_section(self, tmp_path: Path) -> None:
+        """With the binary present, --code-graph index runs codegraph init and enables code_query."""
+        from little_loops.init.codegraph import CodegraphActionResult, CodegraphStatus
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        db = project / ".codegraph" / "codegraph.db"
+
+        def _detect(root: Path, db_path: str | None = None) -> CodegraphStatus:
+            return CodegraphStatus("/usr/bin/codegraph", db.is_file(), db, None, None, None)
+
+        def _index(root: Path, status: CodegraphStatus, *, dry_run: bool = False, timeout: int = 0):
+            db.parent.mkdir(exist_ok=True)
+            db.write_bytes(b"")
+            return CodegraphActionResult(True, "index", "indexed", [["codegraph", "init", "."]])
+
+        with (
+            patch("little_loops.init.codegraph.detect_codegraph", _detect),
+            patch("little_loops.init.codegraph.index_codegraph", _index),
+        ):
+            assert (
+                _run(
+                    [
+                        "--yes",
+                        "--code-graph",
+                        "index",
+                        "--hosts",
+                        "claude-code",
+                        "--root",
+                        str(project),
+                    ]
+                )
+                == 0
+            )
+        assert _read_json(project / ".ll" / "ll-config.json")["code_query"] == {"provider": "auto"}
+
+    def test_index_failure_is_warning_not_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.init.codegraph import CodegraphActionResult, CodegraphStatus
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        db = project / ".codegraph" / "codegraph.db"
+        with (
+            patch(
+                "little_loops.init.codegraph.detect_codegraph",
+                lambda root, db_path=None: CodegraphStatus(
+                    "/x/codegraph", False, db, None, None, None
+                ),
+            ),
+            patch(
+                "little_loops.init.codegraph.index_codegraph",
+                lambda *a, **k: CodegraphActionResult(False, "index", "boom", [["codegraph"]]),
+            ),
+        ):
+            assert _run(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+        out = capsys.readouterr().out
+        assert "indexing failed: boom" in out
+        assert "codegraph init ." in out
+        assert "code_query" not in _read_json(project / ".ll" / "ll-config.json")
+
+    def test_dry_run_does_not_index(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        from little_loops.init.codegraph import CodegraphStatus
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        db = project / ".codegraph" / "codegraph.db"
+        with (
+            patch(
+                "little_loops.init.codegraph.detect_codegraph",
+                lambda root, db_path=None: CodegraphStatus(
+                    "/x/codegraph", False, db, None, None, None
+                ),
+            ),
+            patch("little_loops.init.codegraph._run") as run,
+        ):
+            assert (
+                _run(["--yes", "--dry-run", "--hosts", "claude-code", "--root", str(project)]) == 0
+            )
+        run.assert_not_called()
+        assert "would build the codegraph index: /x/codegraph init ." in capsys.readouterr().out
+
+
+# ===========================================================================
 # rec-17: schema coverage guard
 # ===========================================================================
 
@@ -811,6 +1263,9 @@ _INIT_WRITTEN_SECTIONS = frozenset(
         "install_source",
         "orchestration",
         "hooks",
+        # 2026-09 audit: written (provider=auto) once a codegraph index exists
+        # or ll-init built one via --code-graph.
+        "code_query",
     }
 )
 
@@ -823,7 +1278,6 @@ _ALLOWED_UNTOUCHED_SECTIONS = frozenset(
         "automation",
         "cache",
         "cli",
-        "code_query",
         "compression",
         "continuation",
         "deferred_tools",

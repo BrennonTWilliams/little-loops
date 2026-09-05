@@ -77,6 +77,163 @@ def schema_enum(dotted_path: str) -> list[str]:
     return list(node["enum"])
 
 
+# Feature keys toggleable via ``--enable``/``--disable`` and the wizard's
+# feature checkbox. Each maps to a ``{name}_enabled`` choice key honored by
+# :func:`build_config`. Lives here (not in cli.py) so the TUI and the
+# proposal layer can share it without importing argparse wiring.
+_TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
+    {
+        "product",
+        "analytics",
+        "context_monitor",
+        "learning_tests",
+        "decisions",
+        "scratch_pad",
+        "session_capture",
+        "session_digest",
+        "prompt_optimization",
+        "parallel",
+        "documents",
+        "design_tokens",
+        "sync",
+        "confidence_gate",
+        "tdd",
+    }
+)
+
+# Features a fresh init turns on beyond the schema defaults. This is the ONE
+# place both the headless path and the wizard read their first-run feature
+# set from, so ``ll-init --yes`` and an accepted wizard run write the same
+# config. Everything else stays at its config-schema.json default.
+RECOMMENDED_FEATURES: frozenset[str] = frozenset({"context_monitor"})
+
+
+def _schema_default_or(dotted_path: str, fallback: Any) -> Any:
+    try:
+        return schema_default(dotted_path)
+    except KeyError:
+        return fallback
+
+
+def existing_feature_choices(existing: dict[str, Any]) -> dict[str, bool]:
+    """Derive ``{feature}_enabled`` choices from an existing ll-config.json.
+
+    Absent sections resolve to the config-schema.json default — never a
+    literal ``True`` — so re-running ``ll-init`` over a config that omits
+    ``product``/``learning_tests`` does not silently switch them on (the
+    pre-fix headless path used ``.get("enabled", True)`` and flipped
+    default-off features on every re-run). Section-presence rules mirror the
+    wizard's pre-check logic: ``parallel`` has no ``enabled`` key (presence is
+    the signal), ``design_tokens`` defaults to enabled within a present
+    section (BUG-3274), and the nested ``sync`` / ``commands.*`` /
+    ``history.session_digest`` keys map to their flat feature names.
+    """
+    choices: dict[str, bool] = {}
+    for section in (
+        "product",
+        "analytics",
+        "context_monitor",
+        "learning_tests",
+        "decisions",
+        "scratch_pad",
+        "session_capture",
+        "prompt_optimization",
+    ):
+        block = existing.get(section)
+        default = bool(_schema_default_or(f"{section}.enabled", False))
+        if isinstance(block, dict):
+            choices[f"{section}_enabled"] = bool(block.get("enabled", default))
+        else:
+            choices[f"{section}_enabled"] = default
+
+    # documents is tri-state in build_config (None = "write it only when
+    # docs were detected"), so an absent section must leave the key unset.
+    documents = existing.get("documents")
+    if isinstance(documents, dict):
+        choices["documents_enabled"] = bool(
+            documents.get("enabled", _schema_default_or("documents.enabled", False))
+        )
+
+    parallel = existing.get("parallel")
+    choices["parallel_enabled"] = isinstance(parallel, dict)
+
+    design_tokens = existing.get("design_tokens")
+    if isinstance(design_tokens, dict):
+        choices["design_tokens_enabled"] = bool(
+            design_tokens.get("enabled", _schema_default_or("design_tokens.enabled", True))
+        )
+    else:
+        choices["design_tokens_enabled"] = False
+
+    sync = existing.get("sync")
+    choices["sync_enabled"] = bool(
+        sync.get("enabled", _schema_default_or("sync.enabled", False))
+        if isinstance(sync, dict)
+        else _schema_default_or("sync.enabled", False)
+    )
+
+    commands_raw = existing.get("commands")
+    commands: dict[str, Any] = commands_raw if isinstance(commands_raw, dict) else {}
+    gate = commands.get("confidence_gate")
+    choices["confidence_gate_enabled"] = bool(
+        gate.get("enabled", _schema_default_or("commands.confidence_gate.enabled", False))
+        if isinstance(gate, dict)
+        else _schema_default_or("commands.confidence_gate.enabled", False)
+    )
+    choices["tdd_enabled"] = bool(
+        commands.get("tdd_mode", _schema_default_or("commands.tdd_mode", False))
+    )
+
+    history_raw = existing.get("history")
+    history: dict[str, Any] = history_raw if isinstance(history_raw, dict) else {}
+    digest = history.get("session_digest")
+    choices["session_digest_enabled"] = bool(
+        digest.get("enabled", _schema_default_or("history.session_digest.enabled", True))
+        if isinstance(digest, dict)
+        else _schema_default_or("history.session_digest.enabled", True)
+    )
+    return choices
+
+
+# Choice keys whose build_config output carries sub-config (thresholds,
+# profile names, worker counts, categories). On a re-init these must NOT be
+# re-emitted from the existing config: build_config would write schema
+# defaults over the user's tuned values (readiness_threshold 91 -> 85,
+# design_tokens.active "warm-paper" -> "default"). The existing section
+# survives verbatim through merge_with_existing instead.
+SUBCONFIG_FEATURE_CHOICES: frozenset[str] = frozenset(
+    {"parallel_enabled", "documents_enabled", "design_tokens_enabled", "confidence_gate_enabled"}
+)
+
+
+def reinit_feature_choices(existing: dict[str, Any]) -> dict[str, bool]:
+    """Feature choices for re-running init over *existing*.
+
+    :func:`existing_feature_choices` minus :data:`SUBCONFIG_FEATURE_CHOICES`,
+    so flag-only sections round-trip through build_config while sub-config
+    sections are preserved by the merge rather than rebuilt from defaults.
+    """
+    return {
+        key: value
+        for key, value in existing_feature_choices(existing).items()
+        if key not in SUBCONFIG_FEATURE_CHOICES
+    }
+
+
+def recommended_feature_choices() -> dict[str, bool]:
+    """Feature choices for a fresh init: schema defaults + :data:`RECOMMENDED_FEATURES`.
+
+    Built by running :func:`existing_feature_choices` over an empty config
+    (so every feature resolves to its schema default) and then overlaying
+    the recommended set. Shared by ``ll-init --yes`` and the wizard's
+    pre-checked feature list.
+    """
+    choices = existing_feature_choices({})
+    for feature in RECOMMENDED_FEATURES:
+        choices[f"{feature}_enabled"] = True
+    return choices
+
+
 def strip_none_leaves(config: dict[str, Any]) -> dict[str, Any]:
     """Return a deep copy of *config* with all ``None``-valued leaves removed.
 
@@ -123,8 +280,8 @@ def build_config(
             Recognised keys:
             - ``project_name`` (str): value written to project.name.
             - ``src_dir`` (str): override project.src_dir.
-            - ``test_cmd`` / ``lint_cmd`` / ``format_cmd`` / ``type_cmd`` (str):
-              override the matching project.* command.
+            - ``test_cmd`` / ``lint_cmd`` / ``format_cmd`` / ``type_cmd`` /
+              ``build_cmd`` (str): override the matching project.* command.
             - ``scan_focus_dirs`` (list[str]): override scan.focus_dirs.
             - ``product_enabled`` (bool): include product section.
             - ``analytics_enabled`` (bool): include analytics section.
@@ -151,6 +308,8 @@ def build_config(
             - ``confidence_gate_enabled`` (bool, opt-in): write
               commands.confidence_gate with schema-default thresholds.
             - ``tdd_enabled`` (bool, opt-in): write commands.tdd_mode=true.
+            - ``code_query_enabled`` (bool, opt-in): write code_query.provider
+              (schema default ``auto``) so ll-code prefers the codegraph index.
 
     Returns:
         Complete config dict (``$schema`` key first, then sections).
@@ -174,6 +333,8 @@ def build_config(
         project["format_cmd"] = choices["format_cmd"]
     if choices.get("type_cmd"):
         project["type_cmd"] = choices["type_cmd"]
+    if choices.get("build_cmd"):
+        project["build_cmd"] = choices["build_cmd"]
     config["project"] = project
 
     # --- issues ---
@@ -284,6 +445,10 @@ def build_config(
     # --- sync (opt-in) ---
     if choices.get("sync_enabled"):
         config["sync"] = {"enabled": True}
+
+    # --- code_query (written once a codegraph index exists / was built) ---
+    if choices.get("code_query_enabled"):
+        config["code_query"] = {"provider": schema_default("code_query.provider")}
 
     # --- commands block (confidence_gate + tdd_mode; opt-in each) ---
     commands: dict[str, Any] = {}
