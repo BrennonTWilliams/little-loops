@@ -6,10 +6,21 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from little_loops.cli.doctor_trim import (
     _split_h2_sections,
     collect_trim_report,
 )
+
+
+@pytest.fixture(autouse=True)
+def _canned_code_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the code_query check off the real repo index (slow) in doctor tests."""
+    monkeypatch.setattr(
+        "little_loops.cli.doctor._code_query_data",
+        lambda: {"status": "unsupported", "severity": "informational", "note": "canned"},
+    )
 
 
 def _write_skill(root: Path, name: str, description: str, *, disabled: bool = False) -> None:

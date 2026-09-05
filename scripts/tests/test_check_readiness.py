@@ -25,12 +25,15 @@ def _make_issue(
     *,
     confidence_score: int | None = None,
     outcome_confidence: int | None = None,
+    outcome_gate_waived: bool | None = None,
 ) -> None:
     lines = ["---", "id: BUG-001", "title: Test issue"]
     if confidence_score is not None:
         lines.append(f"confidence_score: {confidence_score}")
     if outcome_confidence is not None:
         lines.append(f"outcome_confidence: {outcome_confidence}")
+    if outcome_gate_waived is not None:
+        lines.append(f"outcome_gate_waived: {str(outcome_gate_waived).lower()}")
     lines.extend(["---", "", "# BUG-001: Test issue"])
     (directory / filename).write_text("\n".join(lines))
 
@@ -163,3 +166,78 @@ class TestReadinessStatusRawConfidence:
         assert status is not None
         assert status.raw_confidence == 0
         assert status.raw_outcome == 0
+
+
+class TestCheckReadinessHonorWaiver:
+    """BUG-3390: `--honor-waiver` honors the BUG-2734 outcome_gate_waived escalation
+    valve (outcome half only; readiness is still enforced), and an explicit
+    `--readiness`/`--outcome` wins over ll-config.json."""
+
+    def test_waiver_ignored_without_flag(self, temp_project_dir: Path) -> None:
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(
+            bugs_dir,
+            "P1-BUG-001-test.md",
+            confidence_score=90,
+            outcome_confidence=50,
+            outcome_gate_waived=True,
+        )
+        assert _run_check_readiness(temp_project_dir) == 1
+
+    def test_waiver_passes_outcome_with_flag(self, temp_project_dir: Path) -> None:
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(
+            bugs_dir,
+            "P1-BUG-001-test.md",
+            confidence_score=90,
+            outcome_confidence=50,
+            outcome_gate_waived=True,
+        )
+        assert _run_check_readiness(temp_project_dir, ["--honor-waiver"]) == 0
+
+    def test_waiver_never_bypasses_readiness(self, temp_project_dir: Path) -> None:
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(
+            bugs_dir,
+            "P1-BUG-001-test.md",
+            confidence_score=80,
+            outcome_confidence=50,
+            outcome_gate_waived=True,
+        )
+        assert _run_check_readiness(temp_project_dir, ["--honor-waiver"]) == 1
+
+    def test_flag_without_waiver_is_inert(self, temp_project_dir: Path) -> None:
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(bugs_dir, "P1-BUG-001-test.md", confidence_score=90, outcome_confidence=50)
+        assert _run_check_readiness(temp_project_dir, ["--honor-waiver"]) == 1
+
+    def test_readiness_status_exposes_outcome_gate_waived(self, temp_project_dir: Path) -> None:
+        from little_loops.cli.issues.check_readiness import readiness_status
+        from little_loops.config import BRConfig
+
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(
+            bugs_dir,
+            "P1-BUG-001-test.md",
+            confidence_score=90,
+            outcome_confidence=50,
+            outcome_gate_waived=True,
+        )
+        status = readiness_status(BRConfig(temp_project_dir), "BUG-001")
+        assert status is not None
+        assert status.outcome_gate_waived is True
+        assert status.meets_outcome is False
+        assert status.meets_outcome_or_waived is True
+
+    def test_explicit_cli_threshold_beats_config(self, temp_project_dir: Path) -> None:
+        """Previously config silently overrode an explicit --readiness, so autodev's
+        `--context readiness_threshold=NN` was ignored by its CLI-based gates."""
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _write_config(
+            temp_project_dir,
+            {"commands": {"confidence_gate": {"readiness_threshold": 85, "outcome_threshold": 65}}},
+        )
+        _make_issue(bugs_dir, "P1-BUG-001-test.md", confidence_score=80, outcome_confidence=70)
+        assert _run_check_readiness(temp_project_dir) == 1
+        assert _run_check_readiness(temp_project_dir, ["--readiness", "75"]) == 0
+        assert _run_check_readiness(temp_project_dir, ["--readiness", "75", "--outcome", "80"]) == 1

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import pytest
+
 from little_loops.cli.doctor import (
     CheckResult,
     _full_check_links_check,
@@ -23,6 +25,15 @@ from little_loops.cli.doctor import (
     _full_triggers_data,
     _run_full_checks,
 )
+
+
+@pytest.fixture(autouse=True)
+def _canned_code_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the code_query check off the real repo index (slow) in doctor tests."""
+    monkeypatch.setattr(
+        "little_loops.cli.doctor._code_query_data",
+        lambda: {"status": "unsupported", "severity": "informational", "note": "canned"},
+    )
 
 
 class TestFullAdapters:

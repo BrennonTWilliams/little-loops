@@ -924,7 +924,10 @@ class TestRegateAfterAtomicRemediationDesignGateBranch:
     def test_dispatcher_routes_pending_remedy_to_refine_for_design(self) -> None:
         dispatcher = _load_autodev_yaml()["states"]["check_atomic_design_remedy"]
         assert dispatcher.get("on_yes") == "refine_for_design"
-        assert dispatcher.get("on_no") == "dequeue_next"
+        # BUG-3390: the no-design-remedy leg now passes through the go-no-go
+        # eligibility gate, which itself advances the queue unless the issue was
+        # just deferred oversized_atomic.
+        assert dispatcher.get("on_no") == "check_go_no_go_eligible"
         assert "autodev-atomic-design-remedy-pending" in dispatcher["action"]
 
     def test_regate_guard_uses_design_remedy_attempted_marker(self) -> None:

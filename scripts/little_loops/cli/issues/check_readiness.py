@@ -30,6 +30,10 @@ class ReadinessStatus:
     enabled: bool
     raw_confidence: int | None = None
     raw_outcome: int | None = None
+    # BUG-3390: per-issue escalation valve stamped by /ll:go-no-go on a GO
+    # verdict over an `oversized_atomic` deferral (BUG-2734). Read from raw
+    # frontmatter so the CLI gate and autodev's inline gates agree.
+    outcome_gate_waived: bool = False
 
     @property
     def meets_readiness(self) -> bool:
@@ -39,6 +43,16 @@ class ReadinessStatus:
     @property
     def meets_outcome(self) -> bool:
         return self.outcome >= self.outcome_threshold
+
+    @property
+    def meets_outcome_or_waived(self) -> bool:
+        """Outcome half of the gate with the BUG-2734 waiver honored.
+
+        Kept separate from `meets_outcome` so the `ll-auto` pre-Phase-1 gate
+        (readiness-only) and any caller that must ignore the waiver are
+        unaffected (BUG-3390).
+        """
+        return self.outcome_gate_waived or self.meets_outcome
 
 
 def _coerce_optional_int(raw: Any) -> int | None:
@@ -58,6 +72,8 @@ def readiness_status(
     *,
     default_readiness: int = 85,
     default_outcome: int = 65,
+    readiness_override: int | None = None,
+    outcome_override: int | None = None,
 ) -> ReadinessStatus | None:
     """Resolve an issue's readiness status, or None if the issue can't be found.
 
@@ -68,11 +84,20 @@ def readiness_status(
     non-None defaults, so it cannot express "absent" and would break the
     `--readiness`/`--outcome` CLI fallback the `autodev.yaml` call sites depend on.
 
+    BUG-3390: `readiness_override`/`outcome_override`, when not None, win over
+    both config and defaults. This is how an *explicit* `--readiness N` on the
+    CLI is distinguished from the argparse default — previously config silently
+    overrode an explicit per-run threshold, so autodev's `--context
+    readiness_threshold=NN` was honored by its inline-python gates but ignored
+    by its `check-readiness`-based gates.
+
     Args:
         config: Project configuration
         issue_id: Issue ID or path to resolve
         default_readiness: Fallback readiness threshold when unset in config
         default_outcome: Fallback outcome threshold when unset in config
+        readiness_override: Explicit readiness threshold that beats config
+        outcome_override: Explicit outcome threshold that beats config
 
     Returns:
         ReadinessStatus, or None if the issue could not be resolved.
@@ -91,6 +116,10 @@ def readiness_status(
     except Exception:
         readiness = default_readiness
         outcome = default_outcome
+    if readiness_override is not None:
+        readiness = readiness_override
+    if outcome_override is not None:
+        outcome = outcome_override
 
     path = _resolve_issue_id(config, issue_id)
     if path is None:
@@ -101,6 +130,7 @@ def readiness_status(
     raw_outcome = _coerce_optional_int(fm.get("outcome_confidence"))
     confidence = int(fm.get("confidence_score") or 0)
     outcome_val = int(fm.get("outcome_confidence") or 0)
+    waived = str(fm.get("outcome_gate_waived")).lower() == "true"
 
     return ReadinessStatus(
         confidence=confidence,
@@ -110,33 +140,42 @@ def readiness_status(
         enabled=enabled,
         raw_confidence=raw_confidence,
         raw_outcome=raw_outcome,
+        outcome_gate_waived=waived,
     )
 
 
 def cmd_check_readiness(config: BRConfig, args: argparse.Namespace) -> int:
     """Exit 0 if the issue's confidence and outcome scores meet thresholds.
 
-    Reads thresholds from ll-config.json (commands.confidence_gate), falling
-    back to the values supplied via --readiness / --outcome CLI args so callers
-    can pass loop-context defaults without special-casing the config file.
-    Requires both thresholds and ignores `enabled` — unchanged behavior,
-    reimplemented over `readiness_status()`.
+    Thresholds: an explicit `--readiness` / `--outcome` wins; otherwise the
+    ll-config.json `commands.confidence_gate` values; otherwise 85 / 65
+    (BUG-3390 — previously config silently overrode explicit CLI values).
+    Requires both thresholds and ignores `enabled`.
+
+    `--honor-waiver` treats the outcome half as met when the issue carries
+    `outcome_gate_waived: true` (the BUG-2734 escalation valve stamped by
+    /ll:go-no-go); readiness is still enforced.
 
     Args:
         config: Project configuration
-        args: Parsed arguments with .issue_id, .readiness, .outcome
+        args: Parsed arguments with .issue_id, .readiness, .outcome, .honor_waiver
 
     Returns:
-        0 if both thresholds are met, 1 otherwise
+        0 if both thresholds are met, 1 otherwise, 2 if the issue is unresolvable
     """
     status = readiness_status(
         config,
         args.issue_id,
-        default_readiness=args.readiness,
-        default_outcome=args.outcome,
+        readiness_override=getattr(args, "readiness", None),
+        outcome_override=getattr(args, "outcome", None),
     )
     if status is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 2
 
-    return 0 if (status.meets_readiness and status.meets_outcome) else 1
+    outcome_ok = (
+        status.meets_outcome_or_waived
+        if getattr(args, "honor_waiver", False)
+        else status.meets_outcome
+    )
+    return 0 if (status.meets_readiness and outcome_ok) else 1

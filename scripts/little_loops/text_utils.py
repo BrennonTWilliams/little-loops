@@ -229,6 +229,8 @@ DEFAULT_UNTRACKED_BY_DESIGN: tuple[str, ...] = (
     ".ll/loop-suggestions/",
     ".ll/advisor-budget/",
     ".ll/design-tokens/",
+    # codegraph's machine-local index; ll-init adds it to .gitignore (2026-09 audit).
+    ".codegraph/",
 )
 
 

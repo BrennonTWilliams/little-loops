@@ -406,6 +406,27 @@ class TestParseCardFields:
         fields = _parse_card_fields(path, config)
         assert fields["reconcile_attempted"] == "true"
 
+    def test_outcome_gate_waived_surfaced_as_bool_string(self, tmp_path: Path) -> None:
+        """BUG-3390: outcome_gate_waived surfaces as a lowercased boolean string so
+        autodev's regate/recheck gates (which read show --json) can honor it."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\noutcome_gate_waived: true\n---\n# ENH-5102: T\n",
+            "P3-ENH-5102-waived.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["outcome_gate_waived"] == "true"
+
+    def test_outcome_gate_waived_absent_is_none(self, tmp_path: Path) -> None:
+        """BUG-3390: absent outcome_gate_waived surfaces as None (guards read == 'true')."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\n---\n# ENH-5103: T\n",
+            "P3-ENH-5103-not-waived.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["outcome_gate_waived"] is None
+
     def test_reconcile_attempted_absent_is_none(self, tmp_path: Path) -> None:
         """ENH-2689: absent reconcile_attempted surfaces as None (guard reads != 'true')."""
         path, config = self._write_issue(

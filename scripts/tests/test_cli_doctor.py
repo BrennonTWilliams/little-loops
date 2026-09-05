@@ -21,6 +21,15 @@ from little_loops.host_runner import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _canned_code_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the code_query check off the real repo index (slow) in doctor tests."""
+    monkeypatch.setattr(
+        "little_loops.cli.doctor._code_query_data",
+        lambda: {"status": "unsupported", "severity": "informational", "note": "canned"},
+    )
+
+
 @pytest.fixture
 def isolated_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Clear host env vars so tests start from a known state."""

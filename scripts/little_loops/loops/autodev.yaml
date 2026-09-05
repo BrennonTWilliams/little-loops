@@ -111,7 +111,9 @@ states:
       # the same run, not a one-shot-per-issue bound (the write-once bound
       # comes from the marker's presence, not from this clear).
       rm -f ${context.run_dir}/decide-options-deposited-$CURRENT
-      rm -f ${context.run_dir}/autodev-size-review-skipped-this-pass
+      # BUG-3390: positive guard-2 provenance marker (written only by
+      # count_repair_cycle_size_review) — cleared per issue.
+      rm -f ${context.run_dir}/autodev-size-review-ran-this-pass
 
       # FEAT-2751: snapshot the pre-refine Readiness score per-issue so
       # check_reconcile_needed can detect a plateau even on the common
@@ -484,7 +486,12 @@ states:
     # dead-coding the skip_inflight route above. Leaving on_no unset lets it
     # fall back to on_failure's value ("skip_inflight"), which is correct for
     # every failure mode (crash, max_iterations, timeout, signal).
-    fragment: with_rate_limit_handling
+    # BUG-3390: no `fragment: with_rate_limit_handling` / `on_rate_limit_exhausted`
+    # here — both are inert on a `loop:` call state. The executor's 429
+    # interception is gated on an action_result a sub-loop never produces (see
+    # check_decide_rate_limited below and executor.py's `if action_result is not
+    # None:` guard); the child loop's own rate-limit handling writes
+    # refine-terminal-class=infra, which skip_inflight reads.
     loop: refine-to-ready-issue
     context_passthrough: true
     on_success: count_repair_cycle_refine
@@ -501,7 +508,6 @@ states:
     # on_failure (skip_inflight), the sentinel-driven path that catches the evidenced
     # kill.
     on_error: skip_inflight_infra
-    on_rate_limit_exhausted: dequeue_next
 
   skip_inflight:
     # ENH-1679: record the in-flight issue as skipped and clear the inflight
@@ -530,7 +536,18 @@ states:
       if [ "$CLASS" = infra ]; then
         exit 1
       fi
-      echo "${captured.input.output}  refine_failed" >> ${context.run_dir}/autodev-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # BUG-3390: refine-to-ready-issue's record_decision_unresolved writes the ID
+      # to autodev-decision-unresolved.txt and exits `failed` WITHOUT passing
+      # through classify_terminal, so it lands here with no refine-terminal-class.
+      # finalize_done already surfaces that ledger as Decision-unresolved; a
+      # refine_failed line would double-count it under Skipped. -x: whole-line.
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) BUG-3390 - ID bound once via quoted assignment
+      if grep -qxF "$ID" ${context.run_dir}/autodev-decision-unresolved.txt 2>/dev/null; then
+        echo "[DECISION_UNRESOLVED] $ID already ledgered by sub-loop; not counting as refine_failed"
+        rm -f ${context.run_dir}/autodev-inflight
+        exit 0
+      fi
+      echo "$ID  refine_failed" >> ${context.run_dir}/autodev-skipped.txt
       rm -f ${context.run_dir}/autodev-inflight
     fragment: shell_exit
     action_type: shell
@@ -608,6 +625,7 @@ states:
       ll-issues check-readiness ${captured.input.output} \
         --readiness ${context.readiness_threshold:shell} \
         --outcome ${context.outcome_threshold:shell} \
+        --honor-waiver \
         && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: shell_exit
     on_yes: implement_current
@@ -734,6 +752,7 @@ states:
       ll-issues check-readiness ${captured.input.output} \
         --readiness ${context.readiness_threshold:shell} \
         --outcome ${context.outcome_threshold:shell} \
+        --honor-waiver \
         && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: shell_exit
     # ENH-3075: assert_decision_cleared (BUG-2595's post-decide flag
@@ -895,9 +914,41 @@ states:
       set -o pipefail
       ll-auto --only "$CURRENT" $SKIP_FLAG 2>&1 | tee "${context.run_dir}/ll_auto_last.txt"
     action_type: shell
-    on_yes: dequeue_next
+    on_yes: verify_impl_closed
     on_no: check_impl_reached
     on_error: check_impl_reached
+
+  verify_impl_closed:
+    # BUG-3390: `ll-auto --only` exits 0 on "Issues processed: 0" (dependency
+    # cycle — postmortems/audit-loop-run-autodev-2026-07-29T013824.md) and other
+    # no-ops, so exit 0 is not closure. Re-read status the way finalize_done
+    # does and ledger a not-closed exit-0 NOW with a reason (finalize would only
+    # discover it at the end, reason-less). Clear autodev-inflight on BOTH
+    # branches — the success path never cleared it, leaving a stale BUG-1226
+    # sentinel at terminal on clean runs. The ID stays in autodev-staged.txt
+    # (it did stage); finalize_done dedupes against the reasoned line.
+    action: |
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) BUG-3390 - ID bound once via quoted assignment
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      rm -f ${context.run_dir}/autodev-inflight
+      case "$STATUS" in
+        done|completed|cancelled)
+          echo "[IMPL-CLOSED] $ID $STATUS"
+          exit 0 ;;
+        *)
+          if ! grep -qE "^$ID([[:space:]]|$)" ${context.run_dir}/autodev-unverified.txt 2>/dev/null; then
+            echo "$ID  impl_exit0_not_closed" >> ${context.run_dir}/autodev-unverified.txt
+          fi
+          echo "[IMPL-NOT-CLOSED] $ID: ll-auto exited 0 but status is '$STATUS'; ledgered as unverified"
+          exit 1 ;;
+      esac
+    fragment: shell_exit
+    action_type: shell
+    on_yes: dequeue_next
+    on_no: dequeue_next
+    on_error: dequeue_next
 
   check_impl_reached:
     # ENH-2989: distinguishes "Phase 1 rejected, implementation never
@@ -1170,18 +1221,15 @@ states:
     # the outer loop gets its own chance to decompose. This preserves the
     # BUG-1079 "no double size-review" invariant because flag=1 AND children
     # exist still shortcuts past run_size_review.
-    # BUG-2744: this on_no branch reaches check_guard2_verdict downstream
-    # without run_size_review ever running for the current issue, so
-    # `captured.size_review_output` (a run-scoped dict, not per-issue — see
-    # executor.py:227) could still hold a PRIOR issue's captured text. Mark
-    # this pass as "size-review skipped" so check_size_review_ran_this_pass
-    # can bypass check_guard2_verdict later. dequeue_next clears the marker
-    # at the start of every iteration, so it never leaks past the issue that
-    # set it.
+    # BUG-2744 / BUG-3390: this on_no branch reaches check_guard2_verdict
+    # downstream without run_size_review ever running for the current issue.
+    # `captured.size_review_output` is run-scoped (executor.py:227), so guard-2
+    # must only be evaluated when run_size_review ran THIS pass. That is now
+    # proven by a positive marker written by count_repair_cycle_size_review
+    # (see check_size_review_ran_this_pass); this shortcut writes nothing.
     action: |
       FLAG=$(cat ${context.run_dir}/autodev-broke-down 2>/dev/null || echo 0)
       if [ "$FLAG" = "1" ] && [ -s ${context.run_dir}/autodev-new-children.txt ]; then
-        touch ${context.run_dir}/autodev-size-review-skipped-this-pass
         echo 1
       else
         echo 0
@@ -1283,6 +1331,7 @@ states:
       ll-issues check-readiness "$ID" \
         --readiness ${context.readiness_threshold:shell} \
         --outcome ${context.outcome_threshold:shell} \
+        --honor-waiver \
         && ll-issues check-design "$ID" \
         && echo "$ID" >> ${context.run_dir}/autodev-staged.txt
     fragment: shell_exit
@@ -1446,10 +1495,14 @@ states:
     # (rerun_confidence_after_wire, check_broke_down.on_no) are confidence
     # rechecks or normal continuations of an already-counted repair cycle, not
     # new repair attempts, so they route to enqueue_or_skip directly.
+    # BUG-3390: run_size_review's only successor — record that size-review ran
+    # for THIS issue this pass so check_size_review_ran_this_pass can prove the
+    # captured.size_review_output it is about to evaluate is not a prior issue's.
     action: |
       N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
       N=$((N + 1))
       printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
+      touch ${context.run_dir}/autodev-size-review-ran-this-pass
     action_type: shell
     next: enqueue_or_skip
     on_error: enqueue_or_skip
@@ -1676,28 +1729,25 @@ states:
     on_error: recheck_after_size_review
 
   check_size_review_ran_this_pass:
-    # BUG-2744: guard-2 semantics (check_guard2_verdict) only make sense when
-    # run_size_review actually executed for the CURRENT issue this pass.
-    # check_broke_down's on_no shortcut (~line 712) reaches this chain
-    # without run_size_review ever running, which would otherwise let
-    # check_guard2_verdict evaluate a PRIOR issue's stale
-    # `captured.size_review_output` (self.captured is run-scoped, not
-    # per-issue — executor.py:227). The marker is written only on that
-    # shortcut branch and cleared both here (consumed once) and at
-    # dequeue_next (defense-in-depth for provenances, e.g.
-    # check_decision_before_size_review.on_no → run_size_review, that reach
-    # run_size_review without ever visiting check_broke_down).
-    action: |
-      MARKER=${context.run_dir}/autodev-size-review-skipped-this-pass
-      if [ -f "$MARKER" ]; then
-        rm -f "$MARKER"
-        exit 1
-      fi
-      exit 0
+    # BUG-2744, re-cut by BUG-3390: guard-2 semantics (check_guard2_verdict)
+    # only make sense when run_size_review actually executed for the CURRENT
+    # issue this pass — `captured.size_review_output` is run-scoped, not
+    # per-issue (executor.py:227). The original gate keyed on a NEGATIVE marker
+    # written only by check_broke_down's shortcut, so provenances that skip
+    # BOTH run_size_review and check_broke_down — rerun_confidence_after_wire
+    # and rerun_confidence_after_spike, whose `next` is enqueue_or_skip —
+    # reached check_guard2_verdict with a PRIOR issue's capture and could defer
+    # the wrong issue as oversized_atomic. Require a POSITIVE marker instead:
+    # written by count_repair_cycle_size_review (run_size_review's only
+    # successor), cleared at dequeue_next. Not consumed here — a post-spike
+    # re-entry via enqueue_or_skip in the same pass still refers to this
+    # issue's own capture. on_error fails CLOSED: unverifiable provenance must
+    # never evaluate possibly-stale text.
+    action: "[ -f ${context.run_dir}/autodev-size-review-ran-this-pass ]"
     fragment: shell_exit
     on_yes: check_guard2_verdict
     on_no: recheck_after_size_review
-    on_error: check_guard2_verdict
+    on_error: recheck_after_size_review
 
   check_guard2_verdict:
     # BUG-2734 (bug found in first live run against BUG-2731, fixed same day):
@@ -1904,7 +1954,97 @@ states:
       exit 1
     fragment: shell_exit
     on_yes: refine_for_design
+    # BUG-3390: the no-design-remedy leg now passes through the go-no-go
+    # eligibility gate (which itself advances the queue unless this issue was
+    # just deferred oversized_atomic).
+    on_no: check_go_no_go_eligible
+    on_error: dequeue_next
+
+  check_go_no_go_eligible:
+    # BUG-3390: regate_after_atomic_remediation's FAIL branch exits 1 for three
+    # outcomes (resolved_by_subloop, design_gate_failed, oversized_atomic); only
+    # the last is /ll:go-no-go's input — skills/go-no-go/SKILL.md keys its
+    # outcome_gate_waived stamp off `deferred_reason: oversized_atomic`, so the
+    # deferral MUST precede this state. Re-read the frontmatter the deferral
+    # just wrote rather than the ledger. One shot per issue per run:
+    # autodev-go-no-go-attempted-<ID> is filename-scoped like
+    # autodev-design-remedy-attempted-<ID> and deliberately NOT cleared at
+    # dequeue_next. Fail-closed on any error — a gate fault must not spend the
+    # skill's three subagents.
+    action: |
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) BUG-3390 - ID bound once via quoted assignment
+      MARKER=${context.run_dir}/autodev-go-no-go-attempted-$ID
+      if [ -f "$MARKER" ]; then
+        exit 1
+      fi
+      ISSUE_JSON=$(ll-issues show "$ID" --json 2>/dev/null || echo '{}')
+      ELIGIBLE=$(LL_ISSUE_JSON="$ISSUE_JSON" python3 << 'PYEOF'
+      import json, os
+      d = json.loads(os.environ['LL_ISSUE_JSON'] or '{}')
+      ok = ((d.get('raw_status') or d.get('status') or '').lower() == 'deferred'
+            and (d.get('deferred_reason') or '') == 'oversized_atomic')
+      print('YES' if ok else 'NO')
+      PYEOF
+      2>/dev/null || echo "NO")
+      [ "$ELIGIBLE" = "YES" ] || exit 1
+      touch "$MARKER"
+      echo "[GO-NO-GO] $ID deferred oversized_atomic; requesting adversarial go/no-go review"
+    fragment: shell_exit
+    on_yes: run_go_no_go
     on_no: dequeue_next
+    on_error: dequeue_next
+
+  run_go_no_go:
+    # BUG-3390: automated counterpart of BUG-2734's "a human can review/waive
+    # via outcome_gate_waived". A GO verdict on an oversized_atomic-deferred
+    # issue stamps outcome_gate_waived: true in frontmatter; NO-GO never
+    # stamps. The verdict is read back by check_go_no_go_waiver from
+    # frontmatter — the skill's stdout is never parsed (MR-1). Mirrors
+    # run_wire's shape.
+    fragment: with_rate_limit_handling
+    action: "/ll:go-no-go ${captured.input.output} --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: go-no-go-auto
+      suppress_claude_md: true
+    next: check_go_no_go_waiver
+    on_error: check_go_no_go_waiver
+    on_rate_limit_exhausted: done
+
+  check_go_no_go_waiver:
+    # BUG-3390: check-flag reads raw frontmatter, so this is correct even where
+    # `show --json` predates the outcome_gate_waived key.
+    action: "ll-issues check-flag ${captured.input.output:shell} outcome_gate_waived"
+    fragment: shell_exit
+    on_yes: reopen_waived
+    on_no: dequeue_next
+    on_error: dequeue_next
+
+  reopen_waived:
+    # BUG-3390: GO + waiver — undo this pass's oversized_atomic deferral and
+    # re-enter the implement chain at decide_current (regate's own on_yes
+    # target). `set-status open` leaves deferred_reason/deferred_by/
+    # deferred_date in place (set_status.py's status_frontmatter_updates only
+    # adds keys) — harmless, every consumer keys on status. Re-arm
+    # autodev-inflight (regate cleared it) so BUG-1226 accounting covers the
+    # implement attempt. `|| exit 1` on set-status is deliberate: a
+    # still-deferred issue would be rejected by ll-auto's active-status filter
+    # as PHASE1_NOT_STARTED, so bail to dequeue_next instead — the waiver stays
+    # stamped and a human `set-status open` resurfaces it.
+    action: |
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) BUG-3390 - ID bound once via quoted assignment
+      ll-issues set-status "$ID" open --by automation || exit 1
+      if [ -f ${context.run_dir}/autodev-skipped.txt ]; then
+        grep -vxF "$ID  oversized_atomic" ${context.run_dir}/autodev-skipped.txt \
+          > ${context.run_dir}/autodev-skipped.tmp 2>/dev/null || true
+        mv ${context.run_dir}/autodev-skipped.tmp ${context.run_dir}/autodev-skipped.txt
+      fi
+      echo "$ID" >> ${context.run_dir}/autodev-staged.txt
+      printf '%s' "$ID" > ${context.run_dir}/autodev-inflight
+      echo "[GO-NO-GO] $ID GO with outcome gate waived; re-opened and staged for implementation"
+    action_type: shell
+    next: decide_current
     on_error: dequeue_next
 
   refine_for_design:
@@ -2338,7 +2478,12 @@ states:
           done|completed|cancelled)
             echo "$ID" >> ${context.run_dir}/autodev-passed.txt ;;
           *)
-            echo "$ID" >> ${context.run_dir}/autodev-unverified.txt ;;
+            # BUG-3390: verify_impl_closed may already hold "ID  reason"; sort -u
+            # cannot merge that with a bare "ID", so guard like the ABANDONED
+            # branch below.
+            if ! grep -qE "^$ID([[:space:]]|$)" ${context.run_dir}/autodev-unverified.txt 2>/dev/null; then
+              echo "$ID" >> ${context.run_dir}/autodev-unverified.txt
+            fi ;;
         esac
       done
 

@@ -879,3 +879,93 @@ class TestAdvisor:
         rows = doctor_mod._advisor_data()
         assert isinstance(rows, list)
         assert len(rows) == 2
+
+
+class TestCodeQueryCheck:
+    """`_code_query_data()` — always informational (ll-code has a grep/AST fallback)."""
+
+    def _status(self, tmp_path: Path, *, binary: str | None, index: bool):
+        from little_loops.init.codegraph import CodegraphStatus
+
+        return CodegraphStatus(
+            binary=binary,
+            index_present=index,
+            db_path=tmp_path / ".codegraph" / "codegraph.db",
+            node=None,
+            npm=None,
+            npx=None,
+        )
+
+    def test_not_installed_is_informational_with_commands(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from little_loops.cli.doctor import _code_query_data
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "little_loops.init.codegraph.detect_codegraph",
+            lambda root, db_path=None: self._status(tmp_path, binary=None, index=False),
+        )
+        data = _code_query_data()
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "informational"
+        assert "npm install -g @colbymchenry/codegraph" in data["note"]
+        assert "fallback" in data["note"]
+
+    def test_installed_without_index(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _code_query_data
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "little_loops.init.codegraph.detect_codegraph",
+            lambda root, db_path=None: self._status(tmp_path, binary="/bin/codegraph", index=False),
+        )
+        data = _code_query_data()
+        assert data["status"] == "unsupported"
+        assert "codegraph init ." in data["note"]
+        assert "npm install" not in data["note"]
+
+    def test_fresh_index_is_full(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _code_query_data
+        from little_loops.codequery.core import ProviderStatus
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "little_loops.init.codegraph.detect_codegraph",
+            lambda root, db_path=None: self._status(tmp_path, binary="/bin/codegraph", index=True),
+        )
+        monkeypatch.setattr(
+            "little_loops.codequery.codegraph.CodegraphProvider.status",
+            lambda self: ProviderStatus(True, "fresh", "2026-09-04T00:00:00Z", "fresh"),
+        )
+        data = _code_query_data()
+        assert data["status"] == "full" and data["severity"] == "informational"
+
+    def test_stale_index_is_partial(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _code_query_data
+        from little_loops.codequery.core import ProviderStatus
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "little_loops.init.codegraph.detect_codegraph",
+            lambda root, db_path=None: self._status(tmp_path, binary="/bin/codegraph", index=True),
+        )
+        monkeypatch.setattr(
+            "little_loops.codequery.codegraph.CodegraphProvider.status",
+            lambda self: ProviderStatus(True, "stale", "2026-09-04T00:00:00Z", "head moved"),
+        )
+        data = _code_query_data()
+        assert data["status"] == "partial"
+        assert "codegraph sync" in data["note"]
+
+    def test_registered_check_never_fails_exit_code(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _code_query_check, _exit_code_for
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "little_loops.init.codegraph.detect_codegraph",
+            lambda root, db_path=None: self._status(tmp_path, binary=None, index=False),
+        )
+        results = _code_query_check()
+        assert results[0].name == "code_query"
+        assert _exit_code_for(results) == 0

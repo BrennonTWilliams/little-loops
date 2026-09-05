@@ -246,7 +246,10 @@ class TestAutodevSmoke:
         # added resolve_decision, resolve_decision_direct, check_decide_rate_limited
         # (+3), lowering it to 77.
         # ENH-3148 added check_gate_at_dequeue + defer_gated (+2), raising it to 79.
-        assert len(topo["states"]) == 79
+        # BUG-3390 added verify_impl_closed (+1) and the go-no-go escalation chain
+        # check_go_no_go_eligible / run_go_no_go / check_go_no_go_waiver /
+        # reopen_waived (+4), raising it to 84.
+        assert len(topo["states"]) == 84
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

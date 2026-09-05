@@ -554,7 +554,9 @@ class TestReconcilePlateauStructural:
         gate_state = data["states"]["check_size_review_ran_this_pass"]
         assert gate_state.get("on_yes") == "check_guard2_verdict"
         assert gate_state.get("on_no") == "recheck_after_size_review"
-        assert gate_state.get("on_error") == "check_guard2_verdict"
+        # BUG-3390: fails CLOSED — unverifiable provenance must never evaluate
+        # a possibly-stale prior-issue capture.
+        assert gate_state.get("on_error") == "recheck_after_size_review"
         guard2_state = data["states"]["check_guard2_verdict"]
         # BUG-2752: no-match now routes through check_guard2_score_fallback (which
         # itself falls through to recheck_after_size_review) before the terminus.
@@ -786,9 +788,10 @@ class TestAtomicDesignRemedyRouting:
 
 
 class TestGuard2VerdictBypass:
-    """BUG-2744: FSMExecutor-driven assertions that check_size_review_ran_this_pass
-    bypasses check_guard2_verdict when run_size_review did not execute for the
-    current issue this pass (the check_broke_down shortcut), preventing a stale
+    """BUG-2744 / BUG-3390: FSMExecutor-driven assertions that
+    check_size_review_ran_this_pass bypasses check_guard2_verdict unless
+    run_size_review executed for the current issue this pass (proven by the
+    positive ``autodev-size-review-ran-this-pass`` marker), preventing a stale
     prior-issue ``captured.size_review_output`` from being evaluated.
 
     Mirrors TestReconcilePlateauRouting's mini-FSM shape, standing in for the
@@ -816,7 +819,7 @@ class TestGuard2VerdictBypass:
                     fragment_name="shell_exit",
                     on_yes="check_guard2_verdict",
                     on_no="recheck_after_size_review",
-                    on_error="check_guard2_verdict",
+                    on_error="recheck_after_size_review",
                 ),
                 "reconcile_current": _state(action="true", action_type="shell", next="done"),
                 "check_guard2_verdict": _state(action="true", action_type="shell", next="done"),
@@ -828,7 +831,7 @@ class TestGuard2VerdictBypass:
         )
 
     def test_shortcut_this_pass_bypasses_guard2(self, guard2_bypass_fsm: Any) -> None:
-        """Marker present (run_size_review skipped this pass, exit 1) →
+        """Positive marker absent (run_size_review did not run this pass, exit 1) →
         recheck_after_size_review directly; check_guard2_verdict never visited,
         so it can never evaluate a prior issue's stale captured output."""
         runner = _StubRunner(
@@ -842,7 +845,7 @@ class TestGuard2VerdictBypass:
         assert "check_guard2_verdict" not in visited, f"visited={visited!r}"
 
     def test_normal_pass_reaches_guard2(self, guard2_bypass_fsm: Any) -> None:
-        """No marker (run_size_review ran this pass, exit 0) →
+        """Positive marker present (run_size_review ran this pass, exit 0) →
         check_guard2_verdict fires as before."""
         runner = _StubRunner(
             results=[
@@ -853,9 +856,9 @@ class TestGuard2VerdictBypass:
         _result, visited = _run_decision_chain(guard2_bypass_fsm, runner)
         assert "check_guard2_verdict" in visited, f"visited={visited!r}"
 
-    def test_marker_check_error_fails_open_to_guard2(self, guard2_bypass_fsm: Any) -> None:
-        """Marker-check error preserves pre-BUG-2744 behaviour (always reach
-        check_guard2_verdict) rather than silently skipping the guard-2 remedy."""
+    def test_marker_check_error_fails_closed_to_recheck(self, guard2_bypass_fsm: Any) -> None:
+        """BUG-3390: a marker-check error fails CLOSED to recheck_after_size_review —
+        unverifiable provenance must never evaluate a possibly-stale capture."""
         runner = _StubRunner(
             results=[
                 ("false", {"exit_code": 1}),
@@ -863,7 +866,8 @@ class TestGuard2VerdictBypass:
             ]
         )
         _result, visited = _run_decision_chain(guard2_bypass_fsm, runner)
-        assert "check_guard2_verdict" in visited, f"visited={visited!r}"
+        assert "recheck_after_size_review" in visited, f"visited={visited!r}"
+        assert "check_guard2_verdict" not in visited, f"visited={visited!r}"
 
 
 class TestCheckDecisionBeforeSizeReviewRouting:

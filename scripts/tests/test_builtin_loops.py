@@ -7382,10 +7382,142 @@ class TestAutodevLoop:
         assert "ll-auto --only" in action
         assert "${captured.input.output}" in action
 
-    def test_implement_current_routes_back_to_dequeue_next(self, data: dict) -> None:
-        """After implementing (exit 0), return to dequeue_next for the next queued issue."""
+    def test_implement_current_routes_to_verify_impl_closed(self, data: dict) -> None:
+        """BUG-3390: exit 0 from `ll-auto --only` is not closure ("Issues processed: 0"
+        also exits 0). Route through verify_impl_closed, which re-reads status and
+        returns to dequeue_next on every branch."""
         state = data["states"].get("implement_current", {})
-        assert state.get("on_yes") == "dequeue_next"
+        assert state.get("on_yes") == "verify_impl_closed"
+        verify = data["states"].get("verify_impl_closed", {})
+        assert verify.get("fragment") == "shell_exit"
+        assert verify.get("on_yes") == "dequeue_next"
+        assert verify.get("on_no") == "dequeue_next"
+        assert verify.get("on_error") == "dequeue_next"
+        assert "autodev-inflight" in verify.get("action", "")
+        assert "impl_exit0_not_closed" in verify.get("action", "")
+
+    def _run_verify_impl_closed(
+        self, data: dict, run_dir: Path, issue_id: str, status_json: str
+    ) -> "subprocess.CompletedProcess[str]":
+        """Run verify_impl_closed's real shell action with a stub `ll-issues show`."""
+        import os
+
+        script_path = run_dir / "ll-issues"
+        script_path.write_text(
+            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'' + status_json + "'; fi\n"
+        )
+        script_path.chmod(0o755)
+        env = {"PATH": f"{run_dir}:{os.environ['PATH']}"}
+        state = data["states"]["verify_impl_closed"]
+        script = state["action"].replace("${captured.input.output}", issue_id)
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+
+    def test_verify_impl_closed_closed_status_exits_0_and_clears_inflight(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3390: a closed issue exits 0, writes no ledger line, and clears the
+        inflight sentinel (the success path previously never cleared it)."""
+        (tmp_path / "autodev-inflight").write_text("FEAT-1")
+        result = self._run_verify_impl_closed(data, tmp_path, "FEAT-1", '{"status": "Completed"}')
+        assert result.returncode == 0, result.stderr
+        assert not (tmp_path / "autodev-inflight").exists()
+        assert not (tmp_path / "autodev-unverified.txt").exists()
+
+    def test_verify_impl_closed_open_status_ledgers_and_exits_1(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3390: an exit-0 implement that left the issue open is ledgered NOW with
+        a reason, the inflight sentinel is cleared, and a second pass does not
+        duplicate the line."""
+        (tmp_path / "autodev-inflight").write_text("FEAT-1")
+        result = self._run_verify_impl_closed(data, tmp_path, "FEAT-1", '{"status": "Open"}')
+        assert result.returncode == 1
+        assert not (tmp_path / "autodev-inflight").exists()
+        ledger = (tmp_path / "autodev-unverified.txt").read_text()
+        assert ledger == "FEAT-1  impl_exit0_not_closed\n"
+        self._run_verify_impl_closed(data, tmp_path, "FEAT-1", '{"status": "Open"}')
+        assert (tmp_path / "autodev-unverified.txt").read_text() == ledger
+
+    def test_finalize_done_reasoned_unverified_line_not_double_counted(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3390: finalize_done must not append a bare ID for a staged issue that
+        verify_impl_closed already ledgered as "ID  reason" — the verdict stays
+        phantom and not_closed counts it exactly once."""
+        run_dir = tmp_path
+        (run_dir / "autodev-staged.txt").write_text("FEAT-1\n")
+        (run_dir / "autodev-unverified.txt").write_text("FEAT-1  impl_exit0_not_closed\n")
+        script_path = run_dir / "ll-issues"
+        script_path.write_text(
+            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Open"}\'; fi\n'
+        )
+        script_path.chmod(0o755)
+        env = {"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"}
+        script = data["states"]["finalize_done"]["action"]
+        script = script.replace("${context.run_dir}", str(run_dir)).replace("$${", "${")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+        assert result.returncode != 0
+        summary = json.loads((run_dir / "summary.json").read_text())
+        assert summary["verdict"] == "phantom"
+        assert summary["not_closed"] == 1
+        lines = (run_dir / "autodev-unverified.txt").read_text().splitlines()
+        assert lines == ["FEAT-1  impl_exit0_not_closed"]
+
+    def test_no_loop_call_state_declares_on_rate_limit_exhausted(self, data: dict) -> None:
+        """BUG-3390: the executor's 429 interception is gated on an action_result a
+        `loop:` call state never produces, so `on_rate_limit_exhausted` /
+        `with_rate_limit_handling` on such a state are inert (mirrors the
+        refine-to-ready-issue invariant). Pin the loop-state set so the test
+        provably covers refine_current and both resolve-decision call states."""
+        states = data["states"]
+        loop_states = {name for name, s in states.items() if s.get("loop")}
+        assert loop_states == {"refine_current", "resolve_decision", "resolve_decision_direct"}
+        offenders = [
+            name
+            for name in sorted(loop_states)
+            if "on_rate_limit_exhausted" in states[name]
+            or states[name].get("fragment") == "with_rate_limit_handling"
+        ]
+        assert not offenders, f"inert rate-limit keys on loop states: {offenders}"
+
+    def test_check_readiness_call_sites_pass_honor_waiver(self, data: dict) -> None:
+        """BUG-3390: every `ll-issues check-readiness` gate honors outcome_gate_waived so
+        the CLI gates agree with the inline-python gates (which read show --json)."""
+        for name in ("check_passed", "recheck_after_decide", "recheck_scores"):
+            action = data["states"][name].get("action", "")
+            assert "check-readiness" in action, name
+            assert "--honor-waiver" in action, name
+
+    def _run_skip_inflight(self, data: dict, run_dir: Path, issue_id: str) -> int:
+        script = data["states"]["skip_inflight"]["action"]
+        script = script.replace("${captured.input.output}", issue_id)
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return subprocess.run(["bash", "-c", script], cwd=run_dir).returncode
+
+    def test_skip_inflight_skips_refine_failed_when_decision_unresolved_ledgered(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3390: the child loop's record_decision_unresolved already ledgered the
+        ID; skip_inflight must not double-count it as refine_failed."""
+        (tmp_path / "autodev-decision-unresolved.txt").write_text("ENH-0009\n")
+        (tmp_path / "autodev-inflight").write_text("ENH-0009")
+        assert self._run_skip_inflight(data, tmp_path, "ENH-0009") == 0
+        assert not (tmp_path / "autodev-inflight").exists()
+        skipped = tmp_path / "autodev-skipped.txt"
+        assert not skipped.exists() or "refine_failed" not in skipped.read_text()
+
+    def test_skip_inflight_decision_ledger_match_is_whole_line(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3390: a ledgered ENH-00090 must not suppress ENH-0009's refine_failed."""
+        (tmp_path / "autodev-decision-unresolved.txt").write_text("ENH-00090\n")
+        assert self._run_skip_inflight(data, tmp_path, "ENH-0009") == 0
+        assert "ENH-0009  refine_failed" in (tmp_path / "autodev-skipped.txt").read_text()
 
     def test_implement_current_on_no_routes_to_check_impl_reached(self, data: dict) -> None:
         """On non-zero exit (exit 1), route to check_impl_reached FIRST (ENH-2989) so a
@@ -7600,7 +7732,100 @@ class TestAutodevLoop:
         # to dequeue_next when no design remedy was armed.
         assert regate_state.get("on_no") == "check_atomic_design_remedy"
         dispatcher_state = data["states"].get("check_atomic_design_remedy", {})
-        assert dispatcher_state.get("on_no") == "dequeue_next"
+        # BUG-3390: the no-design-remedy leg passes through the go-no-go
+        # eligibility gate (which advances the queue unless the issue was just
+        # deferred oversized_atomic).
+        assert dispatcher_state.get("on_no") == "check_go_no_go_eligible"
+
+    def test_go_no_go_escalation_chain_shape(self, data: dict) -> None:
+        """BUG-3390: after an oversized_atomic deferral, /ll:go-no-go --auto runs once
+        per issue per run; a stamped outcome_gate_waived re-opens and stages the
+        issue for implementation via decide_current."""
+        states = data["states"]
+        elig = states["check_go_no_go_eligible"]
+        assert elig.get("fragment") == "shell_exit"
+        assert elig.get("on_yes") == "run_go_no_go"
+        assert elig.get("on_no") == "dequeue_next"
+        assert elig.get("on_error") == "dequeue_next"
+        assert "autodev-go-no-go-attempted" in elig["action"]
+        assert "oversized_atomic" in elig["action"]
+
+        run = states["run_go_no_go"]
+        assert "/ll:go-no-go" in run["action"] and "--auto" in run["action"]
+        assert run.get("action_type") == "slash_command"
+        assert run.get("fragment") == "with_rate_limit_handling"
+        assert run.get("pruning_profile", {}).get("enabled") is True
+        assert run.get("next") == "check_go_no_go_waiver"
+        assert run.get("on_error") == "check_go_no_go_waiver"
+        assert run.get("on_rate_limit_exhausted") == "done"
+
+        waiver = states["check_go_no_go_waiver"]
+        assert "check-flag" in waiver["action"] and "outcome_gate_waived" in waiver["action"]
+        assert waiver.get("on_yes") == "reopen_waived"
+        assert waiver.get("on_no") == "dequeue_next"
+        assert waiver.get("on_error") == "dequeue_next"
+
+        reopen = states["reopen_waived"]
+        assert "set-status" in reopen["action"] and "open" in reopen["action"]
+        assert reopen.get("next") == "decide_current"
+        assert reopen.get("on_error") == "dequeue_next"
+
+        # The per-issue attempted marker is filename-scoped and must survive dequeue.
+        assert "autodev-go-no-go-attempted" not in states["dequeue_next"]["action"]
+
+    def _run_go_no_go_eligible(
+        self, data: dict, run_dir: Path, issue_id: str, show_json: str
+    ) -> int:
+        import os
+
+        script_path = run_dir / "ll-issues"
+        script_path.write_text(
+            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'' + show_json + "'; fi\n"
+        )
+        script_path.chmod(0o755)
+        env = {"PATH": f"{run_dir}:{os.environ['PATH']}"}
+        script = data["states"]["check_go_no_go_eligible"]["action"]
+        script = script.replace("${captured.input.output}", issue_id)
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return subprocess.run(["bash", "-c", script], cwd=run_dir, env=env).returncode
+
+    def test_check_go_no_go_eligible_one_shot_and_reason_scoped(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3390: fires only for a deferred/oversized_atomic issue, exactly once."""
+        deferred = '{"raw_status": "deferred", "deferred_reason": "oversized_atomic"}'
+        marker = tmp_path / "autodev-go-no-go-attempted-FEAT-1"
+        assert self._run_go_no_go_eligible(data, tmp_path, "FEAT-1", deferred) == 0
+        assert marker.exists()
+        assert self._run_go_no_go_eligible(data, tmp_path, "FEAT-1", deferred) == 1
+        other = '{"raw_status": "deferred", "deferred_reason": "design_gate_failed"}'
+        assert self._run_go_no_go_eligible(data, tmp_path, "FEAT-2", other) == 1
+        assert not (tmp_path / "autodev-go-no-go-attempted-FEAT-2").exists()
+
+    def test_reopen_waived_reopens_stages_and_rearms_inflight(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3390: on a stamped waiver the oversized_atomic ledger line is dropped,
+        the issue is staged, and the inflight sentinel is re-armed."""
+        import os
+
+        script_path = tmp_path / "ll-issues"
+        script_path.write_text("#!/bin/sh\nexit 0\n")
+        script_path.chmod(0o755)
+        env = {"PATH": f"{tmp_path}:{os.environ['PATH']}"}
+        (tmp_path / "autodev-skipped.txt").write_text(
+            "FEAT-1  oversized_atomic\nFEAT-2  low_readiness\n"
+        )
+        script = data["states"]["reopen_waived"]["action"]
+        script = script.replace("${captured.input.output}", "FEAT-1")
+        script = script.replace("${context.run_dir}", str(tmp_path))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "autodev-skipped.txt").read_text() == "FEAT-2  low_readiness\n"
+        assert "FEAT-1" in (tmp_path / "autodev-staged.txt").read_text()
+        assert (tmp_path / "autodev-inflight").read_text() == "FEAT-1"
 
     def test_check_reconcile_needed_routes_through_guard2_verdict(self, data: dict) -> None:
         """BUG-2734: check_reconcile_needed's on_no must now route towards
@@ -7615,7 +7840,46 @@ class TestAutodevLoop:
         gate_state = data["states"].get("check_size_review_ran_this_pass", {})
         assert gate_state.get("on_yes") == "check_guard2_verdict"
         assert gate_state.get("on_no") == "recheck_after_size_review"
-        assert gate_state.get("on_error") == "check_guard2_verdict"
+        # BUG-3390: fails CLOSED on a marker-check error.
+        assert gate_state.get("on_error") == "recheck_after_size_review"
+
+    def test_size_review_ran_marker_provenance(self, data: dict) -> None:
+        """BUG-3390: guard-2 may only evaluate captured.size_review_output when
+        run_size_review ran THIS pass. Only its sole successor writes the positive
+        marker, the gate requires it, dequeue_next clears it, and the old negative
+        marker (which the wire/spike provenances never wrote) is gone."""
+        states = data["states"]
+        marker = "autodev-size-review-ran-this-pass"
+        writers = [
+            name
+            for name, s in states.items()
+            if f"touch ${{context.run_dir}}/{marker}" in s.get("action", "")
+        ]
+        assert writers == ["count_repair_cycle_size_review"]
+        size_review = states["run_size_review"]
+        assert size_review.get("next") == "count_repair_cycle_size_review"
+        assert size_review.get("on_error") == "count_repair_cycle_size_review"
+        assert marker in states["check_size_review_ran_this_pass"]["action"]
+        assert f"rm -f ${{context.run_dir}}/{marker}" in states["dequeue_next"]["action"]
+        stale = [
+            name
+            for name, s in states.items()
+            if "size-review-skipped-this-pass" in s.get("action", "")
+        ]
+        assert not stale, stale
+
+    def test_check_size_review_ran_this_pass_requires_positive_marker(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3390: absent marker → exit 1 (recheck); present → exit 0 and the marker
+        is left in place for a same-pass re-entry."""
+        script = data["states"]["check_size_review_ran_this_pass"]["action"]
+        script = script.replace("${context.run_dir}", str(tmp_path))
+        assert subprocess.run(["bash", "-c", script], cwd=tmp_path).returncode == 1
+        marker = tmp_path / "autodev-size-review-ran-this-pass"
+        marker.touch()
+        assert subprocess.run(["bash", "-c", script], cwd=tmp_path).returncode == 0
+        assert marker.exists()
 
     def test_run_size_review_captures_output(self, data: dict) -> None:
         """BUG-2734: run_size_review must capture its status-line output so
@@ -20311,6 +20575,7 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/auto-refine-and-implement.yaml", "context.scope", "ENH-3358"),
     ("loops/autodev.yaml", "captured.dequeue_status.output", "ENH-3358"),
     ("loops/autodev.yaml", "captured.input.output", "ENH-3358"),
+    ("loops/autodev.yaml", "captured.input.output", "BUG-3390"),
     ("loops/autodev.yaml", "context.skip_learning_gate", "ENH-3358"),
     ("loops/brainstorm.yaml", "captured.run_dir.output", "ENH-3358"),
     ("loops/brainstorm.yaml", "context.output_path", "ENH-3358"),

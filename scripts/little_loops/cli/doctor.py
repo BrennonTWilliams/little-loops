@@ -327,6 +327,90 @@ def _decisions_store_data() -> dict:
     return {"status": "full", "severity": "error", "note": "healthy"}
 
 
+def _code_query_data() -> dict:
+    """Code-graph provider health for ``ll-code`` (always informational).
+
+    ``full``: a fresh codegraph index; ``partial``: index present but stale
+    (or the fallback provider is in use); ``unsupported``: no index — the
+    note carries the exact commands to build one.
+    """
+    from little_loops.init.codegraph import detect_codegraph, manual_commands
+
+    root = Path.cwd()
+    try:
+        status = detect_codegraph(root)
+    except Exception as exc:  # defensive: doctor must never crash on a probe
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": f"probe failed: {exc}",
+        }
+
+    if not status.index_present:
+        prefix = (
+            "codegraph installed but this project has no index"
+            if status.binary
+            else "codegraph not installed (ll-code uses the grep/AST fallback)"
+        )
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": f"{prefix} — run: {' && '.join(manual_commands(status))}",
+        }
+
+    try:
+        from little_loops.codequery.codegraph import CodegraphProvider
+
+        provider_status = CodegraphProvider().status()
+    except Exception as exc:
+        return {
+            "status": "partial",
+            "severity": "informational",
+            "note": f"index present but provider status failed: {exc}",
+        }
+    if provider_status.available and provider_status.freshness == "fresh":
+        return {
+            "status": "full",
+            "severity": "informational",
+            "note": f"codegraph index fresh (indexed_at={provider_status.indexed_at})",
+        }
+    if provider_status.available:
+        return {
+            "status": "partial",
+            "severity": "informational",
+            "note": f"codegraph index stale — run: codegraph sync . ({provider_status.detail})",
+        }
+    return {
+        "status": "unsupported",
+        "severity": "informational",
+        "note": f"codegraph index unavailable: {provider_status.detail}",
+    }
+
+
+def _print_code_query_section() -> None:
+    """Print the Code Graph section."""
+    data = _code_query_data()
+    print()
+    print("Code Graph (ll-code)")
+    print("─" * 40)
+    symbol = _STATUS_SYMBOLS.get(data["status"], "?")
+    print(f"  {symbol}  {data['note']}")
+
+
+@register_check
+def _code_query_check() -> list[CheckResult]:
+    """Registered check for the ll-code code-graph provider (never fails the exit code)."""
+    data = _code_query_data()
+    return [
+        CheckResult(
+            name="code_query",
+            status=data["status"],
+            note=data["note"],
+            severity=data["severity"],
+        )
+    ]
+
+
 def _print_decisions_store_section() -> None:
     """Print the Decisions Store section."""
     data = _decisions_store_data()
@@ -1223,6 +1307,7 @@ def _print_report(
             "schema_drift": _schema_drift_data(),
             "loop_validity": _loop_validity_data(),
             "advisor": _advisor_data(),
+            "code_query": _code_query_data(),
         }
         if full:
             data["full"] = _full_section_data()
@@ -1339,6 +1424,7 @@ not a broken install.
             _print_schema_drift_section()
             _print_loop_validity_section()
             _print_advisor_section()
+            _print_code_query_section()
             if args.full:
                 _print_full_section()
             if trim_report is not None:

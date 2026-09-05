@@ -1,0 +1,12 @@
+{
+  "id": "5fb51c42-fd12-4c3a-b028-c0b7b9aee991",
+  "type": "decision",
+  "timestamp": "2026-09-04T20:56:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "The artifact_interaction payload contract is documented (EVENT-SCHEMA.md, ARTIFACT_CONTROL_LEVELS.md) and schema-registered (ArtifactInteractionVariant) as top-level artifact_id/level/action fields composing with the envelope, and the built-in --serve dashboard's Send control already POSTs exactly that shape; nesting under payload would break both the documented contract and the dashboard's own emitter.",
+  "rule": "Strip/rename the four envelope keys (event, ts, run_id, loop) from the inbound artifact_interaction body before spreading it, rather than nesting the whole body under a new payload key",
+  "scope": "issue",
+  "alternatives_rejected": "Nest the raw inbound body under a new payload key (Option A) \u2014 rejected because it moves artifact_id/level/action under event.payload.*, breaking the documented/schema-registered contract and the dashboard's own emitter",
+  "issue": "BUG-3387"
+}

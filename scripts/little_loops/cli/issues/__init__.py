@@ -758,16 +758,32 @@ Examples:
         cr.add_argument(
             "--readiness",
             type=int,
-            default=85,
+            default=None,
             metavar="N",
-            help="Fallback readiness threshold when not set in ll-config.json (default: 85)",
+            help=(
+                "Readiness threshold; an explicit value wins over ll-config.json "
+                "(default: config value, else 85)"
+            ),
         )
         cr.add_argument(
             "--outcome",
             type=int,
-            default=65,
+            default=None,
             metavar="N",
-            help="Fallback outcome threshold when not set in ll-config.json (default: 65)",
+            help=(
+                "Outcome threshold; an explicit value wins over ll-config.json "
+                "(default: config value, else 65)"
+            ),
+        )
+        cr.add_argument(
+            "--honor-waiver",
+            action="store_true",
+            default=False,
+            dest="honor_waiver",
+            help=(
+                "Treat the outcome half as met when frontmatter outcome_gate_waived: true "
+                "(readiness still enforced; BUG-2734 escalation valve)"
+            ),
         )
         add_config_arg(cr)
 
