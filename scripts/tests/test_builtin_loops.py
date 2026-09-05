@@ -2818,6 +2818,21 @@ class TestRefineToReadyIssueSubLoop:
             f"record_decision_unresolved.next should be 'failed', got {state.get('next')!r}"
         )
 
+    def test_record_decision_unresolved_writes_refine_terminal_class(
+        self, data: dict
+    ) -> None:
+        """record_decision_unresolved must write class `decision_unresolved` to
+        refine-terminal-class directly (BUG-3390, mirroring mark_rate_limit_infra),
+        so a decision-unresolved exit is distinguishable from a genuine `quality`
+        classify_terminal verdict rather than relying solely on autodev's
+        ledger-grep suppression in skip_inflight."""
+        state = data["states"].get("record_decision_unresolved", {})
+        action = state.get("action", "")
+        assert "decision_unresolved" in action and "refine-terminal-class" in action, (
+            f"record_decision_unresolved must write 'decision_unresolved' to "
+            f"refine-terminal-class, got {action!r}"
+        )
+
     def test_max_steps_at_least_40(self, data: dict) -> None:
         """max_steps must be >= 40 (BUG-3065: the check_decision_needed re-entry
         cycle through confidence_check no longer fits in the old budget of 30)."""

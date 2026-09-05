@@ -4,10 +4,11 @@ type: BUG
 title: 'autodev: dead outcome_gate_waived path, stale guard-2 capture provenance,
   no post-implement closure check, and unwired go-no-go escalation'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-04'
 captured_at: '2026-09-04T21:11:07Z'
+completed_at: '2026-09-05T17:58:53Z'
 confidence_score: 100
 outcome_confidence: 90
 score_complexity: 22
@@ -187,22 +188,34 @@ Landed in `3e798eeac` / `caddec57b` (verified 2026-09-05):
 - [x] No `loop:` state in autodev declares `on_rate_limit_exhausted` or `with_rate_limit_handling`
 - [x] `skills/go-no-go/SKILL.md` stamps the waiver on GO regardless of `HAS_FINDINGS`
 
-Remaining:
+Landed in this pass (2026-09-05):
 
-- [ ] `docs/guides/LOOPS_REFERENCE.md:1081` BUG-2744 paragraph rewritten for the positive `autodev-size-review-ran-this-pass` marker and fail-closed `on_error`; no remaining mention of `autodev-size-review-skipped-this-pass` or "fails open"
-- [ ] `docs/guides/LOOPS_REFERENCE.md` autodev diagram/prose includes `verify_impl_closed` and the `check_go_no_go_eligible → run_go_no_go → check_go_no_go_waiver → reopen_waived` chain; omitted-state inventory and entry-point count corrected
-- [ ] `skills/audit-loop-run/SKILL.md:271` describes `oversized_atomic` as an automated one-shot go-no-go escalation, with manual waiver as the fallback
-- [ ] A test asserts the go-no-go SKILL.md waiver paragraph directs stamping regardless of `HAS_FINDINGS`
-- [ ] `rn-remediate.yaml` `check_readiness` left without `--honor-waiver` (decision recorded in Wiring Phase)
-- [ ] Item 4 either fixed via direct `refine-terminal-class` write with `next: failed` preserved and a write assertion added, or explicitly descoped in the Resolution
-- [ ] `ll-loop validate autodev` clean; `python -m pytest scripts/tests/` passes
+- [x] `docs/guides/LOOPS_REFERENCE.md` BUG-2744 paragraph rewritten for the positive `autodev-size-review-ran-this-pass` marker and fail-closed `on_error`; no remaining mention of `autodev-size-review-skipped-this-pass` or "fails open"
+- [x] `docs/guides/LOOPS_REFERENCE.md` autodev diagram/prose includes `verify_impl_closed` and the `check_go_no_go_eligible → run_go_no_go → check_go_no_go_waiver → reopen_waived` chain; entry-point count corrected from four to five (`triage_outcome_failure` was missing) and the stale pre-ENH-3075 `check_decision_decidable`/`deposit_options` inline-state description replaced with a pointer to the already-accurate Decidability gate parity paragraph
+- [x] `skills/audit-loop-run/SKILL.md:271` describes `oversized_atomic` as an automated one-shot go-no-go escalation, with manual waiver as the fallback
+- [x] A test asserts the go-no-go SKILL.md waiver paragraph directs stamping regardless of `HAS_FINDINGS` (`test_go_no_go_skill.py::TestGoNoGoWaiverStampRegardlessOfFindings`)
+- [x] `rn-remediate.yaml` `check_readiness` left without `--honor-waiver` (decision recorded in Wiring Phase — no code change)
+- [x] Item 4 fixed: `record_decision_unresolved` now writes `decision_unresolved` directly to `refine-terminal-class` (mirroring `mark_rate_limit_infra`), `next: failed` preserved, write assertion added (`test_record_decision_unresolved_writes_refine_terminal_class`)
+- [x] `ll-loop validate autodev` and `ll-loop validate refine-to-ready-issue` clean; `python -m pytest scripts/tests/` passes (23128 passed, 43 skipped)
+
+## Resolution
+
+All six Summary defects and the previously-remaining doc/test gaps are now closed:
+
+- Items 1, 2, 3, 5, 6 were already landed in `3e798eeac`/`caddec57b` prior to this pass (see Codebase Research Findings above).
+- Item 4 (double ledger on decision-unresolved): root-caused via a direct `refine-terminal-class` write in `record_decision_unresolved` (`refine-to-ready-issue.yaml`), mirroring the existing `mark_rate_limit_infra` pattern. `skip_inflight`'s ledger-grep suppression stays in place as a second, now-redundant safety net.
+- `docs/guides/LOOPS_REFERENCE.md`: rewrote the BUG-2744 guard-2 paragraph for the positive fail-closed marker, added the go-no-go escalation chain and `verify_impl_closed` to the diagram-omissions/prose, and corrected the stale four-entry-point decidability description (superseded by ENH-3075's sub-loop refactor but never updated) to five entries.
+- `skills/audit-loop-run/SKILL.md`: reframed the `oversized_atomic` paragraph to describe the automated one-shot go-no-go escalation, with manual waiver review as the fallback only when that attempt already ran (or the issue wasn't eligible).
+- Added test coverage for item 6 (`test_go_no_go_skill.py`) and item 4 (`test_builtin_loops.py`).
 
 ## Status
 
-**Open** (partially landed — see Acceptance Criteria) | Created: 2026-09-04 | Priority: P2
+**Done** | Created: 2026-09-04 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-05T17:58:53 - `feee162a-3cb7-4905-b19e-dab36da67db1.jsonl`
+- `/ll:ready-issue` - 2026-09-05T17:43:22 - `d7442692-130e-400a-9f60-d1270eae1420.jsonl`
 - `/ll:confidence-check` - 2026-09-05T17:28:26 - `42bd48b8-704c-4d15-b248-a77d6a520c33.jsonl`
 - `/ll:wire-issue` - 2026-09-05T04:57:34 - `7ad2c895-8f68-4859-96fb-41e7c667e5b1.jsonl`
 - `/ll:refine-issue` - 2026-09-05T04:32:46 - `251307a7-40ea-42f4-beb3-43e6b4de6744.jsonl`

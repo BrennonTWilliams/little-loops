@@ -905,7 +905,12 @@ states:
     # rather than exiting via done, which would reproduce the exact
     # silent-success bug this issue exists to fix (### refine-to-ready-issue's
     # handling of the failed terminal).
+    # BUG-3390: writes refine-terminal-class directly (mirroring
+    # mark_rate_limit_infra above), bypassing diagnose/classify_terminal, so a
+    # decision-unresolved exit is distinguishable from a genuine `quality`
+    # verdict without relying solely on autodev's ledger-grep suppression.
     action: |
+      printf 'decision_unresolved' > ${context.run_dir}/refine-terminal-class
       ID="${captured.issue_id.output}"  # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
       # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
