@@ -31,7 +31,7 @@ Deep audit of `scripts/little_loops/loops/autodev.yaml` (79 states) and its sub-
 
 _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 
-**Working-tree state as of this pass**: items 1, 2, 3, 5, 6 of the Summary already have implementations present in the uncommitted working tree (matches `git status`: `check_readiness.py`, `show.py`, `autodev.yaml`, `skills/go-no-go/SKILL.md` all modified, not committed).
+**Landed state (updated 2026-09-05 review)**: items 1, 2, 3, 5, 6 of the Summary are implemented and **committed on `main` in `3e798eeac`** (`fix(autodev): honor outcome_gate_waived and explicit threshold overrides (BUG-3390)`), which touches `check_readiness.py`, `show.py`, `cli/issues/__init__.py`, `autodev.yaml`, and the test files cited below; the go-no-go SKILL.md paragraph landed in `caddec57b`. Do not re-implement them — verify with `ll-loop validate autodev` (clean as of this review) and the cited tests (145 pass across `test_check_readiness.py`, `test_show.py`, `test_autodev_decision_gate.py`).
 
 - Item 1 (`outcome_gate_waived` round-trip + `--honor-waiver` + go-no-go escalation): `ReadinessStatus.outcome_gate_waived`/`meets_outcome_or_waived` (`check_readiness.py:16-55`); `--honor-waiver` wired at `check_readiness.py:147-181` and CLI registration `cli/issues/__init__.py:778-787,1052-1053`; `show.py:148,349-351` emits the key; `autodev.yaml` `check_passed`/`recheck_after_decide`/`recheck_scores` all pass `--honor-waiver` (test: `test_check_readiness_call_sites_pass_honor_waiver`, `test_builtin_loops.py:7488-7494`). Threshold precedence confirmed: explicit CLI `--readiness`/`--outcome` now overwrites the config-or-default value (`check_readiness.py:119-122`) — matches the issue's Expected Behavior. New states `check_go_no_go_eligible → run_go_no_go → check_go_no_go_waiver → reopen_waived` exist at `autodev.yaml:1963-2048`, wired from `check_atomic_design_remedy.on_no` (`autodev.yaml:1960`), matching the Program Design call path exactly.
 - Item 2 (guard-2 provenance): positive marker `autodev-size-review-ran-this-pass` written by `count_repair_cycle_size_review` (`autodev.yaml:1505`), required by `check_size_review_ran_this_pass` (`autodev.yaml:1731-1750`, fails closed `on_no`/`on_error → recheck_after_size_review`), cleared per-issue at `dequeue_next` (`autodev.yaml:116`).
@@ -39,9 +39,11 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 - Item 5 (inert rate-limit keys): `refine_current` (`autodev.yaml:472-510`) already declares neither `fragment: with_rate_limit_handling` nor `on_rate_limit_exhausted`. Structural test `test_no_loop_call_state_declares_on_rate_limit_exhausted` (`test_builtin_loops.py:7471-7486`) enumerates the exact `loop:` state set (`{"refine_current", "resolve_decision", "resolve_decision_direct"}`) and asserts neither key on any of them; a parallel test for `refine-to-ready-issue.yaml` exists at `test_builtin_loops.py:3048-3061`.
 - Item 6 (go-no-go waiver stamp): `skills/go-no-go/SKILL.md:402` adds an explicit paragraph headed "`outcome_gate_waived` escalation (BUG-2734)" beneath Step 3f's findings-write gate, directing the waiver stamp regardless of `HAS_FINDINGS`, citing BUG-3390 by name.
 
-**Remaining true gap — item 4 is downstream-mitigated only, not root-caused-fixed**: `refine-to-ready-issue.yaml`'s `record_decision_unresolved` (`refine-to-ready-issue.yaml:897-925`) still exits via `next: failed`/`on_error: failed` without calling `classify_terminal` — confirmed absent from that state's block. The double-ledger consequence is instead suppressed one hop downstream: `autodev.yaml`'s `skip_inflight` (`autodev.yaml:512-556`) greps `autodev-decision-unresolved.txt` for the ID via whole-line match (`grep -qxF`, `autodev.yaml:544-549`) and skips writing `refine_failed` when found, tested by `test_skip_inflight_skips_refine_failed_when_decision_unresolved_ledgered` and `test_skip_inflight_decision_ledger_match_is_whole_line` (`test_builtin_loops.py:7502-7520`). This fixes autodev's own ledger but leaves `record_decision_unresolved` itself uncorrected for any other caller that expects `classify_terminal` to have run on this path.
+**Remaining true gap — item 4 is downstream-mitigated only, not root-caused-fixed**: `refine-to-ready-issue.yaml`'s `record_decision_unresolved` (`refine-to-ready-issue.yaml:897-925`) still exits via `next: failed`/`on_error: failed` without calling `classify_terminal` — confirmed absent from that state's block. The double-ledger consequence is instead suppressed one hop downstream: `autodev.yaml`'s `skip_inflight` (`autodev.yaml:512-556`) greps `autodev-decision-unresolved.txt` for the ID via whole-line match (`grep -qxF`, `autodev.yaml:544-549`) and skips writing `refine_failed` when found, tested by `test_skip_inflight_skips_refine_failed_when_decision_unresolved_ledgered` and `test_skip_inflight_decision_ledger_match_is_whole_line` (`test_builtin_loops.py:7502-7520`). This fixes autodev's own ledger. **Correction (2026-09-05 review)**: there is no "other caller" hazard — `refine-terminal-class` is consumed only by autodev's `skip_inflight` (grep across `loops/`, `skills/`, `commands/`, `docs/` finds no other reader), and `resolve_issue` (`refine-to-ready-issue.yaml:144`) `rm -f`s the file at the start of every issue, so a stale class from a previous issue cannot leak. Root-causing item 4 is therefore optional hygiene, not a correctness fix. If done, mirror the `mark_rate_limit_infra` direct-write pattern (`refine-to-ready-issue.yaml:888-895`): `printf 'decision_unresolved' > ${context.run_dir}/refine-terminal-class` inside `record_decision_unresolved`, keep `next: failed` so `test_record_decision_unresolved_defers_and_routes_to_failed` (`test_builtin_loops.py:2806`) stays valid, and add a write assertion. `skip_inflight` needs no change (it treats any non-`infra` class as quality and already short-circuits on the ledger grep).
 
-**Consequence for Acceptance Criteria below**: the AC rows for items 1, 2, 3, 5, 6 describe behavior that already exists uncommitted in the working tree — verify by running `ll-loop validate autodev` and the cited tests rather than treating them as unimplemented. Only the `record_decision_unresolved`/`classify_terminal` root-cause gap (item 4) and the final validate/pytest gate remain outstanding.
+**Also corrected**: the earlier claim that `docs/guides/LOOPS_REFERENCE.md` references a "deleted `run_decide` state" is wrong — `LOOPS_REFERENCE.md:680` points at `oracles/resolve-decision.yaml`'s `run_decide`, which exists (`resolve-decision.yaml:146`). The diagram draws it inline rather than via the sub-loop; that is a presentation simplification, not a dangling reference.
+
+**What actually remains** (see the unchecked Acceptance Criteria below): the LOOPS_REFERENCE.md BUG-2744 paragraph (`:1081`) still describes the guard-2 provenance check as a *negative* `autodev-size-review-skipped-this-pass` marker that "fails open" — the shipped code is a *positive* `autodev-size-review-ran-this-pass` marker that fails closed, so the doc now contradicts the code; the diagram also omits `verify_impl_closed` and the `check_go_no_go_eligible → run_go_no_go → check_go_no_go_waiver → reopen_waived` chain. `skills/audit-loop-run/SKILL.md:271` still frames the waiver as a manual human decision. Item 6 has no test. Item 4 is optional per the paragraph above.
 
 ## Expected Behavior
 
@@ -65,7 +67,10 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 - `skip_inflight` suppresses `refine_failed` when the ID is already in `autodev-decision-unresolved.txt`.
 - Drop the inert keys from `refine_current`; add a structural test forbidding them on any `loop:` state.
 - go-no-go SKILL.md: stamp the waiver on GO regardless of `HAS_FINDINGS`.
-- Update `docs/guides/LOOPS_REFERENCE.md` (references deleted `run_decide`, omits ~18 states, four-vs-five entry points).
+- Update `docs/guides/LOOPS_REFERENCE.md`: rewrite the BUG-2744 guard paragraph (`:1081`) for the positive fail-closed marker; add `verify_impl_closed` and the go-no-go chain to the autodev diagram/prose; fill in the ~18 omitted states and the four-vs-five entry-point count. (`run_decide` is a valid `oracles/resolve-decision.yaml` state — leave it.)
+- Update `skills/audit-loop-run/SKILL.md:271` so `oversized_atomic` is described as an automated one-shot go-no-go escalation, with manual waiver only as the fallback after autodev's attempt.
+- Add a text-assertion test that `skills/go-no-go/SKILL.md` stamps the waiver regardless of `HAS_FINDINGS` (item 6 is otherwise untested).
+- Do **not** add `--honor-waiver` to `rn-remediate.yaml`'s `check_readiness` (decision recorded below).
 
 ## Program Design
 
@@ -92,15 +97,25 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 ### Files to Modify
 
 - `scripts/little_loops/cli/issues/show.py` — emit `outcome_gate_waived`
+  > ⚠ Superseded — landed in `3e798eeac`; no further change needed
 - `scripts/little_loops/cli/issues/check_readiness.py` — `--honor-waiver`, explicit-override precedence
+  > ⚠ Superseded — landed in `3e798eeac`; no further change needed
 - `scripts/little_loops/loops/autodev.yaml` — go-no-go escalation states, positive size-review marker, `verify_impl_closed`, `skip_inflight` fix, drop inert rate-limit keys from `refine_current`
+  > ⚠ Superseded — landed in `3e798eeac`; no further change needed
 - `skills/go-no-go/SKILL.md` — stamp the waiver on GO regardless of `HAS_FINDINGS`
-- `docs/guides/LOOPS_REFERENCE.md` — correct state inventory and entry points
+  > ⚠ Superseded — landed in `caddec57b`; only the test for it remains
+- `docs/guides/LOOPS_REFERENCE.md` — rewrite the BUG-2744 guard paragraph (`:1081`) for the positive fail-closed marker; add `verify_impl_closed` and the go-no-go chain; correct state inventory and entry points
+- `skills/audit-loop-run/SKILL.md` — reframe `oversized_atomic` as automated go-no-go escalation (`:271`)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — (optional) `record_decision_unresolved` direct `refine-terminal-class` write
 
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/cli/issues/__init__.py` — `check-readiness` CLI wiring
 - `loops/refine-to-ready-issue.yaml` — `record_decision_unresolved` interacts with autodev's `skip_inflight`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_manager.py` — imports `readiness_status` from `check_readiness.py` (`issue_manager.py:818-820`) and consumes `ReadinessStatus` directly in `process_issue_inplace`'s gate logic; a second, non-CLI consumer of the module beyond the three named autodev states [Agent 1 finding]
+- `scripts/little_loops/loops/rn-remediate.yaml` — its own `check_readiness` state (~lines 194-205) shells out `ll-issues check-readiness "$ID" --readiness ... --outcome ...` without `--honor-waiver`; it is silently affected by the config-vs-explicit-override precedence fix (its own explicit context-seeded thresholds now win over config, unlike before) even though it isn't one of the three call sites this issue names in scope [Agent 1 + Agent 2 finding]
 
 ### Similar Patterns
 
@@ -113,9 +128,17 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 - `scripts/tests/test_fsm_topology.py` — forbid `on_rate_limit_exhausted`/`with_rate_limit_handling` on `loop:` states
 - `scripts/tests/test_builtin_loops.py` — `ll-loop validate autodev`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_manager.py` — imports/patches `little_loops.cli.issues.check_readiness.readiness_status`/`ReadinessStatus` (15+ sites) to exercise `process_issue_inplace`'s gate behavior; verify unaffected or update for the new precedence rule [Agent 1 + Agent 3 finding]
+- Item 6 (go-no-go SKILL.md "stamp the waiver regardless of `HAS_FINDINGS`") has **no test coverage anywhere in the repo** — searched `HAS_FINDINGS`/`outcome_gate_waived`/`go_no_go` across all test files with no hits against this specific behavior; new coverage is needed [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py::test_record_decision_unresolved_defers_and_routes_to_failed` (~line 2806-2819) asserts `record_decision_unresolved.next == "failed"`; this will likely need updating once item 4 (`record_decision_unresolved` → `classify_terminal`) is implemented — either to `next == "classify_terminal"` (if routed through it) or augmented with a `refine-terminal-class` write assertion (if fixed via the `mark_rate_limit_infra` direct-write pattern, `refine-to-ready-issue.yaml:888-895`) [Agent 3 finding]
+
 ### Documentation
 
 - `docs/guides/LOOPS_REFERENCE.md`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/audit-loop-run/SKILL.md` (~line 271) — its "oversized_atomic ... `outcome_gate_waived` decision" paragraph frames the waiver as a manual human follow-up; post-fix this is an automated one-shot-per-run escalation (`check_go_no_go_eligible → run_go_no_go`), so the framing goes stale [Agent 2 finding]
 
 ### Configuration
 
@@ -125,7 +148,17 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 
 | File | Preserved | Changed | Dropped |
 |------|-----------|---------|---------|
-| `docs/guides/LOOPS_REFERENCE.md` | Overall guide structure and unrelated state descriptions | State inventory corrected to include the ~18 currently-omitted states and the true four-vs-five entry-point count | Reference to the deleted `run_decide` state |
+| `docs/guides/LOOPS_REFERENCE.md` | Overall guide structure, unrelated state descriptions, and the `run_decide` reference (a valid `oracles/resolve-decision.yaml` state) | BUG-2744 paragraph rewritten for the positive fail-closed marker; `verify_impl_closed` and go-no-go chain added; state inventory corrected to include the ~18 currently-omitted states and the true four-vs-five entry-point count | Description of the negative `autodev-size-review-skipped-this-pass` marker and its "fails open" semantics |
+| `skills/audit-loop-run/SKILL.md` | All other summary-key guidance | `oversized_atomic` paragraph reframed as automated go-no-go escalation with manual waiver as fallback | "manual human `outcome_gate_waived` decision" as the primary framing |
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- **Decided (2026-09-05 review): `rn-remediate.yaml`'s `check_readiness` does NOT get `--honor-waiver`.** rn-remediate exists to *earn* the pass through refinement; the waiver is autodev's post-`oversized_atomic` escalation valve and has no meaning mid-remediation. The config-vs-explicit precedence change *is* intended for rn-remediate too: its state comment (ENH-1977 Fix 2) already assumes the context-seeded `--readiness/--outcome` values win, which was silently untrue before `3e798eeac`. No code change; do not relitigate.
+- Add test coverage for item 6 (go-no-go SKILL.md's "stamp waiver regardless of `HAS_FINDINGS`") — a text assertion on the skill body under the `outcome_gate_waived` escalation paragraph is sufficient; currently untested anywhere in the repo
+- Item 4 (optional): if the direct-write fix is applied, keep `next: failed` so `test_record_decision_unresolved_defers_and_routes_to_failed` (`test_builtin_loops.py:2806`) remains valid, and add a `refine-terminal-class` write assertion alongside it. If skipped, add a one-line descope note to this issue's Resolution.
+- Reconcile `skills/audit-loop-run/SKILL.md:271`'s stale "manual `outcome_gate_waived` decision" framing with the new automated escalation chain
 
 ## Impact
 
@@ -136,21 +169,34 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues show <ID> --json` emits `outcome_gate_waived`
-- [ ] `ll-issues check-readiness <ID> --honor-waiver` passes the outcome half when the flag is set; readiness still enforced; explicit `--readiness/--outcome` override config
-- [ ] `check_passed`, `recheck_after_decide`, `recheck_scores` pass `--honor-waiver`
-- [ ] go-no-go escalation states exist with one-shot marker; `check_atomic_design_remedy.on_no → check_go_no_go_eligible`
-- [ ] `check_size_review_ran_this_pass` requires the positive marker; only `count_repair_cycle_size_review` writes it; `on_error → recheck_after_size_review`
-- [ ] `implement_current.on_yes → verify_impl_closed`; unverified ledger line `ID  impl_exit0_not_closed`; inflight cleared on both branches; `finalize_done` counts a reasoned line once
-- [ ] `skip_inflight` does not ledger `refine_failed` for an ID already in `autodev-decision-unresolved.txt`
-- [ ] No `loop:` state in autodev declares `on_rate_limit_exhausted` or `with_rate_limit_handling`
+Landed in `3e798eeac` / `caddec57b` (verified 2026-09-05):
+
+- [x] `ll-issues show <ID> --json` emits `outcome_gate_waived`
+- [x] `ll-issues check-readiness <ID> --honor-waiver` passes the outcome half when the flag is set; readiness still enforced; explicit `--readiness/--outcome` override config
+- [x] `check_passed`, `recheck_after_decide`, `recheck_scores` pass `--honor-waiver`
+- [x] go-no-go escalation states exist with one-shot marker; `check_atomic_design_remedy.on_no → check_go_no_go_eligible`
+- [x] `check_size_review_ran_this_pass` requires the positive marker; only `count_repair_cycle_size_review` writes it; `on_error → recheck_after_size_review`
+- [x] `implement_current.on_yes → verify_impl_closed`; unverified ledger line `ID  impl_exit0_not_closed`; inflight cleared on both branches; `finalize_done` counts a reasoned line once
+- [x] `skip_inflight` does not ledger `refine_failed` for an ID already in `autodev-decision-unresolved.txt`
+- [x] No `loop:` state in autodev declares `on_rate_limit_exhausted` or `with_rate_limit_handling`
+- [x] `skills/go-no-go/SKILL.md` stamps the waiver on GO regardless of `HAS_FINDINGS`
+
+Remaining:
+
+- [ ] `docs/guides/LOOPS_REFERENCE.md:1081` BUG-2744 paragraph rewritten for the positive `autodev-size-review-ran-this-pass` marker and fail-closed `on_error`; no remaining mention of `autodev-size-review-skipped-this-pass` or "fails open"
+- [ ] `docs/guides/LOOPS_REFERENCE.md` autodev diagram/prose includes `verify_impl_closed` and the `check_go_no_go_eligible → run_go_no_go → check_go_no_go_waiver → reopen_waived` chain; omitted-state inventory and entry-point count corrected
+- [ ] `skills/audit-loop-run/SKILL.md:271` describes `oversized_atomic` as an automated one-shot go-no-go escalation, with manual waiver as the fallback
+- [ ] A test asserts the go-no-go SKILL.md waiver paragraph directs stamping regardless of `HAS_FINDINGS`
+- [ ] `rn-remediate.yaml` `check_readiness` left without `--honor-waiver` (decision recorded in Wiring Phase)
+- [ ] Item 4 either fixed via direct `refine-terminal-class` write with `next: failed` preserved and a write assertion added, or explicitly descoped in the Resolution
 - [ ] `ll-loop validate autodev` clean; `python -m pytest scripts/tests/` passes
 
 ## Status
 
-**Open** | Created: 2026-09-04 | Priority: P2
+**Open** (partially landed — see Acceptance Criteria) | Created: 2026-09-04 | Priority: P2
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-05T04:57:34 - `7ad2c895-8f68-4859-96fb-41e7c667e5b1.jsonl`
 - `/ll:refine-issue` - 2026-09-05T04:32:46 - `251307a7-40ea-42f4-beb3-43e6b4de6744.jsonl`
 - `/ll:format-issue` - 2026-09-05T04:22:41 - `adb409c3-bb29-46e0-a080-e89ad1cec8e0.jsonl`

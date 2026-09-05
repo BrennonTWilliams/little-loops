@@ -59,6 +59,11 @@ Findings below cover the existing template schema, detection/collision mechanism
 - `scripts/little_loops/init/introspect.py` — `_ecosystem_command` (line 484) gains one branch per new ecosystem, following the existing `go.mod`/`Cargo.toml` branch shape (guard on marker existence → build an `evidence` string → per-`field_name` lookup via `_choose(default_value, candidates, must_contain, fallback)`, `introspect.py:327-336`, or `_any_glob` for multi-candidate markers like `.sln`/`.csproj`, `introspect.py:339-344`)
 - `scripts/little_loops/package_data.py:39-47` — every shipped template filename has a corresponding `("templates", "<name>.json")` tuple in `_PACKAGE_DATA` so it ships in the wheel; the six new template files need entries added here or `test_wheel_smoke.py::test_package_data_manifest_all_accessible` will fail
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_test_file_patterns.py` — module-level `TYPED_TEMPLATES` list (~lines 23-33) AND the `shared_fixture_markers` dict inside `TestTemplateDefaults.test_template_defaults_include_shared_fixture_equivalent()` must **both** gain entries for the six new template stems, or the parametrized test raises `KeyError` at collection time (fails loudly, not silently) [Agent 2 finding]
+- `scripts/tests/test_init_core.py::TestTemplateCommandOptions.TYPED_TEMPLATES` (~line 4278, currently 8 filenames) — gains the six new template filenames so `_meta.command_options`/`test_cmd`/`test_patterns` checks cover them [Agent 1 + Agent 2 finding]
+- `scripts/tests/test_init_core.py::TestProjectTypeTemplatesEpicBranchesStamp.project_templates` (~line 4392, currently 9 filenames) — gains the six new template filenames so the ARCHITECTURE-096 `parallel.epic_branches.enabled: false` stamp is checked on them too; silently under-covered (not failing) if skipped [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/init/detect.py::_load_templates` — glob-loads every `templates/*.json`, skipping `_SECTION_TEMPLATES` and any file whose `_meta` lacks `detect`; a new template is picked up automatically with no code change to `detect.py` itself
@@ -84,10 +89,30 @@ Findings below cover the existing template schema, detection/collision mechanism
 - `scripts/tests/test_init_core.py::TestDetectProjectType` (line 367) and the parametrized `test_real_template_detection` (line 519) — extend both: unit-level positive/negative tests in the class, plus one parametrize row per new template in the parity suite
 - `scripts/tests/test_init_introspect.py::TestEcosystemDetection` (line 431) — extend with one test per new `_ecosystem_command` branch
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_init_core.py::test_real_template_detection` (parametrize rows, lines 519-549) — add one `(["<indicator>"], "<filename>.json")` row per new template following the existing tuple shape; note `dotnet.json` is missing from this parametrize list today too (pre-existing gap, not introduced by this issue) [Agent 3 finding]
+- `scripts/tests/test_init_introspect.py::TestEcosystemDetection` (model: `test_go_conventions`, line 432) — add one `test_<ecosystem>_conventions` method per new `_ecosystem_command` branch using the `_template_for(tmp_path, marker, templates_dir)` helper (line 287) [Agent 3 finding]
+- `scripts/tests/test_init_core.py::test_js_excluded_by_tsconfig` (line 381-386, the only existing `detect_exclude` test) and its paired `test_js_matched_without_tsconfig` (line 388-391) — model the new Ruby-Gemfile-in-monorepo exclusion test as this same matched pair (excluded case + matched-without-exclusion case) [Agent 3 finding]
+- `scripts/tests/test_init_core.py::test_priority_tiebreak_when_match_count_equal` (line 458-472) — the only existing `_meta.priority` tiebreak test, and it operates on a synthetic `fake_templates` fixture, not real templates; `workspace.json` will be the second-ever real-template user of `_meta.priority` (after `generic.json`'s `-1`), so a real-template tiebreak test (workspace vs. a single-package template) has no existing precedent to extend [Agent 3 finding]
+
 ### Documentation
 
 - `docs/guides/GETTING_STARTED.md:367` — "falls back to the generic template" troubleshooting row would need updating once these ecosystems are covered
 - `docs/reference/CONFIGURATION.md:309,321` — references "the per-project-type template default" for `test_patterns`, applies unchanged to the six new templates
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/GETTING_STARTED.md` ("Set Up Your Project" section, distinct from the line 367 troubleshooting row) — a second enumeration sentence ("Detected project types: Python, JavaScript/TypeScript, Go, Rust, Java (Maven or Gradle), and .NET...") lists both supported types and ecosystem-convention marker files; needs the six new ecosystems added [Agent 2 finding]
+- `docs/ARCHITECTURE.md` (package-layout tree, "Package data: project-type configs and section templates") — enumerates every template filename; needs the six new filenames added [Agent 2 finding]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add entries to `scripts/tests/test_test_file_patterns.py`'s `TYPED_TEMPLATES` list AND its `shared_fixture_markers` dict together — a mismatch between the two raises `KeyError` at collection time
+- Add the six new template filenames to `TestTemplateCommandOptions.TYPED_TEMPLATES` and `TestProjectTypeTemplatesEpicBranchesStamp.project_templates` in `scripts/tests/test_init_core.py`
+- Add six parametrize rows to `test_real_template_detection` and six `test_<ecosystem>_conventions` methods to `TestEcosystemDetection`
+- Add a workspace-vs-single-package `_meta.priority` tiebreak test against real templates (no existing precedent — the only current tiebreak test uses a synthetic fixture)
+- Update `docs/guides/GETTING_STARTED.md`'s "Set Up Your Project" enumeration and `docs/ARCHITECTURE.md`'s template-filename tree to include the six new ecosystems
 
 ## Program Design
 
@@ -123,5 +148,6 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-05T04:57:35 - `7ad2c895-8f68-4859-96fb-41e7c667e5b1.jsonl`
 - `/ll:refine-issue` - 2026-09-05T04:32:54 - `251307a7-40ea-42f4-beb3-43e6b4de6744.jsonl`
 - `/ll:format-issue` - 2026-09-05T04:22:41 - `adb409c3-bb29-46e0-a080-e89ad1cec8e0.jsonl`
