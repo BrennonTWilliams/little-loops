@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-04'
 captured_at: '2026-09-04T21:03:39Z'
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # ENH-3389: ll-init: run ll-adapt for adapter hosts after wiring hooks (or offer to) so skills/commands are mirrored at init
@@ -185,6 +191,7 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-05T18:12:55 - `ea071f08-d0c4-4b36-bca7-9a3ab585bee9.jsonl`
 - `/ll:wire-issue` - 2026-09-05T17:50:06 - `ed66812c-58df-4f76-9110-35683914fb88.jsonl`
 - pre-implementation review (manual) - 2026-09-05 - reframed from "run ll-adapt" to "copy pre-built mirrors"; codex and wizard prompt dropped; re-run `/ll:wire-issue` before `/ll:manage-issue`
 - `/ll:refine-issue` - 2026-09-05T17:24:37 - `78d5f5c3-1aa6-45e4-aacc-42e2a861b775.jsonl`
