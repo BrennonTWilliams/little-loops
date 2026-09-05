@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-04'
 captured_at: '2026-09-04T21:11:07Z'
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3390: autodev: dead outcome_gate_waived path, stale guard-2 capture provenance, no post-implement closure check, and unwired go-no-go escalation
@@ -197,6 +203,7 @@ Remaining:
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-05T17:28:26 - `42bd48b8-704c-4d15-b248-a77d6a520c33.jsonl`
 - `/ll:wire-issue` - 2026-09-05T04:57:34 - `7ad2c895-8f68-4859-96fb-41e7c667e5b1.jsonl`
 - `/ll:refine-issue` - 2026-09-05T04:32:46 - `251307a7-40ea-42f4-beb3-43e6b4de6744.jsonl`
 - `/ll:format-issue` - 2026-09-05T04:22:41 - `adb409c3-bb29-46e0-a080-e89ad1cec8e0.jsonl`
