@@ -24,6 +24,7 @@ score_ambiguity: 10
 score_change_surface: 18
 relates_to:
 - BUG-3387
+reconcile_attempted: true
 ---
 
 # FEAT-3384: EventBus HITL adapter
@@ -176,7 +177,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/__init__.py` — add `EventBusAdapter` and `EventBusAdapterExtension` to the public re-export list, following the existing pattern for `CommunicationAdapterExtension`/`TerminalAdapter`-sibling symbols (import block at lines 9-19, 21-28; `__all__` listing at lines 102-111, 112-118) [Agent 1 finding]
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/fsm/executor.py:2661` — `resolve_communication_adapter()`: the resolution chokepoint either registration path ultimately feeds
+- `scripts/little_loops/fsm/executor.py:2682` — `resolve_communication_adapter()`: the resolution chokepoint either registration path ultimately feeds
 - `scripts/little_loops/extension.py:274-281` — `wire_extensions()`: the registration/conflict-check path, relevant if Option B
 - `scripts/little_loops/fsm/communication_adapter.py` — `CommunicationAdapter` ABC, `AdapterResponse`/`TimeoutResponse`, `HUMAN_APPROVAL_REQUESTED_EVENT`/`HUMAN_RESPONSE_EVENT` constants this adapter imports and reuses
 - `scripts/little_loops/events.py:70` — `EventBus`: `register()`/`unregister()`/`emit()` — the pub/sub surface this adapter is the first request/response consumer of
@@ -263,8 +264,8 @@ Same-thread reentrancy still matters: `EventBus.emit()` iterates `self._observer
 2. Implement `await_response()`'s re-entrant polling contract: the observer stores a matching verdict into the pending entry; `await_response(alert_id, timeout)` returns it immediately if present, else sleeps in ≤100ms ticks up to `timeout` re-checking the entry (the executor's own tick loop is what drains inbound between calls, so a long `timeout` here would starve it — document that callers pass short ticks). An unconsumed verdict survives repeated calls and `TimeoutResponse`s. The entry is popped (and the observer unregistered when no alerts remain pending) only on a returned verdict or `cancel_alert()`.
 3. Implement `supports_async()` returning `True` and `cancel_alert()` withdrawing pending state and unregistering the observer when no alerts remain.
 4. Registration (Option B, decided): add `EventBusAdapterExtension` in the same module with `bind_event_bus(bus)` + `provided_adapters()` and no `on_event` (Second Review #7); in `wire_extensions()` add a pass before the `provided_*` merges: `for ext in extensions: if hasattr(ext, "bind_event_bus"): ext.bind_event_bus(bus)`. Discovery: add `BUILTIN_EXTENSIONS = (EventBusAdapterExtension,)` in `extension.py` (lazy import inside `load_all()`) and have `ExtensionLoader.load_all()` instantiate them first, before config paths and entry points (Second Review #8). ~~Add the `eventbus` entry point to `scripts/pyproject.toml:131` and re-run `pip install -e`~~ — superseded: no pyproject change, no reinstall.
-5. `_drain_inbound()` (`executor.py:549`): re-emit items with `"event" == HUMAN_RESPONSE_EVENT` and an `alert_id` under that name with the whitelisted payload (Decision Rules; Second Review #5). Add tests in `test_fsm_executor.py` next to the existing `_drain_inbound` tests: the verdict branch, and that a body carrying `run_id`/`loop`/`ts` keys cannot overwrite the envelope on the verdict path.
-5b. `_execute_sub_loop()` (`executor.py:1170-1191`): after `child_executor` is built, copy `_contributed_adapters`/`_contributed_actions`/`_contributed_evaluators`/`_interceptors` from `self` (Second Review #6). Add a test asserting a child executor resolves the parent's registered adapter.
+5. `_drain_inbound()` (`executor.py:557`): re-emit items with `"event" == HUMAN_RESPONSE_EVENT` and an `alert_id` under that name with the whitelisted payload (Decision Rules; Second Review #5). Add tests in `test_fsm_executor.py` next to the existing `_drain_inbound` tests: the verdict branch, and that a body carrying `run_id`/`loop`/`ts` keys cannot overwrite the envelope on the verdict path.
+5b. `_execute_sub_loop()` (`executor.py:1198-1213`): after `child_executor` is built, copy `_contributed_adapters`/`_contributed_actions`/`_contributed_evaluators`/`_interceptors` from `self` (Second Review #6). Add a test asserting a child executor resolves the parent's registered adapter.
 6. Add `scripts/tests/test_eventbus_adapter.py`, modeled on `test_terminal_adapter.py`'s class-per-concern shape, covering: `send_alert()` returns a hex id and emits nothing; verdict resolution from a matching `human_response` bus event (approve / reject with reason / edit with text); non-matching `alert_id` and unknown `verdict` are ignored; re-entrancy across repeated `await_response()` calls including retained-verdict-across-timeout; `cancel_alert()` withdrawal and a late verdict after cancel being ignored; observer unregistered once no alerts are pending; a second observer registered after the adapter's still receives the event that resolves a verdict (guards Second Review #9); `supports_async()` is `True`.
 7. Verification: `python -m pytest scripts/tests/test_eventbus_adapter.py scripts/tests/test_communication_adapter.py scripts/tests/test_extension.py scripts/tests/test_fsm_executor.py -k "inbound or adapter or extension or sub_loop" -v` passes; then an end-to-end check under `ll-loop run --serve` with a `human_approval` state (needs FEAT-1794) answered by `curl -X POST <bridge.url>interaction -d '{"event":"human_response","alert_id":"...","verdict":"approve"}'`.
 
@@ -408,6 +409,7 @@ _Added by `/ll:confidence-check` on 2026-09-04_
 - Criterion C (Ambiguity) capped at 10/25: `unapplied_decision` flags `TerminalAdapter` still appearing unmarked in Proposed Solution/Program Design/Implementation Steps/Files to Modify. Most of these are legitimate pattern-reference mentions (e.g. `uuid.uuid4().hex` convention, test-shape modeling), not restatements of the rejected Option A (hardcoded `elif` branch) — only the Acceptance Criteria bullet needed (and received) a superseded marker. Verify with `/ll:decide-issue` if this should be suppressed, or leave as-is since it doesn't block implementation.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-05T23:48:27 - `36a19b65-5c6b-4fe0-93ce-e7fb3332f17a.jsonl`
 - `/ll:verify-issues` - 2026-09-05T23:38:33 - `161a68e7-1fed-48cb-8c40-28051a0cd1ac.jsonl`
 - `/ll:refine-issue` - 2026-09-05T23:24:41 - `182fc9b6-abae-4d60-a265-d4ec9a1cc50e.jsonl`
 - second-review - 2026-09-04 - manual review against working tree; see § Second Review (items 5–9; supersedes Pre-implementation Review #4's entry-point discovery, corrects #1's `artifact_interaction` premise)
