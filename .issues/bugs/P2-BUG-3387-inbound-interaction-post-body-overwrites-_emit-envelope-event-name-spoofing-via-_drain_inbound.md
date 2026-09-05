@@ -16,10 +16,10 @@ labels:
 decision_needed: false
 verify_verdict: VALID
 confidence_score: 100
-outcome_confidence: 96
+outcome_confidence: 81
 score_complexity: 21
 score_test_coverage: 25
-score_ambiguity: 25
+score_ambiguity: 10
 score_change_surface: 25
 relates_to:
 - FEAT-3384
@@ -199,6 +199,7 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-05T04:41:03 - `4edf6d3c-5d54-450d-a8f2-eb96eef0d54b.jsonl`
 - `/ll:confidence-check` - 2026-09-04T21:10:35 - `a0e94d5f-76a9-4089-9549-a69de7658b21.jsonl`
 - `/ll:verify-issues` - 2026-09-04T21:06:56 - `a0e94d5f-76a9-4089-9549-a69de7658b21.jsonl`
 - `/ll:decide-issue` - 2026-09-04T20:59:12 - `15f28469-a6a4-4d6e-a8c3-8e12607ee711.jsonl`
