@@ -4,7 +4,7 @@ type: FEAT
 title: Add project-type templates for Ruby, PHP, C/C++ (CMake), Swift, Deno, and monorepo
   detection
 priority: P3
-status: deferred
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-09-04'
 captured_at: '2026-09-04T20:06:43Z'
@@ -12,6 +12,7 @@ deferred_by: human
 deferred_date: '2026-09-04T20:08:16Z'
 relates_to:
 - FEAT-3388
+closed_reason: superseded
 ---
 
 # FEAT-3385: Add project-type templates for Ruby, PHP, C/C++ (CMake), Swift, Deno, and monorepo detection

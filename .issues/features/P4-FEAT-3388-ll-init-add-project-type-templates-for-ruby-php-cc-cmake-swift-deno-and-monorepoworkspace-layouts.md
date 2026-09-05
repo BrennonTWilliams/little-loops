@@ -4,12 +4,16 @@ type: FEAT
 title: 'll-init: add project-type templates for Ruby, PHP, C/C++ (CMake), Swift, Deno,
   and monorepo/workspace layouts'
 priority: P4
-status: open
+status: deferred
 discovered_by: ll-issues-create
 discovered_date: '2026-09-04'
 captured_at: '2026-09-04T21:03:39Z'
 relates_to:
 - FEAT-3385
+supersedes:
+- FEAT-3385
+deferred_by: human
+deferred_date: '2026-09-05T23:51:48Z'
 ---
 
 # FEAT-3388: ll-init: add project-type templates for Ruby, PHP, C/C++ (CMake), Swift, Deno, and monorepo/workspace layouts
@@ -144,7 +148,9 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-09-04 | Priority: P4
+**Deferred** | Created: 2026-09-04 | Priority: P4
+
+Deferred 2026-09-05 (human). Supersedes FEAT-3385 (same six templates under different filenames; this issue carries the fuller wiring research). No project on this machine currently uses Ruby, PHP, CMake, Swift, or Deno, and all of them work today via `generic.json`. Revisit when a real consumer in one of these ecosystems appears.
 
 
 ## Session Log

@@ -409,6 +409,7 @@ _Added by `/ll:confidence-check` on 2026-09-04_
 - Criterion C (Ambiguity) capped at 10/25: `unapplied_decision` flags `TerminalAdapter` still appearing unmarked in Proposed Solution/Program Design/Implementation Steps/Files to Modify. Most of these are legitimate pattern-reference mentions (e.g. `uuid.uuid4().hex` convention, test-shape modeling), not restatements of the rejected Option A (hardcoded `elif` branch) — only the Acceptance Criteria bullet needed (and received) a superseded marker. Verify with `/ll:decide-issue` if this should be suppressed, or leave as-is since it doesn't block implementation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-05T23:51:32 - `ccea2523-fb7a-4a89-bcc0-21d2c056da68.jsonl`
 - `/ll:reconcile-issue` - 2026-09-05T23:48:27 - `36a19b65-5c6b-4fe0-93ce-e7fb3332f17a.jsonl`
 - `/ll:verify-issues` - 2026-09-05T23:38:33 - `161a68e7-1fed-48cb-8c40-28051a0cd1ac.jsonl`
 - `/ll:refine-issue` - 2026-09-05T23:24:41 - `182fc9b6-abae-4d60-a265-d4ec9a1cc50e.jsonl`
