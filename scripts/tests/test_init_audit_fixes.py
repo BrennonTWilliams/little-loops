@@ -836,6 +836,32 @@ class TestOutputLayer:
         assert "codegraph init" in out  # no index on this (patched) machine
         assert "git init" in out  # tmp project is not a repo
 
+    def test_adapter_hosts_no_longer_get_manual_mirror_hint(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3389: gemini/kimi-code/qwen mirror automatically; codex still needs
+        the manual `ll-adapt --host codex --apply` next-steps hint."""
+        project = tmp_path / "proj"
+        project.mkdir()
+        with patch.dict("os.environ", {"KIMI_CODE_HOME": str(tmp_path / "kimi-home")}):
+            assert (
+                _run(
+                    [
+                        "--yes",
+                        "--hosts",
+                        "codex,gemini,kimi-code,qwen",
+                        "--root",
+                        str(project),
+                    ]
+                )
+                == 0
+            )
+        out = capsys.readouterr().out
+        assert "mirror skills/commands for Codex CLI" in out
+        assert "mirror skills/commands for Gemini CLI" not in out
+        assert "mirror skills/commands for Kimi Code" not in out
+        assert "mirror skills/commands for Qwen Code" not in out
+
     def test_dry_run_paths_are_relative(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:

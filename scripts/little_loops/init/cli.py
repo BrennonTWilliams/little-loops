@@ -175,6 +175,7 @@ def _dispatch_host_adapters(
     from little_loops.init.writers import (
         install_codex_adapter,
         install_gemini_adapter,
+        install_host_mirrors,
         install_kimi_adapter,
         install_qwen_adapter,
     )
@@ -307,6 +308,25 @@ def _dispatch_host_adapters(
                             f"{result.returncode}; run 'claude plugin install "
                             "ll@little-loops' manually"
                         )
+
+        # Copy the pre-built, git-tracked skill/command/agent mirrors (ENH-3389).
+        # ll-adapt cannot target project_root (it writes beside the source
+        # skills/commands dirs, i.e. into plugin_root), so this is a plain
+        # copy rather than a re-run of the emitter pipeline. Unconditional on
+        # host selection + adapter-writer outcome, following the FEAT-3372
+        # claude-code auto-install precedent (no opt-out flag).
+        if host in _ADAPTER_MIRROR_HOSTS:
+            label = _ADAPTER_MIRROR_HOSTS[host]
+            mirrored = install_host_mirrors(
+                project_root, plugin_root, host, force=force, dry_run=dry_run
+            )
+            if mirrored is None:
+                warning(
+                    f"{label}: skill/command mirror source not found in package "
+                    f"install; .{host}/ mirrors were not written."
+                )
+            elif mirrored and not dry_run:
+                info(f"{label}: skill/command mirrors copied to .{host}/")
 
 
 def _dispatch_host_upgrade(
@@ -540,7 +560,6 @@ def _persist_host_selection(config: dict[str, Any], hosts: list[str], explicit: 
 
 
 _ADAPTER_MIRROR_HOSTS: dict[str, str] = {
-    "codex": "Codex CLI",
     "gemini": "Gemini CLI",
     "kimi-code": "Kimi Code",
     "qwen": "Qwen Code",
@@ -572,10 +591,11 @@ def next_steps(
         steps.append(("ll-code status", "check the code-graph index behind ll-code"))
     if not is_git_repo:
         steps.append(("git init", "enable auto-commit and worktree-based parallel work"))
-    for host in hosts:
-        label = _ADAPTER_MIRROR_HOSTS.get(host)
-        if label:
-            steps.append((f"ll-adapt --host {host} --apply", f"mirror skills/commands for {label}"))
+    # gemini/kimi-code/qwen mirror automatically (ENH-3389, via
+    # _ADAPTER_MIRROR_HOSTS as the auto-mirror gate in _dispatch_host_adapters);
+    # codex is out of scope and still needs this manual follow-up.
+    if "codex" in hosts:
+        steps.append(("ll-adapt --host codex --apply", "mirror skills/commands for Codex CLI"))
     steps.append(("ll-doctor", "verify host integration and capabilities"))
     steps.append(("/ll:help", "browse every command and skill"))
     return steps

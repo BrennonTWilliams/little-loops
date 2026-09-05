@@ -4,10 +4,11 @@ type: ENH
 title: 'll-init: run ll-adapt for adapter hosts after wiring hooks (or offer to) so
   skills/commands are mirrored at init'
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-04'
 captured_at: '2026-09-04T21:03:39Z'
+completed_at: '2026-09-05T23:04:44Z'
 confidence_score: 100
 outcome_confidence: 82
 score_complexity: 20
@@ -152,6 +153,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Program Design
 
+### Deviations
+
+_2026-09-05, `/ll:manage-issue`:_
+
+- **Mirror subdirs table is hard-coded, not derived from `HOST_CAPABILITIES`.** The design allowed a hard-coded table "if practical"; deriving from `HOST_CAPABILITIES[host].commands`/`.agents` turned out not to be practical because `kimi-code`'s `commands=True` capability flag reflects that kimi *emits* bridged commands, not that it has a distinct project-local `commands/` mirror dir to copy (bridged commands live inside `skills/ll-<stem>/`) — deriving from the capability flags would have copied a nonexistent `.kimi-code/commands/` source. Kept the explicit `_MIRROR_HOST_SUBDIRS` table in `writers.py` instead.
+- **Single shared call site instead of one `install_host_mirrors` call duplicated inside each per-host `elif` branch.** The design's Call Path reads `_dispatch_host_adapters -> per-host elif installed and not dry_run: success branch -> install_host_mirrors(...)`. Implemented as one shared block after the full per-host if/elif chain (still inside the same `for host in hosts:` loop iteration), gated by `if host in _ADAPTER_MIRROR_HOSTS:`, so the copy call isn't duplicated three times with identical logic. The observable sequence and parameters passed are unchanged; `install_host_mirrors` itself (not the dispatch code) handles its own dry-run preview print, matching the "each function internally branches on dry_run" convention already documented under Conventions in Force.
+- **`next_steps()` no longer iterates the (now-narrowed) `_ADAPTER_MIRROR_HOSTS`.** Narrowing that dict to gemini/kimi-code/qwen (per Signatures) would have silently dropped codex's footer hint too, since `next_steps()` previously read the same dict. Added a direct `if "codex" in hosts:` branch in `next_steps()` instead, so codex keeps its manual `ll-adapt --host codex --apply` hint while gemini/kimi-code/qwen lose theirs (per Expected Behavior).
+
 ### Signatures
 
 - `_dispatch_host_adapters(hosts: list[str], project_root: Path, plugin_root: Path, force: bool = False, dry_run: bool = False) -> None` (`scripts/little_loops/init/cli.py:166`) — call site to extend; signature unchanged (21 direct test calls depend on it)
@@ -185,12 +194,42 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 - **Risk**: Low - additive copy step gated on host selection and `not dry_run`; `force` semantics mirror the existing hook-adapter writers
 - **Breaking Change**: No
 
+## Resolution
+
+Added `install_host_mirrors()` (`scripts/little_loops/init/writers.py`) which copies
+the pre-built, git-tracked `plugin_root/.<host>/{skills,commands,agents}` mirror
+trees into `project_root/.<host>/` for gemini, kimi-code, and qwen (kimi-code has
+no dedicated `commands/` mirror — bridged commands travel with `skills/`).
+Wired into `_dispatch_host_adapters` (`scripts/little_loops/init/cli.py`), gated
+by the narrowed `_ADAPTER_MIRROR_HOSTS`, so it fires from all call sites that
+already route through that dispatcher (`_run_yes`, `_run_apply`,
+`_dispatch_host_upgrade` via its existing `force=True` delegation, and the TUI's
+`_apply_config`) — no separate upgrade-path call was needed. `--dry-run` prints
+the planned copy without writing; `--force` re-copies. The `ll-adapt --host <h>
+--apply` next-steps footer hint is now codex-only (gemini/kimi-code/qwen mirror
+automatically). Updated README.md/scripts/README.md, GETTING_STARTED.md, the
+kimi/qwen getting-started docs, docs/reference/CLI.md, and skills/init/SKILL.md
+to describe the automatic behavior. See Program Design → Deviations for where
+the implementation diverged from the original design (hard-coded subdir table
+instead of deriving from `HOST_CAPABILITIES`; a single shared call site instead
+of one per host branch; `next_steps()` special-cases codex directly).
+
+Tests: new `TestHostMirrors` unit tests for `install_host_mirrors` (fresh
+install, idempotent, force, dry-run, missing source, unrecognized host,
+kimi-code subdir scoping) plus `TestHostDispatch` integration tests exercising
+`main_init` for gemini/qwen/kimi-code/claude-code, and a footer test asserting
+the manual hint is codex-only. Full suite: `python -m pytest scripts/tests/`
+passes (one `test_feat3323_sse_bridge.py` socket-timeout failure was
+independently reproduced as flaky — passes in isolation, unrelated to this
+change).
+
 ## Status
 
 **Open** | Created: 2026-09-04 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-05T23:04:07 - `f0376453-cfd1-4d2a-8187-c1f51f4bfb63.jsonl`
 - `/ll:confidence-check` - 2026-09-05T18:12:55 - `ea071f08-d0c4-4b36-bca7-9a3ab585bee9.jsonl`
 - `/ll:wire-issue` - 2026-09-05T17:50:06 - `ed66812c-58df-4f76-9110-35683914fb88.jsonl`
 - pre-implementation review (manual) - 2026-09-05 - reframed from "run ll-adapt" to "copy pre-built mirrors"; codex and wizard prompt dropped; re-run `/ll:wire-issue` before `/ll:manage-issue`

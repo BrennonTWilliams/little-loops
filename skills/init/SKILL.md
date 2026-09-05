@@ -125,7 +125,9 @@ headless flow and previews each planned write.)
 ### 5. Handle `--upgrade`
 
 `ll-init apply` honors `requested_upgrade` in the plan by refreshing host
-adapters after the writes, and (ENH-3382) by splicing an already-present
+adapters after the writes — including (ENH-3389) re-copying the pre-built
+skill/command/agent mirrors for gemini/kimi-code/qwen into
+`.gemini/`/`.kimi-code/`/`.qwen/` — and (ENH-3382) by splicing an already-present
 `## little-loops CLI Commands` block in CLAUDE.md/AGENTS.md/GEMINI.md
 wholesale (hand edits inside it are discarded) — but it does not upgrade the
 package or plugin itself. If `UPGRADE` is true, after Apply completes run
@@ -155,7 +157,8 @@ output excerpt, but the applied config stays intact.
 
 Print a summary: which keys were settled and how (repo evidence, cited
 per key), any keys left at their default with a note, host adapters
-installed, and the Verify pass/fail per command (or `SKIP` if unconfigured).
+installed (and skill/command/agent mirrors copied, for gemini/kimi-code/qwen),
+and the Verify pass/fail per command (or `SKIP` if unconfigured).
 
 ## Examples
 

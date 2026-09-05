@@ -57,19 +57,13 @@ cp .ll/ll-config.json .qwen/ll-config.json
 
 ## Skill and command discovery
 
-Run `ll-adapt --host qwen --apply` once after install to bridge all little-loops skills, commands, and agent personas into qwen:
-
-```bash
-ll-adapt --host qwen --apply
-```
-
-This writes:
+`ll-init --hosts qwen` mirrors all little-loops skills, commands, and agent personas into qwen automatically — no manual follow-up step is needed. This writes:
 
 - **Skills** → `.qwen/skills/<name>/SKILL.md` — Qwen's native skills format, near-1:1 (Claude-only frontmatter keys like `allowed-tools` are tolerated — live-verified); `name:` is injected when absent. Companion files beside SKILL.md (`templates.md`, `reference.md`, ...) are mirrored alongside so relative companion references resolve (BUG-3163).
 - **Commands** → `.qwen/commands/ll/<stem>.md` — Qwen's subdirectory namespacing maps these to `/ll:<stem>` slash commands (live-verified). True command emission: no skill bridging needed (better than Codex/Kimi). `$ARGUMENTS` is rewritten to Qwen's `{{args}}` placeholder.
 - **Agents** → `.qwen/agents/<name>.md` — Qwen documents explicit Claude Code 2.1.168 agent-frontmatter compatibility, and all nine ll agents load verbatim; real subagent spawning, no degraded mode.
 
-Re-run this command after upgrading little-loops or adding new skills/agents to pick up any changes.
+Re-run `ll-init --hosts qwen --upgrade` after upgrading little-loops to pick up any changes.
 
 ### Extension install (optional)
 
@@ -106,7 +100,7 @@ or set `orchestration.host_cli: "qwen"` in `ll-config.json`. Auto-detection also
 ## First-run verification
 
 1. Start a new qwen session — the managed hooks activate silently (no trust prompt).
-2. Run an adapted command, e.g. `/ll:help` (requires `ll-adapt --host qwen --apply`).
+2. Run an adapted command, e.g. `/ll:help` (mirrored automatically by `ll-init --hosts qwen`).
 3. Sanity-check the full install surface from the shell:
 
    ```bash
@@ -135,7 +129,7 @@ or set `orchestration.host_cli: "qwen"` in `ll-config.json`. Auto-detection also
 | `LL_HOOK_HOST=qwen` not recognized | Upgrade to the latest little-loops version: `pip install --upgrade little-loops` |
 | Stale managed hooks after a package upgrade | Run `ll-init --upgrade` — it re-merges the managed entries and re-stamps the gen-version |
 | Third-party hooks in `.qwen/settings.json` disappeared | They cannot — the writer only removes entries whose names start with `ll:`; report it as a bug if you see otherwise |
-| Skills/commands not appearing in qwen | Re-run `ll-adapt --host qwen --apply` |
+| Skills/commands not appearing in qwen | Re-run `ll-init --hosts qwen --upgrade` |
 | SessionEnd cleanup skipped in headless runs | Expected — `SessionEnd` does not fire under `qwen -p`; headless cleanup rides the `Stop` hook (see [Hook Events](hook-events.md)) |
 
 For more issues see [Troubleshooting](../development/TROUBLESHOOTING.md).

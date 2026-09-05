@@ -85,6 +85,7 @@ ll-init
 .claude/CLAUDE.md               # ## little-loops CLI Commands block (claude-code host; --no-claude-md)
 AGENTS.md                        # same block for codex / kimi-code / qwen hosts
 .codex/hooks.json, .qwen/settings.json, .gemini/settings.json   # hook adapters per selected host
+.gemini/, .kimi-code/, .qwen/ {skills,commands,agents}/   # pre-built skill/command/agent mirrors (gemini, kimi-code, qwen)
 .codegraph/                      # code-graph index when built (gitignored)
 ```
 

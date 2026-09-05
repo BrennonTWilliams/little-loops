@@ -1382,6 +1382,71 @@ def install_gemini_adapter(
     return True
 
 
+# Pre-built mirror subdirs per host, relative to plugin_root/.<host>/ and
+# project_root/.<host>/. kimi-code has no dedicated commands scan dir — its
+# commands are bridged into skills/ll-<stem>/ and travel with the skills copy.
+_MIRROR_HOST_SUBDIRS: dict[str, tuple[str, ...]] = {
+    "gemini": ("skills", "commands", "agents"),
+    "qwen": ("skills", "commands", "agents"),
+    "kimi-code": ("skills", "agents"),
+}
+
+
+def install_host_mirrors(
+    project_root: Path,
+    plugin_root: Path,
+    host: str,
+    *,
+    force: bool = False,
+    dry_run: bool = False,
+) -> bool | None:
+    """Copy the pre-built, git-tracked skill/command/agent mirrors for *host*.
+
+    ``ll-adapt`` writes its output beside the *source* ``skills/``/``commands/``
+    dirs (i.e. into the plugin root), so it cannot populate a consumer
+    project. The mirrors it would have generated are already built and
+    git-tracked in the plugin root (kept fresh by the mirror gate), so this
+    copies them directly into ``project_root/.<host>/`` instead of re-running
+    the emitter pipeline (ENH-3389).
+
+    Args:
+        project_root: Project root directory (destination is
+            ``<project_root>/.<host>/``).
+        plugin_root: Plugin root directory (source is
+            ``<plugin_root>/.<host>/``).
+        host: One of the keys in :data:`_MIRROR_HOST_SUBDIRS`.
+        force: If True, re-copy even when the destination subdir already exists.
+        dry_run: If True, print the planned copy; do not modify files.
+
+    Returns:
+        True if copied (or would be, for dry_run); False if every subdir is
+        already present and ``force`` is not set; None if *host* is not a
+        mirror host, or none of its source subdirs exist in the plugin root
+        (e.g. a pypi install that does not ship ``.<host>/`` mirrors).
+    """
+    subdirs = _MIRROR_HOST_SUBDIRS.get(host)
+    if subdirs is None:
+        return None
+
+    source_root = plugin_root / f".{host}"
+    sources = [(sub, source_root / sub) for sub in subdirs if (source_root / sub).exists()]
+    if not sources:
+        return None
+
+    dest_root = project_root / f".{host}"
+    to_copy = [(sub, src) for sub, src in sources if force or not (dest_root / sub).exists()]
+    if not to_copy:
+        return False
+
+    if dry_run:
+        info(f"copy {', '.join(sub for sub, _ in to_copy)} mirrors to {dest_root}")
+        return True
+
+    for sub, src in to_copy:
+        shutil.copytree(src, dest_root / sub, dirs_exist_ok=True)
+    return True
+
+
 def read_adapter_gen_version(project_root: Path) -> str | None:
     """Return the gen-version stamp embedded in ``.codex/hooks.json``.
 

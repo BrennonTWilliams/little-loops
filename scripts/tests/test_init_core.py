@@ -36,6 +36,7 @@ from little_loops.init.writers import (
     deploy_design_tokens,
     deploy_goals,
     install_codex_adapter,
+    install_host_mirrors,
     install_kimi_adapter,
     load_existing_config,
     make_issue_dirs,
@@ -3749,6 +3750,157 @@ class TestHostDispatch:
         assert code == 0
         plan = json.loads(capsys.readouterr().out)
         assert "has_pi" in plan["host_options"]
+
+    def test_hosts_gemini_mirrors_skills_commands_agents(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "gemini", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / ".gemini" / "skills").is_dir()
+        assert (tmp_project / ".gemini" / "commands").is_dir()
+        assert (tmp_project / ".gemini" / "agents").is_dir()
+        assert any((tmp_project / ".gemini" / "skills").iterdir())
+
+    def test_hosts_qwen_mirrors_skills_commands_agents(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "qwen", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / ".qwen" / "skills").is_dir()
+        assert (tmp_project / ".qwen" / "commands").is_dir()
+        assert (tmp_project / ".qwen" / "agents").is_dir()
+
+    def test_hosts_kimi_code_mirrors_skills_and_agents_only(
+        self, tmp_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_project / "kimi-home"))
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "kimi-code", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / ".kimi-code" / "skills").is_dir()
+        assert (tmp_project / ".kimi-code" / "agents").is_dir()
+        # kimi has no dedicated project-local commands scan dir; bridged
+        # commands live inside skills/ll-<stem>/ instead.
+        assert not (tmp_project / ".kimi-code" / "commands").exists()
+
+    def test_dry_run_gemini_mirrors_not_written(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(
+                ["--yes", "--dry-run", "--hosts", "gemini", "--root", str(tmp_project)]
+            )
+        assert code == 0
+        assert not (tmp_project / ".gemini" / "skills").exists()
+
+    def test_hosts_claude_code_no_mirror_dirs(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "claude-code", "--root", str(tmp_project)])
+        assert code == 0
+        assert not (tmp_project / ".gemini").exists()
+
+
+# ===========================================================================
+# TestHostMirrors
+# ===========================================================================
+
+
+class TestHostMirrors:
+    """ENH-3389: install_host_mirrors copies pre-built .gemini/.qwen/.kimi-code
+    mirror trees from the plugin root into the project root."""
+
+    def test_fresh_install_copies_subdirs(self, tmp_path: Path) -> None:
+        plugin_root = tmp_path / "plugin"
+        (plugin_root / ".gemini" / "skills" / "foo").mkdir(parents=True)
+        (plugin_root / ".gemini" / "skills" / "foo" / "SKILL.md").write_text("x")
+        (plugin_root / ".gemini" / "commands").mkdir(parents=True)
+        (plugin_root / ".gemini" / "agents").mkdir(parents=True)
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+
+        result = install_host_mirrors(project_root, plugin_root, "gemini")
+
+        assert result is True
+        assert (project_root / ".gemini" / "skills" / "foo" / "SKILL.md").read_text() == "x"
+        assert (project_root / ".gemini" / "commands").is_dir()
+        assert (project_root / ".gemini" / "agents").is_dir()
+
+    def test_idempotent_without_force(self, tmp_path: Path) -> None:
+        plugin_root = tmp_path / "plugin"
+        (plugin_root / ".gemini" / "skills").mkdir(parents=True)
+        (plugin_root / ".gemini" / "skills" / "new.md").write_text("new")
+        project_root = tmp_path / "proj"
+        (project_root / ".gemini" / "skills").mkdir(parents=True)
+        (project_root / ".gemini" / "skills" / "old.md").write_text("old")
+
+        result = install_host_mirrors(project_root, plugin_root, "gemini")
+
+        assert result is False
+        assert (project_root / ".gemini" / "skills" / "old.md").exists()
+        assert not (project_root / ".gemini" / "skills" / "new.md").exists()
+
+    def test_force_recopies(self, tmp_path: Path) -> None:
+        plugin_root = tmp_path / "plugin"
+        (plugin_root / ".gemini" / "skills").mkdir(parents=True)
+        (plugin_root / ".gemini" / "skills" / "new.md").write_text("new")
+        project_root = tmp_path / "proj"
+        (project_root / ".gemini" / "skills").mkdir(parents=True)
+        (project_root / ".gemini" / "skills" / "old.md").write_text("old")
+
+        result = install_host_mirrors(project_root, plugin_root, "gemini", force=True)
+
+        assert result is True
+        assert (project_root / ".gemini" / "skills" / "new.md").exists()
+
+    def test_dry_run_does_not_write(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        plugin_root = tmp_path / "plugin"
+        (plugin_root / ".gemini" / "skills").mkdir(parents=True)
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+
+        result = install_host_mirrors(project_root, plugin_root, "gemini", dry_run=True)
+
+        assert result is True
+        assert not (project_root / ".gemini").exists()
+        assert "gemini" in capsys.readouterr().out.lower()
+
+    def test_missing_source_returns_none(self, tmp_path: Path) -> None:
+        plugin_root = tmp_path / "plugin"  # no .gemini dir at all (pypi install)
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+
+        result = install_host_mirrors(project_root, plugin_root, "gemini")
+
+        assert result is None
+
+    def test_unrecognized_host_returns_none(self, tmp_path: Path) -> None:
+        plugin_root = tmp_path / "plugin"
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+
+        result = install_host_mirrors(project_root, plugin_root, "codex")
+
+        assert result is None
+
+    def test_kimi_code_copies_only_skills_and_agents(self, tmp_path: Path) -> None:
+        plugin_root = tmp_path / "plugin"
+        (plugin_root / ".kimi-code" / "skills").mkdir(parents=True)
+        (plugin_root / ".kimi-code" / "agents").mkdir(parents=True)
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+
+        result = install_host_mirrors(project_root, plugin_root, "kimi-code")
+
+        assert result is True
+        assert (project_root / ".kimi-code" / "skills").is_dir()
+        assert (project_root / ".kimi-code" / "agents").is_dir()
+        assert not (project_root / ".kimi-code" / "commands").exists()
 
 
 # ===========================================================================

@@ -57,19 +57,13 @@ cp .ll/ll-config.json .kimi-code/ll-config.json
 
 ## Skill and command discovery
 
-Run `ll-adapt --host kimi-code --apply` once after install to bridge all little-loops skills, commands, and agent personas into kimi:
-
-```bash
-ll-adapt --host kimi-code --apply
-```
-
-This writes:
+`ll-init --hosts kimi-code` mirrors all little-loops skills, commands, and agent personas into kimi automatically — no manual follow-up step is needed. This writes:
 
 - **Skills** → `.kimi-code/skills/<name>/SKILL.md` — a native kimi scan dir. The format is near-1:1 (extra frontmatter keys like `allowed-tools` are tolerated); `name:` is injected when absent. Invoke as `/skill:<name>` or the `/<name>` shorthand. Companion files beside SKILL.md (`templates.md`, `reference.md`, ...) are mirrored alongside so relative companion references resolve (BUG-3164).
 - **Commands** → `.kimi-code/skills/ll-<stem>/SKILL.md` — kimi has no project-local *commands* surface outside plugin manifests, so commands are bridged as skills and invoked as `/ll-<stem>`.
 - **Agents** → `.kimi-code/agents/<name>.md` — kimi natively loads Claude-style agent files (comma-separated `tools`, filename fallback for `name`) and spawns real subagents, so files are written verbatim with no degraded-mode fallback.
 
-Re-run this command after upgrading little-loops or adding new skills/agents to pick up any changes.
+Re-run `ll-init --upgrade` after upgrading little-loops to pick up any changes.
 
 ### Plugin install (optional)
 
@@ -126,7 +120,7 @@ or set `orchestration.host_cli: "kimi-code"` in `ll-config.json`. Auto-detection
 | Adapter scripts not executable | `chmod +x scripts/little_loops/hooks/adapters/kimi/*.sh` |
 | `LL_HOOK_HOST=kimi-code` not recognized | Upgrade to the latest little-loops version: `pip install --upgrade little-loops` |
 | Stale managed block after a package upgrade | Run `ll-init --upgrade` — it regenerates the managed `[[hooks]]` block and re-stamps the gen-version |
-| Skills not appearing in kimi | Re-run `ll-adapt --host kimi-code --apply` |
+| Skills not appearing in kimi | Re-run `ll-init --hosts kimi-code --upgrade` |
 
 For more issues see [Troubleshooting](../development/TROUBLESHOOTING.md).
 
