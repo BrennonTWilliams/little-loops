@@ -21,6 +21,8 @@ score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+relates_to:
+- FEAT-3384
 ---
 
 # BUG-3387: inbound interaction POST body overwrites _emit() envelope (event name spoofing via _drain_inbound)
@@ -42,7 +44,9 @@ Inbound bodies never overwrite the envelope. `_drain_inbound()` should emit `art
 
 ## Proposed Solution
 
-- In `_drain_inbound()`, strip `event`/`ts`/`run_id`/`loop` from the body before spreading it into `self._emit("artifact_interaction", ...)` (per Decision Rationale below: Option B) — and keep appending the raw item to `inbound_events`.
+- In `_drain_inbound()`, strip `event`/`ts`/`run_id`/`loop`/`depth` from the body before spreading it into `self._emit("artifact_interaction", ...)` (per Decision Rationale below: Option B) — and keep appending the raw item to `inbound_events`.
+- `depth` is executor-owned too: sub-loop event forwarding (`scripts/little_loops/fsm/executor.py:~1170`, `_sub_event_callback`) only injects `depth` when the event lacks it (`if "depth" not in event`), so a body carrying `"depth": 0` posted while a sub-loop is running masquerades as a parent-level event. Strip it alongside the four `_emit()` envelope keys.
+- Log one warning line naming the stripped keys when any are removed (mirrors `LocalBridgeTransport._record_inbound_drop` at the transport layer) so spoof attempts are visible in the run log rather than silently normalised.
 - Consider making `_emit()` itself defensive: build the dict as `{**data, "event": event, "ts": ..., "run_id": ..., "loop": ...}` so no caller can clobber the envelope. Audit existing `_emit()` callers for any that intentionally pass `event`/`ts`/`run_id`/`loop` in `data` first.
 - Add a test in `scripts/tests/test_fsm_executor.py` next to the existing `_drain_inbound` tests asserting a body with `event`/`run_id`/`loop`/`ts` keys cannot change the emitted envelope.
 - Coordinate with FEAT-3384 (its `_drain_inbound()` `human_response` branch already builds a whitelisted payload) so the two changes land compatibly.
@@ -58,6 +62,16 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 > **Selected:** Option B — strips the four envelope keys while preserving the documented/schema-registered top-level `artifact_id`/`level`/`action` contract and the dashboard's existing emitter shape.
 
 **Recommended**: Option B — the `artifact_interaction` payload contract is documented (`docs/reference/EVENT-SCHEMA.md:1770`, `docs/reference/ARTIFACT_CONTROL_LEVELS.md:73-89`) and schema-registered (`scripts/little_loops/observability/schema.py:376-388`, `ArtifactInteractionVariant`) as top-level `artifact_id`/`level`/`action` fields composing with the envelope, and the built-in `--serve` dashboard's "Send" control (`scripts/little_loops/templates/dashboard.llat/template.html.j2:379-397`) already POSTs exactly that shape. Option A would move those fields under `event.payload.*`, breaking this documented/registered contract and the dashboard's own emitter; Option B closes the spoofing hole without any consumer/schema change. See Program Design → Codebase Research Findings for the full grep evidence.
+
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+**Correction — FEAT-3384 coordination claim (remediation pass, 2026-09-04)**
+- The "Coordinate with FEAT-3384" bullet above states its `_drain_inbound()` `human_response` branch "already builds a whitelisted payload." As of this remediation pass, that is not accurate: FEAT-3384 (`.issues/features/P3-FEAT-3384-eventbus-hitl-adapter.md`) is `status: open` — unimplemented — and `human_response` appears nowhere in `scripts/little_loops/fsm/executor.py`; it exists only as the unused string constant `HUMAN_RESPONSE_EVENT` at `scripts/little_loops/fsm/communication_adapter.py:19`. The bullet describes FEAT-3384's *planned* branch, not present code.
+- Corrected coordination requirement: this bug's Option B fix (stripping `event`/`ts`/`run_id`/`loop` from the body in `_drain_inbound()` before the spread) does not depend on FEAT-3384 landing first and can be implemented independently. The dependency runs the other way — whichever `human_response` branch FEAT-3384 eventually adds to `_drain_inbound()` must be built on top of this bug's stripped-envelope handling (or replicate the same stripping for its own branch), not the reverse. This is a coordination/ordering note, not a blocking prerequisite: `relates_to: FEAT-3384` has been added to this issue's frontmatter (bidirectional with FEAT-3384's existing `relates_to: [BUG-3387]`), not `blocked_by`.
+- Ordering check: if FEAT-3384 lands first and adds a `human_response` branch inside `_drain_inbound()` without also stripping the four envelope keys from its own whitelisted fields, the same spoofing hole this bug fixes could reopen on that new branch — the FEAT-3384 implementer should re-check this bug's Decision Rules (`## Program Design → Decision Rules`) before adding that branch.
+
+**Scope clarification — `_emit()` defensive-reorder bullet (remediation pass, 2026-09-04)**
+- The second Proposed Solution bullet ("Consider making `_emit()` itself defensive…") is explicitly out of scope for this issue. See `## Program Design → Decision Rules` for the scoping rule: this issue's Acceptance Criteria and test plan cover only the `_drain_inbound()`-local fix (Option B); the `_emit()` merge-order reorder is not required to close the spoofing hole this issue describes and is not asserted by any Acceptance Criterion here. The call-site audit this bullet requested is already complete (see `## Integration Map → Codebase Research Findings → Conventions in Force` and `## Program Design → Codebase Research Findings`): all 61 other `_emit()` call sites pass no `event`/`ts`/`run_id`/`loop` keys in `data`, so the reorder would be safe if done — but "safe if done" is not the same as "required by this issue." Track the `_emit()` hardening separately if wanted.
 
 ### Decision Rationale
 
@@ -106,6 +120,15 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 **Configuration**
 - No configuration file gates this path; `LocalBridgeTransport` construction with an `inbound` queue (`scripts/little_loops/transport.py:774,779`) is the only entry point that feeds `FSMExecutor.inbound`.
 
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+**Blast-radius correction — `_handle_event` and `event_callback` scope (remediation pass, 2026-09-04)**
+- The "sole `event_callback` consumer" bullet above (`Dependent Files (Callers/Importers)`) undercounts what `PersistentExecutor._handle_event` itself acts on. Two more event-name-gated branches exist in the same function (`scripts/little_loops/fsm/persistence.py:1010-1096`), both reachable from a spoofed `_drain_inbound()` body before this fix:
+  - `event_type == "action_complete" and "input_tokens" in event` (`persistence.py:~1019`) appends attacker-controlled `input_tokens`/`output_tokens`/`model`/`cache_read_tokens`/`cache_creation_tokens` to `usage.jsonl` — requires the spoofed body to set both `event: "action_complete"` and an `input_tokens` key.
+  - `event_type == "messages_append"` (`persistence.py:~1051`) appends attacker-controlled `state`/`message` to `messages.jsonl` — no extra key beyond `event` is required.
+- "Sole consumer" is also precise only for the `event_callback` parameter, not for blast radius generally: `OTelTransport.send()` (`scripts/little_loops/transport.py:1649-1673`) independently branches on `event_type` (`loop_start`/`loop_resume`/`state_enter`/`action_start`/`action_complete`/`loop_complete`) to drive OpenTelemetry span lifecycle. It is reached via `PersistentExecutor._handle_event`'s trailing `self.event_bus.emit(event)` (`persistence.py:1096`) → `EventBus.emit()` → registered transports, not via the `event_callback` parameter directly — a second, distinct event-name-driven consumer.
+- Net effect: a spoofed inbound body can, in addition to the persistence/continuation-prompt effects already listed, corrupt cost/usage telemetry (`usage.jsonl`), the message log (`messages.jsonl`), and OTel trace spans.
+
 ## Program Design
 
 ### Signatures
@@ -116,8 +139,9 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 `LocalBridgeTransport._handle_interaction()` (`transport.py:691`) -> `inbound.put_nowait(body)` -> `FSMExecutor.run()` loop / FEAT-1794 tick loop -> `_drain_inbound()` -> `_emit("artifact_interaction", ...)` -> `event_callback` -> `PersistentExecutor._handle_event()` (`persistence.py:1010`, persists + acts on `event` name) -> `EventBus.emit()` -> observers + transports.
 
 ### Decision Rules
-- Envelope keys (`event`, `ts`, `run_id`, `loop`) are executor-owned; no inbound body may set them.
+- Envelope keys (`event`, `ts`, `run_id`, `loop`) plus the sub-loop tag `depth` are executor-owned; no inbound body may set them.
 - Strip the four envelope keys before spreading the body, rather than wrapping the whole body under a new key: an existing `artifact_interaction` consumer (the built-in `--serve` dashboard) reads top-level `artifact_id`/`level`/`action` body keys, so wrapping would break it (resolved — see Decision Rationale below).
+- Non-goal: reordering `_emit()`'s own merge (Proposed Solution's second bullet) is out of scope for this issue — the fix, Acceptance Criteria, and test plan below are scoped to `_drain_inbound()` only (see Codebase Research Findings below for the completed call-site audit that makes the reorder safe-if-done but not required-here).
 
 ### Codebase Research Findings
 
@@ -128,15 +152,40 @@ _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
 - `self._emit()` (`executor.py:564`) is the only callee `_drain_inbound()` invokes.
 - Of `_emit()`'s 62 call sites in `executor.py`, only the one at `_drain_inbound()` (line 564) spreads an externally-sourced dict; the other 61 pass dict literals with no `event`/`ts`/`run_id`/`loop` keys — this is the full answer to the Proposed Solution's requested caller audit (see Integration Map → Codebase Research Findings for the same finding filed against the file list).
 
-**Resolves the open Decision Rule ("prefer nesting under `payload` … unless an existing consumer reads top-level body keys — grep before deciding")**
+**Resolves the previously undecided Decision Rule ("prefer nesting under `payload` … unless an existing consumer reads top-level body keys — grep before deciding")**
 - An existing consumer *does* read top-level body keys. The `artifact_interaction` payload contract is documented (`docs/reference/EVENT-SCHEMA.md:1770`, `docs/reference/ARTIFACT_CONTROL_LEVELS.md:73-89`) and schema-registered (`scripts/little_loops/observability/schema.py:376-388`, `ArtifactInteractionVariant` in `DES_VARIANTS`) as top-level `artifact_id`/`level`/`action` fields composing with the envelope — not nested under a `payload` wrapper of the whole body. The built-in `--serve` dashboard's "Send" control (`scripts/little_loops/templates/dashboard.llat/template.html.j2:379-397`) already POSTs exactly that shape: `{artifact_id, level, action, payload: {text}}`.
 - Consequence: emitting `self._emit("artifact_interaction", {"payload": event})` (the Proposed Solution's first-listed option) would move `artifact_id`/`level`/`action` from top level to `event.payload.artifact_id` etc., breaking this documented/registered contract and the dashboard's own emitter. Stripping/renaming only the four envelope keys (`event`, `ts`, `run_id`, `loop`) from the body before the spread — the Proposed Solution's second-listed option — preserves the existing `artifact_id`/`level`/`action` top-level shape for `artifact_interaction` while still closing the spoofing hole, and needs no consumer/schema update.
+
+_Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
+
+**Non-goal — `_emit()` merge-order reorder is out of scope (remediation pass, 2026-09-04)**
+- Proposed Solution's second bullet ("Consider making `_emit()` itself defensive") is explicitly a non-goal for this issue. This issue's fix, Acceptance Criteria, and test plan are scoped to `_drain_inbound()` only (Option B: strip the four envelope keys from the inbound body before the spread). `_emit()` (`fsm/executor.py:3581`) itself is not modified by this issue.
+- The call-site audit that bullet requested is already complete (see Codebase Research Findings above): all 61 non-`_drain_inbound()` call sites pass no `event`/`ts`/`run_id`/`loop` keys in `data`, so reordering `_emit()`'s merge would be behavior-neutral for them — but that only establishes the reorder is *safe*, not that it is *required*. If defense-in-depth at the `_emit()` level is wanted later, it is a separate, follow-up hardening change, not part of this issue.
+
+## Implementation Steps
+
+1. `_drain_inbound()` (`scripts/little_loops/fsm/executor.py:549-565`) strips the executor-owned keys (`event`, `ts`, `run_id`, `loop`, `depth`) from the parsed POST body before it is spread into `self._emit("artifact_interaction", ...)`, per the selected Option B in Decision Rationale above — every other body key (including `artifact_id`/`level`/`action`) stays at top level. When any key is stripped, log one warning naming the stripped keys. The raw item continues to be appended to `inbound_events` unchanged.
+2. `_emit()` (`fsm/executor.py:3581-3591`) is left unmodified — reordering its merge (Proposed Solution's second bullet) is a non-goal for this issue; see Program Design → Decision Rules.
+3. A unit test in `scripts/tests/test_fsm_executor.py`, alongside `TestInboundEvents` (`:13116-13260`), asserts a queued body containing `event`/`ts`/`run_id`/`loop` keys is emitted as `artifact_interaction` with the executor's own envelope values, not the body's. Extend `test_inbound_forwarded_into_sub_loop` (`:13218`) (or add a sibling) so a body carrying `"depth": 0` posted during a sub-loop still arrives tagged `depth == 1`.
+4. An integration-level regression test drives the spoof through the real path, not `_handle_event` in isolation: construct a `PersistentExecutor` (with a `run_dir` in context) whose inner executor has an `inbound` queue, enqueue `{"event": "loop_complete", "run_id": "spoofed", "ts": "x", "loop": "y"}` plus an `action_complete`+`input_tokens` body and a `messages_append` body, run the loop, and assert: every callback-observed event carrying a body key is named `artifact_interaction` with the executor's `run_id`/`loop`; `_save_state()` was called only the expected number of times for the FSM's genuine `state_enter`/`loop_complete` events (spy it); `_last_result` and `_continuation_prompt` are untouched; `usage.jsonl` and `messages.jsonl` are absent or contain no spoofed rows. Calling `_handle_event({"event": "loop_complete", ...})` directly is **not** a valid test — that function is supposed to act on that name; the property under test is that `_drain_inbound()` never lets a body reach it under that name.
+5. `python -m pytest scripts/tests/test_fsm_executor.py -v` (and any new persistence-layer test module/class covering step 4) passes.
+
+## Acceptance Criteria
+
+- A POST body to `/{token}/interaction` containing `event`/`ts`/`run_id`/`loop` keys does not change the `event`/`ts`/`run_id`/`loop` values on the emitted `artifact_interaction` envelope — the executor's own values win.
+- A body containing a `depth` key, drained while a sub-loop is executing, is still tagged with the sub-loop's real depth by `_sub_event_callback` (`executor.py:~1170`) — the body cannot pose as a parent-level event.
+- When any executor-owned key is stripped from a body, one warning is logged naming the stripped keys (no warning for clean bodies).
+- `artifact_id`/`level`/`action` (and any other non-envelope body key) remain top-level on the emitted `artifact_interaction` event, unchanged from today's shape — no `payload`-wrapping regression for the built-in `--serve` dashboard's existing emitter or the documented/schema-registered contract (`docs/reference/EVENT-SCHEMA.md:1770`, `scripts/little_loops/observability/schema.py:376-388`).
+- `PersistentExecutor._handle_event` (`persistence.py:1010`) does not call `_save_state()`, overwrite `_last_result`, or set the continuation prompt as a result of a spoofed `event` value in an inbound body — i.e. the `state_enter`/`loop_complete`/`baseline_complete`/`evaluate`/`handoff_detected` side effects are not reachable via `_drain_inbound()` spoofing.
+- A spoofed inbound body cannot append attacker-controlled entries to `usage.jsonl` (via the `action_complete` branch, `persistence.py:~1019`) or `messages.jsonl` (via the `messages_append` branch, `persistence.py:~1051`) through `_drain_inbound()`.
+- `scripts/tests/test_fsm_executor.py::TestInboundEvents` (or a new adjacent test) covers the envelope-stripping property above; a persistence-layer regression test covers the `_handle_event` side-effect property above — a single envelope-shape unit test alone does not satisfy this criterion.
+- `_emit()` (`fsm/executor.py:3581`) is unchanged by this issue's implementation — the fix is scoped to `_drain_inbound()` only (Program Design → Decision Rules non-goal).
 
 ## Impact
 
 - **Priority**: P2 — loopback-only and token-gated, so not remotely exploitable by default, but it lets any local process with the token corrupt run persistence and observability for `--serve` runs, and FEAT-3384 is about to make the inbound path load-bearing for HITL verdicts.
-- **Effort**: Small — one-line change in `_drain_inbound()` (or `_emit()`), one test.
-- **Risk**: Low — `artifact_interaction` consumers that read top-level body keys would need to read `payload.*` instead; grep for consumers before choosing nesting vs. stripping.
+- **Effort**: Small — a filtered-dict build plus one warning line in `_drain_inbound()`; `_emit()` untouched. Two tests: an envelope-shape unit test in `TestInboundEvents` and a `PersistentExecutor` regression test driving the spoof through the real drain path (Implementation Steps 3–4).
+- **Risk**: Low — Option B (strip executor-owned keys) preserves the documented top-level `artifact_id`/`level`/`action` shape, so no consumer, schema, or dashboard change is needed. Only a body that deliberately set `event`/`ts`/`run_id`/`loop`/`depth` sees any difference, and that is the bug.
 
 ## Steps to Reproduce
 
