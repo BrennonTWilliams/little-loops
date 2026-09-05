@@ -30,7 +30,7 @@ Not all commands support all flags. See individual command documentation for sup
 ### `/ll:init`
 Agentic plan → inspect → apply → verify wrapper over `ll-init`'s `--plan`/`apply` seam.
 
-**Flags:** `--force`, `--dry-run`, `--hosts`, `--codex`, `--upgrade`
+**Flags:** `--force`, `--dry-run`, `--hosts`, `--upgrade`, `--code-graph`, `--settings`, `--no-settings`, `--no-claude-md`
 
 Runs `ll-init --plan`, then reads the repo to settle any `inferred`/`default`-provenance
 value or listed ambiguity (monorepos, Makefile-driven test targets, custom runners) that

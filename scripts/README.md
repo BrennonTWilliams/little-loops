@@ -65,7 +65,7 @@ pip install little-loops
 ll-init
 ```
 
-`ll-init` auto-detects your project type — Python, JS/TS, Go, Rust, Java, .NET, or generic — infers test/lint commands and source layout, scaffolds `.issues/`, and writes `.ll/ll-config.json`. Run it bare for an interactive TUI, or `ll-init --yes` to accept the detected defaults. Sanity-check the host integration any time with `ll-doctor`.
+`ll-init` auto-detects your project type — Python, JS/TS, Go, Rust, Java, .NET, or generic — reads the test/lint/type-check/format commands your repo already declares (manifests, Makefile/justfile targets, tool config files), scaffolds `.issues/`, and writes `.ll/ll-config.json`. Run it bare for the express-first wizard (a *Detected setup* panel with the evidence for every value, then *Accept* or *Customize*), or `ll-init --yes` to accept the detected defaults. It also offers to build the [codegraph](https://github.com/colbymchenry/codegraph) index that powers `ll-code`'s structural queries (`ll-init --code-graph install` does the npm install for you). Sanity-check the host integration any time with `ll-doctor`.
 
 **Inside Claude Code**, `ll-init` installs the plugin for you automatically when `claude-code` is a selected/detected host and it's not already installed — no manual step needed. To do it yourself instead:
 

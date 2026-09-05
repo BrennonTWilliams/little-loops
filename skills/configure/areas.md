@@ -1117,6 +1117,77 @@ Based on selections, update `.ll/ll-config.json`:
 
 ---
 
+## Area: code_query
+
+### Current Values
+
+```
+Current Code Query Configuration
+---------------------------------
+  provider:            {{config.code_query.provider}}
+  codegraph.db_path:   {{config.code_query.codegraph.db_path}}
+  codegraph.auto_sync: {{config.code_query.codegraph.auto_sync}}
+  staleness:           {{config.code_query.staleness}}
+```
+
+Run `ll-code --json status` first and show the result (provider, `available`,
+`freshness`, `indexed_at`). If `available` is false and the `codegraph` binary is
+absent, print the setup commands (`npm install -g @colbymchenry/codegraph`,
+`codegraph init .`) — `ll-init --code-graph install` runs them for you.
+
+### Round 1 (3 questions)
+
+```yaml
+questions:
+  - header: "Provider"
+    question: "Which code-query provider should ll-code use? (current: {{config.code_query.provider}})"
+    options:
+      - label: "auto (default)"
+        description: "Prefer the codegraph index when .codegraph/codegraph.db exists, else the grep/AST fallback"
+      - label: "codegraph"
+        description: "Always use the codegraph index (unavailable when no index exists)"
+      - label: "fallback"
+        description: "Always use the grep/AST fallback — ignore any index"
+      - label: "Keep current"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Auto Sync"
+    question: "Refresh a stale codegraph index automatically? (current: {{config.code_query.codegraph.auto_sync}})"
+    options:
+      - label: "Enable (default)"
+        description: "Run `codegraph sync --quiet` when a read observes a stale index (no-op without the binary)"
+      - label: "Disable"
+        description: "Never shell out; stale indexes stay stale until you run `codegraph sync .`"
+      - label: "Keep current"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Staleness"
+    question: "How should a stale index be treated? (current: {{config.code_query.staleness}})"
+    options:
+      - label: "warn (default)"
+        description: "Serve results, flagged freshness: stale"
+      - label: "strict"
+        description: "Treat a stale index as unavailable — fall back to grep/AST"
+      - label: "off"
+        description: "Trust the index unconditionally"
+      - label: "Keep current"
+        description: "No change"
+    multiSelect: false
+```
+
+### Configuration Result
+
+Based on selections, update `.ll/ll-config.json`:
+
+- Map "Provider" to `code_query.provider` (omit the section entirely when every value is the default)
+- Map "Auto Sync" to `code_query.codegraph.auto_sync`
+- Map "Staleness" to `code_query.staleness`
+- `code_query.codegraph.db_path` is only changed by hand (default `.codegraph/codegraph.db`)
+
+---
+
 ## Area: design_tokens
 
 ### Current Values

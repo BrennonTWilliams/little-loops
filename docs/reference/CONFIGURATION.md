@@ -1195,9 +1195,11 @@ Default `exclude_common_files`: `["__init__.py", "pyproject.toml", "setup.py", "
 ### `code_query`
 
 Code-query provider selection, codegraph db path, and staleness policy, consumed by the
-`codegraph` `CodeQueryProvider` (ENH-2613, `ll-code`). This block is opt-in: with no
-`.codegraph/` index present, `ll-code`'s `auto` resolution falls through to the always-available
-`fallback` provider unchanged.
+`codegraph` `CodeQueryProvider` (ENH-2613, `ll-code`). With no `.codegraph/` index present,
+`ll-code`'s `auto` resolution falls through to the always-available `fallback` provider
+unchanged. `ll-init` writes `{"provider": "auto"}` once a codegraph index exists (or after it
+builds one via `--code-graph`), adds `.codegraph/` to `.gitignore`, and `ll-doctor` reports the
+index under **Code Graph (ll-code)**; `/ll:configure code-query` edits the rest.
 
 | Key | Default | Description |
 |-----|---------|-------------|

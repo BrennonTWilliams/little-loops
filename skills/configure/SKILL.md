@@ -124,6 +124,7 @@ Map argument names to config sections:
 | `analytics` | `analytics` | Analytics capture: enabled, skills, corrections, file_events |
 | `history` | `history` | History.db consumer tuning |
 | `loops.run_defaults` | `loops.run_defaults` | Persistent defaults for `ll-loop run` (clear, show_diagrams, mode, delay) |
+| `code-query` | `code_query` | `ll-code` provider (auto/codegraph/fallback), codegraph auto-sync, staleness policy |
 
 ---
 
@@ -311,7 +312,7 @@ questions:
       - label: "decisions"
         description: "Decisions log: enabled, log_path, auto_generate"
       - label: "More areas..."
-        description: "Show allowed-tools, hooks"
+        description: "Show allowed-tools, hooks, code-query"
 ```
 
 If "More areas..." selected again:
@@ -326,6 +327,8 @@ questions:
         description: "ll- CLI tool allow entries in settings.json/settings.local.json"
       - label: "hooks"
         description: "ll- lifecycle hook configuration in settings.json/settings.local.json"
+      - label: "code-query"
+        description: "ll-code provider (codegraph index vs grep/AST fallback), auto-sync, staleness"
 ```
 
 ### Step 2: Interactive Configuration

@@ -34,59 +34,63 @@ These flags appear across multiple tools:
 
 ### ll-init
 
-Initialize little-loops for a project. Detects the project root, selects host adapters, generates a `.ll/ll-config.json`, and optionally installs hook adapters for supported host CLIs. Which hosts accept `--hosts`, which get an adapter installed, and which are orchestration-only are defined by the canonical tier table in [HOST_COMPATIBILITY.md § Host tiers](HOST_COMPATIBILITY.md#host-tiers).
+Initialize little-loops for a project. Detects the project root and type, reads what the repo already declares about its tooling (manifest tool tables, `package.json` scripts, task-runner targets, tool config files, ecosystem conventions), selects host adapters, offers to build the `ll-code` code-graph index, generates `.ll/ll-config.json`, and installs hook adapters for supported host CLIs. Which hosts accept `--hosts`, which get an adapter installed, and which are orchestration-only are defined by the canonical tier table in [HOST_COMPATIBILITY.md § Host tiers](HOST_COMPATIBILITY.md#host-tiers).
 
-When run on a project that already has a `.ll/ll-config.json`, the interactive wizard pre-populates every field with the existing values so you can review and update without losing previous settings. The headless `--yes` path preserves existing feature toggles and project fields, applying only the overrides supplied via `--enable`/`--disable`.
+Every surface — the interactive wizard, `--yes`, and `--plan`/`apply` — runs the **same detection pipeline** (`init/proposal.py`), so a project gets the same defaults regardless of how it is initialised. Each proposed value carries a provenance tag (`declared` / `inferred` / `default` / `existing` / `flag` / `recommended`) and the evidence behind it; the wizard shows the evidence next to every prompt.
+
+When run on a project that already has a `.ll/ll-config.json`, every field is pre-populated from the stored values and the run is **idempotent**: re-running `ll-init --yes` writes a byte-identical config (features you never enabled stay off; sub-config you tuned — thresholds, profiles, worker counts — is preserved verbatim). Only `--enable`/`--disable` change feature state on a re-init.
 
 **Flags:**
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--yes` | `-y` | Accept all defaults; run non-interactively. Merges existing config values when a config is present, printing a stderr drift warning (unconditional — applies whether or not `--upgrade` is also passed) when a `declared`-provenance introspected value diverges from the stored config; the stored value is always kept (ENH-2704). Loop run defaults: `clear: true`, `show_diagrams: "clean"`. |
-| `--force` | `-f` | Reset to template defaults rather than pre-populating from existing config |
-| `--dry-run` | `-n` | Preview actions without writing files |
-| `--plan` | | Emit a JSON plan `{detected, proposed_config, requested_upgrade, host_options, warnings, provenance, ambiguities}` without writing anything. `provenance` is a list of `{field, value, provenance, evidence}` for each manifest-introspected `project.*`/`scan.focus_dirs` field (`declared`/`inferred`/`default`); `ambiguities` lists any field where multiple equally-valid candidates were found and the template default was kept (FEAT-2703). `requested_upgrade` echoes whether `--upgrade` was also passed — plan mode never executes it (no writes happen in plan mode), it's surfaced purely so the flag isn't silently dropped (BUG-2755). On a re-init (existing `.ll/ll-config.json`), a `declared`-provenance value that diverges from the stored config prints a `Warning: config has ... but ... declares ...` line to stderr — the existing value is always kept; stdout stays pure JSON (ENH-2704) |
-| `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for: `claude-code`, `codex`, `kimi-code`, `qwen` (adapter-wired); `opencode`, `pi`, `omp` (recognized, adapter pending — for `omp` this is an info-only branch, no writer). Defaults to auto-detected hosts. Unknown values produce a warning and are skipped — note `gemini` is orchestration-only and is **not** valid here. When `claude-code` is selected/detected and the `ll@little-loops` plugin isn't already installed, `ll-init` installs it from the marketplace automatically (FEAT-3372) — best-effort `plugin marketplace add` followed by `plugin install ll@little-loops -y`, reported via `info()`/`warning()`; skipped when `--dry-run` is set or the `claude` binary can't be resolved. See [HOST_COMPATIBILITY.md § Host tiers](HOST_COMPATIBILITY.md#host-tiers). |
+| `--yes` | `-y` | Accept all defaults; run non-interactively. Merges existing config values when a config is present. A `declared`-provenance introspected value that diverges from the stored config prints a `⚠ config has ... but ... declares ...` warning (stdout, in-order with the run) — the stored value is always kept (ENH-2704); a stored command that runs the *same tool* as the declared one (`python -m pytest -q` vs `pytest`) is not drift. Loop run defaults: `clear: true`, `show_diagrams: "clean"`. |
+| `--force` | `-f` | Reset to template defaults rather than merging with the existing config; redeploys bundled artifacts and regenerates host adapters |
+| `--dry-run` | `-n` | Preview actions without writing files. Paths print relative to the project root; the code-graph step prints the command it would run. |
+| `--plan` | | Emit a JSON plan `{detected, proposed_config, requested_upgrade, host_options, warnings, provenance, ambiguities, fields, code_graph}` without writing anything. `provenance` is a list of `{field, value, provenance, evidence}` for each manifest-introspected `project.*`/`scan.focus_dirs` field (`declared`/`inferred`/`default`); `ambiguities` lists any field where multiple equally-valid candidates were found and the template default was kept (FEAT-2703). `fields` (additive) carries the full provenance of every proposed value including `existing`/`flag`/`recommended` sources; `code_graph` (additive) reports the codegraph binary/index/npm status, the recommended action, and the manual commands. `host_options` includes `available` (every known host → detected?), `default` (the hosts an unflagged run would wire, primary first) and `primary`. `proposed_config` is exactly what `apply` lands: it layers the existing config the same way `--yes` does. `requested_upgrade` echoes whether `--upgrade` was also passed — plan mode never executes it (BUG-2755). Drift warnings go to stderr so stdout stays pure JSON. |
+| `--hosts HOST` | | Host harnesses to install adapters for. Repeatable, and comma-separated values are accepted (`--hosts claude-code,codex`). Adapter-wired: `claude-code`, `codex`, `gemini`, `kimi-code`, `qwen`; recognized with adapter pending: `opencode`, `pi`, `omp` (info-only, never the primary host). Defaults to every detected host (binary on PATH or a project marker dir such as `.codex/`), primary first — the primary is the existing config's `orchestration.host_cli`, else `resolve_host()`'s pick; the selection is **always persisted** to `orchestration.host_cli` (and `hooks.host` when in its enum). `kimi-code` writes a user-global file (`~/.kimi-code/config.toml`): headless runs announce it, the wizard asks first. When `claude-code` is selected/detected and the `ll@little-loops` plugin isn't already installed, `ll-init` installs it from the marketplace automatically (FEAT-3372). Unknown values produce a warning and are skipped. |
+| `--settings {local,shared,skip}` | | Where to write ll tool permissions when `claude-code` is a host: `local` (`.claude/settings.local.json`, gitignored; default), `shared` (`.claude/settings.json`), or `skip`. `--no-settings` is an alias for `skip`. Claude-specific files (`.claude/settings*`, CLAUDE.md) are only written when `claude-code` is among the hosts — a `--hosts codex` project gets `AGENTS.md` instead. |
+| `--no-claude-md` | | Do not add the `## little-loops CLI Commands` block to CLAUDE.md. |
+| `--code-graph {auto,install,index,commands,skip}` | | Code-graph index for `ll-code` (built by the external `@colbymchenry/codegraph` npm tool). `auto` (default): build the index when the `codegraph` binary is already installed, otherwise print the install/index commands — never installs on its own. `install`: `npm install -g @colbymchenry/codegraph` then `codegraph init .` (never with sudo; an `EACCES` prints the npm-prefix fix). `index`: build the index (falls back to an `npx --yes` one-shot when the binary is absent). `commands`: print the commands only. `skip`: do nothing. When an index exists or was just built, `code_query.provider: "auto"` is written so `ll-code` prefers it; `.codegraph/` is added to `.gitignore`. Failures are warnings with the manual commands — never a non-zero exit. |
 | `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`, `parallel`, `documents`, `design_tokens`, `sync`, `confidence_gate`, `tdd`. |
-| `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--enable prompt_optimization` to opt in to the default-off prompt optimizer. |
-| `--upgrade` | | Act on version drift automatically, then run a **host-parameterized surface refresh** for every active host: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`, re-stamping the embedded gen-version), scope-aware-update the claude-code plugin (auto for project-scoped installs, advise-only for user-scoped), and (ENH-3382) splice an already-present `## little-loops CLI Commands` block in CLAUDE.md/AGENTS.md/GEMINI.md — replaced wholesale, so hand edits inside the block are discarded. Without this flag, headless mode only warns — including a hint when a generated adapter's gen-version stamp diverges from the installed package. Passing `--upgrade` alone (no `--yes`/`--dry-run`/`--plan`) implies `--yes` and runs headlessly, rather than silently dropping the flag and launching the interactive wizard (BUG-2755). `apply` honors the same refresh via the plan's `requested_upgrade` flag. |
-| `--root ROOT` | `-C` | Project root directory (default: current directory) |
+| `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`; on a re-init an explicit `--disable` switches an existing section off. Use `--enable prompt_optimization` to opt in to the default-off prompt optimizer. |
+| `--upgrade` | | Act on version drift automatically, then run a **host-parameterized surface refresh** for every active host: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`, re-stamping the embedded gen-version), scope-aware-update the claude-code plugin (auto for project-scoped installs, advise-only for user-scoped), and (ENH-3382) splice an already-present `## little-loops CLI Commands` block in CLAUDE.md/AGENTS.md/GEMINI.md — replaced wholesale, so hand edits inside the block are discarded. Without this flag, headless mode only warns — including a hint when a generated adapter's gen-version stamp diverges from the installed package. Passing `--upgrade` alone implies `--yes` (BUG-2755). `apply` honors the same refresh via the plan's `requested_upgrade` flag. |
+| `--root ROOT` | `-C` | Project root directory (default: current directory). `LL_STATE_DIR` (e.g. `.codex`) redirects the config write to that host state dir, matching where the config is read from. |
+| `--color` / `--no-color` | | Force or disable colored output (`NO_COLOR` always wins). |
 
-`parallel`, `sync`, `documents`, `design_tokens`, `confidence_gate`, `tdd` carry richer sub-config; `--enable`/`--disable` write the schema-default shape for these (use the interactive wizard to fine-tune sub-values). Unknown feature names exit `2`.
+`parallel`, `sync`, `documents`, `design_tokens`, `confidence_gate`, `tdd` carry richer sub-config; `--enable`/`--disable` write the schema-default shape for these (use the interactive wizard to fine-tune sub-values). Unknown feature names exit `2`. A fresh init turns on the schema defaults plus the recommended set (`context_monitor`); everything else is opt-in.
 
 **Subcommands:**
 
 | Subcommand | Description |
 |------------|-------------|
-| `apply --config PLAN` | Apply writes from a `--plan` JSON output. `--config` accepts a file path or raw JSON string. Produces the same artifacts as `--yes` (config, issue dirs, design tokens, issue templates, CLAUDE.md, host adapters, etc.). Accepts `--force` to overwrite existing configuration keys and overwrite existing host adapter files (e.g. `.codex/hooks.json`). |
+| `apply --config PLAN` | Apply writes from a `--plan` JSON output. `--config` accepts a file path or raw JSON string. Produces the same artifacts as `--yes` (config incl. `install_source`, issue dirs, design tokens, issue templates, CLAUDE.md, host adapters, code-graph step, etc.) and honors `--settings`/`--no-claude-md`/`--code-graph`. Accepts `--force` and `--dry-run` in either flag position. |
 
-**Exit codes:** `0` = success, `1` = error (template missing, stdin not a TTY, etc.), `2` = usage error
+**Exit codes:** `0` = success, `1` = error (template missing, unreadable config, wizard aborted), `2` = usage error, `130` = interrupted (Ctrl-C in the wizard). When stdin is not a TTY and no headless flag was given, `ll-init` prints a notice and runs the `--yes` flow instead of failing.
 
-**Interactive TUI screens** (omitted when `--yes` is passed):
+**Interactive wizard** (omitted when `--yes` is passed) — express-first:
 
-The detected project type is shown as a banner line (not a questionary prompt) before Screen 2 starts.
-
-| Screen | Prompt | Notes |
-|--------|--------|-------|
-| 1 / 7  | Plugin Install | Shown only when install/upgrade is needed: missing package, outdated package/plugin, or stale Codex adapter. Reports what it checks and prompts `questionary.confirm("Proceed with wizard? (install/upgrade separately after)")` (default Yes); declining aborts with no changes. Skipped entirely when the install is already current |
-| 2 / 7  | Project Basics | Project name, src dir, test/lint/format/type-check commands. Pre-filled from existing config when present, otherwise from project-type detection; command fields offer curated-menu select with "Custom…" fallthrough |
-| 3 / 7  | Scan | `focus_dirs` text entry; confirm/override exclude patterns |
-| 4 / 7  | Features | Opt-in checkboxes including `github_sync`, `confidence_gate`, `tdd`, `decisions` (rules log), `scratch_pad` (automation context masking), `session_capture` (PreCompact handoff); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm; prompt-optimization opt-out confirm (default on); **loop defaults**: "Enable --clear by default?" (default Yes) and "Default diagram mode for ll-loop run?" (default `clean`) |
-| 5 / 7  | Hosts | Defaults to detected hosts |
-| 6 / 7  | Settings target | Third "Skip" option skips `merge_settings` entirely |
-| 7 / 7  | CLAUDE.md update | Offers to create `.claude/CLAUDE.md` (or append to an existing one) with ll CLI command stubs; skipped if a `## little-loops` section is already present (ENH-2043, ENH-2092) |
+1. **Environment line** — package version/source, primary host, git status — plus a *Plugin Install* block only when the package/plugin/adapter is missing or stale (`Proceed with wizard?`).
+2. **Detected setup** panel — every proposed value with its evidence (`declared: [tool.pytest.ini_options] present`, `inferred: Makefile target 'test'`, `existing: ll-config.json`, …), the recommended features, hosts, document categories, and code-graph status.
+3. **How do you want to proceed?** — *Accept detected setup* writes immediately (typically two prompts in total); *Customize* walks the screens below; *Cancel* exits with no changes.
+4. *Customize only:* **Project** (name, source dir, test/lint/type-check/format commands — curated menus pre-select the detected value and show its evidence; a detected command outside the menu is inserted at the top) → **Scan** (focus dirs, custom excludes) → **Features** (checkbox; parallel worker/worktree/branch-mode and design-token follow-ups) → **Hosts** (every known host with `[detected]`/`[not on PATH]`; adapter-pending hosts disabled; kimi-code asks before its user-global write) → **Claude Code** (settings target, CLAUDE.md — only when claude-code is selected) → **Advanced** (one opt-in confirm gates session digest, prompt optimization, and `ll-loop run` defaults; defaults are written when skipped).
+5. **Code graph** — when no index exists: *Index now* (binary installed), *Install & index now* (npm available), *Show me the commands*, or *Skip*; an explicit `--code-graph` mode skips the question.
+6. **Summary** panel → `Apply this configuration?` → writes, dependency validation, and tailored **next steps** (first issue to capture, `/ll:scan-codebase`, the code-graph command if skipped, `git init` when not a repo, `ll-adapt` for adapter hosts, `ll-doctor`, `/ll:help`).
 
 **Examples:**
 ```bash
-ll-init --yes                      # Non-interactive full init with defaults
-ll-init --yes --dry-run            # Preview without writing files
-ll-init --yes --force              # Overwrite existing configuration
-ll-init --yes --upgrade            # Upgrade stale package/plugin automatically
-ll-init --plan                     # Emit JSON plan without writing
-ll-init --hosts claude-code codex  # Install adapters for specific hosts
+ll-init                              # Express-first wizard
+ll-init --yes                        # Non-interactive full init with defaults
+ll-init --yes --dry-run              # Preview without writing files
+ll-init --yes --force                # Overwrite existing configuration
+ll-init --yes --upgrade              # Upgrade stale package/plugin automatically
+ll-init --yes --code-graph install   # Install codegraph and build the ll-code index
+ll-init --yes --hosts codex --no-claude-md   # Codex-only project (AGENTS.md, no .claude/)
+ll-init --plan                       # Emit JSON plan without writing
+ll-init --hosts claude-code,codex    # Install adapters for specific hosts
 ll-init --yes --enable decisions --enable session_capture  # Opt in to extra features
 ll-init --yes --enable prompt_optimization                 # Opt in to prompt optimizer
-ll-init apply --config plan.json   # Apply writes from a --plan output
+ll-init apply --config plan.json     # Apply writes from a --plan output
 ```
 
 <!-- TODO: update-docs stub — ENH-2434 — drafted 2026-07-02 -->
@@ -319,7 +323,7 @@ Probes the active host CLI and reports which little-loops features are supported
 Beyond the host-capability table, `ll-doctor` always runs 7 default install-surface checks (FEAT-2793/FEAT-2794): **Entry Points** (every `[project.scripts]` entry in `pyproject.toml` is importable/callable), **Skills & Commands** (discoverability count via the tool catalog), **Decisions Store** (`.ll/decisions.yaml` + `.ll/decisions.d/*.json` presence), **History DB** (`.ll/history.db` presence/readability), **FSM Loop Validity** (aggregated `fsm.validation` results over builtin + project-local loop YAMLs), **Schema Drift** (report-only: compares `.ll/history.db`'s live structure against what its own recorded `schema_version`'s migrations should produce, catching silent drift a version stamp alone can't reveal; never migrates the database itself) (ENH-3242), and **Advisor** (reports the configured advisor host's reachability and the capability-floor result against the main host; always a warning — even a floor `violation` — never affects the exit code, because an unconfigured or cross-host advisor is a deliberate configuration, not a broken install) (FEAT-3122).
 
 **Flags:**
-- `-j`, `--json` — emit the report as JSON instead of the human-readable table. The JSON payload is a superset of the `CapabilityReport` dataclass: alongside `host`/`binary`/`version`/`capabilities` it includes `analytics_capture` (`{skills, cli_commands, corrections, file_events, correction_patterns}`), `issues` (`{auto_commit, auto_commit_prefix}`), and the install-surface keys `entry_points` (list of `{name, status, note}`), `skills_commands` (`{status, note, total}`), `decisions_store` (`{status, note}`), `history_db` (`{status, note}`), `loop_validity` (`{status, note, total, invalid}`), `schema_drift` (`{status, note}`), and `advisor` (list of `{name, status, note, severity, floor_status}`, one row for `advisor_host` and one for `advisor_floor`; `floor_status` is the raw `FloorResult.status` on the floor row and `null` on the host row — unlike every other key here, `severity` is surfaced per-row rather than hardcoded by the check) — the same config/check state the text output prints under their respective sections (ENH-2762, FEAT-2793, ENH-3242, FEAT-3122).
+- `-j`, `--json` — emit the report as JSON instead of the human-readable table. The JSON payload is a superset of the `CapabilityReport` dataclass: alongside `host`/`binary`/`version`/`capabilities` it includes `analytics_capture` (`{skills, cli_commands, corrections, file_events, correction_patterns}`), `issues` (`{auto_commit, auto_commit_prefix}`), and the install-surface keys `entry_points` (list of `{name, status, note}`), `skills_commands` (`{status, note, total}`), `decisions_store` (`{status, note}`), `history_db` (`{status, note}`), `loop_validity` (`{status, note, total, invalid}`), `schema_drift` (`{status, note}`), `code_query` (`{status, severity, note}` — the `ll-code` code-graph provider: `full` fresh codegraph index, `partial` stale index, `unsupported` no index; always informational, the note carries the exact `npm install -g @colbymchenry/codegraph` / `codegraph init .` commands), and `advisor` (list of `{name, status, note, severity, floor_status}`, one row for `advisor_host` and one for `advisor_floor`; `floor_status` is the raw `FloorResult.status` on the floor row and `null` on the host row — unlike every other key here, `severity` is surfaced per-row rather than hardcoded by the check) — the same config/check state the text output prints under their respective sections (ENH-2762, FEAT-2793, ENH-3242, FEAT-3122).
 - `--full` — additionally run the full `ll-verify-*` / `ll-check-links` checker family (FEAT-2795) under a "Full Verification (--full)" section: `docs`, `skill_budget`, `skills`, `skill_prose`, `triggers`, `decisions`, `package_data`, `kinds`, `host_map`, `design_tokens`, `des_audit`, `check_links` (does not wrap `ll-verify-cli-allowlist`). Adds a `full` key (dict keyed by verifier name → `{status, note, findings}`) to the `--json` payload when combined with `-j`/`--json`. `check_links` reports `severity: "error"` on genuinely broken links and `severity: "informational"` when the only failures are unreachable (network timeout/DNS) links (ENH-2836), so a flaky or offline network doesn't fail this check. `docs` and `check_links` additionally populate `findings` (a list of `{label, action_severity, route_owner}`, one entry per mismatched doc category or broken/unreachable link) surfacing each finding's `auto`/`mention`/`route` action-severity (ENH-2886/ENH-2887) — a distinct axis from `severity`, which only governs `ll-doctor`'s exit code. Every other `--full` verifier's `findings` is an empty list. The text-output rendering prints a `- <label>: <action_severity>` sub-line (with `-> <route_owner>` when routed) under any verifier with findings, without changing the one-line-per-verifier summary shape for verifiers that don't.
 
 **Exit codes:** `0` = all error-tier checks passed, `1` = an error-tier check failed. `ll-doctor` folds the host-capability report and any registered install-surface checks (FEAT-2793's `CheckResult` registry) — including the `--full` verifier family when requested — into a single severity split: `unsupported` capabilities/checks are error-tier (fail the exit code, as before); informational checks — e.g. an absent-but-optional subsystem — never affect it regardless of status.
@@ -2549,22 +2553,24 @@ child-issue creation mechanics now go through `ll-issues create` / `ll-issues sc
 
 #### `ll-issues check-readiness` / `ll-issues cr`
 
-Exit 0 if an issue's `confidence_score` and `outcome_confidence` frontmatter fields both meet the configured thresholds. Reads thresholds from `commands.confidence_gate` in `ll-config.json`, falling back to `--readiness` / `--outcome` CLI args.
+Exit 0 if an issue's `confidence_score` and `outcome_confidence` frontmatter fields both meet the thresholds. Threshold resolution (BUG-3390): an explicit `--readiness` / `--outcome` wins; otherwise `commands.confidence_gate` in `ll-config.json`; otherwise 85 / 65. Exit 2 when the issue ID cannot be resolved.
 
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|
 | `issue_id` | _(required)_ | Issue ID (e.g., `518`, `FEAT-518`, `P3-FEAT-518`) |
-| `--readiness N` | `90` | Fallback readiness threshold when not set in `ll-config.json` |
-| `--outcome N` | `75` | Fallback outcome confidence threshold when not set in `ll-config.json` |
+| `--readiness N` | config, else `85` | Readiness threshold; an explicit value overrides `ll-config.json` |
+| `--outcome N` | config, else `65` | Outcome confidence threshold; an explicit value overrides `ll-config.json` |
+| `--honor-waiver` | off | Treat the outcome half as met when frontmatter has `outcome_gate_waived: true` (the BUG-2734 escalation valve stamped by `/ll:go-no-go`); readiness is still enforced |
 
 **Examples:**
 ```bash
 ll-issues check-readiness 518             # Use thresholds from ll-config.json
 ll-issues cr FEAT-518 --readiness 85      # Override readiness threshold
 ll-issues check-readiness 518 --readiness 80 --outcome 70
+ll-issues check-readiness 518 --honor-waiver   # outcome half satisfied by outcome_gate_waived: true
 ```
 
-**FSM loop use**: Use as a shell gate in `refine-to-ready-issue`-style loops to branch without an LLM call. Pair with `ll-issues show --json` when you need the raw scores.
+**FSM loop use**: Use as a shell gate in `refine-to-ready-issue`-style loops to branch without an LLM call. `autodev.yaml`'s `check_passed`, `recheck_after_decide`, and `recheck_scores` pass `--honor-waiver` so the CLI gates agree with the loop's inline gates (which read `outcome_gate_waived` from `ll-issues show --json`). Pair with `ll-issues show --json` when you need the raw scores.
 
 #### `ll-issues set-scores` / `ll-issues ss`
 
