@@ -109,6 +109,33 @@ host branch. Verify against a real `gemini`/`omp` install before writing fixture
 - `scripts/little_loops/session_store/queries.py` — consumers of the newly
   populated rows (session/tool-event queries, analytics)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/backfill_worker.py` — a **separate** ingestion path
+  (invoked as a detached subprocess by `hooks/session_start.py`) that calls
+  `host_layout_for()` and `backfill_incremental()`. It has no argparse
+  `choices=` gate, so it is already host-agnostic — the live-hook auto-backfill
+  tier is unblocked for `gemini`/`omp` mechanically today; only
+  `get_project_folder`/`host_layout_for` returning `None`/generic-default
+  blocks it functionally, matching the issue's stated "net effect" [Agent 1
+  finding]
+- `scripts/little_loops/session_store/lifecycle.py:1098` `backfill_incremental()`
+  — distinct from `backfill()` (already in Files to Modify); threads `host`
+  straight into `backfill_raw_events(..., host=host)` with no validation of its
+  own — benefits automatically once `host_layout_for` is extended, no code
+  change needed here but it must stay covered by tests [Agent 1 finding]
+- `scripts/little_loops/session_log.py:15,174` — `get_sessions_folder(cwd)`
+  caller, host resolved via `LL_HOOK_HOST` env default — host-agnostic [Agent 1
+  finding]
+- `scripts/little_loops/fsm/continuity.py:22,43` — same `get_sessions_folder`
+  pattern [Agent 1 finding]
+- `scripts/little_loops/cli/ctx_stats.py:34,355` — same `get_sessions_folder`
+  pattern [Agent 1 finding]
+- `scripts/little_loops/hooks/session_start.py:162,178-179` — builds `--host`
+  argv for `backfill_worker.py` from `event.host or LL_HOOK_HOST`; confirmed
+  this does **not** route through `cli/session.py`'s restrictive `--host`
+  choices gate (`backfill_worker.py` has no argparse choices) [Agent 1
+  finding]
+
 ### Similar Patterns
 - ENH-1945 (`get_project_folder` host-aware discovery for codex/pi)
 - ENH-3165 / ENH-3166 (qwen backfill + wire-format normalizer — the descriptor
@@ -121,9 +148,55 @@ host branch. Verify against a real `gemini`/`omp` install before writing fixture
   `gemini`/`omp` fixtures, both with and without the host CLI installed on the
   test machine
 
+_Wiring pass added by `/ll:wire-issue`:_
+- Confirmed: the qwen backfill/normalizer test module is
+  `scripts/tests/test_enh_3166_qwen_normalizer.py`, fixtures at
+  `scripts/tests/fixtures/qwen/{session,noise}.jsonl` — this is the file/dir to
+  mirror, not a differently-named module [Agent 3 finding]
+- `scripts/tests/test_enh_3166_qwen_normalizer.py` `TestHostLayoutRegistry`
+  (196-247), specifically `test_registered_claude_shaped_hosts_get_projects_roots`
+  (231-234) — add `gemini`/`omp` assertions here if Claude-shaped, or add new
+  dedicated tests mirroring `test_qwen_layout_widens_without_losing_enh_3165_fields`
+  (197-219) if sidecar-shaped [Agent 3 finding]
+- `scripts/tests/test_enh_3166_qwen_normalizer.py:539,557,603-604` —
+  `worker_main([..., "--host", "qwen"])` and
+  `TestSessionStartHookPassesHost::test_worker_argv_carries_host_and_project_root`
+  — add `gemini`/`omp` cases [Agent 1 + 3 findings]
+- `scripts/tests/test_session_log.py:385-450` — per-host cluster
+  (`test_get_current_session_jsonl_auto_detects_codex`/`_qwen_chats`, etc.)
+  exercising `session_log.py`'s `get_sessions_folder` — add `gemini`/`omp`
+  analogues [Agent 1 finding]
+- `scripts/tests/test_fsm_continuity.py:106`
+  (`test_resolves_qwen_chats_transcript`) — add `gemini`/`omp` analogues for
+  `fsm/continuity.py`'s `get_sessions_folder` call [Agent 1 finding]
+- `scripts/tests/test_cli_ctx_stats.py:909`
+  (`test_resolves_qwen_chats_transcript`) — add `gemini`/`omp` analogues for
+  `cli/ctx_stats.py` [Agent 1 finding]
+- `scripts/tests/test_enh_2505_subagent_runs.py:568-703` — repeated
+  `host_layout_for("qwen")` calls feeding `_backfill_subagent_runs` — add
+  `gemini`/`omp` analogues if subagent-run backfill applies to those hosts
+  [Agent 1 finding]
+- No test currently locks in the `ll-session backfill --host` choices list
+  itself (confirmed: no argparse/`--help`-snapshot test exists) — write one so
+  future host additions can't silently drift from docs [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/HOST_COMPATIBILITY.md` — session-store table
 - `docs/reference/API.md` — `ll-session backfill --host {…}` host list
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:3803-3818`, specifically line 3814 — `backfill` flags
+  table's `--host HOST` row is already stale (lists only 4 of the current 6
+  hosts, missing `kimi-code`/`qwen`); needs a full refresh to all 8 hosts, not
+  just an append [Agent 2 finding]
+- `docs/guides/HISTORY_SESSION_GUIDE.md:224-230` — "Incremental backfill"
+  example commands show only `claude-code`/`codex`/`opencode`; add
+  `kimi-code`/`qwen`/`gemini`/`omp` examples [Agent 2 finding]
+- `docs/reference/API.md` — `get_project_folder` (~3426-3468),
+  `get_sessions_folder`, `discover_all_projects` (~3548) sections describe host
+  dispatch as "four-way" / list only 4 helpers — already stale for
+  `kimi-code`/`qwen`; needs a full refresh including `gemini`/`omp`, not just
+  two new bullets [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -149,6 +222,33 @@ _Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
 4. Add committed fixtures and tests for both hosts, including a no-host-installed
    regression case.
 5. Update `docs/reference/HOST_COMPATIBILITY.md` and `docs/reference/API.md`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_session_log.py`, `test_fsm_continuity.py`,
+  `test_cli_ctx_stats.py` — add `gemini`/`omp` per-host cases mirroring their
+  existing qwen/codex cases
+- Update `scripts/tests/test_enh_3166_qwen_normalizer.py`'s
+  `TestHostLayoutRegistry` and `TestSessionStartHookPassesHost` — add
+  `gemini`/`omp` coverage
+- Update `scripts/tests/test_enh_2505_subagent_runs.py` — add `gemini`/`omp`
+  `host_layout_for` cases if subagent-run backfill applies to those hosts
+- Write a new regression test asserting the full `ll-session backfill --host`
+  choices list — none exists today, so a future host addition could silently
+  drift from docs again
+- Update `docs/reference/CLI.md`'s `backfill` `--host` flag row — full refresh
+  (it's already missing `kimi-code`/`qwen`, not just `gemini`/`omp`)
+- Update `docs/guides/HISTORY_SESSION_GUIDE.md`'s "Incremental backfill"
+  example commands — full refresh
+- Update `docs/reference/API.md`'s `get_project_folder`/`get_sessions_folder`/
+  `discover_all_projects` host-dispatch prose — full refresh (already stale at
+  "four-way", don't just append a seventh/eighth)
+- Conditional: if step 1's on-disk investigation finds `gemini`/`omp` need a
+  qwen-shaped sidecar normalizer (not the flat-dict shape), add corresponding
+  exports to `scripts/little_loops/session_store/__init__.py` mirroring
+  `normalize_qwen_record`/`qwen_skip_at_ingest`
 
 ## Impact
 
@@ -195,6 +295,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-06T02:17:09 - `f6ee5fef-8198-4d16-b8a2-3bbb8e726d3e.jsonl`
 - `/ll:refine-issue` - 2026-09-06T02:05:42 - `8aa8caa8-0bcc-4ea2-ac50-00eea4c9d01b.jsonl`
 - `/ll:format-issue` - 2026-09-06T01:59:12 - `c0275b19-45a2-4dc2-bddf-421eab5bb2a9.jsonl`
 - `/ll:capture-issue` - 2026-09-06T01:54:41 - `259dddc7-3ed5-489c-a2c5-bdbcc4004163.jsonl`
