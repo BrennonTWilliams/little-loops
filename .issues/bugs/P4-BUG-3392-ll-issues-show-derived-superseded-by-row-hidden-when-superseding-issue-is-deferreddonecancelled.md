@@ -8,7 +8,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-05'
 captured_at: '2026-09-05T23:53:50Z'
-confidence_score: 96
+confidence_score: 100
 outcome_confidence: 96
 score_complexity: 25
 score_test_coverage: 23
@@ -41,7 +41,10 @@ The reverse `Superseded by` edge renders regardless of the superseding issue's s
 
 ## Proposed Solution
 
-In `show.py`, load the issue list for the supersession/parent lookup with an all-statuses filter (e.g. `find_issues(config, status_filter={"open","in_progress","blocked","deferred","done","cancelled"})`) instead of the default. Add a test in the `ll-issues show` test module: cancelled issue A, deferred issue B with `supersedes: [A]`, assert `Superseded by: B` appears in `show A` output.
+In `show.py`, load the issue list for the supersession/parent lookup with an all-statuses filter instead of the default. **Decided:** source the set from `little_loops.issue_progress._ALL_STATUSES` via a function-scoped import (inside the existing `try:` block alongside the `find_issues`/`superseded_by` import) and pass it wrapped as `set(_ALL_STATUSES)` — `find_issues()` is typed `status_filter: set[str] | None` and `_ALL_STATUSES` is a `frozenset`, so the bare form fails mypy. This matches `normalize.py:275`, `format_check.py:556`, `sprint.py:360`, and `issue_manager.py:1913`; do not retype the six-status literal inline.
+
+Add a regression test in `scripts/tests/test_show.py`:
+cancelled issue A, deferred issue B whose frontmatter forward-references A, assert `_parse_card_fields(A)["superseded_by"] == "B"`.
 
 ## Integration Map
 
@@ -60,7 +63,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/mcp_server/resources.py:264` — `_read_issue_body` imports and calls `_parse_card_fields()` directly, JSON-serializing the result (including `superseded_by`) as an MCP resource body
 
 ### Conventions in Force
-- Two live conventions coexist for sourcing an "all statuses" filter set: import `_ALL_STATUSES` from `little_loops.issue_progress` via a local, function-scoped import (evidence: `cli/issues/normalize.py:263`, `cli/issues/format_check.py:516`, `sprint.py:354-360`, `issue_manager.py:1910-1913`, each wrapping it as `set(_ALL_STATUSES)`) vs. retyping a fresh six-status literal inline at the call site (evidence: `cli/deps.py:280-281`, `cli/issues/list_cmd.py:65-73` and `:186-196`). Both are established elsewhere in the codebase — this is a genuine open choice for the implementer, not a coin-flip.
+- Two live conventions coexist for sourcing an "all statuses" filter set: import `_ALL_STATUSES` from `little_loops.issue_progress` via a local, function-scoped import (evidence: `cli/issues/normalize.py:263`, `cli/issues/format_check.py:516`, `sprint.py:354-360`, `issue_manager.py:1910-1913`, each wrapping it as `set(_ALL_STATUSES)`) vs. retyping a fresh six-status literal inline at the call site (evidence: `cli/deps.py:280-281`, `cli/issues/list_cmd.py:65-73` and `:186-196`). **Resolved (2026-09-06 review): use the `set(_ALL_STATUSES)` import form** — see Proposed Solution. The `set()` wrap is required for mypy (`frozenset[str]` is not `set[str]`).
+- `find_issues()` parses every issue file and only then applies `_matches_status` (`issue_parser.py:4056`, inner closure), so widening `status_filter` to all six statuses adds zero I/O — it changes only which parsed `IssueInfo`s are kept. No caching or perf work is warranted.
 - `find_issues_for_graph()` (`scripts/little_loops/issue_parser.py:4182-4201`) is the named precedent for "load a superset instead of relying on the default filter", but its superset (`_ALL_STATUSES - _TERMINAL_STATUSES`) still excludes `done`/`cancelled` — it does not fit this bug's need, which requires all six statuses (including `done`/`cancelled`) visible to `superseded_by()`.
 - Prior fixes in this family both resolved a `find_issues()` default-filter blind spot by widening the *specific call site's* `status_filter`, never by changing `find_issues()`'s own default: `.issues/bugs/P2-BUG-2897-deferred-blocker-treated-as-satisfied-in-dependency-graph.md` (done) explicitly rejected widening the default itself, because it would leak `deferred` into 10+ work-selection surfaces; `.issues/bugs/P4-BUG-2915-ll-issues-link-warns-unknown-issue-for-done-cancelled-targets.md` (done) fixed a related terminal-status blind spot the same way. This issue's proposed fix (scope the widening to the `show.py:281` call site only) matches that precedent.
 
@@ -72,7 +76,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_parser.py` (`callsite_shapes` list, ~line 1622) — add a `("show:281", {"status_filter": _ALL_STATUSES})` entry once `show.py:281` passes an explicit `status_filter` kwarg, matching the shape of the existing `epic_progress:53`/`cli/deps:269` entries
-- `scripts/tests/test_show.py` — no existing test covers `parent_display` in either direction (searched repo-wide, zero hits); widening the same `_all` lookup that fixes `superseded_by` also resolves titles for closed/deferred/done `parent` EPICs (previously ID-only fallback) — add a regression test for this side effect, following the `test_superseded_by_derived_from_reverse_edge` pattern
+- `scripts/tests/test_show.py` — no existing test covers `parent_display` in either direction (searched repo-wide, zero hits); widening the same `_all` lookup that fixes `superseded_by` also resolves titles for closed/deferred/done `parent` EPICs (previously ID-only fallback) — add a regression test for this side effect, following the `test_superseded_by_derived_from_reverse_edge` pattern. **Test-fixture caveat:** the `_write_issue` helper (`test_show.py:296`) builds its config with only the `enhancements` category, so a `done` parent written under `.issues/epics/` would never be scanned and the test would fail for the wrong reason. Either write the parent as an `ENH-` file in `enhancements/` (simplest; `parent:` is an ID lookup, not a type check) or extend the helper's `categories` dict with an `epics` entry.
 
 ### Documentation
 - `.claude/CLAUDE.md:189` (§ Issue File Format → Supersession) already documents the standing contract this bug violates: "`ll-issues show` derives the reverse `Superseded by` row... Never hand-write `superseded_by`."
@@ -89,7 +93,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Add a `("show:281", {"status_filter": _ALL_STATUSES})` entry to the `callsite_shapes` registry in `scripts/tests/test_issue_parser.py` (~line 1622) once `show.py:281` passes an explicit `status_filter` kwarg
-- Add a regression test in `scripts/tests/test_show.py` asserting `parent_display` resolves the parent's title (not just its ID) when the parent EPIC is `done`/`cancelled`/`deferred` — a side effect of the same `_all` widening that fixes `superseded_by`
+- Add a regression test in `scripts/tests/test_show.py` asserting `parent_display` resolves the parent's title (not just its ID) when the parent is `done`/`cancelled`/`deferred` — a side effect of the same `_all` widening that fixes `superseded_by`. Write the parent as an ENH file under `enhancements/` (or extend `_write_issue`'s categories) — see the fixture caveat under Tests.
 
 ## Program Design
 
@@ -100,20 +104,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Call Path
 
-`show.py` (`~line 281`, inside the parent/supersession resolution block) -> `find_issues(config, status_filter={"open", "in_progress", "blocked", "deferred", "done", "cancelled"})` -> `superseded_by(issue_id, _all)`
+`show.py` (`~line 281`, inside the parent/supersession resolution block) -> `find_issues(config, status_filter=set(_ALL_STATUSES))` -> `superseded_by(issue_id, _all)`
 
 ## Impact
 
 - **Priority**: P4 - Cosmetic display gap; the underlying supersession data is intact and derivable via `ll-issues show` on the superseding issue itself, so this only affects a single CLI convenience row.
 - **Effort**: Small - One-line change to the `find_issues(config)` call's `status_filter` argument, plus one regression test.
-- **Risk**: Low - Widening the status filter for this specific lookup only affects the parent-title and superseded-by resolution block; it does not change which issues `ll-issues show` lists or operates on elsewhere.
+- **Risk**: Low - Widening the status filter for this specific lookup only affects the parent-title and superseded-by resolution block; it does not change which issues `ll-issues show` lists or operates on elsewhere. No performance cost: `find_issues()` already parses every file and filters afterward, so the widened filter only retains more already-parsed entries.
 - **Breaking Change**: No
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues show` renders `Superseded by` when the superseding issue is deferred, done, or cancelled
-- [ ] Regression test covering the deferred-superseder case
-- [ ] `python -m pytest scripts/tests/` passes
+- [ ] `ll-issues show` renders `Superseded by` when the superseding issue is deferred, done, or cancelled (manual check: `ll-issues show FEAT-3385` shows `Superseded by: FEAT-3388`)
+- [ ] Regression test covering the deferred-superseder case, asserting on `_parse_card_fields()["superseded_by"]` (unit level, matching the existing `test_superseded_by_*` tests — no `cmd_show` end-to-end test required)
+- [ ] Regression test for `parent_display` resolving a `done`/`cancelled`/`deferred` parent's title
+- [ ] `("show:281", {"status_filter": _ALL_STATUSES})` entry added to the `callsite_shapes` registry in `test_issue_parser.py`
+- [ ] `python -m pytest scripts/tests/` passes; `python -m mypy scripts/little_loops/` clean on `show.py`
 
 ## Status
 
@@ -121,6 +127,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-06T01:26:41 - `366fbab1-2425-4032-9107-25922a0dc3e9.jsonl`
 - `/ll:confidence-check` - 2026-09-06T00:54:09 - `f8c6a35f-53bd-4185-b107-75ddceecc2f6.jsonl`
 - `/ll:wire-issue` - 2026-09-06T00:51:45 - `2a52dfcf-16c7-48fe-83e3-d9895c70f5c1.jsonl`
 - `/ll:refine-issue` - 2026-09-06T00:38:20 - `d41a820b-4488-495c-b1ba-f59ae30351ff.jsonl`
