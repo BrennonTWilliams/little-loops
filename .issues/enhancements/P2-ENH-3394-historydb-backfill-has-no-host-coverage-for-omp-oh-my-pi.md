@@ -13,6 +13,12 @@ labels:
 - omp
 depends_on:
 - ENH-3393
+confidence_score: 95
+outcome_confidence: 71
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 15
+score_change_surface: 18
 ---
 
 # ENH-3394: history.db backfill has no host coverage for omp (oh-my-pi)
@@ -415,5 +421,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-06T04:53:40 - `3b34c35b-9273-4059-80be-11dd20598e17.jsonl`
 - `/ll:wire-issue` - 2026-09-06T04:37:09 - `40599667-8ac5-47aa-88f2-6a2e34850427.jsonl`
 - `/ll:refine-issue` - 2026-09-06T03:57:16 - `fb75bfe7-573f-4313-a50e-f7fd15a75fa9.jsonl`
