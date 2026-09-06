@@ -455,7 +455,6 @@ class TestRecentLifecycleEvents:
     """ENH-2495: recent_lifecycle_events() over session_lifecycle_events."""
 
     def test_recent_lifecycle_events_filter_by_event(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_session_lifecycle_event(
             db, session_id="s1", event="handoff_needed", ts="2026-07-19T10:00:00Z"
@@ -471,7 +470,6 @@ class TestRecentLifecycleEvents:
     def test_recent_lifecycle_events_newest_first_and_detail_roundtrip(
         self, tmp_path: Path
     ) -> None:
-
         db = tmp_path / "history.db"
         record_session_lifecycle_event(
             db,
@@ -492,7 +490,6 @@ class TestRecentLifecycleEvents:
         assert [r.detail["findings"] for r in rows] == [5, 3]
 
     def test_recent_lifecycle_events_empty_on_missing_db(self, tmp_path: Path) -> None:
-
         assert recent_lifecycle_events(db=tmp_path / "nope" / "history.db") == []
 
 
@@ -500,7 +497,6 @@ class TestHandoffFrequency:
     """ENH-2495: handoff_frequency() counts handoff_needed rows."""
 
     def test_handoff_frequency_with_since_filter(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_session_lifecycle_event(
             db, session_id="s1", event="handoff_needed", ts="2026-07-19T10:00:00Z"
@@ -521,7 +517,6 @@ class TestWorktreeSummary:
     """ENH-2509: worktree_summary() rolls up worktree_* lifecycle events per issue."""
 
     def test_per_issue_rollup(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_session_lifecycle_event(
             db,
@@ -565,7 +560,6 @@ class TestWorktreeSummary:
         assert by_issue["BUG-002"]["merged"] == 0
 
     def test_issue_id_filter(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_session_lifecycle_event(
             db,
@@ -587,7 +581,6 @@ class TestWorktreeSummary:
         assert rows[0]["issue_id"] == "BUG-001"
 
     def test_since_filter(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_session_lifecycle_event(
             db,
@@ -608,7 +601,6 @@ class TestWorktreeSummary:
         assert [r["issue_id"] for r in rows] == ["BUG-002"]
 
     def test_empty_on_missing_db(self, tmp_path: Path) -> None:
-
         assert worktree_summary(db=tmp_path / "nope" / "history.db") == []
 
     def test_empty_db_returns_empty_list(self, tmp_path: Path) -> None:

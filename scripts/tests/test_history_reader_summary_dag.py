@@ -49,18 +49,15 @@ class TestCondensedNodesForIssue:
             conn.close()
 
     def test_missing_db_returns_empty(self, tmp_path: Path) -> None:
-
         db = tmp_path / "nonexistent.db"
         assert condensed_nodes_for_issue("ENH-9999", db=db) == []
 
     def test_empty_db_returns_empty(self, tmp_path: Path) -> None:
-
         db = tmp_path / "test.db"
         ensure_db(db)
         assert condensed_nodes_for_issue("ENH-9999", db=db) == []
 
     def test_returns_condensed_node_for_issue(self, tmp_path: Path) -> None:
-
         db = tmp_path / "test.db"
         self._seed(db, issue_id="ENH-100", session_id="sess-a", content="A summary of prior work")
         result = condensed_nodes_for_issue("ENH-100", db=db)
@@ -72,7 +69,6 @@ class TestCondensedNodesForIssue:
         assert result[0].session_id == "sess-a"
 
     def test_does_not_return_other_issues_nodes(self, tmp_path: Path) -> None:
-
         db = tmp_path / "test.db"
         self._seed(db, issue_id="ENH-999", session_id="sess-b", content="Other issue summary")
         result = condensed_nodes_for_issue("ENH-100", db=db)
@@ -149,7 +145,6 @@ class TestCondensedNodesForIssue:
         assert result == []
 
     def test_limit_respected(self, tmp_path: Path) -> None:
-
         db = tmp_path / "test.db"
         conn = connect(db)
         try:
@@ -177,7 +172,6 @@ class TestCondensedNodesForIssue:
         assert len(result) == 2
 
     def test_returns_newest_first(self, tmp_path: Path) -> None:
-
         db = tmp_path / "test.db"
         conn = connect(db)
         try:
@@ -230,7 +224,6 @@ class TestCondensedNodesForIssue:
         assert "old" in result[1].content
 
     def test_content_truncated_to_node_char_cap(self, tmp_path: Path) -> None:
-
         db = tmp_path / "test.db"
         self._seed(db, issue_id="ENH-100", session_id="sess-a", content="x" * 1000)
         result = condensed_nodes_for_issue("ENH-100", node_char_cap=200, db=db)

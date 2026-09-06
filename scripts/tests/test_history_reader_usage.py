@@ -174,17 +174,14 @@ class TestWasteAttribution:
         conn.close()
 
     def test_missing_db_returns_empty(self, tmp_path: Path) -> None:
-
         assert waste_attribution(db=tmp_path / "nope.db") == []
 
     def test_empty_tables_returns_empty(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         ensure_db(db)
         assert waste_attribution(db=db) == []
 
     def test_success_and_wasted_runs_split_by_loop(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         # Successful run: terminated_by="terminal", final_state="done" -> not wasted.
         self._seed_run(
@@ -373,7 +370,6 @@ class TestUsageEventReaders:
             conn.close()
 
     def test_recent_usage_events_newest_first_and_filters(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         self._seed(
             db,
@@ -405,12 +401,10 @@ class TestUsageEventReaders:
         ]
 
     def test_recent_usage_events_missing_db(self, tmp_path: Path) -> None:
-
         assert recent_usage_events(db=tmp_path / "no" / "history.db") == []
 
     def test_aggregate_usage_by_model(self, tmp_path: Path) -> None:
         import pytest
-
 
         db = tmp_path / "history.db"
         self._seed(
@@ -451,7 +445,6 @@ class TestUsageEventReaders:
         assert by_model["m2"]["events"] == 1
 
     def test_aggregate_usage_by_session(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         self._seed(
             db,

@@ -66,14 +66,10 @@ def paired_direction(
         failed.
     """
     b = sum(
-        1
-        for item in per_item
-        if item.get(harness_key, False) and not item.get(baseline_key, False)
+        1 for item in per_item if item.get(harness_key, False) and not item.get(baseline_key, False)
     )
     c = sum(
-        1
-        for item in per_item
-        if item.get(baseline_key, False) and not item.get(harness_key, False)
+        1 for item in per_item if item.get(baseline_key, False) and not item.get(harness_key, False)
     )
     if b + c == 0:
         return "inconclusive", b, c

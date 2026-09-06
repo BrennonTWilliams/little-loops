@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from scripts.tests.spike.terminal_hitl_await.awaiter import TerminalAwaiter
 
 
@@ -59,9 +58,7 @@ class TestPollingMechanism:
         threading.Thread(target=flip_after_delay, daemon=True).start()
         awaiter = TerminalAwaiter(reader)
         start = time.monotonic()
-        result = awaiter.await_line_polling(
-            timeout=5.0, shutdown_event=shutdown_event, tick=0.1
-        )
+        result = awaiter.await_line_polling(timeout=5.0, shutdown_event=shutdown_event, tick=0.1)
         elapsed = time.monotonic() - start
         assert result is None
         # Proves the shutdown flag interrupts the block within ~one tick,

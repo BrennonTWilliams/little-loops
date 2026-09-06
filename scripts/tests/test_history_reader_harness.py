@@ -18,7 +18,6 @@ class TestHarnessEventReaders:
     """ENH-2741: recent_harness_events() / harness_eval_pass_rate()."""
 
     def test_recent_harness_events_recency_ordering(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_harness_event(db, ts="2026-07-01T10:00:00Z", runner="cli", target="foo")
         record_harness_event(db, ts="2026-07-01T11:00:00Z", runner="cli", target="bar")
@@ -27,7 +26,6 @@ class TestHarnessEventReaders:
         assert [row.target for row in rows] == ["bar", "foo"]
 
     def test_recent_harness_events_filters_combined(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_harness_event(db, ts="2026-07-01T10:00:00Z", runner="cli", target="foo")
         record_harness_event(db, ts="2026-07-01T11:00:00Z", runner="mcp", target="foo")
@@ -47,12 +45,10 @@ class TestHarnessEventReaders:
         assert rows[0].target == "foo"
 
     def test_recent_harness_events_empty_when_no_db(self, tmp_path: Path) -> None:
-
         db = tmp_path / "nonexistent" / "history.db"
         assert recent_harness_events(db=db) == []
 
     def test_harness_eval_pass_rate(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         for semantic_passed in (True, True, False):
             record_harness_event(
@@ -66,14 +62,12 @@ class TestHarnessEventReaders:
         assert abs(rate - (2 / 3)) < 1e-9
 
     def test_harness_eval_pass_rate_none_when_all_unscored(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_harness_event(db, ts="2026-07-01T10:00:00Z", target="foo", exit_code=0)
 
         assert harness_eval_pass_rate("foo", db=db) is None
 
     def test_harness_eval_pass_rate_none_when_no_rows(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         assert harness_eval_pass_rate("foo", db=db) is None
 
@@ -140,6 +134,5 @@ class TestHarnessEventReaders:
         assert result["abstentions"] == 0
 
     def test_harness_eval_abstention_rate_none_when_no_rows(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         assert harness_eval_abstention_rate("foo", db=db) is None

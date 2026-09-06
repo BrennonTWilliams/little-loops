@@ -18,7 +18,6 @@ class TestHookEventReaders:
     """ENH-2506: recent_hook_events / hook_failure_rate / hook_latency_p95."""
 
     def test_recent_hook_events_recency_ordering(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_hook_event(
             db,
@@ -44,7 +43,6 @@ class TestHookEventReaders:
         assert [r.duration_ms for r in rows] == [2, 1]
 
     def test_recent_hook_events_filter_by_event_name(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_hook_event(
             db,
@@ -69,7 +67,6 @@ class TestHookEventReaders:
         assert rows[0].event_name == "PreCompact"
 
     def test_recent_hook_events_filter_by_exit_code(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_hook_event(
             db,
@@ -94,7 +91,6 @@ class TestHookEventReaders:
         assert rows[0].exit_code == 1
 
     def test_recent_hook_events_since_filter(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         record_hook_event(
             db,
@@ -121,7 +117,6 @@ class TestHookEventReaders:
         assert rows[0].duration_ms == 2
 
     def test_hook_failure_rate(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         for exit_code in (0, 0, 1):
             record_hook_event(
@@ -138,12 +133,10 @@ class TestHookEventReaders:
         assert abs(rate - (1 / 3)) < 1e-9
 
     def test_hook_failure_rate_none_when_no_fires(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         assert hook_failure_rate("PostToolUse", db=db) is None
 
     def test_hook_latency_p95(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         for duration_ms in range(1, 21):  # 1..20
             record_hook_event(
@@ -159,6 +152,5 @@ class TestHookEventReaders:
         assert p95 == 19.0
 
     def test_hook_latency_p95_none_when_no_fires(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         assert hook_latency_p95("PostToolUse", db=db) is None

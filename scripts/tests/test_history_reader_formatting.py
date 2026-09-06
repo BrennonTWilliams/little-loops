@@ -51,55 +51,46 @@ class TestSummaryDagRetrieval:
         return db, node_id
 
     def test_ll_grep_finds_matching_messages(self, tmp_path: Path) -> None:
-
         db, _ = self._make_db_with_compact_session(tmp_path)
         results = ll_grep("FSM", db=db)
         assert len(results) >= 1
         assert any("FSM" in r.content for r in results)
 
     def test_ll_grep_no_match_returns_empty(self, tmp_path: Path) -> None:
-
         db, _ = self._make_db_with_compact_session(tmp_path)
         results = ll_grep("ZZZNOMATCH", db=db)
         assert results == []
 
     def test_ll_grep_attaches_summary_node_context(self, tmp_path: Path) -> None:
-
         db, node_id = self._make_db_with_compact_session(tmp_path)
         results = ll_grep("FSM", db=db)
         assert results[0].summary_id == node_id
         assert results[0].summary_kind == "leaf"
 
     def test_ll_grep_with_summary_id_filter(self, tmp_path: Path) -> None:
-
         db, node_id = self._make_db_with_compact_session(tmp_path)
         results = ll_grep("FSM", summary_id=node_id, db=db)
         assert len(results) >= 1
 
     def test_ll_grep_missing_db_returns_empty(self, tmp_path: Path) -> None:
-
         results = ll_grep("anything", db=tmp_path / "nonexistent.db")
         assert results == []
 
     def test_ll_expand_returns_covered_messages(self, tmp_path: Path) -> None:
-
         db, node_id = self._make_db_with_compact_session(tmp_path)
         messages = ll_expand(node_id, db=db)
         assert len(messages) >= 1
         assert any("FSM" in (m.get("content") or "") for m in messages)
 
     def test_ll_expand_nonexistent_node_returns_empty(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         ensure_db(db)
         assert ll_expand(99999, db=db) == []
 
     def test_ll_expand_missing_db_returns_empty(self, tmp_path: Path) -> None:
-
         assert ll_expand(1, db=tmp_path / "nonexistent.db") == []
 
     def test_ll_describe_returns_node_metadata(self, tmp_path: Path) -> None:
-
         db, node_id = self._make_db_with_compact_session(tmp_path)
         node = ll_describe(node_id, db=db)
         assert node is not None
@@ -110,13 +101,11 @@ class TestSummaryDagRetrieval:
         assert node.content  # non-empty summary or truncation
 
     def test_ll_describe_nonexistent_node_returns_none(self, tmp_path: Path) -> None:
-
         db = tmp_path / "history.db"
         ensure_db(db)
         assert ll_describe(99999, db=db) is None
 
     def test_ll_describe_missing_db_returns_none(self, tmp_path: Path) -> None:
-
         assert ll_describe(1, db=tmp_path / "nonexistent.db") is None
 
     # -- helpers for condensed-node tests --------------------------------------

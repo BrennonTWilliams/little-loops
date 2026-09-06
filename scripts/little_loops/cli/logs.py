@@ -1298,9 +1298,7 @@ def _flag_loops(
         a
         for a in aggs
         if a.attribution == "builtin"
-        and is_flagged(
-            a.runs, a.success_pct, a.top_outcome, threshold=threshold, min_runs=min_runs
-        )
+        and is_flagged(a.runs, a.success_pct, a.top_outcome, threshold=threshold, min_runs=min_runs)
     ]
 
 

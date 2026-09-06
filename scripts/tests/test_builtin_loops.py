@@ -2819,9 +2819,7 @@ class TestRefineToReadyIssueSubLoop:
             f"record_decision_unresolved.next should be 'failed', got {state.get('next')!r}"
         )
 
-    def test_record_decision_unresolved_writes_refine_terminal_class(
-        self, data: dict
-    ) -> None:
+    def test_record_decision_unresolved_writes_refine_terminal_class(self, data: dict) -> None:
         """record_decision_unresolved must write class `decision_unresolved` to
         refine-terminal-class directly (BUG-3390, mirroring mark_rate_limit_infra),
         so a decision-unresolved exit is distinguishable from a genuine `quality`
@@ -7414,7 +7412,7 @@ class TestAutodevLoop:
 
     def _run_verify_impl_closed(
         self, data: dict, run_dir: Path, issue_id: str, status_json: str
-    ) -> "subprocess.CompletedProcess[str]":
+    ) -> subprocess.CompletedProcess[str]:
         """Run verify_impl_closed's real shell action with a stub `ll-issues show`."""
         import os
 
