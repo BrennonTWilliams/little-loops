@@ -90,6 +90,13 @@ always present; an executor-emitted event additionally carries `state` and
 | `action` | `str` | yes | Render-target-defined name of the interaction the user performed |
 | `payload` | `object` | optional | Free-form, render-target-defined interaction data; `additionalProperties: true` |
 
+**Envelope-key stripping (BUG-3387):** the inbound POST body is untrusted client
+input, so `_drain_inbound()` strips/renames any of the executor-owned envelope
+keys (`event`, `ts`, `state`, `loop`) before spreading the body into the emitted
+event. A client cannot spoof the event name or any other envelope field by
+including it in the POST body — those keys are always stamped by the executor,
+never taken from the request.
+
 ## Relationship to MCP Apps
 
 The MCP Apps extension (stable release 2026-01-26) defines a different, narrower

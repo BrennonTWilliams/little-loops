@@ -288,7 +288,7 @@ accidental column line (ENH-2574).
 | `Completed at` | `completed_at` frontmatter | Date-only (time component dropped, ENH-2574); omitted if absent |
 | `Decision needed` / `Decision ref` | `decision_needed` + `decision_ref` frontmatter | Coupled form: `Decision needed → <decision_ref>` when both set; explicit `no` when `decision_needed: false`; standalone `Decision ref:` when only `decision_ref` is set (ENH-2535) |
 | `Parent` | `parent` frontmatter | `EPIC-NNN (Title)` when epic is resolvable; ID-only when not (ENH-2535) |
-| `Blocks` / `Blocked by` / `Depends on` / `Relates to` / `Supersedes` / `Superseded by` / `Decomposed into` / `Affects` / `Focus area` | relationship edge frontmatter | Comma-joined IDs (ENH-2535). `Superseded by` is derived — the reverse of another issue's `supersedes:`, never hand-written frontmatter |
+| `Blocks` / `Blocked by` / `Depends on` / `Relates to` / `Supersedes` / `Superseded by` / `Decomposed into` / `Affects` / `Focus area` | relationship edge frontmatter | Comma-joined IDs (ENH-2535). `Superseded by` is derived — the reverse of another issue's `supersedes:`, never hand-written frontmatter. The lookup includes superseding issues in any status, including `deferred`/`done`/`cancelled` (BUG-3392) — a superseding issue does not need to still be active for the row to render |
 | `History` | `## Session Log` body section | Distinct `/ll:*` commands with occurrence counts; omitted if absent |
 | `Closing note` / `Cancellation reason` / `Deferral reason` / `Closed by` / `Closed at` / `Deferred at` | closure context frontmatter | Rendered only when status is `done` / `cancelled` / `deferred`; `Closed at`/`Deferred at` are date-only (ENH-2535, dates per ENH-2574) |
 
