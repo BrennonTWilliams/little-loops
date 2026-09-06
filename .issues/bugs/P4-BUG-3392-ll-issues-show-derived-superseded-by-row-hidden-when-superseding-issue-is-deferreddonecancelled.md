@@ -49,6 +49,10 @@ _Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_show.py:9` — imports from `little_loops.cli.issues.show`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/mcp_server/tools.py:134` — `_tool_issue_get` imports and calls `_parse_card_fields()` directly (not via CLI subprocess); will surface the corrected `superseded_by` value to MCP clients once this bug is fixed
+- `scripts/little_loops/mcp_server/resources.py:264` — `_read_issue_body` imports and calls `_parse_card_fields()` directly, JSON-serializing the result (including `superseded_by`) as an MCP resource body
+
 ### Conventions in Force
 - Two live conventions coexist for sourcing an "all statuses" filter set: import `_ALL_STATUSES` from `little_loops.issue_progress` via a local, function-scoped import (evidence: `cli/issues/normalize.py:263`, `cli/issues/format_check.py:516`, `sprint.py:354-360`, `issue_manager.py:1910-1913`, each wrapping it as `set(_ALL_STATUSES)`) vs. retyping a fresh six-status literal inline at the call site (evidence: `cli/deps.py:280-281`, `cli/issues/list_cmd.py:65-73` and `:186-196`). Both are established elsewhere in the codebase — this is a genuine open choice for the implementer, not a coin-flip.
 - `find_issues_for_graph()` (`scripts/little_loops/issue_parser.py:4182-4201`) is the named precedent for "load a superset instead of relying on the default filter", but its superset (`_ALL_STATUSES - _TERMINAL_STATUSES`) still excludes `done`/`cancelled` — it does not fit this bug's need, which requires all six statuses (including `done`/`cancelled`) visible to `superseded_by()`.
@@ -60,9 +64,26 @@ _Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
 - `scripts/tests/test_issue_parser.py:1273` `test_find_issues_status_filter_none_preserves_default` — documents the default-exclusion behavior (`status_filter=None` drops `done`/`cancelled`/`deferred`) that this bug's fix must widen past, for this call site only.
 - `scripts/tests/test_issue_parser.py` (class spanning ~1512-1661) `test_find_issues_skip_blocked_false_byte_identical_for_all_caller_shapes` maintains a `callsite_shapes` registry enumerating every known `find_issues()` caller's exact kwarg shape (e.g. `cli/deps:269`, `epic_progress:53`, `list_cmd:166`) — `show.py:281` is not yet an entry in that registry.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser.py` (`callsite_shapes` list, ~line 1622) — add a `("show:281", {"status_filter": _ALL_STATUSES})` entry once `show.py:281` passes an explicit `status_filter` kwarg, matching the shape of the existing `epic_progress:53`/`cli/deps:269` entries
+- `scripts/tests/test_show.py` — no existing test covers `parent_display` in either direction (searched repo-wide, zero hits); widening the same `_all` lookup that fixes `superseded_by` also resolves titles for closed/deferred/done `parent` EPICs (previously ID-only fallback) — add a regression test for this side effect, following the `test_superseded_by_derived_from_reverse_edge` pattern
+
 ### Documentation
 - `.claude/CLAUDE.md:189` (§ Issue File Format → Supersession) already documents the standing contract this bug violates: "`ll-issues show` derives the reverse `Superseded by` row... Never hand-write `superseded_by`."
 - `.issues/enhancements/P3-ENH-2829-derive-superseded-by-reverse-edge-from-supersedes.md:118-147` — the origin issue that introduced this feature; its own "Open design questions / Silent degradation" section explicitly predicted this exact bug (superseding issue later closed → row silently vanishes) and left it as an accepted limitation at the time.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/OUTPUT_STYLING.md:291` — documents `Superseded by` as derived ("the reverse of another issue's `supersedes:`, never hand-written frontmatter"); describes the same contract this bug violates
+- `skills/audit-issue-conflicts/SKILL.md:366` — states that recording `supersedes:` on the kept issue "is what makes `ll-issues show [CLOSED-ID]` derive the reverse `Superseded by` row"; same contract
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add a `("show:281", {"status_filter": _ALL_STATUSES})` entry to the `callsite_shapes` registry in `scripts/tests/test_issue_parser.py` (~line 1622) once `show.py:281` passes an explicit `status_filter` kwarg
+- Add a regression test in `scripts/tests/test_show.py` asserting `parent_display` resolves the parent's title (not just its ID) when the parent EPIC is `done`/`cancelled`/`deferred` — a side effect of the same `_all` widening that fixes `superseded_by`
 
 ## Program Design
 
@@ -94,5 +115,6 @@ _Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-06T00:51:45 - `2a52dfcf-16c7-48fe-83e3-d9895c70f5c1.jsonl`
 - `/ll:refine-issue` - 2026-09-06T00:38:20 - `d41a820b-4488-495c-b1ba-f59ae30351ff.jsonl`
 - `/ll:format-issue` - 2026-09-06T00:18:01 - `1e264319-0c50-4b45-8bb6-a6a83e8511b2.jsonl`
