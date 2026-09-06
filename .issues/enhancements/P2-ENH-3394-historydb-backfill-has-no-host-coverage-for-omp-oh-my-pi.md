@@ -27,8 +27,8 @@ hook adapter (`hooks/adapters/omp/`, FEAT-2261 — `session_start` +
 `ll-session backfill --host` doesn't accept `"omp"`, `get_project_folder()`
 has no omp branch, and `host_layout_for()` has no omp entry.
 
-This issue depends on ENH-3393, which added the `HostLayout.normalize_file`
-contract (a file-level normalizer hook, needed because — like gemini — omp's
+ENH-3393 (done) added the `HostLayout.normalize_file` contract this issue
+reuses (a file-level normalizer hook, needed because — like gemini — omp's
 session id lives only in a file header, not on each record) and split omp
 out as "Recommended split" in that issue's Impact section, since qwen alone
 took two issues (ENH-3165 + ENH-3166) for a friendlier record format, and omp
@@ -135,6 +135,23 @@ current one). Out of scope here too, but shape `encode_omp_session_dir`/
 - `docs/reference/HOST_COMPATIBILITY.md` — session-store table, add the
   `omp` column (gemini's column landed in ENH-3393)
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/session.py:664,702` — `main_session()` calls
+  `get_project_folder(host=args.host)` (both the `--since` and full-backfill
+  branches)
+- `scripts/little_loops/cli/session.py:672,705` — `main_session()` calls
+  `host_layout_for(_backfill_host)` to resolve `sessions_subdir` for the
+  JSONL glob
+- `scripts/little_loops/user_messages.py:439,444` — `get_sessions_folder()`
+  calls both `get_project_folder()` and (lazily imported at `:442`)
+  `host_layout_for()`
+- `scripts/little_loops/session_store/lifecycle.py:774` (`_backfill_raw_events`),
+  `:1110` (`backfill`) — call `host_layout_for(host)` for `normalize_file`/
+  `skip_at_ingest`
+- `scripts/little_loops/session_store/writers.py:2358`
+  (`_backfill_subagent_runs`), `:2946` (`_iter_events`) — call
+  `host_layout_for` for `parent_from` and `normalize` respectively
+
 ### Similar Patterns
 - ENH-3393 — gemini backfill + the `HostLayout.normalize_file` contract this
   issue reuses directly
@@ -168,6 +185,27 @@ current one). Out of scope here too, but shape `encode_omp_session_dir`/
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — "Incremental backfill" example
   commands: add an `omp` example
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
+
+- `host_layout_for()`'s host registry (`scripts/little_loops/session_store/writers.py:2219-2276`) is a flat `if`/`elif` chain; the generic fallback tail — the shape `omp` currently falls into — spans `:2263-2276`, with its `projects_root` dict lookup at `:2263-2268` keyed only on `{claude-code, codex, opencode, pi}` (`omp` isn't a key, so `.get()` resolves to `None`).
+- `HostLayout` and its `normalize_file` field are defined at `writers.py:2147-2203` (`normalize_file` at `:2179-2189`); qwen's dedicated branch is `:2237-2249`, gemini's is `:2253-2262` — the direct structural precedent for a new `omp` branch.
+- `get_project_folder()`'s host dispatch chain is `scripts/little_loops/user_messages.py:371-415`; the `if`/`elif` ladder is `:401-414`, falling through to `return None` at `:415` for any unmatched host (no explicit error raised).
+- `_get_gemini_project_folder()` (`user_messages.py:530-556`) is the `cwd`-based helper template `_get_omp_project_folder` should follow (per this issue's own Program Design), not the `encoded_path`-based helpers — its docstring states why: index/registry-resolved hosts need the raw `cwd`, not a pre-encoded string.
+- `ll-session backfill --host`'s `choices=[...]` list is `scripts/little_loops/cli/session.py:213`; `main_session()`'s two `get_project_folder(host=args.host)` call sites are `:664` (`--since` path) and `:702` (full-backfill path), with the paired `host_layout_for(_backfill_host)` calls at `:672`/`:705`.
+- `session_store/__init__.py`'s normalizer export convention: gemini's import is at `:65`, its `__all__` entry at `:215`; qwen's import is at `:97`, its `__all__` entries at `:216-217` — `normalize_omp_session` follows the same two-site pattern.
+- `test_no_subagents_dir_yields_zero_rows` (`scripts/tests/test_enh_2505_subagent_runs.py:717-736`) confirms an empty subagent glob yields zero rows, not an error — the relevant precedent given omp, like gemini, has no real session captures to test against yet.
+- `test_backfill_host_choices_list` (`scripts/tests/test_ll_session.py:41-60`) is the CLI-layer regression lock; it currently asserts `"omp"` raises `SystemExit` and its docstring states "Update this list AND the docs together when adding a host."
+
+_Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
+
+- File-level normalizers are registered through one shared shape: each host with a header-only session id gets its own `session_store/<host>.py` module exposing `normalize_<host>_session(path: Path) -> Iterator[dict]`, which opens the file itself, tolerates malformed lines/missing files by skipping rather than raising, and yields fully Claude-shaped dicts with the session id stamped from the header on every record — evidence: `session_store/gemini.py:1-31,40-75` (module docstring + function), mirrored by the record-level sibling contract in `session_store/qwen.py:59` (`normalize_qwen_record`).
+- New hosts register in `host_layout_for()` via a dedicated `if host == "<name>":` branch that lazily imports its normalizer inside the branch (not at module top-level) and returns a fully-specified `HostLayout(...)` — evidence: qwen's branch (`writers.py:2237-2249`), gemini's branch (`writers.py:2253-2262`, `normalize_file=normalize_gemini_session` set, `normalize`/`skip_at_ingest` left at their defaults since the two contracts are mutually exclusive per the class docstring at `:2179-2189`).
+- The `_get_<host>_project_folder` helper's signature (`encoded_path: str` vs `cwd: Path`) tracks how the host maps cwd to its folder, not a fixed convention: dash-encoding hosts (claude-code/codex/opencode/pi/qwen) take pre-computed `encoded_path`; index/registry-resolved hosts (kimi via `session_index.jsonl`, gemini via `~/.gemini/projects.json`) take raw `cwd` and resolve internally — both kimi's and gemini's own docstrings state this reasoning explicitly (`user_messages.py:511-527`, `:530-556`), and this issue's own Program Design already follows the `cwd`-based shape for `_get_omp_project_folder`, consistent with that split.
+- A new normalizer's public function is exported at two sites in `session_store/__init__.py`: a top-level `from little_loops.session_store.<host> import normalize_<host>_session` plus an `__all__` entry — evidence: gemini's import (`:65`) and `__all__` entry (`:215`); qwen's import (`:97`) and `__all__` entries (`:216-217`).
+- New-host test modules share one four-layer structure in a single file (`TestNormalize<Host>...` unit tests on the normalizer in isolation; `TestHostLayoutRegistry` asserting `host_layout_for` field values plus negative "other hosts unaffected" tests; `TestBackfillRawEventsNormalizeFile`/integration tests through `backfill_raw_events(...)`; a `TestClaudeParity...` regression class proving Claude-shaped ingestion is unchanged) — evidence: `scripts/tests/test_enh_3393_gemini_normalizer.py` and `scripts/tests/test_enh_3166_qwen_normalizer.py`, both with a per-file `FIXTURES` path constant and a module docstring stating fixture provenance (gemini's are labeled synthesized, qwen's labeled sanitized-real-capture) — the convention this issue's own Tests section already commits to following for omp's synthesized fixtures.
+
 ## Program Design
 
 ### Signatures
@@ -200,6 +238,14 @@ current one). Out of scope here too, but shape `encode_omp_session_dir`/
 `_backfill_raw_events` (uses `normalize_file` to stamp `session_id`, per the
 ENH-3393 contract) -> `rebuild` extractors -> `_backfill_subagent_runs` (if
 child-session dirs are mapped)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
+
+- `_backfill_raw_events`'s `normalize_file` branch (`scripts/little_loops/session_store/lifecycle.py:747-831`, the `layout.normalize_file is not None` gate at `:777-798`) stores the **normalized** record as both `raw_line` and `parsed_json` — there is no verbatim per-line source once file-level unpacking has happened, per `test_raw_line_and_parsed_json_are_normalized_form`. This applies identically to `normalize_omp_session`: `raw_events.raw_line` for omp rows will hold the re-serialized Claude-shaped record, not the original omp JSONL line.
+- `_backfill_subagent_runs`'s `parent_from` branch (`writers.py:2339-2366`, `host_layout_for` call site at `:2358`) recognizes exactly two values today — `"parent_dir"` (default: parent id = `container.parent.name`) and `"child_dir"` (qwen's inverted layout: parent id = `container.name`). No `"stem_dir"` mode exists anywhere in `writers.py`/`lifecycle.py`/any test — confirmed by a repo-wide search — so mapping omp's `<parent stem>/<agentId>.jsonl` layout requires adding a new mode there or a per-host callable, exactly as this issue's Scope Boundaries section already flags as an explicit decision to record.
+- `host_layout_for()` never raises for an unregistered host (docstring, `writers.py:2222-2226`): the `--host` `choices=[...]` list at `cli/session.py:213` is what currently prevents an unsupported host from reaching the backfill path at all, not any internal validation in `get_project_folder()` or `host_layout_for()` themselves.
 
 ## Implementation Steps
 
@@ -256,8 +302,8 @@ this issue's helpers so that fix is a reuse).
 
 ## Related
 
-- ENH-3393 — HostLayout.normalize_file contract + gemini backfill (this
-  issue depends on it)
+- ENH-3393 (done) — HostLayout.normalize_file contract + gemini backfill;
+  this issue builds on it
 - ENH-1945 — host-aware session-log discovery (codex, pi)
 - ENH-3165 / ENH-3166 — qwen subagent transcript backfill + normalizer
 - FEAT-2261 — omp session_start/post_tool_use hook wiring (live-hook tier;
@@ -271,3 +317,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-06 | Priority: P2
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-06T03:57:16 - `fb75bfe7-573f-4313-a50e-f7fd15a75fa9.jsonl`
