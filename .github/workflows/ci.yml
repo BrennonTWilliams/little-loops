@@ -89,6 +89,23 @@ jobs:
           # exactly the silent-skip class we must not let through.
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
+      - name: Put venv + host-CLI stub on PATH
+        # Many tests shell out to bare `python3`, `ll-loop`, `ll-issues`, etc.
+        # and gate on `shutil.which("claude")`. Without this step they resolve
+        # to the hosted-runner system Python (no `little_loops` installed) or
+        # raise HostNotConfigured — ~290 environment-only failures on every
+        # release commit (v1.159.0–v1.161.0). Setting LL_HOST_CLI does not
+        # help: conftest scrubs it per-test, so detection must find a binary.
+        # The stub never runs a real model; tests that would actually invoke
+        # the host are integration/conformance and excluded here.
+        run: |
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/host-stub"
+          printf '#!/bin/sh\necho "claude 0.0.0 (CI stub — not a real host)"\nexit 0\n' \
+            > "$RUNNER_TEMP/host-stub/claude"
+          chmod +x "$RUNNER_TEMP/host-stub/claude"
+          echo "$RUNNER_TEMP/host-stub" >> "$GITHUB_PATH"
+
       - name: Run unit tests (exclude integration + conformance)
         # `tee` mirrors pytest output to `pytest.log` for upload without
         # buffering the streamed CI log (which would break live-progress in
