@@ -30,10 +30,10 @@ decision: "Option A \u2014 hardcoded dispatch following the mcp_tool pattern. Si
 verify_verdict: VALID
 reconcile_attempted: true
 confidence_score: 100
-outcome_confidence: 82
+outcome_confidence: 84
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 20
 score_change_surface: 25
 ---
 
@@ -510,6 +510,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - 2026-09-05 (`/ll:verify-issues`): Re-verified against the further-drifted 2026-09-05 `/ll:refine-issue` anchor pass. All current-pass anchors confirmed exact: `_execute_state` :1974, `resolve_communication_adapter` :2682, `_route` :2994, `_action_mode` :3114, `_emit` :3602, `_interruptible_sleep` :3885, `_drain_inbound` :557 (called once/iteration at `run()` :609). `_execute_state()` dispatch order, `_action_mode()` fallthrough table, and `_route()` shape all confirmed to match the cited line ranges exactly. `HitlConfig` (`config/core.py:185`) still has only `channel`, no `default_timeout` — matches this issue's proposed addition. Test anchors (`TestActionTypeMcpTool` :686, `TestContributedActionDispatch` :6782, `TestMcpToolSchema` :2062) confirmed. Core gap reconfirmed still entirely open (zero `human_approval` references in `executor.py`/`schema.py`/validation modules). Checked BUG-3387 (now Completed, fixes `_drain_inbound()` envelope-key stripping) for cross-issue impact: orthogonal — this issue only calls `_drain_inbound()` from its new tick loop and doesn't modify it, so no conflict. Only drift: `_validate_state_action` now at `structural_rules.py:408` (cited `:406`), cosmetic. Verdict stays `VALID`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-06T00:07:32 - `8c3fd32e-c19c-479f-9b5a-e6928bbd0ed7.jsonl`
 - third-review - 2026-09-05 - manual review against working tree `5cf210cad`; see § Third Review (items 17–24: event registration is test-gated, headless short-circuit is the normal background path, per-tick TimeoutResponse semantics, fsm.timeout clamp, route-table fallbacks, feed rendering, keep the built-in loop's block commented)
 - `/ll:verify-issues` - 2026-09-05T23:38:33 - `161a68e7-1fed-48cb-8c40-28051a0cd1ac.jsonl`
 - `/ll:refine-issue` - 2026-09-05T23:24:41 - `182fc9b6-abae-4d60-a265-d4ec9a1cc50e.jsonl`
