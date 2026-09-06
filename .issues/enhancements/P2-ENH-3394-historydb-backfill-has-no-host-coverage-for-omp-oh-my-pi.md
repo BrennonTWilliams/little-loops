@@ -152,6 +152,30 @@ current one). Out of scope here too, but shape `encode_omp_session_dir`/
   (`_backfill_subagent_runs`), `:2946` (`_iter_events`) — call
   `host_layout_for` for `parent_from` and `normalize` respectively
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/logs.py:106,143,195,287,645,649,653,658,667,693,774,783,1344,1355,1360,1369,1556,2034`
+  — calls `host_layout_for()`/`get_project_folder()` throughout; in
+  particular `discover_all_projects(logger, *, host=None)` (`:195`) resolves
+  `layout.projects_root` per host — once `host_layout_for("omp")` registers a
+  `projects_root`, `ll-logs` project-discovery commands begin surfacing omp
+  projects (today they return `[]` silently, per the "unregistered hosts...
+  surface as None" comment at `:192-194`)
+- `scripts/little_loops/cli/backfill_worker.py:57,59-60` — the detached
+  backfill worker (spawned by `session_start.py`, BUG-1882/ENH-3166) resolves
+  `layout = host_layout_for(host if host is not None else "claude-code")`
+  then reads `layout.session_glob` — this is the live-hook backfill call
+  path FEAT-2261's omp `session_start` hook already invokes today with
+  `--host omp`
+- `scripts/little_loops/hooks/session_start.py:162,178-179` — calls
+  `get_project_folder(cwd)` (no explicit `host` arg — relies on auto-detect)
+  to build the synchronous backfill-worker path arg, then passes
+  `_backfill_host = event.host or LL_HOOK_HOST` as `--host` to
+  `backfill_worker.py` above — confirms omp's live-hook tier already
+  exercises this exact code path in production and currently gets no folder
+  resolution for omp
+- `scripts/little_loops/cli/messages.py:31,173` — `ll-messages` imports and
+  calls `get_project_folder(cwd)`
+
 ### Similar Patterns
 - ENH-3393 — gemini backfill + the `HostLayout.normalize_file` contract this
   issue reuses directly
@@ -176,6 +200,24 @@ current one). Out of scope here too, but shape `encode_omp_session_dir`/
   `host_layout_for` case if the `<parent stem>/<agentId>.jsonl` child-session
   layout is mapped into `subagent_runs`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh_3393_gemini_normalizer.py:239-306`
+  (`TestRebuildGeminiRecords`) — the gemini test file has a fifth class
+  beyond the "four-layer structure" this issue's own Codebase Research
+  Findings names; a `TestRebuildOmpRecords` sibling (verifying `rebuild()`
+  correctly derives `tool_events`/`message_events`/`assistant_messages`/
+  `sessions` cache rows from omp `raw_events`) is required since this
+  issue's own Call Path already routes through "rebuild extractors" — not
+  currently named in this section
+- `scripts/tests/test_enh_2505_subagent_runs.py` — a
+  `TestOmpSubagentBackfill.test_no_subagents_dir_yields_zero_rows` case
+  (mirroring `TestGeminiSubagentBackfill` at `:717-736`) is available and
+  should be added regardless of the `parent_from`/child-session decision —
+  it exercises the no-match branch of `_backfill_subagent_runs`, which is
+  identical no matter which `parent_from` mode omp eventually gets. The
+  bullet above ("add an `omp` case **if** ... mapped") incorrectly gates
+  this specific no-op case on that decision; it is not gated.
+
 ### Documentation
 - `docs/reference/HOST_COMPATIBILITY.md` — session-store table (add `omp`
   column, mirroring the `[^geminiwire]` footnote pattern)
@@ -184,6 +226,33 @@ current one). Out of scope here too, but shape `encode_omp_session_dir`/
 - `docs/reference/CLI.md` — `backfill --host` flags table: add `omp`
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — "Incremental backfill" example
   commands: add an `omp` example
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:3435,3439-3441,3464-3477` — `get_project_folder`'s
+  docstring has three separate host-enumeration sites (prose sentence, the
+  `host` param's enum list, and the `_get_<host>_project_folder`
+  internal-helpers bullet list), not a single "vocabulary list" — add `omp`
+  to all three, including a new `_get_omp_project_folder(cwd: Path) -> Path
+  | None` bullet matching this issue's own Program Design signature
+- `docs/reference/API.md:3526-3543` — `discover_all_projects()`'s docstring
+  (function lives in `cli/logs.py`, see Dependent Files above) repeats the
+  same host-list, also missing `omp`
+- `docs/guides/HISTORY_SESSION_GUIDE.md:232` — a second, prose-only `--host`
+  choices enumeration ("valid choices also include `pi`, `kimi-code`,
+  `qwen`, and `gemini`") separate from the example code block at `:226-230`
+  — "add an `omp` example" above doesn't cover this sentence; append `omp`
+  here independently
+- `docs/reference/HOST_COMPATIBILITY.md:511-521` — clarify: "add the omp
+  column" is a 7-row addition (Config file, Issue tracking, FSM runs,
+  Scratch pads, Continuation prompt, Session store, Session logs), not a
+  single cell. 6 rows are mechanical `(same path)[^state]` copies — the
+  `[^state]` footnote (`:527-538`) already lists omp among the hosts that
+  keep these surfaces shared. Only the Session logs row needs new
+  omp-specific prose/footnote (e.g. `[^ompwire]`) describing the
+  `~/.omp/agent/sessions/` layout from this issue's own Program Design.
+- `docs/reference/HOST_COMPATIBILITY.md:523-525` — the placeholder paragraph
+  ("`ll-session backfill --host omp` is tracked separately... omp has no
+  dedicated row here yet") must be removed once the column lands.
 
 ### Codebase Research Findings
 
@@ -269,6 +338,32 @@ _Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
    fixtures are unaffected (the `HostLayout.normalize_file` contract is
    additive; this issue must not touch its ENH-3393 regression tests).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Sanity-check `cli/backfill_worker.py:57,59-60` and
+  `hooks/session_start.py:162,178-179` once `host_layout_for("omp")` and
+  `get_project_folder(..., host="omp")` are wired — no code change is
+  expected in either file (both already pass `host` through generically),
+  but they are today's silent consumers of this gap: FEAT-2261's omp
+  `session_start` hook already invokes the backfill worker with `--host
+  omp` in production, so this issue's fix takes effect on the next live omp
+  session without further hook changes. Confirm this with a smoke test.
+- Update `docs/reference/API.md` — three enumeration sites under
+  `get_project_folder` (prose, param docstring, internal-helpers bullet
+  list) plus the `discover_all_projects` docstring
+- Update `docs/guides/HISTORY_SESSION_GUIDE.md:232` — the prose `--host`
+  choices sentence, in addition to the example command block
+- Update `docs/reference/HOST_COMPATIBILITY.md`'s "State directory" table
+  (add an Omp CLI column across all 7 rows, new `[^ompwire]` footnote for
+  the Session logs row) and remove the now-superseded placeholder paragraph
+  at `:523-525`
+- Add `TestRebuildOmpRecords` to the new omp normalizer test file, mirroring
+  `TestRebuildGeminiRecords` (`test_enh_3393_gemini_normalizer.py:239-306`)
+- Add `TestOmpSubagentBackfill.test_no_subagents_dir_yields_zero_rows`
+  (independent of the `parent_from`/child-session decision)
+
 ## Impact
 
 - **Priority**: P2 — observability gap, not data loss; source transcripts
@@ -320,4 +415,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-06T04:37:09 - `40599667-8ac5-47aa-88f2-6a2e34850427.jsonl`
 - `/ll:refine-issue` - 2026-09-06T03:57:16 - `fb75bfe7-573f-4313-a50e-f7fd15a75fa9.jsonl`
