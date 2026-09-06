@@ -3811,7 +3811,7 @@ cache tables (`tool_events`, `message_events`, `assistant_messages`,
 | Flag | Description |
 |------|-------------|
 | `--since DATE` | Incremental mode: only process JSONL files modified on or after DATE (ENH-1830) |
-| `--host HOST` | Filter to a single host source: `claude-code`, `codex`, `opencode`, or `pi` |
+| `--host HOST` | Filter to a single host source: `claude-code`, `codex`, `opencode`, `pi`, `kimi-code`, `qwen`, or `gemini` |
 | `--rebuild` | Also materialize the JSONL-derived cache tables from `raw_events` in this call (ENH-2581) |
 | `--snapshots` | Also seed the `issue_snapshots` table from `.issues/` files (ENH-2151) |
 | `--extract-decisions` | Run `extract-from-completed` on issue history after backfill (ENH-2152) |

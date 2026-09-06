@@ -3,10 +3,11 @@ id: ENH-3393
 type: ENH
 title: history.db backfill has no host coverage for gemini and omp (oh-my-pi)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-06'
 captured_at: '2026-09-06T01:54:32Z'
+completed_at: '2026-09-06T03:47:33Z'
 confidence_score: 98
 outcome_confidence: 72
 score_complexity: 15
@@ -103,6 +104,35 @@ sessions on disk on the dev machine (binary not on PATH, `~/.omp/agent/sessions`
 absent), so build omp fixtures from the vendored `session-entries.ts` types.
 
 ## Program Design
+
+### Deviations
+
+- 2026-09-05 — The issue's Impact section flagged a "Recommended split" (keep
+  this issue as HostLayout contract + gemini, open a sibling for omp) and
+  said "Decide at `/ll:ready-issue` time." Implementation made that call
+  directly: this issue's scope was narrowed to the `HostLayout.normalize_file`
+  contract plus gemini backfill only; `session_store/omp.py`, the omp
+  `host_layout_for`/`get_project_folder` branches, and omp fixtures/tests
+  were **not** implemented here. Filed **ENH-3394** (depends on this issue)
+  to carry the omp half, including the `subagent_runs` `parent_from`
+  child-session decision this issue's Scope Boundaries deferred. All
+  `Signatures`/`Call Path` entries below that name omp-specific functions
+  (`_get_omp_project_folder`, `encode_omp_session_dir`, `normalize_omp_session`)
+  describe work now tracked in ENH-3394, not this issue's implementation.
+- The `HostLayout` contract extension landed as a single new field,
+  `normalize_file: Callable[[Path], Iterator[dict]] | None = None` (not the
+  `session_id_from: str` discriminator alternative the issue also
+  considered). `_backfill_raw_events` branches on it directly; `_backfill_sessions`,
+  `_iter_events`, and the `_REBUILD_TABLES` extractors needed **no changes**
+  — a file-level normalizer yields already Claude-shaped, session-id-stamped
+  records that are stored verbatim as both `raw_line` and `parsed_json`, so
+  every downstream consumer already accepts them via the existing
+  Claude-shape contract (the same reason qwen's per-record `normalize` needs
+  no downstream changes either). This is narrower than the issue's
+  Integration Map, which listed `_backfill_sessions()` (~707-732) as a file
+  needing modification for "header-only ids" — it does not, because it never
+  sees raw per-host records directly; it only ever reads the (now uniformly
+  Claude-shaped) `raw_events.raw_line`.
 
 ### Signatures
 
@@ -387,6 +417,8 @@ existing `~/.pi/projects` entries, which are wrong (real pi uses
 
 ## Related
 
+- ENH-3394 — omp backfill (the split half of this issue's original scope;
+  depends on this issue's `HostLayout.normalize_file` contract)
 - ENH-1945 — host-aware session-log discovery (codex, pi)
 - ENH-3165 — qwen subagent transcript backfill
 - ENH-3166 — qwen wire-format normalizer and chats discovery
@@ -444,12 +476,35 @@ _Added by `/ll:verify-issues` — 2026-09-05._
   verdict; the `_first_session_id` finding was confirmed by direct `grep`/
   `git log`, not graph lookup.
 
+## Resolution
+
+Implemented the gemini half of this issue, per the Deviations note under
+Program Design: added `HostLayout.normalize_file` (a file-level normalizer
+contract, `session_store/writers.py`), `session_store/gemini.py`
+(`normalize_gemini_session`), `_get_gemini_project_folder` in
+`user_messages.py`, and wired `gemini` into `ll-session backfill --host`.
+`_backfill_raw_events` (`session_store/lifecycle.py`) routes
+`normalize_file` hosts through the file-level reader; no other extractor
+needed changes since the normalizer emits already Claude-shaped,
+session-id-stamped records. Added `scripts/tests/test_enh_3393_gemini_normalizer.py`
+(19 tests) plus gemini coverage in `test_user_messages.py`,
+`test_enh_3166_qwen_normalizer.py`, `test_session_log.py`,
+`test_cli_ctx_stats.py`, `test_enh_2505_subagent_runs.py`, and a new
+`--host` choices-list regression test in `test_ll_session.py`. Updated
+`docs/reference/HOST_COMPATIBILITY.md` (new Gemini CLI column +
+`[^geminiwire]` footnote; also fixed the stale omp hook-adapter row while
+there), `docs/reference/API.md`, `docs/reference/CLI.md`, and
+`docs/guides/HISTORY_SESSION_GUIDE.md`. Filed **ENH-3394** (depends on this
+issue) to carry the omp half. Full suite: 22474 passed, 12 skipped; ruff
+and mypy clean.
+
 ## Status
 
-**Open** | Created: 2026-09-06 | Priority: P2
+**Done** | Created: 2026-09-06 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-06T03:46:29 - `6aa4c06a-9ee5-44fe-8c7a-a3833f0d115d.jsonl`
 - `/ll:confidence-check` - 2026-09-06T02:36:24 - `7e5d98c9-0b60-4e39-b968-a0a7542f0e0d.jsonl`
 - `/ll:verify-issues` - 2026-09-06T02:33:50 - `f342e966-b034-4a2f-8b9f-49272cbb2a3c.jsonl`
 - manual review - 2026-09-06 - verified gemini 0.46.0 / omp 18.0.11 on-disk layouts; corrected Program Design (cwd-based helpers, file-level normalizers, HostLayout contract gap), effort → High, split recommendation, pi entries flagged

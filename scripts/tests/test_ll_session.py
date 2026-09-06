@@ -38,6 +38,27 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.command == "backfill"
 
+    def test_backfill_host_choices_list(self) -> None:
+        """Locks the --host choices list (ENH-3393) — no test pinned this
+        before, so a host addition could silently drift from the docs that
+        describe it. Update this list AND the docs together when adding a host."""
+        for host in (
+            "claude-code",
+            "codex",
+            "opencode",
+            "pi",
+            "kimi-code",
+            "qwen",
+            "gemini",
+        ):
+            with patch("sys.argv", ["ll-session", "backfill", "--host", host]):
+                args = _parse_args()
+            assert args.host == host
+
+        with patch("sys.argv", ["ll-session", "backfill", "--host", "omp"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
     def test_path_subcommand(self) -> None:
         with patch("sys.argv", ["ll-session", "path", "abc123"]):
             args = _parse_args()

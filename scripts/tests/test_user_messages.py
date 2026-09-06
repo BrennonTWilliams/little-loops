@@ -317,6 +317,87 @@ class TestGetProjectFolder:
         result = get_project_folder(host="qwen")
         assert result == project_root
 
+    def test_host_gemini_resolves_via_slug_registry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host="gemini" resolves ~/.gemini/tmp/<slug> via projects.json (ENH-3393)."""
+        fake_home = tmp_path / "home"
+        slug_folder = fake_home / ".gemini" / "tmp" / "my-project"
+        slug_folder.mkdir(parents=True)
+        (fake_home / ".gemini" / "projects.json").write_text(
+            json.dumps({"projects": {str(tmp_path.resolve()): "my-project"}})
+        )
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="gemini")
+        assert result == slug_folder
+
+    def test_host_gemini_falls_back_to_sha256_hash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Project dirs created before the slug registry are keyed by sha256(cwd)."""
+        import hashlib
+
+        fake_home = tmp_path / "home"
+        digest = hashlib.sha256(str(tmp_path.resolve()).encode("utf-8")).hexdigest()
+        hashed_folder = fake_home / ".gemini" / "tmp" / digest
+        hashed_folder.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="gemini")
+        assert result == hashed_folder
+
+    def test_host_gemini_slug_registry_entry_wins_over_hash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When both a slug entry and a stale sha256 dir exist, the slug wins."""
+        import hashlib
+
+        fake_home = tmp_path / "home"
+        digest = hashlib.sha256(str(tmp_path.resolve()).encode("utf-8")).hexdigest()
+        (fake_home / ".gemini" / "tmp" / digest).mkdir(parents=True)
+        slug_folder = fake_home / ".gemini" / "tmp" / "my-project"
+        slug_folder.mkdir(parents=True)
+        (fake_home / ".gemini" / "projects.json").write_text(
+            json.dumps({"projects": {str(tmp_path.resolve()): "my-project"}})
+        )
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="gemini")
+        assert result == slug_folder
+
+    def test_host_gemini_returns_none_without_projects_json_or_hash_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns None when gemini has no recorded sessions for the cwd."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="gemini")
+        assert result is None
+
+    def test_host_gemini_malformed_projects_json_falls_back_to_hash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A corrupt projects.json degrades to the sha256 probe, not a crash."""
+        import hashlib
+
+        fake_home = tmp_path / "home"
+        digest = hashlib.sha256(str(tmp_path.resolve()).encode("utf-8")).hexdigest()
+        hashed_folder = fake_home / ".gemini" / "tmp" / digest
+        hashed_folder.mkdir(parents=True)
+        (fake_home / ".gemini" / "projects.json").write_text("{not valid json")
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="gemini")
+        assert result == hashed_folder
+
     def test_host_auto_detect_from_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

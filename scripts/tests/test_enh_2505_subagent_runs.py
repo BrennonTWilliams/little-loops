@@ -714,6 +714,28 @@ class TestQwenSubagentBackfill:
         assert row["status"] == "completed"
 
 
+class TestGeminiSubagentBackfill:
+    """ENH-3393: gemini has no observed subagent transcript directory — the
+    layout keeps the Claude-shaped subagent defaults, so a project with only
+    a ``chats/`` dir (no ``*/subagents``) must yield zero rows, not an error."""
+
+    def test_no_subagents_dir_yields_zero_rows(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        sessions_root = tmp_path / "my-project"
+        (sessions_root / "chats").mkdir(parents=True)
+        (sessions_root / "chats" / "session-1.jsonl").write_text("{}\n", encoding="utf-8")
+        conn = connect(db)
+        try:
+            count = _backfill_subagent_runs(conn, sessions_root, layout=host_layout_for("gemini"))
+            conn.commit()
+            rows = conn.execute("SELECT * FROM subagent_runs").fetchall()
+        finally:
+            conn.close()
+        assert count == 0
+        assert rows == []
+
+
 class TestReconcileStaleSubagentRuns:
     """ENH-3210: reconciling orphaned ``running`` rows to ``orphaned``."""
 

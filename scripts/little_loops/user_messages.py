@@ -19,6 +19,7 @@ Usage as library:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -376,8 +377,9 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
     Args:
         cwd: Working directory to map. If None, uses current directory.
         host: Host identifier (``"claude-code"``, ``"codex"``, ``"opencode"``,
-            ``"pi"``, ``"kimi-code"``, ``"qwen"``). If None, auto-detects from
-            ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
+            ``"pi"``, ``"kimi-code"``, ``"qwen"``, ``"gemini"``). If None,
+            auto-detects from ``LL_HOOK_HOST`` env var (default
+            ``"claude-code"``).
 
     Returns:
         Path to the host's project session folder, or None if not found.
@@ -408,6 +410,8 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
         return _get_kimi_project_folder(cwd)
     elif host == "qwen":
         return _get_qwen_project_folder(encoded_path)
+    elif host == "gemini":
+        return _get_gemini_project_folder(cwd)
     return None
 
 
@@ -521,6 +525,35 @@ def _get_qwen_project_folder(encoded_path: str) -> Path | None:
     """
     project_folder = Path.home() / ".qwen" / "projects" / encoded_path
     return project_folder if project_folder.exists() else None
+
+
+def _get_gemini_project_folder(cwd: Path) -> Path | None:
+    """Resolve the Gemini CLI project folder for *cwd* (ENH-3393, gemini-cli 0.46.0).
+
+    Gemini keys project dirs by a human slug registered in
+    ``~/.gemini/projects.json`` (``{"projects": {"<abs cwd>": "<slug>"}}``),
+    resolved index-style like :func:`_get_kimi_project_folder` — **not**
+    dash-encoded like Claude/Codex/qwen. Dirs created before the slug
+    registry existed are keyed by ``sha256(abs cwd)`` hex instead (the same
+    value gemini stores as ``projectHash`` in every session header), so that
+    is tried as a fallback when the slug lookup misses or the registry is
+    absent. Returns ``None`` when neither probe finds an on-disk project dir.
+    """
+    gemini_home = Path.home() / ".gemini"
+    target = str(cwd.resolve())
+    registry = gemini_home / "projects.json"
+    if registry.is_file():
+        try:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        slug = data.get("projects", {}).get(target) if isinstance(data, dict) else None
+        if isinstance(slug, str) and slug:
+            slug_folder = gemini_home / "tmp" / slug
+            if slug_folder.exists():
+                return slug_folder
+    hashed_folder = gemini_home / "tmp" / hashlib.sha256(target.encode("utf-8")).hexdigest()
+    return hashed_folder if hashed_folder.exists() else None
 
 
 def extract_user_messages(

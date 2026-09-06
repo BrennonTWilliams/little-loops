@@ -1,0 +1,15 @@
+{
+  "sessionId": "legacy-0000-0000-0000-000000000000",
+  "messages": [
+    {
+      "id": "legacy-msg-1",
+      "timestamp": "2025-09-01T00:00:00.000Z",
+      "type": "user",
+      "content": [
+        {
+          "text": "Pre-Oct-2025 single-document session format."
+        }
+      ]
+    }
+  ]
+}

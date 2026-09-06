@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -416,6 +417,27 @@ class TestSessionLogHostAware:
         # Decoy at the project root: qwen never keeps session JSONL here.
         (project_root / "root-decoy.jsonl").write_text("{}")
         session_file = chats_dir / "qwen-session.jsonl"
+        session_file.write_text("{}")
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_current_session_jsonl()
+        assert result == session_file
+
+    def test_get_current_session_jsonl_auto_detects_gemini_chats(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3393: under LL_HOOK_HOST=gemini the JSONL is found in chats/,
+        resolved via the index-style ~/.gemini/projects.json slug registry."""
+        monkeypatch.setenv("LL_HOOK_HOST", "gemini")
+        fake_home = tmp_path / "home"
+        project_root = fake_home / ".gemini" / "tmp" / "my-project"
+        chats_dir = project_root / "chats"
+        chats_dir.mkdir(parents=True)
+        (fake_home / ".gemini" / "projects.json").write_text(
+            json.dumps({"projects": {str(tmp_path.resolve()): "my-project"}})
+        )
+        session_file = chats_dir / "session-2026-06-01T10-00-abcd1234.jsonl"
         session_file.write_text("{}")
         monkeypatch.setattr(Path, "home", lambda: fake_home)
         monkeypatch.chdir(tmp_path)

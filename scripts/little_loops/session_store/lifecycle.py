@@ -761,12 +761,41 @@ def _backfill_raw_events(
     qwen`` must stamp qwen, not whatever CLI orchestrates the call. The
     host's layout ``skip_at_ingest`` guard (when set) drops high-volume
     record families before they reach ``raw_events``.
+
+    When the layout carries a ``normalize_file`` callable (ENH-3393 — hosts
+    whose session id lives only in a file header, e.g. gemini), the file is
+    read through that callable instead of parsed line-by-line: each yielded
+    Claude-shaped, session-id-stamped dict becomes one row, with its
+    enumeration index standing in for ``line_no`` (there is no verbatim
+    per-line source once header state and inline tool calls have been
+    unpacked). Hosts without ``normalize_file`` are byte-for-byte unaffected.
     """
     effective_host = host if host is not None else resolve_host().name
     layout = host_layout_for(effective_host)
     skip = layout.skip_at_ingest
     count = 0
     for jsonl_file in jsonl_files:
+        if layout.normalize_file is not None:
+            source_path = str(jsonl_file)
+            for line_no, record in enumerate(layout.normalize_file(jsonl_file), start=1):
+                serialized = json.dumps(record)
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO raw_events"
+                    "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+                    " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        str(record.get("timestamp") or ""),
+                        record.get("sessionId"),
+                        effective_host,
+                        source_path,
+                        line_no,
+                        str(record.get("type") or "unknown"),
+                        _pack_payload(serialized),
+                        _pack_payload(serialized),
+                    ),
+                )
+                count += cur.rowcount
+            continue
         try:
             handle = jsonl_file.open(encoding="utf-8")
         except OSError:

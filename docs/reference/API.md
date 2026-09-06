@@ -3432,12 +3432,13 @@ def get_project_folder(
 ```
 
 Map a directory to the host's session-log project folder. Dispatches to host-specific
-helpers for Claude Code, Codex, OpenCode, and Pi.
+helpers for Claude Code, Codex, OpenCode, Pi, Kimi Code, Qwen Code, and Gemini CLI.
 
 **Parameters:**
 - `cwd` - Working directory to map (default: current directory)
-- `host` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, or ``"pi"``.
-  If ``None``, auto-detects from the ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
+- `host` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, ``"pi"``,
+  ``"kimi-code"``, ``"qwen"``, or ``"gemini"``. If ``None``, auto-detects from the
+  ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
 
 **Returns:** Path to the host's project session folder, or ``None`` if it doesn't exist.
 
@@ -3464,6 +3465,16 @@ project_folder = get_project_folder(host="codex")
 - ``_get_codex_project_folder(encoded_path: str) -> Path | None`` — probes ``~/.codex/projects/<encoded_path>``
 - ``_get_opencode_project_folder(encoded_path: str) -> Path | None`` — probes ``~/.opencode/projects/<encoded_path>``
 - ``_get_pi_project_folder(encoded_path: str) -> Path | None`` — probes ``~/.pi/projects/<encoded_path>`` (stub; Pi adapter deferred per FEAT-992)
+- ``_get_kimi_project_folder(cwd: Path) -> Path | None`` — index-resolved via
+  ``$KIMI_CODE_HOME/session_index.jsonl`` (``workDir`` → ``sessionDir``), not
+  dash-encoded (FEAT-2911)
+- ``_get_qwen_project_folder(encoded_path: str) -> Path | None`` — probes
+  ``~/.qwen/projects/<encoded_path>``, dash-encoding the symlink-resolved cwd like
+  Claude Code (ENH-3161)
+- ``_get_gemini_project_folder(cwd: Path) -> Path | None`` — index-resolved via
+  ``~/.gemini/projects.json`` (a registered slug), falling back to
+  ``~/.gemini/tmp/<sha256(cwd)>`` for project dirs predating the slug registry
+  (ENH-3393)
 
 Each helper returns the ``Path`` if the directory exists, or ``None`` otherwise.
 
@@ -3508,7 +3519,7 @@ recorded sessions for *cwd*.
 from little_loops.user_messages import get_sessions_folder
 
 sessions_dir = get_sessions_folder()  # host auto-detected from LL_HOOK_HOST
-# qwen host: the project root's "chats" child
+# qwen/gemini host: the project root's "chats" child
 # claude-code host: the project folder itself (sessions_subdir is "")
 ```
 
@@ -3527,8 +3538,9 @@ JSONL records, and returns a sorted list of paths that exist on disk.
 
 **Parameters:**
 - ``logger`` - Logger instance for warnings.
-- ``host`` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, or ``"pi"``.
-  If ``None``, auto-detects from the ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
+- ``host`` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, ``"pi"``,
+  ``"kimi-code"``, ``"qwen"``, or ``"gemini"``. If ``None``, auto-detects from the
+  ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
 
 **Returns:** Sorted list of decoded absolute paths for projects with ll activity.
 
@@ -3545,14 +3557,20 @@ projects = discover_all_projects(logger)
 projects = discover_all_projects(logger, host="codex")
 ```
 
-**Implementation:** Uses the same four-way host dispatch as ``get_project_folder()``.
-Decodes project directory names back to absolute paths by preferring the ``cwd`` field
-from JSONL records first, then falling back to string-replacing ``-`` with ``/``. The
-fallback decode is inherently lossy — the encode side (``encode_project_path()``) maps
-dots, underscores, and hyphens all onto the same ``-``, so a bare reverse-replace can't
-reconstruct the original path exactly. This is why the ``cwd``-from-JSONL preference
-exists: it is the only exact source of the original path, and the round trip only holds
-because that field is checked first.
+**Implementation:** Iterates the host's ``host_layout_for(host).projects_root`` — the
+static ``~/.<cli>/projects`` directory registered for Claude Code, Codex, OpenCode,
+Pi, and Qwen Code. Hosts that resolve sessions through an index or registry instead of
+a static root (Kimi Code via ``session_index.jsonl``; Gemini via
+``~/.gemini/projects.json`` / the ``sha256(cwd)`` fallback, ENH-3393) have
+``projects_root is None`` and are not walked here — they surface an empty list rather
+than a guessed path, matching the ``get_project_folder()`` docstring's "no static
+root" contract. Decodes project directory names back to absolute paths by preferring
+the ``cwd`` field from JSONL records first, then falling back to string-replacing
+``-`` with ``/``. The fallback decode is inherently lossy — the encode side
+(``encode_project_path()``) maps dots, underscores, and hyphens all onto the same
+``-``, so a bare reverse-replace can't reconstruct the original path exactly. This is
+why the ``cwd``-from-JSONL preference exists: it is the only exact source of the
+original path, and the round trip only holds because that field is checked first.
 Filters to directories that contain ll-relevant JSONL records via ``_has_ll_activity()``.
 Returns an empty list for unknown host identifiers.
 

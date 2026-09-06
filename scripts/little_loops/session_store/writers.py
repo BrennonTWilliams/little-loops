@@ -21,7 +21,7 @@ import subprocess
 import threading
 import time
 import zlib
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -2175,6 +2175,18 @@ class HostLayout:
     Claude-shaped form the ``_backfill_*`` extractors consume (``None`` when
     the host is already Claude-shaped); ``skip_at_ingest`` optionally drops
     high-volume record families before they reach ``raw_events``.
+
+    ``normalize_file`` (ENH-3393) is for hosts whose session id lives only in
+    a file header, not on each record (gemini, and eventually omp) — the
+    per-record ``normalize`` contract can't stamp ``raw_events.session_id``
+    without file-level state. When set, :func:`_backfill_raw_events` reads
+    the whole file through this callable instead of parsing it line-by-line;
+    each yielded dict is already Claude-shaped with ``sessionId`` stamped, and
+    is stored as both ``raw_line`` and ``parsed_json`` (there is no single
+    verbatim source line once header state and inline tool calls have been
+    unpacked into separate records). Mutually exclusive with ``normalize``/
+    ``skip_at_ingest`` in practice — a file-level normalizer owns the full
+    record shape and should apply its own volume filtering internally.
     """
 
     glob: str
@@ -2188,6 +2200,7 @@ class HostLayout:
     tool_arg_keys: dict[str, dict[str, str]] = field(default_factory=dict)
     normalize: Callable[[dict], dict | None] | None = None
     skip_at_ingest: Callable[[dict], bool] | None = None
+    normalize_file: Callable[[Path], Iterator[dict]] | None = None
 
 
 @dataclass(frozen=True)
@@ -2233,6 +2246,19 @@ def host_layout_for(host: str) -> HostLayout:
             tool_arg_keys=QWEN_TOOL_ARG_KEYS,
             normalize=normalize_qwen_record,
             skip_at_ingest=qwen_skip_at_ingest,
+        )
+    if host == "gemini":
+        from little_loops.session_store.gemini import normalize_gemini_session
+
+        return HostLayout(
+            glob="*/subagents",
+            parent_from="parent_dir",
+            sidecar_suffix=None,
+            sessions_subdir="chats",
+            name="gemini",
+            projects_root=None,
+            session_glob="chats/session-*.jsonl",
+            normalize_file=normalize_gemini_session,
         )
     projects_root = {
         "claude-code": home / ".claude" / "projects",

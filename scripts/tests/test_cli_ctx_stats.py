@@ -938,6 +938,43 @@ class TestComputeCacheRateFromJsonl:
         assert result is not None
         assert result["cache_read"] == 61559
 
+    def test_resolves_gemini_chats_transcript(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3393: under LL_HOOK_HOST=gemini the transcript is read from the
+        index-resolved project root's ``chats/`` subdir via the real
+        resolution chain. Uses gemini's real ``session-*.jsonl`` filename
+        shape (unlike qwen, gemini's session id lives only in a file header,
+        not the filename) — the generic ``*.jsonl`` glob here still matches it."""
+        monkeypatch.setenv("LL_HOOK_HOST", "gemini")
+        fake_home = tmp_path / "home"
+        chats_dir = fake_home / ".gemini" / "tmp" / "my-project" / "chats"
+        chats_dir.mkdir(parents=True)
+        (fake_home / ".gemini" / "projects.json").write_text(
+            json.dumps({"projects": {str(tmp_path.resolve()): "my-project"}})
+        )
+        self._write_jsonl(
+            chats_dir / "session-2026-06-01T10-00-abcd1234.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 61559,
+                            "cache_creation_input_tokens": 3689,
+                            "input_tokens": 1,
+                        }
+                    },
+                }
+            ],
+        )
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        result = _compute_cache_rate_from_jsonl(tmp_path)
+        assert result is not None
+        assert result["cache_read"] == 61559
+
 
 class TestCacheHitRateInOutput:
     """Cache hit rate appears in _render() and --json when JSONL data is available."""

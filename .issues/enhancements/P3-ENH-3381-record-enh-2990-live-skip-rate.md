@@ -3,7 +3,7 @@ id: ENH-3381
 type: ENH
 title: Record ENH-2990 live skip rate
 priority: P3
-status: open
+status: deferred
 discovered_by: ll-issues-create
 discovered_date: '2026-09-03'
 captured_at: '2026-09-03T00:36:34Z'
@@ -12,6 +12,8 @@ labels:
 - issues
 - measurement
 - cost
+deferred_by: human
+deferred_date: '2026-09-06T03:46:43Z'
 ---
 
 # ENH-3381: Record ENH-2990 live skip rate
@@ -109,6 +111,14 @@ ENH-2971's stub section) and fill in the entry with:
 | `.issues/enhancements/P3-ENH-2990-measure-live-re-refine-skip-rate-for-research-triage.md` | The instrumentation this issue reads back from |
 | `.issues/enhancements/P3-ENH-2971-refine-issue-spawns-three-subagents-unconditionally.md` § Threshold Validation | Where the figure gets recorded |
 
+## Session Log
+
+- deferred (human) - 2026-09-06 - `research_triage_events` has 96 rows total
+  (42 with `refined_at IS NOT NULL`) as of this date, far short of the
+  1,500-row close condition in ENH-2990. Re-check row volume before
+  reopening; no `--reason` code in `ll-issues set-status` fits "insufficient
+  data volume" so this note carries the rationale instead of frontmatter.
+
 ## Status
 
-**Open** | Created: 2026-09-03 | Priority: P3
+**Deferred** | Created: 2026-09-03 | Priority: P3

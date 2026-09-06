@@ -1,6 +1,6 @@
 # Host Compatibility Matrix
 
-> **Last Updated: 2026-08-30** — update this date whenever a matrix cell changes status.
+> **Last Updated: 2026-09-05** — update this date whenever a matrix cell changes status.
 
 little-loops integrates with multiple coding-agent host CLIs. This page is
 the authoritative parity matrix — what is wired where, and which gaps are
@@ -28,7 +28,7 @@ docs links here rather than restating one of them (BUG-3186).
 | `opencode` | ✓ | ✓ | ✗ | Recognized, adapter pending |
 | `pi` | ✓ | ✓ | ✗ | Recognized, adapter pending [^pi-epic] |
 | `gemini` | ✓ | ✓ | ✓ | Adapter-wired |
-| `omp` | ✓ | ✓ | ✗ | Recognized, adapter pending |
+| `omp` | ✓ | ✓ | ✗ | Recognized, adapter pending — EPIC-2258 (omp host adapter) is done and a real adapter exists at `hooks/adapters/omp/`, but like `opencode` it has no `ll-init --hosts` auto-installer (manual install only, FEAT-2261 Decision Rationale), so the Hook adapter column stays ✗ per `test_host_tier_table_matches_adapter_installers` |
 
 
 What each column is derived from — these are the sources of truth, and
@@ -510,15 +510,19 @@ the adapter.
 
 ## State directory
 
-| State surface                       | Claude Code | OpenCode | Codex CLI | Kimi Code | Qwen Code |
-| ----------------------------------- | ----------- | -------- | --------- | --------- | --------- |
-| Config file                         | `.ll/`      | `.ll/`   | `.codex/` (first) then `.ll/` | `.kimi-code/` (first) then `.ll/` | `.qwen/` (first) then `.ll/` |
-| Issue tracking (`.issues/`)         | `.issues/`  | `.issues/` | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] |
-| FSM runs (`.loops/`)                | `.loops/`   | `.loops/` | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] |
-| Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] |
-| Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] |
-| Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] |
-| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] |
+| State surface                       | Claude Code | OpenCode | Codex CLI | Kimi Code | Qwen Code | Gemini CLI |
+| ----------------------------------- | ----------- | -------- | --------- | --------- | --------- | ---------- |
+| Config file                         | `.ll/`      | `.ll/`   | `.codex/` (first) then `.ll/` | `.kimi-code/` (first) then `.ll/` | `.qwen/` (first) then `.ll/` | `.gemini/` (first) then `.ll/` |
+| Issue tracking (`.issues/`)         | `.issues/`  | `.issues/` | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] |
+| FSM runs (`.loops/`)                | `.loops/`   | `.loops/` | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] |
+| Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] |
+| Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] |
+| Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] |
+| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] | ✓ — `~/.gemini/tmp/<slug>/` resolved via `~/.gemini/projects.json` (slug registry), falling back to `~/.gemini/tmp/<sha256(cwd)>/` for pre-registry dirs; session JSONL under `chats/session-*.jsonl` (ENH-3393)[^geminiwire] |
+
+`ll-session backfill --host omp` is tracked separately (ENH-3394, depends on
+ENH-3393) — omp has no dedicated row here yet; it falls through to the
+Claude-shaped default like an unregistered host.
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
     config probe only. Research spike **ENH-1722** evaluated extending
@@ -571,6 +575,27 @@ the adapter.
     0.21.6 also writes `subtype: "slash_command"` system records
     (`systemPayload.rawCommand`) — `skill_events` derivation from them was
     dropped from ENH-3166's scope and remains a follow-up candidate.
+
+[^geminiwire]: Gemini session files (`~/.gemini/tmp/<slug>/chats/session-*.jsonl`,
+    gemini-cli 0.46.0) are a third shape, neither Claude's nor qwen's:
+    project dirs are index/derived (a slug from `~/.gemini/projects.json`,
+    or `sha256(cwd)` for dirs predating the registry — same value as each
+    session's `projectHash` header field), and the session id lives **only**
+    in a file header line, not on each record. `ll-session backfill --host
+    gemini` reads each file end-to-end via a file-level normalizer
+    (`HostLayout.normalize_file`, ENH-3393 — a new contract alongside the
+    per-record `normalize` qwen uses, since a per-record normalizer can't
+    stamp `raw_events.session_id` without file-level header state) that
+    unpacks the initial `$set.messages` array (the session-context turn),
+    reads later bare `user`/`gemini` records, skips `$rewindTo` markers and
+    metadata-only `$set` patches, and splits each inline `toolCalls[]` entry
+    into a `tool_use` block on the assistant turn plus a synthetic
+    `tool_result` user turn. Pre-Oct-2025 single-document
+    `chats/session-*.json` files (whole `messages[]` array) don't match the
+    `chats/session-*.jsonl` glob and are out of scope — never reaching the
+    reader. No subagent transcript directory has been observed for gemini,
+    so `subagent_runs` backfill yields zero rows (not an error) rather than
+    populating anything.
 
 [^qwenmarket]: **FEAT-3155 R3 finding** — the marketplace auto-conversion
     (`qwen extensions install BrennonTWilliams/little-loops:ll`) installs

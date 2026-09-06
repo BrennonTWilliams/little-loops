@@ -62,6 +62,7 @@ import sqlite3
 import subprocess
 
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_db
+from little_loops.session_store.gemini import normalize_gemini_session
 from little_loops.session_store.lifecycle import (
     _REBUILD_SEARCH_KINDS,
     _REBUILD_TABLES,
@@ -211,6 +212,7 @@ __all__ = [
     "HostLayout",
     "SubagentMeta",
     "host_layout_for",
+    "normalize_gemini_session",
     "normalize_qwen_record",
     "qwen_skip_at_ingest",
     "canonicalize_issue_id",

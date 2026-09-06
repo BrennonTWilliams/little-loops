@@ -246,6 +246,13 @@ class TestHostLayoutRegistry:
     def test_kimi_code_has_no_static_projects_root(self) -> None:
         assert host_layout_for("kimi-code").projects_root is None
 
+    def test_gemini_and_omp_have_no_static_projects_root(self) -> None:
+        """gemini/omp resolve project dirs index/derived-style, not via a static
+        root (ENH-3393) — gemini is registered today; omp is a sibling issue,
+        so it still falls through to the Claude-shaped default."""
+        assert host_layout_for("gemini").projects_root is None
+        assert host_layout_for("omp").projects_root is None
+
 
 class TestQwenDiscovery:
     """discover_all_projects + walkers honor chats/ and normalized records."""
@@ -606,3 +613,26 @@ class TestSessionStartHookPassesHost:
         # passes the project root, not a pre-joined chats/ path.
         assert str(tmp_path) in argv
         assert str(tmp_path / "chats") not in argv
+
+    def test_worker_argv_carries_gemini_host(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """gemini backfill (ENH-3393) threads --host through the same path as qwen."""
+        from little_loops.hooks.session_start import handle
+        from little_loops.hooks.types import LLHookEvent
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps({}))
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
+        monkeypatch.setenv("LL_HOOK_HOST", "gemini")
+        import little_loops.user_messages as um
+
+        monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: tmp_path)
+        calls = self._mock_popen(monkeypatch)
+
+        handle(LLHookEvent(host="gemini", intent="session_start", payload={}))
+
+        assert len(calls) == 1
+        argv = calls[0]
+        assert argv[argv.index("--host") + 1] == "gemini"

@@ -1,0 +1,9 @@
+{"sessionId":"11111111-2222-3333-4444-555555555555","projectHash":"deadbeefcafefeedfacedeadbeefcafefeedfacedeadbeefcafefeedface12","startTime":"2026-06-01T10:00:00.000Z","lastUpdated":"2026-06-01T10:00:00.000Z","kind":"main"}
+{"$set":{"lastUpdated":"2026-06-01T10:00:00.000Z","messages":[{"id":"msg-context","timestamp":"2026-06-01T10:00:00.000Z","type":"user","content":[{"text":"<session_context>\nThis is the Gemini CLI. Workspace: /tmp/example-project\n</session_context>"}]}]}}
+{"id":"msg-user-1","timestamp":"2026-06-01T10:00:05.000Z","type":"user","content":[{"text":"Check which ll issues are open."}]}
+{"$set":{"lastUpdated":"2026-06-01T10:00:06.000Z"}}
+{"id":"msg-gemini-1","timestamp":"2026-06-01T10:00:07.000Z","type":"gemini","content":[{"text":"I'll check now."}],"thoughts":[],"tokens":{"input":100,"output":10,"cached":0,"thoughts":5,"tool":0,"total":115}}
+{"$set":{"lastUpdated":"2026-06-01T10:00:08.000Z"}}
+{"id":"msg-gemini-2","timestamp":"2026-06-01T10:00:09.000Z","type":"gemini","model":"gemini-2.5-pro","content":[{"text":"Let me run the command."}],"toolCalls":[{"id":"call-1","name":"run_shell_command","args":{"command":"ll-issues list"},"result":[{"functionResponse":{"response":{"output":"BUG-1 open"}}}],"resultDisplay":"BUG-1 open","status":"success","timestamp":"2026-06-01T10:00:09.500Z","description":"Run shell command","displayName":"Shell","renderOutputAsMarkdown":false}]}
+{"$rewindTo":"msg-gemini-2"}
+{"id":"msg-user-2","timestamp":"2026-06-01T10:00:10.000Z","type":"user","content":[{"text":"Actually, check again."}]}

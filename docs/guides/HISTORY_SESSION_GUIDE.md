@@ -229,7 +229,7 @@ ll-session backfill --host codex
 ll-session backfill --host opencode
 ```
 
-`--host` defaults to `None` (auto-detect from `LL_HOOK_HOST`); valid choices also include `pi`, `kimi-code`, and `qwen`.
+`--host` defaults to `None` (auto-detect from `LL_HOOK_HOST`); valid choices also include `pi`, `kimi-code`, `qwen`, and `gemini`.
 
 ---
 
