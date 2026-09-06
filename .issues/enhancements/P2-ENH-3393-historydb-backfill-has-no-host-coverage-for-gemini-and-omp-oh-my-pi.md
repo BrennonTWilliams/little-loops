@@ -75,6 +75,23 @@ host names into `ll-session backfill --host` choices and `get_project_folder()`'
 host branch. Verify against a real `gemini`/`omp` install before writing fixtures
 — do not assume the layout mirrors `~/.qwen` or `~/.codex` without checking.
 
+## Program Design
+
+### Signatures
+
+- `_get_gemini_project_folder(encoded_path: str) -> Path | None` — new branch in `get_project_folder()`, mirrors `_get_codex_project_folder`/`_get_qwen_project_folder`; resolves the encoded cwd against gemini's on-disk project-session root (root path unconfirmed — see Implementation Steps step 1).
+- `_get_omp_project_folder(encoded_path: str) -> Path | None` — new branch in `get_project_folder()`, same shape as above; resolves against omp's project-session root (also unconfirmed).
+
+### Call Path
+
+`ll-session backfill --host gemini|omp` -> `get_project_folder` -> `_get_gemini_project_folder`/`_get_omp_project_folder` (new) -> `host_layout_for` -> `HostLayout` -> `backfill` -> `_backfill_subagent_runs`
+
+### Codebase Research Findings
+
+- `get_project_folder()` (`user_messages.py:370`) dispatches on a flat `if`/`elif host == ...` chain (`:399-410`) that returns `None` for any unmatched host; `gemini`/`omp` each need one new `elif` branch calling a new per-host helper, following the existing `_get_codex_project_folder`/`_get_qwen_project_folder` pattern rather than inlining logic into `get_project_folder` itself.
+- `host_layout_for()` (`session_store/writers.py:2206`) special-cases `qwen` (nested `subagents/<session-id>/` with a `.meta.json` sidecar) before falling into a generic `projects_root` dict covering `claude-code`/`codex`/`opencode`/`pi` (`:2237-2242`) that returns a `HostLayout` with `glob="*/subagents"`, `parent_from="parent_dir"`, `sidecar_suffix=None`. Whether `gemini`/`omp` need a third special case (qwen-shaped) or just two more dict entries (Claude-shaped) is unresolved until step 1's on-disk layout investigation — do not assume the flat-dict shape without checking.
+- `backfill()` (`session_store/lifecycle.py:1022`) only calls `host_layout_for(host)` and walks `sessions_root` when both are non-`None`/a real directory (`:1080-1082`), so a `gemini`/`omp` host string with no matching `host_layout_for` branch degrades silently to the Claude-shaped default rather than erroring — the CLI-level `--host` choices gate (`cli/session.py:213`) is what actually prevents that today, not `backfill()` itself.
+
 ## Integration Map
 
 ### Files to Modify
@@ -167,4 +184,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-06T01:59:12 - `c0275b19-45a2-4dc2-bddf-421eab5bb2a9.jsonl`
 - `/ll:capture-issue` - 2026-09-06T01:54:41 - `259dddc7-3ed5-489c-a2c5-bdbcc4004163.jsonl`
