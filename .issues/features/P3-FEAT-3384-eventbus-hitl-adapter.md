@@ -3,10 +3,11 @@ id: FEAT-3384
 type: FEAT
 title: EventBus HITL adapter
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-04'
 captured_at: '2026-09-04T07:05:03Z'
+completed_at: '2026-09-06T02:42:58Z'
 parent: EPIC-1929
 labels:
 - fsm
@@ -255,6 +256,12 @@ _Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+_Added by `/ll:manage-issue` — 2026-09-06:_
+
+- **`BUILTIN_EXTENSIONS` shape**: the Signatures section specifies `BUILTIN_EXTENSIONS: tuple[type, ...] = (EventBusAdapterExtension,)` with the class lazily imported inside `load_all()`. Implemented instead as `BUILTIN_EXTENSIONS: tuple[str, ...]` holding `"module:Class"` dotted-path strings (`ExtensionLoader.from_config()`'s existing format), consulted via `ExtensionLoader.from_config(list(BUILTIN_EXTENSIONS))` inside `load_all()`. This reuses `from_config()`'s existing lazy-import-per-string and failure-tolerant (warn-and-skip) loading verbatim instead of hand-rolling an equivalent for a class-tuple, while still satisfying the acceptance criterion ("discovered through `BUILTIN_EXTENSIONS` in `extension.py`, consulted by `ExtensionLoader.load_all()`") and the import-cycle-avoidance rationale (Second Review #8) — no import of `little_loops.fsm.adapters` happens at `extension.py` module-load time either way.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
@@ -388,7 +395,7 @@ Verified still correct at `271944ccd`: everything the Third Review listed, plus 
 
 ## Acceptance Criteria
 
-- [ ] `EventBusAdapter(CommunicationAdapter)` implements `send_alert()`
+- [x] `EventBusAdapter(CommunicationAdapter)` implements `send_alert()`
   (records a pending alert, registers the `HUMAN_RESPONSE_EVENT` observer,
   returns a generated `alert_id`; emits NOTHING — the executor emits
   `human_approval_requested`, Pre-implementation Review #2),
@@ -396,52 +403,52 @@ Verified still correct at `271944ccd`: everything the Third Review listed, plus 
   resolves from a matching `HUMAN_RESPONSE_EVENT` observed on the bus, retains
   an unconsumed verdict across `TimeoutResponse`s), and `supports_async()`
   returning `True`
-- [ ] Registers via `EventBusAdapterExtension` (`bind_event_bus(bus)` +
+- [x] Registers via `EventBusAdapterExtension` (`bind_event_bus(bus)` +
   `provided_adapters()` returning `{"eventbus": EventBusAdapter(bus)}`; no
   `on_event`, so it is never registered as a bus observer), discovered
   through `BUILTIN_EXTENSIONS` in `extension.py` (consulted by
   `ExtensionLoader.load_all()`), so `hitl.channel: "eventbus"` resolves with
   no `extensions:` config and no reinstall (Second Review #7/#8)
-- [ ] `wire_extensions()` calls `bind_event_bus(bus)` on any extension that
+- [x] `wire_extensions()` calls `bind_event_bus(bus)` on any extension that
   defines it, before the `provided_*` merge passes; extensions without it are
   unaffected and `ExtensionLoader` construction stays zero-arg
-- [ ] `FSMExecutor._drain_inbound()` re-emits an inbound item whose `event`
+- [x] `FSMExecutor._drain_inbound()` re-emits an inbound item whose `event`
   is `human_response` and that carries an `alert_id` under that name with a
   whitelisted payload (`alert_id`, `verdict`, `edited_text`, `reason`) — a
   body cannot overwrite the envelope's `event`/`ts`/`run_id`/`loop` on this
   path (Second Review #5) — so a `--serve` POST satisfies the wait when
   FEAT-1794's tick loop drains it
-- [ ] `_execute_sub_loop()` propagates `_contributed_adapters` (and the other
+- [x] `_execute_sub_loop()` propagates `_contributed_adapters` (and the other
   contributed registries) to the child executor, so a `human_approval` state
   inside a `loop:` child resolves `eventbus` (Second Review #6)
-- [ ] The adapter registers its bus observer exactly once, in `__init__`,
+- [x] The adapter registers its bus observer exactly once, in `__init__`,
   and never calls `EventBus.unregister()`; the callback only mutates
   `_pending` (Second Review #9, Fourth Review #22)
-- [ ] `cancel_alert()` override withdraws a pending alert (no-op default on
+- [x] `cancel_alert()` override withdraws a pending alert (no-op default on
   the base class is insufficient for an async channel — a late verdict must
   not target a dead alert per FEAT-1930 Review #15); a `human_response` for a
   cancelled `alert_id` is ignored
-- [ ] `EventBusBoundExtension(Protocol)` exists in `extension.py`, is
+- [x] `EventBusBoundExtension(Protocol)` exists in `extension.py`, is
   re-exported from `little_loops/__init__.py`, and is listed in the
   `create_extension.py` scaffold doc-comment (Fourth Review #23)
-- [ ] `_execute_sub_loop()` assigns the parent's registries by reference
+- [x] `_execute_sub_loop()` assigns the parent's registries by reference
   (same objects), not copies (Fourth Review #24)
-- [ ] `human_response` is in `SCHEMA_DEFINITIONS` and `DES_VARIANTS`, the two
+- [x] `human_response` is in `SCHEMA_DEFINITIONS` and `DES_VARIANTS`, the two
   `test_generate_schemas.py` counts read 59, the `human_response` schema JSON
   is generated under `docs/reference/schemas/`, and EVENT-SCHEMA.md documents the shape (Fourth Review #21)
-- [ ] `cli/loop/feed.py` renders `human_response` in both the live feed and
+- [x] `cli/loop/feed.py` renders `human_response` in both the live feed and
   the history formatter (Fourth Review #25)
-- [ ] `EventBusAdapterExtension.provided_adapters()` returns the same
+- [x] `EventBusAdapterExtension.provided_adapters()` returns the same
   `EventBusAdapter` instance on every call (`wire_extensions()` calls it
   twice per extension — Third Review #12)
-- [ ] The observer ignores (with a log line, never an exception) a
+- [x] The observer ignores (with a log line, never an exception) a
   `human_response` whose `alert_id` or `verdict` is not a `str`, and treats a
   non-`str` `edited_text`/`reason` as absent (Third Review #13)
-- [ ] `_execute_human_approval_state()` logs one warning per alert when
+- [x] `_execute_human_approval_state()` logs one warning per alert when
   `adapter.supports_async()` is true and `self.inbound is None` (the run is
   not under `--serve`); no warning with `inbound` set or with the terminal
   adapter (Third Review #10)
-- [ ] Tests: `send_alert()` emits nothing and returns a hex id; verdict
+- [x] Tests: `send_alert()` emits nothing and returns a hex id; verdict
   resolution from a matching `human_response` event (approve / reject with
   reason / edit with text); non-matching `alert_id`, non-`str` `alert_id`
   (e.g. a list), and unknown verdicts ignored; re-entrancy across repeated
@@ -451,7 +458,7 @@ Verified still correct at `271944ccd`: everything the Third Review listed, plus 
   after the BUG-3387 strip; the sub-loop propagation; `load_all()` returns
   the built-in extension (and the four `test_extension.py` tests listed in
   the Wiring Phase are updated); the no-inbound warning
-- [ ] `docs/reference/CONFIGURATION.md` § `hitl` documents `eventbus`, the
+- [x] `docs/reference/CONFIGURATION.md` § `hitl` documents `eventbus`, the
   `--serve` requirement for out-of-process verdicts, the POST body shape, and
   the two known limitations (`ll-loop resume` has no inbound path; the
   dashboard has no HITL UI — Fourth Review #19/#20)
@@ -494,9 +501,32 @@ pre-fix vulnerability. **Done in the Third Review (2026-09-05, #11).**
 - `scripts/little_loops/events.py` — `EventBus` — the pub/sub surface this
   adapter subscribes to for inbound `human_response` events
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/adapters/eventbus_adapter.py` (new): `EventBusAdapter(CommunicationAdapter)` — `send_alert()` records pending state and emits nothing; `await_response()` resolves from a matching `human_response` bus event, retaining an unconsumed verdict across `TimeoutResponse`s; `supports_async()` returns `True`; `cancel_alert()` withdraws pending state. Plus `EventBusAdapterExtension` (`bind_event_bus()` + `provided_adapters()`, no `on_event`)
+- `scripts/little_loops/extension.py`: added `EventBusBoundExtension(Protocol)`, `BUILTIN_EXTENSIONS` (module:Class strings, loaded via `ExtensionLoader.from_config()` — avoids importing `fsm.adapters` at `extension.py` module-load time), `ExtensionLoader.load_all()` now always includes the built-in, and `wire_extensions()` calls `bind_event_bus(bus)` on any extension defining it before the `provided_*` merge passes
+- `scripts/little_loops/fsm/executor.py`: `_drain_inbound()` classifies a raw inbound item as a `human_response` verdict (`event == HUMAN_RESPONSE_EVENT and "alert_id" in item`) before the BUG-3387 key strip, re-emitting a whitelisted payload; `_execute_sub_loop()` now shares `_contributed_adapters`/`_contributed_actions`/`_contributed_evaluators`/`_interceptors` with child executors by reference; `_execute_human_approval_state()` logs one warning per alert when `adapter.supports_async()` and `self.inbound is None`
+- `scripts/little_loops/cli/loop/feed.py`: added `human_response` branches to the live feed and history formatter
+- `scripts/little_loops/observability/schema.py` + `scripts/little_loops/generate_schemas.py`: added the `human_response` `DESVariant`/schema entry; regenerated `docs/reference/schemas/human_response.json`
+- `scripts/little_loops/__init__.py`: re-exported `EventBusAdapter`, `EventBusAdapterExtension`, `EventBusBoundExtension`
+- `scripts/little_loops/cli/create_extension.py`: added `EventBusBoundExtension` to the scaffold doc-comment's opt-in Protocol list
+- `docs/reference/CONFIGURATION.md` § `hitl` and `docs/reference/EVENT-SCHEMA.md`: documented the `eventbus` channel, the `human_response` POST body shape, and the two known limitations (`ll-loop resume` has no inbound path; the `--serve` dashboard has no HITL UI)
+- Tests: new `scripts/tests/test_eventbus_adapter.py`; updates to `test_extension.py` (built-in-extension-aware `load_all`/`wire_extensions` tests, new `bind_event_bus` wiring tests), `test_communication_adapter.py` (end-to-end wiring test), `test_fsm_executor.py` (`_drain_inbound` verdict branch + envelope-overwrite guard, sub-loop registry propagation, no-inbound warning), `test_generate_schemas.py` (bumped counts to 62)
+
+### Verification Results
+- Tests: PASS (23220 passed, 43 skipped; 1 unrelated pre-existing flaky failure in `test_feat3323_sse_bridge.py` confirmed to pass in isolation — a documented CPU-contention-sensitive SSE socket test, untouched by this change)
+- Lint: PASS (`ruff check` on all changed files)
+- Format: PASS (`ruff format --diff` clean)
+- Types: PASS (`mypy` on all changed source files)
+
 ## Status
 
-**Open** | Created: 2026-09-04 | Priority: P3
+**Done** | Created: 2026-09-04 | Priority: P3
 
 
 ## Confidence Check Notes
@@ -511,6 +541,7 @@ _Added by `/ll:confidence-check` on 2026-09-04_
 - Criterion C (Ambiguity) capped at 10/25: `unapplied_decision` flags `TerminalAdapter` still appearing unmarked in Proposed Solution/Program Design/Implementation Steps/Files to Modify. Most of these are legitimate pattern-reference mentions (e.g. `uuid.uuid4().hex` convention, test-shape modeling), not restatements of the rejected Option A (hardcoded `elif` branch) — only the Acceptance Criteria bullet needed (and received) a superseded marker. Verify with `/ll:decide-issue` if this should be suppressed, or leave as-is since it doesn't block implementation.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-06T02:42:44 - `ab6f418d-66d9-4f22-a568-cde786ff8065.jsonl`
 - `/ll:confidence-check` - 2026-09-06T02:08:08 - `f6ee5fef-8198-4d16-b8a2-3bbb8e726d3e.jsonl`
 - fourth-review - 2026-09-05 - manual review against HEAD `271944ccd`; see § Fourth Review (items 19–26: resume/dashboard limitations documented, schema decided, observer registered once, `EventBusBoundExtension` Protocol, by-reference sub-loop propagation, feed rendering, stale text)
 - `/ll:confidence-check` - 2026-09-06T01:55:54 - `c0275b19-45a2-4dc2-bddf-421eab5bb2a9.jsonl`

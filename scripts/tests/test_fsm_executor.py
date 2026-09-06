@@ -1212,6 +1212,56 @@ class TestActionTypeHumanApproval:
         assert result is None
         assert len(adapter.cancelled) == 1
 
+    def test_no_inbound_warning_fires_for_async_adapter_with_no_inbound(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """FEAT-3384/Third Review #10: an async adapter with self.inbound is
+        None (not started under --serve) logs one warning per alert."""
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="approve")], async_=True)
+        fsm = self._make_fsm()
+        executor = self._build_executor(fsm, tmp_path, adapter)
+        assert executor.inbound is None
+
+        with caplog.at_level(logging.WARNING):
+            executor.run()
+
+        assert any("no inbound path" in r.message for r in caplog.records)
+
+    def test_no_inbound_warning_absent_when_inbound_set(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No warning when the run has an inbound queue (started under --serve)."""
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="approve")], async_=True)
+        fsm = self._make_fsm()
+        self._write_hitl_config(tmp_path, channel="mock")
+        executor = FSMExecutor(
+            fsm,
+            action_runner=MockActionRunner(),
+            working_dir=tmp_path,
+            inbound=queue.Queue(),
+        )
+        executor._contributed_adapters["mock"] = adapter
+
+        with caplog.at_level(logging.WARNING):
+            executor.run()
+
+        assert not any("inbound" in r.message for r in caplog.records)
+
+    def test_no_inbound_warning_absent_for_terminal_adapter(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No warning for a synchronous (supports_async=False) adapter like
+        TerminalAdapter, regardless of inbound."""
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="approve")], async_=False)
+        fsm = self._make_fsm()
+        executor = self._build_executor(fsm, tmp_path, adapter)
+        assert executor.inbound is None
+
+        with caplog.at_level(logging.WARNING):
+            executor.run()
+
+        assert not any("inbound" in r.message for r in caplog.records)
+
 
 class TestActionTypeContract:
     """Tests for action_type=contract execution in the executor."""
@@ -9240,6 +9290,57 @@ class TestSubLoopBudgetClamping:
         assert captured_child_timeouts == [45]
 
 
+class TestSubLoopContributedRegistryPropagation:
+    """FEAT-3384 Step 5b: a sub-loop child shares the parent's contributed
+    registries by reference (same objects, not copies), so a human_approval
+    state inside a loop: child resolves the parent's registered adapters.
+    Also covers actions/evaluators/interceptors — this is a behavior change
+    beyond HITL (Third Review #18)."""
+
+    def test_child_shares_parent_registries_by_reference(self, tmp_path: Path) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="done", on_no="failed"),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        sentinel_adapter = object()
+        executor._contributed_adapters["eventbus"] = sentinel_adapter
+        sentinel_action = object()
+        executor._contributed_actions["custom"] = sentinel_action
+
+        captured: list[FSMExecutor] = []
+        original_run = FSMExecutor.run
+
+        def capturing_run(self_inner: FSMExecutor) -> ExecutionResult:
+            if self_inner.fsm.name == "child":
+                captured.append(self_inner)
+            return original_run(self_inner)
+
+        with patch.object(FSMExecutor, "run", capturing_run):
+            state = parent_fsm.states["run_child"]
+            ctx = executor._build_context()
+            executor._execute_sub_loop(state, ctx)
+
+        assert len(captured) == 1
+        child = captured[0]
+        assert child._contributed_adapters is executor._contributed_adapters
+        assert child._contributed_adapters["eventbus"] is sentinel_adapter
+        assert child._contributed_actions is executor._contributed_actions
+        assert child._contributed_actions["custom"] is sentinel_action
+        assert child._contributed_evaluators is executor._contributed_evaluators
+        assert child._interceptors is executor._interceptors
+
+
 class TestSubLoopTimeoutRouting:
     """Tests for ENH-3019: on_timeout routing and terminated_by context exposure."""
 
@@ -13742,6 +13843,96 @@ class TestInboundEvents:
             executor.run()
 
         assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    def test_inbound_human_response_reemitted_under_own_name(self) -> None:
+        """FEAT-3384: an inbound item declaring event='human_response' with an
+        alert_id is re-emitted under that name with a whitelisted payload,
+        not wrapped as artifact_interaction."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put(
+            {
+                "event": "human_response",
+                "alert_id": "a1",
+                "verdict": "approve",
+                "edited_text": None,
+                "reason": None,
+            }
+        )
+        events: list[dict[str, Any]] = []
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm(), action_runner=runner, event_callback=events.append, inbound=q
+        )
+        executor.run()
+
+        response_events = [e for e in events if e.get("event") == "human_response"]
+        assert len(response_events) == 1
+        assert response_events[0]["alert_id"] == "a1"
+        assert response_events[0]["verdict"] == "approve"
+        assert [e for e in events if e.get("event") == "artifact_interaction"] == []
+        assert executor.inbound_events[0]["event"] == "human_response"
+
+    def test_inbound_human_response_classifies_after_key_strip_would_prevent_match(self) -> None:
+        """FEAT-3384/Third Review #11: classification reads the raw item's
+        'event' key before BUG-3387's strip removes it — verifying the branch
+        still matches at all (a regression here would silently fall through
+        to the artifact_interaction path)."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put({"event": "human_response", "alert_id": "a1", "verdict": "reject", "reason": "no"})
+        executor = FSMExecutor(self._fsm(), action_runner=MockActionRunner(), inbound=q)
+        events: list[dict[str, Any]] = []
+        executor.event_callback = events.append
+        executor._drain_inbound()
+
+        assert [e for e in events if e.get("event") == "human_response"]
+        assert events[0]["reason"] == "no"
+
+    def test_inbound_human_response_body_cannot_overwrite_envelope(self) -> None:
+        """A human_response body carrying run_id/loop/ts keys cannot overwrite
+        the emitted envelope — only the whitelisted payload keys pass through."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put(
+            {
+                "event": "human_response",
+                "alert_id": "a1",
+                "verdict": "approve",
+                "run_id": "spoofed-run",
+                "loop": "spoofed-loop",
+                "ts": "spoofed-ts",
+            }
+        )
+        events: list[dict[str, Any]] = []
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm(), action_runner=runner, event_callback=events.append, inbound=q
+        )
+        executor.run()
+
+        response_events = [e for e in events if e.get("event") == "human_response"]
+        assert len(response_events) == 1
+        emitted = response_events[0]
+        assert emitted["run_id"] == executor.run_id
+        assert emitted["run_id"] != "spoofed-run"
+        assert emitted["loop"] == "test"
+        assert emitted["ts"] != "spoofed-ts"
+
+    def test_inbound_human_response_missing_alert_id_falls_through(self) -> None:
+        """An item with event='human_response' but no alert_id is not a valid
+        verdict — it falls through to the artifact_interaction path."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put({"event": "human_response", "verdict": "approve"})
+        events: list[dict[str, Any]] = []
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm(), action_runner=runner, event_callback=events.append, inbound=q
+        )
+        executor.run()
+
+        assert [e for e in events if e.get("event") == "human_response"] == []
+        assert [e for e in events if e.get("event") == "artifact_interaction"]
 
 
 @dataclass

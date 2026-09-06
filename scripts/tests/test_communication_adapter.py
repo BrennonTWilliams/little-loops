@@ -206,6 +206,28 @@ class TestWireExtensionsAdapters:
 
         assert executor._contributed_adapters["mock"] is adapter
 
+    def test_eventbus_extension_observes_the_wired_bus(self, tmp_path: Path) -> None:
+        """EventBusAdapterExtension.provided_adapters() resolves against the same
+        bus instance passed into wire_extensions() (FEAT-3384)."""
+        from unittest.mock import patch
+
+        from little_loops.fsm.adapters.eventbus_adapter import EventBusAdapter
+
+        executor = _executor_with_config(tmp_path, hitl_channel="eventbus")
+        bus = EventBus()
+        with patch("little_loops.extension.entry_points", return_value=[]):
+            wire_extensions(bus, executor=executor)
+
+        adapter = executor._contributed_adapters["eventbus"]
+        assert isinstance(adapter, EventBusAdapter)
+
+        alert_id = adapter.send_alert("l", "s", "p", {})
+        bus.emit(
+            {"event": HUMAN_RESPONSE_EVENT, "ts": "t", "alert_id": alert_id, "verdict": "approve"}
+        )
+        result = adapter.await_response(alert_id, timeout=0.01)
+        assert result == AdapterResponse(verdict="approve")
+
     def test_conflict_detection_raises_value_error(self, tmp_path: Path) -> None:
         class ExtA:
             def provided_adapters(self) -> dict[str, CommunicationAdapter]:

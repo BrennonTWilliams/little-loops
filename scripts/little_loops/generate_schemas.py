@@ -920,6 +920,21 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["state", "verdict", "elapsed_seconds"],
     ),
+    "human_response": _schema(
+        "human_response",
+        "Human Response",
+        "FEAT-3384: emitted by FSMExecutor._drain_inbound() when an inbound item "
+        "declares event='human_response' with an alert_id — re-emitted under its "
+        "own name with a whitelisted payload so EventBusAdapter's bus observer can "
+        "resolve the pending alert. Inbound-origin, like artifact_interaction.",
+        {
+            "alert_id": _str("Alert identifier the verdict answers"),
+            "verdict": _str("approve | reject | edit"),
+            "edited_text": _nullable_str("Replacement text for an 'edit' verdict; null otherwise"),
+            "reason": _nullable_str("Reject reason; null otherwise"),
+        },
+        ["alert_id", "verdict"],
+    ),
 }
 
 

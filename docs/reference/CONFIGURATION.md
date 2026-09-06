@@ -1586,9 +1586,13 @@ Human-in-the-loop communication channel selection (FEAT-1930) and wait bound (FE
 
 The default channel, `"terminal"`, is built in (FEAT-1931) and needs no extension or config entry: it prints a formatted prompt to stdout and blocks on stdin for the operator's `approve`/`reject`/`edit` verdict. Any other channel value must be contributed by an extension's `CommunicationAdapterExtension.provided_adapters()`.
 
+`"eventbus"` (FEAT-3384) is the built-in async channel for unattended runs: it is registered by `EventBusAdapterExtension`, always loaded via `BUILTIN_EXTENSIONS` — no `extensions:` config entry or reinstall is needed to select it. It sends nothing on `send_alert()` (the executor emits `human_approval_requested`) and resolves `await_response()` from a matching `human_response` event observed on the `EventBus`. An out-of-process verdict requires the run to have an inbound path: start it under `ll-loop run --serve` and `POST /{token}/interaction` with a body of `{"event": "human_response", "alert_id": "...", "verdict": "approve" | "reject" | "edit", "edited_text": "...", "reason": "..."}` — only `alert_id`/`verdict`/`edited_text`/`reason` are forwarded onto the bus. Without `--serve`, only an in-process emitter (tests, embedded callers) can answer, and the executor logs one warning per alert.
+
+Two known limitations, tracked as follow-up issues rather than fixed here: `ll-loop resume` builds its executor with no inbound queue and no `--serve` bridge, so a run interrupted mid-wait and resumed under `eventbus` can only time out; and the `--serve` dashboard has no HITL UI — its only interaction control posts an `artifact_interaction` note, so out-of-process verdicts come from `curl` or a relay, not the browser page.
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `hitl.channel` | `string` | `"terminal"` | Registry key for the active communication adapter. Unset resolves to the built-in `"terminal"` adapter. A non-`"terminal"` value with no matching extension raises `CommunicationAdapterNotFound` at resolve time. |
+| `hitl.channel` | `string` | `"terminal"` | Registry key for the active communication adapter. Unset resolves to the built-in `"terminal"` adapter. `"eventbus"` is also built in (FEAT-3384). A non-`"terminal"`/`"eventbus"` value with no matching extension raises `CommunicationAdapterNotFound` at resolve time. |
 | `hitl.default_timeout` | `integer` (seconds) | `1800` | Fallback wait for an `action_type: human_approval` state (see [FSM Loop Reference § `action_type`](../../skills/create-loop/reference.md#action_type-optional)) with no state-level `timeout:`. Distinct from the loop-level `timeout`/`default_timeout`, which bounds action subprocesses, not human waits. `ll-loop validate` warns (not errors) when a `human_approval` state omits `timeout:`, naming this fallback. |
 
 ```json

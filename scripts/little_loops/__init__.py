@@ -10,6 +10,7 @@ from little_loops.extension import (
     ActionProviderExtension,
     CommunicationAdapterExtension,
     EvaluatorProviderExtension,
+    EventBusBoundExtension,
     ExtensionLoader,
     InterceptorExtension,
     LLExtension,
@@ -18,6 +19,7 @@ from little_loops.extension import (
     wire_extensions,
 )
 from little_loops.fsm import RouteContext, RouteDecision
+from little_loops.fsm.adapters.eventbus_adapter import EventBusAdapter, EventBusAdapterExtension
 from little_loops.fsm.communication_adapter import (
     HUMAN_APPROVAL_REQUESTED_EVENT,
     HUMAN_RESPONSE_EVENT,
@@ -103,6 +105,7 @@ __all__ = [
     "ActionProviderExtension",
     "CommunicationAdapterExtension",
     "EvaluatorProviderExtension",
+    "EventBusBoundExtension",
     "ExtensionLoader",
     "InterceptorExtension",
     "LLExtension",
@@ -116,6 +119,9 @@ __all__ = [
     "CommunicationAdapter",
     "CommunicationAdapterNotFound",
     "TimeoutResponse",
+    # eventbus HITL adapter (FEAT-3384)
+    "EventBusAdapter",
+    "EventBusAdapterExtension",
     # testing
     "LLTestBus",
     # observability (FEAT-2478)

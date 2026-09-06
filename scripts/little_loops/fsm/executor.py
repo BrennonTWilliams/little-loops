@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from little_loops.fsm.communication_adapter import (
     HUMAN_APPROVAL_REQUESTED_EVENT,
+    HUMAN_RESPONSE_EVENT,
     AdapterResponse,
     CommunicationAdapter,
     CommunicationAdapterNotFound,
@@ -562,18 +563,27 @@ class FSMExecutor:
         return self._finish("interrupted", error=error)
 
     def _drain_inbound(self) -> None:
-        """Drain all currently-queued inbound events (non-blocking), re-emit each as
-        artifact_interaction, and record it. No-op when self.inbound is None.
+        """Drain all currently-queued inbound events (non-blocking) and record each.
 
         Modeled on WebhookTransport._flush() (transport.py): a non-blocking
         full-drain loop via get_nowait()/queue.Empty, so a single call drains
         everything queued so far in one pass without blocking the FSM loop.
 
-        BUG-3387: the executor-owned envelope keys (event/ts/run_id/loop) and
-        the sub-loop depth tag are stripped from the body before it is spread
-        into ``self._emit(...)``, so an inbound POST can never spoof another
-        event name or masquerade as a parent-level event. The raw item is
-        still recorded in ``inbound_events`` unchanged.
+        FEAT-3384: an item is classified as a HITL verdict on the **raw** item
+        (``event.get("event") == HUMAN_RESPONSE_EVENT and "alert_id" in event``)
+        before the BUG-3387 strip below runs — the strip removes ``event``, so
+        classifying afterward could never match. A verdict is re-emitted under
+        its own name with a whitelisted payload (``alert_id``, ``verdict``,
+        ``edited_text``, ``reason`` — never the raw body spread over the
+        envelope) so ``EventBusAdapter``'s observer can resolve it.
+
+        BUG-3387: everything else is re-emitted as ``artifact_interaction``
+        with the executor-owned envelope keys (event/ts/run_id/loop) and the
+        sub-loop depth tag stripped from the body first, so an inbound POST
+        can never spoof another event name or masquerade as a parent-level
+        event. The raw item is always recorded in ``inbound_events`` unchanged.
+
+        No-op when self.inbound is None.
         """
         if self.inbound is None:
             return
@@ -582,6 +592,15 @@ class FSMExecutor:
                 event = self.inbound.get_nowait()
             except queue.Empty:
                 break
+            if event.get("event") == HUMAN_RESPONSE_EVENT and "alert_id" in event:
+                verdict_payload = {
+                    k: event[k]
+                    for k in ("alert_id", "verdict", "edited_text", "reason")
+                    if k in event
+                }
+                self._emit(HUMAN_RESPONSE_EVENT, verdict_payload)
+                self.inbound_events.append(event)
+                continue
             stripped_keys = [k for k in _INBOUND_EXECUTOR_OWNED_KEYS if k in event]
             if stripped_keys:
                 logger.warning(
@@ -1218,6 +1237,15 @@ class FSMExecutor:
             loop_yaml_path=loop_path,
         )
         child_executor._depth = depth  # propagate depth for further nesting
+        # FEAT-3384: share the parent's contributed registries by reference
+        # (same dict/list objects, not copies) so a human_approval state
+        # inside a loop: sub-loop resolves the parent's eventbus adapter, and
+        # the single adapter/observer instance stays one instance. A child's
+        # lazily seeded "terminal" adapter also becomes visible to the parent.
+        child_executor._contributed_adapters = self._contributed_adapters
+        child_executor._contributed_actions = self._contributed_actions
+        child_executor._contributed_evaluators = self._contributed_evaluators
+        child_executor._interceptors = self._interceptors
 
         # Clamp child timeout to parent's remaining wall-clock budget so a slow sub-loop
         # can't silently consume the parent's deadline with no recourse for the parent FSM.
@@ -2795,6 +2823,14 @@ class FSMExecutor:
         monotonic_deadline = captured_context["deadline"]
         deadline_ts = (datetime.now(UTC) + timedelta(seconds=effective_timeout)).isoformat()
         alert_id = adapter.send_alert(self.fsm.name, state_name, prompt, captured_context)
+        if adapter.supports_async() and self.inbound is None:
+            logger.warning(
+                "human_approval state '%s': channel %r supports async responses but "
+                "this run has no inbound path (not started under --serve) — only "
+                "in-process emitters can answer this alert",
+                state_name,
+                hitl_cfg.channel,
+            )
         self._emit(
             HUMAN_APPROVAL_REQUESTED_EVENT,
             {

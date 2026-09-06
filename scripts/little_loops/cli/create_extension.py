@@ -83,7 +83,7 @@ def _render_extension(name: str, class_name: str) -> str:
         "    Implement on_event to handle little-loops lifecycle events.",
         "    Optional mixin Protocols (InterceptorExtension, ActionProviderExtension,",
         "    EvaluatorProviderExtension, LLHookIntentExtension,",
-        "    CommunicationAdapterExtension) are opt-in — implement",
+        "    CommunicationAdapterExtension, EventBusBoundExtension) are opt-in — implement",
         "    their methods to activate.",
         '    """',
         "",

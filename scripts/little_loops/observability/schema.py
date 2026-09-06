@@ -249,6 +249,18 @@ class HumanApprovalResolvedVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class HumanResponseVariant(DESVariant):
+    """FSMExecutor._drain_inbound() -> self._emit('human_response') (FEAT-3384):
+    an inbound item declaring event='human_response' with an alert_id, re-emitted
+    with a whitelisted payload so EventBusAdapter's bus observer can resolve the
+    pending alert it names. Inbound-origin, like artifact_interaction."""
+
+    type: Literal["human_response"] = "human_response"
+    alert_id: str = ""
+    verdict: str = ""
+
+
+@dataclass(frozen=True)
 class PrePatchCheckFlaggedVariant(DESVariant):
     """FSMExecutor._emit('prepatch_check_flagged') — the pre-patch check returned a
     ``flagged`` verdict under a ``warn`` policy, so the guarded window recorded the
@@ -813,6 +825,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     PromptSizeWarnVariant,
     HumanApprovalRequestedVariant,
     HumanApprovalResolvedVariant,
+    HumanResponseVariant,
     PrePatchCheckFlaggedVariant,
     CostCeilingExceededVariant,
     CostCeilingWarnVariant,

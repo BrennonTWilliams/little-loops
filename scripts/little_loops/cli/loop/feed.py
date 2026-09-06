@@ -984,6 +984,13 @@ class StateFeedRenderer:
                 msg = f"human_approval_resolved: state '{state}' verdict='{verdict}' -> {route}"
                 print(f"{indent}       {colorize(msg, '36')}", flush=True)
 
+        elif event_type == "human_response":
+            if not self.quiet:
+                alert_id = event.get("alert_id", "")
+                verdict = event.get("verdict", "")
+                msg = f"human_response: alert_id='{alert_id}' verdict='{verdict}'"
+                print(f"{indent}       {colorize(msg, '36')}", flush=True)
+
 
 # ---------------------------------------------------------------------------
 # History-event formatting (moved down from cli/loop/info.py — ENH-2776 cycle
@@ -1154,6 +1161,10 @@ def _format_history_event(
         detail = (
             f"state={event.get('state', '')}  verdict={verdict}  route={colorize(str(route), '34')}"
         )
+
+    elif event_type == "human_response":
+        etype_color = "36"
+        detail = f"alert_id={event.get('alert_id', '')}  verdict={event.get('verdict', '')}"
 
     else:
         details = {k: v for k, v in event.items() if k not in ("event", "ts")}

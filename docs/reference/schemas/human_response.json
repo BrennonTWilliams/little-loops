@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-human_response.json",
+  "title": "Human Response",
+  "description": "FEAT-3384: emitted by FSMExecutor._drain_inbound() when an inbound item declares event='human_response' with an alert_id \u2014 re-emitted under its own name with a whitelisted payload so EventBusAdapter's bus observer can resolve the pending alert. Inbound-origin, like artifact_interaction.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "alert_id",
+    "verdict"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every parallel.* emitter (ENH-3346); required on all parallel.* events, optional elsewhere."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
+    "producer_pid": {
+      "type": "integer",
+      "description": "FEAT-3323: the emitting process's own os.getpid(), stamped onto a copy of every event by UnixSocketTransport.send() (never mutating the caller's dict). Absent \u2014 never null \u2014 on a bridge-built state_change seed frame whose LoopState recorded no pid; when present on a seed frame it equals that frame's own pid key. Optional everywhere else."
+    },
+    "alert_id": {
+      "type": "string",
+      "description": "Alert identifier the verdict answers"
+    },
+    "verdict": {
+      "type": "string",
+      "description": "approve | reject | edit"
+    },
+    "edited_text": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Replacement text for an 'edit' verdict; null otherwise"
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Reject reason; null otherwise"
+    }
+  },
+  "additionalProperties": true
+}

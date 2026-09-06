@@ -586,6 +586,24 @@ FEAT-1794: emitted after `FSMExecutor._execute_human_approval_state` routes a `h
 
 ---
 
+### `human_response`
+
+FEAT-3384: emitted by `FSMExecutor._drain_inbound()` when an inbound item declares `event: "human_response"` with an `alert_id` — an out-of-process verdict posted via `POST /{token}/interaction` under `ll-loop run --serve` (or an in-process emitter calling `EventBus.emit()` directly). Re-emitted under its own name with a whitelisted payload (never the raw POST body spread over the envelope), so `EventBusAdapter`'s bus observer can resolve the pending alert it names. Inbound-origin, like `artifact_interaction`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `alert_id` | `str` | Alert identifier the verdict answers |
+| `verdict` | `str` | `approve` \| `reject` \| `edit` |
+| `edited_text` | `str \| null` | Replacement text for an `edit` verdict; `null` otherwise |
+| `reason` | `str \| null` | Reject reason; `null` otherwise |
+
+**Example:**
+```json
+{"event": "human_response", "ts": "...", "run_id": "2026-09-05T120000-ll-auto", "loop": "ll-auto", "alert_id": "3f9c...", "verdict": "approve", "edited_text": null, "reason": null}
+```
+
+---
+
 ### `learning_target_proven`
 
 Emitted when a target's learning-tests registry record is found with `status='proven'`. The state continues to the next target (or to `on_yes` when all targets are proven).
@@ -1830,6 +1848,7 @@ docs/reference/schemas/
 ├── handoff_spawned.json
 ├── human_approval_requested.json
 ├── human_approval_resolved.json
+├── human_response.json
 ├── infra_retry.json
 ├── infra_retry_exhausted.json
 ├── issue_closed.json
@@ -2006,6 +2025,7 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `cost_ceiling_exceeded` | FSM | `fsm/executor.py` |
 | `human_approval_requested` | FSM | `fsm/executor.py` (`_execute_human_approval_state`, FEAT-1794) |
 | `human_approval_resolved` | FSM | `fsm/executor.py` (`_execute_human_approval_state`, FEAT-1794) |
+| `human_response` | FSM | `fsm/executor.py` (`_drain_inbound`, FEAT-3384) |
 | `loop_resume` | FSM Persistence | `fsm/persistence.py` |
 | `state.issue_completed` | StateManager | `state.py` |
 | `state.issue_failed` | StateManager | `state.py` |

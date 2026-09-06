@@ -118,18 +118,22 @@ class TestExtensionLoader:
         assert extensions == []
 
     def test_load_all_combines_sources(self) -> None:
-        """load_all combines config and entry point extensions."""
+        """load_all combines the built-in extension, config, and entry points (FEAT-3384)."""
         with patch("little_loops.extension.entry_points", return_value=[]):
             extensions = ExtensionLoader.load_all(
                 config_paths=["little_loops.extension:NoopLoggerExtension"]
             )
-        assert len(extensions) == 1
+        assert len(extensions) == 2
+        assert any(isinstance(e, NoopLoggerExtension) for e in extensions)
 
     def test_load_all_no_config(self) -> None:
-        """load_all with no config only uses entry points."""
+        """load_all with no config still returns the built-in extension (FEAT-3384)."""
+        from little_loops.fsm.adapters.eventbus_adapter import EventBusAdapterExtension
+
         with patch("little_loops.extension.entry_points", return_value=[]):
             extensions = ExtensionLoader.load_all()
-        assert extensions == []
+        assert len(extensions) == 1
+        assert isinstance(extensions[0], EventBusAdapterExtension)
 
 
 class TestWireExtensions:
@@ -159,12 +163,14 @@ class TestWireExtensions:
         assert received[0].payload == {"state": "build"}
 
     def test_wire_extensions_no_extensions(self) -> None:
-        """wire_extensions with no config and no entry points returns empty list."""
+        """wire_extensions with no config and no entry points still wires the built-in
+        extension (FEAT-3384), which defines no on_event so the bus otherwise behaves
+        as if nothing were registered."""
         bus = EventBus()
         with patch("little_loops.extension.entry_points", return_value=[]):
             extensions = wire_extensions(bus)
 
-        assert extensions == []
+        assert len(extensions) == 1
         # Bus should still work normally
         received: list[dict[str, Any]] = []
         bus.register(lambda e: received.append(e))
@@ -172,12 +178,51 @@ class TestWireExtensions:
         assert len(received) == 1
 
     def test_wire_extensions_failed_load_doesnt_crash(self) -> None:
-        """wire_extensions handles failed extension loads gracefully."""
+        """wire_extensions handles failed extension loads gracefully, still wiring the
+        built-in extension (FEAT-3384)."""
         bus = EventBus()
         with patch("little_loops.extension.entry_points", return_value=[]):
             extensions = wire_extensions(bus, config_paths=["nonexistent.module:FakeExtension"])
 
-        assert extensions == []
+        assert len(extensions) == 1
+
+    def test_wire_extensions_calls_bind_event_bus_before_provided_adapters(self) -> None:
+        """bind_event_bus() receives the same bus instance, before provided_adapters() runs."""
+        from little_loops.fsm.communication_adapter import CommunicationAdapter
+
+        calls: list[str] = []
+
+        class BoundExt:
+            def bind_event_bus(self, bus: EventBus) -> None:
+                self.bus = bus
+                calls.append("bind")
+
+            def provided_adapters(self) -> dict[str, CommunicationAdapter]:
+                calls.append("provided")
+                assert hasattr(self, "bus")
+                return {}
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[BoundExt()]):
+            extensions = wire_extensions(bus, executor=None)
+
+        assert len(extensions) == 1
+        assert extensions[0].bus is bus
+        # provided_adapters() only runs when an executor is passed; bind still ran.
+        assert calls == ["bind"]
+
+    def test_wire_extensions_extension_without_bind_event_bus_unaffected(self) -> None:
+        """An extension with no bind_event_bus is wired normally, no error raised."""
+
+        class PlainExt:
+            def on_event(self, event) -> None:
+                pass
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[PlainExt()]):
+            extensions = wire_extensions(bus)
+
+        assert len(extensions) == 1
 
     def test_wire_extensions_preserves_original_event(self) -> None:
         """wire_extensions wrapper uses from_raw_event to avoid mutating the shared dict."""

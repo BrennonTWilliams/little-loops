@@ -123,6 +123,29 @@ class CommunicationAdapterExtension(Protocol):
         ...
 
 
+class EventBusBoundExtension(Protocol):
+    """Protocol for extensions that need the live EventBus at wire time.
+
+    Detected via hasattr() in wire_extensions() — no @runtime_checkable needed.
+    Called once per wire_extensions() invocation, before the provided_*
+    passes, so e.g. a CommunicationAdapterExtension's provided_adapters() can
+    rely on the bus already being bound (FEAT-3384).
+    """
+
+    def bind_event_bus(self, bus: EventBus) -> None:
+        """Receive the live EventBus this wire_extensions() call is using."""
+        ...
+
+
+# Built-in extensions always loaded by ExtensionLoader.load_all(), in
+# "module:Class" form so from_config() does the (lazily-imported) loading —
+# this avoids importing little_loops.fsm.adapters at extension.py's own
+# module-import time (FEAT-3384, Second Review #8).
+BUILTIN_EXTENSIONS: tuple[str, ...] = (
+    "little_loops.fsm.adapters.eventbus_adapter:EventBusAdapterExtension",
+)
+
+
 class NoopLoggerExtension:
     """Reference extension that logs events to a JSONL file.
 
@@ -195,7 +218,8 @@ class ExtensionLoader:
     def load_all(config_paths: list[str] | None = None) -> list[LLExtension]:
         """Load extensions from all discovery sources.
 
-        Combines extensions from config paths and entry points.
+        Combines built-in extensions (BUILTIN_EXTENSIONS), config paths, and
+        entry points — in that order.
 
         Args:
             config_paths: Optional list of "module:Class" strings from config
@@ -203,7 +227,7 @@ class ExtensionLoader:
         Returns:
             Combined list of all loaded extensions
         """
-        extensions: list[Any] = []
+        extensions: list[Any] = ExtensionLoader.from_config(list(BUILTIN_EXTENSIONS))
         if config_paths:
             extensions.extend(ExtensionLoader.from_config(config_paths))
         extensions.extend(ExtensionLoader.from_entry_points())
@@ -216,6 +240,11 @@ def wire_extensions(
     executor: FSMExecutor | PersistentExecutor | None = None,
 ) -> list[LLExtension]:
     """Load extensions and register them on an EventBus and optional FSMExecutor.
+
+    Before anything else, any extension implementing ``bind_event_bus()``
+    (``EventBusBoundExtension``) receives the live ``bus`` — so its later
+    ``provided_adapters()``/etc. can depend on the bus already being bound
+    (FEAT-3384).
 
     Each extension's ``on_event`` callback is wrapped to convert the raw
     ``dict[str, Any]`` dispatched by ``EventBus.emit()`` into an ``LLEvent``
@@ -236,6 +265,10 @@ def wire_extensions(
     """
     extensions = ExtensionLoader.load_all(config_paths)
     extensions = sorted(extensions, key=lambda e: getattr(e, "priority", 0))
+
+    for ext in extensions:
+        if hasattr(ext, "bind_event_bus"):
+            ext.bind_event_bus(bus)
 
     def _make_callback(e: LLExtension) -> EventCallback:
         def _cb(event: dict[str, Any]) -> None:
