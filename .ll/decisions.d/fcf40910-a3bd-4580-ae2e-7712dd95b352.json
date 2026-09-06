@@ -1,0 +1,11 @@
+{
+  "id": "22d859e9-22da-4ea1-99ce-c0e11456f1e1",
+  "type": "decision",
+  "timestamp": "2026-09-06T01:54:41Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-session backfill / get_project_folder / host_layout_for only cover claude-code, codex, opencode, pi, kimi-code, qwen; gemini and omp are fully wired orchestration hosts in host_runner.py but have no transcript-backfill path into history.db",
+  "rule": "Captured: history.db backfill has no host coverage for gemini and omp (oh-my-pi)",
+  "scope": "issue",
+  "issue": "ENH-3393"
+}
