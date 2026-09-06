@@ -128,6 +128,17 @@ host branch. Verify against a real `gemini`/`omp` install before writing fixture
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
+
+- **Host dispatch is one `elif` branch + one private helper per host** — `get_project_folder()` (`scripts/little_loops/user_messages.py:399-411`) is a flat `if`/`elif` chain; the docstring (`:385-386`) states this explicitly: "Future hosts... add a new branch here rather than a new code path elsewhere." Every Claude-shaped helper (`_get_codex_project_folder`, `_get_opencode_project_folder`, `_get_pi_project_folder`, lines 450-465) is a one-liner building `Path.home() / "<host-dir>" / "projects" / encoded_path`.
+- **Contested convention — two host shapes exist, and this issue's own Proposed Solution assumes a decision hasn't been made yet**: (a) flat-dict, no-normalizer hosts (claude-code/codex/opencode/pi) get one `projects_root` dict entry in `host_layout_for()` (`session_store/writers.py:2237-2242`) with no `sidecar_suffix`/`normalize`; (b) qwen instead gets a dedicated `if host == "qwen"` special case (`writers.py:2206-2236`) plus a whole normalizer module (`session_store/qwen.py`) and committed real-capture fixtures, because its project root holds both `chats/` and `subagents/` and needs a `.meta.json` sidecar. Which shape gemini/omp need is unresolved until the on-disk layout investigation (Implementation Steps step 1) — do not assume the flat-dict shape without checking.
+- **The descriptor type this issue's Proposed Solution names does not exist**: Proposed Solution says to extend "whatever descriptor type ENH-3165 lands, since it explicitly designed `SubagentLayout`/`host_layout_for`..." — there is no `SubagentLayout` type in `scripts/little_loops/session_store/`. The actual (single, already host-parameterized) type is `HostLayout` (`writers.py:2145-2190`), whose docstring (`:2150-2156`) confirms it was "widened from ENH-3165's subagent-only descriptor by ENH-3166... One record per host — a second host table would drift from the first." New hosts plug into this existing type; no new type is needed.
+- **`get_project_folder` coverage and `host_layout_for` `projects_root` coverage are tracked independently**: `kimi-code` has a `get_project_folder` branch (index-file-resolved, not path-dash-encoding) but no `projects_root` entry in `host_layout_for()` — it falls through to the generic default, confirmed by `test_kimi_code_has_no_static_projects_root` (`scripts/tests/test_enh_3166_qwen_normalizer.py:246-247`). A host can have one without the other; gemini/omp will need both explicitly checked, not assumed to travel together.
+- **Test convention for a new Claude-shaped host**: a three-line positive-resolve test per host (`scripts/tests/test_user_messages.py:146-159` for codex, `:161-174` opencode, `:176-189` pi) — build `fake_home / ".<host>" / "projects" / <encoded>`, monkeypatch `Path.home`, assert `get_project_folder(host=...)` resolves it. A companion "returns None when no project dir exists" test exists only for qwen (`:293-303`) and kimi-code (`:241-252`) — codex/opencode/pi have no such regression test today. ENH-3393's own Implementation Steps step 4 asks for "a no-host-installed regression case" for gemini/omp, which would make them the first flat-dict-shaped hosts to have one.
+- **Fixture convention diverges by host shape**: qwen is the only backfill host with committed real-capture fixtures (`scripts/tests/fixtures/qwen/session.jsonl`, `noise.jsonl`, consumed by `test_enh_3166_qwen_normalizer.py:48-56`; module docstring: "sanitized captures from real qwen 0.21.6 output"). codex/opencode/pi (ENH-1945-era) tests instead build directories/files synthetically inline via `tmp_path`/`monkeypatch`, with no committed fixture files. Which convention gemini/omp should follow depends on which host shape (flat-dict vs sidecar-having) their real layout turns out to need.
+
 ## Implementation Steps
 
 1. Investigate the real on-disk transcript layout for `gemini` and `omp` (do not
@@ -184,5 +195,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-06T02:05:42 - `8aa8caa8-0bcc-4ea2-ac50-00eea4c9d01b.jsonl`
 - `/ll:format-issue` - 2026-09-06T01:59:12 - `c0275b19-45a2-4dc2-bddf-421eab5bb2a9.jsonl`
 - `/ll:capture-issue` - 2026-09-06T01:54:41 - `259dddc7-3ed5-489c-a2c5-bdbcc4004163.jsonl`
