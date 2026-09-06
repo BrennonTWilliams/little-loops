@@ -1022,21 +1022,31 @@ def _read_sse_headers(sock: socket.socket, timeout: float = 5.0) -> bytes:
 def _read_sse_frame(
     sock: socket.socket, leftover: bytes, timeout: float = 5.0
 ) -> tuple[str, bytes]:
-    """Read one blank-line-terminated SSE frame; return (joined `data:` text, new leftover)."""
+    """Read one blank-line-terminated SSE frame; return (joined `data:` text, new leftover).
+
+    Comment-only frames (e.g. the bridge's `: ping\n\n` keepalive, sent every
+    `keepalive_s`) carry no `data:` line — skip them and keep reading instead
+    of handing the caller an empty string that fails `json.loads` on the
+    event it actually wants.
+    """
     sock.settimeout(timeout)
     buf = leftover
-    while b"\n\n" not in buf:
-        chunk = sock.recv(4096)
-        if not chunk:
-            break
-        buf += chunk
-    frame, _, rest = buf.partition(b"\n\n")
-    lines = [
-        line[len("data: ") :]
-        for line in frame.decode("utf-8").split("\n")
-        if line.startswith("data: ")
-    ]
-    return "\n".join(lines), rest
+    eof = False
+    while True:
+        while b"\n\n" not in buf:
+            chunk = sock.recv(4096)
+            if not chunk:
+                eof = True
+                break
+            buf += chunk
+        frame, _, buf = buf.partition(b"\n\n")
+        lines = [
+            line[len("data: ") :]
+            for line in frame.decode("utf-8").split("\n")
+            if line.startswith("data: ")
+        ]
+        if lines or eof:
+            return "\n".join(lines), buf
 
 
 class TestLocalBridgeTransport:
