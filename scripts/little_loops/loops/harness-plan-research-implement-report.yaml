@@ -7,7 +7,9 @@
 #   plan -> research -> implement -> check_stall -> check_concrete -> check_semantic -> check_invariants -> report -> done
 #
 # Optional gates (between plan and research) are shown as commented-out blocks:
-#   review_plan   -- HITL approval gate (activate once FEAT-1794 lands)
+#   review_plan   -- HITL approval gate (action_type: human_approval, FEAT-1794);
+#                    left commented to keep this unattended loop non-blocking —
+#                    see human-approval-example.yaml for a live demo
 #   check_substrate -- feasibility gate for non-standard execution environments
 #
 # Usage:    ll-loop run harness-plan-research-implement-report
@@ -44,18 +46,22 @@ states:
     capture: plan
     next: research
 
-  # OPTIONAL: review_plan (HITL gate -- requires FEAT-1794 action_type: human_approval)
+  # OPTIONAL: review_plan (HITL gate -- action_type: human_approval, FEAT-1794)
   # Uncomment to add a human approval gate after planning and before research.
-  # Until FEAT-1794 lands, use the workaround pattern from loop-router.yaml:
-  #   a prompt state with an output_contains evaluator routing on "APPROVE".
+  # Left commented here deliberately: this is a shipped, unattended-by-design
+  # loop, and an active human_approval state would block it for up to 30
+  # minutes per run (Third Review #23). See the `human-approval-example.yaml`
+  # loop for a live, runnable demo of this action_type.
   #
   # review_plan:
   #   action_type: human_approval
-  #   prompt: >
+  #   action: >
   #     Review the plan: ${captured.plan.output}
   #     Reply APPROVE to proceed to research, or REVISE to re-plan.
+  #   timeout: 1800
   #   on_yes: research
   #   on_no: plan
+  #   on_timeout: plan
 
   # OPTIONAL: check_substrate (feasibility gate for non-standard execution environments)
   # Uncomment when targeting Claude Code, Codex, restricted shells, or other environments

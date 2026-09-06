@@ -966,6 +966,24 @@ class StateFeedRenderer:
                 )
                 print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
 
+        # FEAT-1794: without these, --quiet runs and log files give no
+        # indication the loop is blocked waiting on a human -- the adapter's
+        # own print() (e.g. TerminalAdapter) bypasses the feed entirely.
+        elif event_type == "human_approval_requested":
+            if not self.quiet:
+                state = event.get("state", "")
+                timeout = event.get("timeout", "")
+                msg = f"human_approval_requested: state '{state}' waiting up to {timeout}s for an operator verdict"
+                print(f"{indent}       {colorize(msg, '36')}", flush=True)
+
+        elif event_type == "human_approval_resolved":
+            if not self.quiet:
+                state = event.get("state", "")
+                verdict = event.get("verdict", "")
+                route = event.get("route", "")
+                msg = f"human_approval_resolved: state '{state}' verdict='{verdict}' -> {route}"
+                print(f"{indent}       {colorize(msg, '36')}", flush=True)
+
 
 # ---------------------------------------------------------------------------
 # History-event formatting (moved down from cli/loop/info.py — ENH-2776 cycle
@@ -1124,6 +1142,18 @@ def _format_history_event(
     elif event_type == "handoff_detected":
         etype_color = "33"
         detail = f"state={event.get('state', '')}  iter={event.get('iteration', '')}"
+
+    elif event_type == "human_approval_requested":
+        etype_color = "36"
+        detail = f"state={event.get('state', '')}  timeout={event.get('timeout', '')}s"
+
+    elif event_type == "human_approval_resolved":
+        etype_color = "36"
+        verdict = event.get("verdict", "")
+        route = event.get("route", "")
+        detail = (
+            f"state={event.get('state', '')}  verdict={verdict}  route={colorize(str(route), '34')}"
+        )
 
     else:
         details = {k: v for k, v in event.items() if k not in ("event", "ts")}

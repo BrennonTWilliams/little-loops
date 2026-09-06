@@ -2161,3 +2161,91 @@ class TestAbstentionRouteValidation:
         assert len(abstention_warnings) >= 1, (
             f"ENH-3222 WARNING not found in validate_fsm output: {all_errors}"
         )
+
+
+class TestHumanApprovalValidation:
+    """FEAT-1794: action_type=human_approval structural validation."""
+
+    def test_missing_action_is_error(self) -> None:
+        state = StateConfig(action_type="human_approval", timeout=1800, on_yes="a", on_no="b")
+        errors = _validate_state_action("check_human", state)
+        error_msgs = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("action" in e.message for e in error_msgs)
+
+    def test_missing_routing_shape_is_error(self) -> None:
+        """No on_yes/on_no AND no route: table -> ERROR."""
+        state = StateConfig(action="Approve?", action_type="human_approval", timeout=1800)
+        errors = _validate_state_action("check_human", state)
+        error_msgs = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("on_yes" in e.message or "route" in e.message for e in error_msgs)
+
+    def test_on_yes_and_on_no_shorthand_satisfies_routing_shape(self) -> None:
+        state = StateConfig(
+            action="Approve?", action_type="human_approval", timeout=1800, on_yes="a", on_no="b"
+        )
+        errors = _validate_state_action("check_human", state)
+        assert errors == []
+
+    def test_route_table_with_yes_no_satisfies_routing_shape(self) -> None:
+        from little_loops.fsm.schema import RouteConfig
+
+        state = StateConfig(
+            action="Approve?",
+            action_type="human_approval",
+            timeout=1800,
+            route=RouteConfig(routes={"yes": "a", "no": "b"}),
+        )
+        errors = _validate_state_action("check_human", state)
+        assert errors == []
+
+    def test_route_table_missing_no_key_is_error(self) -> None:
+        from little_loops.fsm.schema import RouteConfig
+
+        state = StateConfig(
+            action="Approve?",
+            action_type="human_approval",
+            timeout=1800,
+            route=RouteConfig(routes={"yes": "a"}),
+        )
+        errors = _validate_state_action("check_human", state)
+        error_msgs = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("on_yes" in e.message or "route" in e.message for e in error_msgs)
+
+    def test_missing_timeout_is_warning_not_error(self) -> None:
+        """Escape hatch: no timeout: is a WARNING (falls back to hitl.default_timeout),
+        never an ERROR."""
+        state = StateConfig(action="Approve?", action_type="human_approval", on_yes="a", on_no="b")
+        errors = _validate_state_action("check_human", state)
+        assert not any(e.severity == ValidationSeverity.ERROR for e in errors)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert any("timeout" in w.message and "hitl.default_timeout" in w.message for w in warnings)
+
+    def test_explicit_timeout_suppresses_warning(self) -> None:
+        state = StateConfig(
+            action="Approve?", action_type="human_approval", timeout=600, on_yes="a", on_no="b"
+        )
+        errors = _validate_state_action("check_human", state)
+        assert errors == []
+
+    def test_loop_level_default_timeout_does_not_suppress_warning(self) -> None:
+        """Second Review #13: the loop-level default_timeout is the action-subprocess
+        timeout, not a human wait bound — it must not silence the warning."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check_human",
+            default_timeout=600,
+            states={
+                "check_human": StateConfig(
+                    action="Approve?", action_type="human_approval", on_yes="a", on_no="b"
+                ),
+                "a": make_state(terminal=True),
+                "b": make_state(terminal=True),
+            },
+        )
+        all_errors = validate_fsm(fsm)
+        timeout_warnings = [
+            e
+            for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "hitl.default_timeout" in e.message
+        ]
+        assert len(timeout_warnings) == 1

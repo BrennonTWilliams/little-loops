@@ -152,6 +152,47 @@ class TestMetaLoopValidation:
         mr1_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
         assert mr1_errors == [], f"Unexpected MR-1 ERROR: {mr1_errors}"
 
+    def test_mr1_passes_when_human_approval_state_present(self) -> None:
+        """FEAT-1794: a human_approval state IS a non-LLM evaluator for MR-1
+        purposes -- the verdict comes from an operator, not the LLM under test.
+        It has no evaluate: block, so this is checked directly against
+        action_type rather than via NON_LLM_EVALUATOR_TYPES."""
+        fsm = self._meta_fsm(
+            states={
+                "check": make_state(
+                    action="Diff looks risky, proceed?",
+                    action_type="human_approval",
+                    timeout=1800,
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr1_errors = [
+            e for e in errors if e.severity == ValidationSeverity.ERROR and "non-LLM" in e.message
+        ]
+        assert mr1_errors == [], f"Unexpected MR-1 ERROR: {errors}"
+
+    def test_mr1_still_fires_without_human_approval_or_non_llm_evaluator(self) -> None:
+        """Sanity check: a plain llm_structured-only meta-loop still trips MR-1
+        (human_approval isn't a blanket suppression of the rule)."""
+        fsm = self._meta_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr1_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(mr1_errors) == 1
+
     def test_mr1_suppressed_by_meta_self_eval_ok(self) -> None:
         """meta_self_eval_ok: true suppresses MR-1."""
         fsm = self._meta_fsm(

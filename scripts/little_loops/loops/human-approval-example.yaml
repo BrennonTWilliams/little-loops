@@ -1,0 +1,65 @@
+# EXAMPLE: Human-in-the-loop approval gate (action_type: human_approval, FEAT-1794).
+# Pauses the FSM run to ask an operator for an approve/reject/edit verdict on
+# generated content, with a bounded timeout so unattended runs never deadlock.
+#
+# Pipeline:
+#   prepare -> check_human -> {approved, rejected, revise -> approved}
+#
+# Usage:              ll-loop run human-approval-example
+# Validate:            ll-loop test human-approval-example
+# Out-of-band verdict: ll-loop run human-approval-example --serve
+#                      (pair with hitl.channel: eventbus in .ll/ll-config.json)
+
+name: human-approval-example
+visibility: example
+category: harness
+description: |
+  EXAMPLE: Human-in-the-loop approval gate. Pauses the run to ask an operator
+  whether to approve, reject, or edit a piece of generated content, blocking
+  via the configured hitl.channel adapter (terminal by default) with a
+  bounded timeout (falls back to on_no) so unattended runs never deadlock.
+  Adapt by replacing the `prepare` action with whatever produces the content
+  you want a human to review.
+initial: prepare
+scope:
+  - "."
+max_steps: 5
+timeout: 3600
+
+states:
+
+  prepare:
+    # EXAMPLE: Replace with whatever produces the content a human should review.
+    action: "echo 'Proposed change: bump the retry ladder from 3 to 5 attempts.'"
+    action_type: shell
+    capture: proposal
+    next: check_human
+
+  check_human:
+    # EXAMPLE: action_type: human_approval blocks for an operator verdict via
+    # the configured hitl.channel adapter (terminal by default; eventbus for
+    # out-of-band relay via `ll-loop run --serve`, FEAT-3384). The prompt
+    # text is the `action:` field, the same slot action_type: prompt uses.
+    action: >
+      ${captured.proposal.output}
+      Approve to continue, reject to abort, or edit to supply a replacement.
+    action_type: human_approval
+    timeout: 1800                 # 30 min; falls back to hitl.default_timeout if omitted
+    on_yes: approved              # operator approved
+    on_no: rejected               # operator rejected
+    on_edit: revise               # operator supplied replacement text
+    on_timeout: rejected          # unattended-safe default: no answer -> abort
+
+  revise:
+    # EXAMPLE: the operator's replacement text is available as
+    # ${captured.check_human.edit} for this (or any later) state to consume.
+    action: "echo 'Using operator-supplied replacement: ${captured.check_human.edit}'"
+    action_type: shell
+    next: approved
+
+  approved:
+    terminal: true
+
+  rejected:
+    terminal: true
+    failure: true

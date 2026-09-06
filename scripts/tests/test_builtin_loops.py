@@ -298,6 +298,7 @@ class TestBuiltinLoopFiles:
             "rn-stepwise",
             "stepwise-task",
             "fleet-loop-improve",
+            "human-approval-example",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

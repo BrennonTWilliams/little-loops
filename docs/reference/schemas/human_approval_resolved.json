@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-human_approval_resolved.json",
+  "title": "Human Approval Resolved",
+  "description": "FEAT-1794: emitted by FSMExecutor._execute_human_approval_state after routing a human_approval state's verdict (approve/reject/edit/timeout/shutdown).",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "verdict",
+    "elapsed_seconds"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Stamped by FSMExecutor._emit()-routed events (ENH-3345) and by every parallel.* emitter (ENH-3346); required on all parallel.* events, optional elsewhere."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
+    "producer_pid": {
+      "type": "integer",
+      "description": "FEAT-3323: the emitting process's own os.getpid(), stamped onto a copy of every event by UnixSocketTransport.send() (never mutating the caller's dict). Absent \u2014 never null \u2014 on a bridge-built state_change seed frame whose LoopState recorded no pid; when present on a seed frame it equals that frame's own pid key. Optional everywhere else."
+    },
+    "state": {
+      "type": "string",
+      "description": "Name of the human_approval state"
+    },
+    "alert_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Adapter-assigned alert identifier; null on the headless short-circuit"
+    },
+    "verdict": {
+      "type": "string",
+      "description": "approve | reject | edit | timeout | shutdown"
+    },
+    "elapsed_seconds": {
+      "type": "number",
+      "description": "Wall-clock seconds spent waiting for a verdict"
+    },
+    "route": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Resolved next state, or null if no route matched"
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Reject reason from AdapterResponse.reason; 'headless' on the no-TTY short-circuit; null otherwise"
+    }
+  },
+  "additionalProperties": true
+}

@@ -506,6 +506,60 @@ class TestCaptureReachabilityValidation:
         errors = _validate_capture_reachability(fsm)
         assert errors == [], f"Qualified sub-loop-state reference should not be flagged: {errors}"
 
+    def test_human_approval_state_reference_no_warning(self) -> None:
+        """FEAT-1794: ${captured.<human_approval_state>.edit} is the documented
+        nested form -- the executor writes self.captured[state_name] = {verdict,
+        edit, reason, output} unconditionally, with no `capture:` field involved.
+        Must not be flagged as a missing-capture ERROR."""
+        fsm = FSMLoop(
+            name="test-human-approval-qualified-ref",
+            initial="check_human",
+            states={
+                "check_human": make_state(
+                    action="Approve?",
+                    action_type="human_approval",
+                    timeout=1800,
+                    on_yes="done",
+                    on_no="done",
+                    extra_routes={"edit": "revise"},
+                ),
+                "revise": make_state(
+                    action="echo ${captured.check_human.edit}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"human_approval state reference should not be flagged: {errors}"
+
+    def test_human_approval_state_reference_bypass_warns(self) -> None:
+        """A ${captured.<human_approval_state>.*} reference on a path that
+        bypasses the human_approval state still gets the dominance WARNING."""
+        fsm = FSMLoop(
+            name="test-human-approval-bypass",
+            initial="start",
+            states={
+                "start": make_state(action="echo begin", on_yes="check_human", on_no="use_result"),
+                "check_human": make_state(
+                    action="Approve?",
+                    action_type="human_approval",
+                    timeout=1800,
+                    on_yes="use_result",
+                    on_no="use_result",
+                ),
+                "use_result": make_state(
+                    action="echo ${captured.check_human.verdict}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert len(warnings) == 1, f"Expected one bypass WARNING, got: {errors}"
+        assert "check_human" in warnings[0].message
+
     def test_sub_loop_delegating_state_own_capture_nested_field_is_error(self) -> None:
         """BUG-2812: `${captured.<own_capture_name>.<field>.output}` is invalid.
 

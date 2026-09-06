@@ -876,6 +876,50 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["seq", "pending", "active", "completed", "failed", "skipped", "run_id"],
     ),
+    "human_approval_requested": _schema(
+        "human_approval_requested",
+        "Human Approval Requested",
+        "FEAT-1794: emitted exactly once by FSMExecutor._execute_human_approval_state "
+        "after adapter.send_alert() returns. Adapters never emit this themselves.",
+        {
+            "state": _str("Name of the human_approval state"),
+            "alert_id": _str(
+                "Adapter-assigned alert identifier, passed to await_response/cancel_alert"
+            ),
+            "prompt": _str("Rendered (interpolated) prompt text sent to the operator"),
+            "timeout": _number(
+                "Effective wait budget in seconds (state.timeout, hitl.default_timeout, or the fsm.timeout clamp)"
+            ),
+            "deadline_ts": _str(
+                "Wall-clock ISO 8601 deadline; the monotonic deadline used internally is not meaningful out of process"
+            ),
+            "captured_context": {
+                "type": "object",
+                "description": "Extra context passed to the adapter, minus the internal monotonic 'deadline' key",
+            },
+        },
+        ["state", "alert_id", "prompt", "timeout", "deadline_ts"],
+    ),
+    "human_approval_resolved": _schema(
+        "human_approval_resolved",
+        "Human Approval Resolved",
+        "FEAT-1794: emitted by FSMExecutor._execute_human_approval_state after routing "
+        "a human_approval state's verdict (approve/reject/edit/timeout/shutdown).",
+        {
+            "state": _str("Name of the human_approval state"),
+            "alert_id": _nullable_str(
+                "Adapter-assigned alert identifier; null on the headless short-circuit"
+            ),
+            "verdict": _str("approve | reject | edit | timeout | shutdown"),
+            "elapsed_seconds": _number("Wall-clock seconds spent waiting for a verdict"),
+            "route": _nullable_str("Resolved next state, or null if no route matched"),
+            "reason": _nullable_str(
+                "Reject reason from AdapterResponse.reason; 'headless' on the no-TTY "
+                "short-circuit; null otherwise"
+            ),
+        },
+        ["state", "verdict", "elapsed_seconds"],
+    ),
 }
 
 

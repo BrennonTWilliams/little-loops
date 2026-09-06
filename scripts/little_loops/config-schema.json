@@ -1912,6 +1912,11 @@
           "type": "string",
           "default": "terminal",
           "description": "Registry key for the active CommunicationAdapter, resolved by FSMExecutor.resolve_communication_adapter() via the extension-contributed adapter registry. Falls back to 'terminal' when unset."
+        },
+        "default_timeout": {
+          "type": "integer",
+          "default": 1800,
+          "description": "FEAT-1794: fallback wait (seconds) for a human_approval state with no state-level timeout:. Distinct from the action-subprocess fsm.default_timeout."
         }
       },
       "additionalProperties": false

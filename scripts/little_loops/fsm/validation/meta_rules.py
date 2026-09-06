@@ -92,8 +92,14 @@ def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
         if state.evaluate is not None:
             evaluator_types.add(state.evaluate.type)
 
+    # FEAT-1794: a human_approval state IS a non-LLM evaluator (the verdict
+    # comes from an operator, not the LLM under test) but has no `evaluate:`
+    # block, so it can't be added to NON_LLM_EVALUATOR_TYPES (which is
+    # intersected against state.evaluate.type) -- checked directly instead.
+    has_human_approval = any(state.action_type == "human_approval" for state in fsm.states.values())
+
     # MR-1: must have at least one non-LLM evaluator
-    if not evaluator_types & NON_LLM_EVALUATOR_TYPES:
+    if not (evaluator_types & NON_LLM_EVALUATOR_TYPES) and not has_human_approval:
         errors.append(
             ValidationError(
                 message=(
@@ -101,7 +107,7 @@ def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
                     "LLM self-grades on harness updates are unreliable (SHOR Table 1: "
                     "33-55% accuracy). Pair every check_semantic state with at least one "
                     "of: exit_code, output_numeric, convergence, diff_stall, score_stall, "
-                    "action_stall, mcp_result. "
+                    "action_stall, mcp_result, or a human_approval state. "
                     "Note: llm_structured and comparator both use the LLM and do not satisfy MR-1. "
                     "To suppress with justification, set `meta_self_eval_ok: true` at the "
                     "loop top-level."

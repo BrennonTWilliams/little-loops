@@ -108,6 +108,9 @@ _LOOP_EVENT_TYPES = frozenset(
         "cycle_detected",
         "max_steps_summary",
         "max_iterations_reached_summary",
+        # FEAT-1794: persisted so `ll-logs` can show human_approval waits/verdicts.
+        "human_approval_requested",
+        "human_approval_resolved",
     }
 )
 

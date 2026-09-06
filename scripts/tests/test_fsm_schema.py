@@ -2309,6 +2309,107 @@ class TestMcpToolSchema:
         assert restored.min_pairs == 3
 
 
+class TestHumanApprovalSchema:
+    """Tests for action_type=human_approval in schema (FEAT-1794).
+
+    No new StateConfig fields are needed: the prompt lives in the existing
+    ``action`` field, and ``on_edit``/``on_timeout`` are picked up by the
+    existing ``extra_routes`` unrecognized-``on_*``-key mechanism.
+    """
+
+    def test_human_approval_action_type_is_valid(self) -> None:
+        """action_type='human_approval' is accepted by StateConfig."""
+        state = StateConfig(
+            action="Approve this change?",
+            action_type="human_approval",
+            timeout=1800,
+            on_yes="advance",
+            on_no="execute",
+        )
+        assert state.action_type == "human_approval"
+        assert state.action == "Approve this change?"
+
+    def test_on_edit_and_on_timeout_captured_in_extra_routes(self) -> None:
+        """on_edit/on_timeout are unrecognized on_* keys -> extra_routes (schema.py:896)."""
+        state = StateConfig.from_dict(
+            {
+                "action": "Approve?",
+                "action_type": "human_approval",
+                "timeout": 1800,
+                "on_yes": "advance",
+                "on_no": "execute",
+                "on_edit": "re_execute",
+                "on_timeout": "advance",
+            }
+        )
+        assert state.extra_routes == {"edit": "re_execute", "timeout": "advance"}
+
+    def test_round_trips_through_dict(self) -> None:
+        """to_dict()/from_dict() preserve action_type, timeout, and on_edit/on_timeout."""
+        state = StateConfig.from_dict(
+            {
+                "action": "Approve?",
+                "action_type": "human_approval",
+                "timeout": 900,
+                "on_yes": "advance",
+                "on_no": "execute",
+                "on_edit": "re_execute",
+                "on_timeout": "advance",
+            }
+        )
+        d = state.to_dict()
+        restored = StateConfig.from_dict(d)
+
+        assert restored.action_type == "human_approval"
+        assert restored.timeout == 900
+        assert restored.on_yes == "advance"
+        assert restored.on_no == "execute"
+        assert restored.extra_routes == {"edit": "re_execute", "timeout": "advance"}
+
+    def test_route_table_alternative_to_shorthand(self) -> None:
+        """A route: table with yes/no keys is a valid alternative to on_yes+on_no."""
+        state = StateConfig(
+            action="Approve?",
+            action_type="human_approval",
+            timeout=1800,
+            route=RouteConfig(routes={"yes": "advance", "no": "execute"}, default="fallback"),
+        )
+        assert state.route is not None
+        assert state.route.routes == {"yes": "advance", "no": "execute"}
+
+    def test_get_referenced_states_includes_on_edit_and_on_timeout_targets(self) -> None:
+        """get_referenced_states() surfaces extra_routes targets for graph/reachability checks."""
+        state = StateConfig.from_dict(
+            {
+                "action": "Approve?",
+                "action_type": "human_approval",
+                "timeout": 1800,
+                "on_yes": "advance",
+                "on_no": "execute",
+                "on_edit": "re_execute",
+                "on_timeout": "give_up",
+            }
+        )
+        refs = state.get_referenced_states()
+        assert {"advance", "execute", "re_execute", "give_up"} <= refs
+
+    def test_no_new_prompt_field_on_state_config(self) -> None:
+        """StateConfig has no dedicated 'prompt' field -- the prompt text uses
+        'action', the same slot action_type=prompt uses (Pre-implementation
+        Review #3). An unknown 'prompt' key is silently dropped by from_dict."""
+        state = StateConfig.from_dict(
+            {
+                "action": "Approve?",
+                "action_type": "human_approval",
+                "prompt": "this key does not exist on StateConfig",
+                "on_yes": "advance",
+                "on_no": "execute",
+            }
+        )
+        assert not hasattr(state, "prompt")
+        assert state.action == "Approve?"
+
+
 class TestSubLoopStateConfig:
     """Tests for sub-loop state configuration (FEAT-659)."""
 

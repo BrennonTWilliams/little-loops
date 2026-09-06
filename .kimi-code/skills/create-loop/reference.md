@@ -432,6 +432,8 @@ The `action_type` field explicitly controls how an action is executed. In most c
 - `prompt` - Execute action as a Claude prompt via Claude CLI
 - `slash_command` - Execute action as a Claude slash command via Claude CLI
 - `shell` - Execute action as a bash shell command
+- `mcp_tool` - Call an MCP tool directly (see `evaluate.type: mcp_result`)
+- `human_approval` - Block for an operator verdict instead of running an action (FEAT-1794; see below)
 - (omit) - Uses heuristic: actions starting with `/` are slash commands, others are shell commands
 
 **When to use:**
@@ -479,6 +481,30 @@ states:
 ```
 
 **Most users can omit this field** - the default heuristic covers the common case where slash commands start with `/` and shell commands don't.
+
+#### action_type: human_approval (Optional)
+
+`action_type: human_approval` (FEAT-1794) blocks the FSM run and asks an operator for a verdict instead of running a tool or LLM judge. It is the built-in HITL interrupt primitive — see [AUTOMATIC_HARNESSING_GUIDE.md § Human-in-the-Loop Gate](../../docs/guides/AUTOMATIC_HARNESSING_GUIDE.md#human-in-the-loop-gate-action_type-human_approval) for the full write-up (transport, timeout semantics, headless behavior).
+
+**Example:**
+```yaml
+check_human:
+  action_type: human_approval
+  action: >
+    The execute step modified 240 lines. Approve to continue, reject to
+    retry, or edit to adjust the diff.
+  timeout: 1800          # seconds; falls back to hitl.default_timeout (config) if omitted
+  on_yes: advance         # operator approved
+  on_no: execute          # operator rejected
+  on_edit: re_execute     # operator supplied replacement text, captured at ${captured.check_human.edit}
+  on_timeout: advance     # unattended fallback; defaults to on_no if omitted
+```
+
+**Routing fields:** `on_yes`/`on_no` (or a `route:` table with `yes`/`no` keys) are required; `on_edit`/`on_timeout` are ordinary `on_*` keys — no schema change needed to declare them. `ll-loop validate` warns when `timeout:` is omitted.
+
+**Transport:** rendered via the adapter selected by `hitl.channel` in `.ll/ll-config.json` (`terminal` by default; `eventbus` for out-of-band relay via `ll-loop run --serve`).
+
+**Ready-to-run example:** [`scripts/little_loops/loops/human-approval-example.yaml`](../../scripts/little_loops/loops/human-approval-example.yaml).
 
 #### agent (Optional)
 

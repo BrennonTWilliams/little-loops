@@ -231,6 +231,24 @@ class PromptSizeWarnVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class HumanApprovalRequestedVariant(DESVariant):
+    """FSMExecutor._execute_human_approval_state's sole emission of
+    'human_approval_requested' (FEAT-1794), after adapter.send_alert() returns.
+    Adapters never emit this themselves."""
+
+    type: Literal["human_approval_requested"] = "human_approval_requested"
+
+
+@dataclass(frozen=True)
+class HumanApprovalResolvedVariant(DESVariant):
+    """FSMExecutor._execute_human_approval_state's emission of
+    'human_approval_resolved' (FEAT-1794) after routing a human_approval
+    state's approve/reject/edit/timeout/shutdown verdict."""
+
+    type: Literal["human_approval_resolved"] = "human_approval_resolved"
+
+
+@dataclass(frozen=True)
 class PrePatchCheckFlaggedVariant(DESVariant):
     """FSMExecutor._emit('prepatch_check_flagged') — the pre-patch check returned a
     ``flagged`` verdict under a ``warn`` policy, so the guarded window recorded the
@@ -793,6 +811,8 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     StallDetectedVariant,
     WorkdirVanishedVariant,
     PromptSizeWarnVariant,
+    HumanApprovalRequestedVariant,
+    HumanApprovalResolvedVariant,
     PrePatchCheckFlaggedVariant,
     CostCeilingExceededVariant,
     CostCeilingWarnVariant,

@@ -3,9 +3,10 @@ id: FEAT-1794
 type: FEAT
 title: HITL interrupt FSM state type (action_type human_approval)
 priority: P3
-status: open
+status: done
 blocked_by: []
 captured_at: '2026-05-29T20:37:23Z'
+completed_at: '2026-09-06T01:06:54Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 labels:
@@ -142,18 +143,18 @@ deadlock.
 
 ## Acceptance Criteria
 
-- [ ] FSM runner recognizes `action_type: human_approval` and dispatches to the HITL handler from `_execute_state()`; `_action_mode()` also returns a distinct `"human_approval"` mode so the shell/prompt heuristics consulted outside dispatch (the BUG-1226 flush at `executor.py:674`, tamper guard, host guard, circuit wait) never classify the state as `"shell"` and run the prompt text through bash (Second Review #11)
-- [ ] Prompt text (the state's `action:` field, interpolated) plus captured context (e.g., `${captured.execute.output}`) is rendered via `adapter.send_alert()`; `captured_context` includes a monotonic `deadline` key (the `TerminalAdapter` renders "Time remaining" from it)
-- [ ] FSM execution blocks while waiting for a human response (no CPU spin, no premature advance); each tick calls `self._drain_inbound()` so an inbound `human_response` posted via `ll-loop run --serve` reaches the bus during the wait (FEAT-3384 Review #1)
-- [ ] Three verdicts are accepted: `approve` (→ `on_yes`), `reject` (→ `on_no`), `edit` (→ `on_edit` with edited text captured as `${captured.<state>.edit}`); `captured[<state>]` also carries `verdict`, `reason` (reject reason from `AdapterResponse.reason`), and `output` (= edited text or empty). Routing goes through the existing `_route()` (`executor.py:2994`) with verdict strings `yes`/`no`/`edit`/`timeout`, so `route:` tables, `advance`/`done`, and `${...}` targets work exactly as for evaluate states (Second Review #12). The handler's `edit`→`yes` and `timeout`→`no` fallbacks apply **only when `_route()` returns `None`**: with a `route:` table, an unrouted `edit`/`timeout` resolves to `route.default` first and `no` falls to `route.error`, exactly as for evaluate verdicts (Third Review #21) — tests must encode that, not the shorthand-only rule
-- [ ] Effective timeout is `state.timeout` if set, else `hitl.default_timeout` (new `HitlConfig` field, default 1800) — NOT `fsm.default_timeout`, which is the action-subprocess timeout (Second Review #13) — and, when the loop sets a wall-clock `timeout:` (`fsm.timeout`), clamped to the loop's remaining budget so the operator is never asked a question the loop can no longer act on (Third Review #20). On timeout, calls `adapter.cancel_alert()` then takes `on_timeout` (defaults to `on_no` if `on_timeout` unspecified)
-- [ ] A `TimeoutResponse` returned by `adapter.await_response()` on a single tick means "no verdict yet", never "timed out": the `TerminalAdapter` returns one on every idle tick, on unrecognized input, and on every call after stdin EOF. Only the executor-side deadline ends the wait. The tick length is a module constant `_HITL_TICK_SECONDS = 0.5` (not `_interruptible_sleep()`'s 100 ms — the terminal adapter builds a selector per call) (Third Review #19)
-- [ ] `human_approval_requested` is emitted exactly once by the executor via `_emit()`, after `send_alert()` returns, carrying `alert_id`, `state`, `prompt`, `timeout`, and a wall-clock ISO `deadline_ts` (the monotonic `deadline` stays in `captured_context` only — it is meaningless to out-of-process consumers, Second Review #14) — the adapter never emits it itself (FEAT-3384 Review #2); `human_approval_resolved` is emitted after routing with `verdict`, `elapsed_seconds`, `route`
-- [ ] `ll-loop validate` warns (unconditionally) when a `human_approval` state has no `timeout:` — message names the `hitl.default_timeout` fallback that will apply. A "referenced by unattended automation" scoping check is infeasible since `ll-auto`/`ll-sprint` don't directly load FSM loop YAMLs (confirmed finding); the warning fires regardless of caller context. `timeout: 0` is NOT a suppression idiom (see Pre-implementation Review #5). The validator requires a non-empty `action` and either `on_yes`+`on_no` or a `route:` table with `yes`/`no` keys
-- [ ] Headless/non-interactive contexts take a safe default without deadlocking: when `not adapter.supports_async()` and stdin is non-interactive (`sys.stdin is None or sys.stdin.closed or not sys.stdin.isatty()` — `TerminalAdapter._read_line()` calls `fileno()` and raises on a closed stream, Second Review #15), the handler routes `on_timeout` immediately without sending an alert. This is the **normal** path for `ll-loop run --background` (`cli/loop/runner.py:296` re-execs with `stdin=subprocess.DEVNULL`) and for any loop launched from a Claude Code Bash call, so it must not be silent: the handler logs a `WARNING` naming the state and pointing at `hitl.channel: eventbus`, and the `human_approval_resolved` payload carries `verdict: "timeout"`, `reason: "headless"` so it is distinguishable from a real timeout (Third Review #18). An async adapter (`eventbus`) is never short-circuited — headless is exactly where it is needed
-- [ ] On `_shutdown_requested` mid-wait, the handler calls `adapter.cancel_alert()` and returns `None` so `run()`'s existing interrupted-save branch fires; a resumed run re-enters the state and re-sends the alert
-- [ ] Both new events are registered per CONTRIBUTING § Event Schema Maintenance: `SCHEMA_DEFINITIONS` entries in `generate_schemas.py`, regenerated `docs/reference/schemas/*.json`, `DESVariant` classes in `observability/schema.py` `DES_VARIANTS`, sections in `docs/reference/EVENT-SCHEMA.md`, and the hard-coded counts in `test_generate_schemas.py:21` / `:124` bumped 59→61. Both are added to `_LOOP_EVENT_TYPES` (`session_store/schema.py:100`) so they persist to SQLite `loop_events` for `ll-logs` (Third Review #17)
-- [ ] `cli/loop/feed.py` renders one line for each new event (`_format_event` and `handle_event`), so `--quiet` runs and log files show that the loop is waiting on a human even though the adapter's own `print()` goes straight to stdout (Third Review #22)
+- [x] FSM runner recognizes `action_type: human_approval` and dispatches to the HITL handler from `_execute_state()`; `_action_mode()` also returns a distinct `"human_approval"` mode so the shell/prompt heuristics consulted outside dispatch (the BUG-1226 flush at `executor.py:674`, tamper guard, host guard, circuit wait) never classify the state as `"shell"` and run the prompt text through bash (Second Review #11)
+- [x] Prompt text (the state's `action:` field, interpolated) plus captured context (e.g., `${captured.execute.output}`) is rendered via `adapter.send_alert()`; `captured_context` includes a monotonic `deadline` key (the `TerminalAdapter` renders "Time remaining" from it)
+- [x] FSM execution blocks while waiting for a human response (no CPU spin, no premature advance); each tick calls `self._drain_inbound()` so an inbound `human_response` posted via `ll-loop run --serve` reaches the bus during the wait (FEAT-3384 Review #1)
+- [x] Three verdicts are accepted: `approve` (→ `on_yes`), `reject` (→ `on_no`), `edit` (→ `on_edit` with edited text captured as `${captured.<state>.edit}`); `captured[<state>]` also carries `verdict`, `reason` (reject reason from `AdapterResponse.reason`), and `output` (= edited text or empty). Routing goes through the existing `_route()` (`executor.py:2994`) with verdict strings `yes`/`no`/`edit`/`timeout`, so `route:` tables, `advance`/`done`, and `${...}` targets work exactly as for evaluate states (Second Review #12). The handler's `edit`→`yes` and `timeout`→`no` fallbacks apply **only when `_route()` returns `None`**: with a `route:` table, an unrouted `edit`/`timeout` resolves to `route.default` first and `no` falls to `route.error`, exactly as for evaluate verdicts (Third Review #21) — tests must encode that, not the shorthand-only rule
+- [x] Effective timeout is `state.timeout` if set, else `hitl.default_timeout` (new `HitlConfig` field, default 1800) — NOT `fsm.default_timeout`, which is the action-subprocess timeout (Second Review #13) — and, when the loop sets a wall-clock `timeout:` (`fsm.timeout`), clamped to the loop's remaining budget so the operator is never asked a question the loop can no longer act on (Third Review #20). On timeout, calls `adapter.cancel_alert()` then takes `on_timeout` (defaults to `on_no` if `on_timeout` unspecified)
+- [x] A `TimeoutResponse` returned by `adapter.await_response()` on a single tick means "no verdict yet", never "timed out": the `TerminalAdapter` returns one on every idle tick, on unrecognized input, and on every call after stdin EOF. Only the executor-side deadline ends the wait. The tick length is a module constant `_HITL_TICK_SECONDS = 0.5` (not `_interruptible_sleep()`'s 100 ms — the terminal adapter builds a selector per call) (Third Review #19)
+- [x] `human_approval_requested` is emitted exactly once by the executor via `_emit()`, after `send_alert()` returns, carrying `alert_id`, `state`, `prompt`, `timeout`, and a wall-clock ISO `deadline_ts` (the monotonic `deadline` stays in `captured_context` only — it is meaningless to out-of-process consumers, Second Review #14) — the adapter never emits it itself (FEAT-3384 Review #2); `human_approval_resolved` is emitted after routing with `verdict`, `elapsed_seconds`, `route`
+- [x] `ll-loop validate` warns (unconditionally) when a `human_approval` state has no `timeout:` — message names the `hitl.default_timeout` fallback that will apply. A "referenced by unattended automation" scoping check is infeasible since `ll-auto`/`ll-sprint` don't directly load FSM loop YAMLs (confirmed finding); the warning fires regardless of caller context. `timeout: 0` is NOT a suppression idiom (see Pre-implementation Review #5). The validator requires a non-empty `action` and either `on_yes`+`on_no` or a `route:` table with `yes`/`no` keys
+- [x] Headless/non-interactive contexts take a safe default without deadlocking: when `not adapter.supports_async()` and stdin is non-interactive (`sys.stdin is None or sys.stdin.closed or not sys.stdin.isatty()` — `TerminalAdapter._read_line()` calls `fileno()` and raises on a closed stream, Second Review #15), the handler routes `on_timeout` immediately without sending an alert. This is the **normal** path for `ll-loop run --background` (`cli/loop/runner.py:296` re-execs with `stdin=subprocess.DEVNULL`) and for any loop launched from a Claude Code Bash call, so it must not be silent: the handler logs a `WARNING` naming the state and pointing at `hitl.channel: eventbus`, and the `human_approval_resolved` payload carries `verdict: "timeout"`, `reason: "headless"` so it is distinguishable from a real timeout (Third Review #18). An async adapter (`eventbus`) is never short-circuited — headless is exactly where it is needed
+- [x] On `_shutdown_requested` mid-wait, the handler calls `adapter.cancel_alert()` and returns `None` so `run()`'s existing interrupted-save branch fires; a resumed run re-enters the state and re-sends the alert
+- [x] Both new events are registered per CONTRIBUTING § Event Schema Maintenance: `SCHEMA_DEFINITIONS` entries in `generate_schemas.py`, regenerated `docs/reference/schemas/*.json`, `DESVariant` classes in `observability/schema.py` `DES_VARIANTS`, sections in `docs/reference/EVENT-SCHEMA.md`, and the hard-coded counts in `test_generate_schemas.py:21` / `:124` bumped 59→61. Both are added to `_LOOP_EVENT_TYPES` (`session_store/schema.py:100`) so they persist to SQLite `loop_events` for `ll-logs` (Third Review #17)
+- [x] `cli/loop/feed.py` renders one line for each new event (`_format_event` and `handle_event`), so `--quiet` runs and log files show that the loop is waiting on a human even though the adapter's own `print()` goes straight to stdout (Third Review #22)
 
 ## Proposed Solution
 
@@ -364,6 +365,25 @@ _Added by `/ll:refine-issue` — 2026-09-05 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+- **2026-09-05 (implementation):** The Integration Map's "Files to Modify" list
+  did not anticipate that `${captured.<human_approval_state>.*}` references
+  (the documented `${captured.<state>.edit}` interpolation form from the
+  API/Interface and Implementation Steps sections) would trip
+  `fsm/validation/reachability.py`'s `_validate_capture_reachability()` ERROR
+  path ("no state in this loop captures '<name>'") — that function only
+  recognized sub-loop-delegating states (`state.loop is not None`) as
+  implicitly populating their own name's capture namespace, not
+  `human_approval` states, which populate `self.captured[state_name]`
+  unconditionally with no `capture:` field involved. Fixed by extending the
+  existing `loop_state_names` dominance-check set in
+  `_validate_capture_reachability()` to also include `human_approval` state
+  names (renamed to `implicit_namespace_state_names`), with matching test
+  coverage added in `test_fsm_validation_reachability.py`. This is additive
+  scope beyond the Integration Map, not a signature/call-path change to
+  anything documented there.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-04 — based on codebase analysis:_
@@ -481,13 +501,45 @@ _Verified against the working tree at `5cf210cad`. Each item is already folded i
 | `.claude/CLAUDE.md` § Loop Authoring | Meta-loop MR-1 rule — `human_approval` qualifies as a non-LLM evaluator |
 | `docs/ARCHITECTURE.md` | Event-bus + host_runner abstraction this hooks into |
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/executor.py` — dispatch branch, `_action_mode()` branch, new `_execute_human_approval_state()`, `_HITL_TICK_SECONDS`
+- `scripts/little_loops/config/core.py` + `scripts/little_loops/config-schema.json` — `HitlConfig.default_timeout`
+- `scripts/little_loops/fsm/validation/structural_rules.py` — `human_approval` shape/timeout validation
+- `scripts/little_loops/fsm/validation/meta_rules.py` — MR-1 recognizes `human_approval` as a non-LLM evaluator
+- `scripts/little_loops/fsm/validation/reachability.py` — `${captured.<human_approval_state>.*}` implicit-namespace fix (see Program Design → Deviations)
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — `action_type` description
+- `scripts/little_loops/generate_schemas.py`, `docs/reference/schemas/human_approval_{requested,resolved}.json`, `scripts/little_loops/observability/schema.py`, `scripts/little_loops/session_store/schema.py` — event registration
+- `scripts/little_loops/cli/loop/feed.py` — event rendering in `handle_event()`/`_format_history_event()`
+- `scripts/little_loops/loops/human-approval-example.yaml` — new runnable example loop
+- `scripts/little_loops/loops/harness-plan-research-implement-report.yaml` — fixed the commented `review_plan` workaround block
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/CONFIGURATION.md`, `docs/reference/EVENT-SCHEMA.md`, `skills/create-loop/reference.md` — documentation
+- `README.md` / `scripts/README.md` — loop count bump (106 → 107) + mirror sync
+- `.gemini/`, `.kimi-code/`, `.qwen/` skill mirrors — re-adapted `create-loop`
+- Tests: `test_fsm_executor.py`, `test_fsm_schema.py`, `test_fsm_validation_structural.py`, `test_fsm_validation_meta_rules.py`, `test_fsm_validation_reachability.py`, `test_config.py`, `test_generate_schemas.py`, `test_builtin_loops.py`
+
+### Verification Results
+- Tests: PASS (23187 passed, 43 skipped, 0 failed — `python -m pytest scripts/tests/`)
+- Lint: PASS (`ruff check` on all changed files; one pre-existing unrelated `UP037` finding in `test_builtin_loops.py:7417`)
+- Types: PASS (`python -m mypy scripts/little_loops/` — no issues in 387 source files)
+
+### Acceptance Criteria Met
+All 12 acceptance criteria checked off above.
+
+---
+
 ## Labels
 
 `captured`, `fsm`, `harness`, `hitl`, `loops`
 
 ## Status
 
-**Open** | Created: 2026-05-29 | Priority: P3
+**Completed** | Created: 2026-05-29 | Priority: P3
 
 ## Verification Notes
 
@@ -510,6 +562,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 - 2026-09-05 (`/ll:verify-issues`): Re-verified against the further-drifted 2026-09-05 `/ll:refine-issue` anchor pass. All current-pass anchors confirmed exact: `_execute_state` :1974, `resolve_communication_adapter` :2682, `_route` :2994, `_action_mode` :3114, `_emit` :3602, `_interruptible_sleep` :3885, `_drain_inbound` :557 (called once/iteration at `run()` :609). `_execute_state()` dispatch order, `_action_mode()` fallthrough table, and `_route()` shape all confirmed to match the cited line ranges exactly. `HitlConfig` (`config/core.py:185`) still has only `channel`, no `default_timeout` — matches this issue's proposed addition. Test anchors (`TestActionTypeMcpTool` :686, `TestContributedActionDispatch` :6782, `TestMcpToolSchema` :2062) confirmed. Core gap reconfirmed still entirely open (zero `human_approval` references in `executor.py`/`schema.py`/validation modules). Checked BUG-3387 (now Completed, fixes `_drain_inbound()` envelope-key stripping) for cross-issue impact: orthogonal — this issue only calls `_drain_inbound()` from its new tick loop and doesn't modify it, so no conflict. Only drift: `_validate_state_action` now at `structural_rules.py:408` (cited `:406`), cosmetic. Verdict stays `VALID`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-06T01:05:07 - `d41a820b-4488-495c-b1ba-f59ae30351ff.jsonl`
 - `/ll:confidence-check` - 2026-09-06T00:07:32 - `8c3fd32e-c19c-479f-9b5a-e6928bbd0ed7.jsonl`
 - third-review - 2026-09-05 - manual review against working tree `5cf210cad`; see § Third Review (items 17–24: event registration is test-gated, headless short-circuit is the normal background path, per-tick TimeoutResponse semantics, fsm.timeout clamp, route-table fallbacks, feed rendering, keep the built-in loop's block commented)
 - `/ll:verify-issues` - 2026-09-05T23:38:33 - `161a68e7-1fed-48cb-8c40-28051a0cd1ac.jsonl`

@@ -546,6 +546,46 @@ Emitted when a fully-interpolated action's character size reaches the per-loop `
 
 ---
 
+### `human_approval_requested`
+
+FEAT-1794: emitted exactly once by `FSMExecutor._execute_human_approval_state` after `adapter.send_alert()` returns for an `action_type: human_approval` state. The executor is the sole emitter — adapters never emit this event themselves, avoiding a duplicate with complementary missing fields.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the `human_approval` state |
+| `alert_id` | `str` | Adapter-assigned alert identifier, passed to `await_response()`/`cancel_alert()` |
+| `prompt` | `str` | Rendered (`${captured.*}`-interpolated) prompt text sent to the operator |
+| `timeout` | `number` | Effective wait budget in seconds: `state.timeout`, else `hitl.default_timeout`, clamped to the loop's remaining `fsm.timeout` budget when set |
+| `deadline_ts` | `str` | Wall-clock ISO 8601 deadline; the monotonic deadline used internally for the wait loop is not meaningful to out-of-process consumers |
+| `captured_context` | `object` | Extra context passed to the adapter, minus the internal monotonic `deadline` key |
+
+**Example:**
+```json
+{"event": "human_approval_requested", "ts": "...", "run_id": "2026-09-05T120000-ll-auto", "loop": "ll-auto", "state": "check_human", "alert_id": "3f9c...", "prompt": "The execute step modified 240 lines...", "timeout": 1800, "deadline_ts": "2026-09-05T12:30:00Z", "captured_context": {}}
+```
+
+---
+
+### `human_approval_resolved`
+
+FEAT-1794: emitted after `FSMExecutor._execute_human_approval_state` routes a `human_approval` state's verdict.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the `human_approval` state |
+| `alert_id` | `str \| null` | Adapter-assigned alert identifier; `null` on the headless short-circuit (no alert was sent) |
+| `verdict` | `str` | `approve` \| `reject` \| `edit` \| `timeout` \| `shutdown` |
+| `elapsed_seconds` | `number` | Wall-clock seconds spent waiting for a verdict |
+| `route` | `str \| null` | Resolved next state, or `null` if no route matched |
+| `reason` | `str \| null` | Reject reason from `AdapterResponse.reason`; `"headless"` on the no-TTY short-circuit; `null` otherwise |
+
+**Example:**
+```json
+{"event": "human_approval_resolved", "ts": "...", "run_id": "2026-09-05T120000-ll-auto", "loop": "ll-auto", "state": "check_human", "alert_id": "3f9c...", "verdict": "approve", "elapsed_seconds": 42.1, "route": "advance", "reason": null}
+```
+
+---
+
 ### `learning_target_proven`
 
 Emitted when a target's learning-tests registry record is found with `status='proven'`. The state continues to the next target (or to `on_yes` when all targets are proven).
@@ -1788,6 +1828,8 @@ docs/reference/schemas/
 ├── evaluate.json
 ├── handoff_detected.json
 ├── handoff_spawned.json
+├── human_approval_requested.json
+├── human_approval_resolved.json
 ├── infra_retry.json
 ├── infra_retry_exhausted.json
 ├── issue_closed.json
@@ -1962,6 +2004,8 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `cost_ceiling_unknown` | FSM | `fsm/executor.py` |
 | `cost_ceiling_warn` | FSM | `fsm/executor.py` |
 | `cost_ceiling_exceeded` | FSM | `fsm/executor.py` |
+| `human_approval_requested` | FSM | `fsm/executor.py` (`_execute_human_approval_state`, FEAT-1794) |
+| `human_approval_resolved` | FSM | `fsm/executor.py` (`_execute_human_approval_state`, FEAT-1794) |
 | `loop_resume` | FSM Persistence | `fsm/persistence.py` |
 | `state.issue_completed` | StateManager | `state.py` |
 | `state.issue_failed` | StateManager | `state.py` |

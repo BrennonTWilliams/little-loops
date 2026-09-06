@@ -437,6 +437,16 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
     # not under any locally-declared `capture:` name.
     loop_state_names = {name for name, state in fsm.states.items() if state.loop is not None}
 
+    # FEAT-1794: a human_approval state also populates its own name's capture
+    # namespace unconditionally (self.captured[state_name] = {verdict, edit,
+    # reason, output}, never gated on a `capture:` field) -- the documented
+    # interpolation form is ${captured.<state>.edit}, exactly like the
+    # sub-loop nested-namespace form above.
+    human_approval_state_names = {
+        name for name, state in fsm.states.items() if state.action_type == "human_approval"
+    }
+    implicit_namespace_state_names = loop_state_names | human_approval_state_names
+
     # Step 2: Build reference map (state_name → set of dotted-path tuples referenced)
     reference_map: dict[str, set[tuple[str, ...]]] = {}
     for state_name, state in fsm.states.items():
@@ -464,18 +474,21 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
             var_name = path[0]
             nested = path[1:]
 
-            if var_name in loop_state_names:
-                # Correct nested sub-loop form: ${captured.<sub_loop_state>.<var>...}.
-                # Validate dominance of the delegating state itself (still must
-                # execute on every path reaching ref_state_name).
+            if var_name in implicit_namespace_state_names:
+                # Correct nested form for a state that populates its own name's
+                # namespace unconditionally: ${captured.<state>.<var>...} for a
+                # sub-loop delegation or a human_approval state (FEAT-1794).
+                # Validate dominance of that state itself (still must execute
+                # on every path reaching ref_state_name).
                 cap_states = {var_name}
                 if not _dominated_by_any(fsm, cap_states, ref_state_name):
                     bypass_path = _find_bypass_path_any(fsm, cap_states, ref_state_name)
                     path_str = " → ".join(bypass_path) if bypass_path else "unknown path"
+                    kind = "sub-loop" if var_name in loop_state_names else "human_approval"
                     errors.append(
                         ValidationError(
                             message=(
-                                f"References ${{captured.{'.'.join(path)}}} but sub-loop "
+                                f"References ${{captured.{'.'.join(path)}}} but {kind} "
                                 f"state '{var_name}' may not execute on all paths to "
                                 f"'{ref_state_name}'. Path(s) bypassing it: {path_str}"
                             ),

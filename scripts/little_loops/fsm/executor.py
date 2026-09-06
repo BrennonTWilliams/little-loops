@@ -24,13 +24,16 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import replace as _dc_replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from little_loops.fsm.communication_adapter import (
+    HUMAN_APPROVAL_REQUESTED_EVENT,
+    AdapterResponse,
     CommunicationAdapter,
     CommunicationAdapterNotFound,
+    TimeoutResponse,
 )
 from little_loops.fsm.continuity import summarize_completed_state
 from little_loops.fsm.cost_graph import CostReport
@@ -154,6 +157,10 @@ _DEFAULT_INFRA_RETRY_RETRIES: int = 2
 # same shape as _DEFAULT_API_ERROR_BACKOFF, but short — this is a re-run of an
 # already-completed action, not a wait for an external service to recover).
 _DEFAULT_INFRA_RETRY_BACKOFF: int = 5
+# FEAT-1794: per-call timeout handed to adapter.await_response() inside the
+# human_approval tick loop. Deliberately coarser than _interruptible_sleep()'s
+# 100ms — the TerminalAdapter builds a selector per call.
+_HITL_TICK_SECONDS: float = 0.5
 
 
 def _iso_now() -> str:
@@ -1992,6 +1999,13 @@ class FSMExecutor:
                     return interpolate(state.on_error, ctx)
                 raise
 
+        # FEAT-1794: dispatch to the HITL handler before the tamper-guard
+        # snapshot and generic action path (both consult _action_mode(),
+        # which also classifies this state distinctly — see below — but
+        # dispatch itself must happen here since it blocks mid-state).
+        if state.action_type == "human_approval":
+            return self._execute_human_approval_state(state, ctx)
+
         # FEAT-1283: dispatch to learning-state handler when both type="learning"
         # AND a LearningConfig is present. The bare `type="learning"` marker
         # (used pre-FEAT-1283 only as a throttle hard_max exemption hint, see
@@ -2705,6 +2719,167 @@ class FSMExecutor:
                 f"Available: {sorted(self._contributed_adapters)}."
             ) from None
 
+    def _execute_human_approval_state(
+        self, state: StateConfig, ctx: InterpolationContext
+    ) -> str | None:
+        """Execute a FEAT-1794 ``action_type: human_approval`` state.
+
+        Renders ``state.action`` and blocks in ``_HITL_TICK_SECONDS`` ticks on
+        ``adapter.await_response()`` (draining inbound events each tick so a
+        ``--serve`` verdict posted mid-wait reaches the bus), then routes the
+        resolved ``approve``/``reject``/``edit``/``timeout`` verdict through
+        ``self._route()``. Returns ``None`` only on shutdown, mirroring
+        ``_execute_learning_state()``/``_execute_sub_loop()``, so ``run()``'s
+        interrupted-save branch fires and a resumed run re-enters the state.
+        """
+        state_name = self.current_state
+        prompt = interpolate(state.action, ctx) if state.action else ""
+        adapter = self.resolve_communication_adapter()
+        hitl_cfg = self._get_br_config().hitl
+
+        effective_timeout = state.timeout if state.timeout is not None else hitl_cfg.default_timeout
+        if self.fsm.timeout:
+            elapsed_ms = _now_ms() - self.start_time_ms + self.elapsed_offset_ms
+            remaining_s = max(0, int((self.fsm.timeout * 1000 - elapsed_ms) // 1000))
+            effective_timeout = min(effective_timeout, remaining_s)
+
+        def _resolve_verdict(verdict: str) -> str | None:
+            # Third Review #21: the edit->yes / timeout->no shorthand fallbacks
+            # apply only when _route() itself has no answer -- a route: table's
+            # own route.default/route.error take precedence.
+            next_state = self._route(state, verdict, ctx)
+            if next_state is None and verdict == "edit":
+                next_state = self._route(state, "yes", ctx)
+                if next_state is not None:
+                    logger.warning(
+                        "human_approval state '%s': no route for 'edit' verdict — "
+                        "falling back to the 'yes' route",
+                        state_name,
+                    )
+            elif next_state is None and verdict == "timeout":
+                next_state = self._route(state, "no", ctx)
+            return next_state
+
+        headless = not adapter.supports_async() and (
+            sys.stdin is None or sys.stdin.closed or not sys.stdin.isatty()
+        )
+        if headless:
+            logger.warning(
+                "human_approval state '%s': stdin is not interactive and channel %r "
+                "cannot reach a remote operator — routing on_timeout; set "
+                "hitl.channel: eventbus and run with --serve for unattended runs",
+                state_name,
+                hitl_cfg.channel,
+            )
+            next_state = _resolve_verdict("timeout")
+            self.captured[state_name] = {
+                "output": "",
+                "verdict": "timeout",
+                "edit": None,
+                "reason": "headless",
+            }
+            self._emit(
+                "human_approval_resolved",
+                {
+                    "state": state_name,
+                    "alert_id": None,
+                    "verdict": "timeout",
+                    "elapsed_seconds": 0.0,
+                    "route": next_state,
+                    "reason": "headless",
+                },
+            )
+            return next_state
+
+        captured_context = {"deadline": time.monotonic() + effective_timeout}
+        monotonic_deadline = captured_context["deadline"]
+        deadline_ts = (datetime.now(UTC) + timedelta(seconds=effective_timeout)).isoformat()
+        alert_id = adapter.send_alert(self.fsm.name, state_name, prompt, captured_context)
+        self._emit(
+            HUMAN_APPROVAL_REQUESTED_EVENT,
+            {
+                "state": state_name,
+                "alert_id": alert_id,
+                "prompt": prompt,
+                "timeout": effective_timeout,
+                "deadline_ts": deadline_ts,
+                "captured_context": {},
+            },
+        )
+
+        tick_start = time.monotonic()
+        response: AdapterResponse | None = None
+        while True:
+            if self._shutdown_requested:
+                adapter.cancel_alert(alert_id)
+                self._emit(
+                    "human_approval_resolved",
+                    {
+                        "state": state_name,
+                        "alert_id": alert_id,
+                        "verdict": "shutdown",
+                        "elapsed_seconds": time.monotonic() - tick_start,
+                        "route": None,
+                        "reason": None,
+                    },
+                )
+                return None
+            if time.monotonic() >= monotonic_deadline:
+                break
+            self._drain_inbound()
+            tick = min(_HITL_TICK_SECONDS, monotonic_deadline - time.monotonic())
+            result: AdapterResponse | TimeoutResponse = adapter.await_response(
+                alert_id, max(0.0, tick)
+            )
+            if isinstance(result, AdapterResponse):
+                response = result
+                break
+
+        elapsed = time.monotonic() - tick_start
+
+        if response is None:
+            adapter.cancel_alert(alert_id)
+            next_state = _resolve_verdict("timeout")
+            self.captured[state_name] = {
+                "output": "",
+                "verdict": "timeout",
+                "edit": None,
+                "reason": None,
+            }
+            self._emit(
+                "human_approval_resolved",
+                {
+                    "state": state_name,
+                    "alert_id": alert_id,
+                    "verdict": "timeout",
+                    "elapsed_seconds": elapsed,
+                    "route": next_state,
+                    "reason": None,
+                },
+            )
+            return next_state
+
+        verdict_word = {"approve": "yes", "reject": "no", "edit": "edit"}[response.verdict]
+        next_state = _resolve_verdict(verdict_word)
+        self.captured[state_name] = {
+            "output": response.edited_text or "",
+            "verdict": response.verdict,
+            "edit": response.edited_text,
+            "reason": response.reason,
+        }
+        self._emit(
+            "human_approval_resolved",
+            {
+                "state": state_name,
+                "alert_id": alert_id,
+                "verdict": response.verdict,
+                "elapsed_seconds": elapsed,
+                "route": next_state,
+                "reason": response.reason,
+            },
+        )
+        return next_state
+
     def _compact_continuity_summary(self, session_id: str) -> str | None:
         """Synchronously backfill+compact a just-finished continuity-chain session.
 
@@ -3121,6 +3296,12 @@ class FSMExecutor:
             return "prompt"
         if state.action_type == "shell":
             return "shell"
+        if state.action_type == "human_approval":
+            # FEAT-1794: not consulted for dispatch (that happens earlier in
+            # _execute_state()) but needed here so the wall-clock flush
+            # (BUG-1226 gate), tamper-guard snapshot, host guard, and circuit
+            # wait never classify this state's prompt text as a shell command.
+            return "human_approval"
         if state.action_type in self._contributed_actions:
             return "contributed"
         # Heuristic: / prefix = slash_command (prompt mode)

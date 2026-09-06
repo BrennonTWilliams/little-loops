@@ -4016,6 +4016,7 @@ class TestHitlConfig:
     def test_from_dict_with_defaults(self) -> None:
         config = HitlConfig.from_dict({})
         assert config.channel == "terminal"
+        assert config.default_timeout == 1800
 
     def test_from_dict_with_values(self) -> None:
         config = HitlConfig.from_dict({"channel": "eventbus"})
@@ -4024,6 +4025,19 @@ class TestHitlConfig:
     def test_from_dict_partial_override_defaults_rest(self) -> None:
         config = HitlConfig.from_dict({})
         assert config.channel == "terminal"
+
+    def test_default_timeout_from_dict(self) -> None:
+        """FEAT-1794: default_timeout overrides the 1800s fallback independently of channel."""
+        config = HitlConfig.from_dict({"default_timeout": 600})
+        assert config.default_timeout == 600
+        assert config.channel == "terminal"
+
+    def test_to_dict_round_trip(self) -> None:
+        """FEAT-1794: default_timeout round-trips through BRConfig.to_dict()."""
+        config = HitlConfig.from_dict({"channel": "eventbus", "default_timeout": 300})
+        assert config == HitlConfig.from_dict(
+            {"channel": config.channel, "default_timeout": config.default_timeout}
+        )
 
 
 class TestBRConfigHitl:
@@ -4056,6 +4070,23 @@ class TestBRConfigHitl:
 
         config = BRConfig(temp_project_dir)
         assert config.hitl.channel == "terminal"
+
+    def test_hitl_default_timeout_from_file(self, temp_project_dir: Path) -> None:
+        """FEAT-1794: BRConfig.hitl.default_timeout is read from ll-config.json."""
+        cfg = {"hitl": {"default_timeout": 300}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+
+        config = BRConfig(temp_project_dir)
+        assert config.hitl.default_timeout == 300
+
+    def test_hitl_default_timeout_in_to_dict(self, temp_project_dir: Path) -> None:
+        """FEAT-1794: default_timeout appears in BRConfig.to_dict()'s hitl block."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps({"hitl": {"default_timeout": 900}}))
+
+        config = BRConfig(temp_project_dir)
+        assert config.to_dict()["hitl"]["default_timeout"] == 900
 
     def test_advisor_defaults_when_key_absent(self, temp_project_dir: Path) -> None:
         """BRConfig.advisor returns defaults when advisor key is absent."""

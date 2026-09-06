@@ -31,6 +31,7 @@ The hard problem in automated iteration isn't running the skill — it's knowing
   - [Referencing Captured Outputs](#referencing-captured-outputs)
   - [Shared Messages Log (`append_to_messages`)](#shared-messages-log-append_to_messages)
   - [Stall Detection (`check_stall`)](#stall-detection-check_stall)
+  - [Human-in-the-Loop Gate (`action_type: human_approval`)](#human-in-the-loop-gate-action_type-human_approval)
 - [When to Use a Harness](#when-to-use-a-harness)
 - [Creating a Harness: The 5-Step Wizard](#creating-a-harness-the-5-step-wizard)
   - [Step H1: Choose a Target](#step-h1-choose-a-target)
@@ -511,6 +512,34 @@ check_invariants → diff size (cheapest final gate)
 
 ---
 
+### Human-in-the-Loop Gate (`action_type: human_approval`) {#human-in-the-loop-gate-action_type-human_approval}
+
+Unlike the evaluation phases above, `human_approval` is not an `evaluate:` block on a `shell`/`prompt` state — it is a distinct `action_type` that blocks the FSM run and asks an operator for a verdict instead of a tool or an LLM judge (FEAT-1794). Use it at a strategic checkpoint: a diff exceeding a safety threshold, a planner output that warrants review before paying for the implement step, or any point where a meta-loop needs a non-LLM evaluator per `.claude/CLAUDE.md` § Loop Authoring MR-1.
+
+```yaml
+check_human:
+  action_type: human_approval
+  action: >
+    The execute step modified 240 lines. Threshold is 50.
+    Diff summary: ${captured.check_invariants.output}
+    Approve to continue, reject to retry execute, edit to adjust the diff.
+  timeout: 1800   # seconds; falls back to hitl.default_timeout (config, 1800) if omitted
+  on_yes: advance      # operator approved
+  on_no: execute       # operator rejected
+  on_edit: re_execute  # operator supplied replacement text
+  on_timeout: advance  # unattended fallback; defaults to on_no if omitted
+```
+
+**How it works:** the prompt is the state's `action:` field (the same slot `action_type: prompt` uses, with the usual `${captured.*}` interpolation), rendered to the operator via the configured `hitl.channel` adapter (`terminal` by default — reads/writes the run's own stdin/stdout; `eventbus` for out-of-band relay via `ll-loop run --serve`, a separate FEAT-3384 adapter). The run blocks until the operator responds or the timeout elapses — no CPU spin, and `--serve`-posted verdicts are drained every tick even mid-wait.
+
+**Routing:** three verdicts are accepted — `approve` → `on_yes`, `reject` → `on_no`, `edit` → `on_edit` (the edited text is captured as `${captured.<state>.edit}`, along with `${captured.<state>.verdict}`, `.reason`, and `.output`). `on_edit`/`on_timeout` are ordinary `on_*` keys — no schema change is needed to declare them. A `route:` table with `yes`/`no` keys is also accepted in place of `on_yes`/`on_no`.
+
+**Unattended safety:** every wait is bounded — by the state's own `timeout:`, else `hitl.default_timeout` (config, default 1800s), and further clamped to the loop's remaining `timeout:` budget when one is set. `ll-loop validate` warns (not errors) when a `human_approval` state has no `timeout:`. In a headless context (no interactive stdin and a synchronous adapter like `terminal`) the state routes `on_timeout` immediately with a logged warning rather than hanging — this is the expected path for `ll-loop run --background` and for loops launched from an automation Bash call; switch to `hitl.channel: eventbus` with `--serve` for those.
+
+**Example loop:** [`scripts/little_loops/loops/human-approval-example.yaml`](../../scripts/little_loops/loops/human-approval-example.yaml) is a runnable, fully annotated demo. See [Using the Example Files](#using-the-example-files) below.
+
+---
+
 ## When to Use a Harness
 
 Use a harness loop when you want to:
@@ -808,7 +837,7 @@ plan -> research -> implement -> check_stall -> check_concrete -> check_semantic
 | Implementer | `implement` | Apply the plan using research context; equivalent to `execute` in Variants A/B |
 | Reporter | `report` | Summarize what was done after the evaluation chain passes |
 
-**Human-in-the-loop (HITL) gate pattern (FEAT-1794 dependency):** Between `plan` and `research`, an optional `review_plan` gate can pause the loop for human approval. Until `action_type: human_approval` (FEAT-1794) is available, use the `output_contains`-routed prompt-state workaround shown as a commented-out `# OPTIONAL: review_plan` block directly in [`scripts/little_loops/loops/harness-plan-research-implement-report.yaml`](../../scripts/little_loops/loops/harness-plan-research-implement-report.yaml) (a prompt asks the reviewer to reply APPROVE or REVISE, routed via `on_yes`/`on_no`).
+**Human-in-the-loop (HITL) gate pattern:** Between `plan` and `research`, an optional `review_plan` gate can pause the loop for human approval using `action_type: human_approval` (FEAT-1794 — see [Human-in-the-Loop Gate](#human-in-the-loop-gate-action_type-human_approval) above). It is shown as a commented-out `# OPTIONAL: review_plan` block directly in [`scripts/little_loops/loops/harness-plan-research-implement-report.yaml`](../../scripts/little_loops/loops/harness-plan-research-implement-report.yaml) — left inactive so this shipped, unattended-by-design loop never blocks for up to 30 minutes per run; uncomment it if you run this loop attended. See [`human-approval-example.yaml`](../../scripts/little_loops/loops/human-approval-example.yaml) for a live, runnable demo of the same `action_type`.
 
 **Evaluation chain:** Variants A and B evaluation phases (`check_stall`, `check_concrete`, `check_semantic`, `check_invariants`) apply between `implement` and `report`, identical to Variant A. The stall route goes to `report` rather than `done`, so the earlier planning and research context is always surfaced in the final report even when implementation stalls.
 
@@ -818,15 +847,16 @@ plan -> research -> implement -> check_stall -> check_concrete -> check_semantic
 
 ## Using the Example Files
 
-Three annotated example harness loops are built in to `loops/`:
+Four annotated example harness loops are built in to `loops/`:
 
 | File | Variant | Phases included |
 |------|---------|-----------------|
 | [`scripts/little_loops/loops/harness-single-shot.yaml`](../../scripts/little_loops/loops/harness-single-shot.yaml) | A — Single-shot | `check_stall`, `check_concrete`, `check_semantic`, `check_invariants`; `check_mcp` and `check_skill` as commented-out optional gates |
 | [`scripts/little_loops/loops/harness-multi-item.yaml`](../../scripts/little_loops/loops/harness-multi-item.yaml) | B — Multi-item | All five phases active: `check_concrete`, `check_mcp`, `check_skill`, `check_semantic`, `check_invariants` |
 | [`scripts/little_loops/loops/harness-plan-research-implement-report.yaml`](../../scripts/little_loops/loops/harness-plan-research-implement-report.yaml) | C — Specialist-role pipeline | `plan`, `research`, `implement` roles with full evaluation chain; `review_plan` HITL gate as commented-out `# OPTIONAL:` block |
+| [`scripts/little_loops/loops/human-approval-example.yaml`](../../scripts/little_loops/loops/human-approval-example.yaml) | HITL gate | Live, runnable `action_type: human_approval` demo — approve/reject/edit/timeout routing (FEAT-1794) |
 
-Each state in all three files has an `# EXAMPLE:` comment explaining its pedagogical purpose.
+Each state in all four files has an `# EXAMPLE:` comment explaining its pedagogical purpose.
 
 ### Validate structure
 

@@ -550,6 +550,42 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
             )
         )
 
+    # FEAT-1794: action_type=human_approval requires a non-empty prompt and
+    # either on_yes+on_no or a route: table with yes/no keys; a state with no
+    # explicit timeout: falls back to hitl.default_timeout (config, 1800s) --
+    # WARNING only, not an error, since that fallback is safe by design.
+    if state.action_type == "human_approval":
+        if not state.action:
+            errors.append(
+                ValidationError(
+                    message="action_type=human_approval requires a non-empty 'action' "
+                    "(the prompt rendered to the operator)",
+                    path=f"{path}.action",
+                )
+            )
+        has_shorthand_yes_no = state.on_yes is not None and state.on_no is not None
+        has_route_yes_no = (
+            state.route is not None and "yes" in state.route.routes and ("no" in state.route.routes)
+        )
+        if not has_shorthand_yes_no and not has_route_yes_no:
+            errors.append(
+                ValidationError(
+                    message="action_type=human_approval requires 'on_yes'+'on_no' or a "
+                    "'route:' table with 'yes' and 'no' keys",
+                    path=f"{path}",
+                )
+            )
+        if state.timeout is None:
+            errors.append(
+                ValidationError(
+                    message="action_type=human_approval has no 'timeout:' — the wait falls "
+                    "back to hitl.default_timeout (config, default 1800s); set 'timeout:' "
+                    "explicitly to silence this warning",
+                    path=f"{path}.timeout",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
+
     return errors
 
 

@@ -189,14 +189,22 @@ class HitlConfig:
     ``FSMExecutor.resolve_communication_adapter()``. Distinct from the
     unrelated ``hitl-md``/``hitl-compare`` built-in loop family, which are
     loop names, not a config namespace.
+
+    ``default_timeout`` (FEAT-1794) bounds a ``human_approval`` state's wait
+    when the state itself has no ``timeout:``. Deliberately separate from
+    ``FSMLoop.default_timeout``, which is the action-subprocess timeout.
     """
 
     channel: str = "terminal"
+    default_timeout: int = 1800
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> HitlConfig:
         """Create HitlConfig from dictionary."""
-        return cls(channel=data.get("channel", "terminal"))
+        return cls(
+            channel=data.get("channel", "terminal"),
+            default_timeout=data.get("default_timeout", 1800),
+        )
 
 
 @dataclass
@@ -915,6 +923,7 @@ class BRConfig:
             },
             "hitl": {
                 "channel": self._hitl.channel,
+                "default_timeout": self._hitl.default_timeout,
             },
             # --- never-modelled sections: raw passthrough, no BRConfig dataclass (BUG-3012) ---
             **{

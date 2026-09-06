@@ -8,6 +8,7 @@ import logging
 import queue
 import shlex
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from little_loops.fsm.communication_adapter import (
+    AdapterResponse,
+    CommunicationAdapter,
+    TimeoutResponse,
+)
 from little_loops.fsm.evaluators import EvaluationResult
 from little_loops.fsm.executor import (
     ActionResult,
@@ -847,6 +853,364 @@ class TestActionTypeMcpTool:
             result = executor.run()
 
         assert result.final_state == "done"
+
+
+class _HitlMockAdapter(CommunicationAdapter):
+    """Minimal scriptable adapter for action_type=human_approval tests.
+
+    ``script`` is a queue of responses returned in order by successive
+    ``await_response()`` calls; once exhausted, every further call returns a
+    fresh ``TimeoutResponse`` (models a mock that never receives a verdict).
+    """
+
+    def __init__(
+        self, script: list[AdapterResponse | TimeoutResponse] | None = None, async_: bool = True
+    ) -> None:
+        self.script = list(script or [])
+        self._async = async_
+        self.sent: list[tuple[str, str, str, dict]] = []
+        self.cancelled: list[str] = []
+        self._next_id = 0
+
+    def send_alert(
+        self, loop_name: str, state_name: str, prompt: str, captured_context: dict
+    ) -> str:
+        alert_id = f"alert-{self._next_id}"
+        self._next_id += 1
+        self.sent.append((loop_name, state_name, prompt, captured_context))
+        return alert_id
+
+    def await_response(self, alert_id: str, timeout: float) -> AdapterResponse | TimeoutResponse:
+        if self.script:
+            return self.script.pop(0)
+        return TimeoutResponse(elapsed_seconds=timeout)
+
+    def supports_async(self) -> bool:
+        return self._async
+
+    def cancel_alert(self, alert_id: str) -> None:
+        self.cancelled.append(alert_id)
+
+
+class TestActionTypeHumanApproval:
+    """Tests for action_type=human_approval execution in the executor (FEAT-1794)."""
+
+    def _write_hitl_config(
+        self, tmp_path: Path, channel: str = "mock", default_timeout: int | None = None
+    ) -> None:
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        hitl: dict[str, Any] = {"channel": channel}
+        if default_timeout is not None:
+            hitl["default_timeout"] = default_timeout
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps({"hitl": hitl}))
+
+    def _make_fsm(self, timeout: int | None = 5, **extra_state_kwargs: Any) -> FSMLoop:
+        state = StateConfig(
+            action="Approve this change?",
+            action_type="human_approval",
+            timeout=timeout,
+            on_yes="approved",
+            on_no="rejected",
+            **extra_state_kwargs,
+        )
+        return FSMLoop(
+            name="test",
+            initial="check_human",
+            states={
+                "check_human": state,
+                "approved": StateConfig(terminal=True),
+                "rejected": StateConfig(terminal=True),
+                "edited": StateConfig(terminal=True),
+            },
+        )
+
+    def _build_executor(
+        self,
+        fsm: FSMLoop,
+        tmp_path: Path,
+        adapter: CommunicationAdapter,
+        channel: str = "mock",
+        events: list[dict] | None = None,
+    ) -> FSMExecutor:
+        self._write_hitl_config(tmp_path, channel=channel)
+        executor = FSMExecutor(
+            fsm,
+            action_runner=MockActionRunner(),
+            event_callback=(events.append if events is not None else (lambda _e: None)),
+            working_dir=tmp_path,
+        )
+        executor._contributed_adapters[channel] = adapter
+        return executor
+
+    def test_action_mode_returns_human_approval(self, tmp_path: Path) -> None:
+        """_action_mode() classifies human_approval distinctly, not as 'shell' (Second Review #11)."""
+        fsm = self._make_fsm()
+        executor = self._build_executor(fsm, tmp_path, _HitlMockAdapter())
+        assert executor._action_mode(fsm.states["check_human"]) == "human_approval"
+
+    def test_approve_routes_on_yes_and_captures_verdict(self, tmp_path: Path) -> None:
+        events: list[dict] = []
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="approve")])
+        fsm = self._make_fsm()
+        executor = self._build_executor(fsm, tmp_path, adapter, events=events)
+
+        result = executor.run()
+
+        assert result.final_state == "approved"
+        assert executor.captured["check_human"] == {
+            "output": "",
+            "verdict": "approve",
+            "edit": None,
+            "reason": None,
+        }
+        requested = [e for e in events if e["event"] == "human_approval_requested"]
+        resolved = [e for e in events if e["event"] == "human_approval_resolved"]
+        assert len(requested) == 1
+        assert len(resolved) == 1
+        assert requested[0]["alert_id"] is not None
+        assert "deadline_ts" in requested[0]
+        assert requested[0]["prompt"] == "Approve this change?"
+        assert resolved[0]["verdict"] == "approve"
+        assert resolved[0]["route"] == "approved"
+        assert resolved[0]["alert_id"] == requested[0]["alert_id"]
+
+    def test_reject_routes_on_no_and_captures_reason(self, tmp_path: Path) -> None:
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="reject", reason="not ready")])
+        fsm = self._make_fsm()
+        executor = self._build_executor(fsm, tmp_path, adapter)
+
+        result = executor.run()
+
+        assert result.final_state == "rejected"
+        assert executor.captured["check_human"]["verdict"] == "reject"
+        assert executor.captured["check_human"]["reason"] == "not ready"
+
+    def test_edit_routes_via_extra_routes_on_edit(self, tmp_path: Path) -> None:
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="edit", edited_text="revised")])
+        fsm = self._make_fsm(extra_routes={"edit": "edited"})
+        executor = self._build_executor(fsm, tmp_path, adapter)
+
+        result = executor.run()
+
+        assert result.final_state == "edited"
+        assert executor.captured["check_human"]["edit"] == "revised"
+        assert executor.captured["check_human"]["output"] == "revised"
+
+    def test_edit_without_on_edit_falls_back_to_yes(self, tmp_path: Path) -> None:
+        """Implementation Steps #4: an unrouted 'edit' verdict falls back to the 'yes' route."""
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="edit", edited_text="x")])
+        fsm = self._make_fsm()  # no extra_routes -> no on_edit
+        executor = self._build_executor(fsm, tmp_path, adapter)
+
+        result = executor.run()
+
+        assert result.final_state == "approved"
+
+    def test_route_table_unrouted_edit_falls_to_route_default_not_on_yes(
+        self, tmp_path: Path
+    ) -> None:
+        """Third Review #21: with a route: table, an unrouted edit resolves via
+        route.default, NOT the on_yes shorthand fallback."""
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="edit", edited_text="x")])
+        state = StateConfig(
+            action="Approve?",
+            action_type="human_approval",
+            timeout=5,
+            route=RouteConfig(routes={"yes": "approved", "no": "rejected"}, default="edited"),
+        )
+        fsm = FSMLoop(
+            name="test",
+            initial="check_human",
+            states={
+                "check_human": state,
+                "approved": StateConfig(terminal=True),
+                "rejected": StateConfig(terminal=True),
+                "edited": StateConfig(terminal=True),
+            },
+        )
+        executor = self._build_executor(fsm, tmp_path, adapter)
+
+        result = executor.run()
+
+        assert result.final_state == "edited"
+
+    def test_unrouted_timeout_falls_back_to_no(self, tmp_path: Path) -> None:
+        adapter = _HitlMockAdapter()  # never returns a verdict
+        fsm = self._make_fsm(timeout=0)  # immediate timeout, no on_timeout defined
+        executor = self._build_executor(fsm, tmp_path, adapter)
+
+        result = executor.run()
+
+        assert result.final_state == "rejected"
+        assert executor.captured["check_human"]["verdict"] == "timeout"
+        assert adapter.cancelled  # cancel_alert() called on the timeout route
+
+    def test_timeout_response_ticks_are_not_a_timeout(self, tmp_path: Path) -> None:
+        """Third Review #19: a mock returning TimeoutResponse on early ticks, then a
+        verdict, routes on the verdict -- not every tick ends the wait."""
+        events: list[dict] = []
+        adapter = _HitlMockAdapter(
+            script=[
+                TimeoutResponse(elapsed_seconds=0.1),
+                TimeoutResponse(elapsed_seconds=0.1),
+                AdapterResponse(verdict="approve"),
+            ]
+        )
+        fsm = self._make_fsm(timeout=5)
+        executor = self._build_executor(fsm, tmp_path, adapter, events=events)
+
+        result = executor.run()
+
+        assert result.final_state == "approved"
+        resolved = [e for e in events if e["event"] == "human_approval_resolved"]
+        assert resolved[0]["verdict"] == "approve"
+
+    def test_headless_stdin_none_short_circuits_with_reason(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Third Review #18: sync adapter + non-interactive stdin routes on_timeout
+        immediately, no alert sent, reason='headless' distinguishes it from a real timeout."""
+        events: list[dict] = []
+        adapter = _HitlMockAdapter(async_=False)
+        fsm = self._make_fsm()  # on_no="rejected", no on_timeout
+        executor = self._build_executor(fsm, tmp_path, adapter, events=events)
+        monkeypatch.setattr(sys, "stdin", None)
+
+        with caplog.at_level(logging.WARNING):
+            result = executor.run()
+
+        assert result.final_state == "rejected"
+        assert executor.captured["check_human"]["reason"] == "headless"
+        assert adapter.sent == []  # no alert sent
+        resolved = [e for e in events if e["event"] == "human_approval_resolved"]
+        assert resolved[0]["reason"] == "headless"
+        assert resolved[0]["alert_id"] is None
+        requested = [e for e in events if e["event"] == "human_approval_requested"]
+        assert requested == []
+        assert any("stdin is not interactive" in r.message for r in caplog.records)
+
+    def test_headless_short_circuit_non_tty_stdin(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Same short-circuit for a closed/non-tty stdin (not just None)."""
+
+        class _NonTtyStdin:
+            closed = False
+
+            def isatty(self) -> bool:
+                return False
+
+        adapter = _HitlMockAdapter(async_=False)
+        fsm = self._make_fsm()
+        executor = self._build_executor(fsm, tmp_path, adapter)
+        monkeypatch.setattr(sys, "stdin", _NonTtyStdin())
+
+        result = executor.run()
+
+        assert result.final_state == "rejected"
+        assert adapter.sent == []
+
+    def test_async_adapter_not_headless_shortcircuited(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An async (supports_async=True) adapter is never short-circuited, even
+        under non-interactive stdin -- that's precisely when eventbus is needed."""
+        adapter = _HitlMockAdapter(script=[AdapterResponse(verdict="approve")], async_=True)
+        fsm = self._make_fsm()
+        executor = self._build_executor(fsm, tmp_path, adapter)
+        monkeypatch.setattr(sys, "stdin", None)
+
+        result = executor.run()
+
+        assert result.final_state == "approved"
+        assert len(adapter.sent) == 1  # alert WAS sent — no short-circuit
+
+    def test_hitl_default_timeout_used_when_state_timeout_unset(self, tmp_path: Path) -> None:
+        """The wait falls back to hitl.default_timeout, NOT fsm.default_timeout
+        (Second Review #13) — the action-subprocess timeout must not silently cap it."""
+        events: list[dict] = []
+        adapter = _HitlMockAdapter()  # never verdicts -> times out at hitl.default_timeout
+        state = StateConfig(
+            action="Approve?", action_type="human_approval", on_yes="approved", on_no="rejected"
+        )
+        fsm = FSMLoop(
+            name="test",
+            initial="check_human",
+            default_timeout=999,  # unrelated action-subprocess timeout — must be ignored
+            states={
+                "check_human": state,
+                "approved": StateConfig(terminal=True),
+                "rejected": StateConfig(terminal=True),
+            },
+        )
+        self._write_hitl_config(tmp_path, channel="mock", default_timeout=0)
+        executor = FSMExecutor(
+            fsm,
+            action_runner=MockActionRunner(),
+            event_callback=events.append,
+            working_dir=tmp_path,
+        )
+        executor._contributed_adapters["mock"] = adapter
+
+        executor.run()
+
+        requested = [e for e in events if e["event"] == "human_approval_requested"]
+        assert requested[0]["timeout"] == 0
+
+    def test_fsm_timeout_clamps_effective_wait(self, tmp_path: Path) -> None:
+        """Third Review #20: fsm.timeout's remaining budget clamps a longer state.timeout."""
+        events: list[dict] = []
+        adapter = _HitlMockAdapter()  # never verdicts
+        state = StateConfig(
+            action="Approve?",
+            action_type="human_approval",
+            timeout=1800,
+            on_yes="approved",
+            on_no="rejected",
+        )
+        fsm = FSMLoop(
+            name="test",
+            initial="check_human",
+            timeout=100,
+            states={
+                "check_human": state,
+                "approved": StateConfig(terminal=True),
+                "rejected": StateConfig(terminal=True),
+            },
+        )
+        self._write_hitl_config(tmp_path, channel="mock")
+        executor = FSMExecutor(
+            fsm,
+            action_runner=MockActionRunner(),
+            event_callback=events.append,
+            working_dir=tmp_path,
+        )
+        executor._contributed_adapters["mock"] = adapter
+        executor.start_time_ms = 0
+
+        with patch("little_loops.fsm.executor._now_ms", return_value=99_000):
+            ctx = executor._build_context()
+            executor.current_state = "check_human"
+            executor._execute_human_approval_state(state, ctx)
+
+        requested = [e for e in events if e["event"] == "human_approval_requested"]
+        assert requested[0]["timeout"] == 1  # (100_000 - 99_000) // 1000, clamped below 1800
+
+    def test_shutdown_mid_wait_cancels_alert_and_returns_none(self, tmp_path: Path) -> None:
+        """AC: on _shutdown_requested mid-wait, cancel_alert() fires and None is
+        returned so run()'s interrupted-save branch fires on resume."""
+        adapter = _HitlMockAdapter()
+        fsm = self._make_fsm()
+        executor = self._build_executor(fsm, tmp_path, adapter)
+        executor.current_state = "check_human"
+        executor._shutdown_requested = True
+        ctx = executor._build_context()
+        state = fsm.states["check_human"]
+
+        result = executor._execute_human_approval_state(state, ctx)
+
+        assert result is None
+        assert len(adapter.cancelled) == 1
 
 
 class TestActionTypeContract:
