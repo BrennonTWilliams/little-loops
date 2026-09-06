@@ -3432,13 +3432,14 @@ def get_project_folder(
 ```
 
 Map a directory to the host's session-log project folder. Dispatches to host-specific
-helpers for Claude Code, Codex, OpenCode, Pi, Kimi Code, Qwen Code, and Gemini CLI.
+helpers for Claude Code, Codex, OpenCode, Pi, Kimi Code, Qwen Code, Gemini CLI, and omp
+(oh-my-pi).
 
 **Parameters:**
 - `cwd` - Working directory to map (default: current directory)
 - `host` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, ``"pi"``,
-  ``"kimi-code"``, ``"qwen"``, or ``"gemini"``. If ``None``, auto-detects from the
-  ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
+  ``"kimi-code"``, ``"qwen"``, ``"gemini"``, or ``"omp"``. If ``None``, auto-detects from
+  the ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
 
 **Returns:** Path to the host's project session folder, or ``None`` if it doesn't exist.
 
@@ -3475,6 +3476,11 @@ project_folder = get_project_folder(host="codex")
   ``~/.gemini/projects.json`` (a registered slug), falling back to
   ``~/.gemini/tmp/<sha256(cwd)>`` for project dirs predating the slug registry
   (ENH-3393)
+- ``_get_omp_project_folder(cwd: Path) -> Path | None`` — probes
+  ``<sessions-root>/<encode_omp_session_dir(cwd)>`` (home/tmp-relative or
+  legacy-absolute encoding; ``sessions-root`` honors ``PI_CONFIG_DIR``/
+  ``XDG_DATA_HOME``), falling back to the pre-migration
+  ``--<abs cwd>--`` encoding when the current-scheme dir is absent (ENH-3394)
 
 Each helper returns the ``Path`` if the directory exists, or ``None`` otherwise.
 
@@ -3539,8 +3545,8 @@ JSONL records, and returns a sorted list of paths that exist on disk.
 **Parameters:**
 - ``logger`` - Logger instance for warnings.
 - ``host`` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, ``"pi"``,
-  ``"kimi-code"``, ``"qwen"``, or ``"gemini"``. If ``None``, auto-detects from the
-  ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
+  ``"kimi-code"``, ``"qwen"``, ``"gemini"``, or ``"omp"``. If ``None``, auto-detects from
+  the ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
 
 **Returns:** Sorted list of decoded absolute paths for projects with ll activity.
 

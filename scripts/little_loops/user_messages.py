@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -33,6 +34,7 @@ __all__ = [
     "CommandRecord",
     "ExampleRecord",
     "encode_project_path",
+    "encode_omp_session_dir",
     "get_project_folder",
     "get_sessions_folder",
     "extract_user_messages",
@@ -377,8 +379,8 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
     Args:
         cwd: Working directory to map. If None, uses current directory.
         host: Host identifier (``"claude-code"``, ``"codex"``, ``"opencode"``,
-            ``"pi"``, ``"kimi-code"``, ``"qwen"``, ``"gemini"``). If None,
-            auto-detects from ``LL_HOOK_HOST`` env var (default
+            ``"pi"``, ``"kimi-code"``, ``"qwen"``, ``"gemini"``, ``"omp"``).
+            If None, auto-detects from ``LL_HOOK_HOST`` env var (default
             ``"claude-code"``).
 
     Returns:
@@ -412,6 +414,8 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
         return _get_qwen_project_folder(encoded_path)
     elif host == "gemini":
         return _get_gemini_project_folder(cwd)
+    elif host == "omp":
+        return _get_omp_project_folder(cwd)
     return None
 
 
@@ -554,6 +558,81 @@ def _get_gemini_project_folder(cwd: Path) -> Path | None:
                 return slug_folder
     hashed_folder = gemini_home / "tmp" / hashlib.sha256(target.encode("utf-8")).hexdigest()
     return hashed_folder if hashed_folder.exists() else None
+
+
+def encode_omp_session_dir(cwd: Path) -> str:
+    """Encode *cwd* the way omp (oh-my-pi) names its session directory (ENH-3394, omp 18.0.11).
+
+    Mirrors ``getDefaultSessionDirName`` in the vendored
+    ``pi-coding-agent/src/session/session-paths.ts``: a cwd under ``$HOME``
+    encodes as ``-<home-relative>`` (``""`` when cwd *is* home, so just
+    ``"-"``); a cwd under the OS temp root (and not under home) encodes as
+    ``-tmp-<temp-relative>``; anything else falls back to the legacy
+    ``--<abs sans leading "/">--`` form. In every case ``/``, ``\\`` and
+    ``:`` each map 1:1 to ``-`` — dots are left alone, so a ``.worktrees``
+    segment survives intact (unlike :func:`encode_project_path`, which would
+    mangle it).
+    """
+    resolved = str(cwd.resolve())
+    home = str(Path.home().resolve())
+    home_relative = os.path.relpath(resolved, home)
+    if home_relative == ".":
+        home_relative = ""
+    if home_relative == "" or (
+        not home_relative.startswith("..") and not os.path.isabs(home_relative)
+    ):
+        encoded = re.sub(r"[/\\:]", "-", home_relative)
+        return f"-{encoded}" if encoded else "-"
+
+    tmp_root = str(Path(tempfile.gettempdir()).resolve())
+    tmp_relative = os.path.relpath(resolved, tmp_root)
+    if tmp_relative == ".":
+        tmp_relative = ""
+    if tmp_relative == "" or (
+        not tmp_relative.startswith("..") and not os.path.isabs(tmp_relative)
+    ):
+        encoded = re.sub(r"[/\\:]", "-", tmp_relative)
+        return f"-tmp-{encoded}" if encoded else "-tmp"
+
+    return _encode_omp_legacy_absolute_dir(resolved)
+
+
+def _encode_omp_legacy_absolute_dir(resolved_cwd: str) -> str:
+    """omp's pre-17.2.9 (and non-home/non-tmp) session dir encoding: ``--<abs>--``."""
+    stripped = resolved_cwd.lstrip("/\\")
+    encoded = re.sub(r"[/\\:]", "-", stripped)
+    return f"--{encoded}--"
+
+
+def _omp_sessions_root() -> Path:
+    """Resolve ``~/.omp/agent/sessions``, honoring ``PI_CONFIG_DIR``/``XDG_DATA_HOME``.
+
+    ``XDG_DATA_HOME`` flattens the ``agent/`` prefix (``$XDG_DATA_HOME/omp/sessions``,
+    per ``DirResolver`` in the vendored ``pi-utils/src/dirs.ts``); otherwise the
+    root sits under ``PI_CONFIG_DIR`` (default ``.omp``) at ``<home>/<config-dir>/agent/sessions``.
+    """
+    xdg_data_home = os.environ.get("XDG_DATA_HOME")
+    if xdg_data_home:
+        return Path(xdg_data_home) / "omp" / "sessions"
+    config_dir_name = os.environ.get("PI_CONFIG_DIR") or ".omp"
+    return Path.home() / config_dir_name / "agent" / "sessions"
+
+
+def _get_omp_project_folder(cwd: Path) -> Path | None:
+    """Resolve the omp (oh-my-pi) session directory for *cwd* (ENH-3394, omp 18.0.11).
+
+    Probes the current encoding (:func:`encode_omp_session_dir`) first, then
+    falls back to the legacy always-absolute encoding — omp migrates old
+    ``--<home>-…--`` dirs to the new ``-…`` form on first access
+    (``migrateHomeSessionDirs``), but an untouched legacy dir may still be on
+    disk. Returns ``None`` when neither probe finds an on-disk session dir.
+    """
+    sessions_root = _omp_sessions_root()
+    current = sessions_root / encode_omp_session_dir(cwd)
+    if current.exists():
+        return current
+    legacy = sessions_root / _encode_omp_legacy_absolute_dir(str(cwd.resolve()))
+    return legacy if legacy.exists() else None
 
 
 def extract_user_messages(

@@ -3,10 +3,11 @@ id: ENH-3394
 type: ENH
 title: history.db backfill has no host coverage for omp (oh-my-pi)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-06'
 captured_at: '2026-09-06T03:39:22Z'
+completed_at: '2026-09-06T05:37:18Z'
 labels:
 - backfill
 - session-store
@@ -283,6 +284,43 @@ _Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+_Added 2026-09-06 by `/ll:manage-issue` (implementation) — re-verified against
+the vendored omp 18.0.11 source (`session-entries.ts`/`session-manager.ts`)
+as this issue's own Proposed Solution instructed:_
+
+- **Message shape is richer than this section's `{role, content}`
+  paraphrase.** The real `AgentMessage` union has four roles
+  (`user`/`developer`/`assistant`/`toolResult`), not two. `assistant`
+  content carries `toolCall` blocks (`{type, id, name, arguments}`,
+  mapped to Claude `tool_use`), and each tool's *result* is a **separate**
+  `toolResult`-role entry (`toolCallId`/`toolName`/`content`/`isError`) —
+  not nested in the assistant turn or the next user turn. Implemented
+  `normalize_omp_session` against this real shape (see
+  `session_store/omp.py` module docstring); `developer`-role messages are
+  skipped (no Claude-shaped equivalent, no downstream consumer needs them).
+- **Physical line 1 is a title-slot entry** (`{type: "title", ...}`),
+  written ahead of the session header on every save — not itself a header.
+  The reader scans for the first `type: "session"` line rather than
+  assuming a fixed position, tolerating both its presence and its absence
+  (legacy/v1 files).
+- **Child-session `subagent_runs` mapping is deferred**, per this issue's
+  own Scope Boundaries decision point: omp's real layout
+  (`<parent-stem>/<agentId>.jsonl`, session-manager.ts:139-151) matches
+  neither `parent_from="parent_dir"` nor `"child_dir"` (`<parent-stem>` is
+  the parent transcript's filename stem, not its session id) — no
+  `"stem_dir"` mode was added. The `omp` `host_layout_for` branch keeps the
+  Claude-shaped `glob="*/subagents"` default, which correctly yields zero
+  `subagent_runs` rows for omp's actual on-disk shape (no dir is ever
+  literally named `subagents`) rather than mismatched ones.
+- **`projects_root` stays `None`**, matching this repo's own pre-existing
+  `test_gemini_and_omp_have_no_static_projects_root` regression test — the
+  Wiring Phase note that `ll-logs` project-discovery would "begin surfacing
+  omp projects" once `host_layout_for("omp")` is registered does not apply:
+  `discover_all_projects()` returns `[]` whenever `layout.projects_root is
+  None` (`cli/logs.py`), same as gemini today.
+
 ### Signatures
 
 - `_get_omp_project_folder(cwd: Path) -> Path | None` — new branch in
@@ -415,12 +453,46 @@ this issue's helpers so that fix is a reuse).
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented the omp half of the coverage matrix, following ENH-3393's
+gemini template: added an `omp` branch to `host_layout_for()`
+(`session_store/writers.py`) reusing the `HostLayout.normalize_file`
+contract, `session_store/omp.py` (`normalize_omp_session`, re-verified
+against the vendored omp 18.0.11 source rather than this issue's own
+`{role, content}` paraphrase — see the Deviations note under Program
+Design), `encode_omp_session_dir`/`_get_omp_project_folder` in
+`user_messages.py` (home/tmp-relative and legacy-absolute encoding,
+`PI_CONFIG_DIR`/`XDG_DATA_HOME`-aware), and wired `"omp"` into `ll-session
+backfill --host`. Child-session `subagent_runs` mapping and a static
+`projects_root` were deliberately left out (also per the Deviations note) —
+omp's real child layout matches neither existing `parent_from` mode, and
+`projects_root` staying `None` matches the repo's own pre-existing
+`test_gemini_and_omp_have_no_static_projects_root` regression test.
+
+Added `scripts/tests/test_enh_omp_normalizer.py` (mirroring
+`test_enh_3393_gemini_normalizer.py`, including a `TestRebuildOmpRecords`
+class) plus omp coverage in `test_user_messages.py` (project-folder
+resolution + `encode_omp_session_dir` unit cases), `test_ll_session.py`
+(`--host` choices), `test_enh_3166_qwen_normalizer.py` (flipped the
+`projects_root` assertion), and `test_enh_2505_subagent_runs.py`
+(`TestOmpSubagentBackfill`). Fixed two stale line-number allowlist entries
+in `test_issue_parser.py`'s `TestPriorityRegexCompletenessAllowlist` that
+my `writers.py` insertion shifted. Updated `docs/reference/HOST_COMPATIBILITY.md`
+(new omp column + `[^ompwire]` footnote, removed the placeholder paragraph),
+`docs/reference/API.md`, `docs/reference/CLI.md`, and
+`docs/guides/HISTORY_SESSION_GUIDE.md`. Verified end-to-end with a manual
+`ll-session backfill --host omp` smoke test against a synthetic session
+directory. Full suite: 22506 passed, 12 skipped; ruff and mypy clean.
+
 ## Status
 
-**Open** | Created: 2026-09-06 | Priority: P2
+**Done** | Created: 2026-09-06 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-06T05:37:01 - `ba8d0444-0dd0-4a59-b814-c8d3a20b0167.jsonl`
+- `/ll:ready-issue` - 2026-09-06T04:59:59 - `879d7845-2e6d-4ee9-ade4-d3197f7e8bc8.jsonl`
 - `/ll:confidence-check` - 2026-09-06T04:53:40 - `3b34c35b-9273-4059-80be-11dd20598e17.jsonl`
 - `/ll:wire-issue` - 2026-09-06T04:37:09 - `40599667-8ac5-47aa-88f2-6a2e34850427.jsonl`
 - `/ll:refine-issue` - 2026-09-06T03:57:16 - `fb75bfe7-573f-4313-a50e-f7fd15a75fa9.jsonl`

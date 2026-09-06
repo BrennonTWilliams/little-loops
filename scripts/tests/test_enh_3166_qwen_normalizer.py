@@ -248,8 +248,8 @@ class TestHostLayoutRegistry:
 
     def test_gemini_and_omp_have_no_static_projects_root(self) -> None:
         """gemini/omp resolve project dirs index/derived-style, not via a static
-        root (ENH-3393) — gemini is registered today; omp is a sibling issue,
-        so it still falls through to the Claude-shaped default."""
+        root (ENH-3393 for gemini, ENH-3394 for omp) — both are dedicated
+        branches now, not the Claude-shaped unregistered-host default."""
         assert host_layout_for("gemini").projects_root is None
         assert host_layout_for("omp").projects_root is None
 

@@ -2177,7 +2177,7 @@ class HostLayout:
     high-volume record families before they reach ``raw_events``.
 
     ``normalize_file`` (ENH-3393) is for hosts whose session id lives only in
-    a file header, not on each record (gemini, and eventually omp) — the
+    a file header, not on each record (gemini, omp per ENH-3394) — the
     per-record ``normalize`` contract can't stamp ``raw_events.session_id``
     without file-level state. When set, :func:`_backfill_raw_events` reads
     the whole file through this callable instead of parsing it line-by-line;
@@ -2259,6 +2259,26 @@ def host_layout_for(host: str) -> HostLayout:
             projects_root=None,
             session_glob="chats/session-*.jsonl",
             normalize_file=normalize_gemini_session,
+        )
+    if host == "omp":
+        from little_loops.session_store.omp import normalize_omp_session
+
+        # Child-session subagent_runs mapping is deferred (ENH-3394 Scope
+        # Boundaries): omp's real child layout is `<parent-stem>/<agentId>.jsonl`
+        # (a dir named after the parent transcript's filename stem, not its
+        # session id), matching neither "parent_dir" nor "child_dir" — a new
+        # parent_from mode (or per-host callable) would be needed to map it.
+        # The Claude-shaped defaults below never match a real omp dir (omp
+        # never creates one literally named "subagents"), so this correctly
+        # yields zero subagent_runs rows rather than mismatched ones.
+        return HostLayout(
+            glob="*/subagents",
+            parent_from="parent_dir",
+            sidecar_suffix=None,
+            sessions_subdir="",
+            name="omp",
+            projects_root=None,
+            normalize_file=normalize_omp_session,
         )
     projects_root = {
         "claude-code": home / ".claude" / "projects",

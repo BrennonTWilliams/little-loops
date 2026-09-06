@@ -510,19 +510,15 @@ the adapter.
 
 ## State directory
 
-| State surface                       | Claude Code | OpenCode | Codex CLI | Kimi Code | Qwen Code | Gemini CLI |
-| ----------------------------------- | ----------- | -------- | --------- | --------- | --------- | ---------- |
-| Config file                         | `.ll/`      | `.ll/`   | `.codex/` (first) then `.ll/` | `.kimi-code/` (first) then `.ll/` | `.qwen/` (first) then `.ll/` | `.gemini/` (first) then `.ll/` |
-| Issue tracking (`.issues/`)         | `.issues/`  | `.issues/` | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] |
-| FSM runs (`.loops/`)                | `.loops/`   | `.loops/` | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] |
-| Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] |
-| Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] |
-| Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] |
-| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] | ✓ — `~/.gemini/tmp/<slug>/` resolved via `~/.gemini/projects.json` (slug registry), falling back to `~/.gemini/tmp/<sha256(cwd)>/` for pre-registry dirs; session JSONL under `chats/session-*.jsonl` (ENH-3393)[^geminiwire] |
-
-`ll-session backfill --host omp` is tracked separately (ENH-3394, depends on
-ENH-3393) — omp has no dedicated row here yet; it falls through to the
-Claude-shaped default like an unregistered host.
+| State surface                       | Claude Code | OpenCode | Codex CLI | Kimi Code | Qwen Code | Gemini CLI | omp |
+| ----------------------------------- | ----------- | -------- | --------- | --------- | --------- | ---------- | --- |
+| Config file                         | `.ll/`      | `.ll/`   | `.codex/` (first) then `.ll/` | `.kimi-code/` (first) then `.ll/` | `.qwen/` (first) then `.ll/` | `.gemini/` (first) then `.ll/` | `.omp/` (first) then `.ll/` |
+| Issue tracking (`.issues/`)         | `.issues/`  | `.issues/` | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] |
+| FSM runs (`.loops/`)                | `.loops/`   | `.loops/` | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] |
+| Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] |
+| Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] |
+| Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] |
+| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] | ✓ — `~/.gemini/tmp/<slug>/` resolved via `~/.gemini/projects.json` (slug registry), falling back to `~/.gemini/tmp/<sha256(cwd)>/` for pre-registry dirs; session JSONL under `chats/session-*.jsonl` (ENH-3393)[^geminiwire] | ✓ — `~/.omp/agent/sessions/<encoded cwd>/` (`PI_CONFIG_DIR`/`XDG_DATA_HOME`-aware; home/tmp-relative or legacy-absolute encoding), probing the legacy `--<abs>--` encoding when the current one is absent; session JSONL directly under it as `<ts>_<sessionId>.jsonl` (ENH-3394)[^ompwire] |
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
     config probe only. Research spike **ENH-1722** evaluated extending
@@ -596,6 +592,29 @@ Claude-shaped default like an unregistered host.
     reader. No subagent transcript directory has been observed for gemini,
     so `subagent_runs` backfill yields zero rows (not an error) rather than
     populating anything.
+
+[^ompwire]: omp (oh-my-pi 18.0.11) session files are a fourth shape: a
+    fixed-width title-slot line precedes the session header on every
+    physical file, and the session id lives **only** in that header, not on
+    each record — reusing gemini's `HostLayout.normalize_file` contract
+    (ENH-3393) rather than qwen's per-record one. Each conversational line
+    is `{type: "message", id, parentId, timestamp, message: AgentMessage}`,
+    and the message's own `role` (`"user"`, `"developer"`, `"assistant"`,
+    `"toolResult"`) — not Claude's flat user/assistant split — is what
+    `ll-session backfill --host omp` dispatches on: `assistant` content
+    carries `toolCall` blocks inline (mapped to a `tool_use` block), but
+    each tool's result is a **separate** `toolResult`-role entry (mapped to
+    a synthetic `tool_result` user turn), unlike gemini's inline
+    `toolCalls[].result`. `developer`-role messages and non-conversational
+    entry types (`thinking_level_change`, `model_change`, `compaction`,
+    etc.) are skipped. omp's real child-session layout
+    (`<parent-stem>/<agentId>.jsonl`, a dir named after the parent
+    transcript's filename stem) matches neither the `parent_dir` nor
+    `child_dir` `subagent_runs` mode, so that mapping is deferred to a
+    follow-up; `subagent_runs` backfill yields zero rows (not an error) in
+    the meantime. `ll-logs` project discovery does not enumerate omp
+    projects — like gemini, `host_layout_for("omp").projects_root` is
+    `None` (cwd-encoding-derived, not a static iterable root).
 
 [^qwenmarket]: **FEAT-3155 R3 finding** — the marketplace auto-conversion
     (`qwen extensions install BrennonTWilliams/little-loops:ll`) installs

@@ -86,6 +86,7 @@ from little_loops.session_store.lifecycle import (
     recompress_raw_events,
     record_retirement,
 )
+from little_loops.session_store.omp import normalize_omp_session
 from little_loops.session_store.queries import (
     build_snapshot_db,
     export_history,
@@ -213,6 +214,7 @@ __all__ = [
     "SubagentMeta",
     "host_layout_for",
     "normalize_gemini_session",
+    "normalize_omp_session",
     "normalize_qwen_record",
     "qwen_skip_at_ingest",
     "canonicalize_issue_id",

@@ -26,6 +26,7 @@ from little_loops.user_messages import (
     _detect_error_message,
     _extract_response_metadata,
     build_examples,
+    encode_omp_session_dir,
     encode_project_path,
     extract_commands,
     extract_user_messages,
@@ -398,6 +399,109 @@ class TestGetProjectFolder:
         result = get_project_folder(host="gemini")
         assert result == hashed_folder
 
+    def test_host_omp_resolves_home_relative_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host="omp" resolves ~/.omp/agent/sessions/-<home-relative> (ENH-3394)."""
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        fake_home = tmp_path / "home"
+        project = fake_home / "work" / "myproj"
+        project.mkdir(parents=True)
+        session_dir = fake_home / ".omp" / "agent" / "sessions" / "-work-myproj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(project)
+
+        result = get_project_folder(host="omp")
+        assert result == session_dir
+
+    def test_host_omp_resolves_tmp_relative_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cwd under the OS temp root (not under home) encodes as -tmp-<rel>."""
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        fake_tmp = tmp_path / "faketmp"
+        project = fake_tmp / "myproj"
+        project.mkdir(parents=True)
+        session_dir = fake_home / ".omp" / "agent" / "sessions" / "-tmp-myproj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fake_tmp))
+        monkeypatch.chdir(project)
+
+        result = get_project_folder(host="omp")
+        assert result == session_dir
+
+    def test_host_omp_falls_back_to_legacy_absolute_encoding(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A pre-migration ``--<abs>--`` dir is probed when the current-scheme
+        dir is absent — omp only migrates it to the new form on first access."""
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        fake_home = tmp_path / "home"
+        project = fake_home / "work" / "myproj"
+        project.mkdir(parents=True)
+        legacy_encoded = f"--{str(project.resolve()).lstrip('/').replace('/', '-')}--"
+        session_dir = fake_home / ".omp" / "agent" / "sessions" / legacy_encoded
+        session_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(project)
+
+        result = get_project_folder(host="omp")
+        assert result == session_dir
+
+    def test_host_omp_returns_none_without_project_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="omp")
+        assert result is None
+
+    def test_host_omp_honors_pi_config_dir_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        fake_home = tmp_path / "home"
+        project = fake_home / "myproj"
+        project.mkdir(parents=True)
+        session_dir = fake_home / "mypi" / "agent" / "sessions" / "-myproj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.setenv("PI_CONFIG_DIR", "mypi")
+        monkeypatch.chdir(project)
+
+        result = get_project_folder(host="omp")
+        assert result == session_dir
+
+    def test_host_omp_honors_xdg_data_home_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """XDG_DATA_HOME flattens the agent/ prefix: $XDG_DATA_HOME/omp/sessions."""
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        fake_home = tmp_path / "home"
+        project = fake_home / "myproj"
+        project.mkdir(parents=True)
+        xdg_root = tmp_path / "xdg-data"
+        session_dir = xdg_root / "omp" / "sessions" / "-myproj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.setenv("XDG_DATA_HOME", str(xdg_root))
+        monkeypatch.chdir(project)
+
+        result = get_project_folder(host="omp")
+        assert result == session_dir
+
     def test_host_auto_detect_from_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -464,6 +568,77 @@ class TestGetProjectFolder:
 
         result = get_project_folder()  # No host arg — must still work
         assert result == project_dir
+
+
+class TestEncodeOmpSessionDir:
+    """encode_omp_session_dir unit cases (ENH-3394, omp 18.0.11) — the cwd
+    encoding independent of any on-disk probing."""
+
+    def test_home_exact_encodes_as_bare_dash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        assert encode_omp_session_dir(fake_home) == "-"
+
+    def test_home_relative_subdir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_home = tmp_path / "home"
+        project = fake_home / "work" / "myproj"
+        project.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        assert encode_omp_session_dir(project) == "-work-myproj"
+
+    def test_home_relative_preserves_dots_in_worktrees(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only /, \\, : map to "-"; dots (e.g. a .worktrees segment) survive."""
+        fake_home = tmp_path / "home"
+        project = fake_home / ".worktrees" / "feature-x"
+        project.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        assert encode_omp_session_dir(project) == "-.worktrees-feature-x"
+
+    def test_tmp_relative_subdir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        fake_tmp = tmp_path / "faketmp"
+        project = fake_tmp / "myproj"
+        project.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fake_tmp))
+
+        assert encode_omp_session_dir(project) == "-tmp-myproj"
+
+    def test_tmp_exact_encodes_as_bare_dash_tmp(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        fake_tmp = tmp_path / "faketmp"
+        fake_tmp.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fake_tmp))
+
+        assert encode_omp_session_dir(fake_tmp) == "-tmp"
+
+    def test_neither_home_nor_tmp_uses_legacy_absolute_encoding(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        fake_tmp = tmp_path / "faketmp"
+        fake_tmp.mkdir()
+        project = tmp_path / "elsewhere" / "myproj"
+        project.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fake_tmp))
+
+        expected = f"--{str(project.resolve()).lstrip('/').replace('/', '-')}--"
+        assert encode_omp_session_dir(project) == expected
 
 
 class TestGetSessionsFolder:

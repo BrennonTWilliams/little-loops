@@ -1,0 +1,2 @@
+{"type":"session","id":"22222222-3333-4444-5555-666666666666","timestamp":"2026-05-01T09:00:00.000Z","cwd":"/tmp/legacy-project"}
+{"type":"message","id":"l1","parentId":null,"timestamp":"2026-05-01T09:00:01.000Z","message":{"role":"user","content":"Hello from a v1 session.","timestamp":1777000000000}}

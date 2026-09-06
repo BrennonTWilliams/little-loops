@@ -50,12 +50,13 @@ class TestArgumentParsing:
             "kimi-code",
             "qwen",
             "gemini",
+            "omp",
         ):
             with patch("sys.argv", ["ll-session", "backfill", "--host", host]):
                 args = _parse_args()
             assert args.host == host
 
-        with patch("sys.argv", ["ll-session", "backfill", "--host", "omp"]):
+        with patch("sys.argv", ["ll-session", "backfill", "--host", "not-a-real-host"]):
             with pytest.raises(SystemExit):
                 _parse_args()
 

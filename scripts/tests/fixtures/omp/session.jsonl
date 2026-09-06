@@ -1,0 +1,9 @@
+{"type":"title","v":1,"title":"Session title","updatedAt":"2026-06-01T10:00:00.000Z","pad":""}
+{"type":"session","version":3,"id":"11111111-2222-3333-4444-555555555555","title":"Session title","timestamp":"2026-06-01T10:00:00.000Z","cwd":"/tmp/example-project"}
+{"type":"message","id":"m1","parentId":null,"timestamp":"2026-06-01T10:00:05.000Z","message":{"role":"user","content":"Check which ll issues are open.","timestamp":1780000000000}}
+{"type":"thinking_level_change","id":"m1b","parentId":"m1","timestamp":"2026-06-01T10:00:05.500Z","thinkingLevel":"high"}
+{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-06-01T10:00:07.000Z","message":{"role":"assistant","content":[{"type":"text","text":"I'll check now."}],"api":"anthropic","provider":"anthropic","model":"model-x","usage":{"input":1,"output":1,"cacheRead":0,"cacheWrite":0},"stopReason":"stop","timestamp":1780000001000}}
+{"type":"model_change","id":"m2b","parentId":"m2","timestamp":"2026-06-01T10:00:07.500Z","model":"anthropic/model-y"}
+{"type":"message","id":"m3","parentId":"m2","timestamp":"2026-06-01T10:00:09.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Let me run the command."},{"type":"toolCall","id":"call-1","name":"run_shell_command","arguments":{"command":"ll-issues list"}}],"api":"anthropic","provider":"anthropic","model":"model-x","usage":{"input":2,"output":2,"cacheRead":0,"cacheWrite":0},"stopReason":"toolUse","timestamp":1780000002000}}
+{"type":"message","id":"m4","parentId":"m3","timestamp":"2026-06-01T10:00:09.500Z","message":{"role":"toolResult","toolCallId":"call-1","toolName":"run_shell_command","content":[{"type":"text","text":"BUG-1 open"}],"isError":false,"timestamp":1780000002500}}
+{"type":"message","id":"m5","parentId":"m4","timestamp":"2026-06-01T10:00:10.000Z","message":{"role":"user","content":"Actually, check again.","timestamp":1780000003000}}

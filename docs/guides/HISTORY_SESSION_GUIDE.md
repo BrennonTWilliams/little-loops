@@ -227,9 +227,10 @@ You can specify which host's session files to scan if you use multiple Claude Co
 ll-session backfill --host claude-code
 ll-session backfill --host codex
 ll-session backfill --host opencode
+ll-session backfill --host omp
 ```
 
-`--host` defaults to `None` (auto-detect from `LL_HOOK_HOST`); valid choices also include `pi`, `kimi-code`, `qwen`, and `gemini`.
+`--host` defaults to `None` (auto-detect from `LL_HOOK_HOST`); valid choices also include `pi`, `kimi-code`, `qwen`, `gemini`, and `omp`.
 
 ---
 

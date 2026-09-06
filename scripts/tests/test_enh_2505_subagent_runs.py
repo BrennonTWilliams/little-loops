@@ -736,6 +736,33 @@ class TestGeminiSubagentBackfill:
         assert rows == []
 
 
+class TestOmpSubagentBackfill:
+    """ENH-3394: omp's real child layout (``<parent-stem>/<agentId>.jsonl``)
+    matches neither ``parent_dir`` nor ``child_dir`` — mapping it is deferred
+    to a follow-up (see the omp ``host_layout_for`` branch's comment), so the
+    layout keeps the Claude-shaped subagent defaults. A project with only a
+    top-level session file (no ``*/subagents`` dir) must yield zero rows, not
+    an error — independent of how that follow-up eventually resolves."""
+
+    def test_no_subagents_dir_yields_zero_rows(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        sessions_root = tmp_path / "-my-project"
+        sessions_root.mkdir(parents=True)
+        (sessions_root / "2026-09-06T00-00-00-000Z_session-1.jsonl").write_text(
+            "{}\n", encoding="utf-8"
+        )
+        conn = connect(db)
+        try:
+            count = _backfill_subagent_runs(conn, sessions_root, layout=host_layout_for("omp"))
+            conn.commit()
+            rows = conn.execute("SELECT * FROM subagent_runs").fetchall()
+        finally:
+            conn.close()
+        assert count == 0
+        assert rows == []
+
+
 class TestReconcileStaleSubagentRuns:
     """ENH-3210: reconciling orphaned ``running`` rows to ``orphaned``."""
 
