@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-05'
 captured_at: '2026-09-05T23:53:50Z'
+confidence_score: 96
+outcome_confidence: 96
+score_complexity: 25
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 25
 ---
 
 # BUG-3392: ll-issues show: derived 'Superseded by' row hidden when superseding issue is deferred/done/cancelled
@@ -115,6 +121,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-06T00:54:09 - `f8c6a35f-53bd-4185-b107-75ddceecc2f6.jsonl`
 - `/ll:wire-issue` - 2026-09-06T00:51:45 - `2a52dfcf-16c7-48fe-83e3-d9895c70f5c1.jsonl`
 - `/ll:refine-issue` - 2026-09-06T00:38:20 - `d41a820b-4488-495c-b1ba-f59ae30351ff.jsonl`
 - `/ll:format-issue` - 2026-09-06T00:18:01 - `1e264319-0c50-4b45-8bb6-a6a83e8511b2.jsonl`
