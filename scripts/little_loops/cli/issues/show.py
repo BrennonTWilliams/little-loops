@@ -277,8 +277,9 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     superseded_by_str: str | None = None
     try:
         from little_loops.issue_parser import find_issues, superseded_by
+        from little_loops.issue_progress import _ALL_STATUSES
 
-        _all = find_issues(config)
+        _all = find_issues(config, status_filter=set(_ALL_STATUSES))
         if parent_str:
             _title = next((i.title for i in _all if i.issue_id == parent_str), None)
             parent_display = f"{parent_str} ({_title})" if _title else parent_str

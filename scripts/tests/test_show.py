@@ -532,6 +532,34 @@ class TestParseCardFields:
         fields = _parse_card_fields(path, config)
         assert fields["superseded_by"] == "ENH-5111"
 
+    def test_superseded_by_derived_when_superseder_is_deferred(self, tmp_path: Path) -> None:
+        """superseded_by renders even when the superseding issue is deferred/done/cancelled (BUG-3392)."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: cancelled\ncancelled_reason: superseded\n---\n# ENH-5120: Old\n",
+            "P3-ENH-5120-old.md",
+        )
+        enh_dir = tmp_path / ".issues" / "enhancements"
+        (enh_dir / "P3-ENH-5121-new.md").write_text(
+            "---\nstatus: deferred\nsupersedes:\n- ENH-5120\n---\n# ENH-5121: New\n"
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["superseded_by"] == "ENH-5121"
+
+    def test_parent_display_resolves_title_when_parent_is_done(self, tmp_path: Path) -> None:
+        """parent_display resolves the parent's title even when the parent is done (BUG-3392)."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\nparent: ENH-5130\n---\n# ENH-5131: Child\n",
+            "P3-ENH-5131-child.md",
+        )
+        enh_dir = tmp_path / ".issues" / "enhancements"
+        (enh_dir / "P3-ENH-5130-parent.md").write_text(
+            "---\nstatus: done\n---\n# ENH-5130: Parent Title\n"
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["parent_display"] == "ENH-5130 (Parent Title)"
+
     def test_superseded_by_absent_when_nobody_references(self, tmp_path: Path) -> None:
         """superseded_by is None (absent), not empty, when no issue supersedes this one."""
         path, config = self._write_issue(

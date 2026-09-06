@@ -1647,6 +1647,8 @@ class TestFindIssues:
             ),
             # cli/issues/list_cmd.py:166 — _find_issues_all
             ("list_cmd:166", {"status_filter": _ALL_STATUSES}),
+            # cli/issues/show.py:281 — supersession/parent lookup
+            ("show:281", {"status_filter": _ALL_STATUSES}),
         ]
 
         for description, kwargs in callsite_shapes:

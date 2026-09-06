@@ -4,10 +4,11 @@ type: BUG
 title: 'll-issues show: derived ''Superseded by'' row hidden when superseding issue
   is deferred/done/cancelled'
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-05'
 captured_at: '2026-09-05T23:53:50Z'
+completed_at: '2026-09-06T01:38:09Z'
 confidence_score: 100
 outcome_confidence: 96
 score_complexity: 25
@@ -49,8 +50,6 @@ cancelled issue A, deferred issue B whose frontmatter forward-references A, asse
 ## Integration Map
 
 ### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-06 — based on codebase analysis:_
 
 ### Files to Modify
 - `scripts/little_loops/cli/issues/show.py:281` — widen the `find_issues(config)` call to pass an all-statuses `status_filter` for the supersession/parent lookup
@@ -115,11 +114,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues show` renders `Superseded by` when the superseding issue is deferred, done, or cancelled (manual check: `ll-issues show FEAT-3385` shows `Superseded by: FEAT-3388`)
-- [ ] Regression test covering the deferred-superseder case, asserting on `_parse_card_fields()["superseded_by"]` (unit level, matching the existing `test_superseded_by_*` tests — no `cmd_show` end-to-end test required)
-- [ ] Regression test for `parent_display` resolving a `done`/`cancelled`/`deferred` parent's title
-- [ ] `("show:281", {"status_filter": _ALL_STATUSES})` entry added to the `callsite_shapes` registry in `test_issue_parser.py`
-- [ ] `python -m pytest scripts/tests/` passes; `python -m mypy scripts/little_loops/` clean on `show.py`
+- [x] `ll-issues show` renders `Superseded by` when the superseding issue is deferred, done, or cancelled (manual check: `ll-issues show FEAT-3385` shows `Superseded by: FEAT-3388`)
+- [x] Regression test covering the deferred-superseder case, asserting on `_parse_card_fields()["superseded_by"]` (unit level, matching the existing `test_superseded_by_*` tests — no `cmd_show` end-to-end test required)
+- [x] Regression test for `parent_display` resolving a `done`/`cancelled`/`deferred` parent's title
+- [x] `("show:281", {"status_filter": _ALL_STATUSES})` entry added to the `callsite_shapes` registry in `test_issue_parser.py`
+- [x] `python -m pytest scripts/tests/` passes; `python -m mypy scripts/little_loops/` clean on `show.py`
+
+## Resolution
+
+Widened the supersession/parent lookup in `show.py:281` (`find_issues(config)` →
+`find_issues(config, status_filter=set(_ALL_STATUSES))`, importing `_ALL_STATUSES`
+from `little_loops.issue_progress`), matching the established
+`set(_ALL_STATUSES)` convention used at `normalize.py:275`, `cli/deps.py:269`,
+`epic_progress.py:53`, and `list_cmd.py:166`.
+
+Added regression coverage in `test_show.py` (deferred-superseder `superseded_by`
+case; `done`-parent `parent_display` title-resolution case) and registered the
+new call shape (`("show:281", {"status_filter": _ALL_STATUSES})`) in the
+`callsite_shapes` registry in `test_issue_parser.py`. Full suite
+(`python -m pytest scripts/tests/`) passes (23189 passed, 43 skipped); `mypy`
+and `ruff` clean on all touched files.
 
 ## Status
 
@@ -127,6 +141,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-06T01:37:05 - `cc6fb6c6-194a-445b-a5ab-2f780c8abc03.jsonl`
+- `/ll:ready-issue` - 2026-09-06T01:30:00 - `b2298fce-801f-4892-994c-561496dc1163.jsonl`
 - `/ll:confidence-check` - 2026-09-06T01:26:41 - `366fbab1-2425-4032-9107-25922a0dc3e9.jsonl`
 - `/ll:confidence-check` - 2026-09-06T00:54:09 - `f8c6a35f-53bd-4185-b107-75ddceecc2f6.jsonl`
 - `/ll:wire-issue` - 2026-09-06T00:51:45 - `2a52dfcf-16c7-48fe-83e3-d9895c70f5c1.jsonl`
