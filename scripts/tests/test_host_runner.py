@@ -42,6 +42,7 @@ from little_loops.host_runner import (
     PiRunner,
     QwenRunner,
     apply_host_cli_from_config,
+    gh_scope_extra,
     project_child_env,
     resolve_host,
     resolve_host_named,
@@ -489,6 +490,60 @@ class TestResolveScopes:
             assert preceding.startswith("#"), (
                 f"scope {scope!r} has no justification comment on the preceding line"
             )
+
+
+class TestGhScopeExtra:
+    """ENH-3205: gh_scope_extra() — GH_CONFIG_DIR redirect + GH_TOKEN pairing."""
+
+    def test_without_token_only_redirects_config_dir(self, tmp_path: Path) -> None:
+        """with_token=False returns only GH_CONFIG_DIR (the non-github declaring case)."""
+        assert gh_scope_extra(tmp_path, with_token=False) == {"GH_CONFIG_DIR": str(tmp_path)}
+
+    def test_with_token_prefers_gh_token_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GH_TOKEN env var wins over GITHUB_TOKEN and the gh auth token probe."""
+        monkeypatch.setenv("GH_TOKEN", "from-gh-token")
+        monkeypatch.setenv("GITHUB_TOKEN", "from-github-token")
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            result = gh_scope_extra(tmp_path, with_token=True)
+        mock_run.assert_not_called()
+        assert result == {"GH_CONFIG_DIR": str(tmp_path), "GH_TOKEN": "from-gh-token"}
+
+    def test_with_token_falls_back_to_github_token_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.setenv("GITHUB_TOKEN", "from-github-token")
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            result = gh_scope_extra(tmp_path, with_token=True)
+        mock_run.assert_not_called()
+        assert result["GH_TOKEN"] == "from-github-token"
+
+    def test_with_token_probes_gh_auth_token_when_no_env_vars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No GH_TOKEN/GITHUB_TOKEN -> probes `gh auth token` against the
+        ambient (un-redirected) config, per Decision 1's source order."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        probe = MagicMock(returncode=0, stdout="ambient-token\n")
+        with patch("little_loops.host_runner.subprocess.run", return_value=probe) as mock_run:
+            result = gh_scope_extra(tmp_path, with_token=True)
+        assert result["GH_TOKEN"] == "ambient-token"
+        assert mock_run.call_args.args[0] == ["gh", "auth", "token"]
+
+    def test_with_token_raises_when_no_token_obtainable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fail-loud: no env token and a failing probe raises RuntimeError,
+        never falls back to an un-scoped/un-redirected child."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        probe = MagicMock(returncode=1, stdout="")
+        with patch("little_loops.host_runner.subprocess.run", return_value=probe):
+            with pytest.raises(RuntimeError, match="github"):
+                gh_scope_extra(tmp_path, with_token=True)
 
 
 class TestClaudeCodeRunner:
@@ -2266,6 +2321,12 @@ class TestAC8BaselineCoverage:
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN",
             "CLAUDE_CODE_OAUTH_TOKEN",
+            # ENH-3205: gh_scope_extra() reads these to source GH_TOKEN for a
+            # declaring `github` scope; already mapped by CREDENTIAL_SCOPES /
+            # resolve_scopes (ENH-3396), same pending-registry-mapping shape
+            # as the ANTHROPIC_* entries above.
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
             # Optional vision-loop credential + its paired non-secret config,
             # sourced from .env by flux/html/interactive/openscad/svg
             # generator loops (see rlhf-svg-evaluate.yaml and siblings).

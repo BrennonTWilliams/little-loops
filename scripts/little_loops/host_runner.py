@@ -183,6 +183,59 @@ def resolve_scopes(scopes: Iterable[str]) -> frozenset[str]:
     return frozenset(resolved)
 
 
+def gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]:
+    """Build the env overrides that scope a child's ``gh`` CLI access (ENH-3205).
+
+    Always redirects ``GH_CONFIG_DIR`` to *config_dir* so the ambient
+    ``~/.config/gh`` login (and the keyring session it points at) is not
+    visible to the child — this is unconditional so a declaring-but-not-
+    ``github`` state still loses the ambient session, not just an
+    un-injected token. When *with_token* is True, additionally resolves a
+    ``GH_TOKEN``: the ``GH_TOKEN``/``GITHUB_TOKEN`` env vars first, else a
+    ``gh auth token`` probe run against the *ambient* (un-redirected)
+    config so it can still see the operator's keyring login. Raises
+    ``RuntimeError`` when no token is obtainable — there is no code path
+    that falls back to leaving the child un-redirected or un-scoped.
+
+    **Known gap (ENH-3205, recorded in ``.ll/learning-tests/gh.md``):** on
+    macOS, ``gh`` stores its OAuth token in the login Keychain under a fixed
+    per-hostname service name, looked up independently of
+    ``GH_CONFIG_DIR``/``hosts.yml``. ``gh auth status``/``gh api`` do
+    consult ``hosts.yml`` and are correctly hidden by the redirect, but
+    ``gh auth token`` is not — a nested ``github``-scoped spawn running
+    under an *inherited* empty ``GH_CONFIG_DIR`` (e.g. from an outer
+    non-``github`` declaring state) can still mint a token via this same
+    probe. The redirect still narrows which processes see the ambient
+    *session* (``gh auth status``/``gh api``/interactive commands), but does
+    not by itself prevent re-minting a token via ``gh auth token`` on a
+    keychain-backed install.
+    """
+    extra = {"GH_CONFIG_DIR": str(config_dir)}
+    if not with_token:
+        return extra
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not token:
+        # Probes the *ambient* gh session on purpose — project_child_env()
+        # with no env_allow is full inheritance (no GH_CONFIG_DIR redirect),
+        # so this sees the operator's own keyring-backed token.
+        probe = subprocess.run(
+            ["gh", "auth", "token"],
+            env=project_child_env(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if probe.returncode == 0:
+            token = probe.stdout.strip()
+    if not token:
+        raise RuntimeError(
+            "declared 'github' scope but no token available: "
+            "set GH_TOKEN/GITHUB_TOKEN or run `gh auth login`"
+        )
+    extra["GH_TOKEN"] = token
+    return extra
+
+
 class HostNotConfigured(RuntimeError):
     """Raised when no host runner can be resolved from env or binary probe.
 

@@ -43,9 +43,12 @@ _TASK_PATH_MODULES: dict[str, tuple[int, int]] = {
     "little_loops/init/install_check.py": (5, 5),
     # Holds the helper itself plus run_blocking_json's spawn (FEAT-3042 moved
     # evaluate_llm_structured's subprocess.run here; it routes through
-    # project_child_env). The `dict(os.environ)` snapshot is for reading
-    # LL_HOST_CLI/LL_HOOK_HOST, never passed as a child env=.
-    "little_loops/host_runner.py": (1, 0),
+    # project_child_env) plus gh_scope_extra's `gh auth token` probe spawn
+    # (ENH-3205, routed through project_child_env() with no env_allow — an
+    # intentional ambient-session read, not an exemption). The
+    # `dict(os.environ)` snapshot is for reading LL_HOST_CLI/LL_HOOK_HOST,
+    # never passed as a child env=.
+    "little_loops/host_runner.py": (2, 0),
 }
 
 _SPAWN_ATTRS = {"run", "Popen", "check_output", "call"}

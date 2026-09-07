@@ -10224,6 +10224,23 @@ Two env-driven overrides exist, both narrowing/observational only — neither ca
 
 An AST-based guard test (`test_enh3184_spawn_site_guard.py`) enumerates every `subprocess.(run|Popen|check_output|call)` site across the task-path modules and fails if a new spawn bypasses this helper; sites intentionally exempt (git plumbing, `gh` auth/PR calls, detection/maintenance probes, pip introspection) carry an inline `# ll-no-project: <reason>` marker.
 
+### gh_scope_extra
+
+Builds the `env=` overrides that scope a child's `gh` CLI access (ENH-3205), for the `github` credential scope specifically.
+
+```python
+def gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]: ...
+```
+
+**Behavior:**
+
+- Always returns `{"GH_CONFIG_DIR": str(config_dir)}` — unconditional, so a declaring-but-non-`github` state still gets the ambient `~/.config/gh` login hidden from `gh auth status`/`gh api`, not just an un-injected token.
+- `with_token=True` additionally resolves `GH_TOKEN`: the `GH_TOKEN`/`GITHUB_TOKEN` env vars first, else a `gh auth token` probe run via `project_child_env()` with no `env_allow` (full inherit, deliberately *not* redirected, so it can still see the operator's own session).
+- No token obtainable (both env vars absent and the probe fails/exits non-zero): raises `RuntimeError` naming the failure. There is no fallback path that leaves a declaring `github` state un-redirected or silently un-scoped.
+- **Known gap (macOS, Keychain-backed `gh`):** `gh auth token` reads the OAuth token from the login Keychain by a fixed per-hostname service name, independent of `GH_CONFIG_DIR`/`hosts.yml` — unlike `gh auth status`/`gh api`, which do consult `hosts.yml` and are correctly hidden by the redirect. A nested `github`-scoped spawn inheriting an outer state's empty `GH_CONFIG_DIR` can therefore still mint a token via this same probe. Recorded in `.ll/learning-tests/gh.md`.
+
+**Caller (`fsm/runners.py`'s `DefaultActionRunner` shell branch):** whenever `scopes is not None`, opens a per-spawn `tempfile.TemporaryDirectory()` scoped (via `try`/`finally`) across the `Popen`+wait, and merges `gh_scope_extra(Path(tmpdir), with_token="github" in scopes)` into the `extra=` dict passed to `project_child_env`. A `RuntimeError` is caught and converted into a failed `ActionResult`, mirroring `resolve_scopes`'s `ValueError` catch just above it.
+
 ### resolve_host_named
 
 FEAT-3042: resolve a specific registered host, ignoring ambient `LL_HOST_CLI`. Unlike `resolve_host`, never falls back to a PATH probe — an unregistered name raises `HostNotConfigured` immediately.

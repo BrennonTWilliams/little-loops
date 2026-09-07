@@ -11,6 +11,7 @@ from __future__ import annotations
 import selectors
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from little_loops.fsm.host_guard import RssSampler
 from little_loops.fsm.types import ActionResult
 from little_loops.host_runner import (
     AutomationContext,
+    gh_scope_extra,
     project_child_env,
     resolve_automation,
     resolve_scopes,
@@ -323,117 +325,143 @@ class DefaultActionRunner:
                     exit_code=1,
                     duration_ms=_now_ms() - start,
                 )
-        cmd = ["bash", "-c", action]
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=working_dir,
-            start_new_session=True,
-            env=project_child_env(extra={"LL_PYTHON": sys.executable}, env_allow=env_allow),
-        )
-        self._current_process = process
-        # FEAT-3033: timeout=0 means "no wall-clock cap" (matches
-        # subprocess_utils.run_claude_command's convention); a falsy timeout
-        # must never compute a deadline in the past (BUG-3034).
-        deadline = time.time() + timeout if timeout else None
-        last_output_at = time.time()
-
-        # ENH-2453: sample the subprocess's RSS while it runs (budget-gated).
-        shell_sampler: RssSampler | None = None
-        if self.sample_rss:
-            shell_sampler = RssSampler(process.pid)
-            shell_sampler.start()
-
-        output_chunks: list[str] = []
-        stderr_chunks: list[str] = []
-
-        sel = selectors.DefaultSelector()
-        if process.stdout is not None:
-            sel.register(process.stdout, selectors.EVENT_READ, data="stdout")
-        if process.stderr is not None:
-            sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
-
-        timed_out = False
-        idled_out = False
+        # ENH-3205: a declaring state (scopes is not None) always gets its
+        # GH_CONFIG_DIR redirected to a per-spawn tempdir, hiding the ambient
+        # gh keyring login; GH_TOKEN is additionally injected iff "github" is
+        # declared. The tempdir is scoped to this try/finally so it outlives
+        # the Popen+wait below on every exit path (success, timeout, error).
+        extra: dict[str, str] = {"LL_PYTHON": sys.executable}
+        gh_tmp: tempfile.TemporaryDirectory[str] | None = None
+        if scopes is not None:
+            gh_tmp = tempfile.TemporaryDirectory(prefix="ll-gh-")
+            try:
+                extra.update(gh_scope_extra(Path(gh_tmp.name), with_token="github" in scopes))
+            except RuntimeError as exc:
+                gh_tmp.cleanup()
+                return ActionResult(
+                    output="",
+                    stderr=f"Action failed: {exc}",
+                    exit_code=1,
+                    duration_ms=_now_ms() - start,
+                )
         try:
-            while sel.get_map():
-                # Bounded poll — never block longer than 1 second
-                remaining = (deadline - time.time()) if deadline is not None else None
-                if remaining is not None and remaining <= 0:
-                    timed_out = True
-                    break
-                poll_timeout = min(1.0, remaining) if remaining is not None else 1.0
-                ready = sel.select(timeout=poll_timeout)
-                if not ready:
-                    # No pipes ready within poll window — loop re-checks deadline/idle
+            cmd = ["bash", "-c", action]
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=working_dir,
+                start_new_session=True,
+                env=project_child_env(extra=extra, env_allow=env_allow),
+            )
+            self._current_process = process
+            # FEAT-3033: timeout=0 means "no wall-clock cap" (matches
+            # subprocess_utils.run_claude_command's convention); a falsy timeout
+            # must never compute a deadline in the past (BUG-3034).
+            deadline = time.time() + timeout if timeout else None
+            last_output_at = time.time()
+
+            # ENH-2453: sample the subprocess's RSS while it runs (budget-gated).
+            shell_sampler: RssSampler | None = None
+            if self.sample_rss:
+                shell_sampler = RssSampler(process.pid)
+                shell_sampler.start()
+
+            output_chunks: list[str] = []
+            stderr_chunks: list[str] = []
+
+            sel = selectors.DefaultSelector()
+            if process.stdout is not None:
+                sel.register(process.stdout, selectors.EVENT_READ, data="stdout")
+            if process.stderr is not None:
+                sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
+
+            timed_out = False
+            idled_out = False
+            try:
+                while sel.get_map():
+                    # Bounded poll — never block longer than 1 second
+                    remaining = (deadline - time.time()) if deadline is not None else None
+                    if remaining is not None and remaining <= 0:
+                        timed_out = True
+                        break
+                    poll_timeout = min(1.0, remaining) if remaining is not None else 1.0
+                    ready = sel.select(timeout=poll_timeout)
+                    if not ready:
+                        # No pipes ready within poll window — loop re-checks deadline/idle
+                        if (
+                            resolved_idle_timeout
+                            and (time.time() - last_output_at) > resolved_idle_timeout
+                        ):
+                            idled_out = True
+                            break
+                        continue
+                    for key, _mask in ready:
+                        # FEAT-3033 known boundary: readline() blocks until a
+                        # newline or EOF, so a child that writes a partial line
+                        # then goes silent is not caught by either sensor until it
+                        # eventually completes the line or exits. Fixing this
+                        # requires reading raw fds with os.read() instead, which
+                        # would require rewriting this loop's I/O model — deferred
+                        # (see FEAT-3033 Program Design "Accept it" option; a test
+                        # pins this as current, documented behavior rather than an
+                        # oversight).
+                        line = key.fileobj.readline()  # type: ignore[union-attr]
+                        if line:
+                            last_output_at = time.time()
+                            if key.data == "stdout":
+                                output_chunks.append(line)
+                                if on_output_line:
+                                    on_output_line(line.rstrip())
+                            else:
+                                stderr_chunks.append(line)
+                        else:
+                            # EOF on this pipe — unregister it
+                            sel.unregister(key.fileobj)
                     if (
                         resolved_idle_timeout
                         and (time.time() - last_output_at) > resolved_idle_timeout
                     ):
                         idled_out = True
                         break
-                    continue
-                for key, _mask in ready:
-                    # FEAT-3033 known boundary: readline() blocks until a
-                    # newline or EOF, so a child that writes a partial line
-                    # then goes silent is not caught by either sensor until it
-                    # eventually completes the line or exits. Fixing this
-                    # requires reading raw fds with os.read() instead, which
-                    # would require rewriting this loop's I/O model — deferred
-                    # (see FEAT-3033 Program Design "Accept it" option; a test
-                    # pins this as current, documented behavior rather than an
-                    # oversight).
-                    line = key.fileobj.readline()  # type: ignore[union-attr]
-                    if line:
-                        last_output_at = time.time()
-                        if key.data == "stdout":
-                            output_chunks.append(line)
-                            if on_output_line:
-                                on_output_line(line.rstrip())
-                        else:
-                            stderr_chunks.append(line)
-                    else:
-                        # EOF on this pipe — unregister it
-                        sel.unregister(key.fileobj)
-                if resolved_idle_timeout and (time.time() - last_output_at) > resolved_idle_timeout:
-                    idled_out = True
-                    break
-        finally:
-            sel.close()
-            self._current_process = None
+            finally:
+                sel.close()
+                self._current_process = None
 
-        shell_peak_rss = shell_sampler.stop() if shell_sampler is not None else None
+            shell_peak_rss = shell_sampler.stop() if shell_sampler is not None else None
 
-        if timed_out or idled_out:
-            _kill_process_group(process)
-            # Drain any remaining output after the kill
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+            if timed_out or idled_out:
+                _kill_process_group(process)
+                # Drain any remaining output after the kill
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                return ActionResult(
+                    output="".join(output_chunks),
+                    stderr="".join(stderr_chunks)
+                    or ("Action idle-timed out" if idled_out else "Action timed out"),
+                    exit_code=124,
+                    duration_ms=_now_ms() - start,
+                    timeout_kind="idle" if idled_out else "wall",
+                    peak_rss_mb=shell_peak_rss,
+                    result_seen=False,
+                )
+
+            process.wait(timeout=5)
             return ActionResult(
                 output="".join(output_chunks),
-                stderr="".join(stderr_chunks)
-                or ("Action idle-timed out" if idled_out else "Action timed out"),
-                exit_code=124,
+                stderr="".join(stderr_chunks),
+                exit_code=process.returncode,
                 duration_ms=_now_ms() - start,
-                timeout_kind="idle" if idled_out else "wall",
                 peak_rss_mb=shell_peak_rss,
                 result_seen=False,
             )
-
-        process.wait(timeout=5)
-        return ActionResult(
-            output="".join(output_chunks),
-            stderr="".join(stderr_chunks),
-            exit_code=process.returncode,
-            duration_ms=_now_ms() - start,
-            peak_rss_mb=shell_peak_rss,
-            result_seen=False,
-        )
+        finally:
+            if gh_tmp is not None:
+                gh_tmp.cleanup()
 
 
 @dataclass
