@@ -41,12 +41,22 @@ Each run records the capability and variable names it was granted, queryable aft
 - `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` is currently **46** (line 25, re-verified 2026-09-04), so a new migration is **v47**. Confirm the current value before writing the migration; it moves (it already drifted from 40, then 45, since this issue was written).
 - `scripts/little_loops/session_store/writers.py` — new `write_credential_scope()` in the `write_research_triage()` shape (fail-soft, names only).
 - `scripts/little_loops/fsm/executor.py` — the dispatch call site (`:2495-2505`, immediately before `self.action_runner.run(...)`) is the **write site**: it holds `self.run_id`, the state name, and `state.scopes`. **Not** `host_runner.py` — the projection helper has no run context (see Decision 3, resolved).
+  > ⚠ Superseded — wrong call site; real target is `self.action_runner.run(...)` at `:2563-2573`
 
 ### Tests
 - `scripts/tests/test_session_store_schema.py` — `TestSchemaV47CredentialScopeEvents` mirroring the v46 class (columns, indexes, upgrade-from-46, kind registration, rebuild-exclusion) + bump in `test_schema_version_matches_migrations_length`.
 - `scripts/tests/test_session_store_writers.py` — `TestWriteCredentialScope` incl. `test_graceful_when_store_unwritable`.
 - **Names-only test**: plant `GH_TOKEN=SENTINEL_VALUE_9f3a` in `os.environ` (monkeypatch), run one declaring state through `FSMExecutor` with a mock runner, then assert `SENTINEL_VALUE_9f3a` appears nowhere in the raw bytes of the written row (`SELECT * FROM credential_scope_events` serialized via `json.dumps`). The writer signature makes this structurally impossible (it takes only name-sets), but the test guards against a future "helpful" refactor.
 - Executor test: an undeclared state writes no row; a declaring state writes exactly one row per dispatch with the correct `run_id`/`state`/`scopes`.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
+- **Shared dispatch fixture.** The corrected write site (`fsm/executor.py:2563-2573`,
+  `self.action_runner.run(...)`, the default/else branch — not the `_contributed_actions`
+  branch at 2486-2505) is covered by one shared test double, `MockActionRunner`
+  (`scripts/tests/test_fsm_executor.py:47-138`, used at 60+ call sites). **ENH-3235 wires
+  `scopes=` into the same call site and the same fixture** — if ENH-3235 lands first and
+  already added a `scopes` capture list to `MockActionRunner`, reuse it for this issue's
+  executor test rather than adding a parallel one.
 
 ### Codebase Research Findings
 
@@ -135,6 +145,7 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis (reta
 - Tests section made concrete, including the names-only sentinel test.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-07T03:48:29 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`
 - `/ll:verify-issues` - 2026-09-03T20:06:11 - `af073d2f-8e64-47da-8b0b-406331feaae4.jsonl`
 - `/ll:refine-issue` - 2026-09-03T19:32:09 - `d28ffd7a-ae9c-48b9-8cda-76e95a2c6507.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`

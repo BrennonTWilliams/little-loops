@@ -150,7 +150,17 @@ round-trip tests).
   shell branch (`:297-305`) + `SimulationActionRunner.run()` `del` list.
 - `scripts/little_loops/fsm/executor.py` — dispatch call site (`:2495-2505`) passes
   `scopes=state.scopes` **ungated** by `action_mode`.
+  > ⚠ Superseded — wrong call site; real target is `self.action_runner.run(...)` at `:2563-2573`
 - `docs/guides/LOOPS_GUIDE.md` — per-state field table (see Documentation).
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
+- `scripts/little_loops/cli/loop/scaffold_verify.py` — 10 direct `StateConfig(...)`
+  construction sites (lines 66, 82, 88, 97, 132, 141, 152, 170, 175, 193), building
+  states programmatically for `/ll:verify-issue-loop` outside the YAML parser.
+  Confirmed unaffected — `scopes` is a new defaulted field, so these keyword
+  constructions keep working unchanged; listed for completeness, not as a required edit.
 
 ### Signatures
 - `project_child_env(invocation: HostInvocation | None = None, *, extra: dict[str, str] | None = None) -> dict[str, str]`
@@ -207,6 +217,26 @@ registry; the registry's fail-loud/allow/deny rules are ENH-3233's surface, not 
   `project_child_env()` chokepoint (landed in ENH-3233, but this issue's wiring is a new consumer
   of it).
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
+- **Shared dispatch fixture.** The `self.action_runner.run(...)` call this issue wires
+  `scopes=` into (`fsm/executor.py:2563-2573`, corrected above) is covered by exactly one
+  shared test double, `MockActionRunner` (`scripts/tests/test_fsm_executor.py:47-138`),
+  instantiated at 60+ call sites across the file. Its `run()` already ends in
+  `**kwargs: Any` (line 79) then `del`s it (line 93), so adding `scopes=state.scopes` at
+  the real call site breaks none of the 60+ existing constructions — but asserting the
+  value was actually threaded through needs a new capture list on this same dataclass
+  (mirroring the existing `working_dirs`/`idle_timeouts` pattern, lines 57-59/95-101), not
+  a separate mock. **ENH-3204 targets the same call site and the same fixture** — whichever
+  of the two issues lands first should add the `scopes` capture list; the second should
+  reuse it rather than adding a parallel one.
+- **Message-collision risk.** A distinct, existing top-level (loop-level, singular) `scope:`
+  field already has its own structural rule (`fsm/validation/structural_rules.py:1366-1376`,
+  message `"Loop declares no 'scope:'. ..."`) asserted via
+  `test_ll_loop_commands.py:303,316` (`caplog.text.count("no 'scope:'")`). This issue's new
+  per-state (plural) `scopes:` rule is a different field/concept — its error message must
+  avoid the substring `"scope:'"` so a run that trips both rules doesn't corrupt that
+  existing caplog-substring assertion.
+
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md:590` — the `tools:` per-state allowlist table is the natural
   insertion point for the new per-state scope-declaration row, following the
@@ -217,6 +247,16 @@ registry; the registry's fail-loud/allow/deny rules are ENH-3233's surface, not 
   300, 325), are the established place a new scoping-capability row or decline-narrative would
   land, if any host runner declines scope enforcement for prompt-mode states that also use
   `tools:`.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
+- `skills/review-loop/reference.md` §"First-Pass Checks (from `ll-loop validate`)" (lines
+  17-53) is a hand-maintained table assigning a Check ID (V-1..V-18, MR-1..MR-14) and
+  Severity to every known `ll-loop validate` rule; `skills/review-loop/SKILL.md` instructs
+  readers not to re-implement these checks, only parse validator output against this table.
+  No automated gate ties the table to the validator's actual rule set (searched
+  `test_wiring_guides_and_meta.py` and related tests for `reference.md`/`check_id` — no
+  hits), so the new "unknown scope name" rule needs its own row added by hand or it
+  silently falls outside this table.
 
 ### Codebase Research Findings
 
@@ -331,6 +371,7 @@ Out of scope for this child:
   Keychain-backed OAuth is unaffected (see ENH-3233's honesty note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-07T03:48:28 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`
 - `/ll:verify-issues` - 2026-09-03T20:03:03 - `e7ab64a8-d990-4865-a8d8-f889f6c44694.jsonl`
 - `/ll:refine-issue` - 2026-09-03T19:17:32 - `35fa9aa4-b416-4202-92c2-dce942749180.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:55 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`

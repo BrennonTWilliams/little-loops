@@ -257,6 +257,25 @@ ENH-3235 will need to synthesize a declaration for):
   line 730, the BUG-3370 call-site workaround (see Codebase Research Findings below)
 - `scripts/little_loops/git_operations.py` — line 728
 
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
+- **Registry starting-set gap.** This repo's own built-in loops already read three
+  credential-shaped env vars via undeclared shell states that are in none of the
+  Expected Behavior registry's 7 starting scopes and none of the `LL_*`/`XDG_*`/
+  `HOMEBREW_*` baseline: `VISION_API_KEY` (`scripts/little_loops/loops/rlhf-svg-evaluate.yaml:248,396`,
+  `openscad-model-generator.yaml:313,411`, `svg-image-generator.yaml:153,207`,
+  `flux-image-generator.yaml:265,334`, `interactive-component-generator.yaml:512,524,558`,
+  `html-website-generator.yaml:189,202,253`), and `OPENROUTER_API_KEY`/`AUTOFIGURE_API_KEY`
+  (`scripts/little_loops/loops/adversarial-redesign.yaml:16`, consumed by
+  `scripts/autofigure_wrapper.py`, invoked at lines 52/107). None of these are
+  problems for an undeclared state (`env_allow=None` stays full-inherit), but they
+  are candidates for the registry (e.g. `vision-api`, `openrouter-api`,
+  `autofigure-api` scopes) so a state that later declares `scopes: [...]` for one
+  of these loops doesn't lose ambient access to a var the registry doesn't know
+  about. Finalize alongside the AC4 baseline-derivation pass, not as a blocker for
+  this issue's own tests.
+
 ## Program Design
 
 ### Signatures
@@ -421,6 +440,7 @@ follow-on added or left them unchecked.
   no registry entry once caller-supplied keys pass through.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-07T03:48:27 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:57:33 - `4261573e-8608-488b-a923-28da6aae0cad.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:57:37 - `81f9ded4-f3d7-410d-9fd5-2bd50814262a.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:47:54 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
