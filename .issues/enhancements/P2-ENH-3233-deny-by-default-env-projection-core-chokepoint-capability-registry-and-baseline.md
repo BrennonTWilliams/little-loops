@@ -99,10 +99,27 @@ so it is a shape precedent only, not a reusable registry.
   `scripts/little_loops/` carries a credential (`grep -rhoE '\bLL_[A-Z_]*(KEY|TOKEN|SECRET|PASS)'`
   hits only `LL_ARG_MAX_TOKENS`-style false positives), so the `LL_*` prefix is safe to inherit
   wholesale. `env_allow` itself (the per-task declaration) stays exact-name `frozenset[str]`.
-- **Override polarity rule**: the only environment-driven override the chokepoint honors is the
-  AC4 test-only *narrowing* override (`LL_ENV_PROJECTION_FORCE_ALLOW`, below). No env var may
-  ever *widen* an allow-set or disable deny mode — `LL_*` is baseline-inherited into every
-  descendant, so a widening knob would propagate silently through the whole process tree.
+- **Override polarity rule**: the only environment-driven overrides the chokepoint honors are
+  two test/triage-only knobs, both narrowing or observational, never widening:
+  `LL_ENV_PROJECTION_FORCE_ALLOW=1` (AC4 — treats an undeclared spec as `env_allow=frozenset()`,
+  i.e. baseline-only; a flag, **not** a set to parse) and `LL_ENV_PROJECTION_REPORT=1` (AC6
+  report-only — denies nothing, logs the would-deny names). No env var may ever *widen* an
+  allow-set or disable deny mode — `LL_*` is baseline-inherited into every descendant, so a
+  widening knob would propagate silently through the whole process tree. (Pinned 2026-09-06:
+  the earlier text left report-only's trigger unspecified and wrote the force-allow value as
+  `<candidate set>`, which was ambiguous between a flag and a parseable list.)
+- **Credential-shape guard on prefix families**: a name admitted only via a baseline *prefix*
+  (`LL_*`, `XDG_*`, `HOMEBREW_*`, and any others added by AC4) is still denied if it matches
+  `API[_-]?KEY|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|ACCESS[_-]?KEY|PRIVATE[_-]?KEY`
+  (case-insensitive). This makes prefix families safe against a future `LL_FOO_TOKEN` and lets
+  a `CLAUDE_*`-style prefix be considered without blanket-inheriting `CLAUDE_CODE_OAUTH_TOKEN`.
+  The guard never applies to exact-name baseline entries or to registry-resolved names — those
+  are explicit. Precedent: the vendored oh-my-pi bundle (the untracked pi-coding-agent build under
+  `hooks/adapters/omp/node_modules/`, search its bundled JS for `allowPrefixes`) ships exactly
+  this allow-list + deny-regex shape, with an allow-list
+  of `PATH HOME USER LOGNAME SHELL TERM LANG TEMP TMP TERM_PROGRAM SSH_AUTH_SOCK SSH_AGENT_PID
+  DISPLAY TZ LD_LIBRARY_PATH DYLD_LIBRARY_PATH` plus `LC_`/`XDG_` prefixes — cite it in the
+  baseline's justification comment.
 - No allow-set in effect (`invocation.env_allow is None` and no kwarg — the default) preserves
   today's full-inherit behavior exactly — this is the escape hatch the two consumer issues rely
   on for undeclared specs.
@@ -155,9 +172,20 @@ ENH-3235 each wire a declaration through it without re-deriving or duplicating d
 
 ### Types
 - `HostInvocation` (`host_runner.py:156-173`, `@dataclass(frozen=True)`): add `env_allow:
-  frozenset[str] | None = None`. Every `HostInvocation(...)` construction site inside each
-  runner class's `build_streaming`/`build_blocking_json`/`build_detached` needs to pass this
-  through (not every consumption site — those just read `.env`/`.binary`/`.args`).
+  frozenset[str] | None = None`. **No construction site changes** — the field is defaulted and
+  none of the `build_*` methods have a scope input (see Signatures: do not add a kwarg there).
+  (Corrected 2026-09-06: the earlier "every construction site needs to pass this through" line
+  contradicted the Signatures section and was unnecessary work.)
+- **Populator status — be honest about it.** Within this decomposition nothing sets
+  `HostInvocation.env_allow`: ENH-3234 and ENH-3235 both wire the invocation-less `bash -c`
+  paths via the explicit kwarg, and prompt-mode enforcement is out of scope. The field is kept
+  deliberately as the prompt-mode seam: `run_claude_command()` (`subprocess_utils.py:517-529`)
+  already builds the invocation and calls `project_child_env(invocation, extra=extra_env)`, so a
+  follow-on that adds `env_allow` to `run_claude_command()`'s signature (or reads it off the
+  invocation) is ~10 lines. File that follow-on when this lands (see ENH-3235's validator rule
+  for why prompt-mode `scopes:` must be rejected until then). If the maintainer prefers YAGNI,
+  dropping the field and keeping only the kwarg is acceptable — the kwarg is the load-bearing
+  surface; the field is not.
 - `env: dict[str, str]` on `HostInvocation` keeps its existing additive/override-only contract
   unchanged — do not repurpose it (see ENH-3203 Open Decision #4).
 
@@ -171,16 +199,35 @@ The baseline must **not** be guessed. `bash -c` actions in this repo run pytest,
 without it), `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`, `PYENV_ROOT`, `HOMEBREW_*`, `XDG_*`, `SHELL`,
 `TERM`, `TZ`, in addition to `PATH`/`HOME`/`USER`/`LANG`/`TMPDIR`/`LL_*`.
 
+**Seed the candidate list from what the package itself reads (2026-09-06).** A grep of
+`os.environ[...]`/`os.environ.get(...)`/`os.getenv(...)` under `scripts/little_loops/` yields
+non-credential names absent from the list above that a declaring shell state running a nested
+`ll-*` or host CLI will break without:
+
+```
+CLAUDE_PLUGIN_ROOT  CLAUDE_PROJECT_DIR  CLAUDE_SESSION_ID  CLAUDE_CONFIG_DIR
+CODEX_HOME  KIMI_CODE_HOME  PI_CONFIG_DIR  PI_TOOL_BRIDGE_URL  PI_TOOL_BRIDGE_SESSION
+NO_COLOR  FORCE_COLOR  EDITOR  CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR
+```
+
+(`PI_TOOL_BRIDGE_TOKEN` from the same grep is a credential and is excluded; the shape guard
+above would catch it anyway.) Also add to the candidates: `LC_*`, `PYTHON*` (e.g.
+`PYTHONDONTWRITEBYTECODE`, `PYTHONUNBUFFERED`), `PYENV_*`, `CONDA_*`, `SSH_AGENT_PID`,
+`TERM_PROGRAM`, `COLUMNS`/`LINES`, `CI`. `CLAUDE_*` cannot be a bare prefix (it would admit
+`CLAUDE_CODE_OAUTH_TOKEN`) — use exact names, or the prefix **with** the credential-shape guard.
+Make this grep a repeatable step (it is the input to the AC8 static test below), not a one-off.
+
 Two honest limits shape the derivation method: **(1)** env projection cannot observe which
 variables a child *actually read* — report-only mode can only log which ambient names fall
 outside a candidate allow-set (would-be-denied names); **(2)** this repo's loops carry no
 declarations (retrofitting is out of scope) and undeclared specs are full-inherit, so an
 ordinary loop run cannot exercise deny mode at all until ENH-3235 lands. Therefore: ship a
-**curated** baseline with a per-entry justification comment, and validate it with a test-only
-override (e.g. `LL_ENV_PROJECTION_FORCE_ALLOW=<candidate set>`, honored only by
-`project_child_env()`) that forces the candidate baseline onto undeclared specs — run this
-repo's own `loops/*.yaml` under that override and fix whatever breaks. Report-only mode's
-would-deny name logging is the triage evidence, not a read-trace.
+**curated** baseline with a per-entry justification comment, and validate it two ways: (a) the
+deterministic static test in AC8 below, and (b) a test-only flag
+(`LL_ENV_PROJECTION_FORCE_ALLOW=1`, honored only by `project_child_env()`) that forces the
+built-in baseline onto undeclared specs, used for *manual* spot-checks of individual loops —
+not as an automated gate (see AC8). Report-only mode's would-deny name logging is the triage
+evidence, not a read-trace.
 
 ### Failure polarity (AC3) — decided
 The one existing analog, `CapabilityNotSupported(UserWarning)` (`host_runner.py:109-117`), is
@@ -222,10 +269,21 @@ which is a different mechanism and stays as-is for AC3).
 - **AC6.** Denied variable names are logged at DEBUG level (names only, never values). The same
   code path in report-only mode produces the AC4 would-deny evidence (ambient names outside the
   candidate set) — a triage aid, not a read-trace.
+- **AC2d.** A name admitted only via a baseline prefix but matching the credential-shape regex
+  is denied: plant `LL_FAKE_TOKEN=1` and `XDG_SECRET=1` in `os.environ`, run deny mode, assert
+  both are absent while `LL_SENTINEL_X` (AC2c) is present.
 - **AC8 (partial — full close in ENH-3234/ENH-3235).** `python -m pytest scripts/tests/` exits 0
-  for this chokepoint's own tests, and this repo's own `loops/*.yaml` run green under the AC4
-  forced-allow override (report-only alone denies nothing, so "green under report-only" would be
-  vacuous). Full AC8 (deny mode fully wired end-to-end) closes once ENH-3234 and ENH-3235 land.
+  for this chokepoint's own tests, **including a deterministic baseline-coverage test**: every
+  env-var name referenced by `$NAME`/`${NAME}` in `scripts/little_loops/loops/*.yaml` shell
+  actions and every name read via `os.environ`/`os.getenv` under `scripts/little_loops/` must be
+  (i) in the baseline (exact or prefix, and not shape-denied), (ii) resolvable from some registry
+  scope, or (iii) on an explicit, commented exception list (loop-local variables the action
+  itself assigns — `$DIR`, `$COUNT`, `$STATUS` etc. — will dominate this list; filter names the
+  same YAML assigns with `NAME=`/`export NAME` before applying the check). Full AC8 (deny mode
+  fully wired end-to-end) closes once ENH-3234 and ENH-3235 land. (Replaced 2026-09-06: the
+  earlier "run this repo's own `loops/*.yaml` green under the forced-allow override" meant
+  executing every LLM-driven loop end to end — not a realistic or repeatable gate. The flag stays
+  for manual spot-checks.)
 
 ## Integration Map
 
@@ -335,8 +393,10 @@ before implementing, as they were already noted as drifted once:_
   `OpenCodeRunner`/`PiRunner` stubs (tested individually, not through the parametrized table).
 - New tests for: `env_allow` selection semantics (incl. a declared name present only in ambient
   `os.environ` reaching the child, and the explicit kwarg working with no invocation),
-  baseline-always-present, scope-registry fail-loud direct raise, DEBUG logging of denied names,
-  report-only mode would-deny output, and the forced-allow override.
+  baseline-always-present, credential-shape guard on prefix families (AC2d), scope-registry
+  fail-loud direct raise, DEBUG logging of denied names, report-only mode
+  (`LL_ENV_PROJECTION_REPORT=1`) would-deny output, the forced-allow flag
+  (`LL_ENV_PROJECTION_FORCE_ALLOW=1`), and the AC8 static baseline-coverage test.
 - No shared fixture exists for `HostInvocation` construction (`scripts/tests/conftest.py` has
   none) — follow the existing inline-keyword-construction convention.
 
@@ -438,6 +498,18 @@ follow-on added or left them unchecked.
 - Added the macOS Keychain honesty note: projection withholds env-borne credentials only.
 - Also resolves a wiring consequence for ENH-3205: `GH_CONFIG_DIR` injection via `extra=` needs
   no registry entry once caller-supplied keys pass through.
+
+## Review Notes (2026-09-06, pre-implementation cross-issue review)
+
+- `HostInvocation.env_allow`: removed the contradictory "pass through at every construction
+  site" instruction; recorded that nothing in this decomposition populates the field and named
+  `run_claude_command()` as the prompt-mode follow-on seam.
+- Pinned both env knobs as flags: `LL_ENV_PROJECTION_FORCE_ALLOW=1`, `LL_ENV_PROJECTION_REPORT=1`.
+- Added the credential-shape guard on prefix families (AC2d) with the oh-my-pi precedent.
+- Seeded the AC4 candidate list from the package's own `os.environ` reads (12 names the curated
+  list was missing, e.g. `CLAUDE_PLUGIN_ROOT`, `CODEX_HOME`).
+- Replaced the unrunnable "all loops green under forced-allow" AC8 clause with a static
+  baseline-coverage test.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-07T03:48:27 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`

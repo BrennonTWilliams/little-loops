@@ -75,10 +75,13 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 ### Signatures
 - `_apply_automation_env(env: dict[str, str], automation: AutomationContext | None) -> None` — the existing shared env-injection helper the projection helper sits beside (`host_runner.py:1882`, signature updated by ENH-3095's `AutomationContext` refactor); the new writer is invoked from the same spawn-time seam.
-- The writer itself takes a run identifier plus two `frozenset[str]` name-sets (scopes, variables) and returns `None`. Indicative shape; no value-bearing parameter may exist.
+- `write_credential_scope(db_path: Path | str, *, run_id: str, state: str, scopes: frozenset[str], var_names: frozenset[str], ts: str | None = None) -> bool` — takes a **`db_path`**, not a store handle, matching `write_research_triage()`/`write_advisor_consult()` (`writers.py:1898`, `1823`); returns `False` on `sqlite3.Error`. No value-bearing parameter may exist. (Corrected 2026-09-06: earlier text wrote `write_credential_scope(store, ...)`.) The executor resolves the path the way the per-state `record_prepatch_evidence(_history_db, ...)` call does (`fsm/executor.py:1977`) — do not open a persistent store handle at dispatch.
+- **`var_names` is the *effective* granted set**, not only the registry resolution: it must include every key ENH-3205 injects via `extra=` (`GH_TOKEN`, `GH_CONFIG_DIR`) and the `LL_PYTHON` extra, so the audit row reports what the child could actually reach. Practically: the shell-branch helper that builds `(env_allow, extra)` from `scopes` returns the resolved names, and the executor records `resolve_scopes(scopes) | extra.keys()`. Baseline names are *not* recorded (they are constant and non-credential; recording them adds noise, not audit value).
 
 ### Call Path
-`FSMExecutor` dispatch (`fsm/executor.py:2495`, holds `self.run_id` + `state.name` + `state.scopes`) → `resolve_scopes(state.scopes)` (ENH-3233's pure registry function → `frozenset[str]` of var names) → `write_credential_scope(store, run_id=..., state=..., scopes=..., var_names=...)` → new `credential_scope_events` table (v47) → `self.action_runner.run(..., scopes=state.scopes)` proceeds as ENH-3235 wires it.
+`FSMExecutor` dispatch (`fsm/executor.py:2563-2573`, holds `self.run_id` + `state.name` + `state.scopes`) → `resolve_scopes(state.scopes)` (ENH-3233's pure registry function → `frozenset[str]` of var names) plus the injected `extra` keys (ENH-3205) → `write_credential_scope(db_path, run_id=..., state=..., scopes=..., var_names=...)` → new `credential_scope_events` table (v47) → `self.action_runner.run(..., scopes=state.scopes)` proceeds as ENH-3235 wires it.
+
+Ordering caveat: the executor writes *before* the spawn, but `GH_TOKEN`/`GH_CONFIG_DIR` are added inside the runner's shell branch. Either the executor derives the same injected-name set from `scopes` via a shared pure helper (preferred — a `scope_injected_names(scopes) -> frozenset[str]` beside the registry, no tempdir needed to know the *names*), or the runner returns them on `ActionResult` and the write moves after the spawn. Prefer the former; the record must describe the grant, not the outcome.
 
 The write happens *before* the spawn and independently of it — the record says what the state was granted, which is fully determined by the declaration, not by anything the child does.
 
@@ -143,6 +146,15 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis (reta
   `ActionSpec`). ENH-3234's `## Blocks` updated to match.
 - Files to Modify corrected: write site is `fsm/executor.py`, not `host_runner.py`.
 - Tests section made concrete, including the names-only sentinel test.
+
+## Review Notes (2026-09-06, pre-implementation cross-issue review)
+
+- Writer signature corrected to take `db_path` (sibling-writer convention), resolved per state
+  like `record_prepatch_evidence`; no persistent store handle at dispatch.
+- `var_names` pinned as the *effective* granted set including ENH-3205's injected `GH_TOKEN`/
+  `GH_CONFIG_DIR` and `LL_PYTHON`, derived via a shared pure name helper so the pre-spawn write
+  stays a record of the grant.
+- Call Path citation updated to the corrected dispatch site (`:2563-2573`).
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-07T03:48:29 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`

@@ -68,7 +68,10 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 
 - `ActionSpec` gains a scope-declaration field naming the capabilities a task needs (resolved
   against ENH-3233's capability registry).
-- Every production `ActionSpec` construction site (listed above) can populate it.
+- Every production `ActionSpec` construction site that can reach `_run_cmd()` can populate it.
+  `cli/loop/run.py:132` is excluded (corrected 2026-09-06): it builds a `RunnerType.LOOP` spec
+  that is never dispatched through `run_action()` (see the comment at that site), so a `scopes`
+  value there would be inert.
 - `runner_spec.py::_run_cmd()` resolves the declared scopes into an `env_allow` set and passes
   it via the explicit kwarg ENH-3233 provides for invocation-less call sites —
   `project_child_env(extra={"LL_PYTHON": sys.executable}, env_allow=...)` — so everything not
@@ -245,6 +248,14 @@ recording is a follow-on to ENH-3204, not a blocker relationship.)
   `extra={"LL_PYTHON": sys.executable}`; only `env_allow` is missing.
 - Added missing `## Blocks` backlink: ENH-3204 declares `blocked_by: ENH-3234` but this issue
   had no `## Blocks` section.
+
+## Review Notes (2026-09-06, pre-implementation cross-issue review)
+
+- No design gaps found. Dropped `cli/loop/run.py:132` from the populatable construction sites
+  (it is a `RunnerType.LOOP` spec that never reaches `_run_cmd()`).
+- When ENH-3205 lands, `_run_cmd()` should call the same shell-branch helper that resolves
+  `scopes` → `extra=` (redirect `GH_CONFIG_DIR` whenever `scopes is not None`; inject `GH_TOKEN`
+  iff `github`), per ENH-3205's corrected invariant — not a `github`-gated copy.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-07T03:48:28 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`

@@ -45,26 +45,32 @@ This is the one place where ENH-3203's guarantee visibly does not reach, and gh 
 
 ## Expected Behavior
 
-A task declaring GitHub access receives an explicit `GH_TOKEN` and a `GH_CONFIG_DIR` pointing at a per-task directory containing no ambient login. A task not declaring it can neither read `GH_TOKEN` nor reach the operator's gh session.
+A task declaring GitHub access receives an explicit `GH_TOKEN` and a `GH_CONFIG_DIR` pointing at a per-task directory containing no ambient login. A **declaring** task that omits `github` gets the `GH_CONFIG_DIR` redirect (empty dir) but no `GH_TOKEN`, so it can neither read a token nor reach the operator's keyring session. An **undeclared** task (`scopes` absent) is full-inherit and unaffected (ENH-3203 AC5).
+
+**Invariant corrected (2026-09-06 review).** The earlier "both `GH_TOKEN` and `GH_CONFIG_DIR`, or neither" rule was wrong: gating the redirect on `"github" in scopes` leaves `HOME` intact for a declaring-but-non-github state, so gh silently falls back to `~/.config/gh/hosts.yml` and works fully — the exact failure the Summary warns about. The correct rule is: **redirect `GH_CONFIG_DIR` whenever `scopes is not None`; inject `GH_TOKEN` iff `"github" in scopes`.** Consequence worth stating: the token is non-escalating across nested loops — an inner `github` state spawned under an outer non-github declaring state finds no `GH_TOKEN` in env and `gh auth token` fails against the inherited empty config dir, so it fails closed rather than reaching the operator's keyring.
 
 If this is not implemented, ENH-3203 must state plainly that gh is unscoped rather than imply coverage it does not deliver.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/host_runner.py` — a `gh_scope_extra(tmpdir) -> dict[str, str]` helper beside the credential-scope registry: returns `{"GH_TOKEN": <token>, "GH_CONFIG_DIR": str(tmpdir)}` or raises. Token source per Decision 1.
-- `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner` shell branch (`:297-305`): when the resolved scopes include `github`, open a per-spawn `tempfile.TemporaryDirectory()` around the `Popen`, and merge `gh_scope_extra(...)` into the existing `extra=` dict. Caller-supplied `extra` keys bypass ENH-3233's allow-set (its AC2b), so no registry change is needed for `GH_CONFIG_DIR`.
+- `scripts/little_loops/host_runner.py` — a `gh_scope_extra(tmpdir, *, with_token: bool) -> dict[str, str]` helper beside the credential-scope registry: always returns `{"GH_CONFIG_DIR": str(tmpdir)}`; when `with_token=True` also returns `"GH_TOKEN": <token>` or raises. Token source per Decision 1.
+- `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner` shell branch (`:297-305`): whenever `scopes is not None`, open a per-spawn `tempfile.TemporaryDirectory()` around the `Popen`, and merge `gh_scope_extra(Path(d), with_token="github" in scopes)` into the existing `extra=` dict. Caller-supplied `extra` keys bypass ENH-3233's allow-set (its AC2b), so no registry change is needed for `GH_CONFIG_DIR`.
+- **Config loss note**: redirecting `GH_CONFIG_DIR` also hides the operator's `config.yml` (`git_protocol`, `editor`, aliases). gh then defaults to `git_protocol: https`, which works with `GH_TOKEN` via `gh auth git-credential` but differs from this operator's `ssh` setting. Document in LOOPS_GUIDE alongside the exposure note; do not copy `config.yml` into the tempdir (it would re-introduce a path to ambient state).
+- **Probe cost**: `gh auth token` is a keyring read per spawn (~100ms on macOS). Acceptable for v1; a per-process cache keyed on the ambient `GH_CONFIG_DIR`/`HOME` is a possible follow-on, not part of this issue.
 - **`sync.py` — removed from scope (2026-09-04).** `_run_gh_command()`/`_check_gh_auth()` run inside the operator's own interactive `ll-sync` process, not inside a task; there is no declaration to gate on and nothing to isolate from. It is also absent from `test_enh3184_spawn_site_guard.py`'s pinned table, so leaving it untouched changes no gate. If it is ever brought under the chokepoint, that is a separate one-line ENH (add `env=project_child_env()` + table entry).
 
 ### Proposed mechanism
 1. Shell branch resolves `scopes` → `env_allow` (ENH-3235).
-2. If `"github" in scopes`: `with tempfile.TemporaryDirectory(prefix="ll-gh-") as d:` — `extra.update(gh_scope_extra(Path(d)))`; `Popen(..., env=project_child_env(extra=extra, env_allow=env_allow))`; the `with` block spans the wait, so the dir outlives the child.
-3. `gh_scope_extra()` obtains the token: `os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")`, else `subprocess.run(["gh", "auth", "token"], env=project_child_env(), ...)` against the *ambient* config (no redirect), stripped stdout. If both fail → raise, and the shell branch returns a failed `ActionResult` naming the cause ("declared `github` scope but no token available: set GH_TOKEN or run `gh auth login`"). **Never** fall back to an un-redirected child — that is the silent-fallback failure mode from Impact/Risk.
+2. If `scopes is not None`: `with tempfile.TemporaryDirectory(prefix="ll-gh-") as d:` — `extra.update(gh_scope_extra(Path(d), with_token="github" in scopes))`; `Popen(..., env=project_child_env(extra=extra, env_allow=env_allow))`; the `with` block spans the wait, so the dir outlives the child. The redirect is unconditional for declaring states; only the token is gated on `github`.
+3. `gh_scope_extra(..., with_token=True)` obtains the token: `os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")`, else `subprocess.run(["gh", "auth", "token"], env=project_child_env(), ...)` against the *ambient* config (no redirect), stripped stdout. If both fail → raise, and the shell branch returns a failed `ActionResult` naming the cause ("declared `github` scope but no token available: set GH_TOKEN or run `gh auth login`"). **Never** fall back to an un-redirected child — that is the silent-fallback failure mode from Impact/Risk.
 4. The `gh auth token` probe is itself a `subprocess.run` in `host_runner.py` → bump the `test_enh3184_spawn_site_guard.py` count for `little_loops/host_runner.py` from `(1, 0)` to `(2, 0)`.
 
 ### Tests
 - A test proving a scoped child's `gh auth status` does not see the ambient login: spawn `bash -c 'gh auth status; echo $GH_CONFIG_DIR'` through `DefaultActionRunner` with `scopes=["github"]` and a monkeypatched `GH_TOKEN=dummy`; assert the output's config-dir path is under the tempdir and is not `~/.config/gh`. Skip if `gh` is absent (per the CI policy in CLAUDE.md).
-- Both-or-neither: with `scopes=["github"]` the child env has both `GH_TOKEN` and `GH_CONFIG_DIR`; with `scopes=[]` (declared, empty) it has neither, even when the parent has `GH_TOKEN` set.
+- Redirect-always / token-iff-github: with `scopes=["github"]` the child env has both `GH_TOKEN` and `GH_CONFIG_DIR`; with `scopes=[]` (declared, empty) it has `GH_CONFIG_DIR` (under the tempdir) and **no** `GH_TOKEN`, even when the parent has `GH_TOKEN` set; with `scopes=None` (undeclared) it has neither injected and inherits whatever the parent had.
+- Keyring hidden for declaring-non-github: spawn `bash -c 'gh auth status'` with `scopes=[]` on a machine with an ambient `gh auth login`; assert the output says not logged in. Skip if `gh` is absent. This is the test that would have caught the original both-or-neither bug.
+- Non-escalation: an inner `DefaultActionRunner` spawn with `scopes=["github"]` run with `GH_CONFIG_DIR` already pointing at an empty dir and no `GH_TOKEN`/`GITHUB_TOKEN` in env (simulating an outer non-github declaring state) fails the state; no `Popen` of the action.
 - No-token path: `GH_TOKEN`/`GITHUB_TOKEN` unset and `gh auth token` mocked to fail → `ActionResult` failure naming the scope, no `Popen` of the action.
 - Tempdir is removed after the child exits (both success and timeout paths).
 
@@ -87,7 +93,7 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - No new type is required. The `GH_TOKEN`/`GH_CONFIG_DIR` pair is two entries in the allow-set ENH-3203 already computes.
 
 ### Signatures
-- `gh_scope_extra(config_dir: Path) -> dict[str, str]` (new, `host_runner.py`) — returns exactly `{"GH_TOKEN", "GH_CONFIG_DIR"}`; raises `RuntimeError` when no token is obtainable. Pure apart from the `gh auth token` probe.
+- `gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]` (new, `host_runner.py`) — always returns `GH_CONFIG_DIR`; with `with_token=True` also returns `GH_TOKEN` or raises `RuntimeError` when no token is obtainable. Pure apart from the `gh auth token` probe. There is no code path that yields a token without the redirect.
 - `DefaultActionRunner.run(..., scopes: list[str] | None = None, ...)` — ENH-3235's new kwarg; this issue adds the `github` branch inside the shell path, no further signature change.
 - (`sync.py`'s `_run_gh_command`/`_check_gh_auth` — no longer modified; see Files to Modify.)
 
@@ -95,7 +101,7 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 `StateConfig.scopes` → `FSMExecutor` dispatch → `DefaultActionRunner` shell branch (`fsm/runners.py:297`) → [`github` declared] `TemporaryDirectory` + `gh_scope_extra()` → `project_child_env(extra=..., env_allow=...)` → `subprocess.Popen(["bash", "-c", action])`
 
 ### Decision Rules
-- Both `GH_TOKEN` and `GH_CONFIG_DIR` are set, or neither is. Setting only the token leaves the ambient login reachable and produces the appearance of scoping without the fact of it. Enforced by a single helper that returns both keys or raises — there is no code path that yields one.
+- **Redirect whenever declaring; token iff `github`.** `GH_CONFIG_DIR` is set for every state with `scopes is not None`; `GH_TOKEN` is additionally set only when `"github" in scopes`. A token without the redirect is impossible (single helper), and a declaring state without the redirect is impossible (unconditional on `scopes is not None`). Setting only the token, or skipping the redirect for a non-github declaring state, leaves the ambient login reachable and produces the appearance of scoping without the fact of it.
 - A declared `github` scope with no obtainable token **fails the state**, never falls back to the ambient session.
 - Undeclared states are unaffected, consistent with ENH-3203's AC5.
 - Git-over-SSH is unscoped by this issue: this repo's operator uses `git_protocol: ssh`, so `git push` authenticates via `SSH_AUTH_SOCK` (ENH-3233 baseline), not gh. No global `credential.helper` is configured either. Only `gh` API/CLI calls and HTTPS git via `gh auth git-credential` are constrained.
@@ -114,7 +120,7 @@ Explicitly **out of scope**:
 
 ## Decisions (resolved 2026-09-04, pre-implementation epic review)
 
-1. **Where does `GH_TOKEN` come from?** — **Projection-only, sourced from the ambient session.** Order: `GH_TOKEN` env → `GITHUB_TOKEN` env → `gh auth token` (ambient config, no redirect). The learning test shows the third source is the *only* one available on this machine, so without it the feature is dead on arrival. No minting; the token is exactly as broad as the operator's. What this buys is real but bounded: an *undeclared* state can no longer reach gh at all (empty config dir is not applied to undeclared states — they are full-inherit — but a declaring state that omits `github` gets neither token nor keyring), and a *declaring* state gets the token only in its own process tree. Worth having because it closes the "gh is what loops use to change the world" gap; the narrowing question is deferred to a future minting issue.
+1. **Where does `GH_TOKEN` come from?** — **Projection-only, sourced from the ambient session.** Order: `GH_TOKEN` env → `GITHUB_TOKEN` env → `gh auth token` (ambient config, no redirect). The learning test shows the third source is the *only* one available on this machine, so without it the feature is dead on arrival. No minting; the token is exactly as broad as the operator's. What this buys is real but bounded: an *undeclared* state is full-inherit and unchanged; a *declaring* state that omits `github` gets the empty-config-dir redirect and therefore neither token nor keyring (see the corrected invariant in Expected Behavior — the redirect must not be gated on `github`); and a *declaring* `github` state gets the token only in its own process tree. Worth having because it closes the "gh is what loops use to change the world" gap; the narrowing question is deferred to a future minting issue.
    - **Exposure note**: today the operator's token is keyring-only and never in any env. After this change a declaring state's child env *contains* the token in plaintext — visible to `env`, `ps e`, crash dumps, and any `set -x` output the action logs. That is a strictly wider exposure for the declaring task's subtree than the status quo. Mitigation is in ENH-3204's names-only rule (never log the value) and a note in LOOPS_GUIDE that `scopes: [github]` puts a live token in the shell environment.
 2. **Per-task `GH_CONFIG_DIR` lifecycle** — **Per-spawn `tempfile.TemporaryDirectory()`** scoped to the `Popen`+wait in the shell branch (the `git_operations.py::preserve_dirty_tree()` shape, lines 725-749). gh writes nothing into the config dir under token auth, so there is no state to preserve across spawns and no registry/pid marker needed; the `worktree_utils` registry shape is over-engineering here. Cleanup is the context manager's exit, including the timeout/kill path.
 
@@ -152,6 +158,15 @@ Explicitly **out of scope**:
 - Added SSH-git and exposure notes. Concrete mechanism, signatures, and tests written.
 - Cleared stale `verify_verdict: NON_VALID` — its only finding (ENH-3233 missing backlink) was
   fixed in ENH-3233's 2026-09-03 verify pass. Re-run `/ll:verify-issues` before `ready-issue`.
+
+## Review Notes (2026-09-06, pre-implementation cross-issue review)
+
+- **Invariant bug fixed**: "both or neither" gated the `GH_CONFIG_DIR` redirect on `"github" in
+  scopes`, so a declaring-but-non-github state kept the keyring reachable via `HOME`. Replaced
+  with "redirect whenever `scopes is not None`; token iff `github`". `gh_scope_extra` gained a
+  `with_token` kwarg; tests updated (keyring-hidden and non-escalation cases added).
+- Added `config.yml` loss note (`git_protocol` defaults to https under the redirect) and the
+  per-spawn `gh auth token` probe-cost note.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-07T03:48:29 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`

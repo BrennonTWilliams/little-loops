@@ -95,12 +95,27 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   tree. The run-time resolution in the shell branch stays as the last line of defence, but is
   never the *first* place a bad name is caught.
 - `fsm-loop-schema.json` gains a `scopes` property on the state object (array of strings,
-  optional), adjacent to the `tools` block at lines 590-596, so schema-driven tooling and docs see
+  not required), adjacent to the `tools` block at lines 590-596, so schema-driven tooling and docs see
   the field even though the state object tolerates unknown keys today.
+- **`scopes:` on a non-shell state is a validate-time ERROR (added 2026-09-06).** The shell
+  branch is this issue's only consumer; a loop author who writes `scopes: [github]` on a
+  `/ll:manage-issue` (prompt-mode) state would otherwise get full inherit with no signal — the
+  "looks like protection that isn't there" failure the parent warns about, on the branch where a
+  broad env matters most (an agent running arbitrary Bash). A second structural rule therefore
+  rejects `scopes` on any state whose mode is not `shell` per `FSMExecutor._action_mode()`
+  (`fsm/executor.py:3325-3346`): `action_type` in `prompt`/`slash_command`/`mcp_tool`/
+  `contract`/`human_approval`, a contributed `action_type`, or no `action_type` with a
+  `/`-prefixed action. Message: "state '<name>' declares 'scopes' but is not a shell action;
+  scopes are enforced only for shell actions (prompt-mode enforcement: see follow-on)". Lift the
+  rule to a WARNING once prompt-mode enforcement lands. Prompt-mode enforcement itself is a
+  follow-on, not this issue: the seam is `run_claude_command()`'s existing
+  `project_child_env(invocation, extra=extra_env)` call (`subprocess_utils.py:529`) — add an
+  `env_allow` kwarg there and pass `state.scopes` through `DefaultActionRunner.run()`'s prompt
+  branch. File it when this issue lands.
 
 ## Proposed Solution
 
-Follow the `tools:` per-state precedent structurally (array/optional field in the schema, mirror
+Follow the `tools:` per-state precedent structurally (array field, not required, in the schema; mirror
 in the dataclass), but note the wiring gap the parent issue's research already surfaced: the
 `tools:` field's existing wiring only reaches prompt-mode states via `build_streaming()`
 (`fsm/executor.py:2284`) — the shell branch (`fsm/runners.py:297-305`) reads none of
@@ -133,6 +148,12 @@ round-trip tests).
 - **AC9.** `ll-loop validate` reports an ERROR for a state whose `scopes` names a scope absent
   from ENH-3233's registry; the loop never starts. Test: a fixture YAML with `scopes: [githb]`
   fails validation with a message naming `githb`.
+- **AC10.** `ll-loop validate` reports an ERROR for a state that declares `scopes` but is not a
+  shell action. Tests: `scopes: [github]` on (a) an `action: /ll:manage-issue` state with no
+  `action_type`, (b) an `action_type: prompt` state, (c) an `action_type: mcp_tool` state — each
+  fails naming the state; (d) `scopes: [github]` on an `action_type: shell` state and on a
+  bare non-`/` action pass this rule. Neither AC9's nor AC10's message may contain the substring
+  `no 'scope:'` (see Message-collision risk below).
 
 ## Program Design
 
@@ -144,8 +165,10 @@ round-trip tests).
 ### Files to Modify
 - `scripts/little_loops/fsm/schema.py` — `StateConfig.scopes` + `to_dict`/`from_dict` lines.
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — `scopes` property on the state object.
-- `scripts/little_loops/fsm/validation/structural_rules.py` — new rule: every declared scope
-  name resolves against ENH-3233's registry; unknown name is an ERROR.
+- `scripts/little_loops/fsm/validation/structural_rules.py` — two new rules: (1) every declared
+  scope name resolves against ENH-3233's registry; unknown name is an ERROR (AC9); (2) `scopes`
+  on a non-shell state is an ERROR (AC10). Both get a row in
+  `skills/review-loop/reference.md`'s check table (see Documentation).
 - `scripts/little_loops/fsm/runners.py` — `ActionRunner.run()` Protocol + `DefaultActionRunner`
   shell branch (`:297-305`) + `SimulationActionRunner.run()` `del` list.
 - `scripts/little_loops/fsm/executor.py` — dispatch call site (`:2495-2505`) passes
@@ -176,7 +199,7 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
   to this Protocol; every field requires its own explicit named parameter here. The new scope
   field needs one, and it must reach both implementers: `DefaultActionRunner.run()`
   (`fsm/runners.py:117-134`) and `SimulationActionRunner.run()` (`fsm/runners.py:428-445`, which
-  discards every optional param it doesn't use via an explicit `del (...)` at line 469).
+  discards every defaulted param it doesn't use via an explicit `del (...)` at line 469).
   Existing `ActionRunner` test doubles (`RssActionRunner`, `MockActionRunner` ×4,
   `ShutdownAfterFirstActionRunner`, `_TamperingActionRunner`, `_ActionRunner`) all end their
   parameter list with `**kwargs: Any`, so this addition is safe and additive for every one of
@@ -210,7 +233,7 @@ registry; the registry's fail-loud/allow/deny rules are ENH-3233's surface, not 
   `scripts/tests/test_usage_journal.py:17`, `scripts/tests/test_fsm_executor.py:41`),
   `ShutdownAfterFirstActionRunner` (`scripts/tests/test_fsm_executor.py:3880`) /
   `_TamperingActionRunner` (`scripts/tests/test_fsm_executor.py:11973`) / `_ActionRunner`
-  (`scripts/tests/test_fsm_executor.py:12329`). Kept optional (matching the `tools=` precedent),
+  (`scripts/tests/test_fsm_executor.py:12329`). Kept defaulted (matching the `tools=` precedent),
   these are unaffected — worth an explicit check pass either way.
 
 - Verify `scripts/tests/test_enh3184_spawn_site_guard.py` still passes against the modified
@@ -273,7 +296,7 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   `test_fsm_persistence.py:833-845`, `test_usage_journal.py:25-37`,
   `test_cost_ceiling_enforcement.py:29`; `ShutdownAfterFirstActionRunner` —
   `test_fsm_executor.py:3880-3895`; `_TamperingActionRunner` — `test_fsm_executor.py:11973`;
-  `_ActionRunner` — `test_fsm_executor.py:12329`) — a new optional kwarg on `ActionRunner.run()` is
+  `_ActionRunner` — `test_fsm_executor.py:12329`) — a new defaulted kwarg on `ActionRunner.run()` is
   additive-safe against every one of them.
 
 - `test_enh3184_spawn_site_guard.py`'s per-module spawn-count table already has entries for
@@ -316,7 +339,7 @@ Out of scope for this child:
 
 - **Priority**: P2 — matches parent.
 - **Effort**: Medium — schema field, dataclass field with round-trip, and new wiring into a shell
-  branch that today reads none of the state config's optional fields (no existing flow to
+  branch that today reads none of the state config's per-state fields (no existing flow to
   piggyback on, unlike the `tools:` precedent for prompt-mode).
 
 - **Risk**: Medium — `DefaultActionRunner`'s shell branch is the primary FSM-loop consumer; a
@@ -369,6 +392,13 @@ Out of scope for this child:
 - Doc note for LOOPS_GUIDE: a declaring shell state that spawns a nested host CLI (`claude -p`,
   `ll-loop`, `ll-auto`) loses env-borne API keys unless it declares the matching `*-api` scope;
   Keychain-backed OAuth is unaffected (see ENH-3233's honesty note).
+
+## Review Notes (2026-09-06, pre-implementation cross-issue review)
+
+- Added AC10 and a second structural rule: `scopes:` on a non-shell state is a validate-time
+  ERROR, because the shell branch is the only consumer and a prompt-mode declaration would
+  otherwise be silently ignored. Named `run_claude_command()` (`subprocess_utils.py:529`) as the
+  prompt-mode enforcement seam for the follow-on issue.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-07T03:48:28 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`
