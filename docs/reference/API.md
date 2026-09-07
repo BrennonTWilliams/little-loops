@@ -10186,7 +10186,7 @@ def resolve_scopes(scopes: Iterable[str]) -> frozenset[str]: ...
 - Unknown scope name: raises `ValueError` directly, naming the bad scope and the sorted valid set. This is a direct raise, not a `warnings`-based promotion (`warnings.simplefilter("error", ...)` is opt-in per process) — the check is fail-loud security.
 - Starting scopes: `github`, `anthropic-api`, `openai-api`, `gemini-api`, `kimi-api`, `qwen-api`, `opencode-api`, `vision-api`, `openrouter-api`, `autofigure-api`. Each entry carries a justification comment in source.
 - **Honesty note**: on macOS the host CLIs' own OAuth sessions (Claude Code, Codex, Gemini) live in the Keychain or under `$HOME`, not in env vars — this registry does not capture that auth.
-- No runtime caller yet: nothing calls `resolve_scopes()` today. The eventual consumer is `project_child_env`'s `env_allow` parameter, wired by a future declaration surface (`ActionSpec`/FSM `StateConfig`).
+- Runtime caller (ENH-3234): `runner_spec.py::_run_cmd()` resolves `ActionSpec.scopes` (when declared) into `project_child_env`'s `env_allow` parameter. The FSM `StateConfig`/loop-YAML declaration surface (ENH-3235) is a separate, not-yet-wired consumer.
 
 ```python
 from little_loops.host_runner import resolve_scopes
@@ -10379,9 +10379,12 @@ class ActionSpec:
     target: str
     args: dict[str, Any] = field(default_factory=dict)
     timeout: int = 120
+    scopes: frozenset[str] | None = None
 ```
 
 Frozen, following the same crosses-the-runner/caller-boundary convention as `host_runner.HostInvocation`.
+
+`scopes` (ENH-3234): credential-scope names resolved against `host_runner.CREDENTIAL_SCOPES`, naming the env vars this task's `_run_cmd()` spawn is allowed to inherit. `None` (default) keeps full-inherit behavior — declaration is opt-in per spec. An unknown scope name is resolved (and raises) inside `_run_cmd()`, not at construction, so one bad queue entry can't abort bulk queue deserialization; the resulting `ValueError` is caught and returned as a failed `RunnerResult` naming the offending scope.
 
 ### RunnerResult
 

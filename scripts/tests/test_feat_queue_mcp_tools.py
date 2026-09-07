@@ -53,6 +53,30 @@ def test_queue_add_dry_run_writes_nothing(tmp_path, monkeypatch) -> None:
     anyio.run(run)
 
 
+def test_queue_add_scopes_symmetric_between_dry_run_and_apply(tmp_path, monkeypatch) -> None:
+    """ENH-3234 AC6: dry-run preview and post-apply entry.to_dict() must show the
+    same `scopes` value. Both are None here since queue_add has no --scope
+    input yet (out of scope per ENH-3234's Decision Rules) — this pins the key's
+    presence and symmetry, not a populated value."""
+    project = _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            dry = _payload(
+                await client.call_tool("queue_add", {"target": "echo hi", "runner": "cmd"})
+            )
+            assert dry["entry"]["scopes"] is None
+
+            applied = _payload(
+                await client.call_tool(
+                    "queue_add", {"target": "echo hi", "runner": "cmd", "apply": True}
+                )
+            )
+            assert applied["entry"]["action"]["scopes"] is None
+
+    anyio.run(run)
+
+
 def test_queue_add_apply_then_list_and_get(tmp_path, monkeypatch) -> None:
     project = _make_project(tmp_path, monkeypatch)
 

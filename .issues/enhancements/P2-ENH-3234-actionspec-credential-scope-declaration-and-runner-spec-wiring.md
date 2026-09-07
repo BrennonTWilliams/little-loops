@@ -3,17 +3,27 @@ id: ENH-3234
 type: ENH
 title: ActionSpec credential scope declaration and runner_spec.py wiring
 priority: P2
-status: open
+status: done
 parent: ENH-3203
 epic: EPIC-3212
-blocked_by: [ENH-3395, ENH-3396]
+blocked_by:
+- ENH-3395
+- ENH-3396
 discovered_by: /ll:issue-size-review
 discovered_date: '2026-08-17'
+completed_at: '2026-09-07T20:30:47Z'
 testable: true
 decision_needed: false
+reconcile_attempted: true
 relates_to:
 - ENH-3184
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 20
 ---
 
 # ENH-3234: ActionSpec credential scope declaration and runner_spec.py wiring
@@ -64,6 +74,14 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
 - `_run_cmd()` has no `try/except FileNotFoundError` around its `subprocess.Popen` call (`runner_spec.py:243-250`), unlike `_run_skill()` (line 228) and `_run_prompt()` (line 338), which both catch it. Not itself a gap this issue must close, but relevant if a scope-resolution raise is expected to surface through the same `RunnerResult` error path as a missing-binary failure — today it would propagate as an uncaught exception instead.
 - Confirmed via repo-wide grep: `env_allow` has zero matches under `scripts/` (only appears in `.issues/*.md` prose). `HostInvocation` (`host_runner.py:156-166`) has exactly 5 fields today (`binary`, `args`, `env`, `capabilities`, `cleanup_paths`) — no `env_allow`. ENH-3233 remains `status: open`; the parent ENH-3203 is `done` only via decomposition into its children (issue-tracker bookkeeping), not because any of this chokepoint work has landed. `blocked_by: ENH-3233` is current and accurate, not stale.
 
+_Added by `/ll:refine-issue` — 2026-09-07 — based on codebase analysis:_
+
+- **Blockers landed since last refine.** `ENH-3395` (deny-by-default env projection chokepoint) and `ENH-3396` (credential-scope registry) are both `status: done` (commits `991b4163d`, `e169557ba` on this branch) — this issue's stated blockers are now satisfied, and the "not yet implemented"/"kwarg not yet available" framing below (Program Design → Types/Signatures) describes pre-landing state that has since been superseded by the landed code.
+- `HostInvocation.env_allow: frozenset[str] | None = None` already exists at `host_runner.py:259` (comment there: "Nothing in this repo populates this field yet").
+- `project_child_env(invocation=None, *, extra=None, env_allow=None)` (`host_runner.py:2027-2118`) already implements full deny-by-default projection: `env_allow=None` → byte-identical full inheritance (today's `_run_cmd()` behavior); `env_allow=<frozenset>` → only the allow-set plus a fixed non-credential baseline (`_BASELINE_NAMES`/`_BASELINE_PREFIXES`) survive from ambient `os.environ`, with `invocation.env`/`extra` merged in unconditionally.
+- `resolve_scopes(scopes: Iterable[str]) -> frozenset[str]` and the `CREDENTIAL_SCOPES: dict[str, frozenset[str]]` registry (10 scopes) already exist at `host_runner.py:112-183`, fully tested (`test_host_runner.py::TestResolveScopes`, `TestProjectChildEnvDenyMode`). Repo-wide grep confirms **zero production callers** of `resolve_scopes()` or of `env_allow=` anywhere in `scripts/` today — this issue's `_run_cmd()` wiring would be the first production caller of both.
+- `docs/reference/API.md:10189` already documents this explicitly: "No runtime caller yet: nothing calls `resolve_scopes()` today. The eventual consumer is `project_child_env`'s `env_allow` parameter, wired by a future declaration surface (`ActionSpec`/FSM `StateConfig`)" — i.e. the doc already names this issue's surface as the intended consumer.
+
 ## Expected Behavior
 
 - `ActionSpec` gains a scope-declaration field naming the capabilities a task needs (resolved
@@ -85,6 +103,17 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   **silently vanishes** for every action that goes through `ll-queue`. Both functions must gain
   a `scopes` line (serialize `sorted(scopes)` or `None`; deserialize back to `frozenset` or
   `None`), with a round-trip test. (Review 2026-09-04 — this was missing from every prior pass.)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-07 — based on codebase analysis:_
+
+- **Third hand-enumeration site not previously identified.** Beyond `_serialize_action()`/`_deserialize_action()` (`queue_store.py:240-260`), `QueueEntry.to_dict()` (`queue_store.py:276-292`) independently re-lists the same `ActionSpec` fields (`name`/`runner`/`target`/`args`/`timeout`) into its own dict for `ll-queue`'s JSON/dict CLI output (display, not DB persistence). It also needs a `scopes` key, or a declared task's scope stays invisible in `ll-queue`'s JSON output even after the DB round-trip is fixed.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/mcp_server/tools.py` — `_tool_queue_add()` (`mcp_server/tools.py:539-581`) is a **fourth** hand-enumeration site, same class as the three `queue_store.py` sites above: its `preview` dict (`line 569-576`, the `apply: false` dry-run response) hand-lists `spec.name`/`.runner`/`.target`/`.args`/`.timeout` — the `apply: true` path (`line 580-581`) returns `entry.to_dict()` (i.e. `QueueEntry.to_dict()`, already covered). Today `_classify_action()` never sets `scopes` (no `--scope` CLI flag, per this issue's own Decision Rules), so `preview` is inert for now — but once `to_dict()` gains a `scopes` key, the dry-run and post-apply MCP `queue_add` response shapes diverge on this field unless `preview` also gets one. [Agent 1 finding]
 
 ## Proposed Solution
 
@@ -117,6 +146,12 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   undeclared credential variable is absent from the shell action's environment.
 - **AC5 (this surface).** `ActionSpec`s without a declaration keep working with today's coarse
   behavior — no regression to any existing `ll-action`/`ll-queue`/`ll-harness` caller.
+- **AC6 (queue round-trip and MCP preview symmetry).** `scopes` survives every hand-enumeration
+  site identified in Expected Behavior / Files to Modify: `queue_store.py::_serialize_action()`/
+  `_deserialize_action()` and `QueueEntry.to_dict()`, plus `mcp_server/tools.py::_tool_queue_add()`'s
+  `preview` dict. A `scoped` `ActionSpec` enqueued via `ll-queue` round-trips with `scopes` intact,
+  and the MCP `queue_add` dry-run (`apply: false`) preview shows the same `scopes` value as the
+  post-apply `entry.to_dict()` response (Verification Notes 2026-09-07, PROPOSAL_UNSOUND finding).
 
 ## Program Design
 
@@ -174,10 +209,15 @@ kwarg not yet available) → `subprocess.Popen(["bash", "-c", spec.target], ...,
 - `scripts/little_loops/runner_spec.py` — `ActionSpec.scopes` field; `_run_cmd()` resolution +
   `env_allow=` kwarg + `ValueError` → `RunnerResult` handling.
 - `scripts/little_loops/queue_store.py` — `_serialize_action()`/`_deserialize_action()`
-  (lines 240-260) gain the `scopes` field.
+  (lines 240-260) and `QueueEntry.to_dict()` (lines 276-292) gain the `scopes` field.
+- `scripts/little_loops/mcp_server/tools.py` — `_tool_queue_add()`'s `preview` dict
+  (lines 569-576) gains a `scopes` key alongside `QueueEntry.to_dict()`, keeping the
+  dry-run (`apply: false`) and post-apply MCP `queue_add` response shapes symmetric.
+  _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_runner_spec.py`, `scripts/tests/test_queue_store.py` (round-trip).
 
 ### Tests
+
 - `scripts/tests/test_queue_store.py` — round-trip: enqueue an `ActionSpec(scopes=frozenset({"github"}))`,
   dequeue, assert `scopes` survives; and `scopes=None` round-trips to `None` (not empty set).
 - `scripts/tests/test_runner_spec.py` — `_run_cmd()` with an unknown scope returns a failed
@@ -194,11 +234,27 @@ kwarg not yet available) → `subprocess.Popen(["bash", "-c", spec.target], ...,
 - `scripts/tests/test_runner_spec.py`, `scripts/tests/test_subprocess_utils.py` — general
   coverage location per ENH-3203's Tests section.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_feat_queue_mcp_tools.py` — imports `ActionSpec`/`RunnerType` directly
+  and covers `_tool_queue_add()`'s dry-run path (`test_queue_add_dry_run_writes_nothing`,
+  line 36-48); extend for the `preview` dict `scopes` key once `QueueEntry.to_dict()` gains
+  one, so the dry-run and apply responses stay symmetric. [Agent 3 finding]
+
 ### Documentation
-- No dedicated doc section for `ActionSpec` scope was identified in the parent's wiring pass
-  beyond the `project_child_env`/`HostInvocation` updates already covered by ENH-3233; if the
-  chosen field shape (typed field vs. `args` key) merits documentation, add it alongside the
-  existing `ActionSpec` field description in `docs/reference/API.md`.
+- `docs/reference/API.md`'s existing `### ActionSpec` section (~line 10372-10384) gains a
+  `scopes` entry in its field list.
+- `docs/reference/API.md`'s existing `### resolve_scopes` section (~line 10173-10194) — currently
+  reads "No runtime caller yet ... wired by a future declaration surface (`ActionSpec`/FSM
+  `StateConfig`)" — is updated once `_run_cmd()` becomes that caller.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-07 — based on codebase analysis:_
+
+- **Types/Signatures correction (staleness, see Current Behavior findings above):** `HostInvocation.env_allow` and `project_child_env`'s `env_allow` kwarg are no longer "not yet present" / "kwarg not yet available" as the Types/Signatures subsections above state — both landed via ENH-3395 and are live at `host_runner.py:259` and `host_runner.py:2027,2031` respectively. `resolve_scopes()`/`CREDENTIAL_SCOPES` (`host_runner.py:112-183`) also already exist via ENH-3396. None of this changes the Call Path or Decision Rules below — `_run_cmd()` still has zero of this wiring — it only corrects which pieces are pre-existing vs. net-new for this issue.
+- **Files to Modify addendum:** `queue_store.py`'s `QueueEntry.to_dict()` (lines 276-292) is a third hand-enumeration site needing a `scopes` key, alongside the already-listed `_serialize_action()`/`_deserialize_action()` (see Expected Behavior findings above).
+- **Test precedent addendum:** `test_host_runner.py::TestProjectChildEnvDenyMode` and `::TestResolveScopes` already cover `env_allow`/`resolve_scopes()` as pure/isolated units (e.g. `test_ac2_undeclared_name_absent_from_child`, `test_ac2_declared_name_present_from_ambient_environ`) — useful as the shape for `_run_cmd()`-level integration tests, not as something this issue must add. Separately, `test_runner_spec.py::test_prompt_dispatch_merges_invocation_env` (lines 152-172) shows a mock-based alternative pattern (patches `subprocess.run`, asserts `mock_run.call_args.kwargs["env"]`) to the existing echo-based `test_cmd_dispatch_sets_ll_python_env` precedent already cited under Tests — either shape is viable for the AC7.2 test.
+- **Documentation targets (concrete, supersedes the placeholder note under Documentation below):** `docs/reference/API.md` already has a `### ActionSpec` section (~line 10372-10384, field list has no `scopes` yet) and a `### resolve_scopes` section (~line 10173-10194, states "No runtime caller yet ... wired by a future declaration surface (`ActionSpec`/FSM `StateConfig`)") — both need updating once this issue lands, not a net-new doc section.
 
 ## Scope Boundaries
 
@@ -228,9 +284,43 @@ _None._ (ENH-3204 previously listed here; dropped 2026-09-04 — the audit recor
 `FSMExecutor` on the loop-YAML path and needs only ENH-3233 + ENH-3235. ActionSpec-path
 recording is a follow-on to ENH-3204, not a blocker relationship.)
 
+## Resolution
+
+Implemented exactly per the `## Program Design` section:
+
+- `ActionSpec.scopes: frozenset[str] | None = None` added (`runner_spec.py:97-100`).
+- `_run_cmd()` resolves `spec.scopes` via `resolve_scopes()` inside a `try/except
+  ValueError`, returning a failed `RunnerResult` (exit 2, error names the bad scope)
+  rather than propagating — confines blast radius to one action, per the Decision
+  Rules. `env_allow` is only passed to `project_child_env()` when `spec.scopes is not
+  None`, so undeclared specs keep today's full-inherit default (AC5).
+- Queue round-trip and MCP preview symmetry (AC6): `queue_store.py`'s
+  `_serialize_action()`/`_deserialize_action()` and `QueueEntry.to_dict()`, plus
+  `mcp_server/tools.py::_tool_queue_add()`'s `preview` dict, all gained a `scopes`
+  key (`sorted(...)` on serialize/dict-output, `frozenset(...)` on deserialize,
+  `None` preserved as `None` throughout — never coerced to an empty set).
+- `docs/reference/API.md`'s `### ActionSpec` and `### resolve_scopes` sections updated
+  to reflect the new field and the now-real runtime caller.
+
+**Tests added (TDD Red→Green):** `test_runner_spec.py` (no-scopes full-inherit
+regression, declared-scope allow/deny, unknown-scope fail-loud with no process
+spawned), `test_queue_store.py` (scopes round-trip, `None` stays `None`),
+`test_feat_queue_mcp_tools.py` (dry-run/apply `scopes` symmetry).
+
+**Verification:** `python -m pytest scripts/tests/` — 23301 passed, 43 skipped, 8
+failed. All 8 failures are pre-existing and unrelated to this issue's files
+(`runner_spec.py`, `queue_store.py`, `mcp_server/tools.py`, `API.md`) — confirmed by
+`git status` showing no overlap between changed files and the failing tests' targets
+(`test_issue_parser.py` priority-regex allowlist, `test_builtin_loops.py`,
+`test_verify_evidence.py`'s repo-wide evidence gate flagging pre-existing spans in
+unrelated `.issues/*.md` files, `test_feat3323_sse_bridge.py` fan-in timing,
+`test_enh3035_artifact_template_kit.py` golden-fixture byte match, and the
+`opencode`/`omp` adapter `tsc --noEmit` typecheck gates). `ruff check` and `mypy`
+scoped to the changed files: clean.
+
 ## Status
 
-**Open** | Created: 2026-08-17 | Priority: P2 | Blocked by: ENH-3233
+**Done** | Created: 2026-08-17 | Priority: P2 | Blocked by: none (ENH-3395, ENH-3396 completed)
 
 ## Review Notes (2026-09-04, pre-implementation epic review)
 
@@ -257,7 +347,58 @@ recording is a follow-on to ENH-3204, not a blocker relationship.)
   `scopes` → `extra=` (redirect `GH_CONFIG_DIR` whenever `scopes is not None`; inject `GH_TOKEN`
   iff `github`), per ENH-3205's corrected invariant — not a `github`-gated copy.
 
+## Verification Notes (2026-09-07, proposal-vs-code consequence check)
+
+- All factual claims re-verified against current code and confirmed accurate: `ENH-3395`/
+  `ENH-3396` are `status: done`; `HostInvocation.env_allow`, `project_child_env(env_allow=...)`,
+  and `resolve_scopes()`/`CREDENTIAL_SCOPES` (10 scopes) all exist as described; `_run_cmd()`
+  still has zero of this wiring; all cited construction-site line numbers
+  (`cli/action.py`, `cli/harness.py`, `cli/queue.py`, `cli/loop/run.py:132`), test names/lines,
+  and docs anchors (`API.md:10173-10194,10372-10384`) match current code. `ll-verify-evidence`
+  returned clean (0 findings). No active required decisions-log rules conflict.
+- **PROPOSAL_UNSOUND finding (AC coverage gap, check B6):** the issue's own Integration Map
+  (Dependent Files / wire-issue pass) and Expected Behavior section identify **four**
+  hand-enumeration sites that must gain a `scopes` key for the field to survive the `ll-queue`
+  path — `queue_store.py::_serialize_action()`, `::_deserialize_action()`, `QueueEntry.to_dict()`,
+  and `mcp_server/tools.py::_tool_queue_add()`'s `preview` dict — and the Expected Behavior
+  section flags the round-trip gap as previously missed across prior review passes. None of the
+  three formal Acceptance Criteria (AC1, AC7.2, AC5) requires any of these four sites. An
+  implementer could satisfy AC1/AC7.2/AC5 literally — `ActionSpec` gains the field, `_run_cmd()`
+  is projected, undeclared specs keep working — while shipping a `scopes` field that silently
+  vanishes on every `ll-queue` enqueue/dequeue and stays invisible in MCP `queue_add` preview
+  output. That is the same "looks like protection that isn't there" failure mode this issue's own
+  Proposed Solution rationale warns about, just at the persistence/display layer instead of
+  `_run_cmd()`. **Recommended remedy:** add an AC (e.g. AC6, matching the parent's numbering gap)
+  requiring the queue round-trip and MCP preview symmetry, so the Tests already specified
+  (`test_queue_store.py` round-trip, `test_feat_queue_mcp_tools.py` preview extension) are backed
+  by an AC rather than left as Files-to-Modify/Tests entries with no acceptance gate.
+
+## Verification Notes (2026-09-07, re-verify after reconcile)
+
+- Re-ran the full check battery: all cited line numbers re-confirmed against current code
+  (`_run_cmd` at `runner_spec.py:232`, its unmodified `project_child_env()` call at line 249;
+  `_serialize_action`/`_deserialize_action` at `queue_store.py:240/252`; `QueueEntry.to_dict()`
+  at line 276; `_tool_queue_add()`'s `preview` dict at `mcp_server/tools.py:569-576`; all 11
+  `ActionSpec(...)` construction sites). `ENH-3395`/`ENH-3396` confirmed `status: done`.
+  `ll-verify-evidence` clean (0 findings). No active required decisions-log rules.
+- **PROPOSAL_UNSOUND finding from the prior pass is resolved.** `/ll:reconcile-issue` added
+  AC6, which now explicitly requires `scopes` symmetry across all four hand-enumeration sites
+  (the gap the prior verdict flagged as uncovered by AC1/AC7.2/AC5). Re-ran the B6
+  proposal-vs-code check: AC1/AC5/AC6/AC7.2 jointly cover every integration point in the
+  Integration Map; all `ActionSpec` construction sites use keyword args, so the proposed
+  defaulted `scopes` field is a safe append; no exception-handler or test-fixture
+  incompatibilities found in the Proposed Solution's Decision Rules.
+- Verdict: **VALID**.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-07T20:30:23 - `de3fb098-e04b-4dc8-9a2f-25e22c17e8c0.jsonl`
+- `/ll:ready-issue` - 2026-09-07T20:21:27 - `b88cd0b2-595b-484b-830c-823546bdd8f6.jsonl`
+- `/ll:confidence-check` - 2026-09-07T20:19:21 - `019a047d-b706-4ec9-a8ec-2528ded796e5.jsonl`
+- `/ll:verify-issues` - 2026-09-07T20:17:53 - `7268d1f4-eda8-4975-91aa-2afa860e7568.jsonl`
+- `/ll:reconcile-issue` - 2026-09-07T20:16:10 - `502629dc-5726-40e8-b7b7-18c79099d1e6.jsonl`
+- `/ll:verify-issues` - 2026-09-07T20:14:37 - `7d02f053-5e38-4dab-8e0f-056ff3adc26b.jsonl`
+- `/ll:wire-issue` - 2026-09-07T20:10:28 - `ea1e7414-39f9-48e4-a00a-873a309c18a2.jsonl`
+- `/ll:refine-issue` - 2026-09-07T20:03:37 - `bb51db74-c244-4cd4-b48f-a76bd5898f30.jsonl`
 - `/ll:wire-issue` - 2026-09-07T03:48:28 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`
 - `/ll:verify-issues` - 2026-09-03T20:00:04 - `76759f98-2b4f-455f-95bd-9b2a916e74ab.jsonl`
 - `/ll:refine-issue` - 2026-09-03T19:08:53 - `14341300-8a35-47fc-8e9f-786c7178b7c9.jsonl`

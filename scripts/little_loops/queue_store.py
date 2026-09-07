@@ -245,18 +245,21 @@ def _serialize_action(action: ActionSpec) -> str:
             "target": action.target,
             "args": action.args,
             "timeout": action.timeout,
+            "scopes": sorted(action.scopes) if action.scopes is not None else None,
         }
     )
 
 
 def _deserialize_action(text: str) -> ActionSpec:
     data = json.loads(text)
+    scopes = data.get("scopes")
     return ActionSpec(
         name=data["name"],
         runner=RunnerType(data["runner"]),
         target=data["target"],
         args=data.get("args", {}),
         timeout=data.get("timeout", 120),
+        scopes=frozenset(scopes) if scopes is not None else None,
     )
 
 
@@ -282,6 +285,7 @@ class QueueEntry:
                 "target": self.action.target,
                 "args": self.action.args,
                 "timeout": self.action.timeout,
+                "scopes": sorted(self.action.scopes) if self.action.scopes is not None else None,
             },
             "enqueuedAt": self.enqueued_at,
             "priority": self.priority,

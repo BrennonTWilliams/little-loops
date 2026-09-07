@@ -572,6 +572,7 @@ def _tool_queue_add(arguments: dict[str, Any], *, project_root: Path, apply: boo
         "target": spec.target,
         "args": spec.args,
         "timeout": spec.timeout,
+        "scopes": sorted(spec.scopes) if spec.scopes is not None else None,
         "priority": priority,
     }
     if not apply:
