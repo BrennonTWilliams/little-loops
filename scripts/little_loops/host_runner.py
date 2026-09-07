@@ -33,6 +33,7 @@ import sys
 import tempfile
 import tomllib
 import warnings
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
@@ -106,6 +107,80 @@ def resolve_model_alias(model: str) -> str:
     API boundary.
     """
     return MODEL_ALIASES.get(model.strip().lower(), model)
+
+
+# Credential-scope name -> the env-var names it unlocks. This is a *scope*
+# registry, not a "capability" registry — this module already uses
+# "capability" for host-feature support (``HostCapabilities``,
+# ``CapabilityEntry``, ``CapabilityNotSupported`` below); a second meaning of
+# the word here would collide with that one (ENH-3396).
+#
+# Honesty note: on macOS the host CLIs' own OAuth sessions (Claude Code,
+# Codex, Gemini) live in the Keychain or under ``$HOME``, not in env vars. A
+# ``github`` or ``anthropic-api`` scope therefore does NOT capture the host
+# CLI's own auth when a declaring ``bash -c`` state spawns a nested
+# ``claude -p``/``ll-loop``/``ll-auto`` — it only enumerates the env-var-borne
+# credentials known today.
+CREDENTIAL_SCOPES: dict[str, frozenset[str]] = {
+    # GitHub CLI (`gh`) and REST/GraphQL API tokens.
+    "github": frozenset(
+        {
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+            "GH_ENTERPRISE_TOKEN",
+            "GITHUB_ENTERPRISE_TOKEN",
+            "GITHUB_ACCESS_TOKEN",
+        }
+    ),
+    # Anthropic Messages API auth, including Claude Code's own OAuth env vars.
+    "anthropic-api": frozenset(
+        {
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_OAUTH_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+        }
+    ),
+    # OpenAI / Codex CLI auth.
+    "openai-api": frozenset({"OPENAI_API_KEY", "OPENAI_CODEX_OAUTH_TOKEN"}),
+    # Gemini CLI/API auth.
+    "gemini-api": frozenset({"GEMINI_API_KEY"}),
+    # Kimi Code CLI/API auth.
+    "kimi-api": frozenset({"KIMI_API_KEY"}),
+    # Qwen Code CLI/API auth.
+    "qwen-api": frozenset({"QWEN_OAUTH_TOKEN", "QWEN_PORTAL_API_KEY"}),
+    # OpenCode CLI/API auth.
+    "opencode-api": frozenset({"OPENCODE_API_KEY"}),
+    # Vision-model API key consumed by the image/svg/model-generator loop
+    # family (rlhf-svg-evaluate.yaml and siblings), sourced from .env.
+    "vision-api": frozenset({"VISION_API_KEY"}),
+    # OpenRouter API key referenced by adversarial-redesign.yaml /
+    # autofigure_wrapper.py (the external `autofigure` package reads it, not
+    # this repo directly).
+    "openrouter-api": frozenset({"OPENROUTER_API_KEY"}),
+    # AutoFigure API key — same loop/wrapper pair as openrouter-api above.
+    "autofigure-api": frozenset({"AUTOFIGURE_API_KEY"}),
+}
+
+
+def resolve_scopes(scopes: Iterable[str]) -> frozenset[str]:
+    """Resolve credential-scope names to the union of env-var names they unlock.
+
+    Fails loudly: an unknown scope name raises ``ValueError`` directly, naming
+    the bad scope and the valid set. This is a direct raise rather than a
+    ``warnings``-based promotion (``warnings.simplefilter("error", ...)`` is
+    opt-in per process) because this check is fail-loud security, not an
+    advisory (ENH-3203 Open Decision #3).
+    """
+    resolved: set[str] = set()
+    for scope in scopes:
+        env_names = CREDENTIAL_SCOPES.get(scope)
+        if env_names is None:
+            raise ValueError(
+                f"Unknown credential scope {scope!r}. Available: {sorted(CREDENTIAL_SCOPES)}."
+            )
+        resolved |= env_names
+    return frozenset(resolved)
 
 
 class HostNotConfigured(RuntimeError):

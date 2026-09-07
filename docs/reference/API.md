@@ -10170,6 +10170,30 @@ invocation = runner.build_streaming(prompt="Hello, world")
 # subprocess.run([invocation.binary, *invocation.args], env={**os.environ, **invocation.env})
 ```
 
+### resolve_scopes
+
+Credential-scope registry (ENH-3396). Maps human-meaningful scope names to the env-var names they unlock, for callers that want to pass a pre-resolved `frozenset[str]` into `project_child_env`'s `env_allow`.
+
+```python
+CREDENTIAL_SCOPES: dict[str, frozenset[str]]
+
+def resolve_scopes(scopes: Iterable[str]) -> frozenset[str]: ...
+```
+
+**Behavior:**
+
+- Unions the env-var names for every requested scope name.
+- Unknown scope name: raises `ValueError` directly, naming the bad scope and the sorted valid set. This is a direct raise, not a `warnings`-based promotion (`warnings.simplefilter("error", ...)` is opt-in per process) — the check is fail-loud security.
+- Starting scopes: `github`, `anthropic-api`, `openai-api`, `gemini-api`, `kimi-api`, `qwen-api`, `opencode-api`, `vision-api`, `openrouter-api`, `autofigure-api`. Each entry carries a justification comment in source.
+- **Honesty note**: on macOS the host CLIs' own OAuth sessions (Claude Code, Codex, Gemini) live in the Keychain or under `$HOME`, not in env vars — this registry does not capture that auth.
+- No runtime caller yet: nothing calls `resolve_scopes()` today. The eventual consumer is `project_child_env`'s `env_allow` parameter, wired by a future declaration surface (`ActionSpec`/FSM `StateConfig`).
+
+```python
+from little_loops.host_runner import resolve_scopes
+
+env_allow = resolve_scopes({"github", "anthropic-api"})
+```
+
 ### project_child_env
 
 Single chokepoint every task-path `subprocess.*` call routes through to build its `env=` mapping (ENH-3184).

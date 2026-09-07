@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.host_runner import (
+    CREDENTIAL_SCOPES,
     AutomationContext,
     BlockingJsonError,
     CapabilityEntry,
@@ -44,6 +45,7 @@ from little_loops.host_runner import (
     project_child_env,
     resolve_host,
     resolve_host_named,
+    resolve_scopes,
     run_blocking_json,
 )
 
@@ -439,6 +441,54 @@ class TestResolveHost:
         with pytest.raises(HostNotConfigured) as exc_info:
             resolve_host(env={"LL_HOST_CLI": "no-such-host"})
         assert "no-such-host" in str(exc_info.value)
+
+
+class TestResolveScopes:
+    """ENH-3396: CREDENTIAL_SCOPES / resolve_scopes() — pure, stateless registry."""
+
+    def test_single_known_scope(self) -> None:
+        """AC-registry-1: resolving one scope returns its exact documented set."""
+        assert resolve_scopes({"github"}) == frozenset(
+            {
+                "GH_TOKEN",
+                "GITHUB_TOKEN",
+                "GH_ENTERPRISE_TOKEN",
+                "GITHUB_ENTERPRISE_TOKEN",
+                "GITHUB_ACCESS_TOKEN",
+            }
+        )
+
+    def test_multiple_scopes_union(self) -> None:
+        """AC-registry-2: resolving multiple scopes unions their env-var names."""
+        assert resolve_scopes({"github", "anthropic-api"}) == (
+            CREDENTIAL_SCOPES["github"] | CREDENTIAL_SCOPES["anthropic-api"]
+        )
+
+    def test_unknown_scope_raises_with_name(self) -> None:
+        """AC3: an unknown scope name fails loudly via direct ValueError raise."""
+        with pytest.raises(ValueError) as exc_info:
+            resolve_scopes({"nonexistent"})
+        assert "nonexistent" in str(exc_info.value)
+
+    def test_every_scope_entry_has_a_justification_comment(self) -> None:
+        """AC-registry-3: every CREDENTIAL_SCOPES key has an adjacent `#` comment.
+
+        Reads the module source and checks that the line(s) immediately
+        preceding each quoted scope-name key contain a comment.
+        """
+        source_path = Path(__file__).resolve().parents[1] / "little_loops" / "host_runner.py"
+        lines = source_path.read_text(encoding="utf-8").splitlines()
+        for scope in CREDENTIAL_SCOPES:
+            key_lines = [
+                i
+                for i, line in enumerate(lines)
+                if line.strip().startswith(f'"{scope}": frozenset(')
+            ]
+            assert key_lines, f"scope {scope!r} entry not found in source"
+            preceding = lines[key_lines[0] - 1].strip()
+            assert preceding.startswith("#"), (
+                f"scope {scope!r} has no justification comment on the preceding line"
+            )
 
 
 class TestClaudeCodeRunner:
