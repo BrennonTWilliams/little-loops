@@ -9440,6 +9440,7 @@ from little_loops.session_store import (
     record_context_pressure_event, # write a context_pressure_events row (ENH-2507)
     record_review_event,   # write a review_events row (ENH-2512)
     write_advisor_consult, # write an advisor_consults row (FEAT-3300)
+    write_credential_scope, # write a credential_scope_events row (ENH-3204)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)

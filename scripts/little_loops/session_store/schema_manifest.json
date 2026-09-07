@@ -84,6 +84,14 @@
       "partial": false,
       "unique": true
     },
+    "idx_credential_scope_events_run_id": {
+      "columns": [
+        "run_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
     "idx_harness_exit": {
       "columns": [
         "exit_code"
@@ -912,6 +920,47 @@
         {
           "name": "session_id",
           "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "credential_scope_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "run_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "scopes_json",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "var_names_json",
+          "notnull": true,
           "pk": false,
           "type": "TEXT"
         }
@@ -2658,5 +2707,5 @@
       "type": "table"
     }
   },
-  "schema_version": 46
+  "schema_version": 47
 }

@@ -78,7 +78,7 @@ from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.fsm.validation import _SKILL_INVOKE_RE, _effective_session_mode
 from little_loops.fsm.verdicts import is_abstention_verdict
-from little_loops.host_runner import AutomationContext, resolve_automation
+from little_loops.host_runner import AutomationContext, resolve_automation, resolve_scopes
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import (
@@ -2559,6 +2559,27 @@ class FSMExecutor:
             # (this branch's `else:` serves both modes via is_slash_command
             # below) since shell overrun genuinely does mean hung.
             _wall_fallback = 0 if (action_mode == "prompt" and _idle_timeout) else 3600
+
+            # ENH-3204: record the credential scope a declaring state was
+            # granted, before the spawn -- the record describes the grant,
+            # not the outcome. Best-effort: an audit write must never fail
+            # the loop run (mirrors record_loop_run_summary/record_usage_event).
+            if state.scopes is not None:
+                try:
+                    from little_loops.session_store import (
+                        resolve_history_db,
+                        write_credential_scope,
+                    )
+
+                    write_credential_scope(
+                        resolve_history_db(),
+                        run_id=self.run_id,
+                        state=self.current_state,
+                        scopes=frozenset(state.scopes),
+                        var_names=resolve_scopes(state.scopes),
+                    )
+                except Exception:
+                    pass  # Non-fatal (ENH-3204)
 
             result = self.action_runner.run(
                 action,

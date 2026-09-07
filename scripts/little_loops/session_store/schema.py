@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 46
+SCHEMA_VERSION = 47
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -50,6 +50,7 @@ VALID_KINDS: tuple[str, ...] = (
     "review",
     "advisor_consult",
     "research_triage",
+    "credential_scope",
 )
 
 _KIND_TABLE = {
@@ -78,6 +79,7 @@ _KIND_TABLE = {
     "review": "review_events",
     "advisor_consult": "advisor_consults",
     "research_triage": "research_triage_events",
+    "credential_scope": "credential_scope_events",
 }
 
 _KINDLESS_TABLES = frozenset(
@@ -1303,6 +1305,25 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_research_triage_events_axis ON research_triage_events(axis);
     CREATE INDEX IF NOT EXISTS idx_research_triage_events_reason
         ON research_triage_events(reason);
+    """,
+    # v47 (ENH-3204): after-the-fact audit of the credential scope a dispatch
+    # was granted. One row per declaring-state dispatch, written from
+    # FSMExecutor before the spawn -- names only, never values (a record that
+    # could leak a credential value is worse than no record). Live-write-only,
+    # like advisor_consults/research_triage_events -- excluded from
+    # _REBUILD_TABLES/_REBUILD_SEARCH_KINDS (session_store/lifecycle.py); rows
+    # are not indexed into search_index.
+    """
+    CREATE TABLE IF NOT EXISTS credential_scope_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        state TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        var_names_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_credential_scope_events_run_id
+        ON credential_scope_events(run_id);
     """,
 ]
 
