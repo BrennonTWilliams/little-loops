@@ -7,7 +7,8 @@ status: open
 parent: EPIC-3212
 epic: EPIC-3212
 blocked_by:
-- ENH-3233
+- ENH-3395
+- ENH-3396
 - ENH-3235
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'

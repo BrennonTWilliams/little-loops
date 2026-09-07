@@ -24,6 +24,8 @@ Public exports:
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 import shutil
 import subprocess
@@ -73,6 +75,8 @@ __all__ = [
     "resolve_model_alias",
     "run_blocking_json",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 # BUG-2828: the FSM's default model (``fsm.schema.DEFAULT_LLM_MODEL``) and every
@@ -171,6 +175,13 @@ class HostInvocation:
     env: dict[str, str] = field(default_factory=dict)
     capabilities: HostCapabilities = field(default_factory=HostCapabilities)
     cleanup_paths: tuple[Path, ...] = field(default_factory=tuple)
+    # ENH-3395: declared credential-scope allow-set for project_child_env()'s
+    # deny-by-default mode. None (the default) means "no declaration" — full
+    # inheritance, unchanged from pre-ENH-3395 behaviour. Nothing in this repo
+    # populates this field yet; see project_child_env()'s explicit env_allow
+    # kwarg, which both bash -c task-path spawns (no HostInvocation at all)
+    # and this field's future populators both funnel through.
+    env_allow: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -1862,32 +1873,169 @@ HOST_BINARY_NAMES: frozenset[str] = frozenset(
 )
 
 
+# ENH-3395: fixed, non-credential baseline always inherited regardless of
+# declaration. Curated (not guessed) from the "Baseline derivation" analysis
+# in ENH-3395 — a grep of what this repo's own bash -c actions and Python
+# package actually depend on. Precedent for the allow-list + deny-regex shape:
+# the vendored oh-my-pi bundle's `allowPrefixes` (see
+# hooks/adapters/omp/node_modules/, bundled JS), which ships an equivalent
+# PATH/HOME/USER/... + LC_/XDG_ prefix allow-list.
+_BASELINE_NAMES: frozenset[str] = frozenset(
+    {
+        # POSIX shell / process basics.
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "TERM",
+        "TERM_PROGRAM",
+        "TZ",
+        "LANG",
+        "TMPDIR",
+        "PWD",
+        "DISPLAY",
+        "COLUMNS",
+        "LINES",
+        "CI",
+        "EDITOR",
+        "NO_COLOR",
+        "FORCE_COLOR",
+        # bash -c actions in this repo run pytest/git/ruff/gh and depend on these.
+        "VIRTUAL_ENV",
+        "PYTHONPATH",
+        "SSH_AUTH_SOCK",
+        "SSH_AGENT_PID",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "PYENV_ROOT",
+        # Host-CLI config-dir/identity vars read via os.environ/os.getenv under
+        # scripts/little_loops/ (none are credential-shaped).
+        "CLAUDE_PLUGIN_ROOT",
+        "CLAUDE_PROJECT_DIR",
+        "CLAUDE_SESSION_ID",
+        "CLAUDE_CONFIG_DIR",
+        "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR",
+        "CODEX_HOME",
+        "KIMI_CODE_HOME",
+        "PI_CONFIG_DIR",
+        "PI_TOOL_BRIDGE_URL",
+        "PI_TOOL_BRIDGE_SESSION",
+    }
+)
+_BASELINE_PREFIXES: tuple[str, ...] = (
+    "LL_",
+    "XDG_",
+    "HOMEBREW_",
+    "LC_",
+    "PYTHON",
+    "PYENV_",
+    "CONDA_",
+)
+# Case-insensitive: catches a future LL_FOO_TOKEN or similar under a baseline
+# prefix family. Never applied to _BASELINE_NAMES (exact) or registry-resolved
+# names — those are explicit, not ambient-prefix admissions.
+_CREDENTIAL_SHAPE_RE = re.compile(
+    r"API[_-]?KEY|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|ACCESS[_-]?KEY|PRIVATE[_-]?KEY",
+    re.IGNORECASE,
+)
+
+
+def _is_baseline_allowed(name: str) -> bool:
+    """True if *name* survives deny mode via the fixed baseline (ENH-3395 AC4)."""
+    if name in _BASELINE_NAMES:
+        return True
+    return name.startswith(_BASELINE_PREFIXES) and not _CREDENTIAL_SHAPE_RE.search(name)
+
+
 def project_child_env(
     invocation: HostInvocation | None = None,
     *,
     extra: dict[str, str] | None = None,
+    env_allow: frozenset[str] | None = None,
 ) -> dict[str, str]:
-    """Build the ``env=`` mapping for a task-path child process spawn (ENH-3184).
+    """Build the ``env=`` mapping for a task-path child process spawn (ENH-3184/ENH-3395).
 
     The single chokepoint every task-path ``subprocess.*`` call routes through.
-    Default behaviour is **byte-identical to the pre-ENH-3184 status quo**:
-    full inheritance of the parent's ``os.environ``, with ``invocation.env``
-    (when *invocation* is given) merged over it, then *extra* (for one-off
-    keys a call site adds beyond what the ``HostInvocation`` carries, e.g.
-    ``LL_HOST_CLI`` at ``cli/loop/summary.py``) merged over that. Absence of
-    a key at any layer means "inherit the parent's value" — this helper
-    provides no way to clear or deny an inherited variable; that is
-    deliberately out of scope (see ENH-3203).
+
+    **No declaration** (``env_allow`` resolves to ``None`` — the default):
+    behaviour is byte-identical to the pre-ENH-3395 status quo — full
+    inheritance of the parent's ``os.environ``, with ``invocation.env`` (when
+    *invocation* is given) merged over it, then *extra* merged over that.
+
+    **Declared** (``env_allow`` resolves to a ``frozenset[str]``, via the
+    explicit kwarg or ``invocation.env_allow`` — the kwarg wins if both are
+    given): the child environment is the allow-set's names plus the fixed
+    non-credential baseline (see ``_BASELINE_NAMES``/``_BASELINE_PREFIXES``),
+    both selected from ambient ``os.environ``, **plus every key in
+    ``invocation.env`` and ``extra`` unconditionally** — the allow-set filters
+    *inheritance* only; caller-supplied keys are explicit intent, never
+    ambient leakage. An inherited variable outside the allow-set and baseline
+    is absent from the child, not merely discouraged; its name (never its
+    value) is logged at DEBUG.
 
     ``invocation`` is optional because the two ``bash -c`` task-path spawns
     (``fsm/runners.py``'s ``DefaultActionRunner`` shell branch,
     ``runner_spec.py::_run_cmd()``) never construct a ``HostInvocation`` at
-    all — ``project_child_env()`` with no arguments is exactly today's
-    implicit inheritance, made explicit and interceptable at this one seam.
-    """
-    import os
+    all — ``project_child_env()`` with no arguments (or ``env_allow=`` alone)
+    is exactly today's implicit inheritance path, made explicit and
+    interceptable at this one seam.
 
-    env = os.environ.copy()
+    Two env-driven overrides exist, both narrowing or observational only —
+    neither can ever widen an allow-set or disable deny mode:
+    ``LL_ENV_PROJECTION_FORCE_ALLOW=1`` treats an undeclared spec
+    (``env_allow`` resolving to ``None``) as ``env_allow=frozenset()``
+    (baseline-only), for manual spot-checks of individual loops.
+    ``LL_ENV_PROJECTION_REPORT=1`` denies nothing (returns full inheritance
+    regardless of ``env_allow``) but logs at DEBUG which ambient names would
+    have been denied against the effective allow-set (or the baseline alone,
+    for an undeclared spec) — the empirical baseline-derivation aid.
+
+    Honesty note: on macOS the host CLIs' own OAuth sessions (Claude Code,
+    Codex, Gemini) live in the Keychain or under ``$HOME``, not in env. This
+    helper does not scope a host CLI's own auth when a declaring ``bash -c``
+    state spawns a nested ``claude -p``/``ll-loop``/``ll-auto`` — it only
+    withholds the env-var-borne credentials the caller resolves into
+    ``env_allow``.
+    """
+    resolved_allow = (
+        env_allow
+        if env_allow is not None
+        else (getattr(invocation, "env_allow", None) if invocation is not None else None)
+    )
+    report_only = os.environ.get("LL_ENV_PROJECTION_REPORT") == "1"
+    if resolved_allow is None and os.environ.get("LL_ENV_PROJECTION_FORCE_ALLOW") == "1":
+        resolved_allow = frozenset()
+
+    if resolved_allow is None and not report_only:
+        env = os.environ.copy()
+        if invocation is not None:
+            env.update(invocation.env)
+        if extra:
+            env.update(extra)
+        return env
+
+    diff_allow = resolved_allow if resolved_allow is not None else frozenset()
+
+    def _allowed(name: str) -> bool:
+        return name in diff_allow or _is_baseline_allowed(name)
+
+    denied = sorted(name for name in os.environ if not _allowed(name))
+
+    if report_only:
+        if denied:
+            logger.debug("project_child_env report-only: would deny %s", denied)
+        env = os.environ.copy()
+        if invocation is not None:
+            env.update(invocation.env)
+        if extra:
+            env.update(extra)
+        return env
+
+    if denied:
+        logger.debug("project_child_env denying %s", denied)
+    env = {name: value for name, value in os.environ.items() if _allowed(name)}
     if invocation is not None:
         env.update(invocation.env)
     if extra:
@@ -2007,7 +2155,6 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
     Raises:
         HostNotConfigured: if no host can be resolved.
     """
-    import os
 
     if env is None:
         env = dict(os.environ)
@@ -2290,7 +2437,6 @@ def apply_host_cli_from_config(config: object) -> None:
             ``object`` to avoid a circular import; the attribute access pattern
             is ``config.orchestration.host_cli``).
     """
-    import os
 
     if os.environ.get("LL_HOST_CLI"):
         return  # explicit env override takes precedence
@@ -2487,7 +2633,6 @@ def _active_oauth_token() -> str | None:
     var ``claude setup-token`` tells subscription users to set — is
     CLI-namespaced and invisible to the SDK, so it is the fallback.
     """
-    import os
 
     if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
         return None

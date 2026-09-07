@@ -9995,6 +9995,7 @@ class HostInvocation:
     env: dict[str, str] = field(default_factory=dict)
     capabilities: HostCapabilities = field(default_factory=HostCapabilities)
     cleanup_paths: tuple[Path, ...] = field(default_factory=tuple)
+    env_allow: frozenset[str] | None = None
 ```
 
 **Fields:**
@@ -10006,6 +10007,7 @@ class HostInvocation:
 | `env` | `dict[str, str]` | `{}` | Environment variables to merge into the child process. Notably includes `GIT_DIR` / `GIT_WORK_TREE` when working inside a worktree, and host-specific knobs like `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`. |
 | `capabilities` | `HostCapabilities` | `HostCapabilities()` | Snapshot of the runner's capability flags, so callers can branch on what was actually wired without re-querying the runner. |
 | `cleanup_paths` | `tuple[Path, ...]` | `()` | Temp files created during invocation building that the caller must unlink after the subprocess completes. Currently populated by `CodexRunner.build_blocking_json` when `json_schema` is supplied — the schema dict is written to a temp file and `--output-schema <path>` is appended to `args`. Call `p.unlink(missing_ok=True)` for each path in this tuple after `subprocess.run`. |
+| `env_allow` | `frozenset[str] \| None` | `None` | ENH-3395: declared credential-scope allow-set for `project_child_env()`'s deny-by-default mode. `None` means no declaration — full inheritance, unchanged from pre-ENH-3395 behavior. Nothing in the codebase populates this field yet (see `project_child_env()`'s explicit `env_allow` kwarg, which is the load-bearing surface for the two `bash -c` paths that never construct a `HostInvocation` at all). |
 
 **Behavior:**
 - `frozen=True` — mutating an invocation in flight would silently corrupt argv across the runner/caller boundary. This establishes the `frozen=True` convention for new value objects in `scripts/little_loops/`.
@@ -10177,14 +10179,21 @@ def project_child_env(
     invocation: HostInvocation | None = None,
     *,
     extra: dict[str, str] | None = None,
+    env_allow: frozenset[str] | None = None,
 ) -> dict[str, str]: ...
 ```
 
 **Behavior:**
 
-Default behavior is byte-identical to the pre-ENH-3184 status quo: full inheritance of the parent's `os.environ`, with `invocation.env` (when *invocation* is given) merged over it, then *extra* (for one-off keys a call site adds beyond what the `HostInvocation` carries, e.g. `LL_HOST_CLI` at `cli/loop/summary.py`) merged over that. Absence of a key at any layer means "inherit the parent's value" — this helper provides no way to clear or deny an inherited variable; that's deliberately out of scope (see ENH-3203).
+**No declaration** (`env_allow` resolves to `None` — the default, via neither the kwarg nor `invocation.env_allow`): behavior is byte-identical to the pre-ENH-3395 status quo — full inheritance of the parent's `os.environ`, with `invocation.env` (when *invocation* is given) merged over it, then *extra* (for one-off keys a call site adds beyond what the `HostInvocation` carries, e.g. `LL_HOST_CLI` at `cli/loop/summary.py`) merged over that. Absence of a key at any layer means "inherit the parent's value".
 
-`invocation` is optional because two `bash -c` task-path spawns (`fsm/runners.py`'s `DefaultActionRunner` shell branch, `runner_spec.py::_run_cmd()`) never construct a `HostInvocation` at all — `project_child_env()` with no `invocation` is exactly today's implicit inheritance, made explicit and interceptable at this one seam.
+**Declared** (`env_allow` resolves to a `frozenset[str]`, via the explicit kwarg — which wins if both are given — or `invocation.env_allow`, ENH-3395): the child environment is the allow-set's names plus a fixed non-credential baseline (exact names like `PATH`/`HOME`/`LL_*`-family prefixes such as `LL_`, `XDG_`, `HOMEBREW_`), both selected from ambient `os.environ`, plus every key in `invocation.env` and `extra` **unconditionally** — the allow-set filters inheritance only, never caller-supplied keys. An inherited variable outside the allow-set and baseline is absent from the child, not merely discouraged; its name (never its value) is logged at `DEBUG` via `logging.getLogger("little_loops.host_runner")`. A name admitted only via a baseline *prefix* is still denied if it matches a credential-shaped regex (`TOKEN`, `SECRET`, `API_KEY`, etc., case-insensitive) — this guard never applies to exact-name baseline entries or explicitly declared allow-set names.
+
+Two env-driven overrides exist, both narrowing/observational only — neither can widen an allow-set or disable deny mode: `LL_ENV_PROJECTION_FORCE_ALLOW=1` treats an undeclared spec as `env_allow=frozenset()` (baseline-only), for manual spot-checks. `LL_ENV_PROJECTION_REPORT=1` denies nothing (returns full inheritance) but logs at `DEBUG` which ambient names would have been denied — the empirical baseline-derivation aid.
+
+`invocation` is optional because two `bash -c` task-path spawns (`fsm/runners.py`'s `DefaultActionRunner` shell branch, `runner_spec.py::_run_cmd()`) never construct a `HostInvocation` at all — `project_child_env()` with no `invocation` (or `env_allow=` alone) is exactly today's implicit inheritance path, made explicit and interceptable at this one seam.
+
+**Honesty note:** on macOS the host CLIs' own OAuth sessions (Claude Code, Codex, Gemini) live in the Keychain or under `$HOME`, not in env. `env_allow` does not scope a host CLI's own auth when a declaring `bash -c` state spawns a nested `claude -p`/`ll-loop`/`ll-auto` — it only withholds the env-var-borne credentials the caller resolves into `env_allow`. Populating `env_allow` from a real per-task declaration (`ActionSpec`/FSM `StateConfig`) is out of scope for this chokepoint — see ENH-3234/ENH-3235.
 
 **LL_PYTHON (ENH-3365):** both of those `bash -c` spawn sites pass `extra={"LL_PYTHON": sys.executable}`, so every FSM shell action sees `LL_PYTHON` set to the exact interpreter running the loop — regardless of what a bare `python3` on `PATH` would resolve to. Because `extra` always overrides an inherited value, this narrows user-side `LL_PYTHON` overrides to non-FSM contexts (e.g. the hook-adapter shims, which resolve `LL_PYTHON` themselves via a `command -v python3` fallback chain and treat any provided value as authoritative). Loop YAML heredocs that import `little_loops` should invoke `$${LL_PYTHON:-python3}` (double `$` — the FSM interpolates the action string before bash sees it) instead of bare `python3`.
 

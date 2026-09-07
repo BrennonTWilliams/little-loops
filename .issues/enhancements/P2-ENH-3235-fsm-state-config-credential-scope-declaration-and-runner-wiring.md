@@ -6,7 +6,7 @@ priority: P2
 status: open
 parent: ENH-3203
 epic: EPIC-3212
-blocked_by: [ENH-3233]
+blocked_by: [ENH-3395, ENH-3396]
 discovered_by: /ll:issue-size-review
 discovered_date: '2026-08-17'
 testable: true
