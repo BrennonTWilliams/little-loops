@@ -111,6 +111,11 @@
       }
     }
   },
+  "events": {
+    "transports": [
+      "socket"
+    ]
+  },
   "loops": {
     "run_defaults": {
       "clear": true,
