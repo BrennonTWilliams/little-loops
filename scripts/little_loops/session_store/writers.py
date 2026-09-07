@@ -1942,6 +1942,50 @@ def write_research_triage(
     return True
 
 
+def write_credential_scope(
+    db_path: Path | str,
+    *,
+    run_id: str,
+    state: str,
+    scopes: frozenset[str],
+    var_names: frozenset[str],
+    ts: str | None = None,
+) -> bool:
+    """Write one row to ``credential_scope_events`` (ENH-3204).
+
+    Fail-soft, mirroring :func:`write_research_triage`: returns ``False``
+    (never raises) on any ``sqlite3.Error`` so an audit write never fails a
+    loop run. *scopes* and *var_names* are **names only, never values** — no
+    value-bearing parameter may be added to this signature.
+    """
+    ts = ts or _now()
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _pkg.connect(db_path)
+        conn.execute(
+            "INSERT INTO credential_scope_events"
+            "(ts, run_id, state, scopes_json, var_names_json)"
+            " VALUES(?, ?, ?, ?, ?)",
+            (
+                ts,
+                run_id,
+                state,
+                json.dumps(sorted(scopes)),
+                json.dumps(sorted(var_names)),
+            ),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning(
+            "write_credential_scope: insert failed for run_id=%r", run_id, exc_info=True
+        )
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+    return True
+
+
 def record_subagent_run_start(
     db_path: Path | str,
     *,

@@ -169,6 +169,31 @@ class TestAddEntry:
         assert fetched is not None
         assert fetched.action.timeout is None
 
+    def test_scopes_round_trips(self, tmp_path: Path) -> None:
+        """ENH-3234 AC6: a scoped ActionSpec's `scopes` field survives the
+        ll-queue persist/fetch round-trip instead of silently vanishing."""
+        db = tmp_path / "queue.db"
+        entry = add_entry(
+            ActionSpec(
+                name="x", runner=RunnerType.CMD, target="echo hi", scopes=frozenset({"github"})
+            ),
+            db_path=db,
+        )
+
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.action.scopes == frozenset({"github"})
+
+    def test_no_scopes_round_trips_as_none(self, tmp_path: Path) -> None:
+        """A scopes=None ActionSpec must round-trip to None, not an empty frozenset —
+        None means "undeclared, full-inherit"; frozenset() means "declared, deny-all"."""
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.action.scopes is None
+
 
 class TestListEntries:
     def test_empty_queue(self, tmp_path: Path) -> None:

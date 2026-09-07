@@ -40,6 +40,7 @@ from little_loops.host_runner import (
     project_child_env,
     resolve_automation,
     resolve_host,
+    resolve_scopes,
 )
 from little_loops.mcp_call import call_mcp_tool
 from little_loops.subprocess_utils import _kill_process_group
@@ -93,6 +94,10 @@ class ActionSpec:
     target: str
     args: dict[str, Any] = field(default_factory=dict)
     timeout: int | None = 120
+    # ENH-3234: credential-scope names (resolved against host_runner.CREDENTIAL_SCOPES)
+    # naming the env vars this task's `_run_cmd()` spawn is allowed to inherit. None
+    # (the default) keeps today's coarse full-inherit behavior; opt-in per spec.
+    scopes: frozenset[str] | None = None
 
 
 def _run_skill(spec: ActionSpec) -> RunnerResult:
@@ -240,13 +245,20 @@ def _run_cmd(spec: ActionSpec) -> RunnerResult:
     """
     assert spec.timeout is not None, "CMD runner requires a concrete timeout (BUG-2928)"
 
+    env_allow: frozenset[str] | None = None
+    if spec.scopes is not None:
+        try:
+            env_allow = resolve_scopes(spec.scopes)
+        except ValueError as e:
+            return RunnerResult(stdout="", stderr="", exit_code=2, error=str(e))
+
     process = subprocess.Popen(
         ["bash", "-c", spec.target],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
-        env=project_child_env(extra={"LL_PYTHON": sys.executable}),
+        env=project_child_env(extra={"LL_PYTHON": sys.executable}, env_allow=env_allow),
     )
     deadline = time.time() + spec.timeout
 

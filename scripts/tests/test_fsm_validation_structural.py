@@ -2249,3 +2249,78 @@ class TestHumanApprovalValidation:
             if e.severity == ValidationSeverity.WARNING and "hitl.default_timeout" in e.message
         ]
         assert len(timeout_warnings) == 1
+
+
+class TestScopesValidation:
+    """ENH-3235 AC9/AC10: validate the per-state scopes: field."""
+
+    def test_known_scope_on_shell_state_passes(self) -> None:
+        """A declared scope resolving against the registry, on a shell state, is valid."""
+        state = StateConfig(action="echo hi", action_type="shell", scopes=["github"])
+        errors = _validate_state_action("check", state)
+        assert errors == []
+
+    def test_unknown_scope_name_fails_validation(self) -> None:
+        """AC9: an unknown scope name is a validate-time ERROR naming the bad scope."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="echo hi", action_type="shell", scopes=["githb"], on_yes="done"
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        error_only = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("githb" in e.message for e in error_only)
+
+    def test_scopes_on_prompt_state_fails_validation(self) -> None:
+        """AC10(b): scopes: on an action_type: prompt state is a validate-time ERROR."""
+        state = StateConfig(
+            action="/ll:test", action_type="prompt", scopes=["github"], next="done"
+        )
+        errors = _validate_state_action("check", state)
+        assert any("scopes" in e.message and "check" in e.message for e in errors)
+
+    def test_scopes_on_mcp_tool_state_fails_validation(self) -> None:
+        """AC10(c): scopes: on an action_type: mcp_tool state is a validate-time ERROR."""
+        state = StateConfig(action="some_tool", action_type="mcp_tool", scopes=["github"])
+        errors = _validate_state_action("check", state)
+        assert any("scopes" in e.message and "check" in e.message for e in errors)
+
+    def test_scopes_on_slash_action_without_action_type_fails_validation(self) -> None:
+        """AC10(a): scopes: on a bare '/'-prefixed action (no action_type) heuristically
+        resolves to prompt mode and is a validate-time ERROR."""
+        state = StateConfig(action="/ll:manage-issue", scopes=["github"], next="done")
+        errors = _validate_state_action("check", state)
+        assert any("scopes" in e.message and "check" in e.message for e in errors)
+
+    def test_scopes_on_shell_state_passes_ac10(self) -> None:
+        """AC10(d): scopes: on an action_type: shell state passes."""
+        state = StateConfig(action="echo hi", action_type="shell", scopes=["github"], next="done")
+        errors = _validate_state_action("check", state)
+        assert errors == []
+
+    def test_scopes_on_bare_non_slash_action_passes_ac10(self) -> None:
+        """AC10(d): scopes: on a bare non-'/' action (no action_type, heuristic shell) passes."""
+        state = StateConfig(action="echo hi", scopes=["github"], next="done")
+        errors = _validate_state_action("check", state)
+        assert errors == []
+
+    def test_scopes_error_messages_do_not_collide_with_missing_scope_rule(self) -> None:
+        """Neither AC9's nor AC10's message may contain the substring \"no 'scope:'\"
+        used by _validate_missing_scope()'s caplog-substring assertion. The loop-level
+        `scope:` field is unset here too, so _validate_missing_scope() legitimately also
+        fires on this fixture — only the state-path (AC9/AC10) messages are asserted here.
+        """
+        state = StateConfig(
+            action="/ll:test",
+            action_type="prompt",
+            scopes=["githb"],
+            next="done",
+        )
+        errors = _validate_state_action("check", state)
+        assert errors, "expected AC9 + AC10 errors on this fixture"
+        assert not any("no 'scope:'" in e.message for e in errors)

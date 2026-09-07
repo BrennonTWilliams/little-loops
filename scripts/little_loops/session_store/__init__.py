@@ -164,6 +164,7 @@ from little_loops.session_store.writers import (
     skill_event_context,
     update_loop_run_diagnostics,
     write_advisor_consult,
+    write_credential_scope,
     write_file_event,
     write_research_triage,
 )
@@ -235,6 +236,7 @@ __all__ = [
     "record_verdict_event",
     "write_advisor_consult",
     "write_research_triage",
+    "write_credential_scope",
     # Private functions re-exported for test access
     "_MIGRATIONS",
     "_KIND_TABLE",

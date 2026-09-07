@@ -9440,6 +9440,7 @@ from little_loops.session_store import (
     record_context_pressure_event, # write a context_pressure_events row (ENH-2507)
     record_review_event,   # write a review_events row (ENH-2512)
     write_advisor_consult, # write an advisor_consults row (FEAT-3300)
+    write_credential_scope, # write a credential_scope_events row (ENH-3204)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -9995,6 +9996,7 @@ class HostInvocation:
     env: dict[str, str] = field(default_factory=dict)
     capabilities: HostCapabilities = field(default_factory=HostCapabilities)
     cleanup_paths: tuple[Path, ...] = field(default_factory=tuple)
+    env_allow: frozenset[str] | None = None
 ```
 
 **Fields:**
@@ -10006,6 +10008,7 @@ class HostInvocation:
 | `env` | `dict[str, str]` | `{}` | Environment variables to merge into the child process. Notably includes `GIT_DIR` / `GIT_WORK_TREE` when working inside a worktree, and host-specific knobs like `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`. |
 | `capabilities` | `HostCapabilities` | `HostCapabilities()` | Snapshot of the runner's capability flags, so callers can branch on what was actually wired without re-querying the runner. |
 | `cleanup_paths` | `tuple[Path, ...]` | `()` | Temp files created during invocation building that the caller must unlink after the subprocess completes. Currently populated by `CodexRunner.build_blocking_json` when `json_schema` is supplied — the schema dict is written to a temp file and `--output-schema <path>` is appended to `args`. Call `p.unlink(missing_ok=True)` for each path in this tuple after `subprocess.run`. |
+| `env_allow` | `frozenset[str] \| None` | `None` | ENH-3395: declared credential-scope allow-set for `project_child_env()`'s deny-by-default mode. `None` means no declaration — full inheritance, unchanged from pre-ENH-3395 behavior. Nothing in the codebase populates this field yet (see `project_child_env()`'s explicit `env_allow` kwarg, which is the load-bearing surface for the two `bash -c` paths that never construct a `HostInvocation` at all). |
 
 **Behavior:**
 - `frozen=True` — mutating an invocation in flight would silently corrupt argv across the runner/caller boundary. This establishes the `frozen=True` convention for new value objects in `scripts/little_loops/`.
@@ -10168,6 +10171,30 @@ invocation = runner.build_streaming(prompt="Hello, world")
 # subprocess.run([invocation.binary, *invocation.args], env={**os.environ, **invocation.env})
 ```
 
+### resolve_scopes
+
+Credential-scope registry (ENH-3396). Maps human-meaningful scope names to the env-var names they unlock, for callers that want to pass a pre-resolved `frozenset[str]` into `project_child_env`'s `env_allow`.
+
+```python
+CREDENTIAL_SCOPES: dict[str, frozenset[str]]
+
+def resolve_scopes(scopes: Iterable[str]) -> frozenset[str]: ...
+```
+
+**Behavior:**
+
+- Unions the env-var names for every requested scope name.
+- Unknown scope name: raises `ValueError` directly, naming the bad scope and the sorted valid set. This is a direct raise, not a `warnings`-based promotion (`warnings.simplefilter("error", ...)` is opt-in per process) — the check is fail-loud security.
+- Starting scopes: `github`, `anthropic-api`, `openai-api`, `gemini-api`, `kimi-api`, `qwen-api`, `opencode-api`, `vision-api`, `openrouter-api`, `autofigure-api`. Each entry carries a justification comment in source.
+- **Honesty note**: on macOS the host CLIs' own OAuth sessions (Claude Code, Codex, Gemini) live in the Keychain or under `$HOME`, not in env vars — this registry does not capture that auth.
+- Runtime caller (ENH-3234): `runner_spec.py::_run_cmd()` resolves `ActionSpec.scopes` (when declared) into `project_child_env`'s `env_allow` parameter. The FSM `StateConfig`/loop-YAML declaration surface (ENH-3235) is a separate, not-yet-wired consumer.
+
+```python
+from little_loops.host_runner import resolve_scopes
+
+env_allow = resolve_scopes({"github", "anthropic-api"})
+```
+
 ### project_child_env
 
 Single chokepoint every task-path `subprocess.*` call routes through to build its `env=` mapping (ENH-3184).
@@ -10177,18 +10204,42 @@ def project_child_env(
     invocation: HostInvocation | None = None,
     *,
     extra: dict[str, str] | None = None,
+    env_allow: frozenset[str] | None = None,
 ) -> dict[str, str]: ...
 ```
 
 **Behavior:**
 
-Default behavior is byte-identical to the pre-ENH-3184 status quo: full inheritance of the parent's `os.environ`, with `invocation.env` (when *invocation* is given) merged over it, then *extra* (for one-off keys a call site adds beyond what the `HostInvocation` carries, e.g. `LL_HOST_CLI` at `cli/loop/summary.py`) merged over that. Absence of a key at any layer means "inherit the parent's value" — this helper provides no way to clear or deny an inherited variable; that's deliberately out of scope (see ENH-3203).
+**No declaration** (`env_allow` resolves to `None` — the default, via neither the kwarg nor `invocation.env_allow`): behavior is byte-identical to the pre-ENH-3395 status quo — full inheritance of the parent's `os.environ`, with `invocation.env` (when *invocation* is given) merged over it, then *extra* (for one-off keys a call site adds beyond what the `HostInvocation` carries, e.g. `LL_HOST_CLI` at `cli/loop/summary.py`) merged over that. Absence of a key at any layer means "inherit the parent's value".
 
-`invocation` is optional because two `bash -c` task-path spawns (`fsm/runners.py`'s `DefaultActionRunner` shell branch, `runner_spec.py::_run_cmd()`) never construct a `HostInvocation` at all — `project_child_env()` with no `invocation` is exactly today's implicit inheritance, made explicit and interceptable at this one seam.
+**Declared** (`env_allow` resolves to a `frozenset[str]`, via the explicit kwarg — which wins if both are given — or `invocation.env_allow`, ENH-3395): the child environment is the allow-set's names plus a fixed non-credential baseline (exact names like `PATH`/`HOME`/`LL_*`-family prefixes such as `LL_`, `XDG_`, `HOMEBREW_`), both selected from ambient `os.environ`, plus every key in `invocation.env` and `extra` **unconditionally** — the allow-set filters inheritance only, never caller-supplied keys. An inherited variable outside the allow-set and baseline is absent from the child, not merely discouraged; its name (never its value) is logged at `DEBUG` via `logging.getLogger("little_loops.host_runner")`. A name admitted only via a baseline *prefix* is still denied if it matches a credential-shaped regex (`TOKEN`, `SECRET`, `API_KEY`, etc., case-insensitive) — this guard never applies to exact-name baseline entries or explicitly declared allow-set names.
+
+Two env-driven overrides exist, both narrowing/observational only — neither can widen an allow-set or disable deny mode: `LL_ENV_PROJECTION_FORCE_ALLOW=1` treats an undeclared spec as `env_allow=frozenset()` (baseline-only), for manual spot-checks. `LL_ENV_PROJECTION_REPORT=1` denies nothing (returns full inheritance) but logs at `DEBUG` which ambient names would have been denied — the empirical baseline-derivation aid.
+
+`invocation` is optional because two `bash -c` task-path spawns (`fsm/runners.py`'s `DefaultActionRunner` shell branch, `runner_spec.py::_run_cmd()`) never construct a `HostInvocation` at all — `project_child_env()` with no `invocation` (or `env_allow=` alone) is exactly today's implicit inheritance path, made explicit and interceptable at this one seam.
+
+**Honesty note:** on macOS the host CLIs' own OAuth sessions (Claude Code, Codex, Gemini) live in the Keychain or under `$HOME`, not in env. `env_allow` does not scope a host CLI's own auth when a declaring `bash -c` state spawns a nested `claude -p`/`ll-loop`/`ll-auto` — it only withholds the env-var-borne credentials the caller resolves into `env_allow`. Populating `env_allow` from a real per-task declaration (`ActionSpec`/FSM `StateConfig`) is out of scope for this chokepoint — see ENH-3234/ENH-3235.
 
 **LL_PYTHON (ENH-3365):** both of those `bash -c` spawn sites pass `extra={"LL_PYTHON": sys.executable}`, so every FSM shell action sees `LL_PYTHON` set to the exact interpreter running the loop — regardless of what a bare `python3` on `PATH` would resolve to. Because `extra` always overrides an inherited value, this narrows user-side `LL_PYTHON` overrides to non-FSM contexts (e.g. the hook-adapter shims, which resolve `LL_PYTHON` themselves via a `command -v python3` fallback chain and treat any provided value as authoritative). Loop YAML heredocs that import `little_loops` should invoke `$${LL_PYTHON:-python3}` (double `$` — the FSM interpolates the action string before bash sees it) instead of bare `python3`.
 
 An AST-based guard test (`test_enh3184_spawn_site_guard.py`) enumerates every `subprocess.(run|Popen|check_output|call)` site across the task-path modules and fails if a new spawn bypasses this helper; sites intentionally exempt (git plumbing, `gh` auth/PR calls, detection/maintenance probes, pip introspection) carry an inline `# ll-no-project: <reason>` marker.
+
+### gh_scope_extra
+
+Builds the `env=` overrides that scope a child's `gh` CLI access (ENH-3205), for the `github` credential scope specifically.
+
+```python
+def gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]: ...
+```
+
+**Behavior:**
+
+- Always returns `{"GH_CONFIG_DIR": str(config_dir)}` — unconditional, so a declaring-but-non-`github` state still gets the ambient `~/.config/gh` login hidden from `gh auth status`/`gh api`, not just an un-injected token.
+- `with_token=True` additionally resolves `GH_TOKEN`: the `GH_TOKEN`/`GITHUB_TOKEN` env vars first, else a `gh auth token` probe run via `project_child_env()` with no `env_allow` (full inherit, deliberately *not* redirected, so it can still see the operator's own session).
+- No token obtainable (both env vars absent and the probe fails/exits non-zero): raises `RuntimeError` naming the failure. There is no fallback path that leaves a declaring `github` state un-redirected or silently un-scoped.
+- **Known gap (macOS, Keychain-backed `gh`):** `gh auth token` reads the OAuth token from the login Keychain by a fixed per-hostname service name, independent of `GH_CONFIG_DIR`/`hosts.yml` — unlike `gh auth status`/`gh api`, which do consult `hosts.yml` and are correctly hidden by the redirect. A nested `github`-scoped spawn inheriting an outer state's empty `GH_CONFIG_DIR` can therefore still mint a token via this same probe. Recorded in `.ll/learning-tests/gh.md`.
+
+**Caller (`fsm/runners.py`'s `DefaultActionRunner` shell branch):** whenever `scopes is not None`, opens a per-spawn `tempfile.TemporaryDirectory()` scoped (via `try`/`finally`) across the `Popen`+wait, and merges `gh_scope_extra(Path(tmpdir), with_token="github" in scopes)` into the `extra=` dict passed to `project_child_env`. A `RuntimeError` is caught and converted into a failed `ActionResult`, mirroring `resolve_scopes`'s `ValueError` catch just above it.
 
 ### resolve_host_named
 
@@ -10346,9 +10397,12 @@ class ActionSpec:
     target: str
     args: dict[str, Any] = field(default_factory=dict)
     timeout: int = 120
+    scopes: frozenset[str] | None = None
 ```
 
 Frozen, following the same crosses-the-runner/caller-boundary convention as `host_runner.HostInvocation`.
+
+`scopes` (ENH-3234): credential-scope names resolved against `host_runner.CREDENTIAL_SCOPES`, naming the env vars this task's `_run_cmd()` spawn is allowed to inherit. `None` (default) keeps full-inherit behavior — declaration is opt-in per spec. An unknown scope name is resolved (and raises) inside `_run_cmd()`, not at construction, so one bad queue entry can't abort bulk queue deserialization; the resulting `ValueError` is caught and returned as a failed `RunnerResult` naming the offending scope.
 
 ### RunnerResult
 

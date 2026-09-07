@@ -611,6 +611,14 @@ states:
 
 Don't pin haiku on *generator* states (states that produce the actual content — code, prose, a plan) — the MR-lint `haiku-gen` rule (see [Loop Authoring](../../.claude/CLAUDE.md#loop-authoring)) warns when a `model:` names a haiku variant on a non-evaluator state, since generator output has no MR-1 non-LLM-evaluator backstop to catch quality regressions from the cheaper model.
 
+**Credential scoping on shell states (`scopes:`, ENH-3235/ENH-3205)**: unlike the fields above, `scopes:` applies to shell (`bash -c`) states, not `action_type: prompt` states. Declaring `scopes: [github]` (or any other registered credential scope) switches the spawned child from full env inheritance to a deny-by-default allow-set (ENH-3395) built from the declared scope's env-var names plus a fixed non-credential baseline. For the `github` scope specifically, declaring it (even as `scopes: []` — declared but not `github`) also redirects `GH_CONFIG_DIR` to a per-spawn temp directory so the ambient `~/.config/gh` login is hidden from `gh auth status`/`gh api`; `scopes: [github]` additionally injects a real `GH_TOKEN` sourced from the operator's own ambient session (`GH_TOKEN`/`GITHUB_TOKEN` env, else a `gh auth token` probe).
+
+- **Exposure**: a `github`-scoped child's env *contains the operator's live token in plaintext* — visible to `env`, `ps e`, crash dumps, and any `set -x` output the action logs. Never log the value; the `GH_TOKEN` name is fine to log, its contents are not.
+- **`config.yml` loss**: the `GH_CONFIG_DIR` redirect also hides the operator's `config.yml` (`git_protocol`, `editor`, aliases) — `gh` falls back to `git_protocol: https` inside the child regardless of the operator's own `ssh` setting.
+- **Known non-escalation gap**: on macOS, `gh auth token` reads the Keychain by a fixed per-hostname service name, independent of `GH_CONFIG_DIR` — a nested `github`-scoped state can still mint a token even when it inherits an outer state's empty `GH_CONFIG_DIR`. See `.ll/learning-tests/gh.md` and `gh_scope_extra`'s docstring (`docs/reference/API.md#gh_scope_extra`).
+
+Do not confuse this `scopes:` field with the unrelated loop-lock `scope:` field described under [Scope-Based Concurrency](#scope-based-concurrency).
+
 ### Automation-Context Pruning
 
 Every fresh state invocation re-sends a static prefix by default: the full skill/command catalog, the SessionStart hook's config + `project_context` digest, and (on hosts that support it) CLAUDE.md. For a tight, controlled state whose prompt fully specifies the task, declare a `pruning_profile:` to cut that prefix — opt-in, default off:

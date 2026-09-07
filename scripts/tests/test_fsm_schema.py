@@ -2722,6 +2722,51 @@ class TestAgentToolsStateConfig:
         assert restored.tools == ["Bash", "Edit"]
 
 
+class TestScopesStateConfig:
+    """Tests for scopes: FSM state field (ENH-3235)."""
+
+    def test_state_config_scopes_defaults_to_none(self) -> None:
+        """StateConfig.scopes defaults to None."""
+        state = StateConfig(action="echo hi", next="done")
+        assert state.scopes is None
+
+    def test_state_config_accepts_scopes(self) -> None:
+        """StateConfig accepts scopes field."""
+        state = StateConfig(action="echo hi", action_type="shell", scopes=["github"], next="done")
+        assert state.scopes == ["github"]
+
+    def test_to_dict_includes_scopes_when_set(self) -> None:
+        """to_dict includes scopes when set."""
+        state = StateConfig(action="echo hi", scopes=["github"], next="done")
+        d = state.to_dict()
+        assert d["scopes"] == ["github"]
+
+    def test_to_dict_excludes_scopes_when_none(self) -> None:
+        """to_dict omits scopes when not set."""
+        state = StateConfig(action="echo hi", next="done")
+        d = state.to_dict()
+        assert "scopes" not in d
+
+    def test_from_dict_with_scopes(self) -> None:
+        """from_dict deserializes scopes field."""
+        data = {"action": "echo hi", "scopes": ["github"], "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.scopes == ["github"]
+
+    def test_from_dict_without_scopes_defaults_none(self) -> None:
+        """from_dict defaults scopes to None when absent."""
+        data = {"action": "echo hi", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.scopes is None
+
+    def test_round_trip_scopes(self) -> None:
+        """StateConfig with scopes round-trips through to_dict/from_dict."""
+        original = StateConfig(action="echo hi", scopes=["github", "anthropic-api"], next="done")
+        d = original.to_dict()
+        restored = StateConfig.from_dict(d)
+        assert restored.scopes == ["github", "anthropic-api"]
+
+
 class TestModelStateConfig:
     """Tests for model: FSM state field (ENH-2073)."""
 
@@ -4867,6 +4912,16 @@ class TestTamperGuard:
         assert "prepatch_check" in schema["definitions"]["stateConfig"]["properties"]
         assert "prepatch_check" in schema["properties"]
         assert "prepatch_check_ok" in schema["properties"]
+
+    def test_schema_json_declares_state_level_scopes(self) -> None:
+        """ENH-3235: scopes is present in fsm-loop-schema.json's stateConfig
+        properties. stateConfig has additionalProperties: false with no
+        patternProperties catch-all, so omitting this would make a loop YAML
+        declaring `scopes:` fail schema validation even though the Python
+        loader accepts it."""
+        schema_path = Path(__file__).parent.parent / "little_loops" / "fsm" / "fsm-loop-schema.json"
+        schema = json.loads(schema_path.read_text())
+        assert "scopes" in schema["definitions"]["stateConfig"]["properties"]
 
 
 class TestGateCompletenessOk:

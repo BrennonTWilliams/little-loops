@@ -467,8 +467,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 46
-        assert int(row[0]) == 46
+        assert SCHEMA_VERSION == 47
+        assert int(row[0]) == 47
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1150,7 +1150,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 46
+        assert SCHEMA_VERSION == 47
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1280,7 +1280,7 @@ class TestPrepatchEvidence:
     """ENH-2997: prepatch_evidence table, writer, and reader round trip."""
 
     def test_v39_db_upgrades_gains_prepatch_evidence(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 46
+        assert SCHEMA_VERSION == 47
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 39)
         ensure_db(db)
@@ -1537,7 +1537,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 46
+        assert SCHEMA_VERSION == 47
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -1735,7 +1735,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 46
+        assert SCHEMA_VERSION == 47
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -2855,4 +2855,43 @@ class TestWriteResearchTriage:
             refined_at=None,
             session_id=None,
             axes=[("locator", False, "no_qualified_refs", "")],
+        )
+
+
+class TestWriteCredentialScope:
+    """ENH-3204: write_credential_scope() persists credential_scope_events rows."""
+
+    def test_persists_scopes_and_var_names(self, tmp_path: Path) -> None:
+        from little_loops.session_store import write_credential_scope
+
+        db = tmp_path / "history.db"
+        assert write_credential_scope(
+            db,
+            run_id="run-1",
+            state="deploy",
+            scopes=frozenset({"github-api"}),
+            var_names=frozenset({"GH_TOKEN"}),
+        )
+        rows = recent(db, kind="credential_scope", limit=10)
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "run-1"
+        assert rows[0]["state"] == "deploy"
+        assert json.loads(rows[0]["scopes_json"]) == ["github-api"]
+        assert json.loads(rows[0]["var_names_json"]) == ["GH_TOKEN"]
+
+    def test_graceful_when_store_unwritable(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.session_store as session_store
+
+        def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(session_store, "connect", boom)
+
+        db = tmp_path / "history.db"
+        assert not session_store.write_credential_scope(
+            db,
+            run_id="run-1",
+            state="deploy",
+            scopes=frozenset({"github-api"}),
+            var_names=frozenset({"GH_TOKEN"}),
         )

@@ -7,6 +7,7 @@ DefaultActionRunner shell/slash paths. Skips _current_process lifecycle
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -404,6 +405,133 @@ class TestDefaultActionRunnerShellPath:
             DefaultActionRunner().run("echo hi", 30, False)
 
         assert mock_popen.call_args.kwargs["env"]["LL_PYTHON"] == sys.executable
+
+    def test_shell_no_scopes_keeps_full_inherit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ENH-3235 AC5: an undeclared state keeps today's coarse (full-inherit)
+        behavior — env_allow stays None, so an arbitrary ambient var passes through."""
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED", "present")
+        result = DefaultActionRunner().run("echo $ZZ_TEST_UNDECLARED", 10, False)
+        assert result.output.strip() == "present"
+
+    def test_shell_declared_scope_allows_its_vars_denies_others(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3235 AC7.1/AC7.2: a declared scope's env vars survive; an
+        undeclared credential var is absent from the shell action's environment.
+        ENH-3205: a declared `github` scope also gets its GH_CONFIG_DIR
+        redirected to a per-spawn tempdir, not the ambient ~/.config/gh."""
+        monkeypatch.setenv("GH_TOKEN", "gh-secret")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+        result = DefaultActionRunner().run(
+            "echo ${GH_TOKEN:-absent}:${ANTHROPIC_API_KEY:-absent}:${GH_CONFIG_DIR:-absent}",
+            10,
+            False,
+            scopes=["github"],
+        )
+        token, api_key, config_dir = result.output.strip().split(":")
+        assert token == "gh-secret"
+        assert api_key == "absent"
+        assert config_dir != "absent"
+        assert config_dir != str(Path.home() / ".config" / "gh")
+        assert not Path(config_dir).exists()  # cleaned up after the spawn exits
+
+    def test_shell_declared_empty_scopes_redirects_config_dir_no_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3205 Expected Behavior invariant: a declaring-but-non-github
+        state (scopes=[]) still gets the GH_CONFIG_DIR redirect (so the
+        ambient keyring login is hidden) but no GH_TOKEN, even when the
+        parent process has one set."""
+        monkeypatch.setenv("GH_TOKEN", "gh-secret")
+        result = DefaultActionRunner().run(
+            "echo ${GH_TOKEN:-absent}:${GH_CONFIG_DIR:-absent}",
+            10,
+            False,
+            scopes=[],
+        )
+        token, config_dir = result.output.strip().split(":")
+        assert token == "absent"
+        assert config_dir != "absent"
+
+    def test_shell_undeclared_scopes_no_config_dir_redirect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3205: an undeclared state (scopes=None) is unaffected — no
+        GH_CONFIG_DIR is injected, consistent with ENH-3203 AC5 full-inherit."""
+        monkeypatch.delenv("GH_CONFIG_DIR", raising=False)
+        result = DefaultActionRunner().run("echo ${GH_CONFIG_DIR:-absent}", 10, False)
+        assert result.output.strip() == "absent"
+
+    @pytest.mark.skipif(shutil.which("gh") is None, reason="gh CLI not installed")
+    def test_shell_declared_non_github_scope_hides_ambient_gh_login(self) -> None:
+        """ENH-3205: this is the test that would have caught the original
+        both-or-neither bug — a declaring-but-non-github state's GH_CONFIG_DIR
+        redirect hides the ambient gh keyring login."""
+        result = DefaultActionRunner().run(
+            "gh auth status 2>&1 | head -1", 15, False, scopes=[]
+        )
+        combined = (result.output + result.stderr).lower()
+        assert "not logged into" in combined
+
+    def test_shell_github_scope_no_token_fails_state_spawns_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3205: no GH_TOKEN/GITHUB_TOKEN and a failing `gh auth token`
+        probe fails the state before any Popen of the action."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        failed_probe = MagicMock(returncode=1, stdout="")
+
+        with (
+            patch("little_loops.host_runner.subprocess.run", return_value=failed_probe),
+            patch("little_loops.fsm.runners.subprocess.Popen") as mock_popen,
+        ):
+            result = DefaultActionRunner().run(
+                "echo should-not-run", 10, False, scopes=["github"]
+            )
+
+        mock_popen.assert_not_called()
+        assert result.exit_code != 0
+        assert "github" in result.stderr.lower()
+
+    def test_shell_scoped_tempdir_removed_after_timeout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3205: the per-spawn GH_CONFIG_DIR tempdir is cleaned up even
+        on the timeout/kill exit path."""
+        monkeypatch.setenv("GH_TOKEN", "gh-secret")
+        proc = _make_selector_mock_process()
+        sel = MagicMock()
+        sel.get_map.return_value = {"pipe": "data"}
+        sel.select.return_value = []
+        sel.close.return_value = None
+        sel.register.return_value = None
+        captured: dict[str, str] = {}
+
+        def _capture_env(*args, **kwargs):
+            captured.update(kwargs.get("env", {}))
+            return proc
+
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", side_effect=_capture_env),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.fsm.runners._kill_process_group"),
+        ):
+            DefaultActionRunner().run("hang forever", 0.05, False, scopes=["github"])
+
+        assert not Path(captured["GH_CONFIG_DIR"]).exists()
+
+    def test_shell_unknown_scope_fails_loud_and_spawns_nothing(self) -> None:
+        """ENH-3235: an unknown scope name returns a failed ActionResult naming
+        the scope, and never reaches subprocess.Popen."""
+        with patch("little_loops.fsm.runners.subprocess.Popen") as mock_popen:
+            result = DefaultActionRunner().run(
+                "echo should-not-run", 10, False, scopes=["nonexistent-scope"]
+            )
+
+        mock_popen.assert_not_called()
+        assert result.exit_code != 0
+        assert "nonexistent-scope" in result.stderr
 
     def test_timeout_reaps_grandchildren_and_runner_survives(self) -> None:
         """End-to-end: a timed-out shell action's whole tree dies, runner lives.

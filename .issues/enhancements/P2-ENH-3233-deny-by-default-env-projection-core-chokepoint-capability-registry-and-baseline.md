@@ -1,9 +1,10 @@
 ---
 id: ENH-3233
 type: ENH
-title: Deny-by-default env projection core — chokepoint, capability registry, and baseline
+title: "Deny-by-default env projection core \u2014 chokepoint, capability registry,\
+  \ and baseline"
 priority: P2
-status: open
+status: done
 parent: ENH-3203
 epic: EPIC-3212
 blocked_by: []
@@ -11,8 +12,10 @@ discovered_by: /ll:issue-size-review
 discovered_date: '2026-08-17'
 testable: true
 decision_needed: false
+verify_verdict: NON_VALID
 relates_to:
 - ENH-3184
+size: Very Large
 ---
 
 # ENH-3233: Deny-by-default env projection core — chokepoint, capability registry, and baseline
@@ -300,6 +303,9 @@ sites `env_allow` selection must account for):
 - `scripts/little_loops/learning_tests/extractor.py` — line 134
 - `scripts/little_loops/cli/issues/decisions.py` — line 815
 - `scripts/little_loops/parallel/worker_pool.py` — line 859
+- `scripts/little_loops/host_runner.py` — line 2178, `run_blocking_json()` — an in-module call
+  site (same file as the chokepoint itself), previously named only in Program Design's Call Path
+  narrative, not enumerated here
 
 With no `invocation` (pure `os.environ` inheritance today; unaffected by `env_allow` since there
 is no `HostInvocation` to carry the field — these are exactly the two `bash -c` paths ENH-3234/
@@ -333,6 +339,31 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
   of these loops doesn't lose ambient access to a var the registry doesn't know
   about. Finalize alongside the AC4 baseline-derivation pass, not as a blocker for
   this issue's own tests.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-07 — based on codebase analysis:_
+
+- **Citation correction (autofigure_wrapper.py)**: `scripts/autofigure_wrapper.py` is 99 lines
+  total, not 107+. `AUTOFIGURE_API_KEY` appears once, in the module docstring at line 6 (not
+  line 52); `OPENROUTER_API_KEY` appears once, in a `print(..., file=sys.stderr)` error message
+  at line 63 (not line 107 — the file has no line 107). Neither variable is read
+  programmatically in this file — it has no `import os` and never calls
+  `os.environ`/`os.getenv`; both mentions are user-facing prose pointing at the external
+  `autofigure` package (`from autofigure import AutoFigureAgent`, line 58), where the actual key
+  read presumably happens outside this repo.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-07:_
+- **A second env-scrub workaround exists that this chokepoint cannot reach.**
+  `scripts/little_loops/fleet_improve.py:111` does `env.pop("LL_AUTOMATION", None)` — same
+  "descendant automation env leaks into a gate's pytest run" shape as the BUG-3370 workaround this
+  issue already names in `worktree_utils.py:730` — but its `env` dict is built directly via
+  `env = dict(os.environ)` at line 107, **not** through `project_child_env()` at all (it is not in
+  the `project_child_env()` caller census, Integration Map or otherwise, and not in
+  `test_enh3184_spawn_site_guard.py`'s `_TASK_PATH_MODULES` table). This issue's `env_allow`/
+  baseline/registry machinery cannot fix this site regardless of how deny mode is wired later —
+  noted so nobody assumes ENH-3233 or ENH-3234/ENH-3235 close it; a separate issue would be needed
+  to route `fleet_improve.py` through the chokepoint first.
 
 ## Program Design
 
@@ -385,9 +416,53 @@ before implementing, as they were already noted as drifted once:_
   precedent for a bare allow-set is a module-level `frozenset[str]` constant consulted via `in`
   (e.g. `MUTATING_TOOLS`, `mcp_server/policy.py:55-62`).
 
+_Added by `/ll:refine-issue` — 2026-09-07 — based on codebase analysis:_
+
+- **Registry shape precedent**: the codebase has a closer shape precedent for the credential-scope
+  registry than the bare-`frozenset` `MUTATING_TOOLS` already cited — two module-level, module-private
+  `dict[str, frozenset[str]]` literals in `scripts/little_loops/dependency_mapper/analysis.py:39`
+  (`_SECTION_KEYWORDS`) and `:50` (`_MODIFICATION_TYPES`), each a dict literal of `frozenset({...})`
+  values with a one-line doc comment above stating what the keys/values mean.
+- **Logging convention**: 40+ modules under `scripts/little_loops/` follow `import logging` near the
+  top of the import block, then a single module-level `logger = logging.getLogger(__name__)`
+  (e.g. `subprocess_utils.py:10,33`, `queue_store.py:27,55`, `fsm/concurrency.py:17,27`); one outlier
+  uses an explicit dotted name (`history_reader/_base.py:50`,
+  `logging.getLogger("little_loops.history_reader")`). `host_runner.py` has neither `import logging`
+  nor a `logger` today — this issue is the first logging usage in that module. A separate,
+  unrelated convention (`self.logger.debug(...)` as an instance attribute) is used inside larger
+  stateful classes (e.g. `parallel/merge_coordinator.py`, `sync.py`) — not applicable to
+  `project_child_env()`, which is a free function.
+- **Unknown-name fail-loud error convention — two shapes coexist, not reconciled**: (A) capitalized
+  "Unknown X" `ValueError` naming only the bad value, no valid-set listing
+  (`design_tokens.py:168`, `config/features.py:192`); (B) lowercase "unknown x" `ValueError` naming
+  the bad value plus `sorted(...)` of the valid options (`session_store/queries.py:75,283`).
+  `host_runner.py`'s own existing `HostNotConfigured` (its unknown-host case, ~line 2020) follows
+  shape (B): names the bad value, lists `sorted(...)` of the valid set, and adds a remediation
+  hint — the closest in-module precedent for the registry's unknown-scope-name raise.
+- **Prefix-matching convention**: `str.startswith(tuple_of_prefixes)` is the consistent mechanism
+  for prefix-family matching codebase-wide (e.g. `design_tokens.py:70,74` with inline tuples —
+  `:72` is a single-string `.startswith("outline")`/equality check, not a tuple form, so it is
+  not a same-shape example — `:644` via a named module constant `_PRIMITIVE_COLOR_PREFIXES`;
+  `worker_pool.py:1533`, `link_checker.py:470`). No settled convention on inline-vs-named tuple —
+  both coexist even within `design_tokens.py` itself.
+- **`LL_*` env-flag read convention**: the dominant idiom is a bare truthy-presence check,
+  `os.environ.get("LL_X")` used directly in a boolean context (e.g. `hooks/session_start.py:88,165`,
+  `hooks/drift_check.py:119`) — unset or `""` is falsy, any other string is truthy. No existing
+  read-side `== "1"` comparison was found anywhere in the tree; the only `"1"` occurrences are on
+  the write side (`host_runner.py:1911`, `env["LL_AUTOMATION"] = "1"`). A second idiom,
+  `.get("LL_X", "") == "true"` / `.lower() == 'true'`, is used only inside FSM loop YAML `python:`
+  blocks for `LL_ARG_*` CLI-plumbed values — not applicable here.
+- **Test fixture/parametrization detail not previously noted**: `scripts/tests/test_host_runner.py:51-56`
+  has an `isolated_env` fixture that clears `LL_HOST_CLI`/`LL_HOST_CLI`/`LL_HOOK_HOST` before
+  probe/override tests. `TestProjectChildEnvStubRunnersRaiseFirst` (lines 162-170) parametrizes
+  separately over the two *unimplemented* stub runners, `[OpenCodeRunner, PiRunner]` — distinct
+  from the six-item implemented-runner list (`ClaudeCodeRunner, CodexRunner, GeminiRunner, OmpRunner,
+  KimiRunner, QwenRunner`) used elsewhere.
+
 ### Tests
-- `scripts/tests/test_host_runner.py::TestAutomationProfileEnvAcrossRunners` (lines 52-84,
-  current line numbers may have drifted) is the established table-driven, cross-all-runner-class
+- `scripts/tests/test_host_runner.py::TestAutomationProfileEnvAcrossRunners` (lines 59-93: the
+  `@pytest.mark.parametrize` decorator opens at 59, the class at 70, both test methods run through
+  93) is the established table-driven, cross-all-runner-class
   pattern (BUG-3058 precedent) — new deny-mode tests should follow this shape, parametrized
   across `ClaudeCodeRunner, CodexRunner, GeminiRunner, OmpRunner, KimiRunner, QwenRunner` plus
   `OpenCodeRunner`/`PiRunner` stubs (tested individually, not through the parametrized table).
@@ -400,6 +475,44 @@ before implementing, as they were already noted as drifted once:_
 - No shared fixture exists for `HostInvocation` construction (`scripts/tests/conftest.py` has
   none) — follow the existing inline-keyword-construction convention.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-07:_
+- **Existing coverage that exercises the real merge path and must stay green unmodified**
+  (none of these construct `HostInvocation` with `env_allow=`, so a `None`-default keeps them
+  passing — same AC5 guarantee, listed here because they were absent from this section):
+  `scripts/tests/test_runner_spec.py::test_prompt_dispatch_merges_invocation_env` (~154-172, real
+  `project_child_env()` call, not mocked), `scripts/tests/test_subprocess_utils.py::TestRunClaudeCommandHostRunner`
+  (~2410-2501, asserts exact env-key precedence including `CONFLICT_KEY` override and
+  empty-string `LL_AUTOMATION` beating ambient env), `scripts/tests/test_cli_decisions.py` (~1700-1729,
+  asserts `mock_run.call_args.kwargs["env"]["LL_NON_INTERACTIVE"]`/`["DANGEROUSLY_SKIP_PERMISSIONS"]`
+  through the real merge), and `scripts/tests/test_worktree_utils.py::test_ll_python_scrubbed_from_child_env`
+  (~1359-1388) — the test covering the exact BUG-3370 `env.pop("LL_PYTHON", None)` workaround this
+  issue's `env_allow` is designed to eventually obsolete (obsoleting it is out of scope here; the
+  test must still pass unmodified).
+- **Structural guard whose invariant must not be silently broken**:
+  `scripts/tests/test_enh3184_spawn_site_guard.py::TestSpawnSiteGuard` pins
+  `little_loops/host_runner.py` at exactly `(1, 0)` (total spawns, exempted spawns) in its
+  `_TASK_PATH_MODULES` census (line ~48) and asserts every `subprocess.run/Popen/check_output/call`
+  site's `env=` resolves to a `project_child_env(...)` call. None of this issue's additions
+  (`env_allow` field/kwarg, `CREDENTIAL_SCOPES`/`resolve_scopes()`, DEBUG logging, the report-only
+  diff) are themselves spawn calls, so the guard stays green — **unless** the report-only-mode
+  implementation shells out to anything; if it does, update the pinned `(1, 0)` count deliberately
+  rather than let this test fail as a surprise.
+- **Doc-coverage tests constraining the docs edit**: `scripts/tests/test_wiring_reference_docs.py`
+  (~163-172) pins required literal substrings (`"HostInvocation"`, `"CapabilityNotSupported"`, etc.)
+  inside `docs/reference/API.md` — the `### project_child_env` rewrite must not remove any pinned
+  string while replacing the stale "no way to clear or deny" sentence.
+- **New-test precedents** (fill the "New tests for" list above with concrete models to follow):
+  unknown-scope fail-loud raise → `scripts/tests/test_host_runner.py::TestResolveHost::test_unknown_host_name_raises_with_hint`
+  (lines 310-314, `pytest.raises(HostNotConfigured)` + substring assert) mirrors the target
+  `host_runner.py:2020-2023` `HostNotConfigured` raise shape; DEBUG-logging of denied names →
+  `scripts/tests/test_issue_history_parsing.py` (~225-239,
+  `caplog.at_level("DEBUG", logger="little_loops.issue_history.parsing")` then
+  `assert "..." in caplog.text`) is the closest caplog precedent, since `host_runner.py` has no
+  logger today — use `logger="little_loops.host_runner"`; `LL_ENV_PROJECTION_FORCE_ALLOW`/
+  `LL_ENV_PROJECTION_REPORT` env-flag tests → `monkeypatch.setenv(...)`/`monkeypatch.delenv(...,
+  raising=False)` is the universal idiom in this suite (`test_host_runner.py:101-105`,
+  `test_worktree_utils.py:1369`), not manual `os.environ` save/restore.
+
 ### Documentation
 - `docs/reference/API.md` — the `### project_child_env` section (line 10104-10125) reproduces the
   docstring verbatim, including "this helper provides no way to clear or deny an inherited
@@ -408,6 +521,16 @@ before implementing, as they were already noted as drifted once:_
   (line 9919-9945) needs the new `env_allow` field added to the field table.
 - `docs/ARCHITECTURE.md` — the `HostInvocation` table row (~lines 835-848) needs `env_allow`
   appended if the field list stays enumerated there.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-07:_
+- **Citation drift (re-verify before editing — these sections keep moving as the doc file grows)**:
+  `docs/reference/API.md`'s `### project_child_env` section is now at lines 10171-10191 (stale
+  sentence to rewrite is at line 10185, not somewhere in 10104-10125); `### HostInvocation` is now
+  at lines 9986-10011, with the field table specifically at 10002-10008 (not 9919-9945).
+  `docs/ARCHITECTURE.md`'s `HostInvocation` row is now at line 853-854 and is a single markdown
+  table **cell** listing field names in prose (`` `binary`, `args`, `env`, `capabilities`, and
+  `cleanup_paths` ``), not an enumerated per-field table like API.md's — the edit there is
+  appending `, and \`env_allow\`` to that cell's prose list, not adding a table row.
 
 ## Scope Boundaries
 
@@ -443,6 +566,20 @@ ENH-3203 effort per its Scope Boundaries section):
 - ENH-3235
 - ENH-3204
 - ENH-3205
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-09-07
+- **Reason**: Issue scored 11/11 (Very Large, max) — the title itself names three distinct
+  concerns (chokepoint, capability/scope registry, baseline). The registry has zero runtime
+  dependency on the chokepoint+baseline mechanism within this decomposition (nothing here calls
+  `resolve_scopes()` from `project_child_env()`), so the two split cleanly into independently
+  testable and shippable primitives.
+
+### Decomposed Into
+- ENH-3395: Deny-by-default env projection chokepoint and baseline
+- ENH-3396: Credential-scope registry: resolve_scopes() and fail-loud validation
 
 ## Status
 
@@ -511,7 +648,39 @@ follow-on added or left them unchecked.
 - Replaced the unrunnable "all loops green under forced-allow" AC8 clause with a static
   baseline-coverage test.
 
+## Verification Notes (2026-09-07, /ll:verify-issues re-pass)
+
+Re-ran after the same day's `/ll:refine-issue:gap-analysis` pass (18:20:06, later than this
+file's prior verify at 18:17:07). Graph: provider=`fallback` freshness=`fresh`.
+`ll-verify-evidence --json` → `"ok": true, "count": 0` (no fabricated evidence spans). Decisions
+log gate: no active required rules found (query succeeded, empty result). All `## Blocks`
+backlinks (ENH-3234, ENH-3235, ENH-3204, ENH-3205) confirmed present and reciprocal — no
+dependency issues. Causal claim spot-check: commits `fc4f65436`/`43c762c64` (cited for
+`cli/loop/_helpers.py`'s dissolution) both exist and their content matches the claim. B6
+proposal-vs-code consequence check: no exception-handler incompatibility, test-fixture
+invalidation, or uncovered integration point found — `PROPOSAL_UNSOUND` does not apply.
+
+Corrected in this pass (all citation-only; no claim about current behavior or the proposal was
+false):
+- **autofigure_wrapper.py line count**: was "100 lines total", actual is 99 lines.
+- **design_tokens.py prefix-matching citation**: `:72` was grouped with `:70,74` as an example of
+  `str.startswith(tuple_of_prefixes)`; actual `:72` is `name.startswith("outline") or name ==
+  "border"` — a single-string check, not a tuple form. Removed from that example group.
+- **TestAutomationProfileEnvAcrossRunners line range**: was "lines 52-84" (already flagged in the
+  issue text as possibly drifted); actual class span is 59-93 (decorator at 59, class at 70,
+  through 93).
+
+Verdict: **NEEDS_UPDATE** (now corrected) — all substantive claims about current behavior and the
+soundness of the Proposed Solution held; only three supporting-research line citations had
+drifted or were slightly inaccurate.
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-09-07T18:32:56 - `08ef3096-7021-4748-9fbe-8beb4da74092.jsonl`
+- `/ll:verify-issues` - 2026-09-07T18:27:00 - `9fb5e537-3ef0-48cd-bc01-707ff69e0e32.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-09-07T18:20:06 - `524abf29-118e-4bba-9249-0522a8b5da32.jsonl`
+- `/ll:verify-issues` - 2026-09-07T18:17:07 - `1c19cb26-e745-444c-b9e0-0c736bc5fb20.jsonl`
+- `/ll:wire-issue` - 2026-09-07T18:11:17 - `a25613d2-998c-4838-a6d5-67e2bc93e132.jsonl`
+- `/ll:refine-issue` - 2026-09-07T18:03:05 - `dc886099-5756-4627-b531-2a5ebfc67ea9.jsonl`
 - `/ll:wire-issue` - 2026-09-07T03:48:27 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`
 - `/ll:verify-issues` - 2026-09-03T19:57:33 - `4261573e-8608-488b-a923-28da6aae0cad.jsonl`
 - `/ll:refine-issue` - 2026-09-03T18:57:37 - `81f9ded4-f3d7-410d-9fd5-2bd50814262a.jsonl`

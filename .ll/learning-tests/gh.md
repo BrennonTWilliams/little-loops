@@ -26,5 +26,17 @@ assertions:
 - claim: gh auth token prints the ambient session's token (exit 0) even when no
     GH_TOKEN/GITHUB_TOKEN env var is set (keyring-backed login)
   result: pass
+- claim: 'ENH-3205 gap (2026-09-07) — unlike gh auth status/gh api, gh auth token
+    still prints the operator''s token (exit 0) even when GH_CONFIG_DIR is
+    redirected to a freshly-created empty directory and GH_TOKEN/GITHUB_TOKEN are
+    unset. On macOS gh stores the OAuth token in the login Keychain under a fixed
+    service name ("gh:github.com"), keyed by hostname only — not gated by
+    GH_CONFIG_DIR/hosts.yml the way gh auth status/gh api are. Consequence: the
+    GH_CONFIG_DIR-redirect-based non-escalation guarantee in ENH-3205''s Decision
+    Rules ("an inner github state spawned under an outer non-github declaring
+    state... gh auth token fails against the inherited empty config dir") does
+    NOT hold on keychain-backed macOS gh — a nested github-scoped spawn can still
+    mint a token via the probe regardless of an inherited empty GH_CONFIG_DIR.'
+  result: fail
 raw_output_path: .ll/learning-tests/raw/gh.txt
 ---

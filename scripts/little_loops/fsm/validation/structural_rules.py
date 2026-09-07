@@ -17,6 +17,7 @@ from typing import Any
 import yaml
 
 from little_loops.fsm.evaluators import _NUMERIC_OPERATORS
+from little_loops.host_runner import CREDENTIAL_SCOPES
 from little_loops.fsm.fragments import resolve_flow, resolve_fragments, resolve_inheritance
 from little_loops.fsm.loop_paths import resolve_loop_path
 from little_loops.fsm.schema import (
@@ -405,6 +406,22 @@ def _validate_fragment_bindings(fsm: FSMLoop, loop_dir: Path) -> list[Validation
     return errors
 
 
+def _is_shell_state(state: StateConfig) -> bool:
+    """Return True if this state's action dispatches through the shell branch.
+
+    Mirrors FSMExecutor._action_mode()'s "shell" classification (not imported
+    here because that is runtime code, same reasoning as `_is_llm_judged()`
+    above): explicit action_type == "shell" wins; otherwise action_type is
+    None and the action string does not start with "/" falls through to shell
+    too (the same heuristic default `_action_mode()` returns).
+    """
+    if state.action_type == "shell":
+        return True
+    if state.action_type is not None:
+        return False
+    return not (state.action is not None and state.action.startswith("/"))
+
+
 def _validate_state_action(state_name: str, state: StateConfig) -> list[ValidationError]:
     """Validate state action configuration.
 
@@ -471,6 +488,37 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
                 path=f"{path}.params",
             )
         )
+
+    # ENH-3235 AC9/AC10: scopes: is shell-only and must resolve against the
+    # credential-scope registry. Fail at validate-time — resolve_scopes()
+    # inside the shell branch is the last line of defence, not the first
+    # place a typo surfaces (a run-time ValueError there would fire only
+    # after earlier states already ran). Message text avoids the substring
+    # "scope:'" so it can't collide with _validate_missing_scope()'s
+    # loop-level singular `scope:` caplog assertion.
+    if state.scopes:
+        unknown = sorted(s for s in state.scopes if s not in CREDENTIAL_SCOPES)
+        if unknown:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"Unknown credential scope(s) {unknown!r} in 'scopes'. "
+                        f"Must be one of: {sorted(CREDENTIAL_SCOPES)}"
+                    ),
+                    path=f"{path}.scopes",
+                )
+            )
+        if not _is_shell_state(state):
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"state '{state_name}' declares 'scopes' but is not a shell action; "
+                        "scopes are enforced only for shell actions (prompt-mode enforcement: "
+                        "see follow-on)"
+                    ),
+                    path=f"{path}.scopes",
+                )
+            )
 
     # loop and action are mutually exclusive
     if state.loop is not None and state.action is not None:

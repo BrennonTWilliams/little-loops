@@ -205,6 +205,53 @@ class TestRunActionDispatch:
         result = run_action(spec)
         assert result.stdout.strip() == sys.executable
 
+    def test_cmd_dispatch_no_scopes_keeps_full_inherit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3234 AC5: an undeclared ActionSpec keeps today's coarse (full-inherit)
+        behavior — env_allow stays None, so an arbitrary ambient var still passes through."""
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED", "present")
+        spec = ActionSpec(
+            name="x", runner=RunnerType.CMD, target="echo $ZZ_TEST_UNDECLARED", timeout=5
+        )
+        result = run_action(spec)
+        assert result.stdout.strip() == "present"
+
+    def test_cmd_dispatch_declared_scope_allows_its_vars_denies_others(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3234 AC7.2: a declared scope's env vars survive; an undeclared
+        credential var is absent from the shell action's environment."""
+        monkeypatch.setenv("GH_TOKEN", "gh-secret")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.CMD,
+            target="echo ${GH_TOKEN:-absent}:${ANTHROPIC_API_KEY:-absent}",
+            timeout=5,
+            scopes=frozenset({"github"}),
+        )
+        result = run_action(spec)
+        assert result.stdout.strip() == "gh-secret:absent"
+
+    def test_cmd_dispatch_unknown_scope_fails_loud_and_spawns_nothing(self) -> None:
+        """ENH-3234: an unknown scope name returns a failed RunnerResult naming the
+        scope, and never reaches subprocess.Popen (queue worker must not die on
+        one bad entry — resolution happens inside _run_cmd(), not at construction)."""
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.CMD,
+            target="echo should-not-run",
+            timeout=5,
+            scopes=frozenset({"nonexistent-scope"}),
+        )
+        with patch("subprocess.Popen") as mock_popen:
+            result = run_action(spec)
+
+        mock_popen.assert_not_called()
+        assert result.exit_code != 0
+        assert "nonexistent-scope" in (result.error or "")
+
     def test_cmd_hang_before_stdout_eof_times_out(self) -> None:
         """BUG-2777: a process that holds stdout open without exiting must still
         time out — the drain loop must not block until EOF before checking the

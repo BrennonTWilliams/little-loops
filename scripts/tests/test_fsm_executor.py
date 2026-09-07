@@ -8,6 +8,7 @@ import logging
 import queue
 import shlex
 import shutil
+import sqlite3
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,6 +58,7 @@ class MockActionRunner:
     working_dirs: list[Any] = field(default_factory=list)
     idle_timeouts: list[int] = field(default_factory=list)
     timeouts: list[int] = field(default_factory=list)
+    scopes_seen: list[list[str] | None] = field(default_factory=list)
 
     use_indexed_order: bool = False
 
@@ -68,6 +70,7 @@ class MockActionRunner:
         on_output_line: Any = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        scopes: list[str] | None = None,
         on_usage: Any = None,
         on_usage_detailed: Any = None,
         model: str | None = None,
@@ -93,6 +96,7 @@ class MockActionRunner:
             kwargs,
         )
         self.working_dirs.append(working_dir)
+        self.scopes_seen.append(scopes)
         # ENH-3096: the executor now folds idle_timeout into automation= when
         # any automation knob resolves non-default; fall back to the legacy
         # idle_timeout kwarg for direct callers that don't pass automation=.
@@ -3767,6 +3771,78 @@ class TestUsageEventsLiveWriter:
         assert result.usage_events == [usage]
 
 
+class TestCredentialScopeAudit:
+    """ENH-3204: FSMExecutor records the credential scope a dispatch was granted."""
+
+    def _fsm_with_scopes(self, scopes: list[str] | None) -> FSMLoop:
+        return FSMLoop(
+            name="t",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="echo hi",
+                    action_type="shell",
+                    scopes=scopes,
+                    on_yes="d",
+                    on_no="d",
+                ),
+                "d": StateConfig(terminal=True),
+            },
+        )
+
+    def test_declaring_state_writes_one_row_per_dispatch(self) -> None:
+        fsm = self._fsm_with_scopes(["github"])
+        runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner)
+        with patch("little_loops.session_store.write_credential_scope") as mock_write:
+            executor.run()
+
+        mock_write.assert_called_once()
+        _, kwargs = mock_write.call_args
+        assert kwargs["run_id"] == executor.run_id
+        assert kwargs["state"] == "s"
+        assert kwargs["scopes"] == frozenset({"github"})
+        assert "GH_TOKEN" in kwargs["var_names"]
+
+    def test_undeclared_state_writes_no_row(self) -> None:
+        fsm = self._fsm_with_scopes(None)
+        runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner)
+        with patch("little_loops.session_store.write_credential_scope") as mock_write:
+            executor.run()
+
+        mock_write.assert_not_called()
+
+    def test_survives_write_failure(self) -> None:
+        fsm = self._fsm_with_scopes(["github"])
+        runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner)
+        with patch(
+            "little_loops.session_store.write_credential_scope",
+            side_effect=RuntimeError("db unavailable"),
+        ):
+            result = executor.run()
+
+        assert result.final_state == "d"
+
+    def test_names_only_never_values(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """A record that stores values instead of names inverts this issue's purpose."""
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        monkeypatch.setenv("GH_TOKEN", "SENTINEL_VALUE_9f3a")
+        fsm = self._fsm_with_scopes(["github"])
+        runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner)
+        executor.run()
+
+        conn = sqlite3.connect(str(tmp_path / "history.db"))
+        try:
+            rows = conn.execute("SELECT * FROM credential_scope_events").fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
+        assert "SENTINEL_VALUE_9f3a" not in json.dumps(rows[0])
+
+
 class TestTimeoutHandling:
     """Tests for timeout handling."""
 
@@ -6526,6 +6602,22 @@ class TestExecutorWorkingDir:
         )
         FSMExecutor(fsm, action_runner=runner, working_dir=tmp_path).run()
         assert runner.working_dirs == [tmp_path]
+
+    def test_scopes_passed_to_action_runner_for_shell_state(self) -> None:
+        """ENH-3235: a shell state's declared scopes reach ActionRunner.run()."""
+        runner = MockActionRunner()
+        fsm = FSMLoop(
+            name="t",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="echo hi", action_type="shell", scopes=["github"], on_yes="d", on_no="d"
+                ),
+                "d": StateConfig(terminal=True),
+            },
+        )
+        FSMExecutor(fsm, action_runner=runner).run()
+        assert runner.scopes_seen == [["github"]]
 
     def test_shell_action_in_worktree_resolves_main_repo_history_db(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

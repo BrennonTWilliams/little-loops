@@ -725,6 +725,10 @@ class StateConfig:
     fragment_parameters: dict[str, ParameterSpec] = field(default_factory=dict)
     agent: str | None = None
     tools: list[str] | None = None
+    # ENH-3235: credential-scope names (resolved against host_runner.CREDENTIAL_SCOPES)
+    # naming the env vars this shell state's `bash -c` spawn is allowed to inherit. None
+    # (the default) keeps today's coarse full-inherit behavior; opt-in per state.
+    scopes: list[str] | None = None
     model: str | None = None
     request_path: str | None = None
     extra_routes: dict[str, str] = field(default_factory=dict)
@@ -829,6 +833,8 @@ class StateConfig:
             result["agent"] = self.agent
         if self.tools is not None:
             result["tools"] = self.tools
+        if self.scopes is not None:
+            result["scopes"] = self.scopes
         if self.model is not None:
             result["model"] = self.model
         if self.request_path is not None:
@@ -950,6 +956,7 @@ class StateConfig:
             worktree=data.get("worktree"),
             agent=data.get("agent"),
             tools=data.get("tools"),
+            scopes=data.get("scopes"),
             model=data.get("model"),
             request_path=data.get("request_path"),
             extra_routes=extra_routes,

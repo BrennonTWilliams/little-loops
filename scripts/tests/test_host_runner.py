@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.host_runner import (
+    CREDENTIAL_SCOPES,
     AutomationContext,
     BlockingJsonError,
     CapabilityEntry,
@@ -41,9 +42,11 @@ from little_loops.host_runner import (
     PiRunner,
     QwenRunner,
     apply_host_cli_from_config,
+    gh_scope_extra,
     project_child_env,
     resolve_host,
     resolve_host_named,
+    resolve_scopes,
     run_blocking_json,
 )
 
@@ -137,6 +140,133 @@ class TestProjectChildEnv:
         """The two bash -c task-path spawns never build a HostInvocation at
         all — invocation must be optional so they can still route (AC1)."""
         assert project_child_env(extra={"FOO": "bar"})["FOO"] == "bar"
+
+
+class TestProjectChildEnvDenyMode:
+    """ENH-3395: deny-by-default env projection when an env_allow set is in effect."""
+
+    def test_ac2_undeclared_name_absent_from_child(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED", "should-not-leak")
+        env = project_child_env(env_allow=frozenset())
+        assert "ZZ_TEST_UNDECLARED" not in env
+
+    def test_ac2_declared_name_present_from_ambient_environ(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GITHUB_TOKEN", "ambient-secret")
+        env = project_child_env(env_allow=frozenset({"GITHUB_TOKEN"}))
+        assert env["GITHUB_TOKEN"] == "ambient-secret"
+
+    def test_ac2_kwarg_works_with_no_invocation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Both bash -c paths never build a HostInvocation — the explicit
+        kwarg must apply deny mode with invocation=None."""
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED", "x")
+        env = project_child_env(invocation=None, env_allow=frozenset())
+        assert "ZZ_TEST_UNDECLARED" not in env
+
+    def test_ac2_invocation_env_allow_field_applies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED", "x")
+        invocation = HostInvocation(
+            binary="claude", args=[], capabilities=HostCapabilities(), env_allow=frozenset()
+        )
+        env = project_child_env(invocation)
+        assert "ZZ_TEST_UNDECLARED" not in env
+
+    def test_ac2_explicit_kwarg_wins_over_invocation_field(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GH_TOKEN", "ambient-secret")
+        invocation = HostInvocation(
+            binary="claude", args=[], capabilities=HostCapabilities(), env_allow=frozenset()
+        )
+        env = project_child_env(invocation, env_allow=frozenset({"GH_TOKEN"}))
+        assert env["GH_TOKEN"] == "ambient-secret"
+
+    def test_ac2b_invocation_env_reaches_child_unfiltered(self) -> None:
+        invocation = HostInvocation(
+            binary="claude",
+            args=[],
+            env={"GIT_DIR": "/repo/.git"},
+            capabilities=HostCapabilities(),
+            env_allow=frozenset(),
+        )
+        env = project_child_env(invocation, extra={"LL_PYTHON": "/usr/bin/python3"})
+        assert env["GIT_DIR"] == "/repo/.git"
+        assert env["LL_PYTHON"] == "/usr/bin/python3"
+
+    def test_ac2c_baseline_prefix_family_survives(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_SENTINEL_X", "1")
+        env = project_child_env(env_allow=frozenset())
+        assert env["LL_SENTINEL_X"] == "1"
+
+    def test_ac2d_credential_shaped_prefix_name_denied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_FAKE_TOKEN", "1")
+        monkeypatch.setenv("XDG_SECRET", "1")
+        monkeypatch.setenv("LL_SENTINEL_X", "1")
+        env = project_child_env(env_allow=frozenset())
+        assert "LL_FAKE_TOKEN" not in env
+        assert "XDG_SECRET" not in env
+        assert env["LL_SENTINEL_X"] == "1"
+
+    def test_ac4_baseline_names_always_inherited(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("PATH", "/usr/bin")
+        monkeypatch.setenv("HOME", "/home/test")
+        env = project_child_env(env_allow=frozenset())
+        assert env["PATH"] == "/usr/bin"
+        assert env["HOME"] == "/home/test"
+
+    def test_ac5_none_allow_is_unaffected_full_inherit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_TEST_PROBE", "parent-value")
+        env = project_child_env(env_allow=None)
+        assert env["LL_TEST_PROBE"] == "parent-value"
+        assert env == dict(os.environ)
+
+    def test_ac6_denied_names_logged_at_debug(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED_DEBUG", "unique-sentinel-value")
+        with caplog.at_level("DEBUG", logger="little_loops.host_runner"):
+            project_child_env(env_allow=frozenset())
+        assert "ZZ_TEST_UNDECLARED_DEBUG" in caplog.text
+        assert "unique-sentinel-value" not in caplog.text
+
+    def test_force_allow_flag_treats_undeclared_as_baseline_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_ENV_PROJECTION_FORCE_ALLOW", "1")
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED", "x")
+        monkeypatch.setenv("LL_SENTINEL_X", "1")
+        env = project_child_env()
+        assert "ZZ_TEST_UNDECLARED" not in env
+        assert env["LL_SENTINEL_X"] == "1"
+
+    def test_force_allow_flag_does_not_widen_a_real_declaration(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_ENV_PROJECTION_FORCE_ALLOW", "1")
+        monkeypatch.setenv("GITHUB_TOKEN", "secret")
+        env = project_child_env(env_allow=frozenset({"GITHUB_TOKEN"}))
+        assert env["GITHUB_TOKEN"] == "secret"
+
+    def test_report_only_denies_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_ENV_PROJECTION_REPORT", "1")
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED", "x")
+        env = project_child_env(env_allow=frozenset())
+        assert env["ZZ_TEST_UNDECLARED"] == "x"
+
+    def test_report_only_logs_would_deny_names(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("LL_ENV_PROJECTION_REPORT", "1")
+        monkeypatch.setenv("ZZ_TEST_WOULD_DENY", "x")
+        with caplog.at_level("DEBUG", logger="little_loops.host_runner"):
+            env = project_child_env(env_allow=frozenset())
+        assert "ZZ_TEST_WOULD_DENY" in caplog.text
+        assert env["ZZ_TEST_WOULD_DENY"] == "x"
 
 
 @pytest.mark.parametrize(
@@ -312,6 +442,108 @@ class TestResolveHost:
         with pytest.raises(HostNotConfigured) as exc_info:
             resolve_host(env={"LL_HOST_CLI": "no-such-host"})
         assert "no-such-host" in str(exc_info.value)
+
+
+class TestResolveScopes:
+    """ENH-3396: CREDENTIAL_SCOPES / resolve_scopes() — pure, stateless registry."""
+
+    def test_single_known_scope(self) -> None:
+        """AC-registry-1: resolving one scope returns its exact documented set."""
+        assert resolve_scopes({"github"}) == frozenset(
+            {
+                "GH_TOKEN",
+                "GITHUB_TOKEN",
+                "GH_ENTERPRISE_TOKEN",
+                "GITHUB_ENTERPRISE_TOKEN",
+                "GITHUB_ACCESS_TOKEN",
+            }
+        )
+
+    def test_multiple_scopes_union(self) -> None:
+        """AC-registry-2: resolving multiple scopes unions their env-var names."""
+        assert resolve_scopes({"github", "anthropic-api"}) == (
+            CREDENTIAL_SCOPES["github"] | CREDENTIAL_SCOPES["anthropic-api"]
+        )
+
+    def test_unknown_scope_raises_with_name(self) -> None:
+        """AC3: an unknown scope name fails loudly via direct ValueError raise."""
+        with pytest.raises(ValueError) as exc_info:
+            resolve_scopes({"nonexistent"})
+        assert "nonexistent" in str(exc_info.value)
+
+    def test_every_scope_entry_has_a_justification_comment(self) -> None:
+        """AC-registry-3: every CREDENTIAL_SCOPES key has an adjacent `#` comment.
+
+        Reads the module source and checks that the line(s) immediately
+        preceding each quoted scope-name key contain a comment.
+        """
+        source_path = Path(__file__).resolve().parents[1] / "little_loops" / "host_runner.py"
+        lines = source_path.read_text(encoding="utf-8").splitlines()
+        for scope in CREDENTIAL_SCOPES:
+            key_lines = [
+                i
+                for i, line in enumerate(lines)
+                if line.strip().startswith(f'"{scope}": frozenset(')
+            ]
+            assert key_lines, f"scope {scope!r} entry not found in source"
+            preceding = lines[key_lines[0] - 1].strip()
+            assert preceding.startswith("#"), (
+                f"scope {scope!r} has no justification comment on the preceding line"
+            )
+
+
+class TestGhScopeExtra:
+    """ENH-3205: gh_scope_extra() — GH_CONFIG_DIR redirect + GH_TOKEN pairing."""
+
+    def test_without_token_only_redirects_config_dir(self, tmp_path: Path) -> None:
+        """with_token=False returns only GH_CONFIG_DIR (the non-github declaring case)."""
+        assert gh_scope_extra(tmp_path, with_token=False) == {"GH_CONFIG_DIR": str(tmp_path)}
+
+    def test_with_token_prefers_gh_token_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GH_TOKEN env var wins over GITHUB_TOKEN and the gh auth token probe."""
+        monkeypatch.setenv("GH_TOKEN", "from-gh-token")
+        monkeypatch.setenv("GITHUB_TOKEN", "from-github-token")
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            result = gh_scope_extra(tmp_path, with_token=True)
+        mock_run.assert_not_called()
+        assert result == {"GH_CONFIG_DIR": str(tmp_path), "GH_TOKEN": "from-gh-token"}
+
+    def test_with_token_falls_back_to_github_token_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.setenv("GITHUB_TOKEN", "from-github-token")
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            result = gh_scope_extra(tmp_path, with_token=True)
+        mock_run.assert_not_called()
+        assert result["GH_TOKEN"] == "from-github-token"
+
+    def test_with_token_probes_gh_auth_token_when_no_env_vars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No GH_TOKEN/GITHUB_TOKEN -> probes `gh auth token` against the
+        ambient (un-redirected) config, per Decision 1's source order."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        probe = MagicMock(returncode=0, stdout="ambient-token\n")
+        with patch("little_loops.host_runner.subprocess.run", return_value=probe) as mock_run:
+            result = gh_scope_extra(tmp_path, with_token=True)
+        assert result["GH_TOKEN"] == "ambient-token"
+        assert mock_run.call_args.args[0] == ["gh", "auth", "token"]
+
+    def test_with_token_raises_when_no_token_obtainable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fail-loud: no env token and a failing probe raises RuntimeError,
+        never falls back to an un-scoped/un-redirected child."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        probe = MagicMock(returncode=1, stdout="")
+        with patch("little_loops.host_runner.subprocess.run", return_value=probe):
+            with pytest.raises(RuntimeError, match="github"):
+                gh_scope_extra(tmp_path, with_token=True)
 
 
 class TestClaudeCodeRunner:
@@ -2068,3 +2300,98 @@ class TestHostBinaryNames:
             "kimi",
             "qwen",
         }
+
+
+class TestAC8BaselineCoverage:
+    """ENH-3395 AC8 (partial): every env-var name a loop-YAML shell action or
+    an ``os.environ``/``os.getenv`` call site under ``scripts/little_loops/``
+    references must be baseline-covered or on the explicit exception list
+    (credential/config names pending the ENH-3396 registry). This is a
+    deterministic drift gate, not a read-trace: it re-derives the candidate
+    name set from source on every run rather than pinning a snapshot.
+    """
+
+    # TODO(ENH-3396): once CREDENTIAL_SCOPES/resolve_scopes() lands, replace
+    # this exception list with a real registry-membership check for the
+    # credential-shaped names below.
+    _KNOWN_EXCEPTIONS: frozenset[str] = frozenset(
+        {
+            # Real credentials read via os.environ/os.getenv, intentionally
+            # absent from the baseline — pending ENH-3396 registry mapping.
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            # ENH-3205: gh_scope_extra() reads these to source GH_TOKEN for a
+            # declaring `github` scope; already mapped by CREDENTIAL_SCOPES /
+            # resolve_scopes (ENH-3396), same pending-registry-mapping shape
+            # as the ANTHROPIC_* entries above.
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+            # Optional vision-loop credential + its paired non-secret config,
+            # sourced from .env by flux/html/interactive/openscad/svg
+            # generator loops (see rlhf-svg-evaluate.yaml and siblings).
+            "VISION_API_KEY",
+            "VISION_BASE_URL",
+            "VISION_MODEL",
+            # Loop-YAML regex false positives / pre-existing quirks unrelated
+            # to env projection: "VAR" appears only inside a comment in
+            # general-task.yaml (documentation placeholder, not a real var);
+            # FIX_PLAN is referenced but never assigned within
+            # rlhf-svg-evaluate.yaml (a pre-existing loop-authoring issue,
+            # out of scope here).
+            "VAR",
+            "FIX_PLAN",
+        }
+    )
+
+    @staticmethod
+    def _referenced_and_assigned_loop_names() -> tuple[set[str], set[str]]:
+        import re as _re
+
+        loops_dir = Path(__file__).resolve().parents[1] / "little_loops" / "loops"
+        referenced: set[str] = set()
+        assigned: set[str] = set()
+        for path in loops_dir.glob("*.yaml"):
+            text = path.read_text(encoding="utf-8")
+            referenced |= {m.group(1) for m in _re.finditer(r"\$\{?([A-Z_][A-Z0-9_]*)\}?", text)}
+            assigned |= {m.group(1) for m in _re.finditer(r"\b([A-Z_][A-Z0-9_]*)=", text)}
+            assigned |= {m.group(1) for m in _re.finditer(r"\bexport\s+([A-Z_][A-Z0-9_]*)", text)}
+            assigned |= {
+                m.group(1) for m in _re.finditer(r"\bfor\s+([A-Z_][A-Z0-9_]*)\s+in\b", text)
+            }
+            for m in _re.finditer(r"\bread\s+(?:-\w+\s+)*([A-Z_][A-Z0-9_ ]*)", text):
+                assigned |= set(m.group(1).split())
+        return referenced, assigned
+
+    @staticmethod
+    def _os_environ_read_names() -> set[str]:
+        import re as _re
+
+        pkg_dir = Path(__file__).resolve().parents[1] / "little_loops"
+        names: set[str] = set()
+        patterns = [
+            r"os\.environ\[[\'\"]([A-Z_][A-Z0-9_]*)[\'\"]\]",
+            r"os\.environ\.get\([\'\"]([A-Z_][A-Z0-9_]*)[\'\"]",
+            r"os\.getenv\([\'\"]([A-Z_][A-Z0-9_]*)[\'\"]",
+        ]
+        for path in pkg_dir.glob("**/*.py"):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for pattern in patterns:
+                names |= {m.group(1) for m in _re.finditer(pattern, text)}
+        return names
+
+    def test_referenced_env_names_are_covered(self) -> None:
+        from little_loops.host_runner import _is_baseline_allowed
+
+        referenced, assigned = self._referenced_and_assigned_loop_names()
+        candidate_names = (referenced - assigned) | self._os_environ_read_names()
+        uncovered = {
+            name
+            for name in candidate_names
+            if not _is_baseline_allowed(name) and name not in self._KNOWN_EXCEPTIONS
+        }
+        assert not uncovered, (
+            f"Env names not baseline-covered and not on the exception list: "
+            f"{sorted(uncovered)}. Add each to the baseline (if safe to inherit "
+            f"wholesale) or to _KNOWN_EXCEPTIONS with a justification comment."
+        )
