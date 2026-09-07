@@ -3,16 +3,28 @@ id: ENH-3235
 type: ENH
 title: FSM StateConfig credential scope declaration and fsm/runners.py wiring
 priority: P2
-status: open
+status: done
 parent: ENH-3203
 epic: EPIC-3212
-blocked_by: [ENH-3395, ENH-3396]
+blocked_by:
+- ENH-3395
+- ENH-3396
 discovered_by: /ll:issue-size-review
 discovered_date: '2026-08-17'
+completed_at: '2026-09-07T21:27:50Z'
 testable: true
 decision_needed: false
+reconcile_attempted: true
+verify_verdict: VALID
 relates_to:
 - ENH-3184
+size: Very Large
+confidence_score: 98
+outcome_confidence: 76
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 17
+score_change_surface: 20
 ---
 
 # ENH-3235: FSM StateConfig credential scope declaration and fsm/runners.py wiring
@@ -73,6 +85,32 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   action_mode == "prompt" else None` — the shell branch always receives `tools=None` regardless of
   `state.tools`'s value, confirming there is no existing partial reach into the shell branch to
   build on.
+
+_Added by `/ll:refine-issue` — 2026-09-07 — based on codebase analysis:_
+
+- **Blocker status corrected (2026-09-07):** `ENH-3233`/`ENH-3395`/`ENH-3396` are all
+  `status: done` — this issue is UNBLOCKED. `project_child_env()` (`host_runner.py:2027-2032`)
+  now takes an explicit `env_allow: frozenset[str] | None = None` kwarg; `HostInvocation`
+  (`host_runner.py:234-259`) now has a 6th field, `env_allow: frozenset[str] | None = None`; the
+  credential-scope registry `CREDENTIAL_SCOPES` (`host_runner.py:124-163`) and fail-loud
+  `resolve_scopes()` (`host_runner.py:166-183`) both exist. The repo-wide-zero-hits claim for
+  `env_allow` in this issue's earlier Codebase Research Findings no longer holds.
+- **Sibling surface (ENH-3234) is fully landed:** `runner_spec.py::ActionSpec.scopes:
+  frozenset[str] | None = None` (`runner_spec.py:85-100`) and `_run_cmd()` (`runner_spec.py:237-261`)
+  resolve `spec.scopes` via `resolve_scopes()` into `env_allow` when not `None`, catching
+  `ValueError` locally and returning it as a failed `RunnerResult` (`exit_code=2`) rather than
+  raising — confirmed by `test_cmd_dispatch_unknown_scope_fails_loud_and_spawns_nothing`
+  (`test_runner_spec.py:237-253`). `project_child_env()`'s own docstring (`host_runner.py:2053-2058`)
+  names both `fsm/runners.py`'s `DefaultActionRunner` shell branch and `runner_spec.py::_run_cmd()`
+  as the two `bash -c` task-path spawns this kwarg exists for.
+- **This issue's own deliverable remains fully unimplemented**, confirmed by targeted greps
+  returning zero hits: `StateConfig` (`fsm/schema.py:621-760`) has no `scopes` field;
+  `fsm/runners.py:305`'s shell branch still calls
+  `project_child_env(extra={"LL_PYTHON": sys.executable})` with no `env_allow`;
+  `fsm/validation/structural_rules.py` has no per-state `scopes` rule (AC9/AC10 unimplemented —
+  only the unrelated loop-level singular `scope:` rule at lines 1358-1380 exists);
+  `fsm/executor.py:2563-2573`'s dispatch call site passes no `scopes=`; `CREDENTIAL_SCOPES`/
+  `resolve_scopes` are imported nowhere under `fsm/`.
 
 ## Expected Behavior
 
@@ -171,9 +209,8 @@ round-trip tests).
   `skills/review-loop/reference.md`'s check table (see Documentation).
 - `scripts/little_loops/fsm/runners.py` — `ActionRunner.run()` Protocol + `DefaultActionRunner`
   shell branch (`:297-305`) + `SimulationActionRunner.run()` `del` list.
-- `scripts/little_loops/fsm/executor.py` — dispatch call site (`:2495-2505`) passes
-  `scopes=state.scopes` **ungated** by `action_mode`.
-  > ⚠ Superseded — wrong call site; real target is `self.action_runner.run(...)` at `:2563-2573`
+- `scripts/little_loops/fsm/executor.py` — dispatch call site (`:2563-2573`,
+  `self.action_runner.run(...)`) passes `scopes=state.scopes` **ungated** by `action_mode`.
 - `docs/guides/LOOPS_GUIDE.md` — per-state field table (see Documentation).
 
 ### Dependent Files (Callers/Importers)
@@ -185,14 +222,33 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
   Confirmed unaffected — `scopes` is a new defaulted field, so these keyword
   constructions keep working unchanged; listed for completeness, not as a required edit.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-07:_
+- `scripts/little_loops/cli/loop/testing.py:20,85` — `from little_loops.fsm.executor
+  import DefaultActionRunner` then `runner = DefaultActionRunner()`, a production call
+  site not previously listed. Confirmed unaffected — it instantiates the class with no
+  args and doesn't pin `.run()`'s kwarg list.
+- **Contributed-action call site does not receive `scopes` (gap, not a required edit
+  for this issue).** `fsm/executor.py:2486-2505`'s `action_mode == "contributed"`
+  branch (`runner = self._contributed_actions[state.action_type]; runner.run(...)`) is
+  a second, distinct `ActionRunner.run()` call site from the primary dispatch this
+  issue wires (`:2563-2573`). Third-party extension runners registered via
+  `ActionProviderExtension.provided_actions()` (`extension.py:82-90`) will never get
+  `scopes=` even if a state declares it. Not required by any AC — flagging so the
+  asymmetry is a documented decision, not a silent gap, when this issue lands.
+- `scripts/little_loops/fsm/__init__.py:139-156,177,213` — re-exports `StateConfig`
+  and `ActionRunner` in `__all__`; no edit needed for the new field. Naming-collision
+  note only: the module already exports an unrelated `resolve_scope` (singular,
+  `fsm/concurrency.py:35`, a lock-scope resolver) — different symbol from this issue's
+  `resolve_scopes` (plural, `host_runner.py`), but same namespace.
+
 ### Signatures
-- `project_child_env(invocation: HostInvocation | None = None, *, extra: dict[str, str] | None = None) -> dict[str, str]`
-  (`host_runner.py:1865-1895`) — **current, confirmed signature**. `env_allow` does not exist on it
-  today: a repo-wide grep for `env_allow` returns zero hits under `scripts/` (all 4 hits are
-  `.issues/*.md` prose for ENH-3203/3233/3234/3235). `HostInvocation` (`host_runner.py:156-173`)
-  still has exactly its original 5 fields (`binary`, `args`, `env`, `capabilities`,
-  `cleanup_paths`) — no `env_allow` field. ENH-3233 is `status: open` and has not yet added the
-  kwarg; `blocked_by: [ENH-3233]` remains a mandatory, currently-true block.
+- `project_child_env(invocation: HostInvocation | None = None, *, extra: dict[str, str] | None = None, env_allow: frozenset[str] | None = None) -> dict[str, str]`
+  (`host_runner.py:2027-2032`) — **current, confirmed signature**. `env_allow` now exists (landed
+  via ENH-3395/ENH-3396, both `status: done`). `HostInvocation` (`host_runner.py:234-259`) has a
+  6th field, `env_allow: frozenset[str] | None = None`. `CREDENTIAL_SCOPES`
+  (`host_runner.py:124-163`) and fail-loud `resolve_scopes()` (`host_runner.py:166-183`) both
+  exist. This issue's `blocked_by` (`ENH-3395`, `ENH-3396`) is satisfied; nothing external blocks
+  this issue's own schema/validation/wiring work.
 
 - `ActionRunner.run(self, action: str, timeout: int, is_slash_command: bool, ..., tools: list[str] | None = None, ...) -> ActionResult`
   (Protocol, `fsm/runners.py:40-95`) — there is no generic/dynamic passthrough from `StateConfig`
@@ -206,20 +262,21 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
   them — none enumerate every current parameter without a trailing catch-all.
 
 ### Call Path
-`StateConfig.<new-field>` (declared) → `fsm/executor.py:2495-2505` dispatch call site — **must
-NOT** be gated to `action_mode == "prompt"` the way `tools`/`agent`/`model` are today, since the
-new field's target is the shell branch, not the prompt-mode branch → new named parameter on
+`StateConfig.scopes` (declared) → `fsm/executor.py:2563-2573` (`self.action_runner.run(...)`
+dispatch call site, corrected from an earlier `:2495-2505` mis-citation) — **must NOT** be gated
+to `action_mode == "prompt"` the way `tools`/`agent`/`model` are today, since the new field's
+target is the shell branch, not the prompt-mode branch → new named parameter on
 `ActionRunner.run()` → `DefaultActionRunner.run()`'s shell branch (`fsm/runners.py:297-305`,
 confirmed exact current call: `subprocess.Popen(cmd, ..., env=project_child_env(extra={"LL_PYTHON":
 sys.executable}))`, no other kwargs) → `project_child_env(extra=..., env_allow=...)` (the
-`env_allow` kwarg does not exist yet — pending ENH-3233) → `subprocess.Popen`.
+`env_allow` kwarg is landed — `host_runner.py:2027-2032`) → `subprocess.Popen`.
 
 ### Decision Rules
 N/A — no new decision logic. This issue declares a scope list and resolves it against ENH-3233's
 registry; the registry's fail-loud/allow/deny rules are ENH-3233's surface, not this one's.
 
 ### Tests
-- `scripts/tests/test_fsm_schema.py::TestAgentToolsStateConfig` (line 2502) — the direct
+- `scripts/tests/test_fsm_schema.py::TestAgentToolsStateConfig` (line 2536) — the direct
   precedent for testing a new `StateConfig` field: default→`None`, construct→accepts, `to_dict`
   include-when-set/omit-when-none, `from_dict` deserialize/default, round-trip. The new per-state
   scope field should follow this same six/seven-test shape.
@@ -260,6 +317,47 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
   avoid the substring `"scope:'"` so a run that trips both rules doesn't corrupt that
   existing caplog-substring assertion.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-07:_
+- **AC10 has a closer precedent than "no existing precedent to mirror exactly"
+  (correcting the 2026-09-07 refine-issue Codebase Research Findings claim below).**
+  `_validate_state_action()`'s `params`/`mcp_tool` check (`structural_rules.py:466-473`,
+  `if state.params and state.action_type != "mcp_tool":`) is functionally an
+  inclusion-only check — valid for exactly one `action_type`, the same shape AC10 needs
+  for `scopes`/`shell`. Its test pair, `test_params_on_non_mcp_tool_state_fails_validation`
+  and `test_params_on_shell_without_action_type_fails_validation`
+  (`test_fsm_schema.py:2214-2253`), already covers the `action_type=None` shell-heuristic
+  case AC10 item (a)/(d) need — mirror this pair's shape directly.
+- **No dedicated test file for `structural_rules.py` was cited in this issue's Tests
+  section before this pass.** `scripts/tests/test_fsm_validation_structural.py` is the
+  paired test file (confirmed: imports `StateConfig`, has `TestParameterValidation` and
+  the harbor-scorer unknown-type tests at 351-365/480-533 — the two-layer convention
+  (unit-call the private `_validate_*` function, then an integration `validate_fsm(fsm)`
+  call) both AC9 and AC10's new rules should follow). Grepped directly: zero existing
+  `scopes` references in this file.
+- **Two more ENH-3234 sibling tests to mirror, beyond the already-cited unknown-scope
+  one** (`test_runner_spec.py:208-235`): `test_cmd_dispatch_no_scopes_keeps_full_inherit`
+  (AC5 analog — undeclared `scopes` keeps full-inherit, asserted via a real subprocess
+  reading back an ambient var) and `test_cmd_dispatch_declared_scope_allows_its_vars_denies_others`
+  (AC7.1/7.2 analog — real `subprocess.Popen` + `monkeypatch.setenv` + shell
+  interpolation reading the var back, e.g. `echo ${GH_TOKEN:-absent}:${ANTHROPIC_API_KEY:-absent}`
+  — not a mocked `Popen` call-args assertion). This is the concrete shape for the new
+  `TestDefaultActionRunnerShellPath` env-denial test.
+- **Schema/dataclass lockstep presence-assertion test needed.** `fsm-loop-schema.json`'s
+  `definitions.stateConfig` has `additionalProperties: false` with an explicit allowlist
+  and no `patternProperties` catch-all (unlike `on_*` verdict keys) — omitting `scopes`
+  from its `properties` would make a loop YAML declaring `scopes:` fail schema validation
+  even though the Python loader accepts it. `TestTamperGuard`'s
+  `test_schema_json_declares_state_and_loop_level_tamper_guard` /
+  `test_schema_json_declares_state_and_loop_level_prepatch_check`
+  (`test_fsm_schema.py:4852-4869`) is the established convention to mirror — assert
+  `"scopes" in schema["definitions"]["stateConfig"]["properties"]`.
+- `scripts/tests/test_worktree_utils.py:25,85` — imports and instantiates
+  `DefaultActionRunner` via the `fsm.executor` re-export; worth an unchanged-behavior
+  check pass, not flagged as needing a new test.
+- `scripts/tests/test_cost_ceiling_enforcement.py:22-33` — one more `MockActionRunner`
+  double ending in `**kwargs: Any` (additive-safe), not previously listed alongside the
+  other test doubles above.
+
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md:590` — the `tools:` per-state allowlist table is the natural
   insertion point for the new per-state scope-declaration row, following the
@@ -280,6 +378,34 @@ _Wiring pass added by `/ll:wire-issue` — 2026-09-06:_
   `test_wiring_guides_and_meta.py` and related tests for `reference.md`/`check_id` — no
   hits), so the new "unknown scope name" rule needs its own row added by hand or it
   silently falls outside this table.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-07:_
+- **`docs/reference/API.md` has three passages that will be factually wrong the moment
+  this issue lands** (all forward-reference ENH-3235 as unimplemented):
+  `:10189` (`### resolve_scopes` — *"The FSM `StateConfig`/loop-YAML declaration surface
+  (ENH-3235) is a separate, not-yet-wired consumer"*), `:10220` (`### project_child_env`
+  "Honesty note" — *"Populating `env_allow` from a real per-task declaration
+  (`ActionSpec`/FSM `StateConfig`) is out of scope for this chokepoint — see
+  ENH-3234/ENH-3235"*, needs the FSM half removed/updated). Both must be corrected as
+  part of this issue's own change, not left stale.
+- `docs/reference/API.md:6341-6373` (`#### ActionRunner Protocol`) — hand-maintained
+  code block reproducing the full `run()` signature plus prose documenting the
+  "kwarg-gated" precedent (agent/tools/model only passed when non-default). Since
+  `scopes` is added **ungated** by `action_mode` (per Program Design), this section
+  needs the signature updated and a note that `scopes` breaks from that gating
+  precedent.
+- `docs/reference/API.md:5852-5901` (`#### StateConfig`) — hand-maintained per-field
+  annotated code block; needs a `scopes: list[str] | None = None` line, mirroring how
+  prior fields were added. `docs/reference/API.md:10387` (`### ActionSpec` — the
+  `scopes` prose already written for ENH-3234) is the doc-precedent template to mirror
+  for wording consistency.
+- `docs/generalized-fsm-loop.md:300-359` — a second, independent hand-written per-state
+  YAML reference block (lines 357-358 list `agent:`/`tools:` as state-level fields);
+  add `scopes:` alongside for consistency with `LOOPS_GUIDE.md`'s table.
+- `docs/reference/CLI.md:908-938` (`#### ll-loop validate <loop>`) — a second,
+  independent Check-ID/severity table (distinct from `skills/review-loop/reference.md`'s)
+  listing MR-1..MR-14 plus named unnumbered rules; needs two new bullet entries for the
+  "unknown-scope-name" and "scopes-on-non-shell-state" ERROR rules.
 
 ### Codebase Research Findings
 
@@ -318,6 +444,39 @@ _Added by `/ll:refine-issue` — 2026-09-03 — based on codebase analysis:_
   warn-and-drop) is the codebase's convention elsewhere: `adapters/core.py::resolve_emitter`
   (line 76-78) and `CodexRunner._sandbox_args` (`host_runner.py:612-619`).
 
+_Added by `/ll:refine-issue` — 2026-09-07 — based on codebase analysis:_
+
+- **Signature correction (2026-09-07):** `project_child_env()`'s current signature is
+  `project_child_env(invocation: HostInvocation | None = None, *, extra: dict[str, str] | None =
+  None, env_allow: frozenset[str] | None = None) -> dict[str, str]` (`host_runner.py:2027-2032`) —
+  the `env_allow` kwarg the Signatures subsection above describes as not-yet-existing is now
+  landed (ENH-3395/ENH-3396, both `status: done`). This issue's `blocked_by` is therefore
+  satisfied; nothing external blocks starting this issue's own schema/validation/wiring work.
+- **Validate-time precedent for AC9 exists in this same file:** `_validate_evaluator()`
+  (`structural_rules.py:91-101`) and `_validate_parameters()` (`structural_rules.py:231-240`) both
+  check a declared name with `not in <fixed-set>` against a module-level registry and append a
+  `ValidationError` (default severity ERROR) reading "Unknown <thing> '<value>'. Must be one of:
+  <sorted set>" — the same message shape `resolve_scopes()` already raises
+  (`host_runner.py:179-181`). `CREDENTIAL_SCOPES`/`resolve_scopes` are not imported anywhere under
+  `fsm/` today.
+- **AC10's shape has no existing precedent to mirror exactly:** every current field-restriction in
+  `_validate_state_action()` (`structural_rules.py:408-473`, e.g. `model`/`effort` overrides,
+  `params`) is phrased as an *exclusion* of certain `action_type`s, never as an
+  inclusion-only-of-`"shell"` check — a repo-wide search for an `action_type == "shell"`-only
+  validation rule returns no hits outside the mode-classifier `_action_mode()` itself
+  (`executor.py:3325-3346`, not a validator).
+- **Test precedent confirmed:** `test_fsm_runners.py::TestDefaultActionRunnerShellPath` (line 226)
+  already covers `DefaultActionRunner`'s shell path, including an `LL_PYTHON` env-injection
+  assertion (line 406) — the natural home for AC7.1's new env-denial test. The sibling
+  run-time-failure path (unknown scope name at execution time) has a direct analog to mirror:
+  `test_cmd_dispatch_unknown_scope_fails_loud_and_spawns_nothing` (`test_runner_spec.py:237-253`).
+
+_Added by `/ll:refine-issue` — 2026-09-07 — based on codebase analysis:_
+
+- **Concrete precedent lines for the shell-branch exception-handling gap flagged in Verification Notes (2026-09-07, B6):** `DefaultActionRunner.run()`'s prompt branch already wraps its own resolver/spawn call in `except Exception as exc: return ActionResult(...)` at `fsm/runners.py:264-272` — a live precedent in this same method for how the shell branch could contain a failed `resolve_scopes()` call instead of letting it propagate uncaught. The shell branch itself (`fsm/runners.py:297-306`) has no such wrapping today, confirmed by direct read.
+- **The two nearby precedents differ in exception type caught, not just presence/absence of a try/except.** `runner_spec.py::_run_cmd()` (ENH-3234, lines 248-261) wraps `resolve_scopes()` specifically in `try/except ValueError`, returning `RunnerResult(exit_code=2, error=str(e))` — narrower than the prompt branch's `except Exception` above it in the same file. An implementer choosing which shape to mirror in the shell branch is picking between two live precedents that disagree on exception breadth, not inventing a new pattern from nothing.
+- `resolve_scopes()`'s own existing test coverage — `test_host_runner.py::TestResolveScopes` (lines 446-481: `test_single_known_scope`, `test_multiple_scopes_union`, `test_unknown_scope_raises_with_name`, `test_every_scope_entry_has_a_justification_comment`) — confirms it raises `ValueError` with the bad scope name in the message, consistent with what both `runner_spec.py` and `resolve_scopes()`'s own callers rely on.
+
 ## Scope Boundaries
 
 Out of scope for this child:
@@ -355,7 +514,7 @@ Out of scope for this child:
 
 ## Status
 
-**Open** | Created: 2026-08-17 | Priority: P2 | Blocked by: ENH-3233
+**Open** | Created: 2026-08-17 | Priority: P2 | Blockers resolved: ENH-3395, ENH-3396 (both done)
 
 ## Verification Notes (2026-09-03)
 
@@ -400,7 +559,132 @@ Out of scope for this child:
   otherwise be silently ignored. Named `run_claude_command()` (`subprocess_utils.py:529`) as the
   prompt-mode enforcement seam for the follow-on issue.
 
+## Verification Notes (2026-09-07)
+
+- **Blocker status re-confirmed accurate**: `ENH-3233`, `ENH-3395`, `ENH-3396` are all
+  `status: done`; `project_child_env()` (`host_runner.py:2027-2032`) has the `env_allow`
+  kwarg, `HostInvocation.env_allow` exists (`host_runner.py:235-259`), and
+  `CREDENTIAL_SCOPES`/`resolve_scopes` exist (`host_runner.py:124-163`, `166-183`). This
+  matches the 2026-09-07 Codebase Research Findings correction.
+- **Stale contradiction found**: the Program Design → **Signatures** subsection still
+  asserts `project_child_env()` has no `env_allow` kwarg ("current, confirmed signature")
+  and that `ENH-3233` is `status: open` / `blocked_by: [ENH-3233]` is a "mandatory,
+  currently-true block." The Program Design → **Call Path** section likewise says "the
+  `env_allow` kwarg does not exist yet — pending ENH-3233." Both statements are now false
+  and directly contradicted by the newer 2026-09-07 Codebase Research Findings correction
+  elsewhere in this same file — left uncorrected, a reader hitting the Signatures/Call Path
+  subsections first (they precede the corrected findings) will act on stale info. Needs a
+  line-level fix striking the "env_allow does not exist" / "ENH-3233 open" language from
+  those two subsections.
+- The `## Status` line ("Blocked by: ENH-3233") is also out of sync with this issue's own
+  frontmatter `blocked_by: [ENH-3395, ENH-3396]` (never mentions ENH-3233 there) — a
+  pre-existing drift, not newly introduced, but now doubly moot since all three named
+  issues are done.
+- **Proposal-consequence check (B6, advisory — does not change the verdict since a
+  current-state claim above is false)**: the Program Design's Call Path for the
+  `fsm/runners.py` shell-branch wiring specifies no exception handling around the
+  `resolve_scopes()` call. The sibling `ENH-3234` implementation
+  (`runner_spec.py::_run_cmd()`, confirmed at lines 247-252) wraps the equivalent call in
+  `try/except ValueError` and returns a graceful failed `RunnerResult(exit_code=2,
+  error=...)` before ever reaching `subprocess.Popen`
+  (`test_cmd_dispatch_unknown_scope_fails_loud_and_spawns_nothing`,
+  `test_runner_spec.py:237-253`). `DefaultActionRunner`'s shell branch
+  (`fsm/runners.py:297-305`) has no such wrapping today, unlike the prompt branch directly
+  above it in the same method (which has its own `except Exception as exc: return
+  ActionResult(...)`). The Proposed Solution's "last line of defence" framing for the
+  run-time resolution implies a contained per-state failure, not an uncaught `ValueError`
+  crashing the executor's dispatch loop — implementers should mirror ENH-3234's catch-and-return
+  shape here, and the Tests section should say so explicitly rather than only citing the
+  ENH-3234 test as a shape "to mirror" without naming the missing try/except in Program
+  Design.
+- Decisions log: no active required-rule conflicts. `ll-verify-evidence`: clean (0
+  findings). Deliverable still fully unimplemented in code (re-confirmed) — matches this
+  issue's own 2026-09-07 Codebase Research Findings claim.
+- Verdict: **NEEDS_UPDATE** — core proposal and blocker status are sound, but the stale
+  Signatures/Call Path text above needs correcting before implementation starts from it.
+
+## Verification Notes (2026-09-07, ready-issue pass)
+
+- **`verify_verdict` refreshed NON_VALID → VALID.** The persisted NON_VALID came from the
+  2026-09-07 `/ll:verify-issues` run that flagged a stale contradiction in the Program Design →
+  Signatures/Call Path subsections (claiming `env_allow` didn't exist / `ENH-3233` was open). The
+  subsequent `/ll:reconcile-issue` pass (same day, 21:06:41) already corrected both subsections —
+  re-read directly and confirmed they now state the accurate, landed `env_allow` signature. Direct
+  codebase greps re-confirm every citation in this issue independently: `project_child_env()`
+  signature (`host_runner.py:2027-2032`), `HostInvocation.env_allow` (`host_runner.py:259`), the
+  exact shell-branch block (`fsm/runners.py:297,305`), the dispatch call site
+  (`fsm/executor.py:2563`), `_action_mode()` (`fsm/executor.py:3325`), and
+  `TestDefaultActionRunnerShellPath` (`test_fsm_runners.py:226`) all match as cited. No `scopes`
+  field exists yet anywhere (`fsm/schema.py`, `structural_rules.py`) — deliverable confirmed still
+  fully unimplemented, matching the issue's own claim.
+- **`## Status` line corrected**: still read "Blocked by: ENH-3233" despite frontmatter
+  `blocked_by: [ENH-3395, ENH-3396]` (never ENH-3233) and despite all three named issues being
+  `status: done`. Updated to reflect resolved-blocker state.
+- `ll-issues format-check --format json`: clean except one `mislocated_symbol_ref` entry —
+  `env_allow (claimed in scripts/little_loops/fsm/validation/structural_rules.py)`. Manually
+  traced: no sentence in this issue actually asserts `env_allow` is defined in
+  `structural_rules.py`; `env_allow` and nearby `structural_rules.py:LINE` citations appear in the
+  same Program Design subsection but describing unrelated facts. Treated as heuristic noise from a
+  wide proximity window, not a real mislocation — no text change made.
+- `ll-issues check-design ENH-3235`: exit 0 (PASS). Decisions gate: no active required rules
+  (skip/PASS). No `learning_tests_required` in frontmatter (skip/PASS). Both structured blockers
+  (`ENH-3395`, `ENH-3396`) confirmed `status: done` via `ll-issues show`; `prose_dep_drift`/
+  `stale_prose_dep` both empty — no blockers.
+- Inspected branch: `epic/epic-3212-per-task-credential-scoping`, in the dedicated worktree
+  checked out for this EPIC — the authoritative base for this issue's symbol-existence checks.
+
+## Resolution
+
+Implemented per the Program Design, matching the Call Path and Signatures exactly as pinned:
+
+- `StateConfig.scopes: list[str] | None = None` added (`fsm/schema.py`), with `to_dict`/
+  `from_dict` lines mirroring the `tools:` precedent, and a `scopes` property on
+  `fsm-loop-schema.json`'s `stateConfig` definition.
+- `fsm/runners.py`'s `DefaultActionRunner` shell branch resolves `scopes` via
+  `resolve_scopes()` into `env_allow`, passed through to
+  `project_child_env(extra={"LL_PYTHON": ...}, env_allow=...)` — mirroring
+  `runner_spec.py::_run_cmd()`'s (ENH-3234) shape, including the `try/except ValueError`
+  → failed `ActionResult` catch (Verification Notes 2026-09-07 B6) so a bad scope name
+  fails only the declaring state, never crashes the executor's dispatch loop. `scopes` was
+  added to the `ActionRunner` Protocol and `SimulationActionRunner`'s `del` list too.
+- `fsm/executor.py`'s dispatch call site passes `scopes=state.scopes` **ungated** by
+  `action_mode` (unlike `agent`/`tools`/`model`), per Program Design.
+- Two new structural-validation rules in `fsm/validation/structural_rules.py`
+  (`_validate_state_action`, plus a new `_is_shell_state()` helper mirroring
+  `FSMExecutor._action_mode()`'s shell classification): AC9 rejects an unknown scope name
+  against `host_runner.CREDENTIAL_SCOPES`; AC10 rejects `scopes` on any non-shell state.
+  Both error messages avoid the substring `"scope:'"` to not collide with
+  `_validate_missing_scope()`'s existing caplog assertion.
+- Tests: `TestScopesStateConfig` (schema round-trip, `test_fsm_schema.py`),
+  `TestScopesValidation` (AC9/AC10, `test_fsm_validation_structural.py`), three new cases
+  in `TestDefaultActionRunnerShellPath` (AC5/AC7.1/AC7.2 — real-subprocess env-denial,
+  mirroring ENH-3234's `test_runner_spec.py` sibling tests, `test_fsm_runners.py`), a
+  schema-JSON presence assertion (`TestTamperGuard`-style, `test_fsm_schema.py`), and a
+  `scopes_seen` capture list + dispatch test on `MockActionRunner`
+  (`test_fsm_executor.py`) proving `scopes=` reaches `ActionRunner.run()` ungated.
+- Full suite: `python -m pytest scripts/tests/` — 23321 passed, 43 skipped, 8 pre-existing
+  failures unrelated to this change (bun/tsc type-def gaps in `test_omp_adapter.py`/
+  `test_opencode_adapter.py`, an unrelated `verify-evidence` baseline drift on issue files
+  this issue never touched, an unrelated `test_issue_parser.py` regex-allowlist drift, an
+  unrelated `test_builtin_loops.py` failure, an unrelated SSE fan-in flake, and an
+  unrelated golden-fixture byte-diff in `test_enh3035_artifact_template_kit.py`) — verified
+  by running each finding's source location directly; none reference `fsm/`, `scopes`, or
+  `host_runner`'s credential-scope surface.
+- Out of scope per this issue's own Scope Boundaries (unchanged): `ActionSpec`/
+  `runner_spec.py` wiring (ENH-3234), prompt-mode enforcement via
+  `run_claude_command()`'s `project_child_env()` call (follow-on), and retrofitting
+  `scopes:` onto this repo's own `loops/*.yaml`.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-07T21:27:05 - `e8b40fd1-94c8-45bd-bf83-716b79cb5f78.jsonl`
+- `/ll:ready-issue` - 2026-09-07T21:13:44 - `6850486a-7d28-4d04-8318-c201c9a8b88c.jsonl`
+- `/ll:confidence-check` - 2026-09-07T21:09:13 - `0b993f03-bc7f-4049-b2d5-655d6a61dde4.jsonl`
+- `/ll:reconcile-issue` - 2026-09-07T21:06:41 - `76ca5aa7-0d75-4607-b7ba-082c46a2b0b2.jsonl`
+- `/ll:verify-issues` - 2026-09-07T21:01:07 - `f7b69293-9189-4826-bb88-c9a4ff2f4657.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-09-07T20:58:52 - `39c172a1-6be4-447b-9f85-c1fbfc7bdb1a.jsonl`
+- `/ll:verify-issues` - 2026-09-07T20:53:13 - `eead7325-7e35-4126-ae7b-99ac8a78ca15.jsonl`
+- `/ll:wire-issue` - 2026-09-07T20:49:43 - `17eac873-40d2-4130-ba6a-f51d8a35f322.jsonl`
+- `/ll:refine-issue` - 2026-09-07T20:37:58 - `190f4f33-7fb0-48f1-bd3c-d24cff2c258e.jsonl`
 - `/ll:wire-issue` - 2026-09-07T03:48:28 - `24278e0c-f73c-4e7c-b229-0bf010cc0589.jsonl`
 - `/ll:verify-issues` - 2026-09-03T20:03:03 - `e7ab64a8-d990-4865-a8d8-f889f6c44694.jsonl`
 - `/ll:refine-issue` - 2026-09-03T19:17:32 - `35fa9aa4-b416-4202-92c2-dce942749180.jsonl`

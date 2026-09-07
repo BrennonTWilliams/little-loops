@@ -405,6 +405,40 @@ class TestDefaultActionRunnerShellPath:
 
         assert mock_popen.call_args.kwargs["env"]["LL_PYTHON"] == sys.executable
 
+    def test_shell_no_scopes_keeps_full_inherit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ENH-3235 AC5: an undeclared state keeps today's coarse (full-inherit)
+        behavior — env_allow stays None, so an arbitrary ambient var passes through."""
+        monkeypatch.setenv("ZZ_TEST_UNDECLARED", "present")
+        result = DefaultActionRunner().run("echo $ZZ_TEST_UNDECLARED", 10, False)
+        assert result.output.strip() == "present"
+
+    def test_shell_declared_scope_allows_its_vars_denies_others(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3235 AC7.1/AC7.2: a declared scope's env vars survive; an
+        undeclared credential var is absent from the shell action's environment."""
+        monkeypatch.setenv("GH_TOKEN", "gh-secret")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+        result = DefaultActionRunner().run(
+            "echo ${GH_TOKEN:-absent}:${ANTHROPIC_API_KEY:-absent}",
+            10,
+            False,
+            scopes=["github"],
+        )
+        assert result.output.strip() == "gh-secret:absent"
+
+    def test_shell_unknown_scope_fails_loud_and_spawns_nothing(self) -> None:
+        """ENH-3235: an unknown scope name returns a failed ActionResult naming
+        the scope, and never reaches subprocess.Popen."""
+        with patch("little_loops.fsm.runners.subprocess.Popen") as mock_popen:
+            result = DefaultActionRunner().run(
+                "echo should-not-run", 10, False, scopes=["nonexistent-scope"]
+            )
+
+        mock_popen.assert_not_called()
+        assert result.exit_code != 0
+        assert "nonexistent-scope" in result.stderr
+
     def test_timeout_reaps_grandchildren_and_runner_survives(self) -> None:
         """End-to-end: a timed-out shell action's whole tree dies, runner lives.
 

@@ -594,6 +594,13 @@
           },
           "description": "List of tool names to pass as --tools CSV to the Claude CLI subprocess. Only used for prompt-mode states. Ignored for shell-mode states."
         },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ENH-3235: credential-scope names (resolved against host_runner.CREDENTIAL_SCOPES) naming the env vars this shell state's `bash -c` spawn is allowed to inherit. Only valid on shell-mode states (action_type: shell, or no action_type with a non-'/'-prefixed action) — declaring it on a prompt/mcp_tool/contract/human_approval state is a validate-time error. Omitting it keeps today's coarse full-inherit behavior."
+        },
         "pruning_profile": {
           "$ref": "#/definitions/pruningProfileConfig",
           "description": "ENH-2714: state-level automation-context static-prefix pruning profile override. Takes precedence over the loop-level default when set."

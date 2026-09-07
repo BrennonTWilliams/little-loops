@@ -2567,6 +2567,11 @@ class FSMExecutor:
                 on_output_line=_on_line,
                 agent=state.agent if action_mode == "prompt" else None,
                 tools=state.tools if action_mode == "prompt" else None,
+                # ENH-3235: ungated by action_mode (unlike agent/tools/model
+                # above) — scopes targets the shell branch, not prompt-mode.
+                # Non-shell states are rejected at validate-time (AC10), so
+                # state.scopes is None here for every mode but shell.
+                scopes=state.scopes,
                 on_usage=on_usage,
                 model=(state.model or self.run_model) if action_mode == "prompt" else None,
                 **extra_kwargs,

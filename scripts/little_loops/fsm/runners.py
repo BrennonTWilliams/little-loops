@@ -19,7 +19,12 @@ from typing import Protocol
 
 from little_loops.fsm.host_guard import RssSampler
 from little_loops.fsm.types import ActionResult
-from little_loops.host_runner import AutomationContext, project_child_env, resolve_automation
+from little_loops.host_runner import (
+    AutomationContext,
+    project_child_env,
+    resolve_automation,
+    resolve_scopes,
+)
 from little_loops.subprocess_utils import (
     DetailedUsageCallback,
     TokenUsage,
@@ -45,6 +50,7 @@ class ActionRunner(Protocol):
         on_output_line: Callable[[str], None] | None = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        scopes: list[str] | None = None,
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
@@ -64,6 +70,9 @@ class ActionRunner(Protocol):
             on_output_line: Optional callback invoked for each output line
             agent: Optional agent name to pass as --agent to Claude CLI (prompt-mode only)
             tools: Optional list of tool names to pass as --tools CSV to Claude CLI (prompt-mode only)
+            scopes: ENH-3235 — optional credential-scope names resolved into an
+                env_allow set for the shell-mode spawn (shell-mode only). None
+                keeps today's coarse full-inherit behavior.
             on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
             on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
             working_dir: Optional cwd for the spawned subprocess (ENH-2609). None
@@ -122,6 +131,7 @@ class DefaultActionRunner:
         on_output_line: Callable[[str], None] | None = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        scopes: list[str] | None = None,
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
@@ -141,6 +151,10 @@ class DefaultActionRunner:
             on_output_line: Optional callback invoked for each stdout line
             agent: Optional agent name to pass as --agent to Claude CLI (prompt-mode only)
             tools: Optional list of tool names to pass as --tools CSV (prompt-mode only)
+            scopes: ENH-3235 — optional credential-scope names resolved into an
+                env_allow set for the shell-mode `bash -c` spawn (shell-mode
+                only, ignored for prompt-mode). None keeps today's coarse
+                full-inherit behavior.
             on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
             on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
             model: Optional model override to pass as --model to Claude CLI (prompt-mode only)
@@ -294,6 +308,21 @@ class DefaultActionRunner:
         # os.killpg() SIGKILLs the runner itself instead of the hung command
         # (BUG-2901). Matches subprocess_utils.run_claude_command() and
         # mcp_call, the other two _kill_process_group callers.
+        # ENH-3235: resolve declared scopes into env_allow before spawning —
+        # a bad scope name must fail this state, not crash the executor's
+        # dispatch loop. Mirrors runner_spec.py::_run_cmd()'s ValueError catch
+        # (ENH-3234), the sibling `bash -c` call site for the same chokepoint.
+        env_allow: frozenset[str] | None = None
+        if scopes is not None:
+            try:
+                env_allow = resolve_scopes(scopes)
+            except ValueError as exc:
+                return ActionResult(
+                    output="",
+                    stderr=f"Action failed: {exc}",
+                    exit_code=1,
+                    duration_ms=_now_ms() - start,
+                )
         cmd = ["bash", "-c", action]
         process = subprocess.Popen(
             cmd,
@@ -302,7 +331,7 @@ class DefaultActionRunner:
             text=True,
             cwd=working_dir,
             start_new_session=True,
-            env=project_child_env(extra={"LL_PYTHON": sys.executable}),
+            env=project_child_env(extra={"LL_PYTHON": sys.executable}, env_allow=env_allow),
         )
         self._current_process = process
         # FEAT-3033: timeout=0 means "no wall-clock cap" (matches
@@ -433,6 +462,7 @@ class SimulationActionRunner:
         on_output_line: Callable[[str], None] | None = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        scopes: list[str] | None = None,
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
@@ -452,6 +482,7 @@ class SimulationActionRunner:
             on_output_line: Ignored in simulation
             agent: Ignored in simulation
             tools: Ignored in simulation
+            scopes: Ignored in simulation
             on_usage: Ignored in simulation
             on_usage_detailed: Ignored in simulation
             model: Ignored in simulation
@@ -471,6 +502,7 @@ class SimulationActionRunner:
             on_output_line,
             agent,
             tools,
+            scopes,
             on_usage,
             model,
             working_dir,

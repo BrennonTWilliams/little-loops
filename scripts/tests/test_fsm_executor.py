@@ -57,6 +57,7 @@ class MockActionRunner:
     working_dirs: list[Any] = field(default_factory=list)
     idle_timeouts: list[int] = field(default_factory=list)
     timeouts: list[int] = field(default_factory=list)
+    scopes_seen: list[list[str] | None] = field(default_factory=list)
 
     use_indexed_order: bool = False
 
@@ -68,6 +69,7 @@ class MockActionRunner:
         on_output_line: Any = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        scopes: list[str] | None = None,
         on_usage: Any = None,
         on_usage_detailed: Any = None,
         model: str | None = None,
@@ -93,6 +95,7 @@ class MockActionRunner:
             kwargs,
         )
         self.working_dirs.append(working_dir)
+        self.scopes_seen.append(scopes)
         # ENH-3096: the executor now folds idle_timeout into automation= when
         # any automation knob resolves non-default; fall back to the legacy
         # idle_timeout kwarg for direct callers that don't pass automation=.
@@ -6526,6 +6529,22 @@ class TestExecutorWorkingDir:
         )
         FSMExecutor(fsm, action_runner=runner, working_dir=tmp_path).run()
         assert runner.working_dirs == [tmp_path]
+
+    def test_scopes_passed_to_action_runner_for_shell_state(self) -> None:
+        """ENH-3235: a shell state's declared scopes reach ActionRunner.run()."""
+        runner = MockActionRunner()
+        fsm = FSMLoop(
+            name="t",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="echo hi", action_type="shell", scopes=["github"], on_yes="d", on_no="d"
+                ),
+                "d": StateConfig(terminal=True),
+            },
+        )
+        FSMExecutor(fsm, action_runner=runner).run()
+        assert runner.scopes_seen == [["github"]]
 
     def test_shell_action_in_worktree_resolves_main_repo_history_db(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
