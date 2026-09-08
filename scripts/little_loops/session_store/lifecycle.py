@@ -929,12 +929,14 @@ def recompress_raw_events(
 
 # Cache tables re-derived from raw_events by rebuild(). Deliberately excludes
 # cli_events/file_events/test_run_events/issue_events/loop_events/commit_events/
-# issue_snapshots/hook_events/harness_events/prompt_opt_events — those have no
-# raw_events-backed _backfill_* path (they're either live-write-only or
-# sourced from .issues/.loops/git log, out of this issue's scope; see
-# ENH-2581 management plan). Wiping them here with no re-derivation path
-# would be unrecoverable data loss. hook_events and harness_events in
-# particular have no transcript-JSONL source at all (ENH-2506, ENH-2739).
+# issue_snapshots/hook_events/harness_events/harness_admissions/prompt_opt_events
+# — those have no raw_events-backed _backfill_* path (they're either
+# live-write-only or sourced from .issues/.loops/git log, out of this issue's
+# scope; see ENH-2581 management plan). Wiping them here with no re-derivation
+# path would be unrecoverable data loss. hook_events and harness_events in
+# particular have no transcript-JSONL source at all (ENH-2506, ENH-2739);
+# harness_admissions (ENH-3406) is append-only audit data with the same
+# no-source-to-replay-from property.
 # prompt_opt_events does get JSONL-sourced enrichment (ENH-2498's
 # _backfill_prompt_opt), but as a non-destructive UPDATE-only pass called
 # separately below — it must NOT be added here or to _REBUILD_SEARCH_KINDS,

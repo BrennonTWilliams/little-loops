@@ -3,8 +3,9 @@ id: ENH-3406
 title: harness_events run-model columns + harness_admissions table (schema)
 type: ENH
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-08'
+completed_at: '2026-09-08T19:47:34Z'
 verify_verdict: VALID
 parent: ENH-3397
 labels:
@@ -416,12 +417,44 @@ _Added by `/ll:verify-issues` — 2026-09-08:_
   (all citations were doc/schema line numbers rather than named symbols eligible for
   `ll-code defines`/`callers-of`).
 
+## Resolution
+
+Implemented `_MIGRATIONS[48]` (v49) in `schema.py`: five nullable columns on
+`harness_events` (`cell_key`, `repetition`, `attempt_kind` CHECK-enforced,
+`continuations`, `superseded_by`), a new append-only `harness_admissions` table
+(CHECK-enforced `reason`), `idx_harness_cell_key`, the partial UNIQUE
+`idx_harness_cell_repetition`, and `idx_harness_admissions_attempt`. Registered
+`harness_admission` as a kinded table (`VALID_KINDS`/`_KIND_TABLE`), added it to
+`_EXPORT_TABLE_MAP`/`_EXPORT_DEFAULT_TABLES` (`queries.py`) and to the
+`_REBUILD_TABLES` exclusion comment (`lifecycle.py`). Regenerated
+`schema_manifest.json`. Added `TestSchemaV49HarnessRunModel` (13 methods, covering
+columns, both CHECK constraints, all three indexes, the partial-unique-index
+p-hacking guard, the v48→v49 upgrade path, and kind/rebuild/kindless
+registration) to `test_session_store_schema.py`. Bumped all 36 hardcoded
+`SCHEMA_VERSION`/live-version-== literal assertions across
+`test_session_store_schema.py` (29), `test_session_store_writers.py` (6), and
+`test_assistant_messages.py` (1) from 48 to 49 — 8 of these were a second,
+non-`SCHEMA_VERSION`-symbol literal (`int(row[0]) == 48`) in the same test
+bodies that the issue's own research had not flagged (only the
+`SCHEMA_VERSION == 48` symbolic form was cited). Updated
+`docs/reference/CLI.md`, `docs/ARCHITECTURE.md`, and
+`docs/guides/HISTORY_SESSION_GUIDE.md` per the issue's Files to Modify list,
+plus an additional `harness_admissions` "What Gets Recorded" row in
+`HISTORY_SESSION_GUIDE.md` for consistency with the `credential_scope_events`
+precedent (not explicitly listed in the issue but matching its own established
+pattern). `ll-verify-kinds` exits 0; full suite passes except four pre-existing
+failures unrelated to this change (env-baseline coverage, an issue-corpus
+differential count, an evidence-verification gate on unrelated issue files, and
+a flaky SSE fan-in test) — confirmed unrelated via `git status` showing those
+files were already dirty/untracked before this session touched anything.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T19:47:34 - `98fcfd72-df15-46ed-a5e8-3df189a0e0ba.jsonl`
 - `/ll:confidence-check` - 2026-09-08T19:29:48 - `d085a657-a5fc-4269-a380-da196e14f5c3.jsonl`
 - `/ll:verify-issues` - 2026-09-08T19:27:02 - `11906448-7df7-4fe2-877f-bca8a2a33d89.jsonl`
 - `/ll:verify-issues` - 2026-09-08T19:25:46 - `11906448-7df7-4fe2-877f-bca8a2a33d89.jsonl`

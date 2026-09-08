@@ -92,6 +92,31 @@
       "partial": false,
       "unique": false
     },
+    "idx_harness_admissions_attempt": {
+      "columns": [
+        "attempt_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_harness_cell_key": {
+      "columns": [
+        "cell_key"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_harness_cell_repetition": {
+      "columns": [
+        "cell_key",
+        "repetition"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
+    },
     "idx_harness_exit": {
       "columns": [
         "exit_code"
@@ -1014,6 +1039,41 @@
       ],
       "type": "table"
     },
+    "harness_admissions": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "attempt_id",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "superseded_id",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "reason",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
     "harness_events": {
       "columns": [
         {
@@ -1132,6 +1192,36 @@
         },
         {
           "name": "dirty",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "cell_key",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "repetition",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "attempt_kind",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "continuations",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "superseded_by",
           "notnull": false,
           "pk": false,
           "type": "INTEGER"
@@ -2719,5 +2809,5 @@
       "type": "table"
     }
   },
-  "schema_version": 48
+  "schema_version": 49
 }

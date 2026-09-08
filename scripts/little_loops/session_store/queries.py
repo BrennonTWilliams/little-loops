@@ -108,6 +108,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "review_event": ("review_events", "ts"),
     "advisor_consult_event": ("advisor_consults", "ts"),
     "research_triage_event": ("research_triage_events", "ts"),
+    "harness_admission": ("harness_admissions", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -131,6 +132,7 @@ _EXPORT_DEFAULT_TABLES = [
     "review_event",
     "advisor_consult_event",
     "research_triage_event",
+    "harness_admission",
 ]
 
 

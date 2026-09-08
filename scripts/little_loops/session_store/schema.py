@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 48
+SCHEMA_VERSION = 49
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -51,6 +51,7 @@ VALID_KINDS: tuple[str, ...] = (
     "advisor_consult",
     "research_triage",
     "credential_scope",
+    "harness_admission",
 )
 
 _KIND_TABLE = {
@@ -80,6 +81,7 @@ _KIND_TABLE = {
     "advisor_consult": "advisor_consults",
     "research_triage": "research_triage_events",
     "credential_scope": "credential_scope_events",
+    "harness_admission": "harness_admissions",
 }
 
 _KINDLESS_TABLES = frozenset(
@@ -1339,6 +1341,50 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE orchestration_runs ADD COLUMN ll_version TEXT;
     ALTER TABLE loop_runs ADD COLUMN ll_version TEXT;
+    """,
+    # v49 (ENH-3406): schema foundation for the harness run model -- distinguishing
+    # a fresh repetition from an infra-retry-of-the-same-attempt from a
+    # continuation (ENH-3397). Five nullable columns on harness_events, no
+    # DEFAULT, no backfill (Fix-forward only: existing rows keep NULL). `cell_key`
+    # is an opaque TEXT identity (target/task/subject); its canonical encoding is
+    # owned by ENH-3407. `attempt_kind` is CHECK-enforced to a closed two-value
+    # enum. `continuations` is reserved but unpopulated until a future producer
+    # exists -- continuations are invisible to the harness by construction.
+    # `superseded_by` mirrors the existing `parent_id` self-referential-FK
+    # precedent (plain INTEGER, no REFERENCES clause). harness_admissions is a
+    # new append-only audit table -- INSERT-only, like hook_events/
+    # commit_events/test_run_events, never UPDATE/DELETE -- recording when an
+    # infra retry was admitted and why; `reason` is CHECK-enforced to a closed
+    # four-value enum, matching the verdict_events/research_triage_events
+    # precedent for schema-level enum enforcement on a *new* column (no
+    # rename/copy/drop rebuild cost, unlike retrofitting a CHECK onto an
+    # existing column). The partial UNIQUE index on
+    # (cell_key, repetition) WHERE attempt_kind = 'repetition' is the
+    # DB-level anti-p-hacking guard: two repetition rows can never share an
+    # index for the same cell, and a concurrent MAX+1 allocation race in
+    # ENH-3407's writer surfaces as IntegrityError instead of a silent
+    # duplicate sample. infra_retry rows (which reuse the index by design) and
+    # cell_key IS NULL rows (the DSL aggregate/parent row, all pre-migration
+    # rows) fall outside the predicate and are unaffected.
+    """
+    ALTER TABLE harness_events ADD COLUMN cell_key TEXT;
+    ALTER TABLE harness_events ADD COLUMN repetition INTEGER;
+    ALTER TABLE harness_events ADD COLUMN attempt_kind TEXT
+        CHECK (attempt_kind IN ('repetition', 'infra_retry'));
+    ALTER TABLE harness_events ADD COLUMN continuations INTEGER;
+    ALTER TABLE harness_events ADD COLUMN superseded_by INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_harness_cell_key ON harness_events(cell_key);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_harness_cell_repetition
+        ON harness_events(cell_key, repetition) WHERE attempt_kind = 'repetition';
+    CREATE TABLE IF NOT EXISTS harness_admissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        attempt_id INTEGER NOT NULL,
+        superseded_id INTEGER NOT NULL,
+        reason TEXT NOT NULL CHECK (reason IN ('timeout', 'host_crash', 'harness_error', 'network'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_harness_admissions_attempt
+        ON harness_admissions(attempt_id);
     """,
 ]
 

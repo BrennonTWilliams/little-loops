@@ -3910,6 +3910,7 @@ ll-session recent --kind verdict                 # Recent verifier verdicts (ENH
 ll-session recent --kind context_pressure        # Recent context-window pressure samples (ENH-2507)
 ll-session recent --kind review                  # Recent audit/review outcomes (ENH-2512)
 ll-session recent --kind credential_scope        # Recent credential-scope grants (ENH-3204)
+ll-session recent --kind harness_admission       # Recent infra-retry admissions (ENH-3406)
 ll-session search --fts "streaming" --kind learning_test  # Registry records by claim/target (ENH-2466)
 ll-session recent --kind tool --mcp-server pencil --mcp-outcome error  # MCP failures for one server (ENH-2511)
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)
