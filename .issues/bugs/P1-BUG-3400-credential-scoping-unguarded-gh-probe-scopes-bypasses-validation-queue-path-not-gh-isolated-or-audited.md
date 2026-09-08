@@ -77,6 +77,33 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `scripts/little_loops/cli/action.py:218` — imports `ActionSpec, RunnerType, run_action`; constructs `ActionSpec(...)` at lines 242 and 295; no `scopes` keyword found in this file (0 hits) — these construction sites do not pass `scopes` today.
 - `scripts/tests/test_runner_spec.py:25`, `scripts/tests/test_queue_store.py:28`, `scripts/tests/test_cli_queue.py:17`, `scripts/tests/test_cli_harness.py:14` — existing test files importing `runner_spec`/`ActionSpec`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/run.py:130,132` — imports `ActionSpec, RunnerType`; constructs `ActionSpec(name=loop_name, runner=RunnerType.LOOP, ...)` with no `scopes=` kwarg — a fifth `ActionSpec` construction site not covered by the issue's original caller list. [Agent 1 finding]
+- `scripts/little_loops/fsm/schema.py:728-731,836-837,959` — defines `StateConfig.scopes: list[str] | None = None` (the field the `structural_rules.py:499` guard validates) plus its `to_dict`/`from_dict` round-trip. [Agent 1 finding]
+- `scripts/little_loops/session_store/schema.py:82,1317,1325-1326` and `scripts/little_loops/session_store/schema_manifest.json:87,929,956` — define the `credential_scope_events` table DDL/manifest that `write_credential_scope()` inserts into; the code comment above the `CREATE TABLE` (~`schema.py:1317`) claims writes come only from `FSMExecutor`, a claim point 3's fix makes stale. [Agent 1 + Agent 2 findings]
+- `scripts/little_loops/cli/queue.py:480` — the drain loop already has `entry.id` (a `QueueEntry.id`) in scope at the `run_action(entry.action)` call site but does not thread it through; this is the one caller with a real run-identifier available for the point-3 `write_credential_scope(run_id=...)` wiring. [Agent 2 finding]
+- `scripts/little_loops/cli/harness.py:833,866,909,942` and `scripts/little_loops/cli/action.py:250,304` — construct `ActionSpec(...)`/call `run_action`/`_run_cmd` with no run-identifier concept at all today; if `run_action()`/`_run_cmd()` gain a `run_id` keyword for point 3's audit wiring, these four call sites have no real id to pass — needs a decision (synthetic id from `spec.name`/`spec.target`, or skip the audit row for non-queue dispatch paths). See Wiring Phase below. [Agent 2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/HISTORY_SESSION_GUIDE.md` (~lines 140-148) — the "What Gets Recorded" table states `credential_scope_events` is "written by `FSMExecutor` via `write_credential_scope()`" only; needs updating once the CMD/queue path also writes. [Agent 2 finding]
+- `scripts/little_loops/session_store/schema.py` (comment above the `credential_scope_events` `CREATE TABLE`, ~line 1317) — in-source comment claims "written from FSMExecutor before the spawn"; same stale single-writer claim in code-comment form. [Agent 2 finding]
+- `docs/reference/API.md:10190` (`### resolve_scopes` section) — a third API.md location (distinct from `:10011`/`:10232` already noted above) claims the FSM `StateConfig` surface is "a separate, not-yet-wired consumer" of `resolve_scopes` — already inaccurate today (it's fully wired via `fsm/runners.py`/`fsm/executor.py`) and remains stale in the opposite direction once the CMD path is wired too. [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_runners.py` (`TestDefaultActionRunnerShellPath`, lines 227-522) — the FSM shell path's full isolation-test suite; referenced in this issue's Codebase Research prose but missing from the formal test list. This is the direct model the new CMD-path isolation test in `test_runner_spec.py` should mirror: `test_shell_declared_scope_allows_its_vars_denies_others` (416-436, `scopes=["github"]`), `test_shell_declared_empty_scopes_redirects_config_dir_no_token` (438-454, `scopes=[]`), `test_shell_undeclared_scopes_no_config_dir_redirect` (456-463, `scopes=None`), `test_shell_github_scope_no_token_fails_state_spawns_nothing` (476-495, RuntimeError-before-`Popen` + cleanup), `test_shell_scoped_tempdir_removed_after_timeout` (497-522, cleanup-on-timeout). [Agent 1 + Agent 3 findings]
+- `scripts/tests/test_enh3184_spawn_site_guard.py:38-51` — a spawn-site-inventory guard hard-coding `"little_loops/host_runner.py": (2, 0)` (2 `subprocess.run`/`Popen` calls, 0 exempted). Wrapping the existing `gh auth token` call in `try`/`except` with a `timeout=` kwarg keeps the count unchanged; only touch this guard if the fix adds a *second* new subprocess call site in `host_runner.py`. [Agent 3 finding]
+- `scripts/tests/test_cli_queue_run.py:26,265` and `scripts/tests/test_feat_queue_mcp_tools.py:147` — import `ActionSpec`/`RunnerType`/`run_action` inside tests; check for breakage if `run_action()` gains a `run_id` parameter (see the `cli/queue.py:480` note above). [Agent 1 finding]
+- Confirmed: no existing test asserts `FileNotFoundError`/`TimeoutExpired` propagating from `gh_scope_extra()`'s probe or being caught by `fsm/runners.py`'s `except RuntimeError` — normalizing to `RuntimeError` is a pure test gap, not a breaking change to any existing assertion. [Agent 3 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/fsm-loop-schema.json:597-602` — the FSM loop-YAML JSON Schema's own `"scopes"` property definition (separate from `config-schema.json`, which this issue already confirmed has no `scopes` references). It has no `minItems` constraint, so schema-level validation already structurally permits `scopes: []` — consistent with, not blocking, the Python-level fix in `structural_rules.py:499`. No edit required; noted for completeness. [Agent 1 + Agent 2 findings]
+
 ## Program Design
 
 ### Signatures
@@ -89,6 +116,15 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 ### Call Path
 
 `scripts/little_loops/runner_spec.py` (CMD runner, ~line 251) -> `resolve_scopes(spec.scopes)` (existing) -> **new**: `gh_scope_extra(Path(gh_tmp.name), with_token="github" in spec.scopes)` (mirroring `fsm/runners.py:338`) -> **new**: `write_credential_scope(...)` (mirroring `fsm/executor.py`'s existing call site).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Decide how a run-identifier reaches `write_credential_scope(run_id=...)` from the CMD path: `run_action()`/`_run_cmd()` (`runner_spec.py:362,237`) take only an `ActionSpec` today, with no id field distinct from `name`/`target`. Of the three callers, only `cli/queue.py:480` has a real id in scope (`entry.id`, a `QueueEntry.id`) and should thread it through; `cli/harness.py:833,866,909,942` and `cli/action.py:250,304` have no id concept and need an explicit choice (synthetic id from `spec.name`/`spec.target`, or skip the audit row for non-queue dispatch).
+- Update `docs/guides/HISTORY_SESSION_GUIDE.md` (~140-148) and the `session_store/schema.py` comment above the `credential_scope_events` `CREATE TABLE` (~line 1317) — both currently claim `FSMExecutor` is the sole writer.
+- Update `docs/reference/API.md:10190` (`### resolve_scopes`) — currently claims the FSM `StateConfig` surface is "a separate, not-yet-wired consumer," which is already stale and becomes more so once the CMD path is symmetric with it.
+- Add a CMD-runner isolation test in `test_runner_spec.py` mirroring `test_fsm_runners.py::TestDefaultActionRunnerShellPath` (`scopes=["github"]`, `scopes=[]`, RuntimeError-before-`Popen` cleanup, timeout cleanup) per the Tests subsection above.
 
 ## Impact
 
@@ -117,5 +153,6 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-08T00:33:51 - `818ac84c-8dd8-46bc-9d1e-d582e9b2e72e.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:21:05 - `79946685-eebd-494a-af0a-cc7c04146960.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:06:12 - `fd8050c6-8bbf-4735-ba8f-b83f5f588867.jsonl`
