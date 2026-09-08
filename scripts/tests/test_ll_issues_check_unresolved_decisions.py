@@ -148,6 +148,31 @@ class TestCheckUnresolvedDecisionsResidual:
         assert result.returncode == 1
         assert "UNRESOLVED_DECISIONS_REMAIN" in result.stderr
 
+    def test_same_tier_decision_points_second_undecided_exits_one(
+        self, temp_project_dir: Path
+    ) -> None:
+        """BUG-3412: two `**Decision point:**` blocks sharing the bold_label
+        tier, first decided, second not — the CLI must still exit 1 instead
+        of reading the merged run as a single resolved group."""
+        body = _issue_body(
+            "FEAT-9107",
+            (
+                "**Decision point:** First choice\n\n"
+                "**Option A**: Do X.\n"
+                "> **Selected:** Option A\n\n"
+                "**Option B**: Do Y.\n\n"
+                "**Decision point:** Second choice\n\n"
+                "**Option A**: Do Z.\n\n"
+                "**Option B**: Do W.\n"
+            ),
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-unresolved-decisions", "FEAT-9107")
+        assert result.returncode == 1, (
+            f"got {result.returncode}: stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "UNRESOLVED_DECISIONS_REMAIN" in result.stderr
+
     def test_json_output_shape(self, temp_project_dir: Path) -> None:
         body = _issue_body(
             "FEAT-9105",

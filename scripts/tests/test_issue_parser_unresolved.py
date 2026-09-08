@@ -1320,6 +1320,117 @@ class TestDecisionGroups:
         bold_groups = [g for g in groups if g.tier == "bold_label"]
         assert len(bold_groups) == 2
 
+    def test_bold_decision_point_marker_splits_a_same_tier_run(self) -> None:
+        """BUG-3412: two `**Decision point:**` blocks sharing the
+        `bold_label` tier must be two groups, not one merged run — the
+        FEAT-3409 shape where deciding the first silently resolved the
+        second by side effect."""
+        from little_loops.issue_parser import (
+            _iter_decision_groups,
+            is_group_resolved,
+            locate_unresolved_decisions,
+        )
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Decision point:** First choice\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Decision point:** Second choice\n"
+            "\n"
+            "**Option A**: do a third thing\n"
+            "\n"
+            "**Option B**: do a fourth thing\n"
+        )
+        groups = _iter_decision_groups(content)
+        assert [g.tier for g in groups] == ["bold_label", "bold_label"]
+        assert is_group_resolved(content, groups[0]) is True
+        assert is_group_resolved(content, groups[1]) is False
+        assert len(locate_unresolved_decisions(content)) == 1
+
+    def test_heading_decision_point_marker_splits_a_same_tier_run(self) -> None:
+        """BUG-3412: the heading form (`### Decision point ...`) must split
+        a same-tier run the same way the bold form does."""
+        from little_loops.issue_parser import _iter_decision_groups, is_group_resolved
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "### Decision point (2+ viable resolutions)\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "### Decision Point — second choice\n"
+            "\n"
+            "**Option A**: do a third thing\n"
+            "\n"
+            "**Option B**: do a fourth thing\n"
+        )
+        groups = _iter_decision_groups(content)
+        assert [g.tier for g in groups] == ["bold_label", "bold_label"]
+        assert is_group_resolved(content, groups[0]) is True
+        assert is_group_resolved(content, groups[1]) is False
+
+    def test_decision_point_marker_inside_fence_does_not_split(self) -> None:
+        """A `**Decision point:**` line inside a fenced code block is not a
+        real marker and must not split the run."""
+        from little_loops.issue_parser import _iter_decision_groups, is_group_resolved
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "```\n"
+            "**Decision point:** should be ignored\n"
+            "```\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+        )
+        groups = _iter_decision_groups(content)
+        assert len(groups) == 1
+        assert len(groups[0].options) == 2
+        assert is_group_resolved(content, groups[0]) is True
+
+    def test_decision_point_marker_trims_the_preceding_group_span(self) -> None:
+        """BUG-3412 span-trimming: the first group's `end_line` must fall
+        before the second marker's line, and a `> **Selected:**` callout
+        placed directly under the second marker (before its own options)
+        resolves the *second* group, not the first."""
+        from little_loops.issue_parser import _iter_decision_groups, is_group_resolved
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Decision point:** First choice\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Decision point:** Second choice\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option A**: do a third thing\n"
+            "\n"
+            "**Option B**: do a fourth thing\n"
+        )
+        second_marker_line = content.splitlines().index("**Decision point:** Second choice") + 1
+        groups = _iter_decision_groups(content)
+        assert len(groups) == 2
+        assert groups[0].end_line < second_marker_line
+        assert is_group_resolved(content, groups[0]) is False
+        assert is_group_resolved(content, groups[1]) is True
+
     def test_mid_group_callout_does_not_split_the_group(self) -> None:
         """Span rule: a `> **Selected:**` callout inserted mid-group does not
         split the group in two."""

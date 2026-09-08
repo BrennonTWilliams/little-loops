@@ -4,10 +4,11 @@ type: BUG
 title: check-unresolved-decisions merges sibling decision points sharing a tier into
   one group
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T19:44:58Z'
+completed_at: '2026-09-08T22:29:12Z'
 confidence_score: 100
 outcome_confidence: 94
 score_complexity: 23
@@ -265,6 +266,21 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 `_decision_point_marker_positions()` (new; feeds both the run split and the `next_start` span
 cap passed to `_decision_option_span()`) -> `is_group_resolved()`
 
+### Deviations
+
+_2026-09-08:_ The design's Signatures section covered only end-capping (`next_start` fed by
+the nearest following marker). Implementation adds one further piece not in the original
+design: `_decision_option_span()` gained a new `span_start: int | None = None` parameter, and
+`_decision_groups_in_body()` now tracks a `lead_marker` per run (the marker offset that
+triggered a marker-caused split) and passes it as `span_start` for the first option in that
+run. Reason: without it, a `> **Selected:**` callout placed directly under a marker line
+(before any option) falls in the gap between the trimmed-off end of the preceding group and
+the start of the following group's first option span, and resolves neither — violating the
+Acceptance Criteria clause "a `> **Selected:**` callout placed directly under a marker
+resolves the group that follows the marker, not the one before it." Extending the first
+option's span backward to the marker's own line closes that gap. Confirmed via
+`test_decision_point_marker_trims_the_preceding_group_span`.
+
 ## Implementation Steps
 
 1. Add `_DECISION_POINT_MARKER_RE` and `_decision_point_marker_positions()` in
@@ -373,6 +389,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T22:28:48 - `b36578f3-9ded-4904-921e-d8a94a0411a0.jsonl`
 - `/ll:confidence-check` - 2026-09-08T22:01:12 - `b8cb2fff-d50b-4bf2-babb-458135fa8e22.jsonl`
 - `/ll:confidence-check` - 2026-09-08T21:43:40 - `c2403af4-baa0-4020-b7c5-f308571f1935.jsonl`
 - `/ll:wire-issue` - 2026-09-08T21:30:55 - `a6cc555e-02ae-4e6f-81c7-e73410f8ac54.jsonl`

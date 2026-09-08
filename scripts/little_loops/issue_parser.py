@@ -2264,6 +2264,16 @@ _DECIDE_IMPERATIVE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# BUG-3412: matches a `**Decision point:**` prose boundary (bold, colon
+# inside or outside the span) or a heading form (`### Decision point ...`,
+# any depth 1-6) — the corpus shapes _decision_groups_in_body() must split
+# a same-tier run on, alongside directive_between, so 2+ decision points
+# sharing a tier are not merged into one DecisionGroup.
+_DECISION_POINT_MARKER_RE = re.compile(
+    r"^\s*(?:#{1,6}\s+)?(?:[-*]\s+)?\*{0,2}Decision point\b",
+    re.MULTILINE | re.IGNORECASE,
+)
+
 # A stated preference disqualifies the passage from Pattern E — that shape is
 # already Pattern D's job (declarative recommendation with a resolvable referent).
 _PREFERENCE_MARKER_RE = re.compile(
@@ -2713,9 +2723,10 @@ class DecisionGroup:
     blocks, or one Pattern E directive window (BUG-3278).
 
     A run breaks when the tier changes, when a Pattern E directive window
-    intervenes, or at a section boundary — so ``**Option A/B/C**`` followed by
-    a separate ``- (a)/(b)`` pair below it is *two* groups, not one, even
-    though both live in the same section.
+    intervenes, when a ``**Decision point:**`` prose/heading marker falls
+    between two same-tier matches (BUG-3412), or at a section boundary — so
+    ``**Option A/B/C**`` followed by a separate ``- (a)/(b)`` pair below it is
+    *two* groups, not one, even though both live in the same section.
     """
 
     heading: str | None
@@ -2742,6 +2753,7 @@ def _decision_option_span(
     max_depth: int,
     fences: list[tuple[int, int]],
     next_match_start: int | None,
+    span_start: int | None = None,
 ) -> LocatedOption:
     """One decision group's member option span (BUG-3278).
 
@@ -2750,8 +2762,16 @@ def _decision_option_span(
     enabled tier (not just this match's own tier) — so a bold_label option's
     span stops before an immediately-following bullet marker instead of
     swallowing it, even though the two belong to different groups.
+
+    *span_start* (BUG-3412): when this option is the first in a run split by
+    a ``**Decision point:**`` marker, the caller passes that marker's offset
+    here so the span's line-start anchor becomes the marker's own line
+    instead of the option's — otherwise a ``> **Selected:**`` callout placed
+    directly under the marker (before any option) falls in the gap between
+    the trimmed-off previous group and this one and resolves neither.
     """
-    line_start = body.rfind("\n", 0, match.start()) + 1
+    anchor = match.start() if span_start is None else span_start
+    line_start = body.rfind("\n", 0, anchor) + 1
     match_line_end = body.find("\n", match.start())
     search_start = match_line_end + 1 if match_line_end != -1 else len(body)
     heading_boundary = _option_span_boundary(body, search_start, max_depth, fences)
@@ -2774,6 +2794,25 @@ def _decision_option_span(
     )
 
 
+def _decision_point_marker_positions(body: str, fences: list[tuple[int, int]]) -> list[int]:
+    """Sorted fence-excluded offsets of every ``**Decision point:**`` marker
+    in *body* (BUG-3412).
+
+    Feeds both the run-splitting boundary check and the span-trimming cap in
+    :func:`_decision_groups_in_body`: a marker falling between two same-tier
+    matches ends the run early (a section holding 2+ decision points no
+    longer merges into one ``DecisionGroup`` just because they share a
+    tier), and it also caps the preceding option's span so that span does
+    not swallow the next decision point's marker line.
+    """
+    positions = []
+    for m in _DECISION_POINT_MARKER_RE.finditer(body):
+        if in_fence(m.start(), m.end(), fences):
+            continue
+        positions.append(m.start())
+    return positions
+
+
 def _decision_groups_in_body(
     content: str,
     body: str,
@@ -2789,7 +2828,8 @@ def _decision_groups_in_body(
     sorts them in document order, then splits into maximal contiguous
     same-tier runs — breaking a run early when *directive_split_line* (the
     document's single Pattern E directive, if any) falls between two
-    consecutive matches, even when they share a tier.
+    consecutive matches, or when a ``**Decision point:**`` prose/heading
+    marker (BUG-3412) falls between them, even when they share a tier.
     """
     fences = fence_spans(body)
     tagged: list[tuple[int, re.Match[str], str]] = []
@@ -2802,7 +2842,10 @@ def _decision_groups_in_body(
     if not tagged:
         return []
 
+    marker_positions = _decision_point_marker_positions(body, fences)
+
     runs: list[list[int]] = [[0]]
+    run_lead_markers: list[int | None] = [None]
     for i in range(1, len(tagged)):
         prev_pos, _, prev_tier = tagged[i - 1]
         pos, _, tier_name = tagged[i]
@@ -2811,21 +2854,29 @@ def _decision_groups_in_body(
             < directive_split_line
             < content.count("\n", 0, body_offset + pos) + 1
         )
-        if tier_name == prev_tier and not directive_between:
+        between_markers = [mp for mp in marker_positions if prev_pos < mp < pos]
+        if tier_name == prev_tier and not directive_between and not between_markers:
             runs[-1].append(i)
         else:
             runs.append([i])
+            run_lead_markers.append(between_markers[-1] if between_markers else None)
 
     groups: list[DecisionGroup] = []
-    for run in runs:
+    for run, lead_marker in zip(runs, run_lead_markers, strict=True):
         tier_name = tagged[run[0]][2]
         max_depth = 3 if tier_name == "section_header" else 6
         options = []
-        for idx in run:
+        for pos_in_run, idx in enumerate(run):
             _, m, _ = tagged[idx]
             next_start = tagged[idx + 1][0] if idx + 1 < len(tagged) else None
+            next_marker = min((mp for mp in marker_positions if mp > m.start()), default=None)
+            if next_marker is not None and (next_start is None or next_marker < next_start):
+                next_start = next_marker
+            span_start = lead_marker if pos_in_run == 0 else None
             options.append(
-                _decision_option_span(content, body, body_offset, m, max_depth, fences, next_start)
+                _decision_option_span(
+                    content, body, body_offset, m, max_depth, fences, next_start, span_start
+                )
             )
         groups.append(
             DecisionGroup(

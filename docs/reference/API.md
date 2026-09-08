@@ -1095,8 +1095,10 @@ BUG-3278: the decision-*group*-aware sibling of `locate_unresolved_options`, and
 interchangeable with it**. `locate_unresolved_options` resolves per option *block* — Phase 7a of
 `/ll:decide-issue` marks only the winning option, so every losing option in a correctly-decided
 group reads as unresolved (a 3-option group with one winner reports 2, not 0). This function
-resolves per decision *group* — a maximal contiguous run of same-tier option blocks, or one
-Pattern E directive window — via `DecisionGroup`/`_iter_decision_groups`/`is_group_resolved`. A
+resolves per decision *group* — a maximal contiguous run of same-tier option blocks, one Pattern E
+directive window, or a run broken early by a `**Decision point:**` prose/heading marker (BUG-3412,
+so 2+ same-tier decision points in one section are never merged into one group) — via
+`DecisionGroup`/`_iter_decision_groups`/`is_group_resolved`. A
 group is resolved when any member option's own span carries a `> **Selected:**` callout, or the
 group's enclosing section carries a `### Decision Rationale` subsection AND holds exactly one
 group (the single-group restriction — an unrestricted section-level check would let deciding one
