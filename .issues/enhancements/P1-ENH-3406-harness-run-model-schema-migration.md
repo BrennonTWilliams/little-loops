@@ -422,6 +422,7 @@ _Added by `/ll:verify-issues` — 2026-09-08:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T19:29:48 - `d085a657-a5fc-4269-a380-da196e14f5c3.jsonl`
 - `/ll:verify-issues` - 2026-09-08T19:27:02 - `11906448-7df7-4fe2-877f-bca8a2a33d89.jsonl`
 - `/ll:verify-issues` - 2026-09-08T19:25:46 - `11906448-7df7-4fe2-877f-bca8a2a33d89.jsonl`
 - `/ll:confidence-check` - 2026-09-08T19:15:11 - `6bb0db90-fba6-4ae0-ba6a-a7670d32c039.jsonl`
