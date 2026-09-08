@@ -218,6 +218,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - BUG-3324 (socket claim/eviction logic), FEAT-3323 (SSE bridge tests)
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-08:_
+
+**Verdict: VALID.** Reproduced the exact failure mode: `rm -f .ll/events*.sock && python -m pytest scripts/tests/test_cli_loop_lifecycle.py -n 0 -p no:randomly` on `main` produced `34 failed, 104 passed` — the identical count and first-failure test (`TestCmdResume::test_resume_with_minutes_duration`) the issue names. All four production `wire_transports()` call sites and line numbers checked out exactly: `cli/loop/lifecycle.py:737` (config built at line 713), `cli/loop/run.py:623`, `cli/parallel.py:322`, `cli/sprint/run.py:801`. `conftest.py` confirmed to have zero `BRConfig` references and no `chdir`/`MonkeyPatch`-based cwd-isolation fixture, matching the "structural gap" claim. `_guard_real_history_db` (conftest.py:953-985) and `_isolate_history_db_session` (conftest.py:889) line numbers are off by ~1 from the cited ~888/952-993 (harmless drift, same fixture). Decisions log present but has zero active required rules — no `DECISIONS_VIOLATION`. No `## Blocked By`/`## Blocks` sections to validate; `## Relates To` targets (BUG-3324, FEAT-3323) both exist. `## Proposed Solution` section is absent (issue uses Program Design/Implementation Steps instead), so the B6 proposal-consequence check does not apply.
+
+One advisory note: `ll-verify-evidence --json` flagged two spans in "Steps to Reproduce" (`"34 failed, 104 passed"`, `"-n logical --dist loadfile"`) as unverifiable against `test_cli_loop_lifecycle.py`. This is almost certainly a checker false-positive of the documented paraphrase class (advisory, unrouted per the command's own fallback F3 decision) — these are quoted *pytest run output*, not source content, and this pass independently reproduced the first span verbatim. Not treated as blocking; no `EVIDENCE_UNVERIFIED` action taken since this run is `--auto`, not `--check` (frontmatter persistence is `--check`-only).
+
 ## Status
 
 **Open** | Created: 2026-09-07 | Priority: P3
@@ -240,6 +248,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 _Previous pass (2026-09-07) flagged a self-contradiction in Program Design: the named signature/Call Path described a before/after `.ll/` snapshot-diff while Implementation Steps #3 explicitly called for a choke-point guard instead, citing `_guard_real_history_db`'s precedent against snapshot-diff. Program Design has been corrected — `assert_ll_clean_after_session` replaced with `_guard_real_socket_transport`, a choke-point patch on `UnixSocketTransport.__init__` — and Architecture Compliance now scores 20/20 (was 10/20), raising the readiness tier from PROCEED WITH CAUTION to PROCEED. Outcome Confidence is unaffected — the newly-fixed contradiction didn't touch Complexity, Test Coverage, or Change Surface, and Ambiguity's score is held down by the separate, still-open per-test-vs-fixture decision noted above._
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-08T03:20:08 - `340bdb44-8b74-4400-a17f-9d09e7a13c92.jsonl`
 - manual review - 2026-09-08 - premise corrected (reproduced 34 failures on clean .ll/); vulnerable list expanded 9→~36; fixture-vs-per-test decision resolved (fixture); ACs rewritten
 - `/ll:wire-issue` - 2026-09-08T03:07:52 - `10d02141-1a61-4549-ac75-31b74fcc4540.jsonl`
 - `/ll:refine-issue` - 2026-09-08T02:58:59 - `10d02141-1a61-4549-ac75-31b74fcc4540.jsonl`
