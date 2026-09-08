@@ -208,6 +208,22 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
    scripts/tests/test_confidence_check_skill.py` and confirm existing
    single-decision-point cases still pass unchanged.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add a multi-decision-point golden fixture under `scripts/tests/fixtures/issues/`
+  and a corresponding case in `scripts/tests/test_decide_issue_skill.py`'s
+  `TestPhase7cFixtures` — asserts decision-point 2+'s winning identifiers are
+  absent from `_unapplied_decision_pairs()`'s output via the `/ll:decide-issue`
+  Phase 7c consumption path (`unapplied_decision_detail`), not just
+  format-check's formatter path already covered by `test_issue_parser.py`.
+- Re-scope the `test_confidence_check_skill.py` verification step: that file has
+  no functional Criterion C scoring test today (only doc-prose presence checks
+  against `SKILL.md`/`rubric.md`) — verify the fix via the detector-level
+  assertions in `test_issue_parser.py`/`test_ll_issues_format_check.py` instead,
+  unless new functional scoring coverage is separately justified.
+
 ## Impact
 
 - **Priority**: P2 — narrow live blast radius today (one corpus issue), but silently
@@ -319,6 +335,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-08T23:16:35 - `5525351e-3d29-48e7-8627-a2102c2d6ce0.jsonl`
 - `/ll:refine-issue` - 2026-09-08T23:07:32 - `4eafacf3-ae84-4013-9a60-e7cb82f6fe90.jsonl`
 - `/ll:format-issue` - 2026-09-08T22:58:53 - `e2e838a6-6a34-4a2d-913f-3f74b4596a32.jsonl`
 - `/ll:capture-issue` - 2026-09-08T22:42:53 - `4f0efb73-1906-4514-9695-1db0defa8ce3.jsonl`
