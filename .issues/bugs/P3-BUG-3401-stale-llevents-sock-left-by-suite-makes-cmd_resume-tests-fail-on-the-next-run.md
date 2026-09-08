@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-07'
 captured_at: '2026-09-07T23:44:14Z'
+confidence_score: 90
+outcome_confidence: 49
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 0
 ---
 
 # BUG-3401: Stale .ll/events-*.sock left by suite makes cmd_resume tests fail on the next run
@@ -156,8 +162,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-09-07 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-07_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 49/100 → LOW
+
+### Outcome Risk Factors
+- Wide blast radius: 9 confirmed-vulnerable tests in `test_cli_loop_lifecycle.py` plus 4 production `wire_transports()` call sites (`cli/loop/lifecycle.py:713`, `cli/loop/run.py:230`, `cli/parallel.py:195-196`, `cli/sprint/run.py:797,801`) all need correct treatment — 13 distinct sites raises the odds of a missed one even though the wiring pass already enumerated them by name.
+- The implementation shape is left genuinely open: the wiring pass explicitly offers two different fixes (patch `BRConfig`/`wire_transports` in each of the 9 vulnerable tests individually, vs. a single new session-wide `conftest.py` isolation fixture) without resolving which to use — that judgment call affects both the breadth of the change and how the 9 tests get closed out.
+- The `missing_behavior_parity` gap (no `### Behavior Parity` subsection for `scripts/tests/conftest.py`) caps Issue Well-Specified at 10/20 even though the rest of the issue is unusually thorough — worth a short explicit note on how the new fixture composes with `_guard_real_history_db`/`_isolate_history_db_session` before implementation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T02:21:36 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
 - `/ll:wire-issue` - 2026-09-08T02:00:49 - `2d920f5a-2d4d-4a14-9303-a5bfb4bae86a.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:56:23 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:07:35 - `a2e8c1bc-23e1-4b7e-a7d7-ca1d7c6bb1b1.jsonl`

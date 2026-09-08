@@ -11,6 +11,12 @@ labels:
 - regression-detection
 learning_tests_required:
 - yaml
+confidence_score: 90
+outcome_confidence: 40
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 0
 ---
 
 ## Summary
@@ -174,12 +180,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Each detection names the candidate change (model/host/version boundary) it coincides with, or explicitly reports "no attributable change".
 - Sensitivity is configurable, with a documented default and its false-positive tradeoff.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-07_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 40/100 → LOW
+
+### Outcome Risk Factors
+- Broad enumeration across 16+ sites: `orchestration_runs` schema migration, ~7 `record_orchestration_run`/`record_loop_run_summary` call sites needing new-param threading (`issue_manager.py`, `parallel/orchestrator.py`, `parallel/worker_pool.py`, `cli/sprint/run.py`, `fsm/executor.py`), the typed reader path (`history_reader/runs.py`, `models.py`), `schema_manifest.json` regeneration, plus 15+ test files and 4 docs files — the fanout raises the odds of a missed call site or reader-path gap even though each individual site change is small.
+- Two architecture-convention decisions are left open at spec time rather than resolved: (1) `detect_quality_regressions() -> list[RegressionEvent]` deliberately departs from the codebase's `detect_*` → `*Analysis`-wrapper convention with no decision recorded; (2) the `--sensitivity` config convention (module-constant + CLI flag vs. `.ll/ll-config.json` schema entry) is explicitly left for the implementer to decide. Resolving both before coding starts would reduce mid-implementation rework and keep the change consistent with the rest of `issue_history/`.
+- The core `detect_quality_regressions()`/`attribute_change()` logic is genuinely new statistical code — no existing change-point/z-score/rolling-baseline utility exists anywhere in the codebase to adapt, and `DEFAULT_SENSITIVITY` has no prior value to anchor to.
+
 ## Status
 
 **Open** | Created: 2026-09-07 | Priority: P0
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T02:15:46 - `79da3fca-fbcb-4530-ac1f-339229369837.jsonl`
+- `/ll:confidence-check` - 2026-09-08T02:10:48 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
 - `/ll:wire-issue` - 2026-09-08T02:00:49 - `2d920f5a-2d4d-4a14-9303-a5bfb4bae86a.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:56:22 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:08:41 - `fd8050c6-8bbf-4735-ba8f-b83f5f588867.jsonl`

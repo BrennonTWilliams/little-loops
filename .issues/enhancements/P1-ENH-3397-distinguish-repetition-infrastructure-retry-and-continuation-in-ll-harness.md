@@ -9,6 +9,12 @@ labels:
 - harness
 - evaluation
 - statistics
+confidence_score: 100
+outcome_confidence: 62
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 ## Summary
@@ -195,8 +201,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-09-07 | Priority: P1
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-07_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 62/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across ~16+ touch sites (schema migration, new writers, two CLI/history_reader read paths, multiple re-export layers in `session_store/__init__.py` and `history_reader/__init__.py`, doc updates across CLI.md/HISTORY_SESSION_GUIDE.md/ARCHITECTURE.md/EVALUATION_GUIDE.md/API.md, and several test files) — mitigate with a completeness checklist during implementation, e.g. a wiring test enumerating each `_record_harness_event` call site's new-param threading.
+- Moderate blast radius on the read/write path itself: `_record_harness_event` is wrapped and called from 7 sites in `cli/harness.py`, and `harness_eval_pass_rate`/`harness_eval_abstention_rate` are consumed via `_read_target_history` — each site needs correct `cell_key`/`attempt_kind`/authoritative-selection threading rather than a uniform mechanical substitution, so per-site regressions are possible; mitigate with the AC's specified fixture-based n-counting tests before/after the retry chain.
+- Two registry-placement decisions are deliberately left for implementation time rather than pre-resolved: whether `harness_admissions` is kinded vs. kindless (`VALID_KINDS`/`_KIND_TABLE` vs. `_KINDLESS_TABLES`), and whether it needs an `_EXPORT_TABLE_MAP` entry for `ll-history export` symmetry. Both have a stated precedent to follow (`prepatch_evidence`) but remain open judgment calls, not blocking readiness.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T02:13:08 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
+- `/ll:confidence-check` - 2026-09-08T02:10:16 - `79da3fca-fbcb-4530-ac1f-339229369837.jsonl`
 - `/ll:wire-issue` - 2026-09-08T02:00:49 - `2d920f5a-2d4d-4a14-9303-a5bfb4bae86a.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:56:22 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:09:20 - `fd8050c6-8bbf-4735-ba8f-b83f5f588867.jsonl`

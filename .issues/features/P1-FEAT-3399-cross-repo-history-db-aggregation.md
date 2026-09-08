@@ -12,6 +12,12 @@ labels:
 learning_tests_required:
 - yaml
 - sqlite3
+confidence_score: 70
+outcome_confidence: 48
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 ## Summary
@@ -191,12 +197,32 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Source DBs are provably unmodified after a run (checksum assertion in tests).
 - A repo with a mismatched or missing schema is reported and skipped, not fatal.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-07_
+
+**Readiness Score**: 70/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 48/100 → LOW
+
+### Concerns
+- Architecture compliance (10/20): the only existing `ATTACH` precedent (`build_snapshot_db()`) attaches one writable scratch DB onto a single read-only source — the opposite direction from this issue's several-read-only-sources-onto-one-connection shape. There is no direct precedent, and the codebase has three near-identical `_connect_readonly()` variants; the default `history_reader/_base.py` one calls `ensure_db()` first, which can create/migrate the file — reusing it as-is would risk violating the issue's own "never written, migrated" constraint. Pick the connection primitive deliberately.
+- Issue well-specified (10/20): three implementation choices remain genuinely open — where the new aggregation module lives, whether `analyze_agent_quality()` gets a schema-qualifier/open-connection parameter or is called once per member via its own throwaway connection, and what `--workspace --format json/yaml/text` should output (no shape specified yet).
+- No duplicate implementations (15/20, base 20 with a −5 learning-test modifier): the `sqlite3` learning-test target is `stale` (last proven 2026-07-20) — verify ATTACH/read-only-URI behavior still holds before relying on it.
+- Sequencing: FEAT-3398 (P0, open) already cites `analyze_agent_quality()`/`format_agent_quality_markdown()` signatures in its own Integration Map; if this issue lands first and changes either signature, FEAT-3398 needs its citations re-verified.
+
+### Outcome Risk Factors
+- Change surface (10/25): blast radius is contingent on which open implementation call above is resolved — the schema-qualifier approach would ripple through the 16+ files importing the `history_reader` `_connect_readonly()` family, while the per-member-throwaway-connection approach stays isolated. Not yet locked in.
+- Ambiguity (10/25): the same open design decisions (module location, connection variant, per-schema query approach) require judgment calls during implementation; no `unapplied_decision` gap is flagged, but real design latitude remains.
+- Complexity (10/25): moderate breadth (~7 integration sites spanning a new module, CLI flag, config, and docs) combined with genuinely novel logic — `AggregationResult.totals` merging N `QualityAnalysis` instances has no precedent anywhere in the codebase (searched for `merge`/`combine`/`union`/`__add__`, zero hits).
+
 ## Status
 
 **Open** | Created: 2026-09-07 | Priority: P1
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T02:13:32 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
+- `/ll:confidence-check` - 2026-09-08T02:10:50 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
 - `/ll:wire-issue` - 2026-09-08T02:00:49 - `2d920f5a-2d4d-4a14-9303-a5bfb4bae86a.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:56:23 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:08:41 - `fd8050c6-8bbf-4735-ba8f-b83f5f588867.jsonl`
