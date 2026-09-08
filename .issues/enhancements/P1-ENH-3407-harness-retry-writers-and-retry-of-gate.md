@@ -508,7 +508,24 @@ single-transaction retry write (no orphan `infra_retry` row); refusal messages t
 **Open** | Created: 2026-09-08 | Priority: P1 | Blocked by: ENH-3406 (done)
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 78/100 → MODERATE
+
+### Concerns
+- Frontmatter `verify_verdict: NON_VALID` is stale relative to the affirmative
+  `## Verification Notes` text below it; `ll-issues check-verify-verdict ENH-3407`
+  exits 1 (`VERIFY_VERDICT_NON_VALID`). This gate is checked by
+  `refine-to-ready-issue.yaml` and would block that automation even though the
+  issue's own deterministic checks (format-check, program design, dependencies)
+  are all clean. Run `/ll:verify-issues ENH-3407 --auto` to refresh the verdict
+  before `/ll:manage-issue`.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T21:09:48 - `aa05b7c5-bd9c-445b-bfca-821ed5e4d764.jsonl`
 - `/ll:confidence-check` - 2026-09-08T20:44:42 - `6f51642f-2e27-4a91-aa1c-d82fabf2a587.jsonl`
 - `/ll:verify-issues` - 2026-09-08T20:23:07 - `177666e2-e3a8-45e9-869d-82933b239524.jsonl`
 - `/ll:refine-issue` - 2026-09-08T19:57:50 - `b6b6e9ca-1e9e-4589-b966-7e973d10f797.jsonl`
