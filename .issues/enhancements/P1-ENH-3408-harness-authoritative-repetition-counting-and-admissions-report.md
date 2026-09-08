@@ -13,12 +13,12 @@ labels:
 - evaluation
 - statistics
 size: Large
-confidence_score: 80
-outcome_confidence: 63
-score_complexity: 10
+confidence_score: 95
+outcome_confidence: 89
+score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 10
-score_change_surface: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3408: Count authoritative repetitions in harness pass-rate reporting + admissions tabulation
@@ -369,6 +369,7 @@ Both concerns raised (fan-out gap; `cmd_dsl` scope) are now resolved in Design D
 D1 and D3. Scores not yet re-run.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T23:18:50 - `c0ecb5c7-ec7b-42c3-8894-9f9c4066ca97.jsonl`
 - `/ll:verify-issues` - 2026-09-08T23:13:18 - `6838caf5-f9a1-4968-903c-7ebff6345cb2.jsonl`
 - `/ll:confidence-check` - 2026-09-08T22:55:59 - `b8f1a5da-c225-4249-91e2-295287d87d5e.jsonl`
 - `/ll:verify-issues` - 2026-09-08T22:43:56 - `de8d5d84-5a41-428b-835e-669b7afc984e.jsonl`

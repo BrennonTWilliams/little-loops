@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T22:42:47Z'
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 23
 ---
 
 # BUG-3413: unapplied_decision false-positives on multi-decision-point issues
@@ -335,6 +341,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T23:19:30 - `6c87a100-fdff-4f6c-8c02-661175f66952.jsonl`
 - `/ll:wire-issue` - 2026-09-08T23:16:35 - `5525351e-3d29-48e7-8627-a2102c2d6ce0.jsonl`
 - `/ll:refine-issue` - 2026-09-08T23:07:32 - `4eafacf3-ae84-4013-9a60-e7cb82f6fe90.jsonl`
 - `/ll:format-issue` - 2026-09-08T22:58:53 - `e2e838a6-6a34-4a2d-913f-3f74b4596a32.jsonl`
