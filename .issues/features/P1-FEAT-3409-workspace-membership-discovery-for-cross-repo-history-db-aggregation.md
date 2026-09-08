@@ -192,6 +192,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Malformed-manifest posture** (present but invalid `ll-workspace.yaml`): unresolved. This codebase holds three disagreeing conventions for this exact situation — fail-closed/raise (`artifact_templates.py::load_manifest`), fail-open/degrade to empty (`fsm/loop_paths.py::draft_internal_name`, `config/core.py::parse_local_override_frontmatter`), and no-wrap/propagate (`decisions.py::load_decisions`, this issue's own cited model, which deliberately does not catch `yaml.YAMLError` for its flat file). Expected Behavior currently specifies only the absent-manifest case; the malformed-but-present case needs an explicit choice among these three postures before implementation.
 - **`db_path` derivation**: unresolved. Either (a) an explicit per-entry manifest field, or (b) computed at discovery time via `resolve_history_db(root=member.repo_path)`. Option (b) has a known composition hazard: `resolve_history_db`'s `LL_HISTORY_DB` env-var check fires unconditionally ahead of the `root=`-scoped lookup (`session_store/db.py:107-109`), so calling it once per member in the same process would resolve every member's `db_path` to the same env-overridden value whenever `LL_HISTORY_DB` is set — silently collapsing a multi-repo workspace onto one database. No escape hatch is specified for this case; the implementer must pick (a) or (b) knowingly.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **Frozen-vs-mutable is not resolved by majority precedent**: a repo-wide sweep confirms the split is real at scale, not an artifact of the two cited examples — 158 frozen-dataclass declarations vs. 327 plain `@dataclass` declarations across `scripts/little_loops/`. Frequency alone does not favor either convention for `WorkspaceMember`.
+- **Malformed-manifest three-way tie is exhaustive, not under-sampled**: a broader sweep of all ~45 `yaml.safe_load()`/`yaml.load()` call sites in the package found no fourth handling convention and no other manifest-shaped parser beyond the three already cited (fail-closed `artifact_templates.py:161-163`, fail-open `fsm/loop_paths.py:31-33` / `config/core.py:83-86`, no-wrap `decisions.py:381`). Further codebase research will not resolve this — it needs an explicit choice, not more searching.
+- **No other multi-instance `db_path`-derivation precedent exists**: confirmed no call site anywhere in the codebase invokes `resolve_history_db()` more than once per process with different `root=` values, and no other function with an equivalent per-instance-derivation shape exists to model the composition hazard's handling against.
+
 ## Implementation Steps
 
 1. Define `WorkspaceMember` and implement `discover_workspace_members()`,
@@ -339,6 +347,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   the choice determines which of two Dependent-Files wiring lists apply.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T18:20:33 - `93c855fd-cd38-4404-abc3-eca785ed7ae8.jsonl`
 - `/ll:confidence-check` - 2026-09-08T17:48:31 - `da08f1cf-aa72-4044-9c86-40020b649222.jsonl`
 - `/ll:verify-issues` - 2026-09-08T17:45:51 - `c85a7f3d-8147-4f84-a4a8-b54c8bbd73dd.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T17:41:47 - `5027b454-4016-483b-bbf8-8af9131c8c75.jsonl`

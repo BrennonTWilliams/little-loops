@@ -16,6 +16,7 @@ blocked_by:
 parent: FEAT-3399
 unproven_mechanism: true
 verify_verdict: NON_VALID
+size: Very Large
 ---
 
 ## Summary
@@ -629,6 +630,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:refine-issue:gap-analysis` - 2026-09-08T18:20:35 - `7bee39e0-dbd1-43e1-ab8d-3353f1d8f05f.jsonl`
 - `/ll:verify-issues` - 2026-09-08T18:14:31 - `0c248636-ebaa-42e8-a21d-567126bbbb58.jsonl`
 - `/ll:wire-issue` - 2026-09-08T18:06:21 - `1e01fe75-84c0-48d8-81d9-277491fe7648.jsonl`
 - `/ll:refine-issue` - 2026-09-08T17:56:30 - `f96712d2-147b-4ff6-a136-9066baf77b51.jsonl`

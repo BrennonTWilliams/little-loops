@@ -11,8 +11,6 @@ labels:
 - path-a
 - observability
 - regression-detection
-learning_tests_required:
-- yaml
 verify_verdict: NON_VALID
 size: Large
 confidence_score: 100
@@ -150,6 +148,31 @@ usage_events.model` (the join the cost metric already uses; reaches 623 of 641
 `raw_events.host` via the same session join. `ll_version` is read from
 `orchestration_runs.ll_version` / `loop_runs.ll_version`, added by FEAT-3404.
 
+**Live-DB dimension coverage (measured 2026-09-08, post-FEAT-3404)** — these
+numbers drive the dimension-coverage rule in Decision Rules:
+
+- `ll_version` is `NULL` on all 556 `orchestration_runs` rows and all 1210
+  `loop_runs` rows. FEAT-3404 stamps new rows only; nothing is backfilled. The
+  first stamped month therefore reads 100% one version against a 0% pooled
+  baseline — a shift of 1.0 — and any coinciding drop would be attributed to
+  little-loops with certainty. This is the attribution analogue of the
+  zero-valued cost baseline and needs the same kind of guard.
+- `raw_events.host` is `claude-code` on all 1,417,973 rows. The host dimension
+  cannot discriminate anything on this DB until transcripts from another host
+  are ingested; it is kept because the loader is host-agnostic, but the
+  rendered note must say so.
+- `usage_events.model`: 11 distinct values; 62 rows carry the literal
+  `<synthetic>` model, which is not a model and is excluded from the dimension.
+- 127 of 641 `issue_sessions` issues touch more than one model — exactly the
+  issues attribution exists for, so the per-issue model weighting must be
+  explicit (see Decision Rules → Model share weighting).
+- 31 issues have more than one `orchestration_runs` row, so "the issue's
+  `ll_version`" needs a tie-break rule (see Decision Rules).
+- Query cost: `GROUP BY session_id, model` over `usage_events` is ~0.14s;
+  `GROUP BY session_id, host` over `raw_events` is ~1.0s (full scan; the
+  `(session_id, ts)` index does not cover it). Acceptable for a report command,
+  but the host query must be a single grouped query, not a per-session loop.
+
 ## Dependencies
 
 **FEAT-3404** (`done`, landed `fb4ea75cc`): supplied the
@@ -212,20 +235,27 @@ report run.
   dict[str, float]]` (dimension -> value -> weighted count) plus a derived
   `shares()` helper. Storing counts (not shares) is what lets the baseline
   composition be **pooled** across K windows rather than a mean-of-shares.
-  **Unit of "share"**: for `QualityWindow` series, the unit is a *closed issue
-  in the window*; each issue contributes to every distinct `usage_events.model`
-  (and `raw_events.host`) seen across its sessions, weighted by the same
-  `1/len(issues)` multi-issue-session split `_usage_totals()` already uses
-  (`agent_quality.py:295-334`), and to exactly one `ll_version` from its
+  **Unit of "share"**: for `QualityWindow` series, the `model` and `host`
+  dimensions are weighted by *row count* — each `usage_events` row (for
+  `model`) or `raw_events` row (for `host`) in a session contributes
+  `1/len(issues)` to every issue that session touched, the same multi-issue
+  split `_usage_totals()` already uses (`agent_quality.py:295-334`). This is
+  deliberately **not** "one count per distinct model per issue": that would
+  weight a single Haiku title-generation call the same as five hundred Sonnet
+  calls (see Decision Rules → Model share weighting). The `ll_version`
+  dimension is one count per closed issue, taken from the issue's
   `orchestration_runs` row (issues in `unattributed` windows have no such row,
-  so that dimension is simply empty there). For the `retry_inflation` series
-  the unit is a `loop_runs` row and the only dimension is `ll_version`.
+  so that dimension is simply empty there). Also carries `coverage: dict[str,
+  float]` (dimension -> share of the window's units that had a non-NULL value
+  for that dimension) so `attribute_change()` can apply the dimension-coverage
+  rule. For the `retry_inflation` series the unit is a `loop_runs` row and the
+  only dimension is `ll_version`.
 
 ### Signatures
 
 - `DEFAULT_SENSITIVITY = 0.30`, `DEFAULT_BASELINE_WINDOWS = 3`, `ATTRIBUTION_MIN_SHIFT = 0.25`, `HIGHER_IS_BETTER: frozenset[str] = frozenset({"fix_rate"})` (module constants; `classify_verdict` has no direction flag — fix-rate's verdict is derived upstream from `rework_share`, so the direction set must be explicit here)
 - `detect_quality_regressions(analysis: QualityAnalysis, compositions: list[WindowComposition], *, sensitivity: float = DEFAULT_SENSITIVITY, baseline_windows: int = DEFAULT_BASELINE_WINDOWS, latest_only: bool = True) -> QualityRegressionAnalysis` — no `min_sample` parameter: eligibility is read from `QualityMetric.insufficient_history` / `RetryWindow.insufficient_history`, which `analyze_agent_quality()` already computed from `analysis.min_sample_size`.
-- `attribute_change(window: WindowComposition, baseline: list[WindowComposition], *, min_shift: float = ATTRIBUTION_MIN_SHIFT) -> RunAttribution | None` — pools `baseline` counts before computing shares.
+- `attribute_change(window: WindowComposition, baseline: list[WindowComposition], *, min_shift: float = ATTRIBUTION_MIN_SHIFT, min_coverage: float = LOW_COVERAGE_THRESHOLD) -> RunAttribution | None` — pools `baseline` counts before computing shares; skips any dimension whose non-NULL coverage is below `min_coverage` on either side.
 - `load_window_compositions(conn, issue_window: dict[int, tuple[str, str]], issue_ids: dict[int, str], session_issues: dict[str, set[int]]) -> list[WindowComposition]` — `issue_ids` maps `issue_num -> issue_id` text (needed to join `orchestration_runs.issue_id`, which is TEXT); `session_issues` is the `_session_issue_map()` result `analyze_agent_quality()` already holds. All three inputs are locals of `analyze_agent_quality()` at `agent_quality.py:504-514`; extend the `closed` loop there to also build `issue_ids`.
 - `analyze_agent_quality(issues, *, db=DEFAULT_DB_PATH, min_sample=MIN_SAMPLE_SIZE, sensitivity: float = DEFAULT_SENSITIVITY, baseline_windows: int = DEFAULT_BASELINE_WINDOWS, latest_only: bool = True) -> QualityAnalysis` — the existing producer gains the three pass-through kwargs so the CLI → analyze → detect path is one call chain.
 
@@ -296,6 +326,47 @@ so the skipped counts and the correlational note are always visible);
   drop is always surfaced even without a named cause. Attribution is
   correlational (a mix shift coinciding with a drop), and the rendered note
   says so, matching `_STANDARD_NOTES`.
+- **Dimension coverage (NULL handling)**: `NULL`/empty dimension values never
+  enter a share denominator, and a dimension is comparable only when its
+  non-NULL coverage is at least `LOW_COVERAGE_THRESHOLD` (reused from
+  `rework.py`) on **both** the flagged window and the pooled baseline. A
+  dimension failing this on either side is skipped for that event. This is
+  what stops the first `ll_version`-stamped month (100% one version vs. a
+  100%-NULL baseline) from being attributed to little-loops, and stops
+  Jan–Apr 2026 windows (no `usage_events`) from anchoring a model shift. The
+  "no data on either side" skip above is the degenerate case of this rule.
+- **Model share weighting**: `model` and `host` shares are weighted by
+  `usage_events` / `raw_events` row count per session (split `1/len(issues)`
+  across multi-issue sessions), not by distinct-model presence per issue. 127
+  of 641 issues on the live DB touch more than one model; presence-weighting
+  would make the smaller model's share equal to the dominant one's. Token
+  weighting was considered and rejected only for simplicity — the row-count
+  loop is one more branch inside the query `_usage_totals()` already runs.
+  Rows whose `model` is the literal `<synthetic>` are excluded from the
+  dimension (62 live rows).
+- **Multi-run issues**: when an issue has more than one `orchestration_runs`
+  row (31 on the live DB), its `ll_version` is taken from the row with the
+  **latest** `started_at` — the run that produced the `done` transition. Note
+  `orchestrator_labels()` (`_utils.py:74-91`) picks the *first* row for the
+  orchestrator label; the two rules differ on purpose and both are documented
+  in the loader docstring.
+- **Host dimension is currently degenerate**: `raw_events.host` is
+  `claude-code` on every live row, so host attribution cannot fire until
+  another host's transcripts are ingested. The loader stays host-agnostic; the
+  rendered note says "host attribution requires transcripts from more than one
+  host".
+- **Latest-window fix-rate is optimistic**: reopens lag closes, so the newest
+  (partial) month rarely shows a `fix_rate` drop; this biases toward false
+  *negatives*, never false alarms. Documented in `notes` and in the CLI doc,
+  not compensated for.
+- **One attribution per flagged window**: all four `QualityWindow` metrics
+  share one `WindowComposition`, so `attribute_change()` is computed once per
+  `(period, series)` and reused across that window's `RegressionEvent`s; the
+  text/markdown formatters group events by window and print the attribution
+  once rather than four times.
+- **`--sensitivity` validation**: the parser rejects values below 0 via an
+  argparse `type` callable (`float` alone accepts `-1`); `--baseline-windows`
+  rejects values below 1.
 
 ### False friend
 
@@ -443,7 +514,16 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
    `retry_inflation` series over `loop_runs` flags and attributes to
    `ll_version`; `latest_only` default emits only the newest window per series
    while `--all-windows` emits historical ones; `--sensitivity`,
-   `--baseline-windows`, `--all-windows` flag tests.
+   `--baseline-windows`, `--all-windows` flag tests. **Dimension-coverage
+   fixtures** (the live-DB shapes): a drop in the first month whose
+   `orchestration_runs`/`loop_runs` rows carry `ll_version` against an all-NULL
+   baseline attributes `None`, not the new version; a window where only one of
+   twenty issues has a stamped version is likewise skipped; a `<synthetic>`
+   model row does not appear in the model dimension. **Weighting fixture**: an
+   issue with one Haiku row and many Sonnet rows contributes to the model
+   dimension by row count, not 50/50. **Multi-run fixture**: an issue with two
+   `orchestration_runs` rows uses the later row's `ll_version`. **Validation
+   fixture**: `--sensitivity -1` and `--baseline-windows 0` exit non-zero.
    Verified by `python -m pytest scripts/tests/test_issue_history_agent_quality.py
    scripts/tests/test_cli_history.py -v`.
 
@@ -541,9 +621,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Priority**: P0 — silent quality regressions are the failure mode the
   metric series exists to catch; without detection the series is observed by
   nobody.
-- **Effort**: Medium — new detection module, genuinely new statistical code
-  (no existing change-point/z-score/rolling-baseline utility exists anywhere in
-  the codebase to adapt), plus 4-format wiring and a CLI flag.
+- **Effort**: Large (matches `size:`) — new detection module, genuinely new
+  statistical code (no existing change-point/z-score/rolling-baseline utility
+  exists anywhere in the codebase to adapt), a composition loader over three
+  tables, 4-format wiring, three CLI flags, and the fixture battery above.
 - **Risk**: Medium — the detection pass is read-only and additive, but the
   statistic itself is novel with no prior value to anchor `DEFAULT_SENSITIVITY`
   to; the main risk is a poorly-calibrated default producing false positives on
@@ -571,6 +652,18 @@ _Wiring pass added by `/ll:wire-issue`:_
   coverage-suppressed (`verdict is None`) windows are ineligible as baselines.
   Running against a DB whose early months predate usage capture does not flag
   the first priced month.
+- A dimension is only attributed when its non-NULL coverage meets
+  `LOW_COVERAGE_THRESHOLD` on both the window and the pooled baseline; the
+  first `ll_version`-stamped month against an all-NULL baseline attributes
+  `None`, never the new version.
+- `model`/`host` shares are row-count weighted (multi-issue sessions split
+  `1/n`); `<synthetic>` model rows are excluded; a multi-run issue's
+  `ll_version` comes from its latest `orchestration_runs` row.
+- `--sensitivity` rejects negative values and `--baseline-windows` rejects
+  values below 1.
+- The rendered notes state that attribution is correlational, that host
+  attribution requires more than one ingested host, and that the newest
+  window under-reports `fix_rate` regressions because reopens lag.
 - By default only the most recent eligible window per series is tested;
   `--all-windows` tests every window.
 - `retry_inflation` (`QualityAnalysis.retry_windows`, keyed by `loop_name`) is
@@ -593,6 +686,25 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 ### Gaps to Address
 - ~~`blocked_by: FEAT-3404` is unresolved~~ — **resolved 2026-09-08**: FEAT-3404 landed (`fb4ea75cc`, `done`) and the `blocked_by` edge has been unlinked. `orchestration_runs.ll_version` / `loop_runs.ll_version` now exist. Re-run `/ll:confidence-check` to re-score against the cleared Dependencies Hard Override.
+
+### Pre-implementation review (2026-09-08)
+
+Manual review against the live DB and code before implementation. Two design
+gaps were found that would have produced wrong output on this repo's own
+`history.db` and are now folded into Decision Rules, Program Design, tests,
+and ACs: (1) the `ll_version` stamp boundary (all live rows are NULL) would
+attribute the first stamped month's drop to little-loops with certainty —
+fixed by the dimension-coverage rule; (2) model share weighting was
+undefined — fixed by row-count weighting. Smaller items folded in: degenerate
+host dimension, multi-run `ll_version` tie-break, `<synthetic>` exclusion,
+optimistic latest-month fix-rate, one attribution per window, flag validation,
+raw_events query cost, and `size`/Effort alignment. Frontmatter housekeeping:
+`verify_verdict: NON_VALID` predates the later refine/wire passes and will
+fail `ll-issues check-verify-verdict`; `confidence_score: 100` predates this
+review. Re-run `/ll:verify-issues` and `/ll:confidence-check` before
+`/ll:manage-issue` rather than hand-editing either field. The stray
+`learning_tests_required: [yaml]` entry was removed — this issue touches only
+the existing PyYAML fallback path and proves nothing new about the library.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-08T18:15:06 - `7bee39e0-dbd1-43e1-ab8d-3353f1d8f05f.jsonl`
