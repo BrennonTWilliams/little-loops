@@ -5,7 +5,7 @@ type: ENH
 priority: P1
 status: open
 discovered_date: '2026-09-08'
-verify_verdict: NON_VALID
+verify_verdict: VALID
 parent: ENH-3397
 labels:
 - harness
@@ -210,7 +210,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/verify_kinds.py` module docstring (lines 4-9) — hardcoded prose list of kindless tables (`meta`, `search_index`, `sessions`, `assistant_messages`, `summary_nodes`, `summary_spans`, `raw_events`); if `harness_admissions` is decided kindless, append it here. Not test-enforced — a missed edit won't fail CI [Agent 2 finding].
-- `docs/reference/CLI.md:4408` (`### ll-verify-kinds` section) — a second, already-divergent copy of the same kindless-table prose list (includes `correction_retirements`, which the docstring above omits); update in lockstep with the docstring above if `harness_admissions` is kindless [Agent 2 finding].
+- `docs/reference/CLI.md:4435` (`### ll-verify-kinds` section, heading now at `:4433`) — a second, already-divergent copy of the same kindless-table prose list (includes `correction_retirements`, which the docstring above omits); update in lockstep with the docstring above if `harness_admissions` is kindless [Agent 2 finding].
+  > ⚠ Superseded — stale: was line 4408, which now falls inside `### ll-verify-decisions`, an unrelated section; the actual kindless-table prose list is at `:4435` (`/ll:verify-issues`, 2026-09-08).
 
 ### Codebase Research Findings
 
@@ -356,6 +357,36 @@ is schema-only groundwork that ENH-3407 (writers) and ENH-3408 (counting) build 
 
 ## Verification Notes
 
+_Added by `/ll:verify-issues` — 2026-09-08 (third pass, post-fix):_
+
+- **Verdict: VALID.** The one drift found in the second pass (`CLI.md:4408` →
+  `:4435` for the `### ll-verify-kinds` kindless-table prose list) has been
+  corrected in place in the **Registrations (docs)** section above. No other
+  anchor changed since the second pass. `verify_verdict` updated from
+  `NON_VALID` to `VALID`.
+
+_Added by `/ll:verify-issues` — 2026-09-08 (second pass):_
+
+- **Verdict: OUTDATED.** Re-checked every anchor from the prior pass plus the ones
+  it left unexamined. All schema.py anchors, all 27 hardcoded `assert
+  SCHEMA_VERSION == 48` test-file line numbers, `TestSchemaV47CredentialScopeEvents`
+  bounds (2753) and its exact-set-assertion line (2764), and `TestSchemaManifest`
+  (2916/2939) still match exactly. `HISTORY_SESSION_GUIDE.md:143`,
+  `ARCHITECTURE.md:670`, and `CLI.md:3912` (credential_scope example line) all
+  confirmed accurate. One new drift found and corrected in place above: **Registrations
+  (docs)** cited `docs/reference/CLI.md:4408` as the `### ll-verify-kinds` section,
+  but that line now falls inside the unrelated `### ll-verify-decisions` section —
+  the heading moved to `:4433` and the actual kindless-table prose list is at
+  `:4435`.
+- **Decisions log**: `ll-issues decisions list --type rule --enforcement required
+  --active-only` returned no active required rules — no `DECISIONS_VIOLATION`.
+- **Evidence-quote check**: `ll-verify-evidence` reported `"ok": true`, 0 findings —
+  no `EVIDENCE_UNVERIFIED`.
+- **Dependency references**: no `## Blocked By`/`## Blocks` sections present — no
+  `DEP_ISSUES`.
+- **Proposal-vs-code check**: not reached — the OUTDATED claim-verdict takes
+  precedence per the verdict-precedence rule.
+
 _Added by `/ll:verify-issues` — 2026-09-08:_
 
 - **Verdict: OUTDATED.** Every prior line-citation "Correction" already recorded by
@@ -391,6 +422,8 @@ _Added by `/ll:verify-issues` — 2026-09-08:_
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-08T19:27:02 - `11906448-7df7-4fe2-877f-bca8a2a33d89.jsonl`
+- `/ll:verify-issues` - 2026-09-08T19:25:46 - `11906448-7df7-4fe2-877f-bca8a2a33d89.jsonl`
 - `/ll:confidence-check` - 2026-09-08T19:15:11 - `6bb0db90-fba6-4ae0-ba6a-a7670d32c039.jsonl`
 - `/ll:format-issue` - 2026-09-08T18:36:34 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:verify-issues` - 2026-09-08T15:44:36 - `f5535f57-91c7-49aa-88ab-44821536803d.jsonl`
