@@ -63,6 +63,12 @@ FEAT-3398's attribution logic needs a per-run little-loops-version stamp to name
 host already are via existing joins. This column is the only piece of that
 Dependencies gap that isn't already recoverable from existing tables.
 
+The `loop_runs.ll_version` half has exactly one consumer: FEAT-3405's
+retry-inflation series is bucketed by `(period, loop_name)` from `loop_runs`
+(not by orchestrator), so version is the only attribution dimension available
+there. If FEAT-3405 scopes retry inflation out, this half becomes
+forward-looking only — still cheap, but call that out in the commit message.
+
 ## Use Case
 
 **Who**: FEAT-3405's quality-regression attribution logic, and any maintainer
@@ -87,15 +93,27 @@ version-share composition the same way it already does for model and host.
 
 ### Schema (v48)
 
-- Add `ll_version TEXT` to `orchestration_runs` (`schema.py:540`) and `loop_runs`.
+- **Append one v48 migration string** to the append-only `_MIGRATIONS` list
+  (`schema.py:124-1330`) containing two statements:
+  `ALTER TABLE orchestration_runs ADD COLUMN ll_version TEXT;` and
+  `ALTER TABLE loop_runs ADD COLUMN ll_version TEXT;`. This is exactly how v38
+  added `base_sha` (`schema.py:949`). **Do not edit** the v22/v23 `CREATE TABLE`
+  strings at `schema.py:540`/`570` — those are frozen history; changing them
+  breaks the checked-in manifest and diverges fresh DBs from upgraded ones.
 - `record_orchestration_run()` / `record_loop_run_summary()`
   (`session_store/writers.py:1287,1428`) gain a keyword-only
   `ll_version: str | None = None` param, defaulting to `little_loops.__version__`
   inside the writer so no call site needs to change.
-- UPSERT uses `COALESCE(excluded.ll_version, ll_version)`, mirroring the
-  `base_sha` pattern (`writers.py:1357-1360`) — those columns are known at
-  dequeue time and "the terminal call passes none of these" (comment,
-  `writers.py:1357`).
+- **UPSERT is first-write-wins**: `ll_version=COALESCE(ll_version,
+  excluded.ll_version)` — note the argument order is the *reverse* of the
+  `base_sha` clause (`writers.py:1358-1360`). Rationale: because the writer
+  always fills `ll_version` from `__version__`, `excluded.ll_version` is never
+  NULL, so the `base_sha` order (`COALESCE(excluded.x, x)`) would degenerate to
+  last-write-wins. The value we want is the version *at dequeue*; a terminal
+  upsert that runs after a mid-run `pip install -e` upgrade must not overwrite
+  it. `COALESCE(ll_version, excluded.ll_version)` keeps the existing stamp when
+  present and fills it on the first write (or on pre-v48 rows that get a later
+  upsert).
 - Bump `SCHEMA_VERSION` 47 → 48.
 
 ### Typed reader path
@@ -159,7 +177,7 @@ Both gain this keyword-only param in `session_store/writers.py` (lines 1287 and 
 
 ### Call Path
 
-`record_orchestration_run()`/`record_loop_run_summary()` (defaults `ll_version` from `little_loops.__version__` when the caller passes none) -> UPSERT `COALESCE(excluded.ll_version, ll_version)` -> `recent_orchestration_runs()`/`aggregate_orchestration_runs()` and `recent_loop_runs()`/`aggregate_loop_runs()` (`history_reader/runs.py`) -> `OrchestrationRun`/`LoopRun` dataclasses (`history_reader/models.py`)
+`record_orchestration_run()`/`record_loop_run_summary()` (defaults `ll_version` from `little_loops.__version__` when the caller passes none) -> UPSERT `COALESCE(ll_version, excluded.ll_version)` (first-write-wins; `loop_runs` is plain `INSERT OR IGNORE`, no merge clause) -> `recent_orchestration_runs()`/`aggregate_orchestration_runs()` and `recent_loop_runs()`/`aggregate_loop_runs()` (`history_reader/runs.py`) -> `OrchestrationRun`/`LoopRun` dataclasses (`history_reader/models.py`)
 
 ### Codebase Research Findings
 
@@ -175,9 +193,15 @@ N/A — no new decision logic.
 ## Tests
 
 - `TestOrchestrationRunLlVersion`-style class in `test_session_store_writers.py`,
-  mirroring `TestOrchestrationRunBaseStamp`'s method set (1364-1519):
-  early-upsert-persists, terminal-upsert-preserves-via-COALESCE,
-  retry-without-value-does-not-clobber, unstamped-write-leaves-null.
+  modeled on `TestOrchestrationRunBaseStamp` (1364-1519) but with a method set
+  adapted to first-write-wins and the always-filled default:
+  early-upsert-stamps-`__version__`-without-caller-passing-it,
+  terminal-upsert-under-a-different-explicit-`ll_version`-does-not-overwrite
+  (the mid-run-upgrade case; pass `ll_version="9.9.9"` on the second call and
+  assert the first value survives), explicit-`ll_version`-on-first-write-is-
+  honored. There is deliberately **no** "unstamped write leaves NULL" method —
+  the public API cannot produce a NULL on a new row; NULL-on-old-rows is covered
+  by the schema upgrade test below.
 - `TestSchemaV38BaseShaColumns`-style class in `test_session_store_schema.py`
   (template: 1902-1967) for the new columns: column-presence via `PRAGMA
   table_info`, negative check that an unrelated table did not gain the column,
@@ -228,8 +252,12 @@ stays passing since the new kwarg is optional.
 - `ll_version` is readable through the typed reader path —
   `recent_orchestration_runs()`/`aggregate_orchestration_runs()`/
   `OrchestrationRun` and their `loop_runs` counterparts — not only via raw SQL.
-- UPSERT preserves an already-recorded `ll_version` across a later write that
-  doesn't pass one (COALESCE), matching the `base_sha` precedent.
+- UPSERT is first-write-wins: a later `record_orchestration_run()` upsert for
+  the same `(run_id, issue_id)` under a different `ll_version` (explicit or
+  defaulted) does not overwrite the value recorded at dequeue
+  (`COALESCE(ll_version, excluded.ll_version)`).
+- The migration is an appended v48 `ALTER TABLE` pair; the v22/v23
+  `CREATE TABLE` strings are unchanged.
 - `schema_manifest.json` matches the live schema; all `SCHEMA_VERSION == 47`
   assertions updated to 48.
 
@@ -238,6 +266,7 @@ stays passing since the new kwarg is optional.
 **Open** | Created: 2026-09-07 | Priority: P0
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T14:54:19 - `8322c870-f979-4103-842d-3ba90b32e30b.jsonl`
 - `/ll:confidence-check` - 2026-09-08T04:24:30 - `34c68e63-9bdf-4f65-a533-7869136a3414.jsonl`
 - `/ll:verify-issues` - 2026-09-08T04:21:41 - `cfa0d01b-9598-41c5-a254-7549b3c32bba.jsonl`
 - `/ll:wire-issue` - 2026-09-08T04:17:48 - `c539b25a-7dc7-4833-af11-0f45b8d423ee.jsonl`

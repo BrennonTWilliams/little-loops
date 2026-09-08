@@ -47,12 +47,14 @@ regression, and there is no attribution of a drop to a candidate cause.
 
 ## Expected Behavior
 
-A new detection pass over `QualityAnalysis.windows` flags drops against a
-baseline of prior windows and, for each flagged window, names the
-model/host/version whose share of the window's runs shifted most versus the
-baseline (or reports "no attributable change" when no dimension's mix moved).
-Detection is deterministic and LLM-free. A fixture corpus with an injected drop
-is flagged; a fixture corpus with none is not.
+A new detection pass over `QualityAnalysis.windows` (and `retry_windows`) flags
+the most recent window of each series when it drops against a baseline of prior
+windows and, for each flagged window, names the model/host/version whose share
+of the window's issues (or loop runs) shifted most versus the baseline (or
+reports "no attributable change" when no dimension's mix moved). Detection is
+deterministic and LLM-free. A fixture corpus with an injected drop is flagged; a
+fixture corpus with none is not; a corpus whose early months predate usage
+capture is not flagged at the capture boundary.
 
 ## Use Case
 
@@ -86,19 +88,46 @@ Detection must be statistical over recorded values only — no LLM in the
 detection path. The evidence chain this feeds is meant to be checkable by
 someone who does not trust the agent.
 
-**Data density rules out change-point detection** (measured against the live
-`.ll/history.db` on 2026-09-08, point-in-time counts that will grow as the DB
-accumulates more runs): windows are calendar months; `orchestration_runs` spans
-2026-08-02..2026-09-08 (two calendar months, zero rows in July); per-orchestrator
-monthly points are sparse (`ll-auto` 2 points, `ll-sprint` 1 point). 210 of 554
-rows have `started_at IS NULL` and land in an empty-period bucket (exact count
-confirmed). The detection statistic is therefore a **prior-K-window baseline
-comparison**, not a change-point algorithm: for each `(metric, orchestrator)`
-series sorted by period, baseline = mean of the previous `K` windows (default
-`K=3`, using however many exist, minimum 1) that clear `min_sample`; the current
-window is flagged when its relative move in the worse direction exceeds
-`sensitivity` and it also clears `min_sample`. Windows with an empty/NULL period
-are excluded from the series and counted in a `skipped_null_period` field.
+**What the series actually is** (corrected 2026-09-08 against the live report,
+`ll-history quality --format json`; point-in-time counts): `QualityWindow`s are
+bucketed by the **`issue_events` done-transition timestamp** (`_load_closed_issues`
+→ `month_key(done_ts)`, `agent_quality.py:225,510`) × the orchestrator label
+from `orchestration_runs.driver` (default `unattributed`). They are **not**
+bucketed by `orchestration_runs.started_at` — an earlier draft measured that
+column and drew its sparsity conclusion from the wrong table. Live shape: 14
+windows spanning 2026-01..2026-09 — `unattributed` 10 points, `ll-auto` 3
+(Jul/Aug/Sep), `ll-sprint` 1 (Aug) — plus one window with `period ==
+"unknown"` (13 closed issues whose `issue_events.ts` is empty; `month_key`
+returns the literal sentinel `"unknown"`, `_utils.py:43-45`). Because
+`"unknown"` sorts lexicographically **after** `"2026-09"`, a naive
+sort-by-period would treat it as the newest window; it must be excluded by
+name.
+
+**Data density still rules out change-point detection** — attributed
+orchestrators have 1–3 points each. The detection statistic is therefore a
+**prior-K-window baseline comparison**, not a change-point algorithm: for each
+`(metric, orchestrator)` series sorted by period, baseline = mean of the
+previous `K` windows (default `K=3`, using however many exist, minimum 1) that
+are eligible (see Decision Rules → Baseline eligibility); the current window is
+flagged when its relative move in the worse direction exceeds `sensitivity` and
+it is itself eligible. Windows whose period is the `"unknown"` sentinel are
+excluded from every series and counted in a `skipped_unknown_period` field.
+
+**The live DB has zero-valued early baselines.** Jan–Apr 2026 report
+`correction_rate`/`cost_per_issue`/`tokens_per_issue` = 0.0 because
+`usage_events`/`user_corrections` capture did not exist yet, not because work was
+free; May then reads cost 0 → 16.49. A relative-move statistic divides by the
+baseline, so without a rule this is both a `ZeroDivisionError` and a guaranteed
+false alarm on first run. See Decision Rules → Baseline eligibility and Latest
+window only.
+
+**Retry inflation is a separate series.** It is not in `QualityWindow.metrics`;
+it lives in `QualityAnalysis.retry_windows`, bucketed by `(period, loop_name)`
+from `loop_runs` (42 live points, the densest series in the report) and has no
+`issue_sessions` join, so model/host are unavailable there. It is detected over
+as a second series keyed by `loop_name`, with attribution restricted to the
+`ll_version` dimension read from `loop_runs.ll_version` — which is the sole
+consumer of FEAT-3404's `loop_runs` half.
 
 **There is no single "model in effect" per window.** The DB runs multiple models
 concurrently per orchestration-run month. A boundary join has nothing to join
@@ -122,13 +151,15 @@ usage_events.model` (the join the cost metric already uses; reaches 623 of 641
 Depends on the local agent-quality report over `history.db` for metric
 definitions and windowing (`analyze_agent_quality()`, already shipped).
 
-**Sequencing note carried from parent**: ENH-3397 (`blocked_by: FEAT-3398`)
-reclassifies retries and will change the `retry_inflation` metric this pass
-detects over — it must re-run the injected-drop/no-drop fixtures for
-`retry_inflation` after its change once this issue lands. FEAT-3399
-forward-references this issue's type names — keep
-`QualityRegressionAnalysis`/`RegressionEvent`/`RunAttribution` stable once
-landed.
+**Sequencing (re-checked 2026-09-08)**: the parent's sequencing note is stale.
+ENH-3397 (retry reclassification) and FEAT-3399 (cross-repo aggregation) are
+both `done`, so the retry-inflation fixtures here are simply written against
+the current, already-reclassified `loop_runs.iterations` semantics — no
+follow-up re-run is owed. FEAT-3399 never referenced this issue's type names
+(grep confirmed). The live sibling to coordinate with is **FEAT-3410** (open,
+`blocked_by: FEAT-3409`), which cites the same `analyze_agent_quality()` /
+`format_agent_quality_*` signatures this issue extends; whichever lands second
+re-verifies its citations.
 
 ## Proposed Solution
 
@@ -157,27 +188,38 @@ report run.
 - `RunAttribution`: `dimension: Literal["model", "host", "ll_version"]`,
   `value: str`, `window_share: float`, `baseline_share: float`, `shift: float`
   (= `window_share - baseline_share`).
-- `RegressionEvent`: `metric: str`, `window: QualityWindow`, `baseline_periods:
-  list[str]`, `baseline_value: float`, `magnitude: float` (relative move in the
-  worse direction), `attribution: RunAttribution | None`; `to_dict()`.
+- `RegressionEvent`: `metric: str`, `series: str` (the orchestrator label for
+  `QualityWindow` metrics, the `loop_name` for `retry_inflation`), `period:
+  str`, `value: float`, `baseline_periods: list[str]`, `baseline_value: float`,
+  `magnitude: float` (relative move in the worse direction), `attribution:
+  RunAttribution | None`; `to_dict()`. Carries scalars rather than the whole
+  `QualityWindow` so the same type serves both series.
 - `QualityRegressionAnalysis`: `events: list[RegressionEvent]`, `sensitivity:
-  float`, `baseline_windows: int`, `skipped_null_period: int`, `notes:
-  tuple[str, ...]`; `to_dict()`. Follows the `detect_* -> *Analysis` convention.
-  **Not** `RegressionAnalysis` — that name is taken by the unrelated bug-fix
-  clustering type in `issue_history/models.py`.
-- `WindowComposition`: `period: str`, `orchestrator: str`, `shares:
-  dict[str, dict[str, float]]` (dimension -> value -> share of runs). Built
-  from `issue_sessions -> usage_events.model` / `raw_events.host` and
-  `orchestration_runs.ll_version`.
+  float`, `baseline_windows: int`, `latest_only: bool`, `skipped_unknown_period:
+  int`, `skipped_zero_baseline: int`, `notes: tuple[str, ...]`; `to_dict()`.
+  Follows the `detect_* -> *Analysis` convention. **Not** `RegressionAnalysis`
+  — that name is taken by the unrelated bug-fix clustering type in
+  `issue_history/models.py`.
+- `WindowComposition`: `period: str`, `series: str`, `counts: dict[str,
+  dict[str, float]]` (dimension -> value -> weighted count) plus a derived
+  `shares()` helper. Storing counts (not shares) is what lets the baseline
+  composition be **pooled** across K windows rather than a mean-of-shares.
+  **Unit of "share"**: for `QualityWindow` series, the unit is a *closed issue
+  in the window*; each issue contributes to every distinct `usage_events.model`
+  (and `raw_events.host`) seen across its sessions, weighted by the same
+  `1/len(issues)` multi-issue-session split `_usage_totals()` already uses
+  (`agent_quality.py:295-334`), and to exactly one `ll_version` from its
+  `orchestration_runs` row (issues in `unattributed` windows have no such row,
+  so that dimension is simply empty there). For the `retry_inflation` series
+  the unit is a `loop_runs` row and the only dimension is `ll_version`.
 
 ### Signatures
 
-- `DEFAULT_SENSITIVITY = 0.30`, `DEFAULT_BASELINE_WINDOWS = 3`, `ATTRIBUTION_MIN_SHIFT = 0.25` (module constants)
-- `detect_quality_regressions(analysis: QualityAnalysis, compositions: list[WindowComposition], *, sensitivity: float = DEFAULT_SENSITIVITY, baseline_windows: int = DEFAULT_BASELINE_WINDOWS, min_sample: int = MIN_SAMPLE_SIZE) -> QualityRegressionAnalysis`
-- `attribute_change(window: WindowComposition, baseline: list[WindowComposition], *, min_shift: float = ATTRIBUTION_MIN_SHIFT) -> RunAttribution | None`
-- `load_window_compositions(conn, issue_window: dict[int, tuple[str, str]]) -> list[WindowComposition]`
-
-  Reuses the per-issue `(period, orchestrator)` map `analyze_agent_quality()` already builds at `agent_quality.py:510`.
+- `DEFAULT_SENSITIVITY = 0.30`, `DEFAULT_BASELINE_WINDOWS = 3`, `ATTRIBUTION_MIN_SHIFT = 0.25`, `HIGHER_IS_BETTER: frozenset[str] = frozenset({"fix_rate"})` (module constants; `classify_verdict` has no direction flag — fix-rate's verdict is derived upstream from `rework_share`, so the direction set must be explicit here)
+- `detect_quality_regressions(analysis: QualityAnalysis, compositions: list[WindowComposition], *, sensitivity: float = DEFAULT_SENSITIVITY, baseline_windows: int = DEFAULT_BASELINE_WINDOWS, latest_only: bool = True) -> QualityRegressionAnalysis` — no `min_sample` parameter: eligibility is read from `QualityMetric.insufficient_history` / `RetryWindow.insufficient_history`, which `analyze_agent_quality()` already computed from `analysis.min_sample_size`.
+- `attribute_change(window: WindowComposition, baseline: list[WindowComposition], *, min_shift: float = ATTRIBUTION_MIN_SHIFT) -> RunAttribution | None` — pools `baseline` counts before computing shares.
+- `load_window_compositions(conn, issue_window: dict[int, tuple[str, str]], issue_ids: dict[int, str], session_issues: dict[str, set[int]]) -> list[WindowComposition]` — `issue_ids` maps `issue_num -> issue_id` text (needed to join `orchestration_runs.issue_id`, which is TEXT); `session_issues` is the `_session_issue_map()` result `analyze_agent_quality()` already holds. All three inputs are locals of `analyze_agent_quality()` at `agent_quality.py:504-514`; extend the `closed` loop there to also build `issue_ids`.
+- `analyze_agent_quality(issues, *, db=DEFAULT_DB_PATH, min_sample=MIN_SAMPLE_SIZE, sensitivity: float = DEFAULT_SENSITIVITY, baseline_windows: int = DEFAULT_BASELINE_WINDOWS, latest_only: bool = True) -> QualityAnalysis` — the existing producer gains the three pass-through kwargs so the CLI → analyze → detect path is one call chain.
 
 ### Call Path
 
@@ -185,18 +227,41 @@ report run.
 `QualityAnalysis` (gains an optional `regressions: QualityRegressionAnalysis |
 None` field) -> `detect_quality_regressions()` -> all four formatters:
 `format_agent_quality_markdown()`/`_text()` gain an additive `if
-analysis.regressions and analysis.regressions.events:` block; `_json()`/`_yaml()`
-pick it up through `QualityAnalysis.to_dict()`.
+analysis.regressions is not None:` block (rendered even when `events` is empty,
+so the skipped counts and the correlational note are always visible);
+`_json()`/`_yaml()` pick it up through `QualityAnalysis.to_dict()`.
 
 ### Decision Rules
 
 - **Detection statistic**: prior-K-window baseline comparison (not
-  change-point). Per `(metric, orchestrator)` series: baseline = mean of the
-  up-to-`baseline_windows` preceding windows that clear `min_sample`; flag when
-  the current window clears `min_sample` and its relative move in the worse
-  direction (per each metric's existing `higher_is_better`/lower-is-better
-  convention in `classify_verdict`, `issue_history/_utils.py:57-71`) exceeds
-  `sensitivity`. NULL/empty-period windows are excluded and counted.
+  change-point). Per `(metric, series)` — series = orchestrator for the four
+  `QualityWindow` metrics, `loop_name` for `retry_inflation` — sorted by
+  period: baseline = mean of the up-to-`baseline_windows` preceding *eligible*
+  windows; flag when the current window is eligible and its relative move in
+  the worse direction exceeds `sensitivity`. Direction comes from
+  `HIGHER_IS_BETTER` (only `fix_rate`); everything else, including
+  `retry_inflation`, is lower-is-better. Magnitude = `(baseline - value) /
+  baseline` for higher-is-better, `(value - baseline) / baseline` otherwise.
+- **Unknown-period exclusion**: windows whose `period == "unknown"` (the
+  `month_key` sentinel, `_utils.py:43-45`) are dropped from every series before
+  sorting and counted in `skipped_unknown_period`. They are never the "latest"
+  window even though the string sorts last.
+- **Baseline eligibility**: a window is eligible for either side of the
+  comparison only if `insufficient_history` is False **and**
+  `metric.verdict is not None` (the cost coverage gate; a pricing-table gap must
+  not read as a regression). Additionally, for `cost_per_issue` and
+  `tokens_per_issue` a window with `value == 0.0` is ineligible as a baseline —
+  on the live DB Jan–Apr 2026 are zero only because usage capture didn't exist.
+  If, after these filters, `baseline_value == 0` (legitimately possible for
+  `correction_rate`), the comparison is skipped and counted in
+  `skipped_zero_baseline`; a relative move against zero is undefined, and
+  `classify_verdict`'s "0 → anything = degrading" shortcut is too blunt for an
+  alert that is supposed to be rarer and louder than a verdict.
+- **Latest window only (default)**: only the most recent eligible window of
+  each series is tested; `latest_only=False` (`--all-windows`) tests every
+  window against its own trailing baseline. Rationale: the use case is "did
+  quality move in *this* report run"; on the live DB the all-windows mode
+  emits historical Aug-vs-Jul and May-vs-Apr alerts on every invocation.
 - **Sensitivity default**: `DEFAULT_SENSITIVITY = 0.30`, deliberately wider than
   `classify_verdict`'s ±20% band so an alert is rarer and louder than a
   `degrading` verdict. Document the tradeoff: at `min_sample=5` a fix-rate
@@ -209,6 +274,13 @@ pick it up through `QualityAnalysis.to_dict()`.
   `detect_config_gaps`, `detect_cross_cutting_smells`,
   `detect_recurring_feedback`, `detect_skill_bypass`); empty `events` is the
   not-found sentinel.
+- **Baseline composition is pooled**: `attribute_change()` sums the
+  `WindowComposition.counts` of all baseline windows per `(dimension, value)`
+  and derives shares from the pooled totals, so a large baseline month is not
+  outweighed by a tiny one. Only *increases* in share are candidates (the
+  thing that showed up more is the named suspect); a dimension with no data on
+  either side (e.g. `ll_version` for `unattributed`, or every dimension for a
+  pre-v48 baseline) is skipped, not treated as a 0 → X shift.
 - **Attribution dismissal escape hatch**: when no dimension's share shift in
   the flagged window exceeds `ATTRIBUTION_MIN_SHIFT` versus the baseline
   windows, `attribute_change()` returns `None` and the report renders "no
@@ -251,7 +323,7 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `scripts/little_loops/cli/history.py` — `ll-history quality` subcommand
   (parser line 251, handler line 470) calls `analyze_agent_quality` then
   `format_agent_quality_{json,yaml,markdown,text}` (487-496); this is where
-  `--sensitivity`/`--baseline-windows` are added.
+  `--sensitivity`/`--baseline-windows`/`--all-windows` are added.
 - `scripts/little_loops/issue_history/quality_regressions.py` (new module) —
   types, `load_window_compositions`, `detect_quality_regressions`,
   `attribute_change`.
@@ -311,25 +383,42 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 1. `load_window_compositions()` in a new sibling module
    `scripts/little_loops/issue_history/quality_regressions.py` builds per-
-   `(period, orchestrator)` model/host/`ll_version` shares from `issue_sessions
-   -> usage_events.model`, `issue_sessions -> raw_events.host`, and
-   `orchestration_runs.ll_version`, reusing the `issue_window` map
-   `analyze_agent_quality()` already builds (`agent_quality.py:510`).
+   `(period, series)` weighted counts: model/host from `issue_sessions ->
+   usage_events.model` / `raw_events.host` (1/n multi-issue split), `ll_version`
+   from `orchestration_runs.ll_version` joined on `issue_id` text, plus a
+   per-`(period, loop_name)` `ll_version` composition from `loop_runs` for the
+   retry series. Inputs are the `issue_window`/`session_issues` locals
+   `analyze_agent_quality()` already builds (`agent_quality.py:504-514`) plus a
+   new `issue_ids: dict[int, str]` built in the same `closed` loop.
 2. `detect_quality_regressions()` and `attribute_change()` in the same module,
-   per Program Design; `analyze_agent_quality()` calls them and stores the
-   result on the new `QualityAnalysis.regressions` field.
+   per Program Design (two series families, unknown-period exclusion, baseline
+   eligibility, zero-baseline skip, latest-only default, pooled attribution);
+   `analyze_agent_quality()` gains `sensitivity`/`baseline_windows`/
+   `latest_only` kwargs, calls them, and stores the result on the new
+   `QualityAnalysis.regressions` field.
 3. All four formatters render the result: additive blocks in
-   `format_agent_quality_markdown()`/`_text()`, `to_dict()` for json/yaml.
-4. `--sensitivity` (and `--baseline-windows`) flags on `ll-history quality`
-   with the `is not None` guard (`cli/history.py:484-487`).
+   `format_agent_quality_markdown()`/`_text()`, `to_dict()` for json/yaml. The
+   block shows `skipped_unknown_period`/`skipped_zero_baseline` counts and the
+   correlational-attribution note even when `events` is empty.
+4. `--sensitivity`, `--baseline-windows`, and `--all-windows` flags on
+   `ll-history quality` with the `is not None` guard (`cli/history.py:484-487`)
+   for the two numeric flags.
 5. Add `detect_quality_regressions`, `attribute_change`,
    `load_window_compositions`, `RunAttribution`, `RegressionEvent`,
    `QualityRegressionAnalysis`, `WindowComposition` to
    `issue_history/__init__.py`'s imports, `__all__`, and docstring export list.
 6. Tests: injected-drop / no-drop fixture pair per `TestFixRate`; a
    mixed-model fixture where a drop coincides with a model-share shift asserts
-   the attribution, and one where the mix is unchanged asserts `None`;
-   NULL-`started_at` rows are excluded not bucketed; `--sensitivity` flag test.
+   the attribution, and one where the mix is unchanged asserts `None`; an
+   `issue_events` row with empty `ts` lands in `skipped_unknown_period` and is
+   never the latest window; a zero-baseline `correction_rate` series is skipped
+   and counted, not raised or flagged; a cost series whose first months are 0.0
+   with no `usage_events` does **not** flag the first priced month; a
+   coverage-suppressed cost window (`verdict is None`) is ineligible; a
+   `retry_inflation` series over `loop_runs` flags and attributes to
+   `ll_version`; `latest_only` default emits only the newest window per series
+   while `--all-windows` emits historical ones; `--sensitivity`,
+   `--baseline-windows`, `--all-windows` flag tests.
    Verified by `python -m pytest scripts/tests/test_issue_history_agent_quality.py
    scripts/tests/test_cli_history.py -v`.
 
@@ -415,7 +504,9 @@ _Wiring pass added by `/ll:wire-issue`:_
   `format_agent_quality_*` entries need `detect_quality_regressions`/
   `attribute_change`/`RunAttribution`/`RegressionEvent` added.
 - `docs/reference/CLI.md:3162` (`#### ll-history quality`) — document the new
-  regression-alert output and `--sensitivity`/`--baseline-windows` flags.
+  regression-alert output and `--sensitivity`/`--baseline-windows`/
+  `--all-windows` flags, including the latest-only default and the
+  zero-baseline / unknown-period skip counts.
 - `docs/guides/HISTORY_SESSION_GUIDE.md:485` — reconcile the existing
   forward-reference to "a downstream regression-detection consumer" once this
   lands.
@@ -447,8 +538,18 @@ _Wiring pass added by `/ll:wire-issue`:_
   reports "no attributable change" when no shift exceeds `ATTRIBUTION_MIN_SHIFT`.
 - A fixture where a drop coincides with a model-mix shift attributes to that
   model; a fixture with the same drop and an unchanged mix attributes `None`.
-- Rows with NULL `started_at` are excluded from the series and reported as a
-  count, never bucketed into an empty period.
+- Windows whose period is the `month_key` sentinel `"unknown"` are excluded
+  from every series and reported as a count; they are never selected as the
+  latest window.
+- A zero baseline is skipped and counted (`skipped_zero_baseline`), never
+  raised or flagged; zero-valued `cost_per_issue`/`tokens_per_issue` windows and
+  coverage-suppressed (`verdict is None`) windows are ineligible as baselines.
+  Running against a DB whose early months predate usage capture does not flag
+  the first priced month.
+- By default only the most recent eligible window per series is tested;
+  `--all-windows` tests every window.
+- `retry_inflation` (`QualityAnalysis.retry_windows`, keyed by `loop_name`) is
+  detected over as its own series, attributed on `ll_version` only.
 - Sensitivity is configurable via `--sensitivity`, with a documented default
   and its false-positive tradeoff.
 - All four output formats (`text`, `markdown`, `json`, `yaml`) carry the
