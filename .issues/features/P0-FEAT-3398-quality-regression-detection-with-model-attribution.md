@@ -292,12 +292,83 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 - _(Resolved 2026-09-07: both decisions below are now recorded in Program Design → Decision Rules and Proposed Solution → Decision Rationale; the call-site fanout above is also reduced to a single optional writer kwarg.)_ Two architecture-convention decisions are left open at spec time rather than resolved: (1) `detect_quality_regressions() -> list[RegressionEvent]` deliberately departs from the codebase's `detect_*` → `*Analysis`-wrapper convention with no decision recorded; (2) the `--sensitivity` config convention (module-constant + CLI flag vs. `.ll/ll-config.json` schema entry) is explicitly left for the implementer to decide. Resolving both before coding starts would reduce mid-implementation rework and keep the change consistent with the rest of `issue_history/`.
 - The core `detect_quality_regressions()`/`attribute_change()` logic is genuinely new statistical code — no existing change-point/z-score/rolling-baseline utility exists anywhere in the codebase to adapt, and `DEFAULT_SENSITIVITY` has no prior value to anchor to.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-08._
+
+**Verdict: NEEDS_UPDATE.** Broad citation audit (60+ path:line references across
+Files to Modify/Dependent Files/Tests/Documentation) is almost entirely accurate,
+but the "Design review corrections" data claims (Design notes, lines 61-63) — which
+directly justify the K=3 baseline-window design decision and the rejection of
+change-point detection — do not match the live `.ll/history.db` as of this pass,
+and 4 test citations point to content that isn't there.
+
+**Design review corrections numbers are wrong (checked directly against
+`.ll/history.db`):**
+- Claimed "orchestration_runs on this repo spans three months (2026-07..2026-09)".
+  Actual: `MIN(started_at)`=2026-08-02, `MAX(started_at)`=2026-09-08 — two months
+  (Aug, Sep), zero rows in July.
+- Claimed "each orchestrator has 3-4 points" (one point per month). Actual
+  per-driver-month counts: `ll-auto` has 2 points (2026-08, 2026-09), `ll-sprint`
+  has 1 point (2026-08 only) — not 3-4 for either.
+- Claimed "5-8 models concurrently" per month (`usage_events.model` grouped by
+  month, scoped to orchestration-run periods). Actual: 3 distinct models in
+  2026-08, 1 in 2026-09.
+- Claimed "623/639 issues" reachable via `issue_sessions -> usage_events`. Actual:
+  623 reachable out of 641 total `issue_sessions` rows, not 639.
+- `210 of 554 rows have started_at IS NULL` — this one **is accurate** (confirmed
+  exactly: 210/554).
+
+None of these overturn the section's conclusion (a K-window baseline over
+change-point detection is still the right call with even sparser data than
+claimed — if anything the real numbers make the case *stronger*), but the cited
+figures are the ones a reader would use to sanity-check `DEFAULT_BASELINE_WINDOWS
+= 3`, and right now three of the four don't hold up. These should be corrected to
+the measured values (or hedged as "as of a point-in-time query" since the DB
+grows) before this issue is treated as implementation-ready on this section.
+
+**Broken test citations** (content does not exist at the cited location):
+- `scripts/tests/test_session_store_queries.py:519-532` — file is only 258 lines;
+  no `record_orchestration_run`/`record_loop_run_summary` reference anywhere in
+  the file.
+- `scripts/tests/test_issue_history_cli.py:1705-1813` — file is only 1384 lines;
+  no matching content. The real `TestHistoryQualitySubcommand` (4 tests) is
+  already correctly cited elsewhere in this issue at
+  `scripts/tests/test_cli_history.py:220-271` — this citation looks like a
+  duplicate/misattribution, not a second real call site.
+- `scripts/tests/test_history_reader_events.py:255-256` — those lines are inside
+  an unrelated `write_advisor_consult(...)` call (FEAT-3300 telemetry), not a
+  `record_orchestration_run`/`record_loop_run_summary` site. The paired citation
+  `453-601` in the same file is correct.
+- `scripts/little_loops/cli/doctor.py:502` — claims this line imports
+  `SCHEMA_VERSION`; line 502 is actually inside an unrelated local-import block
+  (`_MIGRATIONS`, `_current_version`, `_reference_manifest_at`,
+  `_schema_manifest`). `SCHEMA_VERSION` appears in this file only as a prose
+  mention in a docstring (line 493), never as an import.
+
+**Everything else confirmed accurate**, including: `SCHEMA_VERSION = 47`
+(current, matches all "will become 48" framing), all Files-to-Modify/core producer
+citations, the model/host/version schema gap description, all `conventions in
+force` citations, all remaining ~50 test and documentation citations across the
+two wiring passes, and `ll-verify-evidence` (0 findings, evidence quotes check
+out). No active required decision-log rule conflicts found. `ll-code` graph
+(codegraph, fresh) corroborated but did not originate any verdict here.
+
+**Minor B6 note (proposal-vs-code, not blocking the verdict):** the Wiring
+Phase's typed-reader-path extension (`history_reader/runs.py`/`models.py` needing
+`ll_version` added "or new columns are invisible through this typed reader path")
+is a real integration point with no corresponding Acceptance Criterion — AC6 only
+asserts the column is recorded and reads back NULL on old rows, not that it's
+exposed through `recent_orchestration_runs`/`OrchestrationRun`. Worth an AC or an
+explicit test-only commitment so an implementer can't silently skip that file pair.
+
 ## Status
 
 **Open** | Created: 2026-09-07 | Priority: P0
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-08T03:15:59 - `678c326e-fc86-494b-a748-b2de144186b6.jsonl`
 - `/ll:wire-issue` - 2026-09-08T03:07:40 - `10d02141-1a61-4549-ac75-31b74fcc4540.jsonl`
 - `/ll:refine-issue` - 2026-09-08T02:52:50 - `db8f4456-9d33-4a56-83a5-6fd56728c61f.jsonl`
 - `/ll:decide-issue` - 2026-09-08T02:38:37 - `dbbb8e28-65c6-4fbb-8510-be5c16cd4905.jsonl`

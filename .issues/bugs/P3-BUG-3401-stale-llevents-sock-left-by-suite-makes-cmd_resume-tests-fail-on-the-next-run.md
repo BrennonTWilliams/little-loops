@@ -1,8 +1,7 @@
 ---
 id: BUG-3401
 type: BUG
-title: Stale .ll/events-*.sock left by suite makes cmd_resume tests fail on the next
-  run
+title: Unmocked cmd_resume tests bind live sockets in the real .ll/ and fail after the third bind per process
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -19,19 +18,33 @@ learning_tests_required:
 reconcile_attempted: true
 ---
 
-# BUG-3401: Stale .ll/events-*.sock left by suite makes cmd_resume tests fail on the next run
+# BUG-3401: Unmocked cmd_resume tests bind live sockets in the real .ll/ and fail after the third bind per process
 
 ## Summary
 
-Running the full unit suite on a tree where `.ll/events-*.sock` files already exist produces 35 failures in `scripts/tests/test_cli_loop_lifecycle.py` (the `cmd_resume` transport tests). The files are left behind by the suite's own earlier socket-transport tests, so a second consecutive run of `python -m pytest scripts/tests/` in the same checkout is red while a run after `rm .ll/events-*.sock` is green.
+> **Premise corrected 2026-09-08 (manual review, reproduced on `main`):** stale `.ll/events-*.sock` files are a *symptom*, not the trigger. `scripts/tests/test_cli_loop_lifecycle.py` fails identically (34 failures, `-n 0` and default xdist addopts alike) on a completely clean `.ll/`. The real cause is that every unmocked `cmd_resume(...)` call binds a real `UnixSocketTransport` in the repo's `.ll/` and never closes it, so live listeners accumulate *inside the test process* and the third bind per worker raises. The original stale-file narrative below is kept for history but is superseded by this section and the corrected Current Behavior / Steps to Reproduce.
 
-Observed 2026-09-07 while verifying the EPIC-3212 merge. `.ll/events.sock` and `.ll/events-<pid>.sock` were present with no live process holding them (`lsof -U` empty).
+Since commit `90c1e137` (2026-09-07 17:30, "feat(events): enable socket events transport") this repo's own `.ll/ll-config.json` sets `events.transports: ["socket"]`. `cmd_resume` (`cli/loop/lifecycle.py:713`) does `config = BRConfig(Path.cwd())`, so every test that calls it for real without mocking `little_loops.config.BRConfig` loads that config and `wire_transports()` binds a real socket at cwd-relative `.ll/events.sock`. Because those tests mock `PersistentExecutor`, the `executor.close_transports()` in the `finally` (`lifecycle.py:765`) is a MagicMock no-op and the listener stays live for the rest of the process. `test_cli_loop_lifecycle.py` has been deterministically red on `main` since that commit, independent of stale files.
+
+Originally observed 2026-09-07 while verifying the EPIC-3212 merge, where it was misattributed to leftover socket files (`lsof -U` was empty only because the listeners die with the pytest process, leaving orphan files behind).
 
 ## Current Behavior
 
-- Some socket-transport test (candidates: `scripts/tests/test_transport.py`, `scripts/tests/test_feat3323_sse_bridge.py`) binds `UnixSocketTransport` against the real project `.ll/` directory instead of `tmp_path`, or binds it there and never calls `close()`, so the socket file survives the test session.
-- On the next run, `_claim_socket_path()` in `scripts/little_loops/transport.py` treats the stale file as a possible live listener (BUG-3324 sibling logic), pushes the transport onto an `events-<pid>.sock` sibling path, and the `cmd_resume` tests that assert on the wiring/teardown path fail.
-- The failure is order- and state-dependent, so it looks like a regression in whatever branch was merged last. It cost an investigation cycle on EPIC-3212 before it was traced to the leftover files.
+Within one pytest worker process, each real (unmocked-`BRConfig`) `cmd_resume` call reaches `wire_transports()` → `UnixSocketTransport.__init__` → `_claim_socket_path(Path(".ll/events.sock"))`:
+
+1. **First call** probes `.ll/events.sock` → ABSENT (or RECLAIMABLE if a stale file is present; it is unlinked) → binds it. The listener is never closed.
+2. **Second call** probes `.ll/events.sock` → LIVE (our own process is listening) → falls back to `.ll/events-<pid>.sock` → binds it. Never closed.
+3. **Third and every later call** finds both paths LIVE and `_claim_socket_path` raises:
+   ```
+   RuntimeError: UnixSocketTransport: pid-suffixed path .ll/events-<pid>.sock is claimed by a live listener, which cannot happen for a distinct live process
+   ```
+
+Every subsequent unmocked `cmd_resume` test in that worker fails. Under `--dist loadfile` the whole file lands on one worker, so the count is stable at 34. The orphaned `.ll/events.sock` / `.ll/events-<pid>.sock` files left after the run are the artifact that prompted the original (incorrect) stale-file hypothesis; `_claim_socket_path` reclaims them correctly on the next run, so they do not themselves cause failures.
+
+Side effect worth noting: `TestCmdResumeBackground::test_foreground_internal_*` patches `little_loops.cli.loop.lifecycle.os.getpid` to `99999`. That is the global `os` module, so `_claim_socket_path`'s suffixed bind produces `.ll/events-99999.sock`. Harmless once the transport is mocked, but it explains that oddly-named orphan.
+
+- ~~Some socket-transport test (candidates: `scripts/tests/test_transport.py`, `scripts/tests/test_feat3323_sse_bridge.py`) binds `UnixSocketTransport` against the real project `.ll/` directory~~ — disproven by refine pass (both files bind under `short_tmp_path` and close).
+- ~~The failure is order- and state-dependent~~ — it is deterministic on a clean tree.
 
 ### Codebase Research Findings
 
@@ -45,15 +58,16 @@ The more likely mechanism, found by tracing `wire_transports()` itself (`scripts
 
 ## Steps to Reproduce
 
-1. In a clean checkout, run `python -m pytest scripts/tests/` once — it passes and leaves `.ll/events.sock` and/or `.ll/events-<pid>.sock` behind (the socket-transport tests bind against the real project `.ll/` instead of `tmp_path`, or never call `close()`).
-2. Without removing those files, run `python -m pytest scripts/tests/` again in the same checkout.
-3. Observe: 35 failures in `scripts/tests/test_cli_loop_lifecycle.py` (`cmd_resume` transport tests) — `_claim_socket_path()` treats the stale, listener-less socket file as live and pushes the transport onto an `events-<pid>.sock` sibling path, breaking the wiring/teardown assertions.
+1. On `main` at or after `90c1e137`, ensure `.ll/` has no `events*.sock` files (`rm -f .ll/events*.sock`) to rule out the stale-file hypothesis.
+2. Run `python -m pytest scripts/tests/test_cli_loop_lifecycle.py -n 0 -p no:randomly`.
+3. Observe (verified 2026-09-08): `34 failed, 104 passed`. The first failure is the **third** unmocked `cmd_resume` test in collection order (`TestCmdResume::test_resume_with_minutes_duration`), raising `RuntimeError: ... pid-suffixed path .ll/events-<pid>.sock is claimed by a live listener`. The same 34 fail under the default `-n logical --dist loadfile` addopts.
+4. After the run, `.ll/events.sock` and `.ll/events-<pid>.sock` (plus `events-99999.sock`) exist as orphans — the artifact previously mistaken for the cause.
 
 ## Expected Behavior
 
-- No test writes into the checkout's real `.ll/`; socket-transport tests bind under `tmp_path` (or monkeypatch the project root) and close the transport in teardown.
-- Two consecutive full-suite runs in the same checkout are both green with no manual cleanup.
-- Ideally `_claim_socket_path()`'s stale-vs-live probe treats a socket with no listener as stale and reclaims it, so a crashed producer does not poison later runs either.
+- No test loads this repo's real `.ll/ll-config.json` or binds a socket in the checkout's real `.ll/`; every `cmd_resume`/`cmd_run`/`main_parallel`/`_cmd_sprint_run` test either mocks `BRConfig` + `wire_transports` or runs under an isolated cwd/config.
+- `scripts/tests/test_cli_loop_lifecycle.py` is green on a clean tree, and two consecutive full-suite runs in the same checkout are both green with no manual cleanup.
+- ~~Ideally `_claim_socket_path()` treats a listener-less socket as stale~~ — already implemented and pinned by tests (see wiring pass); no change needed.
 
 ## Integration Map
 
@@ -97,8 +111,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - **Root cause confirmed and localized.** The full chain: `cmd_resume` (`cli/loop/lifecycle.py:713`) does `config = BRConfig(Path.cwd())` — loading the **entire config object**, not just `log_dir`, from process cwd, independent of the `tmp_path`/`project_root` argument passed to `cmd_resume` for everything else. `cmd_run` (`cli/loop/run.py:230`) and `main_parallel` (`cli/parallel.py:195-196`, `project_root = args.config or Path.cwd()`) do the same. During `python -m pytest scripts/tests/`, cwd is the repo root, so any test that doesn't mock `little_loops.config.BRConfig` loads this repo's real `.ll/ll-config.json` (`events.transports: ["socket"]`), and `wire_transports()`'s `log_dir` default (`transport.py:1896`) then binds a real socket at the real repo `.ll/`.
-- **Exact vulnerable test list** in `scripts/tests/test_cli_loop_lifecycle.py` (reach the real `wire_transports()` call, mock only `load_loop`/`StatePersistence`/`PersistentExecutor`, never `BRConfig` or `wire_transports`): `test_nothing_to_resume_returns_1` (639-657), `test_resume_success` (659-684), `test_resume_with_minutes_duration` (686-723), `test_resume_awaiting_continuation` (725-761), `test_resume_non_terminal_returns_1` (~763), `test_context_overrides_applied_to_fsm` (859-884), `test_design_tokens_context_injected_via_cmd_resume` (921-948), `test_design_guidance_context_injected_via_cmd_resume` (950-977), `test_input_hash_injected_via_cmd_resume` (979-1010).
-- **Confirmed safe** (return before the `wire_transports()` call is reached): `test_file_not_found_returns_1` (612-624), `test_validation_error_returns_1` (626-637), `test_context_invalid_format_raises_system_exit` (886-901), all of `TestCmdResumeBackground` (1011-1269, `background=True` returns via `run_background` before the wire block), and all `cmd_run` tests in this file (`TestCmdRunHandoffThreshold` 1348-1441, `TestCmdRunYAMLConfigOverrides` 1628-1724 — `_make_args()` defaults `dry_run=True`, which returns before `wire_transports`).
+- **Vulnerable test list — CORRECTED 2026-09-08.** The wiring pass's list of 9 was wrong by ~4x. Empirically (clean `.ll/`, `-n 0 -p no:randomly`), **34 tests fail**, and since the first two binds per process succeed silently, the true exposure is every real `cmd_resume` call that reaches `wire_transports()` — roughly 36 tests spanning `TestCmdResume`, `TestCmdResumeBackground` (its foreground-path tests: `test_no_background_flag_runs_foreground`, `test_foreground_internal_registers_pid_cleanup`, `test_foreground_internal_does_not_overwrite_parent_pid`, `test_plain_foreground_resume_pid_passed_to_signal_handler`, `test_resume_registers_signal_handlers`), `TestDesignTokensOptOut` (all `test_resume_*design_tokens*` cases incl. 6 parametrized), `TestCmdResumeMultiInstance`, `TestCmdResumeInterrupted`, the exit-code tests (`test_nonzero_exit_for_limit_termination[*]`, `test_zero_exit_for_graceful_termination[*]`, `test_failure_terminal_returns_distinct_exit_code`, `test_unknown_terminated_by_returns_1`), `test_resume_wires_display_callback_to_event_bus`, and `test_workdir_vanished_returns_exit_code_1`. Full failing list from the reproduction:
+  `test_context_overrides_applied_to_fsm test_design_guidance_context_injected_via_cmd_resume test_design_tokens_context_injected_via_cmd_resume test_failure_terminal_returns_distinct_exit_code test_foreground_internal_does_not_overwrite_parent_pid test_foreground_internal_registers_pid_cleanup test_input_hash_injected_via_cmd_resume test_interrupted_instance_is_resumable test_no_background_flag_runs_foreground test_nonzero_exit_for_limit_termination[max_steps|system_signal|timeout|user_stopped] test_plain_foreground_resume_pid_passed_to_signal_handler test_resume_auto_selects_latest_when_multiple_resumable test_resume_awaiting_continuation test_resume_default_loads_design_tokens test_resume_non_terminal_returns_1 test_resume_registers_signal_handlers test_resume_succeeds_with_single_resumable test_resume_use_design_tokens_false_skips_loading test_resume_use_design_tokens_string_falsy_values_skip_loading[|0|false|False|no|off] test_resume_wires_display_callback_to_event_bus test_resume_with_minutes_duration test_unknown_terminated_by_returns_1 test_workdir_vanished_returns_exit_code_1 test_zero_exit_for_graceful_termination[handoff|interrupted|terminal]`
+  plus the two that "pass" only because they are the first two binds (`test_nothing_to_resume_returns_1`, `test_resume_success`). The exact set of passers shifts with `pytest-randomly` ordering.
+- **Confirmed safe** (return before the `wire_transports()` call is reached): `test_file_not_found_returns_1`, `test_validation_error_returns_1`, `test_context_invalid_format_raises_system_exit`, the `background=True` tests in `TestCmdResumeBackground` (return via `run_background`; **not** the whole class, as an earlier pass claimed), and all `cmd_run` tests in this file (`TestCmdRunHandoffThreshold`, `TestCmdRunYAMLConfigOverrides` — `_make_args()` defaults `dry_run=True`).
 - **Existing safe precedent already in the same file**: `TestCmdResumeCircuitWiring` (2196-2274) does `patch("little_loops.config.BRConfig", return_value=mock_config)` with `mock_config.events = MagicMock(transports=[])`, in addition to patching `wire_transports` — the belt-and-suspenders shape the fix should apply to the vulnerable tests above.
 - A **4th production `wire_transports()` call site**, not in the issue's original 3: `scripts/little_loops/cli/sprint/run.py:797,801` (`_cmd_sprint_run`'s per-wave wiring) — also calls with no `log_dir` argument and is exposed to the same mechanism if a sprint-run test doesn't mock `BRConfig`.
 - `scripts/little_loops/__init__.py:75,142` — re-exports `wire_transports` (not a call site, but part of its public-import surface).
@@ -168,33 +184,35 @@ _Wiring pass added by `/ll:wire-issue`, round 2:_
 
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
-1. Root cause confirmed (wiring pass): `cmd_resume` (`cli/loop/lifecycle.py:713`), `cmd_run` (`cli/loop/run.py:230`), `main_parallel` (`cli/parallel.py:195-196`), and `cli/sprint/run.py:797,801` each build `BRConfig(Path.cwd())` directly, loading this repo's real `.ll/ll-config.json` (`events.transports: ["socket"]`) whenever a test calls one of them for real without mocking `BRConfig`; `wire_transports()`'s `log_dir` then defaults to cwd-relative `.ll` (`transport.py:1896`), binding the real socket. The `test_transport.py`/`test_feat3323_sse_bridge.py` candidates named in the original bug report are confirmed not the source (see Current Behavior).
-2. Fix the 9 confirmed-vulnerable tests in `test_cli_loop_lifecycle.py` (`test_nothing_to_resume_returns_1`, `test_resume_success`, `test_resume_with_minutes_duration`, `test_resume_awaiting_continuation`, `test_resume_non_terminal_returns_1`, `test_context_overrides_applied_to_fsm`, `test_design_tokens_context_injected_via_cmd_resume`, `test_design_guidance_context_injected_via_cmd_resume`, `test_input_hash_injected_via_cmd_resume`) — either patch `little_loops.config.BRConfig`/`wire_transports` per-test (mirroring `TestCmdResumeCircuitWiring`, `test_cli_loop_lifecycle.py:2196-2274`) or add one new session-wide isolation fixture in `conftest.py`; the wiring pass left this choice open (both the per-test-patch and one-new-fixture precedents exist in this codebase, see Integration Map → Files to Modify).
-3. Add `_guard_real_socket_transport` (Program Design) — a choke-point guard, not a snapshot-diff, mirroring `_guard_real_history_db` (`conftest.py:952-993`) which replaced an earlier directory-snapshot approach for the sibling history-DB leak (its docstring explains why). It patches `UnixSocketTransport.__init__` (`transport.py:170`), the single point every real socket bind routes through, and asserts the resolved path is never under the real project `.ll/`.
-4. `python -m pytest scripts/tests/` run twice back-to-back in a clean checkout is green both times; verified per the existing Acceptance Criteria.
+1. Root cause confirmed (wiring pass, mechanism corrected 2026-09-08): `cmd_resume` (`cli/loop/lifecycle.py:713`), `cmd_run` (`cli/loop/run.py:230`), `main_parallel` (`cli/parallel.py:195-196`), and `cli/sprint/run.py:797,801` each build `BRConfig(Path.cwd())` directly, loading this repo's real `.ll/ll-config.json` (`events.transports: ["socket"]`) whenever a test calls one of them for real without mocking `BRConfig`; `wire_transports()`'s `log_dir` then defaults to cwd-relative `.ll` (`transport.py:1896`), binding a real socket that the mocked executor never closes. Live listeners accumulate per process; the third bind raises (see Current Behavior). The `test_transport.py`/`test_feat3323_sse_bridge.py` candidates named in the original bug report are confirmed not the source.
+2. **Decision made (2026-09-08): use a fixture, not per-test patches.** With ~36 exposed tests across six classes, per-test `BRConfig` patching (option A) is the wrong shape. Add one autouse fixture — module-level in `test_cli_loop_lifecycle.py` is sufficient, or `conftest.py` if it should also cover `test_cli_loop_worktree.py`-style files — that patches `little_loops.config.BRConfig` to return a `MagicMock` config with `events = MagicMock(transports=[])`, `extensions = {}`, `commands.rate_limits.circuit_breaker_enabled = False`, `design_tokens.enabled = False` (the block already duplicated 5× at `test_cli_loop_lifecycle.py:2213-2374`; extract it into the fixture and delete the copies), and also patches `little_loops.transport.wire_transports`. Tests that intentionally exercise design-token loading (`TestDesignTokensOptOut`) must still be able to override `design_tokens` on the returned mock — verify they pass with the fixture before finalizing. Existing tests that build their own `mock_config` keep working because an inner `patch(...)` wins over the fixture's.
+3. Add `_guard_real_socket_transport` (Program Design) — a choke-point guard, not a snapshot-diff, mirroring `_guard_real_history_db` (`conftest.py:952-993`) which replaced an earlier directory-snapshot approach for the sibling history-DB leak (its docstring explains why). It patches `UnixSocketTransport.__init__` (`transport.py:170`), the single point every real socket bind routes through, and asserts the resolved path is never under the real project `.ll/`. This makes any future unmocked entry-point test fail at the offending bind instead of three tests later with an unrelated `RuntimeError`.
+4. `python -m pytest scripts/tests/test_cli_loop_lifecycle.py` is green on a clean tree, then `python -m pytest scripts/tests/` twice back-to-back is green both times; verified per the Acceptance Criteria.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Fix or isolate the 9 confirmed vulnerable tests in `test_cli_loop_lifecycle.py` (`test_nothing_to_resume_returns_1`, `test_resume_success`, `test_resume_with_minutes_duration`, `test_resume_awaiting_continuation`, `test_resume_non_terminal_returns_1`, `test_context_overrides_applied_to_fsm`, `test_design_tokens_context_injected_via_cmd_resume`, `test_design_guidance_context_injected_via_cmd_resume`, `test_input_hash_injected_via_cmd_resume`) — either by adding a `BRConfig`/`wire_transports` patch (mirroring `TestCmdResumeCircuitWiring`, conftest.py-adjacent pattern at test_cli_loop_lifecycle.py:2196-2274) or via a new session-wide isolation fixture.
+- Isolate every unmocked `cmd_resume` test in `test_cli_loop_lifecycle.py` (~36 tests; corrected list in Integration Map → Dependent Files) via the autouse fixture decided in Implementation Steps #2 — not per-test patches.
 - Inject at `cli/loop/lifecycle.py:713`, `cli/loop/run.py:230`, `cli/parallel.py:195-196`, and the newly-found 4th call site `cli/sprint/run.py:797,801`: consider whether `BRConfig` should accept/propagate an isolated `project_root` consistently, or whether a `conftest.py` autouse fixture (isolating `BRConfig`/cwd, mirroring `_guard_real_history_db`'s choke-point-patch shape or `_isolate_history_db_session`'s env-redirect shape) is the more scoped fix — the issue's own Program Design already favors the choke-point-guard approach for this reason.
 - Do NOT implement Expected Behavior bullet 3's `_claim_socket_path` hardening as new work — it already exists and is pinned by `test_init_unlinks_stale_socket_file`, `test_bound_but_dead_socket_file_is_reclaimed`, `test_stale_pid_suffixed_path_is_reclaimed` (test_transport.py:417,698,787). Re-verify these five tests stay green after the fix, but no new hardening code is needed for this bullet.
 - Program Design's `_guard_real_socket_transport` is a choke-point-at-violation-time fixture (patches `UnixSocketTransport.__init__`, not a session-end snapshot), so it does not inherit the xdist caveat documented in `_fail_on_live_host_cli`'s docstring (conftest.py:404-409) — no further design work needed on this point.
 
 ## Impact
 
-- **Priority**: P3 - test-hygiene defect; no production impact, but it manufactures false regressions and cost an investigation cycle during the EPIC-3212 merge review.
-- **Effort**: Small - locate the offending test(s), move them to `tmp_path`, add teardown, add a `.ll/` cleanliness guard.
-- **Risk**: Low - test-only change; the optional `_claim_socket_path()` hardening is a small, separately testable tweak.
+- **Priority**: P3 as filed, but note the corrected picture: this is a **deterministic red file on `main`** since `90c1e137` (2026-09-07), not an intermittent state-dependent flake. Every local-editable consuming project runs its tooling against this tree, and `test_cli_loop_lifecycle.py` currently fails 34/138 on every run. Consider promoting to P2.
+- **Effort**: Small - one autouse config-isolation fixture in `test_cli_loop_lifecycle.py` (dedupe the 5 existing `mock_config` copies into it), one choke-point guard in `conftest.py`, one self-test.
+- **Risk**: Low - test-only change; no production code touched.
 - **Breaking Change**: No
 
 ## Acceptance Criteria
 
-- [ ] Fix the 9 confirmed-vulnerable tests in `test_cli_loop_lifecycle.py` (`test_nothing_to_resume_returns_1`, `test_resume_success`, `test_resume_with_minutes_duration`, `test_resume_awaiting_continuation`, `test_resume_non_terminal_returns_1`, `test_context_overrides_applied_to_fsm`, `test_design_tokens_context_injected_via_cmd_resume`, `test_design_guidance_context_injected_via_cmd_resume`, `test_input_hash_injected_via_cmd_resume`) so each mocks `little_loops.config.BRConfig`/`wire_transports` instead of loading this repo's real `.ll/ll-config.json` via `Path.cwd()` (or is covered by an equivalent new isolation fixture).
-- [ ] Add a session-scoped guard (fixture or `conftest.py` check) that fails loudly if a test leaves files in the real `.ll/` directory.
-- [ ] `python -m pytest scripts/tests/` run twice back-to-back in a clean checkout is green both times.
-- [ ] The 35 `cmd_resume` failures reproduce with a hand-placed stale `.ll/events.sock` before the fix and do not after.
+- [ ] Every unmocked `cmd_resume` test in `test_cli_loop_lifecycle.py` (the ~36 enumerated in Integration Map → Dependent Files) is covered by an autouse fixture that mocks `little_loops.config.BRConfig` (with `events.transports = []`) and `little_loops.transport.wire_transports`, instead of loading this repo's real `.ll/ll-config.json` via `Path.cwd()`.
+- [ ] The 5 duplicated inline `mock_config` blocks in `TestCmdResumeCircuitWiring`/`TestCmdResumeTransportWiring` are replaced by that fixture (or a factory it exposes).
+- [ ] Add `_guard_real_socket_transport` in `conftest.py` (session-scoped autouse choke-point on `UnixSocketTransport.__init__`) that fails loudly, attributed to the offending test, if any test binds a socket under the real project `.ll/`; with a `TestGuardRealSocketTransport` self-test in `test_conftest_cap.py`.
+- [ ] `rm -f .ll/events*.sock && python -m pytest scripts/tests/test_cli_loop_lifecycle.py -n 0` is green (was `34 failed, 104 passed` before the fix) and leaves no `.ll/events*.sock` behind.
+- [ ] `python -m pytest scripts/tests/` run twice back-to-back in the same checkout is green both times.
+- [ ] `test_init_unlinks_stale_socket_file`, `test_bound_but_dead_socket_file_is_reclaimed`, `test_stale_pid_suffixed_path_is_reclaimed`, `test_eaddrinuse_on_configured_path_falls_back_to_suffixed`, `test_failed_bind_does_not_unlink_winners_socket` remain green (no `transport.py` change).
 
 ## Relates To
 
@@ -222,6 +240,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 _Previous pass (2026-09-07) flagged a self-contradiction in Program Design: the named signature/Call Path described a before/after `.ll/` snapshot-diff while Implementation Steps #3 explicitly called for a choke-point guard instead, citing `_guard_real_history_db`'s precedent against snapshot-diff. Program Design has been corrected — `assert_ll_clean_after_session` replaced with `_guard_real_socket_transport`, a choke-point patch on `UnixSocketTransport.__init__` — and Architecture Compliance now scores 20/20 (was 10/20), raising the readiness tier from PROCEED WITH CAUTION to PROCEED. Outcome Confidence is unaffected — the newly-fixed contradiction didn't touch Complexity, Test Coverage, or Change Surface, and Ambiguity's score is held down by the separate, still-open per-test-vs-fixture decision noted above._
 
 ## Session Log
+- manual review - 2026-09-08 - premise corrected (reproduced 34 failures on clean .ll/); vulnerable list expanded 9→~36; fixture-vs-per-test decision resolved (fixture); ACs rewritten
 - `/ll:wire-issue` - 2026-09-08T03:07:52 - `10d02141-1a61-4549-ac75-31b74fcc4540.jsonl`
 - `/ll:refine-issue` - 2026-09-08T02:58:59 - `10d02141-1a61-4549-ac75-31b74fcc4540.jsonl`
 - `/ll:decide-issue` - 2026-09-08T02:54:02 - `db8f4456-9d33-4a56-83a5-6fd56728c61f.jsonl`
