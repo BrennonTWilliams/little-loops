@@ -1605,6 +1605,269 @@ class TestCmdDsl:
 
 
 # ---------------------------------------------------------------------------
+# TestRetryOfGate (ENH-3407)
+# ---------------------------------------------------------------------------
+
+
+class TestRetryOfGate:
+    """Tests for the ``--retry-of`` admissibility gate across cmd_* handlers."""
+
+    def _prior_cell_key(self, runner: str, target: str) -> str:
+        from little_loops.cli.harness import _cell_key, _git_output
+
+        return _cell_key(runner, target, _git_output("rev-parse", "HEAD"))
+
+    def test_refused_unknown_id(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(runner="cmd", target="echo hi", retry_of=999)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_cmd(args)
+        assert result == 1
+        mock_run.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "999" in captured.err
+
+    def test_refused_cell_key_is_null(self, capsys: pytest.CaptureFixture) -> None:
+        from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event
+
+        prior_id = record_harness_event(
+            DEFAULT_DB_PATH,
+            ts="2026-08-01T00:00:00Z",
+            runner="cmd",
+            target="echo hi",
+            timed_out=True,
+        )
+        args = _make_namespace(runner="cmd", target="echo hi", retry_of=prior_id)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_cmd(args)
+        assert result == 1
+        mock_run.assert_not_called()
+        assert str(prior_id) in capsys.readouterr().err
+
+    def test_refused_already_superseded(self, capsys: pytest.CaptureFixture) -> None:
+        from little_loops.session_store import DEFAULT_DB_PATH, record_attempt
+
+        cell_key = self._prior_cell_key("cmd", "echo hi")
+        prior_id = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="cmd",
+            target="echo hi",
+            timed_out=True,
+        )
+        record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="infra_retry",
+            retry_of=prior_id,
+            reason="timeout",
+            ts="t1",
+            runner="cmd",
+            target="echo hi",
+        )
+        args = _make_namespace(runner="cmd", target="echo hi", retry_of=prior_id)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_cmd(args)
+        assert result == 1
+        mock_run.assert_not_called()
+        assert "superseded" in capsys.readouterr().err
+
+    def test_refused_cell_mismatch(self, capsys: pytest.CaptureFixture) -> None:
+        from little_loops.session_store import DEFAULT_DB_PATH, record_attempt
+
+        different_cell_key = self._prior_cell_key("cmd", "a different command")
+        prior_id = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=different_cell_key,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="cmd",
+            target="a different command",
+            timed_out=True,
+        )
+        args = _make_namespace(runner="cmd", target="echo hi", retry_of=prior_id)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_cmd(args)
+        assert result == 1
+        mock_run.assert_not_called()
+        assert "different cell" in capsys.readouterr().err
+
+    def test_refused_graded_fail(self, capsys: pytest.CaptureFixture) -> None:
+        from little_loops.session_store import DEFAULT_DB_PATH, record_attempt
+
+        cell_key = self._prior_cell_key("cmd", "echo hi")
+        prior_id = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="cmd",
+            target="echo hi",
+            timed_out=False,
+        )
+        args = _make_namespace(runner="cmd", target="echo hi", retry_of=prior_id)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_cmd(args)
+        assert result == 1
+        mock_run.assert_not_called()
+        assert "did not time out" in capsys.readouterr().err
+
+    def test_accepted_timeout_retry_admits_and_supersedes(self) -> None:
+        from little_loops.session_store import DEFAULT_DB_PATH, connect, record_attempt
+
+        fixed_sha = "fixed-test-sha"
+        cell_key = json.dumps(["cmd", "echo hi", fixed_sha], separators=(",", ":"))
+        prior_id = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="cmd",
+            target="echo hi",
+            timed_out=True,
+        )
+        args = _make_namespace(runner="cmd", target="echo hi", exit_code=0, retry_of=prior_id)
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+        with (
+            patch("little_loops.cli.harness._git_output", return_value=fixed_sha),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
+            result = cmd_cmd(args)
+        assert result == 0
+
+        conn = connect(DEFAULT_DB_PATH)
+        try:
+            prior_row = conn.execute(
+                "SELECT repetition, superseded_by FROM harness_events WHERE id = ?", (prior_id,)
+            ).fetchone()
+            new_row = conn.execute(
+                "SELECT id, repetition, attempt_kind FROM harness_events "
+                "WHERE id != ? ORDER BY id DESC LIMIT 1",
+                (prior_id,),
+            ).fetchone()
+            admissions = conn.execute(
+                "SELECT attempt_id, superseded_id, reason FROM harness_admissions"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert prior_row["superseded_by"] == new_row["id"]
+        assert new_row["repetition"] == prior_row["repetition"]
+        assert new_row["attempt_kind"] == "infra_retry"
+        assert [tuple(a) for a in admissions] == [(new_row["id"], prior_id, "timeout")]
+
+    def test_retry_write_failure_exits_1_and_leaves_no_new_row(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.session_store import DEFAULT_DB_PATH, recent, record_attempt
+
+        fixed_sha = "fixed-test-sha"
+        cell_key = json.dumps(["cmd", "echo hi", fixed_sha], separators=(",", ":"))
+        prior_id = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="cmd",
+            target="echo hi",
+            timed_out=True,
+        )
+        args = _make_namespace(runner="cmd", target="echo hi", exit_code=0, retry_of=prior_id)
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+        before = len(recent(kind="harness", limit=50))
+        with (
+            patch("little_loops.cli.harness._git_output", return_value=fixed_sha),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.cli.harness.record_attempt", side_effect=RuntimeError("boom")),
+        ):
+            result = cmd_cmd(args)
+        assert result == 1
+        assert "was not recorded" in capsys.readouterr().err
+        assert len(recent(kind="harness", limit=50)) == before
+
+    def test_mcp_malformed_args_exits_2_before_gate(self, capsys: pytest.CaptureFixture) -> None:
+        """The gate sits after target/--args validation, so exit 2 wins (ENH-3407)."""
+        args = _make_namespace(runner="mcp", target="srv:tool", mcp_args="{bad json}", retry_of=999)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_mcp(args)
+        assert result == 2
+        mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestCmdDslRetryOf (ENH-3407)
+# ---------------------------------------------------------------------------
+
+
+class TestCmdDslRetryOf:
+    """Tests for ``--retry-of``'s DSL single-file constraint."""
+
+    _ANSWER_JSON = '```json\n{"on_yes": "done"}\n```'
+
+    def _make_task_yaml(self, tmp_path: Path, name: str = "task.yaml") -> Path:
+        p = tmp_path / name
+        p.write_text(
+            "prompt: Complete this FSM transition.\n"
+            "blanks:\n  - on_yes\n"
+            "expected:\n  on_yes: done\n"
+            "source_dsl: loop\n"
+            "task_type: fill-in-the-blank\n"
+        )
+        return p
+
+    def test_directory_path_with_retry_of_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        for i in range(2):
+            self._make_task_yaml(tmp_path, f"task{i}.yaml")
+        args = _make_namespace(runner="dsl", path=str(tmp_path), retry_of=1)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_dsl(args)
+        assert result == 1
+        mock_run.assert_not_called()
+        assert "directory" in capsys.readouterr().err
+
+    def test_single_file_matching_dsl_task_prior_accepted(self, tmp_path: Path) -> None:
+        from little_loops.cli.harness import _cell_key
+        from little_loops.session_store import DEFAULT_DB_PATH, record_attempt
+
+        task_file = self._make_task_yaml(tmp_path)
+        fixed_sha = "fixed-test-sha"
+
+        def _fake_run(cmd: list[str], *a: Any, **kw: Any) -> subprocess.CompletedProcess:
+            if isinstance(cmd, list) and cmd[:2] == ["git", "rev-parse"]:
+                return _make_completed(returncode=0, stdout=fixed_sha)
+            if isinstance(cmd, list) and cmd[:2] == ["git", "status"]:
+                return _make_completed(returncode=0, stdout="")
+            return _make_completed(returncode=0, stdout=self._ANSWER_JSON)
+
+        cell_key = _cell_key("dsl-task", task_file.name, fixed_sha)
+        prior_id = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="dsl-task",
+            target=task_file.name,
+            timed_out=True,
+        )
+        args = _make_namespace(runner="dsl", path=str(task_file), retry_of=prior_id)
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=_fake_run),
+        ):
+            result = cmd_dsl(args)
+        assert result == 0
+
+
+# ---------------------------------------------------------------------------
 # TestHarnessEventPersistence
 # ---------------------------------------------------------------------------
 

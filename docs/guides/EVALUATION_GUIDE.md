@@ -74,6 +74,12 @@ Two independent gates, both optional:
 - `--semantic "<criterion>"` — an `llm_structured` judgment over the runner's stdout. Only a
   `yes` verdict passes.
 
+`--retry-of ID` (ENH-3407) marks a run as an infra retry of attempt `ID` rather than a fresh
+sample: it's gated before the run (refused, exit 1, if the prior attempt isn't a genuine
+timeout for this same cell), and on success supersedes the prior row instead of counting as
+an independent repetition. See [CLI Reference → `ll-harness`](../reference/CLI.md#ll-harness)
+for the full refusal-rule list.
+
 **Pass both or you are not measuring anything.** With neither flag, `passed` initializes to
 `True` and no check ever flips it (`harness.py:419-433`) — the command reports PASS
 unconditionally. See [Gotchas](#gotchas).
@@ -117,6 +123,12 @@ exits nonzero rather than silently reporting a perfect score. See exit codes bel
 ungraded; `2` every task was ungraded, or ≥1 task hit a per-task infra error (host timeout
 or crash); `3` ≥1 task abstained (the `--semantic` judge could not decide) and nothing
 failed or was ungraded.
+
+Of that infra-error bucket, only a genuine **timeout** is retriable today: `--retry-of`'s
+admissibility gate (ENH-3407) reads the persisted `timed_out` column, and a host crash or
+other runner error has no persisted signal to gate on yet (a deliberate fail-closed scope
+decision, not an oversight). `--retry-of` on `dsl` additionally requires `path` to name a
+single task file, not a directory.
 
 ---
 

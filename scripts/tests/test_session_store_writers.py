@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import itertools
 import json
 import re
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -2209,7 +2211,7 @@ class TestRecordHarnessEvent:
         from little_loops.session_store import record_harness_event
 
         db = tmp_path / "history.db"
-        record_harness_event(
+        new_id = record_harness_event(
             db,
             ts="2026-07-22T00:00:00Z",
             runner="cmd",
@@ -2231,6 +2233,7 @@ class TestRecordHarnessEvent:
             target_path="/abs/path/to/skill.md",
             dirty=1,
         )
+        assert isinstance(new_id, int)
         rows = recent(db, kind="harness")
         assert len(rows) == 1
         row = rows[0]
@@ -2301,6 +2304,264 @@ class TestRecordHarnessEvent:
         )
         results = search(db, query="unique-search-target-xyz")
         assert any(r["kind"] == "harness" for r in results)
+
+
+class TestRecordAttemptAndAdmitRetry:
+    """ENH-3407: record_attempt() / admit_retry() write-path tests."""
+
+    CELL_A = json.dumps(["cmd", "echo hi", "sha-a"], separators=(",", ":"))
+    CELL_B = json.dumps(["cmd", "echo bye", "sha-b"], separators=(",", ":"))
+
+    def test_allocates_sequential_repetitions_per_cell(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_attempt
+
+        db = tmp_path / "history.db"
+        ids = [
+            record_attempt(
+                db,
+                cell_key=self.CELL_A,
+                attempt_kind="repetition",
+                ts=f"2026-08-01T00:00:0{i}Z",
+                runner="cmd",
+                target="echo hi",
+            )
+            for i in range(3)
+        ]
+        conn = connect(db)
+        try:
+            reps = [
+                conn.execute("SELECT repetition FROM harness_events WHERE id = ?", (i,)).fetchone()[
+                    0
+                ]
+                for i in ids
+            ]
+        finally:
+            conn.close()
+        assert reps == [0, 1, 2]
+
+    def test_second_cell_starts_at_zero(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_attempt
+
+        db = tmp_path / "history.db"
+        record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t0", runner="cmd", target="a"
+        )
+        second_id = record_attempt(
+            db, cell_key=self.CELL_B, attempt_kind="repetition", ts="t1", runner="cmd", target="b"
+        )
+        conn = connect(db)
+        try:
+            rep = conn.execute(
+                "SELECT repetition FROM harness_events WHERE id = ?", (second_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert rep == 0
+
+    def test_infra_retry_copies_prior_repetition(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_attempt
+
+        db = tmp_path / "history.db"
+        record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t0", runner="cmd", target="a"
+        )
+        prior_id = record_attempt(
+            db,
+            cell_key=self.CELL_A,
+            attempt_kind="repetition",
+            ts="t1",
+            runner="cmd",
+            target="a",
+            timed_out=True,
+        )
+        retry_id = record_attempt(
+            db,
+            cell_key=self.CELL_A,
+            attempt_kind="infra_retry",
+            retry_of=prior_id,
+            reason="timeout",
+            ts="t2",
+            runner="cmd",
+            target="a",
+        )
+        conn = connect(db)
+        try:
+            prior_rep, retry_rep, superseded_by = conn.execute(
+                "SELECT "
+                "(SELECT repetition FROM harness_events WHERE id = ?), "
+                "(SELECT repetition FROM harness_events WHERE id = ?), "
+                "(SELECT superseded_by FROM harness_events WHERE id = ?)",
+                (prior_id, retry_id, prior_id),
+            ).fetchone()
+            admissions = conn.execute(
+                "SELECT attempt_id, superseded_id, reason FROM harness_admissions"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert prior_rep == retry_rep == 1
+        assert superseded_by == retry_id
+        assert [tuple(a) for a in admissions] == [(retry_id, prior_id, "timeout")]
+
+    def test_allocation_serialises_across_connections(self, tmp_path: Path) -> None:
+        """Two record_attempt() calls for one cell from two threads/connections
+        get indices 0 and 1 with no IntegrityError (BEGIN IMMEDIATE serialisation)."""
+        from little_loops.session_store import record_attempt
+
+        db = tmp_path / "history.db"
+        connect(db).close()  # pre-create so both threads see an existing schema
+
+        results: list[int] = []
+        errors: list[BaseException] = []
+
+        def _call(i: int) -> None:
+            try:
+                new_id = record_attempt(
+                    db,
+                    cell_key=self.CELL_A,
+                    attempt_kind="repetition",
+                    ts=f"2026-08-01T00:00:0{i}Z",
+                    runner="cmd",
+                    target="a",
+                )
+                results.append(new_id)
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_call, args=(i,)) for i in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
+        conn = connect(db)
+        try:
+            reps = sorted(
+                r[0]
+                for r in conn.execute(
+                    "SELECT repetition FROM harness_events WHERE cell_key = ?", (self.CELL_A,)
+                ).fetchall()
+            )
+        finally:
+            conn.close()
+        assert reps == [0, 1]
+
+    def test_infra_retry_admission_failure_rolls_back_everything(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_attempt
+
+        db = tmp_path / "history.db"
+        prior_id = record_attempt(
+            db,
+            cell_key=self.CELL_A,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="cmd",
+            target="a",
+            timed_out=True,
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            record_attempt(
+                db,
+                cell_key=self.CELL_A,
+                attempt_kind="infra_retry",
+                retry_of=prior_id,
+                reason="not-a-valid-reason",
+                ts="t1",
+                runner="cmd",
+                target="a",
+            )
+        conn = connect(db)
+        try:
+            row_count = conn.execute("SELECT COUNT(*) FROM harness_events").fetchone()[0]
+            superseded_by = conn.execute(
+                "SELECT superseded_by FROM harness_events WHERE id = ?", (prior_id,)
+            ).fetchone()[0]
+            admission_count = conn.execute("SELECT COUNT(*) FROM harness_admissions").fetchone()[0]
+        finally:
+            conn.close()
+        assert row_count == 1  # the failed infra_retry row was rolled back
+        assert superseded_by is None
+        assert admission_count == 0
+
+    def test_admit_retry_sets_superseded_and_appends_admission(self, tmp_path: Path) -> None:
+        from little_loops.session_store import admit_retry, record_attempt
+
+        db = tmp_path / "history.db"
+        id_a = record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t0", runner="cmd", target="a"
+        )
+        id_b = record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t1", runner="cmd", target="a"
+        )
+        admit_retry(db, attempt_id=id_b, superseded_id=id_a, reason="timeout")
+        conn = connect(db)
+        try:
+            superseded_by = conn.execute(
+                "SELECT superseded_by FROM harness_events WHERE id = ?", (id_a,)
+            ).fetchone()[0]
+            admissions = conn.execute(
+                "SELECT attempt_id, superseded_id, reason FROM harness_admissions"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert superseded_by == id_b
+        assert [tuple(a) for a in admissions] == [(id_b, id_a, "timeout")]
+
+    def test_admit_retry_twice_raises_and_writes_no_second_admission(self, tmp_path: Path) -> None:
+        from little_loops.session_store import admit_retry, record_attempt
+
+        db = tmp_path / "history.db"
+        id_a = record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t0", runner="cmd", target="a"
+        )
+        id_b = record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t1", runner="cmd", target="a"
+        )
+        id_c = record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t2", runner="cmd", target="a"
+        )
+        admit_retry(db, attempt_id=id_b, superseded_id=id_a, reason="timeout")
+        with pytest.raises(ValueError):
+            admit_retry(db, attempt_id=id_c, superseded_id=id_a, reason="timeout")
+        conn = connect(db)
+        try:
+            admission_count = conn.execute("SELECT COUNT(*) FROM harness_admissions").fetchone()[0]
+        finally:
+            conn.close()
+        assert admission_count == 1
+
+    def test_admit_retry_invalid_reason_raises_integrity_error(self, tmp_path: Path) -> None:
+        from little_loops.session_store import admit_retry, record_attempt
+
+        db = tmp_path / "history.db"
+        id_a = record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t0", runner="cmd", target="a"
+        )
+        id_b = record_attempt(
+            db, cell_key=self.CELL_A, attempt_kind="repetition", ts="t1", runner="cmd", target="a"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            admit_retry(db, attempt_id=id_b, superseded_id=id_a, reason="not-a-valid-reason")
+
+    def test_no_update_or_delete_targets_harness_admissions(self) -> None:
+        """harness_admissions is append-only: no UPDATE/DELETE SQL statement in
+        writers.py may target it (scoped to that table on purpose — other
+        writers legitimately UPDATE/DELETE other tables)."""
+        import little_loops.session_store.writers as writers_module
+
+        source = Path(writers_module.__file__).read_text()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for arg in node.args:
+                if not isinstance(arg, ast.Constant) or not isinstance(arg.value, str):
+                    continue
+                if "harness_admissions" not in arg.value:
+                    continue
+                stripped = arg.value.strip().upper()
+                assert not stripped.startswith("UPDATE"), arg.value
+                assert not stripped.startswith("DELETE"), arg.value
 
 
 class TestRecordPromptOptEvent:

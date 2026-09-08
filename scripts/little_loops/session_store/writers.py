@@ -1021,6 +1021,91 @@ def record_test_run_event(
         conn.close()
 
 
+def _insert_harness_event(
+    conn: sqlite3.Connection,
+    *,
+    ts: str,
+    runner: str | None = None,
+    target: str | None = None,
+    exit_code: int | None = None,
+    semantic_verdict: str | None = None,
+    semantic_passed: bool | None = None,
+    timed_out: bool | None = None,
+    duration_ms: int | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    parent_id: int | None = None,
+    semantic_prompt: str | None = None,
+    semantic_confidence: float | None = None,
+    semantic_reason: str | None = None,
+    semantic_evidence: str | None = None,
+    semantic_model: str | None = None,
+    target_content_hash: str | None = None,
+    target_path: str | None = None,
+    dirty: int | None = None,
+    cell_key: str | None = None,
+    repetition: int | None = None,
+    attempt_kind: str | None = None,
+    continuations: int | None = None,
+    superseded_by: int | None = None,
+) -> int:
+    """INSERT one ``harness_events`` row + FTS index entry on *conn*, no commit.
+
+    Private (ENH-3407): factored out of :func:`record_harness_event` so
+    :func:`record_attempt` can perform the INSERT inside its own
+    ``BEGIN IMMEDIATE`` allocation transaction without a nested
+    connect/commit. The caller owns the connection and the transaction.
+    Returns the inserted row's id (``cursor.lastrowid``).
+    """
+    cursor = conn.execute(
+        "INSERT INTO harness_events("
+        "ts, runner, target, exit_code, semantic_verdict, semantic_passed, "
+        "timed_out, duration_ms, head_sha, branch, parent_id, "
+        "semantic_prompt, semantic_confidence, semantic_reason, "
+        "semantic_evidence, semantic_model, "
+        "target_content_hash, target_path, dirty, "
+        "cell_key, repetition, attempt_kind, continuations, superseded_by"
+        ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            ts,
+            runner,
+            target,
+            exit_code,
+            semantic_verdict,
+            None if semantic_passed is None else int(semantic_passed),
+            None if timed_out is None else int(timed_out),
+            duration_ms,
+            head_sha,
+            branch,
+            parent_id,
+            semantic_prompt,
+            semantic_confidence,
+            semantic_reason,
+            semantic_evidence,
+            semantic_model,
+            target_content_hash,
+            target_path,
+            None if dirty is None else int(dirty),
+            cell_key,
+            repetition,
+            attempt_kind,
+            continuations,
+            superseded_by,
+        ),
+    )
+    summary = f"{runner or 'harness'} {target or ''} exit={exit_code}".strip()
+    _index(
+        conn,
+        content=summary[:512],
+        kind="harness",
+        ref=head_sha or "",
+        anchor=branch or "",
+        ts=ts,
+    )
+    assert cursor.lastrowid is not None  # INSERT always allocates an AUTOINCREMENT id
+    return cursor.lastrowid
+
+
 def record_harness_event(
     db_path: Path | str,
     *,
@@ -1043,7 +1128,12 @@ def record_harness_event(
     target_content_hash: str | None = None,
     target_path: str | None = None,
     dirty: int | None = None,
-) -> None:
+    cell_key: str | None = None,
+    repetition: int | None = None,
+    attempt_kind: str | None = None,
+    continuations: int | None = None,
+    superseded_by: int | None = None,
+) -> int:
     """Write one row to ``harness_events`` and index it in ``search_index``.
 
     Mirrors :func:`record_test_run_event`'s shape: raises on failure — callers
@@ -1057,51 +1147,198 @@ def record_harness_event(
     ``dirty`` is the 0/1/NULL result of ``git status --porcelain
     --untracked-files=no`` at run time. All three are nullable, all default to
     None — existing callers that don't pass them get the v38 row shape.
+
+    ENH-3407 adds five nullable v49 kwargs (``cell_key`` / ``repetition`` /
+    ``attempt_kind`` / ``continuations`` / ``superseded_by``, all default
+    ``None``) and changes the return type from ``None`` to the inserted row's
+    id (``cursor.lastrowid``) — no existing caller reads the return value, so
+    this is backward compatible. New callers that need repetition allocation
+    or retry admission should use :func:`record_attempt` instead; this
+    function is now a thin single-row wrapper around
+    :func:`_insert_harness_event`.
     """
     conn = _pkg.connect(db_path)
     try:
-        conn.execute(
-            "INSERT INTO harness_events("
-            "ts, runner, target, exit_code, semantic_verdict, semantic_passed, "
-            "timed_out, duration_ms, head_sha, branch, parent_id, "
-            "semantic_prompt, semantic_confidence, semantic_reason, "
-            "semantic_evidence, semantic_model, "
-            "target_content_hash, target_path, dirty"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                ts,
-                runner,
-                target,
-                exit_code,
-                semantic_verdict,
-                None if semantic_passed is None else int(semantic_passed),
-                None if timed_out is None else int(timed_out),
-                duration_ms,
-                head_sha,
-                branch,
-                parent_id,
-                semantic_prompt,
-                semantic_confidence,
-                semantic_reason,
-                semantic_evidence,
-                semantic_model,
-                target_content_hash,
-                target_path,
-                None if dirty is None else int(dirty),
-            ),
-        )
-        summary = f"{runner or 'harness'} {target or ''} exit={exit_code}".strip()
-        _index(
+        new_id = _insert_harness_event(
             conn,
-            content=summary[:512],
-            kind="harness",
-            ref=head_sha or "",
-            anchor=branch or "",
             ts=ts,
+            runner=runner,
+            target=target,
+            exit_code=exit_code,
+            semantic_verdict=semantic_verdict,
+            semantic_passed=semantic_passed,
+            timed_out=timed_out,
+            duration_ms=duration_ms,
+            head_sha=head_sha,
+            branch=branch,
+            parent_id=parent_id,
+            semantic_prompt=semantic_prompt,
+            semantic_confidence=semantic_confidence,
+            semantic_reason=semantic_reason,
+            semantic_evidence=semantic_evidence,
+            semantic_model=semantic_model,
+            target_content_hash=target_content_hash,
+            target_path=target_path,
+            dirty=dirty,
+            cell_key=cell_key,
+            repetition=repetition,
+            attempt_kind=attempt_kind,
+            continuations=continuations,
+            superseded_by=superseded_by,
         )
         conn.commit()
+        return new_id
     finally:
         conn.close()
+
+
+def _admit_retry(
+    conn: sqlite3.Connection,
+    *,
+    attempt_id: int,
+    superseded_id: int,
+    reason: str,
+) -> None:
+    """Supersede *superseded_id* and append one ``harness_admissions`` row (ENH-3407).
+
+    Private: shared by :func:`record_attempt`'s retry path and the public
+    :func:`admit_retry`, both of which own the transaction and commit it.
+    Raises :class:`ValueError` if *superseded_id* is already superseded or
+    does not exist (0 rows affected by the UPDATE) — a concurrent admission
+    won the race. ``harness_admissions`` itself is append-only; only this
+    function (and its public wrapper) ever write to it, and only via INSERT.
+    """
+    cursor = conn.execute(
+        "UPDATE harness_events SET superseded_by = ? WHERE id = ? AND superseded_by IS NULL",
+        (attempt_id, superseded_id),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(
+            f"_admit_retry: attempt {superseded_id} is already superseded or does not exist"
+        )
+    conn.execute(
+        "INSERT INTO harness_admissions(ts, attempt_id, superseded_id, reason) VALUES(?, ?, ?, ?)",
+        (_now(), attempt_id, superseded_id, reason),
+    )
+
+
+def admit_retry(
+    db_path: Path | str,
+    *,
+    attempt_id: int,
+    superseded_id: int,
+    reason: str,
+) -> None:
+    """Supersede *superseded_id* with *attempt_id* and record the admission (ENH-3407).
+
+    Public standalone form of the supersede + admission step performed
+    inside :func:`record_attempt`'s retry path, for callers that already
+    hold a recorded attempt id. Runs in one transaction (``BEGIN IMMEDIATE``):
+    an UPDATE on ``harness_events`` is permitted, but ``harness_admissions``
+    stays append-only.
+    """
+    conn = _pkg.connect(db_path)
+    prior_isolation = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            _admit_retry(conn, attempt_id=attempt_id, superseded_id=superseded_id, reason=reason)
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = prior_isolation
+        conn.close()
+
+
+def record_attempt(
+    db_path: Path | str,
+    *,
+    cell_key: str,
+    attempt_kind: str,
+    retry_of: int | None = None,
+    reason: str | None = None,
+    continuations: int | None = None,
+    **event_fields: Any,
+) -> int:
+    """Record one ``harness_events`` row against a cell, allocating its repetition index.
+
+    ENH-3407. ``cell_key`` encodes ``[runner, target, head_sha]`` as a JSON
+    array string (``json.dumps(..., separators=(",", ":"))`` —
+    ``cli/harness.py::_cell_key()`` builds it); it is not validated here. A
+    JSON array is used because ``cmd`` targets are arbitrary shell strings
+    (spaces, ``|``, ``:``, quotes) with no single safe delimiter — JSON
+    encoding is deterministic, stdlib-only, and greppable in sqlite. Note
+    that ``dirty`` is deliberately not part of the key: a dirty-tree sample
+    shares its cell with a clean sample at the same head sha (readers can
+    still filter on the ``dirty`` column). ``dsl-task`` rows key on
+    ``task_file.name`` alone, so two directories holding a same-named task
+    file share one cell — matches how ``_read_target_history()`` already
+    keys target history; this is a documented limitation, not a bug.
+
+    ``attempt_kind='repetition'`` allocates the next free 0-based repetition
+    index for *cell_key* (``COALESCE(MAX(repetition), -1) + 1``).
+    ``attempt_kind='infra_retry'`` requires *retry_of* and *reason*; the new
+    row copies its repetition index from the retried row, and — in the same
+    transaction — supersedes the prior row and appends one
+    ``harness_admissions`` row via :func:`_admit_retry`.
+
+    Allocation (and, on the retry path, admission) runs inside one
+    ``BEGIN IMMEDIATE`` transaction rather than a bounded-retry loop:
+    Python's legacy transaction mode opens no transaction for the ``MAX``
+    SELECT, so a read-then-INSERT race between two processes is real.
+    ``BEGIN IMMEDIATE`` takes the write lock before the read; a competing
+    allocator blocks on the existing ``busy_timeout``
+    (``schema.py::_configure_connection``) and then reads the committed row.
+    A residual ``IntegrityError`` against ``idx_harness_cell_repetition`` is
+    therefore a genuine bug and is allowed to propagate. Any failure in the
+    retry path (insert, supersede, or admission) rolls back all three
+    together — no orphan ``infra_retry`` row with ``superseded_by IS NULL``
+    is ever left for ENH-3408 to reason about.
+    """
+    if attempt_kind == "infra_retry" and (retry_of is None or reason is None):
+        raise ValueError("attempt_kind='infra_retry' requires both retry_of and reason")
+    conn = _pkg.connect(db_path)
+    prior_isolation = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            if attempt_kind == "infra_retry":
+                prior_row = conn.execute(
+                    "SELECT repetition FROM harness_events WHERE id = ?", (retry_of,)
+                ).fetchone()
+                if prior_row is None:
+                    raise ValueError(f"record_attempt: retry_of={retry_of} does not exist")
+                repetition = prior_row[0]
+            else:
+                alloc_row = conn.execute(
+                    "SELECT COALESCE(MAX(repetition), -1) + 1 FROM harness_events "
+                    "WHERE cell_key = ?",
+                    (cell_key,),
+                ).fetchone()
+                repetition = alloc_row[0]
+            new_id = _insert_harness_event(
+                conn,
+                cell_key=cell_key,
+                repetition=repetition,
+                attempt_kind=attempt_kind,
+                continuations=continuations,
+                **event_fields,
+            )
+            if attempt_kind == "infra_retry":
+                assert retry_of is not None and reason is not None  # checked above
+                _admit_retry(conn, attempt_id=new_id, superseded_id=retry_of, reason=reason)
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = prior_isolation
+        conn.close()
+    return new_id
 
 
 def record_prompt_opt_event(

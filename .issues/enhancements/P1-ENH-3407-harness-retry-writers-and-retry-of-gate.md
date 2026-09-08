@@ -3,9 +3,10 @@ id: ENH-3407
 title: record_attempt/admit_retry/authoritative_attempt writers + --retry-of CLI gate
 type: ENH
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-08'
-verify_verdict: NON_VALID
+completed_at: '2026-09-08T21:52:28Z'
+verify_verdict: VALID
 reconcile_attempted: true
 decision_needed: false
 parent: ENH-3397
@@ -503,6 +504,46 @@ commits); `BEGIN IMMEDIATE` allocation replacing the `IntegrityError` retry loop
 single-transaction retry write (no orphan `infra_retry` row); refusal messages to stderr;
 `cmd_mcp` gate after arg validation; DSL same-name cell collision documented.
 
+## Resolution
+
+Implemented per the Program Design / Implementation Steps sections above.
+
+- `session_store/writers.py`: factored `_insert_harness_event(conn, ...)` out of
+  `record_harness_event()` (now returns `cursor.lastrowid` instead of `None`); added
+  `record_attempt()` (`BEGIN IMMEDIATE` repetition allocation, single-transaction retry
+  admission) and `admit_retry()`/`_admit_retry()`. Exported both from `session_store/__init__.py`.
+- `history_reader/harness.py`: added `id` (trailing default) plus the five v49 fields to
+  `HarnessEvent` and `_HARNESS_EVENT_COLUMNS`; added `harness_event_by_id()`,
+  `authoritative_attempt()`, `authoritative_attempts()`. Exported from
+  `history_reader/__init__.py`.
+- `cli/harness.py`: `--retry-of` flag on all five evaluator subparsers; `_cell_key()` helper;
+  every `cmd_*` reads `head_sha` once pre-run and runs the admissibility gate
+  (`_retry_gate()`/`_retry_refusal()`) before `run_action()`; `cmd_dsl`'s racy
+  `SELECT id ... ORDER BY id DESC LIMIT 1` aggregate-id recovery replaced with
+  `record_harness_event()`'s return value; DSL single-task-file constraint for
+  `--retry-of`. `_git_output()`'s exception handling broadened to a bare `except Exception`
+  (matching `_git_dirty()`'s existing contract) — the gate's pre-run git call is no longer
+  inside a `contextlib.suppress` wrapper, so it needed the same "best-effort under test
+  mocks" resilience.
+- Docs: `CLI.md` (`--retry-of` flag row + "Retrying a run" section), `API.md`
+  (`record_attempt`/`admit_retry`/three new readers, `HarnessEvent` field backfill),
+  `EVALUATION_GUIDE.md` (flag + exit-code reconciliation), `EVENT-SCHEMA.md` (exit-code
+  ambiguity reconciliation).
+- `ENH-3408` updated: its "`HarnessEvent` columns, do first" step now reads "provided by
+  ENH-3407 (landed)".
+- Tests: `test_session_store_writers.py::TestRecordAttemptAndAdmitRetry` (9 tests, including
+  a two-thread `BEGIN IMMEDIATE` serialisation test and the `harness_admissions`
+  append-only AST check), `test_history_reader_harness.py` (`TestHarnessEventById`,
+  `TestAuthoritativeAttempts`, plus a `HarnessEvent` v49-fields test), `test_cli_harness.py`
+  (`TestRetryOfGate` — 8 tests covering all five refusal rules, acceptance, write-failure,
+  and the `cmd_mcp` validation-before-gate ordering; `TestCmdDslRetryOf` — 2 tests for the
+  DSL single-file constraint).
+
+All Acceptance Criteria verified. Full suite: `python -m pytest scripts/tests/ -m "not
+integration and not conformance"` — 22661 passed, 6 pre-existing failures unrelated to this
+change (env-var baseline coverage, issue-parser priority-regex allowlist, an evidence gate
+on unrelated issue files, and a flaky SSE fan-in test that passes on retry).
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1 | Blocked by: ENH-3406 (done)
@@ -525,6 +566,8 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   before `/ll:manage-issue`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T21:51:54 - `a6890409-0ea2-4587-b566-5505315a74c7.jsonl`
+- `/ll:ready-issue` - 2026-09-08T21:13:51 - `8893a075-99d7-4866-a5ce-d078ca70f8a1.jsonl`
 - `/ll:confidence-check` - 2026-09-08T21:09:48 - `aa05b7c5-bd9c-445b-bfca-821ed5e4d764.jsonl`
 - `/ll:confidence-check` - 2026-09-08T20:44:42 - `6f51642f-2e27-4a91-aa1c-d82fabf2a587.jsonl`
 - `/ll:verify-issues` - 2026-09-08T20:23:07 - `177666e2-e3a8-45e9-869d-82933b239524.jsonl`

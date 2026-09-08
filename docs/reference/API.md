@@ -8273,6 +8273,9 @@ from little_loops.history_reader import (
     recent_harness_events,   # ENH-2741
     harness_eval_pass_rate,  # ENH-2741
     harness_eval_abstention_rate,  # ENH-3185
+    harness_event_by_id,     # ENH-3407
+    authoritative_attempt,   # ENH-3407
+    authoritative_attempts,  # ENH-3407
     HighConfidenceAbstention,      # ENH-230
     check_high_confidence_abstention,  # ENH-230
     PromptOptEvent,          # ENH-2498
@@ -8936,6 +8939,15 @@ class HarnessEvent:
     semantic_reason: str | None
     semantic_evidence: str | None
     semantic_model: str | None
+    target_content_hash: str | None = None
+    target_path: str | None = None
+    dirty: int | None = None
+    id: int | None = None
+    cell_key: str | None = None
+    repetition: int | None = None
+    attempt_kind: str | None = None
+    continuations: int | None = None
+    superseded_by: int | None = None
 ```
 
 ```python
@@ -8954,9 +8966,19 @@ def harness_eval_pass_rate(
     since: str | None = None,
     db: Path | str = DEFAULT_DB_PATH,
 ) -> float | None
+
+def harness_event_by_id(db_path: Path | str, attempt_id: int) -> HarnessEvent | None
+
+def authoritative_attempt(
+    db_path: Path | str, cell_key: str, repetition: int
+) -> HarnessEvent | None
+
+def authoritative_attempts(db_path: Path | str, cell_key: str) -> list[HarnessEvent]
 ```
 
 Read-side API for `harness_events` rows (ENH-2739's schema, written by `record_harness_event()`) — one row per `ll-harness` / eval run outcome. `recent_harness_events()` returns rows newest first, optionally filtered by exact `runner`/`target` and/or a `since` lower bound on `ts`; returns `[]` on a missing/unreadable DB. `harness_eval_pass_rate()` rolls up the `semantic_passed` tri-state column into a pass fraction for *target*, ignoring `semantic_passed IS NULL` rows (abstentions); `ll-harness` sets `semantic_passed` on every non-abstained run regardless of whether `--semantic` was supplied, so the denominator is *all non-abstained runs* for *target*, not only the `check_semantic`-judged ones. Returns `None` when there are zero scored rows. Named `harness_eval_pass_rate` (not `harness_pass_rate`) to avoid colliding with the unrelated `ab_writer.ABResults.harness_pass_rate` (an in-memory A/B-comparator field). `harness_eval_abstention_rate()` is its sibling (ENH-3185): same `target`/`since`/`db` signature, returns `{"abstentions": int, "scored": int, "abstention_rate": float} | None`, where `scored` here counts every semantically-judged row (pass+fail+abstain) — a deliberately different, and generally smaller, population than `harness_eval_pass_rate()`'s `scored`.
+
+`HarnessEvent` gained `id` plus the five v49 run-model columns (ENH-3407), all trailing-default so existing positional construction in tests keeps working. `harness_event_by_id()` looks up a single row by id — used by `ll-harness`'s `--retry-of` admissibility gate. `authoritative_attempt(cell_key, repetition)` returns the earliest non-superseded row for that `(cell_key, repetition)` pair; `authoritative_attempts(cell_key)` returns one row per repetition index (excluding superseded rows) — the set ENH-3408 counts as n. Both are per-repetition, not per-cell: a cell with three clean repetitions has three authoritative rows.
 
 **CLI:** `ll-session recent --kind harness` and `ll-session search --fts "<target>" --kind harness` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch (ENH-2739) — no CLI code change was needed for this read API. `ll-harness` itself is a consumer of both rollups (ENH-3223): `_evaluate_and_report()` folds the run's target's historical pass/abstention rate (target-scoped, 30-day window, suppressed below 3 scored runs) into its `--output json` payload and text report — see [CLI Reference → `ll-harness`](CLI.md#ll-harness).
 
@@ -9566,10 +9588,53 @@ def record_harness_event(
     semantic_reason: str | None = None,
     semantic_evidence: str | None = None,
     semantic_model: str | None = None,
+    target_content_hash: str | None = None,
+    target_path: str | None = None,
+    dirty: int | None = None,
+    cell_key: str | None = None,
+    repetition: int | None = None,
+    attempt_kind: str | None = None,
+    continuations: int | None = None,
+    superseded_by: int | None = None,
+) -> int
+```
+
+Write one `harness_events` row and index it in `search_index` with `kind="harness"` (ENH-2739). `parent_id` links DSL per-task rows to their parent harness run (ENH-2740). `target_content_hash` / `target_path` / `dirty` are the ENH-141 content-pin fields. Mirrors `record_test_run_event()`'s contract, not `record_hook_event()`'s: raises on failure — callers are responsible for `contextlib.suppress(Exception)` if a failed write should not abort the run. Live-write-only — no `_backfill_harness_events` exists.
+
+ENH-3407 adds the five nullable v49 kwargs (`cell_key` / `repetition` / `attempt_kind` / `continuations` / `superseded_by`, all default `None`) and changes the return type from `None` to the inserted row's id (`cursor.lastrowid`) — no existing caller reads the return value, so this is backward compatible. New callers that need repetition allocation or retry admission should use `record_attempt()` instead; this function is now a thin single-row wrapper.
+
+### record_attempt
+
+```python
+def record_attempt(
+    db_path: Path | str,
+    *,
+    cell_key: str,
+    attempt_kind: str,
+    retry_of: int | None = None,
+    reason: str | None = None,
+    continuations: int | None = None,
+    **event_fields: Any,
+) -> int
+```
+
+Record one `harness_events` row against a cell, allocating its repetition index (ENH-3407). `cell_key` encodes `[runner, target, head_sha]` as a JSON array string (`json.dumps(..., separators=(",", ":"))` — `cli/harness.py::_cell_key()` builds it). `attempt_kind='repetition'` allocates the next free 0-based repetition index for `cell_key` (`COALESCE(MAX(repetition), -1) + 1`). `attempt_kind='infra_retry'` requires `retry_of` and `reason`; the new row copies its repetition index from the retried row, and — in the same transaction — supersedes the prior row and appends one `harness_admissions` row via the private `_admit_retry()` helper.
+
+Allocation (and, on the retry path, admission) runs inside one `BEGIN IMMEDIATE` transaction rather than a bounded-retry loop, closing the read-then-INSERT race a plain `MAX(repetition)` SELECT would have under Python's legacy (no-op) transaction handling. A residual `IntegrityError` against `idx_harness_cell_repetition` is a genuine bug, not a race to retry around. Any failure in the retry path (insert, supersede, or admission) rolls back all three together — no orphan `infra_retry` row with `superseded_by IS NULL` is ever left behind.
+
+### admit_retry
+
+```python
+def admit_retry(
+    db_path: Path | str,
+    *,
+    attempt_id: int,
+    superseded_id: int,
+    reason: str,
 ) -> None
 ```
 
-Write one `harness_events` row and index it in `search_index` with `kind="harness"` (ENH-2739). `parent_id` links DSL per-task rows to their parent harness run (ENH-2740). Mirrors `record_test_run_event()`'s contract, not `record_hook_event()`'s: raises on failure — callers are responsible for `contextlib.suppress(Exception)` if a failed write should not abort the run. Live-write-only — nothing calls this yet (ENH-2740 wires the `ll-harness` producer); no `_backfill_harness_events` exists.
+Supersede `superseded_id` with `attempt_id` and append one `harness_admissions` row, in one transaction (ENH-3407). Public standalone form of the supersede + admission step performed inside `record_attempt()`'s retry path, for callers that already hold a recorded attempt id. Raises `ValueError` if `superseded_id` is already superseded or does not exist. `harness_admissions` is append-only — only this function (and `record_attempt()`'s retry path) ever write to it, and only via INSERT; no code path issues `UPDATE`/`DELETE` against it.
 
 ### record_prompt_opt_event
 

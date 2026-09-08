@@ -122,6 +122,9 @@ Public API:
     harness_eval_pass_rate(target, since, ...) -> float | None
     harness_eval_abstention_rate(target, since, ...) -> dict | None (ENH-3185 AC4)
     check_high_confidence_abstention(...) -> list[HighConfidenceAbstention] (ENH-230)
+    harness_event_by_id(db_path, attempt_id) -> HarnessEvent | None (ENH-3407)
+    authoritative_attempt(db_path, cell_key, repetition) -> HarnessEvent | None (ENH-3407)
+    authoritative_attempts(db_path, cell_key) -> list[HarnessEvent] (ENH-3407)
     recent_verdict_events(verdict_kind, target_id, since, ...) -> list[VerdictEvent]
     verdict_pass_rate(verdict_kind, target_id, since, ...) -> list[dict]
     query_advisor_consults(db_path, ...) -> list[AdvisorConsultRow] (FEAT-3300)
@@ -180,9 +183,12 @@ from little_loops.history_reader.formatting import (
 from little_loops.history_reader.harness import (
     HarnessEvent,
     HighConfidenceAbstention,
+    authoritative_attempt,
+    authoritative_attempts,
     check_high_confidence_abstention,
     harness_eval_abstention_rate,
     harness_eval_pass_rate,
+    harness_event_by_id,
     recent_harness_events,
 )
 from little_loops.history_reader.hooks import (
@@ -293,6 +299,8 @@ __all__ = [
     "aggregate_loop_runs",
     "aggregate_orchestration_runs",
     "aggregate_usage",
+    "authoritative_attempt",
+    "authoritative_attempts",
     "check_high_confidence_abstention",
     "commit_issue_for_sha",
     "condensed_nodes_for_issue",
@@ -307,6 +315,7 @@ __all__ = [
     "handoff_frequency",
     "harness_eval_abstention_rate",
     "harness_eval_pass_rate",
+    "harness_event_by_id",
     "hook_failure_rate",
     "hook_latency_p95",
     "issue_effort",

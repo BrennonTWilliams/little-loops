@@ -27,6 +27,7 @@ from little_loops.session_store import (
     DEFAULT_DB_PATH,
     cli_event_context,
     connect,
+    record_attempt,
     record_harness_event,
 )
 from little_loops.skill_expander import _find_plugin_root, _resolve_content_path
@@ -44,7 +45,16 @@ def _now_iso() -> str:
 
 
 def _git_output(*args: str) -> str | None:
-    """Return stripped stdout of a git command, or None on any failure."""
+    """Return stripped stdout of a git command, or None on any failure.
+
+    ENH-3407 broadened this from ``except (OSError, subprocess.TimeoutExpired)``
+    to a bare ``except Exception``, matching :func:`_git_dirty`'s existing
+    "best-effort, including subprocess oddities under test mocks" contract:
+    the ``--retry-of`` gate now calls this pre-run (not just inside the
+    ``contextlib.suppress``-wrapped record step), so a test that globally
+    patches ``subprocess.Popen`` for the runner under test can otherwise
+    surface an unrelated ``ValueError`` from this git call.
+    """
     try:
         proc = subprocess.run(
             ["git", *args],
@@ -52,7 +62,7 @@ def _git_output(*args: str) -> str | None:
             text=True,
             timeout=5,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except Exception:  # noqa: BLE001 — best-effort, never raises
         return None
     if proc.returncode != 0:
         return None
@@ -121,6 +131,68 @@ def _resolve_skill_target_path(name: str) -> Path | None:
         return None
 
 
+def _cell_key(runner: str, target: str, head_sha: str | None) -> str:
+    """Return the JSON-array cell-key encoding for ``(runner, target, head_sha)`` (ENH-3407).
+
+    ``json.dumps([runner, target, head_sha], separators=(",", ":"))`` — a JSON
+    array is used because ``cmd`` targets are arbitrary shell strings (spaces,
+    ``|``, ``:``, quotes) with no single safe delimiter. Deterministic,
+    stdlib-only, greppable in sqlite. See :func:`record_attempt`'s docstring
+    for the ``dirty``/DSL-collision caveats on this encoding.
+    """
+    return json.dumps([runner, target, head_sha], separators=(",", ":"))
+
+
+def _retry_refusal(prior: Any, retry_of: int, cell_key: str) -> str | None:
+    """Return a ``--retry-of`` refusal message, or None if *prior* is admissible (ENH-3407).
+
+    Rule order mirrors ``cli/queue.py::_not_found_or_ambiguous``'s id-lookup
+    -> persisted-state-check -> loud-refusal shape, without a ``--force``
+    escape hatch (parent decision: no override).
+    """
+    if prior is None:
+        return f"error: --retry-of {retry_of}: no such attempt"
+    if prior.cell_key is None:
+        return (
+            f"error: --retry-of {retry_of}: attempt has no cell_key "
+            "(pre-migration row or DSL aggregate row)"
+        )
+    if prior.superseded_by is not None:
+        return f"error: --retry-of {retry_of}: already superseded by attempt {prior.superseded_by}"
+    if prior.cell_key != cell_key:
+        return (
+            f"error: --retry-of {retry_of}: belongs to a different cell "
+            "(different runner, target, or head sha)"
+        )
+    if not prior.timed_out:
+        return (
+            f"error: --retry-of {retry_of}: attempt did not time out "
+            "(reached grading, or hit a runner error with no persisted signal); "
+            "only a retry of a timeout is admissible"
+        )
+    return None
+
+
+def _retry_gate(retry_of: int | None, cell_key: str) -> str | None:
+    """Resolve ``--retry-of``'s admissibility; return a refusal message, or None.
+
+    Returns None both when *retry_of* is absent and when the prior attempt is
+    admissible — callers only need to branch on "refused vs proceed".
+    """
+    if retry_of is None:
+        return None
+    from little_loops.history_reader import harness_event_by_id
+    from little_loops.session_store import resolve_history_db
+
+    # `harness_event_by_id()` -> `_connect_readonly()` opens whatever path
+    # it is handed as-is -- it does not re-resolve a default-shaped path
+    # through the env/config chain the way `_pkg.connect()` (the write side)
+    # does. Resolve once here, matching `_read_target_history()`'s precedent,
+    # so this read lands on the same database file the write path uses.
+    prior = harness_event_by_id(resolve_history_db(DEFAULT_DB_PATH), retry_of)
+    return _retry_refusal(prior, retry_of, cell_key)
+
+
 def _record_harness_event(
     *,
     runner: str,
@@ -130,20 +202,35 @@ def _record_harness_event(
     semantic_passed: bool | None,
     timed_out: bool,
     duration_ms: int,
+    head_sha: str | None,
+    cell_key: str,
+    retry_of: int | None = None,
     parent_id: int | None = None,
     target_content_hash: str | None = None,
     target_path: str | None = None,
     dirty: int | None = None,
 ) -> None:
-    """Best-effort write to ``harness_events`` — never affects the harness exit code.
+    """Record one attempt against *cell_key* via :func:`record_attempt` (ENH-3407).
 
     ENH-141 adds ``target_content_hash`` / ``target_path`` / ``dirty`` kwargs;
     all three default to None so existing callers (v38 row shape) continue to
     work unchanged.
+
+    Without ``retry_of``, this stays best-effort (``contextlib.suppress``) as
+    before — a failed write never affects the harness exit code. **With
+    ``retry_of`` set, a write failure is NOT suppressed**: it propagates so
+    the caller can surface it and exit non-zero, because an admitted retry
+    whose ``harness_admissions`` row silently failed to land would defeat the
+    audit purpose.
     """
-    with contextlib.suppress(Exception):
-        record_harness_event(
+
+    def _write() -> None:
+        record_attempt(
             DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="infra_retry" if retry_of is not None else "repetition",
+            retry_of=retry_of,
+            reason="timeout" if retry_of is not None else None,
             ts=_now_iso(),
             runner=runner,
             target=target,
@@ -152,13 +239,19 @@ def _record_harness_event(
             semantic_passed=semantic_passed,
             timed_out=timed_out,
             duration_ms=duration_ms,
-            head_sha=_git_output("rev-parse", "HEAD"),
+            head_sha=head_sha,
             branch=_git_output("rev-parse", "--abbrev-ref", "HEAD"),
             parent_id=parent_id,
             target_content_hash=target_content_hash,
             target_path=target_path,
             dirty=dirty,
         )
+
+    if retry_of is not None:
+        _write()
+    else:
+        with contextlib.suppress(Exception):
+            _write()
 
 
 @dataclass
@@ -426,6 +519,21 @@ Exit codes:
                 "evidence bundle for, from .ll/history.db. Read-only: does "
                 "not run the check. Absent when no bundle is found or when "
                 "unset (includes prepatch_evidence key in --output json)."
+            ),
+        )
+        p.add_argument(
+            "--retry-of",
+            dest="retry_of",
+            type=int,
+            default=None,
+            metavar="ID",
+            help=(
+                "Attempt id (harness_events.id) this run retries (ENH-3407). "
+                "Gated before the run: refused with exit 1 unless the prior "
+                "attempt exists, has a cell_key, is not already superseded, "
+                "matches this invocation's cell (runner/target/head sha), "
+                "and timed out. On success, records attempt_kind='infra_retry' "
+                "and admits the retry in one transaction."
             ),
         )
 
@@ -822,6 +930,13 @@ def cmd_skill(args: argparse.Namespace) -> int:
     """Invoke a little-loops skill via the active host CLI."""
     runner_args: list[str] = getattr(args, "runner_args", None) or []
     runner_label = f"skill {args.target}"
+    head_sha = _git_output("rev-parse", "HEAD")
+    cell_key = _cell_key("skill", args.target, head_sha)
+    retry_of = getattr(args, "retry_of", None)
+    refusal = _retry_gate(retry_of, cell_key)
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
+        return 1
     spec = ActionSpec(
         name=args.target,
         runner=RunnerType.SKILL,
@@ -838,24 +953,38 @@ def cmd_skill(args: argparse.Namespace) -> int:
     target_hash = _hash_file(skill_path) if skill_path is not None else None
     dirty_val = _git_dirty()
     dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-    _record_harness_event(
-        runner="skill",
-        target=args.target,
-        exit_code=result.exit_code,
-        semantic_verdict=outcome.verdict,
-        semantic_passed=None if outcome.abstained else outcome.passed,
-        timed_out=result.timed_out,
-        duration_ms=duration_ms,
-        target_content_hash=target_hash,
-        target_path=target_path_str,
-        dirty=dirty_int,
-    )
+    try:
+        _record_harness_event(
+            runner="skill",
+            target=args.target,
+            exit_code=result.exit_code,
+            semantic_verdict=outcome.verdict,
+            semantic_passed=None if outcome.abstained else outcome.passed,
+            timed_out=result.timed_out,
+            duration_ms=duration_ms,
+            head_sha=head_sha,
+            cell_key=cell_key,
+            retry_of=retry_of,
+            target_content_hash=target_hash,
+            target_path=target_path_str,
+            dirty=dirty_int,
+        )
+    except Exception as exc:
+        print(f"error: retry of attempt {retry_of} was not recorded: {exc}", file=sys.stderr)
+        return 1
     return rc
 
 
 def cmd_cmd(args: argparse.Namespace) -> int:
     """Run a shell command with deadlock-safe stderr draining."""
     runner_label = f"cmd {args.target}"
+    head_sha = _git_output("rev-parse", "HEAD")
+    cell_key = _cell_key("cmd", args.target, head_sha)
+    retry_of = getattr(args, "retry_of", None)
+    refusal = _retry_gate(retry_of, cell_key)
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
+        return 1
     spec = ActionSpec(
         name=args.target,
         runner=RunnerType.CMD,
@@ -868,16 +997,23 @@ def cmd_cmd(args: argparse.Namespace) -> int:
     rc, outcome = _evaluate_and_report(runner_label, result, args)
     dirty_val = _git_dirty()
     dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-    _record_harness_event(
-        runner="cmd",
-        target=args.target,
-        exit_code=result.exit_code,
-        semantic_verdict=outcome.verdict,
-        semantic_passed=None if outcome.abstained else outcome.passed,
-        timed_out=result.timed_out,
-        duration_ms=duration_ms,
-        dirty=dirty_int,
-    )
+    try:
+        _record_harness_event(
+            runner="cmd",
+            target=args.target,
+            exit_code=result.exit_code,
+            semantic_verdict=outcome.verdict,
+            semantic_passed=None if outcome.abstained else outcome.passed,
+            timed_out=result.timed_out,
+            duration_ms=duration_ms,
+            head_sha=head_sha,
+            cell_key=cell_key,
+            retry_of=retry_of,
+            dirty=dirty_int,
+        )
+    except Exception as exc:
+        print(f"error: retry of attempt {retry_of} was not recorded: {exc}", file=sys.stderr)
+        return 1
     return rc
 
 
@@ -898,6 +1034,14 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         print(f"Error: --args is not valid JSON: {e}", file=sys.stderr)
         return 2
 
+    head_sha = _git_output("rev-parse", "HEAD")
+    cell_key = _cell_key("mcp", args.target, head_sha)
+    retry_of = getattr(args, "retry_of", None)
+    refusal = _retry_gate(retry_of, cell_key)
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
+        return 1
+
     spec = ActionSpec(
         name=args.target,
         runner=RunnerType.MCP,
@@ -911,16 +1055,23 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     rc, outcome = _evaluate_and_report(runner_label, result, args)
     dirty_val = _git_dirty()
     dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-    _record_harness_event(
-        runner="mcp",
-        target=args.target,
-        exit_code=result.exit_code,
-        semantic_verdict=outcome.verdict,
-        semantic_passed=None if outcome.abstained else outcome.passed,
-        timed_out=result.timed_out,
-        duration_ms=duration_ms,
-        dirty=dirty_int,
-    )
+    try:
+        _record_harness_event(
+            runner="mcp",
+            target=args.target,
+            exit_code=result.exit_code,
+            semantic_verdict=outcome.verdict,
+            semantic_passed=None if outcome.abstained else outcome.passed,
+            timed_out=result.timed_out,
+            duration_ms=duration_ms,
+            head_sha=head_sha,
+            cell_key=cell_key,
+            retry_of=retry_of,
+            dirty=dirty_int,
+        )
+    except Exception as exc:
+        print(f"error: retry of attempt {retry_of} was not recorded: {exc}", file=sys.stderr)
+        return 1
     return rc
 
 
@@ -948,21 +1099,35 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     """Send a raw prompt to Claude and evaluate the response."""
     label_text = args.target[:40] + ("..." if len(args.target) > 40 else "")
     runner_label = f"prompt {label_text}"
+    head_sha = _git_output("rev-parse", "HEAD")
+    cell_key = _cell_key("prompt", args.target, head_sha)
+    retry_of = getattr(args, "retry_of", None)
+    refusal = _retry_gate(retry_of, cell_key)
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
+        return 1
     result, duration_ms = _run_prompt_action(args.target, args)
     rc, outcome = _evaluate_and_report(runner_label, result, args)
     dirty_val = _git_dirty()
     dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-    _record_harness_event(
-        runner="prompt",
-        target=args.target,
-        exit_code=result.exit_code,
-        semantic_verdict=outcome.verdict,
-        semantic_passed=None if outcome.abstained else outcome.passed,
-        timed_out=result.timed_out,
-        duration_ms=duration_ms,
-        target_content_hash=_hash_bytes(args.target.encode("utf-8")),
-        dirty=dirty_int,
-    )
+    try:
+        _record_harness_event(
+            runner="prompt",
+            target=args.target,
+            exit_code=result.exit_code,
+            semantic_verdict=outcome.verdict,
+            semantic_passed=None if outcome.abstained else outcome.passed,
+            timed_out=result.timed_out,
+            duration_ms=duration_ms,
+            head_sha=head_sha,
+            cell_key=cell_key,
+            retry_of=retry_of,
+            target_content_hash=_hash_bytes(args.target.encode("utf-8")),
+            dirty=dirty_int,
+        )
+    except Exception as exc:
+        print(f"error: retry of attempt {retry_of} was not recorded: {exc}", file=sys.stderr)
+        return 1
     return rc
 
 
@@ -987,6 +1152,24 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
         print(f"Error: no .yaml task files found in {path}", file=sys.stderr)
         return 2
 
+    retry_of = getattr(args, "retry_of", None)
+    if retry_of is not None and path.is_dir():
+        print(
+            f"error: --retry-of {retry_of}: requires a single task-file path, "
+            f"got a directory: {path}",
+            file=sys.stderr,
+        )
+        return 1
+
+    head_sha = _git_output("rev-parse", "HEAD")
+
+    if retry_of is not None:
+        retry_cell_key = _cell_key("dsl-task", task_files[0].name, head_sha)
+        refusal = _retry_gate(retry_of, retry_cell_key)
+        if refusal is not None:
+            print(refusal, file=sys.stderr)
+            return 1
+
     total = 0
     graded_pass = 0
     graded_total = 0
@@ -1000,44 +1183,51 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
     dirty_val = _git_dirty()
     dirty_int: int | None = None if dirty_val is None else int(dirty_val)
     with contextlib.suppress(Exception):
-        record_harness_event(
+        aggregate_id = record_harness_event(
             DEFAULT_DB_PATH,
             ts=aggregate_ts,
             runner="dsl",
             target=str(path),
-            head_sha=_git_output("rev-parse", "HEAD"),
+            head_sha=head_sha,
             branch=_git_output("rev-parse", "--abbrev-ref", "HEAD"),
             target_path=str(path),
             target_content_hash=_hash_file(path),
             dirty=dirty_int,
         )
-        conn = connect(DEFAULT_DB_PATH)
-        try:
-            row = conn.execute("SELECT id FROM harness_events ORDER BY id DESC LIMIT 1").fetchone()
-            aggregate_id = row[0] if row is not None else None
-        finally:
-            conn.close()
 
     for task_file in task_files:
         total += 1
         task = _load_task(task_file)
 
+        task_retry_of = retry_of if task_file is task_files[0] else None
+        task_cell_key = _cell_key("dsl-task", task_file.name, head_sha)
+
         if task is None:
             failures.append(f"{task_file.name} (malformed task file)")
             graded_total += 1
-            _record_harness_event(
-                runner="dsl-task",
-                target=task_file.name,
-                exit_code=1,
-                semantic_verdict=None,
-                semantic_passed=False,
-                timed_out=False,
-                duration_ms=0,
-                parent_id=aggregate_id,
-                target_path=str(task_file),
-                target_content_hash=_hash_file(task_file),
-                dirty=dirty_int,
-            )
+            try:
+                _record_harness_event(
+                    runner="dsl-task",
+                    target=task_file.name,
+                    exit_code=1,
+                    semantic_verdict=None,
+                    semantic_passed=False,
+                    timed_out=False,
+                    duration_ms=0,
+                    head_sha=head_sha,
+                    cell_key=task_cell_key,
+                    retry_of=task_retry_of,
+                    parent_id=aggregate_id,
+                    target_path=str(task_file),
+                    target_content_hash=_hash_file(task_file),
+                    dirty=dirty_int,
+                )
+            except Exception as exc:
+                print(
+                    f"error: retry of attempt {task_retry_of} was not recorded: {exc}",
+                    file=sys.stderr,
+                )
+                return 1
             continue
 
         has_expected = bool(task.expected)
@@ -1096,19 +1286,29 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
                         detail = f" ({mismatches})"
                 failures.append(f"{task_file.name}{detail}")
 
-        _record_harness_event(
-            runner="dsl-task",
-            target=task_file.name,
-            exit_code=result.exit_code,
-            semantic_verdict=outcome.verdict,
-            semantic_passed=None if outcome.abstained else outcome.passed,
-            timed_out=result.timed_out,
-            duration_ms=duration_ms,
-            parent_id=aggregate_id,
-            target_path=str(task_file),
-            target_content_hash=_hash_file(task_file),
-            dirty=dirty_int,
-        )
+        try:
+            _record_harness_event(
+                runner="dsl-task",
+                target=task_file.name,
+                exit_code=result.exit_code,
+                semantic_verdict=outcome.verdict,
+                semantic_passed=None if outcome.abstained else outcome.passed,
+                timed_out=result.timed_out,
+                duration_ms=duration_ms,
+                head_sha=head_sha,
+                cell_key=task_cell_key,
+                retry_of=task_retry_of,
+                parent_id=aggregate_id,
+                target_path=str(task_file),
+                target_content_hash=_hash_file(task_file),
+                dirty=dirty_int,
+            )
+        except Exception as exc:
+            print(
+                f"error: retry of attempt {task_retry_of} was not recorded: {exc}",
+                file=sys.stderr,
+            )
+            return 1
 
     def _update_aggregate(exit_code: int, semantic_passed: bool) -> None:
         with contextlib.suppress(Exception):

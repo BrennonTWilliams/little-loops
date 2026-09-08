@@ -54,6 +54,8 @@ Public API:
     record_harness_event(db,...): write one row to ``harness_events`` + search_index (ENH-2739)
     record_prompt_opt_event(db,...): write one row to ``prompt_opt_events`` + search_index (ENH-2498)
     record_verdict_event(db,...): write one row to ``verdict_events`` + search_index (ENH-2504)
+    record_attempt(db,...): allocate a cell's repetition index, write one ``harness_events`` row, admit a retry if `retry_of` is set (ENH-3407)
+    admit_retry(db,...): supersede a prior attempt + append one ``harness_admissions`` row (ENH-3407)
 """
 
 from __future__ import annotations
@@ -133,6 +135,7 @@ from little_loops.session_store.writers import (
     _pack_payload,
     _parse_mcp_tool_name,
     _unpack_payload,
+    admit_retry,
     canonicalize_issue_id,
     cli_event_context,
     hook_event_context,
@@ -141,6 +144,7 @@ from little_loops.session_store.writers import (
     mine_corrections_from_messages,
     normalize_issue_id,
     reconcile_stale_subagent_runs,
+    record_attempt,
     record_commit_event,
     record_context_pressure_event,
     record_correction,
@@ -237,6 +241,8 @@ __all__ = [
     "write_advisor_consult",
     "write_research_triage",
     "write_credential_scope",
+    "record_attempt",
+    "admit_retry",
     # Private functions re-exported for test access
     "_MIGRATIONS",
     "_KIND_TABLE",

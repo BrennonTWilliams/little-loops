@@ -61,9 +61,11 @@ Decomposed from ENH-3397.
 ## Files to Modify
 
 - `scripts/little_loops/history_reader/harness.py` — `HarnessEvent` dataclass +
-  `_HARNESS_EVENT_COLUMNS` additions (do first); `harness_eval_pass_rate()` (113) and
-  `harness_eval_abstention_rate()` (152) apply the authoritative-attempt filter (via
-  `authoritative_attempt()` from ENH-3407).
+  `_HARNESS_EVENT_COLUMNS` additions (`id` + the five v49 fields) are **provided by
+  ENH-3407** (landed) — no longer this issue's own first step; `harness_eval_pass_rate()`
+  (113) and `harness_eval_abstention_rate()` (152) apply the authoritative-attempt filter by
+  consuming `authoritative_attempts(cell_key)` / `authoritative_attempt(cell_key,
+  repetition)`, both also provided by ENH-3407.
 - `scripts/little_loops/history_reader/__init__.py:184-186,308-309,329` — re-exports if
   signatures change.
 - `scripts/little_loops/cli/harness.py:588,623` — `_read_target_history()`'s

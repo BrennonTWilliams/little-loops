@@ -232,6 +232,7 @@ One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or
 | `--timeout SECONDS` | Runner timeout (default: 120) |
 | `--output FORMAT` | `text` (default) or `json` |
 | `--verbose` | Show full captured output even on PASS |
+| `--retry-of ID` | Mark this run as a retry of attempt `ID` (`harness_events.id`); see "Retrying a run" below (ENH-3407) |
 
 **mcp-specific flag:**
 `--args JSON` — JSON arguments forwarded to the MCP tool (default: `{}`).
@@ -310,6 +311,37 @@ ll-harness skill refine-issue P2-ENH-1229 --trace-mode \
   --require-artifact ".issues/enhancements/P2-ENH-1229-*.md" \
   --forbid-path ".git/index.lock"
 ll-harness skill check-code --trace-mode --hosts claude-code,codex
+```
+
+**Retrying a run (`--retry-of ID`, ENH-3407):**
+
+Every evaluator invocation writes a `harness_events` row with a `cell_key` (`[runner,
+target, head_sha]`) and a 0-based `repetition` index, allocated per cell. `--retry-of ID`
+marks the run as an infra retry of a prior attempt rather than a fresh repetition — it
+reuses the prior's repetition index, supersedes the prior row, and appends one
+`harness_admissions` row (`reason='timeout'`), all in one transaction.
+
+The gate runs **before** the run — a refused retry never spends an invocation — and refuses
+with **exit 1** and a stderr message naming the attempt when the prior attempt (looked up by
+`ID`):
+
+- does not exist;
+- has no `cell_key` (a pre-migration row, or the `dsl` aggregate/parent row);
+- is already superseded by a later attempt;
+- belongs to a different cell (different runner, target, or head sha — retrying after a
+  commit is a new cell, not a retry);
+- did not time out (it reached grading, or hit a runner error with no persisted signal —
+  only a genuine timeout is retriable today; there is no `--force` override).
+
+On `dsl`, `--retry-of` is admissible only when `path` names a single task file (not a
+directory) whose `dsl-task` row matches; a directory `path` combined with `--retry-of` is
+refused. A write failure on the retry path is **not** suppressed the way an ordinary run's
+best-effort write is — it exits non-zero with an error naming the attempt, and leaves no new
+row, the prior row un-superseded, and no admission row (the whole write is one transaction).
+
+```bash
+ll-harness cmd "flaky-integration-test" --timeout 30   # times out, e.g. attempt id 42
+ll-harness cmd "flaky-integration-test" --timeout 120 --retry-of 42
 ```
 
 ---

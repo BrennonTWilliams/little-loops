@@ -26,7 +26,10 @@ from little_loops.history_reader._base import (
 __all__ = [
     "HarnessEvent",
     "HighConfidenceAbstention",
+    "authoritative_attempt",
+    "authoritative_attempts",
     "check_high_confidence_abstention",
+    "harness_event_by_id",
     "harness_eval_abstention_rate",
     "harness_eval_pass_rate",
     "recent_harness_events",
@@ -40,6 +43,11 @@ class HarnessEvent:
     ENH-141 adds three content-pin fields (``target_content_hash``,
     ``target_path``, ``dirty``) so consumers can compare runs across commits
     without re-diffing the working tree by hand.
+
+    ENH-3407 adds ``id`` plus the five v49 run-model columns (``cell_key``,
+    ``repetition``, ``attempt_kind``, ``continuations``, ``superseded_by``),
+    all trailing-default so existing positional construction in tests keeps
+    working.
     """
 
     ts: str
@@ -61,13 +69,20 @@ class HarnessEvent:
     target_content_hash: str | None = None
     target_path: str | None = None
     dirty: int | None = None
+    id: int | None = None
+    cell_key: str | None = None
+    repetition: int | None = None
+    attempt_kind: str | None = None
+    continuations: int | None = None
+    superseded_by: int | None = None
 
 
 _HARNESS_EVENT_COLUMNS = (
-    "ts, runner, target, exit_code, semantic_verdict, semantic_passed, timed_out, "
+    "id, ts, runner, target, exit_code, semantic_verdict, semantic_passed, timed_out, "
     "duration_ms, head_sha, branch, parent_id, semantic_prompt, semantic_confidence, "
     "semantic_reason, semantic_evidence, semantic_model, "
-    "target_content_hash, target_path, dirty"
+    "target_content_hash, target_path, dirty, "
+    "cell_key, repetition, attempt_kind, continuations, superseded_by"
 )
 
 
@@ -108,6 +123,88 @@ def recent_harness_events(
     finally:
         conn.close()
     return [_row_to_dataclass(row, HarnessEvent) for row in rows]
+
+
+def harness_event_by_id(db_path: Path | str, attempt_id: int) -> HarnessEvent | None:
+    """Return the ``harness_events`` row with ``id == attempt_id``, or None (ENH-3407).
+
+    Used by ``ll-harness``'s ``--retry-of`` admissibility gate to look up the
+    prior attempt a run claims to retry.
+    """
+    conn = _connect_readonly(Path(db_path))
+    if conn is None:
+        return None
+    try:
+        sql = f"SELECT {_HARNESS_EVENT_COLUMNS} FROM harness_events WHERE id = ?"
+        row = conn.execute(sql, (attempt_id,)).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: harness_event_by_id query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    return None if row is None else _row_to_dataclass(row, HarnessEvent)
+
+
+def authoritative_attempt(
+    db_path: Path | str, cell_key: str, repetition: int
+) -> HarnessEvent | None:
+    """Return the earliest non-superseded row for ``(cell_key, repetition)`` (ENH-3407).
+
+    Per-repetition, not per-cell: a cell with three clean repetitions has
+    three authoritative rows, one per repetition index. "Earliest" is by
+    ``id`` — the first attempt recorded for that repetition that has never
+    been superseded.
+    """
+    conn = _connect_readonly(Path(db_path))
+    if conn is None:
+        return None
+    try:
+        sql = (
+            f"SELECT {_HARNESS_EVENT_COLUMNS} FROM harness_events "
+            "WHERE cell_key = ? AND repetition = ? AND superseded_by IS NULL "
+            "ORDER BY id LIMIT 1"
+        )
+        row = conn.execute(sql, (cell_key, repetition)).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: authoritative_attempt query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    return None if row is None else _row_to_dataclass(row, HarnessEvent)
+
+
+def authoritative_attempts(db_path: Path | str, cell_key: str) -> list[HarnessEvent]:
+    """Return one authoritative row per repetition index for *cell_key* (ENH-3407).
+
+    The set ENH-3408 counts as n: excludes superseded rows, and for each
+    repetition index keeps only the earliest (lowest ``id``) surviving
+    attempt. Losing (superseded) attempts remain in ``harness_events`` but
+    are never returned here.
+    """
+    conn = _connect_readonly(Path(db_path))
+    if conn is None:
+        return []
+    try:
+        sql = (
+            f"SELECT {_HARNESS_EVENT_COLUMNS} FROM harness_events "
+            "WHERE cell_key = ? AND superseded_by IS NULL "
+            "ORDER BY repetition ASC, id ASC"
+        )
+        rows = conn.execute(sql, (cell_key,)).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: authoritative_attempts query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    seen: set[int] = set()
+    result: list[HarnessEvent] = []
+    for row in rows:
+        repetition = row["repetition"]
+        if repetition in seen:
+            continue
+        seen.add(repetition)
+        result.append(_row_to_dataclass(row, HarnessEvent))
+    return result
 
 
 def harness_eval_pass_rate(

@@ -1792,7 +1792,7 @@ The following conventions apply to little-loops CLI tools that emit JSON output.
   - `2` — validation failure (e.g. schema lint, audit gate).
   - `124` — timeout (matches the GNU `timeout(1)` convention; used by `ll-action`).
   - `130` — `KeyboardInterrupt` (matches the conventional `128 + SIGINT` value).
-- **`ll-harness`** uses `RunnerResult.exit_code` with a caller-supplied `--exit-code` threshold (default `2` for timeout/exception markers, `0` for success).
+- **`ll-harness`** uses `RunnerResult.exit_code` with a caller-supplied `--exit-code` threshold (default `2` for timeout/exception markers, `0` for success). `exit_code == 2` alone does not distinguish a timeout from a runner error (bad target, MCP config, scope resolution) — both branches store `2`. Only `RunnerResult.timed_out` is persisted to `harness_events`; `RunnerResult.error` has no column. `--retry-of`'s admissibility gate (ENH-3407) therefore reads the persisted `timed_out` column, not `exit_code` — a retry of a genuine timeout is admissible, a retry of any other `2` (or a graded `1`) is refused until a persisted runner-error signal exists.
 - **`ll-sprint run`** uses `exit_code = 1` for worker failure / abort paths and `130` for `KeyboardInterrupt`.
 
 **Caller implications:** When scripting against `ll-verify-*` tools, parse the JSON envelope first and treat non-zero exit as "tool failed" (separate from "tool ran and found issues"). Do not assume `0` means "no problems found" — see the tool's documentation for the meaning of its exit codes.
