@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from little_loops.runner_spec import ActionSpec, RunnerType
+from little_loops.runner_spec import ActionSpec, RunnerType, scope_runner_error
 
 __all__ = [
     "DEFAULT_DB_PATH",
@@ -320,7 +320,16 @@ def add_entry(
     db_path: Path | str = DEFAULT_DB_PATH,
     root: Path | None = None,
 ) -> QueueEntry:
-    """Persist a new queue entry and return it. *root* is forwarded to :func:`connect`."""
+    """Persist a new queue entry and return it. *root* is forwarded to :func:`connect`.
+
+    Raises :class:`ValueError` (ENH-3403) for a scoped SKILL/PROMPT/MCP
+    *action*: those runners never enforce ``scopes``, so rejecting at enqueue
+    time is preferable to persisting an entry that will silently dispatch
+    unscoped (or fail loud later) at drain.
+    """
+    scope_error = scope_runner_error(action)
+    if scope_error is not None:
+        raise ValueError(scope_error)
     entry_id = str(uuid.uuid4())
     enqueued_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     rank = _priority_rank(priority)

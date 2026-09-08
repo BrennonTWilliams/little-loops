@@ -194,6 +194,19 @@ class TestAddEntry:
         assert fetched is not None
         assert fetched.action.scopes is None
 
+    def test_scoped_skill_entry_rejected(self, tmp_path: Path) -> None:
+        """ENH-3403: scopes on SKILL/PROMPT/MCP are never enforced at dispatch,
+        so add_entry() must reject the combination rather than persist it."""
+        db = tmp_path / "queue.db"
+        with pytest.raises(ValueError, match="declares 'scopes' but runner is"):
+            add_entry(
+                ActionSpec(
+                    name="x", runner=RunnerType.SKILL, target="x", scopes=frozenset({"github"})
+                ),
+                db_path=db,
+            )
+        assert list_entries(db) == []
+
 
 class TestListEntries:
     def test_empty_queue(self, tmp_path: Path) -> None:

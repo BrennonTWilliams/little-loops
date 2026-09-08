@@ -176,6 +176,44 @@ class TestCmdRunStatusWriteBack:
         assert second_entry is not None and second_entry.status == "done"
 
 
+class TestCmdRunScopeGuard:
+    """ENH-3403: a pre-existing hand-written scoped SKILL entry (add_entry()
+    now rejects these at enqueue, but an entry written directly to the queue
+    file before this guard existed must still be handled, not crash the
+    drainer) fails loud at drain time with no spawn."""
+
+    def test_drain_of_hand_written_scoped_skill_entry_lands_failed(self) -> None:
+        from little_loops.queue_store import _serialize_action, connect
+        from little_loops.runner_spec import ActionSpec, RunnerType
+
+        action = ActionSpec(
+            name="x", runner=RunnerType.SKILL, target="x", scopes=frozenset({"github"})
+        )
+        conn = connect(DEFAULT_DB_PATH)
+        try:
+            conn.execute(
+                "INSERT INTO queue_entries(id, action, enqueued_at, priority, status, result) "
+                "VALUES ('raw-entry', ?, '2026-09-08T00:00:00Z', 3, 'pending', NULL)",
+                (_serialize_action(action),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("sys.argv", ["ll-queue", "run", "--json"]),
+        ):
+            main_queue()
+
+        mock_run.assert_not_called()
+        entry = get_entry("raw-entry")
+        assert entry is not None
+        assert entry.status == "failed"
+        assert entry.result is not None
+        assert "declares 'scopes' but runner is" in (entry.result["error"] or "")
+
+
 class TestCmdRunOnlyPending:
     def test_run_skips_non_pending_entries(self, capsys: pytest.CaptureFixture[str]) -> None:
         done_id = _add_and_get_id(capsys, "already-done")

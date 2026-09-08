@@ -3,10 +3,11 @@ id: ENH-3403
 type: ENH
 title: ActionSpec.scopes silently ignored by skill/prompt/mcp runners
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T00:42:38Z'
+completed_at: '2026-09-08T02:16:09Z'
 parent: EPIC-3212
 reconcile_attempted: true
 confidence_score: 100
@@ -153,13 +154,36 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] An `ActionSpec` with `runner in {SKILL, PROMPT, MCP}` and `scopes is not None` fails loud before spawn: `run_action()` returns `RunnerResult(exit_code=2, error=...)` without calling `handler(spec)` — no subprocess/skill/prompt/mcp dispatch occurs (option b is out of scope, see Scope Boundaries). A test for each non-CMD runner asserts the runner's spawn primitive is never called.
-- [ ] The rejection `error` contains the pinned substring `declares 'scopes' but runner is` and names the runner value; tests assert it.
-- [ ] Rejection writes no `credential_scope_events` row.
-- [ ] `queue_store.add_entry()` raises `ValueError` with the same message for a scoped SKILL/PROMPT/MCP spec; a pre-existing hand-written scoped entry still deserializes, and draining it via `_drain_once()` lands `status: failed` with the message persisted and no spawn.
-- [ ] `scopes=None` on every runner type is unchanged (full inherit).
-- [ ] `docs/reference/API.md` states scopes are CMD-only and rejected elsewhere.
-- [ ] Unit suite green: `python -m pytest scripts/tests/`.
+- [x] An `ActionSpec` with `runner in {SKILL, PROMPT, MCP}` and `scopes is not None` fails loud before spawn: `run_action()` returns `RunnerResult(exit_code=2, error=...)` without calling `handler(spec)` — no subprocess/skill/prompt/mcp dispatch occurs (option b is out of scope, see Scope Boundaries). A test for each non-CMD runner asserts the runner's spawn primitive is never called.
+- [x] The rejection `error` contains the pinned substring `declares 'scopes' but runner is` and names the runner value; tests assert it.
+- [x] Rejection writes no `credential_scope_events` row.
+- [x] `queue_store.add_entry()` raises `ValueError` with the same message for a scoped SKILL/PROMPT/MCP spec; a pre-existing hand-written scoped entry still deserializes, and draining it via `_drain_once()` lands `status: failed` with the message persisted and no spawn.
+- [x] `scopes=None` on every runner type is unchanged (full inherit).
+- [x] `docs/reference/API.md` states scopes are CMD-only and rejected elsewhere.
+- [x] Unit suite green: `python -m pytest scripts/tests/`.
+
+## Resolution
+
+Implemented exactly as designed: `scope_runner_error(spec)` (new pure helper,
+`runner_spec.py`) returns the pinned message when `spec.scopes is not None`
+and `spec.runner is not RunnerType.CMD`. `run_action()` calls it after
+`_DISPATCH.get()` resolves and before `handler(spec)`, returning
+`RunnerResult(exit_code=2, error=...)` without dispatching or writing a
+`credential_scope_events` row. `queue_store.add_entry()` calls the same
+helper and raises `ValueError` at enqueue time; `_deserialize_action()` stays
+permissive so a pre-existing hand-written scoped entry still deserializes and
+is rejected the same way when `_drain_once()` dispatches it (verified via a
+direct-insert test in `test_cli_queue_run.py`, no `cli/queue.py` code change
+needed — `RunnerResult.error` already propagates to `status: failed`).
+
+Tests added: `test_runner_spec.py::TestScopeRunnerGuard` (SKILL/PROMPT/MCP
+fail-loud + no-audit-row), `test_queue_store.py::TestAddEntry::test_scoped_skill_entry_rejected`,
+`test_cli_queue_run.py::TestCmdRunScopeGuard` (drain of a hand-written entry).
+`docs/reference/API.md`'s `ActionSpec`/`run_action` sections updated. Full
+unit suite green (pre-existing unrelated failures in `test_host_runner.py`,
+`test_verify_evidence.py`, and xdist-flaky tests in `test_cli_loop_lifecycle.py`/
+`test_feat3323_sse_bridge.py` confirmed present with this issue's changes
+stashed out, i.e. unrelated to this change).
 
 ## Relates To
 
@@ -176,6 +200,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T02:15:27 - `79da3fca-fbcb-4530-ac1f-339229369837.jsonl`
+- `/ll:ready-issue` - 2026-09-08T02:03:34 - `e999958c-fe14-4808-af23-60b20cce1ebb.jsonl`
 - `/ll:confidence-check` - 2026-09-08T01:54:57 - `3710cbe8-3506-4b26-97b7-8bdd79bd826f.jsonl`
 - `/ll:confidence-check` - 2026-09-08T01:41:55 - `5c412270-4e77-46e7-a79d-14f0a29f4fa0.jsonl`
 - `/ll:wire-issue` - 2026-09-08T01:37:29 - `21067197-6e6b-4b15-a586-82cc6fecc33e.jsonl`

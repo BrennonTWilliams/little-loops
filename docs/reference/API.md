@@ -10406,13 +10406,15 @@ Frozen, following the same crosses-the-runner/caller-boundary convention as `hos
 
 `scopes` (ENH-3234): credential-scope names resolved against `host_runner.CREDENTIAL_SCOPES`, naming the env vars this task's `_run_cmd()` spawn is allowed to inherit. `None` (default) keeps full-inherit behavior — declaration is opt-in per spec. An unknown scope name is resolved (and raises) inside `_run_cmd()`, not at construction, so one bad queue entry can't abort bulk queue deserialization; the resulting `ValueError` is caught and returned as a failed `RunnerResult` naming the offending scope.
 
+**`scopes` is enforced only for `RunnerType.CMD` (ENH-3403).** `_run_skill()`, `_run_prompt()`, and `_run_mcp()` have no equivalent `env_allow`/`gh_scope_extra()`/`write_credential_scope()` wiring, so `run_action()` rejects `scopes is not None` on any non-CMD runner before dispatch: `scope_runner_error(spec) -> str | None` returns the message `"ActionSpec {name!r} declares 'scopes' but runner is {runner.value!r}; scopes are enforced only for RunnerType.CMD"` when the combination is invalid, and `run_action()` returns `RunnerResult(exit_code=2, error=...)` without spawning (no `credential_scope_events` row). `queue_store.add_entry()` calls the same helper and raises `ValueError` at enqueue time for a scoped SKILL/PROMPT/MCP spec; a pre-existing hand-written entry that bypassed that check still deserializes and is rejected the same way when drained.
+
 ### RunnerResult
 
 Unchanged in shape from its pre-extraction definition in `cli/harness.py`; that module re-exports it (`from little_loops.cli.harness import RunnerResult` still resolves) so existing importers are unaffected.
 
 ### run_action
 
-`run_action(spec: ActionSpec) -> RunnerResult` dispatches to the runner named by `spec.runner`. Covers `SKILL`/`CMD`/`MCP`/`PROMPT`. `RunnerType.DSL` is a batch driver over `PROMPT` (callers loop and call `run_action` once per task, as `ll-harness`'s `cmd_dsl` does via `cmd_prompt`) rather than an independent execution path. `RunnerType.LOOP` is **not** dispatched by `run_action` — raises `ValueError` if attempted — because FSM loop execution (`PersistentExecutor`/`run_foreground()`) is a stateful, resumable, multi-state engine with per-state persistence, an event bus, and scope locking spanning the entire run, not a single blocking call. `cli/loop/run.py`'s `cmd_run()` builds a `RunnerType.LOOP` `ActionSpec` for structural/observability parity only and continues to call `PersistentExecutor` directly for execution.
+`run_action(spec: ActionSpec) -> RunnerResult` dispatches to the runner named by `spec.runner`. Covers `SKILL`/`CMD`/`MCP`/`PROMPT`. `RunnerType.DSL` is a batch driver over `PROMPT` (callers loop and call `run_action` once per task, as `ll-harness`'s `cmd_dsl` does via `cmd_prompt`) rather than an independent execution path. `RunnerType.LOOP` is **not** dispatched by `run_action` — raises `ValueError` if attempted — because FSM loop execution (`PersistentExecutor`/`run_foreground()`) is a stateful, resumable, multi-state engine with per-state persistence, an event bus, and scope locking spanning the entire run, not a single blocking call. `cli/loop/run.py`'s `cmd_run()` builds a `RunnerType.LOOP` `ActionSpec` for structural/observability parity only and continues to call `PersistentExecutor` directly for execution. A `scopes`-declaring SKILL/MCP/PROMPT spec is rejected before `handler(spec)` is called — see `scope_runner_error` above (ENH-3403).
 
 ---
 
@@ -10428,7 +10430,7 @@ from little_loops.queue_store import (
     AmbiguousEntryIdError,
     ensure_db,
     connect,
-    add_entry,            # (action: ActionSpec, priority: str = "P3", *, db_path=...) -> QueueEntry
+    add_entry,            # (action: ActionSpec, priority: str = "P3", *, db_path=...) -> QueueEntry; raises ValueError (ENH-3403) for a scoped SKILL/PROMPT/MCP action
     list_entries,          # ordered by priority tier, then FIFO within tier
     get_entry,              # exact id lookup
     resolve_entry,          # exact id or 8+-char prefix; raises AmbiguousEntryIdError on a multi-match prefix

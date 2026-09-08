@@ -52,6 +52,7 @@ __all__ = [
     "RunnerResult",
     "ActionSpec",
     "run_action",
+    "scope_runner_error",
 ]
 
 
@@ -398,6 +399,24 @@ _DISPATCH: dict[RunnerType, Callable[[ActionSpec], RunnerResult]] = {
 }
 
 
+def scope_runner_error(spec: ActionSpec) -> str | None:
+    """Return a rejection message if *spec* declares scopes on a non-CMD runner, else None.
+
+    ENH-3403: ``scopes`` is enforced only by ``_run_cmd()``; ``_run_skill()``,
+    ``_run_prompt()``, and ``_run_mcp()`` have no equivalent ``env_allow``/
+    ``gh_scope_extra()``/``write_credential_scope()`` wiring, so a declared
+    ``scopes`` on those runners must fail loud rather than silently dispatch
+    unscoped (the ActionSpec-side twin of ``structural_rules.py``'s FSM
+    shell-only ``scopes`` check).
+    """
+    if spec.scopes is not None and spec.runner is not RunnerType.CMD:
+        return (
+            f"ActionSpec {spec.name!r} declares 'scopes' but runner is "
+            f"{spec.runner.value!r}; scopes are enforced only for RunnerType.CMD"
+        )
+    return None
+
+
 def run_action(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult:
     """Dispatch an :class:`ActionSpec` to its runner and return a :class:`RunnerResult`.
 
@@ -416,4 +435,7 @@ def run_action(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult:
     handler = _DISPATCH.get(spec.runner)
     if handler is None:
         raise ValueError(f"run_action() does not dispatch runner type: {spec.runner}")
+    scope_error = scope_runner_error(spec)
+    if scope_error is not None:
+        return RunnerResult(stdout="", stderr="", exit_code=2, error=scope_error)
     return handler(spec)

@@ -410,6 +410,75 @@ class TestRunActionDispatch:
         mock_killpg.assert_called_once_with(proc)
 
 
+class TestScopeRunnerGuard:
+    """ENH-3403: scopes declared on SKILL/PROMPT/MCP must fail loud, unspawned."""
+
+    def test_skill_dispatch_with_scopes_fails_loud_spawns_nothing(self) -> None:
+        spec = ActionSpec(
+            name="x", runner=RunnerType.SKILL, target="x", scopes=frozenset({"github"})
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run") as mock_run,
+        ):
+            result = run_action(spec)
+
+        mock_run.assert_not_called()
+        assert result.exit_code == 2
+        assert "declares 'scopes' but runner is" in (result.error or "")
+        assert "skill" in (result.error or "")
+
+    def test_prompt_dispatch_with_scopes_fails_loud_spawns_nothing(self) -> None:
+        spec = ActionSpec(
+            name="x", runner=RunnerType.PROMPT, target="What is 2+2?", scopes=frozenset({"github"})
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run") as mock_run,
+        ):
+            result = run_action(spec)
+
+        mock_run.assert_not_called()
+        assert result.exit_code == 2
+        assert "declares 'scopes' but runner is" in (result.error or "")
+        assert "prompt" in (result.error or "")
+
+    def test_mcp_dispatch_with_scopes_fails_loud_spawns_nothing(self) -> None:
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.MCP,
+            target="srv:tool",
+            args={"mcp_params": {}},
+            scopes=frozenset({"github"}),
+        )
+        with patch("little_loops.runner_spec.call_mcp_tool") as mock_call:
+            result = run_action(spec)
+
+        mock_call.assert_not_called()
+        assert result.exit_code == 2
+        assert "declares 'scopes' but runner is" in (result.error or "")
+        assert "mcp" in (result.error or "")
+
+    def test_scoped_non_cmd_dispatch_writes_no_audit_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db_path = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+        spec = ActionSpec(
+            name="x", runner=RunnerType.SKILL, target="x", scopes=frozenset({"github"})
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run") as mock_run,
+        ):
+            run_action(spec)
+        mock_run.assert_not_called()
+
+        from little_loops.session_store import recent
+
+        assert recent(db_path, kind="credential_scope") == []
+
+
 class TestRunSkillAutomationCompat:
     """ENH-3097 AC 2/AC 13: _run_skill()'s spec.args automation compat surface.
 
