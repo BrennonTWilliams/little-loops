@@ -124,6 +124,9 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `scripts/little_loops/cli/history.py` — `ll-history quality` subcommand (parser line 251, handler line 470) calls `analyze_agent_quality` then `format_agent_quality_{json,yaml,markdown,text}` (487-496); this is the CLI entry point the Call Path terminates at.
 - `scripts/little_loops/session_store/schema.py` / `writers.py` — capturing model/host/version stamps (the issue's Dependencies clause: "if `history.db` does not already record them, adding that capture is in scope") requires changes here; see gap below.
 
+_Wiring pass added by `/ll:wire-issue` (2026-09-07, second pass):_
+- `scripts/little_loops/issue_history/__init__.py` — every existing `detect_*`/`analyze_*` function and its dataclasses is re-exported at the package level (e.g. `analyze_agent_quality`/`QualityAnalysis`/`QualityWindow` at lines 75-85, listed in `__all__` ~215-218, and in the module docstring's export list ~line 50); the new `quality_regressions.py` module's `detect_quality_regressions`, `attribute_change`, `load_window_compositions`, `RunAttribution`, `RegressionEvent`, `QualityRegressionAnalysis`, `WindowComposition` need the same treatment or they're unreachable via the package's established import surface.
+
 ### Dependent Files (Callers/Importers)
 - Importers of `agent_quality.py`: `scripts/tests/test_issue_history_agent_quality.py:15`, `scripts/little_loops/issue_history/__init__.py:75`.
 - Callers of `format_agent_quality_markdown`: `scripts/little_loops/cli/history.py:494` (`main_history`), `scripts/tests/test_issue_history_agent_quality.py:371`.
@@ -137,6 +140,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/history_reader/models.py:151` — `OrchestrationRun` dataclass is positionally/name-matched against the `SELECT` list via `_row_to_dataclass`; needs new fields for `model`/`host`/`ll_version` or they stay unreadable.
 - `scripts/little_loops/session_store/schema_manifest.json:265,273,281,1605` — checked-in `orchestration_runs` table/index snapshot; **must be regenerated** after the schema migration (`test_schema_manifest_matches_checked_in_file`, `test_session_store_schema.py:2870`) and the version bump re-asserted (`test_manifest_schema_version_matches_live_schema_version`, line 2887).
 - `scripts/little_loops/cli/doctor.py:502` and `scripts/little_loops/cli/artifact/dashboard.py:42` — both import `SCHEMA_VERSION` from `session_store.schema`; unaffected by the value change itself but confirms no hardcoded `47` elsewhere in these files (only the constant is imported).
+
+_Wiring pass added by `/ll:wire-issue` (2026-09-07, second pass):_
+- `scripts/little_loops/history_reader/runs.py:328-332,335,388,394` — `_LOOP_RUN_COLUMNS`, `recent_loop_runs()`, `_LOOP_RUN_GROUP_COLUMNS`, `aggregate_loop_runs()`: the `loop_runs` half of the same typed-reader gap already called out for `orchestration_runs` above. Implementation Step 1 adds `ll_version` to **both** tables, but only the `orchestration_runs` reader path was previously named.
+- `scripts/little_loops/history_reader/models.py:171-186` — `LoopRun` dataclass, positionally matched against `_LOOP_RUN_COLUMNS` via `_row_to_dataclass`; needs an `ll_version` field or the column stays unreadable through this path, mirroring the `OrchestrationRun` gap already noted.
 
 ### Model/host/version stamp gap (Dependencies clause)
 - `usage_events` already carries a `model TEXT` column (`schema.py:514`, indexed `:523`); `raw_events` already carries `host TEXT NOT NULL` (`schema.py:475`, indexed `:490`). `orchestration_runs` (`schema.py:540`) carries `driver`/`head_sha`/`branch` but no model/host/version columns. No persisted little-loops-version stamp exists anywhere — `__version__` (`scripts/little_loops/__init__.py:83`) lives only in the installed package, never written to `history.db`. Confirms the issue's own contingency is real: `RunAttribution`'s model/host/version-boundary join has no existing per-run join point to read from today and this capture must be added, not merely surfaced.
@@ -160,6 +167,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Five existing `detect_*` functions in `issue_history/` (`detect_manual_patterns`, `detect_config_gaps`, `detect_cross_cutting_smells`, `detect_recurring_feedback`, `detect_skill_bypass`) all return a wrapping `*Analysis` dataclass and each has a dedicated test class (see agent findings for exact locations) — `detect_quality_regressions() -> list[RegressionEvent]` departs from this convention; no existing test establishes an assertion-shape precedent for a bare-list-returning `detect_*` (e.g., no convention for what an empty list vs. an empty analysis object should look like as the not-found sentinel).
 - `TestHistoryQualitySubcommand` (`scripts/tests/test_cli_history.py:220-271`) — 4 existing tests (`test_quality_text_default_empty_history`, `test_quality_json_format_routes_to_json_formatter`, `test_quality_min_sample_flag_accepted`, `test_quality_help_exits_zero`); a new `--sensitivity` flag follows `--min-sample`'s `add_argument` shape and needs a 5th test mirroring `test_quality_min_sample_flag_accepted`.
 
+_Wiring pass added by `/ll:wire-issue` (2026-09-07, second pass):_
+- `scripts/tests/test_session_store_writers.py` — `TestOrchestrationRuns` (1141-1278), `TestOrchestrationRunBaseStamp` (1364-1519), `TestLoopRuns` (1520-1659) are the **direct unit tests** of `record_orchestration_run`/`record_loop_run_summary` themselves (as opposed to the production/test call sites already listed elsewhere in this section, which only construct calls incidentally). `TestOrchestrationRunBaseStamp` is confirmed as the exact COALESCE-on-conflict template to mirror for `ll_version` — `test_terminal_upsert_preserves_stamp_and_started_at_in_one_row` (1409-1448) seeds a `base_sha` on an early "running" upsert then asserts a later upsert without it preserves the value via `COALESCE`, and `test_retry_without_stamp_does_not_clobber_recorded_stamp` (1479) repeats this across three sequential upserts — a new `TestOrchestrationRunLlVersion`-style class should mirror this method set. This is distinct from `TestSchemaV38BaseShaColumns` (`test_session_store_schema.py`), which only tests column presence/absence and upgrade-preserves-NULL, never the COALESCE UPSERT behavior.
+- `scripts/tests/test_session_store_writers.py:470,1153,1283,1540,1738` — 5 additional hardcoded `assert SCHEMA_VERSION == 47` lines beyond the `test_session_store_schema.py` citation above; need updating to 48.
+- `scripts/tests/test_assistant_messages.py:88` — `test_schema_version_is_12(self): assert SCHEMA_VERSION == 47` (function name already stale relative to its own assertion); needs updating to 48.
+
 ### Documentation
 - `docs/reference/API.md:2380,2393` — `analyze_agent_quality`/`format_agent_quality_*` entries will need `detect_quality_regressions`/`attribute_change`/`RunAttribution`/`RegressionEvent` added.
 - `docs/reference/CLI.md:3162` (`#### ll-history quality`) — will need the new regression-alert output and any new `--sensitivity`-style flag documented.
@@ -167,6 +179,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — the schema-version-history table (currently ending `v47 | ENH-3204 | credential_scope_events table`) needs a new row for the `orchestration_runs` migration this issue adds; the `orchestration_runs` table-description row (line 132) needs `model`/`host`/`ll_version` added to its column enumeration; line 485's existing forward-reference to "a downstream regression-detection consumer" should be reconciled once this feature lands.
 - `docs/ARCHITECTURE.md` — same schema-version-history table (rows ~659-680) needs the matching new-version row.
+
+_Wiring pass added by `/ll:wire-issue` (2026-09-07, second pass):_
+- `docs/reference/API.md:9695-9713` — `record_orchestration_run()` signature block needs the new `ll_version` param added, distinct from the `agent_quality`-focused anchors already cited above.
+- `docs/reference/API.md:9755-9772` — `record_loop_run_summary()` signature block, same gap.
+- `docs/reference/API.md:8678-8713` — `OrchestrationRun` dataclass field list needs `ll_version` added (this block already predates `base_sha`/`base_dirty`, a pre-existing staleness this issue would compound if left unaddressed).
+- `docs/reference/API.md:8717-8729` — `LoopRun` dataclass field list, same gap.
 
 ## Program Design
 
@@ -237,6 +255,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add a `--sensitivity` flag test to `TestHistoryQualitySubcommand` (`test_cli_history.py:220-271`), mirroring `test_quality_min_sample_flag_accepted`.
 - Add a v48-equivalent row to `docs/guides/HISTORY_SESSION_GUIDE.md`'s and `docs/ARCHITECTURE.md`'s schema-version-history tables, and update `HISTORY_SESSION_GUIDE.md` line 132's `orchestration_runs` column enumeration.
 
+**Second wiring pass (2026-09-07):**
+- Extend `history_reader/runs.py`'s `_LOOP_RUN_COLUMNS`/`recent_loop_runs()`/`_LOOP_RUN_GROUP_COLUMNS`/`aggregate_loop_runs()` (328-332,335,388,394) and `history_reader/models.py`'s `LoopRun` dataclass (171-186) with `ll_version` — the `loop_runs` counterpart to the `orchestration_runs` reader-path fix already listed above.
+- Add `detect_quality_regressions`, `attribute_change`, `load_window_compositions`, `RunAttribution`, `RegressionEvent`, `QualityRegressionAnalysis`, `WindowComposition` to `issue_history/__init__.py`'s imports, `__all__`, and docstring export list, following the pattern every sibling `detect_*`/`analyze_*` module already uses.
+- Update `docs/reference/API.md`'s `record_orchestration_run()` (9695-9713), `record_loop_run_summary()` (9755-9772), `OrchestrationRun` (8678-8713), and `LoopRun` (8717-8729) blocks with the new `ll_version` field/param.
+- Update the 5 hardcoded `SCHEMA_VERSION == 47` assertions in `test_session_store_writers.py` (470,1153,1283,1540,1738) and `test_assistant_messages.py:88` to 48.
+- Add a `TestOrchestrationRunLlVersion`-style test class to `test_session_store_writers.py`, mirroring `TestOrchestrationRunBaseStamp`'s method set (early-upsert-persists, terminal-upsert-preserves-via-COALESCE, retry-without-value-does-not-clobber, unstamped-write-leaves-null).
+
 ## Impact
 
 - **Priority**: P0 - Silent quality regressions are the failure mode the whole metric series exists to catch; without detection the series is observed by nobody.
@@ -273,6 +298,7 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-08T03:07:40 - `10d02141-1a61-4549-ac75-31b74fcc4540.jsonl`
 - `/ll:refine-issue` - 2026-09-08T02:52:50 - `db8f4456-9d33-4a56-83a5-6fd56728c61f.jsonl`
 - `/ll:decide-issue` - 2026-09-08T02:38:37 - `dbbb8e28-65c6-4fbb-8510-be5c16cd4905.jsonl`
 - `/ll:refine-issue` - 2026-09-08T02:31:36 - `6cc496d2-f0d1-4efd-a1af-1d7a8f2e9860.jsonl`
