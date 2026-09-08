@@ -8,8 +8,6 @@ status: open
 discovered_date: '2026-09-08'
 verify_verdict: NON_VALID
 parent: ENH-3397
-blocked_by:
-- ENH-3407
 labels:
 - harness
 - evaluation
@@ -389,12 +387,41 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 **Outcome Confidence**: 75/100 → MODERATE
 
 ### Gaps to Address
-- Blocking dependency ENH-3407 (status: open, not done/cancelled) is unresolved. This issue
-  consumes `authoritative_attempt()` from ENH-3407 directly — implementation cannot proceed
-  until ENH-3407 lands. Wait for ENH-3407 to reach `done`/`cancelled`, or remove the
-  `blocked_by` entry if it no longer applies.
+- ~~Blocking dependency ENH-3407 (status: open, not done/cancelled) is unresolved.~~
+  RESOLVED — ENH-3407 landed (`status: done`, commit `28e64617d`); `blocked_by` removed from
+  frontmatter by `/ll:verify-issues` on 2026-09-08. See `## Verification Notes` for a proposal-
+  soundness gap that surfaced in its place.
+
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-08:_
+
+- **Dependency staleness (now fixed)**: `blocked_by: [ENH-3407]` and the Confidence Check
+  Notes' "unresolved blocker" gap were stale — ENH-3407 is `status: done` (commit
+  `28e64617d`), a fact this issue's own later Codebase Research Findings already stated.
+  `blocked_by` removed from frontmatter; the gap struck through above.
+- **PROPOSAL_UNSOUND-class gap (not yet fixed — needs design work before implementation)**:
+  `authoritative_attempt(db_path, cell_key, repetition)` / `authoritative_attempts(db_path,
+  cell_key)` are keyed by `cell_key`, and `cell_key = json.dumps([runner, target, head_sha])`
+  (`cli/harness.py:134-143`) — so a single `target` maps to **many** `cell_key`s across its
+  run history (one per commit/runner it was ever invoked at). But `harness_eval_pass_rate()`,
+  `harness_eval_abstention_rate()`, and `_read_target_history()` all aggregate by `target`
+  alone, across that whole history. No "enumerate the cell_keys for a target" helper exists
+  anywhere in the codebase (confirmed by repo-wide grep) — the issue's Program Design section
+  never designs this target→cell_keys fan-out, so "consume authoritative_attempt()" doesn't
+  work at these three sites as currently written; an implementer needs to add that
+  enumeration step first.
+- **Likely-incorrect claim**: the issue asserts `cmd_dsl`'s in-memory `graded_total`/
+  `graded_pass` counters need the same authoritative-repetition fix (Files to Modify, AC #1).
+  On inspection (`cli/harness.py:1198-1275`) these counters are scoped to one CLI invocation's
+  own per-task loop; a `--retry-of` retry chain is always a *separate* invocation, so each
+  invocation's `graded_total` already counts exactly one row per task file it processes with
+  no cross-invocation duplication to dedup. The over-counting problem this issue describes is
+  real for the three DB-aggregate sites above, but doesn't appear to apply to `cmd_dsl`'s own
+  counters — confirm during implementation before converting them.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-08T22:43:56 - `de8d5d84-5a41-428b-835e-669b7afc984e.jsonl`
 - `/ll:wire-issue` - 2026-09-08T22:19:01 - `d465057a-e29b-4c19-8620-0af7f2ad1788.jsonl`
 - `/ll:refine-issue` - 2026-09-08T22:04:46 - `35eb0ad3-e497-496d-b193-1dad8fa5f0e6.jsonl`
 - `/ll:confidence-check` - 2026-09-08T19:15:36 - `3dfd0114-2334-4e08-9e14-e44fec8303b9.jsonl`

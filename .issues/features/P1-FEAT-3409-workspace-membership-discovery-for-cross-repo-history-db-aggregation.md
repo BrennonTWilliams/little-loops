@@ -64,22 +64,43 @@ members:
     role: primary                 # required; free-text string, no closed set enforced
   - repo: ../sibling-service
     role: service
-    db_path: ../sibling-service/.ll/history.db   # optional; default: <repo>/.ll/history.db
+    db_path: .ll/history.db       # optional; relative to THIS member's repo; default: <repo>/.ll/history.db
 ```
 
 Rules:
 
 - Top-level is a mapping with a `members:` list. Any other top-level shape
-  (bare list, scalar, `members` not a list) raises `ValueError`.
+  (bare list, scalar, `members` not a list) raises `ValueError`. An **empty
+  file** (`yaml.safe_load` → `None`) is malformed, not absent, and raises
+  `ValueError` via the same shape check. `members: []` is well-formed and
+  returns `[]` — indistinguishable from the absent-manifest case by design.
 - `repo` and `role` are required per entry; a missing key raises `KeyError`
   (bare `entry["repo"]`, mirroring `decisions.py`'s `from_dict` style).
+  `role` is free-text; FEAT-3410 must surface it in the per-repo breakdown
+  (see Decision Rules → Cross-issue consistency) — a required field no
+  consumer reads would be decorative.
 - `db_path` is optional. When absent it is composed statically as
   `repo_path / ".ll" / "history.db"` — a plain `Path` join, **not**
   `resolve_history_db()`, so the `LL_HISTORY_DB` collapse hazard (Decision
   Rules) is never reintroduced by the default.
-- Relative `repo` and `db_path` values resolve against the manifest file's
-  parent directory, not cwd. Both are stored resolved (absolute) on the
-  returned `WorkspaceMember`.
+- Relative `repo` values resolve against the manifest file's parent directory,
+  not cwd. Relative `db_path` values resolve against **that entry's resolved
+  `repo_path`**, mirroring how the `history.db_path` config key resolves
+  against its own project root (`session_store/db.py::_config_db_path`). This
+  is deliberate: manifest-relative `db_path` would make `db_path:
+  .ll/history.db` on a sibling entry silently point at the primary repo's
+  database. Both are stored resolved (absolute) on the returned
+  `WorkspaceMember`.
+- **Duplicate members** — two entries whose resolved `db_path` values collide
+  — raise `ValueError` naming the path. FEAT-3410 would otherwise `ATTACH`
+  one database twice and double-count it.
+- **No existence checks.** Discovery does not verify that `repo_path` or
+  `db_path` exists on disk; FEAT-3410 owns skip-and-report for a missing or
+  schema-skewed member database. An implementer must not add a filter here.
+- A member repo's own `history.db_path` config key is **not** consulted (the
+  static default is the only fallback). A member with a custom `history.db_path`
+  must repeat it in the manifest. Document this limitation in the function
+  docstring and the `docs/reference/CONFIGURATION.md` row.
 - Prefer relative paths in a committed manifest: absolute member paths in a
   checked-in `ll-workspace.yaml` leak machine-local paths (and would trip
   `ll-verify-private-refs` in this repo). Gitignoring the file is left to the
@@ -94,12 +115,27 @@ Precedence, highest first:
    values resolve against the project root), read inside
    `discover_workspace_members()` itself via a small `_config_manifest_path()`
    helper mirroring `session_store/db.py::_config_db_path(root=)` — so the
-   config key is reachable without every caller re-loading config.
-3. `find_project_root(Path.cwd()) / "ll-workspace.yaml"` when a root resolves.
-4. `Path.cwd() / "ll-workspace.yaml"` when no project root resolves — this is
-   the "workspace root is a parent directory of sibling repos with no `.ll/`"
-   case from FEAT-3399's "run one command from a workspace root", and mirrors
-   `decisions.py::_resolve_path()`'s cwd fallback.
+   config key is reachable without every caller re-loading config. Like its
+   precedent, this reads the raw JSON only and does **not** merge
+   `.ll/ll.local.md` overrides — a known limitation worth a docstring line,
+   since a machine-local manifest path is exactly what a user would put there.
+3. **Nearest-ancestor walk**: starting at `Path.cwd().resolve()`, the first
+   directory (cwd itself, then each parent) containing `ll-workspace.yaml`
+   wins. When no ancestor holds one, the resolved path is
+   `Path.cwd() / "ll-workspace.yaml"` (which does not exist → `[]`).
+
+   This single rule replaces an earlier two-step design
+   (`find_project_root(cwd) / "ll-workspace.yaml"`, else cwd). That design was
+   broken by stray ancestor `.ll/` dirs: `find_project_root()` returns the
+   nearest `.ll`-only ancestor whenever no `.git` boundary is crossed, so from
+   a workspace parent dir (no `.ll/`, no `.git`) it resolves to e.g.
+   `~/AIProjects` (reproduced on the dev machine, where `~/AIProjects/.ll`
+   exists) and the cwd fallback never fires — defeating FEAT-3399's "run one
+   command from a workspace root" case. The ancestor walk covers both
+   manifest layouts (checked into the primary repo with `repo: .`, or placed
+   at a workspace parent above sibling repos) and works from a subdirectory or
+   worktree of the primary repo. It does not consult `find_project_root()` at
+   all for this step.
 
 ## Use Case
 
@@ -270,7 +306,7 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 **Option B**: Anchor the default via `find_project_root(Path.cwd())` (`scripts/little_loops/paths.py:14-41`) — e.g. `find_project_root(Path.cwd()) / "ll-workspace.yaml"` — mirroring `decisions.py::_resolve_path()` (`decisions.py:26-41`), the function backing this issue's own cited dispatch model (`load_decisions()`), which explicitly anchors its default "at the resolved project root (ENH-2927) instead of a bare cwd-relative path."
 
-> **Selected:** Option B — this issue's own chosen precedent (`decisions.py::load_decisions()`) deliberately rejects a bare cwd-relative default for exactly the reason `resolve_ll_dir()`'s docstring states: it "let stray `.ll/` directories accumulate outside the project root" (`paths.py:52-54`). A bare-cwd `ll-workspace.yaml` default reproduces the same failure mode one level up (repo root instead of `.ll/`) — a caller invoking `discover_workspace_members()` from a subdirectory or worktree would silently miss the manifest. `resolve_ll_dir()` itself isn't directly reusable (the manifest lives at the repo root, not under `.ll/`), but `find_project_root()` is the same primitive one level up, with no other call site resolving a repo-root-relative manifest default this way to confirm the composition against.
+> **Selected:** Option B, **subsequently revised** (2026-09-08 review) to a nearest-ancestor walk that does not call `find_project_root()` — see Decision Rules → Default `manifest_path` resolution for the stray-`.ll` failure that forced the revision. Original rationale retained below. This issue's own chosen precedent (`decisions.py::load_decisions()`) deliberately rejects a bare cwd-relative default for exactly the reason `resolve_ll_dir()`'s docstring states: it "let stray `.ll/` directories accumulate outside the project root" (`paths.py:52-54`). A bare-cwd `ll-workspace.yaml` default reproduces the same failure mode one level up (repo root instead of `.ll/`) — a caller invoking `discover_workspace_members()` from a subdirectory or worktree would silently miss the manifest. `resolve_ll_dir()` itself isn't directly reusable (the manifest lives at the repo root, not under `.ll/`), but `find_project_root()` is the same primitive one level up, with no other call site resolving a repo-root-relative manifest default this way to confirm the composition against.
 
 ### Decision Rationale
 
@@ -317,23 +353,44 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
 
 ### Signatures
 
-- `discover_workspace_members(manifest_path: Path | None = None) -> list[WorkspaceMember]` — `None` triggers the four-step resolution chain in Expected Behavior → Manifest Path Resolution; returns `[]` (never `None`) when the resolved path does not exist
-- `_resolve_manifest_path(manifest_path: Path | None) -> Path` — private resolver mirroring `decisions.py::_resolve_path()` (`decisions.py:26-41`)
-- `_config_manifest_path(root: Path | None) -> Path | None` — private config reader mirroring `session_store/db.py::_config_db_path(root=)`
+- `discover_workspace_members(manifest_path: Path | None = None) -> list[WorkspaceMember]` — `None` triggers the three-step resolution chain in Expected Behavior → Manifest Path Resolution; returns `[]` (never `None`) when the resolved path does not exist
+- `_resolve_manifest_path(manifest_path: Path | None) -> Path` — private resolver: explicit arg → config key → nearest-ancestor walk from cwd (see `_find_manifest_upward`); mirrors the explicit-arg-verbatim contract of `decisions.py::_resolve_path()` (`decisions.py:26-41`) but does **not** delegate to `find_project_root()` for the default (see Manifest Path Resolution step 3)
+- `_find_manifest_upward(start: Path) -> Path | None` — private walk over `start.resolve()` and its parents returning the first `<dir>/ll-workspace.yaml` that exists, else `None`
+- `_config_manifest_path(root: Path | None) -> Path | None` — private config reader mirroring `session_store/db.py::_config_db_path(root=)`; `root` is the project root resolved from cwd (same primitive `_config_db_path` uses) and may be `None` (no config lookup then)
 
 ### Call Path
 
-`discover_workspace_members(manifest_path)` -> `_resolve_manifest_path()` (explicit arg → config key → project root → cwd) -> `Path.exists()` guard (return `[]`) -> `yaml.safe_load(manifest_path.read_text())` -> top-level shape check (`dict` with `members` list, else `ValueError`) -> per-entry construction of `WorkspaceMember(repo_path=(manifest_dir / entry["repo"]).resolve(), role=entry["role"], db_path=(manifest_dir / entry["db_path"]).resolve() if "db_path" in entry else repo_path / ".ll" / "history.db")` -> returned `list[WorkspaceMember]`. No caller exists yet in this codebase — FEAT-3410's ATTACH-based aggregation entry point is the sole intended consumer, feeding each returned member's `db_path` into a per-member `ATTACH DATABASE` call in the shape of `build_snapshot_db` (`scripts/little_loops/session_store/queries.py:246-301`, today's only `ATTACH DATABASE` call site, single-source/single-alias — a multi-member attach loop has no existing precedent to confirm against).
+`discover_workspace_members(manifest_path)` -> `_resolve_manifest_path()` (explicit arg → config key → `_find_manifest_upward(Path.cwd())` → `Path.cwd() / "ll-workspace.yaml"`) -> `Path.exists()` guard (return `[]`) -> `yaml.safe_load(manifest_path.read_text())` -> top-level shape check (`dict` with `members` list, else `ValueError`; `None` from an empty file fails this check) -> per-entry construction of `WorkspaceMember(repo_path=(manifest_dir / entry["repo"]).resolve(), role=entry["role"], db_path=(repo_path / entry["db_path"]).resolve() if "db_path" in entry else repo_path / ".ll" / "history.db")` -> duplicate-`db_path` check (`ValueError`) -> returned `list[WorkspaceMember]`. No existence check on `repo_path`/`db_path`. No caller exists yet in this codebase — FEAT-3410's ATTACH-based aggregation entry point is the sole intended consumer, feeding each returned member's `db_path` into a per-member `ATTACH DATABASE` call in the shape of `build_snapshot_db` (`scripts/little_loops/session_store/queries.py:246-301`, today's only `ATTACH DATABASE` call site, single-source/single-alias — a multi-member attach loop has no existing precedent to confirm against).
 
 ### Decision Rules
 
 - **Malformed-manifest posture** (present but invalid `ll-workspace.yaml`): **Resolved** — no-wrap/propagate, mirroring `decisions.py::load_decisions()`; `yaml.YAMLError` and missing-field errors propagate unmodified to the caller. See Proposed Solution → Decision Rationale for the full scoring against the fail-closed/raise and fail-open/degrade alternatives.
 - **`db_path` derivation**: **Resolved** — explicit per-entry manifest field, authored directly in `ll-workspace.yaml`. `resolve_history_db(root=member.repo_path)` was rejected: its `LL_HISTORY_DB` env-var check fires unconditionally ahead of the `root=`-scoped lookup (`session_store/db.py:107-109`), which would collapse every member's `db_path` onto the same value whenever `LL_HISTORY_DB` is set. See Proposed Solution → Decision Rationale.
-- **Default `manifest_path` resolution**: **Resolved** — project-root-anchored
-  with cwd fallback (Proposed Solution Option B), via the four-step chain in
-  Expected Behavior → Manifest Path Resolution. The signature is
+- **Default `manifest_path` resolution**: **Resolved (revised 2026-09-08)** —
+  explicit arg → config key → nearest-ancestor walk from cwd, per Expected
+  Behavior → Manifest Path Resolution. Proposed Solution Option B
+  (`find_project_root(cwd) / "ll-workspace.yaml"` with cwd fallback) was
+  selected first and then found broken: `find_project_root()` returns a stray
+  `.ll`-only ancestor (e.g. `~/AIProjects/.ll`) from a workspace parent dir,
+  so the cwd fallback never fires. The ancestor walk keeps Option B's
+  motivation (no bare cwd literal; works from subdirs/worktrees) without
+  depending on `.ll/` placement. The signature is
   `manifest_path: Path | None = None`, not a bare `Path("ll-workspace.yaml")`
   literal.
+- **Relative `db_path` base**: **Resolved** — relative to the entry's resolved
+  `repo_path`, not the manifest dir (see Manifest Format rules for the
+  footgun this avoids).
+- **Duplicate members**: **Resolved** — colliding resolved `db_path` values
+  raise `ValueError` (no-wrap/fail-loud posture; prevents FEAT-3410
+  double-attaching one database).
+- **Empty file vs. empty `members`**: **Resolved** — empty file is malformed
+  (`ValueError`); `members: []` returns `[]`.
+- **Existence checks**: **Resolved** — none. FEAT-3410 owns missing/skewed
+  member DB handling.
+- **Member repo's own `history.db_path` config**: **Resolved** — ignored;
+  documented limitation. `session_store/db.py::_config_db_path(root=)` could
+  honor it without the `LL_HISTORY_DB` hazard, but it is private and the
+  manifest field already covers the case; revisit only if a consumer needs it.
 - **Return type on absent manifest**: **Resolved** — `[]`, never `None`. A
   `None` branch would force every consumer (FEAT-3410 first) to null-check
   before iterating.
@@ -345,7 +402,10 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
 - **Cross-issue consistency**: FEAT-3410's Design Notes previously recommended
   `resolve_history_db(root=member.repo_path)` per member — contradicting this
   issue's `db_path` decision. FEAT-3410 has been corrected to consume
-  `member.db_path` directly.
+  `member.db_path` directly. Second consistency point (2026-09-08 review):
+  FEAT-3410 previously had zero mentions of `role`, making this issue's
+  required field dead data. FEAT-3410 now carries a rule that its per-repo
+  breakdown labels each member with `member.role` alongside the repo path.
 
 ### Codebase Research Findings
 
@@ -367,10 +427,16 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
    and the Manifest Format rules (`members:` list; `repo`/`role` required;
    `db_path` optional, defaulting to `repo/.ll/history.db` by static `Path`
    join; relative paths resolved against the manifest's parent dir).
-2. Implement `_resolve_manifest_path()` (explicit arg → config key → project
-   root → cwd) and the no-manifest graceful-degradation branch: explicit
-   `Path.exists()` check, `[]` return, documented fallback target in the
-   docstring.
+   Also: `db_path` relative to the entry's `repo_path`; duplicate resolved
+   `db_path` → `ValueError`; empty file → `ValueError`; `members: []` → `[]`;
+   no existence checks; docstring notes that a member's own `history.db_path`
+   config is not consulted.
+2. Implement `_find_manifest_upward()` and `_resolve_manifest_path()`
+   (explicit arg → config key → nearest-ancestor walk from cwd → cwd literal)
+   and the no-manifest graceful-degradation branch: explicit `Path.exists()`
+   check, `[]` return, documented fallback target in the docstring. Do not
+   route the default through `find_project_root()` (see Manifest Path
+   Resolution step 3 for why).
 3. Implement config registration for the configurable manifest path as
    `history.workspace_manifest_path` (decided — see Proposed Solution →
    Decision Rationale); add a matching `test_*_in_schema` test following the
@@ -380,10 +446,12 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
    `TestLoadDesignTokensFallbacks` (`test_design_tokens.py:227-258`): one test
    per short-circuit branch, `tmp_path`-based (no manifest created), direct
    `== []`/`is None` return-value assertion.
-5. Update `docs/ARCHITECTURE.md:711-713`, `docs/reference/API.md:92,8205-8209`,
-   and `docs/reference/CLI.md:3743`'s "per-project"/single-repo framing to
+5. Update `docs/ARCHITECTURE.md:714`, `docs/reference/API.md:92,8208-8210`,
+   and `docs/reference/CLI.md:3775`'s "per-project"/single-repo framing to
    mention the new workspace-topology concept this manifest introduces (the
    aggregation-specific CLI/output docs belong to FEAT-3410, not here).
+   Anchors corrected per the Documentation section's drift finding; re-check
+   before editing since these files move often.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -404,6 +472,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
   following `TestDecisionsGracefulDegradation`/`TestLoadDesignTokensFallbacks`;
   a malformed manifest raises, following `TestLoadDecisions`'s malformed-input
   cases (decided posture: no-wrap/propagate).
+- Edge-case class (2026-09-08 review): duplicate `db_path` → `ValueError`;
+  empty file → `ValueError`; `members: []` → `[]`; repo-relative `db_path`;
+  nonexistent `repo_path`/`db_path` still returned; stray-ancestor-`.ll`
+  regression for the nearest-ancestor walk (see Acceptance Criteria).
 - `scripts/tests/test_config_schema.py` — add a `test_history_workspace_manifest_path_in_schema`
   matching per-property test for the new `history.workspace_manifest_path` property.
 
@@ -445,9 +517,20 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   dedicated graceful-degradation test class.
 - Default-path resolution follows the documented chain: explicit arg wins;
   `history.workspace_manifest_path` is honored when the arg is `None`; with no
-  config key, `<project_root>/ll-workspace.yaml` is used when a root resolves
-  and `<cwd>/ll-workspace.yaml` when none does — one test per branch, using
-  `tmp_path` + `monkeypatch.chdir`.
+  config key, the nearest ancestor of cwd holding `ll-workspace.yaml` wins —
+  one test per branch, using `tmp_path` + `monkeypatch.chdir`, plus one
+  regression test for the stray-`.ll` case: cwd is a `ws/` subdir of
+  `tmp_path` (manifest present in `ws/`, no `.ll/`, no `.git`) while
+  `tmp_path` itself holds a `.ll/` dir and a second manifest — the one in
+  `ws/` must be found, not the one beside the stray `.ll/`. A second walk
+  test: cwd is a
+  subdirectory of the primary repo and the manifest sits at the repo root.
+- Relative `db_path` resolves against the entry's `repo_path`: a sibling entry
+  with `db_path: .ll/history.db` yields `<sibling>/.ll/history.db`, not the
+  manifest dir's.
+- Two entries resolving to the same `db_path` raise `ValueError`; an empty
+  manifest file raises `ValueError`; `members: []` returns `[]`; a member whose
+  `repo_path`/`db_path` does not exist on disk is still returned (no filtering).
 - `history.workspace_manifest_path` is registered in `config-schema.json`
   (nested under the existing `history` object — decided per Proposed Solution
   → Decision Rationale), with a matching
@@ -615,6 +698,14 @@ reads the config key, `[]` return type pinned, concrete exception types,
 `frozen=True`, `str | None` config field type, relative-path convention for
 committed manifests, and the FEAT-3410 `resolve_history_db(root=)`
 cross-issue conflict._
+
+_Manual review (second pass) — 2026-09-08 — folded in: default-path
+resolution revised to a nearest-ancestor walk after reproducing the
+stray-`.ll` failure of `find_project_root()` from a workspace parent dir;
+`db_path` now repo-relative; duplicate-member, empty-file, `members: []`, and
+no-existence-check rules; member-config `history.db_path` limitation noted;
+`role` consumer added to FEAT-3410; Step 5 doc anchors corrected; local
+override non-merge noted for the config reader._
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-08T22:13:14 - `c8d9f83d-83c6-4ca6-948a-bd5e1259be35.jsonl`

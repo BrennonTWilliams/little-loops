@@ -514,6 +514,13 @@ line 487, before the unconditional formatter dispatch at 489-496.
   `discover_workspace_members()` falls back to exactly today's single-repo
   `ll-history quality` output, byte-for-byte — no partial-aggregation mode with
   one member.
+- **`role` is consumed, not just carried** (added 2026-09-08 from FEAT-3409
+  review): the per-repo breakdown labels each member with `member.role`
+  alongside its repo path (e.g. `little-loops (primary)`), and
+  `AggregationResult.skipped` entries carry the same label. FEAT-3409 makes
+  `role` a required manifest field; without a consumer here it would be dead
+  data. `member.db_path` is used as-is — discovery does no existence check, so
+  the `db_path.exists()` guard in this issue is the sole missing-DB gate.
 - **Read-only enforcement**: member connections must go through a
   `mode=ro`-URI-based `_connect_readonly()` variant, never the migrating
   `session_store.connect()`/`ensure_db()` path in a way that could write — see
