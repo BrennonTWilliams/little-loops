@@ -50,6 +50,8 @@ The score-reproducible-not-byte-reproducible stance already adopted elsewhere in
 
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
+Codebase-locator and codebase-analyzer agents confirmed the run-model concepts this issue proposes (`cell_key`, `attempt_kind`, `harness_admissions`) do not exist yet anywhere and identified exactly where they land:
+
 ### Files to Modify
 - `scripts/little_loops/session_store/schema.py` — `harness_events` schema lives here (v31 create at line 715; `target_content_hash`/`target_path`/`dirty` ADD COLUMNs at line 975; `idx_harness_semantic_verdict` at line 1008). Schema changes for `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by` and the new `harness_admissions` table land here. This codebase's migration convention is an ordered list of DDL strings in `_MIGRATIONS` gated by a monotonic `SCHEMA_VERSION`; every entry is a comment citing its issue ID and is never edited after landing (`schema.py:1011-1018`, BUG-3236 precedent).
 - `scripts/little_loops/session_store/writers.py` — `record_harness_event()` (line 1024) is the existing single-row `INSERT` writer for `harness_events`. `record_attempt()`/`admit_retry()`/`authoritative_attempt()` would sit alongside or wrap this.
@@ -104,6 +106,8 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
+Pattern-finder and analyzer agents pinned down the exact gate/selection mechanics this issue's prose describes, against the codebase's existing conventions:
+
 ### Decision Rules
 
 - **`--retry-of` admissibility gate**: admissible only when the superseded attempt's `exit_code == 2` (the timeout/runner-error branch inside `_evaluate_and_report`, `scripts/little_loops/cli/harness.py:659,668-671`) — any other exit code (0 pass, 1 fail, 3 abstain) is a graded outcome and refuses the retry, non-zero exit, message names the attempt id. Escape hatch: none — a wrong-but-graded verdict is out of scope for this issue (belongs to separate grading-determinism work).
@@ -153,4 +157,5 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T00:56:22 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:09:20 - `fd8050c6-8bbf-4735-ba8f-b83f5f588867.jsonl`

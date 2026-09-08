@@ -8,6 +8,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T00:36:57Z'
 parent: EPIC-3212
+learning_tests_required:
+- gh
 ---
 
 # BUG-3402: gh auth token bypasses GH_CONFIG_DIR isolation via macOS Keychain
@@ -59,18 +61,32 @@ Recommend shipping (a) as the primary fix, and doing (b) regardless — the doc 
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/runners.py:338` — sole caller of `gh_scope_extra()`, invoked during FSM state execution
+  > ⚠ Superseded — BUG-3400 landed; runner_spec.py now a caller too
 - BUG-3400 (CMD/queue-runner path being wired to call `gh_scope_extra()`) — inherits whichever fix/limitation this issue settles on
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/runner_spec.py:286` (`_run_cmd`) — second production caller of `gh_scope_extra()` (import at line 41). BUG-3400 has already landed on `main`, so this CMD/queue-runner dispatch path calls `gh_scope_extra()` the same way `fsm/runners.py:338` does. It automatically inherits the sentinel fix since the change lives inside `gh_scope_extra()` itself — no code change needed here, only the test/doc coverage listed below [Agent 1 finding]
 
 ### Similar Patterns
 - N/A — no other entry in `CREDENTIAL_SCOPES` (`host_runner.py:124`) has a documented OS-keychain bypass; this is specific to `github`/`gh`
 
 ### Tests
-- `scripts/tests/test_host_runner.py` — `TestGhScopeExtra` (~line 496); add a case asserting `GH_TOKEN` is set to the invalid sentinel when `with_token=False`
+- `scripts/tests/test_host_runner.py` — `TestGhScopeExtra` (~line 496); add a case asserting `GH_TOKEN` is set to the invalid sentinel when `with_token=False`. The existing `test_without_token_only_redirects_config_dir` (~line 498-500) asserts an exact-dict equality with no `GH_TOKEN` key — this specific assertion breaks and must be updated, not just extended
 - `.ll/learning-tests/gh.md` / `.ll/learning-tests/raw/gh.txt` — the "ENH-3205 gap" claim (`result: fail`) should be re-verified via `ll-learning-tests check gh` and flipped once (a) ships, or reworded if (b) is chosen instead
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_runners.py::test_shell_declared_empty_scopes_redirects_config_dir_no_token` (~line 438) — asserts the child sees `GH_TOKEN` as `absent` under `scopes=[]` with an ambient `GH_TOKEN` set via `monkeypatch.setenv`; will break once the sentinel is injected — update to assert the sentinel value instead [Agent 3 finding]
+- `scripts/tests/test_fsm_runners.py::test_shell_declared_non_github_scope_hides_ambient_gh_login` (~line 465) — exercises the real `gh` binary via `gh auth status`, skipped if `gh` isn't installed; verify it still reports "not logged into" once `GH_TOKEN` is set to an invalid sentinel (gh may report a different status line for a set-but-invalid token) — may need updating [Agent 3 finding]
+- `scripts/tests/test_runner_spec.py` — no existing test covers the CMD/queue path's `with_token=False` branch; add a case asserting the sentinel is present in the merged env for a non-`github`-declaring `ActionSpec`, mirroring `TestGhScopeExtra` [Agent 2/3 finding]
 
 ### Documentation
 - ENH-3205's Decision Rules (non-escalation guarantee text)
 - `docs/ARCHITECTURE.md`, `docs/guides/LOOPS_GUIDE.md` — wherever the `GH_CONFIG_DIR`-redirect guarantee is described
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` § `gh_scope_extra` (~line 10227-10242) — mirrors the docstring's "Known gap" text verbatim and names only `fsm/runners.py`'s `DefaultActionRunner` as the caller; update for the new sentinel behavior and add `runner_spec.py::_run_cmd` as a second caller [Agent 2 finding]
+- Note: `docs/ARCHITECTURE.md` was searched exhaustively (`GH_CONFIG_DIR`, `gh_scope_extra`, `ENH-3205`, `CREDENTIAL_SCOPES`, `non-escalation`) and contains no isolation-guarantee prose — only an unrelated v47 schema-table row for `credential_scope_events`. The line above citing it may be stale; `docs/guides/LOOPS_GUIDE.md` § "Credential scoping on shell states" (~line 614-618) is the actual location of this guarantee text [Agent 2 finding]
+- `.ll/learning-tests/gh.md` / `raw/gh.txt` — the existing failing claim's wording covers only the "ambient, no env vars set" scenario (still fails/unchanged after this fix); needs a wording split or a second claim distinguishing it from the "scoped child under `gh_scope_extra`" scenario (should pass after this fix), plus a fresh raw probe run under the new sentinel for evidence [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -97,6 +113,17 @@ Recommend shipping (a) as the primary fix, and doing (b) regardless — the doc 
 4. Update the isolation-guarantee language in ENH-3205, `docs/ARCHITECTURE.md`, and `docs/guides/LOOPS_GUIDE.md` to match the actual post-fix guarantee.
 5. Verification: `python -m pytest scripts/tests/test_host_runner.py -k gh_scope_extra`, plus a manual macOS check that a non-`github`-declaring child's `gh auth token` call no longer returns the operator's real token.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Note `scripts/little_loops/runner_spec.py:286` (`_run_cmd`) as a second live caller of `gh_scope_extra()` — BUG-3400 already landed this on `main`; no code change needed there, the sentinel fix applies automatically, but its test/doc coverage below is still required
+- Update `scripts/tests/test_fsm_runners.py::test_shell_declared_empty_scopes_redirects_config_dir_no_token` — assert the sentinel value instead of `"absent"`
+- Verify `scripts/tests/test_fsm_runners.py::test_shell_declared_non_github_scope_hides_ambient_gh_login` still passes against real `gh` with the sentinel set; update if `gh auth status` reports differently
+- Add a new test in `scripts/tests/test_runner_spec.py` covering the CMD/queue path's `with_token=False` branch
+- Update `docs/reference/API.md`'s `gh_scope_extra` section to document the sentinel and list `runner_spec.py::_run_cmd` as a second caller
+- Split or reword the `.ll/learning-tests/gh.md` claim to distinguish "ambient, no env set" (still fails) from "scoped child" (should pass), then re-probe for raw evidence
+
 ## Impact
 
 - **Priority**: P2 — a security-isolation gap in a feature already merged to `main` (EPIC-3212), silent (no error, just a token that shouldn't be mintable), and platform-specific (macOS Keychain) so may not reproduce in CI.
@@ -118,5 +145,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-08T01:01:13 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
+- `/ll:refine-issue` - 2026-09-08T00:52:38 - `f6f85f70-0f74-4fad-b98e-66827bb86886.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:41:36 - `e2e1620c-1ab1-45d3-8135-fca9b61f9221.jsonl`
 - `/ll:capture-issue` - 2026-09-08T00:37:04 - `818ac84c-8dd8-46bc-9d1e-d582e9b2e72e.jsonl`
