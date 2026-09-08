@@ -45,16 +45,72 @@ in ll-harness.
   `commit_events` precedent in `writers.py`), never updated or deleted — the contrasting
   UPSERT shape (`correction_retirements`) does not apply here.
 
+### Design Decisions (resolved in pre-implementation review, 2026-09-08)
+
+- **CHECK constraints on both enums.** `attempt_kind` gets
+  `CHECK (attempt_kind IN ('repetition','infra_retry'))` inline in its `ALTER TABLE ADD
+  COLUMN`, and `harness_admissions.reason` gets
+  `CHECK (reason IN ('timeout','host_crash','harness_error','network'))` in its `CREATE
+  TABLE`. Verified on the bundled SQLite 3.49.2: `ALTER TABLE ... ADD COLUMN x TEXT CHECK
+  (...)` succeeds and rejects non-member inserts while still accepting NULL. Both are new
+  columns, so neither carries the v44 rename/copy/drop rebuild cost (that cost applies only
+  when retrofitting a CHECK onto an *existing* column). This closes the "implementer's call"
+  escape hatch below and matches ENH-3407's stated preference for CHECK over Python-side
+  validation.
+- **Indexes.** `idx_harness_cell_key ON harness_events(cell_key)` — backs ENH-3407's
+  next-free-repetition lookup (`MAX(repetition) WHERE cell_key = ?`) and
+  `authoritative_attempt()`'s `WHERE cell_key = ? AND superseded_by IS NULL ORDER BY id`.
+  `idx_harness_admissions_attempt ON harness_admissions(attempt_id)` — backs ENH-3408's
+  per-run tabulation join (`harness_admissions.attempt_id = harness_events.id`, scoped via
+  `harness_events.parent_id`/`target`; there is deliberately no denormalized `run_id` on
+  the admissions table). Mirrors the `parent_id`/`idx_harness_parent` precedent.
+- **Partial UNIQUE index as the DB-level anti-p-hacking guard.**
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_harness_cell_repetition ON
+  harness_events(cell_key, repetition) WHERE attempt_kind = 'repetition'`. Two `repetition`
+  rows with the same index for one cell become impossible, and a concurrent `MAX+1` race in
+  ENH-3407's writer surfaces as `IntegrityError` instead of a silent duplicate sample.
+  `infra_retry` rows (which reuse the index by design) and `cell_key IS NULL` rows (the DSL
+  aggregate/parent row, all pre-migration rows) are outside the predicate and unaffected.
+- **`harness_admissions` full column spec.** `id INTEGER PRIMARY KEY AUTOINCREMENT`,
+  `ts TEXT NOT NULL`, `attempt_id INTEGER NOT NULL`, `superseded_id INTEGER NOT NULL`,
+  `reason TEXT NOT NULL CHECK (...)`. `superseded_id` is NOT NULL because, per the parent,
+  an admission *is* an infra retry superseding a prior attempt — a nullable column would
+  weaken the audit invariant. Column name stays `superseded_id` (ENH-3407's `admit_retry()`
+  signature already uses it); its value is a `harness_events.id`, matching
+  `harness_events.superseded_by` semantics.
+- **`cell_key` is an opaque TEXT column; ENH-3407 owns the canonical encoding.** This issue
+  does not fix the delimiter, whether `task` is `target` (single-runner commands) or
+  `task_file.name` (DSL per-task rows, `cli/harness.py:1030`), or how a NULL `head_sha` /
+  `dirty=1` tree is represented. The DSL aggregate/parent row (`cli/harness.py:1007`) gets
+  `cell_key = NULL`. ENH-3407 must document the encoding in `record_attempt()`'s docstring.
+- **`continuations` is reserved, not populated.** Neither ENH-3407's `record_attempt()`
+  signature nor ENH-3408 writes it, and the parent states continuations are invisible to
+  the harness by construction. Keep the column (parent decision) but note in the migration
+  comment that it is reserved; ENH-3407 should add a `continuations: int | None = None`
+  kwarg so a future producer has a write path.
+- **Registry placement: kinded.** Kind name `harness_admission` → `harness_admissions` in
+  `VALID_KINDS`/`_KIND_TABLE`, mirroring `credential_scope`. Companion test is
+  `test_not_kindless` + `test_kind_registration` (both, per the v47 class shape).
+- **`_EXPORT_TABLE_MAP`: add it.** `"harness_admission": ("harness_admissions", "ts")` plus
+  an `_EXPORT_DEFAULT_TABLES` entry. The table exists for auditability; `ll-history export`
+  emitting `harness_event` rows while omitting the admissions that changed their
+  authoritative status would undermine the audit. The `credential_scope_events` omission
+  was motivated by credential hygiene, which does not apply here.
+
 ## Program Design
 
 ### Types
-- `harness_admissions` row: `attempt_id: int`, `superseded_id: int | None`,
-  `reason: Literal["timeout", "host_crash", "harness_error", "network"]`, `ts: str`
-  (ISO-8601, matching every other `_events`-style table's `ts TEXT NOT NULL` convention).
-- `harness_events` gains: `cell_key: str | None`, `repetition: int | None`,
-  `attempt_kind: Literal["repetition", "infra_retry"] | None`, `continuations: int | None`,
-  `superseded_by: int | None` — all nullable, no `DEFAULT`, matching the "Fix-forward only"
-  convention (existing rows are not backfilled).
+- `harness_admissions` row: `id: int` (AUTOINCREMENT PK), `ts: str` (ISO-8601, matching
+  every other `_events`-style table's `ts TEXT NOT NULL` convention), `attempt_id: int`
+  (NOT NULL, a `harness_events.id`), `superseded_id: int` (NOT NULL, a `harness_events.id`),
+  `reason: Literal["timeout", "host_crash", "harness_error", "network"]` (NOT NULL, CHECK).
+- `harness_events` gains: `cell_key: str | None` (opaque; encoding owned by ENH-3407),
+  `repetition: int | None`, `attempt_kind: Literal["repetition", "infra_retry"] | None`
+  (CHECK), `continuations: int | None` (reserved, unpopulated), `superseded_by: int | None`
+  — all nullable, no `DEFAULT`, matching the "Fix-forward only" convention (existing rows
+  are not backfilled).
+- Indexes: `idx_harness_cell_key`, `idx_harness_admissions_attempt`, and the partial UNIQUE
+  `idx_harness_cell_repetition` (see Design Decisions above).
 
 ### Signatures
 - No new Python function signatures. The sole artifact is one new element appended to
@@ -85,12 +141,15 @@ transaction -> `ALTER TABLE harness_events ADD COLUMN ...` x5 and
   `research_triage_events.axis`/`reason` at `schema.py:1291-1298`). Escape hatch: a bare
   `TEXT` column with no `CHECK` is also viable (matches `harness_events.semantic_verdict`,
   an enum-like `TEXT` column with no `CHECK`) — implementer's call, not fixed by research.
+  > **Resolved (review, 2026-09-08):** CHECK on both `reason` and `attempt_kind` — see
+  > Design Decisions above. The escape hatch is closed.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
-- **CHECK-constraint retrofit cost differs for new vs. existing tables**: SQLite cannot `ALTER TABLE ADD COLUMN ... CHECK (...)` — retrofitting a CHECK onto an *existing* column requires the full rename/copy/drop/rename rebuild pattern (`verdict_events`, v44/ENH-230, `schema.py:1195-1230`). `harness_admissions` is a from-scratch table, so declaring `reason TEXT CHECK (reason IN (...))` directly in its `CREATE TABLE` carries none of that rebuild cost — the "implementer's call" framing in the Decision Rules escape hatch above holds regardless of which option is chosen; neither is more expensive to land for this specific table.
+- **CHECK-constraint retrofit cost differs for new vs. existing columns**: retrofitting a CHECK onto an *existing* column requires the full rename/copy/drop/rename rebuild pattern (`verdict_events`, v44/ENH-230, `schema.py:1195-1230`). A CHECK on a *new* column carries no such cost in either shape — `CREATE TABLE ... reason TEXT CHECK (...)` for `harness_admissions`, and `ALTER TABLE harness_events ADD COLUMN attempt_kind TEXT CHECK (...)` for the new column.
+  > ⚠ Corrected (review, 2026-09-08): an earlier version of this finding claimed "SQLite cannot `ALTER TABLE ADD COLUMN ... CHECK (...)`". That is false — verified on SQLite 3.49.2 that `ADD COLUMN` accepts an inline CHECK and enforces it on subsequent inserts (NULL still accepted). The v44 rebuild was required because `verdict` already existed, not because of `ADD COLUMN`. The wrong claim would have steered the implementer away from the `attempt_kind` CHECK that ENH-3407 relies on.
 - **Additional no-CHECK precedent** (strengthens the existing escape-hatch citation): besides `harness_events.semantic_verdict`, three more enum-like `TEXT` columns carry no CHECK: `session_lifecycle_events.event` (`schema.py:643`, with an explicit comment at `schema.py:632-634` stating it is deliberately open so ENH-2509's `worktree_*` values can share the table), `orchestration_runs.status` and `loop_runs.final_state`/`terminated_by` (`schema.py:540-561,570-587`), and `advisor_consults.outcome` (`schema.py:1259`, despite its migration comment describing it as mirroring a `Literal` type). Only 2 of at least 6 enum-like `TEXT` columns in this file carry a CHECK (`verdict_events`, `research_triage_events`) — both from the two most recent precedents (v44, v46), not a supermajority convention.
 
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
@@ -106,15 +165,21 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   `harness_admissions` table: `attempt_id`, `superseded_id`, `reason`
   (`Literal["timeout","host_crash","harness_error","network"]`), `ts`.
   > ⚠ Superseded — stale: SCHEMA_VERSION now 48, fix-forward cites wrong lines
-- Registry decision: `harness_admissions` needs an explicit kinded (`VALID_KINDS` +
-  `_KIND_TABLE` entry, `schema.py:27-83`) vs. kindless (`_KINDLESS_TABLES`,
-  `schema.py:85-100`) placement — mirror the `credential_scope_events` precedent (v47,
-  ENH-3204): `VALID_KINDS`/`_KIND_TABLE` entries plus a companion test asserting
-  `"harness_admissions" not in _KINDLESS_TABLES` (`test_session_store_schema.py:2800-2812`
-  is the worked example).
-- Decide whether `harness_admissions` needs an `_EXPORT_TABLE_MAP` entry
-  (`session_store/queries.py:88-134`) for `ll-history export` symmetry with
-  `harness_events`.
+- Registry placement (**decided: kinded**): add `"harness_admission"` to `VALID_KINDS`
+  and `"harness_admission": "harness_admissions"` to `_KIND_TABLE` (`schema.py:27-83`),
+  mirroring the `credential_scope_events` precedent (v47, ENH-3204), plus a companion test
+  asserting `"harness_admissions" not in _KINDLESS_TABLES`
+  (`test_session_store_schema.py:2800-2812` is the worked example).
+- `scripts/little_loops/session_store/queries.py:88-134` (**decided: add**) —
+  `"harness_admission": ("harness_admissions", "ts")` in `_EXPORT_TABLE_MAP` and a matching
+  `_EXPORT_DEFAULT_TABLES` entry, for `ll-history export` symmetry with `harness_event`.
+  No shareable-allowlist entry is needed: the table holds only ids, an enum, and a
+  timestamp.
+- Kinded-registration doc sites the v47 precedent touched (not previously listed here):
+  `docs/reference/CLI.md:3912` — add a `ll-session recent --kind harness_admission` line
+  to the example list next to the `credential_scope` one; `docs/ARCHITECTURE.md:680` —
+  the new v49 schema-table row should end with "Enables `ll-session recent --kind
+  harness_admission`" like the v47 row does.
 - `scripts/little_loops/session_store/lifecycle.py:930-941` — add `harness_admissions` to
   the `_REBUILD_TABLES` exclusion comment alongside `harness_events` (documentation only;
   `rebuild()` already excludes new tables by default).
@@ -222,14 +287,24 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 ## Acceptance Criteria
 
 - `harness_events` gains `cell_key`, `repetition`, `attempt_kind` (`repetition` |
-  `infra_retry`), `continuations` (nullable int) and `superseded_by` (nullable attempt
-  id). Schema migration, live-write-only like the rest of the table.
-- A new `harness_admissions` table exists: `attempt_id`, `superseded_id`, typed `reason`
-  (`timeout` | `host_crash` | `harness_error` | `network`), `ts`.
+  `infra_retry`, CHECK-enforced), `continuations` (nullable int, reserved) and
+  `superseded_by` (nullable attempt id). Schema migration, live-write-only like the rest
+  of the table. Test: inserting `attempt_kind = 'bogus'` raises `IntegrityError`; NULL is
+  accepted.
+- A new `harness_admissions` table exists: `id`, `ts`, `attempt_id`, `superseded_id`,
+  typed `reason` (`timeout` | `host_crash` | `harness_error` | `network`, CHECK-enforced)
+  — all NOT NULL. Test: a NULL `superseded_id` or an out-of-enum `reason` raises
+  `IntegrityError`.
+- Indexes exist: `idx_harness_cell_key`, `idx_harness_admissions_attempt`, and the partial
+  UNIQUE `idx_harness_cell_repetition`. Test: two rows with the same `(cell_key,
+  repetition)` and `attempt_kind = 'repetition'` raise `IntegrityError`; the same pair with
+  one row as `infra_retry` is accepted; two rows with `cell_key IS NULL` are accepted.
 - `schema_manifest.json` regenerated and `test_schema_manifest_matches_checked_in_file`
   passes.
-- `harness_admissions` has a resolved kinded-vs-kindless registry placement with a
-  companion test.
+- `harness_admissions` is registered kinded (`harness_admission`) with `test_kind_registration`
+  + `test_not_kindless` companions, and has `_EXPORT_TABLE_MAP`/`_EXPORT_DEFAULT_TABLES`
+  entries. Test: `ll-history export` output includes a `harness_admission` record after one
+  row is inserted directly.
 
 ## Scope Boundaries
 
@@ -239,7 +314,18 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - **Out of scope**: any writer function that populates these columns (ENH-3407), any
   read-path logic that consumes them (ENH-3408), the `--retry-of` CLI flag (ENH-3407), the
   "no UPDATE/DELETE path" writer test (ENH-3407 — it targets `writers.py` source, not
-  `schema.py`).
+  `schema.py`), the canonical `cell_key` string encoding (ENH-3407), and a `continuations`
+  write path (ENH-3407 should add the kwarg; see Design Decisions).
+
+## Follow-ups for sibling issues (surfaced by this review)
+
+- **ENH-3407**: add `continuations: int | None = None` to `record_attempt()`; document the
+  `cell_key` encoding in its docstring; handle `IntegrityError` from
+  `idx_harness_cell_repetition` as a concurrent-writer signal (retry the `MAX+1` allocation)
+  rather than a crash.
+- **ENH-3408**: scope the per-run admissions tabulation via
+  `harness_admissions.attempt_id → harness_events.id → harness_events.parent_id/target`;
+  there is no `run_id` on the admissions table by design.
 
 ## Current Behavior
 
@@ -262,7 +348,9 @@ is schema-only groundwork that ENH-3407 (writers) and ENH-3408 (counting) build 
 
 - **Priority**: P1 — inherited from parent; this is the foundation the anti-p-hacking gate
   depends on.
-- **Effort**: Small — additive schema migration only, no behavior change.
+- **Effort**: Small — additive schema migration only, no behavior change (size stays
+  `Large` in frontmatter only because of the 28 `SCHEMA_VERSION == 48` test sites and the
+  registry/export/doc touchpoints, not design difficulty).
 - **Risk**: Low — additive columns/table, no existing code path reads or writes them yet.
 - **Breaking Change**: No.
 
