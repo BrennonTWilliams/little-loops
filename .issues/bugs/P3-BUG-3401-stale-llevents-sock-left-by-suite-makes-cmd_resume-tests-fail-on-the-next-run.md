@@ -8,12 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-07'
 captured_at: '2026-09-07T23:44:14Z'
-confidence_score: 90
-outcome_confidence: 79
+confidence_score: 100
+outcome_confidence: 85
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
+score_ambiguity: 22
+score_change_surface: 20
 learning_tests_required:
 - pytest
 reconcile_attempted: true
@@ -104,6 +104,22 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `scripts/tests/conftest.py` — no existing fixture guards `.ll/` socket-file cleanliness (confirmed absent). Existing session-scoped isolation fixtures to model after: `_isolate_history_db_session` (~888) and `_guard_real_history_db` (~952-993), which patches `little_loops.session_store.sqlite3.connect` as a choke point and asserts the resolved path is never the real DB — its docstring explicitly notes this **replaced** an earlier before/after directory-snapshot approach because a snapshot can't attribute a leak to the offending test and isn't immune to concurrent external writers. Program Design's `_guard_real_socket_transport` is shaped directly after this fixture (choke-point patch on `UnixSocketTransport.__init__`, not a snapshot-diff) — an earlier draft of this issue proposed a snapshot-diff shape here; that has been corrected to match this precedent.
 - `scripts/tests/test_cli_loop_lifecycle.py` — the 9 confirmed-vulnerable tests (named in Implementation Steps / Wiring Phase) need `little_loops.config.BRConfig`/`wire_transports` mocked (mirroring `TestCmdResumeCircuitWiring`, 2196-2274) unless covered instead by a new `conftest.py` isolation fixture.
 - `scripts/little_loops/transport.py` — **no change needed** (wiring pass confirmation): `_claim_socket_path()` (line 1559) / `_probe_socket_path()` (line 1529) already reclaim a listener-less stale socket correctly, pinned by `test_init_unlinks_stale_socket_file`/`test_bound_but_dead_socket_file_is_reclaimed`/`test_stale_pid_suffixed_path_is_reclaimed`. Cited here only as the reference for how `wire_transports()`'s `log_dir` default (line 1896) participates in the leak (see Current Behavior).
+
+### Behavior Parity
+
+_Added — neither modified file is being replaced or rewritten wholesale; this
+table exists because `format-check`'s `missing_behavior_parity` scan matched
+two replacement-keyword hits that are about narrative/precedent history, not
+about either file itself: the Summary's "superseded" refers to the corrected
+bug narrative superseding the original stale-file hypothesis, and the Files to
+Modify note's "replaced" describes `_guard_real_history_db`'s own docstring
+recounting that it replaced an earlier snapshot-diff approach — neither is a
+claim that this issue replaces `conftest.py` or `test_cli_loop_lifecycle.py`._
+
+| File | Preserved | Changed | Dropped |
+|------|-----------|---------|---------|
+| `scripts/tests/conftest.py` | All existing fixtures (`_guard_real_history_db`, `_isolate_history_db_session`, `_install_no_live_host_cli`, etc.) are untouched — `_guard_real_socket_transport` is additive, not a replacement for any of them | Gains one new session-scoped autouse guard fixture (`_guard_real_socket_transport`) and, if the `BRConfig`/`wire_transports` isolation fixture is placed here rather than module-level in the test file, that fixture too | Nothing removed from this file |
+| `scripts/tests/test_cli_loop_lifecycle.py` | Test bodies, assertions, and the existing `TestCmdResumeCircuitWiring`/`TestCmdResumeTransportWiring` inline-patch tests keep behaving identically | The ~36 unmocked `cmd_resume` tests gain automatic `BRConfig`/`wire_transports` isolation via the new autouse fixture instead of hitting the real repo `.ll/` | The 5 duplicated inline `mock_config` construction blocks (2213-2374) are deleted, deduplicated into the shared fixture |
 
 ### Dependent Files (Callers/Importers)
 - Every direct `UnixSocketTransport(...)` construction in `scripts/tests/test_transport.py` and `scripts/tests/test_feat3323_sse_bridge.py` already binds under each file's own `short_tmp_path` fixture (`tempfile.mkdtemp(prefix="ll-")`) with a matching `.close()` — confirmed by exhaustive grep, not a leak source as originally hypothesized.
@@ -249,6 +265,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 _Previous pass (2026-09-07) flagged a self-contradiction in Program Design: the named signature/Call Path described a before/after `.ll/` snapshot-diff while Implementation Steps #3 explicitly called for a choke-point guard instead, citing `_guard_real_history_db`'s precedent against snapshot-diff. Program Design has been corrected — `assert_ll_clean_after_session` replaced with `_guard_real_socket_transport`, a choke-point patch on `UnixSocketTransport.__init__` — and Architecture Compliance now scores 20/20 (was 10/20), raising the readiness tier from PROCEED WITH CAUTION to PROCEED. Outcome Confidence is unaffected — the newly-fixed contradiction didn't touch Complexity, Test Coverage, or Change Surface, and Ambiguity's score is held down by the separate, still-open per-test-vs-fixture decision noted above._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T03:29:34 - `4269037e-3478-48be-942a-9df6fc8308a3.jsonl`
 - `/ll:confidence-check` - 2026-09-08T03:24:35 - `51116d41-9957-4fcd-9da9-31792bb39937.jsonl`
 - `/ll:verify-issues` - 2026-09-08T03:20:08 - `340bdb44-8b74-4400-a17f-9d09e7a13c92.jsonl`
 - manual review - 2026-09-08 - premise corrected (reproduced 34 failures on clean .ll/); vulnerable list expanded 9→~36; fixture-vs-per-test decision resolved (fixture); ACs rewritten
