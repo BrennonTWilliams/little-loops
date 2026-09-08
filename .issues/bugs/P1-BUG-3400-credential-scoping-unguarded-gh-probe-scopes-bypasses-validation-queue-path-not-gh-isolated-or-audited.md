@@ -11,6 +11,12 @@ captured_at: '2026-09-07T23:44:14Z'
 parent: EPIC-3212
 learning_tests_required:
 - gh
+confidence_score: 98
+outcome_confidence: 86
+score_complexity: 19
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 20
 ---
 
 # BUG-3400: Credential scoping: unguarded gh probe, scopes [] bypasses validation, queue path not gh-isolated or audited
@@ -148,6 +154,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `run_action(spec)` with no `run_id` keyword still works (existing call sites and tests unchanged).
 - [ ] Unit suite green: `python -m pytest scripts/tests/`.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues --auto` — 2026-09-08:_
+
+- **Graph**: provider=`codegraph` freshness=`fresh`.
+- All three defects and every cited `path:line` were spot-checked directly against HEAD and confirmed exact: `host_runner.py:186` (`gh_scope_extra` def, unguarded `subprocess.run` probe, no `timeout`), `fsm/validation/structural_rules.py:499` (`if state.scopes:` truthy guard), `runner_spec.py:237` (`_run_cmd`) / `:251` (`resolve_scopes(spec.scopes)`, no `gh_scope_extra`/`write_credential_scope` call anywhere in the file), `fsm/executor.py:2567-2580` (`write_credential_scope` call gated on `is not None`), `session_store/writers.py:1945` (`write_credential_scope` signature matches Program Design exactly), `session_store/schema.py:~1317` comment ("written from FSMExecutor before the spawn" — confirmed stale once the CMD path is wired). All `run_action()` call sites (`cli/queue.py:480`, `cli/harness.py:833,866,909,942`, `cli/action.py:250,304`) confirmed positional/unchanged, consistent with the issue's optional-`run_id` wiring plan. Causal claim (merge commit `57c0a3af1`, "Merge EPIC integration branch EPIC-3212 into main", `verify_before_merge: false` in config) confirmed directly. Decisions log queried clean — no active required rules, no `DECISIONS_VIOLATION`.
+- **`EVIDENCE_UNVERIFIED` (advisory, check B7)**: `ll-verify-evidence` flagged the Steps-to-Reproduce quote at line 38 — `gh_scope_extra(Path(gh_tmp.name), with_token=True)` attributed to `fsm/runners.py` — as not verbatim; the actual code at that call site is `gh_scope_extra(Path(gh_tmp.name), with_token="github" in scopes)`. This is the paraphrase class the command's own documentation flags as low-precision/non-blocking: the underlying claim (unguarded probe, `except RuntimeError`-only handler) is independently confirmed accurate at that exact line. No action required beyond optionally tightening the quote to verbatim code.
+- **Overall verdict: VALID.** No changes to Acceptance Criteria, Program Design, or Wiring sections needed.
+
 ## Relates To
 
 - EPIC-3212, ENH-3205 (gh isolation), ENH-3234 (ActionSpec wiring), ENH-3204 (audit table), ENH-3235 (FSM wiring)
@@ -161,6 +176,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-08T00:49:45 - `7f3e2447-29cb-43ca-954f-9d5a31c0691a.jsonl`
+- `/ll:confidence-check` - 2026-09-08T00:46:45 - `83ef9416-b738-4a93-8804-ffa8a3d10cfa.jsonl`
 - `/ll:wire-issue` - 2026-09-08T00:33:51 - `818ac84c-8dd8-46bc-9d1e-d582e9b2e72e.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:21:05 - `79946685-eebd-494a-af0a-cc7c04146960.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:06:12 - `fd8050c6-8bbf-4735-ba8f-b83f5f588867.jsonl`

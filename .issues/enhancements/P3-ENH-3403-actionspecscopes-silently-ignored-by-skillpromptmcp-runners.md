@@ -39,6 +39,25 @@ An operator who writes `scopes: [github]` on a queued skill or prompt task reaso
 
 Option (a) from Expected Behavior: a dispatch-time guard in `run_action()` that returns `RunnerResult(exit_code=2, error=...)` without spawning when `spec.scopes is not None` and `spec.runner is not RunnerType.CMD`, mirroring `_run_cmd()`'s existing `ValueError` fail-loud shape and the FSM shell-only rule in `structural_rules.py`. Option (b) stays open as a later design pass if skill/prompt scoping is actually wanted.
 
+## Program Design
+
+### Types
+
+- No new types — reuses existing `ActionSpec.scopes: frozenset[str] | None` and `RunnerResult`.
+
+### Signatures
+
+- `run_action(spec: ActionSpec) -> RunnerResult` — add the guard before `handler = _DISPATCH.get(spec.runner)` dispatch.
+
+### Call Path
+
+`run_action()` -> (new) scope guard: `if spec.scopes is not None and spec.runner is not RunnerType.CMD: return RunnerResult(exit_code=2, error=...)` -> else existing `_DISPATCH[spec.runner](spec)` (`_run_skill`/`_run_prompt`/`_run_mcp`/`_run_cmd`)
+
+## Scope Boundaries
+
+- **In scope**: `run_action()` dispatch guard rejecting `scopes is not None` for `RunnerType.SKILL`, `RunnerType.PROMPT`, `RunnerType.MCP`; enqueue/validate-time surfacing of the same message in `ll-queue add` / `ll-action` / `ll-harness`.
+- **Out of scope**: Option (b) (actually threading `env_allow`/`gh_scope_extra()`/`write_credential_scope()` into `_run_skill()`/`_run_prompt()`/`_run_mcp()`) — needs its own design pass per the Expected Behavior section and is not part of this issue.
+
 ## Integration Map
 
 ### Files to Modify
@@ -60,16 +79,18 @@ Option (a) from Expected Behavior: a dispatch-time guard in `run_action()` that 
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add the dispatch-time guard in `run_action()` (`runner_spec.py:362`): return `RunnerResult(exit_code=2, error=...)` naming the runner when `spec.scopes is not None` and `spec.runner is not RunnerType.CMD`, before calling `_DISPATCH[spec.runner]`.
+2. Surface the same rejection message at enqueue/validate time in `ll-queue add` / `ll-action` / `ll-harness` wherever they already validate `ActionSpec` shape.
+3. Add `test_skill_dispatch_with_scopes_fails_loud_spawns_nothing` (and prompt/mcp variants) to `scripts/tests/test_runner_spec.py`, alongside the existing CMD scope tests.
+4. Update `docs/reference/API.md` `ActionSpec`/`resolve_scopes` sections to state scopes are CMD-only and rejected elsewhere.
+5. Run `python -m pytest scripts/tests/` and confirm `scopes=None` behavior (full inherit) is unchanged for every runner type.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - Silent no-op on an isolation-promising field (no error, no audit row) is a correctness/trust gap, not a crash or data-loss risk; matches the sibling FSM-side fix (BUG-3400/ENH-3235) already shipped at this priority.
+- **Effort**: Small - A single guard clause in `run_action()` plus enqueue-time message surfacing and a few new unit tests; mirrors the existing `_run_cmd()` `ValueError` -> `exit_code=2` fail-loud shape, no new abstractions.
+- **Risk**: Low - Guard only triggers for the currently-broken combination (`scopes is not None` on a non-CMD runner); no caller passes `scopes` on SKILL/PROMPT/MCP today (see Dependent Files), so no existing behavior changes for `scopes=None`.
+- **Breaking Change**: No - Only rejects a combination that was previously silently ignored; no passing call site is affected.
 
 ## Acceptance Criteria
 
@@ -89,3 +110,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-08T00:46:13 - `8b45174b-5119-458a-8d19-241ee9b2e5a3.jsonl`
