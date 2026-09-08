@@ -76,13 +76,20 @@ Rules:
   returns `[]` — indistinguishable from the absent-manifest case by design.
 - `repo` and `role` are required per entry; a missing key raises `KeyError`
   (bare `entry["repo"]`, mirroring `decisions.py`'s `from_dict` style).
-  `role` is free-text; FEAT-3410 must surface it in the per-repo breakdown
-  (see Decision Rules → Cross-issue consistency) — a required field no
-  consumer reads would be decorative.
+  Both must be non-empty strings — a non-string value (e.g. `role: 1`, which
+  YAML yields as `int`) or an empty string raises `ValueError` under the
+  shape-check rule; no `str()` coercion. `role` is free-text; FEAT-3410 must
+  surface it in the per-repo breakdown (see Decision Rules → Cross-issue
+  consistency) — a required field no consumer reads would be decorative.
 - `db_path` is optional. When absent it is composed statically as
   `repo_path / ".ll" / "history.db"` — a plain `Path` join, **not**
   `resolve_history_db()`, so the `LL_HISTORY_DB` collapse hazard (Decision
-  Rules) is never reintroduced by the default.
+  Rules) is never reintroduced by the default. "Absent" means the key is
+  missing **or** its value is `None`/empty string (`db_path:` with no value,
+  `db_path: ""`) — the presence check is `entry.get("db_path")`, not
+  `"db_path" in entry`, so a bare `db_path:` line never reaches
+  `repo_path / None` (`TypeError`) and `""` never silently yields `repo_path`
+  itself. A present non-string `db_path` raises `ValueError`.
 - Relative `repo` values resolve against the manifest file's parent directory,
   not cwd. Relative `db_path` values resolve against **that entry's resolved
   `repo_path`**, mirroring how the `history.db_path` config key resolves
@@ -90,7 +97,10 @@ Rules:
   is deliberate: manifest-relative `db_path` would make `db_path:
   .ll/history.db` on a sibling entry silently point at the primary repo's
   database. Both are stored resolved (absolute) on the returned
-  `WorkspaceMember`.
+  `WorkspaceMember`. `Path.resolve()` follows symlinks, so a symlinked member
+  repo is stored by its real path — document this in the docstring; it is
+  also what makes the duplicate check below catch two entries that alias one
+  database through different symlinks.
 - **Duplicate members** — two entries whose resolved `db_path` values collide
   — raise `ValueError` naming the path. FEAT-3410 would otherwise `ATTACH`
   one database twice and double-count it.
@@ -110,7 +120,13 @@ Rules:
 
 Precedence, highest first:
 
-1. Explicit `manifest_path` argument — returned verbatim.
+1. Explicit `manifest_path` argument — wins outright, but is normalized with
+   `.resolve()` before use (not returned verbatim): `manifest_dir` is derived
+   from it, and a relative arg would otherwise leak into the `exists()` guard,
+   the duplicate-`db_path` error text, and every path stored on the returned
+   members. The resolved path is what `discover_workspace_members()` operates
+   on for every subsequent step. Precedence is unchanged — only normalization
+   is added.
 2. `history.workspace_manifest_path` from `.ll/ll-config.json` (relative
    values resolve against the project root), read inside
    `discover_workspace_members()` itself via a small `_config_manifest_path()`
@@ -119,6 +135,19 @@ Precedence, highest first:
    precedent, this reads the raw JSON only and does **not** merge
    `.ll/ll.local.md` overrides — a known limitation worth a docstring line,
    since a machine-local manifest path is exactly what a user would put there.
+
+   **This step deliberately inherits the `find_project_root()` behavior that
+   step 3 avoids.** `_config_db_path(root=)` locates the config via
+   `resolve_ll_dir(start=root)` → `find_project_root()`, so from a workspace
+   parent dir with a stray `.ll`-only ancestor (e.g. `~/AIProjects/.ll` on the
+   dev machine) this step reads `~/AIProjects/.ll/ll-config.json` if one
+   exists and honors its `history.workspace_manifest_path`. Accepted as-is:
+   the key is opt-in, a config file placed at a workspace parent is a
+   plausible way to declare a workspace-level manifest, and when no such
+   config exists the step returns `None` and falls through. Document this in
+   the `_config_manifest_path()` docstring and cover it with one test (stray
+   ancestor `.ll/ll-config.json` carrying the key → that manifest is used;
+   stray `.ll/` with no config → falls through to step 3).
 3. **Nearest-ancestor walk**: starting at `Path.cwd().resolve()`, the first
    directory (cwd itself, then each parent) containing `ll-workspace.yaml`
    wins. When no ancestor holds one, the resolved path is
@@ -354,13 +383,13 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
 ### Signatures
 
 - `discover_workspace_members(manifest_path: Path | None = None) -> list[WorkspaceMember]` — `None` triggers the three-step resolution chain in Expected Behavior → Manifest Path Resolution; returns `[]` (never `None`) when the resolved path does not exist
-- `_resolve_manifest_path(manifest_path: Path | None) -> Path` — private resolver: explicit arg → config key → nearest-ancestor walk from cwd (see `_find_manifest_upward`); mirrors the explicit-arg-verbatim contract of `decisions.py::_resolve_path()` (`decisions.py:26-41`) but does **not** delegate to `find_project_root()` for the default (see Manifest Path Resolution step 3)
+- `_resolve_manifest_path(manifest_path: Path | None) -> Path` — private resolver: explicit arg (`.resolve()`d, not verbatim — see Manifest Path Resolution step 1) → config key → nearest-ancestor walk from cwd (see `_find_manifest_upward`); mirrors the explicit-arg-wins contract of `decisions.py::_resolve_path()` (`decisions.py:26-41`) but does **not** delegate to `find_project_root()` for the ancestor-walk default (see Manifest Path Resolution step 3). Always returns an absolute path.
 - `_find_manifest_upward(start: Path) -> Path | None` — private walk over `start.resolve()` and its parents returning the first `<dir>/ll-workspace.yaml` that exists, else `None`
-- `_config_manifest_path(root: Path | None) -> Path | None` — private config reader mirroring `session_store/db.py::_config_db_path(root=)`; `root` is the project root resolved from cwd (same primitive `_config_db_path` uses) and may be `None` (no config lookup then)
+- `_config_manifest_path(root: Path | None) -> Path | None` — private config reader mirroring `session_store/db.py::_config_db_path(root=)`; `root` is the project root resolved from cwd (same primitive `_config_db_path` uses — `resolve_ll_dir` → `find_project_root`, so it inherits the stray-`.ll` ancestor behavior documented in Manifest Path Resolution step 2) and may be `None` (no config lookup then)
 
 ### Call Path
 
-`discover_workspace_members(manifest_path)` -> `_resolve_manifest_path()` (explicit arg → config key → `_find_manifest_upward(Path.cwd())` → `Path.cwd() / "ll-workspace.yaml"`) -> `Path.exists()` guard (return `[]`) -> `yaml.safe_load(manifest_path.read_text())` -> top-level shape check (`dict` with `members` list, else `ValueError`; `None` from an empty file fails this check) -> per-entry construction of `WorkspaceMember(repo_path=(manifest_dir / entry["repo"]).resolve(), role=entry["role"], db_path=(repo_path / entry["db_path"]).resolve() if "db_path" in entry else repo_path / ".ll" / "history.db")` -> duplicate-`db_path` check (`ValueError`) -> returned `list[WorkspaceMember]`. No existence check on `repo_path`/`db_path`. No caller exists yet in this codebase — FEAT-3410's ATTACH-based aggregation entry point is the sole intended consumer, feeding each returned member's `db_path` into a per-member `ATTACH DATABASE` call in the shape of `build_snapshot_db` (`scripts/little_loops/session_store/queries.py:246-301`, today's only `ATTACH DATABASE` call site, single-source/single-alias — a multi-member attach loop has no existing precedent to confirm against).
+`discover_workspace_members(manifest_path)` -> `_resolve_manifest_path()` (explicit arg `.resolve()`d → config key → `_find_manifest_upward(Path.cwd())` → `Path.cwd() / "ll-workspace.yaml"`; always absolute) -> `Path.exists()` guard (return `[]`) -> `yaml.safe_load(manifest_path.read_text())` -> top-level shape check (`dict` with `members` list, else `ValueError`; `None` from an empty file fails this check) -> per-entry shape check (`entry` is a mapping; `entry["repo"]`/`entry["role"]` present — `KeyError` — and non-empty `str` — `ValueError`; `entry.get("db_path")`, when truthy, is a `str` — `ValueError`) -> per-entry construction of `WorkspaceMember(repo_path=(manifest_dir / entry["repo"]).resolve(), role=entry["role"], db_path=(repo_path / db_path_raw).resolve() if (db_path_raw := entry.get("db_path")) else repo_path / ".ll" / "history.db")` -> duplicate-`db_path` check (`ValueError`) -> returned `list[WorkspaceMember]`. No existence check on `repo_path`/`db_path`. No caller exists yet in this codebase — FEAT-3410's ATTACH-based aggregation entry point is the sole intended consumer, feeding each returned member's `db_path` into a per-member `ATTACH DATABASE` call in the shape of `build_snapshot_db` (`scripts/little_loops/session_store/queries.py:246-301`, today's only `ATTACH DATABASE` call site, single-source/single-alias — a multi-member attach loop has no existing precedent to confirm against).
 
 ### Decision Rules
 
@@ -395,9 +424,26 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
   `None` branch would force every consumer (FEAT-3410 first) to null-check
   before iterating.
 - **Missing-field / bad-shape exceptions**: **Resolved** — missing `repo`/`role`
-  raises `KeyError`; non-mapping top level, missing/non-list `members`, or a
-  non-mapping entry raises `ValueError`; malformed YAML propagates
-  `yaml.YAMLError` unmodified. All three are the no-wrap posture.
+  raises `KeyError`; non-mapping top level, missing/non-list `members`, a
+  non-mapping entry, a non-string or empty `repo`/`role`, or a present
+  non-string `db_path` raises `ValueError`; malformed YAML propagates
+  `yaml.YAMLError` unmodified. All three are the no-wrap posture. No other
+  exception type may escape for a shape problem — in particular `db_path:`
+  with a `None` value must not reach `repo_path / None` (`TypeError`).
+- **`db_path` absent-vs-present** (2026-09-08 review): **Resolved** — `None`
+  and `""` count as absent (static default applies); presence is tested with
+  `entry.get("db_path")`, not `"db_path" in entry`.
+- **Explicit `manifest_path` normalization** (2026-09-08 review):
+  **Resolved** — the explicit arg is `.resolve()`d before use, not returned
+  verbatim; precedence is unchanged. `_resolve_manifest_path()` always
+  returns an absolute path.
+- **Config-key step and `find_project_root()`** (2026-09-08 review):
+  **Resolved** — step 2 keeps `_config_db_path`'s `resolve_ll_dir` →
+  `find_project_root` primitive and therefore inherits the stray-`.ll`
+  ancestor behavior step 3 avoids. Accepted and documented (Manifest Path
+  Resolution step 2) rather than special-cased; one test pins each branch.
+- **Symlinked members**: **Resolved** — `.resolve()` follows symlinks;
+  `repo_path`/`db_path` are stored as real paths. Docstring note only.
 - **Frozen vs mutable**: **Resolved** — `frozen=True` (see Types).
 - **Cross-issue consistency**: FEAT-3410's Design Notes previously recommended
   `resolve_history_db(root=member.repo_path)` per member — contradicting this
@@ -476,6 +522,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
   empty file → `ValueError`; `members: []` → `[]`; repo-relative `db_path`;
   nonexistent `repo_path`/`db_path` still returned; stray-ancestor-`.ll`
   regression for the nearest-ancestor walk (see Acceptance Criteria).
+- Value-type class (2026-09-08 review, second pass): `db_path:` with no value
+  and `db_path: ""` both yield the static default (no `TypeError`, no
+  `repo_path`-as-db); `role: 1`, `repo: 1`, `role: ""`, and `db_path: 1`
+  each raise `ValueError`; a relative explicit `manifest_path` arg still
+  yields absolute `repo_path`/`db_path` on the returned members; a
+  symlinked member repo is stored by its real path.
+- Config-step class (2026-09-08 review, second pass): stray ancestor
+  `.ll/ll-config.json` carrying `history.workspace_manifest_path` → that
+  manifest is used; stray ancestor `.ll/` with no config → falls through to
+  the ancestor walk.
 - `scripts/tests/test_config_schema.py` — add a `test_history_workspace_manifest_path_in_schema`
   matching per-property test for the new `history.workspace_manifest_path` property.
 
@@ -515,7 +571,9 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   `FrozenInstanceError`).
 - Absent manifest degrades to `[]` (not `None`) without raising, covered by a
   dedicated graceful-degradation test class.
-- Default-path resolution follows the documented chain: explicit arg wins;
+- Default-path resolution follows the documented chain: explicit arg wins
+  (and is `.resolve()`d — a relative arg still yields absolute
+  `repo_path`/`db_path` on every returned member);
   `history.workspace_manifest_path` is honored when the arg is `None`; with no
   config key, the nearest ancestor of cwd holding `ll-workspace.yaml` wins —
   one test per branch, using `tmp_path` + `monkeypatch.chdir`, plus one
@@ -525,6 +583,14 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   `ws/` must be found, not the one beside the stray `.ll/`. A second walk
   test: cwd is a
   subdirectory of the primary repo and the manifest sits at the repo root.
+- Config-key step inherits `find_project_root()` semantics, pinned by two
+  tests: a stray ancestor `.ll/ll-config.json` (no `.git`) carrying
+  `history.workspace_manifest_path` is honored; the same stray `.ll/` with no
+  config file falls through to the ancestor walk.
+- Value-type edge cases raise the documented types and nothing else:
+  `db_path:` with a `None` value and `db_path: ""` both resolve to the static
+  default (no `TypeError`); a non-string or empty `repo`/`role`, or a present
+  non-string `db_path`, raises `ValueError`.
 - Relative `db_path` resolves against the entry's `repo_path`: a sibling entry
   with `db_path: .ll/history.db` yields `<sibling>/.ll/history.db`, not the
   manifest dir's.
@@ -681,8 +747,9 @@ _Re-verified `/ll:verify-issues` — 2026-09-08 — graph: provider=`codegraph` 
 
 _Added by `/ll:confidence-check` on 2026-09-08_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 78/100 → MODERATE
+**Readiness Score**: 100/100 → PROCEED (frontmatter is authoritative; the
+original 85/78 pass predated the decide-issue resolutions below)
+**Outcome Confidence**: 74/100 → MODERATE
 
 ### Concerns
 - ~~Two Decision Rules remain unresolved: malformed-manifest posture and
@@ -728,15 +795,3 @@ override non-merge noted for the config reader._
 - `/ll:wire-issue` - 2026-09-08T17:31:32 - `fa35fcdd-03ef-4e02-8495-668286d605de.jsonl`
 - `/ll:refine-issue` - 2026-09-08T17:21:28 - `9bcae330-1a21-42d2-bfd3-9b52b57ca4c1.jsonl`
 - `/ll:issue-size-review` - 2026-09-08T06:21:27 - `c53583bd-6c7a-49a7-8685-76b64ad999da.jsonl`
-
-## Documentation
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- `docs/reference/CLI.md:3743` — an additional "per-project" framing site (`ll-session` description: "queries the per-project `.ll/history.db`") not previously listed among Implementation Steps' doc-update targets, which cite only `docs/ARCHITECTURE.md:712` and `docs/reference/API.md:92,8207`. The same single-repo-framing update Step 5 makes should also touch this line. [`ll:codebase-locator` finding]
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- **Anchor drift on three doc citations** — checked against current file content (locator pass, 2026-09-08): `docs/ARCHITECTURE.md:711-713` for "per-project event history store" resolves at `:714`, not `:711-713`; `docs/reference/API.md:8205-8209` for the package docstring resolves at `:8208` (`## little_loops.history_reader` heading) / `:8210` (docstring text), not `:8205-8209`; `docs/reference/CLI.md:3743` for the `ll-session` "per-project" framing resolves at `:3775`, not `:3743` (32-line drift — the file grew since the citation was written). `docs/reference/API.md:92` (module table row) remains correct as cited. Implementation Step 5 and the Documentation section's existing citations should be read against these corrected line numbers.

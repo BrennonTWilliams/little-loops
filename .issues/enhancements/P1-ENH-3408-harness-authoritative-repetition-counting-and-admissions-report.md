@@ -27,398 +27,324 @@ score_change_surface: 18
 
 Make ll-harness's pass-rate/abstention-rate reporting count authoritative repetitions
 instead of raw attempt rows, and surface admission interventions in the run report. Third
-of three issues decomposed from ENH-3397 — depends on the writers/gate from ENH-3407.
-This is the issue that actually changes what `n` means in reported numbers — the
-anti-p-hacking guarantee ENH-3397 exists to deliver doesn't hold until this issue lands,
-even though ENH-3406/ENH-3407 build its plumbing.
+of three issues decomposed from ENH-3397 — consumes the schema from ENH-3406 and the
+writers/gate from ENH-3407 (both landed, commit `28e64617d`). This is the issue that
+actually changes what `n` means in reported numbers — the anti-p-hacking guarantee
+ENH-3397 exists to deliver doesn't hold until this issue lands, even though
+ENH-3406/ENH-3407 build its plumbing.
 
 ## Parent Issue
 
 Decomposed from ENH-3397.
 
-## Design Decisions (inherited from parent + codebase research)
+## Design Decisions
 
-- **Hard blocker, do first**: add `cell_key`/`repetition`/`attempt_kind`/`continuations`/
-  `superseded_by` to the `HarnessEvent` dataclass and `_HARNESS_EVENT_COLUMNS` SQL fragment
-  in `history_reader/harness.py` before/alongside the counting-logic change.
-  `_row_to_dataclass()` (`history_reader/_base.py`) silently drops any DB column not
-  present as a `HarnessEvent` field — skipping this step makes the counting change
-  silently return stale data instead of failing loudly.
-- A third row-counting site exists beyond the two named functions: `_read_target_history()`
-  (`cli/harness.py:588-640`) computes its own `pass_scored`/`judged_scored` local counts
-  independently of `harness_eval_pass_rate()`/`harness_eval_abstention_rate()`'s SQL
-  `COUNT()` queries, gated by `_HISTORY_MIN_SCORED = 3` (line 585). All three sites must be
-  converted together, or the threshold gate stays keyed to attempt-row counts (e.g. one
-  graded attempt + two `infra_retry` rows would still clear the threshold at
-  `pass_scored == 3` backed by one real data point).
-- Timeout/error rows already store `semantic_passed=False` (not `NULL`), so they're
-  already counted in `harness_eval_pass_rate()`'s denominator but excluded from
-  `harness_eval_abstention_rate()`'s — account for this discrepancy when defining what an
-  authoritative-but-superseded attempt's `semantic_passed` means.
+### D1. "Authoritative" is exactly `superseded_by IS NULL` — no per-cell fan-out needed
+
+An earlier `/ll:verify-issues` pass flagged a PROPOSAL_UNSOUND gap: `authoritative_attempt(db,
+cell_key, repetition)` / `authoritative_attempts(db, cell_key)` are keyed by `cell_key`
+(`json.dumps([runner, target, head_sha])`, `cli/harness.py::_cell_key`), while all three
+counting sites aggregate by `target` across many `cell_key`s, and no target→cell_keys
+enumeration helper exists. **Resolved: the fan-out is unnecessary.** The write path makes
+the authoritative set equal to the single SQL predicate `superseded_by IS NULL`:
+
+- `session_store/writers.py::_admit_retry` updates `superseded_by` only `WHERE superseded_by
+  IS NULL` and raises on `rowcount == 0`, and `cli/harness.py::_retry_refusal` refuses
+  `--retry-of` against an already-superseded row. Retry chains are therefore linear and
+  exactly one non-superseded row survives per `(cell_key, repetition)`.
+- `attempt_kind='repetition'` rows are unique per `(cell_key, repetition)` by
+  `idx_harness_cell_repetition` (partial unique index, `schema.py:1377`), so two valid
+  repetitions never share an index.
+- Legacy pre-v49 rows (`cell_key`/`repetition`/`superseded_by` all NULL) satisfy the
+  predicate and stay counted, which is correct — they were never superseded.
+
+Consequently the per-repetition Python dedup inside `authoritative_attempts()` is a
+defensive tie-break that never fires on data the current writers produce. This issue
+consumes ENH-3407's **selection rule**, not necessarily its function: define one
+module-level SQL fragment in `history_reader/harness.py` (e.g.
+`_AUTHORITATIVE_PREDICATE = "superseded_by IS NULL"`), interpolate it into
+`harness_eval_pass_rate()`'s and `harness_eval_abstention_rate()`'s `WHERE` clauses, reuse
+it in `authoritative_attempt()`/`authoritative_attempts()`, and filter
+`e.superseded_by is None` in `_read_target_history()`'s Python loop. This is the
+`history_reader/usage.py::_WASTED_RUN_PREDICATE` single-source-of-truth pattern
+(interpolated at lines 341/345 of `waste_attribution()`).
+
+### D2. Superseded rows leave every denominator; the surviving attempt's verdict is reported
+
+A row is either authoritative or superseded, never both. Superseded rows are always
+timeouts (`_retry_refusal` admits a retry only when `prior.timed_out`), stored with
+`semantic_passed = 0` and `semantic_verdict = NULL`. Today that means they inflate the
+pass-rate denominator as failures while already being excluded from the abstention-rate
+denominator (the asymmetry documented under Program Design → Call Path). After this
+change they are excluded from both, so the two denominators converge on the same
+population; their stored `semantic_passed = 0` is simply never read for rate purposes.
+
+The reported verdict for a repetition is the **last link of its retry chain** — the only
+row with `superseded_by IS NULL`. "Earliest non-superseded" in ENH-3397's wording
+collapses to "the non-superseded row" under the current gate, because a graded attempt can
+never be retried and therefore never superseded.
+
+### D3. `cmd_dsl`'s in-memory `graded_total`/`graded_pass` are NOT converted
+
+`/ll:verify-issues` was right: those counters are scoped to one CLI invocation's per-task
+loop (`cli/harness.py:1198-1311`), one row per task file. A `--retry-of` chain is always
+a separate invocation (and restricted to a single task file, line 1156), so there is no
+cross-invocation duplication to dedup. Leave them alone; only the three DB-aggregate sites
+change.
+
+### D4. Admissions tabulation scope: the same population the pass rate counts
+
+Constraints found in the current code:
+
+- `cli/harness.py::_record_harness_event` returns `None`, so `cmd_dsl` never learns the
+  attempt ids it wrote. `session_store/writers.py::record_attempt` already returns the new
+  id — propagate it (`-> int | None`).
+- For `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt`, `_evaluate_and_report()` prints the
+  report *before* `_record_harness_event()` writes the attempt and its admission, so "the
+  run's own admission" cannot appear in that report without reordering.
+- `session_store/queries.py::recent(db, kind="harness_admission")` is `SELECT * ... ORDER BY
+  id DESC LIMIT ?` with no filter, so it cannot scope admissions to a run or target.
+- Under today's CLI every admission has `reason='timeout'` (`_record_harness_event`
+  hardcodes it) and a DSL invocation admits at most one attempt, so a per-invocation
+  "count by reason" would only ever print `timeout×1`.
+
+**Decision**: tabulate admissions over the population the pass rate counts.
+
+- **Single-target commands**: `_read_target_history()` additionally counts
+  `harness_admissions` rows whose `attempt_id` is among the target's rows in the
+  `_HISTORY_WINDOW_DAYS` window, exposed as `history_admissions: {reason: count}` (omitted
+  when empty). `_format_target_history_line()` renders it, e.g.
+  `pass 80% (5 runs, 2 infra retries admitted: timeout×2)`; the dict already flows into
+  `--output json` via `payload.update(target_history)` (line 868), so the JSON payload
+  gains `history_admissions` for free.
+- **`cmd_dsl`**: after the per-task loop, query admissions whose `attempt_id` is in the
+  set of ids this invocation wrote, and append one non-empty-gated line onto the existing
+  `lines` list (after the `if failures:` append, line 1352), e.g.
+  `  admissions: 1 (timeout×1)`.
+- **Data access**: one small reader in `history_reader/harness.py`, e.g.
+  `admissions_by_reason(db, attempt_ids: Iterable[int]) -> dict[str, int]` (raw SQL with an
+  `IN (...)` placeholder list; the `reason` column is CHECK-constrained to
+  `timeout|host_crash|harness_error|network`, so the category set is closed). Re-export via
+  `history_reader/__init__.py`. Nothing existing covers this shape.
+- **Rendering**: no shared "render breakdown" helper exists (five bespoke call sites:
+  `ctx_stats.py` `crossings`, `sprint/show.py::_print_composition`, `logs.py`
+  `outcome_counts`, `issue_manager.py:2106-2118` "Most common corrections:",
+  `cli/issues/clusters.py:134-135` `_cluster_header`). Use `key×count`, comma-joined,
+  count-descending — the `crossings` shape — and don't add a shared helper.
+
+### D5. No new minimum n
+
+The existing `_HISTORY_MIN_SCORED = 3` display-suppression gate (`cli/harness.py:693`) is
+unchanged and now applies to the authoritative count. Nothing else introduces a default or
+minimum n (deferred to the n-run-redundancy follow-on).
 
 ## Files to Modify
 
-- `scripts/little_loops/history_reader/harness.py` — `HarnessEvent` dataclass +
-  `_HARNESS_EVENT_COLUMNS` additions (`id` + the five v49 fields) are **provided by
-  ENH-3407** (landed) — no longer this issue's own first step; `harness_eval_pass_rate()`
-  (113) and `harness_eval_abstention_rate()` (152) apply the authoritative-attempt filter by
-  consuming `authoritative_attempts(cell_key)` / `authoritative_attempt(cell_key,
-  repetition)`, both also provided by ENH-3407.
-- `scripts/little_loops/history_reader/__init__.py:184-186,308-309,329` — re-exports if
-  signatures change.
-- `scripts/little_loops/cli/harness.py:588,623` — `_read_target_history()`'s
-  `history_pass_rate_runs` / `pass_scored` / `judged_scored` and the
-  `_HISTORY_MIN_SCORED` gate count authoritative repetitions, not raw rows.
-- `scripts/little_loops/cli/harness.py:992` onward, `1146` — `cmd_dsl`'s `graded_total`/
-  `graded_pass` local variables count authoritative repetitions; insert the admissions
-  tabulation (count, by reason) after the existing
-  `f"\nDSL pass-rate: {graded_pass}/{graded_total} ..."` line.
-- `docs/reference/CLI.md:212-313` — update the `--output json` payload-fields table's
-  `history_pass_rate_runs` description (260-266) and exit-code table for the redefinition.
-- `docs/guides/EVALUATION_GUIDE.md:308,446` — update the "nothing reads `harness_events`
-  from the CLI for pass-rate purposes" line, now stale.
-- `docs/reference/API.md` — document new parameters on `recent_harness_events`/
-  `harness_eval_pass_rate`-adjacent functions.
-
-### Documentation
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/API.md` — the `HarnessEvent` code block (~lines 8918-8936) is already
-  stale independent of this issue: it's missing `target_content_hash`/`target_path`/`dirty`
-  fields that a prior change (ENH-141) added to the live dataclass. When adding
-  `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by`, backfill the full
-  current field list rather than appending only the five new fields onto the already-
-  incomplete block. [Agent 2 finding]
-- `docs/guides/EVALUATION_GUIDE.md` — beyond the two lines already cited (308, 446), two
-  more anchors go stale under the redefinition: the "Across runs" section's paragraph
-  starting "`harness_eval_pass_rate` counts every row with a non-NULL `semantic_passed`"
-  (states today's raw-row denominator), and the "Reading the Signal" → "A single run"
-  table/prose describing `_HISTORY_MIN_SCORED` in terms of "3 prior runs". The
-  "`ll-harness dsl`" fenced example block (`DSL pass-rate: 12/14 ...`) stays syntactically
-  valid (the format string itself is unchanged) but becomes a misleading illustration once
-  retry-chain n-collapsing exists — optional refresh, not a correctness break. [Agent 2
-  finding]
-- `docs/reference/API.md` — within the "HarnessEvent / recent_harness_events /
-  harness_eval_pass_rate" section, the prose paragraph beginning "Read-side API for
-  `harness_events` rows..." states the current raw-row denominator and needs updating; the
-  CLI paragraph immediately after (describing `_HISTORY_MIN_SCORED` as "suppressed below 3
-  scored runs") has the same staleness. The following paragraph about
-  `authoritative_attempts(cell_key)` is already forward-looking/correct and needs no edit.
-  [Agent 2 finding]
-- `docs/reference/CLI.md` — within the already-cited 212-313 range, the specific anchors
-  are the `--output json` payload-fields table rows for `history_pass_rate`/
-  `history_pass_rate_runs` and `history_abstention_rate`/`history_judged_runs` (both
-  currently worded "...≥3 non-abstained prior runs..."); the "Retrying a run (`--retry-of
-  ID`, ENH-3407)" section (just past line 313) is a natural place to note the new
-  admissions-tabulation report section this issue adds. [Agent 2 finding]
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- `scripts/little_loops/history_reader/__init__.py` — re-export block confirmed at exact
-  lines: `HarnessEvent`, `HighConfidenceAbstention`, `check_high_confidence_abstention` at
-  lines 63/182/183; `harness_eval_abstention_rate`, `harness_eval_pass_rate`,
-  `recent_harness_events` at lines 184-186; docstring block describing the same functions at
-  lines 121-124; `__all__` entries at lines 271, 296, 308-309, 329.
-- `scripts/little_loops/session_store/writers.py` — `record_harness_event()` (line 1024):
-  its `INSERT` column list is hardcoded (no `**kwargs` passthrough), confirming the
-  ENH-3406 columns aren't written yet and this writer itself is ENH-3407's (not this
-  issue's) surface — listed here only so an implementer knows not to touch it directly.
-- `scripts/little_loops/session_store/schema.py` — confirmed 0 hits for `harness_admissions`
-  (table not yet created; current `SCHEMA_VERSION = 48`). The `credential_scope_events`
-  kinded-table precedent (`_KIND_TABLE` entry line 82, `CREATE TABLE` line 1319, index
-  lines 1327-1328) is the shape ENH-3406 is meant to mirror for `harness_admissions` — cited
-  as context for what this issue will read from once ENH-3406/3407 land, not as work item
-  for this issue.
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- Confirmed exact current state post-ENH-3407 (commit `28e64617d`): `history_reader/harness.py`'s `HarnessEvent` dataclass (lines 39-77) already carries `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by` (plus `id`) as trailing-default fields, and `_HARNESS_EVENT_COLUMNS` (lines 80-86) already includes all of them — this issue's own "hard blocker, do first" step is confirmed fully satisfied, not partially.
-- `authoritative_attempt()` (lines 148-173) and `authoritative_attempts()` (lines 176-207) are already implemented, tested (`test_history_reader_harness.py::TestAuthoritativeAttempts`, lines 173-203), and exported — but have zero callers anywhere in `cli/harness.py` or elsewhere in production code (repo-wide search, no glob/path filter). Converting the three counting sites to call these functions is fully outstanding work, not partially done.
-- `harness_admissions` (`session_store/schema.py:1379-1387`) and its writer (`session_store/writers.py::_admit_retry()`/`admit_retry()`, lines 1195-1253) are live and already writing rows on the infra-retry path. No reader/dataclass for this table exists in `history_reader/` (zero hits) — the admissions-tabulation report this issue adds will need either raw SQL against `harness_admissions` or a new lightweight reader, since nothing to import exists yet.
+- `scripts/little_loops/history_reader/harness.py` — add the shared authoritative
+  predicate (D1); apply it in `harness_eval_pass_rate()` (line 210) and
+  `harness_eval_abstention_rate()` (line 249); reuse it in `authoritative_attempt()`
+  (148) / `authoritative_attempts()` (176); add `admissions_by_reason()` (D4). The
+  `HarnessEvent` dataclass and `_HARNESS_EVENT_COLUMNS` already carry `id` plus the five
+  v49 fields (lines 39-86, ENH-3407) — no change needed there.
+- `scripts/little_loops/history_reader/__init__.py` — import, docstring, and `__all__`
+  entries for the new reader (existing block: `harness_eval_abstention_rate`,
+  `harness_eval_pass_rate`, `recent_harness_events` at lines 184-186; `__all__` 308-309,
+  329).
+- `scripts/little_loops/cli/harness.py`:
+  - `_record_harness_event()` (196) returns the attempt id from `record_attempt()`.
+  - `_read_target_history()` (696) filters `superseded_by is None` before computing
+    `pass_scored`/`judged_scored`, and adds `history_admissions` (D4).
+  - `_format_target_history_line()` (751) renders the admissions suffix.
+  - `cmd_dsl()` (1134): collect ids from the two `_record_harness_event()` calls
+    (1209, 1290); append the admissions line onto `lines` (1346-1353). `graded_total`/
+    `graded_pass` untouched (D3).
+- `docs/reference/CLI.md` (212-313) — `--output json` payload table: reword
+  `history_pass_rate`/`history_pass_rate_runs` and `history_abstention_rate`/
+  `history_judged_runs` (currently "...≥3 non-abstained prior runs...") to say
+  authoritative attempts; add a `history_admissions` row; mention the DSL admissions line
+  in the "Retrying a run (`--retry-of ID`, ENH-3407)" section just past line 313.
+- `docs/guides/EVALUATION_GUIDE.md` — lines 308 and 446 ("nothing reads `harness_events`
+  from the CLI for pass-rate purposes"); the "Across runs" paragraph starting
+  "`harness_eval_pass_rate` counts every row with a non-NULL `semantic_passed`"; the
+  "Reading the Signal" → "A single run" prose describing `_HISTORY_MIN_SCORED` as "3 prior
+  runs". The `DSL pass-rate: 12/14 ...` fenced example stays valid; optionally add the
+  admissions line beneath it.
+- `docs/reference/API.md` — in the "HarnessEvent / recent_harness_events /
+  harness_eval_pass_rate" section: update the "Read-side API for `harness_events` rows..."
+  paragraph and the `_HISTORY_MIN_SCORED` paragraph for the redefinition; document
+  `admissions_by_reason()`; and backfill the `HarnessEvent` code block (~lines 8918-8936),
+  which is already missing `target_content_hash`/`target_path`/`dirty` (ENH-141) as well
+  as `id` and the five v49 fields — write the full current field list, don't append.
 
 ## Tests
 
-- `scripts/tests/test_history_reader_harness.py::TestHarnessEventReaders` — update
-  `test_harness_eval_pass_rate` (51), `test_harness_eval_pass_rate_excludes_abstained_rows`
-  (74), `test_harness_eval_abstention_rate` (97),
-  `test_harness_eval_abstention_rate_does_not_match_unrelated_verdict` (121) for the new
-  counting rule.
-- `scripts/tests/test_cli_harness.py::TestReadTargetHistory` — update
-  `test_at_threshold_renders` (1738), `test_distinct_denominators_for_pass_and_abstention`
-  (1761, hand-counts `history_pass_rate_runs == 6` in a comment tied to raw row count),
-  `test_window_excludes_old_rows` (1798).
-- `scripts/tests/test_cli_harness.py:1832`
-  `TestTargetHistoryRegression::test_current_run_excluded_from_reported_rate` — update the
-  `history_judged_runs == 3` assertion.
-- New fixture-based test: two valid repetitions of one cell contribute n=2; one graded
-  attempt plus two infra retries contribute n=1 with the earliest graded attempt's
-  verdict (the same fixture produces a lower n after a retry chain than before this
-  change).
-- New test asserting the run report renders an admissions tabulation (count, by reason)
-  whenever `harness_admissions` is non-empty for the run.
+Fixture convention in both target files: rows are built by direct calls to the real
+writers, no mocks. `test_history_reader_harness.py::TestAuthoritativeAttempts` (line 173)
+builds a retry chain with `record_attempt(db, cell_key=CELL, attempt_kind="repetition",
+timed_out=True, ...)` then `record_attempt(..., attempt_kind="infra_retry",
+retry_of=original_id, reason="timeout", ...)` — reuse that construction.
+`test_cli_harness.py::TestReadTargetHistory` wraps `record_harness_event` in a class-local
+`_seed(self, target, rows: list[dict])` helper; extend it (or add a sibling that calls
+`record_attempt`) rather than inventing a new fixture shape. Line numbers below drift;
+re-locate by test name.
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- Existing fixture convention (both target test files build rows via direct, repeated calls
-  to the real `record_harness_event()` writer with explicit kwargs — no row-dataclass
-  literal construction, no mock DB layer):
-  - `test_history_reader_harness.py::TestHarnessEventReaders` — one `record_harness_event()`
-    call per row, e.g. `for semantic_passed in (True, True, False): record_harness_event(db,
-    ts=..., target="foo", semantic_passed=semantic_passed)`.
-  - `test_cli_harness.py::TestReadTargetHistory` — wraps the same writer in a class-local
-    `_seed(self, target: str, rows: list[dict])` helper taking a list of kwarg-dicts
-    (`**row`); this is the helper a `cell_key`/`repetition`/`attempt_kind` fixture should
-    extend rather than inventing a new fixture shape. `test_distinct_denominators_for_pass_and_abstention`'s
-    inline hand-count comment (`# 3 non-abstained judged + 3 exit-only`) is the existing
-    convention for documenting an expected `n` next to the assertion — matches what this
-    issue's own Tests section says needs updating (`history_pass_rate_runs == 6` tied to raw
-    row count).
-- `scripts/tests/test_session_store_writers.py::TestRecordHarnessEvent` (line 2205) —
-  nearest existing coverage for the writer this issue's read-path counting logic consumes
-  output from; not itself in scope for this issue (ENH-3407's writer), but the precedent for
-  how `record_harness_event()` kwargs are exercised in tests.
-- `scripts/tests/test_session_store_schema.py::TestSchemaV47CredentialScopeEvents` (line
-  2753) — the precedent test-class shape ENH-3406 (this issue's blocker) is meant to mirror
-  for a `harness_admissions`-equivalent schema test; no such class exists yet (0 hits for
-  `harness_admissions` in this file). Cited for context only — schema DDL tests are
-  ENH-3406's scope, not this issue's.
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- `scripts/tests/test_history_reader_harness.py::TestAuthoritativeAttempts` (lines 173-203, landed by ENH-3407) is the nearest existing fixture for constructing a retry chain — `record_attempt(db, cell_key=CELL, attempt_kind="repetition"/"infra_retry", retry_of=original_id, reason="timeout", ts=..., ...)` — reuse this construction pattern for the new "n=1 after retry chain" fixture-based test rather than inventing a new one.
-- `scripts/tests/test_session_store_schema.py` already contains `harness_admissions`-specific schema tests: `test_harness_admissions_columns` (1678), `test_harness_admissions_reason_check_rejects_invalid_value` (1694), `test_harness_admissions_superseded_id_not_null` (1709), `test_v48_db_upgrades_gains_harness_admissions` (1781) — these validate the exact table shape (`id, ts, attempt_id, superseded_id, reason`) the new admissions-tabulation report reads from; not this issue's own test surface to add to, but confirms the read target's shape without further discovery needed.
-
-### Wiring Findings
-
-_Wiring pass added by `/ll:wire-issue`:_
-- No test file beyond those already listed above needs updating. Confirmed codebase-wide:
-  every fixture in `TestCmdDsl` (`test_cli_harness.py:1070-1605`) and
-  `TestHarnessEventPersistence::test_dsl_batch_writes_aggregate_and_per_task_rows` (line
-  1674) uses one attempt per distinct task file — no retry-chain/repeated-`cell_key`
-  fixture exists — so none silently break under the new counting rule.
-  `TestReadTargetHistory::test_below_threshold_returns_none` (1723) and
-  `test_none_when_db_empty` (1818) likewise seed only distinct single-attempt rows and are
-  unaffected. [Agent 1 + 3 findings]
-- Pattern for the new admissions-tabulation test (Acceptance Criteria #3): no existing
-  "count-by-category, non-empty-gated" renderer in this codebase (`ctx_stats.py`'s
-  `crossings`, `sprint/show.py`'s `_print_composition`, `logs.py`'s `outcome_counts`) is
-  tested via a full rendered-string assertion — each is tested either at the
-  data-aggregation layer (dict equality, e.g. `test_cli_ctx_stats.py::test_aggregates_peak_avg_and_crossings`)
-  or via a coarse literal-prefix substring check (`test_sprint.py::test_show_composition_line`
-  asserts `"Composition:" in captured.out`, not the breakdown text that follows). Follow
-  that same substring-assertion convention — consistent with `TestCmdDsl`'s own existing
-  style (e.g. `assert "pass-rate" in out`) — rather than asserting an exact rendered line.
-  [Agent 3 finding]
-- Test-file line citations in this issue's own Tests section have drifted from repeated
-  `refine-issue`/`wire-issue` passes' edits to other files: `test_cli_harness.py::TestReadTargetHistory`
-  is now at line 1977 (not ~1730), with `test_at_threshold_renders` at 2001,
-  `test_distinct_denominators_for_pass_and_abstention` at 2024 (hand-count comment at 2056),
-  `test_window_excludes_old_rows` at 2061, and
-  `TestTargetHistoryRegression::test_current_run_excluded_from_reported_rate` at 2095
-  (assertion at 2131). `test_history_reader_harness.py`'s four cited tests have drifted by 5
-  lines each (56/79/102/126, not 51/74/97/121). Re-locate by test name at implementation
-  time rather than trusting these line numbers. [Agent 3 finding]
-- Three additional existing tests in `test_history_reader_harness.py::TestHarnessEventReaders`
-  assert `None` on empty/all-unscored denominators and aren't yet explicitly verified
-  unaffected by the new counting rule, unlike `TestCmdDsl`'s fixtures above:
-  `test_harness_eval_pass_rate_none_when_all_unscored` (69),
-  `test_harness_eval_pass_rate_none_when_no_rows` (75),
-  `test_harness_eval_abstention_rate_none_when_no_rows` (141) — these should stay
-  `None`-returning under authoritative-attempt counting too, but confirm during
-  implementation rather than assuming. [Agent 3 finding]
-- A ready-made data-access path for the admissions tabulation already exists and is
-  partially tested: `session_store/queries.py::recent(db, kind="harness_admission")` (line
-  ~63/80) runs `SELECT * FROM harness_admissions ORDER BY id DESC LIMIT ?` and is
-  registered/tested at the kind level (`test_session_store_schema.py::test_kind_registration`,
-  line 1797: asserts `"harness_admission" in VALID_KINDS` and
-  `_KIND_TABLE["harness_admission"] == "harness_admissions"`) but has zero production or
-  test callers actually invoking it. This narrows the "nothing existing to import" framing
-  in this issue's own Program Design section — `recent(kind="harness_admission")` is a
-  viable alternative to hand-rolled raw SQL or a new `history_reader/` dataclass for the
-  tabulation's data-access layer. [Agent 3 finding]
+- `scripts/tests/test_history_reader_harness.py::TestHarnessEventReaders` — add
+  superseded-row cases to `test_harness_eval_pass_rate` (~56),
+  `test_harness_eval_pass_rate_excludes_abstained_rows` (~79),
+  `test_harness_eval_abstention_rate` (~102),
+  `test_harness_eval_abstention_rate_does_not_match_unrelated_verdict` (~126). Confirm
+  `test_harness_eval_pass_rate_none_when_all_unscored`, `..._none_when_no_rows`, and
+  `test_harness_eval_abstention_rate_none_when_no_rows` still return `None` (they should,
+  unchanged).
+- `scripts/tests/test_cli_harness.py::TestReadTargetHistory` (~1977) —
+  `test_at_threshold_renders`, `test_distinct_denominators_for_pass_and_abstention`
+  (hand-count comment `# 3 non-abstained judged + 3 exit-only` and
+  `history_pass_rate_runs == 6`), `test_window_excludes_old_rows`;
+  `TestTargetHistoryRegression::test_current_run_excluded_from_reported_rate`
+  (`history_judged_runs == 3`). These seed distinct single-attempt rows, so their numbers
+  should not change — update only if the assertion shape changes.
+- **New — retry-chain n-collapse** (AC #1/#2): seed one cell as timeout → infra retry
+  that times out → infra retry that grades `semantic_passed=True`. Before this change the
+  fixture yields n=3 with one pass; after, n=1 with the surviving attempt's pass.
+  Separately, two clean repetitions of one cell yield n=2. Assert at the
+  `harness_eval_pass_rate()` layer and through `_read_target_history()` (which also needs
+  the `_HISTORY_MIN_SCORED` gate to see the collapsed count: three chains of one graded
+  survivor each clear it; one chain of three rows does not).
+- **New — admissions tabulation** (AC #3): `_read_target_history()` returns
+  `history_admissions == {"timeout": 1}` for the chain fixture and omits the key with no
+  admissions; `_format_target_history_line()` output contains `timeout×1`; `cmd_dsl` with
+  `--retry-of` prints a line containing `admissions:` and omits it otherwise. Use substring
+  assertions, matching `TestCmdDsl`'s style (`assert "pass-rate" in out`,
+  `test_cli_harness.py:1115-1116`) and `test_sprint.py::test_show_composition_line`.
+- **New — `admissions_by_reason()`** unit test: empty id list → `{}`; ids spanning two
+  reasons (seed via `admit_retry()` directly, since the CLI path only ever writes
+  `timeout`) → counts by reason.
+- Unaffected (confirmed by `/ll:wire-issue`): every `TestCmdDsl` fixture (1070-1605) and
+  `TestHarnessEventPersistence::test_dsl_batch_writes_aggregate_and_per_task_rows` use one
+  attempt per task file; `test_below_threshold_returns_none` and `test_none_when_db_empty`
+  seed only distinct single-attempt rows.
 
 ## Acceptance Criteria
 
-- `history_pass_rate_runs` and the DSL `graded_total` count authoritative repetitions, not
-  rows. Test: the same fixture produces a lower n after a retry chain than before this
-  change.
-- For a cell with several attempts, the earliest non-superseded attempt is authoritative
-  and determines the reported verdict. Test: two valid repetitions of one cell contribute
-  n=2; one graded attempt plus two infra retries contribute n=1 with the earliest graded
-  attempt's verdict.
-- The run report tabulates admissions (count, by reason) next to the pass rate whenever
-  the table is non-empty for the run.
-- No default n and no minimum n are introduced.
+1. `history_pass_rate_runs`, `history_judged_runs`, and the rates behind them count only
+   rows with `superseded_by IS NULL`. Test: the retry-chain fixture yields a lower n after
+   this change than before.
+2. The reported verdict for a repetition is that of its surviving (non-superseded)
+   attempt — the last link of the retry chain. Test: two clean repetitions of one cell
+   contribute n=2; one timed-out attempt plus two infra retries (the last graded)
+   contribute n=1 with the last retry's verdict.
+3. The run report tabulates admissions (count, by reason) next to the pass rate whenever
+   any admission belongs to the counted population: `history_admissions` in
+   `_read_target_history()`'s dict, the `--output json` payload, and the target-history
+   line; an `admissions:` line in `cmd_dsl`'s report. Omitted entirely when empty.
+4. `cmd_dsl`'s `graded_total`/`graded_pass` are unchanged (D3).
+5. No new default n or minimum n; `_HISTORY_MIN_SCORED` is unchanged and applies to the
+   authoritative count.
 
 ## Scope Boundaries
 
-- **In scope**: `HarnessEvent` dataclass/`_HARNESS_EVENT_COLUMNS` fields,
-  `harness_eval_pass_rate`/`harness_eval_abstention_rate`/`_read_target_history`/DSL
-  counting logic, admissions tabulation in the run report, updating the existing
-  row-count-as-n tests, `EVALUATION_GUIDE.md`/`API.md`/`CLI.md` doc updates for the
-  redefinition.
+- **In scope**: the shared authoritative predicate and its use in
+  `harness_eval_pass_rate`/`harness_eval_abstention_rate`/`authoritative_attempt(s)`/
+  `_read_target_history`; `admissions_by_reason()` reader; admissions rendering in the
+  target-history line, JSON payload, and `cmd_dsl` report; `_record_harness_event()`
+  returning the attempt id; test and doc updates listed above.
 - **Out of scope**: `harness_events`/`harness_admissions` schema DDL (ENH-3406);
-  `record_attempt`/`admit_retry`/`authoritative_attempt`/`--retry-of` implementation
-  (ENH-3407) — this issue only consumes `authoritative_attempt()`, it does not define it.
-  Any default or minimum n (deferred to the n-run-redundancy follow-on work).
+  `record_attempt`/`admit_retry`/`authoritative_attempt`/`--retry-of` semantics
+  (ENH-3407) — this issue reuses their selection rule, it does not redefine it. Any
+  default or minimum n. Non-`timeout` admission reasons from the CLI (the enum exists in
+  the schema; only `timeout` is written today). The `ll-artifact dashboard` raw-row export
+  (`session_store/queries.py::_EXPORT_TABLE_MAP["harness_event"]`) echoes rows, not
+  rates, and needs no change.
 
 ## Program Design
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-Findings below, organized by Types, Signatures, Call Path, and Decision Rules.
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- Confirmed no fourth attempt-counting/aggregation site exists over `harness_events` beyond the three already named (`harness_eval_pass_rate`, `harness_eval_abstention_rate`, `_read_target_history`). A repo-wide search for callers of those three symbols plus a scan for other `harness_events` readers found only: the writer (`session_store/writers.py::record_harness_event`, ENH-3407's surface), schema DDL/migrations (`session_store/schema.py`, ENH-3406's surface), and a raw-row export path — `session_store/queries.py`'s `_EXPORT_TABLE_MAP["harness_event"]`, consumed by `ll-artifact dashboard` (`cli/artifact/dashboard.py`) for a browser-side sql.js snapshot. That export echoes raw rows, not an aggregated rate, so it does not need conversion under this issue; it will surface the new `cell_key`/`repetition`/`attempt_kind`/`superseded_by` columns once ENH-3406 adds them, subject to the existing shareable-column allowlist (which does not currently include `harness_event` under shareable mode's default table selection). Noted for awareness — not an integration point this issue must touch.
-- `_evaluate_and_report()` (`cli/harness.py:726`) has no caching across calls — each `_read_target_history()` call opens a fresh read-only connection. Call sites confirmed at lines 835/868/911/952 (once each, for `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt`) and 1072 (the `cmd_dsl` per-task loop, `skip_history=True`, so history is never read there). No multi-call-per-run or ordering hazard beyond what the existing Call Path already documents.
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- **Line numbers below correct the drift from ENH-3407 landing (commit `28e64617d`)** — the function bodies and behavior match this issue's earlier citations exactly; only absolute line numbers shifted:
-  - `HarnessEvent` dataclass: `history_reader/harness.py:39-77` (now carries `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by`/`id` — the "### Types" subsection's "confirmed absent today" claim no longer holds as of this landing; these fields are now present).
-  - `_HARNESS_EVENT_COLUMNS`: lines 80-86.
-  - `authoritative_attempt(db_path, cell_key, repetition) -> HarnessEvent | None`: lines 148-173 (SQL-only, `ORDER BY id LIMIT 1`, scoped to one repetition, no Python dedup needed).
-  - `authoritative_attempts(db_path, cell_key) -> list[HarnessEvent]`: lines 176-207 (`ORDER BY repetition ASC, id ASC`, then a Python `seen: set[int]` loop keeps only the first surviving row per `repetition`).
-  - `harness_eval_pass_rate(target, since=None, db=None) -> float | None`: lines 210-246 (previously cited as line 113) — denominator/behavior unchanged: `COUNT(semantic_passed)` over raw rows, no `superseded_by` filter.
-  - `harness_eval_abstention_rate(target, since=None, db=None) -> float | None`: lines 249-295 (previously cited as line 152) — denominator/behavior unchanged: `COUNT(semantic_verdict)` over raw rows, no `superseded_by` filter.
-  - `_read_target_history(target: str) -> dict | None`: `cli/harness.py:696-748` (previously cited as `588-640`); `_HISTORY_MIN_SCORED = 3` now at line 693 (previously `585`).
-  - `cmd_dsl()`'s `graded_pass`/`graded_total`: initialized lines 1174-1178, accumulated in the per-task loop 1207-1275, report `lines` list built 1345-1354 (previously cited as `~992`/`1146`) — the non-empty-gated `if ungraded_count: lines.append(...)` / `if failures: lines.append(...)` insertion point for the admissions tabulation is confirmed unchanged in shape at these corrected coordinates.
-- `harness_admissions` DDL (`session_store/schema.py:1379-1387`) CHECK-constrains `reason` to exactly four values: `'timeout'`, `'host_crash'`, `'harness_error'`, `'network'` — the admissions tabulation's "by reason" breakdown has a fixed, small, enumerable category set, not an open-ended one.
-- No `HarnessAdmission` reader dataclass exists anywhere in source (repo-wide search, no glob/path filter — the only hit is a prose mention inside this issue's own sibling ENH-3406 markdown file). Implementing the admissions tabulation requires either raw SQL against `harness_admissions` or a new lightweight reader in `history_reader/` — there is nothing existing to import.
-
 ### Types
 
-No new data shape is introduced by this issue — `cell_key`/`repetition`/`attempt_kind`/
-`continuations`/`superseded_by` are `HarnessEvent` fields owned by ENH-3406 (schema) and
-populated by ENH-3407 (writers); this issue only reads them once present. Confirmed absent
-today from both `HarnessEvent` (`history_reader/harness.py`, dataclass fields: `ts`,
-`runner`, `target`, `exit_code`, `semantic_verdict`, `semantic_passed`, `timed_out`,
-`duration_ms`, `head_sha`, `branch`, `parent_id`, `semantic_prompt`, `semantic_confidence`,
-`semantic_reason`, `semantic_evidence`, `semantic_model`, `target_content_hash`,
-`target_path`, `dirty`) and from the live `harness_events` DDL (`session_store/schema.py`,
-`SCHEMA_VERSION = 48`).
+No new dataclass. `HarnessEvent` (`history_reader/harness.py:39-77`) already carries
+`id`, `cell_key`, `repetition`, `attempt_kind`, `continuations`, `superseded_by` (ENH-3407).
+`admissions_by_reason()` returns a plain `dict[str, int]`; `history_admissions` is the same
+dict inside `_read_target_history()`'s return value.
 
 ### Signatures
 
-Current signatures this issue's counting-logic change touches (no new public signature is
-proposed; each of the three counting sites narrows its existing filter, consuming
-`authoritative_attempt()` from ENH-3407 once it exists):
-- `harness_eval_pass_rate(target, since=None, db=None) -> float | None` — `history_reader/harness.py:113`. Denominator today is raw `COUNT(semantic_passed)` (non-NULL `semantic_passed`, including `False` timeout/error rows).
-- `harness_eval_abstention_rate(target, since=None, db=None) -> float | None` — `history_reader/harness.py:152`. Denominator today is raw `COUNT(semantic_verdict)` (non-NULL `semantic_verdict`) — a deliberately different column from the pass-rate denominator, per the function's own docstring.
-- `_read_target_history(target: str) -> dict | None` — `cli/harness.py:588`. Independently re-derives `pass_scored`/`judged_scored` in Python from `recent_harness_events(target=target, since=since, limit=1000, db=db_path)` rather than reusing the SQL functions' internal counts — its own comment states why: "return only a rate, not the row count behind it — pull the events once to derive both denominators." `limit=1000` means this path can under-count relative to true SQL `COUNT()` for a target with more than 1000 events in the `since` window; the two paths are not guaranteed identical in that edge case even under the current (pre-ENH-3408) row-counting rule.
-- `_row_to_dataclass(row: sqlite3.Row, dc: type[Any]) -> Any` — `history_reader/_base.py:87`. Builds `field_names` from the target dataclass, filters `row.keys()` to that set — a DB column present in the row but absent from the dataclass is simply omitted from `kwargs`, no error/warning. Confirms the issue's "silently drops" claim exactly; this is why the `HarnessEvent` field additions are a hard blocker to do first.
+- `harness_eval_pass_rate(target, *, since=None, db=DEFAULT_DB_PATH) -> float | None`
+  (`history_reader/harness.py:210`) — unchanged signature; `WHERE target = ? AND
+  <predicate>`.
+- `harness_eval_abstention_rate(target, *, since=None, db=DEFAULT_DB_PATH) -> dict | None`
+  (249) — same.
+- `admissions_by_reason(db: Path | str, attempt_ids: Iterable[int]) -> dict[str, int]` —
+  new.
+- `_record_harness_event(...) -> int | None` (`cli/harness.py:196`) — was `-> None`;
+  returns `record_attempt()`'s id, or `None` when the suppressed best-effort write fails.
+- `_read_target_history(target: str) -> dict | None` (696) — unchanged signature; dict may
+  gain `history_admissions`.
 
 ### Call Path
 
-`cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt`/`cmd_dsl`'s per-task loop -> `_evaluate_and_report()` (`cli/harness.py:726` calls `_read_target_history()` *before* the current run's own write, so history figures exclude the current run) -> `_read_target_history()` -> `recent_harness_events()` -> conditionally, if the Python-computed `pass_scored`/`judged_scored` clears `_HISTORY_MIN_SCORED = 3` (`cli/harness.py:585`) -> `harness_eval_pass_rate()` / `harness_eval_abstention_rate()` (each its own separate SQL aggregate query over the same raw rows) -> `_format_target_history_line()`.
+`cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt` → `_evaluate_and_report()` (line 834 reads
+history *before* the current run's write, so history excludes the current run) →
+`_read_target_history()` → `recent_harness_events(target, since, limit=1000)` → filter
+`superseded_by is None` → `pass_scored`/`judged_scored` → if ≥ `_HISTORY_MIN_SCORED`:
+`harness_eval_pass_rate()` / `harness_eval_abstention_rate()` (each its own SQL aggregate,
+now with the predicate) → `admissions_by_reason(db, [e.id for e in events])` →
+`_format_target_history_line()` and `payload.update(target_history)` (868).
 
-Separately: `cmd_dsl()` (`cli/harness.py`) accumulates `graded_pass`/`graded_total`/`ungraded_count`/`abstain_count`/`errored_count`/`failures` purely from its own per-task loop's in-memory outcomes — it never re-reads `harness_events` for its own report. Counters initialize around line 991-992; the report line `f"\nDSL pass-rate: {graded_pass}/{graded_total}  [{lo:.2f}, {hi:.2f}] (95% CI)"` is the first element of a `lines` list (conditionally followed by an "ungradable" sub-line and a "failed:" sub-line), printed once via `print("\n".join(lines))`. The admissions tabulation's natural insertion point is one more conditional append onto that same `lines` list, following the existing non-empty-gated append convention (`if ungraded_count: lines.append(...)`, `if failures: lines.append(...)`) — both `_update_aggregate()`'s call and the `print()` call remain after this insertion point, since `_update_aggregate()` needs the already-in-scope `failures`/`ungraded_count`/`abstain_count`/`errored_count` regardless.
+`cmd_dsl()` → per-task `_record_harness_event()` (1209/1290) returning ids → after the
+loop, `admissions_by_reason(db, ids)` → conditional append onto `lines` (1346-1353) →
+`print("\n".join(lines))`. `_update_aggregate()` and the `print()` stay after the
+insertion point.
 
-Timeout/error-row denominator asymmetry, confirmed exactly as the issue's Design Decisions
-section claims: every non-abstained-run path (`_evaluate_and_report()`'s timeout/error
-early returns, `HarnessEvalOutcome.abstained` defaults to `False`) writes
-`semantic_passed = None if outcome.abstained else outcome.passed`, so a timeout/error row
-gets `semantic_passed = 0` (counted in pass-rate's denominator) but `semantic_verdict = NULL`
-(excluded from abstention-rate's denominator). A real `cannot_judge` abstain is the mirror
-case: `semantic_passed = NULL` (excluded from pass-rate's denominator) but
-`semantic_verdict` non-NULL (included in abstention-rate's denominator) — the two
-denominators diverge in opposite directions depending on which kind of non-graded row it is.
+`_read_target_history()`'s `limit=1000` means it can under-count relative to the SQL
+`COUNT()` for a target with more than 1000 events in the window — a pre-existing
+divergence, unchanged here.
 
 ### Decision Rules
 
-N/A — no new decision logic. This issue narrows an existing filter (which attempt rows
-count) by consuming `authoritative_attempt()`'s selection rule, which ENH-3407 defines; it
-does not introduce a new gap kind, gate, threshold, or keyword list of its own.
+The only rule is D1's predicate. No new gate, threshold, or keyword list.
 
 ## Current Behavior
 
-`harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, and
-`_read_target_history()` all count raw `harness_events` rows. A cell retried after an
-infra timeout contributes one row per attempt to the reported `n`, so an infra retry
-inflates the sample size instead of replacing the attempt it superseded — the same
-issue for `cmd_dsl`'s `graded_total`. The run report has no visibility into admission
-interventions at all.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- Both of this issue's blockers, ENH-3406 and ENH-3407, are now `status: done` (confirmed via `ll-issues show ENH-3406`/`ENH-3407`, commit `28e64617d`). Their plumbing has landed exactly as scoped: `HarnessEvent` gained `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by` (`history_reader/harness.py:39-77`); `authoritative_attempt(db_path, cell_key, repetition)`/`authoritative_attempts(db_path, cell_key)` exist (lines 148-207) and are re-exported (`history_reader/__init__.py`). Separately, the `harness_admissions` table (`session_store/schema.py:1379-1387`, `reason` CHECK-constrained to `'timeout'|'host_crash'|'harness_error'|'network'`) and its writer (`admit_retry()`/`_admit_retry()`, `session_store/writers.py:1195-1253`, invoked from `record_attempt()`'s `attempt_kind='infra_retry'` path) are live and already populating rows via `cmd_dsl`'s per-task `record_attempt()` calls.
-- None of that landed plumbing is consumed yet: `authoritative_attempt`/`authoritative_attempts` have zero production callers (confirmed by an unfiltered repo-wide search — the only hits outside their own definition/re-export are test and issue-doc files), and no reader or dataclass for `harness_admissions` exists anywhere in `history_reader/` (zero hits; no `HarnessAdmission` class exists in source). The three counting sites (`harness_eval_pass_rate`, `harness_eval_abstention_rate`, `_read_target_history`) and `cmd_dsl`'s `graded_total`/`graded_pass` remain unchanged and still count raw rows exactly as this section's paragraph above describes — this issue's own scope is entirely intact and un-preempted by the blocker work landing.
+`harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, and `_read_target_history()`
+count raw `harness_events` rows. A cell retried after an infra timeout contributes one row
+per attempt to the reported `n`, so an infra retry inflates the sample size instead of
+replacing the attempt it superseded — and each superseded timeout row counts as a
+*failure* in the pass rate. The run report has no visibility into admission
+interventions. `authoritative_attempt`/`authoritative_attempts` have zero production
+callers; no reader for `harness_admissions` exists.
 
 ## Expected Behavior
 
-The three counting sites (plus `cmd_dsl`'s `graded_total`) count authoritative
-repetitions per cell via `authoritative_attempt()` (ENH-3407) instead of raw rows: a
-cell with a graded attempt plus two infra retries contributes `n=1`, not `n=3`, using
-the earliest graded attempt's verdict. The run report additionally tabulates admissions
-(count, by reason) whenever `harness_admissions` is non-empty for the run. This is the
-issue that makes ENH-3397's anti-p-hacking guarantee actually hold in reported numbers.
+The three counting sites count only non-superseded rows: a cell with a timed-out attempt
+plus two infra retries contributes `n=1`, using the surviving attempt's verdict. The
+target-history line, JSON payload, and DSL report tabulate admissions (count, by reason)
+whenever any exist for the counted population. This is the issue that makes ENH-3397's
+anti-p-hacking guarantee actually hold in reported numbers.
 
 ## Impact
 
-- **Priority**: P1 — this issue is what actually makes previously-reported n sound;
-  without it the schema/writer work from ENH-3406/ENH-3407 has no observable effect on
-  reported numbers.
-- **Effort**: Medium — three counting sites converge on one selection function, plus a new
-  report section and five existing test files to update.
-- **Risk**: Medium — `history_pass_rate_runs` and DSL `graded_total` change what they
-  count, which can shift previously reported n for historical runs re-read under the new
-  definition.
-- **Breaking Change**: No — live-write-only; existing rows are additive, not rewritten.
+- **Priority**: P1 — this is what makes reported n sound; without it ENH-3406/ENH-3407
+  have no observable effect on reported numbers.
+- **Effort**: Medium — one predicate applied at three sites, one small reader, one
+  returned id, two report renderers, tests and docs.
+- **Risk**: Low-Medium — `history_pass_rate_runs` changes what it counts, which can shift
+  previously reported n for targets with retry history. A superseded timeout row also
+  stops counting as a failure, so historical pass rates for such targets go *up*.
+- **Breaking Change**: No — read-side only; no rows are rewritten.
 
 ## Status
 
-**Open** | Created: 2026-09-08 | Priority: P1 | Blocked by: ENH-3407
-
-
-## Confidence Check Notes
-
-_Added by `/ll:confidence-check` on 2026-09-08_
-
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
-**Outcome Confidence**: 75/100 → MODERATE
-
-### Gaps to Address
-- ~~Blocking dependency ENH-3407 (status: open, not done/cancelled) is unresolved.~~
-  RESOLVED — ENH-3407 landed (`status: done`, commit `28e64617d`); `blocked_by` removed from
-  frontmatter by `/ll:verify-issues` on 2026-09-08. See `## Verification Notes` for a proposal-
-  soundness gap that surfaced in its place.
+**Open** | Created: 2026-09-08 | Priority: P1 | Blockers: none (ENH-3406, ENH-3407 done)
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` — 2026-09-08:_
+_`/ll:verify-issues` — 2026-09-08:_ flagged (a) the target→cell_keys fan-out gap and
+(b) the `cmd_dsl` counter claim. Both resolved by design review on 2026-09-08: (a) is a
+non-problem, see D1; (b) accepted, see D3.
 
-- **Dependency staleness (now fixed)**: `blocked_by: [ENH-3407]` and the Confidence Check
-  Notes' "unresolved blocker" gap were stale — ENH-3407 is `status: done` (commit
-  `28e64617d`), a fact this issue's own later Codebase Research Findings already stated.
-  `blocked_by` removed from frontmatter; the gap struck through above.
-- **PROPOSAL_UNSOUND-class gap (not yet fixed — needs design work before implementation)**:
-  `authoritative_attempt(db_path, cell_key, repetition)` / `authoritative_attempts(db_path,
-  cell_key)` are keyed by `cell_key`, and `cell_key = json.dumps([runner, target, head_sha])`
-  (`cli/harness.py:134-143`) — so a single `target` maps to **many** `cell_key`s across its
-  run history (one per commit/runner it was ever invoked at). But `harness_eval_pass_rate()`,
-  `harness_eval_abstention_rate()`, and `_read_target_history()` all aggregate by `target`
-  alone, across that whole history. No "enumerate the cell_keys for a target" helper exists
-  anywhere in the codebase (confirmed by repo-wide grep) — the issue's Program Design section
-  never designs this target→cell_keys fan-out, so "consume authoritative_attempt()" doesn't
-  work at these three sites as currently written; an implementer needs to add that
-  enumeration step first.
-- **Likely-incorrect claim**: the issue asserts `cmd_dsl`'s in-memory `graded_total`/
-  `graded_pass` counters need the same authoritative-repetition fix (Files to Modify, AC #1).
-  On inspection (`cli/harness.py:1198-1275`) these counters are scoped to one CLI invocation's
-  own per-task loop; a `--retry-of` retry chain is always a *separate* invocation, so each
-  invocation's `graded_total` already counts exactly one row per task file it processes with
-  no cross-invocation duplication to dedup. The over-counting problem this issue describes is
-  real for the three DB-aggregate sites above, but doesn't appear to apply to `cmd_dsl`'s own
-  counters — confirm during implementation before converting them.
+_Design review — 2026-09-08:_ additionally found that AC #2's original fixture ("one
+graded attempt plus two infra retries ... earliest graded attempt's verdict") cannot occur
+under `_retry_refusal`'s timeout-only gate, and that the admissions tabulation had no
+defined scope and no way to obtain attempt ids. Rewritten as D2 and D4.
 
 ## Confidence Check Notes
 
@@ -427,32 +353,8 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 **Readiness Score**: 80/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 63/100 → MODERATE
 
-### Concerns
-- `/ll:verify-issues` found a PROPOSAL_UNSOUND-class gap: `authoritative_attempt()`/
-  `authoritative_attempts()` are keyed by `cell_key`, but the three counting sites
-  (`harness_eval_pass_rate`, `harness_eval_abstention_rate`, `_read_target_history`)
-  aggregate by `target` across its entire run history — a single `target` maps to many
-  `cell_key`s. No target→cell_keys enumeration helper exists anywhere in the codebase, and
-  this issue's own Program Design section never designs that fan-out step. "Consume
-  `authoritative_attempt()`" does not work at these three sites as currently written until
-  an implementer adds that enumeration first.
-- `/ll:verify-issues` also flagged this issue's claim that `cmd_dsl`'s `graded_total`/
-  `graded_pass` counters need the same authoritative-repetition fix (cited in Files to
-  Modify and AC #1) as likely incorrect: those counters are scoped to one CLI invocation's
-  own per-task loop, and a `--retry-of` retry chain is always a separate invocation, so
-  there's no cross-invocation duplication for them to dedup. Confirm during implementation
-  before converting `cmd_dsl`'s counters — converting them when they don't need it would be
-  a no-op change or introduce a bug.
-
-### Outcome Risk Factors
-- Complexity: the undesigned target→cell_keys enumeration is new cross-module surface, not
-  a simple call-site swap onto an existing helper — expect this to take real design work
-  during implementation, not just wiring.
-- Ambiguity: whether `cmd_dsl`'s counters are actually in scope is unresolved (see
-  Concerns) — implementing the wrong scope risks test churn or a no-op change on that site.
-- Change surface: three counting sites each have different denominator quirks (timeout/error
-  rows counted asymmetrically between pass-rate and abstention-rate today) — each requires
-  site-specific judgment rather than one uniform substitution.
+Both concerns raised (fan-out gap; `cmd_dsl` scope) are now resolved in Design Decisions
+D1 and D3. Scores not yet re-run.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-08T22:55:59 - `b8f1a5da-c225-4249-91e2-295287d87d5e.jsonl`
@@ -467,56 +369,3 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - `/ll:wire-issue` - 2026-09-08T16:52:50 - `840e5cd3-969c-4a9b-8f06-5c2b03b57a03.jsonl`
 - `/ll:refine-issue` - 2026-09-08T16:41:46 - `32a13f82-52a5-4a4d-99b8-67b2074972cb.jsonl`
 - `/ll:issue-size-review` - 2026-09-08T05:34:24 - `5401886d-ebfd-404a-b6ba-9a7d5e921ddb.jsonl`
-
-## Design Decisions
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- **No shared "render breakdown dict as string" helper exists in `cli/`** — each existing
-  count-by-category report line is bespoke. Three precedents share the same non-empty-gated
-  shape ("tabulate count-by-category, print only when non-empty") but differ in join/format
-  convention: `ctx_stats.py`'s `crossings` (`defaultdict(int)`, `"level%×count"`
-  comma-joined, gated behind `if pressure["crossings"]:`), `sprint/show.py`'s
-  `_print_composition()` (`Counter`, `"N type"` pipe-joined groups), and `logs.py`'s
-  `_cmd_loop_fleet` `outcome_counts` (`Counter`, `"key:count"` comma-joined inside a
-  markdown table cell). The admissions tabulation should follow this same non-empty-gate
-  shape but has no existing helper to call — it will be one more bespoke renderer, matching
-  `cmd_dsl`'s own existing convention of conditionally appending onto its `lines` list
-  (`if ungraded_count: lines.append(...)`, `if failures: lines.append(...)`).
-- **No existing "N by reason" breakdown keyed off a typed/CHECK-constrained `reason`
-  column** exists anywhere in the codebase today — `harness_admissions.reason` (ENH-3406)
-  would be the first. The closest precedent (`ctx_stats.py`'s `crossings` by
-  `crossed_level`) breaks down by a different kind of category column.
-- **Shared filter-predicate precedent**: `history_reader/usage.py`'s
-  `_WASTED_RUN_PREDICATE` (module-level SQL-fragment string, line ~310) is interpolated
-  into two different `CASE WHEN`/`COUNT(DISTINCT CASE WHEN...)` clauses within one query
-  (`waste_attribution()`), with a comment in `schema.py` cross-referencing it by dotted
-  name from a migration. This is the one existing example in this codebase of a
-  single-source-of-truth SQL filter fragment reused across multiple aggregate expressions
-  in the same query — relevant precedent for keeping the pass-rate/abstention-rate/DSL
-  counting sites' "authoritative attempt" filter from drifting once `authoritative_attempt()`
-  exists, though `CANNOT_JUDGE`/`is_abstention_verdict()` (`fsm/verdicts.py`, re-exported via
-  `history_reader/_base.py`) shows the codebase's alternative pattern: a shared Python-level
-  constant with independently-duplicated SQL vs. Python predicate logic per call site,
-  which is what `harness_eval_abstention_rate()` already does today for `CANNOT_JUDGE`.
-- **No existing "pick one/authoritative row per group" Python helper** exists in
-  `history_reader/` or `session_store/` — the only precedent for "pick a survivor row per
-  group" is one-off SQL embedded directly in `schema.py` `_MIGRATIONS` DDL entries
-  (`ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)` at the v36 migration,
-  `MIN(rowid)`/`MIN(id)` at the v43 migration) — both are one-shot dedup passes against
-  existing data at migration time, not a reusable per-query read-path filter function. This
-  means `authoritative_attempt()` (ENH-3407) has no existing Python helper shape to align
-  with in this codebase; it is establishing a new pattern, not following one.
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- A landed precedent exists for exactly this class of change — "redefine what n means in a reporting denominator, with an exclusion-count disclosure" — at `scripts/little_loops/issue_manager.py` (`AutoManager._log_timing_summary`, ~lines 2089-2104) plus its routing arm (~lines 2259-2266), landed as BUG-3252 Parts 3/4 (`status: done`; companion route-survey issue BUG-3253 was cancelled/superseded into it). It narrows `Auto-corrections: N/total` by moving confidence-gate skips out of the denominator into a separate bucket, then discloses the exclusion inline: `f"Auto-corrections: {total_corrected}/{total_issues} ({correction_rate:.1f}%){gated_suffix}"` where `gated_suffix = f" ({gated_count} gated before Phase 1)" if gated_count else ""`. Its governing rule is numerator/denominator symmetry — anything excluded from the denominator must also be excluded from the numerator, or the rate can exceed 100% or divide by zero with a nonzero numerator. Its test (`test_issue_manager.py::test_auto_corrections_annotates_gated_exclusion`, line 6233) asserts the exact rendered string via joined `logger.info.call_args_list`, a different assertion shape from `cmd_dsl`'s own `print("\n".join(lines))`/substring-check convention — cited as evidence for the open design questions this issue still has to answer (exclusion-disclosure format, symmetry invariant), not as a shape to copy verbatim into `cmd_dsl`.
-- A fourth non-empty-gated count-by-category report convention (beyond the three already catalogued: `ctx_stats.py`'s `crossings`, `sprint/show.py`'s `_print_composition()`, `logs.py`'s `outcome_counts`) exists at `issue_manager.py`'s "Corrections by type:" block (~lines 1848-1867): one `logger.info()` line per category under a header line, sorted count-descending, rather than joining categories into a single string. A fifth, unconditional (not non-empty-gated) variant exists at `cli/issues/clusters.py:134-135`'s `_cluster_header()` (`"P2×1 P3×4"`-style, space-joined, key-sorted). Together these confirm the codebase holds no single shared convention for this rendering shape — five distinct call sites, five different join/format choices — so the admissions tabulation's own format is a genuinely open implementer choice, not one constrained by an existing pattern.
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- **Corrected citation**: the earlier "Corrections by type:" reference (`issue_manager.py` ~lines 1848-1867) is a stale line/text reference. The current block reads "Most common corrections:" at `issue_manager.py:2106-2118` — `Counter(all_corrections).most_common(3)`, one `logger.info()` line per category sorted count-descending under a single header line. Same pattern already identified, now pinned to correct coordinates and literal text.
-- Shared filter-predicate precedent confirmed with exact interpolation lines: `_WASTED_RUN_PREDICATE` (`history_reader/usage.py:310`) is interpolated at lines 341 and 345 into two different aggregate expressions (`SUM(CASE WHEN ...)` and `COUNT(DISTINCT CASE WHEN ...)`) of the same query in `waste_attribution()` — confirms the single-source-of-truth SQL-fragment precedent exactly as previously described.
-- `TestAuthoritativeAttempts` (`test_history_reader_harness.py:173-203`, landed by ENH-3407) confirms a second, more directly on-point CLI-assertion example beyond the one already cited: `test_cli_harness.py:1115-1116` asserts bare substrings (`"pass-rate" in out`, `"1/1" in out`) for `cmd_dsl`'s CLI-level report — matches the substring-assertion convention already recommended for the admissions-tabulation test, now with a second confirming citation alongside `test_sprint.py::test_show_composition_line`.
