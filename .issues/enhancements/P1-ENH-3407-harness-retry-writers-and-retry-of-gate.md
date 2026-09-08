@@ -53,10 +53,19 @@ Decomposed from ENH-3397.
     The parent's `task` component is folded into `target`: for DSL it *is* the task file name,
     for single runners there is no separate task;
   - `head_sha` is `_git_output("rev-parse", "HEAD")`, JSON `null` when git is unavailable.
+    **Read it once, before `run_action()`, and pass the same value to both `_cell_key()`
+    and the row's `head_sha` column.** Today every handler reads `head_sha` post-run inside
+    `_record_harness_event()` (`cli/harness.py:154`); skill runs such as `commit` or
+    `manage-issue` move HEAD, so a post-run read would disagree with the pre-run key. The
+    pre-run sha is the subject under test.
   - `subject = runner + head_sha` per the parent. `dirty` is **not** part of the key (parent
     decision: subject is runner label + head sha); a dirty-tree sample shares its cell with a
     clean sample at the same sha. Readers can still filter on the existing `dirty` column, and
     `target_content_hash` pins the target file. Document this limitation in the docstring.
+  - **DSL cell collision (document, do not fix):** `dsl-task` rows use `task_file.name`, so
+    two directories holding a same-named task file share one cell. This matches how
+    `_read_target_history()` already keys target history; note it in `_cell_key()`'s
+    docstring next to the `dirty` limitation.
 - JSON-array encoding is chosen over a delimiter because `cmd` targets are arbitrary shell
   strings (spaces, `|`, `:`, quotes) — no single delimiter is safe. It is deterministic,
   stdlib-only, and greppable in sqlite.
@@ -77,21 +86,38 @@ Decomposed from ENH-3397.
     existing caller reads the return value, so this is backward compatible. This also removes
     `cmd_dsl`'s racy aggregate-id recovery (`SELECT id FROM harness_events ORDER BY id DESC
     LIMIT 1`, `cli/harness.py:1016`) — replace it with the returned id.
-  - `record_attempt(db_path, *, cell_key, attempt_kind, retry_of=None, continuations=None,
-    **event_fields) -> int` allocates the repetition index and delegates to
-    `record_harness_event()`. For `attempt_kind="repetition"`: `repetition = COALESCE(MAX(
-    repetition), -1) + 1 WHERE cell_key = ?` (0-based). For `attempt_kind="infra_retry"`:
-    `retry_of` is required and `repetition` is copied from that row.
-  - **`IntegrityError` from `idx_harness_cell_repetition` is a concurrent-writer signal, not a
-    crash** (ENH-3406 follow-up): re-run the `MAX+1` allocation and INSERT, bounded to 3
-    attempts, then re-raise.
+  - `record_attempt(db_path, *, cell_key, attempt_kind, retry_of=None, reason=None,
+    continuations=None, **event_fields) -> int` allocates the repetition index and performs
+    the INSERT. For `attempt_kind="repetition"`: `repetition = COALESCE(MAX(repetition), -1)
+    + 1 WHERE cell_key = ?` (0-based). For `attempt_kind="infra_retry"`: `retry_of` and
+    `reason` are required and `repetition` is copied from that row.
+  - **Allocation runs under `BEGIN IMMEDIATE`, not a retry loop.** Python's legacy
+    transaction mode opens no transaction for the `MAX` SELECT, so a read-then-INSERT race
+    between two processes is real. `BEGIN IMMEDIATE` takes the write lock before the read;
+    a competing allocator blocks on the existing `busy_timeout`
+    (`schema.py::_configure_connection`) and then sees the committed row. This removes the
+    `idx_harness_cell_repetition` collision entirely — no bounded-retry loop, no monkeypatch
+    test. Precedent: `schema.py:1444,1491` (manual `BEGIN IMMEDIATE` control). A residual
+    `IntegrityError` is therefore a genuine bug and should propagate.
+  - Because the INSERT must sit inside that transaction, `record_attempt` cannot delegate
+    to `record_harness_event()`'s own connect/commit. Factor the INSERT + `_index()` body
+    into a private `_insert_harness_event(conn, ...) -> int` that both public writers call;
+    `record_harness_event()` keeps its public shape and gains the `int` return.
+  - **The retry write is one transaction.** When `retry_of` is set, `record_attempt`
+    performs, on the same connection, after the INSERT: `UPDATE harness_events SET
+    superseded_by = ? WHERE id = ? AND superseded_by IS NULL` (raise if 0 rows affected — a
+    concurrent admission won) then `INSERT INTO harness_admissions(ts, attempt_id,
+    superseded_id, reason)`, and commits once. A failure at any step rolls back the new row,
+    the supersede, and the admission together — no orphan `infra_retry` row with
+    `superseded_by IS NULL` can be left behind for ENH-3408 to reason about. The CLI makes
+    **one** writer call on the retry path.
   - `continuations` is accepted as a kwarg and written through but never populated by any
     caller in this issue (ENH-3406 follow-up: column is reserved).
-- `admit_retry(db_path, *, attempt_id, superseded_id, reason) -> None` performs, **in one
-  transaction**: `UPDATE harness_events SET superseded_by = ? WHERE id = ? AND superseded_by
-  IS NULL` (raise if 0 rows affected — a concurrent admission won) then `INSERT INTO
-  harness_admissions(ts, attempt_id, superseded_id, reason)`. An UPDATE on `harness_events`
-  is permitted; only `harness_admissions` is append-only.
+- `admit_retry(db_path, *, attempt_id, superseded_id, reason) -> None` is the public
+  standalone form of that supersede + admission step, for callers that already hold a
+  recorded attempt id. It shares a private `_admit_retry(conn, ...)` helper with
+  `record_attempt` and commits in one transaction. An UPDATE on `harness_events` is
+  permitted; only `harness_admissions` is append-only.
 - **`authoritative_attempt` lives on the read side, not in `writers.py`.** No `writers.py`
   function returns a dataclass today; the row-dataclass convention (`HarnessEvent`,
   `history_reader/harness.py:36-63`, via `_row_to_dataclass`) is entirely in
@@ -110,6 +136,12 @@ Decomposed from ENH-3397.
   - This pulls the "add `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by`
     to `HarnessEvent` and `_HARNESS_EVENT_COLUMNS`" step into this issue (ENH-3408 currently
     lists it as its own "hard blocker, do first"; update ENH-3408 to consume it instead).
+  - **`HarnessEvent` also needs `id`.** The dataclass has no `id` field and
+    `_HARNESS_EVENT_COLUMNS` (`history_reader/harness.py:66-71`) does not select it, yet
+    the gate needs `prior.id` for `retry_of`, `superseded_id`, and every refusal message.
+    Add `id: int | None = None` as a **trailing default field** (existing positional
+    construction in tests keeps working) and prepend `id` to `_HARNESS_EVENT_COLUMNS`. Six
+    new fields total, not five.
 - No Python-side enum validation on `attempt_kind`/`reason`; the CHECK constraints landed by
   ENH-3406 (`schema.py:1372-1373,1384`) enforce the closed sets. Both CHECK and no-CHECK
   enum columns are live precedent in `schema.py`; the new columns already have CHECKs.
@@ -120,14 +152,19 @@ Decomposed from ENH-3397.
   `_add_evaluator_flags()` (`cli/harness.py:384`), so it lands on all five subparsers.
 - **The gate runs before `run_action()`**, not at the `_evaluate_and_report()` call site —
   a refused retry must not spend a run. Sequence per `cmd_*`:
-  1. If `retry_of` is set: `prior = harness_event_by_id(DEFAULT_DB_PATH, retry_of)`; compute
-     this invocation's `cell_key`; apply the refusal rules below; on refusal print the message
-     and `return 1` without running.
-  2. Run the action and evaluate as today.
-  3. Record: `record_attempt(..., attempt_kind="infra_retry", retry_of=prior.id, ...)` →
-     `new_id`; then `admit_retry(attempt_id=new_id, superseded_id=prior.id,
-     reason="timeout")`.
-  4. Without `retry_of`: `record_attempt(..., attempt_kind="repetition", ...)`.
+  1. Read `head_sha = _git_output("rev-parse", "HEAD")` once; compute this invocation's
+     `cell_key` from it. Both are reused by the record step.
+  2. If `retry_of` is set: `prior = harness_event_by_id(DEFAULT_DB_PATH, retry_of)`; apply
+     the refusal rules below; on refusal print the message **to stderr** (so `--output json`
+     consumers never receive a bare text line on stdout) and `return 1` without running.
+     In `cmd_mcp` the gate sits **after** the existing `server:tool` and `--args` JSON
+     validation, so a malformed invocation still exits 2 as today.
+  3. Run the action and evaluate as today.
+  4. Record, passing the pre-run `head_sha`: with `retry_of`, one call —
+     `record_attempt(..., attempt_kind="infra_retry", retry_of=prior.id, reason="timeout",
+     head_sha=head_sha, ...)` — which inserts, supersedes, and admits in one transaction.
+     Without `retry_of`: `record_attempt(..., attempt_kind="repetition", head_sha=head_sha,
+     ...)`, still wrapped in the best-effort `contextlib.suppress(Exception)` as today.
 - **Refusal rules** (exit 1, message names the attempt id and the rule). Shape follows
   `cli/queue.py::cmd_requeue`/`cmd_remove` (`queue.py:686,321`, shared
   `_not_found_or_ambiguous()` at `:259`) — id lookup → persisted-state check → loud refusal —
@@ -146,9 +183,10 @@ Decomposed from ENH-3397.
 - **Write failures on the retry path are not suppressed.** `_record_harness_event()` wraps
   the ordinary write in `contextlib.suppress(Exception)`; an admitted retry whose
   `harness_admissions` row silently failed to land defeats the audit purpose. When
-  `retry_of` is set, let `record_attempt`/`admit_retry` exceptions surface: print
-  `error: retry of attempt N was not recorded: <exc>` and exit 1. Because `admit_retry` is
-  one transaction, a failure leaves the prior row un-superseded and no admission row.
+  `retry_of` is set, let the `record_attempt` exception surface: print
+  `error: retry of attempt N was not recorded: <exc>` to stderr and exit 1. Because the
+  retry write is one transaction, a failure leaves the prior row un-superseded, no
+  admission row, and no new `infra_retry` row.
 - **`cmd_dsl`:** a DSL run writes one aggregate row plus N task rows, and `--retry-of` names
   one row. `--retry-of` on `dsl` is admissible only when `path` is a single task file and
   `prior.runner == "dsl-task"` with matching `cell_key` (which implies the same
@@ -181,11 +219,15 @@ Decomposed from ENH-3397.
 
 - `scripts/little_loops/session_store/writers.py` — extend `record_harness_event()`
   (`:1024`) with `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by`
-  kwargs and an `int` return; add `record_attempt()` and `admit_retry()` alongside it.
-- `scripts/little_loops/history_reader/harness.py` — add the five columns to `HarnessEvent`
-  and `_HARNESS_EVENT_COLUMNS` (`_row_to_dataclass()` in `history_reader/_base.py:87-91`
-  silently drops unmapped columns, so this is required, not optional); add
-  `harness_event_by_id()`, `authoritative_attempt()`, `authoritative_attempts()`.
+  kwargs and an `int` return; factor its INSERT + `_index()` body into a private
+  `_insert_harness_event(conn, ...)`; add `record_attempt()` (`BEGIN IMMEDIATE`
+  allocation, single-transaction retry path) and `admit_retry()` sharing a private
+  `_admit_retry(conn, ...)`.
+- `scripts/little_loops/history_reader/harness.py` — add `id` (trailing default) plus the
+  five v49 columns to `HarnessEvent` and `_HARNESS_EVENT_COLUMNS` (`_row_to_dataclass()`
+  in `history_reader/_base.py:87-91` silently drops unmapped columns, so this is required,
+  not optional); add `harness_event_by_id()`, `authoritative_attempt()`,
+  `authoritative_attempts()`.
 - `scripts/little_loops/session_store/__init__.py` — export `record_attempt`/`admit_retry`
   mirroring `record_harness_event` (docstring line 54, import block line 147, `__all__` line
   234). The import block is alphabetical; `__all__` and the docstring's Public API list are
@@ -193,10 +235,12 @@ Decomposed from ENH-3397.
 - `scripts/little_loops/history_reader/__init__.py` — export the three new readers, following
   however `recent_harness_events` is exported.
 - `scripts/little_loops/cli/harness.py` — `--retry-of` in `_add_evaluator_flags()` (`:384`);
-  pre-run gate + `record_attempt`/`admit_retry` in `cmd_skill` (~835), `cmd_cmd` (~868),
-  `cmd_mcp` (~911), `cmd_prompt` (~952), `cmd_dsl` (~1072); replace the aggregate-id
-  `SELECT ... ORDER BY id DESC` (`:1016`) with `record_harness_event()`'s return value; a
-  small `_cell_key(runner, target, head_sha)` helper next to `_record_harness_event()`.
+  pre-run `head_sha` read + gate + `record_attempt` in `cmd_skill` (~835), `cmd_cmd`
+  (~868), `cmd_mcp` (~911), `cmd_prompt` (~952), `cmd_dsl` (~1072); replace the
+  aggregate-id `SELECT ... ORDER BY id DESC` (`:1016`) with `record_harness_event()`'s
+  return value; a small `_cell_key(runner, target, head_sha)` helper next to
+  `_record_harness_event()`, which itself gains a `head_sha` kwarg so the post-run
+  `_git_output("rev-parse", "HEAD")` at `:154` is dropped in favour of the pre-run value.
   Read `getattr(args, "retry_of", None)` at the gate (the `--issue-id` precedent, `:720`),
   so `_make_namespace()`-built tests keep working.
 - `docs/reference/CLI.md:212-313` — add `--retry-of` to the shared-evaluator-flags table
@@ -228,9 +272,13 @@ Decomposed from ENH-3397.
     produce the old row shape (new columns NULL).
   - `record_attempt()` allocates 0, 1, 2 for three fresh repetitions of one cell; a second
     cell starts at 0; `infra_retry` with `retry_of` copies the prior's repetition.
-  - `record_attempt()` retries on `IntegrityError`: pre-insert a competing row between the
-    `MAX` read and the INSERT (monkeypatch the allocator) and assert the next index is taken;
-    after 3 collisions it re-raises.
+  - `record_attempt()` serialises allocation: two `record_attempt` calls for one cell from
+    two threads on separate connections get indices 0 and 1 with no `IntegrityError`
+    (the second blocks on the write lock, then reads the committed `MAX`).
+  - `record_attempt(attempt_kind="infra_retry", retry_of=N, reason="timeout")` inserts the
+    new row, sets `superseded_by` on N, and appends one `harness_admissions` row, all
+    committed together; when the admission INSERT fails (e.g. invalid `reason`, CHECK), the
+    new row is **not** present and N is still un-superseded (rollback).
   - `admit_retry()` sets `superseded_by` and appends one `harness_admissions` row in one
     transaction; a second `admit_retry` against an already-superseded id raises and writes
     no admission row; an invalid `reason` raises `IntegrityError` (CHECK).
@@ -246,15 +294,21 @@ Decomposed from ENH-3397.
 - `scripts/tests/test_history_reader_harness.py` — `harness_event_by_id`; `authoritative_
   attempt(cell, rep)` returns the non-superseded row of a timeout→retry chain;
   `authoritative_attempts(cell)` returns one row per repetition and excludes superseded rows;
-  `HarnessEvent` carries the five new fields.
+  `HarnessEvent` carries `id` and the five new fields.
 - `scripts/tests/test_cli_harness.py`:
   - refusal, each with `result == 1`, no `run_action` call (mock asserts not called), and a
-    message naming the attempt id: unknown id; `cell_key IS NULL` row; already-superseded
-    row; cell-key mismatch (different `head_sha`); graded FAIL (`timed_out=0`).
+    message naming the attempt id **on stderr** (stdout empty, so `--output json` stays
+    parseable): unknown id; `cell_key IS NULL` row; already-superseded row; cell-key
+    mismatch (different `head_sha`); graded FAIL (`timed_out=0`).
   - accepted: prior `timed_out=1` → new row `attempt_kind='infra_retry'`, same `repetition`,
     prior's `superseded_by == new id`, one `harness_admissions` row with `reason='timeout'`.
-  - `admit_retry` failure on the retry path exits 1 with the "was not recorded" message (not
-    suppressed).
+  - `record_attempt` failure on the retry path exits 1 with the "was not recorded" message
+    (not suppressed) and leaves no new row.
+  - `head_sha` consistency: patch `subprocess.run` so `git rev-parse HEAD` returns sha A
+    before the run and sha B after; the recorded row's `head_sha` is A and equals the sha
+    inside its `cell_key`.
+  - `cmd_mcp` with `--retry-of` and a malformed `--args` still exits 2 (validation precedes
+    the gate).
   - `cmd_dsl`: `--retry-of` with a directory `path` is refused; with a single task file and a
     matching `dsl-task` prior it is accepted.
   - `_make_namespace()` (`test_cli_harness.py:48-61`) has no `retry_of` key; the gate reads
@@ -270,15 +324,17 @@ Decomposed from ENH-3397.
 
 ## Implementation Steps
 
-1. `history_reader/harness.py`: add the five fields to `HarnessEvent` +
-   `_HARNESS_EVENT_COLUMNS`; add `harness_event_by_id`, `authoritative_attempt`,
-   `authoritative_attempts`; tests.
-2. `writers.py`: extend `record_harness_event` (kwargs + `int` return); add `record_attempt`
-   (allocation, `IntegrityError` retry, docstring with the `cell_key` encoding) and
-   `admit_retry` (single transaction); exports; tests including the `harness_admissions`
-   AST check.
-3. `cli/harness.py`: `_cell_key()` helper; every `cmd_*` computes `cell_key` and writes via
-   `record_attempt(attempt_kind="repetition")`; `cmd_dsl` uses the returned aggregate id.
+1. `history_reader/harness.py`: add `id` (trailing default) and the five fields to
+   `HarnessEvent` + `_HARNESS_EVENT_COLUMNS`; add `harness_event_by_id`,
+   `authoritative_attempt`, `authoritative_attempts`; tests.
+2. `writers.py`: factor `_insert_harness_event(conn, ...)` out of `record_harness_event`
+   (kwargs + `int` return); add `record_attempt` (`BEGIN IMMEDIATE` allocation,
+   single-transaction retry path via `_admit_retry(conn, ...)`, docstring with the
+   `cell_key` encoding) and `admit_retry`; exports; tests including the
+   `harness_admissions` AST check.
+3. `cli/harness.py`: `_cell_key()` helper; every `cmd_*` reads `head_sha` once pre-run,
+   computes `cell_key`, and writes via `record_attempt(attempt_kind="repetition",
+   head_sha=...)`; `cmd_dsl` uses the returned aggregate id.
 4. `cli/harness.py`: `--retry-of` flag; pre-run gate with the refusal rules; retry write path
    with unsuppressed failures; DSL single-file constraint; tests + e2e.
 5. Docs: `CLI.md`, `API.md`, `EVALUATION_GUIDE.md`, `EVENT-SCHEMA.md`.
@@ -289,24 +345,28 @@ Decomposed from ENH-3397.
 ## Acceptance Criteria
 
 - A fresh invocation records `attempt_kind = repetition` with the next free 0-based
-  repetition index for its cell; a concurrent allocation collision is retried, not
-  surfaced as a crash. `cell_key` follows the documented JSON-array encoding.
+  repetition index for its cell; concurrent allocators are serialised under
+  `BEGIN IMMEDIATE`, so no `IntegrityError` surfaces and no index is skipped. `cell_key`
+  follows the documented JSON-array encoding.
+- The row's `head_sha` column equals the sha embedded in its `cell_key`; both come from a
+  single pre-run `git rev-parse HEAD`.
 - `--retry-of <id>` records `infra_retry`, reuses the prior's repetition index, sets
   `superseded_by` on the prior row, and appends exactly one `harness_admissions` row with
-  `reason = 'timeout'`.
-- `--retry-of` is refused with exit 1 and a message naming the attempt — before any action
-  runs — when the prior attempt: does not exist; has no `cell_key`; is already superseded;
-  belongs to a different cell; or did not time out (reached grading or runner error). Test:
-  a retry of a graded FAIL is rejected; a retry of a timeout is accepted.
-- A retry whose `record_attempt`/`admit_retry` write fails exits non-zero with an error
-  naming the attempt and leaves the prior row un-superseded (transactional).
+  `reason = 'timeout'` — all in one transaction.
+- `--retry-of` is refused with exit 1 and a stderr message naming the attempt — before any
+  action runs — when the prior attempt: does not exist; has no `cell_key`; is already
+  superseded; belongs to a different cell; or did not time out (reached grading or runner
+  error). Test: a retry of a graded FAIL is rejected; a retry of a timeout is accepted.
+- A retry whose `record_attempt` write fails exits non-zero with an error naming the
+  attempt and leaves no new row, the prior row un-superseded, and no admission row
+  (transactional).
 - `harness_admissions` rows are never updated or deleted; a test asserts no UPDATE/DELETE
   SQL statement in `writers.py` targets `harness_admissions` (scoped to that table).
 - `authoritative_attempt(cell_key, repetition)` returns the earliest non-superseded row for
   that repetition; `authoritative_attempts(cell_key)` returns one per repetition. No CLI
   flag overrides selection. Losing attempts remain in `harness_events`.
 - `record_harness_event()` returns the inserted id; existing callers are unaffected.
-- `HarnessEvent` exposes the five new columns.
+- `HarnessEvent` exposes `id` and the five new columns.
 - `--retry-of` on `dsl` is accepted only for a single task-file `path` with a matching
   `dsl-task` prior.
 
@@ -362,14 +422,19 @@ unlock `harness_error`/`host_crash`/`network` reasons) is the natural next step.
   `(cell_key, repetition) WHERE attempt_kind = 'repetition'`.
 - `harness_admissions` (`schema.py:1379-1385`): `id`, `ts`, `attempt_id`, `superseded_id`,
   `reason TEXT CHECK IN ('timeout','host_crash','harness_error','network')`.
-- `HarnessEvent` (`history_reader/harness.py:36-63`) + five new fields.
+- `HarnessEvent` (`history_reader/harness.py:36-63`) + `id` + five new fields.
 
 ### Signatures
 - `record_harness_event(db_path, *, ts, ..., cell_key=None, repetition=None,
   attempt_kind=None, continuations=None, superseded_by=None) -> int`
-- `record_attempt(db_path, *, cell_key, attempt_kind, retry_of=None, continuations=None,
-  **event_fields) -> int`
+- `_insert_harness_event(conn, *, ts, ..., superseded_by=None) -> int` (private; INSERT +
+  `_index()` on a caller-owned connection, no commit)
+- `record_attempt(db_path, *, cell_key, attempt_kind, retry_of=None, reason=None,
+  continuations=None, **event_fields) -> int` (`BEGIN IMMEDIATE`; with `retry_of`, also
+  supersedes + admits before the single commit)
 - `admit_retry(db_path, *, attempt_id, superseded_id, reason) -> None`
+- `_admit_retry(conn, *, attempt_id, superseded_id, reason) -> None` (private; shared
+  UPDATE + admission INSERT, no commit)
 - `harness_event_by_id(db_path, attempt_id) -> HarnessEvent | None`
 - `authoritative_attempt(db_path, cell_key, repetition) -> HarnessEvent | None`
 - `authoritative_attempts(db_path, cell_key) -> list[HarnessEvent]`
@@ -385,9 +450,9 @@ issue-id highwater) — `record_attempt`'s allocation is new query logic, backed
 `idx_harness_cell_key` (ENH-3406).
 
 ### Call Path
-`cmd_*` → gate (`harness_event_by_id`, refusal rules) → `run_action()` (`runner_spec.py:420`)
-→ `_evaluate_and_report()` (`cli/harness.py:659`) → `record_attempt()` → `record_harness_event()`
-→ (`retry_of` only) `admit_retry()`.
+`cmd_*` → pre-run `head_sha` + `_cell_key()` → gate (`harness_event_by_id`, refusal rules)
+→ `run_action()` (`runner_spec.py:420`) → `_evaluate_and_report()` (`cli/harness.py:659`)
+→ `record_attempt()` → `_insert_harness_event()` → (`retry_of` only) `_admit_retry()` → commit.
 
 ## Current Behavior
 
@@ -430,6 +495,13 @@ _Review pass — 2026-09-08 (manual):_ added the `cell_key` encoding, the
 semantics, the per-repetition authoritative rule, the read-side placement of
 `authoritative_attempt`, ENH-3406's three follow-ups, and unsuppressed retry-path writes.
 Re-run `/ll:verify-issues` before `/ll:manage-issue` to refresh `verify_verdict`.
+
+_Pre-implementation review — 2026-09-08 (manual):_ added `id` to `HarnessEvent` (gate
+needs `prior.id`; the dataclass had none); pre-run single `head_sha` read shared by
+`cell_key` and the row (post-run read at `cli/harness.py:154` drifts when a skill run
+commits); `BEGIN IMMEDIATE` allocation replacing the `IntegrityError` retry loop;
+single-transaction retry write (no orphan `infra_retry` row); refusal messages to stderr;
+`cmd_mcp` gate after arg validation; DSL same-name cell collision documented.
 
 ## Status
 

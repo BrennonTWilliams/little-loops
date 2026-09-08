@@ -8,11 +8,11 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T19:25:17Z'
-confidence_score: 60
-outcome_confidence: 52
-score_complexity: 17
-score_test_coverage: 10
-score_ambiguity: 0
+confidence_score: 95
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
 score_change_surface: 25
 decision_needed: false
 ---
@@ -231,6 +231,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - No regression test currently exists for tree-layout arrow direction; the issue proposes adding one, but the correct expected behavior needs to be settled first.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T20:53:43 - `3f9b59f1-b272-4917-896e-999f8ef8d9d9.jsonl`
 - `/ll:wire-issue` - 2026-09-08T20:18:10 - `2894e5fe-06e8-41c0-a899-75965afc819e.jsonl`
 - `/ll:decide-issue` - 2026-09-08T20:01:37 - `aa86cabe-2995-47f1-90c9-cd63b1a7eb73.jsonl`
 - `/ll:refine-issue` - 2026-09-08T19:52:03 - `cb4b9ca3-dab7-4f31-8422-5d785ebaffef.jsonl`
