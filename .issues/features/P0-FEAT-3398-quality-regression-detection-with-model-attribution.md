@@ -17,6 +17,7 @@ score_complexity: 5
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 0
+decision_needed: true
 ---
 
 ## Summary
@@ -59,6 +60,20 @@ Depends on the local agent-quality report over `history.db` for metric definitio
 
 Requires that runs carry model/host/version stamps. If `history.db` does not already record them, adding that capture is in scope for this issue.
 
+## Proposed Solution
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+The Wiring Phase's "Decide the `--sensitivity` config convention" item names two disagreeing, both-established codebase conventions for exposing a new tunable value, with no existing precedent tying report-time detection sensitivity to either one:
+
+**Option A**: Module-level constant + CLI flag — mirrors `MIN_SAMPLE_SIZE` (`rework.py:35`) and `--min-sample` (`cli/history.py:227-274,470-487`). `DEFAULT_SENSITIVITY` lives as a module constant in the detection module, threaded through `detect_quality_regressions(..., sensitivity: float = DEFAULT_SENSITIVITY)`, with a `--sensitivity` flag on `ll-history quality` using the `is not None` explicit-override check (the `quality` subcommand's deliberate fix over `rework`'s `args.min_sample or MIN_SAMPLE_SIZE` footgun with an explicit `0`). No `.ll/ll-config.json` presence.
+
+**Option B**: `.ll/ll-config.json` schema entry consumed via a dataclass — mirrors `EvolutionConfig` (`config/features.py:1407-1419`) and its `config-schema.json:2176-2192` mirror. A new small dataclass (e.g. `RegressionDetectionConfig`) nested under `HistoryConfig` via `field(default_factory=...)`, with a lenient `from_dict(cls, data)` classmethod and a matching schema-json object (`"additionalProperties": false`, per-field `"default"`/`"description"`). No CLI flag for any value in this family exists today.
+
+No recommendation is implied by the research: both conventions are established and disagree on where a tunable belongs, and nothing in the codebase ties the quality/rework report-time sensitivity family specifically to one or the other.
+
 ## Integration Map
 
 ### Codebase Research Findings
@@ -66,6 +81,14 @@ Requires that runs carry model/host/version stamps. If `history.db` does not alr
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 Codebase-locator confirmed none of `RunAttribution`/`RegressionEvent`/`detect_quality_regressions`/`attribute_change` exist yet, and pinned down exactly where the new detection pass would plug into the existing agent-quality pipeline:
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- Locator confirmation: all `path:line` citations in this issue's own Files to Modify / Dependent Files / Root Cause sections remain accurate as of this pass — `docs/guides/HISTORY_SESSION_GUIDE.md`'s schema-version-history table still ends at `v47 | ENH-3204 | credential_scope_events table` (line 107) and its `orchestration_runs` column-enumeration row is still at line 132; `docs/ARCHITECTURE.md`'s matching table still ends at line 680. The file changed since the last refine pass but not in a way that invalidates any citation here.
+- Sibling issue **FEAT-3399** (cross-repo history.db aggregation) already forward-references this issue's `RunAttribution`/`RegressionEvent`/`detect_quality_regressions`/`attribute_change` names in its own text — coordinate the concrete shape of these types with FEAT-3399 if the two land close together, since FEAT-3399 is not this issue's dependency but assumes this issue's naming.
+- Naming precedent for host+model attribution already exists elsewhere: `advisor_host`/`advisor_model`/`main_model` is a three-column host+model set on `advisor_consults` (`schema.py:1255-1257`, added v45/FEAT-3300) — precedent for the column-naming shape, though not on `orchestration_runs` itself.
+- New-column write-timing convention: the prior `orchestration_runs` column addition (`base_sha`/`base_dirty`, v38/ENH-2866) uses `SET x=COALESCE(excluded.x, x)` in `record_orchestration_run()`'s UPSERT (`writers.py:1358-1360`) specifically because those values are known at dequeue time and "the terminal call passes none of these" (comment, `writers.py:1357`); other columns use last-write-wins (`SET x=excluded.x`). Whether `model`/`host`/`ll_version` need COALESCE or last-write-wins depends on which call site(s) first know these values — this determines the UPSERT clause shape for the new columns.
+- Schema migration test template concretized: `TestSchemaV38BaseShaColumns` (`test_session_store_schema.py:1902-1967`) is a 5-test class — column-presence via `PRAGMA table_info`, a negative check that a sibling table (`loop_runs`) did *not* gain the columns, an upgrade-from-old-version test (`_bootstrap_schema_at(db, 37)` then `ensure_db()` then assert old rows survive with NULL new columns), plus `test_excluded_from_rebuild`/`test_not_kindless` — this is the exact 5-assertion shape the new migration's test class should mirror.
 
 ### Files to Modify
 - `scripts/little_loops/issue_history/agent_quality.py` — `analyze_agent_quality()` (line 462) and `format_agent_quality_markdown()` (line 619) are the existing producer/renderer this issue's `detect_quality_regressions()`/`attribute_change()` consume and extend, per the issue's own Call Path.
@@ -138,6 +161,13 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 Analyzer and pattern-finder agents confirmed no existing statistical detection utility exists in this codebase to adapt, so the following are new decisions rather than reuse of an established gate:
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- Two disagreeing statistical-baseline conventions exist in this codebase, neither of which this issue's detection statistic is obligated to reuse (no existing change-point/z-score utility was found, confirming the issue's own Decision Rules claim), but both are candidate shapes for `DEFAULT_SENSITIVITY`'s meaning:
+  - `classify_verdict()` (`issue_history/_utils.py:57-71`, shared by `agent_quality.py`/`rework.py`): a fixed ±20%-relative-to-baseline band, hardcoded as literals, baseline always "the earliest same-orchestrator window" (never a rolling mean). Three-way verdict (`improving`/`stable`/`degrading`) as a bare `str`.
+  - `wilson_ci()`/`paired_direction()` (`little_loops/stats.py:14,43`): a Wilson 95% binomial-CI sign test, "inconclusive" whenever the interval straddles 0.5, `Literal[...]` return types. Scoped today to loop-evaluation/harness-rubric reporting (`specs/harness-optimize-rubric-check.py`), never imported by `issue_history/`.
+- `model`/`host` columns already exist elsewhere as a co-located attribution pair (`advisor_host`/`advisor_model`/`main_model` on `advisor_consults`, `schema.py:1255-1257`, v45/FEAT-3300) — no existing precedent found for a persisted little-loops-*version* column anywhere; `__version__` (`little_loops/__init__.py:83`) has never been written to `history.db`.
+
 ### Decision Rules
 
 - **Detection statistic**: deterministic, LLM-free, computed over `QualityAnalysis.windows` only. No existing change-point/z-score/rolling-baseline statistical utility exists in this codebase (searched repo-wide, no hits) — the fixed ±20%-band `classify_verdict()` baseline convention (`issue_history/_utils.py:57`, shared by `agent_quality.py`/`rework.py`) is the only existing "baseline" mechanism, and it is not itself a change-point detector; this issue's detection logic is new statistical code, not an adaptation of an existing one.
@@ -198,6 +228,7 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T02:31:36 - `6cc496d2-f0d1-4efd-a1af-1d7a8f2e9860.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-08T02:29:08 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:15:46 - `79da3fca-fbcb-4530-ac1f-339229369837.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:10:48 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`

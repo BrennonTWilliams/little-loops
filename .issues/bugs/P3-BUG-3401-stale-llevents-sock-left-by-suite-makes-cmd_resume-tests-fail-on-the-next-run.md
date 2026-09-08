@@ -14,6 +14,8 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 0
+learning_tests_required:
+- pytest
 ---
 
 # BUG-3401: Stale .ll/events-*.sock left by suite makes cmd_resume tests fail on the next run
@@ -183,6 +185,7 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 - The `missing_behavior_parity` gap (no `### Behavior Parity` subsection for `scripts/tests/conftest.py`) caps Issue Well-Specified at 10/20 even though the rest of the issue is unusually thorough — worth a short explicit note on how the new fixture composes with `_guard_real_history_db`/`_isolate_history_db_session` before implementation.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T02:29:19 - `0d9d417d-c803-47ff-911c-f30e17e5343e.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:21:36 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
 - `/ll:wire-issue` - 2026-09-08T02:00:49 - `2d920f5a-2d4d-4a14-9303-a5bfb4bae86a.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:56:23 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
