@@ -12,7 +12,7 @@ labels:
 learning_tests_required:
 - yaml
 parent: FEAT-3399
-verify_verdict: VALID
+verify_verdict: PROPOSAL_UNSOUND
 confidence_score: 85
 outcome_confidence: 78
 score_complexity: 18
@@ -406,6 +406,56 @@ _Re-verified `/ll:verify-issues` — 2026-09-08 — graph: provider=`codegraph` 
 - Verdict: **VALID** — all claims, including those added after the prior verify
   pass, hold against current code.
 
+_Re-verified `/ll:verify-issues` — 2026-09-08 — graph: provider=`codegraph` freshness=`fresh`:_
+
+- All prior file:line citations re-checked and still hold: `config-schema.json`
+  `history` object at `:2117`, `db_path` property at `:2143-2146`, object close
+  (`additionalProperties: false`) at `:2255-2256`; `HistoryConfig` class at
+  `config/features.py:1513-1554`. `discover_workspace_members()`, `WorkspaceMember`,
+  and `ll-workspace.yaml` still confirmed absent repo-wide. Parent (`FEAT-3399`)
+  and sibling (`FEAT-3410`) references resolve. `ll-verify-evidence --json`:
+  `"ok": true`, 0 findings. No active required decision rules.
+- **New since the last verify pass**: a `## Proposed Solution` section was added
+  (by `/ll:decide-issue` at 18:39:07, after both prior verify-issues runs at
+  17:36/17:45) — check B6 (proposal-vs-code consequence check) had not yet run
+  against it. Running it now surfaces a real gap:
+  - **AC coverage gap #1**: the Decision Rules section resolves the
+    malformed-manifest posture as Option C (no-wrap/propagate — a present-but-invalid
+    `ll-workspace.yaml` must raise `yaml.YAMLError`/a missing-field error to the
+    caller). This is a decided, load-bearing behavior, but no Acceptance Criterion
+    states it — the AC list only covers the well-formed-parse and absent-manifest
+    cases. It appears only as prose under `## Tests`. An implementation could pass
+    all three listed ACs while accidentally swallowing malformed-manifest errors
+    (e.g. adding a stray `try/except`) and nothing in the AC list would catch it.
+  - **AC coverage gap #2**: the Wiring Phase and Dependent Files sections decide
+    (Config registration path, Option A) that `history.workspace_manifest_path`
+    must be wired into `HistoryConfig`'s dataclass fields and `from_dict()`
+    (`config/features.py:1513-1554`), with dedicated tests named
+    (`test_workspace_manifest_path_default_none`/`_override`,
+    `test_config.py::TestHistoryConfig`). No Acceptance Criterion covers this.
+    AC3 only requires the schema-registration test
+    (`test_history_workspace_manifest_path_in_schema`); an implementation could
+    add the schema property without ever threading it through `HistoryConfig`,
+    leaving the config value schema-valid but inert, and still satisfy every
+    listed AC.
+  - Exception-handler compatibility and test-fixture invalidation (the other two
+    B6 criteria): no findings — this is greenfield code with no existing caller
+    or test fixture to conflict with.
+- **Stale cross-reference noted (not itself a verdict driver)**: the
+  `## Confidence Check Notes → Concerns` section (added 17:48:31) still reads
+  "Two Decision Rules remain unresolved" and "Config registration path is also
+  left open" — both were resolved by `/ll:decide-issue` at 18:39:07, after that
+  note was written. Frontmatter (`decision_needed: false`) and the Decision
+  Rules/Proposed Solution sections already reflect the resolved state; only the
+  Concerns prose under Confidence Check Notes is now stale and should be updated
+  or struck through on next touch.
+- Verdict: **PROPOSAL_UNSOUND** (check B6) — all claims about current code state
+  still hold (checks 1-4, evidence check, decisions check, dependency refs all
+  clean), so this does not collapse to `OUTDATED`/`INVALID`; the defect is purely
+  that the Acceptance Criteria under-cover the issue's own decided proposal. Add
+  ACs for (a) malformed-manifest raise behavior and (b) `HistoryConfig` wiring of
+  `workspace_manifest_path`, or fold them explicitly into the existing three ACs.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
@@ -430,6 +480,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   the choice determines which of two Dependent-Files wiring lists apply.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-08T19:21:57 - `9151ddc6-ab2d-4793-bd0e-e517d6829851.jsonl`
 - `/ll:reconcile-issue` - 2026-09-08T19:17:31 - `8253aa54-816e-4b30-a515-5729bc18e0a3.jsonl`
 - `/ll:refine-issue` - 2026-09-08T19:11:30 - `2ff580d6-652f-49e4-b298-e76bb54b7ee2.jsonl`
 - `/ll:wire-issue` - 2026-09-08T18:49:49 - `96ffa0f9-be3e-4674-b135-6a82c1057b6c.jsonl`
