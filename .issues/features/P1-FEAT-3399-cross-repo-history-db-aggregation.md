@@ -70,6 +70,19 @@ Codebase-locator and codebase-analyzer agents confirmed the workspace-aggregatio
 - `scripts/little_loops/issue_history/agent_quality.py` — `analyze_agent_quality()` takes a **path**, not a connection: it opens and closes its own `_connect_readonly()` connection internally, and every internal query uses unqualified table names (`issue_events`, `usage_events`, etc.). It cannot currently be pointed at an already-open connection with an ATTACHed schema without either (a) opening one throwaway connection per member exactly as today, or (b) a signature change to accept an open connection/schema-qualifier and schema-qualify every internal SQL string.
 - `scripts/little_loops/cli/history.py` — `ll-history quality` subcommand is the current single-repo entry point; the issue's byte-for-byte no-manifest fallback must reproduce this path unchanged.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `resolve_history_db()`'s `root=` parameter (`scripts/little_loops/session_store/db.py:121`, added per BUG-3181) already exists specifically to anchor db-path resolution at a caller-supplied project root — this is the exact per-member resolution primitive `aggregate_history_dbs()` should call once per `WorkspaceMember.repo_path`, rather than reinventing path resolution.
+- `analyze_agent_quality()`'s formatter siblings `format_agent_quality_text`/`_json`/`_yaml` (`agent_quality.py:588,670,675`) all take `analysis: QualityAnalysis` positionally — only `format_agent_quality_markdown()` is named in this issue's Call Path for `AggregationResult` extension. A `--workspace --format json/yaml/text` combination has no specified output shape yet.
+- **Cross-issue sequencing**: FEAT-3398 (P0, open) already names `analyze_agent_quality()` (line 462) and `format_agent_quality_markdown()` (line 619) as functions its own `detect_quality_regressions()`/`attribute_change()` will consume, citing the current signatures. If this issue changes those signatures first, FEAT-3398's own Integration Map citations need re-verification.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Importers of the `history_reader/_base.py` `_connect_readonly()` variant (16 files, beyond `agent_quality.py` already known): `summary_dag.py`, `usage.py`, `runs.py`, `search.py`, `context.py`, `formatting.py`, `events.py`, `subagents.py`, `harness.py`, `hooks.py`, `sessions.py`, `digest.py`, `history_reader/__init__.py` (re-export), `issue_history/collisions.py`, `issue_history/rework.py` — all in `scripts/little_loops/`. Any change to this variant's contract (e.g. to support ATTACHed schemas) ripples through every one of these.
+- The `_open_db` variant (issue's "third variant", `evolution.py:30-47`/`codegraph.py:81-91`) has its own two callers, self-contained within each file — not affected unless this issue picks that variant to model.
+- `docs/reference/API.md:10421` — documents `queue_store`'s **own independent copy** of `SCHEMA_VERSION`/`_MIGRATIONS` ("copied rather than shared" from `session_store`) — a fourth, unrelated `SCHEMA_VERSION` namesake to disambiguate from when implementing the schema-skew gate.
+- `docs/reference/API.md:8209` and `CONTRIBUTING.md:299` — both document the `history_reader/_base.py` package-layout (`_connect_readonly`/`_row_to_dataclass`/`_stale_cutoff`) in prose/diagram form; these would need a mention of the new aggregation module once its location is chosen.
+
 ### Naming collision (read carefully)
 - **Two distinct functions are both named `_connect_readonly()`** and are NOT the same code: `scripts/little_loops/history_reader/_base.py:60` (calls `ensure_db()` first, sets `PRAGMA query_only = ON`, returns `None` on any error, never raises) vs. `scripts/little_loops/session_store/queries.py:189` (no `ensure_db()`, no pragma, **raises** on failure — returns `sqlite3.Connection`, not `Connection | None`). `analyze_agent_quality()`'s call path uses the `history_reader/_base.py` variant. `build_snapshot_db()` (below) uses the `session_store/queries.py` variant. A third variant (`issue_history/evolution.py:30-47`, `codequery/codegraph.py:81-91`) deliberately skips `ensure_db()` "to avoid failing on a database created by the test harness." Pick the variant deliberately; do not assume there is only one.
 
@@ -88,6 +101,29 @@ Codebase-locator and codebase-analyzer agents confirmed the workspace-aggregatio
 ### Tests
 - `scripts/tests/test_feat3304_artifact_dashboard.py::TestSourceDbUntouched` (lines 443-458) is a direct existing precedent for this issue's "Source DBs are provably unmodified after a run (checksum assertion in tests)" AC: `hashlib.sha256(db.read_bytes()).hexdigest()` before/after, plus a companion `test_snapshot_builder_never_uses_the_migrating_open_path` that asserts (by source inspection) the export path never calls the migrating `connect()` and does use `mode=ro` — the same class of assertion this issue's read-only guarantee needs.
 - `scripts/tests/test_issue_history_agent_quality.py`, `scripts/tests/test_session_store_queries.py`, `scripts/tests/test_session_store_schema.py` — existing coverage for `analyze_agent_quality`/`_connect_readonly`/`read_schema_version`/`ATTACH` to extend or model new tests after.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **No dedicated test file exists for `history_reader/_base.py` itself** — `_connect_readonly()` coverage is entirely indirect, through the 12+ sibling query-module test files that each test the missing-DB/degrade-to-empty branch via their own public function (e.g. `test_history_reader_usage.py:78`, `test_history_reader_runs.py:60,138`, `test_history_reader_search.py:29-49`, `test_history_reader_sessions.py:191-603`, `test_history_reader_events.py:521-626`). No existing test exercises this variant directly.
+- The `session_store/queries.py:189` variant's only direct-name tests: `test_feat3304_artifact_dashboard.py:451-458` (source-inspection) and `test_feat3323_sse_bridge.py:1157-1162` (imports and calls it directly) — the latter is coverage for this variant not previously in the issue's known-tests list.
+- **Manifest-absent graceful-degradation template classes, confirmed exact code**: `TestDecisionsGracefulDegradation` (`test_decisions.py:639-651`) and `TestLoadDesignTokensFallbacks` (`test_design_tokens.py:227-258`) — one test per short-circuit branch, `tmp_path`-based (no manifest created), direct `== []`/`is None` return-value assertion. Model the no-`ll-workspace.yaml` fallback test class after these.
+- **ATTACH/DETACH test precedent is NOT in `test_session_store_queries.py`** (confirmed zero `ATTACH` hits there) — it lives in `test_feat3304_artifact_dashboard.py:734-760` `TestBuildSnapshotDb`, which tests `build_snapshot_db()` behaviorally (return value, error paths) rather than inspecting the ATTACH SQL directly; no existing test exercises multiple simultaneous ATTACHes.
+- **Byte-for-byte-identical assertion precedent** for the no-manifest fallback AC: `test_worker_pool.py:2267-2294` `test_update_branch_base_no_epic_branch_uses_base_branch` (run both branches, assert identical captured argv) and the simpler `test_issues_cli.py:83-103` `test_next_id_count_one_matches_default` (exact string-equality). Model the "manifest absent falls back to today's output" test on these, not a diff/checksum approach.
+- `TestHistoryQualitySubcommand` (`test_cli_history.py:220-271`) — existing `ll-history quality` coverage; no `--workspace` flag exists today, so a new flag/test would be a fifth class member following the same argv-patch + `tmp_path` fixture shape as the existing four tests.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md:712` (§ "History DB: Producer→Consumer Flow") states outright: *".ll/history.db is the per-project event history store"* — explicit single-repo framing that needs updating; its adjoining Read Path flowchart (`:735-744`) has no aggregation node.
+- `docs/reference/API.md:92` (`little_loops.session_store` module-table entry) and `:8207` (`little_loops.history_reader` package docstring) both carry the same "per-project" single-repo phrasing, in separate locations from the ARCHITECTURE.md one.
+- `docs/reference/CLI.md:3162-3206` (`#### ll-history quality`) — full flag table and metric-definition prose is single-repo-scoped; a `--workspace` flag and `AggregationResult` output shape need a new subsection here.
+- `docs/guides/HISTORY_SESSION_GUIDE.md:446-486` (§ "Rework and agent-quality trends" / "Quality Metric Definitions") — points to `CLI.md` for flag tables; needs a workspace-rollup mention.
+- `docs/reference/API.md:9412` — already states *"Current schema version: 45"* while `schema.py:25` has `SCHEMA_VERSION = 47` (a pre-existing, unrelated staleness) — whoever documents the schema-skew gate here will be editing a paragraph that already has a stale version number in it.
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `config-schema.json:2117-2146` — the `history` object is documented as *"Single namespace owner for all history.db consumer tunables"* and already has a `db_path` property (`:2143-2146`) with the same `LL_HISTORY_DB`-env-var-precedence shape `resolve_history_db()` implements. If a configurable manifest path is wanted, `history.workspace_manifest_path` alongside `history.db_path` is the sibling location to register it in — the issue's own `discover_workspace_members(manifest_path: Path = Path("ll-workspace.yaml"))` signature is currently a bare function default, not routed through this config/env-var chain.
+- `config-schema.json:704-728` — the `decisions` object's registration shape (top-level object, `enabled`/`log_path`/`auto_generate` properties with inline-documented defaults) is the closest existing precedent for registering a new top-level `workspace` config section, if one is introduced instead of nesting under `history`.
 
 ## Program Design
 
@@ -129,6 +165,18 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 4. `analyze_agent_quality()` runs per attached schema — since it currently opens/closes its own connection from a path and issues unqualified SQL, either call it once per member's own throwaway `_connect_readonly()` connection (bypassing ATTACH for this call), or give it a schema-qualifier/open-connection parameter so its existing unqualified queries can run against `repo_N.*` tables; this is an open implementation call research could not resolve further (see Integration Map → Files to Modify).
 5. `format_agent_quality_markdown()` is extended to render `AggregationResult`'s per-repo breakdown plus totals; since no existing dataclass-merge precedent exists in this codebase, the `totals: QualityAnalysis` combination is new code, not an adaptation.
 6. Source DBs are asserted unmodified via a `hashlib.sha256` before/after checksum test, following `test_feat3304_artifact_dashboard.py::TestSourceDbUntouched`'s existing template.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Model the no-manifest graceful-degradation test on `TestDecisionsGracefulDegradation` (`test_decisions.py:639-651`) / `TestLoadDesignTokensFallbacks` (`test_design_tokens.py:227-258`) exactly, and the byte-for-byte fallback assertion on `test_worker_pool.py:2267-2294` / `test_issues_cli.py:83-103`'s exact-equality shape — not a diff/checksum approach.
+- Model the multi-ATTACH test on `test_feat3304_artifact_dashboard.py:734-760::TestBuildSnapshotDb`'s behavioral-assertion shape, extended for N simultaneous read-only ATTACHes (no existing test covers more than one ATTACH at a time).
+- Reuse `resolve_history_db()`'s `root=` parameter (`session_store/db.py:121`) for per-member path resolution in `aggregate_history_dbs()` rather than reimplementing path discovery.
+- Decide and implement the config registration for a configurable `ll-workspace.yaml` path (if wanted): `history.workspace_manifest_path` alongside `history.db_path` in `config-schema.json:2117-2146`, following that property's existing `LL_HISTORY_DB`-precedence shape.
+- Update `docs/ARCHITECTURE.md:712` (Producer→Consumer Flow) and `docs/reference/API.md:92,8207` to describe the workspace rollup instead of purely single-repo framing; add a `--workspace` subsection to `docs/reference/CLI.md:3162-3206`.
+- Add a `--workspace` flag test to `TestHistoryQualitySubcommand` (`test_cli_history.py:220-271`), following the same argv-patch + `tmp_path` shape as its four existing tests.
+- Cross-check FEAT-3398's Integration Map citations of `analyze_agent_quality()`/`format_agent_quality_markdown()` signatures if this issue lands first and changes them.
 
 ## Impact
 
