@@ -1,0 +1,12 @@
+{
+  "id": "f771bd64-89d0-40c7-ac8d-13b426f5c731",
+  "type": "decision",
+  "timestamp": "2026-09-08T19:42:13Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Mirrors decisions.py::_resolve_path(), this issue's own cited dispatch model, which anchors its default at the resolved project root rather than a bare cwd-relative path \u2014 avoiding the same stray-directory failure mode resolve_ll_dir() exists to prevent.",
+  "rule": "Default manifest_path resolution: anchor via find_project_root(Path.cwd())",
+  "scope": "issue",
+  "alternatives_rejected": "Bare cwd-relative default (Path(\"ll-workspace.yaml\")) \u2014 reproduces the stray-.ll/-directory-class bug one level up for callers invoked from a subdirectory or worktree.",
+  "issue": "FEAT-3409"
+}
