@@ -61,6 +61,12 @@ Decomposed from ENH-3397.
 - `--retry-of`'s refusal shape should match `cli/queue.py::cmd_requeue`/`cmd_remove` (id
   lookup → persisted-status check → refuse naming id/status, exit 1), not
   `cli/issues/create.py:485-494`'s `--parent` (silent no-op on unresolved reference).
+- **Naming collision, not a coupling** (found by `/ll:wire-issue`): `superseded_by` already
+  exists in the codebase today as an issue-frontmatter field (ENH-2829's derived reverse
+  edge for issue supersession, `docs/reference/CLI.md:1475`). That field is unrelated to
+  the `harness_events.superseded_by` column this issue writes — different table, different
+  domain — but shares the exact name; do not conflate the two when grepping during
+  implementation.
 
 ### Codebase Research Findings
 
@@ -111,6 +117,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/history_reader/harness.py` — `recent_harness_events()`/`harness_eval_pass_rate()`/`harness_eval_abstention_rate()` `SELECT ... FROM harness_events` unfiltered on `attempt_kind`/`superseded_by`; will surface `record_attempt()`-written rows immediately once this issue lands, though the counting-logic fix itself is ENH-3408 — no code change here, awareness only [Agent 2 finding]
 - `scripts/little_loops/session_store/queries.py:104` — `_EXPORT_TABLE_MAP["harness_event"]` feeds `ll-history export`; new attempt-tracking rows land in export output unfiltered, same awareness caveat — no code change here [Agent 1 finding]
+
+_Second wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/queue.py:483,486-494` (`_drain_once()`) — an existing, independent site that already reads `RunnerResult.timed_out`/`.error`/`.exit_code` off a fresh result to compute a `status = "done" if not result.timed_out and result.error is None and result.exit_code == 0 else "failed"` shape. This is a working precedent for exactly the kind of signal read the `--retry-of` gate needs (distinct from the `cmd_requeue`/`cmd_remove` refusal-*shape* precedent already cited above) — no code change here, reference only [Agent 1 finding]
+- `scripts/little_loops/observability/schema.py:730-735` (`HarnessEventVariant`) — the DES variant registry documents one frozen-dataclass variant per Channel-A direct writer that persists to `.ll/history.db` (per the module docstring), and `record_harness_event` already has one. Confirmed the DES audit walker (`observability/audit.py`) only statically detects `self._emit(...)`/`event_bus.emit(...)`/`bus.emit(...)` call sites (Channel B), so `record_attempt`/`admit_retry`/`authoritative_attempt` — plain SQL writers with no emit call — will not trip the audit gate either way; adding sibling variants for them would match the registry's documentation convention but is not required for any test to pass — awareness only, no action confirmed as required [Agent 2 finding]
 
 ## Tests
 
@@ -303,6 +313,7 @@ ENH-3408's scope, not this issue's.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-08T19:18:57 - `8253aa54-816e-4b30-a515-5729bc18e0a3.jsonl`
 - `/ll:decide-issue` - 2026-09-08T19:08:06 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:reconcile-issue` - 2026-09-08T18:52:23 - `454b24f9-6fdd-4c61-af5d-a12445ba857c.jsonl`
 - `/ll:refine-issue` - 2026-09-08T18:44:58 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
