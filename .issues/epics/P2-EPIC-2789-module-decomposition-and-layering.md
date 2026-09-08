@@ -56,6 +56,7 @@ ENH-2776 (Dissolve cli/loop/_helpers.py grab-bag into named modules).
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-08T02:29:09 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:42:02 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:53 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
@@ -69,6 +70,12 @@ ENH-2776 (Dissolve cli/loop/_helpers.py grab-bag into named modules).
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This epic's ENH-2776 ("Dissolve `cli/loop/_helpers.py` grab-bag into named modules") restructures `scripts/little_loops/cli/loop/`. EPIC-2938 lands new subcommands (ENH-2943, FEAT-2948, ENH-2949) into the same directory. Sequence ENH-2776 before EPIC-2938's `cli/loop/*` additions, or have whichever lands second rebase onto the other's resulting module layout, to avoid divergent restructurings of the same package.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's deferred `ENH-3359` ("Extract `_prepatch_*`/`_tamper_guard_*` collaborators from fsm/executor.py") must target the post-EPIC-2856 shape of `fsm/executor.py` — EPIC-2856's `ENH-2933`/`ENH-2934` already landed tamper-guard core and FSM-adapter code (the `_tamper_guard_*` collaborators) in that same file. When ENH-3359 resumes, sequence/verify it against the landed tamper-guard adapter rather than the pre-tamper-guard shape assumed at ENH-2775's original split.
 
 ## Verification Notes (2026-08-12)
 

@@ -95,6 +95,7 @@ leftover from a prior `--check`-mode run (which persists the verdict field
 without writing Verification Notes) — corrected to `VALID` here.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-08T02:29:09 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:verify-issues` - 2026-08-14T16:47:56 - `c9c216e7-2d10-4e53-9fc0-c38b57955ad8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:52 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
@@ -118,3 +119,9 @@ FEAT-3038 was decomposed into FEAT-3116, FEAT-3117, and FEAT-3118. The
 Children section above now tracks that generation; any future rollup or
 scoping of this epic should reference the open grandchildren rather than the
 decomposed FEAT-3038/FEAT-3044 shells.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's `FEAT-3040` ("Advisor consult telemetry in `history.db`") adds a new consult write path into `history.db`, but is not tracked under EPIC-2457's `relates_to`/Children — the epic explicitly designated as the rollup for new `history.db` signal classes. Confirm whether FEAT-3040 should be folded under EPIC-2457 or is deliberately kept separate before adding its table.

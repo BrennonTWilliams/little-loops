@@ -198,6 +198,7 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-08T02:29:08 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:15:46 - `79da3fca-fbcb-4530-ac1f-339229369837.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:10:48 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
 - `/ll:wire-issue` - 2026-09-08T02:00:49 - `2d920f5a-2d4d-4a14-9303-a5bfb4bae86a.jsonl`

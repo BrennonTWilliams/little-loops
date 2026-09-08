@@ -236,6 +236,7 @@ confidence-per-effort items in the set.
 - 2026-08-10: Verified 2026-08-10: 12/13 children done; only FEAT-2855 (maintainability trend) remains, status deferred (non-terminal). Epic is near-complete but not yet closable.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-08T02:29:09 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:57 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:54 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
@@ -249,6 +250,12 @@ confidence-per-effort items in the set.
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This epic's FEAT-2878 ("Trace-level assertions in the eval harness, with optional multi-host divergence runs") and EPIC-2938's FEAT-2948 ("ll-loop scaffold-eval / scaffold-verify") both modify eval-harness templates/scaffolding. Whichever lands second should confirm its changes are additive to the other's, consistent with the coordination already recorded for the EPIC-2412/ENH-2415 overlap.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's now-done `ENH-2933`/`ENH-2934` (tamper-guard core + FSM adapter) landed `_tamper_guard_*` collaborators in `fsm/executor.py`. EPIC-2789's deferred `ENH-3359` plans to extract those same collaborators (split out of ENH-2775) — when ENH-3359 resumes, it must target the post-ENH-2934 shape of `fsm/executor.py`, not the pre-tamper-guard shape assumed when it was originally scoped.
 
 ## Verification Notes (2026-08-12)
 

@@ -336,6 +336,7 @@ _Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)*
 - `.claude/CLAUDE.md` — documents the `ll-session` CLI (`search --fts`, `recent --kind`, `backfill`, `rebuild`, `compact`) that surfaces each new event kind this epic's children add.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-08T02:29:09 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:44:28 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:55 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
@@ -352,3 +353,9 @@ _Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)*
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This epic's skill/tool success signal (ENH-2460's `exit_code`/`success`/`duration_ms` columns on `skill_events` in history.db) is a separate substrate from EPIC-1918's ll-logs-JSONL-sourced skill-frequency/error-rate/correction-rate telemetry (ENH-1921). No code dependency exists between them, but a future consumer should be aware both sources exist before building a third.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): EPIC-3041's `FEAT-3040` ("Advisor consult telemetry in `history.db`") adds a new consult write path into `history.db` but is not tracked in this epic's `relates_to`/Children. This epic is the designated rollup for new `history.db` signal classes and explicitly names "schema sprawl from uncoordinated children" as its cumulative risk — before adding a competing table, confirm whether FEAT-3040's write path should be folded under this epic's children or is deliberately kept separate.
