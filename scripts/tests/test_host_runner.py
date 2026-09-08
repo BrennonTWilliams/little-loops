@@ -25,6 +25,7 @@ import pytest
 
 from little_loops.host_runner import (
     CREDENTIAL_SCOPES,
+    GH_SCOPED_NO_TOKEN,
     AutomationContext,
     BlockingJsonError,
     CapabilityEntry,
@@ -496,9 +497,14 @@ class TestResolveScopes:
 class TestGhScopeExtra:
     """ENH-3205: gh_scope_extra() — GH_CONFIG_DIR redirect + GH_TOKEN pairing."""
 
-    def test_without_token_only_redirects_config_dir(self, tmp_path: Path) -> None:
-        """with_token=False returns only GH_CONFIG_DIR (the non-github declaring case)."""
-        assert gh_scope_extra(tmp_path, with_token=False) == {"GH_CONFIG_DIR": str(tmp_path)}
+    def test_without_token_redirects_config_dir_and_injects_sentinel(self, tmp_path: Path) -> None:
+        """BUG-3402: with_token=False redirects GH_CONFIG_DIR and injects the
+        GH_SCOPED_NO_TOKEN sentinel, defeating a keychain-backed `gh auth
+        token` re-mint (the non-github declaring case)."""
+        assert gh_scope_extra(tmp_path, with_token=False) == {
+            "GH_CONFIG_DIR": str(tmp_path),
+            "GH_TOKEN": GH_SCOPED_NO_TOKEN,
+        }
 
     def test_with_token_prefers_gh_token_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -577,6 +583,35 @@ class TestGhScopeExtra:
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         with patch("little_loops.host_runner.subprocess.run", side_effect=exc):
             with pytest.raises(RuntimeError):
+                gh_scope_extra(tmp_path, with_token=True)
+
+    def test_with_token_rejects_inherited_sentinel_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3402: a nested github-declaring state that inherits the
+        GH_SCOPED_NO_TOKEN sentinel via GH_TOKEN must not treat it as a
+        real token — it falls through to the probe, and a probe that also
+        surfaces the sentinel (env-inherited) raises the existing
+        no-token RuntimeError rather than injecting the sentinel as a
+        working credential."""
+        monkeypatch.setenv("GH_TOKEN", GH_SCOPED_NO_TOKEN)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        probe = MagicMock(returncode=0, stdout=f"{GH_SCOPED_NO_TOKEN}\n")
+        with patch("little_loops.host_runner.subprocess.run", return_value=probe):
+            with pytest.raises(RuntimeError, match="github"):
+                gh_scope_extra(tmp_path, with_token=True)
+
+    def test_with_token_rejects_sentinel_probe_stdout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3402: no env token but the gh auth token probe itself prints
+        the sentinel (env-inherited by the probe's own child process) —
+        must not be accepted as a real token."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        probe = MagicMock(returncode=0, stdout=f"{GH_SCOPED_NO_TOKEN}\n")
+        with patch("little_loops.host_runner.subprocess.run", return_value=probe):
+            with pytest.raises(RuntimeError, match="github"):
                 gh_scope_extra(tmp_path, with_token=True)
 
 

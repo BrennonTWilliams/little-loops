@@ -26,17 +26,18 @@ assertions:
 - claim: gh auth token prints the ambient session's token (exit 0) even when no
     GH_TOKEN/GITHUB_TOKEN env var is set (keyring-backed login)
   result: pass
-- claim: 'ENH-3205 gap (2026-09-07) — unlike gh auth status/gh api, gh auth token
-    still prints the operator''s token (exit 0) even when GH_CONFIG_DIR is
-    redirected to a freshly-created empty directory and GH_TOKEN/GITHUB_TOKEN are
-    unset. On macOS gh stores the OAuth token in the login Keychain under a fixed
-    service name ("gh:github.com"), keyed by hostname only — not gated by
-    GH_CONFIG_DIR/hosts.yml the way gh auth status/gh api are. Consequence: the
-    GH_CONFIG_DIR-redirect-based non-escalation guarantee in ENH-3205''s Decision
-    Rules ("an inner github state spawned under an outer non-github declaring
-    state... gh auth token fails against the inherited empty config dir") does
-    NOT hold on keychain-backed macOS gh — a nested github-scoped spawn can still
-    mint a token via the probe regardless of an inherited empty GH_CONFIG_DIR.'
+- claim: 'ENH-3205 gap, ambient-only (2026-09-07, reworded 2026-09-08 per
+    BUG-3402) — unlike gh auth status/gh api, gh auth token still prints the
+    operator''s token (exit 0) even when GH_CONFIG_DIR is redirected to a
+    freshly-created empty directory and GH_TOKEN/GITHUB_TOKEN are left unset
+    (i.e. no gh_scope_extra() sentinel is injected — a fully ambient
+    invocation with no credential-scope declared at all). On macOS gh stores
+    the OAuth token in the login Keychain under a fixed service name
+    ("gh:github.com"), keyed by hostname only — not gated by
+    GH_CONFIG_DIR/hosts.yml the way gh auth status/gh api are. This residual
+    case is unchanged by the BUG-3402 sentinel fix below, which only applies
+    where gh_scope_extra() itself is called (with_token=False) — re-verified
+    2026-09-08 against gh 2.86.0 after the fix landed.'
   result: fail
 - claim: 'BUG-3402 fix (2026-09-08) — setting GH_TOKEN to an obviously-invalid
     sentinel value (e.g. "ll-scoped-no-github-token") alongside a GH_CONFIG_DIR
@@ -49,6 +50,15 @@ assertions:
     itself (exit 0) rather than the operator''s real Keychain-backed token,
     confirming GH_TOKEN precedence over Keychain closes the gh_scope_extra()
     isolation gap for the with_token=False case.'
+  result: pass
+- claim: 'BUG-3402 fix, nested case (2026-09-08) — with GH_TOKEN set to the
+    GH_SCOPED_NO_TOKEN sentinel (simulating a nested github-declaring state
+    inheriting an outer non-github declaring state''s injected sentinel via
+    env), gh auth token prints only the sentinel value (exit 0), not the
+    operator''s real Keychain-backed token — confirming a nested probe
+    cannot reach Keychain even when the sentinel is inherited rather than
+    freshly injected, closing the ENH-3205 non-escalation gap on
+    keychain-backed macOS gh. Verified against gh 2.86.0.'
   result: pass
 raw_output_path: .ll/learning-tests/raw/gh.txt
 ---

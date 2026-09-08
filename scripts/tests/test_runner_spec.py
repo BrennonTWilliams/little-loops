@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from little_loops.host_runner import AutomationContext, HostInvocation
+from little_loops.host_runner import GH_SCOPED_NO_TOKEN, AutomationContext, HostInvocation
 from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType, run_action
 
 
@@ -283,9 +283,11 @@ class TestRunActionDispatch:
         assert "ll-gh-" in env["GH_CONFIG_DIR"]
 
     def test_cmd_dispatch_empty_scopes_redirects_config_dir_no_token(self) -> None:
-        """BUG-3400: scopes=frozenset() still gets the GH_CONFIG_DIR redirect
-        (declaring-but-not-github denies the ambient keyring session too) but
-        no GH_TOKEN — mirrors test_shell_declared_empty_scopes_redirects_config_dir_no_token."""
+        """BUG-3400/BUG-3402: scopes=frozenset() still gets the GH_CONFIG_DIR
+        redirect (declaring-but-not-github denies the ambient keyring
+        session too) and the GH_SCOPED_NO_TOKEN sentinel as GH_TOKEN, not
+        the operator's real token — mirrors
+        test_shell_declared_empty_scopes_redirects_config_dir_no_token."""
         spec = ActionSpec(
             name="x",
             runner=RunnerType.CMD,
@@ -304,7 +306,7 @@ class TestRunActionDispatch:
         assert result.exit_code == 0
         env = mock_popen.call_args.kwargs["env"]
         assert "GH_CONFIG_DIR" in env
-        assert "GH_TOKEN" not in env
+        assert env["GH_TOKEN"] == GH_SCOPED_NO_TOKEN
 
     def test_cmd_dispatch_gh_scope_extra_failure_spawns_nothing_and_cleans_up(self) -> None:
         """BUG-3400: a RuntimeError from gh_scope_extra() (mirrors the FSM

@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.fsm.executor import ActionResult, DefaultActionRunner, SimulationActionRunner
-from little_loops.host_runner import AutomationContext
+from little_loops.host_runner import GH_SCOPED_NO_TOKEN, AutomationContext
 
 
 class _MockFileObj:
@@ -440,8 +440,8 @@ class TestDefaultActionRunnerShellPath:
     ) -> None:
         """ENH-3205 Expected Behavior invariant: a declaring-but-non-github
         state (scopes=[]) still gets the GH_CONFIG_DIR redirect (so the
-        ambient keyring login is hidden) but no GH_TOKEN, even when the
-        parent process has one set."""
+        ambient keyring login is hidden) and the GH_SCOPED_NO_TOKEN
+        sentinel (BUG-3402), not the parent process's real token."""
         monkeypatch.setenv("GH_TOKEN", "gh-secret")
         result = DefaultActionRunner().run(
             "echo ${GH_TOKEN:-absent}:${GH_CONFIG_DIR:-absent}",
@@ -450,7 +450,7 @@ class TestDefaultActionRunnerShellPath:
             scopes=[],
         )
         token, config_dir = result.output.strip().split(":")
-        assert token == "absent"
+        assert token == GH_SCOPED_NO_TOKEN
         assert config_dir != "absent"
 
     def test_shell_undeclared_scopes_no_config_dir_redirect(
@@ -464,14 +464,15 @@ class TestDefaultActionRunnerShellPath:
 
     @pytest.mark.skipif(shutil.which("gh") is None, reason="gh CLI not installed")
     def test_shell_declared_non_github_scope_hides_ambient_gh_login(self) -> None:
-        """ENH-3205: this is the test that would have caught the original
-        both-or-neither bug — a declaring-but-non-github state's GH_CONFIG_DIR
-        redirect hides the ambient gh keyring login."""
-        result = DefaultActionRunner().run(
-            "gh auth status 2>&1 | head -1", 15, False, scopes=[]
-        )
-        combined = (result.output + result.stderr).lower()
-        assert "not logged into" in combined
+        """BUG-3402: a declaring-but-non-github state's `gh auth token` must
+        print the GH_SCOPED_NO_TOKEN sentinel, not the operator's real
+        Keychain-backed token — this is the test that would have caught the
+        Keychain-bypass gap (the `gh auth status` form is not sufficient:
+        it doesn't exercise `gh auth token`, which bypasses GH_CONFIG_DIR
+        on keychain-backed macOS `gh`). Offline and deterministic: the
+        sentinel short-circuits before any network round-trip."""
+        result = DefaultActionRunner().run("gh auth token", 15, False, scopes=[])
+        assert result.output.strip() == GH_SCOPED_NO_TOKEN
 
     def test_shell_github_scope_no_token_fails_state_spawns_nothing(
         self, monkeypatch: pytest.MonkeyPatch
@@ -486,9 +487,7 @@ class TestDefaultActionRunnerShellPath:
             patch("little_loops.host_runner.subprocess.run", return_value=failed_probe),
             patch("little_loops.fsm.runners.subprocess.Popen") as mock_popen,
         ):
-            result = DefaultActionRunner().run(
-                "echo should-not-run", 10, False, scopes=["github"]
-            )
+            result = DefaultActionRunner().run("echo should-not-run", 10, False, scopes=["github"])
 
         mock_popen.assert_not_called()
         assert result.exit_code != 0

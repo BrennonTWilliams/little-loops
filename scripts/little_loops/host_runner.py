@@ -183,6 +183,14 @@ def resolve_scopes(scopes: Iterable[str]) -> frozenset[str]:
     return frozenset(resolved)
 
 
+#: BUG-3402: injected as GH_TOKEN for a non-`github`-declaring state so a
+#: keychain-backed macOS `gh` can't re-mint the operator's real token via
+#: `gh auth token` (which bypasses the GH_CONFIG_DIR redirect — see
+#: gh_scope_extra()'s docstring). Must be non-empty: an empty-string
+#: GH_TOKEN is treated by `gh` as unset, falling through to Keychain.
+GH_SCOPED_NO_TOKEN = "ll-scoped-no-github-token"
+
+
 def gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]:
     """Build the env overrides that scope a child's ``gh`` CLI access (ENH-3205).
 
@@ -190,30 +198,41 @@ def gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]:
     ``~/.config/gh`` login (and the keyring session it points at) is not
     visible to the child — this is unconditional so a declaring-but-not-
     ``github`` state still loses the ambient session, not just an
-    un-injected token. When *with_token* is True, additionally resolves a
-    ``GH_TOKEN``: the ``GH_TOKEN``/``GITHUB_TOKEN`` env vars first, else a
-    ``gh auth token`` probe run against the *ambient* (un-redirected)
-    config so it can still see the operator's keyring login. Raises
-    ``RuntimeError`` when no token is obtainable — there is no code path
-    that falls back to leaving the child un-redirected or un-scoped.
+    un-injected token. When *with_token* is False, also injects
+    ``GH_TOKEN=GH_SCOPED_NO_TOKEN`` — a non-empty, obviously-invalid
+    sentinel — so a keychain-backed macOS ``gh`` can't bypass the
+    ``GH_CONFIG_DIR`` redirect via ``gh auth token`` (BUG-3402). When
+    *with_token* is True, additionally resolves a real ``GH_TOKEN``: the
+    ``GH_TOKEN``/``GITHUB_TOKEN`` env vars first (an inherited sentinel is
+    treated as unset), else a ``gh auth token`` probe run against the
+    *ambient* (un-redirected) config so it can still see the operator's
+    keyring login (a probe result equal to the sentinel is likewise treated
+    as unset). Raises ``RuntimeError`` when no token is obtainable — there
+    is no code path that falls back to leaving the child un-redirected or
+    un-scoped.
 
-    **Known gap (ENH-3205, recorded in ``.ll/learning-tests/gh.md``):** on
-    macOS, ``gh`` stores its OAuth token in the login Keychain under a fixed
-    per-hostname service name, looked up independently of
+    **Known gap (ENH-3205/BUG-3402, recorded in ``.ll/learning-tests/gh.md``):**
+    on macOS, ``gh`` stores its OAuth token in the login Keychain under a
+    fixed per-hostname service name, looked up independently of
     ``GH_CONFIG_DIR``/``hosts.yml``. ``gh auth status``/``gh api`` do
     consult ``hosts.yml`` and are correctly hidden by the redirect, but
-    ``gh auth token`` is not — a nested ``github``-scoped spawn running
-    under an *inherited* empty ``GH_CONFIG_DIR`` (e.g. from an outer
-    non-``github`` declaring state) can still mint a token via this same
-    probe. The redirect still narrows which processes see the ambient
-    *session* (``gh auth status``/``gh api``/interactive commands), but does
-    not by itself prevent re-minting a token via ``gh auth token`` on a
-    keychain-backed install.
+    ``gh auth token`` is not. The ``GH_SCOPED_NO_TOKEN`` sentinel closes
+    this for the ``with_token=False`` case (both directly and for a nested
+    ``github``-declaring spawn that inherits the sentinel — see the
+    env/probe rejection above), so the only residual gap is a fully
+    *ambient* invocation (no scoping at all), which is out of scope for
+    this function. A non-``github``-declaring child now gets an HTTP 401
+    "Bad credentials" from any ``gh`` command that hits the network,
+    instead of the previous local "run gh auth login" message, and any
+    other tool honoring ``GH_TOKEN`` loses its anonymous fallback.
     """
     extra = {"GH_CONFIG_DIR": str(config_dir)}
     if not with_token:
+        extra["GH_TOKEN"] = GH_SCOPED_NO_TOKEN
         return extra
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token == GH_SCOPED_NO_TOKEN:
+        token = None
     if not token:
         # Probes the *ambient* gh session on purpose — project_child_env()
         # with no env_allow is full inheritance (no GH_CONFIG_DIR redirect),
@@ -235,7 +254,8 @@ def gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]:
         except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
             raise RuntimeError(f"gh auth token probe failed: {exc}") from exc
         if probe.returncode == 0:
-            token = probe.stdout.strip()
+            probed = probe.stdout.strip()
+            token = probed if probed != GH_SCOPED_NO_TOKEN else None
     if not token:
         raise RuntimeError(
             "declared 'github' scope but no token available: "

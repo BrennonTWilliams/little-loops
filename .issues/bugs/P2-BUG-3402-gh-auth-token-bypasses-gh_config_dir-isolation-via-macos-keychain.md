@@ -3,10 +3,11 @@ id: BUG-3402
 type: BUG
 title: gh auth token bypasses GH_CONFIG_DIR isolation via macOS Keychain
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T00:36:57Z'
+completed_at: '2026-09-08T01:52:15Z'
 parent: EPIC-3212
 learning_tests_required:
 - gh
@@ -157,8 +158,33 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T01:50:52 - `f98e0583-6721-4db6-92c5-ce8267fbec9c.jsonl`
+- `/ll:ready-issue` - 2026-09-08T01:32:37 - `55c58021-b88c-49e4-93bf-e5ed51ec17bb.jsonl`
 - `/ll:confidence-check` - 2026-09-08T01:25:44 - `f1b42f65-5d8a-4ce5-a5e9-6f906a3adabc.jsonl`
 - `/ll:wire-issue` - 2026-09-08T01:01:13 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:52:38 - `f6f85f70-0f74-4fad-b98e-66827bb86886.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:41:36 - `e2e1620c-1ab1-45d3-8135-fca9b61f9221.jsonl`
 - `/ll:capture-issue` - 2026-09-08T00:37:04 - `818ac84c-8dd8-46bc-9d1e-d582e9b2e72e.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-08
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/host_runner.py`: added `GH_SCOPED_NO_TOKEN` sentinel constant; `gh_scope_extra(with_token=False)` now injects it as `GH_TOKEN`; `with_token=True` treats an inherited sentinel (via `GH_TOKEN`/`GITHUB_TOKEN` env or `gh auth token` probe stdout) as "no token" and falls through to the existing `RuntimeError`; docstring updated.
+- `scripts/tests/test_host_runner.py`: updated `TestGhScopeExtra`'s exact-dict assertion for the sentinel; added `test_with_token_rejects_inherited_sentinel_env` and `test_with_token_rejects_sentinel_probe_stdout`.
+- `scripts/tests/test_fsm_runners.py`: updated `test_shell_declared_empty_scopes_redirects_config_dir_no_token` to assert the sentinel; rewrote `test_shell_declared_non_github_scope_hides_ambient_gh_login` to exercise `gh auth token` (offline, deterministic) instead of `gh auth status` (which becomes network-dependent under the sentinel).
+- `scripts/tests/test_runner_spec.py`: updated `test_cmd_dispatch_empty_scopes_redirects_config_dir_no_token` to assert the sentinel value (the CMD/queue path inherits the fix automatically via `gh_scope_extra()`).
+- `.ll/learning-tests/gh.md` / `raw/gh.txt`: reworded the "ENH-3205 gap" claim as ambient-only (re-verified unchanged), added a nested-case claim verifying `GH_TOKEN=<sentinel> gh auth token` prints only the sentinel.
+- `.issues/enhancements/P3-ENH-3205-...md`, `docs/guides/LOOPS_GUIDE.md`, `docs/reference/API.md`: updated isolation-guarantee language for the sentinel mechanism and the HTTP 401 behavior change for non-`github`-declaring children.
+
+### Verification Results
+- Tests: PASS (targeted: `test_host_runner.py`, `test_fsm_runners.py`, `test_runner_spec.py` all green; full suite has 37 pre-existing failures unrelated to this change, confirmed present on `main` before this fix — `test_cli_loop_lifecycle.py::TestCmdResume*` and `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`)
+- Lint: PASS (`ruff check` on all changed files)
+- Types: PASS (`mypy scripts/little_loops/host_runner.py`)
+- Manual macOS verification: confirmed against `gh` 2.86.0 (keychain-backed login) that `GH_TOKEN=<sentinel> gh auth token` prints only the sentinel (nested-rejection case), and that the residual ambient-only gap (no `GH_TOKEN` set at all) is unchanged
+- Integration: PASS

@@ -50,3 +50,17 @@ exit: 1
 $ GH_CONFIG_DIR=$EMPTY GH_TOKEN=ll-scoped-no-github-token gh auth token
 ll-scoped-no-github-token
 exit: 0
+
+=== 2026-09-08 (BUG-3402 fix, nested case + ambient residual re-check) gh version 2.86.0 (2026-01-21), macOS, login source: keyring ===
+
+=== Claim: GH_TOKEN=<sentinel> (inherited, not freshly injected) -> gh auth token prints only the sentinel ===
+$ GH_TOKEN=ll-scoped-no-github-token gh auth token
+ll-scoped-no-github-token
+exit: 0
+
+=== Re-check: ambient-only residual gap unchanged by the fix (no GH_TOKEN set at all) ===
+$ env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR=$EMPTY gh auth status
+You are not logged into any GitHub hosts. To log in, run: gh auth login
+exit: 1
+$ env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR=$EMPTY gh auth token | wc -c
+exit: 0, len: 40 (value not recorded) -- still leaks the real Keychain token when no scope/sentinel is applied at all
