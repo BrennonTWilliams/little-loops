@@ -1,6 +1,6 @@
 ---
 target: gh
-date: '2026-09-04'
+date: '2026-09-08'
 status: proven
 assertions:
 - claim: gh issue list --json number,title,state outputs a valid JSON array (even
@@ -38,5 +38,17 @@ assertions:
     NOT hold on keychain-backed macOS gh — a nested github-scoped spawn can still
     mint a token via the probe regardless of an inherited empty GH_CONFIG_DIR.'
   result: fail
+- claim: 'BUG-3402 fix (2026-09-08) — setting GH_TOKEN to an obviously-invalid
+    sentinel value (e.g. "ll-scoped-no-github-token") alongside a GH_CONFIG_DIR
+    redirected to an empty directory causes gh auth status to report a login
+    failure ("The token in GH_TOKEN is invalid.", exit 1) instead of falling back
+    to the Keychain-backed ambient login.'
+  result: pass
+- claim: 'BUG-3402 fix (2026-09-08) — under the same GH_TOKEN sentinel +
+    GH_CONFIG_DIR-redirect environment, gh auth token prints the sentinel value
+    itself (exit 0) rather than the operator''s real Keychain-backed token,
+    confirming GH_TOKEN precedence over Keychain closes the gh_scope_extra()
+    isolation gap for the with_token=False case.'
+  result: pass
 raw_output_path: .ll/learning-tests/raw/gh.txt
 ---

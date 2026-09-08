@@ -35,3 +35,18 @@ exit: 4
 === Claim: gh auth token yields ambient token with no env var set ===
 $ gh auth token | wc -c
 exit: 0, len: 40 (value not recorded)
+
+=== 2026-09-08 (BUG-3402 fix verification) gh version 2.86.0 (2026-01-21), macOS, login source: keyring ===
+
+=== Claim: GH_TOKEN=invalid sentinel + GH_CONFIG_DIR=<empty dir> -> gh auth status fails ===
+$ GH_CONFIG_DIR=$EMPTY GH_TOKEN=ll-scoped-no-github-token gh auth status
+github.com
+  X Failed to log in to github.com using token (GH_TOKEN)
+  - Active account: true
+  - The token in GH_TOKEN is invalid.
+exit: 1
+
+=== Claim: GH_TOKEN=invalid sentinel + GH_CONFIG_DIR=<empty dir> -> gh auth token returns the sentinel, not the real Keychain token ===
+$ GH_CONFIG_DIR=$EMPTY GH_TOKEN=ll-scoped-no-github-token gh auth token
+ll-scoped-no-github-token
+exit: 0
