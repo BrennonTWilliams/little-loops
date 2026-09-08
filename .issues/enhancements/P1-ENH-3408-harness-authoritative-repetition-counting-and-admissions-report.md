@@ -347,15 +347,16 @@ graded attempt plus two infra retries ... earliest graded attempt's verdict") ca
 under `_retry_refusal`'s timeout-only gate, and that the admissions tabulation had no
 defined scope and no way to obtain attempt ids. Rewritten as D2 and D4.
 
-_`/ll:verify-issues` — 2026-09-08:_ verdict NEEDS_UPDATE. Re-checked every file/line/quote
-citation against HEAD: all code-level citations (dataclass fields, function signatures,
+_`/ll:verify-issues` — 2026-09-08:_ re-checked every file/line/quote citation against
+HEAD: all code-level citations (dataclass fields, function signatures,
 `writers.py::_admit_retry`, `schema.py:1377`, `queries.py::recent`, the D2 timeout-only
 retry gate) matched exactly; `ll-verify-evidence` found no fabricated quotes; no active
-required decision rules. Found and corrected two stale citations: (1) the Summary's commit
-attribution collapsed ENH-3406 and ENH-3407 onto one commit — split into their actual
-commits (`b55eb2872` schema, `28e64617d` writers/gate); (2) the
+required decision rules. Found and corrected two stale citations in this pass: (1) the
+Summary's commit attribution collapsed ENH-3406 and ENH-3407 onto one commit — split into
+their actual commits (`b55eb2872` schema, `28e64617d` writers/gate); (2) the
 `docs/guides/EVALUATION_GUIDE.md` "nothing reads `harness_events`..." quote was cited at
-lines 308/446 but now lives at line 458 — corrected in Files to Modify.
+lines 308/446 but now lives at line 458 — corrected in Files to Modify. Both fixed in
+place; verdict **VALID** with corrections applied.
 
 ## Confidence Check Notes
 
