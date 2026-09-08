@@ -209,6 +209,12 @@ def _render_cluster_tree(
 
     def _annot(parent: str, child: str) -> str:
         """Colored relationship label with a direction arrow relative to *parent*."""
+        # BUG-3411: `from_id == parent` looks walk-relative but is not — for a
+        # two-node edge, parent/child always partition {from_id, to_id}, so this
+        # is mathematically equivalent to `to_id == child`. The arrow already
+        # reflects the edge's fixed from_id/to_id direction; a hub that is
+        # from_id for one neighbor and to_id for another correctly gets opposite
+        # glyphs across those edges — that is not a flip bug.
         from_id, _to_id, rel = rel_of[frozenset({parent, child})]
         arrow = "→" if from_id == parent else "←"
         return f"{arrow} {colorize(rel, EDGE_COLOR.get(rel, '37'))}"

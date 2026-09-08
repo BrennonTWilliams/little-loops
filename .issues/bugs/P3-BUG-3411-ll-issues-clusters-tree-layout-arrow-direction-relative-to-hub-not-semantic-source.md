@@ -4,10 +4,11 @@ type: BUG
 title: 'll-issues clusters tree layout: arrow direction relative to hub, not semantic
   source'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T19:25:17Z'
+completed_at: '2026-09-08T22:16:41Z'
 confidence_score: 95
 outcome_confidence: 93
 score_complexity: 25
@@ -182,7 +183,31 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-09-08 | Priority: P3
+**Completed** | Created: 2026-09-08 | Priority: P3 | Completed: 2026-09-08
+
+---
+
+## Resolution
+
+- **Action**: fix (Option A — documentation, no logic change)
+- **Completed**: 2026-09-08
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/issues/clusters.py:210-217` (`_annot()`): added an inline
+  comment documenting that `arrow = "→" if from_id == parent else "←"` is
+  mathematically equivalent to keying off `to_id == child` — the arrow already
+  reflects the edge's fixed semantic direction, not tree-walk position. No logic
+  change, per the Decision Rationale's selected Option A and the BUG-2519 precedent.
+- `scripts/tests/test_issues_cli.py::TestIssuesCLIClustersTreeLayout::test_tree_hub_arrow_direction_pinned_to_semantic_source`:
+  new regression test pinning a hub that is `from_id` for one `blocked_by` edge and
+  `to_id` for another, asserting both `→ blocked_by` and `← blocked_by` render —
+  confirming this is correct fixed-direction output, not a flip bug.
+
+### Verification Results
+- Tests: PASS (23440 passed, 43 skipped; 5 pre-existing failures unrelated to this
+  change, confirmed identical on unmodified `main` via `git stash`)
+- Lint: PASS (`ruff check` on both changed files)
 
 ## Steps to Reproduce
 
@@ -231,6 +256,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - No regression test currently exists for tree-layout arrow direction; the issue proposes adding one, but the correct expected behavior needs to be settled first.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T22:16:10 - `7db37a92-093d-4d5a-9a59-dd77ca414993.jsonl`
 - `/ll:confidence-check` - 2026-09-08T21:03:15 - `2d270e0e-548d-4750-9a2e-a5ff79625865.jsonl`
 - `/ll:confidence-check` - 2026-09-08T20:53:43 - `3f9b59f1-b272-4917-896e-999f8ef8d9d9.jsonl`
 - `/ll:wire-issue` - 2026-09-08T20:18:10 - `2894e5fe-06e8-41c0-a899-75965afc819e.jsonl`

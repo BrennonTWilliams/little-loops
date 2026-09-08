@@ -5526,6 +5526,48 @@ class TestIssuesCLIClustersTreeLayout:
         # All three nodes and all three edges are represented in the primary layout.
         assert out.count("BUG-203") >= 2, "sink appears as a branch and a cross-reference"
 
+    def test_tree_hub_arrow_direction_pinned_to_semantic_source(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Regression pin for BUG-3411: hub arrow direction tracks from_id/to_id.
+
+        BUG-301 (hub) is blocked_by BUG-300, and BUG-302 is blocked_by BUG-301.
+        The hub is from_id in the first edge and to_id in the second, so the two
+        blocked_by branches correctly render opposite glyphs (`→` vs `←`) — this
+        is the fixed semantic direction, not a walk-relative flip. BUG-3411's
+        investigation found the reported "flip" was already correct output;
+        this test pins that behavior so it isn't miscategorized as a bug again.
+        """
+        issues_base = temp_project_dir / ".issues"
+        bugs_dir = issues_base / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (issues_base / "completed").mkdir(parents=True)
+        (issues_base / "deferred").mkdir(parents=True)
+        (bugs_dir / "P0-BUG-300-root.md").write_text(
+            "# BUG-300: Root\n\n## Summary\nA.\n\n## Blocks\n- BUG-301\n"
+        )
+        (bugs_dir / "P1-BUG-301-hub.md").write_text(
+            "# BUG-301: Hub\n\n## Summary\nB.\n\n"
+            "## Blocked By\n- BUG-300\n\n## Blocks\n- BUG-302\n"
+        )
+        (bugs_dir / "P2-BUG-302-leaf.md").write_text(
+            "# BUG-302: Leaf\n\n## Summary\nC.\n\n## Blocked By\n- BUG-301\n"
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        out = capsys.readouterr().out
+        assert "→ blocked_by" in out, "hub-as-from_id edge must render →"
+        assert "← blocked_by" in out, "hub-as-to_id edge must render ←"
+
     def test_tree_cycle_terminates(
         self,
         temp_project_dir: Path,
