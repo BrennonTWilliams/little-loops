@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 47
+SCHEMA_VERSION = 48
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1326,6 +1326,19 @@ _MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_credential_scope_events_run_id
         ON credential_scope_events(run_id);
+    """,
+    # v48 (FEAT-3404): little-loops-version stamp on orchestration_runs and
+    # loop_runs, defaulted by the writers from little_loops.__version__ so no
+    # call site has to pass it. NULL means "unstamped": the row predates this
+    # column. Mirrors the base_sha/base_dirty precedent (ENH-2866) but only on
+    # orchestration_runs is base_sha/base_dirty write-once via COALESCE;
+    # ll_version on orchestration_runs uses the same COALESCE(ll_version,
+    # excluded.ll_version) direction as base_sha (keep the dequeue-time
+    # value), while loop_runs is a plain INSERT OR IGNORE with no merge
+    # clause needed.
+    """
+    ALTER TABLE orchestration_runs ADD COLUMN ll_version TEXT;
+    ALTER TABLE loop_runs ADD COLUMN ll_version TEXT;
     """,
 ]
 

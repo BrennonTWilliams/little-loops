@@ -99,7 +99,8 @@ def recent_orchestration_runs(
     try:
         sql = (
             "SELECT run_id, driver, issue_id, status, failure_reason, duration_s, "
-            "wave, pr_url, started_at, ended_at, head_sha, branch, base_sha, base_dirty "
+            "wave, pr_url, started_at, ended_at, head_sha, branch, base_sha, base_dirty, "
+            "ll_version "
             "FROM orchestration_runs "
         )
         clauses: list[str] = []
@@ -328,7 +329,7 @@ def read_prepatch_evidence(
 _LOOP_RUN_COLUMNS = (
     "run_id, loop_name, started_at, ended_at, final_state, iterations, "
     "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch, "
-    "failure_terminal"
+    "failure_terminal, ll_version"
 )
 
 

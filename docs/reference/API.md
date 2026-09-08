@@ -8692,6 +8692,9 @@ class OrchestrationRun:
     ended_at: str | None
     head_sha: str | None
     branch: str | None
+    base_sha: str | None = None
+    base_dirty: int | None = None
+    ll_version: str | None = None
 
 
 def recent_orchestration_runs(
@@ -8731,6 +8734,8 @@ class LoopRun:
     diagnostics_path: str | None
     head_sha: str | None
     branch: str | None
+    failure_terminal: int | None = None
+    ll_version: str | None = None
 
 
 def recent_loop_runs(
@@ -9709,6 +9714,7 @@ def record_orchestration_run(
     branch: str | None = None,
     base_sha: str | None = None,
     base_dirty: bool | None = None,
+    ll_version: str | None = None,
     config: dict | None = None,
 ) -> bool
 ```
@@ -9716,6 +9722,8 @@ def record_orchestration_run(
 UPSERT one `orchestration_runs` row per `(run_id, issue_id)` and replace its matching FTS row (ENH-2492). A top-level `ll-auto`, `ll-parallel`, or `ll-sprint` invocation reuses one opaque UUID for all of its issues and retries; the final retry therefore replaces the initial failure rather than adding a duplicate. Producers guard calls with `contextlib.suppress(Exception)` so history failures never alter orchestration behavior.
 
 `base_sha`/`base_dirty` are the dequeue-time base-state stamp (ENH-2866): the commit SHA the work item started from, and whether the tree had *tracked* modifications (`git status --porcelain --untracked-files=no`) at that moment. Orchestrators call this function **twice** per issue — once at dequeue with `status="running"` plus the stamp, so the base state is readable while the issue is still in flight, and once at end-of-issue with the outcome. Three columns are therefore write-once rather than last-write-wins: `base_sha`, `base_dirty`, and `started_at` are `COALESCE`d in the `DO UPDATE` clause, so a terminal upsert that passes none of them cannot null the dequeue-time values. An in-flight row leaves `ended_at` NULL (the `_now()` default applies only to a terminal status), so an abandoned run does not read as `ended_at == started_at`. A falsy `base_sha` is normalized to NULL — NULL means unstamped, never `""`.
+
+`ll_version` (FEAT-3404) defaults to the installed `little_loops.__version__` when the caller passes none, so no call site has to thread it through. It is write-once like `base_sha`/`base_dirty` — `COALESCE(ll_version, excluded.ll_version)` keeps the value recorded at dequeue rather than letting a terminal upsert (issued after a mid-run `pip install -e` upgrade) overwrite it with a newer version.
 
 Consequence: a crashed or interrupted run now leaves a permanent `status='running'` row where previously no row existed, which slightly lowers `aggregate_orchestration_runs`' reported success rate. This is intentional — a crashed run *is* a non-completion.
 
@@ -9767,6 +9775,8 @@ def record_loop_run_summary(
     diagnostics_path: str | None = None,
     head_sha: str | None = None,
     branch: str | None = None,
+    failure_terminal: bool | None = None,
+    ll_version: str | None = None,
     config: dict | None = None,
 ) -> bool
 
@@ -9775,6 +9785,8 @@ def update_loop_run_diagnostics(db_path: Path | str, run_id: str, diagnostics_pa
 ```
 
 Write one `loop_runs` row and index it in `search_index` with `kind="loop_run"` (ENH-2463). `run_id` is the archive-time identifier (`started_at` mangled the same way as `fsm/persistence.py::archive_run`, joined with `-<loop_name>`) so the row JOINs to the on-disk `.loops/.history/` archive. Idempotent via `INSERT OR IGNORE` on the `run_id` UNIQUE constraint — a resumed-then-completed run contributes exactly one row. The sole v1 producer is `FSMExecutor._finish()`, called best-effort (wrapped in `try/except`) immediately after it emits `loop_complete`. `update_loop_run_diagnostics()` is a single `UPDATE ... WHERE run_id = ?` linking a `loop-specialist`-written diagnostics artifact back to its row; exposed as a public API but not yet wired into any caller (the artifact filename does not encode the archive `run_id`, so an upstream caller must supply it — a known v1 gap).
+
+`failure_terminal` (ENH-2814) records whether the run stopped on a state declared `failure: true`; `None` writes SQL NULL so readers fall back to the legacy name check. `ll_version` (FEAT-3404) defaults to the installed `little_loops.__version__` when the caller passes none. Unlike `record_orchestration_run()`, this write is a plain `INSERT OR IGNORE` with no `ON CONFLICT` clause, so `ll_version` needs no merge logic — it is written exactly once.
 
 ### record_learning_test_event / _backfill_learning_test_events
 

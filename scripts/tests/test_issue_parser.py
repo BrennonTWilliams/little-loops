@@ -4889,10 +4889,10 @@ class TestPriorityRegexCompletenessAllowlist:
             908: "JSON-schema pattern for a priority argument, not a filename read",
         },
         "session_store/writers.py": {
-            2658: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "
+            2685: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "
             "_derive_type_priority (BUG-3286 step 7 Deviation — no BRConfig in scope to "
             "call resolve_priority here)",
-            2720: "docstring for _derive_type_priority",
+            2747: "docstring for _derive_type_priority",
         },
         "sync.py": {
             292: "comment describing the P[0-5]-TYPE-NNN- filename shape",

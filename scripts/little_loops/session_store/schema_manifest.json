@@ -1552,6 +1552,12 @@
           "notnull": false,
           "pk": false,
           "type": "INTEGER"
+        },
+        {
+          "name": "ll_version",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -1693,6 +1699,12 @@
           "notnull": false,
           "pk": false,
           "type": "INTEGER"
+        },
+        {
+          "name": "ll_version",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2707,5 +2719,5 @@
       "type": "table"
     }
   },
-  "schema_version": 47
+  "schema_version": 48
 }

@@ -165,6 +165,7 @@ class OrchestrationRun:
     branch: str | None
     base_sha: str | None = None
     base_dirty: int | None = None
+    ll_version: str | None = None
 
 
 @dataclass
@@ -184,6 +185,7 @@ class LoopRun:
     head_sha: str | None
     branch: str | None
     failure_terminal: int | None = None
+    ll_version: str | None = None
 
 
 @dataclass

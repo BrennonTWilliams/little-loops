@@ -1301,6 +1301,7 @@ def record_orchestration_run(
     branch: str | None = None,
     base_sha: str | None = None,
     base_dirty: bool | None = None,
+    ll_version: str | None = None,
     config: dict | None = None,
 ) -> bool:
     """UPSERT one per-issue orchestration outcome and refresh its FTS row.
@@ -1322,6 +1323,13 @@ def record_orchestration_run(
     ``_now()`` default applies only to a terminal status — so an abandoned run
     does not read as ``ended_at == started_at``.
 
+    FEAT-3404: ``ll_version`` defaults to the installed ``little_loops.__version__``
+    when the caller passes none, so no call site has to thread it through. It is
+    write-once like ``base_sha``/``base_dirty`` — ``COALESCE(ll_version,
+    excluded.ll_version)`` keeps the value recorded at dequeue rather than
+    letting a terminal upsert (issued after a mid-run ``pip install -e`` upgrade)
+    overwrite it with a newer version.
+
     The ``config`` parameter is a forward-compatibility stub for a future
     ``analytics.capture.orchestration_runs`` gate; it is accepted but unused.
     Returns ``False`` only when the required identity fields are empty.
@@ -1333,6 +1341,10 @@ def record_orchestration_run(
     # NULL so the reader's None-means-unstamped contract holds.
     effective_base_sha = base_sha or None
     effective_base_dirty = None if base_dirty is None else int(base_dirty)
+    if ll_version is None:
+        from little_loops import __version__ as _ll_version
+
+        ll_version = _ll_version
     in_flight = status == _ORCHESTRATION_IN_FLIGHT_STATUS
     effective_ended_at = ended_at if in_flight else (ended_at or _now())
     # An in-flight row is the only write that knows when work actually began,
@@ -1348,8 +1360,8 @@ def record_orchestration_run(
         cursor = conn.execute(
             "INSERT INTO orchestration_runs("
             "run_id, driver, issue_id, status, failure_reason, duration_s, wave, pr_url, "
-            "started_at, ended_at, head_sha, branch, base_sha, base_dirty"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "started_at, ended_at, head_sha, branch, base_sha, base_dirty, ll_version"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(run_id, issue_id) DO UPDATE SET "
             "driver=excluded.driver, status=excluded.status, "
             "failure_reason=excluded.failure_reason, duration_s=excluded.duration_s, "
@@ -1358,6 +1370,8 @@ def record_orchestration_run(
             "started_at=COALESCE(excluded.started_at, started_at), "
             "base_sha=COALESCE(excluded.base_sha, base_sha), "
             "base_dirty=COALESCE(excluded.base_dirty, base_dirty), "
+            # write-once (FEAT-3404): keep the version stamped at dequeue
+            "ll_version=COALESCE(ll_version, excluded.ll_version), "
             "ended_at=excluded.ended_at, "
             "head_sha=excluded.head_sha, branch=excluded.branch",
             (
@@ -1375,6 +1389,7 @@ def record_orchestration_run(
                 branch,
                 effective_base_sha,
                 effective_base_dirty,
+                ll_version,
             ),
         )
         conn.execute(
@@ -1441,6 +1456,7 @@ def record_loop_run_summary(
     head_sha: str | None = None,
     branch: str | None = None,
     failure_terminal: bool | None = None,
+    ll_version: str | None = None,
     config: dict | None = None,
 ) -> bool:
     """Write one row to ``loop_runs`` and index it in ``search_index`` (ENH-2463).
@@ -1458,6 +1474,12 @@ def record_loop_run_summary(
     declared ``failure: true``. ``None`` writes SQL NULL, marking a row whose
     failure-ness is unknown so readers fall back to the legacy name check.
 
+    ``ll_version`` (FEAT-3404) defaults to the installed
+    ``little_loops.__version__`` when the caller passes none. Unlike
+    ``record_orchestration_run()``, this write is a plain ``INSERT OR IGNORE``
+    with no ``ON CONFLICT`` clause, so no merge logic is needed — the row is
+    written exactly once.
+
     The ``config`` parameter is a forward-compatibility stub for a future
     ``analytics.capture.loop_runs`` gate; it is accepted but not yet used.
     Returns ``False`` only when the required identity fields are empty or the
@@ -1465,6 +1487,10 @@ def record_loop_run_summary(
     """
     if not run_id or not loop_name:
         return False
+    if ll_version is None:
+        from little_loops import __version__ as _ll_version
+
+        ll_version = _ll_version
     ts = ended_at or _now()
     conn = _pkg.connect(db_path)
     try:
@@ -1472,8 +1498,8 @@ def record_loop_run_summary(
             "INSERT OR IGNORE INTO loop_runs("
             "run_id, loop_name, started_at, ended_at, final_state, iterations, "
             "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch, "
-            "failure_terminal"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "failure_terminal, ll_version"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 loop_name,
@@ -1488,6 +1514,7 @@ def record_loop_run_summary(
                 head_sha,
                 branch,
                 None if failure_terminal is None else int(failure_terminal),
+                ll_version,
             ),
         )
         inserted = bool(cursor.rowcount)

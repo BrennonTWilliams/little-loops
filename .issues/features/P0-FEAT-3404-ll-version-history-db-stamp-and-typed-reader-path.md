@@ -3,8 +3,9 @@ id: FEAT-3404
 title: Add ll_version history.db stamp and typed reader path (orchestration_runs/loop_runs)
 type: FEAT
 priority: P0
-status: open
+status: done
 discovered_date: '2026-09-07'
+completed_at: '2026-09-08T15:31:30Z'
 parent: FEAT-3398
 labels:
 - path-a
@@ -261,11 +262,40 @@ stays passing since the new kwarg is optional.
 - `schema_manifest.json` matches the live schema; all `SCHEMA_VERSION == 47`
   assertions updated to 48.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-08
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store/schema.py` — v48 migration: `ALTER TABLE orchestration_runs ADD COLUMN ll_version TEXT;` / `ALTER TABLE loop_runs ADD COLUMN ll_version TEXT;`; `SCHEMA_VERSION` 47 → 48.
+- `scripts/little_loops/session_store/writers.py` — `record_orchestration_run()`/`record_loop_run_summary()` gain a keyword-only `ll_version: str | None = None`, defaulted from `little_loops.__version__` via a function-local import (avoids the `writers.py` ↔ package `__init__.py` circular import). `orchestration_runs` UPSERT uses `ll_version=COALESCE(ll_version, excluded.ll_version)` (first-write-wins); `loop_runs` is a plain `INSERT OR IGNORE` with `ll_version` appended to the column list.
+- `scripts/little_loops/history_reader/runs.py` — `ll_version` added to the `recent_orchestration_runs()` SELECT column list and the shared `_LOOP_RUN_COLUMNS` string.
+- `scripts/little_loops/history_reader/models.py` — `ll_version: str | None = None` added to `OrchestrationRun` and `LoopRun`.
+- `scripts/little_loops/session_store/schema_manifest.json` — regenerated for v48.
+- Tests: `TestSchemaV48LlVersionColumns` (schema), `TestOrchestrationRunLlVersion` + `TestLoopRuns` additions (writers), reader-path assertions in `TestNewEventReaders` (events). All 27 `SCHEMA_VERSION == 47` assertions across `test_session_store_writers.py`/`test_session_store_schema.py`/`test_assistant_messages.py` bumped to 48; the `TestPriorityRegexCompletenessAllowlist` line-number allowlist in `test_issue_parser.py` updated for the resulting line shift in `writers.py`.
+- Docs: `docs/reference/API.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/ARCHITECTURE.md` updated for the new column and signature params (also closed pre-existing drift in `API.md`'s `OrchestrationRun`/`LoopRun`/`record_loop_run_summary` blocks, which were missing `base_sha`/`base_dirty`/`failure_terminal`).
+
+### Verification Results
+- Tests: PASS (23382 passed, 43 skipped; 2 pre-existing unrelated failures on `main` — `test_host_runner.py::TestAC8BaselineCoverage` and `test_verify_evidence.py::TestRepoGate` — confirmed via `git stash` before this work started)
+- Lint: PASS (`ruff check` clean on all touched files)
+- Types: PASS (`mypy` clean on all touched source files)
+
+### Acceptance Criteria Met
+- [x] `ll_version` recorded on new rows without any orchestrator call-site change; existing rows read back NULL (schema-upgrade test)
+- [x] `ll_version` readable through the typed reader path (`recent_orchestration_runs()`/`aggregate_orchestration_runs()`/`OrchestrationRun` and `loop_runs` counterparts)
+- [x] UPSERT is first-write-wins via `COALESCE(ll_version, excluded.ll_version)`
+- [x] v48 migration is an appended `ALTER TABLE` pair; v22/v23 `CREATE TABLE` strings unchanged
+- [x] `schema_manifest.json` regenerated; all `SCHEMA_VERSION == 47` assertions updated to 48
+
 ## Status
 
 **Open** | Created: 2026-09-07 | Priority: P0
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T15:31:02 - `97cb2296-7f17-462e-a48c-36a01c338aeb.jsonl`
+- `/ll:ready-issue` - 2026-09-08T15:04:03 - `84f1950c-16d3-4d7c-acb2-65d034748e03.jsonl`
 - `/ll:confidence-check` - 2026-09-08T14:54:19 - `8322c870-f979-4103-842d-3ba90b32e30b.jsonl`
 - `/ll:confidence-check` - 2026-09-08T04:24:30 - `34c68e63-9bdf-4f65-a533-7869136a3414.jsonl`
 - `/ll:verify-issues` - 2026-09-08T04:21:41 - `cfa0d01b-9598-41c5-a254-7549b3c32bba.jsonl`

@@ -593,6 +593,40 @@ class TestNewEventReaders:
         assert found is not None
         assert found.failure_terminal == 1
 
+    def test_recent_orchestration_runs_exposes_ll_version(self, tmp_path: Path) -> None:
+        """FEAT-3404: ll_version is readable through the typed reader path."""
+        from little_loops import history_reader, session_store
+
+        db = tmp_path / "history.db"
+        session_store.record_orchestration_run(
+            db,
+            run_id="run-ver",
+            driver="ll-auto",
+            issue_id="FEAT-3404",
+            status="completed",
+            ll_version="4.2.0",
+        )
+
+        found = history_reader.recent_orchestration_runs(issue_id="FEAT-3404", db=db)
+        assert found[0].ll_version == "4.2.0"
+
+    def test_find_loop_run_exposes_ll_version(self, tmp_path: Path) -> None:
+        """FEAT-3404: ll_version is readable through the typed reader path."""
+        from little_loops import history_reader, session_store
+
+        db = tmp_path / "history.db"
+        session_store.record_loop_run_summary(
+            db,
+            run_id="run-loop-ver",
+            loop_name="rn-implement",
+            terminated_by="terminal",
+            ll_version="4.2.0",
+        )
+
+        found = history_reader.find_loop_run("run-loop-ver", db=db)
+        assert found is not None
+        assert found.ll_version == "4.2.0"
+
     def test_aggregate_loop_runs(self, tmp_path: Path) -> None:
         from little_loops import history_reader, session_store
 

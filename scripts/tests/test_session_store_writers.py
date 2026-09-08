@@ -467,8 +467,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 47
-        assert int(row[0]) == 47
+        assert SCHEMA_VERSION == 48
+        assert int(row[0]) == 48
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1150,7 +1150,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 47
+        assert SCHEMA_VERSION == 48
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1280,7 +1280,7 @@ class TestPrepatchEvidence:
     """ENH-2997: prepatch_evidence table, writer, and reader round trip."""
 
     def test_v39_db_upgrades_gains_prepatch_evidence(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 47
+        assert SCHEMA_VERSION == 48
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 39)
         ensure_db(db)
@@ -1517,6 +1517,88 @@ class TestOrchestrationRunBaseStamp:
         assert row["ended_at"] is not None, "a terminal write still defaults ended_at"
 
 
+class TestOrchestrationRunLlVersion:
+    """FEAT-3404: ll_version stamp on orchestration_runs, first-write-wins."""
+
+    @staticmethod
+    def _recorder():
+        from little_loops import session_store
+
+        recorder = getattr(session_store, "record_orchestration_run", None)
+        assert callable(recorder), "record_orchestration_run must be public"
+        return recorder
+
+    @staticmethod
+    def _row(db: Path, run_id: str, issue_id: str) -> sqlite3.Row:
+        conn = connect(db)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT * FROM orchestration_runs WHERE run_id = ? AND issue_id = ?",
+                (run_id, issue_id),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        return row
+
+    def test_early_upsert_stamps_installed_version_without_caller_passing_it(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops import __version__
+
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db,
+            run_id="run-ll1",
+            driver="ll-auto",
+            issue_id="FEAT-3404",
+            status="running",
+        )
+        row = self._row(db, "run-ll1", "FEAT-3404")
+        assert row["ll_version"] == __version__
+
+    def test_terminal_upsert_under_different_version_does_not_overwrite(
+        self, tmp_path: Path
+    ) -> None:
+        """A mid-run pip upgrade must not overwrite the version stamped at dequeue."""
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db,
+            run_id="run-ll2",
+            driver="ll-auto",
+            issue_id="FEAT-3404",
+            status="running",
+            ll_version="1.0.0",
+        )
+        record_orchestration_run(
+            db,
+            run_id="run-ll2",
+            driver="ll-auto",
+            issue_id="FEAT-3404",
+            status="completed",
+            ll_version="9.9.9",
+        )
+        row = self._row(db, "run-ll2", "FEAT-3404")
+        assert row["ll_version"] == "1.0.0"
+
+    def test_explicit_ll_version_on_first_write_is_honored(self, tmp_path: Path) -> None:
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db,
+            run_id="run-ll3",
+            driver="ll-auto",
+            issue_id="FEAT-3404",
+            status="completed",
+            ll_version="2.5.0",
+        )
+        row = self._row(db, "run-ll3", "FEAT-3404")
+        assert row["ll_version"] == "2.5.0"
+
+
 class TestLoopRuns:
     """loop_runs summary rows (ENH-2463)."""
 
@@ -1537,7 +1619,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 47
+        assert SCHEMA_VERSION == 48
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -1656,6 +1738,50 @@ class TestLoopRuns:
         ensure_db(db)
         assert update_loop_run_diagnostics(db, "no-such-run", "path.md") is False
 
+    def test_ll_version_defaults_to_installed_version(self, tmp_path: Path) -> None:
+        """FEAT-3404: recorded once on insert; loop_runs has no COALESCE merge clause."""
+        from little_loops import __version__
+
+        record_loop_run_summary = self._recorder()
+        db = tmp_path / "history.db"
+        record_loop_run_summary(
+            db,
+            run_id="20260717T101530-rn-implement",
+            loop_name="rn-implement",
+            terminated_by="terminal",
+        )
+        conn = connect(db)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT ll_version FROM loop_runs WHERE run_id = ?",
+                ("20260717T101530-rn-implement",),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["ll_version"] == __version__
+
+    def test_ll_version_explicit_value_is_honored(self, tmp_path: Path) -> None:
+        record_loop_run_summary = self._recorder()
+        db = tmp_path / "history.db"
+        record_loop_run_summary(
+            db,
+            run_id="20260717T101530-rn-refine",
+            loop_name="rn-refine",
+            terminated_by="terminal",
+            ll_version="3.1.4",
+        )
+        conn = connect(db)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT ll_version FROM loop_runs WHERE run_id = ?",
+                ("20260717T101530-rn-refine",),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["ll_version"] == "3.1.4"
+
 
 class TestRecordLearningTestEvent:
     """ENH-2466: record_learning_test_event() DB write round-trip."""
@@ -1735,7 +1861,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 47
+        assert SCHEMA_VERSION == 48
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
