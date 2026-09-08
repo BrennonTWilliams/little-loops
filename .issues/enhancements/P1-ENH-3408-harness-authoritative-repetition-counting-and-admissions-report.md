@@ -15,6 +15,12 @@ labels:
 - evaluation
 - statistics
 size: Large
+confidence_score: 80
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3408: Count authoritative repetitions in harness pass-rate reporting + admissions tabulation
@@ -292,7 +298,21 @@ issue that makes ENH-3397's anti-p-hacking guarantee actually hold in reported n
 **Open** | Created: 2026-09-08 | Priority: P1 | Blocked by: ENH-3407
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Gaps to Address
+- Blocking dependency ENH-3407 (status: open, not done/cancelled) is unresolved. This issue
+  consumes `authoritative_attempt()` from ENH-3407 directly — implementation cannot proceed
+  until ENH-3407 lands. Wait for ENH-3407 to reach `done`/`cancelled`, or remove the
+  `blocked_by` entry if it no longer applies.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T19:15:36 - `3dfd0114-2334-4e08-9e14-e44fec8303b9.jsonl`
 - `/ll:format-issue` - 2026-09-08T18:36:35 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:verify-issues` - 2026-09-08T17:09:42 - `3b8d2d10-26d6-4407-8c50-28fe3b34bf14.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T17:05:29 - `bd30e086-08dc-4823-aa37-f5118816aece.jsonl`

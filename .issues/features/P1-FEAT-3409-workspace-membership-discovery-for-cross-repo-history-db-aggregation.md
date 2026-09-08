@@ -20,6 +20,7 @@ score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 25
 decision_needed: false
+reconcile_attempted: true
 ---
 
 ## Summary
@@ -122,23 +123,18 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - New module (path not yet chosen) implementing `discover_workspace_members()`
   — no existing file to modify since neither the function nor `WorkspaceMember`
   exists anywhere in the codebase today (confirmed 0 hits repo-wide).
-- `config-schema.json:2117-2146` — the `history` object already has a `db_path`
-  > ⚠ Superseded — history object closes at :2255-2256, not :2146
-  property (`:2143-2146`) with an `LL_HISTORY_DB`-env-var-precedence shape.
-  Decided (see Proposed Solution → Decision Rationale): register the
-  configurable manifest path as `history.workspace_manifest_path`, sibling to
-  `history.db_path` — the function's own bare-default signature
-  (`Path("ll-workspace.yaml")`) is not yet routed through this config/env-var
-  chain.
-- **Anchor correction** (`/ll:wire-issue`): the `history` object's real bounds
-  in `config-schema.json` run `:2117-2256` (`additionalProperties: false` at
-  `:2255`, object-close at `:2256`) — four other nested blocks
-  (`session_digest`, `evolution`, `go_no_go`, `capture_issue`, `compaction`)
-  sit between `:2146` and the true close. Add `workspace_manifest_path` inside
-  `properties.history.properties`, ahead of that `additionalProperties: false`
-  gate — confirmed live by `test_config_schema.py::test_history_in_schema`
-  (`:578`) and `test_history_db_path_in_schema` (`:615-628`), which exist
-  specifically because the gate rejects undeclared keys.
+- `config-schema.json:2117-2256` — the `history` object (real bounds:
+  `additionalProperties: false` at `:2255`, object-close at `:2256`; four
+  other nested blocks — `session_digest`, `evolution`, `go_no_go`,
+  `capture_issue`, `compaction` — sit between the existing `db_path` property
+  at `:2143-2146` and the true close) already has a `db_path` property with an
+  `LL_HISTORY_DB`-env-var-precedence shape. Decided (see Proposed Solution →
+  Decision Rationale): add `workspace_manifest_path` inside
+  `properties.history.properties`, ahead of the `additionalProperties: false`
+  gate at `:2255` — confirmed live by
+  `test_config_schema.py::test_history_in_schema` (`:578`) and
+  `test_history_db_path_in_schema` (`:615-628`), which exist specifically
+  because the gate rejects undeclared keys.
 - **Module placement**: no existing subpackage fits. The two cited precedent
   modules (`decisions.py`, `design_tokens.py`) both sit directly under
   `scripts/little_loops/` as top-level siblings, are never re-exported from
@@ -300,10 +296,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
    `TestLoadDesignTokensFallbacks` (`test_design_tokens.py:227-258`): one test
    per short-circuit branch, `tmp_path`-based (no manifest created), direct
    `== []`/`is None` return-value assertion.
-5. Update `docs/ARCHITECTURE.md:712` and `docs/reference/API.md:92,8207`'s
-   "per-project"/single-repo framing to mention the new workspace-topology
-   concept this manifest introduces (the aggregation-specific CLI/output docs
-   belong to FEAT-3410, not here).
+5. Update `docs/ARCHITECTURE.md:711-713`, `docs/reference/API.md:92,8205-8209`,
+   and `docs/reference/CLI.md:3743`'s "per-project"/single-repo framing to
+   mention the new workspace-topology concept this manifest introduces (the
+   aggregation-specific CLI/output docs belong to FEAT-3410, not here).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -432,6 +428,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   the choice determines which of two Dependent-Files wiring lists apply.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T19:11:30 - `2ff580d6-652f-49e4-b298-e76bb54b7ee2.jsonl`
 - `/ll:wire-issue` - 2026-09-08T18:49:49 - `96ffa0f9-be3e-4674-b135-6a82c1057b6c.jsonl`
 - `/ll:decide-issue` - 2026-09-08T18:39:07 - `1da9e372-c79e-4132-94c9-48b9fab73fe1.jsonl`
 - `/ll:refine-issue` - 2026-09-08T18:33:22 - `d235f946-7b83-4228-9eed-a9bd5517b547.jsonl`
@@ -443,3 +440,11 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - `/ll:wire-issue` - 2026-09-08T17:31:32 - `fa35fcdd-03ef-4e02-8495-668286d605de.jsonl`
 - `/ll:refine-issue` - 2026-09-08T17:21:28 - `9bcae330-1a21-42d2-bfd3-9b52b57ca4c1.jsonl`
 - `/ll:issue-size-review` - 2026-09-08T06:21:27 - `c53583bd-6c7a-49a7-8685-76b64ad999da.jsonl`
+
+## Documentation
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `docs/reference/CLI.md:3743` — an additional "per-project" framing site (`ll-session` description: "queries the per-project `.ll/history.db`") not previously listed among Implementation Steps' doc-update targets, which cite only `docs/ARCHITECTURE.md:712` and `docs/reference/API.md:92,8207`. The same single-repo-framing update Step 5 makes should also touch this line. [`ll:codebase-locator` finding]

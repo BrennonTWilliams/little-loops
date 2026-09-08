@@ -12,6 +12,12 @@ labels:
 - evaluation
 - statistics
 size: Large
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3406: harness_events run-model columns + harness_admissions table (schema)
@@ -297,6 +303,7 @@ _Added by `/ll:verify-issues` — 2026-09-08:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T19:15:11 - `6bb0db90-fba6-4ae0-ba6a-a7670d32c039.jsonl`
 - `/ll:format-issue` - 2026-09-08T18:36:34 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:verify-issues` - 2026-09-08T15:44:36 - `f5535f57-91c7-49aa-88ab-44821536803d.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T15:38:05 - `f35fb920-2ba8-40fb-874e-61854231e6cc.jsonl`
