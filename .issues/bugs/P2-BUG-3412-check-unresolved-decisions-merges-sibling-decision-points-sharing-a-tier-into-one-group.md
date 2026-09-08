@@ -9,11 +9,11 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T19:44:58Z'
 confidence_score: 100
-outcome_confidence: 100
-score_complexity: 25
-score_test_coverage: 25
+outcome_confidence: 94
+score_complexity: 23
+score_test_coverage: 24
 score_ambiguity: 25
-score_change_surface: 25
+score_change_surface: 22
 ---
 
 # BUG-3412: check-unresolved-decisions merges sibling decision points sharing a tier into one group
@@ -373,6 +373,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T22:01:12 - `b8cb2fff-d50b-4bf2-babb-458135fa8e22.jsonl`
 - `/ll:confidence-check` - 2026-09-08T21:43:40 - `c2403af4-baa0-4020-b7c5-f308571f1935.jsonl`
 - `/ll:wire-issue` - 2026-09-08T21:30:55 - `a6cc555e-02ae-4e6f-81c7-e73410f8ac54.jsonl`
 - `/ll:refine-issue` - 2026-09-08T21:21:21 - `a6890409-0ea2-4587-b566-5505315a74c7.jsonl`

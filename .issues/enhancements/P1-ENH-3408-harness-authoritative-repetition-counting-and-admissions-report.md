@@ -112,6 +112,12 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   as context for what this issue will read from once ENH-3406/3407 land, not as work item
   for this issue.
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- Confirmed exact current state post-ENH-3407 (commit `28e64617d`): `history_reader/harness.py`'s `HarnessEvent` dataclass (lines 39-77) already carries `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by` (plus `id`) as trailing-default fields, and `_HARNESS_EVENT_COLUMNS` (lines 80-86) already includes all of them — this issue's own "hard blocker, do first" step is confirmed fully satisfied, not partially.
+- `authoritative_attempt()` (lines 148-173) and `authoritative_attempts()` (lines 176-207) are already implemented, tested (`test_history_reader_harness.py::TestAuthoritativeAttempts`, lines 173-203), and exported — but have zero callers anywhere in `cli/harness.py` or elsewhere in production code (repo-wide search, no glob/path filter). Converting the three counting sites to call these functions is fully outstanding work, not partially done.
+- `harness_admissions` (`session_store/schema.py:1379-1387`) and its writer (`session_store/writers.py::_admit_retry()`/`admit_retry()`, lines 1195-1253) are live and already writing rows on the infra-retry path. No reader/dataclass for this table exists in `history_reader/` (zero hits) — the admissions-tabulation report this issue adds will need either raw SQL against `harness_admissions` or a new lightweight reader, since nothing to import exists yet.
+
 ## Tests
 
 - `scripts/tests/test_history_reader_harness.py::TestHarnessEventReaders` — update
@@ -160,6 +166,11 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   for a `harness_admissions`-equivalent schema test; no such class exists yet (0 hits for
   `harness_admissions` in this file). Cited for context only — schema DDL tests are
   ENH-3406's scope, not this issue's.
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `scripts/tests/test_history_reader_harness.py::TestAuthoritativeAttempts` (lines 173-203, landed by ENH-3407) is the nearest existing fixture for constructing a retry chain — `record_attempt(db, cell_key=CELL, attempt_kind="repetition"/"infra_retry", retry_of=original_id, reason="timeout", ts=..., ...)` — reuse this construction pattern for the new "n=1 after retry chain" fixture-based test rather than inventing a new one.
+- `scripts/tests/test_session_store_schema.py` already contains `harness_admissions`-specific schema tests: `test_harness_admissions_columns` (1678), `test_harness_admissions_reason_check_rejects_invalid_value` (1694), `test_harness_admissions_superseded_id_not_null` (1709), `test_v48_db_upgrades_gains_harness_admissions` (1781) — these validate the exact table shape (`id, ts, attempt_id, superseded_id, reason`) the new admissions-tabulation report reads from; not this issue's own test surface to add to, but confirms the read target's shape without further discovery needed.
 
 ### Wiring Findings
 
@@ -221,6 +232,20 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - Confirmed no fourth attempt-counting/aggregation site exists over `harness_events` beyond the three already named (`harness_eval_pass_rate`, `harness_eval_abstention_rate`, `_read_target_history`). A repo-wide search for callers of those three symbols plus a scan for other `harness_events` readers found only: the writer (`session_store/writers.py::record_harness_event`, ENH-3407's surface), schema DDL/migrations (`session_store/schema.py`, ENH-3406's surface), and a raw-row export path — `session_store/queries.py`'s `_EXPORT_TABLE_MAP["harness_event"]`, consumed by `ll-artifact dashboard` (`cli/artifact/dashboard.py`) for a browser-side sql.js snapshot. That export echoes raw rows, not an aggregated rate, so it does not need conversion under this issue; it will surface the new `cell_key`/`repetition`/`attempt_kind`/`superseded_by` columns once ENH-3406 adds them, subject to the existing shareable-column allowlist (which does not currently include `harness_event` under shareable mode's default table selection). Noted for awareness — not an integration point this issue must touch.
 - `_evaluate_and_report()` (`cli/harness.py:726`) has no caching across calls — each `_read_target_history()` call opens a fresh read-only connection. Call sites confirmed at lines 835/868/911/952 (once each, for `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt`) and 1072 (the `cmd_dsl` per-task loop, `skip_history=True`, so history is never read there). No multi-call-per-run or ordering hazard beyond what the existing Call Path already documents.
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **Line numbers below correct the drift from ENH-3407 landing (commit `28e64617d`)** — the function bodies and behavior match this issue's earlier citations exactly; only absolute line numbers shifted:
+  - `HarnessEvent` dataclass: `history_reader/harness.py:39-77` (now carries `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by`/`id` — the "### Types" subsection's "confirmed absent today" claim is stale as of this landing; these fields are now present).
+  - `_HARNESS_EVENT_COLUMNS`: lines 80-86.
+  - `authoritative_attempt(db_path, cell_key, repetition) -> HarnessEvent | None`: lines 148-173 (SQL-only, `ORDER BY id LIMIT 1`, scoped to one repetition, no Python dedup needed).
+  - `authoritative_attempts(db_path, cell_key) -> list[HarnessEvent]`: lines 176-207 (`ORDER BY repetition ASC, id ASC`, then a Python `seen: set[int]` loop keeps only the first surviving row per `repetition`).
+  - `harness_eval_pass_rate(target, since=None, db=None) -> float | None`: lines 210-246 (previously cited as line 113) — denominator/behavior unchanged: `COUNT(semantic_passed)` over raw rows, no `superseded_by` filter.
+  - `harness_eval_abstention_rate(target, since=None, db=None) -> float | None`: lines 249-295 (previously cited as line 152) — denominator/behavior unchanged: `COUNT(semantic_verdict)` over raw rows, no `superseded_by` filter.
+  - `_read_target_history(target: str) -> dict | None`: `cli/harness.py:696-748` (previously cited as `588-640`); `_HISTORY_MIN_SCORED = 3` now at line 693 (previously `585`).
+  - `cmd_dsl()`'s `graded_pass`/`graded_total`: initialized lines 1174-1178, accumulated in the per-task loop 1207-1275, report `lines` list built 1345-1354 (previously cited as `~992`/`1146`) — the non-empty-gated `if ungraded_count: lines.append(...)` / `if failures: lines.append(...)` insertion point for the admissions tabulation is confirmed unchanged in shape at these corrected coordinates.
+- `harness_admissions` DDL (`session_store/schema.py:1379-1387`) CHECK-constrains `reason` to exactly four values: `'timeout'`, `'host_crash'`, `'harness_error'`, `'network'` — the admissions tabulation's "by reason" breakdown has a fixed, small, enumerable category set, not an open-ended one.
+- No `HarnessAdmission` reader dataclass exists anywhere in source (repo-wide search, no glob/path filter — the only hit is a prose mention inside this issue's own sibling ENH-3406 markdown file). Implementing the admissions tabulation requires either raw SQL against `harness_admissions` or a new lightweight reader in `history_reader/` — there is nothing existing to import.
+
 ### Types
 
 No new data shape is introduced by this issue — `cell_key`/`repetition`/`attempt_kind`/
@@ -274,6 +299,13 @@ inflates the sample size instead of replacing the attempt it superseded — the 
 issue for `cmd_dsl`'s `graded_total`. The run report has no visibility into admission
 interventions at all.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- Both of this issue's blockers, ENH-3406 and ENH-3407, are now `status: done` (confirmed via `ll-issues show ENH-3406`/`ENH-3407`, commit `28e64617d`). Their plumbing has landed exactly as scoped: `HarnessEvent` gained `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by` (`history_reader/harness.py:39-77`), `authoritative_attempt(db_path, cell_key, repetition)`/`authoritative_attempts(db_path, cell_key)` exist (lines 148-207) and are exported via `history_reader/__init__.py`, and `harness_admissions` (`session_store/schema.py:1379-1387`, `reason` CHECK-constrained to `'timeout'|'host_crash'|'harness_error'|'network'`) plus its writer (`admit_retry()`/`_admit_retry()`, `session_store/writers.py:1195-1253`, invoked from `record_attempt()`'s `attempt_kind='infra_retry'` path) are live and already populating rows via `cmd_dsl`'s per-task `record_attempt()` calls.
+- None of that landed plumbing is consumed yet: `authoritative_attempt`/`authoritative_attempts` have zero production callers (confirmed by an unfiltered repo-wide search — the only hits outside their own definition/re-export are test and issue-doc files), and no reader or dataclass for `harness_admissions` exists anywhere in `history_reader/` (zero hits; no `HarnessAdmission` class exists in source). The three counting sites (`harness_eval_pass_rate`, `harness_eval_abstention_rate`, `_read_target_history`) and `cmd_dsl`'s `graded_total`/`graded_pass` remain unchanged and still count raw rows exactly as this section's paragraph above describes — this issue's own scope is entirely intact and un-preempted by the blocker work landing.
+
 ## Expected Behavior
 
 The three counting sites (plus `cmd_dsl`'s `graded_total`) count authoritative
@@ -314,6 +346,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   `blocked_by` entry if it no longer applies.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T22:04:46 - `35eb0ad3-e497-496d-b193-1dad8fa5f0e6.jsonl`
 - `/ll:confidence-check` - 2026-09-08T19:15:36 - `3dfd0114-2334-4e08-9e14-e44fec8303b9.jsonl`
 - `/ll:format-issue` - 2026-09-08T18:36:35 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:verify-issues` - 2026-09-08T17:09:42 - `3b8d2d10-26d6-4407-8c50-28fe3b34bf14.jsonl`
@@ -369,3 +402,9 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 - A landed precedent exists for exactly this class of change — "redefine what n means in a reporting denominator, with an exclusion-count disclosure" — at `scripts/little_loops/issue_manager.py` (`AutoManager._log_timing_summary`, ~lines 2089-2104) plus its routing arm (~lines 2259-2266), landed as BUG-3252 Parts 3/4 (`status: done`; companion route-survey issue BUG-3253 was cancelled/superseded into it). It narrows `Auto-corrections: N/total` by moving confidence-gate skips out of the denominator into a separate bucket, then discloses the exclusion inline: `f"Auto-corrections: {total_corrected}/{total_issues} ({correction_rate:.1f}%){gated_suffix}"` where `gated_suffix = f" ({gated_count} gated before Phase 1)" if gated_count else ""`. Its governing rule is numerator/denominator symmetry — anything excluded from the denominator must also be excluded from the numerator, or the rate can exceed 100% or divide by zero with a nonzero numerator. Its test (`test_issue_manager.py::test_auto_corrections_annotates_gated_exclusion`, line 6233) asserts the exact rendered string via joined `logger.info.call_args_list`, a different assertion shape from `cmd_dsl`'s own `print("\n".join(lines))`/substring-check convention — cited as evidence for the open design questions this issue still has to answer (exclusion-disclosure format, symmetry invariant), not as a shape to copy verbatim into `cmd_dsl`.
 - A fourth non-empty-gated count-by-category report convention (beyond the three already catalogued: `ctx_stats.py`'s `crossings`, `sprint/show.py`'s `_print_composition()`, `logs.py`'s `outcome_counts`) exists at `issue_manager.py`'s "Corrections by type:" block (~lines 1848-1867): one `logger.info()` line per category under a header line, sorted count-descending, rather than joining categories into a single string. A fifth, unconditional (not non-empty-gated) variant exists at `cli/issues/clusters.py:134-135`'s `_cluster_header()` (`"P2×1 P3×4"`-style, space-joined, key-sorted). Together these confirm the codebase holds no single shared convention for this rendering shape — five distinct call sites, five different join/format choices — so the admissions tabulation's own format is a genuinely open implementer choice, not one constrained by an existing pattern.
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **Corrected citation**: the earlier "Corrections by type:" reference (`issue_manager.py` ~lines 1848-1867) is a stale line/text reference. The current block reads "Most common corrections:" at `issue_manager.py:2106-2118` — `Counter(all_corrections).most_common(3)`, one `logger.info()` line per category sorted count-descending under a single header line. Same pattern already identified, now pinned to correct coordinates and literal text.
+- Shared filter-predicate precedent confirmed with exact interpolation lines: `_WASTED_RUN_PREDICATE` (`history_reader/usage.py:310`) is interpolated at lines 341 and 345 into two different aggregate expressions (`SUM(CASE WHEN ...)` and `COUNT(DISTINCT CASE WHEN ...)`) of the same query in `waste_attribution()` — confirms the single-source-of-truth SQL-fragment precedent exactly as previously described.
+- `TestAuthoritativeAttempts` (`test_history_reader_harness.py:173-203`, landed by ENH-3407) confirms a second, more directly on-point CLI-assertion example beyond the one already cited: `test_cli_harness.py:1115-1116` asserts bare substrings (`"pass-rate" in out`, `"1/1" in out`) for `cmd_dsl`'s CLI-level report — matches the substring-assertion convention already recommended for the admissions-tabulation test, now with a second confirming citation alongside `test_sprint.py::test_show_composition_line`.

@@ -371,6 +371,17 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   (nested under the existing `history` object — decided per Proposed Solution
   → Decision Rationale), with a matching
   `test_history_workspace_manifest_path_in_schema` schema test.
+- A present-but-malformed `ll-workspace.yaml` (bad YAML syntax, or an entry
+  missing `repo`/`role`) propagates `yaml.YAMLError`/a missing-field error to
+  the caller unmodified — no-wrap/propagate, per Decision Rules — covered by
+  malformed-input tests mirroring `TestLoadDecisions`
+  (`test_decisions.py:109-183`) / `TestLoadDecisionsMalformedInput`
+  (`test_verify_decisions.py:42`).
+- `history.workspace_manifest_path` is threaded through `HistoryConfig`'s
+  dataclass field and `from_dict()` (`config/features.py:1513-1554`), covered
+  by `test_workspace_manifest_path_default_none`/
+  `test_workspace_manifest_path_override` in
+  `test_config.py::TestHistoryConfig` (`:4245-4326`).
 
 ## Verification Notes
 
@@ -494,6 +505,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   the choice determines which of two Dependent-Files wiring lists apply.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T22:02:01 - `b8cb2fff-d50b-4bf2-babb-458135fa8e22.jsonl`
 - `/ll:decide-issue` - 2026-09-08T19:42:39 - `ec62a17d-6d92-4eb9-8c86-638b441ac713.jsonl`
 - `/ll:refine-issue` - 2026-09-08T19:34:12 - `98fcfd72-df15-46ed-a5e8-3df189a0e0ba.jsonl`
 - `/ll:verify-issues` - 2026-09-08T19:21:57 - `9151ddc6-ab2d-4793-bd0e-e517d6829851.jsonl`
@@ -518,3 +530,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 - `docs/reference/CLI.md:3743` — an additional "per-project" framing site (`ll-session` description: "queries the per-project `.ll/history.db`") not previously listed among Implementation Steps' doc-update targets, which cite only `docs/ARCHITECTURE.md:712` and `docs/reference/API.md:92,8207`. The same single-repo-framing update Step 5 makes should also touch this line. [`ll:codebase-locator` finding]
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **Anchor drift on three doc citations** — checked against current file content (locator pass, 2026-09-08): `docs/ARCHITECTURE.md:711-713` for "per-project event history store" resolves at `:714`, not `:711-713`; `docs/reference/API.md:8205-8209` for the package docstring resolves at `:8208` (`## little_loops.history_reader` heading) / `:8210` (docstring text), not `:8205-8209`; `docs/reference/CLI.md:3743` for the `ll-session` "per-project" framing resolves at `:3775`, not `:3743` (32-line drift — the file grew since the citation was written). `docs/reference/API.md:92` (module table row) remains correct as cited. Implementation Step 5 and the Documentation section's existing citations should be read against these corrected line numbers.
