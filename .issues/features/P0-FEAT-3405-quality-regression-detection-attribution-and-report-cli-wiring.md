@@ -6,7 +6,7 @@ priority: P0
 status: open
 discovered_date: '2026-09-07'
 parent: FEAT-3398
-blocked_by: FEAT-3404
+blocked_by: []
 labels:
 - path-a
 - observability
@@ -15,7 +15,7 @@ learning_tests_required:
 - yaml
 verify_verdict: NON_VALID
 size: Large
-confidence_score: 80
+confidence_score: 100
 outcome_confidence: 82
 score_complexity: 14
 score_test_coverage: 25
@@ -37,10 +37,11 @@ CLI flag on `ll-history quality`.
 ## Parent Issue
 
 Decomposed from FEAT-3398: Quality-regression detection with model/host/version
-attribution. This is the second of two children. **Depends on FEAT-3404**
-(`ll_version` column + typed reader path) — `load_window_compositions()` below
-reads `orchestration_runs.ll_version`, which does not exist until FEAT-3404
-lands.
+attribution. This is the second of two children. **Depended on FEAT-3404**
+(`ll_version` column + typed reader path) — now `done`
+(`fb4ea75cc feat(history): add ll_version stamp to orchestration_runs/loop_runs`)
+— `load_window_compositions()` below reads `orchestration_runs.ll_version`,
+which that change added.
 
 ## Current Behavior
 
@@ -151,8 +152,9 @@ usage_events.model` (the join the cost metric already uses; reaches 623 of 641
 
 ## Dependencies
 
-**FEAT-3404** (blocking): supplies the `orchestration_runs.ll_version` /
-`loop_runs.ll_version` column this issue's `load_window_compositions()` reads.
+**FEAT-3404** (`done`, landed `fb4ea75cc`): supplied the
+`orchestration_runs.ll_version` / `loop_runs.ll_version` column this issue's
+`load_window_compositions()` reads. No longer a blocker.
 
 Depends on the local agent-quality report over `history.db` for metric
 definitions and windowing (`analyze_agent_quality()`, already shipped).
@@ -385,6 +387,23 @@ _Wiring pass added by `/ll:wire-issue`:_
   additive-rendering shape: one `if analysis.<field>: lines.append("## <Heading>")
   ...` block per optional sub-report, appended without touching prior blocks.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `detect_* -> *Analysis` precedent anchors (Decision Rules cites these five by
+  name only): `detect_manual_patterns`/`detect_config_gaps` —
+  `issue_history/quality.py:272,410`; `detect_cross_cutting_smells` —
+  `issue_history/debt.py:46`; `detect_recurring_feedback`/`detect_skill_bypass`
+  — `issue_history/evolution.py:92,202`.
+- Schema anchors for the columns `load_window_compositions()` reads
+  (`session_store/schema.py`): `raw_events` table def at line 471 (`host`
+  column, indexed `idx_raw_events_host_ts` at 490-491); `usage_events` table
+  def at line 510 (`model` column, indexed `idx_usage_events_model` at 523);
+  FEAT-3404's `ll_version` columns via `ALTER TABLE orchestration_runs ADD
+  COLUMN ll_version TEXT` / `ALTER TABLE loop_runs ADD COLUMN ll_version TEXT`
+  at lines 1340-1341.
+
 ## Implementation Steps
 
 1. `load_window_compositions()` in a new sibling module
@@ -573,9 +592,11 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 **Outcome Confidence**: 82/100 → HIGH CONFIDENCE
 
 ### Gaps to Address
-- `blocked_by: FEAT-3404` is unresolved (status: open) — `load_window_compositions()` reads `orchestration_runs.ll_version`, which does not exist until FEAT-3404 lands. Wait for or prioritize FEAT-3404 before starting implementation here.
+- ~~`blocked_by: FEAT-3404` is unresolved~~ — **resolved 2026-09-08**: FEAT-3404 landed (`fb4ea75cc`, `done`) and the `blocked_by` edge has been unlinked. `orchestration_runs.ll_version` / `loop_runs.ll_version` now exist. Re-run `/ll:confidence-check` to re-score against the cleared Dependencies Hard Override.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T18:15:06 - `7bee39e0-dbd1-43e1-ab8d-3353f1d8f05f.jsonl`
+- `/ll:refine-issue` - 2026-09-08T17:31:19 - `fa35fcdd-03ef-4e02-8495-668286d605de.jsonl`
 - `/ll:confidence-check` - 2026-09-08T14:57:01 - `ca488d79-9d00-4093-b23a-fe056ec17be3.jsonl`
 - `/ll:verify-issues` - 2026-09-08T04:54:45 - `3160105b-dd7c-40a3-aa61-9ec1da8184c9.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T04:49:39 - `e0531aaa-d1f3-482e-9dd7-3feb0e19d4f4.jsonl`
