@@ -146,6 +146,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - EPIC-3212, ENH-3205 (gh isolation), ENH-3234 (ActionSpec wiring), ENH-3204 (audit table), ENH-3235 (FSM wiring)
 - Found by `/code-review high db393717e..1927af68d` on 2026-09-07.
+- BUG-3402 — a deeper, related isolation gap surfaced by `/ll:wire-issue` on 2026-09-08: on keychain-backed macOS `gh`, `gh auth token` still succeeds via Keychain regardless of the `GH_CONFIG_DIR` redirect this issue's fix relies on. This issue's acceptance criteria only test `gh auth status`, so its fix will pass while BUG-3402's gap remains — fixing this issue does not resolve BUG-3402.
 
 ## Status
 

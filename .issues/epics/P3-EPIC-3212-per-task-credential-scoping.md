@@ -35,6 +35,8 @@ A task (loop-YAML state or `ActionSpec`) declares the credential scopes it needs
 - **ENH-3204** — Record the credential scope a run was granted for after-the-fact audit (done 2026-09-07 — queue path not wired, see BUG-3400)
 - **ENH-3205** — Scope gh operations via GH_TOKEN and per-task GH_CONFIG_DIR isolation (done 2026-09-07 — gh probe unguarded, see BUG-3400)
 - **BUG-3400** — Credential scoping: unguarded gh probe, scopes [] bypasses validation, queue path not gh-isolated or audited (open, P1 — post-merge review 2026-09-07; last blocker to closing this epic)
+- **BUG-3402** — gh auth token bypasses GH_CONFIG_DIR isolation via macOS Keychain (open)
+
 
 ## Implementation Order
 
