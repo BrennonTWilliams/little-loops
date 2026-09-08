@@ -105,6 +105,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `--retry-of`'s argparse registration site is unaddressed above: all 5 shared evaluator flags (`--exit-code`, `--semantic`, `--timeout`, `--output`, `--verbose`, `--issue-id`) are declared exactly once inside the `_add_evaluator_flags()` closure (`cli/harness.py:384`), which is then called once per subparser — `skill_p` (494), `cmd_p` (503), `mcp_p` (519), `prompt_p` (533), `dsl_p` (547) — rather than via 5 separate `add_argument` call sites. The 835/868/911/952/1072 line numbers already cited above are the `_evaluate_and_report(...)` call sites inside each `cmd_*` function (confirmed exact), a distinct location from where the flag itself would be declared.
 - `session_store/__init__.py`'s three-touch-point export convention (docstring line, import-block line, `__all__` entry) is confirmed exact at the cited 54/147/234 for `record_harness_event`; both the import block and `__all__` are alphabetically sorted lists of `record_*`/`write_*`/`*_context` names, so `record_attempt`/`admit_retry`/`authoritative_attempt` each need a slot at their alphabetical position in both, not appended at the end.
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- Correction: an earlier Codebase Research Findings entry above states both the import block and `__all__` in `session_store/__init__.py` are alphabetically sorted. Direct read of the current source confirms only the import block is alphabetical (`record_commit_event` < `record_context_pressure_event` < `record_correction` < `record_harness_event` < ... holds exactly); `__all__` (lines 172-239) runs in chronological/feature-landing order instead (e.g. `"record_correction", "record_skill_event", "record_issue_snapshot", ...`), and the docstring's Public API list follows that same non-alphabetical order. `record_attempt`/`admit_retry`/`authoritative_attempt` need their alphabetical slot in the import block, but should follow the existing insertion-order convention in `__all__` and the docstring, not an alphabetical slot there.
+
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -163,6 +167,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 - A live precedent for resolving the `_make_namespace()`/`retry_of` gap already exists in this same file: `--issue-id` is a real `_add_evaluator_flags()` member (`cli/harness.py:418-430`) that is also absent from `_make_namespace()`'s hardcoded default set (`test_cli_harness.py:48-61`), and its one call site reads it defensively — `getattr(args, "issue_id", None)` (`cli/harness.py:720`) — rather than `args.issue_id`, which is why no existing `_make_namespace()`-built test breaks despite the gap. This confirms both resolutions named in the Wiring Phase note are real, in-codebase options (add `retry_of=None` to `_make_namespace()`'s defaults, or read `getattr(args, "retry_of", None)` at the gate's call site) rather than one being hypothetical; `--issue-id` itself uses the `getattr` route, not the defaults-update route.
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- Correction: `test_no_code_path_invokes_git_stash` (`test_git_operations.py:306-320`, cited above as this test's adaptation source) is confirmed by direct read to be a plain substring check on the whole module's source text (`'"stash"' not in source`), not an `ast.walk()` call — the earlier "adapted from ... `ast.walk()` count-check pattern" citation is inaccurate about the technique, though the file/line/class citation itself is correct. The actual `ast.walk()` technique in this codebase is `test_sprint.py:3158-3182`, which filters `ast.Call` nodes by the called function's **name** (e.g. `record_orchestration_run`), not by an embedded SQL string's table-name substring. No existing test walks `ast.Call` nodes and inspects an embedded SQL string for a table-name substring — the planned `harness_admissions` UPDATE/DELETE-absence test combines elements of both existing techniques (AST-walk call-site filtering + string-literal inspection); it is not a direct copy of either.
 
 ## Implementation Steps
 
@@ -278,6 +286,14 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `writers.py` has two disagreeing, both-live conventions for a writer's failure/return contract, not one: `record_harness_event`/`record_test_run_event`/`record_verdict_event` return `None` and raise on any SQLite failure, pushing suppression onto the caller (`_record_harness_event()`'s `contextlib.suppress(Exception)` at `cli/harness.py:124`); `record_orchestration_run` (`writers.py:1287`, `bool` return) and `record_learning_test_event` (`writers.py:1604`, `bool` return) instead guard-clause on missing identity fields and return `False`, swallowing the miss into the return value rather than raising. `record_attempt() -> int` as proposed does not match either shape (both existing conventions return `None`/`bool`, never an id) — a third pattern with no existing sibling in this module.
 - `authoritative_attempt() -> AttemptRow` as proposed also has no existing sibling: `connect()` (`schema.py:1514`) sets `conn.row_factory = sqlite3.Row` for every `session_store` connection including `writers.py`'s, and the dataclass-per-row convention (e.g. `HarnessEvent`, `history_reader/harness.py:36-63`) lives entirely in the separate read-side `history_reader` package — no function inside `writers.py` itself returns a dataclass today.
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `harness_admissions.reason` is CHECK-constrained to exactly four values: `'timeout'`, `'host_crash'`, `'harness_error'`, `'network'` (`schema.py:1384`, landed by ENH-3406). `admit_retry(attempt_id, superseded_id, reason)`'s `reason` parameter is limited to this closed set — there is no `'graded_failure'` value, consistent with a graded-failure retry being refused rather than admitted with a reason code.
+- `idx_harness_cell_repetition` (`schema.py:1377-1378`, landed by ENH-3406) is a partial UNIQUE index on `harness_events(cell_key, repetition) WHERE attempt_kind = 'repetition'`. A concurrent `record_attempt()` allocating the same repetition index for the same `cell_key` raises `sqlite3.IntegrityError` rather than silently duplicating a sample; rows with `attempt_kind = 'infra_retry'` and rows with `cell_key IS NULL` are exempt from this constraint by design (`schema.py` migration comment, lines 1366-1367).
+- Correction: the existing Codebase Research Findings above state `writers.py` has "two disagreeing, both-live conventions" for a writer's return/failure contract (raise-on-`None`, or guard-clause-on-`bool`). Direct read confirms a third, distinct shape also present: `cli_event_context()`/`skill_event_context()` (`writers.py:483,578`) capture `cursor.lastrowid` but use it only internally (targeting a same-context `UPDATE ... WHERE id=?` on exit) — no function in `writers.py` today returns an inserted row id as its public return value. `record_attempt() -> int` as proposed matches none of the three existing shapes.
+- No `session_store` writer maps a `sqlite3.Row` to a dataclass — the codebase's one such helper, `_row_to_dataclass(row, dc)` (`history_reader/_base.py:87-91`), is imported by 11 files under `history_reader/` but never by anything under `session_store/`. `authoritative_attempt() -> AttemptRow` as proposed has no existing sibling in `writers.py`; the cross-package helper exists as a reusable option, not a precedent already followed in this module.
+- The closest existing "next free N in a group" allocator is `issue_parser.py`'s filesystem-scoped `id_alloc_highwater_path`/`read_id_alloc_highwater`/`write_id_alloc_highwater` (`issue_parser.py:3220-3247`) — a `.id-alloc-highwater` file backing a global issue-number counter, not a SQL-scoped per-`cell_key` counter. Confirmed by a repo-wide search for `SELECT MAX(`/`SELECT COUNT(` allocation patterns: no hits under `scripts/little_loops/` besides one unrelated match in `codequery/codegraph.py` (code-graph indexing, different domain).
+
 ## Current Behavior
 
 No `session_store` writer records an attempt against a `cell_key`/`repetition`, admits
@@ -313,6 +329,7 @@ ENH-3408's scope, not this issue's.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T19:57:50 - `b6b6e9ca-1e9e-4589-b966-7e973d10f797.jsonl`
 - `/ll:wire-issue` - 2026-09-08T19:18:57 - `8253aa54-816e-4b30-a515-5729bc18e0a3.jsonl`
 - `/ll:decide-issue` - 2026-09-08T19:08:06 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:reconcile-issue` - 2026-09-08T18:52:23 - `454b24f9-6fdd-4c61-af5d-a12445ba857c.jsonl`
