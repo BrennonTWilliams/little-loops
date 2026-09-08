@@ -29,10 +29,18 @@ matching the *first* `Selected` callout's label as "rejected," including the win
 options of the other decision points.
 
 Confirmed on `.issues/features/P1-FEAT-3409-workspace-membership-discovery-for-cross-repo-history-db-aggregation.md`
-during a `/ll:confidence-check FEAT-3409` run: `HistoryConfig`, the winning Option A
-identifier for that issue's 3rd decision point ("Config registration path"), was
-flagged as a leftover rejected-option mention purely because it wasn't part of decision
-point 1's winning block ("Malformed-manifest posture", Option C).
+(4 decision points in `## Proposed Solution`) during a `/ll:confidence-check FEAT-3409`
+run: `HistoryConfig`, the winning Option A identifier for that issue's 3rd decision
+point ("Config registration path"), was flagged as a leftover rejected-option mention
+purely because it wasn't part of decision point 1's winning block ("Malformed-manifest
+posture", Option C).
+
+The same single-decision assumption has a sibling **false-negative** mode: when the
+first callout's option label (e.g. "Option A") also heads a block in a later decision
+point, `len(matching) != 1` aborts the whole function and returns `[]`, silently
+disabling the detector for that issue. Corpus scan (2026-09-08): 15 issues besides
+FEAT-3409 carry 2+ `> **Selected:**` callouts in `## Proposed Solution`; most of them
+hit this silent-off mode today (see Corpus Impact).
 
 ## Context
 
@@ -55,14 +63,45 @@ even where they are the section's own selected content. Confirmed via the
 `_unapplied_decision_pairs()` reproducer above: `HistoryConfig`, decision point 3's
 winning identifier on FEAT-3409, was flagged as a rejected-option leftover.
 
+Two observable failure modes, depending on whether the first callout's label repeats:
+
+- **False positive** (label unique across the section): FEAT-3409 (26 pairs, 5 of
+  them winning identifiers of decision points 2-4), FEAT-2478 (7 pairs; Decision 2's
+  winner Option D treated as rejected).
+- **Silent false negative** (label repeats, `len(matching) != 1` → `[]`): FEAT-2878,
+  FEAT-3078, FEAT-2598, ENH-2888 (labels restart A,B,A,B per decision point) and
+  ENH-2463 (7 callouts, labels A1/A2, B1/B2, ...). The detector is off for these
+  issues and `/ll:confidence-check` Criterion C credits them as clean.
+
 ## Expected Behavior
 
-`_unapplied_decision_pairs()` groups option blocks by decision point (splitting on the
-same `**Decision point:**` marker boundary BUG-3412 uses), resolves a `sel_ids`/
-`rej_ids` pair independently per group, and unions the resulting `discriminating`
-identifiers across groups — so a winning option's identifiers from decision point N
-are never treated as "rejected" leftovers just because they weren't decision point 1's
-winner.
+`_unapplied_decision_pairs()` groups option blocks by decision point, resolves a
+`sel_ids`/`rej_ids` pair independently per group, and unions the resulting
+`discriminating` identifiers across groups — so a winning option's identifiers from
+decision point N are never treated as "rejected" leftovers just because they weren't
+decision point 1's winner, and a repeated option label in a later decision point no
+longer switches the detector off for the whole issue.
+
+A group boundary between two consecutive option spans is any of:
+
+1. a `**Decision point:**` marker (`_DECISION_POINT_MARKER_RE`, BUG-3412) between them;
+2. a non-option markdown heading (any depth, fence-excluded) between them — the
+   `#### Decision N — ...` shape (FEAT-2478, FEAT-2598) and the `### <topic>` shape
+   (ENH-2463);
+3. an option-label restart — the next span's `_option_label()` is already present in
+   the current group (the bare A,B,A,B shape with no delimiter at all: FEAT-2878,
+   ENH-2888, FEAT-3078).
+
+Markers at or past `### Decision Rationale` (`dr_start`) are ignored — FEAT-3409
+carries three bold `**Decision point: X**` lines inside its Decision Rationale that
+match the marker regex. A section with no boundary yields one group, so
+single-decision-point issues keep byte-identical output.
+
+Per group: the group's own first `> **Selected:**` callout names the winner; a group
+with no callout, or whose label matches 0 or 2+ spans *within that group*, contributes
+nothing (it does not abort the other groups). The final set additionally subtracts
+the union of every group's `sel_ids`, so an identifier rejected in decision point 1
+but chosen in decision point 3 is never reported.
 
 ## Motivation
 
@@ -74,29 +113,46 @@ winner.
 - ENH-3256 established per-decision-point authoring (`**Decision point:**`
   markers, one `Selected` callout per point) as the multi-option convention;
   BUG-3412 confirms the pattern is already in active use. Any issue authored
-  with 2+ decision points in `## Proposed Solution` hits this false positive,
-  so the blast radius grows with adoption of that convention even though only
-  one corpus issue (FEAT-3409) trips it today.
+  with 2+ decision points in `## Proposed Solution` hits one of the two failure
+  modes; 16 corpus issues do so today (2 false-positive, the rest silently off),
+  and the blast radius grows with adoption of that convention.
 
 ## Proposed Solution
 
-Reuse BUG-3412's `_decision_point_marker_positions()` /
+Group `_option_block_spans()`'s flat span list by decision point before computing
+`sel_ids`/`rej_ids`, reusing BUG-3412's `_decision_point_marker_positions()` /
 `_DECISION_POINT_MARKER_RE` primitives (`scripts/little_loops/issue_parser.py:2272`,
-`:2797`) to group `_option_block_spans()`'s flat span list by decision point before
-computing `sel_ids`/`rej_ids`:
+`:2797`) for boundary rule 1 and adding the heading and label-restart rules:
 
 1. In `_unapplied_decision_pairs()`, after `spans = _option_block_spans(proposed_body)`,
-   partition `spans` into per-decision-point groups using the same marker-position
-   boundaries `_decision_groups_in_body()` already uses to split same-tier runs.
-2. For each group independently: find its own `_selected_option_title()`-equivalent
-   (the group's own `> **Selected:**` callout), match it to the one span in *that
-   group* whose heading label matches, and compute `sel_ids`/`rej_ids` scoped to the
-   group (keeping the existing BUG-3295 containment and BUG-3289 shared-subject
-   exclusions, applied per group).
-3. Union each group's `discriminating` (rej_ids - sel_ids, minus exclusions) set
-   across groups into the function's final return value.
-4. Groups with < 2 option spans (a single-decision-point group) short-circuit to
-   `[]` for that group, matching the existing whole-function early return.
+   partition `spans` into groups with a new `_group_spans_by_decision_point()` helper.
+   A new group starts at span *i* when, between `spans[i-1]` and `spans[i]`, there is
+   a fence-excluded `**Decision point:**` marker or a non-option heading line, or when
+   `_option_label(spans[i].heading)` is already present in the current group. Compute
+   `fences = fence_spans(proposed_body)` locally (the helper needs it and
+   `_option_block_spans()` does not expose its own). Only markers/headings before
+   `dr_start` count.
+2. Clamp each group's last span at the next group's leading marker/heading line, the
+   same `next_marker < next_start` clamp `_decision_groups_in_body()` applies at
+   `issue_parser.py:2872-2874`. Without it, group N's last span absorbs group N+1's
+   `**Decision point:** ... \`ident\`` line (on FEAT-3409, span 640-1026 contains the
+   marker at 983) and that line's backticked identifiers leak into group N's ids. On
+   FEAT-3409 the leak is masked only because those identifiers also appear in
+   `## Summary` (BUG-3289 shared-subject exclusion); the clamp makes it structurally
+   impossible.
+3. For each group independently: take the group's own first `> **Selected:**` callout
+   (searched within the group's region, not the whole section), match its label to the
+   one span in *that group*, and compute `sel_ids`/`rej_ids` scoped to the group. Keep
+   the per-block own-callout-line masking and the BUG-3295 containment exclusion per
+   group. A group with no callout, or with 0 or 2+ label matches, is skipped — not a
+   whole-function `return []`. Keep the existing BUG-3279 last-block callout-line trim
+   per group's last span.
+4. Union each group's `(rej_ids - subsumed)` set across groups, then subtract the union
+   of every group's `sel_ids` and the BUG-3289 `shared_ids` (computed once, as now).
+   The `subsumed → sel_ids → shared_ids` ordering is preserved.
+5. Groups with < 2 option spans contribute nothing, matching the existing
+   whole-function `len(spans) < 2` early return. A section with no boundary is one
+   group: the single-decision-point path must be byte-identical to today's output.
 
 ## Integration Map
 
@@ -119,35 +175,37 @@ computing `sel_ids`/`rej_ids`:
   the grouping logic after it rather than reinventing marker-boundary splitting.
 
 ### Tests
-- `scripts/tests/test_issue_parser.py` — add a multi-decision-point
-  `_unapplied_decision_pairs()` case (winning identifiers of decision point 2+ must
-  not appear in the result).
-- `scripts/tests/test_ll_issues_format_check.py` — add/adjust `unapplied_decision`
-  field coverage for a multi-decision-point fixture.
-- `scripts/tests/test_confidence_check_skill.py` — verify Criterion C no longer
-  penalizes a multi-decision-point issue for its own winning identifiers.
-  > ⚠ Superseded — no functional scoring test exists in this file today
-
-_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser.py` — in `TestUnappliedDecision` (via its
+  `_issue()` helper), add one case per corpus boundary shape, each asserting the
+  winning identifiers of decision point 2+ are absent AND a genuinely rejected
+  identifier from decision point 2+ still fires when a directive section names it
+  (this second half is the false-negative regression guard):
+  - marker-delimited, 4 decision points (FEAT-3409 shape, first label unique);
+  - `#### Decision N — ...` heading-delimited (FEAT-2478 shape, labels A,B,C,D
+    continue across points — exercises boundary rule 2 alone);
+  - undelimited label restart A,B,A,B (FEAT-2878 shape — exercises rule 3 alone;
+    today returns `[]` via `len(matching) != 1`);
+  - letter-prefixed labels A1,A2,B1,B2 (ENH-2463 shape);
+  - marker-line identifier leak (rule-2 clamp): a `**Decision point:** \`leaky\``
+    line whose `leaky` is NOT in title/Summary must not be reported.
+  - single-decision-point fixtures already in the class must pass unchanged.
+- `scripts/tests/test_ll_issues_format_check.py` — add `unapplied_decision` /
+  `unapplied_decision_detail` field coverage for one multi-decision-point fixture.
 - `scripts/tests/test_decide_issue_skill.py` — `TestPhase7cFixtures` (lines 264-330)
   imports `_unapplied_decision_pairs()` directly against golden fixtures under
-  `scripts/tests/fixtures/issues/` (`ENH-3280-fixture-*.md`,
-  `ENH-3277-pre-repair-reproducer.md`); all 5 existing fixtures are
-  single-decision-point (confirmed: none contain a second `**Decision point:**`
-  marker or `> **Selected:**` callout). This exercises `/ll:decide-issue` Phase 7c's
-  `unapplied_decision_detail` consumption path — structurally separate from
-  `TestUnappliedDecision`'s formatted-reason-string assertions — and was not in this
-  issue's original test plan. Add a new multi-decision-point golden fixture here
-  (shaped like FEAT-3409's 3 decision points) asserting decision-point 2+'s winning
-  identifiers are absent from the result. [Agent 3 finding]
-- `scripts/tests/test_confidence_check_skill.py` — confirmed this file has **no**
-  functional test invoking `_unapplied_decision_pairs`/`_unapplied_decision` or
-  feeding real issue content through Criterion C scoring; its existing
-  `unapplied_decision`-related tests (~lines 582-645) only assert that
-  `SKILL.md`/`rubric.md` *document* the cap, not that the detector's output is
-  correctly scored. The line above ("verify Criterion C no longer penalizes...")
-  does not map onto any existing runnable assertion here — it requires writing new
-  content-driven coverage, not "adjusting" existing coverage. [Agent 3 finding]
+  `scripts/tests/fixtures/issues/`; all 5 existing fixtures are single-decision-point.
+  Add a multi-decision-point golden fixture (FEAT-3409 shape, 4 decision points) and
+  a case asserting decision-point 2+'s winning identifiers are absent — this is the
+  `/ll:decide-issue` Phase 7c `unapplied_decision_detail` consumption path.
+- Corpus differential (same style as `TestBug3295ContainmentCorpusDifferential`):
+  the fix changes output on 16 live issues — it removes pairs on FEAT-3409/FEAT-2478
+  and *adds* pairs on the previously silent issues, which will lower their Criterion
+  C scores. Record before/after pair counts per affected issue in this issue's
+  Session Log and assert no single-callout issue's output changes.
+- `scripts/tests/test_confidence_check_skill.py` — no functional Criterion C scoring
+  test exists there (its `unapplied_decision` tests only check that `SKILL.md` /
+  `rubric.md` document the cap). Not touched; the detector-level assertions above
+  are the verification.
 
 ### Documentation
 - N/A — no public API or docs surface changes; internal parser fix only.
@@ -175,16 +233,23 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 - `_unapplied_decision_pairs(content: str) -> list[tuple[str, str]]` — unchanged
   signature; internal grouping logic changes only.
-- `_group_spans_by_decision_point(spans: list[tuple[int, int, str]], marker_positions: list[int]) -> list[list[tuple[int, int, str]]]`
-  (new helper, or inlined equivalent) — partitions `_option_block_spans()`'s flat
-  span list at `_decision_point_marker_positions()` boundaries.
+- `_group_spans_by_decision_point(body: str, spans: list[tuple[int, int, str]], boundary_positions: list[int]) -> list[list[tuple[int, int, str]]]`
+  (new helper) — partitions `_option_block_spans()`'s flat span list into groups at
+  `boundary_positions` (sorted, fence-excluded offsets of `**Decision point:**`
+  markers and non-option headings before `dr_start`) and at option-label restarts;
+  clamps each group's last span at the next group's leading boundary line.
+- `_decision_point_boundary_positions(body: str, fences: list[tuple[int, int]], limit: int) -> list[int]`
+  (new helper, or inlined) — `_decision_point_marker_positions()` output merged with
+  non-option heading offsets, filtered to `< limit` (`dr_start`).
 
 ### Call Path
 
 `check_format_gaps()` -> `_unapplied_decision_pairs()` -> `_option_block_spans()`
-(existing) -> `_decision_point_marker_positions()` (BUG-3412, reused) -> new
-grouping step -> per-group `_selected_option_title()` + `_decision_identifiers()`
-(existing) -> union into the function's `list[tuple[str, str]]` return.
+(existing) -> `_decision_point_marker_positions()` (BUG-3412, reused) + heading scan
+-> `_group_spans_by_decision_point()` (new) -> per-group `_selected_option_title()`
+on the group region + `_decision_identifiers()` (existing) -> union of per-group
+`(rej - subsumed)` minus union of `sel_ids` minus `shared_ids` -> the function's
+`list[tuple[str, str]]` return.
 
 ### Codebase Research Findings
 
@@ -198,21 +263,33 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add a helper that partitions `_option_block_spans()`'s flat span list into
-   per-decision-point groups using `_decision_point_marker_positions()` boundaries
-   (mirroring `_decision_groups_in_body()`'s run-splitting logic).
+1. Add `_group_spans_by_decision_point()` (plus the boundary-position helper) that
+   partitions `_option_block_spans()`'s flat span list into per-decision-point groups
+   on the three boundary rules (marker, non-option heading, label restart), ignores
+   boundaries at or past `dr_start`, and clamps each group's last span at the next
+   group's leading boundary line (mirroring `_decision_groups_in_body()`'s
+   run-splitting and `next_marker` clamp).
 2. Rewrite `_unapplied_decision_pairs()`'s body to resolve `sel_ids`/`rej_ids` per
-   group instead of globally, preserving the BUG-3295/BUG-3289 exclusions and the
-   last-block callout-line trimming per group.
-3. Union each group's `discriminating` identifiers into the final return value.
-4. Add multi-decision-point regression tests (`test_issue_parser.py`,
-   `test_ll_issues_format_check.py`) using a fixture shaped like FEAT-3409's 3
-   decision points; verify the `_unapplied_decision_pairs()` reproducer above now
-   returns `[]` for `HistoryConfig`/`manifest_path`.
-5. Run `python -m pytest scripts/tests/test_issue_parser.py
-   scripts/tests/test_ll_issues_format_check.py
-   scripts/tests/test_confidence_check_skill.py` and confirm existing
-   single-decision-point cases still pass unchanged.
+   group instead of globally: per-group callout lookup, per-group `matching` check
+   that skips the group rather than returning `[]`, per-group own-callout masking,
+   last-block trim, and BUG-3295 containment.
+3. Union each group's `(rej_ids - subsumed)` into one set, subtract the union of all
+   groups' `sel_ids`, then subtract `shared_ids` (BUG-3289), then run the existing
+   scrub + directive-section scan unchanged.
+4. Add the regression tests listed under Integration Map › Tests (one per corpus
+   boundary shape, plus the leak-clamp case and the Phase 7c golden fixture).
+   Acceptance on the FEAT-3409 reproducer is **not** an empty list — genuinely
+   rejected identifiers that directive sections still name (e.g. `('Files to Modify',
+   'config/core.py')` from a "no change needed to `config/core.py`" sentence) remain
+   and are a separate, pre-existing detector limitation. Assert instead that none of
+   `HistoryConfig`, `manifest_path`, `history.db_path`,
+   `history.workspace_manifest_path`, `workspace` appear in any returned pair.
+5. Run the corpus differential over `.issues/**/*.md`: exactly the 16 multi-callout
+   issues change output, no single-callout issue changes. Record per-issue
+   before/after counts in the Session Log.
+6. Run `python -m pytest scripts/tests/test_issue_parser.py
+   scripts/tests/test_ll_issues_format_check.py scripts/tests/test_decide_issue_skill.py`
+   and confirm existing single-decision-point cases pass unchanged.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -224,24 +301,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
   absent from `_unapplied_decision_pairs()`'s output via the `/ll:decide-issue`
   Phase 7c consumption path (`unapplied_decision_detail`), not just
   format-check's formatter path already covered by `test_issue_parser.py`.
-- Re-scope the `test_confidence_check_skill.py` verification step: that file has
-  no functional Criterion C scoring test today (only doc-prose presence checks
-  against `SKILL.md`/`rubric.md`) — verify the fix via the detector-level
-  assertions in `test_issue_parser.py`/`test_ll_issues_format_check.py` instead,
-  unless new functional scoring coverage is separately justified.
+- `test_confidence_check_skill.py` is out of scope (no functional Criterion C
+  scoring test exists there); verification is the detector-level assertions in
+  `test_issue_parser.py` / `test_ll_issues_format_check.py`.
 
 ## Impact
 
-- **Priority**: P2 — narrow live blast radius today (one corpus issue), but silently
-  corrupts `/ll:confidence-check` Criterion C scoring wherever it does trigger, and
-  the triggering pattern (multi-decision-point authoring) is an actively growing
-  convention (ENH-3256).
-- **Effort**: Small — reuses BUG-3412's marker-detection primitives directly; the
-  change is scoped to one function's internal grouping logic with no new external
-  dependencies or API surface.
-- **Risk**: Low — internal parser helper with no public API; existing
-  single-decision-point behavior must stay byte-identical (`_unapplied_decision_reasons()`'s
-  reason-string format is a preserved contract per its own docstring).
+- **Priority**: P2 — 16 live corpus issues affected (2 false-positive, 14 with the
+  detector silently off), corrupting `/ll:confidence-check` Criterion C scoring in
+  both directions, and the triggering pattern (multi-decision-point authoring) is an
+  actively growing convention (ENH-3256).
+- **Effort**: Small-to-medium — reuses BUG-3412's marker-detection primitives; adds
+  two boundary rules (heading, label restart) and a span clamp inside one function's
+  grouping logic, no new external dependencies or API surface. Most of the effort is
+  the per-shape fixtures and the corpus differential.
+- **Risk**: Low-to-medium — internal parser helper with no public API; existing
+  single-decision-point behavior must stay byte-identical (`_unapplied_decision()`'s
+  reason-string format is a preserved contract per its own docstring). The
+  previously silent issues will start reporting pairs, so their confidence scores
+  may drop; that is the intended correction, but it must be measured, not assumed.
 - **Breaking Change**: No.
 
 ## Steps to Reproduce
@@ -258,10 +336,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ```python
 from little_loops.issue_parser import _unapplied_decision_pairs
 content = open(".issues/features/P1-FEAT-3409-workspace-membership-discovery-for-cross-repo-history-db-aggregation.md").read()
-print(_unapplied_decision_pairs(content))
-# 22 pairs, including ('Implementation Steps', 'HistoryConfig') and
+pairs = _unapplied_decision_pairs(content)
+# 26 pairs at 2026-09-08 (count drifts as FEAT-3409 is edited; the shape is what
+# matters). Includes ('Implementation Steps', 'HistoryConfig') and
 # ('Program Design', 'manifest_path') — HistoryConfig is decision point 3's
 # WINNING identifier, not a rejected-option leftover.
+assert any(ident == "HistoryConfig" for _, ident in pairs)
+```
+
+False-negative reproducer (label repeats across decision points):
+
+```python
+from little_loops.issue_parser import _unapplied_decision_pairs
+content = open(".issues/features/P1-FEAT-2878-trace-level-assertions-in-the-eval-harness-with-optional-multi-host-divergence-runs.md").read()
+print(_unapplied_decision_pairs(content))  # [] — 3 decision points, all "Option A" winners;
+# `len(matching) != 1` aborts before any identifier is compared.
 ```
 
 ## Root Cause
@@ -277,17 +366,10 @@ print(_unapplied_decision_pairs(content))
 4. Puts every *other* span's identifiers into `rej_ids` — including the winning
    options of decision points 2, 3, 4, ... which were never wrong, just not decision
    point 1's winner.
+5. Or, when that one label heads a block in 2+ decision points (`len(matching) != 1`,
+   `issue_parser.py:1621`), returns `[]` for the whole issue — the silent-off mode.
 
-Reproducer:
-
-```python
-from little_loops.issue_parser import _unapplied_decision_pairs
-content = open(".issues/features/P1-FEAT-3409-workspace-membership-discovery-for-cross-repo-history-db-aggregation.md").read()
-print(_unapplied_decision_pairs(content))
-# 22 pairs, including ('Implementation Steps', 'HistoryConfig') and
-# ('Program Design', 'manifest_path') — HistoryConfig is decision point 3's
-# WINNING identifier, not a rejected-option leftover.
-```
+Reproducers: see Steps to Reproduce.
 
 ### Codebase Research Findings
 
@@ -313,23 +395,32 @@ same-tier decision points into one `DecisionGroup`. This issue covers
 `_option_block_spans()` directly — it does not call `_decision_groups_in_body()` at
 all, so BUG-3412's fix does not touch it.
 
-BUG-3412's in-progress fix (uncommitted on `main` at investigation time) adds
-`_DECISION_POINT_MARKER_RE` / `_decision_point_marker_positions()` to detect
-`**Decision point:**` prose/heading boundaries. The fix for this issue can likely
-reuse those same primitives to group `_option_block_spans()`'s flat span list by
-decision point, then compute `sel_ids`/`rej_ids` (and the existing BUG-3295
-containment exclusion, BUG-3289 shared-subject exclusion) per group instead of
-globally, before merging the per-group `discriminating` sets.
+BUG-3412's fix (committed as `e9417d1f7`) adds `_DECISION_POINT_MARKER_RE` /
+`_decision_point_marker_positions()` to detect `**Decision point:**` prose/heading
+boundaries. This issue reuses those primitives for boundary rule 1 and adds the
+heading and label-restart rules the marker regex does not cover.
 
 ## Corpus Impact
 
-At investigation time,
-`.issues/features/P1-FEAT-3409-workspace-membership-discovery-for-cross-repo-history-db-aggregation.md`
-is the only issue in the
-corpus with 2+ decision points in `## Proposed Solution` (verified via a scripted scan
-of all `.issues/**/*.md`), so live blast radius is narrow today. The bug will recur
-for any future issue authored with multiple decision points in one section — an
-increasingly common convention per ENH-3256's per-decision-point authoring pattern.
+Scripted scan of `.issues/**/*.md` (2026-09-08, counting `> **Selected:**` callouts
+before `### Decision Rationale` in `## Proposed Solution`): 16 issues carry 2+
+callouts. FEAT-3409 is the only one that also uses `**Decision point:**` markers, so
+a marker-only grouping would fix exactly one issue — hence boundary rules 2 and 3.
+
+| Issue | Callouts | Delimiter between decision points | Today |
+|---|---|---|---|
+| FEAT-3409 | 4 | `**Decision point:**` markers | 26 pairs, false positives |
+| FEAT-2478 | 2 | `#### Decision N — ...` headings, labels A,B,C,D | 7 pairs, false positives |
+| FEAT-2598 | 2 | `#### Decision N` headings, labels A,B,A,B | `[]` (silent) |
+| FEAT-3078 | 2 | `###` topic headings, labels A,B,A,B,C | `[]` (silent) |
+| FEAT-2878 | 3 | none, labels A,B,A,B,A,B | `[]` (silent) |
+| ENH-2888 | 2 | none, labels A,B,A,B | `[]` (silent) |
+| ENH-2463 | 7 | letter-prefixed labels A1,A2,B1..,C1.. | `[]` (silent) |
+| 9 others | 2 each | mixed; several have 0-3 option spans (callout used as a cross-reference) | `[]` |
+
+The bug will recur for any future issue authored with multiple decision points in one
+section — an increasingly common convention per ENH-3256's per-decision-point
+authoring pattern.
 
 ## Related Key Documentation
 
@@ -341,6 +432,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T23:46:28 - `e4f9d0c3-b434-4a60-a8a9-bb40fcc5c75a.jsonl`
 - `/ll:confidence-check` - 2026-09-08T23:19:30 - `6c87a100-fdff-4f6c-8c02-661175f66952.jsonl`
 - `/ll:wire-issue` - 2026-09-08T23:16:35 - `5525351e-3d29-48e7-8627-a2102c2d6ce0.jsonl`
 - `/ll:refine-issue` - 2026-09-08T23:07:32 - `4eafacf3-ae84-4013-9a60-e7cb82f6fe90.jsonl`
