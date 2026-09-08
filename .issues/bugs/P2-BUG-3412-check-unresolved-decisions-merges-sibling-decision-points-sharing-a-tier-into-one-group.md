@@ -87,11 +87,32 @@ entirely in group construction.
 - `scripts/little_loops/issue_parser.py` — `_decision_groups_in_body()` run-splitting loop
   (issue_parser.py:2806-2817); add a decision-point-marker helper alongside it.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_parser.py` — `DecisionGroup` class docstring
+  (issue_parser.py:2710-2719) states only two run-breaking conditions ("A run breaks when
+  the tier changes, when a Pattern E directive window intervenes, or at a section
+  boundary") — needs a third clause for the new decision-point-marker boundary.
+
 ### Dependent Files (Callers/Importers)
 - `_decision_groups_in_body()` is called from `locate_unresolved_decisions()`
   (issue_parser.py:2925, 2934), which backs `ll-issues check-unresolved-decisions`.
 - `/ll:decide-issue`'s Phase 7b and Phase 3b step 4 gate `decision_needed` clearing on this
   check's exit code — no code change needed there, but behavior changes once the fix lands.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/check_unresolved_decisions.py:63,71` — the actual CLI
+  entry point backing `ll-issues check-unresolved-decisions`; calls
+  `locate_unresolved_decisions()` directly and was not previously named in this issue. No
+  code change needed — its output changes once the fix lands, since more same-tier
+  multi-decision-point issues will correctly surface an unresolved group.
+- `scripts/little_loops/cli/issues/__init__.py:36-39,747,1046-1047` — imports, registers,
+  and dispatches the `check-unresolved-decisions` subcommand. No code change needed.
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml:216,242` — `check_residual_decision`
+  FSM state shells out to `ll-issues check-unresolved-decisions ${context.issue_id:shell}`
+  and branches on its exit code. No code change needed — behavior changes once the fix lands.
+- `skills/decide-issue/SKILL.md:181,190,285,401` and `skills/decide-issue/reference.md:134,245`
+  — gate `decision_needed` clearing on this CLI's exit code at Phase 3b step 4 and Phase 7b;
+  prose is generic (no tier-merge claim) and needs no correction, but confirmed dependent.
 
 ### Similar Patterns
 - `_directive_decision_group()` (issue_parser.py:2842) already demonstrates the pattern of
@@ -104,9 +125,23 @@ entirely in group construction.
 - `scripts/tests/test_decide_issue_skill.py` — verify `/ll:decide-issue`'s gate still behaves
   correctly against the corrected grouping.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_check_unresolved_decisions.py` — subprocess-level CLI tests
+  for `check-unresolved-decisions`; no existing fixture covers 2+ same-tier decision points
+  (closest, `test_second_lower_precedence_group_exits_one_even_when_first_is_decided`, splits
+  via a tier change, not a marker). Add a CLI-level fixture mirroring the new unit test to
+  confirm the fix is visible through the actual CLI exit code and `--json` payload, not just
+  the parser internals.
+
 ### Documentation
 - N/A — `_decision_groups_in_body()` behavior isn't documented outside its own docstring and
   the BUG-3278 issue that introduced it.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:1098` — `locate_unresolved_decisions` doc entry mirrors the same
+  stale two-condition prose ("a maximal contiguous run of same-tier option blocks, or one
+  Pattern E directive window") as the `DecisionGroup` docstring above; needs the same
+  third-condition addition.
 
 ### Configuration
 - N/A
@@ -149,6 +184,19 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
    FEAT-3409 shape (2+ same-tier decision points, only the first decided).
 4. Run `python -m pytest scripts/tests/` and confirm `check-unresolved-decisions` against
    FEAT-3409 now reports the unresolved decision point.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `DecisionGroup` class docstring (issue_parser.py:2710-2719) to add the new
+  decision-point-marker run-breaking condition alongside tier change and Pattern E directive.
+- Update `docs/reference/API.md:1098` (`locate_unresolved_decisions` entry) to match the
+  corrected docstring.
+- Add a CLI-level regression fixture to
+  `scripts/tests/test_ll_issues_check_unresolved_decisions.py` reproducing the same-tier
+  multi-decision-point shape, to confirm the fix through the actual CLI exit code and
+  `--json` payload, not just the parser internals.
 
 ## Impact
 
@@ -215,6 +263,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-08T20:21:07 - `829655b3-be33-4d4b-a196-5c697fc23a0c.jsonl`
 - `/ll:refine-issue` - 2026-09-08T19:57:45 - `b6b6e9ca-1e9e-4589-b966-7e973d10f797.jsonl`
 - `/ll:format-issue` - 2026-09-08T19:51:50 - `cb4b9ca3-dab7-4f31-8422-5d785ebaffef.jsonl`
 - `/ll:capture-issue` - 2026-09-08T19:45:05 - `ce7357ff-ca14-4ec7-8141-84e7fba71ec5.jsonl`
