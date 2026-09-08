@@ -992,6 +992,46 @@ def _guard_real_history_db() -> Generator[None, None, None]:
         mp.undo()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _guard_real_socket_transport() -> Generator[None, None, None]:
+    """Fail fast if any test binds a `UnixSocketTransport` under the real .ll/.
+
+    Intercepts the single choke point every real socket construction routes
+    through — `UnixSocketTransport.__init__` — and asserts *before* delegating
+    to the original constructor that the requested bind path does not live
+    under the real project `.ll/`. Checking pre-bind (rather than post-bind on
+    the claimed path) means a violating test never actually creates a socket
+    file in the real `.ll/` — the assertion fires before any file exists.
+
+    This guards against BUG-3401: `cmd_resume`/`cmd_run`/`main_parallel`/
+    `_cmd_sprint_run` all build `BRConfig(Path.cwd())` directly, so an
+    unmocked call in a test loads this repo's own `.ll/ll-config.json`
+    (`events.transports: ["socket"]`) and `wire_transports()` binds a real,
+    never-closed socket at the real repo `.ll/` — three such binds per
+    process and the third raises. Mirrors `_guard_real_history_db` above.
+    """
+    from little_loops import transport as _transport_mod
+
+    real_ll_dir = (Path(__file__).parent.parent.parent / ".ll").resolve()
+    original_init = _transport_mod.UnixSocketTransport.__init__
+
+    def guarded_init(self: Any, path: Path, *args: Any, **kwargs: Any) -> None:
+        resolved_parent = Path(path).resolve().parent
+        assert resolved_parent != real_ll_dir, (
+            f"A test constructed UnixSocketTransport under the real project .ll/: {path}. "
+            f"Route it through an isolated tmp directory (see short_tmp_path in "
+            f"test_transport.py) instead of {real_ll_dir}."
+        )
+        original_init(self, path, *args, **kwargs)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(_transport_mod.UnixSocketTransport, "__init__", guarded_init)
+    try:
+        yield
+    finally:
+        mp.undo()
+
+
 # =============================================================================
 # Session-log directory isolation (BUG-2489)
 # =============================================================================

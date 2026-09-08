@@ -444,6 +444,72 @@ class TestNoLiveHostCLIGuard:
                 next(gen)
 
 
+class TestGuardRealSocketTransport:
+    """Real-socket-under-``.ll`` guard (BUG-3401).
+
+    Mirrors ``TestNoLiveHostCLIGuard``: drives ``_guard_real_socket_transport``'s
+    raw generator directly rather than through pytest's fixture machinery, since
+    a test cannot observe its own fixture's teardown assertions.
+    """
+
+    def test_install_fixture_patches_and_restores_socket_init(self) -> None:
+        from little_loops.transport import UnixSocketTransport
+
+        original_init = UnixSocketTransport.__init__
+
+        gen = conftest._guard_real_socket_transport.__wrapped__()
+        next(gen)
+        try:
+            assert UnixSocketTransport.__init__ is not original_init
+        finally:
+            with pytest.raises(StopIteration):
+                next(gen)
+
+        assert UnixSocketTransport.__init__ is original_init
+
+    def test_guard_raises_before_binding_under_real_project_ll(self) -> None:
+        """The guard must reject a bind path under the real repo's ``.ll/``
+        before any real socket is created there — not after."""
+        from little_loops.transport import UnixSocketTransport
+
+        real_ll = (Path(__file__).parent.parent.parent / ".ll").resolve()
+        fake_path = real_ll / "events-test-guard-should-never-exist.sock"
+
+        gen = conftest._guard_real_socket_transport.__wrapped__()
+        next(gen)
+        try:
+            with pytest.raises(AssertionError):
+                UnixSocketTransport(fake_path)
+        finally:
+            with pytest.raises(StopIteration):
+                next(gen)
+
+        assert not fake_path.exists(), "guard must reject before any real bind happens"
+
+    def test_guard_allows_construction_under_isolated_tmp_dir(self) -> None:
+        """A transport bound under an isolated (non-``.ll/``) dir is unaffected."""
+        import shutil
+        import tempfile
+
+        from little_loops.transport import UnixSocketTransport
+
+        # Short path (not ``tmp_path``) to stay under the AF_UNIX 104-char
+        # ``sun_path`` limit on macOS — same convention as test_transport.py's
+        # ``short_tmp_path`` fixture.
+        d = Path(tempfile.mkdtemp(prefix="ll-"))
+        transport = None
+        gen = conftest._guard_real_socket_transport.__wrapped__()
+        next(gen)
+        try:
+            transport = UnixSocketTransport(d / "events.sock")
+        finally:
+            if transport is not None:
+                transport.close()
+            with pytest.raises(StopIteration):
+                next(gen)
+            shutil.rmtree(d, ignore_errors=True)
+
+
 class TestRateLimitLadderCollapsed:
     """The rate-limit ladder collapse fixture (FEAT-3329) is suite-wide.
 

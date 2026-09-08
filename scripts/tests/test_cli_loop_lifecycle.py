@@ -5,10 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
+import tempfile
 import time
+from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,6 +27,68 @@ from little_loops.cli.loop.lifecycle import (
     read_run_status,
 )
 from little_loops.fsm.persistence import LoopState, StatePersistence
+
+
+def _build_mock_br_config(
+    circuit_breaker_path: str = "unused-rate-limit-circuit.json",
+) -> MagicMock:
+    """Shared shape for a `BRConfig` mock safe to hand to `cmd_resume`/`cmd_run`.
+
+    `events.transports = []` is the load-bearing field (BUG-3401): `cmd_resume`
+    builds `BRConfig(Path.cwd())` directly, so an unmocked call would load this
+    repo's own `.ll/ll-config.json` (`events.transports: ["socket"]`) and
+    `wire_transports()` would bind a real, never-closed socket at the real
+    project `.ll/`. `circuit_breaker_path` is never opened unless a caller also
+    overrides `circuit_breaker_enabled` to `True` (default `False` here).
+    """
+    mock_config = MagicMock()
+    mock_config.commands.rate_limits.circuit_breaker_enabled = False
+    mock_config.commands.rate_limits.circuit_breaker_path = circuit_breaker_path
+    mock_config.extensions = {}
+    mock_config.events = MagicMock(transports=[])
+    mock_config.design_tokens.enabled = False
+    return mock_config
+
+
+@pytest.fixture(scope="session")
+def _isolated_br_config_root() -> Generator[Path, None, None]:
+    """A directory with no `.ll/ll-config.json`, so a real `BRConfig` built
+    against it resolves every field via schema defaults (`events.transports`
+    defaults to `[]`) rather than this repo's own config. One directory is
+    reused for the whole session — it is never written to, so sharing it is
+    safe and avoids the per-test `tmp_path` materialization cost that a prior
+    fixture in this suite explicitly avoids for macOS filesystem-churn reasons.
+    """
+    d = Path(tempfile.mkdtemp(prefix="ll-brconfig-isolation-"))
+    try:
+        yield d
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_br_config(_isolated_br_config_root: Path) -> Generator[None, None, None]:
+    """Redirect unmocked `BRConfig(Path.cwd())` calls to an isolated directory
+    with no config file, instead of a `MagicMock` (BUG-3401).
+
+    A blanket `MagicMock` config broke unrelated tests that route through
+    `main_loop()`/`cmd_list` and rely on real defaults like
+    `config.loops.loops_dir == ".loops"` — those resolved to Mock-repr
+    garbage paths (`Path(MagicMock())` does not raise; it stringifies).
+    Using the real `BRConfig` against an empty directory keeps every schema
+    default (including `events.transports == []`, which is what actually
+    prevents the socket leak) while giving unrelated tests the same defaults
+    they'd see from a fresh project. A test that needs custom config values
+    (e.g. `circuit_breaker_enabled=True`) patches `little_loops.config.BRConfig`
+    itself inside its own `with` block — that inner patch shadows this one.
+    """
+    from little_loops.config import BRConfig as _RealBRConfig
+
+    def _redirect(*args: Any, **kwargs: Any) -> Any:
+        return _RealBRConfig(_isolated_br_config_root)
+
+    with patch("little_loops.config.BRConfig", side_effect=_redirect):
+        yield
 
 
 class TestCmdStatus:
@@ -2210,14 +2276,8 @@ class TestCmdResumeCircuitWiring:
         mock_result.terminated_by = "terminal"
         mock_result.failure_terminal = False
 
-        mock_config = MagicMock()
+        mock_config = _build_mock_br_config(str(tmp_path / "rate-limit-circuit.json"))
         mock_config.commands.rate_limits.circuit_breaker_enabled = True
-        mock_config.commands.rate_limits.circuit_breaker_path = str(
-            tmp_path / "rate-limit-circuit.json"
-        )
-        mock_config.extensions = {}
-        mock_config.events = MagicMock(transports=[])
-        mock_config.design_tokens.enabled = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -2248,14 +2308,7 @@ class TestCmdResumeCircuitWiring:
         mock_result.terminated_by = "terminal"
         mock_result.failure_terminal = False
 
-        mock_config = MagicMock()
-        mock_config.commands.rate_limits.circuit_breaker_enabled = False
-        mock_config.commands.rate_limits.circuit_breaker_path = str(
-            tmp_path / "rate-limit-circuit.json"
-        )
-        mock_config.extensions = {}
-        mock_config.events = MagicMock(transports=[])
-        mock_config.design_tokens.enabled = False
+        mock_config = _build_mock_br_config(str(tmp_path / "rate-limit-circuit.json"))
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -2288,14 +2341,7 @@ class TestCmdResumeTransportWiring:
         mock_result.terminated_by = "terminal"
         mock_result.failure_terminal = False
 
-        mock_config = MagicMock()
-        mock_config.commands.rate_limits.circuit_breaker_enabled = False
-        mock_config.commands.rate_limits.circuit_breaker_path = str(
-            tmp_path / "rate-limit-circuit.json"
-        )
-        mock_config.extensions = {}
-        mock_config.events = MagicMock(transports=[])
-        mock_config.design_tokens.enabled = False
+        mock_config = _build_mock_br_config(str(tmp_path / "rate-limit-circuit.json"))
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -2326,14 +2372,7 @@ class TestCmdResumeTransportWiring:
         mock_result.terminated_by = "terminal"
         mock_result.failure_terminal = False
 
-        mock_config = MagicMock()
-        mock_config.commands.rate_limits.circuit_breaker_enabled = False
-        mock_config.commands.rate_limits.circuit_breaker_path = str(
-            tmp_path / "rate-limit-circuit.json"
-        )
-        mock_config.extensions = {}
-        mock_config.events = MagicMock(transports=[])
-        mock_config.design_tokens.enabled = False
+        mock_config = _build_mock_br_config(str(tmp_path / "rate-limit-circuit.json"))
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -2355,14 +2394,7 @@ class TestCmdResumeTransportWiring:
         args = argparse.Namespace()
         mock_fsm = MagicMock()
 
-        mock_config = MagicMock()
-        mock_config.commands.rate_limits.circuit_breaker_enabled = False
-        mock_config.commands.rate_limits.circuit_breaker_path = str(
-            tmp_path / "rate-limit-circuit.json"
-        )
-        mock_config.extensions = {}
-        mock_config.events = MagicMock(transports=[])
-        mock_config.design_tokens.enabled = False
+        mock_config = _build_mock_br_config(str(tmp_path / "rate-limit-circuit.json"))
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),

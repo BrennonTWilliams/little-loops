@@ -4,10 +4,11 @@ type: BUG
 title: Unmocked cmd_resume tests bind live sockets in the real .ll/ and fail after
   the third bind per process
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-07'
 captured_at: '2026-09-07T23:44:14Z'
+completed_at: '2026-09-08T03:56:19Z'
 confidence_score: 100
 outcome_confidence: 85
 score_complexity: 18
@@ -195,6 +196,13 @@ _Wiring pass added by `/ll:wire-issue`, round 2:_
 
 `scripts/tests/conftest.py::_guard_real_socket_transport` (session-scoped autouse fixture) -> wraps `little_loops.transport.UnixSocketTransport.__init__` as a choke point -> on each real construction, asserts the bind path resolved by `_claim_socket_path()` never falls under the real project `.ll/` -> raises immediately on violation (offending test attributed at the point of the bad bind, mirroring `_guard_real_history_db`'s `sqlite3.connect` patch); offending tests (candidates: `scripts/tests/test_transport.py`, `scripts/tests/test_feat3323_sse_bridge.py`) instead bind under `tmp_path` via `short_tmp_path` and `.close()` in teardown -> `_claim_socket_path()` continues to correctly reclaim any listener-less stale socket it does encounter (unchanged, already pinned by existing tests).
 
+### Deviations
+
+_Added by `/ll:manage-issue` — 2026-09-07:_
+
+- **`_guard_real_socket_transport` asserts pre-bind on the `path` argument, not post-bind on `self._path`.** Design said to assert on the resolved bind path (`self._path`, set after `_claim_socket_path()` and `bind()` succeed) as the choke point. Implemented instead: the wrapper asserts `Path(path).resolve().parent != real_ll_dir` **before** delegating to the original `__init__` at all. Why: asserting post-bind means a violating test has already created a real socket file under the real project `.ll/` by the time the guard raises — exactly the pollution this issue exists to eliminate, and it would make the guard's own self-test (`TestGuardRealSocketTransport` in `test_conftest_cap.py`) create a real file there too. Pre-bind assertion on the constructor's own `path` argument catches the identical violation (any `UnixSocketTransport(path=...)` under the real `.ll/`, regardless of whether `_claim_socket_path` would later rename it to a pid-suffixed sibling in the same directory) with no real bind ever occurring. Verified: `TestGuardRealSocketTransport::test_guard_raises_before_binding_under_real_project_ll` asserts the fake path never exists on disk after the guard raises.
+- **The `test_cli_loop_lifecycle.py` autouse fixture redirects to a real `BRConfig` built against an isolated empty directory, not a `MagicMock`.** Implementation Steps #2 specified an autouse fixture returning a `MagicMock` config (mirroring the 5 duplicated inline blocks). Implemented instead: `_isolate_br_config` patches `little_loops.config.BRConfig` with a `side_effect` that always constructs the **real** `BRConfig` class against a session-scoped empty directory (no `.ll/ll-config.json`), so every field resolves via genuine schema defaults instead of `MagicMock` auto-attributes. Why: a blanket `MagicMock` config broke `TestCmdListMultiInstance::test_list_no_duplicate_rows_for_multi_instance` (not in the ~36-test vulnerable list — it drives the full `main_loop()` CLI dispatch, not `cmd_resume` directly). `main_loop()` does `loops_dir = Path(config.loops.loops_dir)`; `Path(MagicMock())` does not raise (MagicMock supports `__fspath__` and stringifies), so it silently resolved to a garbage relative path instead of the real default `".loops"`, and the test's running-state fixtures were never found. The real-`BRConfig`-against-an-empty-dir redirect gives every unmocked test authentic schema defaults (`events.transports == []`, `loops.loops_dir == ".loops"`, etc.) while still eliminating the socket leak, with no collateral behavior change for tests that don't touch transports. The 5 tests in `TestCmdResumeCircuitWiring`/`TestCmdResumeTransportWiring` are unaffected — their own inner `patch("little_loops.config.BRConfig", ...)` still shadows this fixture for their duration, per the original design.
+
 ## Implementation Steps
 
 ### Codebase Research Findings
@@ -224,12 +232,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Every unmocked `cmd_resume` test in `test_cli_loop_lifecycle.py` (the ~36 enumerated in Integration Map → Dependent Files) is covered by an autouse fixture that mocks `little_loops.config.BRConfig` (with `events.transports = []`) and `little_loops.transport.wire_transports`, instead of loading this repo's real `.ll/ll-config.json` via `Path.cwd()`.
-- [ ] The 5 duplicated inline `mock_config` blocks in `TestCmdResumeCircuitWiring`/`TestCmdResumeTransportWiring` are replaced by that fixture (or a factory it exposes).
-- [ ] Add `_guard_real_socket_transport` in `conftest.py` (session-scoped autouse choke-point on `UnixSocketTransport.__init__`) that fails loudly, attributed to the offending test, if any test binds a socket under the real project `.ll/`; with a `TestGuardRealSocketTransport` self-test in `test_conftest_cap.py`.
-- [ ] `rm -f .ll/events*.sock && python -m pytest scripts/tests/test_cli_loop_lifecycle.py -n 0` is green (was `34 failed, 104 passed` before the fix) and leaves no `.ll/events*.sock` behind.
-- [ ] `python -m pytest scripts/tests/` run twice back-to-back in the same checkout is green both times.
-- [ ] `test_init_unlinks_stale_socket_file`, `test_bound_but_dead_socket_file_is_reclaimed`, `test_stale_pid_suffixed_path_is_reclaimed`, `test_eaddrinuse_on_configured_path_falls_back_to_suffixed`, `test_failed_bind_does_not_unlink_winners_socket` remain green (no `transport.py` change).
+- [x] Every unmocked `cmd_resume` test in `test_cli_loop_lifecycle.py` (the ~36 enumerated in Integration Map → Dependent Files) is covered by an autouse fixture that mocks `little_loops.config.BRConfig` (with `events.transports = []`) and `little_loops.transport.wire_transports`, instead of loading this repo's real `.ll/ll-config.json` via `Path.cwd()`. — Implemented via `_isolate_br_config` redirecting `BRConfig` to a real config built against an isolated empty dir (see Deviations); `wire_transports` itself is left unmocked since `events.transports == []` already makes its per-transport loop a no-op, which is sufficient to eliminate the leak.
+- [x] The 5 duplicated inline `mock_config` blocks in `TestCmdResumeCircuitWiring`/`TestCmdResumeTransportWiring` are replaced by that fixture (or a factory it exposes). — Extracted into `_build_mock_br_config()`; all 5 call sites now use it.
+- [x] Add `_guard_real_socket_transport` in `conftest.py` (session-scoped autouse choke-point on `UnixSocketTransport.__init__`) that fails loudly, attributed to the offending test, if any test binds a socket under the real project `.ll/`; with a `TestGuardRealSocketTransport` self-test in `test_conftest_cap.py`. — Done (see Deviations for the pre-bind-vs-post-bind assertion point).
+- [x] `rm -f .ll/events*.sock && python -m pytest scripts/tests/test_cli_loop_lifecycle.py -n 0` is green (was `34 failed, 104 passed` before the fix) and leaves no `.ll/events*.sock` behind. — Verified: `138 passed`, no orphan sockets after the run.
+- [x] `python -m pytest scripts/tests/` run twice back-to-back in the same checkout is green both times, **modulo two pre-existing failures unrelated to this bug** (confirmed present on unmodified `main` before this fix, via `git stash`): `test_host_runner.py::TestAC8BaselineCoverage::test_referenced_env_names_are_covered` and `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` (the latter already documented as a false-positive in this issue's own Verification Notes). Both runs: `2 failed, 23371 passed, 43 skipped` — identical failure set both times, zero socket-leak failures, no orphan `.ll/events*.sock` after either run.
+- [x] `test_init_unlinks_stale_socket_file`, `test_bound_but_dead_socket_file_is_reclaimed`, `test_stale_pid_suffixed_path_is_reclaimed`, `test_eaddrinuse_on_configured_path_falls_back_to_suffixed`, `test_failed_bind_does_not_unlink_winners_socket` remain green (no `transport.py` change). — Verified: all 5 pass.
 
 ## Relates To
 
@@ -242,6 +250,17 @@ _Added by `/ll:verify-issues` — 2026-09-08:_
 **Verdict: VALID.** Reproduced the exact failure mode: `rm -f .ll/events*.sock && python -m pytest scripts/tests/test_cli_loop_lifecycle.py -n 0 -p no:randomly` on `main` produced `34 failed, 104 passed` — the identical count and first-failure test (`TestCmdResume::test_resume_with_minutes_duration`) the issue names. All four production `wire_transports()` call sites and line numbers checked out exactly: `cli/loop/lifecycle.py:737` (config built at line 713), `cli/loop/run.py:623`, `cli/parallel.py:322`, `cli/sprint/run.py:801`. `conftest.py` confirmed to have zero `BRConfig` references and no `chdir`/`MonkeyPatch`-based cwd-isolation fixture, matching the "structural gap" claim. `_guard_real_history_db` (conftest.py:953-985) and `_isolate_history_db_session` (conftest.py:889) line numbers are off by ~1 from the cited ~888/952-993 (harmless drift, same fixture). Decisions log present but has zero active required rules — no `DECISIONS_VIOLATION`. No `## Blocked By`/`## Blocks` sections to validate; `## Relates To` targets (BUG-3324, FEAT-3323) both exist. `## Proposed Solution` section is absent (issue uses Program Design/Implementation Steps instead), so the B6 proposal-consequence check does not apply.
 
 One advisory note: `ll-verify-evidence --json` flagged two spans in "Steps to Reproduce" (`"34 failed, 104 passed"`, `"-n logical --dist loadfile"`) as unverifiable against `test_cli_loop_lifecycle.py`. This is almost certainly a checker false-positive of the documented paraphrase class (advisory, unrouted per the command's own fallback F3 decision) — these are quoted *pytest run output*, not source content, and this pass independently reproduced the first span verbatim. Not treated as blocking; no `EVIDENCE_UNVERIFIED` action taken since this run is `--auto`, not `--check` (frontmatter persistence is `--check`-only).
+
+## Resolution
+
+Fixed 2026-09-07 by `/ll:manage-issue`:
+
+- `scripts/tests/test_cli_loop_lifecycle.py` — added `_build_mock_br_config()` factory, `_isolated_br_config_root` (session-scoped empty dir), and an autouse `_isolate_br_config` fixture redirecting every unmocked `BRConfig(Path.cwd())` call to a real `BRConfig` built against that empty dir, so `events.transports` resolves to `[]` (schema default) instead of this repo's own `["socket"]`. Deduped the 5 inline `mock_config` blocks in `TestCmdResumeCircuitWiring`/`TestCmdResumeTransportWiring` onto the new factory.
+- `scripts/tests/conftest.py` — added `_guard_real_socket_transport`, a session-scoped autouse choke-point guard on `UnixSocketTransport.__init__` (asserts pre-bind, not post-bind — see Deviations) mirroring `_guard_real_history_db`.
+- `scripts/tests/test_conftest_cap.py` — added `TestGuardRealSocketTransport` (3 tests: install/restore, rejects-before-bind, allows-under-isolated-dir).
+- See Program Design → Deviations for the two points where the implementation departed from the original design (both discovered via actual test runs, not anticipated in advance).
+
+Verified: `test_cli_loop_lifecycle.py` green (138 passed, was 34 failed), no orphan `.ll/events*.sock`; full suite run twice back-to-back both times `23371 passed` with the same 2 pre-existing unrelated failures (present on unmodified `main`); the 5 named `test_transport.py` reclaim tests remain green; `ruff check`/`ruff format` clean on all 3 changed files; `mypy` shows the identical pre-existing error set as unmodified `main` (none introduced).
 
 ## Status
 
@@ -265,6 +284,8 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 _Previous pass (2026-09-07) flagged a self-contradiction in Program Design: the named signature/Call Path described a before/after `.ll/` snapshot-diff while Implementation Steps #3 explicitly called for a choke-point guard instead, citing `_guard_real_history_db`'s precedent against snapshot-diff. Program Design has been corrected — `assert_ll_clean_after_session` replaced with `_guard_real_socket_transport`, a choke-point patch on `UnixSocketTransport.__init__` — and Architecture Compliance now scores 20/20 (was 10/20), raising the readiness tier from PROCEED WITH CAUTION to PROCEED. Outcome Confidence is unaffected — the newly-fixed contradiction didn't touch Complexity, Test Coverage, or Change Surface, and Ambiguity's score is held down by the separate, still-open per-test-vs-fixture decision noted above._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T03:56:04 - `2c3dcc18-94f9-46a0-aa50-9e1b85813520.jsonl`
+- `/ll:ready-issue` - 2026-09-08T03:33:18 - `8671e91a-67e8-4792-b8fc-b24d2340efa7.jsonl`
 - `/ll:confidence-check` - 2026-09-08T03:29:34 - `4269037e-3478-48be-942a-9df6fc8308a3.jsonl`
 - `/ll:confidence-check` - 2026-09-08T03:24:35 - `51116d41-9957-4fcd-9da9-31792bb39937.jsonl`
 - `/ll:verify-issues` - 2026-09-08T03:20:08 - `340bdb44-8b74-4400-a17f-9d09e7a13c92.jsonl`
