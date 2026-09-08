@@ -9,6 +9,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-07'
 captured_at: '2026-09-07T23:44:14Z'
 parent: EPIC-3212
+learning_tests_required:
+- gh
 ---
 
 # BUG-3400: Credential scoping: unguarded gh probe, scopes [] bypasses validation, queue path not gh-isolated or audited
@@ -36,6 +38,44 @@ Post-merge review of EPIC-3212 (merged to `main` in 57c0a3af1 with `verify_befor
 1. `gh_scope_extra()` bounds the probe with a timeout and converts `FileNotFoundError`/`TimeoutExpired`/`OSError` into the same `RuntimeError` contract the callers already handle; the FSM shell path cleans up the temp dir on every failure path.
 2. `scopes: []` is validated the same way as a non-empty list (accepted as "declare nothing, deny all", or rejected — pick one and test it); the check uses `is not None`.
 3. The CMD runner in `runner_spec.py` applies `gh_scope_extra()` when `github` is declared (mirroring `fsm/runners.py`, including temp-dir lifecycle) and records the grant via `write_credential_scope()` so both dispatch paths produce identical audit rows.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+**Files to Modify (confirmed)**
+- `scripts/little_loops/host_runner.py:186-231` — `gh_scope_extra()`, the unguarded probe (point 1)
+- `scripts/little_loops/fsm/validation/structural_rules.py:499` — the `if state.scopes:` guard (point 2)
+- `scripts/little_loops/runner_spec.py:237-262` (`_run_cmd`) — missing `gh_scope_extra()`/`write_credential_scope()` wiring (point 3)
+
+**Conventions in Force**
+- Exception-normalization for a `subprocess.run`/`Popen` failure is done inline at each call site, not through a shared helper — no repo-wide "normalize FileNotFoundError/TimeoutExpired/OSError into RuntimeError" utility exists. Two divergent local examples: `host_runner.py:2446-2469` (`run_blocking_json`) raises a `RuntimeError` subclass (`BlockingJsonError`, `host_runner.py:2321`) with `from None`; `fleet_improve.py:103-125` raises a plain-`Exception` subclass (`FleetImproveError`) with `from e`. Neither matches `gh_scope_extra()`'s own current bare `raise RuntimeError(...)` (no custom class) — the fix has no single existing convention to copy, only two disagreeing examples; the issue's own Expected Behavior already resolves this by requiring the same `RuntimeError` contract the callers already handle.
+- `structural_rules.py` checks every `Optional`-typed `StateConfig` field with `is not None` (48+ occurrences, e.g. lines 471, 524) — the `if state.scopes:` truthy check at line 499 is this file's one outlier against its own idiom, not a deliberate alternate pattern (the file's two truthy checks, lines 484 and 534, guard non-Optional `dict`-typed fields with `default_factory=dict`, a different field shape).
+- The FSM shell-state wiring point 3 must mirror is split across two layers, not co-located: `fsm/executor.py:2563-2582` calls `write_credential_scope()` (audit, wrapped in `except Exception: pass`, "Non-fatal (ENH-3204)") before dispatch; `fsm/runners.py:317-346` + `:462-464` does the `env_allow = resolve_scopes(scopes)` (`ValueError`-catching) and separately the `gh_tmp` tempdir + `gh_scope_extra()` (`RuntimeError`-catching) inside the runner that owns the `Popen`, with `gh_tmp.cleanup()` called both on the immediate `gh_scope_extra()` failure path and unconditionally in an outer `finally`.
+- `runner_spec.py:237-262` (`_run_cmd`) already mirrors `fsm/runners.py`'s `env_allow`/`resolve_scopes`/`ValueError` block verbatim in shape (down to the variable name), but stops there — no `gh_tmp`, no `gh_scope_extra()`, no `write_credential_scope()` call anywhere in the file (confirmed by direct grep).
+
+**Tests**
+- `scripts/tests/test_host_runner.py:496-546` — existing `TestGhScopeExtra` class (the test home for point 1's fix); `test_with_token_raises_when_no_token_obtainable` mocks `little_loops.host_runner.subprocess.run` via `patch(...)`.
+- `scripts/tests/test_fsm_validation_structural.py:2254-2326` — existing `TestScopesValidation` class (the test home for point 2); no test in this class or elsewhere exercises `scopes=[]` at the structural-validation layer today (the only repo-wide `scopes=[]` hits are in `test_fsm_runners.py:442,450,471`, which test the execution layer, not validation).
+- `scripts/tests/test_runner_spec.py:133,208-253` — existing CMD-dispatch scope tests (`test_cmd_dispatch_no_scopes_keeps_full_inherit`, `test_cmd_dispatch_declared_scope_allows_its_vars_denies_others`, `test_cmd_dispatch_unknown_scope_fails_loud_and_spawns_nothing`) use `patch("subprocess.Popen")` + `mock_popen.assert_not_called()` for the fail-loud-without-spawning shape; none assert `GH_TOKEN`/`GH_CONFIG_DIR` isolation via `gh_scope_extra()` — the existing `test_cmd_dispatch_declared_scope_allows_its_vars_denies_others` only proves ambient `GH_TOKEN` passes through via `env_allow`, which is exactly the leak point 3 reports.
+- `scripts/tests/test_session_store_writers.py:2861-2897` (`TestWriteCredentialScope`) and `scripts/tests/test_fsm_executor.py:3774-3843` (`TestCredentialScopeAudit`) — existing audit-row assertion patterns at two layers: direct-call (`write_credential_scope(...)` then `recent(db, kind="credential_scope")`) and executor-integration (mock `write_credential_scope` and inspect `call_args.kwargs`, or a real sqlite `SELECT * FROM credential_scope_events` to prove no secret value leaked). No equivalent test exists yet for the CMD-runner path.
+
+**Documentation**
+- `docs/reference/API.md:10232` documents `gh_scope_extra()`'s signature and caller behavior; `docs/reference/API.md:10011` notes `env_allow` re: ENH-3395. Both describe only the FSM path today.
+- `docs/ARCHITECTURE.md:680` and `docs/guides/LOOPS_GUIDE.md` describe the credential-scoping design; neither currently documents a CMD-runner/queue-path isolation guarantee, matching the gap this issue reports.
+
+**Configuration**
+- No dedicated configuration file governs `gh_scope_extra`/`resolve_scopes`/`write_credential_scope`/`CREDENTIAL_SCOPES` — confirmed by a repo-wide grep with no hits outside `scripts/little_loops/*.py`, `scripts/tests/*.py`, `docs/*`, and `.issues/*`.
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/cli/harness.py:25` — imports `runner_spec`/`ActionSpec`; no `scopes` keyword in this file (0 hits).
+- `scripts/little_loops/cli/queue.py:33` — imports `ActionSpec`; no `scopes` keyword in this file (0 hits).
+- `scripts/little_loops/queue_store.py:36` — imports `ActionSpec, RunnerType`; `_serialize_action`/`_deserialize_action` (lines 240, 253/256) round-trip `ActionSpec.scopes` but call no scope-isolation function themselves.
+- `scripts/little_loops/cli/action.py:218` — imports `ActionSpec, RunnerType, run_action`; constructs `ActionSpec(...)` at lines 242 and 295; no `scopes` keyword found in this file (0 hits) — these construction sites do not pass `scopes` today.
+- `scripts/tests/test_runner_spec.py:25`, `scripts/tests/test_queue_store.py:28`, `scripts/tests/test_cli_queue.py:17`, `scripts/tests/test_cli_harness.py:14` — existing test files importing `runner_spec`/`ActionSpec`.
 
 ## Program Design
 
@@ -77,4 +117,5 @@ Post-merge review of EPIC-3212 (merged to `main` in 57c0a3af1 with `verify_befor
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T00:21:05 - `79946685-eebd-494a-af0a-cc7c04146960.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:06:12 - `fd8050c6-8bbf-4735-ba8f-b83f5f588867.jsonl`
