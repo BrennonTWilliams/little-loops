@@ -902,6 +902,25 @@ _Re-verified `/ll:verify-issues` — 2026-09-08 — graph: provider=`codegraph` 
 - Verdict: **VALID** — supersedes the prior `PROPOSAL_UNSOUND` persisted verdict,
   which predated the AC-gap fix.
 
+_Re-verified `/ll:verify-issues` — 2026-09-08 — graph: provider=`codegraph` freshness=`fresh`:_
+
+- `discover_workspace_members`/`WorkspaceMember`/`ll-workspace.yaml` still 0 real
+  hits repo-wide (only unrelated `node_modules` noise from an embedded npm
+  package matched the grep).
+- Spot-checked load-bearing citations against current source — all match
+  exactly: `config-schema.json` `history` object/`db_path` property/object
+  close; `HistoryConfig` dataclass + `from_dict()`
+  (`config/features.py:1513-1554`); the `LL_HISTORY_DB` env-check-before-`root=`-
+  scoped-lookup hazard (`session_store/db.py:105-132`); `decisions.py::load_decisions()`'s
+  no-wrap `yaml.YAMLError` propagation.
+- `ll-verify-evidence --json`: `"ok": true`, 0 findings.
+- No active required decision rules — clean skip.
+- Parent (`FEAT-3399`) and sibling (`FEAT-3410`) references both resolve.
+- Re-ran check B6 against the current Proposed Solution/AC set: the prior
+  `PROPOSAL_UNSOUND` AC-coverage gaps (malformed-manifest raise behavior,
+  `HistoryConfig` wiring) remain closed; no residual gap.
+- Verdict: **VALID** — unchanged from the prior pass.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
@@ -955,6 +974,7 @@ Acceptance Criteria updated to match. The prior `VALID` verify verdict
 predates these edits._
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-08T23:15:34 - `3dd7ffea-f30a-4c9b-8a7c-b75eee0560e1.jsonl`
 - `/ll:confidence-check` - 2026-09-08T22:55:29 - `6dd2bd32-5c1a-431a-9f43-0c09572d9b18.jsonl`
 - `/ll:confidence-check` - 2026-09-08T22:13:14 - `c8d9f83d-83c6-4ca6-948a-bd5e1259be35.jsonl`
 - `/ll:verify-issues` - 2026-09-08T22:10:26 - `5efb5fe2-2f1a-445a-a9f9-35c0b9974bdf.jsonl`

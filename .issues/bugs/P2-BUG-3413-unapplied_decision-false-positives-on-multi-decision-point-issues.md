@@ -120,6 +120,28 @@ computing `sel_ids`/`rej_ids`:
   field coverage for a multi-decision-point fixture.
 - `scripts/tests/test_confidence_check_skill.py` — verify Criterion C no longer
   penalizes a multi-decision-point issue for its own winning identifiers.
+  > ⚠ Superseded — no functional scoring test exists in this file today
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_decide_issue_skill.py` — `TestPhase7cFixtures` (lines 264-330)
+  imports `_unapplied_decision_pairs()` directly against golden fixtures under
+  `scripts/tests/fixtures/issues/` (`ENH-3280-fixture-*.md`,
+  `ENH-3277-pre-repair-reproducer.md`); all 5 existing fixtures are
+  single-decision-point (confirmed: none contain a second `**Decision point:**`
+  marker or `> **Selected:**` callout). This exercises `/ll:decide-issue` Phase 7c's
+  `unapplied_decision_detail` consumption path — structurally separate from
+  `TestUnappliedDecision`'s formatted-reason-string assertions — and was not in this
+  issue's original test plan. Add a new multi-decision-point golden fixture here
+  (shaped like FEAT-3409's 3 decision points) asserting decision-point 2+'s winning
+  identifiers are absent from the result. [Agent 3 finding]
+- `scripts/tests/test_confidence_check_skill.py` — confirmed this file has **no**
+  functional test invoking `_unapplied_decision_pairs`/`_unapplied_decision` or
+  feeding real issue content through Criterion C scoring; its existing
+  `unapplied_decision`-related tests (~lines 582-645) only assert that
+  `SKILL.md`/`rubric.md` *document* the cap, not that the detector's output is
+  correctly scored. The line above ("verify Criterion C no longer penalizes...")
+  does not map onto any existing runnable assertion here — it requires writing new
+  content-driven coverage, not "adjusting" existing coverage. [Agent 3 finding]
 
 ### Documentation
 - N/A — no public API or docs surface changes; internal parser fix only.
