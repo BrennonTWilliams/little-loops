@@ -1,0 +1,12 @@
+{
+  "id": "7aa4f964-1097-4a59-ad79-60fc66917e9c",
+  "type": "decision",
+  "timestamp": "2026-09-08T18:37:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches this issue's own cited dispatch model; ll-workspace.yaml is a structural analog to decisions.yaml where a swallowed error risks silently dropping a workspace member from cross-repo aggregation.",
+  "rule": "Malformed-manifest posture: no-wrap/propagate (mirror decisions.py::load_decisions)",
+  "scope": "issue",
+  "alternatives_rejected": "fail-closed/raise (artifact_templates.py::load_manifest); fail-open/degrade (fsm/loop_paths.py::draft_internal_name)",
+  "issue": "FEAT-3409"
+}

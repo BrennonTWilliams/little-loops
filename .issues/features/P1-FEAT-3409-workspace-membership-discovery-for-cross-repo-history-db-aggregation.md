@@ -19,6 +19,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 25
+decision_needed: false
 ---
 
 ## Summary
@@ -122,15 +123,22 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   — no existing file to modify since neither the function nor `WorkspaceMember`
   exists anywhere in the codebase today (confirmed 0 hits repo-wide).
 - `config-schema.json:2117-2146` — the `history` object already has a `db_path`
-  property (`:2143-2146`) with an `LL_HISTORY_DB`-env-var-precedence shape. If a
-  configurable manifest path is wanted, `history.workspace_manifest_path`
-  alongside `history.db_path` is the sibling location to register it in — the
-  function's own bare-default signature (`Path("ll-workspace.yaml")`) is not yet
-  routed through this config/env-var chain. Alternatively,
-  `config-schema.json:704-728`'s `decisions` object registration shape (top-level
-  object, `enabled`/`log_path`/`auto_generate` properties) is the closest
-  precedent for a new top-level `workspace` config section instead of nesting
-  under `history`. Pick one deliberately.
+  > ⚠ Superseded — history object closes at :2255-2256, not :2146
+  property (`:2143-2146`) with an `LL_HISTORY_DB`-env-var-precedence shape.
+  Decided (see Proposed Solution → Decision Rationale): register the
+  configurable manifest path as `history.workspace_manifest_path`, sibling to
+  `history.db_path` — the function's own bare-default signature
+  (`Path("ll-workspace.yaml")`) is not yet routed through this config/env-var
+  chain.
+- **Anchor correction** (`/ll:wire-issue`): the `history` object's real bounds
+  in `config-schema.json` run `:2117-2256` (`additionalProperties: false` at
+  `:2255`, object-close at `:2256`) — four other nested blocks
+  (`session_digest`, `evolution`, `go_no_go`, `capture_issue`, `compaction`)
+  sit between `:2146` and the true close. Add `workspace_manifest_path` inside
+  `properties.history.properties`, ahead of that `additionalProperties: false`
+  gate — confirmed live by `test_config_schema.py::test_history_in_schema`
+  (`:578`) and `test_history_db_path_in_schema` (`:615-628`), which exist
+  specifically because the gate rejects undeclared keys.
 - **Module placement**: no existing subpackage fits. The two cited precedent
   modules (`decisions.py`, `design_tokens.py`) both sit directly under
   `scripts/little_loops/` as top-level siblings, are never re-exported from
@@ -156,10 +164,13 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/config/features.py:1513-1554` (`HistoryConfig` dataclass + `from_dict()`) — if the nested `history.workspace_manifest_path` field is chosen, add it here alongside the existing `db_path` field/getter pair (`:1523`/`:1541`); no change needed to `config/core.py` or `config/__init__.py` in this case, since `HistoryConfig`'s existing wiring already covers new fields on the dataclass.
-- `scripts/little_loops/config/core.py:31-35,370,518-520` — only if the alternative **new top-level `workspace` config section** is chosen instead (sibling to `history`, not nested inside it): add a `WorkspaceConfig` import (mirroring `DecisionsConfig` at `:31` / `HistoryConfig` at `:35`), a `self._workspace = WorkspaceConfig.from_dict(...)` instantiation (mirroring `:370`), and a `workspace` property (mirroring `:518-520`).
-- `scripts/little_loops/config/__init__.py:50,58,105,155` — same top-level-section case: add a `WorkspaceConfig` import + `__all__` entry, mirroring the `DecisionsConfig`(`:50`/`:105`)/`HistoryConfig`(`:58`/`:155`) pairs.
-- `scripts/tests/test_config_schema.py:1363-1430` (`_DATACLASS_SECTION_MAP`) — only required if a new `WorkspaceConfig` dataclass is added (not required for the nested-scalar-on-`HistoryConfig` path); `TestDataclassSectionMapCompleteness` (class starts `:1433`) fails at collection if a new dataclass is added without a map entry.
+- `scripts/little_loops/config/features.py:1513-1554` (`HistoryConfig` dataclass + `from_dict()`) — Decided (Proposed Solution → Decision Rationale): add the nested `history.workspace_manifest_path` field here alongside the existing `db_path` field/getter pair (`:1523`/`:1541`); no change needed to `config/core.py` or `config/__init__.py`, since `HistoryConfig`'s existing wiring already covers new fields on the dataclass.
+- ~~`scripts/little_loops/config/core.py:31-35,370,518-520`~~ — not needed: the new-top-level-`workspace`-section path was not selected.
+- ~~`scripts/little_loops/config/__init__.py:50,58,105,155`~~ — not needed: the new-top-level-`workspace`-section path was not selected.
+- `scripts/tests/test_config_schema.py:1363-1430` (`_DATACLASS_SECTION_MAP`) — not required: a `_DATACLASS_SECTION_MAP` entry is only needed for a new dataclass, and the nested-scalar-on-`HistoryConfig` path adds no new dataclass.
+
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- **Confirmed NOT needed** (established exclusion precedent): `config/core.py::BRConfig.to_dict()`'s hand-written `"history"` dict (`:997-1026`) and the `/ll:configure` skill's field listings (`skills/configure/areas.md:1441-1452`, `skills/configure/show-output.md:250-261`) all already omit the sibling `db_path` field — the established convention for escape-hatch/manifest-path settings. `workspace_manifest_path` should follow the same exclusion: do not add it to `ll-config get`'s `to_dict()` output or `/ll:configure`'s interactive field lists.
 
 ### Documentation
 
@@ -172,6 +183,78 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - No `conftest.py` fixture exists for writing a YAML manifest to `tmp_path` (searched, 0 hits) — the new test module needs its own module-local helper (e.g. `_write_manifest()`), following the `_write_tokens()` pattern in `scripts/tests/test_design_tokens.py:23-39`, not a shared fixture.
 - Parsing-class shape precedent beyond the graceful-degradation classes already cited: `TestLoadDecisions` (`scripts/tests/test_decisions.py:109-183`) covers one-member/multi-member/malformed-YAML/missing-required-field/unknown-discriminator cases — mirror this shape for `discover_workspace_members()`'s happy-path and error-path tests, not just the absent-manifest degradation case.
+
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `scripts/tests/test_config.py::TestHistoryConfig` (`:4245-4326`) — add `test_workspace_manifest_path_default_none`/`test_workspace_manifest_path_override`, modeled directly on `test_db_path_default_none`/`test_db_path_override` (`:4320-4326`) [Agent 3 finding].
+- `scripts/tests/test_wiring_reference_docs.py`'s `DOC_STRINGS_PRESENT` list (`:150-156` area) — optional: add a `("docs/reference/CONFIGURATION.md", "workspace_manifest_path", "FEAT-3409")` row following the `db_path`/ENH-1916 precedent, to prove the new doc mention landed per the ENH-1963 convention [Agent 1/2 finding].
+
+## Proposed Solution
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+**Decision point:** Malformed-manifest posture (present but invalid `ll-workspace.yaml`)
+
+**Option A**: Fail-closed/raise — mirror `artifact_templates.py::load_manifest()` (`:145-177`), catching `yaml.YAMLError`/schema violations and re-raising as a domain-specific error.
+
+**Option B**: Fail-open/degrade — mirror `fsm/loop_paths.py::draft_internal_name()` (`:28-37`) / `config/core.py::parse_local_override_frontmatter()` (`:63-87`), catching `yaml.YAMLError` and returning the same empty/None result as the absent-manifest case.
+
+**Option C**: No-wrap/propagate — mirror `decisions.py::load_decisions()` (`:369-385`), letting `yaml.YAMLError` (and missing-field errors) propagate unmodified to the caller.
+
+> **Selected:** Option C — matches this issue's own cited dispatch model (`decisions.py::load_decisions()`) and scores highest (11/12); see Decision Rationale below.
+
+**Decision point:** `db_path` derivation
+
+**Option A**: Explicit per-entry manifest field — `db_path` authored directly in `ll-workspace.yaml` per member.
+
+> **Selected:** Option A — avoids the `resolve_history_db()` composition hazard entirely; see Decision Rationale below.
+
+**Option B**: Computed via `resolve_history_db(root=member.repo_path)` (`session_store/db.py:121-132`) — has a documented composition hazard: the `LL_HISTORY_DB` env-var check fires unconditionally ahead of the `root=`-scoped lookup, so calling it once per member in one process collapses every member's `db_path` onto the same value whenever `LL_HISTORY_DB` is set.
+
+**Decision point:** Config registration path for a configurable manifest path
+
+**Option A**: Nest under `history.workspace_manifest_path`, sibling to the existing `history.db_path` property (`config-schema.json:2143-2146`) — only touches `HistoryConfig` (`config/features.py:1513-1554`).
+
+> **Selected:** Option A — smallest wiring footprint (only `HistoryConfig`), no new dataclass to register; see Decision Rationale below.
+
+**Option B**: New top-level `workspace` config section, mirroring the `decisions` object's registration shape (`config-schema.json:704-728`) — requires a new `WorkspaceConfig` dataclass plus wiring in `config/core.py`, `config/__init__.py`, and `test_config_schema.py`'s `_DATACLASS_SECTION_MAP`.
+
+### Decision Rationale
+
+**Decision point: Malformed-manifest posture**
+
+Selected: **Option C** (No-wrap/propagate). This codebase holds three disagreeing conventions for a present-but-malformed manifest; Option C matches the issue's own cited dispatch model (`decisions.py::load_decisions()`), which deliberately does not catch `yaml.YAMLError` for its flat file, "preserving ENH-2589 corruption gating" per its own docstring. `ll-workspace.yaml` is a structural analog to `decisions.yaml` — a small, hand-authored registry where a silently-swallowed error (Option B) risks a cross-repo aggregation silently dropping a workspace member, and a swallowed-then-rewrapped error (Option A) adds a new exception class this codebase has no existing convention for surfacing to `discover_workspace_members()`'s callers.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — fail-closed/raise | 2 | 2 | 3 | 3 | 10/12 |
+| B — fail-open/degrade | 2 | 3 | 3 | 1 | 9/12 |
+| **C — no-wrap/propagate** | **3** | **3** | **3** | **2** | **11/12** |
+
+Key evidence: `decisions.py::load_decisions()` (`:369-385`) is this issue's own cited hand-parsed-dispatch model and does not wrap `yaml.YAMLError`; `test_decisions.py::test_raises_yaml_error_on_othe_203_corruption` (`:153-164`) and the independent `test_verify_decisions.py::TestLoadDecisionsMalformedInput` (`:42`) confirm this is a deliberately tested posture, not an oversight.
+
+**Decision point: `db_path` derivation**
+
+Selected: **Option A** (explicit per-entry manifest field). Option B's mechanism, `resolve_history_db(root=member.repo_path)`, has a documented composition hazard: `_resolve_db_path()`'s `LL_HISTORY_DB` env-var check (`session_store/db.py:107-109`) fires unconditionally ahead of the `root=`-scoped config lookup, so calling it once per member in the same process collapses every member's `db_path` onto the same value whenever `LL_HISTORY_DB` is set in the environment — silently defeating the entire point of a multi-repo workspace. No existing call site invokes `resolve_history_db()` more than once per process with different `root=` values, so there is no precedent this hazard has already been solved elsewhere.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| **A — explicit manifest field** | **2** | **3** | **3** | **3** | **11/12** |
+| B — `resolve_history_db(root=...)` | 1 | 2 | 1 | 0 | 4/12 |
+
+Key evidence: `session_store/db.py:105-132` (`_resolve_db_path`/`resolve_history_db`) — the env-var check precedes the `root=`-scoped branch unconditionally.
+
+**Decision point: Config registration path**
+
+Selected: **Option A** (nest under `history.workspace_manifest_path`). Per this issue's own Dependent Files findings, Option A touches only `HistoryConfig`'s dataclass and `from_dict()` (`config/features.py:1513-1554`) with no change needed to `config/core.py` or `config/__init__.py`. Option B requires a new `WorkspaceConfig` dataclass plus wiring across three additional files, including a `_DATACLASS_SECTION_MAP` entry that a missing update fails at test collection (`TestDataclassSectionMapCompleteness`, `test_config_schema.py:1433`).
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| **A — nest under `history`** | **3** | **3** | **3** | **3** | **12/12** |
+| B — new top-level `workspace` section | 2 | 1 | 2 | 1 | 6/12 |
+
+Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_path` sibling); `config-schema.json:704-728` (`decisions` object, the top-level-section precedent Option B would mirror); `test_config_schema.py:1363-1430,1433` (`_DATACLASS_SECTION_MAP` + completeness gate).
 
 ## Program Design
 
@@ -189,8 +272,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Decision Rules
 
-- **Malformed-manifest posture** (present but invalid `ll-workspace.yaml`): unresolved. This codebase holds three disagreeing conventions for this exact situation — fail-closed/raise (`artifact_templates.py::load_manifest`), fail-open/degrade to empty (`fsm/loop_paths.py::draft_internal_name`, `config/core.py::parse_local_override_frontmatter`), and no-wrap/propagate (`decisions.py::load_decisions`, this issue's own cited model, which deliberately does not catch `yaml.YAMLError` for its flat file). Expected Behavior currently specifies only the absent-manifest case; the malformed-but-present case needs an explicit choice among these three postures before implementation.
-- **`db_path` derivation**: unresolved. Either (a) an explicit per-entry manifest field, or (b) computed at discovery time via `resolve_history_db(root=member.repo_path)`. Option (b) has a known composition hazard: `resolve_history_db`'s `LL_HISTORY_DB` env-var check fires unconditionally ahead of the `root=`-scoped lookup (`session_store/db.py:107-109`), so calling it once per member in the same process would resolve every member's `db_path` to the same env-overridden value whenever `LL_HISTORY_DB` is set — silently collapsing a multi-repo workspace onto one database. No escape hatch is specified for this case; the implementer must pick (a) or (b) knowingly.
+- **Malformed-manifest posture** (present but invalid `ll-workspace.yaml`): **Resolved** — no-wrap/propagate, mirroring `decisions.py::load_decisions()`; `yaml.YAMLError` and missing-field errors propagate unmodified to the caller. See Proposed Solution → Decision Rationale for the full scoring against the fail-closed/raise and fail-open/degrade alternatives.
+- **`db_path` derivation**: **Resolved** — explicit per-entry manifest field, authored directly in `ll-workspace.yaml`. `resolve_history_db(root=member.repo_path)` was rejected: its `LL_HISTORY_DB` env-var check fires unconditionally ahead of the `root=`-scoped lookup (`session_store/db.py:107-109`), which would collapse every member's `db_path` onto the same value whenever `LL_HISTORY_DB` is set. See Proposed Solution → Decision Rationale.
 
 ### Codebase Research Findings
 
@@ -208,11 +291,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 2. Implement the no-manifest graceful-degradation branch: explicit
    `Path.exists()` check, empty/None return, documented fallback target in the
    docstring.
-3. Decide and implement config registration for a configurable manifest path
-   (`history.workspace_manifest_path` or a new top-level `workspace` section) if
-   wanted; if `config-schema.json` gains the property, add a matching
-   `test_*_in_schema` test following the existing per-property convention (e.g.
-   `test_decisions_in_schema:319`).
+3. Implement config registration for the configurable manifest path as
+   `history.workspace_manifest_path` (decided — see Proposed Solution →
+   Decision Rationale); add a matching `test_*_in_schema` test following the
+   existing per-property convention (e.g. `test_decisions_in_schema:319`).
 4. Add a graceful-degradation test class modeled exactly on
    `TestDecisionsGracefulDegradation` (`test_decisions.py:639-651`) /
    `TestLoadDesignTokensFallbacks` (`test_design_tokens.py:227-258`): one test
@@ -228,22 +310,25 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Place the new module at `scripts/little_loops/workspace.py` (or a similarly-named top-level module) — a top-level sibling of `decisions.py`/`design_tokens.py`, not a subpackage, not re-exported from `scripts/little_loops/__init__.py` or `config/__init__.py`.
-- If choosing the nested `history.workspace_manifest_path` config path: update only `scripts/little_loops/config/features.py`'s `HistoryConfig` dataclass and `from_dict()`.
-- If choosing the new top-level `workspace` config section path instead: update `scripts/little_loops/config/features.py` (new `WorkspaceConfig` dataclass), `scripts/little_loops/config/core.py` (import, instantiation, property), `scripts/little_loops/config/__init__.py` (import + `__all__` entry), and `scripts/tests/test_config_schema.py`'s `_DATACLASS_SECTION_MAP`.
-- Update `docs/reference/CONFIGURATION.md` § `history` with the new key's doc row, if a config key is added.
+- Decided (Proposed Solution → Decision Rationale): the nested `history.workspace_manifest_path` config path — update only `scripts/little_loops/config/features.py`'s `HistoryConfig` dataclass and `from_dict()`. ~~The new top-level `workspace` config section~~ was not selected.
+- Update `docs/reference/CONFIGURATION.md` § `history` with the new `history.workspace_manifest_path` doc row.
 - Write a module-local YAML-manifest test helper (e.g. `_write_manifest()`) — no shared `conftest.py` fixture exists to reuse.
+- Add `workspace_manifest_path` inside `config-schema.json`'s `properties.history.properties` block, ahead of the object's real `additionalProperties: false` close at `:2255-2256` (not `:2146` as originally cited — see Files to Modify anchor correction).
+- Add `test_workspace_manifest_path_default_none`/`test_workspace_manifest_path_override` to `scripts/tests/test_config.py::TestHistoryConfig`, modeled on `test_db_path_default_none`/`test_db_path_override` (`:4320-4326`).
+- Optional: add a `scripts/tests/test_wiring_reference_docs.py::DOC_STRINGS_PRESENT` row for `workspace_manifest_path` documentation, following the `db_path`/ENH-1916 precedent.
 
 ## Tests
 
 - New test module/class for `discover_workspace_members()`: manifest parses into
   correct `WorkspaceMember` rows; absent manifest degrades to empty/None,
-  following `TestDecisionsGracefulDegradation`/`TestLoadDesignTokensFallbacks`.
-- `scripts/tests/test_config_schema.py` — if `history.workspace_manifest_path`
-  (or a new `workspace` section) is added to `config-schema.json`, add a
-  matching per-property test.
+  following `TestDecisionsGracefulDegradation`/`TestLoadDesignTokensFallbacks`;
+  a malformed manifest raises, following `TestLoadDecisions`'s malformed-input
+  cases (decided posture: no-wrap/propagate).
+- `scripts/tests/test_config_schema.py` — add a `test_history_workspace_manifest_path_in_schema`
+  matching per-property test for the new `history.workspace_manifest_path` property.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_config_schema.py`'s `_DATACLASS_SECTION_MAP` (`:1363-1430`) — new entry required only if a new `WorkspaceConfig` dataclass is introduced (the new-top-level-section path); `TestDataclassSectionMapCompleteness` (`:1433`) fails at collection otherwise.
+- ~~`scripts/tests/test_config_schema.py`'s `_DATACLASS_SECTION_MAP` (`:1363-1430`)~~ — not needed: no new dataclass is introduced under the decided nested-scalar-on-`HistoryConfig` path.
 
 ### Codebase Research Findings
 
@@ -255,7 +340,7 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
-- An additional malformed-input test-class precedent beyond `TestLoadDecisions`: `TestLoadDecisionsMalformedInput` (`scripts/tests/test_verify_decisions.py:42`) — a second existing example of how this codebase tests a malformed-YAML-manifest case, directly relevant to the still-unresolved malformed-manifest-posture Decision Rule above.
+- An additional malformed-input test-class precedent beyond `TestLoadDecisions`: `TestLoadDecisionsMalformedInput` (`scripts/tests/test_verify_decisions.py:42`) — a second existing example of how this codebase tests a malformed-YAML-manifest case, directly relevant to the now-resolved malformed-manifest-posture Decision Rule above (no-wrap/propagate).
 
 ## Impact
 
@@ -347,6 +432,9 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   the choice determines which of two Dependent-Files wiring lists apply.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-08T18:49:49 - `96ffa0f9-be3e-4674-b135-6a82c1057b6c.jsonl`
+- `/ll:decide-issue` - 2026-09-08T18:39:07 - `1da9e372-c79e-4132-94c9-48b9fab73fe1.jsonl`
+- `/ll:refine-issue` - 2026-09-08T18:33:22 - `d235f946-7b83-4228-9eed-a9bd5517b547.jsonl`
 - `/ll:refine-issue` - 2026-09-08T18:20:33 - `93c855fd-cd38-4404-abc3-eca785ed7ae8.jsonl`
 - `/ll:confidence-check` - 2026-09-08T17:48:31 - `da08f1cf-aa72-4044-9c86-40020b649222.jsonl`
 - `/ll:verify-issues` - 2026-09-08T17:45:51 - `c85a7f3d-8147-4f84-a4a8-b54c8bbd73dd.jsonl`

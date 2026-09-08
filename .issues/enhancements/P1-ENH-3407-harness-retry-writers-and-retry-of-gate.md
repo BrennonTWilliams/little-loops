@@ -6,6 +6,8 @@ priority: P1
 status: open
 discovered_date: '2026-09-08'
 verify_verdict: NON_VALID
+reconcile_attempted: true
+decision_needed: false
 parent: ENH-3397
 blocked_by:
 - ENH-3406
@@ -67,6 +69,7 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - Sharpened known-gap breakdown, confirmed per producing branch: `RunnerResult.timed_out`/`.error` (`runner_spec.py:77-78`) already exist at the runner-result layer, but only `timed_out` is persisted to `harness_events` today (existing `timed_out INTEGER` column, `schema.py:723` — not one of ENH-3406's additions). `harness_events` has no `error` column, and ENH-3406's currently-scoped migration (`cell_key`, `repetition`, `attempt_kind`, `continuations`, `superseded_by`) does not add one. Per-branch confirmation: `_run_skill`'s trace/stream sub-paths set `exit_code=124` on timeout (`runner_spec.py:194-201,218-219`, not 2); its default blocking sub-path sets `exit_code=2` for both timeout and `FileNotFoundError` (`:234-237`); `_run_cmd` sets `exit_code=2` for both its selector-loop timeout and its scope-resolution/`gh_scope_extra` failures (`:341-346,261-263,287-290`); `_run_mcp` passes through `call_mcp_tool`'s own exit codes (0/1/124/127/2, `mcp_call.py:155-161`) with neither `timed_out` nor `error` ever set on the `RunnerResult` it returns; `_run_prompt` sets `exit_code=2` for both timeout and `FileNotFoundError` (`:390,392`). Net: the timeout half of the ambiguity is already resolvable today by reading the persisted `timed_out` column instead of `exit_code == 2`; the runner-error half (`FileNotFoundError`, scope-resolution failures, MCP config/usage errors) has no persisted signal anywhere, and adding one would be `harness_events` schema DDL — which this issue's own Scope Boundaries assigns to ENH-3406, a dependency already landed-first per `blocked_by`, not something ENH-3407 can add unilaterally without either widening its own scope or reopening ENH-3406.
 - The `--retry-of` "no escape hatch" decision is a confirmed divergence from its own cited refusal-shape precedent: `cli/queue.py::cmd_requeue`/`cmd_remove` (built on the shared `_not_found_or_ambiguous()` helper, `queue.py:259`) both refuse loudly *and* offer a `--force` override; `--retry-of` per this issue's design takes the refusal shape but not the escape hatch. Stated here as a confirmed fact about the precedent, not a recommendation to add one.
 - CHECK-constraint enum enforcement is confirmed exact at the two cited sites (`schema.py:1216-1220,1291-1298`), and `research_triage_events.axis`/`reason` additionally demonstrates a cross-column CHECK (`abstention_reason` conditioned on `verdict`'s value) — a shape available if `harness_admissions.reason` needs conditioning on another column, though ENH-3406's current design does not condition it on anything. This is not a supermajority convention in `schema.py`: most enum-like `TEXT` columns in the file (`harness_events.semantic_verdict`, `session_lifecycle_events.event`, `orchestration_runs.status`, `loop_runs.final_state`/`terminated_by`, `advisor_consults.outcome`) carry no CHECK at all — both shapes are live precedent.
+- `run_action()` (`runner_spec.py:420-440`) has its own dispatcher-level producer of `exit_code=2` + `error` set, independent of the four per-runner branches already catalogued above: before calling any non-CMD handler, it runs `scope_runner_error(spec)` (`runner_spec.py:402-417`) and, if that returns non-`None` (a `scopes` declaration on a non-CMD `ActionSpec`, ENH-3403), returns `RunnerResult(exit_code=2, error=scope_error)` without ever invoking `_run_skill`/`_run_mcp`/`_run_prompt`. `timed_out` is never set on this path. This is a fifth confirmed source of the `exit_code == 2` ambiguity this issue's gate must resolve — a config-declaration error, not a runtime timeout or a per-runner failure — and it currently has the same "no persisted signal" property as the `FileNotFoundError`/scope-resolution/MCP-usage runner-error branches already noted above.
 
 ## Files to Modify
 
@@ -78,10 +81,14 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `scripts/little_loops/session_store/__init__.py:147,234` (+ docstring line 54) — export
   `record_attempt`/`admit_retry`/`authoritative_attempt`, mirroring
   `record_harness_event`.
-- `scripts/little_loops/cli/harness.py` — add `--retry-of` flag; thread cell identity +
-  `attempt_kind` through `cmd_skill` (835), `cmd_cmd` (868), `cmd_mcp` (911), `cmd_prompt`
-  (952), `cmd_dsl` (1072); gate reads the exit signal from the row
-  `_evaluate_and_report()` (659) already produces.
+- `scripts/little_loops/cli/harness.py` — add `--retry-of` to `_add_evaluator_flags()`
+  (`:384`, the single declaration site, called once per subparser: `skill_p` 494, `cmd_p`
+  503, `mcp_p` 519, `prompt_p` 533, `dsl_p` 547); thread cell identity + `attempt_kind`
+  through the `_evaluate_and_report()` call sites in `cmd_skill` (835), `cmd_cmd` (868),
+  `cmd_mcp` (911), `cmd_prompt` (952), and `cmd_dsl` (1072) — `cmd_dsl`'s PROMPT-kind tasks
+  go through `_run_prompt_action()` (927) first, an extra hop the other four handlers don't
+  have; gate reads the exit signal from the row `_evaluate_and_report()` (659) already
+  produces.
 - `docs/reference/CLI.md:212-313` — add `--retry-of` to the shared-evaluator-flags table
   (226-234) and document its exit-code/refusal semantics.
 
@@ -91,7 +98,6 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 - `--retry-of`'s argparse registration site is unaddressed above: all 5 shared evaluator flags (`--exit-code`, `--semantic`, `--timeout`, `--output`, `--verbose`, `--issue-id`) are declared exactly once inside the `_add_evaluator_flags()` closure (`cli/harness.py:384`), which is then called once per subparser — `skill_p` (494), `cmd_p` (503), `mcp_p` (519), `prompt_p` (533), `dsl_p` (547) — rather than via 5 separate `add_argument` call sites. The 835/868/911/952/1072 line numbers already cited above are the `_evaluate_and_report(...)` call sites inside each `cmd_*` function (confirmed exact), a distinct location from where the flag itself would be declared.
 - `session_store/__init__.py`'s three-touch-point export convention (docstring line, import-block line, `__all__` entry) is confirmed exact at the cited 54/147/234 for `record_harness_event`; both the import block and `__all__` are alphabetically sorted lists of `record_*`/`write_*`/`*_context` names, so `record_attempt`/`admit_retry`/`authoritative_attempt` each need a slot at their alphabetical position in both, not appended at the end.
-  > ⚠ Superseded — `__all__` is grouped by feature, not alphabetical
 
 ### Documentation
 
@@ -109,10 +115,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Tests
 
 - `scripts/tests/test_session_store_writers.py` — `record_attempt`/`admit_retry`/
-  `authoritative_attempt` unit tests; a test asserting the writers module has no
-  UPDATE/DELETE path against `harness_admissions` (source-inspection pattern, adapted from
-  `test_git_operations.py:306-320`'s `TestNoGitStash`, since no existing test targets a SQL
-  statement kind against a specific table).
+  `authoritative_attempt` unit tests; a test asserting the writer has no UPDATE/DELETE SQL
+  statement naming `harness_admissions` specifically — an AST walk over `ast.Call` nodes
+  filtering for `harness_admissions` in the SQL string (`test_sprint.py:~3162`'s
+  `ast.walk()` count-check pattern), not a blanket `"UPDATE"`/`"DELETE"` substring check
+  across the whole module (two existing writers, `record_orchestration_run` and
+  `record_learning_test_event`, already contain both against other tables). Adapted from
+  `test_git_operations.py:306`'s `test_no_code_path_invokes_git_stash`, inside class
+  `TestSnapshotAndPreserve` (not `TestNoGitStash`).
 - `scripts/tests/test_cli_harness.py` — a retry of a graded FAIL is rejected (non-zero
   exit, message names the attempt); a retry of a timeout is accepted and records
   `infra_retry` with `superseded_by` set and the same repetition index.
@@ -140,6 +150,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 - `writers.py` UPDATE/DELETE precedent check (verified by direct read): the planned "writer has no UPDATE/DELETE path against `harness_admissions`" test cannot be a blanket `"UPDATE" not in source` / `"DELETE" not in source` grep over the whole module — two existing writers already contain both. `record_orchestration_run` (`writers.py:1287`) does an `ON CONFLICT(run_id, issue_id) DO UPDATE SET ...` (`:1365`) against `orchestration_runs`, and `record_learning_test_event` (`writers.py:1604`) both does an `ON CONFLICT(record_id) DO UPDATE SET ...` (`:1658`) against `learning_test_events` *and* a literal `DELETE FROM search_index WHERE kind = ? AND ref = ?` (`:1665`, clearing a stale FTS row before reinserting). A source-inspection assertion needs to scope its match to statements naming `harness_admissions` specifically (e.g. an AST walk filtering `ast.Call` nodes whose SQL string contains `"harness_admissions"`, per `test_sprint.py`'s `ast.walk()` precedent already cited above), not a bare substring check across the whole file.
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- A live precedent for resolving the `_make_namespace()`/`retry_of` gap already exists in this same file: `--issue-id` is a real `_add_evaluator_flags()` member (`cli/harness.py:418-430`) that is also absent from `_make_namespace()`'s hardcoded default set (`test_cli_harness.py:48-61`), and its one call site reads it defensively — `getattr(args, "issue_id", None)` (`cli/harness.py:720`) — rather than `args.issue_id`, which is why no existing `_make_namespace()`-built test breaks despite the gap. This confirms both resolutions named in the Wiring Phase note are real, in-codebase options (add `retry_of=None` to `_make_namespace()`'s defaults, or read `getattr(args, "retry_of", None)` at the gate's call site) rather than one being hypothetical; `--issue-id` itself uses the `getattr` route, not the defaults-update route.
+
 ## Implementation Steps
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -160,16 +174,61 @@ _These touchpoints were identified by wiring analysis and must be included in th
   attempt reached grading. Test: a retry of a graded FAIL is rejected; a retry of a timeout
   is accepted.
 - Every admission is appended to `harness_admissions`: attempt id, superseded id, typed
-  reason, ts. Rows are never updated or deleted; a test asserts the writer has no
-  UPDATE/DELETE path.
+  reason, ts. Rows are never updated or deleted; a test asserts no UPDATE/DELETE SQL
+  statement in the writer targets `harness_admissions` (scoped to that table, not a blanket
+  check — two other writers legitimately UPDATE/DELETE other tables).
 - For a cell with several attempts, `authoritative_attempt()` returns the earliest attempt
   that is not superseded, with no way to override via flag.
 
 ## Scope Boundaries
 
 - **In scope**: `writers.py` functions, `--retry-of` flag + gate + refusal,
-  `harness_admissions` writes, exports, `CLI.md` flag docs, resolving the exit-signal
-  ambiguity flagged above.
+  `harness_admissions` writes, exports, `CLI.md` flag docs, resolving the **timeout** half
+  of the exit-signal ambiguity (readable today via the persisted `timed_out` column). The
+  **runner-error** half (`FileNotFoundError`, scope-resolution failures, MCP config/usage
+  errors, `scope_runner_error()`'s dispatcher-level `exit_code=2`) has no persisted signal
+  to read:
+
+  **Option A**: Fail closed and refuse `--retry-of` whenever the superseded attempt's
+  `timed_out` column is falsy (i.e., `exit_code == 2` but not a timeout) — accepting that
+  legitimate runner-error retries (config errors, scope-resolution failures) stay
+  inadmissible until a future issue adds a persisted error signal.
+
+  > **Selected:** Option A — matches this issue's own "Out of scope: harness_events
+  > schema DDL (ENH-3406)" line, requires no new column, and the timeout half is already
+  > resolvable today via the existing `timed_out` column per the Codebase Research
+  > Findings above.
+
+  **Option B**: Widen this issue's scope to add a persisted error signal to
+  `harness_events` (schema DDL) so runner-error retries can be admitted too — reopening
+  ENH-3406's territory, a dependency already landed-first per `blocked_by`.
+
+### Decision Rationale
+
+**Selected: Option A — fail closed on the runner-error signal gap.**
+
+`--retry-of` refuses admission whenever the superseded attempt's persisted `timed_out`
+column is falsy, even if `exit_code == 2`. This closes the timeout half of the
+ambiguity (the only half with an existing persisted signal) and leaves the
+runner-error half (`FileNotFoundError`, scope-resolution failures, MCP config/usage
+errors, `scope_runner_error()`'s dispatcher-level `exit_code=2`) inadmissible until a
+future issue adds a persisted error signal to `harness_events`.
+
+Option B would add `harness_events` schema DDL — explicitly out of scope per this
+issue's own Scope Boundaries, and ENH-3406 (the issue that owns that schema) is still
+`open`, not landed, so widening here would mean two issues concurrently modifying the
+same table.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — Fail closed | 3 | 3 | 3 | 3 | 12/12 |
+| B — Widen scope (schema DDL) | 0 | 0 | 1 | 0 | 1/12 |
+
+Key evidence: `blocked_by: [ENH-3406]` combined with ENH-3406's current `status: open`
+(confirmed via `ll-issues show ENH-3406`) rules out Option B without reopening an
+in-flight dependency; the issue's own "the timeout half of the ambiguity is already
+resolvable today by reading the persisted `timed_out` column" finding (Codebase
+Research Findings, above) makes Option A directly implementable with no new schema.
 - **Out of scope**: `harness_events`/`harness_admissions` schema DDL (ENH-3406, must land
   first), `history_pass_rate_runs` / DSL `graded_total` / `harness_eval_pass_rate` /
   `harness_eval_abstention_rate` counting logic and the run-report admissions tabulation
@@ -203,6 +262,11 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 - `cmd_dsl`'s PROMPT-kind tasks do not call `run_action()` directly: they go through `_run_prompt_action()` (`cli/harness.py:927-...`), a thin wrapper extracted from `cmd_prompt` (per its docstring, BUG-3196) that returns `tuple[RunnerResult, int]` so `cmd_dsl` can grade `result.stdout` against a task's `expected:` mapping — `cmd_prompt` itself returns only `int`. This means `cmd_dsl`'s call shape into the `RunnerResult` producers differs from the other four `cmd_*` handlers (which call `run_action()` directly); any cell-identity/`attempt_kind` threading through `cmd_dsl` needs to account for this extra hop, not just the `_evaluate_and_report()` call site already cited at `:1072`.
 - `cli/queue.py`'s cited refusal-shape precedent resolves to exact anchors: `cmd_requeue` def at `queue.py:686`, `cmd_remove` def at `queue.py:321`, both built on the shared `_not_found_or_ambiguous()` helper def at `queue.py:259`.
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `writers.py` has two disagreeing, both-live conventions for a writer's failure/return contract, not one: `record_harness_event`/`record_test_run_event`/`record_verdict_event` return `None` and raise on any SQLite failure, pushing suppression onto the caller (`_record_harness_event()`'s `contextlib.suppress(Exception)` at `cli/harness.py:124`); `record_orchestration_run` (`writers.py:1287`, `bool` return) and `record_learning_test_event` (`writers.py:1604`, `bool` return) instead guard-clause on missing identity fields and return `False`, swallowing the miss into the return value rather than raising. `record_attempt() -> int` as proposed does not match either shape (both existing conventions return `None`/`bool`, never an id) — a third pattern with no existing sibling in this module.
+- `authoritative_attempt() -> AttemptRow` as proposed also has no existing sibling: `connect()` (`schema.py:1514`) sets `conn.row_factory = sqlite3.Row` for every `session_store` connection including `writers.py`'s, and the dataclass-per-row convention (e.g. `HarnessEvent`, `history_reader/harness.py:36-63`) lives entirely in the separate read-side `history_reader` package — no function inside `writers.py` itself returns a dataclass today.
 
 ## Current Behavior
 
@@ -239,6 +303,9 @@ ENH-3408's scope, not this issue's.
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-08T19:08:06 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
+- `/ll:reconcile-issue` - 2026-09-08T18:52:23 - `454b24f9-6fdd-4c61-af5d-a12445ba857c.jsonl`
+- `/ll:refine-issue` - 2026-09-08T18:44:58 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:format-issue` - 2026-09-08T18:36:35 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:verify-issues` - 2026-09-08T16:33:42 - `c583b7d9-3c7b-4be3-a8d8-28020e64ec08.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T16:28:15 - `f0d9ed08-0cba-4bb7-8f0a-69ea09901e1b.jsonl`

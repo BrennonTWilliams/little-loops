@@ -1,0 +1,12 @@
+{
+  "id": "07f0257c-07a4-464d-ade9-0d374bc5163f",
+  "type": "decision",
+  "timestamp": "2026-09-08T18:37:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Avoids resolve_history_db()'s documented composition hazard: its LL_HISTORY_DB env-var check fires unconditionally ahead of the root=-scoped lookup, which would collapse every workspace member's db_path onto the same value.",
+  "rule": "db_path derivation: explicit per-entry manifest field",
+  "scope": "issue",
+  "alternatives_rejected": "computed via resolve_history_db(root=member.repo_path)",
+  "issue": "FEAT-3409"
+}

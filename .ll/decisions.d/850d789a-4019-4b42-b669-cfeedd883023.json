@@ -1,0 +1,12 @@
+{
+  "id": "b6781cd3-3f4e-451d-9cd9-62e53c6ecb31",
+  "type": "decision",
+  "timestamp": "2026-09-08T19:07:44Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches this issue's own Out-of-scope line (harness_events schema DDL belongs to ENH-3406); ENH-3406 is still open (not landed), so widening scope here would mean two issues concurrently modifying the same table; the timeout half is already resolvable today via the existing timed_out column.",
+  "rule": "Fail closed on the runner-error signal gap: --retry-of refuses admission when the superseded attempt's timed_out column is falsy, even if exit_code==2. The runner-error half of the ambiguity stays inadmissible until a future issue adds a persisted error signal to harness_events.",
+  "scope": "issue",
+  "alternatives_rejected": "Widen this issue's scope to add a persisted error signal to harness_events (schema DDL), admitting runner-error retries too \u2014 rejected: contradicts explicit Scope Boundaries, reopens ENH-3406's still-open territory, adds schema/migration risk for a Very Large issue.",
+  "issue": "ENH-3407"
+}

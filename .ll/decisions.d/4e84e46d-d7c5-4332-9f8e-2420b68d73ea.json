@@ -1,0 +1,12 @@
+{
+  "id": "10722504-b636-4765-8eab-c4c5abd9092c",
+  "type": "decision",
+  "timestamp": "2026-09-08T18:37:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Smallest wiring footprint \u2014 only touches HistoryConfig; a new top-level workspace section would require a new WorkspaceConfig dataclass plus wiring across config/core.py, config/__init__.py, and _DATACLASS_SECTION_MAP.",
+  "rule": "Config registration path: nest under history.workspace_manifest_path",
+  "scope": "issue",
+  "alternatives_rejected": "new top-level workspace config section",
+  "issue": "FEAT-3409"
+}
