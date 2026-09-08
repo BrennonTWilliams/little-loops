@@ -235,6 +235,23 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   "no UPDATE/DELETE path" writer test (ENH-3407 — it targets `writers.py` source, not
   `schema.py`).
 
+## Current Behavior
+
+`harness_events` has no columns identifying which cell (`target`/`task`/`subject`) an
+attempt belongs to, its repetition index, or whether it is a fresh repetition, an
+infra retry, or superseded by another attempt. There is no `harness_admissions` table,
+so nothing records when an infra retry was admitted or why. This makes it impossible
+for later read-path logic (ENH-3408) to distinguish intentional repeated runs from
+retries of the same failed attempt when computing reported `n`.
+
+## Expected Behavior
+
+`harness_events` gains five new nullable columns (`cell_key`, `repetition`,
+`attempt_kind`, `continuations`, `superseded_by`) and a new append-only
+`harness_admissions` audit table exists with a resolved kinded/kindless registry
+placement. No existing CLI command's behavior changes as a result of this issue — it
+is schema-only groundwork that ENH-3407 (writers) and ENH-3408 (counting) build on.
+
 ## Impact
 
 - **Priority**: P1 — inherited from parent; this is the foundation the anti-p-hacking gate
@@ -280,6 +297,7 @@ _Added by `/ll:verify-issues` — 2026-09-08:_
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-08T18:36:34 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:verify-issues` - 2026-09-08T15:44:36 - `f5535f57-91c7-49aa-88ab-44821536803d.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T15:38:05 - `f35fb920-2ba8-40fb-874e-61854231e6cc.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T15:37:56 - `f35fb920-2ba8-40fb-874e-61854231e6cc.jsonl`

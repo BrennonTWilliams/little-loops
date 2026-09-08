@@ -204,6 +204,25 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `cmd_dsl`'s PROMPT-kind tasks do not call `run_action()` directly: they go through `_run_prompt_action()` (`cli/harness.py:927-...`), a thin wrapper extracted from `cmd_prompt` (per its docstring, BUG-3196) that returns `tuple[RunnerResult, int]` so `cmd_dsl` can grade `result.stdout` against a task's `expected:` mapping — `cmd_prompt` itself returns only `int`. This means `cmd_dsl`'s call shape into the `RunnerResult` producers differs from the other four `cmd_*` handlers (which call `run_action()` directly); any cell-identity/`attempt_kind` threading through `cmd_dsl` needs to account for this extra hop, not just the `_evaluate_and_report()` call site already cited at `:1072`.
 - `cli/queue.py`'s cited refusal-shape precedent resolves to exact anchors: `cmd_requeue` def at `queue.py:686`, `cmd_remove` def at `queue.py:321`, both built on the shared `_not_found_or_ambiguous()` helper def at `queue.py:259`.
 
+## Current Behavior
+
+No `session_store` writer records an attempt against a `cell_key`/`repetition`, admits
+a retry, or resolves which attempt for a cell is authoritative. `ll-harness`'s
+evaluators (`cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt`/`cmd_dsl`) have no `--retry-of`
+flag, so there is no way to explicitly mark an infra retry as distinct from a fresh
+repetition, and no admission event is ever recorded — a retry of a timed-out attempt
+and a retry of a graded failure are indistinguishable in `harness_events` today.
+
+## Expected Behavior
+
+`record_attempt()`, `admit_retry()`, and `authoritative_attempt()` exist in
+`session_store/writers.py`, and a new `--retry-of <id>` flag threaded through all five
+evaluator commands gates admissibility: it is refused (non-zero exit, message names the
+attempt) when the prior attempt reached grading, and accepted for a timeout, recording
+`infra_retry` with `superseded_by` set and an append-only row in `harness_admissions`.
+Existing pass-rate calculations still don't reflect this new data — that redefinition is
+ENH-3408's scope, not this issue's.
+
 ## Impact
 
 - **Priority**: P1.
@@ -220,6 +239,7 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-08T18:36:35 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:verify-issues` - 2026-09-08T16:33:42 - `c583b7d9-3c7b-4be3-a8d8-28020e64ec08.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T16:28:15 - `f0d9ed08-0cba-4bb7-8f0a-69ea09901e1b.jsonl`
 - `/ll:verify-issues` - 2026-09-08T16:20:32 - `2dadb131-5e4a-4c09-9d19-56a9dade3f05.jsonl`

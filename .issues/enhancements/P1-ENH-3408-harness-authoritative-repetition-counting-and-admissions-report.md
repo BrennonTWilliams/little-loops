@@ -257,6 +257,24 @@ N/A — no new decision logic. This issue narrows an existing filter (which atte
 count) by consuming `authoritative_attempt()`'s selection rule, which ENH-3407 defines; it
 does not introduce a new gap kind, gate, threshold, or keyword list of its own.
 
+## Current Behavior
+
+`harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, and
+`_read_target_history()` all count raw `harness_events` rows. A cell retried after an
+infra timeout contributes one row per attempt to the reported `n`, so an infra retry
+inflates the sample size instead of replacing the attempt it superseded — the same
+issue for `cmd_dsl`'s `graded_total`. The run report has no visibility into admission
+interventions at all.
+
+## Expected Behavior
+
+The three counting sites (plus `cmd_dsl`'s `graded_total`) count authoritative
+repetitions per cell via `authoritative_attempt()` (ENH-3407) instead of raw rows: a
+cell with a graded attempt plus two infra retries contributes `n=1`, not `n=3`, using
+the earliest graded attempt's verdict. The run report additionally tabulates admissions
+(count, by reason) whenever `harness_admissions` is non-empty for the run. This is the
+issue that makes ENH-3397's anti-p-hacking guarantee actually hold in reported numbers.
+
 ## Impact
 
 - **Priority**: P1 — this issue is what actually makes previously-reported n sound;
@@ -275,6 +293,7 @@ does not introduce a new gap kind, gate, threshold, or keyword list of its own.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-08T18:36:35 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
 - `/ll:verify-issues` - 2026-09-08T17:09:42 - `3b8d2d10-26d6-4407-8c50-28fe3b34bf14.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T17:05:29 - `bd30e086-08dc-4823-aa37-f5118816aece.jsonl`
 - `/ll:verify-issues` - 2026-09-08T16:57:01 - `ca004fd7-16f8-4917-8714-ea9456f5383b.jsonl`
