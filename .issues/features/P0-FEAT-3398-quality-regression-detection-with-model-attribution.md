@@ -9,6 +9,8 @@ labels:
 - path-a
 - observability
 - regression-detection
+learning_tests_required:
+- yaml
 ---
 
 ## Summary

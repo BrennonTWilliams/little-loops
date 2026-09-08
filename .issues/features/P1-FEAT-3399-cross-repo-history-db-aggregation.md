@@ -9,6 +9,9 @@ labels:
 - path-a
 - history-db
 - multi-repo
+learning_tests_required:
+- yaml
+- sqlite3
 ---
 
 ## Summary

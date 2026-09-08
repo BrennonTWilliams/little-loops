@@ -10,6 +10,12 @@ captured_at: '2026-09-08T00:36:57Z'
 parent: EPIC-3212
 learning_tests_required:
 - gh
+confidence_score: 95
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3402: gh auth token bypasses GH_CONFIG_DIR isolation via macOS Keychain
@@ -151,6 +157,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T01:25:44 - `f1b42f65-5d8a-4ce5-a5e9-6f906a3adabc.jsonl`
 - `/ll:wire-issue` - 2026-09-08T01:01:13 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:52:38 - `f6f85f70-0f74-4fad-b98e-66827bb86886.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:41:36 - `e2e1620c-1ab1-45d3-8135-fca9b61f9221.jsonl`
