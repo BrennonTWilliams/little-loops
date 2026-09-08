@@ -29,11 +29,12 @@ A task (loop-YAML state or `ActionSpec`) declares the credential scopes it needs
 ## Children
 
 - **ENH-3203** — Declare and enforce per-task credential scope via deny-by-default env projection (done — decomposed into ENH-3233/3234/3235)
-  - **ENH-3233** — Deny-by-default env projection core: chokepoint, credential-scope registry, and baseline (open)
-  - **ENH-3234** — ActionSpec credential scope declaration and runner_spec.py wiring (open, blocked by ENH-3233)
-  - **ENH-3235** — FSM StateConfig credential scope declaration and fsm/runners.py wiring (open, blocked by ENH-3233)
-- **ENH-3204** — Record the credential scope a run was granted for after-the-fact audit (open, blocked by ENH-3233/3235)
-- **ENH-3205** — Scope gh operations via GH_TOKEN and per-task GH_CONFIG_DIR isolation (open, blocked by ENH-3233/3235)
+  - **ENH-3233** — Deny-by-default env projection core: chokepoint, credential-scope registry, and baseline (done 2026-09-07)
+  - **ENH-3234** — ActionSpec credential scope declaration and runner_spec.py wiring (done 2026-09-07 — gh isolation + audit write missing, see BUG-3400)
+  - **ENH-3235** — FSM StateConfig credential scope declaration and fsm/runners.py wiring (done 2026-09-07)
+- **ENH-3204** — Record the credential scope a run was granted for after-the-fact audit (done 2026-09-07 — queue path not wired, see BUG-3400)
+- **ENH-3205** — Scope gh operations via GH_TOKEN and per-task GH_CONFIG_DIR isolation (done 2026-09-07 — gh probe unguarded, see BUG-3400)
+- **BUG-3400** — Credential scoping: unguarded gh probe, scopes [] bypasses validation, queue path not gh-isolated or audited (open, P1 — post-merge review 2026-09-07; last blocker to closing this epic)
 
 ## Implementation Order
 
@@ -59,6 +60,8 @@ A task (loop-YAML state or `ActionSpec`) declares the credential scopes it needs
 ## Status
 
 **Open** | Created: 2026-08-16 | Priority: P3
+
+2026-09-07: All five original children merged to `main` via the `epic/EPIC-3212` integration branch (57c0a3af1; `verify_before_merge: false`, so no automated gate ran). Post-merge `/code-review high` of the branch diff (db393717e..1927af68d) found three defects that break the epic-level acceptance criteria (`gh` isolation and the "every declaring dispatch leaves an audit row" guarantee are both missing on the `ActionSpec`/queue path). Filed as BUG-3400 and wired as a child; the epic stays open until it lands. An unrelated suite flake surfaced during verification (stale `.ll/events-*.sock` files) is tracked separately as BUG-3401.
 
 ## Review Notes (2026-09-04)
 

@@ -1,5 +1,5 @@
 ---
-id: 3399
+id: FEAT-3399
 title: Cross-repo history.db aggregation (read-only workspace rollup)
 type: FEAT
 priority: P1
@@ -14,6 +14,24 @@ labels:
 ## Summary
 
 Aggregate multiple projects' `history.db` files into a single read-only rollup so one invocation can report agent quality across an entire workspace, not one repo at a time.
+
+## Current Behavior
+
+`history_reader`/`session_store` (`little_loops/history_reader/`, `little_loops/session_store/`) read a single repo's `.ll/history.db` via `_connect_readonly()` against `DEFAULT_DB_PATH`. Every quality question — including the agent-quality report from `analyze_agent_quality()` — is scoped to whichever repo the invocation runs in; there is no way to ask the question across a workspace of several repos in one invocation.
+
+## Expected Behavior
+
+One invocation attaches every member repo's `history.db` read-only via SQLite `ATTACH` and unions the queries, producing a per-repo breakdown plus workspace totals. Source databases are never written to. A member with a mismatched or missing schema version is reported and skipped rather than silently unioned or treated as fatal. With no workspace manifest present, behavior falls back byte-for-byte to today's single-repo output.
+
+## Use Case
+
+**Who**: A developer running several agent-heavy little-loops projects at once.
+
+**Context**: They want to know whether agent quality moved across their whole set of projects, not check each repo's report one at a time.
+
+**Goal**: Run one command from a workspace root and see quality broken down per repo plus rolled up totals.
+
+**Outcome**: A single read-only rollup report, with any repo whose schema doesn't match clearly called out and skipped rather than corrupting the totals.
 
 ## Motivation
 
@@ -35,8 +53,39 @@ Schema-version skew is the interesting failure. Member databases will not all be
 - Schema-version skew across repos must be handled explicitly — either normalized or reported, never silently mismatched.
 - Repo discovery reuses the existing workspace/multi-repo topology rather than introducing a second registry.
 
+## Program Design
+
+### Types
+
+- `WorkspaceMember`: `repo_path: Path`, `role: str`, `db_path: Path`
+- `AggregationResult`: `per_repo: dict[str, QualityAnalysis]`, `totals: QualityAnalysis`, `skipped: list[tuple[str, str]]` (repo, reason)
+
+### Signatures
+
+- `discover_workspace_members(manifest_path: Path = Path("ll-workspace.yaml")) -> list[WorkspaceMember]`
+- `aggregate_history_dbs(members: list[WorkspaceMember]) -> AggregationResult`
+
+### Call Path
+
+`discover_workspace_members()` -> `aggregate_history_dbs()` (opens one connection, `ATTACH DATABASE ? AS repo_N` per member via `_connect_readonly()`'s read-only URI pattern from `little_loops/history_reader/_base.py`) -> `analyze_agent_quality()` per attached schema -> `format_agent_quality_markdown()` (extended to render `AggregationResult`)
+
+## Impact
+
+- **Priority**: P1 - Valuable multi-repo visibility, but each repo's own report already exists as a fallback; this is additive rather than blocking.
+- **Effort**: Medium - the ATTACH-union mechanism is well-scoped, but workspace-topology discovery (`ll-workspace.yaml`) does not exist yet and is a prerequisite this issue introduces.
+- **Risk**: Low - read-only by design; a schema-skew or missing-DB member degrades to a skip, not a failure.
+- **Breaking Change**: No
+
 ## Acceptance Criteria
 
 - One invocation reports across ≥2 repos, with per-repo breakdown and workspace totals.
 - Source DBs are provably unmodified after a run (checksum assertion in tests).
 - A repo with a mismatched or missing schema is reported and skipped, not fatal.
+
+## Status
+
+**Open** | Created: 2026-09-07 | Priority: P1
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-08T00:08:41 - `fd8050c6-8bbf-4735-ba8f-b83f5f588867.jsonl`
