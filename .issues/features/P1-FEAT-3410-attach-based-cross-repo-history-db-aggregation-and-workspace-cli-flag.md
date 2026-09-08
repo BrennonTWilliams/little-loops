@@ -56,6 +56,26 @@ treated as fatal. With no workspace manifest present (FEAT-3409's
 `discover_workspace_members()` returns empty/None), behavior falls back
 byte-for-byte to today's single-repo output.
 
+## Use Case
+
+**Who**: A developer or team lead who works across a workspace of several
+little-loops-enabled repos (e.g. a monorepo-adjacent set of sibling projects
+sharing one workspace manifest).
+
+**Context**: They want to check agent-quality metrics (fix rate, correction
+rate, retry inflation) for the whole workspace, not one repo at a time — today
+`ll-history quality` only ever answers for the single repo it's invoked in.
+
+**Goal**: Run `ll-history quality` with the new `--workspace` flag once and
+get a per-repo breakdown plus workspace-wide totals, with any repo whose
+`history.db` schema is stale or missing clearly called out rather than
+silently mixed into the totals.
+
+**Outcome**: One aggregated report replaces manually running `ll-history
+quality` in each member repo and reconciling the numbers by hand; a
+schema-skewed or absent member is reported by name instead of producing wrong
+totals or crashing the run.
+
 ## Design Notes
 
 The mechanism is SQLite `ATTACH`: attach each member repo's database read-only
@@ -630,6 +650,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-08T18:31:14 - `d235f946-7b83-4228-9eed-a9bd5517b547.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T18:20:35 - `7bee39e0-dbd1-43e1-ab8d-3353f1d8f05f.jsonl`
 - `/ll:verify-issues` - 2026-09-08T18:14:31 - `0c248636-ebaa-42e8-a21d-567126bbbb58.jsonl`
 - `/ll:wire-issue` - 2026-09-08T18:06:21 - `1e01fe75-84c0-48d8-81d9-277491fe7648.jsonl`
