@@ -353,8 +353,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   the correct `WorkspaceMember` list.
 - Absent manifest degrades to an empty/None result without raising, covered by a
   dedicated graceful-degradation test class.
-- If a configurable manifest path is registered in `config-schema.json`, a
-  matching schema test exists.
+- `history.workspace_manifest_path` is registered in `config-schema.json`
+  (nested under the existing `history` object — decided per Proposed Solution
+  → Decision Rationale), with a matching
+  `test_history_workspace_manifest_path_in_schema` schema test.
 
 ## Verification Notes
 
@@ -428,6 +430,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   the choice determines which of two Dependent-Files wiring lists apply.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-08T19:17:31 - `8253aa54-816e-4b30-a515-5729bc18e0a3.jsonl`
 - `/ll:refine-issue` - 2026-09-08T19:11:30 - `2ff580d6-652f-49e4-b298-e76bb54b7ee2.jsonl`
 - `/ll:wire-issue` - 2026-09-08T18:49:49 - `96ffa0f9-be3e-4674-b135-6a82c1057b6c.jsonl`
 - `/ll:decide-issue` - 2026-09-08T18:39:07 - `1da9e372-c79e-4132-94c9-48b9fab73fe1.jsonl`
