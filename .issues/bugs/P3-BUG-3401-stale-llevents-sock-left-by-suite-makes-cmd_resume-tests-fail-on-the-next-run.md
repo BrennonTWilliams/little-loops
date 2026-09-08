@@ -120,9 +120,19 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 1. Confirm the actual leaking call path: run the full suite once, then re-run with a temporary instrumentation of `wire_transports()` (or a `strace`/`opensnoop`-style trace) to catch which call constructs `.ll/events.sock` at the real repo root without an isolated `log_dir` — the `test_transport.py`/`test_feat3323_sse_bridge.py` candidates named in the original bug report are not the source (see Current Behavior → Codebase Research Findings); the more likely mechanism is a real, non-mocked `cmd_resume`/`cmd_run`/`main_parallel` invocation combined with a config where `events.transports` includes `"socket"`, since `wire_transports()`'s `log_dir` defaults to cwd-relative `Path(".ll")` (`transport.py:1896`) whenever the caller omits it, which all three production call sites do by design.
+   > ⚠ Superseded — leak source confirmed by wire-issue pass (see Integration Map)
 2. Fix the confirmed offending test(s) to either isolate `log_dir` (mirroring `short_tmp_path`, `test_transport.py:57-69`) or ensure `config.events.transports` excludes `"socket"` in that fixture's config, plus `.close()`/teardown per the existing inline `try/finally` convention (no `yield`-fixture precedent exists for this in the codebase).
 3. Add a choke-point guard, not a snapshot-diff — this codebase already tried and replaced a directory-snapshot approach for a sibling problem (`_guard_real_history_db`, `conftest.py:952-993`, docstring explains why); the equivalent for sockets would intercept the actual socket-bind/connect call and assert the resolved path is never under the real project `.ll/`.
 4. `python -m pytest scripts/tests/` run twice back-to-back in a clean checkout is green both times; verified per the existing Acceptance Criteria.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Fix or isolate the 9 confirmed vulnerable tests in `test_cli_loop_lifecycle.py` (`test_nothing_to_resume_returns_1`, `test_resume_success`, `test_resume_with_minutes_duration`, `test_resume_awaiting_continuation`, `test_resume_non_terminal_returns_1`, `test_context_overrides_applied_to_fsm`, `test_design_tokens_context_injected_via_cmd_resume`, `test_design_guidance_context_injected_via_cmd_resume`, `test_input_hash_injected_via_cmd_resume`) — either by adding a `BRConfig`/`wire_transports` patch (mirroring `TestCmdResumeCircuitWiring`, conftest.py-adjacent pattern at test_cli_loop_lifecycle.py:2196-2274) or via a new session-wide isolation fixture.
+- Inject at `cli/loop/lifecycle.py:713`, `cli/loop/run.py:230`, `cli/parallel.py:195-196`, and the newly-found 4th call site `cli/sprint/run.py:797,801`: consider whether `BRConfig` should accept/propagate an isolated `project_root` consistently, or whether a `conftest.py` autouse fixture (isolating `BRConfig`/cwd, mirroring `_guard_real_history_db`'s choke-point-patch shape or `_isolate_history_db_session`'s env-redirect shape) is the more scoped fix — the issue's own Program Design already favors the choke-point-guard approach for this reason.
+- Do NOT implement Expected Behavior bullet 3's `_claim_socket_path` hardening as new work — it already exists and is pinned by `test_init_unlinks_stale_socket_file`, `test_bound_but_dead_socket_file_is_reclaimed`, `test_stale_pid_suffixed_path_is_reclaimed` (test_transport.py:417,698,787). Re-verify these five tests stay green after the fix, but no new hardening code is needed for this bullet.
+- If a new session-scoped autouse `.ll/` cleanliness fixture is added, be aware of the xdist caveat documented in `_fail_on_live_host_cli`'s docstring (conftest.py:404-409) — a session-end check may not reliably fail the run under `-n logical`; prefer the choke-point-at-violation-time shape (`_guard_real_history_db`) if reliability under xdist matters.
 
 ## Impact
 
@@ -148,5 +158,6 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-08T02:00:49 - `2d920f5a-2d4d-4a14-9303-a5bfb4bae86a.jsonl`
 - `/ll:refine-issue` - 2026-09-08T00:56:23 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:format-issue` - 2026-09-08T00:07:35 - `a2e8c1bc-23e1-4b7e-a7d7-ca1d7c6bb1b1.jsonl`
