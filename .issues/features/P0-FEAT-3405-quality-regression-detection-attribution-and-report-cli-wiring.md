@@ -15,6 +15,12 @@ learning_tests_required:
 - yaml
 verify_verdict: NON_VALID
 size: Large
+confidence_score: 80
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-3405: Quality-regression detection, attribution, and report/CLI wiring
@@ -559,7 +565,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 **Open** | Created: 2026-09-07 | Priority: P0
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override, BUG-3051)
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- `blocked_by: FEAT-3404` is unresolved (status: open) — `load_window_compositions()` reads `orchestration_runs.ll_version`, which does not exist until FEAT-3404 lands. Wait for or prioritize FEAT-3404 before starting implementation here.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T14:57:01 - `ca488d79-9d00-4093-b23a-fe056ec17be3.jsonl`
 - `/ll:verify-issues` - 2026-09-08T04:54:45 - `3160105b-dd7c-40a3-aa61-9ec1da8184c9.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T04:49:39 - `e0531aaa-d1f3-482e-9dd7-3feb0e19d4f4.jsonl`
 - `/ll:verify-issues` - 2026-09-08T04:41:05 - `c5dd39be-b3d6-4711-bede-d6709e2c60d0.jsonl`
