@@ -1,18 +1,19 @@
 ---
 id: BUG-3401
 type: BUG
-title: Unmocked cmd_resume tests bind live sockets in the real .ll/ and fail after the third bind per process
+title: Unmocked cmd_resume tests bind live sockets in the real .ll/ and fail after
+  the third bind per process
 priority: P3
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-07'
 captured_at: '2026-09-07T23:44:14Z'
 confidence_score: 90
-outcome_confidence: 49
-score_complexity: 14
+outcome_confidence: 79
+score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 10
-score_change_surface: 0
+score_ambiguity: 18
+score_change_surface: 18
 learning_tests_required:
 - pytest
 reconcile_attempted: true
@@ -248,6 +249,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 _Previous pass (2026-09-07) flagged a self-contradiction in Program Design: the named signature/Call Path described a before/after `.ll/` snapshot-diff while Implementation Steps #3 explicitly called for a choke-point guard instead, citing `_guard_real_history_db`'s precedent against snapshot-diff. Program Design has been corrected — `assert_ll_clean_after_session` replaced with `_guard_real_socket_transport`, a choke-point patch on `UnixSocketTransport.__init__` — and Architecture Compliance now scores 20/20 (was 10/20), raising the readiness tier from PROCEED WITH CAUTION to PROCEED. Outcome Confidence is unaffected — the newly-fixed contradiction didn't touch Complexity, Test Coverage, or Change Surface, and Ambiguity's score is held down by the separate, still-open per-test-vs-fixture decision noted above._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T03:24:35 - `51116d41-9957-4fcd-9da9-31792bb39937.jsonl`
 - `/ll:verify-issues` - 2026-09-08T03:20:08 - `340bdb44-8b74-4400-a17f-9d09e7a13c92.jsonl`
 - manual review - 2026-09-08 - premise corrected (reproduced 34 failures on clean .ll/); vulnerable list expanded 9→~36; fixture-vs-per-test decision resolved (fixture); ACs rewritten
 - `/ll:wire-issue` - 2026-09-08T03:07:52 - `10d02141-1a61-4549-ac75-31b74fcc4540.jsonl`
