@@ -3170,6 +3170,9 @@ against `.ll/history.db`; no network access, no LLM calls.
 |------|-------|-------------|
 | `--format` | `-f` | Output format: `text` (default), `json`, `markdown`, `yaml` |
 | `--min-sample N` | | Minimum closed issues (or loop runs, for retry inflation) per window before a rate is reported (default: 5) |
+| `--sensitivity F` | | Relative-move threshold (worse direction) a window must exceed its baseline by to be flagged as a regression (default: 0.30); rejects negative values |
+| `--baseline-windows N` | | Number of preceding eligible windows averaged into each series' baseline (default: 3); rejects values below 1 |
+| `--all-windows` | | Test every eligible window of each series for regression, not just the latest (default: latest only) |
 
 Metric definitions, per window:
 
@@ -3199,10 +3202,34 @@ of a computed value. Issues with no matching `orchestration_runs` row fall into 
 Every metric's formula, window, denominator, and caveats are also emitted as a `MetricDefinition`
 in the JSON/YAML payload, so a downstream consumer never has to re-derive them.
 
+**Regression detection and attribution (FEAT-3405):** every report run also flags a drop in the
+latest (or, with `--all-windows`, every) eligible window of each metric/retry-inflation series
+against a prior-K-window baseline (`--baseline-windows`, default 3), and — for each flagged
+window — names the model, host, or `ll_version` whose share of the window's issues (or loop
+runs) shifted most versus the baseline, or reports "no attributable change" when nothing shifted
+past `ATTRIBUTION_MIN_SHIFT` (0.25 absolute share). Detection is deterministic and LLM-free,
+statistical over recorded values only:
+
+- Windows whose period is the `month_key` sentinel `"unknown"` (empty `done_ts`) are excluded
+  from every series and reported as a `skipped_unknown_period` count — never selected as latest.
+- A zero baseline (all-zero prior windows) is skipped and counted as `skipped_zero_baseline`,
+  never raised or misread as an infinite-percent move; a `cost_per_issue`/`tokens_per_issue`
+  window with `value == 0.0` (usage capture didn't exist yet) is additionally never usable *as* a
+  baseline, so the first priced month is never flagged as a regression against a free one.
+- A dimension is only attributed when its non-null coverage meets a 50% floor on both the
+  flagged window and the pooled baseline — this is what stops a first `ll_version`-stamped month
+  from being attributed to little-loops against an all-`NULL` baseline.
+- `model`/`host` shares are weighted by row count (a session touching more than one issue splits
+  its rows `1/n`), not by distinct-value presence; host attribution is inert until transcripts
+  from more than one host are ingested; the newest window under-reports `fix_rate` regressions
+  because reopens lag closes. All three notes render alongside every regression block.
+
 ```bash
 ll-history quality                        # Text report
 ll-history quality --format json          # JSON output, includes metric definitions
 ll-history quality --min-sample 3         # Lower the sample-size gate
+ll-history quality --sensitivity 0.2      # More sensitive regression detection
+ll-history quality --all-windows          # Test every window, not just the latest
 ```
 
 #### `ll-history audit-issue-collisions`

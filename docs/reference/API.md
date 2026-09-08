@@ -2377,7 +2377,10 @@ Parse a single completed issue file.
 | `analyze_complexity_proxy(issues)` | Analyze complexity via issue duration |
 | `detect_cross_cutting_smells(issues)` | Detect cross-cutting concern patterns |
 | `analyze_rework(issues, *, db=DEFAULT_DB_PATH, min_sample=5, follow_up_days=14)` | Reopen/follow-up/touch-back/revert rates + quality-adjusted throughput, windowed by `(calendar month, orchestrator)` (FEAT-2867) |
-| `analyze_agent_quality(issues, *, db=DEFAULT_DB_PATH, min_sample=5)` | Fix-rate/correction-rate/cost-per-issue/tokens-per-issue (same windows as `analyze_rework`) plus retry inflation on a `(calendar month, loop_name)` axis (FEAT-3183) |
+| `analyze_agent_quality(issues, *, db=DEFAULT_DB_PATH, min_sample=5, sensitivity=0.30, baseline_windows=3, latest_only=True)` | Fix-rate/correction-rate/cost-per-issue/tokens-per-issue (same windows as `analyze_rework`) plus retry inflation on a `(calendar month, loop_name)` axis (FEAT-3183); also runs `detect_quality_regressions()` and stores the result on `QualityAnalysis.regressions` (FEAT-3405) |
+| `detect_quality_regressions(analysis, compositions, *, sensitivity=0.30, baseline_windows=3, latest_only=True)` | Flags the latest (or every, with `latest_only=False`) eligible window of each metric/retry-inflation series against a prior-K-window baseline; deterministic, LLM-free (FEAT-3405) |
+| `attribute_change(window, baseline, *, min_shift=0.25, min_coverage=0.5)` | Names the `(model\|host\|ll_version, value)` whose pooled-baseline share increased most for a flagged window, or `None` for "no attributable change" (FEAT-3405) |
+| `load_window_compositions(conn, issue_window, issue_ids, session_issues)` | Loads per-window model/host/`ll_version` weighted compositions `attribute_change()` consumes (FEAT-3405) |
 
 #### Formatting
 

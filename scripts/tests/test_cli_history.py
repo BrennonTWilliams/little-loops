@@ -270,6 +270,51 @@ class TestHistoryQualitySubcommand:
                 main_history()
         assert exc_info.value.code == 0
 
+    def test_quality_sensitivity_flag_accepted(self, tmp_path: Path) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "quality", "--sensitivity", "0.5"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+
+    def test_quality_baseline_windows_flag_accepted(self, tmp_path: Path) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "quality", "--baseline-windows", "2"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+
+    def test_quality_all_windows_flag_accepted(self, tmp_path: Path) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "quality", "--all-windows"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+
+    def test_quality_sensitivity_negative_rejected(self) -> None:
+        with patch.object(sys, "argv", ["ll-history", "quality", "--sensitivity=-1"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_history()
+        assert exc_info.value.code != 0
+
+    def test_quality_baseline_windows_zero_rejected(self) -> None:
+        with patch.object(sys, "argv", ["ll-history", "quality", "--baseline-windows=0"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_history()
+        assert exc_info.value.code != 0
+
 
 # ---------------------------------------------------------------------------
 # sessions subcommand — json output

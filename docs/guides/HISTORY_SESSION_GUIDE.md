@@ -483,7 +483,14 @@ window built from too few closed issues (or loop runs) reporting a misleadingly 
 
 Every metric's formula, window, denominator, min-sample, verdict band, and caveats are also
 emitted as a `MetricDefinition` object in `ll-history quality`'s JSON/YAML payload — the same
-data as this table, machine-readable for a downstream regression-detection consumer.
+data as this table, machine-readable for a downstream consumer.
+
+That consumer now ships (FEAT-3405): `ll-history quality` also runs a prior-K-window baseline
+regression detector over this table's series, flagging a drop in the latest eligible window of
+each metric and attributing it to the model/host/`ll_version` whose composition shifted most.
+See `ll-history quality`'s entry in [CLI.md](../reference/CLI.md#ll-history-quality) for the
+full detection/attribution rules and the `--sensitivity`/`--baseline-windows`/`--all-windows`
+flags.
 
 ## Session Log Tooling (`ll-logs`)
 

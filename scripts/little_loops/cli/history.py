@@ -13,6 +13,22 @@ from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
 
 
+def _non_negative_float(raw: str) -> float:
+    """argparse `type=` callable for `--sensitivity`: rejects negative values."""
+    value = float(raw)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {value}")
+    return value
+
+
+def _positive_int(raw: str) -> int:
+    """argparse `type=` callable for `--baseline-windows`: rejects values below 1."""
+    value = int(raw)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1, got {value}")
+    return value
+
+
 def main_history() -> int:
     """Entry point for ll-history command.
 
@@ -268,6 +284,28 @@ Examples:
             help="Minimum closed issues (or loop runs) per window before a rate is "
             "reported (default: 5)",
         )
+        quality_parser.add_argument(
+            "--sensitivity",
+            type=_non_negative_float,
+            default=None,
+            metavar="F",
+            help="Relative-move threshold (worse direction) a window must exceed its "
+            "baseline by to be flagged as a regression (default: 0.30)",
+        )
+        quality_parser.add_argument(
+            "--baseline-windows",
+            type=_positive_int,
+            default=None,
+            metavar="N",
+            help="Number of preceding eligible windows averaged into each series' "
+            "baseline (default: 3)",
+        )
+        quality_parser.add_argument(
+            "--all-windows",
+            action="store_true",
+            help="Test every eligible window of each series for regression, not just "
+            "the latest (default: latest only)",
+        )
 
         # sessions subcommand (ENH-1711)
         sessions_parser = subparsers.add_parser(
@@ -468,6 +506,10 @@ Examples:
             return 0
 
         if args.command == "quality":
+            from little_loops.issue_history.quality_regressions import (
+                DEFAULT_BASELINE_WINDOWS,
+                DEFAULT_SENSITIVITY,
+            )
             from little_loops.issue_history.rework import MIN_SAMPLE_SIZE
             from little_loops.issue_parser import find_issues
 
@@ -484,7 +526,20 @@ Examples:
             # Deliberately `is None` rather than `args.min_sample or MIN_SAMPLE_SIZE`:
             # the latter would silently discard an explicit `--min-sample 0`.
             min_sample = args.min_sample if args.min_sample is not None else MIN_SAMPLE_SIZE
-            quality_analysis = analyze_agent_quality(all_issues, db=db_path, min_sample=min_sample)
+            sensitivity = args.sensitivity if args.sensitivity is not None else DEFAULT_SENSITIVITY
+            baseline_windows = (
+                args.baseline_windows
+                if args.baseline_windows is not None
+                else DEFAULT_BASELINE_WINDOWS
+            )
+            quality_analysis = analyze_agent_quality(
+                all_issues,
+                db=db_path,
+                min_sample=min_sample,
+                sensitivity=sensitivity,
+                baseline_windows=baseline_windows,
+                latest_only=not args.all_windows,
+            )
 
             if args.format == "json":
                 print(format_agent_quality_json(quality_analysis))

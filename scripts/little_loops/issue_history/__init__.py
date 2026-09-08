@@ -48,6 +48,9 @@ Public exports:
     detect_cross_cutting_smells: Detect cross-cutting concerns
     analyze_rework: Reopen/follow-up/touch-back/revert rates (FEAT-2867)
     analyze_agent_quality: Fix-rate/correction/cost/tokens/retry-inflation trends (FEAT-3183)
+    detect_quality_regressions: Prior-K-window baseline regression detection (FEAT-3405)
+    attribute_change: Attribute a flagged window's drop to a model/host/version shift (FEAT-3405)
+    load_window_compositions: Load per-window model/host/ll_version compositions (FEAT-3405)
 
     # Formatting
     format_summary_text: Format summary as text
@@ -162,6 +165,15 @@ from little_loops.issue_history.quality import (
     detect_config_gaps,
     detect_manual_patterns,
 )
+from little_loops.issue_history.quality_regressions import (
+    QualityRegressionAnalysis,
+    RegressionEvent,
+    RunAttribution,
+    WindowComposition,
+    attribute_change,
+    detect_quality_regressions,
+    load_window_compositions,
+)
 from little_loops.issue_history.regressions import analyze_regression_clustering
 from little_loops.issue_history.rework import (
     ReworkAnalysis,
@@ -216,6 +228,10 @@ __all__ = [
     "QualityWindow",
     "RetryWindow",
     "QualityAnalysis",
+    "RunAttribution",
+    "RegressionEvent",
+    "QualityRegressionAnalysis",
+    "WindowComposition",
     "CollisionEntry",
     "CollisionGroup",
     "audit_issue_collisions",
@@ -246,6 +262,9 @@ __all__ = [
     "analyze_rework",
     "quality_adjusted_throughput",
     "analyze_agent_quality",
+    "detect_quality_regressions",
+    "attribute_change",
+    "load_window_compositions",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",

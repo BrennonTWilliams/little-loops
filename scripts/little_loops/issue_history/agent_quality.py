@@ -43,6 +43,13 @@ from typing import TYPE_CHECKING, Any
 from little_loops.history_reader import _connect_readonly
 from little_loops.issue_history._utils import MetricDefinition, classify_verdict, month_key
 from little_loops.issue_history._utils import orchestrator_labels as _orchestrator_labels
+from little_loops.issue_history.quality_regressions import (
+    DEFAULT_BASELINE_WINDOWS,
+    DEFAULT_SENSITIVITY,
+    QualityRegressionAnalysis,
+    detect_quality_regressions,
+    load_window_compositions,
+)
 from little_loops.issue_history.rework import (
     LOW_COVERAGE_THRESHOLD,
     MIN_SAMPLE_SIZE,
@@ -141,6 +148,7 @@ class QualityAnalysis:
     definitions: list[MetricDefinition] = field(default_factory=list)
     min_sample_size: int = MIN_SAMPLE_SIZE
     notes: tuple[str, ...] = field(default_factory=lambda: tuple(_STANDARD_NOTES))
+    regressions: QualityRegressionAnalysis | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -149,6 +157,7 @@ class QualityAnalysis:
             "definitions": [d.to_dict() for d in self.definitions],
             "min_sample_size": self.min_sample_size,
             "notes": list(self.notes),
+            "regressions": self.regressions.to_dict() if self.regressions else None,
         }
 
 
@@ -464,6 +473,9 @@ def analyze_agent_quality(
     *,
     db: Path | str = DEFAULT_DB_PATH,
     min_sample: int = MIN_SAMPLE_SIZE,
+    sensitivity: float = DEFAULT_SENSITIVITY,
+    baseline_windows: int = DEFAULT_BASELINE_WINDOWS,
+    latest_only: bool = True,
 ) -> QualityAnalysis:
     """Compute agent-quality signals as a time series of windows.
 
@@ -474,6 +486,12 @@ def analyze_agent_quality(
         db: Path to ``.ll/history.db``.
         min_sample: Minimum closed issues (or loop runs, for retry inflation)
             per window before a rate is reported.
+        sensitivity: Relative-move threshold (worse direction) a window must
+            exceed its baseline by to be flagged as a regression.
+        baseline_windows: Number of preceding eligible windows averaged into
+            each series' baseline.
+        latest_only: When True (default), only the most recent eligible
+            window of each series is tested for regression.
 
     Returns:
         QualityAnalysis with empty windows if the DB is missing/empty.
@@ -492,11 +510,20 @@ def analyze_agent_quality(
 
         rework = analyze_rework(issues, db=db_path, min_sample=min_sample)
         if not rework.windows:
-            return QualityAnalysis(
+            empty_analysis = QualityAnalysis(
                 retry_windows=retry_windows,
                 definitions=definitions,
                 min_sample_size=min_sample,
             )
+            compositions = load_window_compositions(conn, {}, {}, {})
+            empty_analysis.regressions = detect_quality_regressions(
+                empty_analysis,
+                compositions,
+                sensitivity=sensitivity,
+                baseline_windows=baseline_windows,
+                latest_only=latest_only,
+            )
+            return empty_analysis
 
         fix_rate_metrics = _fix_rate_metrics(rework)
         window_closed = {(rw.period, rw.orchestrator): rw.closed_count for rw in rework.windows}
@@ -504,10 +531,12 @@ def analyze_agent_quality(
         closed = _load_closed_issues(conn)
         orch_labels = _orchestrator_labels(conn, {c["issue_id"] for c in closed})
         issue_window: dict[int, tuple[str, str]] = {}
+        issue_ids: dict[int, str] = {}
         for c in closed:
             period = month_key(c["done_ts"])
             orchestrator = orch_labels.get(c["issue_id"], UNATTRIBUTED_LABEL)
             issue_window[c["issue_num"]] = (period, orchestrator)
+            issue_ids[c["issue_num"]] = c["issue_id"]
 
         session_issues = _session_issue_map(conn)
         retirements = _load_retirement_fingerprints(conn)
@@ -549,12 +578,21 @@ def analyze_agent_quality(
                 )
             )
 
-        return QualityAnalysis(
+        result = QualityAnalysis(
             windows=windows,
             retry_windows=retry_windows,
             definitions=definitions,
             min_sample_size=min_sample,
         )
+        compositions = load_window_compositions(conn, issue_window, issue_ids, session_issues)
+        result.regressions = detect_quality_regressions(
+            result,
+            compositions,
+            sensitivity=sensitivity,
+            baseline_windows=baseline_windows,
+            latest_only=latest_only,
+        )
+        return result
     finally:
         conn.close()
 
@@ -611,6 +649,35 @@ def format_agent_quality_text(analysis: QualityAnalysis) -> str:
             )
         lines.append("")
 
+    if analysis.regressions is not None:
+        reg = analysis.regressions
+        lines.append("Regression Detection")
+        lines.append(
+            f"  sensitivity={reg.sensitivity}  baseline_windows={reg.baseline_windows}  "
+            f"latest_only={reg.latest_only}"
+        )
+        lines.append(
+            f"  skipped_unknown_period={reg.skipped_unknown_period}  "
+            f"skipped_zero_baseline={reg.skipped_zero_baseline}"
+        )
+        if reg.events:
+            for e in reg.events:
+                attribution = (
+                    f"{e.attribution.dimension}={e.attribution.value} "
+                    f"({e.attribution.window_share:.2f} vs {e.attribution.baseline_share:.2f})"
+                    if e.attribution
+                    else "no attributable change"
+                )
+                lines.append(
+                    f"  ALERT {e.period} [{e.series}] {e.metric}: {e.value:.2f} vs baseline "
+                    f"{e.baseline_value:.2f} ({e.magnitude:.0%} move) -- {attribution}"
+                )
+        else:
+            lines.append("  No regressions detected.")
+        for note in reg.notes:
+            lines.append(f"  Note: {note}")
+        lines.append("")
+
     for note in analysis.notes:
         lines.append(f"Note: {note}")
     return "\n".join(lines)
@@ -660,6 +727,40 @@ def format_agent_quality_markdown(analysis: QualityAnalysis) -> str:
                 f"| {r.period} | {r.loop_name} | {r.run_count} | "
                 f"{r.mean_iterations:.1f} | {r.verdict} |"
             )
+        lines.append("")
+
+    if analysis.regressions is not None:
+        reg = analysis.regressions
+        lines.append("## Regression Detection")
+        lines.append("")
+        lines.append(
+            f"sensitivity={reg.sensitivity}, baseline_windows={reg.baseline_windows}, "
+            f"latest_only={reg.latest_only}"
+        )
+        lines.append(
+            f"skipped_unknown_period={reg.skipped_unknown_period}, "
+            f"skipped_zero_baseline={reg.skipped_zero_baseline}"
+        )
+        lines.append("")
+        if reg.events:
+            lines.append("| Period | Series | Metric | Value | Baseline | Move | Attribution |")
+            lines.append("|---|---|---|---|---|---|---|")
+            for e in reg.events:
+                attribution = (
+                    f"{e.attribution.dimension}={e.attribution.value} "
+                    f"({e.attribution.window_share:.2f} vs {e.attribution.baseline_share:.2f})"
+                    if e.attribution
+                    else "no attributable change"
+                )
+                lines.append(
+                    f"| {e.period} | {e.series} | {e.metric} | {e.value:.2f} | "
+                    f"{e.baseline_value:.2f} | {e.magnitude:.0%} | {attribution} |"
+                )
+        else:
+            lines.append("No regressions detected.")
+        lines.append("")
+        for note in reg.notes:
+            lines.append(f"> {note}")
         lines.append("")
 
     for note in analysis.notes:

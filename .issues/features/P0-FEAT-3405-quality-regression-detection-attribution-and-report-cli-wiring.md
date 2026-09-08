@@ -3,8 +3,9 @@ id: FEAT-3405
 title: Quality-regression detection, attribution, and report/CLI wiring
 type: FEAT
 priority: P0
-status: open
+status: done
 discovered_date: '2026-09-07'
+completed_at: '2026-09-08T19:08:02Z'
 parent: FEAT-3398
 blocked_by: []
 labels:
@@ -213,6 +214,20 @@ override for a threshold a maintainer will want to tune ad hoc for a single
 report run.
 
 ## Program Design
+
+### Deviations
+
+- 2026-09-08: `WindowComposition` gained a fourth field, `units: float`
+  (defaults to `0.0`), beyond the `period`/`series`/`counts`/`coverage` the
+  Types section specifies. It is the window's population size (closed-issue
+  count, or run count for `retry_inflation`) — the denominator `coverage` is
+  measured against and the weight `attribute_change()` pools baseline
+  `coverage` by. Without it, pooling coverage across K baseline windows would
+  need to fall back to an unweighted mean-of-fractions, which — like the
+  mean-of-shares problem the pooled-*counts* design already rejects for
+  `shares()` — lets a tiny baseline window count as much as a large one.
+  Additive only; does not change the documented `counts`/`coverage`/`shares()`
+  shape.
 
 ### Types
 
@@ -707,6 +722,8 @@ review. Re-run `/ll:verify-issues` and `/ll:confidence-check` before
 the existing PyYAML fallback path and proves nothing new about the library.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T19:07:17 - `204483fb-0035-4a22-9571-7e0656ebef10.jsonl`
+- `/ll:confidence-check` - 2026-09-08T18:36:29 - `1da9e372-c79e-4132-94c9-48b9fab73fe1.jsonl`
 - `/ll:confidence-check` - 2026-09-08T18:31:26 - `93c855fd-cd38-4404-abc3-eca785ed7ae8.jsonl`
 - `/ll:confidence-check` - 2026-09-08T18:15:06 - `7bee39e0-dbd1-43e1-ab8d-3353f1d8f05f.jsonl`
 - `/ll:refine-issue` - 2026-09-08T17:31:19 - `fa35fcdd-03ef-4e02-8495-668286d605de.jsonl`
