@@ -12,10 +12,10 @@ labels:
 learning_tests_required:
 - yaml
 parent: FEAT-3399
-verify_verdict: PROPOSAL_UNSOUND
-confidence_score: 85
+verify_verdict: VALID
+confidence_score: 100
 outcome_confidence: 78
-score_complexity: 18
+score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 25
@@ -28,7 +28,7 @@ reconcile_attempted: true
 Introduce `discover_workspace_members()`: a parser for a new `ll-workspace.yaml`
 manifest that names member repos by path with a role apiece, producing a
 `WorkspaceMember` list for consumers to aggregate over. Absence of the manifest
-must fall back cleanly (an empty/None result), never raise.
+must fall back cleanly (an empty list), never raise.
 
 ## Parent Issue
 
@@ -49,11 +49,57 @@ paths from JSONL — not a declared registry.
 
 ## Expected Behavior
 
-`discover_workspace_members(manifest_path: Path = Path("ll-workspace.yaml")) ->
+`discover_workspace_members(manifest_path: Path | None = None) ->
 list[WorkspaceMember]` parses the manifest into `WorkspaceMember(repo_path: Path,
-role: str, db_path: Path)` rows. With no manifest present at the discovery path,
-the function returns an empty/None result rather than raising, so downstream
-consumers can fall back to single-repo behavior byte-for-byte.
+role: str, db_path: Path)` rows. With no manifest present at the resolved
+discovery path, the function returns `[]` (never `None`) rather than raising, so
+downstream consumers can fall back to single-repo behavior byte-for-byte.
+
+### Manifest Format
+
+```yaml
+# ll-workspace.yaml — workspace membership manifest
+members:
+  - repo: .                       # required; relative paths resolve against the manifest's parent dir
+    role: primary                 # required; free-text string, no closed set enforced
+  - repo: ../sibling-service
+    role: service
+    db_path: ../sibling-service/.ll/history.db   # optional; default: <repo>/.ll/history.db
+```
+
+Rules:
+
+- Top-level is a mapping with a `members:` list. Any other top-level shape
+  (bare list, scalar, `members` not a list) raises `ValueError`.
+- `repo` and `role` are required per entry; a missing key raises `KeyError`
+  (bare `entry["repo"]`, mirroring `decisions.py`'s `from_dict` style).
+- `db_path` is optional. When absent it is composed statically as
+  `repo_path / ".ll" / "history.db"` — a plain `Path` join, **not**
+  `resolve_history_db()`, so the `LL_HISTORY_DB` collapse hazard (Decision
+  Rules) is never reintroduced by the default.
+- Relative `repo` and `db_path` values resolve against the manifest file's
+  parent directory, not cwd. Both are stored resolved (absolute) on the
+  returned `WorkspaceMember`.
+- Prefer relative paths in a committed manifest: absolute member paths in a
+  checked-in `ll-workspace.yaml` leak machine-local paths (and would trip
+  `ll-verify-private-refs` in this repo). Gitignoring the file is left to the
+  consuming project; this issue does not change `ll-init`.
+
+### Manifest Path Resolution
+
+Precedence, highest first:
+
+1. Explicit `manifest_path` argument — returned verbatim.
+2. `history.workspace_manifest_path` from `.ll/ll-config.json` (relative
+   values resolve against the project root), read inside
+   `discover_workspace_members()` itself via a small `_config_manifest_path()`
+   helper mirroring `session_store/db.py::_config_db_path(root=)` — so the
+   config key is reachable without every caller re-loading config.
+3. `find_project_root(Path.cwd()) / "ll-workspace.yaml"` when a root resolves.
+4. `Path.cwd() / "ll-workspace.yaml"` when no project root resolves — this is
+   the "workspace root is a parent directory of sibling repos with no `.ll/`"
+   case from FEAT-3399's "run one command from a workspace root", and mirrors
+   `decisions.py::_resolve_path()`'s cwd fallback.
 
 ## Use Case
 
@@ -72,7 +118,7 @@ time.
 returns the member list FEAT-3410 iterates to build its per-repo `ATTACH
 DATABASE` calls.
 
-**Outcome**: A project with no `ll-workspace.yaml` gets an empty/None result,
+**Outcome**: A project with no `ll-workspace.yaml` gets an empty list,
 so FEAT-3410 — and any other future consumer — falls back to single-repo
 behavior byte-for-byte, with no separate code path to maintain.
 
@@ -266,20 +312,40 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
 
 ### Types
 
-- `WorkspaceMember`: `repo_path: Path`, `role: str`, `db_path: Path`
+- `WorkspaceMember` (`@dataclass(frozen=True)` — it crosses the producer/consumer boundary to FEAT-3410, the shape `host_runner.py:316-327`'s stated `frozen=True` convention targets; the mutable precedents `ArtifactTemplate`/`CompletedIssue` predate that convention): `repo_path: Path` (resolved absolute), `role: str`, `db_path: Path` (resolved absolute)
+- `HistoryConfig.workspace_manifest_path: str | None = None` — `str`, not `Path`, matching the sibling `db_path: str | None` field and the schema's `["string", "null"]` type
 
 ### Signatures
 
-- `discover_workspace_members(manifest_path: Path) -> list[WorkspaceMember]` — default `manifest_path` is `Path("ll-workspace.yaml")`
+- `discover_workspace_members(manifest_path: Path | None = None) -> list[WorkspaceMember]` — `None` triggers the four-step resolution chain in Expected Behavior → Manifest Path Resolution; returns `[]` (never `None`) when the resolved path does not exist
+- `_resolve_manifest_path(manifest_path: Path | None) -> Path` — private resolver mirroring `decisions.py::_resolve_path()` (`decisions.py:26-41`)
+- `_config_manifest_path(root: Path | None) -> Path | None` — private config reader mirroring `session_store/db.py::_config_db_path(root=)`
 
 ### Call Path
 
-`discover_workspace_members(manifest_path)` -> `Path.exists()` guard -> `yaml.safe_load(manifest_path.read_text())` -> per-entry construction of `WorkspaceMember(repo_path=..., role=..., db_path=...)` -> returned `list[WorkspaceMember]`. No caller exists yet in this codebase — FEAT-3410's ATTACH-based aggregation entry point is the sole intended consumer, feeding each returned member's `db_path` into a per-member `ATTACH DATABASE` call in the shape of `build_snapshot_db` (`scripts/little_loops/session_store/queries.py:246-301`, today's only `ATTACH DATABASE` call site, single-source/single-alias — a multi-member attach loop has no existing precedent to confirm against).
+`discover_workspace_members(manifest_path)` -> `_resolve_manifest_path()` (explicit arg → config key → project root → cwd) -> `Path.exists()` guard (return `[]`) -> `yaml.safe_load(manifest_path.read_text())` -> top-level shape check (`dict` with `members` list, else `ValueError`) -> per-entry construction of `WorkspaceMember(repo_path=(manifest_dir / entry["repo"]).resolve(), role=entry["role"], db_path=(manifest_dir / entry["db_path"]).resolve() if "db_path" in entry else repo_path / ".ll" / "history.db")` -> returned `list[WorkspaceMember]`. No caller exists yet in this codebase — FEAT-3410's ATTACH-based aggregation entry point is the sole intended consumer, feeding each returned member's `db_path` into a per-member `ATTACH DATABASE` call in the shape of `build_snapshot_db` (`scripts/little_loops/session_store/queries.py:246-301`, today's only `ATTACH DATABASE` call site, single-source/single-alias — a multi-member attach loop has no existing precedent to confirm against).
 
 ### Decision Rules
 
 - **Malformed-manifest posture** (present but invalid `ll-workspace.yaml`): **Resolved** — no-wrap/propagate, mirroring `decisions.py::load_decisions()`; `yaml.YAMLError` and missing-field errors propagate unmodified to the caller. See Proposed Solution → Decision Rationale for the full scoring against the fail-closed/raise and fail-open/degrade alternatives.
 - **`db_path` derivation**: **Resolved** — explicit per-entry manifest field, authored directly in `ll-workspace.yaml`. `resolve_history_db(root=member.repo_path)` was rejected: its `LL_HISTORY_DB` env-var check fires unconditionally ahead of the `root=`-scoped lookup (`session_store/db.py:107-109`), which would collapse every member's `db_path` onto the same value whenever `LL_HISTORY_DB` is set. See Proposed Solution → Decision Rationale.
+- **Default `manifest_path` resolution**: **Resolved** — project-root-anchored
+  with cwd fallback (Proposed Solution Option B), via the four-step chain in
+  Expected Behavior → Manifest Path Resolution. The signature is
+  `manifest_path: Path | None = None`, not a bare `Path("ll-workspace.yaml")`
+  literal.
+- **Return type on absent manifest**: **Resolved** — `[]`, never `None`. A
+  `None` branch would force every consumer (FEAT-3410 first) to null-check
+  before iterating.
+- **Missing-field / bad-shape exceptions**: **Resolved** — missing `repo`/`role`
+  raises `KeyError`; non-mapping top level, missing/non-list `members`, or a
+  non-mapping entry raises `ValueError`; malformed YAML propagates
+  `yaml.YAMLError` unmodified. All three are the no-wrap posture.
+- **Frozen vs mutable**: **Resolved** — `frozen=True` (see Types).
+- **Cross-issue consistency**: FEAT-3410's Design Notes previously recommended
+  `resolve_history_db(root=member.repo_path)` per member — contradicting this
+  issue's `db_path` decision. FEAT-3410 has been corrected to consume
+  `member.db_path` directly.
 
 ### Codebase Research Findings
 
@@ -295,11 +361,15 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Define `WorkspaceMember` and implement `discover_workspace_members()`,
-   hand-parsing `ll-workspace.yaml` with `yaml.safe_load()` per the
-   `decisions.py::load_decisions()` dispatch model.
-2. Implement the no-manifest graceful-degradation branch: explicit
-   `Path.exists()` check, empty/None return, documented fallback target in the
+1. Define `WorkspaceMember` (`frozen=True`) and implement
+   `discover_workspace_members()`, hand-parsing `ll-workspace.yaml` with
+   `yaml.safe_load()` per the `decisions.py::load_decisions()` dispatch model
+   and the Manifest Format rules (`members:` list; `repo`/`role` required;
+   `db_path` optional, defaulting to `repo/.ll/history.db` by static `Path`
+   join; relative paths resolved against the manifest's parent dir).
+2. Implement `_resolve_manifest_path()` (explicit arg → config key → project
+   root → cwd) and the no-manifest graceful-degradation branch: explicit
+   `Path.exists()` check, `[]` return, documented fallback target in the
    docstring.
 3. Implement config registration for the configurable manifest path as
    `history.workspace_manifest_path` (decided — see Proposed Solution →
@@ -364,16 +434,29 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 ## Acceptance Criteria
 
 - `discover_workspace_members()` parses a well-formed `ll-workspace.yaml` into
-  the correct `WorkspaceMember` list.
-- Absent manifest degrades to an empty/None result without raising, covered by a
+  the correct `WorkspaceMember` list: `repo_path`/`db_path` are absolute,
+  resolved against the manifest's parent directory; an entry without
+  `db_path` gets `repo_path / ".ll" / "history.db"` without calling
+  `resolve_history_db()` (test: set `LL_HISTORY_DB` in the environment and
+  assert two members still get two distinct `db_path` values).
+- `WorkspaceMember` is `frozen=True` (attribute assignment raises
+  `FrozenInstanceError`).
+- Absent manifest degrades to `[]` (not `None`) without raising, covered by a
   dedicated graceful-degradation test class.
+- Default-path resolution follows the documented chain: explicit arg wins;
+  `history.workspace_manifest_path` is honored when the arg is `None`; with no
+  config key, `<project_root>/ll-workspace.yaml` is used when a root resolves
+  and `<cwd>/ll-workspace.yaml` when none does — one test per branch, using
+  `tmp_path` + `monkeypatch.chdir`.
 - `history.workspace_manifest_path` is registered in `config-schema.json`
   (nested under the existing `history` object — decided per Proposed Solution
   → Decision Rationale), with a matching
   `test_history_workspace_manifest_path_in_schema` schema test.
-- A present-but-malformed `ll-workspace.yaml` (bad YAML syntax, or an entry
-  missing `repo`/`role`) propagates `yaml.YAMLError`/a missing-field error to
-  the caller unmodified — no-wrap/propagate, per Decision Rules — covered by
+- A present-but-malformed `ll-workspace.yaml` propagates unmodified to the
+  caller — no-wrap/propagate, per Decision Rules: bad YAML syntax raises
+  `yaml.YAMLError`; an entry missing `repo`/`role` raises `KeyError`; a
+  non-mapping top level, missing/non-list `members`, or non-mapping entry
+  raises `ValueError` — covered by
   malformed-input tests mirroring `TestLoadDecisions`
   (`test_decisions.py:109-183`) / `TestLoadDecisionsMalformedInput`
   (`test_verify_decisions.py:42`).
@@ -481,6 +564,31 @@ _Re-verified `/ll:verify-issues` — 2026-09-08 — graph: provider=`codegraph` 
   ACs for (a) malformed-manifest raise behavior and (b) `HistoryConfig` wiring of
   `workspace_manifest_path`, or fold them explicitly into the existing three ACs.
 
+_Re-verified `/ll:verify-issues` — 2026-09-08 — graph: provider=`codegraph` freshness=`fresh`:_
+
+- **AC gaps from the prior `PROPOSAL_UNSOUND` pass are closed**: that verdict (19:21:57)
+  flagged two missing ACs — malformed-manifest-raise behavior, and `HistoryConfig`
+  wiring of `workspace_manifest_path`. Both are now present as explicit ACs (the
+  malformed-manifest AC and the `HistoryConfig`/`from_dict()` wiring AC), added by
+  the `/ll:refine-issue` pass at 19:34:12. Re-running check B6 against the current
+  Proposed Solution/Decision Rules/AC set finds no residual coverage gap.
+- All codebase claims re-checked and hold: `config-schema.json` `history` object
+  bounds (`:2117`, `:2143-2146`, `:2255-2256`), `HistoryConfig`
+  (`config/features.py:1513-1554`), `session_store/db.py` env-precedence hazard
+  (`:107-109`, `:121-132`), `decisions.py` dispatch model (`:353`, `:369`, `:381`,
+  `:385`). `discover_workspace_members`/`WorkspaceMember`/`ll-workspace.yaml`
+  still 0 hits repo-wide.
+- The most-recently-added Documentation finding's three doc anchors (added since
+  the last verify pass, not previously checked) confirmed exact:
+  `docs/ARCHITECTURE.md:714`, `docs/reference/API.md:8208`/`:8210`/`:92`,
+  `docs/reference/CLI.md:3775`.
+- `ll-verify-evidence --json`: `"ok": true`, 0 findings.
+- No active required decision rules — clean skip.
+- Parent (`FEAT-3399`) and sibling (`FEAT-3410`) references both resolve; no
+  `## Blocked By`/`## Blocks` sections to check.
+- Verdict: **VALID** — supersedes the prior `PROPOSAL_UNSOUND` persisted verdict,
+  which predated the AC-gap fix.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
@@ -494,17 +602,23 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 **Outcome Confidence**: 78/100 → MODERATE
 
 ### Concerns
-- Two Decision Rules remain unresolved: malformed-manifest posture (three
-  disagreeing codebase conventions cited: fail-closed/raise, fail-open/degrade,
-  no-wrap/propagate) and `db_path` derivation (explicit manifest field vs.
-  `resolve_history_db()`, which has a documented `LL_HISTORY_DB` composition
-  hazard across multiple members). Resolve via `/ll:decide-issue FEAT-3409`
-  before starting Implementation Step 1.
-- Config registration path is also left open (nested
-  `history.workspace_manifest_path` vs. a new top-level `workspace` section) —
-  the choice determines which of two Dependent-Files wiring lists apply.
+- ~~Two Decision Rules remain unresolved: malformed-manifest posture and
+  `db_path` derivation.~~ Resolved by `/ll:decide-issue` (18:39) — see Decision
+  Rules.
+- ~~Config registration path is also left open.~~ Resolved (nested
+  `history.workspace_manifest_path`).
+
+_Manual review — 2026-09-08 — folded in: manifest format specification
+(previously absent), `manifest_path: Path | None = None` signature aligned to
+the project-root decision, four-step path-resolution precedence including who
+reads the config key, `[]` return type pinned, concrete exception types,
+`frozen=True`, `str | None` config field type, relative-path convention for
+committed manifests, and the FEAT-3410 `resolve_history_db(root=)`
+cross-issue conflict._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T22:13:14 - `c8d9f83d-83c6-4ca6-948a-bd5e1259be35.jsonl`
+- `/ll:verify-issues` - 2026-09-08T22:10:26 - `5efb5fe2-2f1a-445a-a9f9-35c0b9974bdf.jsonl`
 - `/ll:refine-issue` - 2026-09-08T22:02:01 - `b8cb2fff-d50b-4bf2-babb-458135fa8e22.jsonl`
 - `/ll:decide-issue` - 2026-09-08T19:42:39 - `ec62a17d-6d92-4eb9-8c86-638b441ac713.jsonl`
 - `/ll:refine-issue` - 2026-09-08T19:34:12 - `98fcfd72-df15-46ed-a5e8-3df189a0e0ba.jsonl`

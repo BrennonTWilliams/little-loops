@@ -53,7 +53,7 @@ One invocation attaches every member repo's `history.db` read-only via SQLite
 totals. Source databases are never written to. A member with a mismatched or
 missing schema version is reported and skipped rather than silently unioned or
 treated as fatal. With no workspace manifest present (FEAT-3409's
-`discover_workspace_members()` returns empty/None), behavior falls back
+`discover_workspace_members()` returns `[]`), behavior falls back
 byte-for-byte to today's single-repo output.
 
 ## Use Case
@@ -510,7 +510,7 @@ line 487, before the unconditional formatter dispatch at 489-496.
   currently 48) is skipped and reported via `AggregationResult.skipped`, never
   unioned. No normalization path is implied — skew is always "report and skip,"
   never "coerce."
-- **No-manifest fallback**: an empty/None result from FEAT-3409's
+- **No-manifest fallback**: an empty list (`[]`, never `None`) from FEAT-3409's
   `discover_workspace_members()` falls back to exactly today's single-repo
   `ll-history quality` output, byte-for-byte — no partial-aggregation mode with
   one member.
