@@ -477,7 +477,7 @@ def _drain_once(
             if entry.action.runner is RunnerType.LOOP:
                 result = _run_loop_entry(entry.action)
             else:
-                result = run_action(entry.action)
+                result = run_action(entry.action, run_id=entry.id)
         except Exception as exc:
             status = "failed"
             result_dict: dict[str, Any] = {"exit_code": None, "timed_out": False, "error": str(exc)}

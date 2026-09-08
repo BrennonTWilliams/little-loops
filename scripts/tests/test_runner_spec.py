@@ -17,6 +17,8 @@ from __future__ import annotations
 import dataclasses
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -251,6 +253,127 @@ class TestRunActionDispatch:
         mock_popen.assert_not_called()
         assert result.exit_code != 0
         assert "nonexistent-scope" in (result.error or "")
+
+    def test_cmd_dispatch_github_scope_redirects_gh_config_dir_and_injects_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3400: a declared 'github' scope must get the same gh-isolation
+        wiring as the FSM shell path — GH_CONFIG_DIR redirected to a fresh
+        ll-gh-* tempdir, GH_TOKEN injected from gh_scope_extra()."""
+        monkeypatch.setenv("GH_TOKEN", "gh-secret")
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.CMD,
+            target="echo should-not-run",
+            timeout=5,
+            scopes=frozenset({"github"}),
+        )
+        proc = MagicMock()
+        proc.stdout = None
+        proc.stderr = None
+        proc.returncode = 0
+        proc.wait.return_value = None
+        with patch("little_loops.runner_spec.subprocess.Popen", return_value=proc) as mock_popen:
+            result = run_action(spec)
+
+        assert result.exit_code == 0
+        env = mock_popen.call_args.kwargs["env"]
+        assert env["GH_TOKEN"] == "gh-secret"
+        assert env["GH_CONFIG_DIR"].startswith(str(Path(tempfile.gettempdir())))
+        assert "ll-gh-" in env["GH_CONFIG_DIR"]
+
+    def test_cmd_dispatch_empty_scopes_redirects_config_dir_no_token(self) -> None:
+        """BUG-3400: scopes=frozenset() still gets the GH_CONFIG_DIR redirect
+        (declaring-but-not-github denies the ambient keyring session too) but
+        no GH_TOKEN — mirrors test_shell_declared_empty_scopes_redirects_config_dir_no_token."""
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.CMD,
+            target="echo should-not-run",
+            timeout=5,
+            scopes=frozenset(),
+        )
+        proc = MagicMock()
+        proc.stdout = None
+        proc.stderr = None
+        proc.returncode = 0
+        proc.wait.return_value = None
+        with patch("little_loops.runner_spec.subprocess.Popen", return_value=proc) as mock_popen:
+            result = run_action(spec)
+
+        assert result.exit_code == 0
+        env = mock_popen.call_args.kwargs["env"]
+        assert "GH_CONFIG_DIR" in env
+        assert "GH_TOKEN" not in env
+
+    def test_cmd_dispatch_gh_scope_extra_failure_spawns_nothing_and_cleans_up(self) -> None:
+        """BUG-3400: a RuntimeError from gh_scope_extra() (mirrors the FSM
+        path's failure contract) returns exit_code=2 without spawning, and
+        leaves no ll-gh-* tempdir behind."""
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.CMD,
+            target="echo should-not-run",
+            timeout=5,
+            scopes=frozenset({"github"}),
+        )
+        leaked_dirs: list[str] = []
+
+        def _fake_gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]:
+            leaked_dirs.append(str(config_dir))
+            raise RuntimeError("no token available")
+
+        with (
+            patch("little_loops.runner_spec.gh_scope_extra", side_effect=_fake_gh_scope_extra),
+            patch("subprocess.Popen") as mock_popen,
+        ):
+            result = run_action(spec)
+
+        mock_popen.assert_not_called()
+        assert result.exit_code == 2
+        assert "no token available" in (result.error or "")
+        assert leaked_dirs and not Path(leaked_dirs[0]).exists()
+
+    def test_cmd_dispatch_writes_credential_scope_audit_row_with_run_id(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3400 AC: a declaring CMD dispatch writes exactly one
+        credential_scope_events row, keyed by the caller-supplied run_id
+        when given (mirrors ll-queue's drain loop passing entry.id)."""
+        db_path = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+        monkeypatch.setenv("GH_TOKEN", "gh-secret")
+        spec = ActionSpec(
+            name="my-spec",
+            runner=RunnerType.CMD,
+            target="echo hi",
+            timeout=5,
+            scopes=frozenset({"github"}),
+        )
+        result = run_action(spec, run_id="queue-entry-123")
+        assert result.exit_code == 0
+
+        from little_loops.session_store import recent
+
+        rows = recent(db_path, kind="credential_scope")
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "queue-entry-123"
+        assert rows[0]["state"] == "my-spec"
+
+    def test_cmd_dispatch_no_scopes_writes_no_audit_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An undeclared spec (scopes=None) writes no credential_scope_events row."""
+        db_path = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+        spec = ActionSpec(name="x", runner=RunnerType.CMD, target="echo hi", timeout=5)
+        result = run_action(spec)
+        assert result.exit_code == 0
+
+        from little_loops.session_store import recent
+
+        rows = recent(db_path, kind="credential_scope")
+        assert rows == []
 
     def test_cmd_hang_before_stdout_eof_times_out(self) -> None:
         """BUG-2777: a process that holds stdout open without exiting must still

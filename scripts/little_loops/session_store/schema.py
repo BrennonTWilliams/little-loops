@@ -1307,9 +1307,11 @@ _MIGRATIONS: list[str] = [
         ON research_triage_events(reason);
     """,
     # v47 (ENH-3204): after-the-fact audit of the credential scope a dispatch
-    # was granted. One row per declaring-state dispatch, written from
-    # FSMExecutor before the spawn -- names only, never values (a record that
-    # could leak a credential value is worse than no record). Live-write-only,
+    # was granted. One row per declaring-state/spec dispatch, written before
+    # the spawn from two call sites -- FSMExecutor (FSM shell states) and
+    # runner_spec.py::_run_cmd() (queued/CMD ActionSpec dispatch, BUG-3400) --
+    # names only, never values (a record that could leak a credential value
+    # is worse than no record). Live-write-only,
     # like advisor_consults/research_triage_events -- excluded from
     # _REBUILD_TABLES/_REBUILD_SEARCH_KINDS (session_store/lifecycle.py); rows
     # are not indexed into search_index.

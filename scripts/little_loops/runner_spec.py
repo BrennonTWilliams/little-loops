@@ -28,6 +28,7 @@ import json
 import selectors
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -37,6 +38,7 @@ from typing import Any
 
 from little_loops.host_runner import (
     AutomationContext,
+    gh_scope_extra,
     project_child_env,
     resolve_automation,
     resolve_host,
@@ -234,7 +236,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
         return RunnerResult(stdout="", stderr="", exit_code=2, error=str(e))
 
 
-def _run_cmd(spec: ActionSpec) -> RunnerResult:
+def _run_cmd(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult:
     """Run a shell command with deadline-enforced, deadlock-safe I/O draining.
 
     Selector-based read loop (mirrors ``fsm/runners.py``'s shell-command
@@ -242,6 +244,13 @@ def _run_cmd(spec: ActionSpec) -> RunnerResult:
     the stdout drain — not just the final ``process.wait()``. A blocking
     ``for line in process.stdout`` loop never reaches the wait() call while
     the child holds stdout open without exiting.
+
+    BUG-3400: mirrors ``fsm/runners.py``'s ``gh``-isolation wiring so this
+    (queue/CMD) dispatch path gets the same guarantees the FSM shell path
+    already has — ``GH_CONFIG_DIR`` redirected to a per-spawn tempdir (and
+    ``GH_TOKEN`` injected iff ``"github"`` is declared) whenever
+    ``spec.scopes is not None``, plus a best-effort ``credential_scope_events``
+    audit row so both dispatch paths produce identical audit trails.
     """
     assert spec.timeout is not None, "CMD runner requires a concrete timeout (BUG-2928)"
 
@@ -252,67 +261,98 @@ def _run_cmd(spec: ActionSpec) -> RunnerResult:
         except ValueError as e:
             return RunnerResult(stdout="", stderr="", exit_code=2, error=str(e))
 
-    process = subprocess.Popen(
-        ["bash", "-c", spec.target],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-        env=project_child_env(extra={"LL_PYTHON": sys.executable}, env_allow=env_allow),
-    )
-    deadline = time.time() + spec.timeout
-
-    stdout_chunks: list[str] = []
-    stderr_chunks: list[str] = []
-
-    sel = selectors.DefaultSelector()
-    if process.stdout is not None:
-        sel.register(process.stdout, selectors.EVENT_READ, data="stdout")
-    if process.stderr is not None:
-        sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
-
-    timed_out = False
-    try:
-        while sel.get_map():
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                timed_out = True
-                break
-            ready = sel.select(timeout=min(1.0, remaining))
-            if not ready:
-                continue
-            for key, _mask in ready:
-                line = key.fileobj.readline()  # type: ignore[union-attr]
-                if line:
-                    if key.data == "stdout":
-                        stdout_chunks.append(line)
-                    else:
-                        stderr_chunks.append(line)
-                else:
-                    sel.unregister(key.fileobj)
-    finally:
-        sel.close()
-
-    if timed_out:
-        _kill_process_group(process)
+        # ENH-3204/BUG-3400: record the grant before the spawn — the record
+        # describes the grant, not the outcome. Best-effort, mirrors
+        # fsm/executor.py's write_credential_scope call: an audit write must
+        # never fail the run.
         try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+            from little_loops.session_store import resolve_history_db, write_credential_scope
+
+            write_credential_scope(
+                resolve_history_db(),
+                run_id=run_id or spec.name,
+                state=spec.name,
+                scopes=frozenset(spec.scopes),
+                var_names=env_allow,
+            )
+        except Exception:
+            pass  # Non-fatal (ENH-3204)
+
+    extra: dict[str, str] = {"LL_PYTHON": sys.executable}
+    gh_tmp: tempfile.TemporaryDirectory[str] | None = None
+    if spec.scopes is not None:
+        gh_tmp = tempfile.TemporaryDirectory(prefix="ll-gh-")
+        try:
+            extra.update(gh_scope_extra(Path(gh_tmp.name), with_token="github" in spec.scopes))
+        except RuntimeError as exc:
+            gh_tmp.cleanup()
+            return RunnerResult(stdout="", stderr="", exit_code=2, error=str(exc))
+
+    try:
+        process = subprocess.Popen(
+            ["bash", "-c", spec.target],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+            env=project_child_env(extra=extra, env_allow=env_allow),
+        )
+        deadline = time.time() + spec.timeout
+
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+
+        sel = selectors.DefaultSelector()
+        if process.stdout is not None:
+            sel.register(process.stdout, selectors.EVENT_READ, data="stdout")
+        if process.stderr is not None:
+            sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
+
+        timed_out = False
+        try:
+            while sel.get_map():
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                ready = sel.select(timeout=min(1.0, remaining))
+                if not ready:
+                    continue
+                for key, _mask in ready:
+                    line = key.fileobj.readline()  # type: ignore[union-attr]
+                    if line:
+                        if key.data == "stdout":
+                            stdout_chunks.append(line)
+                        else:
+                            stderr_chunks.append(line)
+                    else:
+                        sel.unregister(key.fileobj)
+        finally:
+            sel.close()
+
+        if timed_out:
+            _kill_process_group(process)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            return RunnerResult(
+                stdout="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+                exit_code=2,
+                timed_out=True,
+            )
+
+        process.wait(timeout=5)
         return RunnerResult(
             stdout="".join(stdout_chunks),
             stderr="".join(stderr_chunks),
-            exit_code=2,
-            timed_out=True,
+            exit_code=process.returncode,
         )
-
-    process.wait(timeout=5)
-    return RunnerResult(
-        stdout="".join(stdout_chunks),
-        stderr="".join(stderr_chunks),
-        exit_code=process.returncode,
-    )
+    finally:
+        if gh_tmp is not None:
+            gh_tmp.cleanup()
 
 
 def _run_mcp(spec: ActionSpec) -> RunnerResult:
@@ -353,20 +393,26 @@ def _run_prompt(spec: ActionSpec) -> RunnerResult:
 
 _DISPATCH: dict[RunnerType, Callable[[ActionSpec], RunnerResult]] = {
     RunnerType.SKILL: _run_skill,
-    RunnerType.CMD: _run_cmd,
     RunnerType.MCP: _run_mcp,
     RunnerType.PROMPT: _run_prompt,
 }
 
 
-def run_action(spec: ActionSpec) -> RunnerResult:
+def run_action(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult:
     """Dispatch an :class:`ActionSpec` to its runner and return a :class:`RunnerResult`.
 
     ``RunnerType.DSL`` is a batch driver over ``RunnerType.PROMPT`` (one
     ``run_action`` call per task), not an independent execution path — callers
     loop and call this function once per task. ``RunnerType.LOOP`` is not
     dispatched here at all; see the module docstring.
+
+    *run_id* (BUG-3400) is forwarded only to the ``RunnerType.CMD`` handler,
+    which uses it as the ``credential_scope_events`` audit key when the spec
+    declares scopes (falling back to ``spec.name`` when omitted). Other
+    runner types have no equivalent audit wiring yet and ignore it.
     """
+    if spec.runner is RunnerType.CMD:
+        return _run_cmd(spec, run_id=run_id)
     handler = _DISPATCH.get(spec.runner)
     if handler is None:
         raise ValueError(f"run_action() does not dispatch runner type: {spec.runner}")

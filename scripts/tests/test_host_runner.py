@@ -15,6 +15,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import subprocess
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -543,6 +544,39 @@ class TestGhScopeExtra:
         probe = MagicMock(returncode=1, stdout="")
         with patch("little_loops.host_runner.subprocess.run", return_value=probe):
             with pytest.raises(RuntimeError, match="github"):
+                gh_scope_extra(tmp_path, with_token=True)
+
+    def test_probe_passes_bounded_timeout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3400: the gh auth token probe is bounded (a headless macOS
+        Keychain prompt is the concrete hang case)."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        probe = MagicMock(returncode=0, stdout="ambient-token\n")
+        with patch("little_loops.host_runner.subprocess.run", return_value=probe) as mock_run:
+            gh_scope_extra(tmp_path, with_token=True)
+        assert mock_run.call_args.kwargs["timeout"] == 10
+
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            FileNotFoundError("no such file: gh"),
+            subprocess.TimeoutExpired(cmd=["gh", "auth", "token"], timeout=10),
+            OSError("probe failed"),
+        ],
+    )
+    def test_probe_failure_modes_normalize_to_runtime_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, exc: Exception
+    ) -> None:
+        """BUG-3400: a missing `gh` binary, a probe timeout, or any other
+        OSError must surface as the same RuntimeError contract callers'
+        `except RuntimeError` handlers already expect — not escape uncaught
+        and abort the whole run."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        with patch("little_loops.host_runner.subprocess.run", side_effect=exc):
+            with pytest.raises(RuntimeError):
                 gh_scope_extra(tmp_path, with_token=True)
 
 

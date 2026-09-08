@@ -76,7 +76,7 @@ class TestCmdRunDispatchOrder:
 
         dispatched: list[str] = []
 
-        def fake_run_action(spec: object) -> RunnerResult:
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
             dispatched.append(spec.target)  # type: ignore[attr-defined]
             return RunnerResult(stdout="ok", stderr="", exit_code=0)
 
@@ -160,7 +160,7 @@ class TestCmdRunStatusWriteBack:
         first_id = _add_and_get_id(capsys, "first")
         second_id = _add_and_get_id(capsys, "second")
 
-        def fake_run_action(spec: object) -> RunnerResult:
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
             if spec.target == "first":  # type: ignore[attr-defined]
                 raise ValueError("run_action() does not dispatch runner type")
             return RunnerResult(stdout="ok", stderr="", exit_code=0)
@@ -184,7 +184,7 @@ class TestCmdRunOnlyPending:
 
         dispatched: list[str] = []
 
-        def fake_run_action(spec: object) -> RunnerResult:
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
             dispatched.append(spec.target)  # type: ignore[attr-defined]
             return RunnerResult(stdout="ok", stderr="", exit_code=0)
 
@@ -210,7 +210,7 @@ class TestCmdRunClaimContention:
 
         dispatched: list[str] = []
 
-        def fake_run_action(spec: object) -> RunnerResult:
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
             dispatched.append(spec.target)  # type: ignore[attr-defined]
             return RunnerResult(stdout="ok", stderr="", exit_code=0)
 
@@ -242,7 +242,7 @@ class TestQueueRunExitCodeVerdict:
 
         entry_id = _add_and_get_id(capsys, "check-code")
 
-        def fake_run_action(spec: object) -> RunnerResult:
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
             return RunnerResult(stdout="", stderr="", exit_code=FAILURE_TERMINAL_EXIT_CODE)
 
         with patch("little_loops.runner_spec.run_action", side_effect=fake_run_action):
@@ -416,7 +416,7 @@ class TestWatchPickup:
         dispatched: list[str] = []
         late_id: dict[str, str] = {}
 
-        def fake_run_action(spec: object) -> RunnerResult:
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
             dispatched.append(spec.target)  # type: ignore[attr-defined]
             return RunnerResult(stdout="ok", stderr="", exit_code=0)
 

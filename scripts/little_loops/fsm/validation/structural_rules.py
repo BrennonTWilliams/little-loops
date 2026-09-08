@@ -496,7 +496,7 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
     # after earlier states already ran). Message text avoids the substring
     # "scope:'" so it can't collide with _validate_missing_scope()'s
     # loop-level singular `scope:` caplog assertion.
-    if state.scopes:
+    if state.scopes is not None:
         unknown = sorted(s for s in state.scopes if s not in CREDENTIAL_SCOPES)
         if unknown:
             errors.append(

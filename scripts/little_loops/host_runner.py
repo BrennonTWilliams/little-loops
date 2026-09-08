@@ -217,14 +217,23 @@ def gh_scope_extra(config_dir: Path, *, with_token: bool) -> dict[str, str]:
     if not token:
         # Probes the *ambient* gh session on purpose — project_child_env()
         # with no env_allow is full inheritance (no GH_CONFIG_DIR redirect),
-        # so this sees the operator's own keyring-backed token.
-        probe = subprocess.run(
-            ["gh", "auth", "token"],
-            env=project_child_env(),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        # so this sees the operator's own keyring-backed token. Bounded by
+        # timeout=10 (a headless macOS Keychain prompt is the concrete hang
+        # case) and normalized to RuntimeError on FileNotFoundError (no `gh`
+        # on PATH)/TimeoutExpired/OSError so callers' existing `except
+        # RuntimeError` handlers catch every failure mode, not just "no
+        # token obtainable" (BUG-3400).
+        try:
+            probe = subprocess.run(
+                ["gh", "auth", "token"],
+                env=project_child_env(),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+            raise RuntimeError(f"gh auth token probe failed: {exc}") from exc
         if probe.returncode == 0:
             token = probe.stdout.strip()
     if not token:

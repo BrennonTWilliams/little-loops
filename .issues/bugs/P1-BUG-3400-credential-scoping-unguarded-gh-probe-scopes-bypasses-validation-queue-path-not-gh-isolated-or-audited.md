@@ -4,10 +4,11 @@ type: BUG
 title: 'Credential scoping: unguarded gh probe, scopes [] bypasses validation, queue
   path not gh-isolated or audited'
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-07'
 captured_at: '2026-09-07T23:44:14Z'
+completed_at: '2026-09-08T01:13:50Z'
 parent: EPIC-3212
 learning_tests_required:
 - gh
@@ -170,12 +171,33 @@ _Added by `/ll:verify-issues --auto` — 2026-09-08:_
 - ENH-3403 — follow-up captured during pre-implementation review (2026-09-08): `_run_skill`/`_run_prompt` silently ignore `ActionSpec.scopes`, the same silent-no-op class as point 2 on the FSM side. Out of scope here; this issue only wires the CMD runner.
 - BUG-3402 — a deeper, related isolation gap surfaced by `/ll:wire-issue` on 2026-09-08: on keychain-backed macOS `gh`, `gh auth token` still succeeds via Keychain regardless of the `GH_CONFIG_DIR` redirect this issue's fix relies on. This issue's acceptance criteria only test `gh auth status`, so its fix will pass while BUG-3402's gap remains — fixing this issue does not resolve BUG-3402.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-07
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/host_runner.py`: `gh_scope_extra()`'s probe now passes `timeout=10` and normalizes `FileNotFoundError`/`subprocess.TimeoutExpired`/`OSError` into `RuntimeError`.
+- `scripts/little_loops/fsm/validation/structural_rules.py`: `if state.scopes:` → `if state.scopes is not None:` so `scopes: []` is validated (passes on shell states, rejected on non-shell states) instead of silently skipping both checks.
+- `scripts/little_loops/runner_spec.py`: `_run_cmd()` gained the same `gh_tmp`/`gh_scope_extra()` isolation wiring and a best-effort `write_credential_scope()` audit call as the FSM shell path; `run_action()`/`_run_cmd()` gained an optional keyword-only `run_id` forwarded only to the CMD handler.
+- `scripts/little_loops/cli/queue.py`: the drain loop passes `run_id=entry.id` to `run_action()`.
+- `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/API.md`, `scripts/little_loops/session_store/schema.py` (comment): updated the stale "written only by `FSMExecutor`" / "not-yet-wired consumer" claims now that the CMD path is wired too.
+- Tests added: `test_host_runner.py::TestGhScopeExtra` (bounded timeout + three failure-mode-to-RuntimeError cases), `test_fsm_validation_structural.py::TestScopesValidation` (`scopes: []` on shell/non-shell states), `test_runner_spec.py::TestRunActionDispatch` (gh-isolation redirect/token-injection, RuntimeError-before-`Popen` cleanup, and audit-row tests for the CMD path). Existing `test_cli_queue_run.py` fakes for `run_action` updated to accept the new `run_id` keyword.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/`; failures present before and after this change are pre-existing/unrelated — `test_cli_loop_lifecycle.py` `TestCmdResume*` flakiness tracked by BUG-3401, `test_verify_evidence.py::test_no_new_unverifiable_evidence`, `test_host_runner.py::TestAC8BaselineCoverage::test_referenced_env_names_are_covered` — confirmed identical on `main` via `git stash`)
+- Lint: PASS (scoped to changed files; a pre-existing `ruff` import-order finding in `structural_rules.py` predates this change, confirmed via `git stash`)
+- Types: PASS (`python -m mypy` on all changed source files)
+- Integration: PASS
+
 ## Status
 
 **Open** | Created: 2026-09-07 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-08T01:13:20 - `c12a8469-1c0e-4551-abdc-a66d5e5d6bda.jsonl`
 - `/ll:verify-issues` - 2026-09-08T00:49:45 - `7f3e2447-29cb-43ca-954f-9d5a31c0691a.jsonl`
 - `/ll:confidence-check` - 2026-09-08T00:46:45 - `83ef9416-b738-4a93-8804-ffa8a3d10cfa.jsonl`
 - `/ll:wire-issue` - 2026-09-08T00:33:51 - `818ac84c-8dd8-46bc-9d1e-d582e9b2e72e.jsonl`

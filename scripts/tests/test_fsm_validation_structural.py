@@ -2309,6 +2309,27 @@ class TestScopesValidation:
         errors = _validate_state_action("check", state)
         assert errors == []
 
+    def test_empty_scopes_on_shell_state_passes(self) -> None:
+        """BUG-3400: scopes: [] on a shell state is a valid 'declare nothing,
+        deny all' grant (already honoured/tested at the execution layer via
+        test_shell_declared_empty_scopes_redirects_config_dir_no_token) — the
+        `if state.scopes:` truthy guard used to skip validation entirely for
+        `[]` rather than reach this passing branch; `is not None` fixes that."""
+        state = StateConfig(action="echo hi", action_type="shell", scopes=[], next="done")
+        errors = _validate_state_action("check", state)
+        assert errors == []
+
+    def test_empty_scopes_on_non_shell_state_fails_validation(self) -> None:
+        """BUG-3400: scopes: [] on a non-shell state must still hit the
+        shell-only rejection — the `if state.scopes:` truthy guard used to
+        skip this check for `[]`, letting the executor write a misleading
+        audit row for a grant the state never actually consults."""
+        state = StateConfig(
+            action="/ll:test", action_type="prompt", scopes=[], next="done"
+        )
+        errors = _validate_state_action("check", state)
+        assert any("scopes" in e.message and "check" in e.message for e in errors)
+
     def test_scopes_error_messages_do_not_collide_with_missing_scope_rule(self) -> None:
         """Neither AC9's nor AC10's message may contain the substring \"no 'scope:'\"
         used by _validate_missing_scope()'s caplog-substring assertion. The loop-level
