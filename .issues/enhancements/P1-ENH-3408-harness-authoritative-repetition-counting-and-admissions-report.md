@@ -14,10 +14,10 @@ labels:
 - statistics
 size: Large
 confidence_score: 80
-outcome_confidence: 75
-score_complexity: 14
+outcome_confidence: 63
+score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 10
 score_change_surface: 18
 ---
 
@@ -420,7 +420,42 @@ _Added by `/ll:verify-issues` — 2026-09-08:_
   real for the three DB-aggregate sites above, but doesn't appear to apply to `cmd_dsl`'s own
   counters — confirm during implementation before converting them.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Concerns
+- `/ll:verify-issues` found a PROPOSAL_UNSOUND-class gap: `authoritative_attempt()`/
+  `authoritative_attempts()` are keyed by `cell_key`, but the three counting sites
+  (`harness_eval_pass_rate`, `harness_eval_abstention_rate`, `_read_target_history`)
+  aggregate by `target` across its entire run history — a single `target` maps to many
+  `cell_key`s. No target→cell_keys enumeration helper exists anywhere in the codebase, and
+  this issue's own Program Design section never designs that fan-out step. "Consume
+  `authoritative_attempt()`" does not work at these three sites as currently written until
+  an implementer adds that enumeration first.
+- `/ll:verify-issues` also flagged this issue's claim that `cmd_dsl`'s `graded_total`/
+  `graded_pass` counters need the same authoritative-repetition fix (cited in Files to
+  Modify and AC #1) as likely incorrect: those counters are scoped to one CLI invocation's
+  own per-task loop, and a `--retry-of` retry chain is always a separate invocation, so
+  there's no cross-invocation duplication for them to dedup. Confirm during implementation
+  before converting `cmd_dsl`'s counters — converting them when they don't need it would be
+  a no-op change or introduce a bug.
+
+### Outcome Risk Factors
+- Complexity: the undesigned target→cell_keys enumeration is new cross-module surface, not
+  a simple call-site swap onto an existing helper — expect this to take real design work
+  during implementation, not just wiring.
+- Ambiguity: whether `cmd_dsl`'s counters are actually in scope is unresolved (see
+  Concerns) — implementing the wrong scope risks test churn or a no-op change on that site.
+- Change surface: three counting sites each have different denominator quirks (timeout/error
+  rows counted asymmetrically between pass-rate and abstention-rate today) — each requires
+  site-specific judgment rather than one uniform substitution.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-08T22:55:59 - `b8f1a5da-c225-4249-91e2-295287d87d5e.jsonl`
 - `/ll:verify-issues` - 2026-09-08T22:43:56 - `de8d5d84-5a41-428b-835e-669b7afc984e.jsonl`
 - `/ll:wire-issue` - 2026-09-08T22:19:01 - `d465057a-e29b-4c19-8620-0af7f2ad1788.jsonl`
 - `/ll:refine-issue` - 2026-09-08T22:04:46 - `35eb0ad3-e497-496d-b193-1dad8fa5f0e6.jsonl`

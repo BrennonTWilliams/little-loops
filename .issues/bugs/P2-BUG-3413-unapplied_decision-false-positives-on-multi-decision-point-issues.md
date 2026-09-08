@@ -38,7 +38,16 @@ above.
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+`_unapplied_decision_pairs()` (`scripts/little_loops/issue_parser.py:1550`) matches
+`_selected_option_title()`'s single, first-callout-only title against every option
+span `_option_block_spans()` returns for the whole `## Proposed Solution` body, with
+no per-decision-point grouping. On an issue with 2+ decision points, every option
+block outside the one matching that first title's label — including the *winning*
+options of decision points 2, 3, ... — lands in `rej_ids`, so their identifiers get
+reported as leftover rejected-option mentions (`unapplied_decision`/`DECISION_GAP`)
+even where they are the section's own selected content. Confirmed via the
+`_unapplied_decision_pairs()` reproducer above: `HistoryConfig`, decision point 3's
+winning identifier on FEAT-3409, was flagged as a rejected-option leftover.
 
 ## Expected Behavior
 
@@ -51,44 +60,147 @@ winner.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+- `_unapplied_decision_pairs()` feeds `format-check`'s `unapplied_decision`/
+  `DECISION_GAP` field, which `/ll:confidence-check`'s Criterion C scoring reads
+  directly — a false positive here silently lowers an otherwise-ready issue's
+  readiness score and produces spurious "leftover rejected option" findings a
+  reviewer has to manually dismiss.
+- ENH-3256 established per-decision-point authoring (`**Decision point:**`
+  markers, one `Selected` callout per point) as the multi-option convention;
+  BUG-3412 confirms the pattern is already in active use. Any issue authored
+  with 2+ decision points in `## Proposed Solution` hits this false positive,
+  so the blast radius grows with adoption of that convention even though only
+  one corpus issue (FEAT-3409) trips it today.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Reuse BUG-3412's `_decision_point_marker_positions()` /
+`_DECISION_POINT_MARKER_RE` primitives (`scripts/little_loops/issue_parser.py:2272`,
+`:2797`) to group `_option_block_spans()`'s flat span list by decision point before
+computing `sel_ids`/`rej_ids`:
+
+1. In `_unapplied_decision_pairs()`, after `spans = _option_block_spans(proposed_body)`,
+   partition `spans` into per-decision-point groups using the same marker-position
+   boundaries `_decision_groups_in_body()` already uses to split same-tier runs.
+2. For each group independently: find its own `_selected_option_title()`-equivalent
+   (the group's own `> **Selected:**` callout), match it to the one span in *that
+   group* whose heading label matches, and compute `sel_ids`/`rej_ids` scoped to the
+   group (keeping the existing BUG-3295 containment and BUG-3289 shared-subject
+   exclusions, applied per group).
+3. Union each group's `discriminating` (rej_ids - sel_ids, minus exclusions) set
+   across groups into the function's final return value.
+4. Groups with < 2 option spans (a single-decision-point group) short-circuit to
+   `[]` for that group, matching the existing whole-function early return.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/issue_parser.py` — `_unapplied_decision_pairs()` (line 1550)
+  gains per-group scoping; likely factor `_decision_point_marker_positions()`-based
+  grouping into a small shared helper alongside `_decision_groups_in_body()`.
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `grep -rn "_unapplied_decision_pairs\|unapplied_decision" scripts/little_loops/` —
+  `_unapplied_decision_reasons()` (`issue_parser.py:1541`, a thin formatter over this
+  function) and `format-check`'s `unapplied_decision` field consumer are the direct
+  callers; both must keep their existing reason-string / field format for
+  single-decision-point issues (regression risk, not intentional scope).
 
 ### Similar Patterns
-- TBD - search for consistency
+- `_decision_groups_in_body()` (`issue_parser.py:2816`) already solves the identical
+  "group by decision-point marker, don't conflate same-tier runs" problem for
+  `is_group_resolved()` / `ll-issues check-unresolved-decisions` (BUG-3412) — model
+  the grouping logic after it rather than reinventing marker-boundary splitting.
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_issue_parser.py` — add a multi-decision-point
+  `_unapplied_decision_pairs()` case (winning identifiers of decision point 2+ must
+  not appear in the result).
+- `scripts/tests/test_ll_issues_format_check.py` — add/adjust `unapplied_decision`
+  field coverage for a multi-decision-point fixture.
+- `scripts/tests/test_confidence_check_skill.py` — verify Criterion C no longer
+  penalizes a multi-decision-point issue for its own winning identifiers.
 
 ### Documentation
-- TBD - docs that need updates
+- N/A — no public API or docs surface changes; internal parser fix only.
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+## Program Design
+
+### Types
+
+- No new types; existing `list[tuple[int, int, str]]` span tuples
+  (`_option_block_spans()`'s return type) and `list[int]` marker positions
+  (`_decision_point_marker_positions()`'s return type) are reused as-is.
+
+### Signatures
+
+- `_unapplied_decision_pairs(content: str) -> list[tuple[str, str]]` — unchanged
+  signature; internal grouping logic changes only.
+- `_group_spans_by_decision_point(spans: list[tuple[int, int, str]], marker_positions: list[int]) -> list[list[tuple[int, int, str]]]`
+  (new helper, or inlined equivalent) — partitions `_option_block_spans()`'s flat
+  span list at `_decision_point_marker_positions()` boundaries.
+
+### Call Path
+
+`check_format_gaps()` -> `_unapplied_decision_pairs()` -> `_option_block_spans()`
+(existing) -> `_decision_point_marker_positions()` (BUG-3412, reused) -> new
+grouping step -> per-group `_selected_option_title()` + `_decision_identifiers()`
+(existing) -> union into the function's `list[tuple[str, str]]` return.
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add a helper that partitions `_option_block_spans()`'s flat span list into
+   per-decision-point groups using `_decision_point_marker_positions()` boundaries
+   (mirroring `_decision_groups_in_body()`'s run-splitting logic).
+2. Rewrite `_unapplied_decision_pairs()`'s body to resolve `sel_ids`/`rej_ids` per
+   group instead of globally, preserving the BUG-3295/BUG-3289 exclusions and the
+   last-block callout-line trimming per group.
+3. Union each group's `discriminating` identifiers into the final return value.
+4. Add multi-decision-point regression tests (`test_issue_parser.py`,
+   `test_ll_issues_format_check.py`) using a fixture shaped like FEAT-3409's 3
+   decision points; verify the `_unapplied_decision_pairs()` reproducer above now
+   returns `[]` for `HistoryConfig`/`manifest_path`.
+5. Run `python -m pytest scripts/tests/test_issue_parser.py
+   scripts/tests/test_ll_issues_format_check.py
+   scripts/tests/test_confidence_check_skill.py` and confirm existing
+   single-decision-point cases still pass unchanged.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 — narrow live blast radius today (one corpus issue), but silently
+  corrupts `/ll:confidence-check` Criterion C scoring wherever it does trigger, and
+  the triggering pattern (multi-decision-point authoring) is an actively growing
+  convention (ENH-3256).
+- **Effort**: Small — reuses BUG-3412's marker-detection primitives directly; the
+  change is scoped to one function's internal grouping logic with no new external
+  dependencies or API surface.
+- **Risk**: Low — internal parser helper with no public API; existing
+  single-decision-point behavior must stay byte-identical (`_unapplied_decision_reasons()`'s
+  reason-string format is a preserved contract per its own docstring).
+- **Breaking Change**: No.
+
+## Steps to Reproduce
+
+1. Take an issue whose `## Proposed Solution` section has 2+ independent decision
+   points, each with its own `**Option A/B(/C)**` blocks and its own
+   `> **Selected:**` callout (e.g.
+   `.issues/features/P1-FEAT-3409-workspace-membership-discovery-for-cross-repo-history-db-aggregation.md`).
+2. Run the reproducer below against that file's content.
+3. Observe: identifiers belonging to decision point 2's (or 3's, ...) *winning*
+   option — never decision point 1's winner — appear in the returned pairs as if
+   they were rejected-option leftovers.
+
+```python
+from little_loops.issue_parser import _unapplied_decision_pairs
+content = open(".issues/features/P1-FEAT-3409-workspace-membership-discovery-for-cross-repo-history-db-aggregation.md").read()
+print(_unapplied_decision_pairs(content))
+# 22 pairs, including ('Implementation Steps', 'HistoryConfig') and
+# ('Program Design', 'manifest_path') — HistoryConfig is decision point 3's
+# WINNING identifier, not a rejected-option leftover.
+```
 
 ## Root Cause
 
@@ -136,7 +248,9 @@ globally, before merging the per-group `discriminating` sets.
 
 ## Corpus Impact
 
-At investigation time, `.issues/features/P1-FEAT-3409-...md` is the only issue in the
+At investigation time,
+`.issues/features/P1-FEAT-3409-workspace-membership-discovery-for-cross-repo-history-db-aggregation.md`
+is the only issue in the
 corpus with 2+ decision points in `## Proposed Solution` (verified via a scripted scan
 of all `.issues/**/*.md`), so live blast radius is narrow today. The bug will recur
 for any future issue authored with multiple decision points in one section — an
@@ -152,4 +266,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-08T22:58:53 - `e2e838a6-6a34-4a2d-913f-3f74b4596a32.jsonl`
 - `/ll:capture-issue` - 2026-09-08T22:42:53 - `4f0efb73-1906-4514-9695-1db0defa8ce3.jsonl`
