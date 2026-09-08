@@ -1,0 +1,12 @@
+{
+  "id": "f8793322-4a80-47bc-afc2-6ed1d8affbc3",
+  "type": "decision",
+  "timestamp": "2026-09-08T02:37:45Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the MIN_SAMPLE_SIZE/--min-sample precedent already established twice in rework.py/cli/history.py and already reused a third time on this exact quality subcommand with its footgun (falsy-0 discard) already fixed via an is-not-None guard; an exact test template exists to copy. The config-schema-dataclass alternative (EvolutionConfig) is the only HistoryConfig-nested config consumed inside issue_history/ and even that consumer bypasses .ll/ll-config.json entirely (bare defaults), requires ~55-60 LOC of new scaffolding, and offers no per-invocation override.",
+  "rule": "Module-level constant + CLI flag for --sensitivity (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": ".ll/ll-config.json schema entry consumed via a dataclass (mirroring EvolutionConfig)",
+  "issue": "FEAT-3398"
+}

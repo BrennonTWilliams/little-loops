@@ -17,7 +17,7 @@ score_complexity: 5
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 0
-decision_needed: true
+decision_needed: false
 ---
 
 ## Summary
@@ -30,7 +30,7 @@ Detect quality regressions in the agent-quality metric series produced by the lo
 
 ## Expected Behavior
 
-A new detection pass over `QualityAnalysis.windows` flags statistically significant drops against a rolling baseline and, for each flagged window, names the model/host/version boundary its start coincides with (or reports "no attributable change" when none exists). Detection is deterministic and LLM-free. A fixture corpus with an injected drop is flagged; a fixture corpus with none is not.
+A new detection pass over `QualityAnalysis.windows` flags drops against a baseline of prior windows and, for each flagged window, names the model/host/version whose share of the window's runs shifted most versus the baseline (or reports "no attributable change" when no dimension's mix moved). Detection is deterministic and LLM-free. A fixture corpus with an injected drop is flagged; a fixture corpus with none is not.
 
 ## Use Case
 
@@ -52,13 +52,23 @@ Attribution is what makes an alert actionable. A detected drop with no candidate
 
 Detection must be statistical over recorded values only — no LLM in the detection path. The evidence chain this feeds is meant to be checkable by someone who does not trust the agent, and an LLM grading its own quality series is exactly the bias the deterministic verification-evidence work already rejects.
 
-Baseline windows and change-point detection over the existing metric series are the mechanism; the attribution join is against the model/host/version stamps carried on runs.
+Baseline windows over the existing metric series are the mechanism; attribution compares each window's model/host/version composition against the baseline's.
+
+### Design review corrections (2026-09-07)
+
+_Added after review against the live `.ll/history.db`; these supersede the "change-point" and "boundary join" framing elsewhere in this issue._
+
+- **Data density rules out change-point detection.** Windows are calendar months and `orchestration_runs` on this repo spans three months (2026-07..2026-09), so each orchestrator has 3-4 points. 210 of 554 rows have `started_at IS NULL` and would land in an empty-period bucket. The detection statistic is therefore a **prior-K-window baseline comparison**, not a change-point algorithm: for each `(metric, orchestrator)` series sorted by period, baseline = mean of the previous `K` windows (default `K=3`, using however many exist, minimum 1) that clear `min_sample`; the current window is flagged when its relative move in the worse direction exceeds `sensitivity` and it also clears `min_sample`. Windows with an empty/NULL period are excluded from the series and counted in a `skipped_null_period` field on the analysis. Window granularity stays monthly in this issue; a finer `--window` is a follow-up.
+- **There is no single "model in effect" per window.** Every month in the DB runs 5-8 models concurrently (`usage_events.model` grouped by month). A boundary join keyed on `effective_from` has nothing to join to. Attribution is instead a **composition shift**: for each flagged window, compute the share of runs per model, per host, and per `ll_version` in the window and in its baseline; report the `(dimension, value)` whose share increased most, provided the increase exceeds `ATTRIBUTION_MIN_SHIFT` (default 0.25 absolute share). Below that, "no attributable change".
+- **Most of the stamp gap is already closed.** Per-issue model is derivable today via `issue_sessions -> usage_events.model` (the join the cost metric already uses; reaches 623/639 issues on this repo). Host is on `raw_events.host` via the same session join. Only the little-loops **version** is unrecorded anywhere. Scope the schema migration to a single `ll_version TEXT` column on `orchestration_runs` (and `loop_runs`), read model/host through the existing joins, and drop the plan to thread `model`/`host` through every `record_orchestration_run` call site. Write-timing: `__version__` is known at dequeue, so `ll_version` follows the `base_sha` COALESCE pattern (`writers.py:1357-1360`).
 
 ## Dependencies
 
 Depends on the local agent-quality report over `history.db` for metric definitions and windowing.
 
-Requires that runs carry model/host/version stamps. If `history.db` does not already record them, adding that capture is in scope for this issue.
+Requires that runs carry a little-loops version stamp; model and host are already recoverable from `usage_events`/`raw_events` via `issue_sessions`. Adding the `ll_version` capture is in scope for this issue.
+
+**Sequencing**: ENH-3397 (`blocked_by: FEAT-3398`) reclassifies retries and will change the `retry_inflation` metric this pass detects over. This issue lands first; ENH-3397 must re-run the injected-drop/no-drop fixtures for `retry_inflation` after its change. FEAT-3399 forward-references this issue's type names — keep `QualityRegressionAnalysis`/`RegressionEvent`/`RunAttribution` stable once landed.
 
 ## Proposed Solution
 
@@ -70,9 +80,28 @@ The Wiring Phase's "Decide the `--sensitivity` config convention" item names two
 
 **Option A**: Module-level constant + CLI flag — mirrors `MIN_SAMPLE_SIZE` (`rework.py:35`) and `--min-sample` (`cli/history.py:227-274,470-487`). `DEFAULT_SENSITIVITY` lives as a module constant in the detection module, threaded through `detect_quality_regressions(..., sensitivity: float = DEFAULT_SENSITIVITY)`, with a `--sensitivity` flag on `ll-history quality` using the `is not None` explicit-override check (the `quality` subcommand's deliberate fix over `rework`'s `args.min_sample or MIN_SAMPLE_SIZE` footgun with an explicit `0`). No `.ll/ll-config.json` presence.
 
+> **Selected:** Option A — module-level constant + CLI flag, matching the precedent already reused on this exact `quality` subcommand with a ready test template and no per-run override gap.
+
 **Option B**: `.ll/ll-config.json` schema entry consumed via a dataclass — mirrors `EvolutionConfig` (`config/features.py:1407-1419`) and its `config-schema.json:2176-2192` mirror. A new small dataclass (e.g. `RegressionDetectionConfig`) nested under `HistoryConfig` via `field(default_factory=...)`, with a lenient `from_dict(cls, data)` classmethod and a matching schema-json object (`"additionalProperties": false`, per-field `"default"`/`"description"`). No CLI flag for any value in this family exists today.
 
 No recommendation is implied by the research: both conventions are established and disagree on where a tunable belongs, and nothing in the codebase ties the quality/rework report-time sensitivity family specifically to one or the other.
+
+### Decision Rationale
+
+**Selected**: Option A — module-level constant + CLI flag.
+
+**Reasoning**: Option A directly reuses a pattern already established twice in `rework.py`/`cli/history.py` (`MIN_SAMPLE_SIZE`, `FOLLOW_UP_WINDOW_DAYS`) and, critically, already reused a *third* time on this exact `quality` subcommand (`agent_quality.py:48`, `cli/history.py:263-269,484-487`) — with its footgun (`or MIN_SAMPLE_SIZE` silently discarding an explicit `0`) already identified and fixed via the `is not None` guard, and an exact test template ready to copy (`test_quality_min_sample_flag_accepted`, `test_cli_history.py:256-265`). Option B's closest analog, `EvolutionConfig`, is the only `HistoryConfig`-nested config actually consumed inside `issue_history/` — and even that consumer instantiates it with bare defaults (`analysis.py:143: EvolutionConfig()`) rather than reading `.ll/ll-config.json`, meaning the "established" config-schema convention has no example of an `issue_history/` detection function actually reading a project-config value on a live path. Option B also requires ~55-60 LOC of new scaffolding (dataclass, schema mirror, `_DATACLASS_SECTION_MAP` entry, `to_dict()` entry, dedicated test class) and provides no per-invocation override — a real gap for a detection threshold a maintainer will want to tune ad hoc for a single report run, something Option A's CLI flag already supports today.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A: constant + CLI flag | 3 | 3 | 3 | 3 | 12/12 |
+| B: config-schema dataclass | 1 | 1 | 1 | 1 | 4/12 |
+
+**Key evidence**:
+- `agent_quality.py:48` already imports and reuses `MIN_SAMPLE_SIZE` on the very subcommand this issue extends.
+- `cli/history.py:484-487`'s `is not None` guard is the exact footgun fix a `--sensitivity` flag would inherit for free.
+- `analysis.py:143` shows `EvolutionConfig()` — Option B's own precedent — is never actually read from `.ll/ll-config.json` on its one live `issue_history/` call path.
+- No `--config-override`-style flag exists anywhere in `cli/history.py`, so Option B would have no per-invocation override.
 
 ## Integration Map
 
@@ -143,17 +172,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `RunAttribution`: `model: str`, `host: str`, `ll_version: str`, `effective_from: str` (period key)
-- `RegressionEvent`: `metric: str`, `window: QualityWindow`, `baseline_period: str`, `magnitude: float`, `attribution: RunAttribution | None`
+_Revised 2026-09-07 per Design notes → Design review corrections._
+
+- `RunAttribution`: `dimension: Literal["model", "host", "ll_version"]`, `value: str`, `window_share: float`, `baseline_share: float`, `shift: float` (= `window_share - baseline_share`). Named after the composition dimension whose share rose most in the flagged window.
+- `RegressionEvent`: `metric: str`, `window: QualityWindow`, `baseline_periods: list[str]`, `baseline_value: float`, `magnitude: float` (relative move in the worse direction), `attribution: RunAttribution | None`; `to_dict()`.
+- `QualityRegressionAnalysis`: `events: list[RegressionEvent]`, `sensitivity: float`, `baseline_windows: int`, `skipped_null_period: int`, `notes: tuple[str, ...]`; `to_dict()`. Follows the `detect_* -> *Analysis` convention. **Not** `RegressionAnalysis` — that name is taken by the unrelated bug-fix clustering type in `issue_history/models.py`.
+- `WindowComposition`: `period: str`, `orchestrator: str`, `shares: dict[str, dict[str, float]]` (dimension -> value -> share of runs). Built from `issue_sessions -> usage_events.model` / `raw_events.host` and `orchestration_runs.ll_version`.
 
 ### Signatures
 
-- `detect_quality_regressions(analysis: QualityAnalysis, *, sensitivity: float = DEFAULT_SENSITIVITY) -> list[RegressionEvent]`
-- `attribute_change(window: QualityWindow, attributions: list[RunAttribution]) -> RunAttribution | None`
+- `DEFAULT_SENSITIVITY = 0.30`, `DEFAULT_BASELINE_WINDOWS = 3`, `ATTRIBUTION_MIN_SHIFT = 0.25` (module constants, Option A)
+- `detect_quality_regressions(analysis: QualityAnalysis, compositions: list[WindowComposition], *, sensitivity: float = DEFAULT_SENSITIVITY, baseline_windows: int = DEFAULT_BASELINE_WINDOWS, min_sample: int = MIN_SAMPLE_SIZE) -> QualityRegressionAnalysis`
+- `attribute_change(window: WindowComposition, baseline: list[WindowComposition], *, min_shift: float = ATTRIBUTION_MIN_SHIFT) -> RunAttribution | None`
+- `load_window_compositions(conn, issue_window: dict[int, tuple[str, str]]) -> list[WindowComposition]` (reuses the per-issue `(period, orchestrator)` map `analyze_agent_quality()` already builds at `agent_quality.py:510`)
 
 ### Call Path
 
-`analyze_agent_quality()` (`little_loops/issue_history/agent_quality.py`) -> `QualityAnalysis` -> `detect_quality_regressions()` -> `format_agent_quality_markdown()` (extended to render `RegressionEvent`s alongside the existing window table)
+`analyze_agent_quality()` (`little_loops/issue_history/agent_quality.py`) -> `QualityAnalysis` (gains an optional `regressions: QualityRegressionAnalysis | None` field) -> `detect_quality_regressions()` -> all four formatters: `format_agent_quality_markdown()`/`_text()` gain an additive `if analysis.regressions and analysis.regressions.events:` block; `_json()`/`_yaml()` pick it up through `QualityAnalysis.to_dict()`.
 
 ### Codebase Research Findings
 
@@ -171,8 +206,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 ### Decision Rules
 
 - **Detection statistic**: deterministic, LLM-free, computed over `QualityAnalysis.windows` only. No existing change-point/z-score/rolling-baseline statistical utility exists in this codebase (searched repo-wide, no hits) — the fixed ±20%-band `classify_verdict()` baseline convention (`issue_history/_utils.py:57`, shared by `agent_quality.py`/`rework.py`) is the only existing "baseline" mechanism, and it is not itself a change-point detector; this issue's detection logic is new statistical code, not an adaptation of an existing one.
-- **Sensitivity default**: `DEFAULT_SENSITIVITY` has no existing value or precedent anywhere in the codebase — must be chosen and documented fresh, with its false-positive tradeoff, per the Acceptance Criteria.
-- **Attribution dismissal escape hatch**: when no model/host/version boundary's `effective_from` coincides with a flagged window's start, `attribute_change()` returns `None` and the report renders "no attributable change" rather than omitting the `RegressionEvent` — a detected drop is always surfaced even without a named cause.
+- **Detection statistic (resolved 2026-09-07)**: prior-K-window baseline comparison, not change-point detection — see Design notes → Design review corrections. Per `(metric, orchestrator)` series: baseline = mean of the up-to-`baseline_windows` preceding windows that clear `min_sample`; flag when the current window clears `min_sample` and its relative move in the worse direction (per each metric's existing `higher_is_better`/lower-is-better convention in `classify_verdict`) exceeds `sensitivity`. NULL/empty-period windows are excluded and counted.
+- **Sensitivity default (resolved)**: `DEFAULT_SENSITIVITY = 0.30`, deliberately wider than `classify_verdict`'s ±20% band so an alert is rarer and louder than a `degrading` verdict. Tradeoff to document: at `min_sample=5` a fix-rate window of 5 issues moves in 20% steps, so one extra reopen can trip 0.30 — that is why `min_sample` gates both sides of the comparison, and the doc must say lower `sensitivity` = more alerts = more false positives on small windows.
+- **Return type (resolved)**: `QualityRegressionAnalysis` wrapper, per the `detect_* -> *Analysis` convention; empty `events` is the not-found sentinel.
+- **Attribution dismissal escape hatch**: when no dimension's share shift in the flagged window exceeds `ATTRIBUTION_MIN_SHIFT` versus the baseline windows, `attribute_change()` returns `None` and the report renders "no attributable change" rather than omitting the `RegressionEvent` — a detected drop is always surfaced even without a named cause. Attribution is correlational (a mix shift coinciding with a drop), and the rendered note says so, matching `_STANDARD_NOTES`.
 
 ## Implementation Steps
 
@@ -180,35 +217,43 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
-1. Model/host/little-loops-version stamps become readable per run: extend `record_orchestration_run()`/`record_loop_run_summary()` (`scripts/little_loops/session_store/writers.py:1287,1428`) and the `orchestration_runs` schema (`schema.py:540`) to carry them, since no per-run join point for this exists today (see Integration Map → Model/host/version stamp gap); verified by `python -m pytest scripts/tests/test_session_store_writers.py -v`.
-2. `detect_quality_regressions()` and `attribute_change()` are added to `scripts/little_loops/issue_history/agent_quality.py` (or a sibling module, per the existing `agent_quality.py`/`rework.py` sibling-module shape), consuming `QualityAnalysis.windows` and the new per-run attribution stamps; the detection statistic is new deterministic code — no existing change-point/z-score utility exists to adapt (see Program Design → Decision Rules).
-3. `format_agent_quality_markdown()` (`agent_quality.py:619`) is extended with an additive `if regressions:` block rendering `RegressionEvent`s, following the same per-field truthy-check shape already used for `analysis.retry_windows`.
-4. A fixture corpus with an injected quality drop is flagged and a corpus with none is not, following the paired-test template already established in `scripts/tests/test_issue_history_agent_quality.py::TestFixRate`; verified by `python -m pytest scripts/tests/test_issue_history_agent_quality.py -v`.
+_Revised 2026-09-07: scope of step 1 narrowed to `ll_version` only; model/host are read through existing joins (see Design notes → Design review corrections)._
+
+1. Schema v48: add `ll_version TEXT` to `orchestration_runs` (`schema.py:540`) and `loop_runs`; `record_orchestration_run()`/`record_loop_run_summary()` (`writers.py:1287,1428`) gain a keyword-only `ll_version: str | None = None` param, defaulting to `little_loops.__version__` inside the writer so call sites need no change; UPSERT uses `COALESCE(excluded.ll_version, ll_version)` per the `base_sha` pattern (`writers.py:1357-1360`). Verified by `python -m pytest scripts/tests/test_session_store_writers.py scripts/tests/test_session_store_schema.py -v`.
+2. `load_window_compositions()` in a new sibling module `scripts/little_loops/issue_history/quality_regressions.py` builds per-`(period, orchestrator)` model/host/`ll_version` shares from `issue_sessions -> usage_events.model`, `issue_sessions -> raw_events.host`, and `orchestration_runs.ll_version`, reusing the `issue_window` map `analyze_agent_quality()` already builds (`agent_quality.py:510`).
+3. `detect_quality_regressions()` and `attribute_change()` in the same module, per Program Design; `analyze_agent_quality()` calls them and stores the result on the new `QualityAnalysis.regressions` field.
+4. All four formatters render the result: additive blocks in `format_agent_quality_markdown()`/`_text()`, `to_dict()` for json/yaml.
+5. `--sensitivity` (and `--baseline-windows`) flags on `ll-history quality` with the `is not None` guard (`cli/history.py:484-487`).
+6. Tests: injected-drop / no-drop fixture pair per `TestFixRate`; a mixed-model fixture where a drop coincides with a model-share shift asserts the attribution, and one where the mix is unchanged asserts `None`; NULL-`started_at` rows are excluded not bucketed. Verified by `python -m pytest scripts/tests/test_issue_history_agent_quality.py scripts/tests/test_cli_history.py -v`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Thread the new `model`/`host`/`ll_version` params through every `record_orchestration_run` production call site: `issue_manager.py:767,2309`, `parallel/orchestrator.py:1223`, `parallel/worker_pool.py:1703`, `cli/sprint/run.py:736,928` — and the sole `record_loop_run_summary` call site in `fsm/executor.py:4293`. Without this, `RunAttribution` has no data to join against per-run.
-- Extend `history_reader/runs.py`'s `recent_orchestration_runs()`/`aggregate_orchestration_runs()` SELECT column lists (79,100-103) and `history_reader/models.py`'s `OrchestrationRun` dataclass (151) to surface the new columns through the typed reader path.
+- ~~Thread the new `model`/`host`/`ll_version` params through every `record_orchestration_run` production call site~~ **Superseded 2026-09-07**: only `ll_version` is added, and the writer defaults it from `little_loops.__version__`, so the call sites at `issue_manager.py:767,2309`, `parallel/orchestrator.py:1223`, `parallel/worker_pool.py:1703`, `cli/sprint/run.py:736,928`, `fsm/executor.py:4293` are unchanged. Keep the `test_sprint.py:3159-3176` AST check in mind: the new kwarg is optional, so it stays non-breaking.
+- Extend `history_reader/runs.py`'s `recent_orchestration_runs()`/`aggregate_orchestration_runs()` SELECT column lists (79,100-103) and `history_reader/models.py`'s `OrchestrationRun` dataclass (151) with `ll_version` so it is visible through the typed reader path.
 - Regenerate `scripts/little_loops/session_store/schema_manifest.json` after the `orchestration_runs` migration (recipe in `test_session_store_schema.py:2852-2865`); update every `SCHEMA_VERSION == 47` assertion in `test_session_store_schema.py` (e.g. lines 1884, 1929) to the new version.
-- Decide the `--sensitivity` config convention: module-constant + CLI flag (mirroring `MIN_SAMPLE_SIZE`/`--min-sample`, `cli/history.py:263-270,486`) vs. a `.ll/ll-config.json` schema entry (mirroring `EvolutionConfig`, `config/features.py:1406-1419` + `config-schema.json:2176-2192`). If (B) is chosen, add the new dataclass to `_DATACLASS_SECTION_MAP` in `scripts/tests/test_config_schema.py` (`test_every_dataclass_is_mapped` fails otherwise) and verify `test_to_dict_emits_every_schema_section`/`test_to_dict_values_match_schema_defaults`.
+- `--sensitivity` config convention: **decided** — module-level constant + CLI flag (mirroring `MIN_SAMPLE_SIZE`/`--min-sample`, `cli/history.py:263-270,486`); see Proposed Solution → Decision Rationale. `DEFAULT_SENSITIVITY` lives as a module constant in the detection module, threaded as `detect_quality_regressions(..., sensitivity: float = DEFAULT_SENSITIVITY)`, with a `--sensitivity` CLI flag on `ll-history quality` using the same `is not None` explicit-override guard as `--min-sample` (`cli/history.py:486`).
 - Add a `--sensitivity` flag test to `TestHistoryQualitySubcommand` (`test_cli_history.py:220-271`), mirroring `test_quality_min_sample_flag_accepted`.
 - Add a v48-equivalent row to `docs/guides/HISTORY_SESSION_GUIDE.md`'s and `docs/ARCHITECTURE.md`'s schema-version-history tables, and update `HISTORY_SESSION_GUIDE.md` line 132's `orchestration_runs` column enumeration.
 
 ## Impact
 
 - **Priority**: P0 - Silent quality regressions are the failure mode the whole metric series exists to catch; without detection the series is observed by nobody.
-- **Effort**: Large - requires both a new statistical detection module and, per Dependencies, adding model/host/version stamp capture to `history.db` if not already present.
-- **Risk**: Low - read-only analysis over existing `history.db` data; no changes to the write path or existing report output beyond additive alerts.
+- **Effort**: Medium - a new detection module plus a one-column schema migration (`ll_version`); model/host attribution reads through existing joins (revised 2026-09-07 from Large).
+- **Risk**: Low-Medium - the detection pass is read-only and additive, but the `ll_version` column is a schema bump (v48) touching `record_orchestration_run`/`record_loop_run_summary`, the typed reader path, and `schema_manifest.json`; a missed reader-path update leaves the column unreadable, not corrupted.
 - **Breaking Change**: No
 
 ## Acceptance Criteria
 
 - Detection is deterministic and LLM-free — statistical over recorded values only.
 - A fixture corpus with an injected quality drop is detected; a corpus with no drop produces no alert (false-positive check is part of the test, not an afterthought).
-- Each detection names the candidate change (model/host/version boundary) it coincides with, or explicitly reports "no attributable change".
-- Sensitivity is configurable, with a documented default and its false-positive tradeoff.
+- Each detection names the model/host/version whose share of the window's runs shifted most versus the baseline (with both shares shown), or explicitly reports "no attributable change" when no shift exceeds `ATTRIBUTION_MIN_SHIFT`.
+- A fixture where a drop coincides with a model-mix shift attributes to that model; a fixture with the same drop and an unchanged mix attributes `None`.
+- Rows with NULL `started_at` are excluded from the series and reported as a count, never bucketed into an empty period.
+- `ll_version` is recorded on new `orchestration_runs`/`loop_runs` rows without any orchestrator call-site change; existing rows read back with NULL.
+- Sensitivity is configurable via `--sensitivity`, with a documented default and its false-positive tradeoff.
+- All four output formats (`text`, `markdown`, `json`, `yaml`) carry the regression block.
 
 ## Confidence Check Notes
 
@@ -219,7 +264,7 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 
 ### Outcome Risk Factors
 - Broad enumeration across 16+ sites: `orchestration_runs` schema migration, ~7 `record_orchestration_run`/`record_loop_run_summary` call sites needing new-param threading (`issue_manager.py`, `parallel/orchestrator.py`, `parallel/worker_pool.py`, `cli/sprint/run.py`, `fsm/executor.py`), the typed reader path (`history_reader/runs.py`, `models.py`), `schema_manifest.json` regeneration, plus 15+ test files and 4 docs files — the fanout raises the odds of a missed call site or reader-path gap even though each individual site change is small.
-- Two architecture-convention decisions are left open at spec time rather than resolved: (1) `detect_quality_regressions() -> list[RegressionEvent]` deliberately departs from the codebase's `detect_*` → `*Analysis`-wrapper convention with no decision recorded; (2) the `--sensitivity` config convention (module-constant + CLI flag vs. `.ll/ll-config.json` schema entry) is explicitly left for the implementer to decide. Resolving both before coding starts would reduce mid-implementation rework and keep the change consistent with the rest of `issue_history/`.
+- _(Resolved 2026-09-07: both decisions below are now recorded in Program Design → Decision Rules and Proposed Solution → Decision Rationale; the call-site fanout above is also reduced to a single optional writer kwarg.)_ Two architecture-convention decisions are left open at spec time rather than resolved: (1) `detect_quality_regressions() -> list[RegressionEvent]` deliberately departs from the codebase's `detect_*` → `*Analysis`-wrapper convention with no decision recorded; (2) the `--sensitivity` config convention (module-constant + CLI flag vs. `.ll/ll-config.json` schema entry) is explicitly left for the implementer to decide. Resolving both before coding starts would reduce mid-implementation rework and keep the change consistent with the rest of `issue_history/`.
 - The core `detect_quality_regressions()`/`attribute_change()` logic is genuinely new statistical code — no existing change-point/z-score/rolling-baseline utility exists anywhere in the codebase to adapt, and `DEFAULT_SENSITIVITY` has no prior value to anchor to.
 
 ## Status
@@ -228,6 +273,8 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T02:52:50 - `db8f4456-9d33-4a56-83a5-6fd56728c61f.jsonl`
+- `/ll:decide-issue` - 2026-09-08T02:38:37 - `dbbb8e28-65c6-4fbb-8510-be5c16cd4905.jsonl`
 - `/ll:refine-issue` - 2026-09-08T02:31:36 - `6cc496d2-f0d1-4efd-a1af-1d7a8f2e9860.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-08T02:29:08 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:15:46 - `79da3fca-fbcb-4530-ac1f-339229369837.jsonl`
