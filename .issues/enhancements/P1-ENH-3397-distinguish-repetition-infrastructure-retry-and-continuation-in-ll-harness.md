@@ -3,7 +3,7 @@ id: ENH-3397
 title: Distinguish repetition, infrastructure retry, and continuation in ll-harness
 type: ENH
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-07'
 labels:
 - harness
@@ -11,12 +11,14 @@ labels:
 - statistics
 confidence_score: 100
 outcome_confidence: 62
+verify_verdict: NEEDS_UPDATE
 score_complexity: 9
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
 blocked_by:
 - FEAT-3398
+size: Very Large
 ---
 
 ## Summary
@@ -60,10 +62,22 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 Codebase-locator and codebase-analyzer agents confirmed the run-model concepts this issue proposes (`cell_key`, `attempt_kind`, `harness_admissions`) do not exist yet anywhere and identified exactly where they land:
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **Correction**: the "Registry decision" bullet above names `prepatch_evidence` as the precedent for the kinded-table + `assert "<table>" not in _KINDLESS_TABLES` companion test. That is backwards — `prepatch_evidence` is itself registered in `_KINDLESS_TABLES` (`schema.py:98`) with no `VALID_KINDS`/`_KIND_TABLE` entry and no `test_not_kindless`-style companion test anywhere in `test_session_store_schema.py` (confirmed by search). The pattern the bullet describes is real, but its most recent worked example is `credential_scope_events` (v47, ENH-3204): `VALID_KINDS`/`_KIND_TABLE` entries in `schema.py`, plus the companion test at `test_session_store_schema.py:2800-2812` asserting `"credential_scope_events" not in _KINDLESS_TABLES`. The bullet's own example line citations (`test_session_store_schema.py:1706-1708,1775-1777`, i.e. `prompt_opt_events`/`verdict_events`) are correct instances of the pattern — only the named precedent (`prepatch_evidence`) is wrong.
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **Self-referential nullable FK precedent exists on `harness_events` itself.** `harness_events.parent_id` (`session_store/schema.py:709-737`, v31) is a plain `INTEGER` column with no `REFERENCES` clause and a plain (non-unique) index (`idx_harness_parent`), populated by the application at insert time and read back by equality (`test_cli_harness.py:1687-1690`). A second codebase example, `summary_nodes.parent_id` (`schema.py:280-301`, v10), declares `REFERENCES summary_nodes(id)` but its own migration comment calls the FK "decorative (no `PRAGMA foreign_keys`)." `superseded_by` can follow either shape; the table it extends already uses the undeclared-FK shape.
+- **No SQL-statement-kind append-only test precedent exists.** Beyond the JSONL black-box precedent already cited (`test_fsm_persistence.py::test_events_file_is_append_only`), the closest technique found is a whole-*module* source-string scan — `test_git_operations.py:306-320` (`TestNoGitStash.test_no_code_path_invokes_git_stash`) reads `Path(gitops.__file__).read_text()` and asserts the literal `"stash"` never appears. No existing test targets a SQL statement kind (`UPDATE`/`DELETE`) against a specific table via source inspection or AST; a `harness_admissions` "no UPDATE/DELETE path" test has no closer precedent to adapt than this git-operations pattern.
+- **"No override flag" selection precedent**: `resolve_priority()` (`issue_parser.py:92-111`) hard-codes source precedence in the function body with no parameter to override which source wins; its test (`test_issue_parser.py:93-98`) proves the invariant by feeding a *conflicting* value from the losing source and asserting the fixed source still wins — a two-source precedence rule, not a "pick earliest/first-non-superseded row from a set" selection. No existing precedent was found for testing "a selection function's output is unaffected by any CLI flag" specifically.
+- **Two different severities of "flag value must resolve to a prior row" exist.** `cmd_requeue`/`cmd_remove` (`cli/queue.py`, already cited above) resolve an id, check its persisted status, and hard-refuse (exit 1, message names the id and status) on mismatch. A materially weaker convention also exists: `cli/issues/create.py:485-494`'s `--parent` resolves an id but performs no status/type check and silently no-ops when the reference doesn't resolve. `--retry-of` should follow the `cmd_requeue` shape, not the `--parent` shape — both are live conventions in this codebase for "a flag referencing another record," not just one.
+- **No CHECK constraint precedent on a self-referential column.** A repo-wide search for `CHECK\s*\(` found only `schema.py` and `rlhf-svg-refine.yaml`; neither `harness_events.parent_id` nor `summary_nodes.parent_id` carries a CHECK constraint. If `superseded_by` were CHECK-constrained (e.g. to prevent self-reference), it would be a new pattern in this codebase, not an application of an existing one.
+
 ### Files to Modify
 - `scripts/little_loops/session_store/schema.py` — `harness_events` schema lives here (v31 create at line 715; `target_content_hash`/`target_path`/`dirty` ADD COLUMNs at line 975; `idx_harness_semantic_verdict` at line 1008). Schema changes for `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by` and the new `harness_admissions` table land here. This codebase's migration convention is an ordered list of DDL strings in `_MIGRATIONS` gated by a monotonic `SCHEMA_VERSION`; every entry is a comment citing its issue ID and is never edited after landing (`schema.py:1011-1018`, BUG-3236 precedent).
 - `scripts/little_loops/session_store/writers.py` — `record_harness_event()` (line 1024) is the existing single-row `INSERT` writer for `harness_events`. `record_attempt()`/`admit_retry()`/`authoritative_attempt()` would sit alongside or wrap this.
-- `scripts/little_loops/cli/harness.py` — `_evaluate_and_report()` (line 659) is the shared evaluation core; its error path (`result.timed_out` or `result.error is not None`, lines 668-671) returns `(2, outcome)` before any grading — this is the exact "exit-2 branch" the issue names as the sole admissible gate for `--retry-of`. Callers: `cmd_skill` (835), `cmd_cmd` (868), `cmd_mcp` (911), `cmd_prompt` (952), `cmd_dsl` (1072) — none currently thread a cell identity through calls, so a re-invocation produces an unrelated row today. `cmd_dsl`'s `graded_total`/`graded_pass` are **local variables** (first assigned line 992), not a function — `wilson_ci(graded_pass, graded_total)` (line 1145) reads them directly.
+- `scripts/little_loops/cli/harness.py` — `_evaluate_and_report()` (line 659) is the shared evaluation core; its error path (`result.timed_out` or `result.error is not None`, lines 668-671) returns `(2, outcome)` (actual `return 2, ...` statements at lines 670 and 673) before any grading — this is the exact "exit-2 branch" the issue names as the sole admissible gate for `--retry-of`. Callers: `cmd_skill` (835), `cmd_cmd` (868), `cmd_mcp` (911), `cmd_prompt` (952), `cmd_dsl` (1072) — none currently thread a cell identity through calls, so a re-invocation produces an unrelated row today. `cmd_dsl`'s `graded_total`/`graded_pass` are **local variables** (first assigned line 992), not a function — `wilson_ci(graded_pass, graded_total)` (line 1145) reads them directly.
 - `scripts/little_loops/cli/harness.py:588` — `history_pass_rate_runs` is **not a function**; it's a dict key computed inline in `_read_target_history()` as `pass_scored = sum(1 for e in events if e.semantic_passed is not None)` (line 623), gated by `_HISTORY_MIN_SCORED = 3` (line 585). The AC's "count repetitions, not rows" change lands in this function body, not in a separate module.
 - `scripts/little_loops/history_reader/harness.py` — `harness_eval_pass_rate()` (line 113) and `harness_eval_abstention_rate()` (line 152) both aggregate unconditionally over every `harness_events` row matching `target`/`since` — no per-cell/per-repetition grouping exists today; these are the two functions the Scope Boundaries names as needing to "count repetitions."
 
@@ -73,7 +87,7 @@ Codebase-locator and codebase-analyzer agents confirmed the run-model concepts t
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/session_store/__init__.py:147,234` — re-exports `record_harness_event` (import list + docstring at line 54 + `__all__`); new writers `record_attempt`/`admit_retry`/`authoritative_attempt` need the same three additions to be part of the package's public surface.
 - `scripts/little_loops/history_reader/__init__.py:184-186,308-309,329` — re-exports `harness_eval_pass_rate`/`harness_eval_abstention_rate`/`recent_harness_events`.
-- `scripts/little_loops/session_store/queries.py:104` — `_KIND_TABLE["harness_event"] = ("harness_events", "ts")` backs `ll-session recent/search --kind harness`; a new `harness_admissions` table needs an explicit kinded-vs-kindless decision (see below).
+- `scripts/little_loops/session_store/queries.py:104` — `_EXPORT_TABLE_MAP["harness_event"] = ("harness_events", "ts")` (not `_KIND_TABLE`, a separate `schema.py` dict keyed `"harness"` with plain-string values, used generically via `_KIND_TABLE[kind]` at `queries.py:76`) backs `ll-session recent/search --kind harness`; a new `harness_admissions` table needs an explicit kinded-vs-kindless decision (see below).
 - `scripts/little_loops/cli/session.py` — `main_session` dispatches `ll-session recent --kind harness` / `search --kind harness` through the mapping above.
 - `scripts/little_loops/cli/doctor.py:502-507,537,543` — imports `_MIGRATIONS`/`_current_version`/`_reference_manifest_at`/`_schema_manifest` from `session_store.schema` for `ll-doctor`'s drift-detection check; a new migration is covered automatically but worth confirming `ll-doctor` output stays sane.
 - `scripts/little_loops/session_store/schema_manifest.json:1017` — checked-in schema snapshot containing the current `harness_events` column list; **must be regenerated** (recipe documented in `test_session_store_schema.py:2852-2865`) after the DDL change or `test_schema_manifest_matches_checked_in_file` (`test_session_store_schema.py:2870`) fails the whole suite.
@@ -82,7 +96,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/session_store/lifecycle.py:930-941` — `_REBUILD_TABLES` exclusion comment names `harness_events` by rationale; `harness_admissions` (same live-write-only shape) should be added to this comment for documentation consistency, though `rebuild()` behavior is unaffected since new tables are excluded by default.
 - `scripts/tests/test_ll_session.py:1345,1348,1359,1362` — `test_recent_kind_harness_outputs_row`/`test_search_kind_harness_matches_indexed_rows` call `record_harness_event()` directly with none of the new run-model params; these must keep working with `None`/default values per the ENH-141 `target_content_hash`-style precedent (`writers.py:1054-1059`).
 - `scripts/little_loops/cli/harness.py`'s `_parse_harness_args` is round-tripped by `scripts/tests/test_create_eval_from_issues.py:4679,4708` (`TestFixtureToHarnessArgv`, `TestExportThenReplay`) — a new `--retry-of` flag must not break this existing argv round-trip.
+  > ⚠ Superseded — wrong file; tests are in test_ll_logs.py, not test_create_eval_from_issues.py
 - `scripts/tests/test_runner_spec.py:95,103` — asserts `RunnerResult` stays importable from `cli.harness` and dispatch-table completeness; re-verify if `cli/harness.py`'s import surface shifts.
+
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `scripts/little_loops/cli/logs.py` — `_fixture_to_harness_argv()` (~line 2001) builds `ll-harness` argv strings from historical session records and feeds them to `_parse_harness_args()` via the eval-export/replay CLI wiring (~line 3074); a genuine production consumer of the CLI arg surface, not just a test. The correct location of the argv round-trip tests is `scripts/tests/test_ll_logs.py` — `TestEvalExportMapping::test_fixture_to_harness_argv_round_trips_through_parser` (line 4677) and `TestEvalExportRoundTrip::test_export_then_replay_under_harness` (line 4704) / `test_skill_filter_and_skip_unknown` (line 4774) — not `test_create_eval_from_issues.py` (see superseded marker above; that file has zero `_parse_harness_args` references).
+- `scripts/little_loops/history_reader/harness.py` — the `HarnessEvent` dataclass and hand-maintained `_HARNESS_EVENT_COLUMNS` SQL fragment are a second, independently-maintained column list, distinct from the `session_store/schema.py` DDL. `_row_to_dataclass()` in `scripts/little_loops/history_reader/_base.py` silently drops any DB column not present as a `HarnessEvent` field (`kwargs = {k: row[k] for k in field_names if k in row.keys()}`) — if `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by` are added to the schema but not to `HarnessEvent`/`_HARNESS_EVENT_COLUMNS`, `recent_harness_events()` and both `harness_eval_pass_rate()`/`harness_eval_abstention_rate()` silently lose the new fields instead of erroring. This is a hard blocker for AC6, not an optional follow-up, and was not named anywhere in the issue's existing Integration Map.
+- `scripts/little_loops/cli/harness.py:1003-1017` — `cmd_dsl`'s aggregate-row insert already needs the newly-inserted row's id and recovers it via a raw follow-up query (`SELECT id FROM harness_events ORDER BY id DESC LIMIT 1`), because `record_harness_event()` returns `None`. The proposed `record_attempt(...) -> int` (Program Design → Signatures) has a different, return-value-based contract; this existing call site is where the two approaches meet during implementation.
 
 ### Conventions in Force
 - Schema migrations are additive `ALTER TABLE`/`CREATE TABLE IF NOT EXISTS` entries appended to `_MIGRATIONS`, never edited after landing, each documented "Fix-forward only: existing rows are not backfilled" — evidence: `schema.py:931,947-948,973,1011-1018`.
@@ -104,6 +124,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `test_cli_harness.py:1511` `test_cmd_dsl_aggregate_row_carries_run_outcome` exercises the pre-existing `_update_aggregate()` UPDATE path on `harness_events` — same table gaining the new columns; re-verify after migration.
 - `test_cli_e2e.py::TestLlHarnessE2E::test_cmd_echo_hello_passes` (line 472, `@pytest.mark.integration`) — the only e2e/integration test for `ll-harness`; a single bare invocation asserting only subprocess exit code, unaffected by the n-redefinition.
 - `cli/queue.py::cmd_requeue`/`cmd_remove` refusal-message precedent, tested in `test_cli_queue_run.py::TestCmdRequeue` (650-708) — confirmed no test pins the exact refusal-message text (only `result == 1` and persisted status are asserted), so `--retry-of`'s refusal message is free to name the attempt id/reason without matching a locked string, but should follow the same id-lookup → status-check → non-zero-exit shape.
+
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `scripts/tests/test_cli_harness.py:1832` `TestTargetHistoryRegression::test_current_run_excluded_from_reported_rate` — seeds 3 raw `harness_events` rows for one target and asserts `data["history_judged_runs"] == 3`; not in this issue's previously-listed break-risk set (that only covered `TestReadTargetHistory`'s three tests in a different class). Same row-count-as-n risk applies here.
+- No shared factory exists for multi-attempt `harness_events` rows: the closest helper, `TestReadTargetHistory._seed()` (`test_cli_harness.py:1717`), is scoped to that one test class and not reused by `test_history_reader_harness.py` or `test_session_store_writers.py`. New tests exercising cell/repetition/retry combinations will need to either generalize `_seed()` into a shared fixture or hand-roll per-file, per this codebase's existing (non-factory) convention.
 
 ### Documentation
 - `docs/guides/EVALUATION_GUIDE.md:308,446` — documents `harness_events`/`recent_harness_events`/`harness_eval_pass_rate` and notes today that "nothing reads `harness_events` from the CLI" for pass-rate purposes beyond display — this line becomes stale once the run-model/admissions reporting lands.
@@ -141,6 +165,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 Pattern-finder and analyzer agents pinned down the exact gate/selection mechanics this issue's prose describes, against the codebase's existing conventions:
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **Enum-enforcement precedent exists, via SQL CHECK constraints, not Python validation**: the Decision Rules bullet above states "no existing session_store writer validates an enum at the INSERT boundary today ... this is the first case of that validation existing." That is accurate only for *Python-side* validation inside a writer function (confirmed: no `Literal`-typed writer parameter exists anywhere in `writers.py`). It is not accurate for enum enforcement generally — this codebase already enforces closed-set columns via SQLite `CHECK` constraints at the schema level: `verdict_events.verdict`/`abstention_reason` (`schema.py:1216-1220`) and `research_triage_events.axis`/`reason` (`schema.py:1291-1298`), both documented inline as deliberate ("a Python-side typo can never land a row the read query silently drops," `schema.py:1276-1278`). `attempt_kind` and the admission `reason` column can follow this same CHECK-constraint convention instead of inventing new Python-side validation. One added constraint: SQLite cannot `ALTER TABLE ADD COLUMN` a CHECK onto an *existing* column — a CHECK-constrained existing column requires the rename/copy/drop rebuild pattern used at v44 (`schema.py:1195-1207`); this does not apply to `attempt_kind`, which is a brand-new column on `harness_events`, but would apply if a CHECK were retrofitted onto an existing column later.
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **`exit_code` alone does not reliably identify the "exit-2" infra branch.** `_evaluate_and_report()`'s own `rc=2` return value (`cli/harness.py:668-673`) is never itself persisted; callers write the raw `result.exit_code` instead, and that value varies per runner and per failure kind: skill-runner timeouts store `exit_code=124` (`runner_spec.py:195-201`), cmd/prompt timeouts store `exit_code=2` (`runner_spec.py:218-219,234-237,338-346,389-392`), and MCP failures store whatever `call_mcp_tool()` itself returns with no `timed_out`/`error` distinction at all. `harness_events` has no column carrying `result.error`, so on the non-timeout error branch (671-673) a row is indistinguishable, by content alone, from an ordinary graded FAIL run with no `--semantic` flag: both store `semantic_verdict=NULL, semantic_passed=0, timed_out=0`. Only the true-timeout half of the branch (`timed_out=1`) is currently identifiable from a stored row. The `--retry-of` admissibility gate as currently specified (Decision Rules: "admissible only when `exit_code == 2`") needs a different or additional signal — `exit_code == 2` is neither necessary (124 on skill timeout) nor sufficient (an ordinary graded `--exit-code 2` mismatch also stores `exit_code=2`) to identify the branch it's meant to gate on.
+- **A third row-counting site exists, not named in the issue's Files to Modify.** `_read_target_history()` (`cli/harness.py:588-640`) computes its own `pass_scored`/`judged_scored` local counts (lines 623-624) by iterating the raw `events` list from `recent_harness_events()`, independently of and upstream of `harness_eval_pass_rate()`/`harness_eval_abstention_rate()`'s own internal SQL `COUNT()` queries. The `_HISTORY_MIN_SCORED = 3` threshold gate (line 585, gating lines 627/632) is keyed to these raw counts, not to either rate function's return value — so converting only the two named functions to count authoritative repetitions leaves this threshold gate keyed to attempt-row counts, e.g. one graded attempt plus two `infra_retry` rows would still clear the threshold at `pass_scored == 3` and display a rate backed by a single real data point.
+- **Timeout/error rows are already counted as scored failures today**, independent of this issue: because the exit-2 branches store `semantic_passed=False` rather than `NULL` (see above), they are already included in `harness_eval_pass_rate()`'s `COUNT(semantic_passed)` denominator even though `harness_eval_abstention_rate()`'s denominator (`semantic_verdict IS NULL`) excludes them — a discrepancy any cell/attempt-kind filtering needs to account for when defining what an authoritative-but-superseded attempt's stored `semantic_passed` value means.
 
 ### Decision Rules
 
@@ -183,6 +217,7 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Decide and implement `harness_admissions`'s registry placement: kinded (`VALID_KINDS` + `_KIND_TABLE` entry, `session_store/schema.py:27-83`) vs. kindless (`_KINDLESS_TABLES`, same file 85-100) — mirror the `prepatch_evidence` precedent and add the companion `assert "harness_admissions" not in _KINDLESS_TABLES`-style test.
+  > ⚠ Superseded — wrong precedent; see credential_scope_events in Integration Map
 - Decide whether `harness_admissions` needs an `_EXPORT_TABLE_MAP` entry (`session_store/queries.py:88-134`) for `ll-history export` symmetry with `harness_events`.
 - Add `harness_admissions` to the `_REBUILD_TABLES` exclusion comment (`session_store/lifecycle.py:930-941`) alongside `harness_events`, for documentation consistency.
 - Regenerate `scripts/little_loops/session_store/schema_manifest.json` after the DDL change (recipe in `test_session_store_schema.py:2852-2865`) — `test_schema_manifest_matches_checked_in_file` fails otherwise.
@@ -190,7 +225,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/reference/CLI.md:212-313`'s `ll-harness` exit-code table, `--output json` payload-fields table, and shared-evaluator-flags table for `--retry-of` and the redefined `history_pass_rate_runs`.
 - Add a v48 row to `docs/guides/HISTORY_SESSION_GUIDE.md`'s schema-version-history table (91-101) and update its line-142 `harness_events` prose.
 - Verify `test_ll_session.py:1345,1348,1359,1362` and `test_create_eval_from_issues.py:4679,4708` (`_parse_harness_args` round-trip) still pass unmodified after the writer signature and CLI-flag changes.
+  > ⚠ Superseded — wrong file; correct tests are in test_ll_logs.py:4677,4688-4771
 - Re-verify `test_history_reader_harness.py::TestHarnessEventReaders` and `test_cli_harness.py::TestReadTargetHistory`'s hand-counted row-count assertions against the new authoritative-repetition counting rule; update fixtures/expected values as needed.
+- Also re-verify `test_cli_harness.py:1832` `TestTargetHistoryRegression::test_current_run_excluded_from_reported_rate`'s `history_judged_runs == 3` assertion — same row-count-as-n risk, different test class than the two above.
+- Add `cell_key`/`repetition`/`attempt_kind`/`continuations`/`superseded_by` to the `HarnessEvent` dataclass and `_HARNESS_EVENT_COLUMNS` SQL fragment in `scripts/little_loops/history_reader/harness.py` before or alongside the counting-logic change — `_row_to_dataclass()` (`history_reader/_base.py`) silently drops unmapped columns, so skipping this step makes AC6 silently return stale data instead of failing loudly.
+- Insert the admissions tabulation (AC7) after the existing `f"\nDSL pass-rate: {graded_pass}/{graded_total} ..."` line (`cli/harness.py:1146`) — the one place this file already renders a pass-rate/CI summary line.
 
 ## Impact
 
@@ -201,7 +240,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-09-07 | Priority: P1
+**Done** | Created: 2026-09-07 | Priority: P1
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-09-08
+- **Reason**: Very Large (`ll-issues size` score 11/11) — decomposed into a strictly
+  sequential schema → writers/gate → read-path-counting chain, each independently
+  shippable and testable on its own.
+
+### Decomposed Into
+- ENH-3406: harness_events run-model columns + harness_admissions table (schema)
+- ENH-3407: record_attempt/admit_retry/authoritative_attempt writers + --retry-of CLI gate
+- ENH-3408: Count authoritative repetitions in harness pass-rate reporting + admissions tabulation
 
 ## Confidence Check Notes
 
@@ -215,7 +267,24 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 - Moderate blast radius on the read/write path itself: `_record_harness_event` is wrapped and called from 7 sites in `cli/harness.py`, and `harness_eval_pass_rate`/`harness_eval_abstention_rate` are consumed via `_read_target_history` — each site needs correct `cell_key`/`attempt_kind`/authoritative-selection threading rather than a uniform mechanical substitution, so per-site regressions are possible; mitigate with the AC's specified fixture-based n-counting tests before/after the retry chain.
 - Two registry-placement decisions are deliberately left for implementation time rather than pre-resolved: whether `harness_admissions` is kinded vs. kindless (`VALID_KINDS`/`_KIND_TABLE` vs. `_KINDLESS_TABLES`), and whether it needs an `_EXPORT_TABLE_MAP` entry for `ll-history export` symmetry. Both have a stated precedent to follow (`prepatch_evidence`) but remain open judgment calls, not blocking readiness.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-08:_
+
+- **Graph**: provider=`codegraph` freshness=`fresh` (not queried for this pass — issue names no single symbol to anchor-check; the correction below was found by direct grep).
+- **Evidence-quote check**: `ll-verify-evidence` reports clean (0 findings) — no fabricated evidence spans.
+- **Decisions log**: `.ll/decisions.yaml`/`.ll/decisions.d` present; `ll-issues decisions list --type rule --enforcement required --active-only` returned no entries — no active required rules to check against.
+- **Dependency ref**: `Blocked By: FEAT-3398` — that issue is completed (status: done); satisfied, informational only.
+- **Citation spot-check** (44 file/line/code claims sampled across the Integration Map, Program Design, and Wiring Phase sections): 43/44 confirmed exact or within a few lines. One real defect, corrected in this pass: the Integration Map's `queries.py:104` citation named `_KIND_TABLE["harness_event"]`, but that line is actually `_EXPORT_TABLE_MAP["harness_event"]` — `_KIND_TABLE` is a separate `schema.py` dict keyed `"harness"` (plain-string values), indexed generically via `_KIND_TABLE[kind]` at `queries.py:76`. Also tightened two line-range citations that were a few lines short of the actual line (`_evaluate_and_report`'s `return 2, ...` statements at 670/673 vs. the cited 668-671; `test_skill_filter_and_skip_unknown` at `test_ll_logs.py:4774` vs. the cited upper bound of 4771).
+- Everything else — schema line numbers, `SCHEMA_VERSION = 47`, `record_harness_event()` returning `None`, the `_evaluate_and_report` caller list, `history_pass_rate_runs`/`_HISTORY_MIN_SCORED` computation, `harness_eval_pass_rate`/`harness_eval_abstention_rate` aggregation shape, the `_KINDLESS_TABLES`/`credential_scope_events` precedent claims, `_row_to_dataclass()`'s silent-drop behavior, the `cmd_requeue`/`cmd_remove` refusal-shape precedent, and the v44 CHECK-constraint rebuild pattern — verified accurate against current HEAD.
+- Proposal-vs-code consequence check (B6): no exception-handler or test-fixture-invalidation defects found; the issue's own Integration Map already identifies the at-risk tests (row-count-as-n assertions) that its own proposal would break. No AC-coverage gaps beyond the two registry-placement decisions already flagged as deliberately open in the Confidence Check Notes.
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-09-08T05:34:25 - `5401886d-ebfd-404a-b6ba-9a7d5e921ddb.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-09-08T05:27:23 - `0a22a763-4b19-4747-8f5f-014eec53c4b5.jsonl`
+- `/ll:verify-issues` - 2026-09-08T05:18:59 - `699baeda-b8f1-41f9-8da9-919c1d319ce8.jsonl`
+- `/ll:wire-issue` - 2026-09-08T05:12:11 - `3ff9798c-ab49-4eb5-83c0-02979e7e5d61.jsonl`
+- `/ll:refine-issue` - 2026-09-08T05:01:17 - `2d631865-4036-473d-be4d-61c846909f05.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-08T02:29:08 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:13:08 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:10:16 - `79da3fca-fbcb-4530-ac1f-339229369837.jsonl`

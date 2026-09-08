@@ -3,7 +3,7 @@ id: FEAT-3399
 title: Cross-repo history.db aggregation (read-only workspace rollup)
 type: FEAT
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-07'
 labels:
 - path-a
@@ -14,12 +14,15 @@ learning_tests_required:
 - sqlite3
 confidence_score: 70
 outcome_confidence: 48
+verify_verdict: NON_VALID
 score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 10
 blocked_by:
 - FEAT-3398
+size: Very Large
+unproven_mechanism: true
 ---
 
 ## Summary
@@ -72,6 +75,24 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 Codebase-locator and codebase-analyzer agents confirmed the workspace-aggregation concepts this issue proposes are entirely new (no existing manifest, no existing multi-repo topology) and identified the one existing ATTACH-based precedent to build from:
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `scripts/little_loops/issue_history/rework.py` — `analyze_rework()` (called internally by `analyze_agent_quality()` at `agent_quality.py:493`) opens its own independent `_connect_readonly(db_path)` connection (`rework.py:292`), separate from the connection `analyze_agent_quality()` already has open; its own queries (`_load_issue_events` `rework.py:136` `FROM issue_events`, `_load_commits` `rework.py:151` `FROM commit_events`) are likewise unqualified. `_utils.py::orchestrator_labels()` (`_utils.py:74`, called from `agent_quality.py:505`) issues a third unqualified query (`FROM orchestration_runs`, `_utils.py:81`) against the connection `analyze_agent_quality` passes it. This widens the schema-qualification surface beyond `agent_quality.py` alone to include `rework.py` and `_utils.py`.
+- `scripts/little_loops/session_store/queries.py:240` `_snapshot_select()` is the only place in the codebase that issues schema-qualified cross-schema SQL (`main.{table}`/`snap.{table}`) — the sole existing model for what schema-qualified queries would look like if `agent_quality.py`'s/`rework.py`'s internal SQL were retargeted at `repo_N.*`.
+- No guard or constant for SQLite's attached-database-count limit exists anywhere (`SQLITE_MAX_ATTACHED`, 0 hits repo-wide), and no test anywhere (`scripts/tests/`) exercises more than one simultaneous `ATTACH` — the only `ATTACH` call site in the entire codebase remains the single one already named (`session_store/queries.py:289`, one writable scratch DB). The several-read-only-sources-onto-one-connection shape this issue proposes has zero confirming precedent in code or tests, not just an "opposite direction" precedent as previously noted.
+  > ⚠ Unproven mechanism — multi-ATTACH of several read-only sources has no confirming precedent
+- `scripts/little_loops/cli_args.py:260` `add_corpus_target_args(parser, *, required, project_help, all_help)` is the codebase's existing convention for a report-scope-changing CLI flag: a `mutually_exclusive_group` of `--project PATH` / `--all`, called from every scope-aware `ll-logs` subcommand (`extract`, `sequences`, `stats`, `scan-failures`, `dead-skills` — all in `cli/logs.py`). `cli/history.py`'s own subcommands (`summary`, `analyze`, `rework`, `quality`) have no such flag today and don't use this helper — it is a sibling-module convention, not yet used in `cli/history.py`.
+- `scripts/little_loops/cli/logs.py:2318` `_cmd_loop_fleet()` / `scripts/little_loops/cli/logs.py:1218` `_aggregate_fleet_runs(runs: list[_LoopRunRecord])` is the codebase's existing convention for aggregating data that is not safely summable per-source (rates, medians, deterministic top-picks): collect every source's raw records into one flat list first (`all_runs.extend(...)` per project), then call one aggregation function once over the combined list — never compute N per-source finished aggregates and then merge those. A second, different convention also exists for genuinely additive data: `_cmd_stats()` (`cli/logs.py:1634`) computes one finished per-DB dict per source and then sums those finished dicts field-by-field (`logs.py:1646-1653`) — this works there only because the fields being summed are raw additive counts, not rates.
+- No existing test asserts identical/parallel behavior for N=1 vs N>1 same-shaped multi-source inputs (searched `scripts/tests/` for parametrized N-count patterns — none found); the two closest neighbors are fixed-count examples (`test_ll_logs.py:5335` `test_loop_fleet_multiple_runs_aggregated`, 3 runs one project; `test_ll_logs.py:1871` `test_extract_multi_project_summary_text`, 2 named projects), not a parametrized parity assertion.
+- No existing checked-in multi-repo membership manifest of any name exists (searched `config-schema.json`, `cli/parallel.py`, `worktree_utils.py`, repo-wide for `repos:`/`members:`/`projects:`) — the only existing multi-project mechanism is runtime filesystem discovery (`discover_all_projects()`, `cli/logs.py:166`, walks the host's session-directory tree and decodes paths from JSONL), not a declared registry. Confirms `ll-workspace.yaml` would be the first persisted membership list in this codebase.
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **New manifest format convention**: JSON-Schema-shaped files in this codebase (`config-schema.json`, `fsm/fsm-loop-schema.json`) are documentation/test-fixture only — neither is ever loaded and executed through a schema-validator library at runtime (`jsonschema` is not a base dependency; 0 hits for `import jsonschema` repo-wide outside the optional `mcp` extra's transitive chain, per a `pyproject.toml:184` comment citing this codebase's "minimize third-party dependencies" rule). Every existing YAML manifest is instead hand-parsed with `yaml.safe_load()` plus manual type-dispatch — `decisions.py::load_decisions()`'s `dict.get("type")`-keyed dispatch into one of four dataclasses (`decisions.py:353-385`) is the closest model. A new `ll-workspace.yaml` parser fits this hand-parsed shape; adding a schema-validation dependency would be a new pattern, not a followed one.
+- **No shared YAML-loading helper exists anywhere** — 0 hits for `def load_yaml`/`def _load_yaml`/`def read_yaml` repo-wide. 35 separate `yaml.safe_load()` call sites exist across production modules (`decisions.py`, `fsm/loop_paths.py`, `sprint.py`, `fsm/persistence.py`, `artifact_templates.py`, `cli/harness.py`, `hooks/session_start.py`, etc.), each with its own local read/parse/error-handling — `discover_workspace_members()` would be the 36th independent parser, consistent with how every other YAML consumer in this codebase is structured, not an outlier needing a new shared utility.
+- **Read-only-intent convention is contested, not settled**: the `mode=ro` connection URI is universal across every read-only opener, but the defense-in-depth `PRAGMA query_only = ON` follow-up is inconsistently applied — present in `history_reader/_base.py`, `issue_history/evolution.py`, `codequery/codegraph.py`; absent in `session_store/queries.py`'s own `_connect_readonly()` variant, `cli/doctor.py`, `cli/doctor_trim.py`. No type-level marker (no `ReadOnly`/`Literal["ro"]` wrapper) or naming convention (no `_ro` suffix, 0 hits) exists anywhere in the codebase — read-only intent is expressed only in docstring prose plus the URI itself.
+- **CLI scope-flag convention**: `--format`/`--json` selection is a flat `if/elif` chain written directly in the subcommand handler body, dispatching to sibling `format_X_json/_yaml/_markdown/_text` functions (`cli/history.py:489-496`, `cli/logs.py::_cmd_stats()` and `_cmd_loop_fleet()`). Scope-changing flags like `--project`/`--all` never participate in that dispatch — they only change which records get collected into the list the *same*, unchanged formatting branch later runs over. No precedent exists anywhere in `cli/` for a flag whose presence swaps in a *different* formatter function; a prospective `--workspace` flag should be expected to follow the scope-flag shape (change what's collected) rather than branch the formatter choice.
+
 ### Files to Modify
 - New module (path not yet chosen) implementing `discover_workspace_members()` / `aggregate_history_dbs()` — no existing file to modify since neither symbol exists anywhere in the codebase today (confirmed 0 hits repo-wide for `WorkspaceMember`, `AggregationResult`, `discover_workspace_members`, `aggregate_history_dbs`).
 - `scripts/little_loops/history_reader/_base.py` — `_connect_readonly()` (line 60) is the read-only connection primitive named in the issue's own Call Path. It takes `db_path: Path` as a required positional param (already supports a non-default path) but calls `ensure_db(db_path)` first, which can create/migrate the file — relevant to the "never written, migrated" constraint if reused as-is for attaching member DBs.
@@ -90,6 +111,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - The `_open_db` variant (issue's "third variant", `evolution.py:30-47`/`codegraph.py:81-91`) has its own two callers, self-contained within each file — not affected unless this issue picks that variant to model.
 - `docs/reference/API.md:10421` — documents `queue_store`'s **own independent copy** of `SCHEMA_VERSION`/`_MIGRATIONS` ("copied rather than shared" from `session_store`) — a fourth, unrelated `SCHEMA_VERSION` namesake to disambiguate from when implementing the schema-skew gate.
 - `docs/reference/API.md:8209` and `CONTRIBUTING.md:299` — both document the `history_reader/_base.py` package-layout (`_connect_readonly`/`_row_to_dataclass`/`_stale_cutoff`) in prose/diagram form; these would need a mention of the new aggregation module once its location is chosen.
+
+_Second wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/pricing.py:11` — a code comment referencing `ll-history quality`'s cost-coverage gate; not an importer, but the only other production file mentioning the `quality` subcommand by name.
+- `scripts/little_loops/cli/artifact/dashboard.py:110` `schema_version_warning(source_version)` — a second, independently-implemented schema-mismatch detector with its own literal wording (`"Schema version mismatch at export time: ..."`), asserted verbatim by three tests in `test_feat3304_artifact_dashboard.py` (`test_schema_version_stamped:318`, `test_schema_version_mismatch_warns:328`, `test_schema_version_warning_helper:331-334`). It is a **warn** semantic (artifact still produced with a caveat), whereas this issue's decision rule is **skip-and-report** — a different action on the same detection. No requirement to reuse the wording, but any new workspace-level skew message should be a deliberate choice relative to this existing one, not a coincidental divergence.
 
 ### Naming collision (read carefully)
 - **Two distinct functions are both named `_connect_readonly()`** and are NOT the same code: `scripts/little_loops/history_reader/_base.py:60` (calls `ensure_db()` first, sets `PRAGMA query_only = ON`, returns `None` on any error, never raises) vs. `scripts/little_loops/session_store/queries.py:189` (no `ensure_db()`, no pragma, **raises** on failure — returns `sqlite3.Connection`, not `Connection | None`). `analyze_agent_quality()`'s call path uses the `history_reader/_base.py` variant. `build_snapshot_db()` (below) uses the `session_store/queries.py` variant. A third variant (`issue_history/evolution.py:30-47`, `codequery/codegraph.py:81-91`) deliberately skips `ensure_db()` "to avoid failing on a database created by the test harness." Pick the variant deliberately; do not assume there is only one.
@@ -117,6 +142,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **ATTACH/DETACH test precedent is NOT in `test_session_store_queries.py`** (confirmed zero `ATTACH` hits there) — it lives in `test_feat3304_artifact_dashboard.py:734-760` `TestBuildSnapshotDb`, which tests `build_snapshot_db()` behaviorally (return value, error paths) rather than inspecting the ATTACH SQL directly; no existing test exercises multiple simultaneous ATTACHes.
 - **Byte-for-byte-identical assertion precedent** for the no-manifest fallback AC: `test_worker_pool.py:2267-2294` `test_update_branch_base_no_epic_branch_uses_base_branch` (run both branches, assert identical captured argv) and the simpler `test_issues_cli.py:83-103` `test_next_id_count_one_matches_default` (exact string-equality). Model the "manifest absent falls back to today's output" test on these, not a diff/checksum approach.
 - `TestHistoryQualitySubcommand` (`test_cli_history.py:220-271`) — existing `ll-history quality` coverage; no `--workspace` flag exists today, so a new flag/test would be a fifth class member following the same argv-patch + `tmp_path` fixture shape as the existing four tests.
+
+_Second wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_cli_registry.py` `DOC_STRINGS_PRESENT` (parametrized list from line 20, 111 existing entries) — a repo-wide convention where every historical CLI-surface addition gets a `(doc_path, expected_string, issue_id)` tuple asserting the string appears in `docs/reference/CLI.md`. No entry exists yet for `ll-history quality` or `--workspace`; add a `("docs/reference/CLI.md", "--workspace", "FEAT-3399")`-shaped entry once the flag's doc prose lands.
+- `scripts/tests/test_config_schema.py` — per-property test convention for every `additionalProperties: false` schema block (e.g. `test_decisions_in_schema:319`, `test_compression_in_schema:344`), each asserting the block still rejects unknown keys and that the new property is declared. If `history.workspace_manifest_path` is added to `config-schema.json`, it needs a matching new test here — not currently named in this issue's Tests or Configuration sections.
+- `scripts/tests/test_verdict_grammar_regression.py::test_high_confidence_abstention_warns` (lines 158-176) — asserts against `caplog.at_level("WARNING", logger="little_loops.history_reader")`, i.e. the shared logger *name* used by `history_reader/_base.py`'s `_connect_readonly()` is test-coupled, though neither of its two log message strings (`_base.py:75,82`) is. A new aggregation module logging skipped members should reuse this logger name if it wants the same test-visibility, or be deliberate about diverging.
+- `_build_history_db(path)` — two near-duplicate, module-private, single-project DB factories exist (`test_feat3304_artifact_dashboard.py:68-139`, `test_feat3323_sse_bridge.py:877-923`), neither shared nor imported by the other. No existing test builds more than one repo/history.db per test case anywhere in the suite. `aggregate_history_dbs()` tests calling one of these N times to build N member DBs would need to either duplicate the factory a third time or promote one to a shared/importable fixture — there's no precedent for the latter.
 
 ### Documentation
 
@@ -155,6 +186,17 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 Analyzer and pattern-finder agents pinned down the schema-version marker and the one existing ATTACH precedent these rules are built on:
 
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `QualityAnalysis` (`issue_history/agent_quality.py:135-152`)'s five fields split into two combinability classes: `definitions`/`notes`/`min_sample_size` are static/config-derived and trivially combinable (dedupe/assert-agreement) across repos; `windows: list[QualityWindow]` and `retry_windows: list[RetryWindow]` are NOT safely combinable by list-concatenation. `QualityMetric.value` (`_rate_metrics()`, `agent_quality.py:398`) is an already-divided rate (`numerator / closed_count`) with no denominator preserved on the object, and `QualityMetric.verdict`/`baseline_period` plus `RetryWindow.mean_iterations`/its verdict are each computed relative to a per-repo baseline window selected only from that repo's own time series (`agent_quality.py:388-391`, `:344-352`, `:440-443`). Concatenating two repos' `windows` rows for the same `(period, orchestrator)` key would produce two verdicts each computed against a different repo's own baseline, not one workspace-wide baseline — `AggregationResult.totals: QualityAnalysis` as a merge of N finished per-repo `QualityAnalysis` instances is unsound for these two fields specifically.
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- **Exact unqualified-SQL call sites for schema-qualification approach (a)** (8 total, all `conn.execute(...)` with a bare `FROM <table>`): `agent_quality.py:229` (`issue_events`), `agent_quality.py:245` (`issue_sessions`, a view), `agent_quality.py:259` (`correction_retirements`), `agent_quality.py:273` (`user_corrections`), `agent_quality.py:301-304` (`usage_events`), `agent_quality.py:419-422` (`loop_runs`), `rework.py:136-137` (`issue_events`), `rework.py:150-151` (`commit_events`), `_utils.py:81-82` (`orchestration_runs`).
+- **Critical constraint on approach (a)**: SQLite resolves an unqualified table name against a connection with multiple ATTACHed schemas by searching `main` then attached schemas in attach order — it does NOT union across them. A bare `FROM issue_events` on a connection with several `repo_N` schemas ATTACHed would read only one member's rows, not all of them. Approach (a) is therefore not optional schema-qualification but a requirement for correctness, at all 8 call sites above, via f-string interpolation of the schema prefix (`_snapshot_select()`'s `f"... FROM main.{table}"` pattern, `session_store/queries.py:240`) — SQLite bind parameters cannot parameterize identifiers (schema/table names). Approach (b) (call `analyze_agent_quality()` once per member via that member's own throwaway connection, bypassing ATTACH for this call) requires zero SQL changes at any of the 8 sites.
+- `read_schema_version()` (`session_store/queries.py:201-214`, `SELECT value FROM meta WHERE key = 'schema_version'`) is itself unqualified (`FROM meta`) — the schema-skew gate's own precondition read needs the same qualification treatment as the 8 sites above if it is to run against an ATTACHed `repo_N` schema rather than a member's own throwaway connection.
+- `issue_history/evolution.py::_open_db()` (`evolution.py:30-47`) is the closest existing template for a read-only opener that skips `ensure_db()`: checks `db_path.exists()` first and returns `None` if missing, opens `mode=ro` URI + `PRAGMA query_only = ON`, catches `sqlite3.Error` to return `None`. Its docstring states directly this "avoids the `ensure_db` migration path inside `_connect_readonly`, which fails when the database was created by the test harness." Adapting `history_reader/_base.py::_connect_readonly()` for ATTACH use (rather than bypassing it) would mean reshaping it into this same structure — drop the `ensure_db(db_path)` call, add the `exists()` guard.
+
 ### Decision Rules
 
 - **Schema-skew gate**: a member's `read_schema_version(conn)` value that does not equal the aggregator's own `SCHEMA_VERSION` (`session_store/schema.py`, currently 47) is skipped and reported via `AggregationResult.skipped`, never unioned. No normalization path is implied — skew is always "report and skip," never "coerce."
@@ -185,6 +227,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/ARCHITECTURE.md:712` (Producer→Consumer Flow) and `docs/reference/API.md:92,8207` to describe the workspace rollup instead of purely single-repo framing; add a `--workspace` subsection to `docs/reference/CLI.md:3162-3206`.
 - Add a `--workspace` flag test to `TestHistoryQualitySubcommand` (`test_cli_history.py:220-271`), following the same argv-patch + `tmp_path` shape as its four existing tests.
 - Cross-check FEAT-3398's Integration Map citations of `analyze_agent_quality()`/`format_agent_quality_markdown()` signatures if this issue lands first and changes them.
+
+_Second wiring pass added by `/ll:wire-issue`:_
+- Add a `("docs/reference/CLI.md", "--workspace", "FEAT-3399")` entry to `test_wiring_cli_registry.py`'s `DOC_STRINGS_PRESENT` list once the `--workspace` flag's CLI.md doc lands.
+- If `history.workspace_manifest_path` is added to `config-schema.json`, add a matching `test_*_in_schema` test to `test_config_schema.py` following the existing per-property convention (e.g. `test_decisions_in_schema:319`).
+- Decide whether the new skip-and-report schema-skew message should align with or deliberately diverge from `cli/artifact/dashboard.py::schema_version_warning()`'s existing warn-semantic wording.
 
 ## Impact
 
@@ -217,12 +264,32 @@ _Added by `/ll:confidence-check` on 2026-09-07_
 - Ambiguity (10/25): the same open design decisions (module location, connection variant, per-schema query approach) require judgment calls during implementation; no `unapplied_decision` gap is flagged, but real design latitude remains.
 - Complexity (10/25): moderate breadth (~7 integration sites spanning a new module, CLI flag, config, and docs) combined with genuinely novel logic — `AggregationResult.totals` merging N `QualityAnalysis` instances has no precedent anywhere in the codebase (searched for `merge`/`combine`/`union`/`__add__`, zero hits).
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-09-08
+- **Reason**: Issue too large for single session (score 11/11, Very Large) — split along the two function boundaries already named in its own Program Design section.
+
+### Decomposed Into
+- FEAT-3409: Workspace membership discovery for cross-repo history.db aggregation
+- FEAT-3410: ATTACH-based cross-repo history.db aggregation and --workspace CLI flag
+
 ## Status
 
 **Open** | Created: 2026-09-07 | Priority: P1
 
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-09-08T06:21:27 - `c53583bd-6c7a-49a7-8685-76b64ad999da.jsonl`
+- `/ll:verify-issues` - 2026-09-08T06:16:52 - `42ba8fee-f552-42bf-8e73-2858e0347678.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-09-08T06:09:01 - `5bbbcd0d-088c-47f1-86ca-ca14cf2bebb7.jsonl`
+- `/ll:verify-issues` - 2026-09-08T06:01:30 - `9331fb04-0e5f-4097-bf3e-90dd4f399ff6.jsonl`
+- `/ll:wire-issue` - 2026-09-08T05:54:45 - `13e4c95c-33cc-4227-a6b4-b630f560a670.jsonl`
+- `/ll:refine-issue` - 2026-09-08T05:46:21 - `46d6dd91-e406-471d-b545-136c89f50194.jsonl`
+- `/ll:decide-issue` - 2026-09-08T03:47:37 - `5ee7833d-6870-4dea-8737-b081e10a35f4.jsonl`
+- `/ll:refine-issue` - 2026-09-08T03:46:38 - `5ee7833d-6870-4dea-8737-b081e10a35f4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-08T02:29:08 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:13:32 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`
 - `/ll:confidence-check` - 2026-09-08T02:10:50 - `8a6cd350-cac1-4f1e-a42b-0221ef8ee56a.jsonl`

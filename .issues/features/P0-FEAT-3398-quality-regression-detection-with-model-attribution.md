@@ -3,7 +3,7 @@ id: FEAT-3398
 title: Quality-regression detection with model/host/version attribution
 type: FEAT
 priority: P0
-status: open
+status: done
 discovered_date: '2026-09-07'
 labels:
 - path-a
@@ -378,12 +378,25 @@ explicit test-only commitment so an implementer can't silently skip that file pa
   typed reader path (`recent_orchestration_runs`/`OrchestrationRun` and the
   `loop_runs` counterparts), closing the B6 AC-coverage gap noted above.
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-09-07
+- **Reason**: Issue too large for single session (score 11/11, Very Large)
+
+### Decomposed Into
+- FEAT-3404: Add ll_version history.db stamp and typed reader path (orchestration_runs/loop_runs)
+- FEAT-3405: Quality-regression detection, attribution, and report/CLI wiring (blocked_by FEAT-3404)
+
 ## Status
 
-**Open** | Created: 2026-09-07 | Priority: P0
+**Done** | Created: 2026-09-07 | Priority: P0
 
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-09-08T03:38:19 - `2c3dcc18-94f9-46a0-aa50-9e1b85813520.jsonl`
 - `/ll:verify-issues` - 2026-09-08T03:23:44 - `678c326e-fc86-494b-a748-b2de144186b6.jsonl`
 - `/ll:verify-issues` - 2026-09-08T03:15:59 - `678c326e-fc86-494b-a748-b2de144186b6.jsonl`
 - `/ll:wire-issue` - 2026-09-08T03:07:40 - `10d02141-1a61-4549-ac75-31b74fcc4540.jsonl`
