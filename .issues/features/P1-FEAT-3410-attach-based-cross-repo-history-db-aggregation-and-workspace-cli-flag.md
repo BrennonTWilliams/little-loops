@@ -513,7 +513,14 @@ line 487, before the unconditional formatter dispatch at 489-496.
 - **No-manifest fallback**: an empty list (`[]`, never `None`) from FEAT-3409's
   `discover_workspace_members()` falls back to exactly today's single-repo
   `ll-history quality` output, byte-for-byte — no partial-aggregation mode with
-  one member.
+  one member. (2026-09-08, from FEAT-3409 third-pass review) `[]` is only the
+  *absent-by-discovery* outcome. When the manifest path was declared — an
+  explicit `--workspace <path>` or `history.workspace_manifest_path` — and the
+  file does not exist, `discover_workspace_members()` raises
+  `FileNotFoundError` naming the path; the CLI must surface that as a user
+  error (non-zero exit, message on stderr), never catch it into the
+  single-repo fallback. `discover_workspace_members()` also takes a
+  keyword-only `start: Path | None` seed; the CLI may leave it unset.
 - **`role` is consumed, not just carried** (added 2026-09-08 from FEAT-3409
   review): the per-repo breakdown labels each member with `member.role`
   alongside its repo path (e.g. `little-loops (primary)`), and

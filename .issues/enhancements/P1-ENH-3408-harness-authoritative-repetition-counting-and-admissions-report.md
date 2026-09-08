@@ -27,8 +27,9 @@ score_change_surface: 18
 
 Make ll-harness's pass-rate/abstention-rate reporting count authoritative repetitions
 instead of raw attempt rows, and surface admission interventions in the run report. Third
-of three issues decomposed from ENH-3397 — consumes the schema from ENH-3406 and the
-writers/gate from ENH-3407 (both landed, commit `28e64617d`). This is the issue that
+of three issues decomposed from ENH-3397 — consumes the schema from ENH-3406 (landed
+`b55eb2872`) and the writers/gate from ENH-3407 (landed `28e64617d`, a `b55eb2872`
+descendant). This is the issue that
 actually changes what `n` means in reported numbers — the anti-p-hacking guarantee
 ENH-3397 exists to deliver doesn't hold until this issue lands, even though
 ENH-3406/ENH-3407 build its plumbing.
@@ -163,7 +164,7 @@ minimum n (deferred to the n-run-redundancy follow-on).
   `history_judged_runs` (currently "...≥3 non-abstained prior runs...") to say
   authoritative attempts; add a `history_admissions` row; mention the DSL admissions line
   in the "Retrying a run (`--retry-of ID`, ENH-3407)" section just past line 313.
-- `docs/guides/EVALUATION_GUIDE.md` — lines 308 and 446 ("nothing reads `harness_events`
+- `docs/guides/EVALUATION_GUIDE.md` — line 458 ("nothing reads `harness_events`
   from the CLI for pass-rate purposes"); the "Across runs" paragraph starting
   "`harness_eval_pass_rate` counts every row with a non-NULL `semantic_passed`"; the
   "Reading the Signal" → "A single run" prose describing `_HISTORY_MIN_SCORED` as "3 prior
@@ -346,6 +347,16 @@ graded attempt plus two infra retries ... earliest graded attempt's verdict") ca
 under `_retry_refusal`'s timeout-only gate, and that the admissions tabulation had no
 defined scope and no way to obtain attempt ids. Rewritten as D2 and D4.
 
+_`/ll:verify-issues` — 2026-09-08:_ verdict NEEDS_UPDATE. Re-checked every file/line/quote
+citation against HEAD: all code-level citations (dataclass fields, function signatures,
+`writers.py::_admit_retry`, `schema.py:1377`, `queries.py::recent`, the D2 timeout-only
+retry gate) matched exactly; `ll-verify-evidence` found no fabricated quotes; no active
+required decision rules. Found and corrected two stale citations: (1) the Summary's commit
+attribution collapsed ENH-3406 and ENH-3407 onto one commit — split into their actual
+commits (`b55eb2872` schema, `28e64617d` writers/gate); (2) the
+`docs/guides/EVALUATION_GUIDE.md` "nothing reads `harness_events`..." quote was cited at
+lines 308/446 but now lives at line 458 — corrected in Files to Modify.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-08_
@@ -357,6 +368,7 @@ Both concerns raised (fan-out gap; `cmd_dsl` scope) are now resolved in Design D
 D1 and D3. Scores not yet re-run.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-08T23:13:18 - `6838caf5-f9a1-4968-903c-7ebff6345cb2.jsonl`
 - `/ll:confidence-check` - 2026-09-08T22:55:59 - `b8f1a5da-c225-4249-91e2-295287d87d5e.jsonl`
 - `/ll:verify-issues` - 2026-09-08T22:43:56 - `de8d5d84-5a41-428b-835e-669b7afc984e.jsonl`
 - `/ll:wire-issue` - 2026-09-08T22:19:01 - `d465057a-e29b-4c19-8620-0af7f2ad1788.jsonl`

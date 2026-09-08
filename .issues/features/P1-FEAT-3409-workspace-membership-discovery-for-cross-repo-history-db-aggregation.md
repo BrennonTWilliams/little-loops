@@ -49,11 +49,16 @@ paths from JSONL — not a declared registry.
 
 ## Expected Behavior
 
-`discover_workspace_members(manifest_path: Path | None = None) ->
-list[WorkspaceMember]` parses the manifest into `WorkspaceMember(repo_path: Path,
-role: str, db_path: Path)` rows. With no manifest present at the resolved
-discovery path, the function returns `[]` (never `None`) rather than raising, so
-downstream consumers can fall back to single-repo behavior byte-for-byte.
+`discover_workspace_members(manifest_path: Path | None = None, *, start: Path |
+None = None) -> list[WorkspaceMember]` parses the manifest into
+`WorkspaceMember(repo_path: Path, role: str, db_path: Path)` rows. When the
+implicit ancestor walk (Manifest Path Resolution step 3) finds no manifest, the
+function returns `[]` (never `None`) rather than raising, so downstream consumers
+can fall back to single-repo behavior byte-for-byte. When the path came from the
+explicit argument or the config key (steps 1–2) and does not exist, the function
+raises `FileNotFoundError` — see "Absent-by-discovery vs absent-by-declaration"
+under Manifest Path Resolution. `start` seeds steps 2 and 3 (defaults to
+`Path.cwd()`); see the `start` note there.
 
 ### Manifest Format
 
@@ -82,9 +87,14 @@ Rules:
   surface it in the per-repo breakdown (see Decision Rules → Cross-issue
   consistency) — a required field no consumer reads would be decorative.
 - `db_path` is optional. When absent it is composed statically as
-  `repo_path / ".ll" / "history.db"` — a plain `Path` join, **not**
+  `(repo_path / ".ll" / "history.db").resolve()` — a plain `Path` join, **not**
   `resolve_history_db()`, so the `LL_HISTORY_DB` collapse hazard (Decision
-  Rules) is never reintroduced by the default. "Absent" means the key is
+  Rules) is never reintroduced by the default. The default is `.resolve()`d
+  exactly like an explicit `db_path` (`Path.resolve()` is non-strict and works
+  on nonexistent paths), so the duplicate check below compares like with like:
+  without it, an explicit entry aliasing `<repo>/.ll/history.db` through a
+  symlinked `.ll/` would compare unequal to the unresolved default and slip
+  past the check. "Absent" means the key is
   missing **or** its value is `None`/empty string (`db_path:` with no value,
   `db_path: ""`) — the presence check is `entry.get("db_path")`, not
   `"db_path" in entry`, so a bare `db_path:` line never reaches
@@ -111,9 +121,17 @@ Rules:
   static default is the only fallback). A member with a custom `history.db_path`
   must repeat it in the manifest. Document this limitation in the function
   docstring and the `docs/reference/CONFIGURATION.md` row.
+- **`~` expansion**: `repo` and `db_path` values are passed through
+  `Path.expanduser()` before resolution, so `repo: ~/src/sibling` works in a
+  gitignored machine-local manifest (the use case the relative-path rule
+  below anticipates). Without this, `Path("~/x").resolve()` silently yields
+  `<manifest_dir>/~/x`. The config-key path (`history.workspace_manifest_path`)
+  gets the same treatment. The `history.db_path` precedent does not expand
+  `~`; this is a deliberate, documented divergence, not an oversight.
 - Prefer relative paths in a committed manifest: absolute member paths in a
   checked-in `ll-workspace.yaml` leak machine-local paths (and would trip
-  `ll-verify-private-refs` in this repo). Gitignoring the file is left to the
+  `ll-verify-private-refs` in this repo — it excludes by directory, not file
+  type, so a root-level YAML is in scope). Gitignoring the file is left to the
   consuming project; this issue does not change `ll-init`.
 
 ### Manifest Path Resolution
@@ -127,31 +145,72 @@ Precedence, highest first:
    members. The resolved path is what `discover_workspace_members()` operates
    on for every subsequent step. Precedence is unchanged — only normalization
    is added.
-2. `history.workspace_manifest_path` from `.ll/ll-config.json` (relative
-   values resolve against the project root), read inside
+2. `history.workspace_manifest_path` from the project config (relative
+   values resolve against the project root; `~` is expanded), read inside
    `discover_workspace_members()` itself via a small `_config_manifest_path()`
-   helper mirroring `session_store/db.py::_config_db_path(root=)` — so the
-   config key is reachable without every caller re-loading config. Like its
-   precedent, this reads the raw JSON only and does **not** merge
-   `.ll/ll.local.md` overrides — a known limitation worth a docstring line,
-   since a machine-local manifest path is exactly what a user would put there.
+   helper — so the config key is reachable without every caller re-loading
+   config. **Read through `BRConfig(root).history.workspace_manifest_path`,
+   not a raw-JSON mirror of `session_store/db.py::_config_db_path`** (revised
+   2026-09-08 review). `_config_db_path` reads raw JSON because
+   `session_store/db.py` is a low layer that cannot import `little_loops.config`;
+   the new top-level `workspace.py` has no such constraint (`design_tokens.py`,
+   a top-level sibling, already imports `BRConfig` at
+   `design_tokens.py:25`), and `BRConfig._load_config()` (`config/core.py:292-`)
+   already deep-merges `.ll/ll.local.md` frontmatter on top of the base config
+   (BUG-3123). Since a machine-local manifest path is exactly what a user
+   would put in `ll.local.md`, the raw-JSON precedent's documented
+   "does not merge local overrides" limitation is dropped rather than
+   inherited. `BRConfig` tolerates a missing config file (returns defaults,
+   `config/core.py:304-308`), so a project with no `.ll/ll-config.json`
+   yields `None` here and falls through. Two consequences to document in the
+   `_config_manifest_path()` docstring: (a) `BRConfig.__init__` calls
+   `load_env_fallback(project_root)` (`config/core.py:287`), so this step has
+   the same `.env`-into-`os.environ` side effect every `ll-*` CLI already has;
+   (b) the import is done lazily inside the helper (as `design_tokens.py`
+   does) to keep module import cost low for callers that pass an explicit
+   `manifest_path`.
 
-   **This step deliberately inherits the `find_project_root()` behavior that
-   step 3 avoids.** `_config_db_path(root=)` locates the config via
-   `resolve_ll_dir(start=root)` → `find_project_root()`, so from a workspace
-   parent dir with a stray `.ll`-only ancestor (e.g. `~/AIProjects/.ll` on the
-   dev machine) this step reads `~/AIProjects/.ll/ll-config.json` if one
-   exists and honors its `history.workspace_manifest_path`. Accepted as-is:
-   the key is opt-in, a config file placed at a workspace parent is a
-   plausible way to declare a workspace-level manifest, and when no such
-   config exists the step returns `None` and falls through. Document this in
-   the `_config_manifest_path()` docstring and cover it with one test (stray
+   **Root location for this step still uses `find_project_root(start)`**
+   (`paths.py:14-41`) and therefore deliberately inherits the stray-`.ll`
+   behavior that step 3 avoids: from a workspace parent dir with a stray
+   `.ll`-only ancestor (e.g. `~/AIProjects/.ll` on the dev machine) this step
+   reads `~/AIProjects/.ll/ll-config.json` if one exists and honors its
+   `history.workspace_manifest_path`. Accepted as-is: the key is opt-in, a
+   config file placed at a workspace parent is a plausible way to declare a
+   workspace-level manifest, and when no root resolves or the key is unset the
+   step returns `None` and falls through. Document this in the
+   `_config_manifest_path()` docstring and cover it with one test (stray
    ancestor `.ll/ll-config.json` carrying the key → that manifest is used;
-   stray `.ll/` with no config → falls through to step 3).
-3. **Nearest-ancestor walk**: starting at `Path.cwd().resolve()`, the first
-   directory (cwd itself, then each parent) containing `ll-workspace.yaml`
-   wins. When no ancestor holds one, the resolved path is
-   `Path.cwd() / "ll-workspace.yaml"` (which does not exist → `[]`).
+   stray `.ll/` with no config → falls through to step 3), plus one test that
+   an `ll.local.md` override of the key is honored.
+3. **Nearest-ancestor walk**: starting at `start.resolve()` (`Path.cwd()`
+   when `start` is `None`), the first directory (`start` itself, then each
+   parent) containing `ll-workspace.yaml` wins. When no ancestor holds one,
+   the resolved path is `start / "ll-workspace.yaml"` (which does not exist
+   → `[]`).
+
+**Absent-by-discovery vs absent-by-declaration** (2026-09-08 review): the
+"never raise on absent" contract applies **only to step 3**. When the manifest
+path came from step 1 (explicit argument) or step 2 (config key) and the
+resolved path does not exist, `discover_workspace_members()` raises
+`FileNotFoundError` naming the path and its provenance (`"explicit
+manifest_path"` / `"history.workspace_manifest_path"`). Rationale: a typo in
+either would otherwise silently produce single-repo output, and FEAT-3410
+cannot distinguish "no workspace declared" from "workspace misconfigured"
+from a bare `[]`. The resolver knows the provenance; the consumer does not.
+`_resolve_manifest_path()` therefore returns `(path, declared: bool)` (or an
+equivalent small frozen result type) rather than a bare `Path`, so the
+`exists()` guard can branch on provenance. This narrows the Constraints
+entry "no manifest present must degrade cleanly" to the discovery case.
+
+**The `start` seed** (2026-09-08 review): `discover_workspace_members(...,
+*, start: Path | None = None)` seeds both step 2's `find_project_root(start)`
+and step 3's ancestor walk; `None` means `Path.cwd()`. This mirrors
+`resolve_history_db(root=)` (`session_store/db.py:121-132`), whose docstring
+records why a cwd-only anchor failed once already: `ll-mcp` receives
+`--project-root` far from cwd (BUG-3181). FEAT-3410 is a CLI and may leave
+`start` unset today; the parameter exists so a non-CLI caller never has to
+`os.chdir()` to steer discovery. Step 1 ignores `start` entirely.
 
    This single rule replaces an earlier two-step design
    (`find_project_root(cwd) / "ll-workspace.yaml"`, else cwd). That design was
@@ -227,7 +286,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - Repo discovery must not introduce a second registry beyond the manifest itself
   — this is the first and only declared multi-repo membership list in the
   codebase.
-- No manifest present must degrade cleanly, never raise.
+- No manifest **discovered** (ancestor walk, step 3) must degrade cleanly,
+  never raise. A manifest **declared** (explicit arg or config key) but
+  missing raises `FileNotFoundError` — see Manifest Path Resolution →
+  Absent-by-discovery vs absent-by-declaration.
 
 ## Files to Modify
 
@@ -284,6 +346,7 @@ _Wiring pass added by `/ll:wire-issue` (second pass):_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` § `history` (table rows around `:616-620`, alongside the existing `history.db_path` row) — the authoritative doc site for any new `history.workspace_manifest_path` config key; not previously listed here.
 - `docs/reference/API.md:3532-3563` (`### discover_all_projects` section) — the existing *runtime-discovered* projects concept this issue's declared-manifest approach should cross-reference; distinct from the already-listed lines 92/8207.
+- **`docs/reference/API.md` — new module section and table row** (2026-09-08 review): every top-level module has its own `## little_loops.<name>` section (e.g. `## little_loops.decisions` at `:12174`) plus a row in the module table at `:46` (`| \`little_loops.decisions\` | Decisions and rules log data layer (FEAT-1891) |`). The new `workspace.py` needs both — a `## little_loops.workspace` section documenting `WorkspaceMember`, `discover_workspace_members()`, the resolution chain, and the raise-vs-degrade provenance rule, and a table row tagged `(FEAT-3409)`. This is distinct from the *framing* edits at `:92`/`:8208-8210`. No test enforces module coverage in API.md (checked `test_wiring_reference_docs.py`, `test_wiring_guides_and_meta.py`, `test_symbol_claims.py` — none enumerates modules), so a miss here would not fail the suite; add a `("docs/reference/API.md", "## little_loops.workspace", "FEAT-3409")` row to `DOC_STRINGS_PRESENT` to pin it.
 
 ### Tests
 
@@ -382,14 +445,15 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
 
 ### Signatures
 
-- `discover_workspace_members(manifest_path: Path | None = None) -> list[WorkspaceMember]` — `None` triggers the three-step resolution chain in Expected Behavior → Manifest Path Resolution; returns `[]` (never `None`) when the resolved path does not exist
-- `_resolve_manifest_path(manifest_path: Path | None) -> Path` — private resolver: explicit arg (`.resolve()`d, not verbatim — see Manifest Path Resolution step 1) → config key → nearest-ancestor walk from cwd (see `_find_manifest_upward`); mirrors the explicit-arg-wins contract of `decisions.py::_resolve_path()` (`decisions.py:26-41`) but does **not** delegate to `find_project_root()` for the ancestor-walk default (see Manifest Path Resolution step 3). Always returns an absolute path.
+- `discover_workspace_members(manifest_path: Path | None = None, *, start: Path | None = None) -> list[WorkspaceMember]` — `None` `manifest_path` triggers the three-step resolution chain in Expected Behavior → Manifest Path Resolution; `start` (default `Path.cwd()`) seeds steps 2 and 3. Returns `[]` (never `None`) when step 3 finds nothing; raises `FileNotFoundError` when a step-1/step-2 path does not exist.
+- `_ResolvedManifest(path: Path, declared: bool)` — private `frozen=True` result of the resolver; `declared` is `True` for steps 1–2 (explicit arg / config key) and `False` for step 3, so the caller can branch raise-vs-`[]` on provenance.
+- `_resolve_manifest_path(manifest_path: Path | None, start: Path) -> _ResolvedManifest` — private resolver: explicit arg (`.expanduser().resolve()`d, not verbatim — see Manifest Path Resolution step 1) → config key (`_config_manifest_path(find_project_root(start))`) → nearest-ancestor walk from `start` (see `_find_manifest_upward`); mirrors the explicit-arg-wins contract of `decisions.py::_resolve_path()` (`decisions.py:26-41`) but does **not** delegate to `find_project_root()` for the ancestor-walk default (see Manifest Path Resolution step 3). `.path` is always absolute.
 - `_find_manifest_upward(start: Path) -> Path | None` — private walk over `start.resolve()` and its parents returning the first `<dir>/ll-workspace.yaml` that exists, else `None`
-- `_config_manifest_path(root: Path | None) -> Path | None` — private config reader mirroring `session_store/db.py::_config_db_path(root=)`; `root` is the project root resolved from cwd (same primitive `_config_db_path` uses — `resolve_ll_dir` → `find_project_root`, so it inherits the stray-`.ll` ancestor behavior documented in Manifest Path Resolution step 2) and may be `None` (no config lookup then)
+- `_config_manifest_path(root: Path | None) -> Path | None` — private config reader: lazily imports `BRConfig` (as `design_tokens.py:25` does), returns `BRConfig(root).history.workspace_manifest_path` with `~` expanded and relative values resolved against `root`; `None` when `root` is `None` or the key is unset. Inherits `BRConfig`'s `ll.local.md` deep-merge (BUG-3123). `root` is `find_project_root(start)` and therefore carries the stray-`.ll` ancestor behavior documented in Manifest Path Resolution step 2.
 
 ### Call Path
 
-`discover_workspace_members(manifest_path)` -> `_resolve_manifest_path()` (explicit arg `.resolve()`d → config key → `_find_manifest_upward(Path.cwd())` → `Path.cwd() / "ll-workspace.yaml"`; always absolute) -> `Path.exists()` guard (return `[]`) -> `yaml.safe_load(manifest_path.read_text())` -> top-level shape check (`dict` with `members` list, else `ValueError`; `None` from an empty file fails this check) -> per-entry shape check (`entry` is a mapping; `entry["repo"]`/`entry["role"]` present — `KeyError` — and non-empty `str` — `ValueError`; `entry.get("db_path")`, when truthy, is a `str` — `ValueError`) -> per-entry construction of `WorkspaceMember(repo_path=(manifest_dir / entry["repo"]).resolve(), role=entry["role"], db_path=(repo_path / db_path_raw).resolve() if (db_path_raw := entry.get("db_path")) else repo_path / ".ll" / "history.db")` -> duplicate-`db_path` check (`ValueError`) -> returned `list[WorkspaceMember]`. No existence check on `repo_path`/`db_path`. No caller exists yet in this codebase — FEAT-3410's ATTACH-based aggregation entry point is the sole intended consumer, feeding each returned member's `db_path` into a per-member `ATTACH DATABASE` call in the shape of `build_snapshot_db` (`scripts/little_loops/session_store/queries.py:246-301`, today's only `ATTACH DATABASE` call site, single-source/single-alias — a multi-member attach loop has no existing precedent to confirm against).
+`discover_workspace_members(manifest_path, start=None)` -> `start = (start or Path.cwd()).resolve()` -> `_resolve_manifest_path(manifest_path, start)` (explicit arg `.expanduser().resolve()`d, `declared=True` → config key via `_config_manifest_path(find_project_root(start))`, `declared=True` → `_find_manifest_upward(start)` → `start / "ll-workspace.yaml"`, `declared=False`; `.path` always absolute) -> `Path.exists()` guard (`declared` → raise `FileNotFoundError` naming path and provenance; not `declared` → return `[]`) -> `yaml.safe_load(manifest_path.read_text())` -> top-level shape check (`dict` with `members` list, else `ValueError`; `None` from an empty file fails this check) -> per-entry shape check (`entry` is a mapping; `entry["repo"]`/`entry["role"]` present — `KeyError` — and non-empty `str` — `ValueError`; `entry.get("db_path")`, when truthy, is a `str` — `ValueError`) -> per-entry construction of `WorkspaceMember(repo_path=(manifest_dir / Path(entry["repo"]).expanduser()).resolve(), role=entry["role"], db_path=((repo_path / Path(db_path_raw).expanduser()) if (db_path_raw := entry.get("db_path")) else repo_path / ".ll" / "history.db").resolve())` — note the single trailing `.resolve()` applies to **both** the explicit and default `db_path` branches -> duplicate-`db_path` check (`ValueError`) -> returned `list[WorkspaceMember]`. No existence check on `repo_path`/`db_path`. No caller exists yet in this codebase — FEAT-3410's ATTACH-based aggregation entry point is the sole intended consumer, feeding each returned member's `db_path` into a per-member `ATTACH DATABASE` call in the shape of `build_snapshot_db` (`scripts/little_loops/session_store/queries.py:246-301`, today's only `ATTACH DATABASE` call site, single-source/single-alias — a multi-member attach loop has no existing precedent to confirm against).
 
 ### Decision Rules
 
@@ -423,6 +487,31 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
 - **Return type on absent manifest**: **Resolved** — `[]`, never `None`. A
   `None` branch would force every consumer (FEAT-3410 first) to null-check
   before iterating.
+- **Absent-by-discovery vs absent-by-declaration** (2026-09-08 review, third
+  pass): **Resolved** — `[]` applies only when the ancestor walk (step 3)
+  finds nothing. A path that came from the explicit arg or the config key
+  and does not exist raises `FileNotFoundError` naming the path and its
+  provenance. Rationale: a typo in `--workspace <path>` or
+  `history.workspace_manifest_path` would otherwise silently degrade to
+  single-repo output, and the consumer cannot tell "no workspace" from
+  "misconfigured workspace" from a bare `[]`. `_resolve_manifest_path()`
+  returns `_ResolvedManifest(path, declared)` so the guard can branch.
+- **Default `db_path` resolution** (2026-09-08 review, third pass):
+  **Resolved** — the static default is `.resolve()`d exactly like an explicit
+  `db_path`, so the duplicate check compares resolved against resolved. Without
+  it, an explicit entry aliasing `<repo>/.ll/history.db` through a symlinked
+  `.ll/` would slip past the check. `Path.resolve()` is non-strict, so this
+  does not violate the no-existence-check rule.
+- **`~` expansion** (2026-09-08 review, third pass): **Resolved** — `repo`,
+  `db_path`, and the config-key value are passed through `Path.expanduser()`
+  before resolution. `history.db_path`'s reader does not expand `~`; the
+  divergence is deliberate (a gitignored machine-local manifest is the
+  expected home for `~`-paths) and documented in the docstring and
+  `CONFIGURATION.md` row.
+- **`start` seed** (2026-09-08 review, third pass): **Resolved** — keyword-only
+  `start: Path | None = None` seeds steps 2 and 3 (`None` → `Path.cwd()`),
+  mirroring `resolve_history_db(root=)` (BUG-3181's fix for `ll-mcp`'s
+  `--project-root` being far from cwd). Step 1 ignores it.
 - **Missing-field / bad-shape exceptions**: **Resolved** — missing `repo`/`role`
   raises `KeyError`; non-mapping top level, missing/non-list `members`, a
   non-mapping entry, a non-string or empty `repo`/`role`, or a present
@@ -438,10 +527,20 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
   verbatim; precedence is unchanged. `_resolve_manifest_path()` always
   returns an absolute path.
 - **Config-key step and `find_project_root()`** (2026-09-08 review):
-  **Resolved** — step 2 keeps `_config_db_path`'s `resolve_ll_dir` →
-  `find_project_root` primitive and therefore inherits the stray-`.ll`
-  ancestor behavior step 3 avoids. Accepted and documented (Manifest Path
-  Resolution step 2) rather than special-cased; one test pins each branch.
+  **Resolved** — step 2 locates the project root via `find_project_root(start)`
+  and therefore inherits the stray-`.ll` ancestor behavior step 3 avoids.
+  Accepted and documented (Manifest Path Resolution step 2) rather than
+  special-cased; one test pins each branch.
+- **Config-key reader: `BRConfig` vs raw JSON** (2026-09-08 review, third
+  pass): **Resolved** — read via `BRConfig(root).history.workspace_manifest_path`,
+  not a raw-JSON mirror of `_config_db_path`. The precedent reads raw JSON
+  only because `session_store/db.py` cannot import `little_loops.config`
+  (layering); `workspace.py` is top-level and `design_tokens.py:25` already
+  imports `BRConfig` from that tier. `BRConfig` deep-merges `ll.local.md`
+  (BUG-3123), which removes the "local overrides not merged" limitation the
+  raw-JSON design had to document. Cost: `BRConfig.__init__` runs
+  `load_env_fallback()` (`config/core.py:287`); acceptable, every CLI already
+  does. Import is lazy inside `_config_manifest_path()`.
 - **Symlinked members**: **Resolved** — `.resolve()` follows symlinks;
   `repo_path`/`db_path` are stored as real paths. Docstring note only.
 - **Frozen vs mutable**: **Resolved** — `frozen=True` (see Types).
@@ -452,6 +551,12 @@ Key evidence: `config-schema.json:2117-2146` (`history` object, existing `db_pat
   FEAT-3410 previously had zero mentions of `role`, making this issue's
   required field dead data. FEAT-3410 now carries a rule that its per-repo
   breakdown labels each member with `member.role` alongside the repo path.
+  Third consistency point (2026-09-08 review, third pass): FEAT-3410's
+  "no-manifest fallback" rule assumes `[]` is the only absent outcome. It now
+  also notes that a declared-but-missing manifest (explicit `--workspace`
+  path or config key) surfaces as `FileNotFoundError` from
+  `discover_workspace_members()`, which the CLI must report as a user error
+  rather than swallow into the single-repo fallback.
 
 ### Codebase Research Findings
 
@@ -472,21 +577,29 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
    `yaml.safe_load()` per the `decisions.py::load_decisions()` dispatch model
    and the Manifest Format rules (`members:` list; `repo`/`role` required;
    `db_path` optional, defaulting to `repo/.ll/history.db` by static `Path`
-   join; relative paths resolved against the manifest's parent dir).
+   join; relative paths resolved against the manifest's parent dir; `~`
+   expanded via `Path.expanduser()` on `repo` and `db_path`; the default
+   `db_path` is `.resolve()`d the same as an explicit one).
    Also: `db_path` relative to the entry's `repo_path`; duplicate resolved
    `db_path` → `ValueError`; empty file → `ValueError`; `members: []` → `[]`;
    no existence checks; docstring notes that a member's own `history.db_path`
    config is not consulted.
-2. Implement `_find_manifest_upward()` and `_resolve_manifest_path()`
-   (explicit arg → config key → nearest-ancestor walk from cwd → cwd literal)
-   and the no-manifest graceful-degradation branch: explicit `Path.exists()`
-   check, `[]` return, documented fallback target in the docstring. Do not
-   route the default through `find_project_root()` (see Manifest Path
+2. Implement `_find_manifest_upward()`, `_ResolvedManifest`, and
+   `_resolve_manifest_path(manifest_path, start)` (explicit arg → config key
+   → nearest-ancestor walk from `start` → `start / "ll-workspace.yaml"`),
+   threading the keyword-only `start: Path | None = None` seed from
+   `discover_workspace_members()`. The `Path.exists()` guard branches on
+   `declared`: `True` → `FileNotFoundError` naming the path and provenance;
+   `False` → `[]` with the documented fallback target in the docstring. Do
+   not route the default through `find_project_root()` (see Manifest Path
    Resolution step 3 for why).
 3. Implement config registration for the configurable manifest path as
    `history.workspace_manifest_path` (decided — see Proposed Solution →
    Decision Rationale); add a matching `test_*_in_schema` test following the
    existing per-property convention (e.g. `test_decisions_in_schema:319`).
+   Implement `_config_manifest_path(root)` on top of
+   `BRConfig(root).history.workspace_manifest_path` (lazy import, `~`
+   expanded, relative resolved against `root`) — not a raw-JSON reader.
 4. Add a graceful-degradation test class modeled exactly on
    `TestDecisionsGracefulDegradation` (`test_decisions.py:639-651`) /
    `TestLoadDesignTokensFallbacks` (`test_design_tokens.py:227-258`): one test
@@ -498,6 +611,18 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
    aggregation-specific CLI/output docs belong to FEAT-3410, not here).
    Anchors corrected per the Documentation section's drift finding; re-check
    before editing since these files move often.
+6. Add the new module's own `## little_loops.workspace` section to
+   `docs/reference/API.md` (pattern: `## little_loops.decisions` at `:12174`)
+   covering `WorkspaceMember`, `discover_workspace_members()` (including
+   `start`), the three-step resolution chain, the raise-vs-`[]` provenance
+   rule, and the `~`/symlink/`history.db_path`-not-consulted notes; plus a
+   row in the module table at `:46` tagged `(FEAT-3409)`. Add a
+   `("docs/reference/API.md", "## little_loops.workspace", "FEAT-3409")`
+   row to `test_wiring_reference_docs.py::DOC_STRINGS_PRESENT` so the
+   section's presence is test-pinned (no module-coverage gate exists
+   otherwise — see Documentation). Also add the `~`-expansion and
+   `FileNotFoundError`-on-declared-missing notes to the
+   `docs/reference/CONFIGURATION.md` `history.workspace_manifest_path` row.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -531,7 +656,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Config-step class (2026-09-08 review, second pass): stray ancestor
   `.ll/ll-config.json` carrying `history.workspace_manifest_path` → that
   manifest is used; stray ancestor `.ll/` with no config → falls through to
-  the ancestor walk.
+  the ancestor walk; (third pass) an `.ll/ll.local.md` frontmatter override
+  of `history.workspace_manifest_path` is honored over the base config value
+  (proves the `BRConfig` reader, not a raw-JSON one, is in use).
+- Provenance class (2026-09-08 review, third pass): explicit `manifest_path`
+  pointing at a nonexistent file → `FileNotFoundError` whose message names
+  the path; `history.workspace_manifest_path` pointing at a nonexistent file
+  → `FileNotFoundError`; no config key and no ancestor manifest → `[]` (the
+  only degrade branch). Also: `start=` pointing at a directory holding a
+  manifest, while cwd is an unrelated `tmp_path` dir with none, finds the
+  manifest without `monkeypatch.chdir`; `start=` is ignored when
+  `manifest_path` is explicit.
+- Path-normalization class (2026-09-08 review, third pass): `repo: ~/x`
+  and `db_path: ~/x.db` expand `~` (`monkeypatch.setenv("HOME", tmp_path)`);
+  an explicit `db_path` that aliases the default through a symlinked `.ll/`
+  collides with a second entry's default and raises `ValueError` (proves the
+  default is resolved too).
 - `scripts/tests/test_config_schema.py` — add a `test_history_workspace_manifest_path_in_schema`
   matching per-property test for the new `history.workspace_manifest_path` property.
 
@@ -564,18 +704,38 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - `discover_workspace_members()` parses a well-formed `ll-workspace.yaml` into
   the correct `WorkspaceMember` list: `repo_path`/`db_path` are absolute,
   resolved against the manifest's parent directory; an entry without
-  `db_path` gets `repo_path / ".ll" / "history.db"` without calling
+  `db_path` gets `(repo_path / ".ll" / "history.db").resolve()` without calling
   `resolve_history_db()` (test: set `LL_HISTORY_DB` in the environment and
-  assert two members still get two distinct `db_path` values).
+  assert two members still get two distinct `db_path` values). The default
+  is resolved like an explicit `db_path`: an explicit entry aliasing another
+  entry's default through a symlinked `.ll/` raises the duplicate
+  `ValueError`.
 - `WorkspaceMember` is `frozen=True` (attribute assignment raises
   `FrozenInstanceError`).
-- Absent manifest degrades to `[]` (not `None`) without raising, covered by a
+- Absent-by-discovery manifest (ancestor walk finds nothing, no explicit arg,
+  no config key) degrades to `[]` (not `None`) without raising, covered by a
   dedicated graceful-degradation test class.
+- Absent-by-declaration manifest raises: an explicit `manifest_path` that
+  does not exist, or a `history.workspace_manifest_path` that does not exist,
+  raises `FileNotFoundError` whose message names the path — one test per
+  provenance. `[]` is never returned for a declared-but-missing manifest.
+- `~` is expanded in `repo`, `db_path`, and `history.workspace_manifest_path`
+  values (`Path.expanduser()` before `.resolve()`), covered by a test that
+  sets `HOME` to `tmp_path`.
+- `discover_workspace_members()` accepts keyword-only `start: Path | None =
+  None` seeding the config-root lookup and the ancestor walk; a test passes
+  `start=` pointing at a manifest-holding directory while cwd holds none and
+  asserts the manifest is found without `monkeypatch.chdir`; a second test
+  asserts `start=` is ignored when `manifest_path` is explicit.
+- The config-key step reads through `BRConfig` (not raw JSON): a test writes
+  `.ll/ll-config.json` with one `history.workspace_manifest_path` and
+  `.ll/ll.local.md` frontmatter overriding it, and asserts the override wins.
 - Default-path resolution follows the documented chain: explicit arg wins
   (and is `.resolve()`d — a relative arg still yields absolute
   `repo_path`/`db_path` on every returned member);
   `history.workspace_manifest_path` is honored when the arg is `None`; with no
-  config key, the nearest ancestor of cwd holding `ll-workspace.yaml` wins —
+  config key, the nearest ancestor of `start` (default cwd) holding
+  `ll-workspace.yaml` wins —
   one test per branch, using `tmp_path` + `monkeypatch.chdir`, plus one
   regression test for the stray-`.ll` case: cwd is a `ws/` subdir of
   `tmp_path` (manifest present in `ws/`, no `.ll/`, no `.git`) while
@@ -614,6 +774,10 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   by `test_workspace_manifest_path_default_none`/
   `test_workspace_manifest_path_override` in
   `test_config.py::TestHistoryConfig` (`:4245-4326`).
+- `docs/reference/API.md` carries a `## little_loops.workspace` section and a
+  module-table row for the new module, pinned by a
+  `("docs/reference/API.md", "## little_loops.workspace", "FEAT-3409")` row
+  in `test_wiring_reference_docs.py::DOC_STRINGS_PRESENT`.
 
 ## Verification Notes
 
@@ -773,6 +937,22 @@ stray-`.ll` failure of `find_project_root()` from a workspace parent dir;
 no-existence-check rules; member-config `history.db_path` limitation noted;
 `role` consumer added to FEAT-3410; Step 5 doc anchors corrected; local
 override non-merge noted for the config reader._
+
+_Manual review (third pass) — 2026-09-08 — folded in: (1) declared-but-missing
+manifest (explicit arg / config key) now raises `FileNotFoundError`; only the
+ancestor-walk miss degrades to `[]` (`_ResolvedManifest.declared` carries
+provenance); (2) default `db_path` is `.resolve()`d like an explicit one so
+the duplicate check compares like with like; (3) config-key step reads via
+`BRConfig(root).history.workspace_manifest_path` (lazy import), inheriting the
+`ll.local.md` deep-merge, replacing the raw-JSON mirror of `_config_db_path`
+and its documented non-merge limitation; (4) keyword-only `start: Path | None`
+seed for steps 2–3, mirroring `resolve_history_db(root=)` / BUG-3181;
+(5) `docs/reference/API.md` needs a `## little_loops.workspace` section and
+module-table row, test-pinned via `DOC_STRINGS_PRESENT`; plus `~` expansion
+on `repo`/`db_path`/config-key values pinned as a Decision Rule. Constraints,
+Signatures, Call Path, Implementation Steps 1–3 and new Step 6, Tests, and
+Acceptance Criteria updated to match. The prior `VALID` verify verdict
+predates these edits._
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-08T22:55:29 - `6dd2bd32-5c1a-431a-9f43-0c09572d9b18.jsonl`

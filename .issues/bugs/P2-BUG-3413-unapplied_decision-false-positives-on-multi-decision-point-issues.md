@@ -127,6 +127,14 @@ computing `sel_ids`/`rej_ids`:
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `TestUnappliedDecision` (`scripts/tests/test_issue_parser.py:5228-5610`) is the class covering `_unapplied_decision_pairs()`'s formatter, `_unapplied_decision()`. Every test in it builds its fixture through a shared helper, `_issue(self, proposed_solution: str, **directive_sections: str)` (`test_issue_parser.py:5236-5241`), which takes the `## Proposed Solution` body as a positional string and any number of directive-section bodies as keyword args (underscores become spaces in the heading). Every test imports `_unapplied_decision` inline inside the test method body, not at module top, and asserts either `== []` or `any(<section> in r and <identifier> in r for r in reasons)` against the formatted reason strings — no existing test in this class imports `_unapplied_decision_pairs` directly or passes `_issue()` a `proposed_solution` containing more than one `**Decision point:**` marker or more than one `> **Selected:**` callout.
+- BUG-3412's own multi-decision-point fixtures live in a *different* file and class: `TestDecisionGroups` in `scripts/tests/test_issue_parser_unresolved.py` (e.g. `test_bold_decision_point_marker_splits_a_same_tier_run`, line 1323) — built as inline string-literal concatenation with inline imports, asserting directly against `_iter_decision_groups()`/`is_group_resolved()`/`locate_unresolved_decisions()` return values rather than formatted reason strings. This is a separate fixture convention from `TestUnappliedDecision`'s `_issue()` helper.
+- `TestPhase7cFixtures` (`scripts/tests/test_decide_issue_skill.py:264-330`) is the one place in the test suite that imports `_unapplied_decision_pairs()` directly (not the `_unapplied_decision()` formatter), against golden fixture files under `scripts/tests/fixtures/issues/` (e.g. `ENH-3280-fixture-recommendation-marker.md`) — a third, separate fixture convention (external golden files rather than inline content).
+
 ## Program Design
 
 ### Types
@@ -149,6 +157,16 @@ computing `sel_ids`/`rej_ids`:
 (existing) -> `_decision_point_marker_positions()` (BUG-3412, reused) -> new
 grouping step -> per-group `_selected_option_title()` + `_decision_identifiers()`
 (existing) -> union into the function's `list[tuple[str, str]]` return.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- `_decision_point_marker_positions(body: str, fences: list[tuple[int, int]]) -> list[int]` (`issue_parser.py:2797`) requires a `fences` argument the caller must compute itself — `_decision_groups_in_body()` computes it locally via `fences = fence_spans(body)` (`issue_parser.py:2834`) immediately before use; `_unapplied_decision_pairs()` does not currently hold a `fences` value (its only fence-aware step happens inside `_option_block_spans()`, which computes its own `fences = fence_spans(text)` internally at `issue_parser.py:1513` and does not expose it). Any reuse of `_decision_point_marker_positions()` needs an equivalent `fences = fence_spans(proposed_body)` call of its own.
+- `_selected_option_title()` (`issue_parser.py:1402`) is a single `_SELECTED_CALLOUT_RE.search()` call — by construction it can return at most one title from the whole input string, with no per-decision-point segmentation. Its docstring (`issue_parser.py:1405-1409`) documents this first-occurrence behavior as intentional per ENH-3256 for the single-decision-point case, not as an oversight.
+- `_option_block_spans()`'s return type `list[tuple[int, int, str]]` (`(start, end, heading_line)`) carries no group/tier/decision-point id in the tuple — grouping by decision point is not latent in the existing span data and requires comparing span start offsets against `_decision_point_marker_positions()` output as new logic.
+- No function in `issue_parser.py` currently iterates decision-point groups and unions a per-group `set` result across groups. The one existing multi-group merge, `locate_unresolved_decisions()` (`issue_parser.py:3049`), merges via a list-comprehension filter (`[g for g in groups if not is_group_resolved(...)]`) over per-group booleans, not a set union. The file's only `set` union (`|=`) is the flat, non-grouped one inside `_unapplied_decision_pairs()` itself (`issue_parser.py:1629`) — the exact line this issue's fix changes from whole-section to per-group scope.
+- `_decision_groups_in_body()`'s run-splitting technique (`issue_parser.py:2816-2862`, tag matches with tier name, sort by position, then bucket into runs by checking `[mp for mp in marker_positions if prev_pos < mp < pos]` between consecutive matches) uses plain list-comprehension range checks, not `bisect` — there is no `bisect` import or usage anywhere in `issue_parser.py`.
 
 ## Implementation Steps
 
@@ -227,6 +245,19 @@ print(_unapplied_decision_pairs(content))
 # WINNING identifier, not a rejected-option leftover.
 ```
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
+
+- Precise anchors for the steps a per-group rewrite must preserve, in call order (`_unapplied_decision_pairs()`, `issue_parser.py:1550-1691`):
+  1. Last-block trailing-prose trim (`issue_parser.py:1587-1592`) — if the *last* option span contains a `> **Selected:**` callout, the span end is clamped to that callout line's end so free-form rationale prose after the winner's callout does not leak into REJ (comment at `issue_parser.py:1578-1586`, BUG-3279).
+  2. Per-block own-callout-line masking (`issue_parser.py:1603-1611`) — each span's own `> **Selected:**` line (if present) is stripped from that block's text before identifier extraction, so a rejected block's cross-reference callout does not leak the winner's identifiers into that block.
+  3. `sel_ids`/`rej_ids` split (`issue_parser.py:1625-1629`) — currently whole-section; this is the exact line where a second decision point's winning block is misclassified as rejected.
+  4. BUG-3295 containment exclusion (`issue_parser.py:1631-1643`): `subsumed = {r for r in rej_ids if any(r in s for s in sel_ids)}` — one-directional (rejected-in-selected only).
+  5. BUG-3289 shared-subject exclusion (`issue_parser.py:1644-1649`): `shared_ids = _shared_subject_identifiers(content)`, subtracted last: `discriminating = (rej_ids - subsumed) - sel_ids - shared_ids`. The comment at `issue_parser.py:1644-1647` states this ordering (`subsumed` → `sel_ids` → `shared_ids`) is intentional so shared-subject exclusion never masks the containment exclusion — this relative ordering must hold within each group, not just once globally.
+  6. Self-scan scrub (`issue_parser.py:1660-1665`): `scrub_start = min(dr_start, spans[-1][1])`, all option spans up to `scrub_start` are deleted from a copy of `proposed_body` before directive-section scanning, so option blocks don't self-fire when `## Proposed Solution` is later scanned as a directive section.
+- `_unapplied_decision_pairs()` has exactly two production callers: `check_format_gaps()` (`issue_parser.py:1177`) and `_unapplied_decision()` (`issue_parser.py:1538`, a thin formatter per its own docstring at `issue_parser.py:1541`, called at `:1546`) — confirmed via unfiltered repo-wide grep, no other production caller exists.
+
 ## Relation to BUG-3412
 
 Sister bug, same root symptom ("multiple decision points sharing state get
@@ -266,5 +297,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-08T23:07:32 - `4eafacf3-ae84-4013-9a60-e7cb82f6fe90.jsonl`
 - `/ll:format-issue` - 2026-09-08T22:58:53 - `e2e838a6-6a34-4a2d-913f-3f74b4596a32.jsonl`
 - `/ll:capture-issue` - 2026-09-08T22:42:53 - `4f0efb73-1906-4514-9695-1db0defa8ce3.jsonl`
