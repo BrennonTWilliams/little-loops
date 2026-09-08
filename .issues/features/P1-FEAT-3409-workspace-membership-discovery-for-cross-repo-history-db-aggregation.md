@@ -216,16 +216,6 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 **Option B**: New top-level `workspace` config section, mirroring the `decisions` object's registration shape (`config-schema.json:704-728`) — requires a new `WorkspaceConfig` dataclass plus wiring in `config/core.py`, `config/__init__.py`, and `test_config_schema.py`'s `_DATACLASS_SECTION_MAP`.
 
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-**Decision point:** Default `manifest_path` resolution (cwd-relative vs. project-root-anchored)
-
-**Option A**: Keep the bare cwd-relative default as currently specified in Expected Behavior — `discover_workspace_members(manifest_path: Path = Path("ll-workspace.yaml"))`, resolved against whatever the process's current working directory happens to be at call time.
-
-**Option B**: Anchor the default via `find_project_root(Path.cwd())` (`scripts/little_loops/paths.py:14-41`) — e.g. `find_project_root(Path.cwd()) / "ll-workspace.yaml"` — mirroring `decisions.py::_resolve_path()` (`decisions.py:26-41`), the function backing this issue's own cited dispatch model (`load_decisions()`), which explicitly anchors its default "at the resolved project root (ENH-2927) instead of a bare cwd-relative path."
-
-> **Selected:** Option B — this issue's own chosen precedent (`decisions.py::load_decisions()`) deliberately rejects a bare cwd-relative default for exactly the reason `resolve_ll_dir()`'s docstring states: it "let stray `.ll/` directories accumulate outside the project root" (`paths.py:52-54`). A bare-cwd `ll-workspace.yaml` default reproduces the same failure mode one level up (repo root instead of `.ll/`) — a caller invoking `discover_workspace_members()` from a subdirectory or worktree would silently miss the manifest. `resolve_ll_dir()` itself isn't directly reusable (the manifest lives at the repo root, not under `.ll/`), but `find_project_root()` is the same primitive one level up, with no other call site resolving a repo-root-relative manifest default this way to confirm the composition against.
-
 ### Decision Rationale
 
 **Decision point: Malformed-manifest posture**
@@ -288,10 +278,6 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 - **Frozen-vs-mutable is not resolved by majority precedent**: a repo-wide sweep confirms the split is real at scale, not an artifact of the two cited examples — 158 frozen-dataclass declarations vs. 327 plain `@dataclass` declarations across `scripts/little_loops/`. Frequency alone does not favor either convention for `WorkspaceMember`.
 - **Malformed-manifest three-way tie is exhaustive, not under-sampled**: a broader sweep of all ~45 `yaml.safe_load()`/`yaml.load()` call sites in the package found no fourth handling convention and no other manifest-shaped parser beyond the three already cited (fail-closed `artifact_templates.py:161-163`, fail-open `fsm/loop_paths.py:31-33` / `config/core.py:83-86`, no-wrap `decisions.py:381`). Further codebase research will not resolve this — it needs an explicit choice, not more searching.
 - **No other multi-instance `db_path`-derivation precedent exists**: confirmed no call site anywhere in the codebase invokes `resolve_history_db()` more than once per process with different `root=` values, and no other function with an equivalent per-instance-derivation shape exists to model the composition hazard's handling against.
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- **Default `manifest_path` resolution is unspecified relative to project root, and the issue's own cited dispatch model does not use a bare cwd-relative default**: Expected Behavior's signature is `discover_workspace_members(manifest_path: Path = Path("ll-workspace.yaml"))` — a bare relative `Path` literal. But `decisions.py::_resolve_path()` (`decisions.py:26-41`), the function backing this issue's own cited dispatch model (`load_decisions()`), explicitly rejects that shape: its docstring states it anchors the default "at the resolved project root (ENH-2927) instead of a bare cwd-relative path," delegating to `little_loops.paths.resolve_ll_dir()` -> `find_project_root()` (`paths.py:14-41,45`). `resolve_ll_dir()`'s own docstring calls building `Path(".ll/...")` against a bare cwd the exact pattern that "let stray `.ll/` directories accumulate outside the project root" (`paths.py:52-54`) — the same class of bug a bare-cwd `ll-workspace.yaml` default would reproduce for a manifest one level higher (repo root, not `.ll/`). `resolve_ll_dir()` itself is not directly reusable (`ll-workspace.yaml` is proposed to live at the repo root, not under `.ll/`), but `find_project_root(Path.cwd())` is the same primitive one level up. No other call site in the codebase resolves a repo-root-relative (non-`.ll/`) manifest default this way, so there is no existing precedent to confirm the exact composition against — this is a gap in the issue's own specified default, not a resolved question.
 
 ## Implementation Steps
 
@@ -494,8 +480,6 @@ _Added by `/ll:confidence-check` on 2026-09-08_
   the choice determines which of two Dependent-Files wiring lists apply.
 
 ## Session Log
-- `/ll:decide-issue` - 2026-09-08T19:42:39 - `ec62a17d-6d92-4eb9-8c86-638b441ac713.jsonl`
-- `/ll:refine-issue` - 2026-09-08T19:34:12 - `98fcfd72-df15-46ed-a5e8-3df189a0e0ba.jsonl`
 - `/ll:verify-issues` - 2026-09-08T19:21:57 - `9151ddc6-ab2d-4793-bd0e-e517d6829851.jsonl`
 - `/ll:reconcile-issue` - 2026-09-08T19:17:31 - `8253aa54-816e-4b30-a515-5729bc18e0a3.jsonl`
 - `/ll:refine-issue` - 2026-09-08T19:11:30 - `2ff580d6-652f-49e4-b298-e76bb54b7ee2.jsonl`

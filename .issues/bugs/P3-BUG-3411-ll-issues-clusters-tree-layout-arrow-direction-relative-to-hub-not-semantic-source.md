@@ -8,12 +8,6 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T19:25:17Z'
-confidence_score: 60
-outcome_confidence: 52
-score_complexity: 17
-score_test_coverage: 10
-score_ambiguity: 0
-score_change_surface: 25
 ---
 
 # BUG-3411: ll-issues clusters tree layout: arrow direction relative to hub, not semantic source
@@ -86,17 +80,6 @@ correct fixed-direction semantics.
 ### Documentation
 - N/A — legend text in `_EDGE_MEANING` already documents the intended fixed semantics; no doc change needed
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
-
-- The codebase's other directed-edge renderers derive arrow/label direction by checking membership against the edge's own stored `(from_id, to_id)`, never by comparing to the current traversal node: `_render_cluster_diagram()` (`scripts/little_loops/cli/issues/clusters.py:475-489`, with an explicit comment at `clusters.py:472-474` — "Arrow head direction matches the semantic edge direction, not the topo-sort layout order"), `format_epic_tree()` (`scripts/little_loops/dependency_mapper/formatting.py:252-296`, walks a fixed `blocker → blocked` map), and `format_text_graph._arrow()` (`dependency_mapper/formatting.py:199-204`, tests membership in fixed edge sets). `_render_cluster_tree._annot()` (`clusters.py:210-214`) is the one place in this area that instead compares `from_id == parent`.
-- `_annot()`'s existing `rel_of: dict[frozenset[str], tuple[str, str, str]]` lookup (`clusters.py:201,206,212`) already carries the full `(from_id, to_id, rel)` tuple — the fixed direction is already in scope at the call site; `_annot` currently discards `from_id` in favor of comparing to `parent`.
-- Caveat: `_render_cluster_tree`'s walk is structurally undirected (bidirectional adjacency, multi-root by degree — `clusters.py:199-206,248`), unlike `format_epic_tree`/`format_text_graph`'s single-root, single-direction walks. Neither is a direct precedent for a bidirectional walk computing arrow direction at each step; `_render_cluster_diagram`'s fixed-direction arrowhead logic is the closest same-file precedent, but it walks a fixed topo-sorted sequence, not a bidirectional adjacency.
-- No shared from_id/to_id edge-direction resolver utility exists in the codebase (searched for `resolve_edge_direction`, `edge_of`, `resolve_edge` — only `_resolve_edge_types` matched, which resolves edge-*type* sets, not direction).
-- No prior bug fix in this codebase addresses this "arrow flips depending on traversal root" class of bug (searched for "arrow", "semantic direction", "direction relative" — no prior issue or commit found; the only related precedent is the same-file `_render_cluster_diagram` fixed-direction logic above).
-- Existing cluster CLI tests (`scripts/tests/test_issues_cli.py::TestClustersCommand`, class starting `test_issues_cli.py:4770`) assert relationship-type presence and edge counts (e.g. `test_tree_multi_root` at `:5464-5488`, `test_tree_cross_edge_shown_for_dag` at `:5490-5527`) but none assert the `→`/`←` glyph's direction against semantic source — confirming no existing regression coverage for this bug. `test_dependency_mapper.py::TestFormatEpicTree` (`:1004-1066`) uses the same literal-substring-assertion convention for direction-labeled output (e.g. `"⮡ blocks FEAT-002"` at `:1052`), which a new clusters regression test could follow.
-
 ## Program Design
 
 ### Signatures
@@ -105,7 +88,7 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 ### Call Path
 
-`clusters._render_cluster_tree()` -> `clusters._annot(parent, child)`
+`_render_cluster_tree()` -> `_annot(parent, child)` -> `rel_of[frozenset({parent, child})]`
 
 ## Implementation Steps
 
@@ -158,25 +141,6 @@ def _annot(parent: str, child: str) -> str:
     return f"{arrow} {colorize(rel, EDGE_COLOR.get(rel, '37'))}"
 ```
 
-## Confidence Check Notes
-
-_Added by `/ll:confidence-check` on 2026-09-08_
-
-**Readiness Score**: 60/100 → STOP — ADDRESS GAPS
-**Outcome Confidence**: 52/100 → LOW
-
-### Gaps to Address
-- Root cause is unverified: `_annot()`'s `arrow = "→" if from_id == parent else "←"` is mathematically equivalent to `arrow = "→" if to_id == child else "←"`, because for a two-node edge `parent`/`child` always partition `{from_id, to_id}` — the comparison already reflects the edge's fixed stored direction, not tree-walk position. The cross-edge glyph difference the issue reports (hub shows `→` for one `blocked_by` edge, `←` for another) arises because the hub is `from_id` (blocked) in one edge and `to_id` (blocker) in the other — genuinely different semantic roles, not a computation bug. Re-verify against a real repro before implementing.
-- `_render_cluster_diagram` (`clusters.py:472-489`, the issue's own cited "fixed direction" precedent) also varies its arrow glyph (▼ vs ▲) by direction relative to render position (`forward = (a_id, b_id) in edge_map`) rather than using one fixed glyph per relationship type — this contradicts the issue's premise that "the same relationship type should always render the same glyph" is the codebase's established pattern.
-- The Proposed Solution code sample (lines 51-56) is byte-identical to the current `_annot()` implementation (`clusters.py:210-214`) — it demonstrates no behavior change and cannot serve as an implementation reference as written.
-- Proposed Solution offers two unresolved alternative approaches ("show `from_id → to_id`" vs. "restructure the label to name both IDs explicitly") without picking one — resolve via `/ll:decide-issue` once the underlying premise above is re-confirmed.
-
-### Outcome Risk Factors
-- Ambiguity is at its floor: the issue's own proposed fix is logically a no-op, and no correct alternative implementation is specified — expect this to require re-diagnosis before any code change, not just implementation.
-- No regression test currently exists for tree-layout arrow direction; the issue proposes adding one, but the correct expected behavior needs to be settled first.
-
 ## Session Log
-- `/ll:confidence-check` - 2026-09-08T19:44:38 - `ec62a17d-6d92-4eb9-8c86-638b441ac713.jsonl`
-- `/ll:refine-issue` - 2026-09-08T19:39:16 - `c6c87baa-cf5d-4331-a1e1-c1b5804310d4.jsonl`
 - `/ll:format-issue` - 2026-09-08T19:31:30 - `0c192ccc-320f-40d5-b594-123949e3b0f3.jsonl`
 - `/ll:capture-issue` - 2026-09-08T19:25:23 - `11906448-7df7-4fe2-877f-bca8a2a33d89.jsonl`
