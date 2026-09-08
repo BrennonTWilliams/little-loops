@@ -6,7 +6,7 @@ type: ENH
 priority: P1
 status: open
 discovered_date: '2026-09-08'
-verify_verdict: NON_VALID
+verify_verdict: VALID
 parent: ENH-3397
 labels:
 - harness
