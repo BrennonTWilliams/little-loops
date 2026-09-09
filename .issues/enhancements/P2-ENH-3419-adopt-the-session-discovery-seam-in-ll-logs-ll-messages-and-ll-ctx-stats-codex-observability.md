@@ -356,6 +356,7 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T21:40:45 - `3ffb97df-a1e4-4572-9fad-20e96964df3d.jsonl`
 - `review (manual, pre-implementation round 2: Implementation Steps step 4 "last-total_token_usage" contradiction fixed to sum-of-last_token_usage; real ~/.codex corpus is 399×0.130.0 + 1×0.152.1 → user_message dedup is the common path (text under payload.message), <turn_aborted> added to the injected-tag filter; ctx-stats Codex reader returns None on zero token_count and skips info:null; lossy-decode fallback removal added to Behavior Parity; both-spellings probe scoped to TestDiscover helper only, covers --project too; logs.py:725 is generate_index not a session glob; Codex updated_at confirmed epoch seconds)` - 2026-09-09T23:55:00
 - `/ll:confidence-check` - 2026-09-09T21:23:02 - `378ef5f9-2efe-4141-9b76-45d94b59278c.jsonl`
 - `review (manual, pre-implementation: exit-0 decision reverted to rc=1 + loop grep reordered (test_ll_logs.py:1224,1822 lock rc=1); all 8 discover_all_projects callers must thread resolved host, getattr for direct-call tests; --host per-subcommand on ll-logs via _add_host_arg; _has_ll_activity/_extract_cwd_from_project deleted + ENH-3422 coordination; _extract_messages_with_context/_extract_turn_pairs named; per-host --all iteration; _extract_ll_event_streams session-id fallback; sum-of-last_token_usage pinned; _backfill_host hoist; downstream-consumer AC gap closed; verify_verdict → VALID)` - 2026-09-09T23:30:00
