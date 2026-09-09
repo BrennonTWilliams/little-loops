@@ -47,9 +47,13 @@ is the **`target` short-circuit** in `evaluate_convergence()` (`fsm/evaluators.p
 a candidate within `tolerance` of `target` returns verdict `target` *before* any comparison
 to `previous`, and `harness-optimize.yaml` routes `target → commit_and_log` and keeps
 iterating. With baseline 0.85, `target_score` 0.80, tolerance 0.02, a candidate scoring 0.79
-is committed — a regression below the frozen baseline. A frozen-reference check that runs
-*before* the target check is the only placement that fires; one added "alongside `previous`"
-in the progress/stall branch is a tautology in this loop and must not be how this is built.
+is committed — a regression below the frozen baseline. The target short-circuit is the
+**entry point** for sub-baseline acceptance, not the only path: once one such candidate is
+committed, `capture_prev` reseeds `prev_score` to 0.79 and the plain `progress` branch then
+accepts 0.795 too, because the transitivity argument only holds while `prev_score >= baseline`.
+A frozen-reference check placed *before* the target check closes both, since it runs before any
+branch. A check added only "alongside `previous`" in the progress/stall branch would miss the
+entry point and must not be how this is built.
 
 ## Current Behavior
 
@@ -102,6 +106,9 @@ Solution.
    means "first iteration" and falls back to `None`), a `reference` that is *set* but cannot
    be interpolated or parsed as a float returns verdict `error` with
    `details["error"]` naming the field. A silently-disabled guard is worse than none.
+   "Set" mirrors `previous`'s truthiness test (`if config.reference:` in the dispatcher): a
+   literal `reference: ""` or `None` is *unset*, not an error. An interpolation that resolves to
+   an empty string still fails closed, since `float("")` raises `ValueError`.
 5. **Default unchanged.** `reference` unset (the default) leaves `evaluate_convergence()`
    behavior byte-for-byte identical to today; all existing convergence tests pass unmodified.
 6. **Details on every path.** When `reference` resolves, `details["reference"]` is included
@@ -320,6 +327,21 @@ _Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
   "seeded once, never reassigned" state shape, but it is a static/structural YAML-dict assertion,
   not a dynamic multi-iteration execution test — a new dynamic test is needed to prove the frozen
   field's value doesn't drift across iterations the way `capture_prev` does.
+  Two mechanics for that test (review addition 2026-09-09):
+  - **Observing `details` per iteration.** They are not in `captured` (only `verdict` is
+    written back, `executor.py:2206`) and `${result.*}` resets per state, but `_evaluate()`
+    spreads `**result.details` into the emitted `evaluate` event (`executor.py:3158-3165`).
+    Construct the executor with `event_callback=events.append` (pattern at
+    `test_fsm_executor.py:175`) and filter `events` on `event == "evaluate"`; each entry then
+    carries top-level `reference`, `previous`, `current` keys.
+  - **Rolling-`previous` trap.** The capture write runs *before* `_evaluate()`
+    (`executor.py:2196-2201`), so a looping state with `capture: prev` and
+    `previous: "${captured.prev.output}"` compares the current output to itself every pass
+    (delta 0 → `stall`). Use `previous: "${prev.output}"` (the prior state's result) exactly as
+    `test_convergence_evaluator_tracks_progress` does, or route through a separate capture
+    state the way `harness-optimize.yaml`'s `capture_prev` does. With a seed state that emits
+    the reference value, `${prev.output}` on the first looping pass resolves to that seed
+    output, so choose a first measured value that differs from it.
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — already hosts the MR-1..MR-14 design-rule table
@@ -402,7 +424,8 @@ into their JSON line, not from the evaluator's `details` (unreachable from a lat
 - [ ] Same call with `reference=None` returns `target` (existing behavior unchanged); every pre-existing test in `TestConvergenceEvaluator` passes without edits.
 - [ ] `current == reference` is not a regression in either direction; `minimize` direction treats `current > reference` as the regression.
 - [ ] Dispatcher: `EvaluateConfig(type="convergence", reference="${captured.baseline.output}", ...)` with an unresolvable or non-numeric capture returns verdict `error` naming `reference`; with `previous` unresolvable and `reference` unset, behavior is unchanged (`previous` still falls back to `None`).
-- [ ] New `FSMExecutor` test: a seed state captures a value once, a looping `convergence` state sets both `previous` (re-captured each pass) and `reference` (the seed capture) and runs ≥3 iterations; `details["reference"]` is identical on every iteration while `details["previous"]` advances.
+- [ ] New `FSMExecutor` test: a seed state captures a value once, a looping `convergence` state sets both `previous` (via `${prev.output}`, not a same-state capture — see Tests → rolling-`previous` trap) and `reference` (the seed capture) and runs ≥3 iterations; observed through `event_callback` `evaluate` events, `reference` is identical on every iteration while `previous` advances.
+- [ ] Dispatcher: `EvaluateConfig(type="convergence", reference="", ...)` and `reference=None` behave identically (unset; Expected Behavior §4 truthiness rule) — the empty string does **not** produce an `error` verdict.
 - [ ] `test_fsm_schema.py::test_schema_json_evaluate_config_properties_match_dataclass_fields` passes (property added to `fsm-loop-schema.json`); the five-test `reference` cluster in `TestEvaluateConfig` (default-none / to_dict-includes / to_dict-omits / from_dict / roundtrip) passes.
 - [ ] `ll-loop validate scripts/little_loops/loops/harness-optimize.yaml` passes with `reference` set in `gate`, and a synthetic loop whose *only* captured-baseline reference is `evaluate.reference` passes MR-2.
 - [ ] `test_harness_optimize.py`: the existing `test_gate_has_convergence_evaluator` additionally asserts `gate.evaluate.reference == "${captured.baseline.output}"`; new tests assert no state other than `baseline_score` has `capture: baseline`, and that both `write_trajectory_accepted` and `write_trajectory_rejected` actions contain `"baseline":${captured.baseline.output}`.

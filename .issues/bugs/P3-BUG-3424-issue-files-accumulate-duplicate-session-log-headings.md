@@ -77,6 +77,16 @@ This bug matters because it silently corrupts an automation signal, not just a c
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **Existing merge precedent**: the only prior "detect N>1 duplicate section blocks and collapse into one" transform in the codebase is `fold_research_findings()` / `find_subsections()` in `scripts/little_loops/issues/fold_research_findings.py` (ENH-2993). It collapses at the *first* occurrence's position, splicing later duplicates out in reverse order (`reversed(spans[1:])`) so earlier offsets stay valid, and its own docstring frames "return all matches, not just first/last" as required precisely so both fold-on-touch and a `len(spans) > 1` duplicate detector can share one scan. `_merge_session_log_headings` has the same shape of problem to solve.
+- **Fence-exclusion convention**: `fence_spans()`/`in_fence()` (`scripts/little_loops/text_utils.py:64-105`) are the only shared, exported fence-detection primitives in the codebase; every other piece of "find a line-anchored H2 heading" logic (session_log.py's own `_SESSION_LOG_HEADING_RE`, `issue_parser.py`'s `_section_body_with_offset()`/`_iter_h2_sections_fence_masked()`, `prose_deps.py`'s heading regexes) pairs its own regex with those two primitives rather than a shared heading-scan utility. `doc_synthesis.py`'s `_extract_section()` and `fold_research_findings.py`'s own `_h2_slice()`/`find_subsections()` do not exclude fenced headings at all.
+- **Occurrence-precedence disagreement across the codebase**: existing duplicate-heading call sites disagree on which occurrence wins. `session_log.py`'s `session_log_body()` and `issue_parser.py`'s `_section_body_with_offset()` (whose docstring cites the former as its model) both read the *last* occurrence. `doc_synthesis.py`'s `_extract_section()` and `fold_research_findings.py`'s `_h2_slice()` both take the *first* — the latter's docstring states this explicitly: "a duplicated H2 is itself a format-check gap." The Proposed Solution's "merge at the first heading's position" follows the `fold_research_findings.py` convention, not `session_log.py`'s own existing last-wins convention for entry insertion — the two conventions coexist in the same function once this fix lands (merge result lands at the first heading, but the new entry is still inserted after the merge completes).
+- **Existing test coverage gap this issue's regression fixture must close**: `scripts/tests/test_session_log.py::TestAppendSessionLogEntry::test_duplicate_session_log_headers_only_inserts_once` (lines 239-252) already constructs a two-`## Session Log`-heading fixture via `tmp_path`/`issue.write_text()` and calls `append_session_log_entry()`, but only asserts the new entry isn't duplicated (`content.count("/ll:format-issue") == 1`) — it does not assert the two headings collapse to one. `test_fold_research_findings.py` explicitly models its own fixture/assertion style ("`content.count(...)` heading-count invariants, `tmp_path` I/O for the impure function, plain `str -> str` calls for the pure one) off this exact test class, which is precedent for how Implementation Steps item 4's new fixture should be shaped.
+- **One-shot corpus-normalization CLI precedent for item (c)**: `scripts/little_loops/cli/issues/normalize.py` (scan/apply/CLI-flag pattern: `scan_normalize()` returns typed findings independent of apply, `apply_normalize()` only touches an `AUTO_FIXABLE_KINDS` allowlist, flags are `--check`/`--auto`/`--strict`/`--json`) and `scripts/little_loops/cli/issues/format_check.py` (`--fix`/`--all`/`--apply`) are the two existing "scan corpus → typed findings → optional in-place fix" subcommands under `cli/issues/`. They do not share one flag-naming convention with each other (`--auto`+`--check` vs `--fix`+`--apply`), so a new subcommand for this fix has no single unambiguous naming precedent to match.
+
 ## Program Design
 
 ### Types
@@ -156,5 +166,6 @@ if headings:
 ```
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T20:17:31 - `00b81863-86fd-48f9-b569-027e03323c21.jsonl`
 - `/ll:format-issue` - 2026-09-09T19:43:04 - `aa20b4a6-c20a-46a5-892f-bfa653566c50.jsonl`
 - `/ll:capture-issue` - 2026-09-09T19:38:06 - `43a86a4b-030b-4f3d-98cb-3c4b4bf26ccd.jsonl`

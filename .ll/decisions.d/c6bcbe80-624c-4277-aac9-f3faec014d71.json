@@ -1,0 +1,11 @@
+{
+  "id": "e420151a-494b-424d-a0dc-486233ec2007",
+  "type": "decision",
+  "timestamp": "2026-09-09T20:18:51Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "History writer must be best-effort on every path; JSON-emitting CLIs never die with empty stdout. Never auto-compact.",
+  "rule": "Captured: Harden cli_event_context history writer so JSON CLIs fail loudly",
+  "scope": "issue",
+  "issue": "ENH-3426"
+}
