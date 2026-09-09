@@ -14,16 +14,16 @@ learning_tests_required:
 blocked_by:
 - FEAT-3409
 parent: FEAT-3399
-unproven_mechanism: true
+unproven_mechanism: false
 verify_verdict: NON_VALID
-size: Very Large
+size: Large
 confidence_score: 100
 outcome_confidence: 64
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
-spike_needed: true
+spike_needed: false
 ---
 
 ## Summary
@@ -43,7 +43,11 @@ This issue ships `per_repo` + `skipped` only. Consequently the multi-`ATTACH`
 union mechanism named in the title is *not* exercised by this issue's code
 path (per-member `mode=ro` connections need no ATTACH); the title is retained
 for continuity with FEAT-3399, and the ATTACH spike result is recorded below
-for the follow-up.
+for the follow-up. Because this issue's own mechanism (per-member read-only
+connections, precedented by `issue_history/evolution.py::_open_db()`) is not
+unproven, `unproven_mechanism`/`spike_needed` were cleared on 2026-09-08 and
+the Learning Test Registry entry for multi-ATTACH moved to the follow-up
+issue (Step 13).
 
 ## Parent Issue
 
@@ -417,7 +421,24 @@ _Wiring pass added by `/ll:wire-issue`:_
   signal this issue's "reported and skipped" requirement needs. Note
   `read_schema_version()` returns `None` for two distinct conditions (no
   `meta` table vs. no `schema_version` row); the skip reason must
-  distinguish these from a missing file (see Decision Rules).
+  distinguish these from a missing file (see Decision Rules). It swallows
+  **only** `sqlite3.OperationalError`: a file that is not SQLite at all (or
+  is corrupt) opens lazily without error and then raises
+  `sqlite3.DatabaseError: file is not a database` on this first query
+  (confirmed 2026-09-08), so the gate must wrap the version read in its own
+  `sqlite3.Error` catch — the open call alone is not enough.
+
+### WAL sidecars are expected (confirmed 2026-09-08)
+
+`ensure_db()` sets `PRAGMA journal_mode = WAL` (`session_store/schema.py:1406`),
+which is persisted in the file header, so every real member `history.db` is
+WAL-mode. Opening a WAL-mode database with `file:…?mode=ro` **creates
+`history.db-wal` and `history.db-shm`** on the first read and, because a
+read-only connection cannot delete them, they **persist after close**. The
+main file's sha256 is unchanged throughout. Consequences: the untouched-source
+assertion is main-file-checksum only (never "no sidecars"), and `immutable=1`
+must **not** be used to avoid the sidecars — it ignores an un-checkpointed WAL
+left by a live writer (a hook in the member repo) and would read stale data.
 
 ### Conventions in Force
 
@@ -481,7 +502,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - **Concrete blast radius if Implementation Step 3 picks option (b)**
   (schema-qualifier/open-connection param): `analyze_agent_quality(db=...)` is
-  called with the current path-based signature 17 times across 10 classes in
+  called with the current path-based signature 31 times (per `grep -c`,
+  2026-09-08; the per-class list below is a sample, not exhaustive) in
   `test_issue_history_agent_quality.py` (`TestEmptyAndMissingDb:107`,
   `TestBelowMinimumSample:118,128`, `TestFixRate:143`,
   `TestCorrectionRate:159,177,193`, `TestCostAndTokensPerIssue:207`,
@@ -490,7 +512,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   `TestFormatting:360,377`), plus the one production caller
   `cli/history.py:487` and the re-export at
   `issue_history/__init__.py:80,248`. Option (a) (bypass ATTACH, throwaway
-  connection per member) leaves all 18 of these call sites unchanged.
+  connection per member) leaves all of these call sites unchanged.
 - A third module-private single-project DB builder exists beyond the two
   `_build_history_db(path)` factories already cited:
   `test_issue_history_agent_quality.py:32-102`'s helper set (`_issue`,
@@ -605,10 +627,17 @@ defaults (line 533) and before the unconditional formatter dispatch.
   never analyzed. No normalization path is implied — skew is always "report
   and skip," never "coerce." Skip reasons are three distinct strings so a user
   can tell them apart: `history.db not found at <path>`, `schema_version
-  missing (no meta row)`, and `schema_version <N> != installed <M>`. A
-  `sqlite3.Error` on open is a fourth: `could not open read-only: <err>`.
+  missing (no meta row)` (one shared string for both `None` conditions —
+  `meta` table absent and `schema_version` row absent), and `schema_version
+  <N> != installed <M>`. A `sqlite3.Error` raised by **either the open or the
+  version read** is a fourth: `could not read read-only: <err>` — the read
+  must be covered because a non-SQLite/corrupt file fails only on its first
+  query with `sqlite3.DatabaseError` (see Schema-version marker).
 - **`--workspace [PATH]` flag shape** (2026-09-08 review): `nargs="?"`,
-  `const=None`, `default=argparse.SUPPRESS`-style absent sentinel. Bare
+  `default=None` (absent), `const=""` (bare), so the dispatch tests
+  `args.workspace is not None` and then `args.workspace == ""` — no
+  `hasattr`/`argparse.SUPPRESS` (this CLI uses `SUPPRESS` only for `help=`,
+  never as an absent sentinel). Bare
   `--workspace` → `discover_workspace_members(start=project_root)` (config key
   then ancestor walk); `--workspace PATH` →
   `discover_workspace_members(Path(PATH), start=project_root)`; flag absent →
@@ -645,8 +674,17 @@ defaults (line 533) and before the unconditional formatter dispatch.
   _connect_readonly()` — it calls `ensure_db()` and would migrate a member
   in place (see Files to Modify). A source-inspection test in the style of
   `test_snapshot_builder_never_uses_the_migrating_open_path` asserts the new
-  module never references `ensure_db`, `session_store.connect`, or
-  `history_reader._base._connect_readonly`.
+  module never references `ensure_db`, `session_store.connect`,
+  `history_reader._base._connect_readonly`, or `immutable=1`. "Untouched"
+  means the main file's sha256 is unchanged; `-wal`/`-shm` sidecars **will**
+  appear (see Design Notes § WAL sidecars) and are not a violation.
+- **Per-member `BRConfig` side effect** (2026-09-08): constructing
+  `BRConfig(member.repo_path)` for the issues lookup runs
+  `load_env_fallback()` on that member's `.env` (`env_file.py:65`), which
+  sets every key not already in `os.environ`, process-wide, first-member-wins
+  in manifest order. Nothing downstream in the aggregator reads those keys
+  (it never calls `resolve_history_db()`), so this is accepted as-is —
+  document it in the new module's docstring rather than mitigating it.
 
 ## Implementation Steps
 
@@ -666,10 +704,14 @@ defaults (line 533) and before the unconditional formatter dispatch.
    is used as-is (FEAT-3409 already resolved it); do **not** re-resolve via
    `resolve_history_db()` — its env/config chain would redirect a
    root-anchored path (BUG-3181's contract, per `_connect_readonly()`'s
-   docstring).
+   docstring). Note in the module docstring that the per-member `BRConfig`
+   construction runs `load_env_fallback()` on each member's `.env`
+   (Decision Rules § Per-member `BRConfig` side effect).
 3. Any gate failure appends `(label, reason)` to `AggregationResult.skipped`
    with one of the four reason strings in Decision Rules and continues to the
-   next member; nothing raises. Manifest-level errors from
+   next member; nothing raises. The `sqlite3.Error` catch wraps both the
+   `sqlite3.connect(...)` call **and** the `read_schema_version(conn)` call
+   (a non-SQLite file only fails on the latter). Manifest-level errors from
    `discover_workspace_members()` (`FileNotFoundError` for a declared-but-
    missing path, `yaml.YAMLError`/`KeyError`/`ValueError` for a malformed
    manifest) are **not** caught by the aggregator — the CLI surfaces them as a
@@ -690,20 +732,24 @@ defaults (line 533) and before the unconditional formatter dispatch.
    single-repo path (the no-manifest fallback); otherwise
    `aggregate_history_dbs(members, …)` → formatter dispatch on `args.format`.
 6. Source DBs are asserted unmodified via a `hashlib.sha256` before/after
-   checksum test over every member file **and** an assertion that no
-   `-wal`/`-shm` sidecar appeared, following
-   `test_feat3304_artifact_dashboard.py::TestSourceDbUntouched`'s template;
-   plus the source-inspection test named in Decision Rules § Read-only
-   enforcement. Build member DBs by promoting one of the two existing
+   checksum test over every member's **main** `history.db` file, following
+   `test_feat3304_artifact_dashboard.py::TestSourceDbUntouched`'s template
+   exactly — do **not** assert on `-wal`/`-shm` sidecars; they are created
+   by any `mode=ro` open of a WAL-mode file and persist after close (Design
+   Notes § WAL sidecars). Plus the source-inspection test named in Decision
+   Rules § Read-only enforcement. Build member DBs by promoting one of the two existing
    `_build_history_db(path)` factories (`test_feat3304_artifact_dashboard.py:68`,
    `test_feat3323_sse_bridge.py:877`) to `scripts/tests/conftest.py` rather
    than adding a third copy.
 7. Skew-gate tests: one member each for (a) file missing, (b) `meta` table
    absent, (c) `schema_version` row absent, (d) `schema_version` one behind
-   `SCHEMA_VERSION`, (e) one ahead — all five appear in `skipped` with the
-   matching reason string, the healthy sibling still appears in `per_repo`,
-   and the stale member's file hash is unchanged afterward (proves the gate
-   ran before any migrating path could).
+   `SCHEMA_VERSION`, (e) one ahead, (f) a non-SQLite file at `db_path`
+   (e.g. `db_path.write_text("not a database")`) — all six appear in
+   `skipped` with the matching reason string ((b) and (c) share the
+   `schema_version missing (no meta row)` string; (f) gets the
+   `could not read read-only:` string), the healthy sibling still appears in
+   `per_repo`, and each stale/garbage member's main-file hash is unchanged
+   afterward (proves the gate ran before any migrating path could).
 8. Add `--workspace` flag tests to `TestHistoryQualitySubcommand`
    (`test_cli_history.py:220`), following the argv-patch + `tmp_path` shape:
    two-member manifest → both labels in output; bare flag with no manifest →
@@ -727,13 +773,15 @@ defaults (line 533) and before the unconditional formatter dispatch.
     *warn* semantic rendered into HTML) and `cli/doctor.py::_schema_drift_check()`
     (a structural diff). Ours is a *skip* semantic; do not reuse either
     function or its tests' verbatim strings.
-13. Record the multi-ATTACH read-only spike (Verification Notes) as a `sqlite3`
-    entry in the Learning Test Registry (`/ll:explore-api`), then clear
-    `unproven_mechanism`. The learning test is what the follow-up totals issue
-    will cite; it is not exercised by this issue's production code.
-14. File the follow-up issue for union totals (owner of: ATTACH mechanics,
-    `issue_num`/`issue_id` repo discriminator, >10-member limit rule, and the
-    `totals` field) and link it from this issue's Resolution.
+13. **Before Step 1**: file the follow-up issue for union totals (owner of:
+    ATTACH mechanics, the `sqlite3` Learning Test Registry entry for the
+    multi-ATTACH read-only spike recorded in Verification Notes, the
+    `issue_num`/`issue_id` repo discriminator, the >10-member limit rule, and
+    the `totals` field) with `blocked_by: [FEAT-3410]`, and link it from this
+    issue's Design Notes § "Why totals are deferred" and Resolution. The
+    learning test is not exercised by this issue's production code, which is
+    why `unproven_mechanism`/`spike_needed` are already cleared here
+    (2026-09-08) rather than gated on it.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -775,13 +823,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - One invocation reports across ≥2 repos with a per-repo breakdown, each
   section labeled `<repo> (<role>)`, in all four `--format` modes.
-- Source DBs are provably unmodified after a run: checksum assertion in tests
-  over every member file, no `-wal`/`-shm` sidecars created, and a
-  source-inspection test proving the aggregator never touches a migrating
-  opener.
+- Source DBs are provably unmodified after a run: sha256 checksum assertion
+  in tests over every member's main `history.db` file (WAL `-wal`/`-shm`
+  sidecars are expected and excluded — see Design Notes § WAL sidecars), and
+  a source-inspection test proving the aggregator never touches a migrating
+  opener or `immutable=1`.
 - A repo with a mismatched (behind *or* ahead), missing, or unreadable schema
-  is reported by label and reason and skipped, not fatal; the healthy members
-  are still analyzed; the skewed member's file is byte-identical afterward.
+  — including a non-SQLite/corrupt file at `db_path` — is reported by label
+  and reason and skipped, not fatal; the healthy members are still analyzed;
+  the skewed member's main file is byte-identical afterward.
 - `--workspace` absent, or present with no discoverable manifest, produces
   output byte-identical to today's single-repo run; `--workspace <missing
   path>` exits non-zero with the path on stderr.
@@ -817,6 +867,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
   also blocks `CREATE TEMP TABLE`/`CREATE TEMP VIEW`, so a union-view design
   must create its views in the writable `:memory:` main *before* enabling
   the pragma, or skip the pragma and rely on `mode=ro`.
+- **Pre-implementation review (2026-09-08, second pass)** — two empirical
+  checks against this interpreter's `sqlite3`, both folded into Decision
+  Rules / Steps / ACs above: (1) an `ensure_db()`-created (WAL-mode)
+  `history.db` opened via `file:…?mode=ro` + `PRAGMA query_only = ON`
+  gained `-wal` and `-shm` sidecars on the first `SELECT` and they persisted
+  after `close()`; main-file sha256 unchanged. The original "no sidecars"
+  AC was therefore unsatisfiable under this issue's own opener and was
+  dropped. (2) `sqlite3.connect("file:<non-sqlite file>?mode=ro", uri=True)`
+  succeeds; the first query raises `sqlite3.DatabaseError: file is not a
+  database`, which `read_schema_version()` (catches `OperationalError`
+  only) does not swallow — the gate's catch was widened to cover the read.
+  Also: `size` re-labeled Very Large → Large (the earlier score predates
+  the totals deferral; Impact says Medium effort), `unproven_mechanism`/
+  `spike_needed` cleared (mechanism moved to the follow-up), and the
+  per-member `BRConfig` `load_env_fallback()` side effect documented.
+  `verify_verdict: NON_VALID` is stale (set by the since-corrected 47→48
+  drift) and `ll-issues check-verify-verdict FEAT-3410` still exits 1 —
+  re-run `/ll:verify-issues FEAT-3410 --auto` before automation picks this
+  issue up.
 - `/ll:verify-issues` — 2026-09-08 — verdict **OUTDATED**. All file:line
   citations, signatures, and mechanism claims checked against current code
   (~20 items spanning `agent_quality.py`, `rework.py`, `_utils.py`,
