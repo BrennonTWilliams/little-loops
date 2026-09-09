@@ -102,6 +102,17 @@ describes.
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Section 2.5 ("Check Mode Behavior") spans `commands/verify-issues.md:287-336`; it labels only the `verify_verdict:` frontmatter field (an enum collapse — `OUTDATED`/`RESOLVED`/`INVALID`/`NEEDS_UPDATE`/`REGRESSION_LIKELY`/`POSSIBLE_REGRESSION`/`DEP_ISSUES`/`DECISIONS_VIOLATION` all → `NON_VALID`, while `VALID`/`EVIDENCE_UNVERIFIED`/`PROPOSAL_UNSOUND` stay distinct) — it never mandates any `Verdict: X` prose string, only the frontmatter value.
+- Section 4 ("Update Issue Files") is the entire block at `commands/verify-issues.md:351-360` today — two unlettered bullet groups, no subsection numbering, and no wording template for `## Verification Notes` prose.
+- `commands/verify-issues.md:362` already defines `### 4.5 Append Session Log Entries` as the next sibling heading, so a new subsection under section 4 must be numbered `4.1`-`4.4` (`4.5` is taken) or inserted as an unlettered block ahead of it.
+- The bare `Verdict: X` prose convention this issue describes is emergent, not instructed: it reuses the raw verdict-table labels from `#### C. Determine Verdict` (`commands/verify-issues.md:234-248`) as prose, with no section-4 rule connecting the two. Existing instances: `.issues/epics/P5-EPIC-1463-track-deferred-codex-cli-interop-gaps.md:305`, `.issues/epics/P2-EPIC-1867-orchestrator-fsm-decomposition.md:218`, `.issues/features/P2-FEAT-2551-code-run-gate-oracle-asset.md:725`.
+- Live precedent for the proposed fix already exists, hand-written after user pushback in the sibling issue this one was captured from: `.issues/enhancements/P3-ENH-3421-*.md:459-461` reads "Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)." The new subsection should formalize this exact wording as the instruction rather than invent new phrasing.
+- Confirmed no overlap risk with `commands/ready-issue.md`: its three verdict tables (`ready-issue.md:319-330`, `:347-352`, `:541-551`) use a disjoint 7-value enum (`READY`/`CORRECTED`/`BLOCKED`/`NOT_READY`/`CLOSE`/`REGRESSION_LIKELY`/`POSSIBLE_REGRESSION`) and never write a persisted `Verdict: X` body-text label — they route in-session automation only, so the new subsection has no cross-command wording collision to reconcile.
+
 ## Implementation Steps
 
 1. Read `commands/verify-issues.md` sections 2.5 and 4 to confirm the exact verdict enum and
@@ -111,6 +122,12 @@ describes.
    that both detect and fix in the same pass
 3. Verify by re-running `/ll:verify-issues <ID> --auto` against an issue with a known drifted
    anchor and confirming the resulting Verification Notes no longer reads as an open action item
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- The new subsection numbers as `4.1` (section 4 currently has no numbered subsections, and `4.5 Append Session Log Entries` at `commands/verify-issues.md:362` already occupies the next sibling slot) — do not reuse `4.5` or leave it unnumbered if other section-4 subsections get added later.
 
 ## Impact
 
@@ -154,5 +171,6 @@ label, whenever the fix touched the same section the note describes.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T19:14:29 - `42196ace-6931-433b-9da5-c194d57bddf7.jsonl`
 - `/ll:format-issue` - 2026-09-09T19:10:19 - `6825e935-9173-4255-b699-a7e303deae32.jsonl`
 - `/ll:capture-issue` - 2026-09-09T19:06:59 - `095aaa45-5f8e-445a-8993-2ec43b515f28.jsonl`
