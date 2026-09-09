@@ -738,6 +738,26 @@ class TestBackfillSinceFlag:
         assert result == 0
         assert mock_backfill.called
 
+    def test_backfill_host_codex_prints_enh_3420_notice(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """FEAT-3417 step 3: ~/.codex/projects/ never exists, so a Codex full
+        backfill silently found 0 sessions; it now names the follow-up issue."""
+        db = tmp_path / "session.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill", "--host", "codex"]):
+            with patch("little_loops.cli.session.backfill") as mock_backfill:
+                mock_backfill.return_value = {
+                    "issues": 0,
+                    "loops": 0,
+                    "tools": 0,
+                    "messages": 0,
+                    "sessions": 0,
+                }
+                result = main_session()
+        assert result == 0
+        err = capsys.readouterr().err
+        assert "ENH-3420" in err
+
 
 class TestGrepExpandDescribe:
     """Tests for the grep, expand, and describe subcommands (FEAT-1712)."""

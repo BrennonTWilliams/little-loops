@@ -697,6 +697,12 @@ def main_session() -> int:
                 if getattr(args, "extract_decisions", False):
                     _run_extract_decisions(since=since_flag)
                 return 0
+            if _backfill_host == "codex":
+                logger.warning(
+                    "Codex backfill via detect_sessions() is not wired up yet "
+                    "(ENH-3420); ~/.codex/projects/ never exists, so a Codex "
+                    "full backfill finds 0 sessions."
+                )
             # Full backfill (no --since): discover JSONL files so non-Claude-Code
             # hosts also get message/tool/session backfill (ENH-1945).
             project_folder = get_project_folder(host=args.host)

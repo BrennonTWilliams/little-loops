@@ -2588,9 +2588,12 @@ def host_layout_for(host: str) -> HostLayout:
             projects_root=None,
             normalize_file=normalize_omp_session,
         )
+    # "codex" is deliberately absent (FEAT-3417): it never writes
+    # ~/.codex/projects/ (dates key its sessions, not projects), so it gets
+    # the same strict-None projects_root as gemini/omp above rather than a
+    # guessed path that never matches. Use session_store.sessions instead.
     projects_root = {
         "claude-code": home / ".claude" / "projects",
-        "codex": home / ".codex" / "projects",
         "opencode": home / ".opencode" / "projects",
         "pi": home / ".pi" / "projects",
     }.get(host)

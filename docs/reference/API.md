@@ -9494,6 +9494,51 @@ from little_loops.session_store import (
 )
 ```
 
+### Session discovery: list_workspaces / detect_sessions / iter_events (FEAT-3417)
+
+`little_loops.session_store.sessions` is a separate seam from the write-side
+helpers above: a batch-read lifecycle for discovering and parsing host
+session transcripts on disk, independent of `.ll/history.db`.
+
+```python
+def list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]
+def detect_sessions(
+    cwd: Path, host: str | None = None, *, include_agents: bool = False,
+    limit: int | None = None, home: Path | None = None,
+) -> list[SessionHandle]
+def iter_events(handle: SessionHandle) -> Iterator[SessionEvent]
+def parse_claude_transcript(path: Path) -> Iterator[SessionEvent]
+def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]
+```
+
+`SessionHandle` (`host`, `session_id`, `path`, `cwd`, `updated_at`, `is_agent`)
+and `SessionEvent` (`type`, `timestamp`, `host`, `payload: dict[str, Any]`) are
+frozen dataclasses. `detect_sessions(cwd)` with `host=None` unions every
+registered host's sessions for `cwd`, newest `updated_at` first; `limit`
+applies once, after that cross-host merge. Live `watch`/`stop` are
+deliberately absent (v1 ships the batch half only) — `SessionHandle` carries
+`path` so a future `watch` needs no signature change above it.
+
+**The seam is refused on content**: `parse_codex_rollout` and
+`parse_claude_transcript` share no code above this module — each yields its
+host's native record shape in `payload` untouched, rather than normalizing
+into a shared schema (contrast with `HostLayout.normalize`/`normalize_file`
+below, which does normalize qwen/gemini/omp into Claude-shaped records). The
+two seams coexist pending ENH-3420.
+
+Claude Code: reads `home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))`
+directly (not `get_project_folder`/`get_sessions_folder`, both of which read
+`Path.home()` and would ignore `home`). Codex: queries the newest
+`~/.codex/state_*.sqlite`'s `threads` table (matching both `cwd` and
+`cwd.resolve()`), falling back to a scan of `sessions/` and
+`archived_sessions/` (both date-keyed and flat trees) when the DB is absent,
+unusable, or schema-mismatched — see
+[HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md) and
+[docs/codex/usage.md](../codex/usage.md) for the on-disk layout this was
+verified against. `_get_codex_project_folder`/`host_layout_for("codex").projects_root`
+are `None`: Codex never writes `~/.codex/projects/`, so `detect_sessions` is
+the only working Codex session-discovery path.
+
 ### raw_events / rebuild / compact (ENH-2581)
 
 `raw_events` is the source of truth for the JSONL-derived cache tables (`tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`): one row per JSONL line, storing both the verbatim `raw_line` and its parsed fields (`ts`, `session_id`, `host`, `source_path`, `line_no`, `event_type`). `backfill()`/`backfill_incremental()` now ingest into `raw_events` only — pass `also_rebuild=True` to also materialize the cache tables in the same call.

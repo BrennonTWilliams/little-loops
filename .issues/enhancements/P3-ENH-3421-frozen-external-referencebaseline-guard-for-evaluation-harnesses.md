@@ -113,13 +113,17 @@ Solution.
   the ordered check in `evaluate_convergence()`, the JSON-schema mirror and MR-2 candidate
   list, the `convergence_gate` fragment description, and wiring the field into
   `harness-optimize.yaml` (populated from `captured.baseline.output`, see Integration Map).
-- **In scope, with a seed state**: `rl-coding-agent.yaml` has **no** baseline capture today
-  (`initial: act`; `prev_reward` is first written by `persist_reward` only after the first
-  `improve`). Wiring the guard there needs a new one-shot seed state before the iterate cycle.
-  Because that loop is a template whose `improve`/`persist_reward` bodies are echo stubs, the
-  implementer may instead **drop it from scope** and record why in the Session Log — either
-  outcome is acceptable; leaving it half-wired (field set, nothing captured) is not, since
-  fail-closed resolution (Expected Behavior §4) would make every `score` pass route `error`.
+- **Out of scope (decided 2026-09-09 review): `rl-coding-agent.yaml`.** It has the same
+  rolling-`previous` shape (`persist_reward` re-captures `prev_reward` every pass), but it has
+  **no** baseline capture today (`initial: act`; `prev_reward` is first written only after the
+  first `improve`). A frozen reference there would be the reward of the *unchanged* code, which
+  means running the entire `refine → score` observation pipeline (including the `rl-rlhf`
+  subprocess) once *before* `act` as a new seed state. That duplicates an inner subprocess call
+  in a template whose `act`/`improve`/`persist_reward` bodies are echo stubs. Not worth the
+  template complexity for a guard the loop's `stall: act` route already handles by retrying
+  rather than committing. Do **not** set `reference` in its `score` state: with nothing captured,
+  fail-closed resolution (Expected Behavior §4) would route every `score` pass to `error`. If a
+  real (non-stub) consumer of that template appears, file a follow-up.
 - **Frozen is per baseline capture, not per run.** In `harness-optimize.yaml` state-mode,
   `dequeue_state → baseline_score` re-captures `baseline` for each queued state, so the
   reference is frozen for the duration of *that state's* optimization segment and re-seeded
@@ -223,10 +227,26 @@ addition.
   it is already frozen by ordinary FSM capture semantics. `capture_prev` never touches it.
   `run_benchmark`'s scorer contract (`lib/benchmark.yaml:20-21`) is a bare float on stdout, so
   the raw capture parses without the `tail -1 | tr -d` normalization `init_prev` applies.
-- `scripts/little_loops/loops/rl-coding-agent.yaml` — either add a one-shot seed state before
-  `act` (capture `baseline_reward`, `initial:` moves to it) and set
-  `reference: "${captured.baseline_reward.output}"` in `score`, or drop from scope (Scope
+- `scripts/little_loops/loops/harness-optimize.yaml` `write_trajectory_rejected` state
+  (~line 250) — the rejected trajectory line today is
+  `{"iter","score","accepted":false,"commit_sha":""}` with no reason, so a reference regression
+  would be indistinguishable from a plain stall in run artifacts. Add
+  `"baseline":${captured.baseline.output}` to **both** trajectory lines
+  (`write_trajectory_accepted` ~line 229 and `write_trajectory_rejected` ~line 250) so a reader
+  can derive "rejected because `score < baseline`" from the line itself, and accepted lines show
+  the bar that was cleared. **Do not** try to read the evaluator's `details` from that state:
+  `${result.*}` is populated only for the evaluating state's own routing interpolation
+  (`executor.py:2190`) and `_build_context()` resets it to `None` for every subsequent state
+  (`executor.py:3813`); the ENH-3200 post-evaluation capture write persists only `verdict`, never
+  `details` (`executor.py:2206`). A `${result.details...:default=false}` reference would silently
+  resolve to `false` on every line. The `baseline` value is a bare float (scorer contract), so it
+  is valid JSON unquoted, same as the existing `score` field.
+- `scripts/little_loops/loops/rl-coding-agent.yaml` — **not modified** (out of scope, see Scope
   Boundaries).
+- `scripts/little_loops/fsm/validation/structural_rules.py` — **not modified**. The
+  `abstain_on_exit_3` precedent also gained a structural-rule consumer there
+  (`_validate_abstention_route`, ENH-3222) because it changes verdict vocabulary; `reference`
+  adds no verdict, so it needs no structural rule. Recorded so nobody adds one by analogy.
 - Option B (`check_comparator` in `gate`) — rejected; not modified.
 
 _Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
@@ -264,6 +284,17 @@ _Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
   `evaluate_convergence` call sites (lines 453-500) cover whichever evaluator the chosen option
   extends.
 - `scripts/tests/test_harness_optimize.py` — rubric/behavior tests for the loop itself.
+  Extend the existing `test_gate_has_convergence_evaluator` (lines 125-135, which already asserts
+  `previous`/`target`/`tolerance` are present) with the `reference` assertion rather than adding
+  a parallel test; add one new test that no state other than `baseline_score` declares
+  `capture: baseline`, and one that both `write_trajectory_*` actions contain
+  `"baseline":${captured.baseline.output}`.
+- Convergence-only scoping test (review addition 2026-09-09): add a dispatcher-level test in
+  `test_fsm_evaluators.py` proving `EvaluateConfig(type="exit_code", reference="1.0")` (or any
+  non-`convergence` type) evaluates exactly as it would without the field — the field is read
+  only inside the `convergence` branch, same as `previous` today. This pins the "silently
+  ignored elsewhere" contract so a later change cannot add a cross-type structural rule by
+  analogy with `abstain_on_exit_3`.
 
 _Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
 - `scripts/tests/test_fsm_schema.py:262-278` (`test_schema_json_evaluate_config_properties_match_dataclass_fields`)
@@ -299,9 +330,15 @@ _Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
 - `docs/reference/API.md:6009-6064` — the `#### EvaluateConfig` section reproduces every field as
   a code block; already stale relative to `schema.py` (omits `abstain_on_exit_3` from the code
   block itself) — add the new field here too, and note the existing drift for a future pass.
+- `docs/reference/API.md:6191` — the separate `def evaluate_convergence(` signature block
+  (distinct from the `EvaluateConfig` block above) needs the new `reference: float | None = None`
+  parameter and a one-line note on check ordering.
 - `docs/generalized-fsm-loop.md:712-731` — the `convergence` evaluator-type section's worked YAML
   example and "Result details" line (`{ current, previous, target, delta }`) needs a new example
   line and a `details` update if the new field adds a details key.
+- `docs/generalized-fsm-loop.md:1861-1874` — three worked Python `evaluate_convergence(...)`
+  call examples. They stay valid (trailing kwarg defaults to `None`), but add one showing
+  `reference=` returning `stall` so the guard has a documented call shape.
 - `docs/guides/LOOPS_REFERENCE.md:3489` — the `convergence_gate` fragment's field-contract table
   row ("optionally evaluate.previous, route.error") needs the new optional field added to its
   "optionally" list.
@@ -353,8 +390,10 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 resolves `config.reference` via `interpolate()`; on `InterpolationError`/`ValueError` with the
 field set, returns `EvaluationResult(verdict="error", ...)` (fail-closed) -> otherwise
 `evaluate_convergence(..., reference=<float>)` -> reference check -> target check -> previous
-check. Consumers: `harness-optimize.yaml` `gate` (`route.stall: revert_and_log`) and, if kept
-in scope, `rl-coding-agent.yaml` `score` (`route.stall: act`).
+check. Sole consumer: `harness-optimize.yaml` `gate` (`route.stall: revert_and_log`);
+`rl-coding-agent.yaml` is out of scope (Scope Boundaries). Trajectory visibility comes from
+`write_trajectory_accepted`/`write_trajectory_rejected` interpolating `captured.baseline.output`
+into their JSON line, not from the evaluator's `details` (unreachable from a later state).
 
 ## Acceptance Criteria
 
@@ -365,9 +404,10 @@ in scope, `rl-coding-agent.yaml` `score` (`route.stall: act`).
 - [ ] New `FSMExecutor` test: a seed state captures a value once, a looping `convergence` state sets both `previous` (re-captured each pass) and `reference` (the seed capture) and runs ≥3 iterations; `details["reference"]` is identical on every iteration while `details["previous"]` advances.
 - [ ] `test_fsm_schema.py::test_schema_json_evaluate_config_properties_match_dataclass_fields` passes (property added to `fsm-loop-schema.json`); the five-test `reference` cluster in `TestEvaluateConfig` (default-none / to_dict-includes / to_dict-omits / from_dict / roundtrip) passes.
 - [ ] `ll-loop validate scripts/little_loops/loops/harness-optimize.yaml` passes with `reference` set in `gate`, and a synthetic loop whose *only* captured-baseline reference is `evaluate.reference` passes MR-2.
-- [ ] `test_harness_optimize.py` asserts `gate.evaluate.reference == "${captured.baseline.output}"` and that no state other than `baseline_score` has `capture: baseline`.
-- [ ] `rl-coding-agent.yaml` is either wired with a seed state and validates, or explicitly dropped with the reason logged in this issue's Session Log — never left with `reference` set and no capture.
-- [ ] Docs updated per Integration Map → Documentation (`API.md` `EvaluateConfig` block, `generalized-fsm-loop.md` convergence section and `details` line, `LOOPS_REFERENCE.md` fragment table row, `CLI.md` MR-2 prose).
+- [ ] `test_harness_optimize.py`: the existing `test_gate_has_convergence_evaluator` additionally asserts `gate.evaluate.reference == "${captured.baseline.output}"`; new tests assert no state other than `baseline_score` has `capture: baseline`, and that both `write_trajectory_accepted` and `write_trajectory_rejected` actions contain `"baseline":${captured.baseline.output}`.
+- [ ] Dispatcher: `EvaluateConfig(type="exit_code", reference="1.0")` (any non-`convergence` type) evaluates identically to the same config without `reference` — the field is convergence-only and silently ignored elsewhere; no `structural_rules.py` change.
+- [ ] `rl-coding-agent.yaml` is unchanged (`git diff --stat` shows no edit) and its `score` state has no `reference` key.
+- [ ] Docs updated per Integration Map → Documentation (`API.md` `EvaluateConfig` block **and** `evaluate_convergence` signature block, `generalized-fsm-loop.md` convergence section, `details` line, and one `reference=` Python call example, `LOOPS_REFERENCE.md` fragment table row, `CLI.md` MR-2 prose).
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
@@ -398,12 +438,26 @@ _Added by `/ll:confidence-check` — 2026-09-09:_
     Guard semantics for the check ordering that actually fires.
 - **Complexity (15/25)**: touches ~9-10 files across three layers (dataclass/evaluator schema, JSON-schema mirror + MR-2 meta-rule validation, loop YAML fragment) plus a genuinely new test shape — a dynamic, multi-iteration test proving the frozen field doesn't drift across iterations the way `capture_prev`/`prev_score` does. The closest cited precedent (`test_baseline_score_uses_run_benchmark_fragment`) is a static structural assertion, not the dynamic execution test this needs, so that test has to be authored from scratch rather than mirrored.
 
+### Pre-implementation review (2026-09-09, manual)
+
+All load-bearing code claims re-verified against `main` (`df112fecc`). Changes made: (1)
+`rl-coding-agent.yaml` decided out of scope rather than left to the implementer; (2) trajectory
+lines gain `"baseline"` so reference regressions are visible in run artifacts — `${result.details}`
+was ruled out because the executor resets `result` per state; (3) explicit convergence-only
+scoping AC and a note that no `structural_rules.py` consumer is needed; (4) two missed doc sites
+(`API.md` signature block, `generalized-fsm-loop.md` call examples) and the existing
+`test_gate_has_convergence_evaluator` named as the test to extend. Observed but out of scope:
+`target_score` is documented as an early-stop threshold (`harness-optimize.yaml:26`) but
+`route.target → commit_and_log → … → capture_prev → propose` never stops in non-state mode —
+candidate for a separate ENH.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P3
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T16:56:08 - `a093caaa-52f1-4637-ac3b-903ace756c35.jsonl`
 - `/ll:confidence-check` - 2026-09-09T16:33:20 - `3bf7ddf5-f1c3-4461-90f7-4d411c62ae41.jsonl`
 - `/ll:refine-issue` - 2026-09-09T16:20:49 - `fa9f7cba-187f-4268-b323-59e2fd18c32b.jsonl`
 - `/ll:confidence-check` - 2026-09-09T15:01:48 - `4490c2ea-90df-42ee-8816-5029d9abb8d8.jsonl`
