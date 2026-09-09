@@ -52,6 +52,13 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - Two existing FSM-level mechanisms already compare a candidate to *something*, but neither is frozen: (1) `harness-optimize.yaml`'s `convergence` gate (`evaluate_convergence()`, `fsm/evaluators.py:438`) compares each candidate only to `prev_score`, which the loop's own `capture_prev` state overwrites with the just-accepted candidate's score every iteration — `evaluate_convergence`'s signature (`current, previous, target, tolerance, direction`) has no fourth "frozen" input, so there is nowhere to plug an unchanging reference in today. (2) `evaluate_comparator()` (`fsm/evaluators.py:1604`) already reads a persisted `.loops/baselines/<loop>/output.txt` file that *can* stay genuinely frozen (`auto_promote: false` + manual `ll-loop promote-baseline`), but with the default `auto_promote: true` it is overwritten with the winning candidate's output on every "yes" verdict — the same rolling-drift shape as `prev_score`, via a different mechanism. `check_comparator` is also not wired into `harness-optimize.yaml`'s gate at all today; it is used by other loops (e.g. `harness-single-shot.yaml`) for whole-loop regression checks.
 - Repo-wide search for "incumbent" or "frozen" (as an evaluation-baseline concept) found zero hits outside ENH-3415/ENH-3421's own issue text — confirms no prior art or naming convention exists to reuse.
 
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Two independently-implemented "capture once outside the iterate cycle" patterns already exist in shipped loops, with no shared/reusable primitive between them: `harness-optimize.yaml`'s `baseline_score` state (lines 110-116, reached once via `init_run → load_directive → baseline_score`, before the iterate region) versus `capture_prev` (lines 262-266, inside the iterate region, reassigned every accepted iteration). `captured.baseline.output` is referenced only for display (`propose` prompt) and to seed `prev_score` today — never inside `gate`'s `evaluate:` block.
+- A second, independently-arrived precedent for the same frozen-vs-rolling distinction exists in `general-task.yaml`: `check_baseline_tests` (the `initial:` state, line 85) writes `${context.run_dir}/baseline-ref.txt` exactly once; `final_verify_spin_gate` (line 457) and `check_provisional_markers` (line 1011) only ever read it. A code comment at lines 434-437 already names the distinction explicitly ("both are frozen values on this cycle... would make the gate fail open forever if used as a condition"). This mechanism is a raw file under `${context.run_dir}` read by shell, not an FSM `capture:`/`EvaluateConfig` field — a second established shape for the same underlying rule, alongside `harness-optimize.yaml`'s.
+- Repo-wide search found no shared "frozen-capture" primitive, decorator, or field type anywhere in `scripts/little_loops/` — each loop hand-rolls its own frozen value; no existing consolidation candidate to reuse instead of adding a new field.
+- `baseline_path` (`fsm/schema.py:133`) is a name-adjacent but semantically unrelated existing `EvaluateConfig` field — scoped to the `comparator` evaluator type only, and names a directory path for blind A/B artifact comparison, not a numeric score reference. Do not conflate with the new field this issue proposes.
+
 ## Expected Behavior
 
 `harness-optimize.yaml` (and any confirmed sibling `convergence_gate` loop, see Scope
@@ -241,6 +248,14 @@ _Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
 - `ENH-1793`/`ENH-1828`/`ENH-1829` (done) — existing comparator-evaluator-core and
   baseline-lifecycle CLI; the mechanism Option B would reuse.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- The codebase's convention for testing a new optional `EvaluateConfig` field is a five-test cluster per field in `test_fsm_schema.py::TestEvaluateConfig` (see the `key` field cluster, lines 198-236): `test_<field>_field_default_none`, `test_to_dict_includes_<field>_when_set`, `test_to_dict_omits_<field>_when_none`, `test_from_dict_reads_<field>`, `test_<field>_roundtrip_serialization`.
+- The `interpolate(...) → float() → except (InterpolationError, ValueError)` idiom at `fsm/evaluators.py:1908-1916` (already cited above) recurs three more times in the same dispatch function — `output_numeric`'s target (1876-1879), `convergence`'s target (1929-1932), and `convergence`'s tolerance (1945-1948) — confirming it as the codebase's one idiom for resolving an interpolated string to a float with a safe fallback, not a one-off.
+- Confirmed test gap (strengthens the existing claim above): no test in `test_fsm_executor.py` constructs an FSM with one state capturing a value once outside a loop-back edge and a separate looping state resolving that captured value across multiple iterations while asserting it stays unchanged — every `convergence`-type executor test (`test_convergence_evaluator_tracks_progress`/`test_convergence_evaluator_detects_stall`, lines 3207-3279) uses a single self-looping state with a reseed-per-pass value.
+
 ## Impact
 
 - **Priority**: P3 - matches the filed priority; not user-visible until scoped, and only becomes urgent if an evolutionary-search harness is observed drifting into a self-referential local optimum in practice.
@@ -269,6 +284,7 @@ _Added by `/ll:confidence-check` — 2026-09-09:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T16:20:49 - `fa9f7cba-187f-4268-b323-59e2fd18c32b.jsonl`
 - `/ll:confidence-check` - 2026-09-09T15:01:48 - `4490c2ea-90df-42ee-8816-5029d9abb8d8.jsonl`
 - `/ll:wire-issue` - 2026-09-09T14:51:25 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
 - `/ll:decide-issue` - 2026-09-09T14:19:44 - `79d7b43c-377f-45d3-9e5c-2fc5ef853497.jsonl`

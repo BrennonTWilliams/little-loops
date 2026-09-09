@@ -30,3 +30,27 @@ state sqlite files found: ['/Users/brennon/.codex/state_5.sqlite']  # ll-private
 tables: ['_sqlx_migrations', 'threads', 'sqlite_sequence', 'thread_dynamic_tools', 'stage1_outputs', 'jobs', 'backfill_state', 'agent_jobs', 'agent_job_items', 'thread_spawn_edges', 'remote_control_enrollments', 'thread_goals']
 threads columns: ['id', 'rollout_path', 'created_at', 'updated_at', 'source', 'model_provider', 'cwd', 'title', 'sandbox_policy', 'approval_mode', 'tokens_used', 'has_user_event', 'archived', 'archived_at', 'git_sha', 'git_branch', 'git_origin_url', 'cli_version', 'first_user_message', 'agent_nickname', 'agent_role', 'memory_mode', 'model', 'reasoning_effort', 'agent_path', 'created_at_ms', 'updated_at_ms', 'thread_source']
 rollout_path present: True
+
+=== Claim 8: threads table has cwd, updated_at, agent_role columns (2026-09-09 manual re-verify, cli 0.152.1) ===
+threads columns (state_5.sqlite): ['id', 'rollout_path', 'created_at', 'updated_at', 'source', 'model_provider', 'cwd', 'title', 'sandbox_policy', 'approval_mode', 'tokens_used', 'has_user_event', 'archived', 'archived_at', 'git_sha', 'git_branch', 'git_origin_url', 'cli_version', 'first_user_message', 'agent_nickname', 'agent_role', 'memory_mode', 'model', 'reasoning_effort', 'agent_path', 'created_at_ms', 'updated_at_ms', 'thread_source']
+cwd present: True, updated_at present: True, agent_role present: True
+
+=== Claim 9: turn_context.payload contains a cwd field (2026-09-09 manual re-verify, cli 0.152.1) ===
+turn_context.payload keys: ['active_permission_profile', 'approval_policy', 'approvals_reviewer', 'collaboration_mode', 'comp_hash', 'current_date', 'cwd', 'file_system_sandbox_policy', 'model', 'multi_agent_version', 'permission_profile', 'personality', 'realtime_active', 'sandbox_policy', 'summary', 'timezone', 'turn_id', 'workspace_roots']
+cwd present: True
+
+=== Claim 10: session_meta.payload.id equals the matching threads.id row (2026-09-09 manual re-verify, cli 0.152.1) ===
+session_meta.payload.id: 01a086ea-c8bc-79f1-9faa-1ce2716aa80f
+threads.id (same session, queried live): 01a086ea-c8bc-79f1-9faa-1ce2716aa80f
+match: True
+
+=== Claim 11: token_count event_msg records appear in an interactive-session rollout (2026-09-09 manual re-verify, cli 0.152.1) ===
+interactive rollout (01a086ea-c8bc-79f1-9faa-1ce2716aa80f.jsonl): 4 event_msg records with payload.type == 'token_count' (lines 16, 24, 28, 33)
+exec rollout (01a086eb-75f9-75c2-b2ad-59202d992489.jsonl): 1 event_msg record with payload.type == 'token_count' (line 13)
+present in interactive: True
+
+Note: `ll-learning-tests prove codex-rollout` (run 2026-09-09) replayed the stale
+2026-09-08 raw output for claims 1-7 without re-executing live probes, and did
+not generate evidence for claims 8-11 (added to an already-`proven` target).
+Claims 8-11 above were verified manually against the live ~/.codex state and
+the freshly captured fixtures, cli_version 0.152.1.
