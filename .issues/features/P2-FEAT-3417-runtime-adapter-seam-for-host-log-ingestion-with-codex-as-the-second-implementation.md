@@ -164,7 +164,7 @@ Concrete files, callers, and conventions this issue's implementer needs, grouped
 - `scripts/little_loops/cli/ctx_stats.py` (`_compute_cache_rate_from_jsonl`, line 342; called from `main_ctx_stats` at line 753 with no `host=`) — calls `get_sessions_folder(cwd)` without `host=`, so it inherits whatever `LL_HOOK_HOST` resolves to; parses `record["message"]["usage"]` fields that are Claude Code-specific
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/logs.py` (module docstring, line 1, frames the whole file as reading only the Claude Code session-log root) — this IS `ll-logs`, the file AC #4 names, and it was absent from "Files to Modify" entirely. It has 9 direct, un-hosted `get_project_folder(...)` calls across 6 functions — `_collect_sequences` (lines 653, 658, 667), `_cmd_sequences` (693), `_cmd_extract` (774, 783), `_collect_failure_clusters` (1353, 1358, 1367), `_cmd_scan_failures` (1554), `_cmd_eval_export` (2032) — none pass `host=`, confirmed by grep (no `--host` CLI flag exists anywhere in this file's argparse). Beyond folder resolution, the Claude-schema-coupled content functions `_is_ll_relevant`, `_detect_ll_signal`, `_extract_tool_name`, `_extract_eval_invocation`, `_cmd_matches`, `_record_has_error` all branch on `record["type"]`/`message.content[*].type` — these must either gain a per-host equivalent behind the new interface or be explicitly scoped out as Claude-Code-only for this issue's v1 (the issue does not currently state which).
+- `scripts/little_loops/cli/logs.py` (module docstring, line 1, frames the whole file as reading only the Claude Code session-log root) — this IS `ll-logs`, the file AC #4 names, and it was absent from "Files to Modify" entirely. It has 11 direct, un-hosted `get_project_folder(...)` calls across 6 functions — `_collect_sequences` (lines 653, 658, 667), `_cmd_sequences` (693), `_cmd_extract` (774, 783), `_collect_failure_clusters` (1353, 1358, 1367), `_cmd_scan_failures` (1554), `_cmd_eval_export` (2032) — none pass `host=`, confirmed by grep (no `--host` CLI flag exists anywhere in this file's argparse). Beyond folder resolution, the Claude-schema-coupled content functions `_is_ll_relevant`, `_detect_ll_signal`, `_extract_tool_name`, `_extract_eval_invocation`, `_cmd_matches`, `_record_has_error` all branch on `record["type"]`/`message.content[*].type` — these must either gain a per-host equivalent behind the new interface or be explicitly scoped out as Claude-Code-only for this issue's v1 (the issue does not currently state which).
 
 ### Dependent Files (Callers/Importers)
 - `get_project_folder`/`get_sessions_folder` (`user_messages.py:373`, `:422`) are imported by: `session_log.py:15`, `fsm/continuity.py:22`, `cli/logs.py:35`, `cli/ctx_stats.py:34`, `cli/session.py:71`
@@ -292,7 +292,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 _Second wiring pass added by `/ll:wire-issue`:_
 - **Decided (review, 2026-09-08)**: `extract_commands` (`user_messages.py:721`) routes through `detect_sessions`/`iter_events` too — same glob pattern, same sole caller (`cli/messages.py`), trivial to include, and leaving it out would extract Codex user messages but not Codex commands
 - Do not change `get_project_folder`/`get_sessions_folder`'s Path-returning signature — `cli/session.py`'s `backfill` subcommand, `session_log.py`'s `get_current_session_jsonl`/`get_current_session_id` (consumed by `fsm/executor.py`, `parallel/orchestrator.py`, `advisor.py`, `issue_lifecycle.py`), and `fsm/continuity.py::summarize_completed_state` all depend on the bare-`Path`-or-`None` contract and sit outside this issue's Call Path
-- Decide whether the transcript_path-driven raw readers outside `get_project_folder` (`hooks/session_start.py`'s primary branch, `cli/backfill_worker.py`'s single-file path, `hooks/pre_compact.py`'s rubric-gate read, `hooks/scripts/context-monitor.sh`'s tail-based read) need routing through the new session-watcher interface too, or stay separate since their concerns (hook timing, backfill triggering) differ from `ll-logs`/`ll-ctx-stats`'s activity-reporting AC
+- **Decided (verification pass, 2026-09-09)**: the transcript_path-driven raw readers outside `get_project_folder` (`hooks/session_start.py`'s primary branch, `cli/backfill_worker.py`'s single-file path, `hooks/pre_compact.py`'s rubric-gate read, `hooks/scripts/context-monitor.sh`'s tail-based read) stay separate and are out of scope for this issue's v1 — they key off a hook payload's `transcript_path` for hook-timing/backfill-triggering concerns, not host+cwd session discovery for activity reporting, so they have no Acceptance Criterion here. This follows the same "worth a follow-up issue, not a blocker for this one" pattern already applied to the `HostLayout`/watcher duplication and the `cli/logs.py` content-function scope-out above.
 - Template `SessionEvent`'s tests on `test_hook_intents.py::TestLLHookEvent` (closer than `test_events.py::TestLLEvent` — it already covers a `host`-discriminated dataclass with optional fields) and `detect_sessions`' empty-vs-handles tests on `test_host_runner.py::TestResolveHost::test_detect_binary_probe_order`/`test_raises_when_no_host`. Add Codex discovery tests for both paths: a `tmp_path` fake `~/.codex/state_5.sqlite` with a `threads` table (sqlite path, including a row whose `rollout_path` no longer exists), and a fake `~/.codex/sessions/YYYY/MM/DD/` tree with no DB (scan fallback). `stop()`'s template is no longer needed
 - Reuse `conftest.py`'s `fixtures_dir`/`load_fixture` helpers and the autouse `_isolate_session_log_dir` fixture when writing the new Codex fixture and `watch()` test harness, rather than inventing new path-isolation fixtures
 - Update `docs/reference/CLI.md`'s `### ll-messages` section (line 3552) alongside the already-flagged `### ll-logs` section
@@ -367,12 +367,18 @@ Solution decision rationale, Codex on-disk-layout claims (self-disclosed as
 maintainer-verified and not independently reproducible from the repo), and the
 remaining Integration Map / Acceptance Criteria — holds.
 
+**Both gaps corrected 2026-09-09**: the `cli/logs.py` call-site count was fixed to
+11, and the "four uncoordinated raw-transcript readers" question was resolved with
+an explicit "Decided" annotation (out of scope for v1, same pattern as the other
+scope-outs in this issue).
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T04:38:38 - `4a00b9f5-2c1a-4bb9-8901-1abcda8ab946.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:36:35 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - `review (manual, Codex layout corrections)` - 2026-09-09T04:28:06 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - `/ll:wire-issue` - 2026-09-09T04:17:56 - `3577db8f-8723-4e0e-adb7-90253d958f56.jsonl`

@@ -365,6 +365,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T04:38:13 - `8dab0813-a8db-483a-974b-e9db8e0998dc.jsonl`
 - pre-implementation review (manual) - 2026-09-08 - added "Pre-Implementation Review Decisions" D1–D9, Option B print caveat, rewrote Program Design / Acceptance Criteria / Impact
 - `/ll:confidence-check` - 2026-09-09T04:13:05 - `e1e686a9-1440-44fa-b3e0-814ed4ea3e38.jsonl`
 - `/ll:wire-issue` - 2026-09-09T04:09:36 - `6a60b145-4b40-4e2a-b6c3-1f8fc4e6cbf8.jsonl`

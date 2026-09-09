@@ -8,12 +8,12 @@ discovered_date: '2026-09-08'
 labels:
 - queue
 - reliability
-confidence_score: 75
-outcome_confidence: 35
-score_complexity: 0
+confidence_score: 90
+outcome_confidence: 86
+score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 10
-score_change_surface: 0
+score_ambiguity: 25
+score_change_surface: 18
 missing_artifacts: false
 decision_needed: false
 ---
@@ -447,6 +447,7 @@ _Added by `/ll:confidence-check` on 2026-09-08 against the prior revision; score
 **Open** | Created: 2026-09-08 | Priority: P1
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T04:38:32 - `4a00b9f5-2c1a-4bb9-8901-1abcda8ab946.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:36:14 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - manual review rewrite - 2026-09-09 - design layer rewritten; wiring findings retained
 - `/ll:wire-issue` - 2026-09-09T04:19:11 - `31613f06-17db-4122-af95-f9089ed7405e.jsonl`
