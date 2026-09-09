@@ -7,6 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T20:18:41Z'
+reconcile_attempted: true
 ---
 
 # BUG-3425: Standalone ll-loop run/resume never seed parameters defaults into context
@@ -47,7 +48,8 @@ Proposal from the ll-console agent (2026-09-09). Its diagnosis was that a `conte
 - [ ] Positional input and `program.md` injection win over a parameter default for the same key.
 - [ ] `required: true` parameters without `default:` are unaffected (still missing, still caught by the pre-run check).
 - [ ] `ll-loop show -j` output for the fixture is byte-identical before and after the change apart from the added `default` fields under `parameters`.
-- [ ] rn-remediate and rn-decompose carry their defaults under `parameters:` only; `ll-loop validate` passes on both.
+- [ ] rn-remediate, rn-decompose, `code-run-gate.yaml`, `generator-evaluator.yaml`, `generator-evaluator-flux.yaml`, and `enumerate-and-prove.yaml` carry their defaults under `parameters:` only (common.yaml's `max_retries` needs no change — it is a fragment `with:` param already seeded via the existing sub-loop binding path); `ll-loop validate` passes on all six.
+- [ ] Whether `ll-loop simulate` (`cli/loop/testing.py::cmd_simulate`) also calls `seed_parameter_defaults` is explicitly decided and recorded — either wired for parity with `run`/`resume`, or captured as intentionally out of scope.
 
 
 ## Current Behavior
@@ -70,8 +72,7 @@ All three loop-launch paths — sub-loop `with:` binding, standalone `ll-loop ru
 - `scripts/little_loops/cli/loop/lifecycle.py` — call before line 665
 - `scripts/little_loops/loops/rn-remediate.yaml` — move `max_remediation_passes` default from `context:` (line 66) to `parameters:` (line 48)
 - `scripts/little_loops/loops/rn-decompose.yaml` — move `parent_depth` default from `context:` (line 51) to `parameters:` (line 41)
-- `scripts/little_loops/loops/lib/common.yaml:54` — audit `max_retries` and any other `parameters:` entry whose description says "default:"
-  > ⚠ Superseded — this is a fragment `with:` param, no context: duplicate
+- `scripts/little_loops/loops/lib/common.yaml:54` — no change needed: `max_retries` is a fragment `with:` param, already seeded via the existing `executor.py:1090-1096` sub-loop binding path, with no `context:` duplicate to migrate
 - `scripts/little_loops/loops/oracles/code-run-gate.yaml` — same `context:`/`parameters:` duplication: `min_pass_rate` (lines 68/104) and `health_bound_seconds` (lines 72/105) [Agent 1 finding]
 - `scripts/little_loops/loops/oracles/generator-evaluator.yaml` — same pattern: `pass_threshold` (lines 39/59) and `artifact_path` (lines 43/61) [Agent 1 finding]
 - `scripts/little_loops/loops/oracles/generator-evaluator-flux.yaml` — same pattern: `steps` (lines 32/44) and `prompt_file` (lines 28/43) [Agent 1 finding]
@@ -130,7 +131,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 1. Add `seed_parameter_defaults()` to `scripts/little_loops/fsm/context_seed.py`
 2. Call it from `run.py` (before line 190) and `lifecycle.py` (before line 665), following the `apply_context_overrides` shared-helper pattern
-3. Move the duplicated `context:` literal defaults (rn-remediate, rn-decompose, common.yaml) into `parameters.default` and remove the `context:` duplicates
+3. Move the duplicated `context:` literal defaults (rn-remediate, rn-decompose, and the four oracle loops — `code-run-gate.yaml`, `generator-evaluator.yaml`, `generator-evaluator-flux.yaml`, `enumerate-and-prove.yaml`) into `parameters.default` and remove the `context:` duplicates. `common.yaml:54`'s `max_retries` needs no migration — it is a fragment `with:` param with no `context:` duplicate.
 4. Optional: add an `ll-loop validate` lint warning when a `context:` value is a dict carrying a `type` key
 5. Verify with the fixture loop against each Acceptance Criterion
 
@@ -232,6 +233,7 @@ simulate` decision to Explicit Non-Goals or as a new AC) before this issue is
 marked implementation-ready.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-09T21:04:56 - `a5bdbdca-a5bb-459a-a98a-2040741996e1.jsonl`
 - `/ll:verify-issues` - 2026-09-09T21:00:41 - `9d974726-ede8-4e9b-8bf3-5dc1cbd42201.jsonl`
 - `/ll:wire-issue` - 2026-09-09T20:54:46 - `5d5214fd-1a0f-4890-8f02-11b97e9c697b.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:41:28 - `505beecf-ceb4-4da8-912d-d233f746daca.jsonl`

@@ -157,6 +157,19 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 6. Drop the `cli/session.py:702` notice; verify `ll-session backfill --host codex` against `scripts/tests/fixtures/codex/` with `home=tmp_path`.
 7. Docs: `docs/ARCHITECTURE.md` seam note (one seam, two halves), `docs/reference/API.md`, `docs/reference/CLI.md` backfill flags table.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Resolve the Path→SessionHandle boundary before implementing Step 3: decide whether `backfill_raw_events()`/`backfill()`/`backfill_incremental()` (`lifecycle.py:834-868,1050-1126,1129-1180`) themselves take `list[SessionHandle]` (rippling into `cli/session.py`, `cli/backfill_worker.py`, `hooks/session_start.py`'s glob call sites), or internally synthesize `SessionHandle`s from the `list[Path]` they already receive. No code in the tree today performs a bare-`Path`-to-`SessionHandle` conversion — this is a genuine design gap, not a mechanical signature change.
+- Delete or rewrite `test_ll_session.py::TestBackfill::test_backfill_host_codex_prints_enh_3420_notice` in the same change that removes the `cli/session.py:702` notice — it currently asserts on the exact string being deleted and will fail otherwise.
+- Write a qwen double-normalization regression test: insert an already-Claude-shaped `raw_events` row with `host="qwen"`, run `rebuild()`, and assert `tool_events`/`usage_events`/`message_events`/`assistant_messages`/`prompt_opt_events`/`skill_events` all populate correctly — not just a `raw_events` row count.
+- Add positive-path qwen-rebuild assertions for `usage_events` and `skill_events` (currently zero-count-only) and at least one for `prompt_opt_events` (currently untested for qwen).
+- Add a `_backfill_raw_events(handles: list[SessionHandle], ...)` unit test constructing literal `SessionHandle`s directly (no existing fixture builder does this).
+- Add a `cli/backfill_worker.py` test passing an unrecognized `--host` value once Step 4's hand-rolled validation lands, asserting the resulting `SystemExit`/non-zero exit.
+- Update `docs/reference/HOST_COMPATIBILITY.md`'s four host-normalizer footnotes (`[^kimiwire]`, `[^qwenwire]`, `[^geminiwire]`, `[^ompwire]`) and `docs/reference/API.md` lines 9533/9539/9541, alongside the already-cited doc ranges.
+- Coordinate parameter shape with ENH-3419 before implementing: that sibling issue (`status: open`, same day, `relates_to` this issue) independently plans to change `cli/logs.py::_extract_ll_event_streams` to take `handles: list[SessionHandle]` too — the same function this issue already touches for its `.normalize` call-site removal. Confirm which issue lands first and whether the two parameter shapes agree before either implements it, to avoid two conflicting `list[SessionHandle]`-consuming signatures for the same function.
+
 ## Impact
 
 - **Priority**: P3 — debt; Codex data in history.db is not yet required by a goal 6/7 consumer (FEAT-3418's workspace totals read history.db but only for hosts already ingested).
@@ -201,6 +214,7 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 - qwen idempotency landmine: `writers.py::_iter_events` must stop re-normalizing pre-normalized qwen rows in the same change as the write-path swap, or rows silently vanish on cursor replay — easy to miss since it's a separate read-path file from `lifecycle.py`.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T21:04:07 - `f3e8c388-f237-4461-9091-b0b23efd2cd3.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:49:55 - `7f9ebdc1-1c66-49aa-88bc-4fc32b3d04be.jsonl`
 - `/ll:confidence-check` - 2026-09-09T20:36:46 - `33e77cdf-52d2-4350-bc12-c11c654aafbd.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T20:34:13 - `2fd45f5b-ae88-495d-9824-d79e9d1a2e5f.jsonl`

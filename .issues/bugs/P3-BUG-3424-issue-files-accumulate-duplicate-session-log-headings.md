@@ -7,7 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T19:37:59Z'
-verify_verdict: NON_VALID
+verify_verdict: VALID
 size: Large
 confidence_score: 95
 outcome_confidence: 55
@@ -267,7 +267,61 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 - Broad enumeration across the full Integration Map (~18 sites across the core fix, 5 manual-fallback doc/skill call sites, a third wiring-pass footer site, 4+ test files, and 5 documentation files) drives Complexity Breadth to 0/12, even though each site's own change is Local/mechanical.
 - Pattern A blast radius: ~10 caller/reader call sites depend on `append_session_log_entry`/`parse_session_log`/`count_session_commands` (4 direct callers plus 6 reader call sites surfaced by the wiring pass) — a broad-but-manageable surface, not isolated.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues --auto` — 2026-09-09:_
+
+Verdict at time of check: **VALID**. Independently re-verified the load-bearing claims against
+HEAD, separate from the prior refine/wire/confidence-check passes:
+
+- `append_session_log_entry` (`session_log.py:281-343`) and `session_log_body`
+  (`session_log.py:39-80`) match the Root Cause and Location citations exactly — both still read
+  only the *last* non-fenced `## Session Log` heading/block.
+- Re-ran a fence-aware scan of `.issues/**/*.md` using the project's own `fence_spans`/`in_fence`
+  primitives: **49** files have more than one non-fenced `## Session Log` H2 heading, max **2**
+  per file — matches the Summary's count exactly.
+- The three Resolution-footer sites (`issue_lifecycle.py` `_build_closure_resolution`/
+  `_build_completion_resolution` ~327-415, `parallel/orchestrator.py` ~1960-1985,
+  `recursive_finalize.py::_append_decomposition_note` ~100-116) all append their block
+  unconditionally at EOF (`content.rstrip() + note` or an f-string return), never checking for an
+  existing `## Session Log` heading — confirms shape 1's mechanism as described.
+- `format_check.py`'s existing `duplicate_heading` gap class (`_duplicate_heading_groups`,
+  `issue_parser.py:1269`) is scoped to `_H3_HEADING_RE` only — confirmed it structurally cannot
+  match a bare `## Session Log` H2 duplicate, as claimed in Integration Map → Similar Patterns.
+  `fold_research_findings.py`'s `find_subsections`/`_h2_slice` and `format_check.py`'s
+  `_collapse_duplicate_headings` both exist with the described first-position-collapse shape.
+- The cited existing test `test_session_log.py::TestAppendSessionLogEntry::
+  test_duplicate_session_log_headers_only_inserts_once` (lines 239-252) reads exactly as quoted:
+  it only asserts `content.count("/ll:format-issue") == 1`, with no heading-count assertion —
+  confirms the wiring-pass finding.
+- Causal/identity claim check (unconditional rule): the Summary's "Reproduced in commit
+  `98dbbaf83` on ENH-3423" attribution was read directly rather than inferred — `git show
+  98dbbaf83 -- '.issues/enhancements/P3-ENH-3423-*.md'` shows exactly the claimed shape: a
+  `## Verification Notes` section inserted immediately above the pre-existing `## Session Log`
+  heading, followed by a second `## Session Log` heading appended at EOF holding only the
+  `/ll:verify-issues` entry. Confirmed, not merely consistent with the claim.
+- `ll-verify-evidence` on this file: `{"ok": true, "count": 0, "findings": []}` — no fabricated
+  evidence spans.
+- Decisions log gate: `ll-issues decisions list --type rule --enforcement required
+  --active-only` exited 0 with no active required rules — no `DECISIONS_VIOLATION`.
+- Dependency references (§E): file has no `## Blocked By`/`## Blocks` sections — N/A.
+- Proposal-vs-code consequence check (B6): items (a)-(g) were traced against the current
+  functions/tests above; no exception-handler mismatch, no test-fixture invalidation, and the
+  Integration Map's listed integration points are each covered by an Implementation Step or
+  Acceptance-equivalent item. No `PROPOSAL_UNSOUND` finding.
+- One soft note, not a correctness defect: the Summary's "9 files" orphaned-entry count could not
+  be reproduced exactly by an independent re-scan (11-12 depending on heuristic, vs. 9 at capture
+  time) — but two of those files were manually spot-checked and both show genuine orphaned
+  entries (e.g. `P2-BUG-863-*.md:222` under `## Reopened`, `P5-FEAT-2787-*.md:390-393` under
+  `## Related Key Documentation`), so the qualitative claim holds. The gap is most plausibly the
+  same kind of working-tree drift the Summary already acknowledges for the duplicate-heading count
+  (54 at capture -> 49 now); this figure just lacks the same explicit caveat. Not blocking —
+  `orphaned_session_log_entries` is specified as a report-only finding (Proposed Solution (f)), so
+  the exact count doesn't gate the fix design; worth a fresh count when Implementation Step 5 runs
+  the corpus fix.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T21:04:19 - `f3e8c388-f237-4461-9091-b0b23efd2cd3.jsonl`
 - `/ll:confidence-check` - 2026-09-09T20:46:34 - `cfabad4e-29d0-4bbf-8a3f-5a2f2c2e4144.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-09T20:38:10 - `7cfdc5bc-5d3d-4908-acfc-6508de69f3b6.jsonl`
 - `/ll:verify-issues` - 2026-09-09T20:33:33 - `e0943bd8-8b5c-4a1a-9fe6-a5e34b97cca5.jsonl`
