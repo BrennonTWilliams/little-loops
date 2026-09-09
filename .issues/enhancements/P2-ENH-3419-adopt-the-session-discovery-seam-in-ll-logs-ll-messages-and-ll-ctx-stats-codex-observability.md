@@ -15,6 +15,13 @@ blocked_by:
 - FEAT-3417
 blocks:
 - ENH-3420
+confidence_score: 80
+outcome_confidence: 41
+score_complexity: 5
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 0
+missing_artifacts: true
 ---
 
 # ENH-3419: Adopt the session-discovery seam in ll-logs, ll-messages, and ll-ctx-stats (Codex observability)
@@ -178,7 +185,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-09 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-09_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override, BUG-3051)
+**Outcome Confidence**: 41/100 → LOW
+
+### Gaps to Address
+- `blocked_by: FEAT-3417` is unresolved (`status: open`) — the entire seam this issue adopts (`session_store/sessions.py`: `SessionHandle`, `SessionEvent`, `detect_sessions`, `iter_events`, `list_workspaces`, `parse_claude_transcript`, `parse_codex_rollout`) does not exist on disk yet (confirmed: no `sessions.py` under any `session_store/` directory in the repo). This is a hard override per BUG-3051/`.claude/CLAUDE.md` § Issue File Format (`deferred` is non-terminal; only `done`/`cancelled` resolve `blocked_by`) — implementation cannot begin until FEAT-3417 lands.
+
+### Outcome Risk Factors
+- Breadth: 16+ distinct change sites (11 call sites in `cli/logs.py` alone, plus `messages.py`, `user_messages.py`, `ctx_stats.py`, `session_start.py`, loop YAML, docstrings, 5+ test files, 4 doc files) — Complexity Breadth scores 0/12.
+- Change Surface is Pattern A (heterogeneous per-site logic — Codex dedup mapping, cache-rate reader, host injection — not a uniform mechanical substitution), and `cli/logs.py`'s 11 call sites alone exceed the 11+ "very wide blast radius" band (0/25). Mitigate by sequencing the Implementation Steps' per-file order (already given) and confirming each rewired call site against its existing test file before moving to the next.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T15:01:24 - `a4ac4148-e562-4d02-a9a9-889fd2f8dc3f.jsonl`
 - `/ll:wire-issue` - 2026-09-09T14:51:24 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
 - `/ll:refine-issue` - 2026-09-09T14:01:26 - `fc9ca416-ac94-40a4-8082-2af225a0464c.jsonl`
 - `/ll:format-issue` - 2026-09-09T13:22:13 - `94cf9e94-a0b2-480c-8238-e366777de95e.jsonl`

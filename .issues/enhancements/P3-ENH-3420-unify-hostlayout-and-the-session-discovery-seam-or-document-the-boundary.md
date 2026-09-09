@@ -16,6 +16,12 @@ blocked_by:
 relates_to:
 - FEAT-3417
 reconcile_attempted: true
+confidence_score: 80
+outcome_confidence: 33
+score_complexity: 5
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 0
 ---
 
 # ENH-3420: Unify HostLayout and the session-discovery seam (or document the boundary)
@@ -179,7 +185,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-09 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-09_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (dependency hard override)
+**Outcome Confidence**: 33/100 → VERY LOW
+
+### Gaps to Address
+- Blocked by ENH-3419 (status: open) — the unify-vs-document decision (Implementation Step 1) is explicitly deferred until ENH-3419 lands, so this issue cannot proceed; wait for or prioritize ENH-3419, or drop the dependency if it no longer applies.
+
+### Outcome Risk Factors
+- Wide blast radius: 11+ call sites reference `HostLayout` (`_iter_events`, `_backfill_raw_events`, `cli/logs.py`'s three functions, `_backfill_subagent_runs`, `user_messages.py`, `cli/session.py`, `cli/backfill_worker.py`, plus test files) — any signature/shape change ripples broadly.
+- Fundamental approach still open: the unify-vs-document choice is deferred to a downstream signal (whether goal 6/7 consumers read history.db or raw sessions) that doesn't exist yet, not resolved in this issue.
+- Deep, architectural depth if the unify path is chosen: dispatch-table rewiring, signature changes (`_backfill_raw_events`'s `jsonl_files` param replaced), and a dataclass shrink — not a mechanical edit.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T15:01:22 - `a4ac4148-e562-4d02-a9a9-889fd2f8dc3f.jsonl`
 - `/ll:wire-issue` - 2026-09-09T14:51:25 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T14:15:24 - `aea90797-734c-47d9-89ed-e343ebbf4673.jsonl`
 - `/ll:refine-issue` - 2026-09-09T14:08:38 - `1658f0c5-d510-42b4-beb1-234626dbd6e5.jsonl`

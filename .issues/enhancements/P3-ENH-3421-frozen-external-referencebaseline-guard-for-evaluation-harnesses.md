@@ -15,6 +15,12 @@ relates_to:
 - ENH-3415
 program_design_not_applicable: true
 decision_needed: false
+confidence_score: 92
+outcome_confidence: 72
+score_complexity: 15
+score_test_coverage: 20
+score_ambiguity: 15
+score_change_surface: 22
 ---
 
 # ENH-3421: Frozen external reference/baseline guard for evaluation harnesses
@@ -242,12 +248,28 @@ _Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
 - **Risk**: Low - no code changes ship from this issue as filed; it only produces a scoping decision.
 - **Breaking Change**: No
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` — 2026-09-09:_
+
+**Readiness**: 92/100 (PROCEED WITH CAUTION) | **Outcome Confidence**: 72/100
+
+### Concerns
+
+- **Scope Boundaries is stale relative to the decision/wiring that happened after it was written.** The Summary and Scope Boundaries sections still frame this as a "stub" — "Out of scope: implementing the guard mechanism... this issue is a stub; implementation is a follow-up once scope is resolved." But `/ll:decide-issue` has since selected Option A with full scoring rationale, and `/ll:wire-issue` has fully wired the implementation (exact files, line numbers, test mirrors, doc updates, MR-2 candidates-list edit). The issue now contradicts itself on whether implementation belongs in this issue or a follow-up. Resolve before starting: either update Summary/Scope Boundaries to drop the "stub"/"out of scope" framing and confirm this issue is the implementation vehicle, or split implementation into a new issue as originally scoped.
+
+### Outcome Risk Factors
+
+- **Ambiguity (15/25)**: same scope-resolution question above is an execution risk, not just a documentation nit — an implementer could reasonably start the full Option A wiring in this issue, or stop and file a follow-up per the original scope text, and the file gives inconsistent guidance on which is correct.
+- **Complexity (15/25)**: touches ~9-10 files across three layers (dataclass/evaluator schema, JSON-schema mirror + MR-2 meta-rule validation, loop YAML fragment) plus a genuinely new test shape — a dynamic, multi-iteration test proving the frozen field doesn't drift across iterations the way `capture_prev`/`prev_score` does. The closest cited precedent (`test_baseline_score_uses_run_benchmark_fragment`) is a static structural assertion, not the dynamic execution test this needs, so that test has to be authored from scratch rather than mirrored.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P3
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T15:01:48 - `4490c2ea-90df-42ee-8816-5029d9abb8d8.jsonl`
 - `/ll:wire-issue` - 2026-09-09T14:51:25 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
 - `/ll:decide-issue` - 2026-09-09T14:19:44 - `79d7b43c-377f-45d3-9e5c-2fc5ef853497.jsonl`
 - `/ll:refine-issue` - 2026-09-09T14:08:38 - `1658f0c5-d510-42b4-beb1-234626dbd6e5.jsonl`
