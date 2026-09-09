@@ -406,6 +406,107 @@ class TestFormatCheckJsonOutput:
 
 
 # ---------------------------------------------------------------------------
+# TestFormatCheckUnappliedDecisionMultiPoint (BUG-3413)
+# ---------------------------------------------------------------------------
+
+_MULTI_DECISION_BUG_BODY = "\n".join(
+    [
+        "---",
+        "id: BUG-9108",
+        "status: open",
+        "---",
+        "",
+        "# BUG-9108: Test bug",
+        "",
+        "## Summary",
+        "A real problem happens under specific conditions.",
+        "",
+        "## Current Behavior",
+        "It breaks in a specific way.",
+        "",
+        "## Expected Behavior",
+        "It should not break.",
+        "",
+        "## Steps to Reproduce",
+        "1. Do the thing.",
+        "2. Observe failure.",
+        "",
+        "## Proposed Solution",
+        "",
+        "**Decision point: First choice**",
+        "",
+        "**Option A**: Use `rej1`.",
+        "",
+        "**Option B**: Use `win1`.",
+        "",
+        "> **Selected:** Option B",
+        "",
+        "**Decision point: Second choice**",
+        "",
+        "**Option A**: Use `win2`.",
+        "",
+        "**Option B**: Use `rej2`.",
+        "",
+        "> **Selected:** Option A",
+        "",
+        "### Decision Rationale",
+        "",
+        "Both resolved.",
+        "",
+        "## Implementation Steps",
+        "1. Still uses `win2`.",
+        "2. Falls back to `rej2`.",
+        "",
+        "## Impact",
+        "- **Priority**: P3 - Low",
+        "- **Effort**: Small",
+        "- **Risk**: Low",
+        "- **Breaking Change**: No",
+        "",
+        "## Status",
+        "open",
+    ]
+)
+
+
+class TestFormatCheckUnappliedDecisionMultiPoint:
+    """BUG-3413: `unapplied_decision`/`unapplied_decision_detail` scope by
+    decision point on a multi-decision-point `## Proposed Solution` -- decision
+    point 2's winner (`win2`) must never be reported, and its genuinely
+    rejected identifier (`rej2`) must still fire."""
+
+    def test_second_decision_point_winner_not_reported(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_issue(format_check_dir, "P3-BUG-9108-test-bug.md", _MULTI_DECISION_BUG_BODY)
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9108",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        data = json.loads(out)
+        assert all("win2" not in reason for reason in data["unapplied_decision"])
+        assert all(entry["identifier"] != "win2" for entry in data["unapplied_decision_detail"])
+        assert any("rej2" in reason for reason in data["unapplied_decision"])
+        assert {"section": "Implementation Steps", "identifier": "rej2"} in data[
+            "unapplied_decision_detail"
+        ]
+
+
+# ---------------------------------------------------------------------------
 # TestFormatCheckIssueNotFound
 # ---------------------------------------------------------------------------
 

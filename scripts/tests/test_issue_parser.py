@@ -4873,7 +4873,7 @@ class TestPriorityRegexCompletenessAllowlist:
             351: "docstring for is_normalized",
             1016: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            1697: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            1809: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
             3790: "comment describing the P[0-5]-NNN- filename shape",
             3794: "_parse_type_and_id's directory-fallback number extraction; priority digit "
@@ -5608,6 +5608,123 @@ class TestUnappliedDecision:
 
         assert any("refine_followup" in r for r in _unapplied_decision(content))
 
+    def test_bug_3413_marker_delimited_groups_scope_independently(self) -> None:
+        """BUG-3413 boundary rule 1 (FEAT-3409 shape): a `**Decision point:**`
+        marker splits two decision points sharing option-block markup -- the
+        second group's winner must not be treated as decision point 1's
+        rejected option, and the second group's genuinely rejected identifier
+        still fires."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Use `rej1`.\n\n"
+            "**Option B**: Use `win1`.\n\n"
+            "> **Selected:** Option B\n\n"
+            "**Decision point: Second choice**\n\n"
+            "**Option A**: Use `win2`.\n\n"
+            "**Option B**: Use `rej2`.\n\n"
+            "> **Selected:** Option A\n\n"
+            "### Decision Rationale\n\nBoth resolved.\n",
+            Implementation_Steps="1. Still uses `win2`.\n2. Falls back to `rej2`.\n",
+        )
+
+        reasons = _unapplied_decision(content)
+        assert all("win2" not in r for r in reasons)
+        assert any("rej2" in r for r in reasons)
+
+    def test_bug_3413_heading_delimited_groups_scope_independently(self) -> None:
+        """BUG-3413 boundary rule 2 (FEAT-2478 shape): a non-option markdown
+        heading (`#### Decision N — ...`) splits two decision points whose
+        option labels continue (A,B then C,D) rather than restarting."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "#### Decision 1 — First\n\n"
+            "**Option A**: Use `rej1`.\n\n"
+            "**Option B**: Use `win1`.\n\n"
+            "> **Selected:** Option B\n\n"
+            "#### Decision 2 — Second\n\n"
+            "**Option C**: Use `win2`.\n\n"
+            "**Option D**: Use `rej2`.\n\n"
+            "> **Selected:** Option C\n\n"
+            "### Decision Rationale\n\nBoth resolved.\n",
+            Implementation_Steps="1. Still uses `win2`.\n2. Falls back to `rej2`.\n",
+        )
+
+        reasons = _unapplied_decision(content)
+        assert all("win2" not in r for r in reasons)
+        assert any("rej2" in r for r in reasons)
+
+    def test_bug_3413_label_restart_groups_scope_independently(self) -> None:
+        """BUG-3413 boundary rule 3 (FEAT-2878 shape): no marker or heading
+        between two decision points, just an undelimited option-label restart
+        (A,B,A,B) -- before the fix, `len(matching) != 1` silently disabled
+        the detector for the whole issue (`_unapplied_decision_pairs` == [])."""
+        from little_loops.issue_parser import _unapplied_decision, _unapplied_decision_pairs
+
+        content = self._issue(
+            "**Option A**: Use `rej1`.\n\n"
+            "**Option B**: Use `win1`.\n\n"
+            "> **Selected:** Option B\n\n"
+            "**Option A**: Use `win2`.\n\n"
+            "**Option B**: Use `rej2`.\n\n"
+            "> **Selected:** Option A\n\n"
+            "### Decision Rationale\n\nBoth resolved.\n",
+            Implementation_Steps="1. Still uses `win2`.\n2. Falls back to `rej2`.\n",
+        )
+
+        assert _unapplied_decision_pairs(content) != []
+        reasons = _unapplied_decision(content)
+        assert all("win1" not in r and "win2" not in r for r in reasons)
+        assert any("rej2" in r for r in reasons)
+
+    def test_bug_3413_letter_prefixed_label_groups_scope_independently(self) -> None:
+        """BUG-3413 boundary rule 2 (ENH-2463 shape): plain `### <topic>`
+        headings (not the "Decision N" phrasing) delimit groups whose option
+        labels are letter-prefixed (A1/A2, B1/B2)."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "### First topic\n\n"
+            "**Option A1**: Use `rej1`.\n\n"
+            "**Option A2**: Use `win1`.\n\n"
+            "> **Selected:** Option A2\n\n"
+            "### Second topic\n\n"
+            "**Option B1**: Use `win2`.\n\n"
+            "**Option B2**: Use `rej2`.\n\n"
+            "> **Selected:** Option B1\n\n"
+            "### Decision Rationale\n\nBoth resolved.\n",
+            Implementation_Steps="1. Still uses `win2`.\n2. Falls back to `rej2`.\n",
+        )
+
+        reasons = _unapplied_decision(content)
+        assert all("win2" not in r for r in reasons)
+        assert any("rej2" in r for r in reasons)
+
+    def test_bug_3413_marker_line_identifier_does_not_leak_into_group(self) -> None:
+        """BUG-3413 rule-2 clamp: `_option_block_spans()` already ends every
+        span at the next *option* match's start, so without the clamp a
+        `**Decision point:** \\`leaky\\`` marker line sitting between two
+        decision points is absorbed into the preceding group's last (here,
+        rejected) span -- leaking `leaky` into that group's rejected-id set
+        even though it is planning prose, not a rejected option's content."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Use `win1`.\n\n"
+            "**Option B**: Use `rej1`.\n\n"
+            "> **Selected:** Option A\n\n"
+            "**Decision point:** `leaky` needs a follow-up.\n\n"
+            "**Option A**: Use `win2`.\n\n"
+            "**Option B**: Use `rej2`.\n\n"
+            "> **Selected:** Option A\n\n"
+            "### Decision Rationale\n\nBoth resolved.\n",
+            Implementation_Steps="1. Also considers `leaky` for later.\n",
+        )
+
+        reasons = _unapplied_decision(content)
+        assert all("leaky" not in r for r in reasons)
+
 
 class TestBug3295ContainmentCorpusDifferential:
     """BUG-3295 Implementation Steps 4-5: corpus differential for the
@@ -5633,6 +5750,18 @@ class TestBug3295ContainmentCorpusDifferential:
 
     _PRE_FIX_TOTAL_REPORTS = 525  # measured before this fix landed
 
+    # BUG-3413: per-decision-point grouping is a *second*, orthogonal
+    # widening of the corpus total on top of the BUG-3295 ceiling above --
+    # unlike the one-directional subsumption filter, grouping both removes
+    # false-positive reports (a later decision point's winner no longer
+    # misclassified as decision point 1's rejected option) and *adds*
+    # true-positive reports on issues the pre-fix `len(matching) != 1` check
+    # silently disabled entirely (see this issue's Corpus Impact). The
+    # `_PRE_FIX_TOTAL_REPORTS` ceiling above no longer holds; this is a
+    # second, independent post-BUG-3413 ceiling measured at fix time
+    # (.issues/, every `.md` file: total report count 535 -> 562).
+    _POST_BUG_3413_TOTAL_REPORTS = 562
+
     def test_previously_spurious_files_now_clear(self) -> None:
         from little_loops.issue_parser import _unapplied_decision
 
@@ -5648,10 +5777,11 @@ class TestBug3295ContainmentCorpusDifferential:
             content = found[name].read_text(encoding="utf-8", errors="ignore")
             assert _unapplied_decision(content) == [], f"{name} regained a spurious gap"
 
-    def test_total_report_count_does_not_exceed_pre_fix_baseline(self) -> None:
-        """new_reports == 0: the containment filter can only remove reports,
-        never add them, so the corpus total must never exceed the measured
-        pre-fix ceiling."""
+    def test_total_report_count_does_not_exceed_post_bug_3413_baseline(self) -> None:
+        """BUG-3413 lifted the BUG-3295-era ceiling by design (see the
+        `_POST_BUG_3413_TOTAL_REPORTS` comment) -- this guards against
+        *further*, unmeasured growth past the ceiling recorded when BUG-3413
+        landed, not the original BUG-3295 monotonic-decrease invariant."""
         from little_loops.issue_parser import _unapplied_decision
 
         issues_dir = Path(__file__).parent.parent.parent / ".issues"
@@ -5663,9 +5793,9 @@ class TestBug3295ContainmentCorpusDifferential:
             content = path.read_text(encoding="utf-8", errors="ignore")
             total += len(_unapplied_decision(content))
 
-        assert total <= self._PRE_FIX_TOTAL_REPORTS, (
-            f"corpus report total {total} exceeds pre-fix baseline "
-            f"{self._PRE_FIX_TOTAL_REPORTS} -- containment filter regressed"
+        assert total <= self._POST_BUG_3413_TOTAL_REPORTS, (
+            f"corpus report total {total} exceeds post-BUG-3413 baseline "
+            f"{self._POST_BUG_3413_TOTAL_REPORTS} -- detector regressed"
         )
 
 

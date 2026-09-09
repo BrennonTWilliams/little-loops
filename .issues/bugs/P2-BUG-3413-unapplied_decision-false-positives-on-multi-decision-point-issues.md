@@ -3,10 +3,11 @@ id: BUG-3413
 type: BUG
 title: unapplied_decision false-positives on multi-decision-point issues
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T22:42:47Z'
+completed_at: '2026-09-09T00:15:16Z'
 confidence_score: 100
 outcome_confidence: 89
 score_complexity: 20
@@ -223,7 +224,24 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
 
 ## Program Design
 
-### Types
+### Deviations
+
+- 2026-09-08 — `_group_spans_by_decision_point()` was implemented without the
+  spec'd `body: str` parameter: it only needs `spans` (already offset-carrying)
+  and `boundary_positions` to partition and clamp, so `body` was unused dead
+  weight. Signature is
+  `_group_spans_by_decision_point(spans: list[tuple[int, int, str]], boundary_positions: list[int]) -> list[list[tuple[int, int, str]]]`.
+- 2026-09-08 — one addition beyond the spec'd per-group `_selected_option_title()`
+  scoping: the *first* group's title-search region starts at offset 0 (the
+  whole `## Proposed Solution` body), not its own first option span's start.
+  Corpus differential surfaced a real single-decision-point shape (e.g.
+  BUG-2731) where the `> **Selected:**` callout is written in prose *before*
+  either option block (a `### Codebase Research Findings` summary of an
+  already-made decision) — scoping group 0's search to `[group[0][0], ...)`
+  as originally planned would miss that callout and silently drop all of
+  that file's genuine reports, violating the "single-decision-point issues
+  keep byte-identical output" requirement. Later groups still start their
+  region at their own first span, matching the original design.
 
 - No new types; existing `list[tuple[int, int, str]]` span tuples
   (`_option_block_spans()`'s return type) and `list[int]` marker positions
@@ -422,16 +440,64 @@ The bug will recur for any future issue authored with multiple decision points i
 section — an increasingly common convention per ENH-3256's per-decision-point
 authoring pattern.
 
+### Measured Results (implementation, 2026-09-08)
+
+Corpus differential re-run at fix time (`.issues/**/*.md`, all files) — the live
+corpus drifted since the table above was authored (issues get edited continuously),
+so file-level counts differ somewhat from the original scan, but the shape holds:
+8 files changed output, zero single-decision-point (single-callout) file changed,
+total report count 535 → 562 (net +27, consistent with this fix both removing
+false positives and un-silencing previously-off files):
+
+| Issue | Before | After |
+|---|---|---|
+| FEAT-3409 | 26 | 9 |
+| FEAT-2478 | 7 | 6 |
+| BUG-3331 | 0 | 1 |
+| ENH-3346 | 0 | 25 |
+| FEAT-2878 | 0 | 13 |
+| FEAT-2598 | 0 | 2 |
+| FEAT-3078 | 0 | 2 |
+| FEAT-3335 | 0 | 2 |
+
+`TestBug3295ContainmentCorpusDifferential`'s pre-existing report-count ceiling
+test (`test_issue_parser.py`) was updated in step with this — its 525 pre-BUG-3295
+ceiling no longer holds now that BUG-3413 legitimately widens the corpus total;
+see that test's updated docstring for the new post-BUG-3413 ceiling (562).
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented per Program Design (with two documented Deviations): added
+`_decision_point_boundary_positions()` and `_group_spans_by_decision_point()`
+to `scripts/little_loops/issue_parser.py`, and rewrote
+`_unapplied_decision_pairs()` to resolve `sel_ids`/`rej_ids` per decision-point
+group instead of globally, unioning `(rej_ids - subsumed)` per group before the
+final `sel_ids`/`shared_ids` subtraction. Both reproducers from Steps to
+Reproduce now behave as expected (`HistoryConfig` no longer flagged on
+FEAT-3409; FEAT-2878 no longer silently returns `[]`). All 25 pre-existing
+`TestUnappliedDecision` tests pass unchanged (single-decision-point path is
+byte-identical). Added 5 new boundary-shape unit tests, a Phase 7c golden
+fixture (`BUG-3413-fixture-multi-decision-point.md`), and a format-check field
+test. Corpus differential and the updated `TestBug3295ContainmentCorpusDifferential`
+ceiling are recorded under Corpus Impact › Measured Results. Full suite
+(`python -m pytest scripts/tests/`): 23453 passed, 5 pre-existing unrelated
+failures confirmed via `git stash` to already exist on the unmodified tree
+(`TestPriorityRegexCompletenessAllowlist` x2, `test_host_runner`
+`TestAC8BaselineCoverage`, `test_cli_harness` `TestReadTargetHistory`,
+`test_verify_evidence` `TestRepoGate`) — zero new failures introduced.
+
 ## Status
 
-**Open** | Created: 2026-09-08 | Priority: P2
+**Done** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T00:14:32 - `6ecd89df-4783-49de-a06a-67b0f2e61709.jsonl`
+- `/ll:ready-issue` - 2026-09-08T23:50:48 - `8bf772bc-0685-4c2b-b977-3c8982a6fc9d.jsonl`
 - `/ll:confidence-check` - 2026-09-08T23:46:28 - `e4f9d0c3-b434-4a60-a8a9-bb40fcc5c75a.jsonl`
 - `/ll:confidence-check` - 2026-09-08T23:19:30 - `6c87a100-fdff-4f6c-8c02-661175f66952.jsonl`
 - `/ll:wire-issue` - 2026-09-08T23:16:35 - `5525351e-3d29-48e7-8627-a2102c2d6ce0.jsonl`

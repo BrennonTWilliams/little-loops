@@ -1535,6 +1535,75 @@ def _option_block_spans(text: str) -> list[tuple[int, int, str]]:
     return spans
 
 
+# BUG-3413: any markdown heading line (any depth), used to detect a
+# non-option heading boundary between two decision points -- distinct from
+# _OPTION_HEADING_RE's narrower "### Option X" shape, which is excluded below
+# since an option heading starts a span rather than separating two groups.
+_HEADING_LINE_RE = re.compile(r"^#{1,6}\s+.*$", re.MULTILINE)
+
+
+def _decision_point_boundary_positions(
+    body: str, fences: list[tuple[int, int]], limit: int
+) -> list[int]:
+    """Sorted fence-excluded decision-point group boundary offsets in *body*, before *limit*.
+
+    Merges BUG-3412's ``**Decision point:**`` marker positions (boundary rule
+    1) with non-option heading line starts (rule 2, e.g. ``#### Decision N —
+    ...`` or a bare ``### <topic>`` heading) -- BUG-3413's label-restart rule
+    3 is applied separately in :func:`_group_spans_by_decision_point` since it
+    depends on the spans themselves, not just the body text. *limit* is the
+    section's ``### Decision Rationale`` offset (``dr_start``): FEAT-3409
+    carries ``**Decision point: X**`` lines inside its own Decision Rationale
+    that would otherwise falsely split groups there.
+    """
+    positions = set(_decision_point_marker_positions(body, fences))
+    for m in _HEADING_LINE_RE.finditer(body):
+        if in_fence(m.start(), m.end(), fences):
+            continue
+        if _OPTION_HEADING_RE.match(m.group(0)):
+            continue
+        positions.add(m.start())
+    return sorted(p for p in positions if p < limit)
+
+
+def _group_spans_by_decision_point(
+    spans: list[tuple[int, int, str]], boundary_positions: list[int]
+) -> list[list[tuple[int, int, str]]]:
+    """Partition *spans* into per-decision-point groups (BUG-3413).
+
+    A new group starts at ``spans[i]`` when a boundary position falls between
+    ``spans[i-1]`` and ``spans[i]`` (rules 1-2), or when ``spans[i]``'s option
+    label already appears in the current group (rule 3, label restart -- the
+    undelimited A,B,A,B shape rules 1-2 can't see). Each non-final group's
+    last span is then clamped at the next group's leading boundary line:
+    :func:`_option_block_spans` already ends every span at the next *option*
+    match's start, so a non-heading marker sitting between two decision
+    points' option blocks would otherwise be absorbed into the preceding
+    group's last span, leaking its identifiers into that group.
+    """
+    groups: list[list[tuple[int, int, str]]] = [[spans[0]]]
+    group_labels: list[set[str | None]] = [{_option_label(spans[0][2])}]
+    for i in range(1, len(spans)):
+        prev_start = spans[i - 1][0]
+        cur_start = spans[i][0]
+        boundary_between = any(prev_start < bp < cur_start for bp in boundary_positions)
+        label = _option_label(spans[i][2])
+        label_restart = label is not None and label in group_labels[-1]
+        if boundary_between or label_restart:
+            groups.append([spans[i]])
+            group_labels.append({label})
+        else:
+            groups[-1].append(spans[i])
+            group_labels[-1].add(label)
+
+    for g in range(len(groups) - 1):
+        start, end, heading = groups[g][-1]
+        clamp_candidates = [bp for bp in boundary_positions if start < bp < end]
+        if clamp_candidates:
+            groups[g][-1] = (start, min(clamp_candidates), heading)
+    return groups
+
+
 def _unapplied_decision(content: str) -> list[str]:
     """Reason strings for rejected-option identifiers left in directive sections.
 
@@ -1570,83 +1639,121 @@ def _unapplied_decision_pairs(content: str) -> list[tuple[str, str]]:
     # BUG-3279: no explicit Decision Rationale clamp here anymore -- the
     # heading boundary _option_block_spans now applies subsumes it (a
     # `### Decision Rationale` line is itself a qualifying heading, so the
-    # last option's span already stops there). `dr_start` is kept: it has a
-    # second consumer below, `scrub_start = min(dr_start, spans[-1][1])`, the
-    # cap on the Proposed Solution self-scan, which still needs it for the
-    # phantom-trailing-block case tracked separately as BUG-3285.
+    # last option's span already stops there). `dr_start` is kept: it has
+    # other consumers below -- the BUG-3413 group-boundary limit, and
+    # `scrub_start = min(dr_start, spans[-1][1])`, the cap on the Proposed
+    # Solution self-scan, needed for the phantom-trailing-block case tracked
+    # separately as BUG-3285.
 
-    # The final block is additionally trimmed at the end of its own callout
-    # line, if it carries one, dropping any further unheaded prose before the
-    # section end. Only the *last* block risks this "runs to end-of-section"
-    # absorption (every other block is naturally bounded by the next option
-    # heading), and only when it is itself the callout-carrying (selected)
-    # block -- a trailing callout there marks "the option's own description is
-    # done; what follows is free-form rationale", which legitimately
-    # re-mentions other sections/identifiers by name for narrative reasons
-    # (observed on this issue's own corpus firing).
-    last_start, last_end, last_heading = spans[-1]
-    last_callout = _SELECTED_CALLOUT_RE.search(proposed_body, last_start, last_end)
-    if last_callout:
-        line_end = proposed_body.find("\n", last_callout.end())
-        line_end = len(proposed_body) if line_end == -1 else line_end
-        spans[-1] = (last_start, min(last_end, line_end), last_heading)
+    # BUG-3413: group the flat span list by decision point so a winning
+    # option's identifiers from decision point N are never treated as
+    # "rejected" leftovers just because they weren't decision point 1's
+    # winner (see this function's docstring and the issue's Program Design).
+    # A section with no boundary yields one group, so single-decision-point
+    # issues take the same per-group path with byte-identical output.
+    fences = fence_spans(proposed_body)
+    boundary_positions = _decision_point_boundary_positions(proposed_body, fences, dr_start)
+    groups = _group_spans_by_decision_point(spans, boundary_positions)
 
-    # Every block's identifiers are read with its own `> **Selected:**`
-    # callout LINE masked out (not the rest of the block): the callout is
-    # meta-commentary about the decision, and a rejected option's callout
-    # routinely names the *winner's* identifiers in prose ("not this one --
-    # `foo`'s scope excludes `bar`"), which would otherwise leak the winner's
-    # own vocabulary into REJ. The callout's position within a block is not
-    # reliable (some conventions place it right after the option heading,
-    # others at the end), so masking only that one line -- not "everything
-    # before/after it" -- is the only positionally-safe exclusion.
-    block_texts: list[str] = []
-    for start, end, _heading in spans:
-        block_text = proposed_body[start:end]
-        callout = _SELECTED_CALLOUT_RE.search(block_text)
-        if callout:
-            line_end = block_text.find("\n", callout.end())
-            line_end = len(block_text) if line_end == -1 else line_end
-            block_text = block_text[: callout.start()] + block_text[line_end:]
-        block_texts.append(block_text)
+    all_sel_ids: set[str] = set()
+    all_rej_minus_subsumed: set[str] = set()
 
-    title = _selected_option_title(proposed_body)
-    if title is None:
-        return []
-    label = _option_label(title)
-    if label is None:
-        return []
+    for g, group in enumerate(groups):
+        # The final block is additionally trimmed at the end of its own
+        # callout line, if it carries one, dropping any further unheaded
+        # prose before the group's end. Only the *last* block of each group
+        # risks this "runs to end-of-group" absorption (every other block is
+        # naturally bounded by the next option heading), and only when it is
+        # itself the callout-carrying (selected) block -- a trailing callout
+        # there marks "the option's own description is done; what follows is
+        # free-form rationale", which legitimately re-mentions other
+        # sections/identifiers by name for narrative reasons (observed on
+        # this issue's own corpus firing).
+        last_start, last_end, last_heading = group[-1]
+        last_callout = _SELECTED_CALLOUT_RE.search(proposed_body, last_start, last_end)
+        if last_callout:
+            line_end = proposed_body.find("\n", last_callout.end())
+            line_end = len(proposed_body) if line_end == -1 else line_end
+            group[-1] = (last_start, min(last_end, line_end), last_heading)
 
-    matching = [i for i, (_, _, heading) in enumerate(spans) if _option_label(heading) == label]
-    if len(matching) != 1:
-        return []
-    selected_index = matching[0]
+        # Every block's identifiers are read with its own `> **Selected:**`
+        # callout LINE masked out (not the rest of the block): the callout is
+        # meta-commentary about the decision, and a rejected option's callout
+        # routinely names the *winner's* identifiers in prose ("not this one
+        # -- `foo`'s scope excludes `bar`"), which would otherwise leak the
+        # winner's own vocabulary into REJ. The callout's position within a
+        # block is not reliable (some conventions place it right after the
+        # option heading, others at the end), so masking only that one line
+        # -- not "everything before/after it" -- is the only positionally-safe
+        # exclusion.
+        block_texts: list[str] = []
+        for start, end, _heading in group:
+            block_text = proposed_body[start:end]
+            callout = _SELECTED_CALLOUT_RE.search(block_text)
+            if callout:
+                line_end = block_text.find("\n", callout.end())
+                line_end = len(block_text) if line_end == -1 else line_end
+                block_text = block_text[: callout.start()] + block_text[line_end:]
+            block_texts.append(block_text)
 
-    sel_ids = _decision_identifiers(block_texts[selected_index])
-    rej_ids: set[str] = set()
-    for i, block_text in enumerate(block_texts):
-        if i != selected_index:
-            rej_ids |= _decision_identifiers(block_text)
+        # The group's own first `> **Selected:**` callout names its winner --
+        # searched within the group's region (up to the next group's leading
+        # span, or section end for the last group), not the whole section, so
+        # a later decision point's callout never resolves an earlier group's
+        # title. The first group's region starts at 0 (not its first span),
+        # since a corpus-observed convention writes the callout in prose
+        # *before* either option block (research findings summarizing an
+        # already-made decision) -- a single-group section's region is then
+        # the whole proposed_body, matching today's whole-section search
+        # exactly. Later groups' regions start at their own first span: any
+        # prose between two groups belongs to the earlier group's region.
+        region_start = 0 if g == 0 else group[0][0]
+        region_end = groups[g + 1][0][0] if g + 1 < len(groups) else len(proposed_body)
+        title = _selected_option_title(proposed_body[region_start:region_end])
+        if title is None:
+            continue
+        label = _option_label(title)
+        if label is None:
+            continue
 
-    # BUG-3295: a rejected-option identifier that is a plain substring of a
-    # selected-option identifier names the same field/value being decided
-    # (e.g. bare `scope:` subsumed by compound `scope: ["."]`), not a
-    # competing identifier -- exclude it from `discriminating` before the
-    # exact-match set difference, so it doesn't fan out into every narrative
-    # mention of the bare key across the directive sections. One-directional
-    # and existential (see Program Design > Decision Rules on the issue):
-    # containment by *any* sel_ids member excludes `r`; the reverse shape (a
-    # compound literal only in a rejected option) is unaffected and still
-    # fires. Corpus sweep at fix time (.issues/, ~307 issues carrying a
-    # `> **Selected:**` callout): report count dropped, zero new reports
-    # introduced (see TestBug3295ContainmentCorpusDifferential).
-    subsumed = {r for r in rej_ids if any(r in s for s in sel_ids)}
+        # A group with no callout, or whose label matches 0 or 2+ spans
+        # within *this* group, contributes nothing -- it does not abort the
+        # other groups (the single-decision-point silent-`[]` failure mode).
+        matching = [i for i, (_, _, heading) in enumerate(group) if _option_label(heading) == label]
+        if len(matching) != 1:
+            continue
+        selected_index = matching[0]
+
+        group_sel_ids = _decision_identifiers(block_texts[selected_index])
+        group_rej_ids: set[str] = set()
+        for i, block_text in enumerate(block_texts):
+            if i != selected_index:
+                group_rej_ids |= _decision_identifiers(block_text)
+
+        # BUG-3295: a rejected-option identifier that is a plain substring of
+        # this SAME group's selected-option identifier names the same
+        # field/value being decided (e.g. bare `scope:` subsumed by compound
+        # `scope: ["."]`), not a competing identifier -- exclude it before
+        # the exact-match set difference, so it doesn't fan out into every
+        # narrative mention of the bare key across the directive sections.
+        # One-directional and existential (see Program Design > Decision
+        # Rules on the issue): containment by *any* sel_ids member excludes
+        # `r`; the reverse shape (a compound literal only in a rejected
+        # option) is unaffected and still fires. Corpus sweep at fix time
+        # (.issues/, ~307 issues carrying a `> **Selected:**` callout):
+        # report count dropped, zero new reports introduced (see
+        # TestBug3295ContainmentCorpusDifferential).
+        group_subsumed = {r for r in group_rej_ids if any(r in s for s in group_sel_ids)}
+        all_rej_minus_subsumed |= group_rej_ids - group_subsumed
+        all_sel_ids |= group_sel_ids
+
     # BUG-3289: an identifier already named in the issue's title or ##
     # Summary -- both written before either option exists -- is the issue's
     # shared subject, not a rejected-option-discriminating term. Subtracted
-    # last so it never masks the subsumed-containment exclusion above.
+    # last (after the union of every group's sel_ids) so it never masks the
+    # per-group subsumed-containment exclusion above.
     shared_ids = _shared_subject_identifiers(content)
-    discriminating = (rej_ids - subsumed) - sel_ids - shared_ids
+    discriminating = all_rej_minus_subsumed - all_sel_ids - shared_ids
     if not discriminating:
         return []
 
@@ -1657,9 +1764,14 @@ def _unapplied_decision_pairs(content: str) -> list[tuple[str, str]]:
     # at the final block's own (already-trimmed) end: unheaded rationale
     # prose past that point re-mentions rejected-option identifiers for
     # narrative reasons, same as the headed Decision Rationale form.
-    scrub_start = min(dr_start, spans[-1][1])
+    # `final_spans` (not `spans`) so this reflects every group's clamp and
+    # last-block trim applied above, not just the untouched flat list -- a
+    # single-group section has no clamps, so this is byte-identical to the
+    # pre-BUG-3413 `spans[-1]`-mutated behavior in that case.
+    final_spans = [span for group in groups for span in group]
+    scrub_start = min(dr_start, final_spans[-1][1])
     scrubbed_proposed = proposed_body[:scrub_start]
-    for start, end, _ in sorted(spans, key=lambda s: s[0], reverse=True):
+    for start, end, _ in sorted(final_spans, key=lambda s: s[0], reverse=True):
         end = min(end, scrub_start)
         if start < end:
             scrubbed_proposed = scrubbed_proposed[:start] + scrubbed_proposed[end:]

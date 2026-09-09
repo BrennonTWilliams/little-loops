@@ -329,6 +329,21 @@ class TestPhase7cFixtures:
         assert ("Program Design", rejected_identifier) in pairs
         assert ("Implementation Steps", rejected_identifier) in pairs
 
+    def test_bug_3413_multi_decision_point_fixture_exists(self) -> None:
+        fixture = self.FIXTURES_DIR / "BUG-3413-fixture-multi-decision-point.md"
+        assert fixture.exists(), f"{fixture} must exist"
+
+    def test_bug_3413_multi_decision_point_winner_never_reported(self) -> None:
+        """BUG-3413: decision point 3's winning identifier, `HistoryConfig`, must
+        never appear in Phase 7c's `unapplied_decision_detail` candidate list just
+        because it isn't decision point 1's winner (the FEAT-3409 shape)."""
+        from little_loops.issue_parser import _unapplied_decision_pairs
+
+        fixture = self.FIXTURES_DIR / "BUG-3413-fixture-multi-decision-point.md"
+        pairs = _unapplied_decision_pairs(fixture.read_text())
+        assert all(identifier != "HistoryConfig" for _, identifier in pairs)
+        assert ("Implementation Steps", "LegacyConfig") in pairs
+
 
 class TestSessionLogCall:
     """SKILL.md must document the ll-issues append-log call in Phase 8."""
