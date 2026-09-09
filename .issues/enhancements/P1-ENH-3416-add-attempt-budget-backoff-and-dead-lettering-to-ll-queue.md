@@ -8,116 +8,203 @@ discovered_date: '2026-09-08'
 labels:
 - queue
 - reliability
-learning_tests_required:
-- sqlite3
-- psutil
 confidence_score: 75
 outcome_confidence: 35
 score_complexity: 0
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 0
-missing_artifacts: true
+missing_artifacts: false
 decision_needed: false
 ---
 
 ## Summary
 
-`ll-queue` ships with no failure policy, and the recovery path it does have is an unbounded retry loop. `queue_store.py` models pending/running/done with `claimed_at` and `owner_pid`; the only recovery is `reset_to_pending`, which clears both and carries no attempt counter. `cli/queue.py`'s `_reclaim_stale` runs on watcher startup and on every idle poll, returning any entry whose owner is not verifiably alive. An entry that reliably kills its own drainer — OOM, a crash in the dispatched action, a malformed spec — is therefore reclaimed and re-dispatched forever, with nothing recording that it has failed before. This is the precise failure that dead-lettering exists to stop, and a long-lived drainer makes it the normal case rather than a rare one someone is present to witness.
+`ll-queue`'s only unbounded retry is the owner-death reclaim. `_reclaim_stale`
+(`scripts/little_loops/cli/queue.py:542`) runs on watcher startup and every idle
+poll and returns any `running` entry whose `owner_pid` is not verifiably alive
+to `pending` via `reset_to_pending` (`scripts/little_loops/queue_store.py:417`),
+with no attempt counter anywhere on `QueueEntry`. An entry that reliably kills
+its own drainer (OOM of the drainer process, a SIGKILL mid-dispatch) is
+therefore reclaimed and re-dispatched forever, and a long-lived `--watch`
+drainer makes that the normal case rather than a rare one someone is present to
+witness.
 
-Specify and implement: an attempt counter per entry, bounded exponential backoff between attempts with a `next_attempt_at` the dequeue path honors, and a terminal dead-letter status carrying the last error so a poison entry leaves the rotation and stays inspectable. Distinguish the requeue semantics rather than collapsing them into one — a retry after failure consumes the attempt budget and applies backoff; a reclaim after an owner died without a verdict should preserve the original enqueue timestamp so the entry keeps its place in priority/FIFO fairness instead of going to the back; and an operator cancel should carry a reason and not be retried at all. Overflow and trimming should match each path's fairness intent rather than using one rule. Classify retryability from the error rather than guessing from an exit code, reusing whatever the open timeout-semantics issue settles — a dead owner and a rejected spec are not the same condition and should not share a policy.
+Every *other* failure is the opposite problem: a nonzero exit, a raised
+exception, or a timeout lands on terminal `failed` on the first attempt
+(`cli/queue.py:481-496`) and is never retried, even when the cause is a 429 or a
+dropped connection that would succeed a minute later.
+
+This issue adds: an `attempt` counter incremented at claim time so it survives
+a dead drainer; bounded exponential backoff via a `next_attempt_at` the claim
+path honors; a terminal `dead_letter` status carrying the last error, reached
+when a *retryable* failure exhausts the budget or an owner dies too many times;
+retryability classified by reusing the existing `classify_failure()` text
+classifier rather than exit codes; and an explicit `cancel` verb with a reason.
+`requeue` keeps its meaning (manual return to `pending`) and is widened to
+revive `dead_letter`/`failed`/`cancelled` entries with a fresh budget.
 
 ## Current Behavior
 
-`ll-queue`'s only failure-recovery path is `reset_to_pending()`
-(`scripts/little_loops/queue_store.py:417`), which clears `claimed_at`/
-`owner_pid` and returns an entry to `pending` with no attempt counter.
-`_reclaim_stale()` (`scripts/little_loops/cli/queue.py:542`) calls it on
-watcher startup and on every idle poll for any entry whose owner fails
-`_verify_owner_alive()` (`cli/queue.py:514`). An entry whose dispatched
-action reliably kills its own drainer (OOM, a crash in the action, a
-malformed spec) is therefore reclaimed and re-dispatched indefinitely —
-nothing on `QueueEntry` (`queue_store.py:267`) records that it has failed
-before.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- Full `QueueEntry` schema (`scripts/little_loops/queue_store.py:267`) has exactly these fields today: `id`, `action`, `enqueued_at`, `priority`, `status`, `result`, `claimed_at`, `owner_pid` — no attempt counter, no `next_attempt_at`, no reason/error field. `enqueued_at` is set once at `add_entry()` time and never mutated by `reset_to_pending`, `update_entry_result`, or `claim_entry`.
-- `reset_to_pending` (`queue_store.py:417`) is a single SQL statement (`UPDATE ... SET status='pending', claimed_at=NULL, owner_pid=NULL WHERE id=? AND status='running'`) shared, per its own docstring, by both `_reclaim_stale`'s automatic sweep and `cmd_requeue`'s manual path — nothing distinguishes the two callers' intent today, and neither increments any counter.
-- `claim_entry` (`queue_store.py:466`) claims any `pending` row unconditionally inside a `BEGIN IMMEDIATE` transaction (closing a TOCTOU race per BUG-2929) — it has no concept of a time-gated eligibility check, so honoring `next_attempt_at` will require either a `list_entries`/`claim_entry` filter or an additional in-Python check in `_drain_once` (`cli/queue.py:434`), which today selects the first priority/FIFO-ordered pending entry that wins the claim race.
-- `cmd_requeue` (`cli/queue.py:686`) only accepts `id`, `--force`, `--json` — no `reason` argument exists anywhere on its argparse parser, and it can only act on a `status=='running'` entry (never a hypothetical `dead_letter` one). It always returns the entry to `pending`; there is no separate "cancel, never retry" verb today.
-- No overflow, trimming, eviction, or max-size logic exists anywhere in `queue_store.py` or `cli/queue.py` (searched both files directly for `max.?size|trim|evict|overflow` — zero hits). The Summary's "rather than using one rule" phrasing presupposes an existing single overflow rule that is not actually present; per-path overflow/trimming is new functionality, not a refinement of differing existing behavior.
-- The closest existing analog to an "operator-cancel" outcome is `force_stop` (`cli/queue.py:498-501`): a second shutdown signal mid-drain downgrades the entry to the ordinary `'failed'` status with `error: "interrupted by operator"` — it is triggered by signal handling during an in-flight drain, not an explicit subcommand, and lands on the same terminal status as any other failure rather than a distinct one.
-- Two retryability mechanisms already coexist in the FSM engine, matching the exit-code-vs-error-type dichotomy this issue's Expected Behavior draws: `retryable_exit_codes: list[int] | None` (`fsm/schema.py:713`, exit-code allowlist) versus `classify_failure()`/`FailureType` (`issue_lifecycle.py:141-239`, text-pattern matching returning `(Enum, reason)`, consumed by `fsm/executor.py:2286-2327`). Neither is currently wired into `ll-queue`.
-- `scripts/little_loops/mcp_server/tools.py:622,644` imports and calls `reset_to_pending`/`resolve_entry` for an MCP tool handler (FEAT-3343) — an additional caller of `reset_to_pending` not previously listed anywhere in this issue, which must be updated once the single-call semantics split.
+- `QueueEntry` (`queue_store.py:267`) has exactly: `id`, `action`,
+  `enqueued_at`, `priority`, `status`, `result`, `claimed_at`, `owner_pid`. No
+  attempt counter, no `next_attempt_at`, no reason field. `enqueued_at` is set
+  once in `add_entry()` and never mutated.
+- `reset_to_pending` (`queue_store.py:417`) is one SQL statement
+  (`UPDATE ... SET status='pending', claimed_at=NULL, owner_pid=NULL WHERE id=?
+  AND status='running'`) shared by `_reclaim_stale`, `cmd_requeue`
+  (`cli/queue.py:686`), and the MCP `queue_requeue` tool
+  (`mcp_server/tools.py:644`). Nothing records that the entry has been
+  reclaimed before.
+- `claim_entry` (`queue_store.py:466`) claims any `pending` row unconditionally
+  inside `BEGIN IMMEDIATE` (BUG-2929). No time-gated eligibility exists.
+- `_drain_once` (`cli/queue.py:434`) maps the dispatch result to `done` iff
+  `exit_code == 0 and not timed_out and error is None`, otherwise `failed`, and
+  writes it via `update_entry_result`. A raised exception is also `failed`.
+  There is no retry of any kind on this path.
+- `_drain_once`'s `force_stop` branch (`cli/queue.py:498-501`) hand-sets
+  `status = "failed"` with `error: "interrupted by operator"`, the closest
+  existing analog to an operator cancel, but it lands on the same status as an
+  ordinary failure.
+- `cmd_requeue` accepts only `id`, `--force`, `--json`; acts only on `running`
+  entries; there is no cancel verb.
+- Statuses are ad hoc string literals. `_STATUS_COLOR` (`cli/queue.py:50-55`),
+  the `queue_list` MCP tool description (`mcp_server/tools.py:838`),
+  `docs/ARCHITECTURE.md:834`, and `docs/reference/CLI.md` each enumerate the
+  set independently.
+- No overflow, trimming, eviction, or max-size logic exists in
+  `queue_store.py` or `cli/queue.py`.
 
 ## Expected Behavior
 
-`QueueEntry` carries an attempt counter and a `next_attempt_at`, and the
-dequeue path honors `next_attempt_at` with bounded exponential backoff
-between attempts. Once the attempt budget is exhausted, the entry moves to a
-terminal dead-letter status carrying the last error instead of re-entering
-the pending rotation. Three requeue semantics stay distinct rather than
-collapsing into one call: a failure retry (consumes the attempt budget,
-applies backoff), an owner-death reclaim (preserves the original
-`enqueued_at` so FIFO/priority position is unaffected), and an operator
-cancel (carries a reason, is never retried). Retryability is classified from
-the error's type, not guessed from an exit code.
+- `attempt` is incremented inside `claim_entry`'s UPDATE. A drainer that dies
+  mid-dispatch leaves the incremented count behind, so the owner-death path
+  consumes budget without any extra bookkeeping.
+- After a failed dispatch, `_drain_once` classifies the failure with
+  `classify_failure()`. A retryable failure with budget remaining returns the
+  entry to `pending` with `next_attempt_at = now + backoff(attempt)`. A
+  retryable failure with no budget remaining moves it to `dead_letter`. A
+  non-retryable failure lands on `failed` on the first attempt, unchanged from
+  today.
+- `_reclaim_stale` returns a dead-owner entry to `pending` with `enqueued_at`
+  untouched (so it keeps its priority/FIFO position) when `attempt <
+  QUEUE_MAX_ATTEMPTS`, and moves it to `dead_letter` with error
+  `"owner died N times"` otherwise. It never touches `next_attempt_at`; an
+  owner death is not a backoff-eligible failure, it is a slot to refill.
+- `claim_entry` and `_drain_once`'s pending filter honor `next_attempt_at`: a
+  row with `next_attempt_at > now` is not eligible. One-shot `ll-queue run`
+  drains what is eligible and exits, reporting how many entries are backing
+  off. `--watch` picks them up on later polls.
+- `ll-queue cancel <id> [--reason TEXT]` moves a `pending` or `running` entry
+  to terminal `cancelled` with `result.reason`. The `force_stop` branch routes
+  through the same function with reason `"interrupted by operator"`.
+- `ll-queue requeue <id>` keeps its running→pending meaning and additionally
+  accepts `dead_letter`, `failed`, and `cancelled` entries, resetting `attempt`
+  to 0 and clearing `next_attempt_at`.
+- `enqueued_at` is never mutated by any path. Backoff yields via
+  `next_attempt_at`; there is no "go to the back" semantic.
+- The status set and terminal subset are declared once as frozensets in
+  `queue_store.py` and every other enumeration derives from or is locked
+  against them.
 
-## Reference shape
+## Design Decisions
 
-A production message-batching queue that has solved this exact problem lands on:
+### Retryability classification (settled here; no external taxonomy issue exists)
 
-- **Bounded exponential backoff, 10 attempts, 5s → 300s, then dead-letter.**
-- **Three distinct requeue semantics**, each preserving a different invariant that one generic retry would destroy: a budget-consuming requeue that applies backoff; a timestamp-preserving requeue, so an item retried after an owner death keeps its fairness position; and a cancelled-with-reason requeue that is never retried.
-- **Overflow trimming that differs per path** — oldest-first in one, newest-first in the other — matching each path's fairness intent instead of applying one rule everywhere.
-- **Typed retryability classification** at the transport layer: narrow the error to a class rather than guessing from a status code, and honor a server-supplied retry delay but **ceiling-clamp** it so worst-case latency stays bounded. Auth gets one refresh-and-retry, guarded so a static credential that "refreshes to itself" fails terminal immediately instead of replaying a byte-identical rejected request.
+Reuse `classify_failure(error_output, returncode)` from
+`issue_lifecycle.py:159`. Map its `FailureType` members:
 
-That last guard generalizes: a retry that cannot change the input is not a retry.
+| `FailureType` | Queue outcome |
+|---|---|
+| `TRANSIENT` | retry with backoff; `dead_letter` on exhaustion |
+| `INFRA_RETRY` | retry with backoff; `dead_letter` on exhaustion |
+| `REAL` | `failed`, no retry |
+| `NON_RECOVERABLE` | `failed`, no retry |
 
-## Acceptance Criteria (added 2026-08-25)
+Inputs: `error_output = result.stderr or result.error or ""`, `returncode =
+result.exit_code`. A raised exception (the `except Exception` branch) is
+classified from `str(exc)` with `returncode=None → -1`.
 
-- **Every error class marked retryable must be reachable by a policy whose maximum attempt count exceeds one.** Assert this as a deterministic test that enumerates the retryable classes and walks the policies that consume them. The failure it catches is silent and specific: a correct classification chain — retryable, non-fatal, backoff-eligible — rendered inert because the single policy that consumed it allowed one attempt. A durable-execution agent platform hit exactly this: a provider 429 killed a deployed run and tripped a circuit breaker, with the classification chain entirely correct and `maximum_attempts=1` making it make no difference. As `ll-queue` and the FSM executor gain richer error taxonomies, the gap between "classified retryable" and "actually retried" widens with nothing watching it. The companion retryable-vs-fail-fast admission table tabulates the classes and this issue sets the budgets; nothing currently asserts the join between them.
+`timed_out=True` is **non-retryable** regardless of text. A command that hit
+its own timeout will hit it again with identical input; per the principle
+below, that is not a retry. Note `classify_failure`'s `"timeout"` text pattern
+will not fire because runner timeouts produce empty stderr (`runner_spec.py:
+219,235,390`), so this must be an explicit check before classification, not a
+reliance on the text patterns.
 
-- **Express the policies as a small set of named constants, each carrying the failure that motivated it and the trade-off accepted in exchange, and lock the set with a test.** Not a post-hoc refactor — a shaping constraint on how this issue, the admission table, and the consecutive-failure circuit breaker are built, so all three land in one legible vocabulary instead of three slices with implicit rationale. A callsite that constructs its own policy literal rather than referencing a named constant is a bug of the same class, and the locking test is what makes that mechanically visible; this is the same discipline as restating a constraint where it is read rather than only where it is declared.
+Principle (kept from the reference shape): a retry that cannot change the
+input is not a retry. Only failures whose cause is outside the entry (quota,
+network, infra teardown, drainer death) consume the budget.
 
-The named-constants requirement is not stylistic. The failure it prevents is a contract leak: a component declares a non-retryability policy on itself, and a caller hand-typing a fresh policy literal at the invocation site silently drops the declaration. The declaration was correct; the callsite quietly overrode it. Shared named constants re-imposed at the callsite, plus a test that locks them, is the answer that has been paid for elsewhere.
+### Policy constants (module constants, not config)
+
+Declared in `queue_store.py`, each with a comment naming the failure it guards
+against and the trade-off accepted:
+
+```python
+QUEUE_MAX_ATTEMPTS = 5        # bounds a poison entry to 5 dispatches / 4 reclaims
+QUEUE_BACKOFF_BASE_S = 5      # 5, 10, 20, 40 s between attempts 1..4
+QUEUE_BACKOFF_CEILING_S = 300 # worst-case wait bounded at 5 min
+```
+
+`backoff(attempt) = min(QUEUE_BACKOFF_BASE_S * 2 ** (attempt - 1),
+QUEUE_BACKOFF_CEILING_S)`, non-jittered (see Decision Rationale). Not exposed
+in `QueueConfig`/`config-schema.json` in this issue: doing so pulls in the
+BUG-3192 schema/dataclass parity guards across three test files for no present
+need. A follow-up can lift them into `queue` config if a project needs it.
+
+### Status vocabulary
+
+```python
+QUEUE_STATUSES = frozenset({"pending", "running", "done", "failed", "dead_letter", "cancelled"})
+QUEUE_TERMINAL_STATUSES = frozenset({"done", "failed", "dead_letter", "cancelled"})
+```
+
+`failed` = non-retryable on attempt 1. `dead_letter` = retryable but budget
+exhausted (including owner death). `cancelled` = operator decision, with
+reason. All three are terminal; all three are `requeue`-able.
+
+### Removal guard
+
+`remove` stays pending-only without `--force`; `dead_letter`/`cancelled` need
+`--force` exactly as `failed` does today. The MCP `queue_remove` gate
+(`mcp_server/tools.py:601`) is unchanged. Explicit no-op decision.
 
 ## Scope Boundaries
 
-- **In scope**: an attempt counter and `next_attempt_at` on `QueueEntry`, bounded exponential backoff, a terminal dead-letter status, the three distinct requeue code paths (retry/reclaim/cancel) and their per-path overflow-trimming rules, and error-based (not exit-code-based) retryability classification.
-- **Out of scope**: defining the retryable-error taxonomy itself — this issue consumes whatever the referenced open timeout-semantics issue settles, it does not own that classification. Also out of scope: the consecutive-failure circuit breaker and the retryable-vs-fail-fast admission table named in the Acceptance Criteria — those are companion issues this one's named policy constants must stay compatible with, not deliverables of this issue.
+- **In scope**: `attempt`/`next_attempt_at` columns and migration; claim-time
+  increment and SQL time gate; `compute_backoff_s` and the three policy
+  constants; `schedule_retry`/`dead_letter_entry`/`cancel_entry`/`revive_entry`;
+  `_drain_once` classification branch; `_reclaim_stale` budget check;
+  `ll-queue cancel`; widened `requeue`; status frozensets and the three lock
+  tests; docs and MCP description parity.
+- **Out of scope**:
 
-### Codebase Research Findings
+- **Overflow/trimming.** No size bound or eviction exists anywhere in the
+  store; per-path trim rules were carried over from the reference shape's
+  bounded in-memory buffer and do not apply to a persisted SQLite table. File
+  separately if a size bound is ever wanted.
+- **Consecutive-failure circuit breaker across entries.** The FSM-side
+  breakers (`P3-FEAT-1637`, `P2-ENH-2245`) are state-failure detectors, not
+  queue companions. The constants above are the only vocabulary a future
+  queue-level breaker must reuse.
+- **Jittered backoff.** See Decision Rationale.
 
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+### Decision Rationale (backoff shape)
 
-- Searched `.issues/` repo-wide (exact and fuzzy) for a "timeout-semantics" issue — none exists. The Summary's "reusing whatever the open timeout-semantics issue settles" and this section's "it does not own that classification" both defer to an issue that is not filed under that name or a close synonym.
-- Neither the "retryable-vs-fail-fast admission table" nor the "consecutive-failure circuit breaker" companion issues named above are filed under those names either (searched repo-wide). A broader search surfaced two FSM-side issues — `P3-FEAT-1637` (fsm stall detector for repeated state failures) and `P2-ENH-2245` (circuit-breaker recurrent window for non-consecutive state failures) — but both are FSM state-failure detectors, not `ll-queue`-side companions, and neither matches this issue's named companion by scope.
+**Selected**: non-jittered iterative doubling, `delay = min(base * 2^(attempt-1), ceiling)`.
 
-## Proposed Solution
+`ll-queue` is a local, single-writer-SQLite work queue. Every non-jittered
+backoff site in the codebase (`transport.py:1833,1843` webhook retry,
+`transport.py:1106` SSE fan-in reconnect, `parallel/git_lock.py:154,167`) is
+local/same-machine; the sole jittered site (`fsm/executor.py:3918`) targets an
+external distributed rate-limit retry. Concurrent-drainer contention is
+already closed by `claim_entry`'s `BEGIN IMMEDIATE` and `_BUSY_TIMEOUT_MS`
+(`queue_store.py:103`), so jitter would duplicate a mechanism that exists.
+Non-jittered also needs no `random` import and no monkeypatch scaffolding in
+tests.
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-**Option A**: Non-jittered iterative doubling (`delay = min(base * 2^(attempt-1), ceiling)`), following the `transport.py` webhook-retry and `parallel/git_lock.py` git-index-lock-retry convention — both are local/same-machine retry loops, the same category as `ll-queue`'s single-writer SQLite retry.
-
-> **Selected:** Option A — matches all 3 local/same-machine backoff precedents in this codebase; the concurrent-drainer race jitter would otherwise mitigate is already closed by `claim_entry`'s `BEGIN IMMEDIATE` transaction and the `_BUSY_TIMEOUT_MS` pragma.
-
-**Option B**: Jittered exponential backoff (`base * 2^(attempt-1) + random.uniform(0, base)`), following `fsm/executor.py`'s rate-limit retry convention — the only jittered backoff site in the codebase, used for an external, distributed host-CLI retry target.
-
-**Recommended**: Option A — every non-jittered backoff site found (webhook retry, git-lock retry, SSE fan-in reconnect) is a local/same-machine retry loop, `ll-queue`'s exact category; the sole jittered site targets an external distributed retry target, a different failure domain than a local drainer retrying its own dispatched action.
-
-### Decision Rationale
-
-**Selected**: Option A — non-jittered iterative doubling (`delay = min(base * 2^(attempt-1), ceiling)`).
-
-**Reasoning**: `ll-queue` is a local, single-writer-SQLite work queue with no network/distributed-service component in its retry path. Every non-jittered backoff site in the codebase (`transport.py` webhook retry, `transport.py` SSE fan-in reconnect, `parallel/git_lock.py` git-index-lock retry) is local/same-machine; the codebase's sole jittered site (`fsm/executor.py:3918`) targets an external, distributed host-CLI rate-limit retry — a different failure domain. `ll-queue` does support multiple concurrent `--watch` drainers racing over one `queue.db` (BUG-2929), which is the kind of contention jitter usually exists to desynchronize — but that race is already closed at the transaction layer (`claim_entry`'s `BEGIN IMMEDIATE`) and cushioned by SQLite's `_BUSY_TIMEOUT_MS` pragma, independent of backoff timing. Jitter would therefore be a novel application solving a problem this codebase already solves elsewhere, at the cost of being the first jittered site for a local-only retry loop.
-
-| Dimension | Option A | Option B |
+| Dimension | Non-jittered | Jittered |
 |---|---|---|
 | Consistency | 3 | 1 |
 | Simplicity | 3 | 2 |
@@ -125,167 +212,243 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 | Risk | 3 | 2 |
 | **Total** | **12/12** | **7/12** |
 
-**Key evidence**:
-- 3 local/same-machine non-jittered precedents (`transport.py:1833,1843`, `transport.py:1106`, `git_lock.py:154,167`) vs. exactly 1 jittered site in the whole codebase, external-target (`fsm/executor.py:3918`)
-- `claim_entry` (`queue_store.py:466-502`) already arbitrates concurrent-drainer races via `BEGIN IMMEDIATE`, and `_BUSY_TIMEOUT_MS` (`queue_store.py:103`) absorbs short write-lock contention — the mechanisms jitter would otherwise duplicate
-- Option A needs no new import (`random` unused) and no new test scaffolding; Option B would need the `random.uniform` monkeypatch pattern already used in `test_fsm_executor.py` to keep tests deterministic
+## Acceptance Criteria
 
-## Integration Map
-
-### Files to Modify
-
-- `scripts/little_loops/queue_store.py` — `QueueEntry` (line 267) gains `attempt`/`next_attempt_at` fields; `reset_to_pending` (417) splits into the retry/reclaim paths; a new `dead_letter_entry` function; `claim_entry` (466) must honor `next_attempt_at` eligibility; a new migration entry appended to `_MIGRATIONS` (currently ends at index 1, `SCHEMA_VERSION = 2`, lines 105-131)
-- `scripts/little_loops/cli/queue.py` — `_reclaim_stale` (542) becomes the owner-death reclaim path (must preserve `enqueued_at`); `cmd_requeue` (686) becomes the operator-cancel-with-reason path; `_drain_once` (434) must filter/order pending entries by `next_attempt_at` eligibility; `_STATUS_COLOR` (50-55) needs an entry for the new `dead_letter` status or it silently falls through to the default color
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/queue_store.py:279-296` (`QueueEntry.to_dict()`) — an explicit hand-built dict literal, not `dataclasses.asdict()`; the new `attempt`/`next_attempt_at` (and dead-letter error/reason) fields will not appear in any `--json` output or MCP tool response unless added here explicitly [Agent 2 finding]
-- `scripts/little_loops/cli/queue.py:306-317` (`cmd_status`'s human-readable `status_block` dict) — hand-lists `id`/`action`/`priority`/`status`/`enqueuedAt`/`result` only; needs `attempt`/`nextAttemptAt`/error fields added so non-JSON `ll-queue status <id>` shows them for a backing-off or dead-lettered entry [Agent 2 finding]
-- `scripts/little_loops/mcp_server/tools.py:838` (`queue_list` tool `description=`) — hardcodes `"...entries (pending/running/done/failed)."`; needs `dead_letter` appended, a third independent enumeration of the status set beyond `_STATUS_COLOR` and doc tables [Agent 1 + Agent 2 finding]
-- `scripts/little_loops/mcp_server/tools.py:615-645` (`_tool_queue_requeue`) — independently hand-builds the transition `{"field": "status", "from": "running", "to": "pending"}` in both its dry-run and applied branches (641, 645) and mirrors `ll-queue requeue`'s *current* running→pending meaning verbatim, with no `reason` parameter on its own schema; must track whichever new semantics `cmd_requeue`'s cancel-with-reason path settles into [Agent 2 finding]
-- `scripts/little_loops/mcp_server/tools.py:585-612` (`_tool_queue_remove`), guard at `:601` `if entry.status != "pending":` — an independent status-transition gate, structurally identical to `cli/queue.py:331`'s `cmd_remove` guard (`if entry.status != "pending" and not getattr(args, "force", False):`); both gates must be updated in lockstep with a decision on whether a `dead_letter` entry is removable the same way a `pending` one is [Agent 2 finding]
-
-### Dependent Files (Callers/Importers)
-
-- `scripts/little_loops/mcp_server/tools.py:622,644` — imports and calls `reset_to_pending`/`resolve_entry` from `queue_store` for an MCP tool handler (FEAT-3343); once `reset_to_pending`'s single-call semantics split into retry/reclaim/cancel, this caller must be updated to invoke whichever path matches its MCP-tool intent
-- `scripts/tests/test_queue_store.py:428,438,444` — `TestResetToPending` exercises `reset_to_pending`'s current single-call contract; splitting the call changes what this class needs to assert
-- `scripts/tests/test_cli_queue_run.py:638-746` — `TestReclaimStale`, `TestCmdRequeue` exercise the two current callers of `reset_to_pending`; both patch `little_loops.cli.queue.psutil.Process` rather than starting a real process
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/mcp_server/tools.py:644` (`_tool_queue_requeue`, inside `queue_requeue` MCP tool handler) — a third caller of `reset_to_pending` not previously listed anywhere in this issue (Files to Modify above lists only `mcp_server/tools.py:622,644` as the *call site*; this entry records it as a semantic caller needing its own update once the split lands) [Agent 1 + Agent 2 finding]
-- `scripts/little_loops/cli/queue.py:331` (`cmd_remove`'s `if entry.status != "pending" and not getattr(args, "force", False):` guard) — duplicates the same status-gate independently hardcoded in `mcp_server/tools.py:601`'s `_tool_queue_remove`; see Files to Modify entry above [Agent 2 finding]
-- `scripts/tests/test_cli_surface.py:139` — `("ll-queue", {"add", "list", "status", "remove", "run", "requeue"})`, a literal subcommand-set lock checked against the real `ll-queue --help` output. Program Design does not name a subcommand rename or addition, so no edit is expected here — flagged only so an implementer confirms it stays true if the `requeue` verb's *name* (not just its semantics) changes [Agent 2 + Agent 3 finding]
-
-### Conventions in Force
-
-- Bounded exponential backoff in this codebase is expressed as a named base constant and a named ceiling constant with `delay = base * 2^(attempt-1)` (optionally `+ jitter`) — evidence: `fsm/executor.py:105-114` (`_DEFAULT_RATE_LIMIT_BACKOFF_BASE`, jittered) and `transport.py:76-77,1830` (`_WEBHOOK_RETRY_BASE_S`/`_WEBHOOK_RETRY_MAX_S`, no jitter, iterative doubling). The two disagree on jitter, and no shared `compute_backoff()` helper exists between them — each module owns its own inline formula.
-- A machine-readable reason/status code set in this codebase is declared as a plain `Enum` with a per-member rationale comment, then a consumer derives its accepted-values set via `frozenset(r.value for r in Enum)`, locked by a test asserting that derived set equals the enum-derived set — evidence: `DeferReason`/`_DEFERRAL_REASON_CODES` (`issue_lifecycle.py:65-93`, `cli/issues/set_status.py:21-23`, `test_issue_lifecycle.py:1985-1993`) and `ClosureReason` mirroring it. This is a closer match to the Acceptance Criteria's "lock the set with a test" requirement than the FSM's `_DEFAULT_RATE_LIMIT_*` numeric constants, which carry rationale comments but are never asserted against their declared defaults (only monkeypatched in tests).
-- New nullable columns are added as one `ALTER TABLE ... ADD COLUMN` string per migration-list entry, no backfill, with a comment citing the motivating issue — evidence: `queue_store.py:124-131` (the `claimed_at`/`owner_pid` entry from FEAT-2930), mirrored throughout `session_store/schema.py` (e.g. `:933`, `:1372-1375`).
-- Retryability classification elsewhere in this codebase is a plain function matching error-text patterns and returning `(Enum, reason: str)`, not a typed exception hierarchy — evidence: `classify_failure()`/`FailureType` (`issue_lifecycle.py:141-239`), consumed by `fsm/executor.py:2286-2327`. Its one exit-code-keyed branch (`returncode == 143 and result_seen`) is explicitly commented as the sole exception, since a clean `SIGTERM` leaves no text signature to match. A narrower, purely exit-code-based mechanism also exists (`retryable_exit_codes` on FSM `StateSpec`, `fsm/schema.py:713`) — this is the mechanism the issue's "not guessed from an exit code" language is contrasting against.
-- An operator/automation-supplied reason for a terminal transition is stored as its own string field named to match its frontmatter/API key, with machine-emitted values drawn from an enum-derived frozenset and human-supplied values left as free text — evidence: `deferred_reason`/`DeferReason` (`docs/reference/DEFERRAL_CODES.md:3-6`), `close_reason` (`parallel/types.py:77,103,127,153`).
-- `queue_store.py` has no existing `VALID_STATUSES`/terminal-status frozenset constant today (unlike `issue_progress.py`'s `_ALL_STATUSES`/`_TERMINAL_STATUSES`) — status values are ad hoc string literals across `cli/queue.py`.
-
-### Tests
-
-- `scripts/tests/test_queue_store.py` — one `TestX` class per function under test (`TestResetToPending`, `TestClaimEntry`, `TestV1ToV2Migration`, etc.), each test building its own isolated `tmp_path / "queue.db"`; `TestV1ToV2Migration` (lines 375-401) is the closest precedent for a new migration test, bootstrapping the prior schema via `_MIGRATIONS[0]` directly and asserting `PRAGMA table_info` afterward
-- `scripts/tests/test_cli_queue_run.py` — `TestReclaimStale`, `TestCmdRequeue` (638-746) are the closest existing precedent for new dead-letter/backoff test classes; both patch `psutil.Process` and assert on the persisted `get_entry(entry_id).status` rather than only the function's return value; the file's autouse `_isolate_cwd` fixture and `_add()`/`_add_and_get_id()` helpers are the established harness
-- No existing test locks the *values* of any numeric backoff constant in this codebase (the FSM's `_DEFAULT_RATE_LIMIT_*` are only ever monkeypatched, never asserted equal to their declared defaults) — the enum+frozenset+equality-lock shape (`DeferReason`) is the precedent to follow if this issue's named policy constants are meant to be "locked by a test" literally
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_feat_queue_mcp_tools.py` — not previously listed anywhere in this issue; exercises `mcp_server/tools.py`'s `queue_requeue`/`queue_remove`/`queue_add`/`queue_list`/`queue_get` MCP tools end-to-end over a real stdio MCP client/server (the closest thing to integration coverage this surface has). `test_queue_requeue_running_entry` (142-176) calls `reset_to_pending` via `_tool_queue_requeue` and will break once that call splits into retry/reclaim/cancel paths; its raw-SQL fixture (`UPDATE queue_entries SET status = 'running', owner_pid = 999999 ...`, line 157) will need the new columns/defaults once the migration lands [Agent 1 + Agent 3 finding]
-- `scripts/tests/test_cli_queue.py` — not previously listed anywhere in this issue; imports `list_entries`/`update_entry_result` directly (16, 299, 376) and covers `cmd_list`/`cmd_add`. `test_list_json_unaffected_by_summary_change` (311-328) is a precedent showing this file already polices exact JSON key presence/absence on `to_dict()` output — the closest existing pattern to adapt for asserting the new `attempt`/`nextAttemptAt` keys appear correctly once `to_dict()` is updated [Agent 1 + Agent 3 finding]
-- `scripts/tests/test_cli_queue_run.py` — beyond the already-known `TestReclaimStale`/`TestCmdRequeue`, this file has 13 assertions of `entry.status == "failed"` as the *immediate* post-failure terminal state (lines 121, 137, 153, 175, 212, 290, 412, 426), which will need reworking once some failures instead return to `pending` with backoff rather than landing directly on `failed`/`dead_letter`; its raw-SQL fixture `INSERT INTO queue_entries(id, action, enqueued_at, priority, status, result) VALUES (...)` (line 195) names the exact pre-migration column set and will need the new columns/defaults [Agent 2 + Agent 3 finding]
-- Backoff/retry-counter test-pattern precedent (distinct from the `DeferReason` enum-lock shape already cited above): `TestAPIErrorRetries`/`TestInfraRetry` (`scripts/tests/test_fsm_executor.py:8903-9160`) patch `little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF`/`_DEFAULT_INFRA_RETRY_BACKOFF` to `0` to avoid wall-clock delay, then assert retry counts and emitted events — the closer shape to mirror for a queue-side attempt/backoff-constant test, since it's counter-plus-wall-clock-avoidance shaped rather than enum-derivation shaped [Agent 3 finding]
-
-### Documentation
-
-- `docs/ARCHITECTURE.md:827-838` ("Queue DB (ll-queue)" section) — describes the current schema/semantics; will need updating for attempt/backoff/dead_letter
-- `docs/reference/API.md:10510-10533` (`little_loops.queue_store` module reference), `:5056-5066` (`ll-queue` CLI entry-point doc)
-- `docs/reference/CLI.md:4052-4135` (`### ll-queue` command reference)
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/CLI.md:5299-5304` — separate prose (outside the already-known 4052-4135 range) describing `queue_add`/`queue_remove`/`queue_requeue` as "`ll-queue`'s three mutating tools" and stating `queue_remove`/`queue_requeue` "drop the CLI's `--force` flag (removing/requeuing a non-matching-state entry)" — describes `queue_requeue`'s current running→pending-only semantics and needs revision once the cancel-with-reason path lands [Agent 2 finding]
-- `docs/reference/CONFIGURATION.md:717` — "`ll-queue` persistence configuration (FEAT-2682). Owns the `.ll/queue.db` location..."; would need updating alongside the Configuration section's open question below if attempt-budget/backoff values become configurable [Agent 1 finding]
-
-### Configuration
-
-- `scripts/little_loops/config-schema.json:2262-2270` — existing `queue` config block (FEAT-2682); this issue's Program Design does not currently specify whether attempt-budget/backoff values are configurable here or fixed as code constants — an open question, not settled by research
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/config/features.py:1559-1570` (`QueueConfig` dataclass) and `scripts/little_loops/config/core.py:522-525` (`LLConfig.queue` accessor) — the Python-side parser counterpart to `config-schema.json`'s `queue` block above; currently only parses `db_path`. If the open question above resolves to "configurable," this dataclass is the paired file that must gain the new field(s) alongside the schema — the two halves of this codebase's config surface always move together [Agent 1 finding]
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- **Terminal "given up" state has no reusable convention distinct from ordinary failure.** FSM retry-exhaustion (`fsm/schema.py:649-653`, `fsm/executor.py:830-855`) routes to a caller-chosen `on_retry_exhausted` target — some loops point it at the ordinary `failed` terminal (`loops/test-coverage-improvement.yaml:127`, `loops/harness-single-shot.yaml:41`), others at a distinct purpose-named state (`loops/rlhf-svg-generate.yaml:198,326` → `plan_failed`). The merge-coordinator circuit breaker (`parallel/merge_coordinator.py:674-680,1132-1147`) always reuses the plain `MergeStatus.FAILED`, distinguished only by a free-text `error` string — the same shape as this issue's own already-cited `force_stop` precedent. The issue-lifecycle terminal set (`issue_progress.py:12-14`, `_TERMINAL_STATUSES = {done, cancelled}`) is a fixed two-member set, not a three-way ordinary-vs-exhausted split. Both "dedicated status value" and "same status, distinguished by error text" shapes coexist elsewhere with no dominant precedent to follow.
-- **Splitting one "return to prior state" function into several intent-specific functions has precedent, but so does the opposite (single generic function parameterized by target status), on the same entity type.** `close_issue()`/`defer_issue()` (`issue_lifecycle.py:939`, `:1255`) are separately-named, separately-signatured functions per outcome on `IssueInfo` — the shape this issue's Program Design (three requeue paths) follows. `apply_status_transition()` (`cli/issues/set_status.py:93-102`), operating on the same `IssueInfo`/frontmatter entity family, instead takes a generic `status: str` and writes any transition through one shared path. `cancel_run()`/`_cancel_starting_run()` (`cli/loop/lifecycle.py:518,492`) vs. `cmd_resume()` (`:554`) is a third example of the intent-specific shape. Both shapes are live in the codebase today on the same entity family; neither has superseded the other.
-- **No existing bounded collection in this codebase applies two different eviction orders across separate code paths** (searched repo-wide for eviction/trim/prune/maxlen/oldest-first/newest-first terms). `compaction/instant.py:evict_sink_and_window():34` (single caller, `session_store/lifecycle.py:477`), `session_store/lifecycle.py`'s `compact()`/`prune()` (`:1183`, `:1273`, single oldest-past-cutoff rule), and two `deque(maxlen=N)` sites (`fsm/executor.py:333`, `fsm/stall_detector.py:39`) each use exactly one eviction order per collection. "Oldest first"/"newest first" language elsewhere (`fsm/persistence.py:1474,1487`) describes query/listing order, not eviction. This issue's per-path oldest-vs-newest trimming is new functionality with no existing convention to follow or diverge from.
-- **A more general schema-migration lock exists beyond the already-cited `TestV1ToV2Migration` per-migration column diff.** `session_store/schema.py`'s whole-schema manifest lock (`_schema_manifest`/`_reference_manifest_at`/`_load_schema_manifest`, tested at `test_session_store_schema.py:3083-3267`) asserts a freshly-migrated database's full structure (tables, columns, index uniqueness) against a checked-in `schema_manifest.json`, plus a `SCHEMA_VERSION == len(_MIGRATIONS)` count lock (`:2299-2304`). `queue_store.py` has no equivalent manifest file or function — its migration coverage uses only the narrower per-migration `PRAGMA table_info` shape.
-- No shared `compute_backoff()` helper exists anywhere in the codebase (repo-wide search, zero hits) — confirms the prior finding that `fsm/executor.py` and `transport.py` each own independent inline backoff formulas.
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- Two additional non-jittered iterative-doubling backoff sites exist beyond the two already cited: `parallel/git_lock.py:130-169` (`GitLock._run_with_retry`, local git index.lock retry, `min(backoff*2, max_backoff)`, no `random` import) and `transport.py`'s SSE fan-in reconnect loop (`_FANIN_MAX_BACKOFF_S`, line 92; doubling at line 1106, no jitter). A repo-wide search for `random\.(uniform|random|randint)` in `scripts/little_loops` returns exactly one hit anywhere in the tree — `fsm/executor.py:3918`, the external host-CLI rate-limit retry already cited. Every non-jittered backoff site found is either local/same-machine (git lock, Unix-socket fan-in, webhook already-cited) or single-shot external (`link_checker.py:356-370`); the sole jittered site targets an external, distributed retry target. `ll-queue`'s retry loop is local/single-writer-SQLite, matching the non-jittered group by this pattern, not the one jittered outlier.
-- Retry/backoff values are bundled into a single dataclass (`config/automation.py:174-195`, `RateLimitsConfig`, with a `from_dict` constructor) only at the user-configurable settings layer; every private module-constant backoff site found (`fsm/executor.py:105-114`, `transport.py:76-77`, `git_lock.py:47-49`) keeps the values as separate scalars, never bundled into a dataclass or `NamedTuple` (zero `NamedTuple` usage exists anywhere in `scripts/little_loops`). No class named `RetryPolicy`/`BackoffPolicy`/`AttemptBudget` exists in the codebase; the closest analog to an attempt-budget counter is `link_checker.py:295` (`Retry429Budget`, a stateful consume-once counter, not a value bundle).
-- No SQL-level oldest-row eviction (`DELETE ... ORDER BY ... LIMIT`) exists anywhere in the codebase (repo-wide search, zero hits) — confirming the earlier finding that per-path overflow/trimming has no baseline. The one adjacent convention found, a "drop-newest" policy on bounded in-memory delivery queues (`transport.py`'s `UnixSocketTransport`/`LocalBridgeTransport`/SSE fan-in queues, e.g. lines 328-333), is a reject-incoming discipline on a live `queue.Queue`, not an oldest-first eviction of persisted rows, and is not a transferable precedent for this issue's persisted-queue overflow/trim question.
+- A `running` entry whose owner is dead is reclaimed to `pending` with
+  `enqueued_at` byte-identical and `attempt` preserved; after
+  `QUEUE_MAX_ATTEMPTS` claims it is `dead_letter` with
+  `result.error == "owner died N times"` and is never reclaimed again.
+- A dispatch whose stderr matches a `TRANSIENT` pattern (e.g. `"429"`) returns
+  the entry to `pending` with `attempt == 1` and `next_attempt_at == claimed_at
+  + 5s`; the `n`-th such failure sets `next_attempt_at` per the doubling
+  sequence `[5, 10, 20, 40]`, and the 5th lands on `dead_letter` with the last
+  error in `result`.
+- A dispatch with a nonzero exit and no transient pattern lands on `failed`
+  with `attempt == 1`, unchanged from today; a `timed_out` result lands on
+  `failed` regardless of stderr text.
+- `claim_entry` refuses a row whose `next_attempt_at` is in the future (SQL
+  gate, not only a Python filter); `_drain_once` skips it and one-shot
+  `ll-queue run` exits reporting the count backing off.
+- `ll-queue cancel <id> --reason "..."` on a `pending` or `running` entry
+  yields `cancelled` with `result.reason`; a second-signal `force_stop`
+  produces `cancelled` with reason `"interrupted by operator"`.
+- `ll-queue requeue <id>` on a `dead_letter`, `failed`, or `cancelled` entry
+  returns it to `pending` with `attempt == 0` and `next_attempt_at IS NULL`;
+  on `running` it behaves as today.
+- **Retryable-class join lock**: a test enumerates the `FailureType` members
+  the queue treats as retryable and asserts `QUEUE_MAX_ATTEMPTS > 1` for the
+  policy that consumes each. This guards the silent failure where a correct
+  classification chain is rendered inert by a one-attempt budget.
+- **Constants lock**: a test asserts the three constants equal their declared
+  values and that no call site in `queue_store.py`/`cli/queue.py` constructs a
+  backoff or budget from a literal (grep-shaped test, mirroring the
+  `DeferReason`/`_DEFERRAL_REASON_CODES` frozenset-equality lock at
+  `test_issue_lifecycle.py:1985-1993`).
+- **Status-set lock**: `_STATUS_COLOR.keys() == QUEUE_STATUSES` and the
+  `queue_list` MCP tool description enumerates exactly `QUEUE_STATUSES`.
+- Migration `_MIGRATIONS[2]` adds `attempt INTEGER NOT NULL DEFAULT 0` and
+  `next_attempt_at TEXT` (nullable); `SCHEMA_VERSION` becomes 3; a
+  `TestV2ToV3Migration` asserts the columns via `PRAGMA table_info` and that
+  pre-existing rows read back with `attempt == 0`.
+- `QueueEntry.to_dict()` emits `attempt` and `nextAttemptAt`; `ll-queue status
+  <id>` (non-JSON) shows both plus `result.reason`/`result.error` when set.
 
 ## Program Design
 
 ### Types
 
-- `QueueEntry` (`scripts/little_loops/queue_store.py:267`) — add `attempt: int`, `next_attempt_at: str | None`
-- `status: str` on `QueueEntry` — extend the existing `pending`/`running`/`done` values with a terminal `dead_letter` status
-- A small set of named backoff/policy constants (per the Acceptance Criteria's "named constants" requirement), e.g. defined alongside `QueueEntry` in `queue_store.py`
+- `QueueEntry` (`queue_store.py:267`): add `attempt: int = 0`,
+  `next_attempt_at: str | None = None`. Extend `to_dict()` and `_from_row()`.
+- `QUEUE_STATUSES`, `QUEUE_TERMINAL_STATUSES` frozensets; `QUEUE_MAX_ATTEMPTS`,
+  `QUEUE_BACKOFF_BASE_S`, `QUEUE_BACKOFF_CEILING_S` ints; all in
+  `queue_store.py`.
 
 ### Signatures
 
-- `reset_to_pending(entry_id, db_path=...) -> bool` (`queue_store.py:417`) — split into the three distinct requeue paths below rather than one shared call
-- `_reclaim_stale(db_path) -> int` (`cli/queue.py:542`) — the owner-death reclaim path; must preserve `enqueued_at` and not touch attempt/backoff
-- `cmd_requeue(args) -> int` (`cli/queue.py:686`) — the operator-cancel-with-reason path; marks the entry non-retryable
-- `dead_letter_entry(entry_id, error: str, db_path=...) -> bool` — new; sets the terminal status and records the last error
+- `claim_entry(entry_id, db_path=..., *, owner_pid=None, now: str | None = None) -> bool`
+  (`queue_store.py:466`): UPDATE adds `attempt = attempt + 1` and the WHERE
+  adds `AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`. `now` defaults
+  to the current UTC timestamp; injectable for tests.
+- `compute_backoff_s(attempt: int) -> int` (`queue_store.py`, new): the
+  doubling-then-cap formula.
+- `reset_to_pending(entry_id, db_path=..., *, root=None) -> bool`
+  (`queue_store.py:417`): unchanged contract for the running→pending reclaim;
+  sets nothing but `status`/`claimed_at`/`owner_pid`. Docstring updated to say
+  it is the *reclaim* path and does not touch `attempt`.
+- `schedule_retry(entry_id, error: str, next_attempt_at: str, db_path=...) -> bool`
+  (new): running→pending, sets `next_attempt_at`, stores the failure in
+  `result`, clears `claimed_at`/`owner_pid`.
+- `dead_letter_entry(entry_id, error: str, db_path=...) -> bool` (new):
+  running→`dead_letter`, stores `{"error": error, ...}` in `result`, clears
+  ownership.
+- `cancel_entry(entry_id, reason: str, db_path=...) -> bool` (new):
+  pending|running→`cancelled`, stores `{"reason": reason}` in `result`, clears
+  ownership.
+- `revive_entry(entry_id, db_path=...) -> bool` (new): terminal→pending,
+  `attempt = 0`, `next_attempt_at = NULL`, `result = NULL`. Used by
+  `cmd_requeue` for non-running entries.
+- `_reclaim_stale(db_path) -> int` (`cli/queue.py:542`): for each dead-owner
+  entry, `dead_letter_entry` if `entry.attempt >= QUEUE_MAX_ATTEMPTS` else
+  `reset_to_pending`. Return value counts both.
+- `_classify_dispatch(result_dict, timed_out) -> tuple[bool, str]` (new,
+  `cli/queue.py`): returns `(retryable, reason)` wrapping the timeout check and
+  `classify_failure`.
+- `cmd_cancel(args) -> int` (new): `id`, `--reason`, `--json`.
+- `cmd_requeue(args) -> int` (`cli/queue.py:686`): widen the status guard;
+  dispatch to `reset_to_pending` (running) or `revive_entry` (terminal).
 
 ### Call Path
 
-`cmd_run` (`cli/queue.py:562`) -> `claim_entry` (`queue_store.py:466`) -> action dispatch fails -> classify error -> `reset_to_pending` (`queue_store.py:417`, split into the retry/reclaim paths above) or `update_entry_result` (`queue_store.py:439`, for the dead-letter path) or `dead_letter_entry`
+`cmd_run` → `_drain_once` → `list_entries` filtered to
+`status == "pending" and (next_attempt_at is None or <= now)` → `claim_entry`
+(increments `attempt`, SQL time gate) → dispatch →
+- success → `update_entry_result(..., "done", ...)`
+- `force_stop` set → `cancel_entry(id, "interrupted by operator")`
+- failure → `_classify_dispatch` →
+  - not retryable → `update_entry_result(..., "failed", ...)`
+  - retryable, `attempt < QUEUE_MAX_ATTEMPTS` → `schedule_retry(id, error, now + compute_backoff_s(attempt))`
+  - retryable, exhausted → `dead_letter_entry(id, error)`
 
-### Decision Rules
+`_run_watch` → `_reclaim_stale` → per dead-owner entry → `reset_to_pending` or `dead_letter_entry`.
 
-- **Retry-budget policy (max attempts, backoff base/ceiling seconds) is not pinned to concrete values anywhere in this issue.** The "Reference shape" section cites an external message-batching queue's values (10 attempts, 5s → 300s) as an example of the *shape* of a solution, not a decision for this codebase — the Acceptance Criteria requires "a small set of named constants" but does not state what those constants equal. UNRESOLVED: an implementer or `/ll:decide-issue` pass must pin concrete numbers, expressed as named constants in the `DeferReason`/frozenset-and-lock-test shape (see Integration Map → Conventions in Force), not as bare literals.
-- **Retryability classification has no taxonomy to consume.** The Summary explicitly defers to "whatever the open timeout-semantics issue settles," but no issue matching "timeout-semantics" (or a close synonym) exists in `.issues/` (see Scope Boundaries → Codebase Research Findings). UNRESOLVED pending either that issue being filed or this issue's scope absorbing a minimal classification of its own. The existing precedent for the classification *mechanism* (not values) is `classify_failure()`/`FailureType` (`issue_lifecycle.py:141-239`) — a text-pattern function returning `(Enum, reason)` — contrasted with the exit-code-only `retryable_exit_codes` (`fsm/schema.py:713`) this issue explicitly rejects following.
-- **Overflow/trimming has no existing baseline to differentiate from** (see Current Behavior → Codebase Research Findings) — per-path overflow/trimming is new functionality, not a differentiation of pre-existing behavior. Exact per-path rules (which path trims oldest-first vs newest-first, and at what size) are UNRESOLVED.
+## Integration Map
+
+### Files to Modify
+
+- `scripts/little_loops/queue_store.py` — `QueueEntry` fields, `to_dict`,
+  `_from_row`; new constants; `_MIGRATIONS[2]`, `SCHEMA_VERSION = 3`;
+  `claim_entry` UPDATE/WHERE; new `compute_backoff_s`, `schedule_retry`,
+  `dead_letter_entry`, `cancel_entry`, `revive_entry`; `reset_to_pending`
+  docstring.
+- `scripts/little_loops/cli/queue.py` — `_drain_once` eligibility filter,
+  classification branch, `force_stop` → `cancel_entry`; `_reclaim_stale`
+  budget check; `cmd_requeue` widening; new `cmd_cancel` + argparse
+  subparser; `_STATUS_COLOR` entries for `dead_letter`/`cancelled`;
+  `cmd_status`'s `status_block` (`:306-317`) gains `attempt`, `nextAttemptAt`,
+  and reason/error; `_format_action_summary` (`:85`) — no new branch needed
+  (the `running` elapsed-time suffix is the only status-conditional; explicit
+  no-op); `_verify_owner_alive` docstring (`:514-523`) still accurate since
+  `cmd_requeue` remains a requeue; the `--force to requeue anyway` message
+  (`:713-717`) stays.
+- `scripts/little_loops/mcp_server/tools.py` — `_tool_queue_requeue`
+  (`:615-645`) widens its status guard to match `cmd_requeue` and computes
+  the `changes[].from` from the actual status; `queue_list` description
+  (`:838`) enumerates `QUEUE_STATUSES`; optional `queue_cancel` tool
+  registered in `policy.MUTATING_TOOLS` (`policy.py:62-63`) mirroring
+  `queue_requeue`. `_tool_queue_remove` (`:585-612`) unchanged.
+- `scripts/tests/test_cli_surface.py:139` — add `cancel` to the `ll-queue`
+  subcommand-set lock.
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/mcp_server/tools.py:622,644` — `reset_to_pending`
+  caller; contract unchanged for `running` entries, so this stays correct
+  unless the tool adopts the widened guard.
+- `scripts/tests/test_queue_store.py:428,438,444` (`TestResetToPending`) —
+  contract unchanged; add assertions that `attempt`/`next_attempt_at` are not
+  touched.
+- `scripts/tests/test_cli_queue_run.py:638-746` (`TestReclaimStale`,
+  `TestCmdRequeue`) — extend for the budget-exhausted reclaim and the widened
+  requeue; both patch `little_loops.cli.queue.psutil.Process`.
+- `scripts/tests/test_cli_queue_run.py` lines 121, 137, 153, 175, 212, 290,
+  412, 426 assert `status == "failed"` immediately after a failure. Under the
+  mapping above these stay `failed` (their fixtures produce non-transient
+  stderr or exit codes); only fixtures whose stderr happens to match a
+  `TRANSIENT` pattern need review. Raw-SQL fixture at `:195` names the
+  pre-migration column set; `attempt` has a DEFAULT so it still works, but
+  add the column for clarity.
+- `scripts/tests/test_feat_queue_mcp_tools.py:142-176`
+  (`test_queue_requeue_running_entry`) — still valid; raw-SQL fixture at
+  `:157` unaffected by the defaulted column.
+- `scripts/tests/test_cli_queue.py:311-328`
+  (`test_list_json_unaffected_by_summary_change`) — pattern to extend for
+  asserting `attempt`/`nextAttemptAt` in `--json`.
+- `scripts/tests/test_cli_queue_run.py:68-88` (`TestCmdRunDispatchOrder`) —
+  still passes (no `next_attempt_at` set); add a sibling test that a
+  backing-off entry is skipped while eligible siblings dispatch.
+
+### Conventions in Force
+
+- Backoff as named base + ceiling constants, `delay = base * 2^(attempt-1)`
+  (`transport.py:76-77,1830`; `git_lock.py:47-49,154,167`).
+- Machine-readable status/reason sets as a declared set locked by a test
+  (`DeferReason`/`_DEFERRAL_REASON_CODES`, `issue_lifecycle.py:65-93`,
+  `test_issue_lifecycle.py:1985-1993`).
+- New nullable/defaulted columns as `ALTER TABLE ... ADD COLUMN` per migration
+  entry with a motivating-issue comment (`queue_store.py:124-131`).
+- Retryability classification as a text-pattern function returning
+  `(Enum, reason)` (`classify_failure`, `issue_lifecycle.py:159-239`), not an
+  exit-code allowlist (`retryable_exit_codes`, `fsm/schema.py:713`).
+- Operator-supplied reason stored as its own field, free text
+  (`close_reason`, `parallel/types.py:77`).
+
+### Tests
+
+- `scripts/tests/test_queue_store.py` — one `TestX` class per new function;
+  `TestV1ToV2Migration` (375-401) is the template for `TestV2ToV3Migration`;
+  `TestClaimEntry` gains the time-gate and `attempt`-increment cases (inject
+  `now`).
+- `scripts/tests/test_cli_queue_run.py` — new classes for the classification
+  branch (drive `_drain_once` directly with a stubbed `run_action` returning
+  transient stderr, real stderr, and `timed_out=True`), the `force_stop` →
+  `cancelled` path (currently untested), `_reclaim_stale` exhaustion, and
+  `cmd_cancel`. Precedent for asserting the doubling sequence:
+  `test_git_lock.py::TestRetryLogic` (209-248). Precedent for exhaustion
+  logging: `test_transport.py:1604-1623`.
+- `_STATUS_COLOR` has no test today; the status-set lock covers it.
+- `_verify_owner_alive`'s `claimed_at` fallback (`cli/queue.py:531-536`) is
+  untested but out of scope here.
+
+### Documentation
+
+- `docs/ARCHITECTURE.md:827-838` — Queue DB section: schema, statuses,
+  migration table row at `:834`.
+- `docs/reference/API.md:90`, `:10510-10533` — `QueueEntry` field lists and
+  module reference; `:5056-5066` CLI entry point.
+- `docs/reference/CLI.md:4052-4135` — `ll-queue` reference: field list
+  (`:4054`), exit-code→status mapping (`:4102`, add the classify/backoff
+  branch), `requeue` prose (`:4122`, widened statuses), new `cancel`
+  subcommand; `:5299-5304` MCP mutating-tools prose.
+- `docs/guides/MCP_SERVER_GUIDE.md:309-345,364` — `QueueEntry` JSON example
+  gains the two fields.
+- `docs/reference/CONFIGURATION.md:717` — no change (constants are not
+  configurable in this issue).
+
+### Configuration
+
+None. `QueueConfig` (`config/features.py:1559-1570`) and
+`config-schema.json:2262-2270` are untouched, so
+`test_config.py:4423-4451` and `test_config_schema.py`'s BUG-3192 parity
+guards are not in play.
 
 ## Implementation Steps
 
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Update `scripts/little_loops/queue_store.py:279-296` (`QueueEntry.to_dict()`) — add `attempt`/`next_attempt_at` (and dead-letter error/reason) fields to the explicit dict literal so `--json` output and MCP tool responses include them
-- Update `scripts/little_loops/cli/queue.py:306-317` (`cmd_status`'s `status_block` dict) — add the same fields to the non-JSON `ll-queue status <id>` rendering
-- Update `scripts/little_loops/mcp_server/tools.py:838` (`queue_list` tool description) — append `dead_letter` to the `(pending/running/done/failed)` enumeration
-- Update `scripts/little_loops/mcp_server/tools.py:615-645` (`_tool_queue_requeue`) — replace the hardcoded `"to": "pending"` transition and add a `reason` parameter to the tool's own schema, tracking whichever cancel-with-reason semantics `cmd_requeue` settles into
-- Update `scripts/little_loops/mcp_server/tools.py:585-612` (`_tool_queue_remove`) and `scripts/little_loops/cli/queue.py:331` (`cmd_remove`) in lockstep — decide and encode whether a `dead_letter` entry is removable the same way a `pending` one is today
-- Update `scripts/tests/test_cli_queue_run.py` — rework the 13 assertions hardcoding `status == "failed"` as the immediate post-failure state (lines 121, 137, 153, 175, 212, 290, 412, 426) and the raw-SQL fixture column list at line 195
-- Update `scripts/tests/test_feat_queue_mcp_tools.py` — rework `test_queue_requeue_running_entry` (142-176) for the split `reset_to_pending` call path and its raw-SQL fixture at line 157
-- Add coverage in `scripts/tests/test_cli_queue.py` — extend the `test_list_json_unaffected_by_summary_change` (311-328) pattern to assert the new `attempt`/`nextAttemptAt` keys appear correctly in `--json` output
-
-## Folded constraints
-
-The following were closed as design constraints with no shippable unit of their own; this issue carries their rule.
-
-- **Terminality is claimed per call site, not encoded into the error.** The error carries a structured reason; each call site (checkpoint vs read path) decides whether it is terminal and records that decision as metadata.
-- **Classify agent failures by whether observable work exists, and revive in place.** Retryability keys on whether the user already saw output; revival reuses the same run identity; a persisted `retried_at` fence caps residue at one re-run per entry.
+1. `queue_store.py`: constants, `compute_backoff_s`, migration + `SCHEMA_VERSION = 3`, `QueueEntry` fields/`to_dict`/`_from_row`.
+2. `queue_store.py`: `claim_entry` increment + time gate; `schedule_retry`, `dead_letter_entry`, `cancel_entry`, `revive_entry`; `reset_to_pending` docstring.
+3. `cli/queue.py`: `_classify_dispatch`; `_drain_once` eligibility filter, outcome branch, `force_stop` → `cancel_entry`, backing-off count in the one-shot summary.
+4. `cli/queue.py`: `_reclaim_stale` budget check; `cmd_requeue` widening; `cmd_cancel` + subparser; `_STATUS_COLOR`; `cmd_status` block.
+5. `mcp_server/tools.py`: `_tool_queue_requeue` guard + `changes[].from`; `queue_list` description; optional `queue_cancel`.
+6. Tests per the Tests section, including the three lock tests (retryable-join, constants, status-set) and `test_cli_surface.py:139`.
+7. Docs per the Documentation section.
 
 ## Impact
 
-- **Priority**: P1 - matches the existing frontmatter priority; an entry that reliably crashes its drainer is re-dispatched forever today, a live reliability gap for any long-running watcher.
-- **Effort**: Large - new attempt/backoff fields, three distinct requeue code paths, per-path overflow trimming, and an error-classification layer, none of which exist today.
-- **Risk**: Medium - a `QueueEntry` schema change (new columns via a migration, following the existing `_apply_migrations` pattern at `queue_store.py:170`) plus a behavior change to `_reclaim_stale`/`reset_to_pending` call sites.
-- **Breaking Change**: Yes - `reset_to_pending`'s single-call semantics split into distinct retry/reclaim/cancel paths; existing callers must pick the right one.
+- **Priority**: P1 — an entry that kills its drainer is re-dispatched forever today.
+- **Effort**: Medium — one migration, five small store functions, one new subcommand, one classification branch. Reduced from Large by cutting overflow/trimming and keeping `reset_to_pending`/`requeue` contracts intact.
+- **Risk**: Medium — behavior change: transient failures now retry instead of landing on `failed`. Bounded by `QUEUE_MAX_ATTEMPTS` and by the explicit non-retryable mapping for timeouts and real errors.
+- **Breaking Change**: No — `reset_to_pending` keeps its contract; `requeue` only widens accepted statuses; new statuses are additive. Consumers filtering on `status == "failed"` will no longer see transient failures there until the budget is exhausted.
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-08_
-
-**Readiness Score**: 75/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 35/100 → VERY LOW
-
-### Concerns
-- Architecture Compliance (15/20): two existing backoff-constant conventions in this codebase disagree on jitter (`fsm/executor.py`'s `_DEFAULT_RATE_LIMIT_BACKOFF_BASE` is jittered; `transport.py`'s `_WEBHOOK_RETRY_BASE_S`/`_WEBHOOK_RETRY_MAX_S` is not, no shared `compute_backoff()` helper exists) and the issue does not say which to follow.
-- Issue Well-Specified (10/20): Program Design → Decision Rules explicitly flags three UNRESOLVED items requiring a decision before implementation can proceed cleanly: (a) concrete attempt-budget/backoff constant values, (b) retryability classification taxonomy — deferred to an open "timeout-semantics" issue that does not exist anywhere in `.issues/`, (c) per-path overflow/trimming rules with no existing baseline to differentiate from.
-- Dependencies Satisfied (10/20): the retryability classification this issue relies on is explicitly out of scope and deferred to an unfiled companion issue; Scope Boundaries states this issue "does not own that classification" but nothing currently exists for it to consume, leaving only the existing `classify_failure()`/`FailureType` mechanism as a fallback shape.
-
-### Outcome Risk Factors
-- Complexity (0/25): 16+ distinct change sites across `queue_store.py`, `cli/queue.py`, two MCP tool handlers, four test files, four docs files, and two config files, combined with deep architectural rewiring — `reset_to_pending`'s single-call semantics splits into three distinct code paths, a stated breaking change to existing callers.
-- Ambiguity (10/25): the same three UNRESOLVED design decisions noted above (backoff constants, retryability taxonomy, overflow/trim rules) will require judgment calls during implementation rather than being resolvable purely from the issue text.
-- Change Surface (0/25): 11+ known callers/dependents of `reset_to_pending`/`cmd_requeue` span `cli/queue.py`, `mcp_server/tools.py`, and 13 existing test assertions hardcoding the post-failure `status == "failed"` state — a very wide blast radius for a breaking API split.
+_Added by `/ll:confidence-check` on 2026-09-08 against the prior revision; scores in frontmatter are stale pending a re-run. The three UNRESOLVED items it flagged (constant values, retryability taxonomy, overflow rules) are settled or cut in Design Decisions above._
 
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
 
-
 ## Session Log
+- manual review rewrite - 2026-09-09 - design layer rewritten; wiring findings retained
+- `/ll:wire-issue` - 2026-09-09T04:19:11 - `31613f06-17db-4122-af95-f9089ed7405e.jsonl`
 - `/ll:decide-issue` - 2026-09-09T04:08:14 - `3577db8f-8723-4e0e-adb7-90253d958f56.jsonl`
 - `/ll:refine-issue` - 2026-09-09T04:03:54 - `92947113-ae24-4c67-9cb1-ea2af355904e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:57:00 - `6d9082d6-8afc-4d51-af36-c0955fd01c58.jsonl`

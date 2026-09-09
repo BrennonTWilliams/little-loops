@@ -13,6 +13,7 @@ decision_needed: false
 reconcile_attempted: true
 learning_tests_required:
 - codex
+- codex-rollout
 confidence_score: 85
 outcome_confidence: 28
 score_complexity: 0
@@ -25,15 +26,42 @@ score_change_surface: 0
 
 `ll-logs`, `ll-messages`, and `ll-ctx-stats` all reach directly for `~/.claude/projects/<munged-cwd>/`, and nothing in the tree parses a Codex rollout file. That is the observability half of goal 2 going unbuilt while the generation half is already done: `ll-adapt --host codex` ships today, so little-loops writes artifacts for Codex and then cannot read a single Codex session back. Every log-derived capability downstream — goal 6's dataset export, goal 7's quality rollups — silently covers one host while claiming to generalize.
 
-Introduce a session-watcher seam, not a Codex feature. The interface is small and covers the lifecycle only: detect a session for a workspace, watch it, emit typed events, stop. Per-host parsers live behind it and share nothing above it. One implementation then serves `ll-logs`, `ll-ctx-stats`, and any future dashboard, the same way one extension point can serve a CLI and a UI without either knowing about the other.
+Introduce a session-discovery seam, not a Codex feature. The interface is small and covers the lifecycle only: enumerate the sessions for a workspace, iterate their typed events (live `watch`/`stop` deferred to the first consumer that needs it — see § Live watch is deferred). Per-host parsers live behind it and share nothing above it. One implementation then serves `ll-logs`, `ll-ctx-stats`, and any future dashboard, the same way one extension point can serve a CLI and a UI without either knowing about the other.
 
 ## Current Behavior
 
 `ll-logs`, `ll-messages`, and `ll-ctx-stats` each reach directly for `~/.claude/projects/<munged-cwd>/` — Claude Code's own JSONL session layout — with no seam between the CLI and the on-disk format. Nothing in the tree parses a Codex rollout file. `ll-adapt --host codex` already generates Codex-targeted artifacts, but no code reads a Codex session back, so a workspace driven by Codex is invisible to every log-derived command.
 
+The tree's existing Codex "support" in this area is dead code: `_get_codex_project_folder` (`user_messages.py:458`), `host_layout_for("codex").projects_root` (`session_store/writers.py:2593`), and `test_host_codex_probes_codex_projects` (`scripts/tests/test_user_messages.py:147`) all probe `~/.codex/projects/<encoded>`, a directory Codex has never written (see § Codex On-Disk Layout below). `ll-session backfill --host codex` is therefore wired but always resolves zero sessions.
+
 ## Expected Behavior
 
-A session-watcher interface exists covering the lifecycle only — detect a session for a workspace, watch it, emit typed events, stop — with per-host parsers living behind it. `ll-logs` and `ll-ctx-stats` consume that interface instead of reaching for `~/.claude/projects/` directly, and a Codex rollout parser implements the same interface as the second host. A session started under Codex becomes observable through the same commands as one started under Claude Code, with no host-specific flag required.
+A session-discovery interface exists covering the lifecycle only — enumerate the sessions for a workspace under a host, iterate their typed events — with per-host parsers living behind it. `ll-logs`, `ll-messages`, and `ll-ctx-stats` consume that interface instead of reaching for `~/.claude/projects/` directly, and a Codex rollout parser implements the same interface as the second host. A session started under Codex becomes observable through the same commands as one started under Claude Code, with no host-specific flag required.
+
+## Codex On-Disk Layout (verified 2026-09-08 against a live `~/.codex`, cli_version 0.130.0)
+
+_Added by review on 2026-09-08. Every claim below was checked against the real directory on the maintainer's machine (8,858 rollouts; 1,788 for this repo). This corrects the "working Codex path probe" premise carried by earlier refinement passes._
+
+**Layout.** Codex writes one rollout per session at `~/.codex/sessions/YYYY/MM/DD/rollout-<ISO-timestamp>-<uuid>.jsonl`, keyed by **date**, not by project. There is no `~/.codex/projects/`. The workspace is only recoverable from inside the file: `session_meta.payload.cwd` on line 1, and `turn_context.payload.cwd` on every turn. Consequence: sessions for one cwd are scattered across many date directories, so no single folder satisfies `get_project_folder`'s "Path containing `*.jsonl`" contract for Codex. Codex must not route through `get_project_folder`; the seam returns per-session file handles instead.
+
+**Session index.** Codex also maintains `~/.codex/state_<N>.sqlite` (currently `state_5.sqlite`) with a `threads` table: `id`, `rollout_path`, `cwd`, `source`, `created_at`, `updated_at`, `tokens_used`, `cli_version`, `model`, indexed on `created_at`/`updated_at`. This is the cheap, authoritative index for "sessions for cwd X", but the filename version suffix and schema are vendor-private and unversioned from our side, so it cannot be the only path.
+
+**Discovery strategy (decided):** `detect_sessions(cwd, "codex")` queries the newest `state_*.sqlite` `threads` table by exact `cwd` match, ordered by `updated_at` desc; if the DB is absent, unreadable, or lacks the expected columns, fall back to scanning `~/.codex/sessions/` date directories newest-first, reading only line 1 of each rollout and matching `payload.cwd`. Both paths return the same handle type. Every `rollout_path` from the DB is verified to exist before being returned (the DB can outlive deleted files).
+
+**Record shape.** Every line is `{"timestamp": <ISO>, "type": <str>, "payload": {...}}`:
+
+```
+type: session_meta | turn_context | response_item | event_msg
+session_meta.payload:   id, timestamp, cwd, originator, cli_version, source, model_provider,
+                        base_instructions{text}  (inlined — 22 KB on line 1 in the sample)
+turn_context.payload:   turn_id, cwd, model, approval_policy, sandbox_policy, ...
+response_item.payload.type: message   (role: user|assistant; content: [{type: input_text|output_text, text}])
+event_msg.payload.type:     user_message{message} | task_started | task_complete
+```
+
+Records are per-line parseable; the session id and cwd live only in the header line, so `parse_codex_rollout` is the gemini/omp whole-file-context case for identity and the qwen per-record case for everything else. The oversized-first-line hazard this issue's Testing section cites is real-shape here (`base_instructions` is inlined into `session_meta`); Python `open()` text iteration has no line ceiling, so the risk is a downstream consumer with a fixed buffer, not the parser itself — note it in the parser docstring.
+
+**What the local corpus does NOT contain.** All 8,858 local sessions are `source = "exec"` one-shots (`codex exec`): zero `function_call`, zero `function_call_output`, zero `token_count`, zero reasoning items, and `tokens_used = 0` on every `threads` row. Interactive/TUI sessions with tool use and per-turn usage have a different payload vocabulary that has **not** been observed here. See Testing → Fixture capture.
 
 ## The seam is at the lifecycle, and is refused on content
 
@@ -47,13 +75,25 @@ This is a real counterweight to the standing proposal for a declarative host-ada
 
 Sequencing matters and should be stated in the issue rather than discovered during review: build the seam when the second implementation makes the duplication concrete, not in anticipation of it. Codex is that second implementation, so the seam is now earned. The reference implementation followed the same order — the first host was built with no abstraction at all, and the interface arrived only once the second host made the duplication real.
 
-Keeping the Codex watcher free of any UI-framework dependency is what lets one implementation serve `ll-logs`, `ll-ctx-stats`, and a future dashboard without modification.
+Keeping the Codex reader free of any UI-framework dependency is what lets one implementation serve `ll-logs`, `ll-ctx-stats`, and a future dashboard without modification.
+
+### Live watch is deferred (review decision, 2026-09-08)
+
+The original four-method interface (`detect_session`/`watch`/`stop`) was borrowed from a visualizer that has a live panel. Nothing in this issue's call path is live: `ll-logs sequences`/`extract`/`scan-failures`/`eval-export`, `ll-messages`, and `ll-ctx-stats` are all batch reads over finished files, and `ll-logs tail` tails loop event files, not host sessions. Option B's selection leaned on "the AC's live-watch requirement", which was the AC citing itself. v1 therefore ships the batch half only — `detect_sessions` (plural: `_collect_sequences` needs every session for a project, not "the active one") and `iter_events` — and leaves `watch`/`stop` for the first consumer that actually tails a host session (a dashboard). This removes the file-growth test harness the confidence check flagged as originated-from-nothing work. The interface must be shaped so `watch(handle)` can be added later without changing `detect_sessions`/`iter_events`.
 
 ## Testing
 
 Test the Codex parser against a captured real-shape rollout fixture — actual JSONL from a real session, committed alongside the parser — not hand-minimized stubs. This is complementary to, not a substitute for, the scripted fake-host work: a fake host tests our handling of a sequence we chose, a captured fixture tests our parser against a record shape the vendor chose and can change under us without telling us.
 
 Treat the fixture as perishable and re-capture it periodically. The concrete precedent: a vendor started inlining full base instructions into the first line of its rollout file, that line blew past a consumer's fixed 64KB read buffer, `cwd` extraction failed, and sessions were silently skipped — an empty panel with no error. Neither a scripted fake host nor the existing unit tests would have caught it; re-capturing the fixture would have.
+
+### Fixture capture (added by review, 2026-09-08)
+
+A fixture lifted from the local corpus covers only the `exec` one-shot vocabulary (`session_meta`, `turn_context`, `message`, `user_message`, `task_started`, `task_complete`). That is insufficient for AC #2 (per-host tool-call shapes and token accounting) and for `ll-logs`' tool-name/sequence paths. Required before the parser is considered tested:
+
+1. Deliberately run one **interactive** Codex session in this repo (`codex`, not `codex exec`) that issues at least one shell tool call and one file read, then copy its rollout to `scripts/tests/fixtures/codex/rollout-interactive.jsonl`. Also commit one `exec` one-shot as `rollout-exec.jsonl` (both sanitized: strip `base_instructions.text` to a short placeholder, keep its key so the oversized-header code path is still exercised — record the original byte length in the fixture README).
+2. While capturing, **confirm whether rollout files carry per-turn usage at all.** `docs/reference/HOST_COMPATIBILITY.md`'s `[^tok-codex]` footnote proves usage only on the `codex exec --json` stdout stream (`turn.completed`), not in the rollout file. If the rollout has no `token_count`-style event, `ll-ctx-stats` for Codex is scoped as "returns no cache rate" (see Implementation Steps) and the decision is recorded in the parser docstring, not left for the next reader to rediscover.
+3. **Perishability marker = the learning test.** Register a new learning-test target `codex-rollout` (`.ll/learning-tests/codex-rollout.md`, via `/ll:explore-api` or `/ll:spike`) whose assertions are the layout and record-shape claims in § Codex On-Disk Layout, stamped with the `cli_version` read from the captured `session_meta`. The fixture README's re-capture rule is then mechanical: "re-run `ll-learning-tests prove codex-rollout` and re-capture both fixtures whenever `codex --version` differs from the `cli_version` recorded here." This replaces inventing a calendar-based convention, which has no precedent in the tree. The existing `codex` learning-test record covers MCP `config.toml` shape only and does not stand in for this.
 
 ## Relations
 
@@ -83,6 +123,14 @@ Research surfaced a real fork this issue does not yet resolve. A per-host conten
 > **Selected:** Option B — Option A's own agent-verified evidence shows `extract_user_messages`/`_compute_cache_rate_from_jsonl` never call `HostLayout.normalize` today (the `HostLayout` seam is batch/backfill-only, exercised only by `_iter_events`'s cursor-replay path), so Option A cannot satisfy the Acceptance Criteria's live-watch requirement without inventing the same lifecycle Option B proposes anyway; Option B is also the only option consistent with this issue's own "seam is refused on content" design section.
 
 **Recommended**: Option B for v1, per the issue's own "seam is refused on content" rationale (§ above) and because it is the only option that gives `ll-logs`/`ll-ctx-stats` the live-watch behavior the Acceptance Criteria and Use Case describe — Option A only solves batch backfill. The `HostLayout`/new-watcher duplication this leaves behind is worth a follow-up issue, not a blocker for this one.
+
+### Review corrections to the analysis above (2026-09-08)
+
+Option B stands, but two of the facts both options were scored on were wrong and one justification was circular:
+
+- **"`ll-session backfill --host codex` is already wired end-to-end"** — wired, but non-functional: `host_layout_for("codex").projects_root` points at `~/.codex/projects/`, which does not exist (§ Codex On-Disk Layout). Option A's "zero new CLI plumbing" advantage was therefore illusory; it would have needed the same discovery work.
+- **"`get_project_folder` already has a working Codex path probe that `detect_session` would duplicate"** — the probe never resolves. There is nothing to duplicate; the Codex discovery path is net-new either way, and `get_project_folder`'s folder contract cannot express Codex's date-keyed layout at all.
+- **"Option B is the only option that satisfies the AC's live-watch requirement"** — no consumer in the call path is live (see § Live watch is deferred). Option B is still correct on the content-refusal ground alone; the live-watch ground is withdrawn and `watch`/`stop` are dropped from v1.
 
 ### Decision Rationale
 
@@ -136,7 +184,7 @@ _Second wiring pass added by `/ll:wire-issue`:_
 
 ### Conventions in Force
 - Per-host path/layout resolution in this codebase is a literal-string `if`/`elif` chain over a fixed host vocabulary, not a registered adapter table — evidence: `get_project_folder` (`user_messages.py:373-419`, dispatches to `_get_claude_project_folder`/`_get_codex_project_folder`/etc.), `host_layout_for` (`writers.py:2527-2604`)
-- `get_project_folder`/`get_sessions_folder` are already host-parameterized, including a working Codex path probe — `_get_codex_project_folder` (`user_messages.py:458`) resolves `~/.codex/projects/<encoded>` using the same dash-encoding (`encode_project_path`, line 362) as Claude Code. `host` defaults from `os.environ.get("LL_HOOK_HOST", "claude-code")` when not passed explicitly (line 395). The gap is downstream: `extract_user_messages` and `_compute_cache_rate_from_jsonl` never receive or forward a `host` value, so they always assume Claude Code's JSONL schema regardless of which host's folder was actually resolved.
+- `get_project_folder`/`get_sessions_folder` are already host-parameterized, and `_get_codex_project_folder` (`user_messages.py:458`) probes `~/.codex/projects/<encoded>` using the same dash-encoding (`encode_project_path`, line 362) as Claude Code — **but that directory does not exist; Codex is date-keyed under `~/.codex/sessions/` (§ Codex On-Disk Layout), so the probe always returns `None`.** `host` defaults from `os.environ.get("LL_HOOK_HOST", "claude-code")` when not passed explicitly (line 395). Two gaps, then: discovery (no code in the tree can find a Codex session for a cwd) and content (`extract_user_messages` and `_compute_cache_rate_from_jsonl` never receive or forward a `host` value, so they always assume Claude Code's JSONL schema).
 - The three existing per-host content parsers (`session_store/qwen.py:normalize_qwen_record`, `gemini.py:normalize_gemini_session`, `omp.py:normalize_omp_session`) all normalize *into a shared Claude-shaped record* rather than keeping a per-host content type — evidence: `gemini.py` and `omp.py` module docstrings both state the normalizer "yields Claude-shaped `user`/`assistant` records". This is the opposite of this issue's stated design ("refuse [a shared abstraction] on content"); see Proposed Solution → Codebase Research Findings for the resulting decision point.
 - Uniform per-line JSONL resilience: `line.strip()` → skip empty → `json.loads` inside `try/except json.JSONDecodeError: continue`; whole-file `OSError` caught per-file and skipped, never raised — evidence: `user_messages.py:703-707`, `cli/ctx_stats.py:387-405`, `session_store/writers.py` `_iter_events`. No line-length guard exists anywhere in these paths (plain `open()` text iteration has no ceiling, unlike `asyncio.StreamReader`'s 64KB default) — directly relevant to this issue's cited oversized-first-line failure mode.
 - Host discrimination is always a bare `str` field/attribute (`HostRunner.name`, `HostLayout.name`, `LLHookEvent.host`) — no `Host` enum or `Literal[...]` type exists anywhere in `scripts/little_loops/` to constrain these values.
@@ -157,7 +205,7 @@ _Second wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_logs.py` (6587 lines; confirmed sole test file for `cli/logs.py`) — `TestSequences`/`TestArgumentParsingSequences` (797-1339), `TestExtract` (1547-2127), `TestScanFailures` (2924-4155), `TestEvalExport`/`TestEvalExportMapping`/`TestEvalExportRoundTrip` (4437-4841) cover all 6 functions named above, but every fixture helper (`_make_project_dir`, one per class) hard-codes the Claude Code layout and patches only `pathlib.Path.home` — none sets `LL_HOOK_HOST` or passes `host=`. Closest host-aware template to follow: `test_cli_ctx_stats.py`'s `test_resolves_qwen_chats_transcript`/`test_resolves_gemini_chats_transcript` (909, 941), which drive the real resolution chain via `monkeypatch.setenv("LL_HOOK_HOST", ...)` rather than patching the resolver function directly.
 - `scripts/tests/test_cli_ctx_stats.py::TestComputeCacheRateFromJsonl` has no Codex-equivalent of its qwen/gemini host-resolution tests (grep for `codex` in this file: zero hits) — a third pair (`test_resolves_codex_*_transcript`) is the template gap for `_compute_cache_rate_from_jsonl`.
-- No test anywhere in the repo appends bytes to a real on-disk file and asserts a watcher/tailer observes the new content (`cli/logs.py`'s own `_cmd_tail` tests mock `readline()`/`open()` entirely — `TestTail`, lines 639-742). A test for the new `watch(handle) -> Iterator[SessionEvent]` would be the first of its kind, not an adaptation of an existing pattern — budget for writing the file-growth harness itself, not just the assertions.
+- No test anywhere in the repo appends bytes to a real on-disk file and asserts a watcher/tailer observes the new content (`cli/logs.py`'s own `_cmd_tail` tests mock `readline()`/`open()` entirely — `TestTail`, lines 639-742). _Moot for v1 since `watch()` is deferred (§ Live watch is deferred); retained as the cost estimate for whichever follow-up adds it._
 - The issue's "fixture marked as perishable, re-capture periodically" convention has no precedent anywhere in `scripts/tests/fixtures/` (confirmed by repo-wide search) — the closest existing convention is a real-vs-synthesized *docstring disclosure* (`test_enh_3166_qwen_normalizer.py:18-19` states its fixtures are sanitized real captures; `gemini.py:29-30` and `test_enh_omp_normalizer.py:26-29` state theirs are hand-synthesized, not captures). The perishability/re-capture-cadence marker itself must be originated by this issue's implementation, not copied from an existing file.
 
 _Second wiring pass added by `/ll:wire-issue`:_
@@ -183,20 +231,24 @@ _Second wiring pass added by `/ll:wire-issue`:_
 
 ## Program Design
 
+_Revised by review on 2026-09-08: `detect_session`/`watch`/`stop` replaced by the batch pair below (see § Live watch is deferred); Codex discovery specified (see § Codex On-Disk Layout)._
+
 ### Types
 
-- `SessionEvent`: dataclass carrying the event's `type`, `timestamp`, and host-specific `payload`
+- `SessionEvent`: frozen dataclass carrying `type: str`, `timestamp: str`, `host: str`, and host-native `payload: dict[str, Any]` — no cross-host content normalization of `payload`
+- `SessionHandle`: frozen dataclass carrying `host: str`, `session_id: str`, `path: Path`, `cwd: Path`, `updated_at: float`; one per session file (a Codex rollout, a Claude Code `<uuid>.jsonl`)
 
 ### Signatures
 
-- `detect_session(cwd: Path, host: str) -> SessionHandle | None` — locate the active session file/dir for a workspace under the given host
-- `watch(handle: SessionHandle) -> Iterator[SessionEvent]` — stream typed events as the underlying session file grows
-- `stop(handle: SessionHandle) -> None` — release any resources the watch opened
-- `parse_codex_rollout(path: Path) -> Iterator[SessionEvent]` — Codex-specific parser behind the interface; the second implementation alongside the existing Claude Code JSONL reader
+- `detect_sessions(cwd: Path, host: str, *, limit: int | None = None) -> list[SessionHandle]` — every session for a workspace under the given host, newest `updated_at` first; empty list when the host has none (never raises for a missing host home). Claude Code: wraps `get_sessions_folder` + `*.jsonl` glob (excluding `agent-*`). Codex: sqlite `threads` query with date-dir scan fallback, per § Codex On-Disk Layout
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` — typed events for one finished-or-growing file, read once from offset 0; dispatches to the per-host parser by `handle.host`
+- `parse_codex_rollout(path: Path) -> Iterator[SessionEvent]` — Codex-specific parser behind the interface; the second implementation alongside the existing Claude Code JSONL reader. Reads line 1 for `session_meta` (id, cwd, cli_version); bare `return` on a missing/unparseable header, matching the gemini/omp generator convention
+- `parse_claude_transcript(path: Path) -> Iterator[SessionEvent]` — the existing Claude Code per-line read, lifted verbatim behind the same signature as the first implementation
+- Deferred, not in v1: `watch(handle) -> Iterator[SessionEvent]` / `stop(handle)`. `SessionHandle` carries `path` so a later `watch` needs no signature change above it
 
 ### Call Path
 
-`extract_user_messages` (`user_messages.py`) and `_compute_cache_rate_from_jsonl` (`cli/ctx_stats.py`) -> `detect_session` / `watch` (new session-watcher module) -> per-host parser (`parse_codex_rollout` for Codex; the existing Claude Code JSONL parsing becomes the first per-host implementation behind the same interface)
+`extract_user_messages` / `extract_commands` (`user_messages.py`), `_compute_cache_rate_from_jsonl` (`cli/ctx_stats.py`), and `cli/logs.py`'s six `get_project_folder()` callers -> `detect_sessions` / `iter_events` (new module `session_store/sessions.py`) -> per-host parser (`parse_codex_rollout` for Codex; `parse_claude_transcript` for Claude Code). `get_project_folder`/`get_sessions_folder` keep their Path contract for their other callers (`session_log.py`, `fsm/continuity.py`, `cli/session.py`); `_get_codex_project_folder` is changed to return `None` with a docstring pointing at `detect_sessions`, and its test is rewritten to assert that
 
 ### Codebase Research Findings
 
@@ -210,42 +262,54 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ## Implementation Steps
 
+### Core (revised by review, 2026-09-08)
+
+1. **Prove the layout first.** Register learning-test target `codex-rollout` asserting § Codex On-Disk Layout (sessions path pattern, `session_meta` header keys incl. `cwd`/`cli_version`, `threads` table columns `cwd`/`rollout_path`/`updated_at`, record envelope `{timestamp,type,payload}`). Capture both fixtures per Testing → Fixture capture and write `scripts/tests/fixtures/codex/README.md` with the `cli_version`-keyed re-capture rule. Record whether the interactive rollout carries per-turn usage.
+2. **New module `session_store/sessions.py`**: `SessionHandle`, `SessionEvent`, `detect_sessions`, `iter_events`, `parse_claude_transcript`, `parse_codex_rollout`. Register exports in `session_store/__init__.py` following the gemini/omp precedent. Codex discovery = sqlite `threads` query (newest `state_*.sqlite` by name sort; `sqlite3` stdlib, read-only URI, every `rollout_path` existence-checked) with date-dir scan fallback reading line 1 only. The content-refusal rule goes in the module docstring: no shared tool-call or usage summarizer; per-host consumers read `payload` directly.
+3. **Retire the dead Codex probe**: `_get_codex_project_folder` returns `None` with a docstring pointing at `detect_sessions`; `host_layout_for("codex").projects_root` becomes `None` (matching gemini/omp's strict-None convention); rewrite `test_host_codex_probes_codex_projects` to assert the `None` contract; `cli/session.py`'s `backfill --host codex` prints a clear "use detect_sessions-backed backfill (follow-up)" notice rather than silently finding nothing.
+4. **Rewire consumers** through `detect_sessions`/`iter_events`: `extract_user_messages` **and** `extract_commands` (`user_messages.py`), `_compute_cache_rate_from_jsonl` (`cli/ctx_stats.py`), and `cli/logs.py`'s six functions (Wiring Phase below). Claude Code behaviour must be byte-identical: existing tests in `test_ll_logs.py`, `test_user_messages.py`, `test_cli_ctx_stats.py` pass unmodified except where they patch `get_project_folder` directly.
+5. **`ll-ctx-stats` Codex scope (decided)**: per the content-refusal rule there is no shared usage extractor. If step 1 finds per-turn usage in the rollout, add a Codex-only reader beside `_compute_cache_rate_from_jsonl` keyed on the observed keys (expected `cached_input_tokens`/`cache_write_input_tokens`/`input_tokens` per HOST_COMPATIBILITY `[^tok-codex]`); if not, `_compute_cache_rate_from_jsonl` returns `None` for `host == "codex"` and `ll-ctx-stats` prints "cache rate: unavailable for codex sessions". Either way the outcome is stated in the parser docstring and in `docs/reference/HOST_COMPATIBILITY.md`.
+6. **`ll-messages` Codex content**: `event_msg.payload.type == "user_message"` → user message text (`payload.message`); `response_item` `message` with `role == "user"` is the same text echoed into the model input and must be deduplicated against it, not double-counted.
+
+**Split recommendation (not applied):** steps 1–3 are self-contained and independently testable; steps 4–6 plus the Wiring Phase are the rewire. If change surface stays a blocker at implementation time, split at that line into a FEAT (discovery + parser + fixture + learning test) and an ENH (seam adoption by the three CLIs).
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/little_loops/cli/logs.py` — route its 6 un-hosted `get_project_folder()`-calling functions (`_collect_sequences`, `_cmd_sequences`, `_cmd_extract`, `_collect_failure_clusters`, `_cmd_scan_failures`, `_cmd_eval_export`) through `detect_session`/`watch` instead; this is the literal `ll-logs` AC #4 names and was missing from "Files to Modify" entirely
-- **Decided**: `cli/logs.py`'s Claude-schema-coupled content functions (`_is_ll_relevant`, `_detect_ll_signal`, `_extract_tool_name`, `_extract_eval_invocation`, `_cmd_matches`, `_record_has_error`) are scoped out as Claude-Code-only for v1 — they stay unmodified and are not given Codex equivalents. This follows directly from the issue's own "seam is refused on content" design (tool-call shapes are deliberately not unified across hosts) and matches the precedent already set for the `HostLayout`/watcher duplication (Proposed Solution → Recommended: "worth a follow-up issue, not a blocker for this one"). A follow-up issue should add Codex-native equivalents once real Codex session content justifies the per-host effort. Only the lifecycle (`detect_session`/`watch`) needs to serve both hosts for this issue's Acceptance Criteria; per-host content interpretation in `cli/logs.py` does not.
+- Update `scripts/little_loops/cli/logs.py` — route its 6 un-hosted `get_project_folder()`-calling functions (`_collect_sequences`, `_cmd_sequences`, `_cmd_extract`, `_collect_failure_clusters`, `_cmd_scan_failures`, `_cmd_eval_export`) through `detect_sessions`/`iter_events` instead; this is the literal `ll-logs` AC #4 names and was missing from "Files to Modify" entirely
+- **Decided**: `cli/logs.py`'s Claude-schema-coupled content functions (`_is_ll_relevant`, `_detect_ll_signal`, `_extract_tool_name`, `_extract_eval_invocation`, `_cmd_matches`, `_record_has_error`) are scoped out as Claude-Code-only for v1 — they stay unmodified and are not given Codex equivalents. This follows directly from the issue's own "seam is refused on content" design (tool-call shapes are deliberately not unified across hosts) and matches the precedent already set for the `HostLayout`/watcher duplication (Proposed Solution → Recommended: "worth a follow-up issue, not a blocker for this one"). A follow-up issue should add Codex-native equivalents once real Codex session content justifies the per-host effort. Only the lifecycle (`detect_sessions`/`iter_events`) needs to serve both hosts for this issue's Acceptance Criteria; per-host content interpretation in `cli/logs.py` does not.
 - Inject `host=event.host or os.environ.get("LL_HOOK_HOST", "claude-code")` at `scripts/little_loops/hooks/session_start.py:162`'s `get_project_folder(cwd)` call — the same fallback expression already exists two lines below (line 178) for the backfill-worker's `--host` argument; the session-folder resolution should use it too instead of depending on ambient `LL_HOOK_HOST` matching the event's actual host
 - Update `scripts/tests/test_ll_logs.py` — add `LL_HOOK_HOST=codex`-driven fixture coverage for `TestSequences`, `TestExtract`, `TestScanFailures`, `TestEvalExport` following the `test_resolves_qwen_chats_transcript` template (`test_cli_ctx_stats.py:909`), since every existing fixture helper in this file hard-codes the Claude Code layout
 - Add `test_resolves_codex_*_transcript`-equivalent coverage to `test_cli_ctx_stats.py::TestComputeCacheRateFromJsonl` (no Codex pair exists alongside the qwen/gemini ones)
-- Write a new file-growth/tailing test harness for `watch()` — no existing test in the repo appends to a real on-disk file and asserts a watcher observes it; `_cmd_tail`'s tests mock `readline()` entirely and are not adaptable
-- Originate the fixture "perishable, re-capture periodically" marker convention this issue's Testing section requires — no existing fixture anywhere in the tree carries one to copy
+- ~~Write a new file-growth/tailing test harness for `watch()`~~ — dropped with `watch()` (§ Live watch is deferred); no tailing test is needed in v1
+- Fixture "perishable" marker: implemented as the `codex-rollout` learning test + `cli_version`-keyed README rule (Testing → Fixture capture), not a new convention
 - Update `docs/reference/CLI.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md`, `docs/guides/EXAMPLES_MINING_GUIDE.md` — remove or qualify their Claude-Code-only framing of `ll-logs`/`ll-messages`
 - Verify `/ll:loop-suggester --from-sequences` (`commands/loop-suggester.md`, `skills/ll-loop-suggester/SKILL.md`) surfaces Codex-sourced n-grams once `_collect_sequences` is rewired
 - If the session-watcher rewire changes the wording of `"No session project folder found"`, update `.loops/ll-logs-telemetry-digest.yaml:66`'s `scan_failures` state, which greps stderr for that exact string to distinguish "no session data" from a real failure
 
 _Second wiring pass added by `/ll:wire-issue`:_
-- Decide whether `extract_commands` (`user_messages.py:721`) also routes through `detect_session`/`watch`, or is explicitly scoped out like `cli/logs.py`'s content functions were — today it duplicates `extract_user_messages`'s bare `project_folder.glob("*.jsonl")` pattern and shares its sole caller (`cli/messages.py`), so leaving it unrewired means Codex commands stay unextracted while Codex user messages become extractable
+- **Decided (review, 2026-09-08)**: `extract_commands` (`user_messages.py:721`) routes through `detect_sessions`/`iter_events` too — same glob pattern, same sole caller (`cli/messages.py`), trivial to include, and leaving it out would extract Codex user messages but not Codex commands
 - Do not change `get_project_folder`/`get_sessions_folder`'s Path-returning signature — `cli/session.py`'s `backfill` subcommand, `session_log.py`'s `get_current_session_jsonl`/`get_current_session_id` (consumed by `fsm/executor.py`, `parallel/orchestrator.py`, `advisor.py`, `issue_lifecycle.py`), and `fsm/continuity.py::summarize_completed_state` all depend on the bare-`Path`-or-`None` contract and sit outside this issue's Call Path
 - Decide whether the transcript_path-driven raw readers outside `get_project_folder` (`hooks/session_start.py`'s primary branch, `cli/backfill_worker.py`'s single-file path, `hooks/pre_compact.py`'s rubric-gate read, `hooks/scripts/context-monitor.sh`'s tail-based read) need routing through the new session-watcher interface too, or stay separate since their concerns (hook timing, backfill triggering) differ from `ll-logs`/`ll-ctx-stats`'s activity-reporting AC
-- Template `SessionEvent`'s tests on `test_hook_intents.py::TestLLHookEvent` (closer than `test_events.py::TestLLEvent` — it already covers a `host`-discriminated dataclass with optional fields), `detect_session`'s None-vs-handle tests on `test_host_runner.py::TestResolveHost::test_detect_binary_probe_order`/`test_raises_when_no_host`, and `stop()`'s resource-release test on `test_transport.py::TestUnixSocketTransport::test_close_unlinks_socket_file`
+- Template `SessionEvent`'s tests on `test_hook_intents.py::TestLLHookEvent` (closer than `test_events.py::TestLLEvent` — it already covers a `host`-discriminated dataclass with optional fields) and `detect_sessions`' empty-vs-handles tests on `test_host_runner.py::TestResolveHost::test_detect_binary_probe_order`/`test_raises_when_no_host`. Add Codex discovery tests for both paths: a `tmp_path` fake `~/.codex/state_5.sqlite` with a `threads` table (sqlite path, including a row whose `rollout_path` no longer exists), and a fake `~/.codex/sessions/YYYY/MM/DD/` tree with no DB (scan fallback). `stop()`'s template is no longer needed
 - Reuse `conftest.py`'s `fixtures_dir`/`load_fixture` helpers and the autouse `_isolate_session_log_dir` fixture when writing the new Codex fixture and `watch()` test harness, rather than inventing new path-isolation fixtures
 - Update `docs/reference/CLI.md`'s `### ll-messages` section (line 3552) alongside the already-flagged `### ll-logs` section
 
 ## Acceptance Criteria
 
-- A session-watcher interface exists covering the lifecycle only: detect a session for a workspace, watch it, emit typed events, stop.
-- Per-host parsers live behind the interface and share no content-level code above it; tool-call shapes and token accounting stay per-host, with the refusal recorded in the code.
-- Codex rollout files are parsed as the second implementation, exercising the seam.
-- `ll-logs` and `ll-ctx-stats` are served by the one implementation rather than reaching for `~/.claude/projects/` directly.
-- The Codex parser is tested against a captured real-shape rollout fixture committed alongside it, with the fixture marked as perishable and a re-capture expectation stated.
+- A session-discovery interface exists covering the lifecycle only: enumerate the sessions for a workspace under a host (`detect_sessions`), iterate typed events for one (`iter_events`). Live `watch`/`stop` are explicitly deferred and the handle type does not need to change to add them.
+- Per-host parsers live behind the interface and share no content-level code above it; tool-call shapes and token accounting stay per-host, with the refusal recorded in the module docstring.
+- Codex rollout files are discovered from `~/.codex/sessions/` (sqlite `threads` index with date-dir scan fallback, cwd matched from `session_meta`) and parsed as the second implementation, exercising the seam. `_get_codex_project_folder` and `host_layout_for("codex").projects_root` no longer claim a `~/.codex/projects/` layout.
+- `ll-logs`, `ll-messages` (user messages **and** commands), and `ll-ctx-stats` are served by the one implementation rather than reaching for `~/.claude/projects/` directly; Claude Code output for every existing test is unchanged.
+- `ll-ctx-stats` under Codex either reports a cache rate from a Codex-only usage reader or states that the rate is unavailable — never silently computes zero from Claude-shaped keys.
+- The Codex parser is tested against two captured real-shape fixtures committed alongside it (one interactive session with tool calls, one `exec` one-shot), a `codex-rollout` learning-test record proves the layout claims, and the fixture README states the `cli_version`-keyed re-capture rule.
 
 ## Impact
 
 - **Priority**: P2 - unblocks goal 6's dataset export and goal 7's quality rollups, which currently cover Claude Code sessions only and silently miss Codex ones.
-- **Effort**: Medium - one new interface plus one new per-host parser (Codex), rewiring three existing call sites (`ll-logs`, `user_messages.py`, `ctx_stats.py`) to go through it.
-- **Risk**: Medium - touches read paths other automation already depends on (`ll-messages`, `ll-ctx-stats` caching); existing Claude Code session behavior must not change.
+- **Effort**: Medium-High - one new interface, one new per-host parser (Codex), net-new Codex session discovery (sqlite + scan fallback; the tree's existing Codex probe is dead code), an interactive fixture capture and learning-test target, and rewiring three CLIs (`ll-logs`, `ll-messages`, `ll-ctx-stats`) to go through it. Revised up from Medium by the 2026-09-08 review; see the split recommendation under Implementation Steps.
+- **Risk**: Medium - touches read paths other automation already depends on (`ll-messages`, `ll-ctx-stats` caching); existing Claude Code session behavior must not change. Codex discovery depends on a vendor-private sqlite schema, mitigated by the scan fallback and the learning test.
 - **Breaking Change**: No - Claude Code session handling is preserved as the first per-host implementation; Codex support is additive.
 
 ## Confidence Check Notes
@@ -273,6 +337,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `review (manual, Codex layout corrections)` - 2026-09-09T04:28:06 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - `/ll:wire-issue` - 2026-09-09T04:17:56 - `3577db8f-8723-4e0e-adb7-90253d958f56.jsonl`
 - `/ll:decide-issue` - 2026-09-09T04:03:15 - `25e4ccb6-3e7e-49fc-a6ff-da7c10596c03.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:59:43 - `6a60b145-4b40-4e2a-b6c3-1f8fc4e6cbf8.jsonl`

@@ -3,3 +3,11 @@ claim1_none_in_transaction_after_insert: False
 claim4_table_info_rows: [(0, 'a', 'INTEGER', 0, None, 1), (1, 'b', 'INTEGER', 0, None, 2), (2, 'c', 'TEXT', 0, None, 0)]
 claim2_reader_select_during_open_write_txn: ok [(2, 'b')]
 claim3_second_writer_blocked_then_error: error database is locked elapsed_ms=173.8
+
+--- extension 2026-09-09T04:27:53Z ---
+claim1_attach_query_other_table: ok [(100,), (200,)]
+claim2_cross_db_union_sum: 330
+claim3_foreign_keys_default: 0
+claim4_upsert_returning: ok (1, 999)
+claim5_attach_lazy_file_creation: after_attach=True after_write=True
+sqlite3.sqlite_version: 3.49.2

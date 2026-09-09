@@ -33,29 +33,73 @@ score_change_surface: 10
 Follow-up to FEAT-3410, which ships `aggregate_history_dbs()` with
 `per_repo` + `skipped` only. This issue owns the deferred workspace-wide
 *totals*: one `QualityAnalysis` computed over the union of all workspace
-members' `history.db` tables via multi-`ATTACH`, plus the two problems that
+members' `history.db` tables via multi-`ATTACH`, plus the three problems that
 made totals unsound as a simple merge of N finished per-repo analyses:
 
-1. **Cross-repo `issue_num`/`issue_id` collisions.** Every little-loops repo
-   numbers issues from 1, and `agent_quality.py::_load_closed_issues`/
-   `_session_issue_map` key on bare `issue_num` while `rework.py::_load_issue_events`
-   keys on bare `issue_id`. A naive union merges different repos' issues that
-   share an ID. Needs either a repo discriminator threaded through every
-   keying site in `agent_quality.py` and `rework.py`, or an `issue_num`
-   remapping in the union views — the remapping option must not break
-   `analyze_rework()`'s on-disk `supersedes:` join.
+1. **Cross-repo `issue_num`/`issue_id` collisions, in the DB and on disk.**
+   Every little-loops repo numbers issues from 1, and
+   `agent_quality.py::_load_closed_issues`/`_session_issue_map` key on bare
+   `issue_num` while `rework.py::_load_issue_events`/`_load_commits` and
+   `_utils.py::orchestrator_labels` key on bare `issue_id`. A naive union
+   merges different repos' issues that share an ID. The same collision
+   exists on the *on-disk* side: `analyze_rework()` derives `superseded_ids`
+   from `superseded_by(info.issue_id, issues)` over whatever `issues` list
+   it is given, so concatenating members' `find_issues()` lists lets repo B's
+   `FEAT-9 supersedes: [BUG-1]` mark repo A's `BUG-1` as reopened.
 2. **`SQLITE_LIMIT_ATTACHED` defaults to 10** on this interpreter
    (confirmed via `sqlite3.connect(":memory:").getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)`)
-   and cannot be raised above the compile-time `SQLITE_MAX_ATTACHED`. Any
-   ATTACH-union design needs a fail-loud rule for workspaces with more than
-   10 members (per-member connections, as FEAT-3410 uses, have no such
-   limit).
+   and cannot be raised above the compile-time `SQLITE_MAX_ATTACHED`. A
+   workspace with more analyzable members than the limit must not silently
+   produce a truncated union (per-member connections, as FEAT-3410 uses, have
+   no such limit).
+3. **The analysis SQL is shared with the single-repo path.** The ~13 query
+   sites in `agent_quality.py`/`rework.py`/`_utils.py`/`quality_regressions.py`
+   run unqualified `FROM <table>` against `main` for `ll-history quality` and
+   for FEAT-3410's per-member connections. Any design that rewrites those
+   sites for the union (schema-qualified `UNION ALL` across N attached
+   schemas, or a `repo` column that real tables do not have) forks the SQL
+   between the two paths. The design below leaves every query site untouched.
+
+### Design (revised 2026-09-08): union views in `main`
+
+Attach each analyzable member's `history.db` read-only as schema `r{i}` to a
+`:memory:` connection, then create one **view in `main`** per relation the
+analysis reads, as a `UNION ALL` over `r0.<rel>`, `r1.<rel>`, .... SQLite
+resolves an unqualified table name in search order `temp -> main -> attached`,
+so once `main.issue_events` exists every existing `FROM issue_events` query
+hits the union view unchanged. The "unqualified query silently reads one
+schema" trap FEAT-3410's spike confirmed only bites when `main` lacks the
+name; defining the name in `main` is the fix, not qualifying the queries.
+
+The cross-repo discriminator lives **inside the views**, in the id columns
+themselves, for the four id-bearing relations (`issue_events`,
+`issue_sessions`, `commit_events`, `orchestration_runs`):
+
+```sql
+CREATE VIEW main.issue_events AS
+SELECT 'r0:' || issue_id AS issue_id, 0 * 1000000000 + issue_num AS issue_num, <other cols...>
+  FROM r0.issue_events
+UNION ALL
+SELECT 'r1:' || issue_id AS issue_id, 1 * 1000000000 + issue_num AS issue_num, <other cols...>
+  FROM r1.issue_events;
+```
+
+`NULL` ids stay `NULL` (`'r0:' || NULL` and `0 + NULL` are `NULL`), so the
+existing `IS NOT NULL` filters keep working. Session ids are UUIDs and need
+no discriminator; they remain the cross-table join key exactly as today. No
+output type (`QualityWindow`, `ReworkWindow`, `RetryWindow`,
+`WindowComposition`) carries an issue id, so the prefixed ids never reach a
+formatter. The on-disk side is handled symmetrically: the `issues` list
+handed to `analyze_agent_quality()` for totals is the concatenation of each
+member's `find_issues()` list with `issue_id` and every `supersedes` entry
+prefixed with the same `r{i}:` — so `superseded_by()`'s set-membership join
+matches DB ids to disk ids only within one member.
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis; revised 2026-09-08:_
 
-See Option A/Option B decision under Proposed Solution → Codebase Research Findings.
+See Option A/B/C decision under Proposed Solution → Decision Rationale.
 
 ## Current Behavior
 
@@ -63,20 +107,27 @@ See Option A/Option B decision under Proposed Solution → Codebase Research Fin
 with only `per_repo: dict[str, QualityAnalysis]` and
 `skipped: list[SkippedMember]` — `AggregationResult.totals` does not exist.
 `agent_quality.py::_load_closed_issues`/`_session_issue_map` and
-`rework.py::_load_issue_events` key on bare `issue_num`/`issue_id`, so a
-naive union across repos would conflate different repos' issues that happen
-to share a number.
+`rework.py::_load_issue_events` key on bare `issue_num`/`issue_id`, and
+`rework.py::analyze_rework` computes `superseded_ids` from a single on-disk
+`issues` list, so a naive union across repos — in either the DB or the
+`issues` list — would conflate different repos' issues that happen to share
+a number.
 
 ## Expected Behavior
 
-`aggregate_history_dbs()` additionally computes `AggregationResult.totals:
-QualityAnalysis` by ATTACH-ing every workspace member's `history.db` (each
-`file:...?mode=ro`) to one `:memory:` connection and running the existing
-analysis functions over a schema-qualified union of their tables. Cross-repo
-`issue_num`/`issue_id` collisions are resolved (repo discriminator or
-`issue_num` remapping, without breaking `analyze_rework()`'s `supersedes:`
-join), and workspaces with more than 10 members fail loudly instead of
-silently truncating (SQLite's `SQLITE_LIMIT_ATTACHED` default of 10).
+`aggregate_history_dbs()` additionally computes
+`AggregationResult.totals: QualityAnalysis | None` by ATTACH-ing every
+member that passed the existing schema-skew gate (each `file:...?mode=ro`)
+to one `:memory:` connection, creating union views in `main` for every
+relation the analysis reads (with the `r{i}:` / `i * STRIDE` discriminator
+baked into the id columns), and running the *unchanged* `analyze_agent_quality()`
+over that connection with a discriminated on-disk `issues` list. Cross-repo
+`issue_num`/`issue_id` collisions are resolved in both the DB and the
+`supersedes:` join. When the analyzable-member count exceeds the
+connection's `SQLITE_LIMIT_ATTACHED`, `totals` is `None` and
+`AggregationResult.totals_skipped` carries an actionable reason; `per_repo`
+is still fully populated (no regression of FEAT-3410's breakdown for large
+workspaces).
 
 ## Use Case
 
@@ -88,188 +139,225 @@ crossed a threshold on its own.
 
 ## Acceptance Criteria
 
-- `AggregationResult.totals: QualityAnalysis` is populated when
-  `aggregate_history_dbs()` runs on 2+ non-skipped members.
+- `AggregationResult.totals: QualityAnalysis | None` is populated whenever
+  `aggregate_history_dbs()` has at least one member that passed the skew
+  gate; it is `None` (with `totals_skipped` set) when zero members are
+  analyzable or the attach limit is exceeded. For exactly one analyzable
+  member, `totals` equals that member's `per_repo` entry (same
+  `to_dict()`).
 - The union analysis's rates/denominators reflect all members' combined
-  event counts, not an average of per-repo rates.
+  event counts, not an average of per-repo rates (fixture: repo A 3 closed +
+  1 reopened, repo B 1 closed + 0 reopened in the same month → union reopen
+  rate 0.25, not the per-repo mean 0.167).
 - Cross-repo issues sharing the same `issue_num`/`issue_id` are not
-  conflated in `totals` (verified with a fixture of 2+ repos deliberately
-  reusing IDs).
-- `analyze_rework()`'s on-disk `supersedes:` join still resolves correctly
-  against the union.
-- All 8 schema-qualification call sites are schema-qualified (current
-  line numbers, corrected for +10-line drift in `agent_quality.py`:
-  `agent_quality.py:239,255,269,283,311-314,429-432`,
-  `rework.py:136-137,150-151` (unchanged), `_utils.py:81-82` (unchanged),
-  plus `session_store/queries.py:211` (`read_schema_version()`) — an
-  unqualified query against the attached connection is a bug per the
-  confirmed SQLite search-order trap.
-- A workspace with more than 10 members raises a clear, actionable error
-  instead of a silent `SQLITE_LIMIT_ATTACHED` truncation.
-- The `sqlite3` Learning Test Registry entry for this multi-ATTACH spike is
-  formalized via `/ll:explore-api` before implementation lands.
+  conflated in `totals` (fixture of 2+ repos deliberately reusing `BUG-1`;
+  both count as closed).
+- `analyze_rework()`'s on-disk `supersedes:` join resolves only within a
+  member: repo A's cancelled `BUG-1` is **not** reopened by repo B's
+  `FEAT-9 supersedes: [BUG-1]`, while a same-repo `supersedes:` edge still
+  is.
+- **No query site in `agent_quality.py`, `rework.py`, `_utils.py`, or
+  `quality_regressions.py` changes.** Instead, `main` defines a union view
+  for each of the 9 relations those sites read: `issue_events`,
+  `issue_sessions`, `correction_retirements`, `user_corrections`,
+  `usage_events`, `loop_runs`, `commit_events`, `orchestration_runs`,
+  `raw_events`. A test asserts all 9 names exist in `main.sqlite_master`
+  after `_open_union()` and that `SELECT COUNT(*) FROM <rel>` on the union
+  connection equals the sum across members for at least `issue_events` and
+  `usage_events`.
+- The id columns of `issue_events`, `issue_sessions`, `commit_events`, and
+  `orchestration_runs` views are discriminated (`'r{i}:' || issue_id`,
+  `i * STRIDE + issue_num`); `NULL` stays `NULL`.
+- When analyzable members exceed `conn.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)`
+  (read from the union connection, never hardcoded), `totals` is `None`,
+  `totals_skipped` names the member count and the limit, and `per_repo` is
+  unaffected. Tested by monkeypatching the limit helper to return 1 with two
+  members.
+- Every member's `history.db` main file has an unchanged sha256 after a
+  totals run (existing `_sha256` pattern).
+- The `sqlite3` Learning Test Registry entry is extended via `/ll:explore-api`
+  before implementation lands, covering the claims listed under
+  Integration Map → Learning Test Registry.
+- `ll-history quality --workspace` text and markdown output render a
+  "Workspace totals" section (or the `totals_skipped` reason); JSON/YAML
+  gain `totals` and `totals_skipped` keys via `to_dict()`.
 
 ## Proposed Solution
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis; revised 2026-09-08:_
 
-**Option A**: Repo discriminator threaded through every keying site — thread a discriminator into the keys `agent_quality.py::_load_closed_issues`/`_session_issue_map` build (bare `issue_num`, `agent_quality.py:239-264`, corrected line numbers) and `rework.py::_load_issue_events` builds (bare `issue_id`, `rework.py:132-145`), so two repos' rows sharing a number/ID no longer collide in `issue_window`/`events_by_issue`. `WorkspaceMember` (`workspace.py:31-44`) has no dedicated discriminator field today — only `repo_path`, `role`, `db_path` — so this option needs a new discriminator value derived from one of those (or a new field).
+**Option A** (previously selected, now rejected): Repo discriminator threaded through every keying site — widen the keys `agent_quality.py::_load_closed_issues`/`_session_issue_map` build (bare `issue_num`, `agent_quality.py:235-264`) and `rework.py::_load_issue_events` builds (bare `issue_id`, `rework.py:132-145`) to `(repo, issue_num)` / `(repo, issue_id)` tuples, plus a new `WorkspaceMember` discriminator field. Rejected on re-review because it has no SQL mechanism: the real tables have no `repo` column, so `SELECT repo, issue_num FROM issue_events` fails on the single-repo and per-member paths, and supplying one for the union means forking every query into a dynamically generated `UNION ALL` across N attached schemas. It also does nothing for the on-disk `superseded_by()` collision.
 
-> **Selected:** Option A — repo-discriminator threading generalizes to the real `issue_id` collision surface and matches the existing tuple-key-widening idiom already used throughout these modules; Option B's `issue_num`-only remap doesn't touch `issue_id` (the actual primary key) and risks breaking the on-disk `supersedes:` join.
+**Option B** (previously rejected): `issue_num` remapping in the union views, leaving keying code unchanged. Rejected originally for remapping only `issue_num` and not the `issue_id` string that `rework.py`/`_utils.py` key on.
 
-**Option B**: `issue_num` remapping in the union views — offset or remap each attached repo's `issue_num` range in the SQL view/query itself before the existing keying dicts in `agent_quality.py` ever see it, leaving that keying code unchanged. Must keep `issue_id` strings resolvable against `superseded_by()`'s on-disk join (`issue_parser.py:4367-4373`), since that join matches on `issue_id`, not `issue_num`.
+**Option C** (selected): Option B generalized — union views in `main` that remap **both** `issue_id` (`'r{i}:' || issue_id`) and `issue_num` (`i * STRIDE + issue_num`) for the four id-bearing relations, plus pass-through union views for the other five relations, plus a symmetrically prefixed on-disk `issues` list for the `supersedes:` join. Keying code, `load_window_compositions()`'s signature, `WorkspaceMember`, and every existing query site stay untouched.
 
-Both options are compatible with the existing skip-and-report per-member skew gate (`workspace_quality.py:64-139`) and the `conn=`-forwarding convention already shipped by FEAT-3410 (`agent_quality.py:472-511`, `rework.py:271-278`) — see Program Design for the correction that `aggregate_history_dbs()` itself has no `conn=` parameter yet.
+> **Selected:** Option C. The discriminator is applied once, at the data boundary in `workspace_quality.py`, in both directions (DB via views, disk via `dataclasses.replace`), and every consumer downstream is unchanged.
 
 ### Decision Rationale
 
-**Selected:** Option A — Repo discriminator threaded through every keying site.
+**Selected:** Option C — union views in `main` with the discriminator baked into the id columns.
 
-**Reasoning:** The decisive factor is that Option B is named for `issue_num` remapping, but the actual primary key and collision surface is `issue_id` (a `TYPE-NNN` string that `issue_num` is parsed *out of*, per `session_store/schema.py:842-874`), which multiple downstream sites key on directly (`rework.py::_load_issue_events`/`_load_commits`, `_utils.py::orchestrator_labels`). A pure `issue_num` remap leaves those `issue_id` collisions unresolved, and remapping `issue_id` too would risk breaking `issue_parser.py::superseded_by()`'s on-disk set-membership join (`issue_parser.py:4367-4373`), which has no SQL surface to intercept a remap through. Option A's discriminator-threading instead extends the tuple-key-widening pattern (`dict[tuple[str, str], ...]`) already pervasive in `agent_quality.py`/`rework.py`/`quality_regressions.py`/`debt.py`, and `repo_path.name` is already used as a per-member distinguishing label one layer up in `workspace_quality.py::_label()` — giving it direct precedent to build from. Its cost is a larger blast radius (~10 call sites plus a new `WorkspaceMember` field or derived value) and no existing precedent for a *cross-repo* discriminator specifically, but this is a mechanical, low-risk threading change rather than a novel SQL-generation problem across dynamically attached schemas.
+**Reasoning:** The decisive fact is SQLite's name-resolution order (`temp -> main -> attached`): defining a same-named view in `main` makes every existing unqualified query read the union with zero edits, which collapses the previously counted "8 schema-qualification call sites" (really 13 — `quality_regressions.py` has four more at lines 204, 229, 256, 291 that the earlier count missed) to none. Option A's cost was never just "widen some dict keys": the repo column has to come from SQL, and no shared query can select a column that exists only in the union. Option C keeps the single-repo, per-member, and totals paths running byte-identical SQL, so a regression in one is a regression in all three and the existing `test_issue_history_agent_quality.py`/`test_issue_history_rework.py` coverage protects the union path for free. The remaining risk — that a prefixed id could leak into output — was checked: no window/composition dataclass carries an issue id.
 
 **Scoring summary:**
 
 | Option | Consistency | Simplicity | Testability | Risk | Total |
 |---|---|---|---|---|---|
-| A — Discriminator threading | 2 | 1 | 2 | 1 | 6/12 |
-| B — `issue_num` remap in SQL | 1 | 0 | 1 | 0 | 2/12 |
+| A — Discriminator threading | 1 | 0 | 1 | 0 | 2/12 |
+| B — `issue_num`-only remap | 1 | 1 | 1 | 0 | 3/12 |
+| C — View-layer remap of both ids + prefixed on-disk list | 3 | 3 | 3 | 2 | 11/12 |
 
 **Key evidence:**
-- Option B's own name-scope gap: it remaps `issue_num`, not `issue_id` — the string primary key `issue_num` is derived from (`session_store/schema.py:842-874`) — so it structurally fails to resolve the `issue_id`-keyed collision sites (`rework.py:132-145`, `309-312`; `_utils.py:74-88`) without a second, unaddressed transform.
-- Option B also leaves the on-disk `issues: list[IssueInfo]` combination step (feeding `superseded_by()`) unsolved by a SQL-layer-only remap — real footprint extends beyond what the option describes.
-- Option A reuses the pervasive `dict[tuple[str, str], ...]` composite-key idiom already in `agent_quality.py:280,288,309,319,358,387-391,397,437`, `rework.py:344,348`, `quality_regressions.py:189-190,201,226,251,286-288`, `debt.py:164`, and `repo_path.name` is already the per-member label in `workspace_quality.py:64-65`.
-- No existing repo-wide `remap|offset` convention exists for `issue_num`/ID values (confirmed via unfiltered grep) — Option B's core mechanism would be novel SQL generation across up to `SQLITE_LIMIT_ATTACHED` dynamically-named schemas, a materially different shape than the one existing 2-schema ATTACH precedent (`session_store/queries.py:242,291,300`).
+- Search order: FEAT-3410's spike showed an unqualified `FROM issue_events` on a multi-ATTACH connection returned exactly one schema's rows — because `main` (a bare `:memory:` db) had no such table and the first attached schema won. A `main` view of that name is resolved first.
+- Query inventory that stays unchanged under Option C: `agent_quality.py:239,255,269,283,311-314,429-432`; `rework.py:136-137,150-151`; `_utils.py:81-82`; `quality_regressions.py:204,229,256,291`. Option A/qualification would have had to touch all 13.
+- `superseded_by()` (`issue_parser.py:4367-4373`) is a pure Python set-membership over `info.supersedes` lists; prefixing `issue_id` and `supersedes` per member (via `dataclasses.replace` on the plain `@dataclass IssueInfo`, `issue_parser.py:3542`) is the only way to scope it per repo without changing `analyze_rework()`.
+- `issue_sessions` (`session_store/schema.py:903-920`) is itself a view inside each attached schema; the spike confirmed `r{i}.<view>` is queryable, so the `main` union view wraps it like any table.
+- Existing 2-schema precedent for views/queries spanning `main` + an attached schema: `session_store/queries.py:242,291,300` (`_snapshot_select`/`build_snapshot_db`).
 
 ## Integration Map
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis; revised 2026-09-08:_
 
 **Files to Modify**
-- `scripts/little_loops/issue_history/workspace_quality.py` — `aggregate_history_dbs()` (lines 83-139) has no `conn:` parameter of its own today; it opens each member's connection internally via `_open_member_readonly()` (lines 68-80) and calls `analyze_agent_quality(issues, conn=conn, ...)` per member (lines 127-135). A new connection-supplying helper is needed to hand this call site a shared multi-ATTACH connection instead.
-- `scripts/little_loops/issue_history/agent_quality.py` — schema-qualification call sites have drifted from this issue's original line citations (see Program Design for the corrected table).
-- `scripts/little_loops/issue_history/rework.py` — schema-qualification call sites (136-137, 150-151) are unchanged from this issue's citations.
-- `scripts/little_loops/issue_history/_utils.py` — schema-qualification call site (81-82, `orchestrator_labels`) is unchanged from this issue's citations.
-- `scripts/little_loops/session_store/queries.py` — `read_schema_version()` (line 211, `SELECT value FROM meta WHERE key = 'schema_version'`) is also unqualified and in scope per the Acceptance Criteria.
-- `scripts/little_loops/workspace.py` — `WorkspaceMember` (frozen dataclass, `workspace.py:31-44`) has exactly 3 fields — `repo_path: Path`, `role: str`, `db_path: Path` — no discriminator field exists today.
+- `scripts/little_loops/issue_history/workspace_quality.py` — the only production module that changes. `aggregate_history_dbs()` (lines 83-139) keeps its per-member loop and gate; members that pass the gate are additionally collected (with their `find_issues()` list) for the totals pass that runs after the loop. New helpers `_open_union()`, `_union_view_sql()`, `_attach_limit()`, `_discriminate_issues()` (see Program Design). `_open_member_readonly()` (68-80) is reused unchanged for the gate. `AggregationResult` (45-61) gains `totals` and `totals_skipped` with defaults and serializes both in `to_dict()`. Module docstring lines 16-19 and class docstring line 49 ("No `totals` field") are rewritten.
+- `scripts/little_loops/issue_history/agent_quality.py` — **no query changes.** Only `_format_agent_quality_text_workspace()` (line 652) and `_format_agent_quality_markdown_workspace()` (line 747) gain a totals section; `format_agent_quality_json()`/`_yaml()` (855, 864) pick up the new keys via `to_dict()`.
+- `scripts/little_loops/issue_history/__init__.py:72` — package docstring mentions "one section per workspace member"; add the totals section.
+
+**Files explicitly NOT modified (regression guard)**
+- `agent_quality.py` query sites 239, 255, 269, 283, 311-314, 429-432; `rework.py:136-137,150-151`; `_utils.py:81-82`; `quality_regressions.py:204,229,256,291` — all remain unqualified.
+- `session_store/queries.py:211` (`read_schema_version`) — runs on each member's own connection before attach; `main` has no `meta` table by design and never needs one.
+- `workspace.py::WorkspaceMember` (31-44) and `_member_from_entry()` (126) — no discriminator field; the discriminator is the attach index `r{i}`, which is unique by construction (`repo_path.name` is not: two members can share a directory name and role, and `discover_workspace_members` only dedups on `db_path`, `workspace.py:233-237`).
+- `quality_regressions.py::load_window_compositions()` signature and `issue_window: dict[int, tuple[str, str]]` shape — unchanged.
 
 **Dependent Files (Callers/Importers)**
-- `scripts/little_loops/cli/history.py:565` — `main_history()` calls `aggregate_history_dbs()`.
-- `scripts/little_loops/issue_history/agent_quality.py:520` — `analyze_agent_quality()` calls `analyze_rework(issues, conn=conn, ...)`, forwarding whatever connection it was given.
+- `scripts/little_loops/cli/history.py:565` — `main_history()` calls `aggregate_history_dbs()`; no signature change, but the formatter it feeds now renders totals.
+- `scripts/little_loops/issue_history/agent_quality.py:520` — `analyze_agent_quality()` forwards `conn=` into `analyze_rework(issues, conn=conn, ...)`; the union connection rides this existing plumbing.
 - Importers of `workspace_quality.py`: `agent_quality.py:64`, `cli/history.py:18`, `issue_history/__init__.py:196`, `tests/test_feat3410_workspace_quality.py:22`.
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/issue_history/quality_regressions.py::load_window_compositions()` (lines 168-170, with internal `issue_window.get(issue_num)` lookups at 217, 242, 268) — consumes `issue_window: dict[int, tuple[str, str]]` built by `agent_quality.py` from `_load_closed_issues()`/`_session_issue_map()`'s keys. If Option A's discriminator threading changes those keys' shape (bare `issue_num` -> a composite key), this signature and its three internal lookups must change in lockstep. [Agent 1 + Agent 3 finding]
-- `scripts/little_loops/workspace.py::_member_from_entry()` (line 126) — the sole production constructor of `WorkspaceMember`; must be updated to populate the new discriminator field/value once one is added to the dataclass. [Agent 1 finding]
-
 **Conventions in Force**
-- Multi-schema queries in this codebase are schema-qualified in the SQL text itself (`main.{table}` / `snap.{table}`), annotated `# noqa: S608` since identifiers can't be bound as parameters — evidence: `session_store/queries.py:242` (`_snapshot_select`), used inside the only existing `ATTACH DATABASE` call site in the repo (`queries.py:291`, in `build_snapshot_db()`), paired with `DETACH DATABASE` in a `finally` (line 300).
-- Read-only cross-repo/export connections use a raw `sqlite3.connect(f"file:{path}?mode=ro", uri=True)`, never the package's migrating `connect()`/`ensure_db()` — evidence: `session_store/queries.py:191-200` (`_connect_readonly`), `workspace_quality.py:68-80` (`_open_member_readonly`); enforced by a source-inspection test, `test_feat3410_workspace_quality.py::TestSourceDbUntouched::test_never_uses_migrating_opener`.
-- A function that can be handed an already-open connection accepts `conn: sqlite3.Connection | None = None` and neither opens nor closes it — the caller that passed it keeps ownership — evidence: `agent_quality.py:472-511` (`analyze_agent_quality`, `owns_conn = conn is None`), which already forwards into `analyze_rework(conn=conn, ...)` at line 520. `aggregate_history_dbs()` itself has no such parameter yet (see Files to Modify above).
-- Per-member workspace operations build `label = f"{member.repo_path.name} ({member.role})"`, try each fallible step individually, and append `(label, reason)` to a `skipped` list rather than raising — evidence: `workspace_quality.py:64-139`.
-- Precondition guards elsewhere in the codebase raise `ValueError` naming the actual offending value/count — evidence: `workspace.py:236`, `session_store/queries.py:75`, `stats.py:31-33`, `queue_store.py:237`. No existing `>N-items` guard of this shape exists to model a `SQLITE_LIMIT_ATTACHED` check on directly.
-- Value-object dataclasses in `issue_history/` hand-write `to_dict()` as one line per field, with no dataclass-to-dict lockstep test — evidence: `agent_quality.py:143-162` (`QualityAnalysis`), `rework.py:80-129`, `workspace_quality.py:45-61` (`AggregationResult`). Frozen vs. mutable is inconsistent across these dataclasses with no stated rule (`AggregationResult` and `_utils.py:94`'s `MetricDefinition` are frozen; `QualityAnalysis`/`ReworkAnalysis`/`ReworkWindow` are not).
-- Formatters accepting either a single-repo or aggregated result duck-type on `hasattr(analysis, "per_repo")` rather than `isinstance`, to avoid a `workspace_quality` <-> `agent_quality` import cycle — evidence: `agent_quality.py:636-871` (`format_agent_quality_*`).
+- Multi-schema SQL is schema-qualified in the statement text and annotated `# noqa: S608` since identifiers can't be bound — evidence: `session_store/queries.py:242` (`_snapshot_select`), inside the only existing `ATTACH DATABASE` site (`queries.py:291`), paired with `DETACH` in `finally` (300). Here this applies to the `CREATE VIEW main.<rel> AS ... FROM r{i}.<rel>` statements only; closing the `:memory:` connection releases every attach, so no explicit `DETACH` is needed.
+- Read-only member connections use `sqlite3.connect(f"file:{path}?mode=ro", uri=True)`, never the migrating `connect()`/`ensure_db()` — evidence: `queries.py:191-200`, `workspace_quality.py:68-80`; enforced by `test_feat3410_workspace_quality.py::TestSourceDbUntouched::test_never_uses_migrating_opener`. The union connection must be `sqlite3.connect(":memory:", uri=True)` so `ATTACH DATABASE 'file:...?mode=ro'` is parsed as a URI.
+- `PRAGMA query_only = ON` blocks `CREATE VIEW` (spike); `_open_union()` creates all views first, then sets the pragma. `mode=ro` on each attach already guarantees the members are never written.
+- A function handed an open `conn` neither opens nor closes it — evidence: `agent_quality.py:472-511` (`owns_conn = conn is None`), `rework.py:271-299`. `aggregate_history_dbs()` owns the union connection and closes it in `finally`.
+- Per-member fallible steps append `(label, reason)` to `skipped` rather than raising — evidence: `workspace_quality.py:64-139`. The totals pass follows the same shape via `totals_skipped` instead of raising, so an oversized workspace still gets its per-repo breakdown.
+- Value-object dataclasses in `issue_history/` hand-write `to_dict()` one line per field — evidence: `agent_quality.py:143-162`, `workspace_quality.py:45-61`. `AggregationResult` is frozen with `skipped` defaulted, so the new fields must carry defaults.
+- Formatters duck-type on `hasattr(analysis, "per_repo")` rather than `isinstance` to avoid an import cycle — evidence: `agent_quality.py:636-871`.
 
 ### Tests
-- `scripts/tests/test_feat3410_workspace_quality.py` — existing coverage for `aggregate_history_dbs()`/`AggregationResult`.
-- `scripts/tests/test_feat3418_workspace_quality.py` — already added (TDD red, per Confidence Check Notes) with a deliberate cross-repo `issue_id` collision fixture (two members both recording `BUG-1`), asserting `AggregationResult.totals` exists and is not conflated; both tests currently fail pending implementation.
-- `scripts/tests/test_issue_history_agent_quality.py`, `scripts/tests/test_issue_history_rework.py` — existing per-repo coverage of the keying logic this issue must not regress.
-- Fixture pattern for multi-repo scenarios: one `WorkspaceMember` per fake repo under `tmp_path`, each with its own `.ll/<name>-history.db` (never the default-shaped path, since an autouse fixture routes default paths through one shared `LL_HISTORY_DB`) — evidence: `test_feat3410_workspace_quality.py::_healthy_member`/`_bare_sqlite_member`.
-- Source-untouched verification: sha256 the source db before/after every skip-path test — evidence: `test_feat3410_workspace_quality.py::_sha256`, used across `test_missing_meta_table`, `test_schema_behind`, `test_schema_ahead`, `TestSourceDbUntouched::test_main_file_hash_unchanged_after_run`.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_feat3418_workspace_quality.py` — currently asserts only that `totals` exists and closed-issue counts aren't conflated (`TestWorkspaceTotals::test_totals_populated_for_two_members`/`test_totals_not_conflated_across_id_collision`). Gaps to add: (a) rates/denominators reflect the union's combined event counts rather than an average of per-repo rates (AC #2), (b) the `>10`-member fail-loud `ValueError` guard (AC #6), (c) `analyze_rework()`'s `supersedes:` join still resolves against the union — no current fixture passes a non-empty `issues: list[IssueInfo]` with a `supersedes:` edge (AC #4), (d) `read_schema_version()` schema-qualification against the attached connection, the 8th call site in AC #5. [Agent 3 finding]
-- `scripts/tests/test_feat3410_workspace_quality.py::TestAggregationResultFormatters` — `_sample_result()` and `test_no_skipped_members_reports_none()` construct `AggregationResult(per_repo=..., skipped=...)` with no `totals=` kwarg; since `AggregationResult` is `@dataclass(frozen=True)`, both raise `TypeError` once `totals` is added unless it carries a default. Update both call sites, or give `totals` its own default. [Agent 2 + Agent 3 finding]
-- `scripts/tests/test_issue_history_agent_quality.py::_compositions()` (lines 132-158) — manually rebuilds `issue_window`/`issue_ids` dicts keyed on bare `issue_num` from `_load_closed_issues()`/`_session_issue_map()`, used by `TestAttribution::test_synthetic_model_excluded_from_dimension`, `test_model_share_weighted_by_row_count`, `test_multi_run_issue_uses_latest_started_at_ll_version`. If discriminator threading changes those keys' shape, this helper will silently key differently or raise a type mismatch — update in lockstep. [Agent 3 finding]
-- `scripts/tests/test_workspace.py` — covers `WorkspaceMember` construction (`TestWorkspaceMemberFrozen`, `TestDiscoverWorkspaceMembers*`); no test pins the dataclass's exact field count, so a new discriminator field with a default won't break existing constructor calls, but add coverage asserting the new field is populated by `_member_from_entry()`. [Agent 1 + Agent 3 finding]
-- `scripts/tests/test_session_store_queries.py` — existing coverage of `session_store.queries`; no test currently calls `read_schema_version()` directly against an attached (`ATTACH DATABASE`) connection — add one modeled on `test_feat3304_artifact_dashboard.py::TestBuildSnapshotDb`'s attach/select/detach round-trip pattern (the only other `ATTACH DATABASE` test in the repo). [Agent 3 finding]
+- `scripts/tests/test_feat3418_workspace_quality.py` — already added (TDD red): `TestWorkspaceTotals::test_totals_populated_for_two_members` and `test_totals_not_conflated_across_id_collision` (two members both recording `BUG-1`). Update its module docstring's "Option A" reference to Option C. Add:
+  - (a) denominator test (AC #2) — needs `record_issue_event` `done` then `in_progress` rows for the reopened issue in repo A;
+  - (b) cross-repo `supersedes:` test (AC #4) — write a real `.issues/` file in repo B with `supersedes: [BUG-1]` so `find_issues()` produces the edge, and one same-repo supersedes edge in repo A that must still count as reopened;
+  - (c) attach-limit test (AC #7) — `monkeypatch.setattr(workspace_quality, "_attach_limit", lambda conn: 1)` with two members → `totals is None`, `totals_skipped` mentions `2` and `1`, `per_repo` has both;
+  - (d) view coverage test (AC #5) — all 9 names in `main.sqlite_master` with `type='view'`; counts sum across members;
+  - (e) one-member totals equals that member's `per_repo.to_dict()`; zero analyzable members → `totals is None`;
+  - (f) sha256 of every member's main db file unchanged after a totals run.
+- `scripts/tests/test_feat3410_workspace_quality.py::TestAggregationResultFormatters` — `_sample_result()` and `test_no_skipped_members_reports_none()` construct `AggregationResult(per_repo=..., skipped=...)`; they keep working because both new fields default. Add a formatter case with `totals` set and one with `totals_skipped` set.
+- `scripts/tests/test_issue_history_agent_quality.py`, `scripts/tests/test_issue_history_rework.py` — existing per-repo coverage; unchanged and doubling as the union-path guard since the SQL is shared. `_compositions()` (132-158) is untouched.
+- Fixture pattern: one `WorkspaceMember` per fake repo under `tmp_path`, each with `.ll/<name>-history.db` (never the default-shaped path — the autouse `_isolate_history_db` fixture would collapse them) — evidence: `test_feat3410_workspace_quality.py::_healthy_member`, `test_feat3418_workspace_quality.py::_member_with_closed_issue`.
 
 ### Documentation
-- `docs/reference/API.md:2387,2400` — `aggregate_history_dbs`/`AggregationResult` API rows; will need a `totals` row.
-- `docs/reference/CLI.md:3301-3304` — explicitly states "there is no combined-across-repos number yet (tracked separately)".
-- `docs/guides/HISTORY_SESSION_GUIDE.md:461-465` — same "not yet supported" note for workspace totals.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/issue_history/workspace_quality.py:16-17` (module docstring) — "Workspace-wide totals ... are out of scope -- see FEAT-3410's Design Notes..." and `:49` (`AggregationResult` class docstring) — "No `totals` field -- see the module docstring's..." — both stale once this issue lands; rewrite in the same edit. [Agent 2 finding]
-- `scripts/little_loops/issue_history/__init__.py:72` (package docstring) — "... renders an AggregationResult, one section per workspace member" has no mention of a totals section; stale once totals rendering is added to the text/markdown formatters. [Agent 2 finding]
-- `docs/reference/API.md:12185-12205` (`### WorkspaceMember` section, including its fenced dataclass code block) — a second `WorkspaceMember` documentation site beyond the already-known `:2387`/`:2400` rows; needs updating if a discriminator field is added to the dataclass. [Agent 2 finding]
+- `docs/reference/API.md:2387,2400` — `aggregate_history_dbs`/`AggregationResult` rows; add `totals`/`totals_skipped` and the `_open_union()` helper.
+- `docs/reference/CLI.md:3301-3304` — replace "there is no combined-across-repos number yet (tracked separately)" with the totals section description and the attach-limit caveat.
+- `docs/guides/HISTORY_SESSION_GUIDE.md:461-465` — same "not yet supported" note.
+- `scripts/little_loops/issue_history/workspace_quality.py:16-19` (module docstring) and `:49` (`AggregationResult` docstring) — rewrite; document the view-in-`main` mechanism and why query sites must stay unqualified.
+- `scripts/little_loops/issue_history/__init__.py:72` — add the totals section to the package docstring.
 
 ### Configuration
-- No dedicated config file for this feature beyond `history.workspace_manifest_path` (read via `BRConfig` in `workspace.py:93`). No `ll-workspace.yaml` template/example exists in the repo.
+- No dedicated config beyond `history.workspace_manifest_path` (read via `BRConfig` in `workspace.py:93`).
 
 ### Learning Test Registry
-- `.ll/learning-tests/sqlite3.md` already exists (`status: proven`, dated 2026-09-08) with 4 assertions (isolation_level/in_transaction, WAL concurrent reader/writer, BEGIN IMMEDIATE + busy_timeout, PRAGMA table_info composite-PK numbering) — none cover this issue's multi-ATTACH spike claims (readonly-URI ATTACH, `PRAGMA database_list`, cross-schema `UNION ALL`, view-in-attached-schema query, `PRAGMA query_only` blocking `CREATE TEMP`). Formalizing this spike via `/ll:explore-api` re-proves into this same file rather than creating a second one.
+- `.ll/learning-tests/sqlite3.md` exists (`status: proven`, 2026-09-08) with 4 unrelated assertions. Extend it via `/ll:explore-api sqlite3` with the claims this design load-bears on:
+  1. `ATTACH DATABASE 'file:<path>?mode=ro' AS r0` on a `sqlite3.connect(":memory:", uri=True)` connection works, including for a WAL-mode source; an `INSERT` into `r0.<table>` raises "attempt to write a readonly database".
+  2. An unqualified `SELECT ... FROM t` resolves to `main.t` when `main` defines a **view** named `t`, even though `r0.t`/`r1.t` tables exist.
+  3. `CREATE VIEW main.t AS SELECT ... FROM r0.t UNION ALL SELECT ... FROM r1.t` is allowed on a `:memory:` main and remains queryable after `PRAGMA query_only = ON` (which blocks further `CREATE`).
+  4. `PRAGMA r0.table_info(<view>)` returns the column list for a view inside an attached schema (used to build the pass-through column lists).
+  5. `conn.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)` returns 10 here; `conn.setlimit(...)` can lower it but not raise it above the compile-time max.
 
-### Wiring Phase (added by `/ll:wire-issue`)
+### Wiring Phase (added by `/ll:wire-issue`; revised 2026-09-08)
 
-_These touchpoints were identified by wiring analysis and must be included in the implementation. This issue has no `## Implementation Steps` section to append to, so they are recorded here instead:_
-
-- Update `agent_quality.py::_format_agent_quality_text_workspace()` (line 652) and `_format_agent_quality_markdown_workspace()` (line 747) to render `AggregationResult.totals` — `format_agent_quality_json()`/`_yaml()` (lines 855, 864) already pick it up for free via `to_dict()`, so only the text/markdown paths need code changes.
-- Update `workspace.py::_member_from_entry()` (line 126) to populate the new discriminator field/value on `WorkspaceMember`.
-- Update `quality_regressions.py::load_window_compositions()` (lines 168-170, 217, 242, 268) if the discriminator design changes `issue_window`'s key shape from bare `issue_num`.
-- Give `AggregationResult.totals` a field default (or update both breaking call sites in `test_feat3410_workspace_quality.py::TestAggregationResultFormatters`) — `AggregationResult` is a frozen dataclass and `skipped` already has a `default_factory`, so a new non-default field must either come after all defaulted fields with none itself, or carry its own default.
-- Rewrite the stale "totals are deferred" / "No totals field" docstrings in `workspace_quality.py` (module docstring lines 16-17, `AggregationResult` docstring line 49) and `issue_history/__init__.py` package docstring (line 72).
+- `agent_quality.py::_format_agent_quality_text_workspace()` (652) and `_format_agent_quality_markdown_workspace()` (747): render `result.totals` as a "Workspace totals" section using the existing single-repo formatter body, or one line with `result.totals_skipped` when `totals` is `None`.
+- `AggregationResult`: add `totals: QualityAnalysis | None = None` and `totals_skipped: str | None = None` after `skipped`; `to_dict()` emits `"totals": self.totals.to_dict() if self.totals else None` and `"totals_skipped"`.
+- Rewrite the stale "totals are deferred" / "No totals field" docstrings (`workspace_quality.py:16-19, 49`; `issue_history/__init__.py:72`).
+- Update `test_feat3418_workspace_quality.py`'s module docstring (currently cites "Option A").
 
 ## Program Design
 
 ### Types
 
-- `AggregationResult.totals: QualityAnalysis` (new field on FEAT-3410's dataclass)
+- `AggregationResult.totals: QualityAnalysis | None = None` (new)
+- `AggregationResult.totals_skipped: str | None = None` (new; reason `totals` is `None`)
+- `_UNION_RELATIONS: tuple[str, ...] = ("issue_events", "issue_sessions", "correction_retirements", "user_corrections", "usage_events", "loop_runs", "commit_events", "orchestration_runs", "raw_events")`
+- `_ISSUE_KEYED_RELATIONS: frozenset[str] = {"issue_events", "issue_sessions", "commit_events", "orchestration_runs"}`
+- `_ISSUE_NUM_STRIDE: int = 1_000_000_000`
 
 ### Signatures
 
-- `aggregate_history_dbs(members: list[WorkspaceMember]) -> AggregationResult` (extended)
-- `_attach_and_union(members: list[WorkspaceMember]) -> sqlite3.Connection` (new; enforces the >10-member fail-loud rule)
-- `_resolve_issue_discriminator(conn: sqlite3.Connection, member_count: int) -> None` (new; repo discriminator or `issue_num` remapping)
+- `aggregate_history_dbs(members, *, min_sample, sensitivity, baseline_windows, latest_only) -> AggregationResult` (unchanged signature; now also fills `totals`/`totals_skipped`)
+- `_attach_limit(conn: sqlite3.Connection) -> int` (new; returns `conn.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)`; monkeypatch seam for tests)
+- `_open_union(db_paths: list[Path]) -> sqlite3.Connection` (new; `:memory:` + `uri=True` + `sqlite3.Row`; ATTACHes each path as `r{i}`, creates the 9 `main` views, then `PRAGMA query_only = ON`; caller has already checked `len(db_paths) <= _attach_limit(conn)`)
+- `_union_view_sql(conn: sqlite3.Connection, relation: str, schema_count: int) -> str` (new; reads `PRAGMA r0.table_info(relation)` for the column list, substitutes the discriminated `issue_id`/`issue_num` expressions when `relation in _ISSUE_KEYED_RELATIONS`, returns the `CREATE VIEW main.<relation> AS ... UNION ALL ...` statement; `# noqa: S608`)
+- `_discriminate_issues(issues: list[IssueInfo], prefix: str) -> list[IssueInfo]` (new; `dataclasses.replace(info, issue_id=f"{prefix}{info.issue_id}", supersedes=[f"{prefix}{s}" for s in info.supersedes])`)
 
 ### Call Path
 
-`aggregate_history_dbs()` -> `_attach_and_union()` ->
-`analyze_agent_quality(conn=...)` / `analyze_rework(conn=...)` (FEAT-3410's
-`conn=` plumbing) -> schema-qualified queries in `agent_quality.py`/`rework.py`
+`aggregate_history_dbs()` -> per-member loop (unchanged gate + `analyze_agent_quality(conn=member_conn)`; collects `(db_path, issues)` for gated members) -> after loop: `_open_union([...])` guarded by `_attach_limit()` -> `_discriminate_issues()` per member, concatenated -> `analyze_agent_quality(combined_issues, conn=union_conn, ...)` -> existing unqualified queries in `agent_quality.py`/`rework.py`/`_utils.py`/`quality_regressions.py` resolve to `main.<view>` -> `AggregationResult(per_repo, skipped, totals, totals_skipped)`.
+
+Totals-pass rules:
+- zero gated members → `totals=None`, `totals_skipped="no analyzable members"`;
+- `len(gated) > _attach_limit(conn)` → `totals=None`, `totals_skipped=f"{n} analyzable members exceed this SQLite build's SQLITE_LIMIT_ATTACHED={limit}; trim the workspace manifest to at most {limit} members with a history.db"`;
+- otherwise `totals` is the union analysis; the union connection is closed in `finally`.
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis; revised 2026-09-08:_
 
-`aggregate_history_dbs()` (`workspace_quality.py:83-90`) has no `conn:` parameter of its own — contrary to what the Call Path above might imply. The `conn=` plumbing that already exists lives on `analyze_agent_quality()` (`agent_quality.py:472-481`) and `analyze_rework()` (`rework.py:271-278`); both already forward an already-open connection unchanged when given one (`owns_conn = conn is None` at `agent_quality.py:509`, `rework.py:295`). A new helper (e.g. `_attach_and_union()`) would need to build the multi-ATTACH connection and hand it into `aggregate_history_dbs()`'s existing `analyze_agent_quality(issues, conn=conn, ...)` call site (lines 127-135), not receive a `conn=` argument on `aggregate_history_dbs()` itself.
+`aggregate_history_dbs()` (`workspace_quality.py:83-90`) has no `conn:` parameter and gains none. The `conn=` plumbing lives on `analyze_agent_quality()` (`agent_quality.py:472-481`) and `analyze_rework()` (`rework.py:271-278`); both forward an already-open connection unchanged (`owns_conn = conn is None` at `agent_quality.py:509`, `rework.py:295`). The totals pass hands the union connection to the same `analyze_agent_quality(issues, conn=..., ...)` call shape the per-member loop uses (lines 127-135).
 
-Corrected schema-qualification line numbers — `agent_quality.py`'s sites have drifted +10 lines from this issue's original citations; `rework.py`/`_utils.py` have not drifted:
+Query inventory the union views must cover (all stay unqualified):
 
-| Function | Query | Issue's cited line(s) | Current line(s) |
-|---|---|---|---|
-| `_load_closed_issues` | `FROM issue_events` | 229 | 239 |
-| `_session_issue_map` | `FROM issue_sessions` | 245 | 255 |
-| `_load_retirement_fingerprints` | `FROM correction_retirements` | 259 | 269 |
-| `_correction_totals` | `FROM user_corrections` | 273 | 283 |
-| `_usage_totals` | `FROM usage_events` | 301-304 | 311-314 |
-| `_compute_retry_windows` | `FROM loop_runs` | 419-422 | 429-432 |
-| `rework.py::_load_issue_events` | `FROM issue_events` | 136-137 | unchanged |
-| `rework.py::_load_commits` | `FROM commit_events` | 150-151 | unchanged |
-| `_utils.py::orchestrator_labels` | `FROM orchestration_runs` | 81-82 | unchanged |
-| `session_store/queries.py::read_schema_version` | `FROM meta` | (uncited) | 211 |
+| Function | Relation | Line(s) |
+|---|---|---|
+| `agent_quality.py::_load_closed_issues` | `issue_events` | 239 |
+| `agent_quality.py::_session_issue_map` | `issue_sessions` (view) | 255 |
+| `agent_quality.py::_load_retirement_fingerprints` | `correction_retirements` | 269 |
+| `agent_quality.py::_correction_totals` | `user_corrections` | 283 |
+| `agent_quality.py::_usage_totals` | `usage_events` | 311-314 |
+| `agent_quality.py::_compute_retry_windows` | `loop_runs` | 429-432 |
+| `rework.py::_load_issue_events` | `issue_events` | 136-137 |
+| `rework.py::_load_commits` | `commit_events` | 150-151 |
+| `_utils.py::orchestrator_labels` | `orchestration_runs` | 81-82 |
+| `quality_regressions.py::load_window_compositions` | `usage_events` | 204 |
+| `quality_regressions.py::load_window_compositions` | `raw_events` | 229 |
+| `quality_regressions.py::load_window_compositions` | `orchestration_runs` | 256 |
+| `quality_regressions.py` (retry compositions) | `loop_runs` | 291 |
 
-`WorkspaceMember` (`workspace.py:31-44`, frozen) has exactly 3 fields — `repo_path: Path`, `role: str`, `db_path: Path` — no repo-discriminator field exists today; a discriminator design has nothing pre-built beyond `repo_path.name` (already used for display-only labeling in `_label()`, `workspace_quality.py:64-65`).
+Every member reaching the union is at `SCHEMA_VERSION` (the gate guarantees it), so `PRAGMA r0.table_info(<relation>)` is a valid column list for all schemas. `issue_sessions` inside each attached schema (`schema.py:903-920`) references its own schema's `issue_events`/`sessions`/`legacy_issue_sessions_ts_overlap` and resolves correctly when read as `r{i}.issue_sessions` (spike-confirmed).
 
-`SQLITE_LIMIT_ATTACHED`/`getlimit`/`setlimit` have zero references anywhere in `scripts/` — confirmed only in this issue's and FEAT-3410's own markdown text, not in code.
+`WorkspaceMember` (`workspace.py:31-44`, frozen, 3 fields) is not modified; the attach index is the discriminator.
 
-The on-disk `supersedes:` join `analyze_rework()` must keep resolving (AC #4) is `issue_parser.py::superseded_by()` (lines 4367-4373) — a Python-side set-membership check between `_load_issue_events()`'s DB-sourced `issue_id` keys and each `IssueInfo.issue_id` parsed from disk. It runs no SQL of its own, so compatibility here is about keeping `issue_id` strings matchable between the on-disk `issues` list and whatever the union DB exposes under `issue_id` — not about the SQL query shape.
+`SQLITE_LIMIT_ATTACHED`/`getlimit`/`setlimit` have zero references anywhere in `scripts/` — `_attach_limit()` is the first.
+
+`superseded_by()` (`issue_parser.py:4367-4373`) is Python-side set-membership between `_load_issue_events()`'s DB-sourced `issue_id` keys and `IssueInfo.issue_id`/`IssueInfo.supersedes` from disk. Prefixing both sides identically per member keeps the join exact and scoped.
 
 ### Decision Rules
 
-- **ID-collision resolution**: **resolved** — Option A (repo discriminator threaded through every keying site), per `## Proposed Solution` → Decision Rationale. The discriminator must leave `superseded_by()`'s `issue_id` set-membership join (above) resolvable against whatever the union stores under `issue_id`.
-- **`SQLITE_LIMIT_ATTACHED` fail-loud threshold**: the guard should call `sqlite3.connect(":memory:").getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)` itself rather than hardcode `10`, since `SQLITE_MAX_ATTACHED` is compile-time and can differ across interpreters/builds. No escape hatch specified anywhere in this issue — any workspace exceeding the limit must raise, with no fallback to a partial/truncated union.
+- **ID-collision resolution**: **resolved** — Option C (view-layer remap of both `issue_id` and `issue_num` plus prefixed on-disk `issues`), per `## Proposed Solution` → Decision Rationale. Supersedes the 2026-09-09 Option A decision entry.
+- **Query sites**: **must not change.** The single-repo, per-member, and totals paths run identical SQL; the union is expressed entirely as `main` views.
+- **`SQLITE_LIMIT_ATTACHED` handling**: **revised** — read the limit from the union connection via `_attach_limit()`; on overflow set `totals=None` + `totals_skipped`, do not raise, so `per_repo` keeps working for large workspaces. Never attach a truncated subset.
+- **Discriminator value**: the attach index (`r{i}`), never `repo_path.name` or `_label()` (not unique).
+- **1-member workspaces**: `totals` is populated (equals the single `per_repo` entry); the "2+ members" wording in the original AC is dropped for the simpler invariant.
 
 ## Impact
 
 - **Priority**: P2 - Deferred correctness/completeness follow-up to FEAT-3410 (P1); the per-repo breakdown already ships without workspace totals.
-- **Effort**: Medium - Mechanism is spiked and confirmed (see below); remaining work is schema-qualifying ~8 call sites, designing the ID-discriminator, and the fail-loud member-count guard.
-- **Risk**: Medium - Touches shared keying logic in `agent_quality.py` and `rework.py` that must stay correct for the existing single-repo path; the ID-remapping option specifically must not break `analyze_rework()`'s `supersedes:` join.
-- **Breaking Change**: No - Adds `AggregationResult.totals`; existing `per_repo`/`skipped` fields and call sites are unaffected.
+- **Effort**: Small–Medium - Mechanism is spiked; all production changes are confined to `workspace_quality.py` (union helpers, two dataclass fields) plus two formatter sections. No shared query or keying code changes.
+- **Risk**: Low–Medium - The shared analysis code is untouched, so the single-repo path cannot regress from SQL changes; residual risk is in view construction (column-list drift, `NULL` handling) and the on-disk prefixing, both directly tested.
+- **Breaking Change**: No - Adds `AggregationResult.totals`/`totals_skipped` with defaults; existing `per_repo`/`skipped` fields and call sites are unaffected.
 
 ## Spike result to formalize (from FEAT-3410's inline spike, 2026-09-08)
 
@@ -283,26 +371,28 @@ queryable via `repo_N.<view>`; an `INSERT` into an attached table raised
 this, before `PRAGMA query_only`); sha256 of all three files was unchanged
 afterward.
 
-**Confirmed trap:** an unqualified `FROM issue_events` on that connection
-silently returned rows from exactly one schema (SQLite search order:
-temp -> main -> attached in order), not a union — every unqualified query
-site needs schema-qualified SQL (`f"... FROM repo_N.{table}"`, following
+**Confirmed trap, and what it actually implies:** an unqualified
+`FROM issue_events` on that connection silently returned rows from exactly
+one schema (SQLite search order: temp -> main -> attached in order), not a
+union — because the bare `:memory:` main had no `issue_events`. The earlier
+conclusion drawn from this ("every unqualified query site needs
+schema-qualified SQL") is **retracted**: the same search order means a
+`main.issue_events` *view* wins over every attached table of that name, so
+the fix is to define the union in `main`, not to rewrite the queries.
 `session_store/queries.py::_snapshot_select()`'s `main.{table}`/`snap.{table}`
-precedent) since SQLite bind parameters cannot parameterize identifiers.
+precedent applies only to the `CREATE VIEW ... FROM r{i}.<rel>` statements
+`_union_view_sql()` generates.
 
 Note `PRAGMA query_only=ON` also blocks `CREATE TEMP TABLE`/`CREATE TEMP
-VIEW`, so a union-view design must create its views in the writable
-`:memory:` main *before* enabling the pragma, or skip the pragma and rely on
-`mode=ro` alone.
+VIEW`/`CREATE VIEW`, so `_open_union()` creates its views in the writable
+`:memory:` main *before* enabling the pragma.
 
-**This issue owns:** formalizing the `sqlite3` Learning Test Registry entry
-for this spike (via `/ll:explore-api`) before implementing, the 8
-schema-qualification call sites cataloged in FEAT-3410's Integration Map
-(`agent_quality.py:229,245,259,273,301-304,419-422`, `rework.py:136-137,150-151`,
-`_utils.py:81-82`, plus `read_schema_version()`'s own `FROM meta` query),
-the repo discriminator or `issue_num` remapping design, the >10-member
-fail-loud rule, and the `AggregationResult.totals: QualityAnalysis` field
-FEAT-3410 deliberately omitted.
+**This issue owns:** extending the `sqlite3` Learning Test Registry entry
+(via `/ll:explore-api`) with the five claims listed under Integration Map,
+the `main` union views with the id discriminator, the prefixed on-disk
+`issues` list for the `supersedes:` join, the attach-limit guard, and the
+`AggregationResult.totals`/`totals_skipped` fields FEAT-3410 deliberately
+omitted.
 
 ## Why this is a separate issue
 
@@ -317,11 +407,11 @@ first — new scope, not a small addition to FEAT-3410.
 
 ## Dependencies
 
-- `blocked_by: FEAT-3410` — needs `aggregate_history_dbs()`'s
+- `blocked_by: FEAT-3410` (done) — needs `aggregate_history_dbs()`'s
   `WorkspaceMember` iteration, per-member schema-skew gate, and `conn=`
   plumbing on `analyze_agent_quality()`/`analyze_rework()` as the
-  foundation; this issue's ATTACH-union path reuses the same skew gate
-  before attaching a member.
+  foundation; this issue's union path reuses the same skew gate before
+  attaching a member.
 
 ## Status
 
@@ -334,6 +424,8 @@ _Added by `/ll:confidence-check` on 2026-09-08; updated 2026-09-08 after remedia
 
 **Readiness Score**: 90/100 → PROCEED
 **Outcome Confidence**: 63/100 → MODERATE (was 48/100 → LOW)
+
+_Note (2026-09-08, manual review): the scores above predate the Option A → Option C design revision and should be re-run. The revision removes the cross-module keying changes that drove the earlier outcome-confidence deductions._
 
 ### Resolved
 - `unapplied_decision` gap: the Program Design paragraphs referencing `conn=` and `superseded_by()` were marked `⚠ Superseded` (clarifying they cite FEAT-3410's existing `conn=` convention and the pre-existing `superseded_by()` join requirement — not Option B's rejected mechanism), confirmed clear via `ll-issues format-check`. Ambiguity score raised 10 → 18.

@@ -1,0 +1,12 @@
+{
+  "id": "20d6ffaf-9df0-44b9-9268-bd239f07e1b2",
+  "type": "decision",
+  "timestamp": "2026-09-09T04:25:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "SQLite resolves unqualified names temp -> main -> attached, so a same-named view in main makes every existing query read the union unchanged. Option A had no SQL mechanism (real tables have no repo column; supplying one forks all 13 query sites into dynamic UNION ALL) and did not scope superseded_by()'s on-disk join; remapping both ids at the view layer and prefixing issue_id/supersedes per member resolves both collision surfaces in workspace_quality.py alone.",
+  "rule": "Option C \u2014 union views in main with the discriminator baked into issue_id/issue_num, plus a prefixed on-disk issues list; no shared query site changes",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: repo discriminator threaded through every keying site (previously selected); Option B: issue_num-only remap in views",
+  "issue": "FEAT-3418"
+}

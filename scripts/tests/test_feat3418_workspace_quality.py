@@ -10,7 +10,9 @@ naive union conflates different repos' issues that happen to share an ID.
 Written ahead of FEAT-3418's implementation (TDD "red" state, per
 `commands.tdd_mode`) — `AggregationResult` has no `totals` field yet, so both
 tests below fail with `AttributeError` until the field and its
-ID-discriminator design (Program Design § Decision Rules, Option A) land.
+ID-discriminator design land (Program Design § Decision Rules, Option C:
+union views in ``main`` whose ``issue_id``/``issue_num`` columns carry an
+``r{i}:`` / ``i * STRIDE`` per-member prefix, so no shared query changes).
 """
 
 from __future__ import annotations
