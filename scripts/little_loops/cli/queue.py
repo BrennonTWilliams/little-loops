@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -52,6 +52,8 @@ _STATUS_COLOR: dict[str, str] = {
     "running": "36",
     "done": "32",
     "failed": "38;5;208",
+    "dead_letter": "31",
+    "cancelled": "2",
 }
 
 # Truncation budget for the args/timeout summary suffix (ENH-2931).
@@ -82,6 +84,18 @@ def _format_action_summary(entry: Any, *, wide: bool = False) -> str:
         suffix_parts.append(f"input={loop_input}")
     timeout_str = "∞" if action.timeout is None else str(action.timeout)
     suffix_parts.append(f"timeout={timeout_str}")
+    if entry.attempt:
+        suffix_parts.append(f"attempt={entry.attempt}")
+    if entry.next_attempt_at:
+        try:
+            next_dt = datetime.strptime(entry.next_attempt_at, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=UTC
+            )
+            remaining = (next_dt - datetime.now(UTC)).total_seconds()
+        except ValueError:
+            remaining = 0
+        if remaining > 0:
+            suffix_parts.append(f"retry in {int(remaining)}s")
     if entry.status == "running":
         elapsed = (
             datetime.now(UTC)
@@ -311,6 +325,10 @@ def cmd_status(args: argparse.Namespace) -> int:
                 "priority": entry.priority,
                 "status": entry.status,
                 "enqueuedAt": entry.enqueued_at,
+                "attempt": entry.attempt,
+                "nextAttemptAt": entry.next_attempt_at or "-",
+                "reason": (entry.result or {}).get("reason") or "-",
+                "error": (entry.result or {}).get("error") or "-",
                 "result": _json.dumps(entry.result) if entry.result else "-",
             }
         )
@@ -431,14 +449,54 @@ def _kill_current_loop_proc() -> bool:
     return True
 
 
+def _classify_dispatch(
+    runner: RunnerType, result_dict: dict[str, Any], timed_out: bool
+) -> tuple[bool, str]:
+    """Classify a failed dispatch as retryable or not, with its reason (ENH-3416).
+
+    Order: an explicit timeout is never retryable — a command that hit its
+    own timeout will hit it again with identical input, so it is not a
+    retry-eligible failure regardless of stderr text. A ``LOOP`` entry that
+    exhausted its own internal 429/overload retry budget
+    (``error == "terminal failure"``, see ``fsm/executor.py``) is not retried
+    a second time by the queue. Otherwise falls through to
+    :func:`little_loops.issue_lifecycle.classify_failure`, gated on its
+    ``reason`` string against :data:`~little_loops.queue_store.QUEUE_RETRYABLE_REASONS`
+    (not on ``FailureType`` alone — see ENH-3416 Design Decisions for why a
+    queue entry's stderr, arbitrary program output, needs a narrower
+    allowlist than the host-CLI-stderr classifier's broad substrings).
+    """
+    from little_loops.issue_lifecycle import classify_failure
+    from little_loops.queue_store import QUEUE_RETRYABLE_REASONS
+    from little_loops.runner_spec import RunnerType as _RunnerType
+
+    if timed_out:
+        return False, "Command timeout"
+
+    if runner is _RunnerType.LOOP and result_dict.get("error") == "terminal failure":
+        return False, "terminal failure"
+
+    error_output = result_dict.get("stderr") or result_dict.get("error") or ""
+    returncode = result_dict.get("exit_code")
+    if returncode is None:
+        returncode = -1
+
+    _failure_type, reason = classify_failure(error_output, returncode)
+    return reason in QUEUE_RETRYABLE_REASONS, reason
+
+
 def _drain_once(
     stop: threading.Event,
     force_stop: threading.Event,
     *,
     poll_interval: float = _DEFAULT_POLL_INTERVAL,
     on_entry: Callable[[QueueEntry, dict[str, Any]], None] | None = None,
-) -> list[dict[str, Any]]:
-    """Drain currently-pending entries once; the shared body for one-shot and ``--watch``.
+) -> tuple[list[dict[str, Any]], int]:
+    """Drain currently-eligible entries once; the shared body for one-shot and ``--watch``.
+
+    Returns ``(processed, backing_off)`` — the dispatch records, and the
+    count of pending entries left behind whose ``next_attempt_at`` is still
+    in the future (ENH-3416).
 
     ``RunnerType.LOOP`` entries are intercepted before ``run_action()`` (which
     deliberately never dispatches them, see ``runner_spec.py``) and driven
@@ -447,31 +505,69 @@ def _drain_once(
 
     *stop* is checked before each claim, so a graceful shutdown (first
     signal) stops claiming new work without interrupting an entry already in
-    flight. The lost-claim path (every currently-pending entry claimed by
+    flight. The lost-claim path (every currently-eligible entry claimed by
     another drainer between the read and the claim) sleeps *poll_interval*
     before retrying instead of busy-spinning — a rare race for the one-shot
     drainer, routine once ``--watch`` makes concurrent drainers normal.
 
+    A failed dispatch is classified via :func:`_classify_dispatch`
+    (ENH-3416): non-retryable lands on ``failed`` (unchanged from
+    pre-ENH-3416 behavior); retryable with budget remaining is returned to
+    ``pending`` with a backoff ``next_attempt_at``; retryable with the budget
+    exhausted lands on terminal ``dead_letter``.
+
     *force_stop*, when set by a second shutdown signal mid-entry, marks that
-    entry ``failed`` with ``error: "interrupted by operator"`` regardless of
-    its actual result, then stops draining further entries even if more are
-    pending.
+    entry ``cancelled`` with ``reason: "interrupted by operator"`` regardless
+    of its actual result, then stops draining further entries even if more
+    are pending. Every post-dispatch write is guarded (only a row this
+    drainer still owns as ``running`` is a valid target) — on a guard miss
+    (the entry was cancelled or reclaimed out from under the drainer),
+    ``_drain_once`` re-reads the row and reports its actual status.
     """
-    from little_loops.queue_store import claim_entry, list_entries, update_entry_result
+    from little_loops import queue_store
+    from little_loops.queue_store import (
+        QUEUE_MAX_ATTEMPTS,
+        cancel_entry,
+        claim_entry,
+        compute_backoff_s,
+        dead_letter_entry,
+        get_entry,
+        list_entries,
+        schedule_retry,
+        update_entry_result,
+    )
     from little_loops.runner_spec import RunnerType, run_action
 
+    def _reread_status(entry_id: str) -> str:
+        fetched = get_entry(entry_id, db_path=QUEUE_DB_PATH)
+        return fetched.status if fetched is not None else "unknown"
+
+    def _add_seconds(timestamp: str, seconds: int) -> str:
+        dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        return (dt + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     processed: list[dict[str, Any]] = []
+    backing_off = 0
 
     while not stop.is_set():
+        now = queue_store._utcnow()
         pending = [e for e in list_entries(QUEUE_DB_PATH) if e.status == "pending"]
         if not pending:
             break
-        entry = next((e for e in pending if claim_entry(e.id, db_path=QUEUE_DB_PATH)), None)
-        if entry is None:
-            # Every currently-pending entry lost its claim to another drainer;
+        eligible = [e for e in pending if e.next_attempt_at is None or e.next_attempt_at <= now]
+        if not eligible:
+            backing_off = len(pending)
+            break
+
+        claimed = next(
+            (e for e in eligible if claim_entry(e.id, db_path=QUEUE_DB_PATH, now=now)), None
+        )
+        if claimed is None:
+            # Every currently-eligible entry lost its claim to another drainer;
             # re-read on the next iteration rather than treating this as drained.
             time.sleep(poll_interval)
             continue
+        entry = get_entry(claimed.id, db_path=QUEUE_DB_PATH) or claimed
 
         try:
             if entry.action.runner is RunnerType.LOOP:
@@ -479,7 +575,6 @@ def _drain_once(
             else:
                 result = run_action(entry.action, run_id=entry.id)
         except Exception as exc:
-            status = "failed"
             result_dict: dict[str, Any] = {"exit_code": None, "timed_out": False, "error": str(exc)}
         else:
             result_dict = {
@@ -489,17 +584,36 @@ def _drain_once(
                 "stdout": result.stdout,
                 "stderr": result.stderr,
             }
-            status = (
-                "done"
-                if not result.timed_out and result.error is None and result.exit_code == 0
-                else "failed"
+
+        timed_out = bool(result_dict.get("timed_out"))
+        succeeded = (
+            not timed_out and result_dict.get("error") is None and result_dict.get("exit_code") == 0
+        )
+
+        if force_stop.is_set():
+            wrote = cancel_entry(
+                entry.id, "interrupted by operator", db_path=QUEUE_DB_PATH, extra=result_dict
             )
+            status = "cancelled" if wrote else _reread_status(entry.id)
+        elif succeeded:
+            wrote = update_entry_result(entry.id, "done", result_dict, db_path=QUEUE_DB_PATH)
+            status = "done" if wrote else _reread_status(entry.id)
+        else:
+            retryable, reason = _classify_dispatch(entry.action.runner, result_dict, timed_out)
+            error_text = result_dict.get("error") or result_dict.get("stderr") or reason
+            if not retryable:
+                wrote = update_entry_result(entry.id, "failed", result_dict, db_path=QUEUE_DB_PATH)
+                status = "failed" if wrote else _reread_status(entry.id)
+            elif entry.attempt < QUEUE_MAX_ATTEMPTS:
+                next_attempt_at = _add_seconds(
+                    queue_store._utcnow(), compute_backoff_s(entry.attempt)
+                )
+                wrote = schedule_retry(entry.id, error_text, next_attempt_at, db_path=QUEUE_DB_PATH)
+                status = "pending" if wrote else _reread_status(entry.id)
+            else:
+                wrote = dead_letter_entry(entry.id, error_text, db_path=QUEUE_DB_PATH)
+                status = "dead_letter" if wrote else _reread_status(entry.id)
 
-        if force_stop.is_set() and status != "done":
-            status = "failed"
-            result_dict["error"] = "interrupted by operator"
-
-        update_entry_result(entry.id, status, result_dict, db_path=QUEUE_DB_PATH)
         record = {"id": entry.id, "status": status, "result": result_dict}
         processed.append(record)
         if on_entry is not None:
@@ -508,7 +622,7 @@ def _drain_once(
         if force_stop.is_set():
             break
 
-    return processed
+    return processed, backing_off
 
 
 def _verify_owner_alive(pid: int | None, claimed_at: str | None) -> bool:
@@ -539,24 +653,43 @@ def _verify_owner_alive(pid: int | None, claimed_at: str | None) -> bool:
         return False
 
 
-def _reclaim_stale(db_path: Path | str) -> int:
+def _reclaim_stale(db_path: Path | str) -> tuple[int, int]:
     """Return ``running`` entries whose ``owner_pid`` is dead to ``pending`` (FEAT-2930).
 
     Run on watcher startup and on each idle poll — a long-lived drainer makes
     a ``SIGKILL``ed/OOM-killed/rebooted owner the normal failure mode rather
-    than a rare one a human is present to witness. Returns the count
-    reclaimed.
+    than a rare one a human is present to witness.
+
+    An entry whose ``attempt`` has already reached
+    :data:`~little_loops.queue_store.QUEUE_MAX_ATTEMPTS` is dead-lettered
+    instead of reclaimed again (ENH-3416) — ``attempt`` is shared between
+    transient dispatch failures and owner deaths, so an entry that reliably
+    kills its own drainer does not get reclaimed forever. ``next_attempt_at``
+    is never touched here: an owner death is not a backoff-eligible failure,
+    it is a slot to refill.
+
+    Returns ``(reclaimed, dead_lettered)``.
     """
-    from little_loops.queue_store import list_entries, reset_to_pending
+    from little_loops.queue_store import (
+        QUEUE_MAX_ATTEMPTS,
+        dead_letter_entry,
+        list_entries,
+        reset_to_pending,
+    )
 
     running = [e for e in list_entries(db_path) if e.status == "running"]
     reclaimed = 0
+    dead_lettered = 0
     for entry in running:
         if _verify_owner_alive(entry.owner_pid, entry.claimed_at):
             continue
-        if reset_to_pending(entry.id, db_path=db_path):
+        if entry.attempt >= QUEUE_MAX_ATTEMPTS:
+            error = f"attempt budget exhausted after {entry.attempt} attempts; last: owner died"
+            if dead_letter_entry(entry.id, error, db_path=db_path):
+                dead_lettered += 1
+        elif reset_to_pending(entry.id, db_path=db_path):
             reclaimed += 1
-    return reclaimed
+    return reclaimed, dead_lettered
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -586,7 +719,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             f"{entry.action.runner.value}:{entry.action.target}"
         )
 
-    processed = _drain_once(stop, force_stop, poll_interval=poll_interval, on_entry=_print_line)
+    processed, backing_off = _drain_once(
+        stop, force_stop, poll_interval=poll_interval, on_entry=_print_line
+    )
 
     if json_mode:
         print_json(processed)
@@ -597,6 +732,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         plural = "y" if len(processed) == 1 else "ies"
         print(colorize(f"Processed {len(processed)} entr{plural}", "1"))
+    if backing_off:
+        plural = "y" if backing_off == 1 else "ies"
+        print(colorize(f"{backing_off} entr{plural} backing off, not yet eligible for retry", "33"))
     return 0
 
 
@@ -633,8 +771,8 @@ def _run_watch(json_mode: bool, poll_interval: float) -> int:
     Shutdown semantics: a first ``SIGINT``/``SIGTERM`` lets the in-flight
     entry finish and records its real result, then exits 0 without claiming
     further work. A second signal forwards ``SIGTERM`` to an in-flight LOOP
-    child's process group, marks that entry ``failed`` with
-    ``error: "interrupted by operator"``, and exits 0. An idle wait (no entry
+    child's process group, marks that entry ``cancelled`` with
+    ``reason: "interrupted by operator"``, and exits 0. An idle wait (no entry
     in flight) exits 0 immediately on either signal — nothing is left
     ``running``.
 
@@ -662,20 +800,25 @@ def _run_watch(json_mode: bool, poll_interval: float) -> int:
                 flush=True,
             )
 
-    def _report_reclaim(count: int) -> None:
-        if count and not json_mode:
-            plural = "y" if count == 1 else "ies"
-            print(colorize(f"Reclaimed {count} stale entr{plural}", "33"))
+    def _report_reclaim(reclaimed: int, dead_lettered: int) -> None:
+        if not (reclaimed or dead_lettered) or json_mode:
+            return
+        plural = "y" if reclaimed == 1 else "ies"
+        print(
+            colorize(
+                f"Reclaimed {reclaimed} stale entr{plural}, dead-lettered {dead_lettered}", "33"
+            )
+        )
 
     try:
-        _report_reclaim(_reclaim_stale(QUEUE_DB_PATH))
+        _report_reclaim(*_reclaim_stale(QUEUE_DB_PATH))
 
         while not stop.is_set():
             _drain_once(stop, force_stop, poll_interval=poll_interval, on_entry=_emit)
             if stop.is_set():
                 break
             time.sleep(poll_interval)
-            _report_reclaim(_reclaim_stale(QUEUE_DB_PATH))
+            _report_reclaim(*_reclaim_stale(QUEUE_DB_PATH))
     finally:
         signal.signal(signal.SIGINT, prev_int)
         signal.signal(signal.SIGTERM, prev_term)
@@ -684,16 +827,22 @@ def _run_watch(json_mode: bool, poll_interval: float) -> int:
 
 
 def cmd_requeue(args: argparse.Namespace) -> int:
-    """Return a stranded ``running`` entry to ``pending`` (FEAT-2930 manual escape hatch).
+    """Return a stranded ``running`` entry to ``pending``, or revive a terminal one (ENH-3416).
 
-    Without ``--force``, refuses (with a clear message) when the entry's
+    For a ``running`` entry (FEAT-2930's original manual escape hatch):
+    without ``--force``, refuses (with a clear message) when the entry's
     ``owner_pid`` still looks alive — that's the automatic ``_reclaim_stale``
     sweep's job, and a live owner is presumably still working the entry.
     ``--force`` is for the case the sweep can't decide: owner still alive but
     wedged, per the operator's own judgement.
+
+    Widened (ENH-3416) to also accept ``dead_letter``/``failed``/``cancelled``
+    entries, reviving them via :func:`~little_loops.queue_store.revive_entry`
+    with a fresh attempt budget — no owner-liveness check applies to a
+    terminal entry.
     """
     from little_loops.cli.output import colorize, print_json
-    from little_loops.queue_store import reset_to_pending
+    from little_loops.queue_store import reset_to_pending, revive_entry
 
     code = _not_found_or_ambiguous(args)
     if code is not None:
@@ -702,18 +851,24 @@ def cmd_requeue(args: argparse.Namespace) -> int:
     json_mode = getattr(args, "json", False)
     force = getattr(args, "force", False)
 
-    if entry.status != "running":
-        msg = f"Entry '{entry.id[:8]}' is {entry.status}, not running; nothing to requeue"
-        if json_mode:
-            print_json({"error": msg, "id": entry.id})
-        else:
-            print(msg, file=sys.stderr)
-        return 1
-
-    if not force and _verify_owner_alive(entry.owner_pid, entry.claimed_at):
+    if entry.status == "running":
+        if not force and _verify_owner_alive(entry.owner_pid, entry.claimed_at):
+            msg = (
+                f"Entry '{entry.id[:8]}' owner (pid {entry.owner_pid}) appears alive; "
+                "use --force to requeue anyway"
+            )
+            if json_mode:
+                print_json({"error": msg, "id": entry.id})
+            else:
+                print(msg, file=sys.stderr)
+            return 1
+        reset_to_pending(entry.id, db_path=QUEUE_DB_PATH)
+    elif entry.status in ("dead_letter", "failed", "cancelled"):
+        revive_entry(entry.id, db_path=QUEUE_DB_PATH)
+    else:
         msg = (
-            f"Entry '{entry.id[:8]}' owner (pid {entry.owner_pid}) appears alive; "
-            "use --force to requeue anyway"
+            f"Entry '{entry.id[:8]}' is {entry.status}, not running/dead_letter/failed/"
+            "cancelled; nothing to requeue"
         )
         if json_mode:
             print_json({"error": msg, "id": entry.id})
@@ -721,11 +876,45 @@ def cmd_requeue(args: argparse.Namespace) -> int:
             print(msg, file=sys.stderr)
         return 1
 
-    reset_to_pending(entry.id, db_path=QUEUE_DB_PATH)
     if json_mode:
         print_json({"requeued": entry.id})
     else:
         print(f"Requeued {colorize(entry.id[:8], '34')}")
+    return 0
+
+
+def cmd_cancel(args: argparse.Namespace) -> int:
+    """Move a ``pending`` or ``running`` entry to terminal ``cancelled`` (ENH-3416).
+
+    Does not signal an in-flight process — cancelling a ``running`` entry is
+    a status-only mark; the drainer's guarded completion write then no-ops
+    and the entry stays ``cancelled`` (see ``_drain_once``'s guard-miss
+    re-read). Killing arbitrary runner subprocesses from a second CLI process
+    is out of scope (only the drainer holds the ``Popen``).
+    """
+    from little_loops.cli.output import colorize, print_json
+    from little_loops.queue_store import cancel_entry
+
+    code = _not_found_or_ambiguous(args)
+    if code is not None:
+        return code
+    entry = args._resolved_entry
+    json_mode = getattr(args, "json", False)
+    reason = getattr(args, "reason", None) or "cancelled by operator"
+
+    if entry.status not in ("pending", "running"):
+        msg = f"Entry '{entry.id[:8]}' is {entry.status}, not pending/running; nothing to cancel"
+        if json_mode:
+            print_json({"error": msg, "id": entry.id})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
+
+    cancel_entry(entry.id, reason, db_path=QUEUE_DB_PATH)
+    if json_mode:
+        print_json({"cancelled": entry.id, "reason": reason})
+    else:
+        print(f"Cancelled {colorize(entry.id[:8], '34')}")
     return 0
 
 
@@ -746,6 +935,7 @@ Examples:
   ll-queue run
   ll-queue run --watch --poll-interval 5
   ll-queue requeue abcd1234
+  ll-queue cancel abcd1234 --reason "no longer needed"
 """,
         )
 
@@ -872,6 +1062,16 @@ Examples:
             "--json", action="store_true", default=False, help="JSON output"
         )
 
+        cancel_parser = subparsers.add_parser(
+            "cancel",
+            help="Move a pending or running entry to terminal `cancelled`",
+            description="Operator cancel; does not signal an in-flight process "
+            "(the drainer's guarded completion write no-ops on a cancelled row)",
+        )
+        cancel_parser.add_argument("id", help="Entry id (full uuid or 8+-char prefix)")
+        cancel_parser.add_argument("--reason", default=None, help="Reason recorded on the entry")
+        cancel_parser.add_argument("--json", action="store_true", default=False, help="JSON output")
+
         parsed = parser.parse_args()
 
         if parsed.command == "add":
@@ -886,6 +1086,8 @@ Examples:
             return cmd_run(parsed)
         elif parsed.command == "requeue":
             return cmd_requeue(parsed)
+        elif parsed.command == "cancel":
+            return cmd_cancel(parsed)
         else:
             parser.print_help()
             return 1

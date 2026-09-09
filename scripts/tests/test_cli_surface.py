@@ -136,7 +136,7 @@ def test_cli_surface_accepts_fails_open_for_undetermined_subcommand_list(
     "tool,expected_subcommands",
     [
         ("ll-learning-tests", {"check", "list", "mark-stale", "orphans", "prove"}),
-        ("ll-queue", {"add", "list", "status", "remove", "run", "requeue"}),
+        ("ll-queue", {"add", "list", "status", "remove", "run", "requeue", "cancel"}),
         ("ll-harness", {"skill", "cmd", "mcp", "prompt", "dsl"}),
         ("ll-action", {"invoke", "capabilities", "list"}),
     ],

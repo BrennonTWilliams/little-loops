@@ -40,6 +40,12 @@ __all__ = [
     "QueueEntry",
     "AmbiguousEntryIdError",
     "PRIORITY_TIERS",
+    "QUEUE_STATUSES",
+    "QUEUE_TERMINAL_STATUSES",
+    "QUEUE_RETRYABLE_REASONS",
+    "QUEUE_MAX_ATTEMPTS",
+    "QUEUE_BACKOFF_BASE_S",
+    "QUEUE_BACKOFF_CEILING_S",
     "ensure_db",
     "connect",
     "add_entry",
@@ -50,6 +56,11 @@ __all__ = [
     "update_entry_result",
     "claim_entry",
     "reset_to_pending",
+    "compute_backoff_s",
+    "schedule_retry",
+    "dead_letter_entry",
+    "cancel_entry",
+    "revive_entry",
 ]
 
 logger = logging.getLogger(__name__)
@@ -102,7 +113,7 @@ PRIORITY_TIERS: tuple[str, ...] = ("P0", "P1", "P2", "P3", "P4", "P5")
 
 _BUSY_TIMEOUT_MS = 5000
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _MIGRATIONS: list[str] = [
     """
@@ -128,7 +139,64 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE queue_entries ADD COLUMN claimed_at TEXT;
     ALTER TABLE queue_entries ADD COLUMN owner_pid INTEGER;
     """,
+    # ENH-3416: attempt budget + backoff. `attempt` is incremented at claim
+    # time (survives a dead drainer with no extra bookkeeping) and defaults to
+    # 0 so pre-existing rows read back unchanged. `next_attempt_at` gates
+    # claim_entry's eligibility filter; NULL means immediately eligible.
+    """
+    ALTER TABLE queue_entries ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE queue_entries ADD COLUMN next_attempt_at TEXT;
+    """,
 ]
+
+# Status vocabulary (ENH-3416): declared once, every enumeration elsewhere
+# (`_STATUS_COLOR`, the `queue_list` MCP description, docs) derives from or is
+# locked against these.
+QUEUE_STATUSES = frozenset({"pending", "running", "done", "failed", "dead_letter", "cancelled"})
+QUEUE_TERMINAL_STATUSES = frozenset({"done", "failed", "dead_letter", "cancelled"})
+
+# Reasons from issue_lifecycle.classify_failure() that make a queue dispatch
+# failure retryable. Deliberately a narrow allowlist, not "any TRANSIENT": the
+# classifier was written for host-CLI stderr, and a queue entry's stderr is
+# arbitrary program output (an `ll-loop run` log, a pytest run) whose broad
+# substrings ("timeout", "429") fire on unrelated text (see ENH-3416 Design
+# Decisions). Gated on the `reason` string, not `FailureType`, for the same
+# reason.
+QUEUE_RETRYABLE_REASONS = frozenset(
+    {
+        "API quota or rate limit exceeded",
+        "Network or connectivity error",
+        "API server error",
+        "Infra teardown: SIGTERM after result event",  # INFRA_RETRY
+    }
+)
+
+# ENH-3416 policy constants (module constants, not config — see Design
+# Decisions for the trade-off accepted by each).
+QUEUE_MAX_ATTEMPTS = 5  # bounds a poison entry to 5 dispatches / 4 reclaims
+QUEUE_BACKOFF_BASE_S = 5  # 5, 10, 20, 40 s between attempts 1..4
+QUEUE_BACKOFF_CEILING_S = 300  # worst-case wait bounded at 5 min
+
+
+def _utcnow() -> str:
+    """Return the current UTC time in the store's persisted timestamp format.
+
+    The single "current time" seam for this module (ENH-3416): every read of
+    "now" in ``queue_store.py``/``cli/queue.py`` goes through this function so
+    tests can patch one call site instead of each ``datetime.now`` use.
+    """
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def compute_backoff_s(attempt: int) -> int:
+    """Return the backoff delay, in seconds, before retrying *attempt*.
+
+    Non-jittered iterative doubling: ``base * 2**(attempt-1)``, capped at
+    ``QUEUE_BACKOFF_CEILING_S`` (see ENH-3416 Decision Rationale — every other
+    non-jittered backoff site in this codebase is local/same-machine, matching
+    ``ll-queue``'s single-writer-SQLite shape).
+    """
+    return min(QUEUE_BACKOFF_BASE_S * 2 ** (attempt - 1), QUEUE_BACKOFF_CEILING_S)
 
 
 def _configure_connection(conn: sqlite3.Connection) -> None:
@@ -275,6 +343,8 @@ class QueueEntry:
     result: dict[str, Any] | None = None
     claimed_at: str | None = None
     owner_pid: int | None = None
+    attempt: int = 0
+    next_attempt_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -293,6 +363,8 @@ class QueueEntry:
             "result": self.result,
             "claimedAt": self.claimed_at,
             "ownerPid": self.owner_pid,
+            "attempt": self.attempt,
+            "nextAttemptAt": self.next_attempt_at,
         }
 
     @classmethod
@@ -306,6 +378,8 @@ class QueueEntry:
             result=json.loads(row["result"]) if row["result"] else None,
             claimed_at=row["claimed_at"],
             owner_pid=row["owner_pid"],
+            attempt=row["attempt"],
+            next_attempt_at=row["next_attempt_at"],
         )
 
 
@@ -331,7 +405,7 @@ def add_entry(
     if scope_error is not None:
         raise ValueError(scope_error)
     entry_id = str(uuid.uuid4())
-    enqueued_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    enqueued_at = _utcnow()
     rank = _priority_rank(priority)
     conn = connect(db_path, root=root)
     try:
@@ -422,6 +496,12 @@ def reset_to_pending(
     Shared by FEAT-2930's ``_reclaim_stale`` sweep and ``ll-queue requeue``.
     Only ``running`` entries transition — a ``pending``/``done``/``failed``
     entry is left untouched. Returns True iff a row was updated.
+
+    This is the *reclaim* path (ENH-3416): it does not touch ``attempt`` or
+    ``next_attempt_at``. An owner death is a slot to refill, not a
+    backoff-eligible failure — the caller (``_reclaim_stale``) decides
+    separately whether the entry's attempt budget is exhausted and routes to
+    :func:`dead_letter_entry` instead when it is.
     """
     conn = connect(db_path, root=root)
     try:
@@ -449,12 +529,19 @@ def update_entry_result(
     ``WHERE status = 'running'`` sweep either way, but leaving a stale
     ``owner_pid`` on a finished entry is a data-hygiene footgun for anything
     that later reads it directly.
+
+    The write is guarded with ``AND status = 'running'`` (ENH-3416): only a
+    row this caller's drainer actually claimed is a valid completion target.
+    Returns False (no-op, row unchanged) if the entry was cancelled or
+    reclaimed out from under the drainer between claim and completion — the
+    caller should re-read the row and record its actual status rather than
+    assume this write landed.
     """
     conn = connect(db_path)
     try:
         cur = conn.execute(
             "UPDATE queue_entries SET status = ?, result = ?, claimed_at = NULL, "
-            "owner_pid = NULL WHERE id = ?",
+            "owner_pid = NULL WHERE id = ? AND status = 'running'",
             (status, json.dumps(result) if result is not None else None, entry_id),
         )
         conn.commit()
@@ -463,8 +550,128 @@ def update_entry_result(
     return cur.rowcount > 0
 
 
+def schedule_retry(
+    entry_id: str,
+    error: str,
+    next_attempt_at: str,
+    db_path: Path | str = DEFAULT_DB_PATH,
+) -> bool:
+    """Return a ``running`` entry to ``pending`` with a backoff deadline (ENH-3416).
+
+    Used for a retryable dispatch failure with budget remaining. Guarded with
+    ``AND status = 'running'`` like :func:`update_entry_result`; returns False
+    on a guard miss (cancelled/reclaimed mid-dispatch).
+    """
+    conn = connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE queue_entries SET status = 'pending', next_attempt_at = ?, "
+            "result = ?, claimed_at = NULL, owner_pid = NULL "
+            "WHERE id = ? AND status = 'running'",
+            (next_attempt_at, json.dumps({"error": error}), entry_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return cur.rowcount > 0
+
+
+def dead_letter_entry(
+    entry_id: str,
+    error: str,
+    db_path: Path | str = DEFAULT_DB_PATH,
+) -> bool:
+    """Move a ``running`` entry to terminal ``dead_letter`` (ENH-3416).
+
+    Used when a retryable failure exhausts the attempt budget, or an
+    owner-death reclaim finds ``attempt >= QUEUE_MAX_ATTEMPTS``. Guarded with
+    ``AND status = 'running'`` like :func:`update_entry_result`; returns False
+    on a guard miss.
+    """
+    conn = connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE queue_entries SET status = 'dead_letter', result = ?, "
+            "claimed_at = NULL, owner_pid = NULL WHERE id = ? AND status = 'running'",
+            (json.dumps({"error": error}), entry_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return cur.rowcount > 0
+
+
+def cancel_entry(
+    entry_id: str,
+    reason: str,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    extra: dict[str, Any] | None = None,
+) -> bool:
+    """Move a ``pending`` or ``running`` entry to terminal ``cancelled`` (ENH-3416).
+
+    Does not signal an in-flight process — see ``ll-queue cancel``'s docs for
+    the cancel-vs-dispatch rationale. *extra* (the dispatch's
+    ``exit_code``/``stdout``/``stderr`` when cancelling mid-dispatch via the
+    ``force_stop`` path) is merged under ``reason`` so partial output is not
+    lost. Guarded with ``AND status IN ('pending', 'running')``; returns False
+    if the entry already reached a terminal status.
+    """
+    conn = connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE queue_entries SET status = 'cancelled', result = ?, "
+            "claimed_at = NULL, owner_pid = NULL "
+            "WHERE id = ? AND status IN ('pending', 'running')",
+            (json.dumps({**(extra or {}), "reason": reason}), entry_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return cur.rowcount > 0
+
+
+def revive_entry(
+    entry_id: str,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    root: Path | None = None,
+) -> bool:
+    """Return a terminal entry to ``pending`` with a fresh attempt budget (ENH-3416).
+
+    Used by ``ll-queue requeue`` for ``dead_letter``/``failed``/``cancelled``
+    entries (the ``running`` case stays on :func:`reset_to_pending`). Resets
+    ``attempt`` to 0 and clears ``next_attempt_at``; the prior ``result`` (if
+    any) is preserved under ``result.previous`` rather than discarded.
+
+    *root* (mirrors :func:`reset_to_pending`) anchors the default db path at
+    a known project root instead of the process cwd — needed by the MCP
+    server's ``queue_requeue`` tool.
+    """
+    conn = connect(db_path, root=root)
+    try:
+        row = conn.execute("SELECT result FROM queue_entries WHERE id = ?", (entry_id,)).fetchone()
+        if row is None:
+            return False
+        prior = json.loads(row["result"]) if row["result"] else None
+        new_result = {"previous": prior} if prior is not None else None
+        cur = conn.execute(
+            "UPDATE queue_entries SET status = 'pending', attempt = 0, next_attempt_at = NULL, "
+            "result = ?, claimed_at = NULL, owner_pid = NULL WHERE id = ?",
+            (json.dumps(new_result) if new_result is not None else None, entry_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return cur.rowcount > 0
+
+
 def claim_entry(
-    entry_id: str, db_path: Path | str = DEFAULT_DB_PATH, *, owner_pid: int | None = None
+    entry_id: str,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    owner_pid: int | None = None,
+    now: str | None = None,
 ) -> bool:
     """Atomically transition *entry_id* from ``pending`` to ``running``.
 
@@ -478,9 +685,16 @@ def claim_entry(
     so a later :func:`_reclaim_stale <little_loops.cli.queue._reclaim_stale>`
     sweep can tell whether the claiming process is still alive. Defaults to
     ``os.getpid()``.
+
+    Increments ``attempt`` (ENH-3416) so a dead drainer's reclaim consumes
+    budget with no extra bookkeeping. The WHERE clause also requires
+    ``next_attempt_at`` to be unset or already elapsed against *now*
+    (defaults to :func:`_utcnow`, injectable for tests) — a row backing off
+    is not claimable yet.
     """
     pid = owner_pid if owner_pid is not None else os.getpid()
-    claimed_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    claimed_at = _utcnow()
+    effective_now = now if now is not None else claimed_at
     conn = connect(db_path)
     prior_isolation = conn.isolation_level
     conn.isolation_level = None
@@ -488,9 +702,11 @@ def claim_entry(
         conn.execute("BEGIN IMMEDIATE")
         try:
             cur = conn.execute(
-                "UPDATE queue_entries SET status = 'running', claimed_at = ?, owner_pid = ? "
-                "WHERE id = ? AND status = 'pending'",
-                (claimed_at, pid, entry_id),
+                "UPDATE queue_entries SET status = 'running', claimed_at = ?, owner_pid = ?, "
+                "attempt = attempt + 1 "
+                "WHERE id = ? AND status = 'pending' "
+                "AND (next_attempt_at IS NULL OR next_attempt_at <= ?)",
+                (claimed_at, pid, entry_id, effective_now),
             )
             conn.execute("COMMIT")
         except BaseException:

@@ -217,6 +217,7 @@ class TestCmdRunScopeGuard:
 class TestCmdRunOnlyPending:
     def test_run_skips_non_pending_entries(self, capsys: pytest.CaptureFixture[str]) -> None:
         done_id = _add_and_get_id(capsys, "already-done")
+        claim_entry(done_id)
         update_entry_result(done_id, "done", {"exit_code": 0})
         pending_id = _add_and_get_id(capsys, "still-pending")
 
@@ -647,9 +648,10 @@ class TestReclaimStale:
         with patch(
             "little_loops.cli.queue.psutil.Process", side_effect=Exception("no such process")
         ):
-            count = _reclaim_stale(DEFAULT_DB_PATH)
+            reclaimed, dead_lettered = _reclaim_stale(DEFAULT_DB_PATH)
 
-        assert count == 1
+        assert reclaimed == 1
+        assert dead_lettered == 0
         assert get_entry(entry_id).status == "pending"  # type: ignore[union-attr]
 
     def test_leaves_entry_with_live_identified_owner(
@@ -669,9 +671,10 @@ class TestReclaimStale:
             "--watch",
         ]
         with patch("little_loops.cli.queue.psutil.Process", return_value=mock_proc):
-            count = _reclaim_stale(DEFAULT_DB_PATH)
+            reclaimed, dead_lettered = _reclaim_stale(DEFAULT_DB_PATH)
 
-        assert count == 0
+        assert reclaimed == 0
+        assert dead_lettered == 0
         assert get_entry(entry_id).status == "running"  # type: ignore[union-attr]
 
     def test_ignores_non_running_entries(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -680,9 +683,41 @@ class TestReclaimStale:
         _add_and_get_id(capsys, "audit-docs")  # stays pending
 
         with patch("little_loops.cli.queue.psutil.Process", side_effect=Exception("dead")):
-            count = _reclaim_stale(DEFAULT_DB_PATH)
+            reclaimed, dead_lettered = _reclaim_stale(DEFAULT_DB_PATH)
 
-        assert count == 0
+        assert reclaimed == 0
+        assert dead_lettered == 0
+
+    def test_dead_letters_entry_with_exhausted_budget(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3416: an entry whose owner keeps dying is dead-lettered once
+        `attempt >= QUEUE_MAX_ATTEMPTS`, not reclaimed forever."""
+        from little_loops.cli.queue import _reclaim_stale
+        from little_loops.queue_store import QUEUE_MAX_ATTEMPTS, reset_to_pending
+
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        # Drive attempt up to the budget via repeated claim/reset cycles, ending
+        # on a final claim (running, uncleared) so the entry is still `running`
+        # when `_reclaim_stale` sweeps it.
+        for _ in range(QUEUE_MAX_ATTEMPTS - 1):
+            claim_entry(entry_id, owner_pid=999999)
+            reset_to_pending(entry_id)
+        claim_entry(entry_id, owner_pid=999999)
+        assert get_entry(entry_id).attempt == QUEUE_MAX_ATTEMPTS  # type: ignore[union-attr]
+
+        with patch(
+            "little_loops.cli.queue.psutil.Process", side_effect=Exception("no such process")
+        ):
+            reclaimed, dead_lettered = _reclaim_stale(DEFAULT_DB_PATH)
+
+        assert reclaimed == 0
+        assert dead_lettered == 1
+        entry = get_entry(entry_id)
+        assert entry is not None
+        assert entry.status == "dead_letter"
+        assert "attempt budget exhausted after" in entry.result["error"]
+        assert "owner died" in entry.result["error"]
 
 
 class TestCmdRequeue:
@@ -743,6 +778,358 @@ class TestCmdRequeue:
             result = main_queue()
 
         assert result == 1
+
+    def test_requeue_dead_letter_entry_resets_budget(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3416: requeue widens to accept dead_letter/failed/cancelled,
+        resetting attempt and preserving the prior result under `.previous`."""
+        from little_loops.queue_store import dead_letter_entry
+
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id)
+        dead_letter_entry(entry_id, "budget exhausted")
+
+        with patch("sys.argv", ["ll-queue", "requeue", entry_id, "--json"]):
+            result = main_queue()
+
+        assert result == 0
+        entry = get_entry(entry_id)
+        assert entry is not None
+        assert entry.status == "pending"
+        assert entry.attempt == 0
+        assert entry.next_attempt_at is None
+        assert entry.result == {"previous": {"error": "budget exhausted"}}
+
+    def test_requeue_failed_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id)
+        update_entry_result(entry_id, "failed", {"error": "boom"})
+
+        with patch("sys.argv", ["ll-queue", "requeue", entry_id, "--json"]):
+            result = main_queue()
+
+        assert result == 0
+        assert get_entry(entry_id).status == "pending"  # type: ignore[union-attr]
+
+    def test_requeue_cancelled_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from little_loops.queue_store import cancel_entry
+
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        cancel_entry(entry_id, "stop")
+
+        with patch("sys.argv", ["ll-queue", "requeue", entry_id, "--json"]):
+            result = main_queue()
+
+        assert result == 0
+        assert get_entry(entry_id).status == "pending"  # type: ignore[union-attr]
+
+
+class TestClassifyDispatch:
+    """ENH-3416: `_classify_dispatch` maps a dispatch outcome to (retryable, reason)."""
+
+    def test_timed_out_is_never_retryable(self) -> None:
+        from little_loops.cli.queue import _classify_dispatch
+        from little_loops.runner_spec import RunnerType
+
+        retryable, reason = _classify_dispatch(RunnerType.CMD, {"error": None}, timed_out=True)
+        assert retryable is False
+
+    def test_cmd_timeout_only_stderr_is_not_retryable(self) -> None:
+        """A non-timed-out CMD failure whose stderr merely contains the word
+        "timeout" (e.g. a pytest failure line) must not be retried."""
+        from little_loops.cli.queue import _classify_dispatch
+        from little_loops.runner_spec import RunnerType
+
+        retryable, reason = _classify_dispatch(
+            RunnerType.CMD, {"stderr": "test_timeout_x FAILED", "error": None}, timed_out=False
+        )
+        assert retryable is False
+        assert reason == "Command timeout"
+
+    def test_retryable_reason_is_retried(self) -> None:
+        from little_loops.cli.queue import _classify_dispatch
+        from little_loops.runner_spec import RunnerType
+
+        retryable, reason = _classify_dispatch(
+            RunnerType.CMD, {"stderr": "429 too many requests", "error": None}, timed_out=False
+        )
+        assert retryable is True
+        assert reason == "API quota or rate limit exceeded"
+
+    def test_real_error_is_not_retryable(self) -> None:
+        from little_loops.cli.queue import _classify_dispatch
+        from little_loops.runner_spec import RunnerType
+
+        retryable, reason = _classify_dispatch(
+            RunnerType.CMD, {"stderr": "AssertionError: nope", "error": None}, timed_out=False
+        )
+        assert retryable is False
+
+    def test_loop_terminal_failure_is_not_retryable(self) -> None:
+        from little_loops.cli.queue import _classify_dispatch
+        from little_loops.runner_spec import RunnerType
+
+        retryable, reason = _classify_dispatch(
+            RunnerType.LOOP, {"error": "terminal failure", "stderr": ""}, timed_out=False
+        )
+        assert retryable is False
+
+    def test_loop_launch_failure_is_retryable_when_reason_matches(self) -> None:
+        """A LOOP entry that failed to *launch* (FileNotFoundError) is not a
+        `terminal failure`, so it falls through to ordinary classification."""
+        from little_loops.cli.queue import _classify_dispatch
+        from little_loops.runner_spec import RunnerType
+
+        retryable, reason = _classify_dispatch(
+            RunnerType.LOOP,
+            {"error": "[Errno 2] No such file or directory: 'll-loop'", "stderr": ""},
+            timed_out=False,
+        )
+        assert retryable is False  # not a retryable-reasons match, but not the LOOP-terminal path
+
+
+class TestCmdRunRetryClassification:
+    """ENH-3416: `_drain_once`'s post-failure classification branch."""
+
+    def test_retryable_failure_schedules_backoff(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+
+        with patch("little_loops.queue_store._utcnow", return_value="2026-01-01T00:00:00Z"):
+            with patch(
+                "little_loops.runner_spec.run_action",
+                return_value=RunnerResult(stdout="", stderr="429 too many requests", exit_code=1),
+            ):
+                with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                    main_queue()
+
+        entry = get_entry(entry_id)
+        assert entry is not None
+        assert entry.status == "pending"
+        assert entry.attempt == 1
+        assert entry.next_attempt_at == "2026-01-01T00:00:05Z"
+
+    def test_retryable_failure_exhausts_budget_to_dead_letter(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.queue_store import QUEUE_MAX_ATTEMPTS
+
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+
+        with patch(
+            "little_loops.runner_spec.run_action",
+            return_value=RunnerResult(stdout="", stderr="connection refused", exit_code=1),
+        ):
+            for _ in range(QUEUE_MAX_ATTEMPTS):
+                # Clear any backoff deadline so the next run picks it straight up.
+                from little_loops.queue_store import connect
+
+                conn = connect(DEFAULT_DB_PATH)
+                try:
+                    conn.execute(
+                        "UPDATE queue_entries SET next_attempt_at = NULL WHERE id = ?",
+                        (entry_id,),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+                with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                    main_queue()
+
+        entry = get_entry(entry_id)
+        assert entry is not None
+        assert entry.status == "dead_letter"
+        assert entry.result is not None
+        assert "connection refused" in entry.result["error"] or entry.result["error"]
+
+    def test_command_timeout_stderr_lands_failed_not_pending(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+
+        with patch(
+            "little_loops.runner_spec.run_action",
+            return_value=RunnerResult(stdout="", stderr="test_timeout_x FAILED", exit_code=1),
+        ):
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                main_queue()
+
+        assert get_entry(entry_id).status == "failed"  # type: ignore[union-attr]
+
+    def test_backing_off_entry_is_skipped_while_eligible_siblings_dispatch(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        backing_off_id = _add_and_get_id(capsys, "backing-off")
+        _add_and_get_id(capsys, "eligible")
+
+        from little_loops.queue_store import connect
+
+        conn = connect(DEFAULT_DB_PATH)
+        try:
+            conn.execute(
+                "UPDATE queue_entries SET next_attempt_at = '2999-01-01T00:00:00Z' WHERE id = ?",
+                (backing_off_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        dispatched: list[str] = []
+
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
+            dispatched.append(spec.target)  # type: ignore[attr-defined]
+            return RunnerResult(stdout="ok", stderr="", exit_code=0)
+
+        with patch("little_loops.runner_spec.run_action", side_effect=fake_run_action):
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                result = main_queue()
+
+        assert result == 0
+        assert dispatched == ["eligible"]
+        assert get_entry(backing_off_id).status == "pending"  # type: ignore[union-attr]
+
+
+class TestCmdRunForceStopCancels:
+    """ENH-3416: force_stop now marks the interrupted entry `cancelled`, not `failed`."""
+
+    def test_force_stop_marks_cancelled_with_reason(self) -> None:
+        import threading
+
+        from little_loops.cli.queue import _drain_once
+        from little_loops.queue_store import add_entry
+        from little_loops.runner_spec import ActionSpec, RunnerType
+
+        entry = add_entry(ActionSpec(name="x", runner=RunnerType.CMD, target="x"))
+
+        stop = threading.Event()
+        force_stop = threading.Event()
+        force_stop.set()
+
+        with patch(
+            "little_loops.runner_spec.run_action",
+            return_value=RunnerResult(stdout="partial", stderr="", exit_code=0),
+        ):
+            _drain_once(stop, force_stop)
+
+        fetched = get_entry(entry.id)
+        assert fetched is not None
+        assert fetched.status == "cancelled"
+        assert fetched.result is not None
+        assert fetched.result["reason"] == "interrupted by operator"
+        assert fetched.result["stdout"] == "partial"
+
+
+class TestCancelRaceLock:
+    """ENH-3416: an operator cancel mid-dispatch beats the drainer's completion write."""
+
+    def test_cancel_during_dispatch_wins_over_success(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.queue_store import cancel_entry
+
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
+            cancel_entry(entry_id, "operator cancelled mid-dispatch")
+            return RunnerResult(stdout="ok", stderr="", exit_code=0)
+
+        with patch("little_loops.runner_spec.run_action", side_effect=fake_run_action):
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                result = main_queue()
+
+        assert result == 0
+        entry = get_entry(entry_id)
+        assert entry is not None
+        assert entry.status == "cancelled"
+
+    def test_reclaim_during_dispatch_wins_over_success(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A reclaim mid-dispatch re-queues the entry (status='pending'), so a
+        second drain cycle would legitimately re-claim and redispatch it —
+        drive `_drain_once` directly for one entry instead of `cmd_run`'s
+        drain-until-empty loop, to isolate the single guard-miss write."""
+        import threading
+
+        from little_loops.cli.queue import _drain_once
+        from little_loops.queue_store import reset_to_pending
+
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+
+        def fake_run_action(spec: object, *, run_id: str | None = None) -> RunnerResult:
+            reset_to_pending(entry_id)
+            return RunnerResult(stdout="ok", stderr="", exit_code=0)
+
+        stop = threading.Event()
+        force_stop = threading.Event()
+        calls = {"n": 0}
+
+        def _on_entry(entry: object, record: dict[str, Any]) -> None:
+            calls["n"] += 1
+            if calls["n"] >= 1:
+                stop.set()
+
+        with patch("little_loops.runner_spec.run_action", side_effect=fake_run_action):
+            _drain_once(stop, force_stop, on_entry=_on_entry)
+
+        entry = get_entry(entry_id)
+        assert entry is not None
+        assert entry.status == "pending"
+
+
+class TestCmdCancel:
+    """ENH-3416: `ll-queue cancel <id> [--reason TEXT]`."""
+
+    def test_cancels_pending_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+
+        with patch(
+            "sys.argv", ["ll-queue", "cancel", entry_id, "--reason", "no longer needed", "--json"]
+        ):
+            result = main_queue()
+
+        assert result == 0
+        entry = get_entry(entry_id)
+        assert entry is not None
+        assert entry.status == "cancelled"
+        assert entry.result == {"reason": "no longer needed"}
+
+    def test_cancels_running_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id)
+
+        with patch("sys.argv", ["ll-queue", "cancel", entry_id, "--json"]):
+            result = main_queue()
+
+        assert result == 0
+        assert get_entry(entry_id).status == "cancelled"  # type: ignore[union-attr]
+
+    def test_refuses_terminal_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id)
+        update_entry_result(entry_id, "done", {"exit_code": 0})
+
+        with patch("sys.argv", ["ll-queue", "cancel", entry_id, "--json"]):
+            result = main_queue()
+
+        assert result == 1
+        assert get_entry(entry_id).status == "done"  # type: ignore[union-attr]
+
+    def test_unknown_id_returns_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch("sys.argv", ["ll-queue", "cancel", "does-not-exist-00", "--json"]):
+            result = main_queue()
+
+        assert result == 1
+
+
+class TestStatusColorLock:
+    """ENH-3416: `_STATUS_COLOR` stays in sync with `QUEUE_STATUSES`."""
+
+    def test_status_color_keys_match_queue_statuses(self) -> None:
+        from little_loops.cli.queue import _STATUS_COLOR
+        from little_loops.queue_store import QUEUE_STATUSES
+
+        assert set(_STATUS_COLOR.keys()) == QUEUE_STATUSES
 
 
 class TestWatchNdjsonFlush:

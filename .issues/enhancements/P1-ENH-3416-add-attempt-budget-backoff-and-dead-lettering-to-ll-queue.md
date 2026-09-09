@@ -3,8 +3,9 @@ id: ENH-3416
 title: Add attempt budget, backoff, and dead-lettering to ll-queue
 type: ENH
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-08'
+completed_at: '2026-09-09T06:23:15Z'
 labels:
 - queue
 - reliability
@@ -558,11 +559,34 @@ guards are not in play.
 
 _Added by `/ll:confidence-check` on 2026-09-08 against the prior revision; scores in frontmatter are stale pending a re-run. The three UNRESOLVED items it flagged (constant values, retryability taxonomy, overflow rules) are settled or cut in Design Decisions above._
 
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/queue_store.py`: `QUEUE_STATUSES`/`QUEUE_TERMINAL_STATUSES`/`QUEUE_RETRYABLE_REASONS` frozensets, `QUEUE_MAX_ATTEMPTS`/`QUEUE_BACKOFF_BASE_S`/`QUEUE_BACKOFF_CEILING_S` constants, `_utcnow()` time seam, `compute_backoff_s()`, `attempt`/`next_attempt_at` `QueueEntry` fields and `_MIGRATIONS[2]` (`SCHEMA_VERSION = 3`), `claim_entry` attempt-increment + time gate, `update_entry_result`'s `AND status='running'` guard, new `schedule_retry`/`dead_letter_entry`/`cancel_entry`/`revive_entry`.
+- `scripts/little_loops/cli/queue.py`: `_classify_dispatch`, `_drain_once`'s eligibility filter/classification branch/force_stop→`cancel_entry`/guard-miss re-read, `_reclaim_stale`'s budget check + `(reclaimed, dead_lettered)` return, `_report_reclaim`, `cmd_run`'s backing-off report, `cmd_requeue` widening, new `cmd_cancel` + `cancel` subparser, `_STATUS_COLOR`/`cmd_status`/`_format_action_summary` additions, docstring wording (`failed` → `cancelled` for the force_stop path).
+- `scripts/little_loops/mcp_server/tools.py`: `_tool_queue_requeue` widened guard + `changes[].from`, `queue_list`/`queue_requeue` tool descriptions.
+- Tests: `test_queue_store.py`, `test_cli_queue.py`, `test_cli_queue_run.py`, `test_feat_queue_mcp_tools.py`, `test_cli_surface.py` — new coverage for every AC plus the three lock tests (retryable-join, constants, status-set) and the migration test; three pre-existing tests adjusted from raw `update_entry_result(...)` status-setting to `claim_entry()` to satisfy the new completion-write guard.
+- Docs: `docs/ARCHITECTURE.md`, `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/MCP_SERVER_GUIDE.md`.
+- Out of scope, per the issue's own Scope Boundaries: `queue_cancel` MCP tool (flagged optional), overflow/trimming, a cross-entry circuit breaker, jittered backoff.
+
+### Verification Results
+- Tests: PASS (167 queue-suite tests; full suite 22858 passed / 6 pre-existing failures unrelated to this change, confirmed via `git stash` against unmodified `main`)
+- Lint: PASS (`ruff check`, `ruff format` on touched files)
+- Types: PASS (`mypy` on `queue_store.py`, `cli/queue.py`, `mcp_server/tools.py`)
+- Integration: PASS (MCP `queue_requeue` widening exercised via `test_feat_queue_mcp_tools.py`)
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T06:22:10 - `8a0a25f7-a30c-4446-aef9-6e247885dd6f.jsonl`
 - `/ll:confidence-check` - 2026-09-09T04:52:13 - `debf5f47-0169-4d1d-a557-8821a64c6f0c.jsonl`
 - manual review - 2026-09-08 - added cancel-vs-dispatch status guard, `QUEUE_RETRYABLE_REASONS` allowlist + LOOP terminal rule, `_utcnow` seam, corrected owner-death message / `next_attempt_at` base / CMD-timeout-stderr claim, `cancel_entry(extra=)`, `result.previous` on revive, `list` backoff suffix, two-count reclaim report, dropped grep-shaped constants test
 - `/ll:confidence-check` - 2026-09-09T04:38:32 - `4a00b9f5-2c1a-4bb9-8901-1abcda8ab946.jsonl`

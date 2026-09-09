@@ -12,17 +12,28 @@ import pytest
 
 from little_loops.queue_store import (
     PRIORITY_TIERS,
+    QUEUE_BACKOFF_BASE_S,
+    QUEUE_BACKOFF_CEILING_S,
+    QUEUE_MAX_ATTEMPTS,
+    QUEUE_RETRYABLE_REASONS,
+    QUEUE_STATUSES,
+    QUEUE_TERMINAL_STATUSES,
     SCHEMA_VERSION,
     AmbiguousEntryIdError,
     add_entry,
+    cancel_entry,
     claim_entry,
+    compute_backoff_s,
     connect,
+    dead_letter_entry,
     ensure_db,
     get_entry,
     list_entries,
     remove_entry,
     reset_to_pending,
     resolve_entry,
+    revive_entry,
+    schedule_retry,
     update_entry_result,
 )
 from little_loops.runner_spec import ActionSpec, RunnerType
@@ -300,6 +311,7 @@ class TestUpdateEntryResult:
     def test_updates_status_and_result(self, tmp_path: Path) -> None:
         db = tmp_path / "queue.db"
         entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
         updated = update_entry_result(entry.id, "done", {"exit_code": 0, "error": None}, db_path=db)
         assert updated is True
 
@@ -311,6 +323,23 @@ class TestUpdateEntryResult:
         db = tmp_path / "queue.db"
         ensure_db(db)
         assert update_entry_result("does-not-exist", "done", None, db_path=db) is False
+
+    def test_write_to_non_running_row_returns_false_and_leaves_row_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        """New status-guarded completion write: a `pending` row is not a valid
+        target for a completion write (only `_drain_once` transitions
+        running -> terminal); the row must be left untouched on a guard miss."""
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)  # still pending, never claimed
+
+        updated = update_entry_result(entry.id, "done", {"exit_code": 0}, db_path=db)
+        assert updated is False
+
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.status == "pending"
+        assert fetched.result is None
 
 
 class TestClaimEntry:
@@ -360,6 +389,291 @@ class TestClaimEntry:
 
         assert sorted(results) == [False, True]
         assert get_entry(entry.id, db).status == "running"
+
+    def test_claim_increments_attempt(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        assert entry.attempt == 0
+
+        claim_entry(entry.id, db_path=db)
+        assert get_entry(entry.id, db).attempt == 1
+
+        # A dead-drainer reclaim (reset_to_pending) followed by a second claim
+        # increments again -- attempt survives a dead drainer with no extra
+        # bookkeeping.
+        reset_to_pending(entry.id, db_path=db)
+        claim_entry(entry.id, db_path=db)
+        assert get_entry(entry.id, db).attempt == 2
+
+    def test_claim_refuses_row_with_future_next_attempt_at(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
+        schedule_retry(entry.id, "boom", "2999-01-01T00:00:00Z", db_path=db)
+
+        assert claim_entry(entry.id, db_path=db, now="2026-01-01T00:00:00Z") is False
+        assert get_entry(entry.id, db).status == "pending"
+
+    def test_claim_accepts_row_whose_next_attempt_at_has_elapsed(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
+        schedule_retry(entry.id, "boom", "2026-01-01T00:00:00Z", db_path=db)
+
+        assert claim_entry(entry.id, db_path=db, now="2026-06-01T00:00:00Z") is True
+        assert get_entry(entry.id, db).status == "running"
+
+
+class TestComputeBackoffS:
+    def test_doubling_sequence_with_ceiling(self) -> None:
+        assert [compute_backoff_s(n) for n in range(1, 8)] == [5, 10, 20, 40, 80, 160, 300]
+
+
+class TestConstantsLock:
+    """Guards the policy constants against silent drift (ENH-3416 AC)."""
+
+    def test_constants_match_declared_values(self) -> None:
+        assert QUEUE_MAX_ATTEMPTS == 5
+        assert QUEUE_BACKOFF_BASE_S == 5
+        assert QUEUE_BACKOFF_CEILING_S == 300
+
+    def test_max_attempts_greater_than_one(self) -> None:
+        assert QUEUE_MAX_ATTEMPTS > 1
+
+
+class TestStatusVocabulary:
+    def test_statuses_and_terminal_subset(self) -> None:
+        assert QUEUE_STATUSES == {
+            "pending",
+            "running",
+            "done",
+            "failed",
+            "dead_letter",
+            "cancelled",
+        }
+        assert QUEUE_TERMINAL_STATUSES == {"done", "failed", "dead_letter", "cancelled"}
+        assert QUEUE_TERMINAL_STATUSES.issubset(QUEUE_STATUSES)
+
+
+class TestRetryableReasonsJoinLock:
+    """Guards QUEUE_RETRYABLE_REASONS against drift in classify_failure's reason text."""
+
+    def test_every_retryable_reason_is_actually_produced(self) -> None:
+        from little_loops.issue_lifecycle import classify_failure
+
+        produced = {
+            classify_failure("429 too many requests", 1)[1],
+            classify_failure("connection refused", 1)[1],
+            classify_failure("the server had an error", 1)[1],
+            classify_failure("", 143, result_seen=True)[1],
+        }
+        assert QUEUE_RETRYABLE_REASONS.issubset(produced)
+
+    def test_command_timeout_is_not_retryable(self) -> None:
+        assert "Command timeout" not in QUEUE_RETRYABLE_REASONS
+
+
+class TestScheduleRetry:
+    def test_returns_running_entry_to_pending_with_next_attempt_at(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
+
+        assert schedule_retry(entry.id, "429", "2026-01-01T00:00:05Z", db_path=db) is True
+
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.status == "pending"
+        assert fetched.next_attempt_at == "2026-01-01T00:00:05Z"
+        assert fetched.result == {"error": "429"}
+        assert fetched.claimed_at is None
+        assert fetched.owner_pid is None
+
+    def test_guard_miss_on_non_running_row_returns_false(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)  # still pending
+        assert schedule_retry(entry.id, "429", "2026-01-01T00:00:05Z", db_path=db) is False
+        assert get_entry(entry.id, db).status == "pending"
+
+
+class TestDeadLetterEntry:
+    def test_moves_running_entry_to_dead_letter(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
+
+        assert dead_letter_entry(entry.id, "budget exhausted", db_path=db) is True
+
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.status == "dead_letter"
+        assert fetched.result == {"error": "budget exhausted"}
+        assert fetched.claimed_at is None
+        assert fetched.owner_pid is None
+
+    def test_guard_miss_on_non_running_row_returns_false(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)  # still pending
+        assert dead_letter_entry(entry.id, "boom", db_path=db) is False
+        assert get_entry(entry.id, db).status == "pending"
+
+
+class TestCancelEntry:
+    def test_cancels_pending_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+
+        assert cancel_entry(entry.id, "no longer needed", db_path=db) is True
+
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.status == "cancelled"
+        assert fetched.result == {"reason": "no longer needed"}
+
+    def test_cancels_running_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
+
+        assert cancel_entry(entry.id, "interrupted by operator", db_path=db) is True
+        assert get_entry(entry.id, db).status == "cancelled"
+
+    def test_extra_dict_merges_under_reason(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
+
+        cancel_entry(
+            entry.id,
+            "interrupted by operator",
+            db_path=db,
+            extra={"exit_code": 1, "stdout": "partial"},
+        )
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.result == {
+            "exit_code": 1,
+            "stdout": "partial",
+            "reason": "interrupted by operator",
+        }
+
+    def test_guard_miss_on_terminal_row_returns_false(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
+        update_entry_result(entry.id, "done", {"exit_code": 0}, db_path=db)
+
+        assert cancel_entry(entry.id, "too late", db_path=db) is False
+        assert get_entry(entry.id, db).status == "done"
+
+
+class TestReviveEntry:
+    def test_revives_dead_letter_entry_with_fresh_budget(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db)
+        dead_letter_entry(entry.id, "budget exhausted", db_path=db)
+
+        assert revive_entry(entry.id, db_path=db) is True
+
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.status == "pending"
+        assert fetched.attempt == 0
+        assert fetched.next_attempt_at is None
+        assert fetched.result == {"previous": {"error": "budget exhausted"}}
+
+    def test_revives_failed_and_cancelled_entries(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        failed = add_entry(_spec("f"), db_path=db)
+        claim_entry(failed.id, db_path=db)
+        update_entry_result(failed.id, "failed", {"error": "boom"}, db_path=db)
+        assert revive_entry(failed.id, db_path=db) is True
+        assert get_entry(failed.id, db).status == "pending"
+
+        cancelled = add_entry(_spec("c"), db_path=db)
+        cancel_entry(cancelled.id, "stop", db_path=db)
+        assert revive_entry(cancelled.id, db_path=db) is True
+        assert get_entry(cancelled.id, db).status == "pending"
+
+    def test_revive_with_no_prior_result_leaves_result_null(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        cancel_entry(entry.id, "stop", db_path=db)
+        update_entry_result(entry.id, "cancelled", None, db_path=db)
+        # cancel_entry always sets a reason, so force a null-result terminal
+        # row directly to cover the "no prior result" branch.
+        conn = connect(db)
+        try:
+            conn.execute("UPDATE queue_entries SET result = NULL WHERE id = ?", (entry.id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+        assert revive_entry(entry.id, db_path=db) is True
+        assert get_entry(entry.id, db).result is None
+
+    def test_returns_false_for_unknown_id(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        ensure_db(db)
+        assert revive_entry("does-not-exist", db_path=db) is False
+
+
+class TestV2ToV3Migration:
+    """ENH-3416: v2 -> v3 adds attempt/next_attempt_at to queue_entries."""
+
+    def test_v2_to_v3_migration(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        from little_loops.queue_store import _MIGRATIONS
+
+        conn = sqlite3.connect(str(db))
+        try:
+            for script in _MIGRATIONS[:2]:
+                conn.executescript(script)
+            conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '2')")
+            conn.commit()
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(queue_entries)")}
+        finally:
+            conn.close()
+
+        assert int(version[0]) == SCHEMA_VERSION
+        assert {"attempt", "next_attempt_at"}.issubset(columns)
+
+    def test_pre_existing_rows_read_back_with_attempt_zero(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        from little_loops.queue_store import _MIGRATIONS
+
+        conn = sqlite3.connect(str(db))
+        try:
+            for script in _MIGRATIONS[:2]:
+                conn.executescript(script)
+            conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '2')")
+            conn.execute(
+                "INSERT INTO queue_entries(id, action, enqueued_at, priority, status, result) "
+                "VALUES ('legacy', '{}', '2026-01-01T00:00:00Z', 3, 'pending', NULL)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute(
+                "SELECT attempt, next_attempt_at FROM queue_entries WHERE id = 'legacy'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row[0] == 0
+        assert row[1] is None
 
 
 class TestConnect:
@@ -431,6 +745,20 @@ class TestResetToPending:
         assert reset.status == "pending"
         assert reset.owner_pid is None
         assert reset.claimed_at is None
+
+    def test_does_not_touch_attempt_or_next_attempt_at(self, tmp_path: Path) -> None:
+        """reset_to_pending is the reclaim path, not the backoff path (ENH-3416):
+        an owner death is a slot to refill, not a backoff-eligible failure."""
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db, owner_pid=4242)
+        assert get_entry(entry.id, db).attempt == 1
+
+        reset_to_pending(entry.id, db_path=db)
+        reset = get_entry(entry.id, db)
+        assert reset is not None
+        assert reset.attempt == 1
+        assert reset.next_attempt_at is None
 
     def test_leaves_non_running_entry_untouched(self, tmp_path: Path) -> None:
         db = tmp_path / "queue.db"

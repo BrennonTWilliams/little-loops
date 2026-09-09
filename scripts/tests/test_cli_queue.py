@@ -296,12 +296,12 @@ class TestCmdList:
     def test_list_running_entry_shows_elapsed_time(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from little_loops.queue_store import update_entry_result
+        from little_loops.queue_store import claim_entry
 
         with patch("sys.argv", ["ll-queue", "add", "audit-docs", "--json"]):
             main_queue()
         entry_id = json.loads(capsys.readouterr().out)["id"]
-        update_entry_result(entry_id, "running", None)
+        claim_entry(entry_id)
 
         with patch("sys.argv", ["ll-queue", "list"]):
             result = main_queue()
@@ -326,6 +326,8 @@ class TestCmdList:
         assert data[0]["action"]["args"] == {"loop_input": "BUG-1"}
         assert data[0]["action"]["timeout"] is None
         assert "summary" not in data[0]
+        assert data[0]["attempt"] == 0
+        assert data[0]["nextAttemptAt"] is None
 
 
 class TestCmdStatus:
@@ -373,12 +375,12 @@ class TestCmdRemove:
         assert list_entries() == []
 
     def test_remove_non_pending_requires_force(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from little_loops.queue_store import update_entry_result
+        from little_loops.queue_store import claim_entry
 
         with patch("sys.argv", ["ll-queue", "add", "audit-docs", "--json"]):
             main_queue()
         entry_id = json.loads(capsys.readouterr().out)["id"]
-        update_entry_result(entry_id, "running", None)
+        claim_entry(entry_id)
 
         with patch("sys.argv", ["ll-queue", "remove", entry_id, "--json"]):
             result = main_queue()

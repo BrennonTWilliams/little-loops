@@ -4071,7 +4071,7 @@ ll-compact-session abc123-session-id --json    # Machine-readable result
 
 ### ll-queue
 
-Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from [`ll-loop queue`](#queue-entries-loopsqueue)'s PID-liveness marker mechanism, which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Schema: `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid}`, ordered by priority tier then FIFO within tier.
+Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from [`ll-loop queue`](#queue-entries-loopsqueue)'s PID-liveness marker mechanism, which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Schema: `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid, attempt, nextAttemptAt}`, ordered by priority tier then FIFO within tier. Status is one of `pending`, `running`, `done`, `failed`, `dead_letter`, `cancelled` (ENH-3416) — the first two are non-terminal, the rest are all `requeue`-able.
 
 **Subcommands:**
 
@@ -4081,8 +4081,9 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 | `list` | List all entries, ordered by priority then FIFO |
 | `status ID` | Show one entry's state and result by full id or 8+-char prefix |
 | `remove ID` | Delete a `pending` entry by full id or 8+-char prefix |
-| `run` | Serially dequeue and dispatch all `pending` entries in priority/FIFO order; `--watch` (FEAT-2930) keeps it running |
-| `requeue ID [--force]` | (FEAT-2930) Return a stranded `running` entry to `pending` |
+| `run` | Serially dequeue and dispatch all eligible `pending` entries in priority/FIFO order; `--watch` (FEAT-2930) keeps it running |
+| `requeue ID [--force]` | (FEAT-2930) Return a stranded `running` entry to `pending`; (ENH-3416) also revives a terminal `dead_letter`/`failed`/`cancelled` entry with a fresh attempt budget |
+| `cancel ID [--reason TEXT]` | (ENH-3416) Move a `pending`/`running` entry to terminal `cancelled`; does not signal an in-flight process |
 
 **`add` flags:**
 
@@ -4107,9 +4108,10 @@ Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolved 
 
 Each row appends an args/timeout summary to the `runner:target` column: the entry's
 `loop_input` (if any), the effective `timeout` (`timeout=∞` for the unbounded `LOOP`
-default), and — for `running` entries — elapsed time since `enqueuedAt`. Truncated to
-40 chars unless `--wide` is passed; full values remain available via `ll-queue status
-<id> --json`.
+default), `attempt=N` when `attempt > 0` and `retry in Xs` when `nextAttemptAt` is in
+the future (ENH-3416), and — for `running` entries — elapsed time since `enqueuedAt`.
+Truncated to 40 chars unless `--wide` is passed; full values remain available via
+`ll-queue status <id> --json`.
 
 **`status`/`remove` flags:**
 
@@ -4119,9 +4121,9 @@ default), and — for `running` entries — elapsed time since `enqueuedAt`. Tru
 | `--force` | (`remove` only) remove even if the entry is not `pending` |
 | `--json` | Output as JSON |
 
-**`run`** (FEAT-2906): `SKILL`/`CMD`/`MCP`/`PROMPT` entries dispatch through `run_action()`; `LOOP` entries are intercepted beforehand and driven via a subprocess `ll-loop run <target> [input]` shell-out (process isolation, matching `worker_pool.py`/`cli/sprint/run.py`'s precedent) — never through `run_action()`, whose contract explicitly refuses `RunnerType.LOOP`. Exit code `0` → `done`; `FAILURE_TERMINAL_EXIT_CODE` (2) or any other nonzero → `failed`, with `stdout`/`stderr` captured into the entry's `result`.
+**`run`** (FEAT-2906): `SKILL`/`CMD`/`MCP`/`PROMPT` entries dispatch through `run_action()`; `LOOP` entries are intercepted beforehand and driven via a subprocess `ll-loop run <target> [input]` shell-out (process isolation, matching `worker_pool.py`/`cli/sprint/run.py`'s precedent) — never through `run_action()`, whose contract explicitly refuses `RunnerType.LOOP`. A successful dispatch (exit code `0`, no timeout, no error) → `done`. A failed dispatch is classified (ENH-3416): non-retryable (an explicit timeout, a `LOOP`'s own exhausted internal retry budget, or a `classify_failure()` reason outside the narrow retryable allowlist) → `failed`, unchanged from pre-ENH-3416 behavior; retryable with budget remaining → back to `pending` with a backoff `nextAttemptAt`; retryable and exhausted (5 attempts) → terminal `dead_letter`. `stdout`/`stderr` are captured into the entry's `result` in every case. Only entries whose `nextAttemptAt` has elapsed (or is unset) are dispatched — a one-shot `run` reports how many are still backing off.
 
-Without `--watch`, this behavior is unchanged: drain what's pending, then exit. With `--watch` (FEAT-2930), it becomes a long-lived drainer — after draining, it sleep-polls for new entries (`--poll-interval`, default 3s) instead of exiting. Shutdown is two-stage: a first `SIGINT`/`SIGTERM` lets the in-flight entry finish and records its real result, then exits 0 without claiming further work; a second forwards `SIGTERM` to an in-flight `LOOP` child's process group (launched with `start_new_session=True`), marks that entry `failed` with `error: "interrupted by operator"`, and exits 0. An idle wait (no entry in flight) exits 0 immediately on either signal. On startup and each idle poll, a `--watch` drainer also sweeps `running` entries whose `owner_pid` is dead back to `pending` (psutil identity-checked liveness, same approach as `ll-loop queue`'s FEAT-2684 mechanism but parameterized for `ll-queue`'s own process markers) — a `SIGKILL`ed/OOM-killed/rebooted owner is the normal failure mode for a long-lived drainer, not a rare one.
+Without `--watch`, this behavior is unchanged: drain what's eligible, then exit. With `--watch` (FEAT-2930), it becomes a long-lived drainer — after draining, it sleep-polls for new entries (`--poll-interval`, default 3s) instead of exiting. Shutdown is two-stage: a first `SIGINT`/`SIGTERM` lets the in-flight entry finish and records its real result, then exits 0 without claiming further work; a second forwards `SIGTERM` to an in-flight `LOOP` child's process group (launched with `start_new_session=True`), marks that entry `cancelled` with `reason: "interrupted by operator"` (ENH-3416; the dispatch's `exit_code`/`stdout`/`stderr` are preserved alongside it), and exits 0. An idle wait (no entry in flight) exits 0 immediately on either signal. On startup and each idle poll, a `--watch` drainer also sweeps `running` entries whose `owner_pid` is dead back to `pending` (psutil identity-checked liveness, same approach as `ll-loop queue`'s FEAT-2684 mechanism but parameterized for `ll-queue`'s own process markers) — a `SIGKILL`ed/OOM-killed/rebooted owner is the normal failure mode for a long-lived drainer, not a rare one. An entry whose `attempt` has already reached the budget is dead-lettered instead of reclaimed again (ENH-3416), and the report distinguishes the two counts: `Reclaimed N stale entries, dead-lettered M`.
 
 **`--json` under `--watch` is NDJSON, a deliberate departure from this file's single-array `--json` convention**: one compact JSON object per line, one line per processed entry, flushed immediately — a watcher never reaches a natural end-of-list, so it can't emit one accumulated array. Without `--watch`, `--json` is unchanged (single array).
 
@@ -4136,10 +4138,20 @@ Without `--watch`, this behavior is unchanged: drain what's pending, then exit. 
 | Flag | Description |
 |------|-------------|
 | `ID` | Entry id — full uuid or an 8+-char prefix (required, positional) |
-| `--force` | Requeue even if the owner process still appears alive |
+| `--force` | (`running` entries only) Requeue even if the owner process still appears alive |
 | `--json` | Output as JSON |
 
-`requeue` (FEAT-2930) is the manual escape hatch for a `running` entry whose owner is gone or wedged. Without `--force`, it refuses (leaving the entry `running`) when the owner still looks alive — that's the automatic stale-reclaim sweep's job. `--force` is for the case the sweep can't decide: owner still alive but wedged, per the operator's own judgement. Errors if the entry isn't `running` at all.
+`requeue` (FEAT-2930) is the manual escape hatch for a `running` entry whose owner is gone or wedged. Without `--force`, it refuses (leaving the entry `running`) when the owner still looks alive — that's the automatic stale-reclaim sweep's job. `--force` is for the case the sweep can't decide: owner still alive but wedged, per the operator's own judgement. Widened (ENH-3416) to also accept a terminal `dead_letter`/`failed`/`cancelled` entry: this path ignores `--force` (no owner to check) and revives it with `attempt` reset to `0`, `nextAttemptAt` cleared, and the prior `result` preserved under `result.previous`. Errors if the entry is `pending` (nothing to requeue).
+
+**`cancel` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `ID` | Entry id — full uuid or an 8+-char prefix (required, positional) |
+| `--reason TEXT` | Reason recorded on the entry (default: `"cancelled by operator"`) |
+| `--json` | Output as JSON |
+
+`cancel` (ENH-3416) moves a `pending` or `running` entry straight to terminal `cancelled`, recording `--reason` in `result.reason`. It does **not** signal an in-flight process — killing arbitrary runner subprocesses from a second CLI process is out of scope (only the drainer holds the subprocess handle). Cancelling a `running` entry is a status-only mark: the drainer's own status-guarded completion write then no-ops against the already-`cancelled` row, and the entry stays `cancelled` regardless of how the in-flight dispatch finishes. Errors if the entry is already terminal.
 
 **Examples:**
 ```bash
@@ -4150,9 +4162,11 @@ ll-queue list --json
 ll-queue list --wide                                      # Untruncated args/timeout summary
 ll-queue status abcd1234
 ll-queue remove abcd1234 --force
-ll-queue run                                              # Execute all pending entries serially
+ll-queue run                                              # Execute all eligible pending entries serially
 ll-queue run --watch --poll-interval 5                    # Long-lived drainer, polling every 5s
 ll-queue requeue abcd1234                                 # Return a stranded running entry to pending
+ll-queue requeue abcd1234                                 # Or revive a dead_letter/failed/cancelled entry
+ll-queue cancel abcd1234 --reason "no longer needed"      # Cancel a pending or running entry
 ```
 
 ---
@@ -5375,8 +5389,8 @@ real one.
 | | `apply` | boolean | no (default `false`) | Set `true` to actually queue the entry |
 | `queue_remove` | `id` | string | **yes** | Entry id (full uuid or 8+-char prefix); must be `pending` |
 | | `apply` | boolean | no (default `false`) | Set `true` to actually remove the entry |
-| `queue_requeue` | `id` | string | **yes** | Entry id (full uuid or 8+-char prefix); must be `running` |
-| | `apply` | boolean | no (default `false`) | Set `true` to actually requeue the entry |
+| `queue_requeue` | `id` | string | **yes** | Entry id (full uuid or 8+-char prefix); must be `running`/`dead_letter`/`failed`/`cancelled` |
+| | `apply` | boolean | no (default `false`) | Set `true` to actually requeue/revive the entry |
 | `loop_start` | `loop` | string | **yes** | Loop name to run |
 | | `context` | string[] | no | `KEY=VALUE` context overrides, mirrors `ll-loop run --context` |
 

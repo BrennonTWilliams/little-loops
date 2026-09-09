@@ -613,13 +613,16 @@ def _tool_queue_remove(arguments: dict[str, Any], *, project_root: Path, apply: 
 
 
 def _tool_queue_requeue(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
-    """Return a stranded `running` entry to `pending` (`ll-queue requeue`).
+    """Return a stranded `running` entry to `pending`, or revive a terminal one (`ll-queue requeue`).
 
     `--force` (requeue even if the owner process still appears alive) is deliberately not
     exposed, for the same reason `queue_remove` drops `--force`: it is a rare escape-hatch
     flag, not part of tier 2's coarse brief.
+
+    Widened (ENH-3416) to match `cmd_requeue`: also accepts `dead_letter`/`failed`/`cancelled`
+    entries, reviving them via `queue_store.revive_entry` with a fresh attempt budget.
     """
-    from little_loops.queue_store import reset_to_pending, resolve_entry
+    from little_loops.queue_store import reset_to_pending, resolve_entry, revive_entry
 
     entry_id = str(arguments.get("id") or "")
     if not entry_id:
@@ -628,21 +631,22 @@ def _tool_queue_requeue(arguments: dict[str, Any], *, project_root: Path, apply:
     entry = resolve_entry(entry_id, root=project_root)
     if entry is None:
         raise ValueError(f"Queue entry not found: {entry_id!r}")
-    if entry.status != "running":
+    if entry.status not in ("running", "dead_letter", "failed", "cancelled"):
         raise ValueError(
-            f"Queue entry {entry.id[:8]} is {entry.status!r}, not 'running'; "
-            "queue_requeue only requeues running entries"
+            f"Queue entry {entry.id[:8]} is {entry.status!r}, not running/dead_letter/failed/"
+            "cancelled; queue_requeue cannot requeue it"
         )
 
     target = {"id": entry.id, "target": entry.action.target, "status": entry.status}
+    changes = [{"field": "status", "from": entry.status, "to": "pending"}]
     if not apply:
-        return {
-            "target": target,
-            "changes": [{"field": "status", "from": "running", "to": "pending"}],
-        }
+        return {"target": target, "changes": changes}
 
-    reset_to_pending(entry.id, root=project_root)
-    return {"target": target, "changes": [{"field": "status", "from": "running", "to": "pending"}]}
+    if entry.status == "running":
+        reset_to_pending(entry.id, root=project_root)
+    else:
+        revive_entry(entry.id, root=project_root)
+    return {"target": target, "changes": changes}
 
 
 # ---------------------------------------------------------------------------------------
@@ -835,7 +839,10 @@ _TOOLS: list[types.Tool] = [
     ),
     types.Tool(
         name="queue_list",
-        description="List all persisted `ll-queue` entries (pending/running/done/failed).",
+        description=(
+            "List all persisted `ll-queue` entries "
+            "(pending/running/done/failed/dead_letter/cancelled)."
+        ),
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
     types.Tool(
@@ -1137,9 +1144,10 @@ _TOOLS: list[types.Tool] = [
     types.Tool(
         name="queue_requeue",
         description=(
-            "Return a stranded `running` `ll-queue` entry to `pending`. Dry-run by "
-            "default: without `apply: true` this reports the transition and writes "
-            "nothing. Only requeues entries in `running` state."
+            "Return a stranded `running` `ll-queue` entry to `pending`, or revive a "
+            "`dead_letter`/`failed`/`cancelled` entry with a fresh attempt budget. "
+            "Dry-run by default: without `apply: true` this reports the transition and "
+            "writes nothing."
         ),
         annotations=types.ToolAnnotations(
             read_only_hint=False,

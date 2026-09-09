@@ -176,6 +176,39 @@ def test_queue_requeue_running_entry(tmp_path, monkeypatch) -> None:
     anyio.run(run)
 
 
+def test_queue_requeue_dead_letter_entry(tmp_path, monkeypatch) -> None:
+    """ENH-3416: queue_requeue widens to accept dead_letter (and failed/cancelled)."""
+    project = _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        from little_loops.queue_store import add_entry, claim_entry, dead_letter_entry
+        from little_loops.runner_spec import ActionSpec, RunnerType
+
+        entry = add_entry(
+            ActionSpec(name="audit-docs", runner=RunnerType.CMD, target="audit-docs", args={}),
+            "P3",
+            root=project,
+        )
+        claim_entry(entry.id, db_path=project / ".ll" / "queue.db")
+        dead_letter_entry(entry.id, "budget exhausted", db_path=project / ".ll" / "queue.db")
+
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            dry = _payload(await client.call_tool("queue_requeue", {"id": entry.id}))
+            assert dry["applied"] is False
+            assert dry["changes"][0]["from"] == "dead_letter"
+
+            applied = _payload(
+                await client.call_tool("queue_requeue", {"id": entry.id, "apply": True})
+            )
+            assert applied["applied"] is True
+
+            fetched = _payload(await client.call_tool("queue_get", {"id": entry.id}))
+            assert fetched["status"] == "pending"
+            assert fetched["attempt"] == 0
+
+    anyio.run(run)
+
+
 def test_queue_tools_anchor_at_project_root_not_cwd(tmp_path, monkeypatch) -> None:
     """BUG-3181-style regression: the server's process cwd can differ from `project_root`
     (ENH-3171); queue tools must resolve `.ll/queue.db` against `project_root`, not

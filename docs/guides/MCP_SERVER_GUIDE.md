@@ -320,7 +320,9 @@ mcp-call ll-mcp/queue_list '{}'
     "status": "queued",
     "result": null,
     "claimedAt": null,
-    "ownerPid": null
+    "ownerPid": null,
+    "attempt": 0,
+    "nextAttemptAt": null
   }
 ]
 ```
@@ -339,7 +341,9 @@ mcp-call ll-mcp/queue_get '{"id": "a1b2c3d4"}'
   "status": "queued",
   "result": null,
   "claimedAt": null,
-  "ownerPid": null
+  "ownerPid": null,
+  "attempt": 0,
+  "nextAttemptAt": null
 }
 ```
 
