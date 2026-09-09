@@ -563,6 +563,7 @@ _Added by `/ll:confidence-check` on 2026-09-08 against the prior revision; score
 **Open** | Created: 2026-09-08 | Priority: P1
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T04:52:13 - `debf5f47-0169-4d1d-a557-8821a64c6f0c.jsonl`
 - manual review - 2026-09-08 - added cancel-vs-dispatch status guard, `QUEUE_RETRYABLE_REASONS` allowlist + LOOP terminal rule, `_utcnow` seam, corrected owner-death message / `next_attempt_at` base / CMD-timeout-stderr claim, `cancel_entry(extra=)`, `result.previous` on revive, `list` backoff suffix, two-count reclaim report, dropped grep-shaped constants test
 - `/ll:confidence-check` - 2026-09-09T04:38:32 - `4a00b9f5-2c1a-4bb9-8901-1abcda8ab946.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:36:14 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`

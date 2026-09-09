@@ -22,6 +22,8 @@ score_ambiguity: 10
 score_change_surface: 0
 verify_verdict: NON_VALID
 missing_artifacts: true
+spike_attempted: true
+spike_completed: true
 ---
 
 ## Summary
@@ -395,12 +397,41 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - No committed Codex rollout fixture exists yet, and the "perishable, re-capture periodically" fixture-marker convention has no precedent in the tree to copy from.
 - Learning-test target mismatch (escalated to a hard override this pass, see Gaps to Address): `codex-rollout` has no record at all, not just an unproven claim.
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-09-08_
+
+Retires the "No Duplicate Implementations" / "Complexity" outcome-risk
+factors (zero-precedent `detect`/`iter_events` lifecycle) — not the
+"Learning Test Hard Override" (`codex-rollout`), which is an external
+vendor-format claim and stays `/ll:explore-api` territory.
+
+**Retired risks**
+
+| Risk (from Outcome Risk Factors) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| No precedent for a `detect`/`iter_events` lifecycle anywhere in the repo | `TestDetectSessionsCodexSqlitePath`, `TestIterEventsDispatch` | ✓ pass |
+| Codex sqlite `threads`-query + newest-`state_*.sqlite`-selection ordering unverified | `test_detect_sessions_codex_uses_sqlite_when_present`, `test_detect_sessions_codex_picks_newest_state_db_by_name` | ✓ pass |
+| Stale `rollout_path` rows (DB outlives deleted files) could leak into results | `test_detect_sessions_codex_filters_stale_rollout_paths` | ✓ pass |
+| DB-absent / schema-mismatched fallback to date-dir scan untested, ordering could diverge from the DB path | `test_detect_sessions_codex_falls_back_to_date_scan_when_db_missing`, `test_detect_sessions_codex_falls_back_when_db_schema_mismatched`, `test_detect_sessions_codex_scan_orders_newest_date_dir_first` | ✓ pass |
+| Per-host parser dispatch could leak Claude-shaped assumptions onto Codex handles or vice versa | `test_iter_events_dispatches_by_host_without_cross_contamination` | ✓ pass |
+| Isolation guard (spike must not depend on production code to be a valid proof) | `test_lifecycle_module_has_no_production_imports` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/session_discovery_lifecycle/`
+**Verification**: 11 tests pass across 2 commands (spike AC suite +
+`test_user_messages.py -k codex` regression, unaffected).
+**Promotion**: move `SessionHandle`/`SessionEvent`/`detect_sessions`/
+`iter_events`/`parse_codex_rollout`/`parse_claude_transcript` into
+`scripts/little_loops/session_store/sessions.py` in a separate PR, per §
+Program Design and the Wiring Phase.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:spike` - 2026-09-09T04:55:35 - `f28c7c94-a5ec-4bd6-8ffd-7e716bc73371.jsonl`
 - `/ll:confidence-check` - 2026-09-09T04:42:48 - `f50721ed-199a-4145-9872-764076c5886d.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:38:38 - `4a00b9f5-2c1a-4bb9-8901-1abcda8ab946.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:36:35 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
