@@ -162,9 +162,9 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 Concrete files, callers, and conventions this issue's implementer needs, grouped below.
 
 ### Files to Modify
-- `scripts/little_loops/cli/messages.py` (`main_messages`, calls `get_project_folder(cwd)` at line 173 with **no `host=` kwarg**, then `extract_user_messages(project_folder, ...)` at line 192) — always resolves the Claude Code project folder regardless of the actual running host
-- `scripts/little_loops/user_messages.py` (`extract_user_messages`, line 638) — takes only `project_folder`/`limit`/`since`/`include_agent_sessions`/`include_response_context`, no `host` parameter; globs `*.jsonl` and parses every record against the Claude Code schema via `_parse_user_record` (line 858)
-- `scripts/little_loops/cli/ctx_stats.py` (`_compute_cache_rate_from_jsonl`, line 342; called from `main_ctx_stats` at line 753 with no `host=`) — calls `get_sessions_folder(cwd)` without `host=`, so it inherits whatever `LL_HOOK_HOST` resolves to; parses `record["message"]["usage"]` fields that are Claude Code-specific
+- `scripts/little_loops/cli/messages.py` (`main_messages`, calls `get_project_folder(cwd)` at line 173 with **no `host=` kwarg**, then `extract_user_messages(project_folder, ...)` at line 192) — always resolves the Claude Code project folder regardless of the actual running host; rewired per Option B (Decision Rationale) to obtain sessions via `detect_sessions(cwd, host)` / `iter_events` (Program Design → Call Path) rather than a bare `get_project_folder` call
+- `scripts/little_loops/user_messages.py` (`extract_user_messages`, line 638) — takes only `project_folder`/`limit`/`since`/`include_agent_sessions`/`include_response_context`, no `host` parameter; globs `*.jsonl` and parses every record against the Claude Code schema via `_parse_user_record` (line 858). This function and its sibling `extract_commands` (line 721) are the Option-B call-path consumers named in Program Design → Call Path and Implementation Step 4 — retained here as the functions to rewire onto `detect_sessions`/`iter_events`, not leftover Option-A text
+- `scripts/little_loops/cli/ctx_stats.py` (`_compute_cache_rate_from_jsonl`, line 342; called from `main_ctx_stats` at line 753 with no `host=`) — calls `get_sessions_folder(cwd)` without `host=`, so it inherits whatever `LL_HOOK_HOST` resolves to; parses `record["message"]["usage"]` fields that are Claude Code-specific. Rewired per Option B to dispatch through `detect_sessions`/`iter_events`, with Codex usage read by a separate Codex-only reader (Implementation Step 5) rather than a shared normalizer
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/logs.py` (module docstring, line 1, frames the whole file as reading only the Claude Code session-log root) — this IS `ll-logs`, the file AC #4 names, and it was absent from "Files to Modify" entirely. It has 11 direct, un-hosted `get_project_folder(...)` calls across 6 functions — `_collect_sequences` (lines 653, 658, 667), `_cmd_sequences` (693), `_cmd_extract` (774, 783), `_collect_failure_clusters` (1353, 1358, 1367), `_cmd_scan_failures` (1554), `_cmd_eval_export` (2032) — none pass `host=`, confirmed by grep (no `--host` CLI flag exists anywhere in this file's argparse). Beyond folder resolution, the Claude-schema-coupled content functions `_is_ll_relevant`, `_detect_ll_signal`, `_extract_tool_name`, `_extract_eval_invocation`, `_cmd_matches`, `_record_has_error` all branch on `record["type"]`/`message.content[*].type` — these must either gain a per-host equivalent behind the new interface or be explicitly scoped out as Claude-Code-only for this issue's v1 (the issue does not currently state which).
@@ -425,12 +425,32 @@ vendor-format claim and stays `/ll:explore-api` territory.
 `scripts/little_loops/session_store/sessions.py` in a separate PR, per §
 Program Design and the Wiring Phase.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 33/100 → VERY LOW
+
+### Concerns
+- Architecture Compliance (15/20): Option B still leaves two parallel per-host dispatch mechanisms (`HostLayout.normalize`/`normalize_file` for qwen/gemini/omp vs. the new session-watcher interface) with no follow-up issue filed yet.
+- No Duplicate Implementations (10/20): partial precedent exists (`get_project_folder`/`get_sessions_folder`'s Codex path probe, `HostLayout`) but no `detect_sessions`/`iter_events` lifecycle exists in production code yet (only the spike, which lives outside the shipped module). Carries a −5 learning-test modifier: the `codex` target is proven but has 1 failing claim (an unrelated MCP `config.toml` assertion, not the rollout-parsing mechanism this issue depends on).
+- `unapplied_decision` gap (caps Criterion C at 10/25): `format-check` still flags `extract_user_messages` and `_compute_cache_rate_from_jsonl` as present in Program Design, Implementation Steps, and Files to Modify after Option B was selected. Likely benign — these are the legitimate Option-B call-path consumers (`extract_user_messages`/`_compute_cache_rate_from_jsonl` → `detect_sessions`/`iter_events`), not rejected-option residue — but mechanically unresolved. A `/ll:reconcile-issue` pass to explicitly frame them as retained call-path references would clear the cap.
+
+### Outcome Risk Factors
+- Complexity (5/25): Breadth still 0/12 (16+ change sites: `cli/logs.py`'s 11 call sites, `user_messages.py`, `cli/ctx_stats.py`, `hooks/session_start.py`, 4+ docs files, 2-3 test files, an FSM loop YAML, and `/ll:loop-suggester`). Depth improved to 5/13 (Moderate, from Deep/0): the `/ll:spike` run (`scripts/tests/spike/session_discovery_lifecycle/`, 11 passing tests) proved the previously zero-precedent sqlite-query + date-dir-fallback + per-host-dispatch algorithm correct in isolation, retiring the "brand-new lifecycle, might not work" risk. Remaining depth is cross-module production wiring (multi-function, shared dispatch across `cli/logs.py`/`user_messages.py`/`cli/ctx_stats.py`), not architectural rewiring.
+- Test Coverage (18/25): unchanged — the spike's 11 tests cover the algorithm in isolation only; the production module (`session_store/sessions.py`) and its wiring into the three CLIs have no tests yet since they aren't built.
+- Change Surface (0/25, Pattern A): 11+ callers of `get_project_folder`/`get_sessions_folder` alone, plus external consumers keyed on exact current behavior/wording (`.loops/ll-logs-telemetry-digest.yaml`'s stderr string grep, `/ll:loop-suggester --from-sequences`). Not a uniform mechanical sweep — some sites need per-site judgment (`ctx_stats.py`'s Codex usage-reader decision, `messages.py`'s command/message dedup, `session_start.py`'s host-fallback injection) alongside the many simple call-site swaps.
+- `unapplied_decision` gap also caps Ambiguity at 10/25 (see Concerns above).
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-09T05:02:53 - `8b35aec6-fb50-40b3-b5f0-c9df0c9253f6.jsonl`
+- `/ll:confidence-check` - 2026-09-09T04:59:39 - `cc274703-f2ea-4ddf-a916-516d38f11017.jsonl`
 - `/ll:spike` - 2026-09-09T04:55:35 - `f28c7c94-a5ec-4bd6-8ffd-7e716bc73371.jsonl`
 - `/ll:confidence-check` - 2026-09-09T04:42:48 - `f50721ed-199a-4145-9872-764076c5886d.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:38:38 - `4a00b9f5-2c1a-4bb9-8901-1abcda8ab946.jsonl`

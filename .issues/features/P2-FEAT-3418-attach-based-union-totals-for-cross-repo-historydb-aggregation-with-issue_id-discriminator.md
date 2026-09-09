@@ -568,6 +568,7 @@ _Added by `/ll:verify-issues` — 2026-09-09:_
 - **Graph**: provider=`codegraph` freshness=`fresh`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T05:00:50 - `cc274703-f2ea-4ddf-a916-516d38f11017.jsonl`
 - manual pre-implementation review - 2026-09-08 - switched the `issue_id` discriminator from `r{i}:` prefix to `#r{i}` suffix (`rework.py:207` `startswith("BUG-")` would silently zero follow-up fixes in totals); made view-column substitution per column present (`commit_events`/`orchestration_runs` lack `issue_num`); verified ad hoc that attached-schema views resolve unqualified names in their own schema despite a same-named TEMP view (queued as registry claim 7); added `issue_sessions` to the AC #5 count test, a follow-up-fix AC, a `find_issues()`-reuse AC, and the shared-session-id limitation; scrubbed remaining "views in `main`" wording
 - `/ll:confidence-check` - 2026-09-09T04:48:07 - `3759f748-350f-446f-874e-34c9fb809eb9.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:43:19 - `1db05808-40f4-4b9e-826c-e9c14764e1f0.jsonl`
