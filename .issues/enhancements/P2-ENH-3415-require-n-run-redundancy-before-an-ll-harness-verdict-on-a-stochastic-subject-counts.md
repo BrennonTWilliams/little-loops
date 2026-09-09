@@ -11,11 +11,11 @@ labels:
 - evaluation
 - statistics
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 48
-score_complexity: 10
+confidence_score: 96
+outcome_confidence: 45
+score_complexity: 9
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 8
 score_change_surface: 10
 ---
 
@@ -251,6 +251,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T04:13:05 - `e1e686a9-1440-44fa-b3e0-814ed4ea3e38.jsonl`
 - `/ll:wire-issue` - 2026-09-09T04:09:36 - `6a60b145-4b40-4e2a-b6c3-1f8fc4e6cbf8.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:58:57 - `9dcdf7fc-6452-4110-90f8-74e389f6f78f.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:48:44 - `5fcac4b3-76bf-4d53-b918-3bca0bf5f931.jsonl`

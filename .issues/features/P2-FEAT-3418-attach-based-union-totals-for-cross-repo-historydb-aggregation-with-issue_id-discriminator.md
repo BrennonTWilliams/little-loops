@@ -161,6 +161,10 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - `scripts/little_loops/issue_history/agent_quality.py:520` — `analyze_agent_quality()` calls `analyze_rework(issues, conn=conn, ...)`, forwarding whatever connection it was given.
 - Importers of `workspace_quality.py`: `agent_quality.py:64`, `cli/history.py:18`, `issue_history/__init__.py:196`, `tests/test_feat3410_workspace_quality.py:22`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_history/quality_regressions.py::load_window_compositions()` (lines 168-170, with internal `issue_window.get(issue_num)` lookups at 217, 242, 268) — consumes `issue_window: dict[int, tuple[str, str]]` built by `agent_quality.py` from `_load_closed_issues()`/`_session_issue_map()`'s keys. If Option A's discriminator threading changes those keys' shape (bare `issue_num` -> a composite key), this signature and its three internal lookups must change in lockstep. [Agent 1 + Agent 3 finding]
+- `scripts/little_loops/workspace.py::_member_from_entry()` (line 126) — the sole production constructor of `WorkspaceMember`; must be updated to populate the new discriminator field/value once one is added to the dataclass. [Agent 1 finding]
+
 **Conventions in Force**
 - Multi-schema queries in this codebase are schema-qualified in the SQL text itself (`main.{table}` / `snap.{table}`), annotated `# noqa: S608` since identifiers can't be bound as parameters — evidence: `session_store/queries.py:242` (`_snapshot_select`), used inside the only existing `ATTACH DATABASE` call site in the repo (`queries.py:291`, in `build_snapshot_db()`), paired with `DETACH DATABASE` in a `finally` (line 300).
 - Read-only cross-repo/export connections use a raw `sqlite3.connect(f"file:{path}?mode=ro", uri=True)`, never the package's migrating `connect()`/`ensure_db()` — evidence: `session_store/queries.py:191-200` (`_connect_readonly`), `workspace_quality.py:68-80` (`_open_member_readonly`); enforced by a source-inspection test, `test_feat3410_workspace_quality.py::TestSourceDbUntouched::test_never_uses_migrating_opener`.
@@ -177,16 +181,38 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - Fixture pattern for multi-repo scenarios: one `WorkspaceMember` per fake repo under `tmp_path`, each with its own `.ll/<name>-history.db` (never the default-shaped path, since an autouse fixture routes default paths through one shared `LL_HISTORY_DB`) — evidence: `test_feat3410_workspace_quality.py::_healthy_member`/`_bare_sqlite_member`.
 - Source-untouched verification: sha256 the source db before/after every skip-path test — evidence: `test_feat3410_workspace_quality.py::_sha256`, used across `test_missing_meta_table`, `test_schema_behind`, `test_schema_ahead`, `TestSourceDbUntouched::test_main_file_hash_unchanged_after_run`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_feat3418_workspace_quality.py` — currently asserts only that `totals` exists and closed-issue counts aren't conflated (`TestWorkspaceTotals::test_totals_populated_for_two_members`/`test_totals_not_conflated_across_id_collision`). Gaps to add: (a) rates/denominators reflect the union's combined event counts rather than an average of per-repo rates (AC #2), (b) the `>10`-member fail-loud `ValueError` guard (AC #6), (c) `analyze_rework()`'s `supersedes:` join still resolves against the union — no current fixture passes a non-empty `issues: list[IssueInfo]` with a `supersedes:` edge (AC #4), (d) `read_schema_version()` schema-qualification against the attached connection, the 8th call site in AC #5. [Agent 3 finding]
+- `scripts/tests/test_feat3410_workspace_quality.py::TestAggregationResultFormatters` — `_sample_result()` and `test_no_skipped_members_reports_none()` construct `AggregationResult(per_repo=..., skipped=...)` with no `totals=` kwarg; since `AggregationResult` is `@dataclass(frozen=True)`, both raise `TypeError` once `totals` is added unless it carries a default. Update both call sites, or give `totals` its own default. [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_issue_history_agent_quality.py::_compositions()` (lines 132-158) — manually rebuilds `issue_window`/`issue_ids` dicts keyed on bare `issue_num` from `_load_closed_issues()`/`_session_issue_map()`, used by `TestAttribution::test_synthetic_model_excluded_from_dimension`, `test_model_share_weighted_by_row_count`, `test_multi_run_issue_uses_latest_started_at_ll_version`. If discriminator threading changes those keys' shape, this helper will silently key differently or raise a type mismatch — update in lockstep. [Agent 3 finding]
+- `scripts/tests/test_workspace.py` — covers `WorkspaceMember` construction (`TestWorkspaceMemberFrozen`, `TestDiscoverWorkspaceMembers*`); no test pins the dataclass's exact field count, so a new discriminator field with a default won't break existing constructor calls, but add coverage asserting the new field is populated by `_member_from_entry()`. [Agent 1 + Agent 3 finding]
+- `scripts/tests/test_session_store_queries.py` — existing coverage of `session_store.queries`; no test currently calls `read_schema_version()` directly against an attached (`ATTACH DATABASE`) connection — add one modeled on `test_feat3304_artifact_dashboard.py::TestBuildSnapshotDb`'s attach/select/detach round-trip pattern (the only other `ATTACH DATABASE` test in the repo). [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/API.md:2387,2400` — `aggregate_history_dbs`/`AggregationResult` API rows; will need a `totals` row.
 - `docs/reference/CLI.md:3301-3304` — explicitly states "there is no combined-across-repos number yet (tracked separately)".
 - `docs/guides/HISTORY_SESSION_GUIDE.md:461-465` — same "not yet supported" note for workspace totals.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_history/workspace_quality.py:16-17` (module docstring) — "Workspace-wide totals ... are out of scope -- see FEAT-3410's Design Notes..." and `:49` (`AggregationResult` class docstring) — "No `totals` field -- see the module docstring's..." — both stale once this issue lands; rewrite in the same edit. [Agent 2 finding]
+- `scripts/little_loops/issue_history/__init__.py:72` (package docstring) — "... renders an AggregationResult, one section per workspace member" has no mention of a totals section; stale once totals rendering is added to the text/markdown formatters. [Agent 2 finding]
+- `docs/reference/API.md:12185-12205` (`### WorkspaceMember` section, including its fenced dataclass code block) — a second `WorkspaceMember` documentation site beyond the already-known `:2387`/`:2400` rows; needs updating if a discriminator field is added to the dataclass. [Agent 2 finding]
 
 ### Configuration
 - No dedicated config file for this feature beyond `history.workspace_manifest_path` (read via `BRConfig` in `workspace.py:93`). No `ll-workspace.yaml` template/example exists in the repo.
 
 ### Learning Test Registry
 - `.ll/learning-tests/sqlite3.md` already exists (`status: proven`, dated 2026-09-08) with 4 assertions (isolation_level/in_transaction, WAL concurrent reader/writer, BEGIN IMMEDIATE + busy_timeout, PRAGMA table_info composite-PK numbering) — none cover this issue's multi-ATTACH spike claims (readonly-URI ATTACH, `PRAGMA database_list`, cross-schema `UNION ALL`, view-in-attached-schema query, `PRAGMA query_only` blocking `CREATE TEMP`). Formalizing this spike via `/ll:explore-api` re-proves into this same file rather than creating a second one.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation. This issue has no `## Implementation Steps` section to append to, so they are recorded here instead:_
+
+- Update `agent_quality.py::_format_agent_quality_text_workspace()` (line 652) and `_format_agent_quality_markdown_workspace()` (line 747) to render `AggregationResult.totals` — `format_agent_quality_json()`/`_yaml()` (lines 855, 864) already pick it up for free via `to_dict()`, so only the text/markdown paths need code changes.
+- Update `workspace.py::_member_from_entry()` (line 126) to populate the new discriminator field/value on `WorkspaceMember`.
+- Update `quality_regressions.py::load_window_compositions()` (lines 168-170, 217, 242, 268) if the discriminator design changes `issue_window`'s key shape from bare `issue_num`.
+- Give `AggregationResult.totals` a field default (or update both breaking call sites in `test_feat3410_workspace_quality.py::TestAggregationResultFormatters`) — `AggregationResult` is a frozen dataclass and `skipped` already has a `default_factory`, so a new non-default field must either come after all defaulted fields with none itself, or carry its own default.
+- Rewrite the stale "totals are deferred" / "No totals field" docstrings in `workspace_quality.py` (module docstring lines 16-17, `AggregationResult` docstring line 49) and `issue_history/__init__.py` package docstring (line 72).
 
 ## Program Design
 
@@ -314,6 +340,7 @@ _Added by `/ll:confidence-check` on 2026-09-08; updated 2026-09-08 after remedia
 - Cross-module keying regression risk: added `scripts/tests/test_feat3418_workspace_quality.py` with a deliberate cross-repo `issue_id` collision fixture (two members both recording `BUG-1`), asserting `AggregationResult.totals` exists and is not conflated. Both tests currently fail (TDD red — `AggregationResult` has no `totals` field yet), specifying the behavior FEAT-3418 must implement. Test coverage score raised 18 → 25.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T04:15:40 - `e1e686a9-1440-44fa-b3e0-814ed4ea3e38.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T04:03:56 - `92947113-ae24-4c67-9cb1-ea2af355904e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:47:52 - `5ddcabee-5484-4c88-9c31-8734a1bafe5a.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:42:19 - `b83f9a4d-c528-406f-9176-2cc312651f52.jsonl`

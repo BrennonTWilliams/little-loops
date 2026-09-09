@@ -8,7 +8,9 @@ description: |
   or STALLED. Terminates with done (issue implemented) or failed (escalate to
   parent for decomposition).
 
-  Run standalone as: ll-loop run rn-remediate "<issue-id>"
+  Run standalone as: ll-loop run rn-remediate --context issue_id=<ID>
+  (issue_id is a with: parameter, not the positional — a positional lands
+  unread at context.input and the first state fails interpolation)
 
   Invoked by parent rn-implement via:
     loop: rn-remediate

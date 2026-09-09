@@ -8,7 +8,9 @@ description: |
   issues. Terminates with done (children enqueued, or no decomposition needed —
   expected success path when size review score < 5) or failed (error only).
 
-  Run standalone as: ll-loop run rn-decompose "<issue-id>"
+  Run standalone as: ll-loop run rn-decompose --context issue_id=<ID>
+  (issue_id is a with: parameter, not the positional — a positional lands
+  unread at context.input and the first state fails interpolation)
 
   Invoked by parent rn-implement via:
     loop: rn-decompose
