@@ -1,0 +1,11 @@
+{
+  "id": "927062c8-232b-4183-a300-a8336db06588",
+  "type": "decision",
+  "timestamp": "2026-09-09T23:02:33Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Normalize blocked_by/blocks/depends_on into one 'before' direction, add wave levels, re-root tree at prerequisites so output answers implementation order.",
+  "rule": "Captured: ll-issues clusters: render in work-order direction with wave grouping",
+  "scope": "issue",
+  "issue": "ENH-3431"
+}

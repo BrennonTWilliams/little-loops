@@ -13,7 +13,7 @@ labels:
 - architecture
 - tech-debt
 blocked_by:
-- ENH-3419
+- ENH-3430
 relates_to:
 - ENH-3420
 - FEAT-3417
@@ -38,6 +38,12 @@ Phase 2 of the `HostLayout` / session-discovery-seam unification, split out of E
 ## Current Behavior
 
 After ENH-3420 phase 1, `detect_sessions` covers every host but `_backfill_raw_events` (`lifecycle.py:747`) still globs `jsonl_files` from `get_project_folder()` + `HostLayout.session_glob`, normalizing through `HostLayout.normalize` (qwen, per record) / `HostLayout.normalize_file` (gemini/omp, per file). `cli/session.py:702` prints "Codex backfill via detect_sessions() is not wired up yet (ENH-3420)" and a Codex full backfill ingests 0 sessions. `HostLayout` is read directly by `writers.py::_iter_events` (~3250), `writers.py::_backfill_subagent_runs` (~2670, `.glob`/`.parent_from`/`.sidecar_suffix`), `cli/logs.py::_has_ll_activity` (97, `.normalize`), `cli/session.py:672,705` (`.sessions_subdir`), `cli/backfill_worker.py:60` (`.session_glob`), `user_messages.py:446-448` (`.sessions_subdir`).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **Blocker corrected (2026-09-09, this pass)**: `blocked_by` frontmatter changed from ENH-3419 to ENH-3430. Fresh re-verification (codebase-analyzer) found ENH-3419's frontmatter `status: done`, but its own `## Resolution` section reads `**Status**: Decomposed` — it was split into ENH-3427/3428/3429/3430 with **zero code changes landed**; all four decomposed children are `status: open`. `cli/logs.py` still calls `HostLayout.normalize` today at both previously-uncited call sites: `_has_ll_activity` (def `cli/logs.py:97`, call at `cli/logs.py:123`) and `_extract_ll_event_streams` (def `cli/logs.py:261`, call at `cli/logs.py:309`) — the exact retirement this issue's Files-to-Modify verification grep (`grep -n "HostLayout\|host_layout_for" scripts/little_loops/cli/logs.py`) assumed would return nothing. Of the four decomposed children, **ENH-3430** ("Rewire ll-logs onto the session-discovery seam; retire _has_ll_activity/_extract_cwd_from_project") is the one that actually owns this retirement — `blocked_by` now points there instead of the done-but-undelivered ENH-3419.
 
 ## Expected Behavior
 
@@ -78,6 +84,12 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - **`unapplied_decision` gap resolved (verification, not a fix)**: `ll-issues format-check` flags `backfill()`/`backfill_incremental()`/`backfill_raw_events()`/`detect_sessions()` as "rejected option" identifiers still present in Proposed Solution/Program Design. Verified against current code: all four are legitimate. `backfill_raw_events()` (`lifecycle.py:834-868`), `backfill()` (`lifecycle.py:1053-1126`), and `backfill_incremental()` (`lifecycle.py:1129-1180`) are the three public wrappers Option B explicitly *retains* with unchanged `jsonl_files: list[Path]` signatures — their appearances describe the selected design, not Option A residue. `detect_sessions()` (`sessions.py:291-328`, `include_agents=False` at line 295) appears only as evidence supporting *why* Option B was chosen over Option A (Option A would have swapped callers onto `detect_sessions()`, silently dropping agent transcripts) — it names a real, already-existing function used for contrast, not a piece of the rejected proposal carried forward as if selected. No text change needed; this closes the Confidence Check's "worth a pass to confirm" risk factor.
 - **Confirmed current line ranges for `_backfill_raw_events`'s two branches** (`lifecycle.py:747-831`): Branch A (`normalize_file`, gemini/omp) spans lines 778-798 (guarded by `if layout.normalize_file is not None:` at 778, `continue`s at 798 before ever reaching Branch B); Branch B (raw-line-read + `skip_at_ingest`, qwen + Claude-shaped hosts) spans lines 799-830. `effective_host`/`layout` are resolved once per call (773-776), so the branch choice is per-host, not per-file.
 - **Confirmed `writers.py::_iter_events` qwen landmine call site still live** at the exact cited location: `layout.normalize is not None:` guard at line 3279, `normalized = layout.normalize(record)` at line 3284 (matches the issue's citation exactly), `if normalized is None: continue` at 3285-3286.
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **`_backfill_raw_events` current implementation re-confirmed fresh (2026-09-09)** at `lifecycle.py:747-831`: `effective_host`/`layout`/`skip` resolved once at lines 773-776. Branch A (`normalize_file`, gemini/omp, lines 778-798): `enumerate(layout.normalize_file(jsonl_file), start=1)` yields Claude-shaped dicts; `line_no` is the enumeration index, not a real source line number; **both** `raw_line` and `parsed_json` columns store `_pack_payload(serialized)` of the re-serialized normalized dict (793-794) — there is no true verbatim source line for gemini/omp today. Branch B (raw-line + `skip_at_ingest`, qwen/Claude-shaped hosts, lines 799-830): `raw_line` stores `_pack_payload(line)`, the true verbatim stripped source line (826); `parsed_json` stores a re-serialization of the parsed dict (827), not the original bytes. Both branches share one `INSERT OR IGNORE INTO raw_events(...)` statement; the dedup key is the table's unique index on `(source_path, line_no)` (schema-level, per the docstring at `lifecycle.py:752`).
+- **`iter_events`/`_PARSERS` re-confirmed fresh**: `_PARSERS` (`sessions.py:812-821`) registers all 8 hosts (codex, claude-code, opencode, pi, kimi-code, qwen, gemini, omp). `parse_qwen_session` (`sessions.py:751-783`) yields `SessionEvent(payload=normalized)` where `normalized = normalize_qwen_record(record)` — confirms qwen rows through `iter_events` are already pre-normalized, matching the issue's Expected Behavior claim. `parse_gemini_session`/`parse_omp_session` (786-809) likewise wrap their existing normalizers. `parse_codex_rollout`/`_parse_claude_shaped`/`parse_kimi_wire` yield host-native payloads unchanged.
+- **`writers.py::_iter_events` qwen landmine re-confirmed unchanged** at the exact cited lines: guard `if layout.normalize is not None:` (3279), `normalized = layout.normalize(record)` (3284), `if normalized is None: continue` (3285-3286) — identical to the issue's existing citation, no drift since the last pass.
 
 ## Proposed Solution
 
@@ -120,6 +132,7 @@ Key evidence: `iter_events`/`_PARSERS` read only `.host`/`.path` (`sessions.py:8
 - `scripts/little_loops/session_store/lifecycle.py` — `_backfill_raw_events()` (lines 747-831): change signature to `handles: list[SessionHandle]`, replace the `layout.normalize_file`/`layout.normalize`/`skip_at_ingest` branching with a loop over `iter_events(handle)`.
 - `scripts/little_loops/session_store/writers.py` — `HostLayout` (lines 2456-2511): drop the `normalize`, `skip_at_ingest`, `normalize_file` fields; `host_layout_for()` (lines 2527-2607): drop the corresponding kwargs from the qwen (2545), gemini (2561), omp (2582) branches; `_iter_events()` (lines 3250-3299): stop calling `layout.normalize` at line 3284 for the cursor-replay path (the qwen landmine above).
 - `scripts/little_loops/cli/logs.py` — **no longer touched by this issue (2026-09-09).** Its two `.normalize` call sites, `_has_ll_activity()` (97-131) and `_extract_ll_event_streams()` (261-329), are handled by ENH-3419: the first is deleted, the second moves to `handles: list[SessionHandle]` + `iter_events`. Verify at implementation time that `grep -n "HostLayout\|host_layout_for" scripts/little_loops/cli/logs.py` returns nothing before dropping `HostLayout.normalize`.
+  > ⚠ Superseded — ENH-3419 is done-but-decomposed, not implemented; grep still hits at logs.py:123,309 (see Current Behavior)
 - `scripts/little_loops/cli/session.py` — lines 672 and 711 (`host_layout_for(_backfill_host).sessions_subdir` glob); lines 700-706 (drop the "Codex backfill via detect_sessions() is not wired up yet (ENH-3420)" notice); line 718 (the `backfill(...)` call site).
 - `scripts/little_loops/cli/backfill_worker.py` — line 60 (`layout.session_glob`). **This file has no argparse** (module docstring: "no argparse by design"); `--host` is read via a hand-rolled `for i, arg in enumerate(args)` loop (lines 30-41) with no validation today. "Add `choices=` validation" (Implementation Step 4 below) cannot literally add an argparse `choices=` kwarg here — see the superseded-line note on that step.
 - `scripts/little_loops/user_messages.py` — `get_sessions_folder()` (lines 422-449): `.sessions_subdir` read at line 448.
@@ -298,6 +311,8 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 - qwen idempotency landmine carried over from ENH-3420: `writers.py::_iter_events`'s cursor-replay path must stop re-normalizing pre-normalized qwen rows in the same change as the write-path swap, or rows silently vanish on rebuild — easy to miss since it's a separate file/path from the write-side change.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T22:58:19 - `a29c3127-073c-4881-95b4-061e8465cc19.jsonl`
+- `/ll:refine-issue` - 2026-09-09T22:58:00 - `2d12b93a-9de4-4b3d-ab65-1243b5697ecb.jsonl`
 - `/ll:refine-issue` - 2026-09-09T22:48:09 - `ab41948f-86de-4b0f-a6d4-63b2ea97f9ce.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:56:36 - `3ffb97df-a1e4-4572-9fad-20e96964df3d.jsonl`
 - `/ll:wire-issue` - 2026-09-09T21:51:53 - `3ffb97df-a1e4-4572-9fad-20e96964df3d.jsonl`
