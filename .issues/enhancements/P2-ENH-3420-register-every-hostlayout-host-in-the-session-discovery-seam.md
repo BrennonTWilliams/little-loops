@@ -176,6 +176,7 @@ ENH-3419's acceptance criterion is that `ll-logs`, `ll-messages`, and `ll-ctx-st
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T19:22:12 - `ebf18a6f-ed36-4252-9599-87c271309793.jsonl`
 - `review (manual, pre-implementation: kimi is host-native not Claude-shaped — passthrough parser + HostLayout glob; home threaded into user_messages probes instead of reimplemented (omp encoder reads Path.home); gemini/omp session_id from header; gemini isinstance guard; parse_qwen_session skips no skip_at_ingest; ENH-3422 non-idempotent-normalize hand-off; line anchors refreshed)` - 2026-09-09T20:30:00
 - `review (manual: FEAT-3417 landed — dropped stale "spike only" findings; decided unify; split ingest half to ENH-3422; flipped dependency so this blocks ENH-3419; P3→P2; per-host payload rule)` - 2026-09-09T19:10:00
 - `/ll:confidence-check` - 2026-09-09T15:01:22 - `a4ac4148-e562-4d02-a9a9-889fd2f8dc3f.jsonl`

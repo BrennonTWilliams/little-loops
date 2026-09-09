@@ -88,13 +88,30 @@ describes.
 - N/A — `commands/verify-issues.md` is invoked directly as `/ll:verify-issues`; no other file
   imports or calls into it
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.gemini/commands/verify-issues.toml` — host-mirror carrying the full section 4 body
+  (`### 4. Update Issue Files` at line 334, `Add a `## Verification Notes` section` at line 337);
+  goes stale the moment `commands/verify-issues.md` changes [Agent 1 finding]
+- `.qwen/commands/ll/verify-issues.md` — same host-mirror pattern, lines 335/338 [Agent 1 finding]
+- `.kimi-code/skills/ll-verify-issues/SKILL.md` — same host-mirror pattern, lines 352/355
+  [Agent 1 finding]
+- `skills/ll-verify-issues/SKILL.md` (codex stub) — unaffected; it's a pointer stub that doesn't
+  duplicate section 4 body text, confirmed not to drift [Agent 2 finding]
+
 ### Similar Patterns
 - Section 2.5 ("Check Mode Behavior") already defines the verdict-labeling convention this issue
   extends; the new auto-mode rule should sit next to it and reuse the same verdict enum
 
 ### Tests
-- N/A — this is prompt-instruction wording for a Claude Code command, not executable code; no
-  pytest coverage applies (see `.claude/CLAUDE.md` § Testing & CI Policy scope)
+- N/A for parsing/assertion coverage — no test parses `## Verification Notes` body prose or
+  asserts on a bare `Verdict:` label; confirmed via repo-wide search of `scripts/tests/` and
+  `scripts/little_loops/` [Agent 3 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale[commands-gemini]`,
+  `[commands-qwen]`, `[commands-kimi-code]` — will FAIL after editing `commands/verify-issues.md`
+  until the three host mirrors above are regenerated; the test content-compares `ll-adapt`'s fresh
+  output against the on-disk mirror and asserts `adapted == 0` [Agent 2 finding]
 
 ### Documentation
 - N/A — the fix is the command file itself; no separate docs describe this wording convention
@@ -128,6 +145,18 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 - The new subsection numbers as `4.1` (section 4 currently has no numbered subsections, and `4.5 Append Session Log Entries` at `commands/verify-issues.md:362` already occupies the next sibling slot) — do not reuse `4.5` or leave it unnumbered if other section-4 subsections get added later.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Regenerate host mirrors after editing `commands/verify-issues.md`: run `ll-adapt --host gemini
+  --apply`, `ll-adapt --host qwen --apply`, and `ll-adapt --host kimi-code --apply` so
+  `.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, and
+  `.kimi-code/skills/ll-verify-issues/SKILL.md` pick up the new subsection
+- Confirm `scripts/tests/test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale[commands-gemini]`,
+  `[commands-qwen]`, and `[commands-kimi-code]` pass after regeneration (they fail on the raw
+  `commands/verify-issues.md` edit alone)
 
 ## Impact
 
@@ -171,6 +200,7 @@ label, whenever the fix touched the same section the note describes.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T19:21:35 - `ebf18a6f-ed36-4252-9599-87c271309793.jsonl`
 - `/ll:refine-issue` - 2026-09-09T19:14:29 - `42196ace-6931-433b-9da5-c194d57bddf7.jsonl`
 - `/ll:format-issue` - 2026-09-09T19:10:19 - `6825e935-9173-4255-b699-a7e303deae32.jsonl`
 - `/ll:capture-issue` - 2026-09-09T19:06:59 - `095aaa45-5f8e-445a-8993-2ec43b515f28.jsonl`
