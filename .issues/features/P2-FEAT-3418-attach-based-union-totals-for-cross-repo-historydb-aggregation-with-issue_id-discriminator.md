@@ -120,7 +120,7 @@ See Option A/B/C decision under Proposed Solution → Decision Rationale.
 
 `aggregate_history_dbs()` (from FEAT-3410) returns an `AggregationResult`
 with only `per_repo: dict[str, QualityAnalysis]` and
-`skipped: list[SkippedMember]` — `AggregationResult.totals` does not exist.
+`skipped: list[tuple[str, str]]` — `AggregationResult.totals` does not exist.
 `agent_quality.py::_load_closed_issues`/`_session_issue_map` and
 `rework.py::_load_issue_events` key on bare `issue_num`/`issue_id`, and
 `rework.py::analyze_rework` computes `superseded_ids` from a single on-disk
@@ -466,7 +466,48 @@ _Note (2026-09-08, manual review): the scores above predate the Option A → Opt
 - `unapplied_decision` gap: the Program Design paragraphs referencing `conn=` and `superseded_by()` were marked `⚠ Superseded` (clarifying they cite FEAT-3410's existing `conn=` convention and the pre-existing `superseded_by()` join requirement — not Option B's rejected mechanism), confirmed clear via `ll-issues format-check`. Ambiguity score raised 10 → 18.
 - Cross-module keying regression risk: added `scripts/tests/test_feat3418_workspace_quality.py` with a deliberate cross-repo `issue_id` collision fixture (two members both recording `BUG-1`), asserting `AggregationResult.totals` exists and is not conflated. Both tests currently fail (TDD red — `AggregationResult` has no `totals` field yet), specifying the behavior FEAT-3418 must implement. Test coverage score raised 18 → 25.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-09:_
+
+- **Verdict: EVIDENCE_UNVERIFIED** (BUG-3282 check B7, advisory only — does not
+  block implementation). `ll-verify-evidence` flagged one fabricated-type
+  quote: "Current Behavior" cited `skipped: list[SkippedMember]`, but no
+  `SkippedMember` type exists anywhere in `scripts/little_loops/`; the actual
+  field is `skipped: list[tuple[str, str]]` (`workspace_quality.py:54`).
+  Corrected in place above. No other content in the issue depended on this
+  quote — the rest of the document already describes `skipped` correctly as
+  `(label, reason)` tuples.
+- **Dependency**: `blocked_by: FEAT-3410` confirmed `done`
+  (completed_at 2026-09-09T03:03:20Z).
+- **Implementation status**: not started — `AggregationResult` has no
+  `totals`/`totals_skipped` fields and none of `_open_union`,
+  `_union_view_sql`, `_attach_limit`, `_discriminate_issues` exist yet
+  anywhere in `scripts/little_loops/`. Issue is accurately pre-implementation,
+  not stale/resolved.
+- **Line-number audit**: all ~40 `file:line` citations across
+  `workspace_quality.py`, `agent_quality.py`, `rework.py`, `_utils.py`,
+  `quality_regressions.py`, `issue_parser.py`, `session_store/schema.py`,
+  `session_store/queries.py`, `workspace.py`, `cli/history.py`, and
+  `issue_history/__init__.py` checked directly — no drift found.
+- **Tests**: `test_feat3418_workspace_quality.py`'s
+  `TestWorkspaceTotals::test_totals_populated_for_two_members` and
+  `test_totals_not_conflated_across_id_collision` confirmed genuinely
+  TDD-red (`AttributeError: 'AggregationResult' object has no attribute
+  'totals'`).
+- **Learning Test Registry**: `.ll/learning-tests/sqlite3.md` confirmed
+  present with all cited claims (16 total), including the retracted
+  `CREATE VIEW main.<name>` premise and the working `CREATE TEMP VIEW`
+  mechanism.
+- **Docs**: `docs/reference/API.md`, `docs/reference/CLI.md`,
+  `docs/guides/HISTORY_SESSION_GUIDE.md` all confirmed still saying totals
+  are unsupported/deferred, matching the issue's claim of what needs updating.
+- **Decisions log**: no active required rules (`.ll/decisions.d` present,
+  query returned no entries) — no conflict with the Option C design.
+- **Graph**: provider=`codegraph` freshness=`fresh`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T04:43:19 - `1db05808-40f4-4b9e-826c-e9c14764e1f0.jsonl`
 - `/ll:explore-api sqlite3` - 2026-09-09 - extended `.ll/learning-tests/sqlite3.md` with FEAT-3418's 5 required claims (+1 follow-up); refuted the `CREATE VIEW main.<relation>` design premise (SQLite rejects a `main`-schema view referencing any attached object) and confirmed `CREATE TEMP VIEW` as the working mechanism, with temp-view visibility living in `sqlite_temp_master` not `main.sqlite_master`; reconciled Design, Program Design, Integration Map, Conventions, AC #5, and the Spike Result section accordingly
 - `/ll:wire-issue` - 2026-09-09T04:15:40 - `e1e686a9-1440-44fa-b3e0-814ed4ea3e38.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T04:03:56 - `92947113-ae24-4c67-9cb1-ea2af355904e.jsonl`

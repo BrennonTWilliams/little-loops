@@ -21,6 +21,7 @@ score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 0
 verify_verdict: NON_VALID
+missing_artifacts: true
 ---
 
 ## Summary
@@ -372,12 +373,35 @@ remaining Integration Map / Acceptance Criteria — holds.
 an explicit "Decided" annotation (out of scope for v1, same pattern as the other
 scope-outs in this issue).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 85/100 → STOP — ADDRESS GAPS (Learning Test Hard Override)
+**Outcome Confidence**: 28/100 → VERY LOW
+
+### Concerns
+- Architecture Compliance (15/20): Option B leaves two parallel per-host dispatch mechanisms (`HostLayout.normalize`/`normalize_file` for qwen/gemini/omp vs. the new session-watcher interface) with no follow-up issue filed yet.
+- No Duplicate Implementations (10/20): partial precedent exists (`get_project_folder`/`get_sessions_folder`'s Codex path probe, `HostLayout`) but no `detect`/`iter_events` lifecycle exists anywhere in the repo.
+- `unapplied_decision` gap (caps Criterion C at 10/25): `format-check` still flags `extract_user_messages` and `_compute_cache_rate_from_jsonl` as present in Program Design, Implementation Steps, and Files to Modify after Option B was selected — likely benign (they are the legitimate Option-B call-path consumers), but mechanically unresolved.
+
+### Gaps to Address
+- **Learning Test Hard Override**: `learning_tests_required` in frontmatter lists both `codex` and `codex-rollout`, but `ll-learning-tests check codex-rollout` returns "no record found" — the target does not exist at all (not merely unproven). Implementation Step 1 explicitly calls for registering and proving `codex-rollout` before implementation begins ("Prove the layout first"), and that step has not been done. The existing `codex` target (proven, 4/1/0) covers Codex MCP `config.toml` shape only, a different subsystem than the rollout/session-log JSONL format this issue's `parse_codex_rollout` depends on — it does not substitute. Remedy: run `/ll:explore-api` or `/ll:spike` to register `codex-rollout` per § Testing → Fixture capture (item 3), capture the two fixtures, and prove the target before implementation.
+
+### Outcome Risk Factors
+- Complexity (0/25): broad enumeration across 16+ sites (6 functions/11 call sites in `cli/logs.py` alone, plus `user_messages.py`, `cli/ctx_stats.py`, `hooks/session_start.py`, 4+ docs files, 2-3 test files, an FSM loop YAML, and a downstream `/ll:loop-suggester` consumer) combined with a brand-new `detect_sessions`/`iter_events` lifecycle with zero existing precedent in the repo.
+- Change Surface (0/25): very wide blast radius — `get_project_folder`/`get_sessions_folder` alone have 5 non-test callers, `cli/logs.py` has 7 functions to rewire, and external consumers (`.loops/ll-logs-telemetry-digest.yaml`'s exact-string grep, `/ll:loop-suggester --from-sequences`) depend on current behavior/wording this rewire can silently break.
+- No existing pattern for a `watch()` live-tail test if a future follow-up adds it — every current tail-adjacent test mocks `readline()` entirely.
+- No committed Codex rollout fixture exists yet, and the "perishable, re-capture periodically" fixture-marker convention has no precedent in the tree to copy from.
+- Learning-test target mismatch (escalated to a hard override this pass, see Gaps to Address): `codex-rollout` has no record at all, not just an unproven claim.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T04:42:48 - `f50721ed-199a-4145-9872-764076c5886d.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:38:38 - `4a00b9f5-2c1a-4bb9-8901-1abcda8ab946.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:36:35 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - `review (manual, Codex layout corrections)` - 2026-09-09T04:28:06 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`

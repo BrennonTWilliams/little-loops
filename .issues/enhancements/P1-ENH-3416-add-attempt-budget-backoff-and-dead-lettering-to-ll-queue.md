@@ -40,7 +40,8 @@ a dead drainer; bounded exponential backoff via a `next_attempt_at` the claim
 path honors; a terminal `dead_letter` status carrying the last error, reached
 when a *retryable* failure exhausts the budget or an owner dies too many times;
 retryability classified by reusing the existing `classify_failure()` text
-classifier rather than exit codes; and an explicit `cancel` verb with a reason.
+classifier rather than exit codes, filtered to an explicit allowlist of its
+`reason` strings; and an explicit `cancel` verb with a reason.
 `requeue` keeps its meaning (manual return to `pending`) and is widened to
 revive `dead_letter`/`failed`/`cancelled` entries with a fresh budget.
 
@@ -62,6 +63,11 @@ revive `dead_letter`/`failed`/`cancelled` entries with a fresh budget.
   `exit_code == 0 and not timed_out and error is None`, otherwise `failed`, and
   writes it via `update_entry_result`. A raised exception is also `failed`.
   There is no retry of any kind on this path.
+- `update_entry_result` (`queue_store.py:439`) has no status guard (`WHERE id
+  = ?` only): whatever the row's status is when the dispatch finishes, the
+  completion write overwrites it. Today this is a latent clobber (a
+  misidentified-dead owner that later finishes overwrites the reclaim); an
+  operator `cancel` verb would make it a first-class race.
 - `_drain_once`'s `force_stop` branch (`cli/queue.py:498-501`) hand-sets
   `status = "failed"` with `error: "interrupted by operator"`, the closest
   existing analog to an operator cancel, but it lands on the same status as an
@@ -81,26 +87,49 @@ revive `dead_letter`/`failed`/`cancelled` entries with a fresh budget.
   mid-dispatch leaves the incremented count behind, so the owner-death path
   consumes budget without any extra bookkeeping.
 - After a failed dispatch, `_drain_once` classifies the failure with
-  `classify_failure()`. A retryable failure with budget remaining returns the
-  entry to `pending` with `next_attempt_at = now + backoff(attempt)`. A
-  retryable failure with no budget remaining moves it to `dead_letter`. A
-  non-retryable failure lands on `failed` on the first attempt, unchanged from
-  today.
+  `classify_failure()` and the reason allowlist below. A retryable failure
+  with budget remaining returns the entry to `pending` with
+  `next_attempt_at = now + backoff(attempt)`, where `now` is the dispatch
+  *completion* time, not `claimed_at`. A retryable failure with no budget
+  remaining moves it to `dead_letter`. A non-retryable failure lands on
+  `failed` on the first attempt, unchanged from today.
+- Every post-dispatch write (`update_entry_result`, `schedule_retry`,
+  `dead_letter_entry`, `cancel_entry`'s running branch) is guarded with
+  `AND status = 'running'`. If the guard misses (rowcount 0), the entry was
+  cancelled or reclaimed out from under the drainer; `_drain_once` re-reads
+  the row and reports the *actual* status in its record rather than the one
+  it tried to write.
 - `_reclaim_stale` returns a dead-owner entry to `pending` with `enqueued_at`
   untouched (so it keeps its priority/FIFO position) when `attempt <
   QUEUE_MAX_ATTEMPTS`, and moves it to `dead_letter` with error
-  `"owner died N times"` otherwise. It never touches `next_attempt_at`; an
+  `"attempt budget exhausted after N attempts; last: owner died"` otherwise
+  (`attempt` is shared between transient failures and owner deaths, so the
+  message must not claim N deaths). It never touches `next_attempt_at`; an
   owner death is not a backoff-eligible failure, it is a slot to refill.
+- All "current time" reads in `queue_store.py` and `cli/queue.py` go through
+  one `queue_store._utcnow() -> str` helper so tests patch a single seam
+  instead of each call site's `datetime.now`.
 - `claim_entry` and `_drain_once`'s pending filter honor `next_attempt_at`: a
   row with `next_attempt_at > now` is not eligible. One-shot `ll-queue run`
   drains what is eligible and exits, reporting how many entries are backing
   off. `--watch` picks them up on later polls.
 - `ll-queue cancel <id> [--reason TEXT]` moves a `pending` or `running` entry
-  to terminal `cancelled` with `result.reason`. The `force_stop` branch routes
-  through the same function with reason `"interrupted by operator"`.
+  to terminal `cancelled` with `result.reason`. Cancelling a `running` entry
+  is a status-only mark: it does **not** kill the in-flight process. The
+  drainer's guarded completion write then no-ops and the entry stays
+  `cancelled`. The `force_stop` branch routes through the same function with
+  reason `"interrupted by operator"` and passes the dispatch result
+  (`exit_code`/`stdout`/`stderr`) as the extra dict so partial output is not
+  lost, matching what the `failed` path preserves today.
 - `ll-queue requeue <id>` keeps its running→pending meaning and additionally
   accepts `dead_letter`, `failed`, and `cancelled` entries, resetting `attempt`
-  to 0 and clearing `next_attempt_at`.
+  to 0 and clearing `next_attempt_at`. The prior `result` is preserved under
+  `result.previous` rather than discarded.
+- `ll-queue list` renders `attempt=N` in the summary suffix when `attempt > 0`
+  and `retry in Xs` when `next_attempt_at` is in the future, so a backing-off
+  entry is distinguishable from a fresh `pending` one.
+- The `--watch` idle-poll report distinguishes reclaimed from dead-lettered
+  entries (`Reclaimed N stale entries, dead-lettered M`).
 - `enqueued_at` is never mutated by any path. Backoff yields via
   `next_attempt_at`; there is no "go to the back" semantic.
 - The status set and terminal subset are declared once as frozensets in
@@ -112,12 +141,27 @@ revive `dead_letter`/`failed`/`cancelled` entries with a fresh budget.
 ### Retryability classification (settled here; no external taxonomy issue exists)
 
 Reuse `classify_failure(error_output, returncode)` from
-`issue_lifecycle.py:159`. Map its `FailureType` members:
+`issue_lifecycle.py:159`, but gate on its returned **`reason` string**, not
+on `FailureType` alone. The classifier was written for host-CLI stderr; a
+queue entry's stderr is arbitrary program output (a whole `ll-loop run` log,
+a pytest run), where its broad substrings (`"timeout"`, `"429"`,
+`"overloaded"`, `"api error"`, `"context window"`) fire on unrelated text.
+Mapping every `TRANSIENT` to retry would send a pytest run with
+`test_timeout_x FAILED` in its output through five dispatches with backoff.
 
-| `FailureType` | Queue outcome |
+```python
+QUEUE_RETRYABLE_REASONS = frozenset({
+    "API quota or rate limit exceeded",
+    "Network or connectivity error",
+    "API server error",
+    "Infra teardown: SIGTERM after result event",  # INFRA_RETRY
+})
+```
+
+| `classify_failure` result | Queue outcome |
 |---|---|
-| `TRANSIENT` | retry with backoff; `dead_letter` on exhaustion |
-| `INFRA_RETRY` | retry with backoff; `dead_letter` on exhaustion |
+| `TRANSIENT`/`INFRA_RETRY` with `reason in QUEUE_RETRYABLE_REASONS` | retry with backoff; `dead_letter` on exhaustion |
+| `TRANSIENT` with any other reason (`"Command timeout"`, `"Context window exhausted"`, `"CLI session continuation error"`, `"System resource error"`) | `failed`, no retry |
 | `REAL` | `failed`, no retry |
 | `NON_RECOVERABLE` | `failed`, no retry |
 
@@ -125,12 +169,21 @@ Inputs: `error_output = result.stderr or result.error or ""`, `returncode =
 result.exit_code`. A raised exception (the `except Exception` branch) is
 classified from `str(exc)` with `returncode=None → -1`.
 
-`timed_out=True` is **non-retryable** regardless of text. A command that hit
-its own timeout will hit it again with identical input; per the principle
-below, that is not a retry. Note `classify_failure`'s `"timeout"` text pattern
-will not fire because runner timeouts produce empty stderr (`runner_spec.py:
-219,235,390`), so this must be an explicit check before classification, not a
-reliance on the text patterns.
+`timed_out=True` is **non-retryable** regardless of text, checked explicitly
+before classification. A command that hit its own timeout will hit it again
+with identical input; per the principle below, that is not a retry. (Note:
+SKILL/PROMPT/LOOP timeouts return empty stderr at `runner_spec.py:219,235,390`,
+but `_run_cmd` returns the captured stderr with `timed_out=True` at
+`runner_spec.py:343-345`, so the explicit check is required, not merely
+defensive.)
+
+**LOOP entries**: `ll-loop run` already retries 429/overload internally with
+its own budget (`fsm/executor.py`), so a LOOP exit after exhausting that
+budget must not be retried five more times by the queue. `_classify_dispatch`
+treats `RunnerType.LOOP` with `error == "terminal failure"`
+(`FAILURE_TERMINAL_EXIT_CODE`, `cli/queue.py:397`) as non-retryable; only a
+LOOP failure to *launch* (`FileNotFoundError` → `exit_code=-1` at `:384`) or
+a dead drainer consumes budget.
 
 Principle (kept from the reference shape): a retry that cannot change the
 input is not a retry. Only failures whose cause is outside the entry (quota,
@@ -170,14 +223,31 @@ reason. All three are terminal; all three are `requeue`-able.
 `--force` exactly as `failed` does today. The MCP `queue_remove` gate
 (`mcp_server/tools.py:601`) is unchanged. Explicit no-op decision.
 
+### Cancel vs. in-flight dispatch (status-guarded completion writes)
+
+`cancel` on a `running` entry is allowed but does not signal the process;
+killing arbitrary runner subprocesses from a second CLI process is out of
+scope (only the drainer holds the `Popen`). To keep the operator's decision
+from being overwritten when the dispatch finishes, every completion write
+gains `AND status = 'running'`. `update_entry_result` keeps its signature and
+gains the guard (its only callers are `_drain_once` and tests; a `done`/
+`failed` write to a non-running row was never intended). On a guard miss
+`_drain_once` re-reads the entry and records its real status. This also
+closes today's latent clobber where a misidentified-dead owner that later
+finishes overwrites the reclaim.
+
 ## Scope Boundaries
 
 - **In scope**: `attempt`/`next_attempt_at` columns and migration; claim-time
   increment and SQL time gate; `compute_backoff_s` and the three policy
-  constants; `schedule_retry`/`dead_letter_entry`/`cancel_entry`/`revive_entry`;
-  `_drain_once` classification branch; `_reclaim_stale` budget check;
-  `ll-queue cancel`; widened `requeue`; status frozensets and the three lock
-  tests; docs and MCP description parity.
+  constants; `QUEUE_RETRYABLE_REASONS`; `_utcnow` seam;
+  `schedule_retry`/`dead_letter_entry`/`cancel_entry`/`revive_entry`;
+  status-guarded completion writes; `_drain_once` classification branch;
+  `_reclaim_stale` budget check; `ll-queue cancel`; widened `requeue`;
+  `list` summary suffix for attempt/backoff; status frozensets and the three
+  lock tests; docs and MCP description parity.
+- **Out of scope: killing an in-flight process on `cancel`.** See the
+  cancel-vs-dispatch decision above.
 - **Out of scope**:
 
 - **Overflow/trimming.** No size bound or eviction exists anywhere in the
@@ -217,33 +287,47 @@ tests.
 - A `running` entry whose owner is dead is reclaimed to `pending` with
   `enqueued_at` byte-identical and `attempt` preserved; after
   `QUEUE_MAX_ATTEMPTS` claims it is `dead_letter` with
-  `result.error == "owner died N times"` and is never reclaimed again.
-- A dispatch whose stderr matches a `TRANSIENT` pattern (e.g. `"429"`) returns
-  the entry to `pending` with `attempt == 1` and `next_attempt_at == claimed_at
-  + 5s`; the `n`-th such failure sets `next_attempt_at` per the doubling
-  sequence `[5, 10, 20, 40]`, and the 5th lands on `dead_letter` with the last
-  error in `result`.
-- A dispatch with a nonzero exit and no transient pattern lands on `failed`
+  `result.error == "attempt budget exhausted after N attempts; last: owner died"`
+  and is never reclaimed again. `_reclaim_stale` returns
+  `(reclaimed, dead_lettered)` and the `--watch` report prints both counts.
+- A dispatch whose stderr matches a retryable reason (e.g. `"429"` → `"API
+  quota or rate limit exceeded"`) returns the entry to `pending` with
+  `attempt == 1` and `next_attempt_at == now + 5s` where `now` is the
+  patched `_utcnow()` at dispatch completion; the `n`-th such failure sets
+  `next_attempt_at` per the doubling sequence `[5, 10, 20, 40]`, and the 5th
+  lands on `dead_letter` with the last error in `result`.
+- A dispatch with a nonzero exit and no retryable reason lands on `failed`
   with `attempt == 1`, unchanged from today; a `timed_out` result lands on
-  `failed` regardless of stderr text.
+  `failed` regardless of stderr text; a non-timed-out CMD failure whose
+  stderr contains only the word `"timeout"` (e.g. `test_timeout_x FAILED`)
+  lands on `failed`, not `pending`; a LOOP result with
+  `error == "terminal failure"` lands on `failed`.
 - `claim_entry` refuses a row whose `next_attempt_at` is in the future (SQL
   gate, not only a Python filter); `_drain_once` skips it and one-shot
-  `ll-queue run` exits reporting the count backing off.
+  `ll-queue run` exits reporting the count backing off; `ll-queue list` shows
+  `attempt=N` / `retry in Xs` for that entry.
 - `ll-queue cancel <id> --reason "..."` on a `pending` or `running` entry
   yields `cancelled` with `result.reason`; a second-signal `force_stop`
-  produces `cancelled` with reason `"interrupted by operator"`.
+  produces `cancelled` with reason `"interrupted by operator"` and the
+  dispatch's `exit_code`/`stdout`/`stderr` still present in `result`.
+- **Cancel-race lock**: with an entry `running` under a stubbed dispatch,
+  `cancel_entry` is invoked mid-dispatch; when the dispatch returns success,
+  the row is still `cancelled` (not `done`) and the `_drain_once` record
+  reports `status == "cancelled"`. Same shape for `schedule_retry` and
+  `dead_letter_entry` (rowcount 0 on a non-running row).
 - `ll-queue requeue <id>` on a `dead_letter`, `failed`, or `cancelled` entry
-  returns it to `pending` with `attempt == 0` and `next_attempt_at IS NULL`;
-  on `running` it behaves as today.
-- **Retryable-class join lock**: a test enumerates the `FailureType` members
-  the queue treats as retryable and asserts `QUEUE_MAX_ATTEMPTS > 1` for the
-  policy that consumes each. This guards the silent failure where a correct
-  classification chain is rendered inert by a one-attempt budget.
+  returns it to `pending` with `attempt == 0`, `next_attempt_at IS NULL`, and
+  the prior result under `result.previous`; on `running` it behaves as today.
+- **Retryable-reason join lock**: a test asserts that every string in
+  `QUEUE_RETRYABLE_REASONS` is actually produced by `classify_failure` for
+  some input (so a reworded reason in `issue_lifecycle.py` cannot silently
+  make the queue never retry), that `"Command timeout"` is *not* in the set,
+  and that `QUEUE_MAX_ATTEMPTS > 1`. This guards the silent failure where a
+  correct classification chain is rendered inert by drift or a one-attempt
+  budget.
 - **Constants lock**: a test asserts the three constants equal their declared
-  values and that no call site in `queue_store.py`/`cli/queue.py` constructs a
-  backoff or budget from a literal (grep-shaped test, mirroring the
-  `DeferReason`/`_DEFERRAL_REASON_CODES` frozenset-equality lock at
-  `test_issue_lifecycle.py:1985-1993`).
+  values and that `[compute_backoff_s(n) for n in range(1, 8)] == [5, 10, 20,
+  40, 80, 160, 300]` (ceiling applied). No grep-shaped source assertion.
 - **Status-set lock**: `_STATUS_COLOR.keys() == QUEUE_STATUSES` and the
   `queue_list` MCP tool description enumerates exactly `QUEUE_STATUSES`.
 - Migration `_MIGRATIONS[2]` adds `attempt INTEGER NOT NULL DEFAULT 0` and
@@ -259,40 +343,57 @@ tests.
 
 - `QueueEntry` (`queue_store.py:267`): add `attempt: int = 0`,
   `next_attempt_at: str | None = None`. Extend `to_dict()` and `_from_row()`.
-- `QUEUE_STATUSES`, `QUEUE_TERMINAL_STATUSES` frozensets; `QUEUE_MAX_ATTEMPTS`,
-  `QUEUE_BACKOFF_BASE_S`, `QUEUE_BACKOFF_CEILING_S` ints; all in
-  `queue_store.py`.
+- `QUEUE_STATUSES`, `QUEUE_TERMINAL_STATUSES`, `QUEUE_RETRYABLE_REASONS`
+  frozensets; `QUEUE_MAX_ATTEMPTS`, `QUEUE_BACKOFF_BASE_S`,
+  `QUEUE_BACKOFF_CEILING_S` ints; all in `queue_store.py`.
 
 ### Signatures
 
+- `_utcnow() -> str` (`queue_store.py`, new): `datetime.now(UTC).strftime(
+  "%Y-%m-%dT%H:%M:%SZ")`. The single time seam; `add_entry`, `claim_entry`,
+  `_drain_once`, `_reclaim_stale`, and `_format_action_summary` all call it
+  (replacing their inline `datetime.now(UTC)` calls) so tests patch
+  `little_loops.queue_store._utcnow` once.
 - `claim_entry(entry_id, db_path=..., *, owner_pid=None, now: str | None = None) -> bool`
   (`queue_store.py:466`): UPDATE adds `attempt = attempt + 1` and the WHERE
   adds `AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`. `now` defaults
-  to the current UTC timestamp; injectable for tests.
+  to `_utcnow()`; injectable for tests.
 - `compute_backoff_s(attempt: int) -> int` (`queue_store.py`, new): the
   doubling-then-cap formula.
 - `reset_to_pending(entry_id, db_path=..., *, root=None) -> bool`
   (`queue_store.py:417`): unchanged contract for the running→pending reclaim;
   sets nothing but `status`/`claimed_at`/`owner_pid`. Docstring updated to say
   it is the *reclaim* path and does not touch `attempt`.
+- `update_entry_result(entry_id, status, result, db_path=...) -> bool`
+  (`queue_store.py:439`): signature unchanged; WHERE gains
+  `AND status = 'running'`. Docstring updated to state the guard and that a
+  False return means the entry was cancelled/reclaimed mid-dispatch.
 - `schedule_retry(entry_id, error: str, next_attempt_at: str, db_path=...) -> bool`
-  (new): running→pending, sets `next_attempt_at`, stores the failure in
-  `result`, clears `claimed_at`/`owner_pid`.
+  (new): running→pending (guarded), sets `next_attempt_at`, stores the
+  failure in `result`, clears `claimed_at`/`owner_pid`.
 - `dead_letter_entry(entry_id, error: str, db_path=...) -> bool` (new):
-  running→`dead_letter`, stores `{"error": error, ...}` in `result`, clears
-  ownership.
-- `cancel_entry(entry_id, reason: str, db_path=...) -> bool` (new):
-  pending|running→`cancelled`, stores `{"reason": reason}` in `result`, clears
-  ownership.
+  running→`dead_letter` (guarded), stores `{"error": error, ...}` in `result`,
+  clears ownership.
+- `cancel_entry(entry_id, reason: str, db_path=..., *, extra: dict[str, Any] | None = None) -> bool`
+  (new): pending|running→`cancelled`, stores `{**(extra or {}), "reason":
+  reason}` in `result`, clears ownership. `_drain_once`'s `force_stop` branch
+  passes the dispatch `result_dict` as `extra`.
 - `revive_entry(entry_id, db_path=...) -> bool` (new): terminal→pending,
-  `attempt = 0`, `next_attempt_at = NULL`, `result = NULL`. Used by
-  `cmd_requeue` for non-running entries.
-- `_reclaim_stale(db_path) -> int` (`cli/queue.py:542`): for each dead-owner
-  entry, `dead_letter_entry` if `entry.attempt >= QUEUE_MAX_ATTEMPTS` else
-  `reset_to_pending`. Return value counts both.
-- `_classify_dispatch(result_dict, timed_out) -> tuple[bool, str]` (new,
-  `cli/queue.py`): returns `(retryable, reason)` wrapping the timeout check and
-  `classify_failure`.
+  `attempt = 0`, `next_attempt_at = NULL`, `result = {"previous": <old
+  result>}` (or NULL when there was none). Used by `cmd_requeue` for
+  non-running entries.
+- `_reclaim_stale(db_path) -> tuple[int, int]` (`cli/queue.py:542`): for each
+  dead-owner entry, `dead_letter_entry` if `entry.attempt >=
+  QUEUE_MAX_ATTEMPTS` else `reset_to_pending`. Returns `(reclaimed,
+  dead_lettered)`; `_report_reclaim` (`:665`) prints both when nonzero.
+- `_classify_dispatch(runner: RunnerType, result_dict, timed_out) -> tuple[bool, str]`
+  (new, `cli/queue.py`): returns `(retryable, reason)`. Order: `timed_out` →
+  non-retryable; `runner is LOOP and error == "terminal failure"` →
+  non-retryable; else `classify_failure(...)` and `retryable = reason in
+  QUEUE_RETRYABLE_REASONS`.
+- `_format_action_summary` (`cli/queue.py:65`): appends `attempt=N` when
+  `entry.attempt > 0` and `retry in Xs` when `entry.next_attempt_at` is in
+  the future (reversing the earlier "no new branch needed" call).
 - `cmd_cancel(args) -> int` (new): `id`, `--reason`, `--json`.
 - `cmd_requeue(args) -> int` (`cli/queue.py:686`): widen the status guard;
   dispatch to `reset_to_pending` (running) or `revive_entry` (terminal).
@@ -302,12 +403,14 @@ tests.
 `cmd_run` → `_drain_once` → `list_entries` filtered to
 `status == "pending" and (next_attempt_at is None or <= now)` → `claim_entry`
 (increments `attempt`, SQL time gate) → dispatch →
-- success → `update_entry_result(..., "done", ...)`
-- `force_stop` set → `cancel_entry(id, "interrupted by operator")`
-- failure → `_classify_dispatch` →
-  - not retryable → `update_entry_result(..., "failed", ...)`
+- success → `update_entry_result(..., "done", ...)` (guarded)
+- `force_stop` set → `cancel_entry(id, "interrupted by operator", extra=result_dict)`
+- failure → `_classify_dispatch(entry.action.runner, ...)` →
+  - not retryable → `update_entry_result(..., "failed", ...)` (guarded)
   - retryable, `attempt < QUEUE_MAX_ATTEMPTS` → `schedule_retry(id, error, now + compute_backoff_s(attempt))`
   - retryable, exhausted → `dead_letter_entry(id, error)`
+- any of the above returns False → `get_entry` and use its `status` in the
+  `processed` record / `on_entry` callback.
 
 `_run_watch` → `_reclaim_stale` → per dead-owner entry → `reset_to_pending` or `dead_letter_entry`.
 

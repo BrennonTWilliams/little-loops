@@ -11,12 +11,12 @@ labels:
 - evaluation
 - statistics
 decision_needed: false
-confidence_score: 96
-outcome_confidence: 45
-score_complexity: 9
-score_test_coverage: 18
-score_ambiguity: 8
-score_change_surface: 10
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 ## Summary
@@ -115,7 +115,7 @@ Decided by `/ll:decide-issue` on 2026-09-08.
 
 Option B as decided has a hole the rationale did not cover: `_evaluate_and_report()` **prints** on every call — the text status block or a full `--output json` payload (`cli/harness.py:875-910`), plus the ENH-3223 history line and the ENH-2998 prepatch lookup. Looping it n times at a call site emits n JSON objects on stdout and n identical history lines. `cmd_dsl` tolerates this only because per-task output is intended there. Option B therefore requires splitting grading from reporting:
 
-- Extract the grading half of `_evaluate_and_report()` (lines `:798-845` and the outcome/exit-code derivation `:912-926`) into `_grade(runner_label, result, args, *, expected_grade=None) -> tuple[int, HarnessEvalOutcome]` with no I/O.
+- Extract the grading half of `_evaluate_and_report()` (lines `:798-845` and the outcome/exit-code derivation `:912-926`) into `_grade(runner_label, result, args, *, expected_grade=None) -> tuple[int, HarnessEvalOutcome]` with no stdout or DB writes. It is **not** pure: it still makes the `evaluate_llm_structured()` judge call when `--semantic` is set (one judge call per sample). Do not hoist that call out.
 - `_evaluate_and_report()` becomes `_grade()` + the existing single-result report, preserving its signature and behavior for n=1 and for `cmd_dsl`.
 - The n-sample path calls `_grade()` per sample and prints **one** aggregate report (new `_report_samples()`), performing the prepatch and history DB reads once.
 
@@ -133,25 +133,27 @@ Each sample is written through the existing `_record_harness_event()` (`cli/harn
 - `harness_eval_pass_rate()`, `session_store/schema.py`, and `session_store/writers.py` need **no change**. The Wiring Phase item asking whether to store aggregate-only or both is resolved: per-sample rows only.
 - **No DSL-style parent aggregate row** for `skill`/`prompt`/`mcp`/`cmd`. `cmd_dsl` gets away with a parent row because parent and children use different `runner` values (`dsl` vs `dsl-task`); a `skill` parent row would share `runner="skill"` with its children and double-count in the target-scoped rate.
 
-### D2. `--retry-of` is refused when effective n > 1
+### D2. `--retry-of` implies n = 1; refused only with an explicit `--samples` > 1
 
-`--retry-of` supersedes one attempt and reuses its repetition index; a sample loop allocates n fresh indices. The two cannot compose. When `retry_of is not None` and the effective sample count is > 1, refuse before running with exit 1 and a message naming both flags, in the same place `_retry_gate()` is consulted today. Passing `--samples 1 --retry-of ID` remains valid.
+`--retry-of` supersedes one attempt and reuses its repetition index; a sample loop allocates n fresh indices. The two cannot compose. But a retry replaces exactly one attempt, so **when `--retry-of` is given and `--samples` is not, the effective sample count is 1** — the stochastic default of 3 does not apply. Otherwise every `ll-harness skill X --retry-of ID` (the common case, no `--samples`) would be refused and the operator would have to type `--samples 1` every time. Refuse before running, with exit 1 and a message naming both flags, **only when `retry_of is not None` and `args.samples` is explicitly > 1**, in the same place `_retry_gate()` is consulted today. `--samples 1 --retry-of ID` remains valid. This is what lets D3 compose: a timed-out sample from an n=3 run is retried individually as a one-sample invocation that supersedes that one row. (Revised 2026-09-09 pre-implementation review; the earlier "refused when *effective* n > 1" wording would have refused the default case.)
 
 ### D3. Per-sample timeout/error handling follows `cmd_dsl`'s tally
 
-Per sample, `_grade()`'s exit code is tallied exactly as `cmd_dsl` tallies per task (`cli/harness.py:1293-1314`): `2` → `errored`, `3` → `abstained`, `0` → `passed`, `1` → `failed`. The loop **continues** after an errored sample (an infra failure on sample 2 of 5 should not discard samples 3–5). The graded denominator is `passed + failed`. Every sample, including errored ones, is still recorded via D1 so `--retry-of` can later supersede a timed-out sample individually. Verdict precedence over the tally (mirrors BUG-3196's ordering):
+Per sample, `_grade()`'s exit code is tallied exactly as `cmd_dsl` tallies per task (`cli/harness.py:1293-1314`): `2` → `errored`, `3` → `abstained`, `0` → `passed`, `1` → `failed`. The loop **continues** after an errored sample (an infra failure on sample 2 of 5 should not discard samples 3–5). The graded denominator is `passed + failed`. Every sample, including errored ones, is still recorded via D1 so `--retry-of` can later supersede a timed-out sample individually (D2). Verdict precedence over the tally (mirrors BUG-3196's ordering):
 
 1. `graded == 0 and errored > 0` → `ERROR`, exit 2
 2. `graded == 0` (all abstained) → `ABSTAIN`, exit 3
-3. otherwise band on the graded tally per D4
+3. otherwise band on the tally per D4
 
-### D4. Banding is on counts, not on the Wilson CI
+### D4. Banding is on counts, not on the Wilson CI; PASS requires every requested sample
 
-If "between clear pass and clear fail" were defined as `paired_direction()`'s CI-straddles-0.5 rule, small n could never PASS: `wilson_ci(3,3)` has lower bound 0.438, `wilson_ci(4,4)` 0.510, `wilson_ci(5,5)` 0.566. Rather than force n ≥ 5, band on the graded tally:
+If "between clear pass and clear fail" were defined as `paired_direction()`'s CI-straddles-0.5 rule, small n could never PASS: `wilson_ci(3,3)` has lower bound 0.438, `wilson_ci(4,4)` 0.510, `wilson_ci(5,5)` 0.566. Rather than force n ≥ 5, band on the tally:
 
-- `PASS` iff `failed == 0` (every graded sample passed), exit 0
-- `FAIL` iff `passed == 0` (every graded sample failed), exit 1
-- `INCONCLUSIVE` otherwise (mixed), exit 3
+- `PASS` iff `passed == requested` (every requested sample graded and passed — no failure, no abstention, no error), exit 0
+- `FAIL` iff `passed == 0 and graded > 0` (every graded sample failed; errored/abstained samples alongside do not soften a unanimous failure), exit 1
+- `INCONCLUSIVE` otherwise (mixed pass/fail, **or** passes with any abstained or errored sample), exit 3
+
+Why PASS is on `requested`, not `graded` (revised 2026-09-09 pre-implementation review): the earlier `PASS iff failed == 0` rule let 1 pass + 2 timeouts certify PASS on a single graded sample — exactly the "lucky sample" the Summary calls unsound. It also contradicted both precedents this issue cites: the single-run precedence is fail > abstain > pass (`cli/harness.py:840-845`), and `cmd_dsl` returns exit 3 on any abstained task and exit 2 on any errored task even when every graded task passed (`cli/harness.py:1398-1405`). A shortfall is recoverable: the tally names the errored count, and each errored sample has its own row for `--retry-of`, or the operator re-runs.
 
 The Wilson 95% CI is still computed with `wilson_ci(passed, graded)` and **printed as information** in the same `k/n  [lo, hi] (95% CI)` shape `cmd_dsl` uses (`cli/harness.py:1375`). Operating characteristic to state in the docs: a runner with per-run pass probability *p* slips through a PASS at *pⁿ* (0.7³ ≈ 0.34, 0.7⁵ ≈ 0.17); an operator who needs tighter certification raises `--samples`.
 
@@ -174,14 +176,18 @@ The Wilson 95% CI is still computed with `wilson_ci(passed, graded)` and **print
 
 ### D7. Override is per invocation: `--samples N`
 
-There is no criterion list to key a per-criterion override on (refine confirmed: one `--exit-code` slot, one `--semantic` slot), and the runner invocation is the expensive part shared by both criteria. Add `--samples N` (`dest="samples"`, `type=int`, `default=None`) to `_add_evaluator_flags()`. Effective n = `args.samples` if given, else `DEFAULT_STOCHASTIC_SAMPLES` if `is_stochastic_runner(runner)`, else 1. An explicit `--samples` overrides in **both** directions — raising n on a `cmd` runner is useful for flaky shell tests — so the flag is never rejected on a deterministic runner. `--samples 0` or negative is an argparse error. No config-schema key in this issue.
+There is no criterion list to key a per-criterion override on (refine confirmed: one `--exit-code` slot, one `--semantic` slot), and the runner invocation is the expensive part shared by both criteria. Add `--samples N` (`dest="samples"`, `type=_positive_int`, `default=None`) to `_add_evaluator_flags()`. Effective n = `args.samples` if given, else 1 if `args.retry_of is not None` (D2), else `DEFAULT_STOCHASTIC_SAMPLES` if `is_stochastic_runner(runner)`, else 1. An explicit `--samples` overrides in **both** directions — raising n on a `cmd` runner is useful for flaky shell tests — so the flag is never rejected on a deterministic runner. `--samples 0` or negative is an argparse error: plain `type=int` accepts `0`, so reuse the existing `_positive_int` argparse `type=` callable at `scripts/little_loops/cli/history.py:29` (import it, or lift it to a shared spot) rather than post-parse validation. No config-schema key in this issue.
+
+Wall time and timeout scale with n: `--timeout` is per runner invocation, so a default `skill`/`prompt` run can take up to 3 × `--timeout`. State this in the docs next to the `--samples` row.
 
 ### D8. Names
 
 - `HarnessEvalOutcome` gains `sample_pass_rate: float | None = None` (not `pass_rate`, per the `history_pass_rate`/`ab_writer.harness_pass_rate` collision noted under Documentation) and `samples: SampleTally | None = None`.
 - New `@dataclass SampleTally` in `cli/harness.py`: `requested: int`, `graded: int`, `passed: int`, `failed: int`, `abstained: int`, `errored: int`, `ci_lo: float | None`, `ci_hi: float | None`.
 - `--output json` gains a `samples` object with those fields plus `sample_pass_rate` at top level, **only when effective n > 1**; the n=1 payload is byte-identical to today's.
-- Text output for n > 1 prints one status block whose `Result` is `PASS`/`FAIL`/`INCONCLUSIVE`/`ABSTAIN`/`ERROR` and adds a `Samples: k/n graded  [lo, hi] (95% CI)` line; per-sample stdout is shown only under `--verbose` (or for failing samples, matching today's `show_output` rule).
+- **n > 1 JSON payload shape** (pinned 2026-09-09; the single-result keys `exit_code`/`stdout`/`stderr` have no honest aggregate value): top level carries `runner`, `result`, `sample_pass_rate`, `samples` (the `SampleTally` fields), plus `prepatch_evidence` and the `history_*` keys exactly as today. It does **not** carry top-level `exit_code`/`exit_code_check`/`semantic`/`stdout`/`stderr`. Instead `samples` gains a `results` list, one entry per sample in run order: `{"index": i, "exit_code": ..., "exit_code_check": ..., "semantic": ..., "result": "PASS"|"FAIL"|"ABSTAIN"|"ERROR", "error": str|None}`, with `stdout`/`stderr` added per entry only under `--verbose` or when that sample did not pass (mirroring `show_output`).
+- Text output for n > 1 prints one status block whose `Result` is `PASS`/`FAIL`/`INCONCLUSIVE`/`ABSTAIN`/`ERROR` and adds a `Samples: k/n graded  [lo, hi] (95% CI)` line (append `, e errored` / `, a abstained` when non-zero so a shortfall is visible); per-sample stdout is shown only under `--verbose` (or for failing samples, matching today's `show_output` rule).
+- **History and prepatch lookups run once, before the first sample.** `_read_target_history()` today runs before the run's own `_record_harness_event()` so the reported figures exclude the current run (`cli/harness.py:707-709`). The Call Path places `_report_samples()` after the loop; if the read happened there, the n fresh rows would be included, and because `_HISTORY_MIN_SCORED = 3` equals the default n, a first-ever n=3 invocation would print a history line derived entirely from itself. Read both before the loop and pass them into `_report_samples()`.
 
 ### D9. No early exit; the preflight boundary is prose, not code
 
@@ -214,7 +220,7 @@ Findings below are grouped by the Integration Map's own subsections.
 - `scripts/tests/test_runner_spec.py` — 34 existing references to `RunnerType`; would need new cases for a stochastic/deterministic classification function
 
 _Wiring pass added by `/ll:wire-issue`:_
-- **Tests that will break on the literal PASS/FAIL/ABSTAIN report text** once a rate-based verdict is introduced — `TestCmdSkill.test_skill_pass_no_criteria` (`:187`, asserts `"PASS" in out` `:202`), `test_skill_exit_code_fail` (`:236`, `"FAIL" in out` `:248`), `TestCmdCmd.test_cmd_exit_code_fail` (`:407`, `:421`), `test_cmd_json_output` (`:462`, `data["result"] == "PASS"` `:477`), `TestSemanticEvaluator.test_semantic_yes_passes` (`:779`, `:799`), `test_semantic_non_yes_fails` (`:803`, `:823`), `TestAbstentionVerdict.test_semantic_abstain_exits_3` (`:855`, `:875`), `test_exit_code_fail_dominates_semantic_abstain` (`:877`, `:899`), `TestMainHarness.test_main_harness_json_output` (`:970`, `:985`) — all in `scripts/tests/test_cli_harness.py`; whichever `RunnerType`s `is_stochastic_runner()` classifies as stochastic determines which of these actually break
+- ~~Tests that will break on the literal PASS/FAIL/ABSTAIN report text~~ — **superseded** (2026-09-09 review): the `PASS`/`FAIL`/`ABSTAIN` labels are unchanged, `return_value=` mocks serve n calls unchanged, and the JSON assertions (`test_cmd_json_output`, `TestMainHarness.test_main_harness_json_output`) are on the `cmd` runner where n stays 1. `captured_prompt[0]` (`:222`, `:695`) still works with three appends. Expect essentially no existing-test breakage from the default n=3 on `skill`/`prompt`; the regression net that matters is `TestCmdDsl` for the `_grade()` extraction.
 - **Single-mock-invocation tests that need `side_effect=[...]` conversion** for an n-sample loop (no existing example of this chaining pattern in the file): `TestCmdSkill.test_skill_pass_no_criteria/test_skill_exit_code_pass/test_skill_exit_code_fail` (`:187,224,236`, patch `subprocess.run`), `TestCmdCmd.test_cmd_exit_code_pass/test_cmd_exit_code_fail/test_cmd_no_criteria_always_pass` (`:393,407,423`, patch `Popen`/`DefaultSelector`), `TestCmdMcp.test_mcp_tool_error_exit_code/test_mcp_exit_code_criterion_fail` (`:643,655`, patch `call_mcp_tool`), `TestCmdPrompt.test_prompt_sends_request` (`:676`, patches `subprocess.run` and indexes `captured_prompt[0]`, assuming exactly one call)
 - `scripts/tests/test_runner_spec.py:102-111` — `TestRunnerTypeCompleteness.test_all_harness_runner_kinds_present` and `test_loop_not_in_dispatch_table` are the exact existing precedent for a per-`RunnerType`-member classification/exclusion test; a new `is_stochastic_runner()` completeness test should follow this shape
 - `scripts/little_loops/stats.py:43-79` (`paired_direction()`) and its test `TestPairedDirection` (`scripts/tests/test_stats.py:113`) — a closer structural precedent than `wilson_ci` alone: it tallies raw pass/fail counts, calls `wilson_ci`, then collapses the CI into a discrete three-way verdict (`"inconclusive"` when the CI straddles 0.5) — the same tally-then-threshold-to-discrete-state shape this issue's "rate landing between clear pass and clear fail" behavior needs
@@ -284,7 +290,7 @@ _Rewritten 2026-09-08 to reflect the decided Option B plus review decisions D1�
 
 - `is_stochastic_runner(runner: RunnerType) -> bool` — new, `runner_spec.py`; `KeyError` on `LOOP` is acceptable (never dispatched).
 - `_effective_samples(args: argparse.Namespace, runner: RunnerType) -> int` — new, `cli/harness.py`; implements D7.
-- `_grade(runner_label: str, result: RunnerResult, args, *, expected_grade: ExpectedGrade | None = None) -> tuple[int, HarnessEvalOutcome]` — new, extracted from `_evaluate_and_report()` lines `:798-845,912-926`; pure, no I/O.
+- `_grade(runner_label: str, result: RunnerResult, args, *, expected_grade: ExpectedGrade | None = None) -> tuple[int, HarnessEvalOutcome]` — new, extracted from `_evaluate_and_report()` lines `:798-845,912-926`; no stdout/DB writes (still performs the `--semantic` judge call).
 - `_evaluate_and_report(...)` (`cli/harness.py:789`) — **signature unchanged**; body becomes `_grade()` + the existing single-result report. All existing callers, including `cmd_dsl`, are behaviorally unaffected.
 - `_band_samples(tally: SampleTally) -> tuple[str, int]` — new; implements D3 precedence + D4 banding, returns `(result_label, exit_code)`.
 - `_report_samples(runner_label: str, tally: SampleTally, sample_results: list[RunnerResult], args, *, prepatch_evidence, target_history) -> None` — new; prints one aggregate text block or JSON payload (D8).
@@ -294,17 +300,20 @@ _Rewritten 2026-09-08 to reflect the decided Option B plus review decisions D1�
 For each of `cmd_skill` (`:951`), `cmd_cmd` (`:1000`), `cmd_mcp` (`:1042`), `cmd_prompt` (`:1120`):
 
 ```
-n = _effective_samples(args, spec.runner)
-if retry_of is not None and n > 1: refuse, exit 1            # D2
+n = _effective_samples(args, spec.runner)                    # D7: --retry-of without --samples => 1
+if retry_of is not None and args.samples is not None and args.samples > 1:
+    refuse, exit 1                                           # D2 (explicit --samples only)
 if n == 1: existing path, byte-identical output              # unchanged
 else:
+    prepatch_evidence = _read_prepatch_evidence(...)         # once, BEFORE the loop
+    target_history = _read_target_history(args.target)       # once, BEFORE the loop (D8)
     for i in range(n):
         result = run_action(spec) | _run_prompt_action(...)
         rc, outcome = _grade(runner_label, result, args)
         tally.record(rc)                                     # D3
         _record_harness_event(..., cell_key=cell_key)        # D1: one repetition row per sample
     label, exit_code = _band_samples(tally)                  # D4/D5
-    _report_samples(...)                                     # once
+    _report_samples(..., prepatch_evidence=..., target_history=...)   # once
     return exit_code
 ```
 
@@ -328,11 +337,11 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 1. `is_stochastic_runner()` classifies every dispatched `RunnerType` per the D6 table, with a completeness test mirroring `TestRunnerTypeCompleteness`; `LOOP` is excluded and tested as such.
 2. Without `--samples`, `skill` and `prompt` run `DEFAULT_STOCHASTIC_SAMPLES` (3) times; `cmd` and `mcp` run once with output byte-identical to today (existing `TestCmdCmd`/`TestCmdMcp` tests pass unmodified).
-3. `--samples N` overrides the default in both directions on any of the four runners; `--samples 0` or negative is an argparse error; `cmd_dsl` refuses `--samples` > 1 with exit 1 and a message naming the flag.
-4. For effective n > 1, the verdict is `PASS`/exit 0 iff every graded sample passed, `FAIL`/exit 1 iff every graded sample failed, `INCONCLUSIVE`/exit 3 when mixed, `ABSTAIN`/exit 3 when all graded samples abstained, `ERROR`/exit 2 when no sample graded and at least one errored (D3/D4/D5). No new exit code is introduced.
-5. For n > 1, exactly **one** report is printed: a single JSON object under `--output json` (with `samples` and `sample_pass_rate`) or a single text status block with a `Samples: k/n graded  [lo, hi] (95% CI)` line; the history and prepatch lookups run once. A test asserts `stdout` parses as exactly one JSON object for n=3.
-6. Each sample is persisted as its own `attempt_kind='repetition'` row against the invocation's `cell_key`; a test asserts n rows with distinct `repetition` indices after one n=3 invocation, and that `history_pass_rate_runs` counts them.
-7. `--retry-of ID` with effective n > 1 is refused before any runner invocation, exit 1, message naming both flags.
+3. `--samples N` overrides the default in both directions on any of the four runners; `--samples 0` or negative is an argparse error (`_positive_int` type); `cmd_dsl` refuses `--samples` > 1 with exit 1 and a message naming the flag.
+4. For effective n > 1, the verdict is `PASS`/exit 0 iff `passed == requested`, `FAIL`/exit 1 iff `passed == 0 and graded > 0`, `ABSTAIN`/exit 3 when all samples abstained, `ERROR`/exit 2 when no sample graded and at least one errored, and `INCONCLUSIVE`/exit 3 otherwise — including 2 pass + 1 abstain and 2 pass + 1 timeout, each with its own test (D3/D4/D5). No new exit code is introduced.
+5. For n > 1, exactly **one** report is printed: a single JSON object under `--output json` (top-level `samples`/`sample_pass_rate`, per-sample `samples.results`, no top-level `exit_code`/`stdout`/`stderr`) or a single text status block with a `Samples: k/n graded  [lo, hi] (95% CI)` line. The history and prepatch lookups run once, **before the first sample**: a test seeds no prior rows, runs n=3, and asserts no `history_pass_rate` key/line is emitted (the run's own rows must not feed its history figure). A test asserts `stdout` parses as exactly one JSON object for n=3.
+6. Each sample is persisted as its own `attempt_kind='repetition'` row against the invocation's `cell_key`; a test asserts n rows with distinct `repetition` indices after one n=3 invocation, and that a *subsequent* invocation's `history_pass_rate_runs` counts them.
+7. `--retry-of ID` with an explicit `--samples` > 1 is refused before any runner invocation, exit 1, message naming both flags. `--retry-of ID` without `--samples` on a `skill`/`prompt` runner runs exactly one sample (test asserts one runner invocation and one `infra_retry` row).
 8. An errored (exit 2) sample does not stop the loop; the remaining samples still run and are tallied, with a test using a `side_effect` list that times out sample 2 of 3.
 9. The sample loop never exits early on a pass: a test with `side_effect=[pass, pass, fail]` asserts three runner invocations and an `INCONCLUSIVE` verdict.
 10. `cli/logs.py` fixture round-trip preserves `--samples N` (`test_fixture_to_harness_argv_round_trips_through_parser` extended).
@@ -365,6 +374,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T04:41:40 - `4d4ff5a0-23ef-4021-a8a3-820b60906276.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:38:13 - `8dab0813-a8db-483a-974b-e9db8e0998dc.jsonl`
 - pre-implementation review (manual) - 2026-09-08 - added "Pre-Implementation Review Decisions" D1–D9, Option B print caveat, rewrote Program Design / Acceptance Criteria / Impact
 - `/ll:confidence-check` - 2026-09-09T04:13:05 - `e1e686a9-1440-44fa-b3e0-814ed4ea3e38.jsonl`
