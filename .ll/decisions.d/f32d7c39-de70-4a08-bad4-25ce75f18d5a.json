@@ -1,0 +1,11 @@
+{
+  "id": "a0a9cd6d-f3a0-43e4-be4b-756376c28e82",
+  "type": "decision",
+  "timestamp": "2026-09-09T19:07:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "commands/verify-issues.md gives no framing rule for auto-mode Verification Notes when detection and remediation happen in the same pass, causing stale-looking verdict labels.",
+  "rule": "Captured: verify-issues auto-mode notes read as unresolved after fixes",
+  "scope": "issue",
+  "issue": "ENH-3423"
+}

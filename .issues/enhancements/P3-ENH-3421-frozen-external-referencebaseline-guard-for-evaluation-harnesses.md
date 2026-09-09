@@ -68,7 +68,7 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 - Two independently-implemented "capture once outside the iterate cycle" patterns already exist in shipped loops, with no shared/reusable primitive between them: `harness-optimize.yaml`'s `baseline_score` state (lines 110-116, reached once via `init_run → load_directive → baseline_score`, before the iterate region) versus `capture_prev` (lines 262-266, inside the iterate region, reassigned every accepted iteration). `captured.baseline.output` is referenced only for display (`propose` prompt) and to seed `prev_score` today — never inside `gate`'s `evaluate:` block.
-- A second, independently-arrived precedent for the same frozen-vs-rolling distinction exists in `general-task.yaml`: `check_baseline_tests` (the `initial:` state, line 85) writes `${context.run_dir}/baseline-ref.txt` exactly once; `final_verify_spin_gate` (line 457) and `check_provisional_markers` (line 1011) only ever read it. A code comment at lines 434-437 already names the distinction explicitly ("both are frozen values on this cycle... would make the gate fail open forever if used as a condition"). This mechanism is a raw file under `${context.run_dir}` read by shell, not an FSM `capture:`/`EvaluateConfig` field — a second established shape for the same underlying rule, alongside `harness-optimize.yaml`'s.
+- A second, independently-arrived precedent for the same frozen-vs-rolling distinction exists in `general-task.yaml`: `check_baseline_tests` (the `initial:` state, line 50) writes `${context.run_dir}/baseline-ref.txt` exactly once; `final_verify_spin_gate` (line 423) and `check_provisional_markers` (line 1008) only ever read it. A code comment at line 436 already names the distinction explicitly ("both are frozen values on this cycle... would make the gate fail open forever if used as a condition"). This mechanism is a raw file under `${context.run_dir}` read by shell, not an FSM `capture:`/`EvaluateConfig` field — a second established shape for the same underlying rule, alongside `harness-optimize.yaml`'s.
 - Repo-wide search found no shared "frozen-capture" primitive, decorator, or field type anywhere in `scripts/little_loops/` — each loop hand-rolls its own frozen value; no existing consolidation candidate to reuse instead of adding a new field.
 - `baseline_path` (`fsm/schema.py:133`) is a name-adjacent but semantically unrelated existing `EvaluateConfig` field — scoped to the `comparator` evaluator type only, and names a directory path for blind A/B artifact comparison, not a numeric score reference. Do not conflate with the new field this issue proposes.
 
@@ -166,9 +166,10 @@ comparison.
 **Recommended**: Option A for `harness-optimize.yaml` and its `convergence_gate`-family loops —
 it keeps the guard numeric and cheap, matching the per-iteration scorer these loops already run,
 and it closes the exact gap found (no frozen slot in `evaluate_convergence`'s current signature)
-without requiring loop authors to adopt a second, differently-shaped evaluator. Option B remains
-the better fit for `harness-single-shot.yaml`-style whole-loop regression checks, where it is
-already used today.
+without requiring loop authors to adopt a second, differently-shaped evaluator. Option B would be
+a better conceptual fit for `harness-single-shot.yaml`-style whole-loop regression checks, but
+`check_comparator`/`type: comparator` is not wired into any shipped loop today — see Decision
+Rationale below, which corrects this.
 
 > **Selected:** Option A — keeps the guard numeric and cheap inside the evaluator
 > `harness-optimize.yaml` already runs, and scored 11/12 vs. Option B's 5/12 on codebase
@@ -228,11 +229,11 @@ addition.
   `run_benchmark`'s scorer contract (`lib/benchmark.yaml:20-21`) is a bare float on stdout, so
   the raw capture parses without the `tail -1 | tr -d` normalization `init_prev` applies.
 - `scripts/little_loops/loops/harness-optimize.yaml` `write_trajectory_rejected` state
-  (~line 250) — the rejected trajectory line today is
+  (line 240) — the rejected trajectory line today is
   `{"iter","score","accepted":false,"commit_sha":""}` with no reason, so a reference regression
   would be indistinguishable from a plain stall in run artifacts. Add
   `"baseline":${captured.baseline.output}` to **both** trajectory lines
-  (`write_trajectory_accepted` ~line 229 and `write_trajectory_rejected` ~line 250) so a reader
+  (`write_trajectory_accepted` line 218 and `write_trajectory_rejected` line 240) so a reader
   can derive "rejected because `score < baseline`" from the line itself, and accepted lines show
   the bar that was cleared. **Do not** try to read the evaluator's `details` from that state:
   `${result.*}` is populated only for the evaluating state's own routing interpolation
@@ -451,12 +452,42 @@ scoping AC and a note that no `structural_rules.py` consumer is needed; (4) two 
 `route.target → commit_and_log → … → capture_prev → propose` never stops in non-state mode —
 candidate for a separate ENH.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-09:_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the
+issue as it now reads is up to date — this section is a record of what was wrong and fixed, not
+an outstanding action item). Every `file:line` citation and quoted-code claim was checked against
+HEAD (`c7a1d96b`); the overwhelming majority (evaluators.py, schema.py, executor.py,
+meta_rules.py, fsm-loop-schema.json, all cited tests, all cited docs, ENH-1122/1793/1828/1829
+statuses, ENH-3415 relationship) matched exactly. Two categories of correction applied:
+
+1. **Anchor drift (harmless, corrected in place):** `harness-optimize.yaml`
+   `write_trajectory_accepted`/`write_trajectory_rejected` were cited ~229/~250, actually at
+   218/240; `general-task.yaml` `check_baseline_tests`/`final_verify_spin_gate`/
+   `check_provisional_markers` were cited 85/457/1011, actually at 50/423/1008. Content at the
+   corrected lines matches what the issue describes in all five cases — this was pure line-drift,
+   not a wrong claim.
+2. **Substantive self-contradiction (corrected in place):** the Proposed Solution "Recommended"
+   paragraph asserted Option B (`check_comparator`) "is already used today" for
+   `harness-single-shot.yaml`-style checks. `grep -rn "check_comparator\|type: comparator"
+   scripts/little_loops/loops/` returns zero hits — the pattern exists only in
+   `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, never in a shipped loop. This directly contradicted
+   the issue's own later Decision Rationale (lines 208-212), which correctly says no loop wires it
+   in. Reworded to match the (correct) Decision Rationale.
+
+No `PROPOSAL_UNSOUND`, `EVIDENCE_UNVERIFIED`, or `DECISIONS_VIOLATION` findings (`ll-verify-evidence`
+clean; no active required decision rules; Option A's exception-handling/test-fixture/AC-coverage
+consequences all check out against the current code).
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T19:00:48 - `095aaa45-5f8e-445a-8993-2ec43b515f28.jsonl`
 - `/ll:confidence-check` - 2026-09-09T16:56:08 - `a093caaa-52f1-4637-ac3b-903ace756c35.jsonl`
 - `/ll:confidence-check` - 2026-09-09T16:33:20 - `3bf7ddf5-f1c3-4461-90f7-4d411c62ae41.jsonl`
 - `/ll:refine-issue` - 2026-09-09T16:20:49 - `fa9f7cba-187f-4268-b323-59e2fd18c32b.jsonl`
