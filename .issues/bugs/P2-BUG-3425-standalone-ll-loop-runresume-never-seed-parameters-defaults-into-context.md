@@ -27,7 +27,7 @@ The builtin loops duplicate the default as a literal under `context:`:
 
 Proposal from the ll-console agent (2026-09-09). Its diagnosis was that a `context:` entry shaped `{type: number, default: 3}` renders its Python repr when interpolated and should be "collapsed" at run start. That symptom is real but the seam is wrong: typed dicts under `context:` are an undocumented form (the JSON schema's `context` is `additionalProperties: true`, no typed-entry shape). The documented typed-declaration form is the top-level `parameters:` block (FEAT-1311), and the actual gap is that its defaults are not seeded for standalone runs.
 
-## Proposed Fix
+## Proposed Solution
 
 1. Add `seed_parameter_defaults(context: dict[str, Any], parameters: dict[str, ParameterSpec]) -> None` to `scripts/little_loops/fsm/context_seed.py`. For each non-required parameter whose `default is not None`, `context.setdefault(name, spec.default)`. `setdefault` keeps precedence: positional input (run.py:165-179), `program.md` injection, and the persisted resume context (lifecycle.py:658-660) all land before it and win.
 2. Call it from both `run.py` (immediately before the `apply_context_overrides` call at line 190) and `lifecycle.py` (immediately before line 665), following the same shared-helper pattern `apply_context_overrides` already uses so the two launch paths cannot diverge. Placing it before overrides means `--context k=v` still wins and `_coerce_override` sees the typed default (an `int`/`bool` instance), so coercion works without the `{type:}` dict branch.
@@ -52,52 +52,70 @@ Proposal from the ll-console agent (2026-09-09). Its diagnosis was that a `conte
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Standalone `ll-loop run` and `ll-loop resume` never seed `parameters:` defaults into context. Only the sub-loop `with:` binding path in `executor.py:1090-1096` applies `ParameterSpec.default`. A loop declaring an optional parameter with a `default:` gets no corresponding key seeded into context when launched directly.
 
 ## Expected Behavior
 
-[What should happen instead]
+All three loop-launch paths — sub-loop `with:` binding, standalone `ll-loop run`, and `ll-loop resume` — seed `parameters:` defaults into context consistently, with existing precedence (positional input, `program.md` injection, persisted resume context, `--context` overrides) still winning over the seeded default.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
-
-## Proposed Solution
-
-TBD - requires investigation
+`parameters:` with typed `default:` is the documented declaration form (FEAT-1311), but it silently does nothing outside sub-loop `with:` bindings. Loop authors work around this by duplicating the default as a `context:` literal (`rn-remediate.yaml`, `rn-decompose.yaml`), which is an undocumented `context:` shape, creates two sources of truth that can drift, and is the root cause of the Python-repr-rendering symptom the ll-console agent originally reported (see Origin). Fixing the seeding gap removes the workaround and makes `parameters.default` behave consistently across all three launch paths.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/fsm/context_seed.py` — add `seed_parameter_defaults()`
+- `scripts/little_loops/cli/loop/run.py` — call before the `apply_context_overrides` call at line 190
+- `scripts/little_loops/cli/loop/lifecycle.py` — call before line 665
+- `scripts/little_loops/loops/rn-remediate.yaml` — move `max_remediation_passes` default from `context:` (line 65) to `parameters:` (line 48)
+- `scripts/little_loops/loops/rn-decompose.yaml` — move `parent_depth` default from `context:` (line 51) to `parameters:` (line 42)
+- `scripts/little_loops/loops/lib/common.yaml:54` — audit `max_retries` and any other `parameters:` entry whose description says "default:"
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/fsm/executor.py:1090-1096` — existing sub-loop `with:` binding consumer of `ParameterSpec.default`; must stay consistent with the new shared helper
+- `scripts/little_loops/fsm/schema.py:1504-1506, 1691` — `ParameterSpec.to_dict` / `ll-loop show -j` emission consumed by ll-console; unaffected by this fix per Explicit Non-Goals
 
 ### Similar Patterns
-- TBD - search for consistency
+- `apply_context_overrides` — the existing shared-helper pattern `seed_parameter_defaults` should follow so the two launch paths cannot diverge
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/` — new fixture loop with integer/boolean/string `parameters:` (each `default:`, `required: false`) plus tests for standalone `ll-loop run`, `ll-loop resume`, `--context` override precedence, and `required: true` parameters without `default:`
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/CLI.md` — `ll-loop run`/`ll-loop resume` parameter-default behavior
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+## Program Design
+
+### Types
+
+- (none new — reuses `ParameterSpec` from `scripts/little_loops/fsm/schema.py`)
+
+### Signatures
+
+- `seed_parameter_defaults(context: dict[str, Any], parameters: dict[str, ParameterSpec]) -> None` — `scripts/little_loops/fsm/context_seed.py`
+
+### Call Path
+
+`cli/loop/run.py:run()` -> `seed_parameter_defaults()` -> `apply_context_overrides()` (mirrored in `cli/loop/lifecycle.py` resume path)
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add `seed_parameter_defaults()` to `scripts/little_loops/fsm/context_seed.py`
+2. Call it from `run.py` (before line 190) and `lifecycle.py` (before line 665), following the `apply_context_overrides` shared-helper pattern
+3. Move the duplicated `context:` literal defaults (rn-remediate, rn-decompose, common.yaml) into `parameters.default` and remove the `context:` duplicates
+4. Optional: add an `ll-loop validate` lint warning when a `context:` value is a dict carrying a `type` key
+5. Verify with the fixture loop against each Acceptance Criterion
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - silent context gap breaks `parameters.default` outside sub-loop `with:` bindings, but shipped loops currently mask it with the `context:` literal workaround
+- **Effort**: Medium - one new helper, two call sites, plus migrating rn-remediate, rn-decompose, and common.yaml off the workaround
+- **Risk**: Low - purely additive seeding via `setdefault`; existing precedence order is preserved by design
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -105,19 +123,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
+**Open** | Created: 2026-09-09 | Priority: P2
 
 ## Steps to Reproduce
 
-1. [Step 1]
-2. [Step 2]
-3. [Observe: description of the bug]
+1. Create a loop YAML with `parameters: {max_remediation_passes: {type: integer, default: 3}}` and a state referencing `${context.max_remediation_passes}`.
+2. Run it directly with `ll-loop run <loop>.yaml` (not as a sub-loop `with:` binding).
+3. Observe: the pre-run missing-key check at `run.py:278` rejects the run, or the interpolation renders empty — `max_remediation_passes` was never seeded because `run.py`/`lifecycle.py` never read `fsm.parameters`.
 
 ## Root Cause
 
-- **File**: `path/to/file.py`
-- **Anchor**: `in function buggy_func()`
-- **Cause**: [Explanation of why bug happens]
+- **File**: `scripts/little_loops/cli/loop/run.py` and `scripts/little_loops/cli/loop/lifecycle.py`
+- **Anchor**: `run.py` before the `apply_context_overrides` call (line 190); `lifecycle.py` before line 665
+- **Cause**: Only the sub-loop `with:` binding path in `executor.py:1090-1096` seeds `ParameterSpec.default` into context — neither standalone launch entry point reads `fsm.parameters` at all.
 
 ## Error Messages
 
@@ -127,18 +145,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Location
 
-- **File**: `path/to/file`
-- **Line(s)**: [lines] (at scan commit: [COMMIT_HASH_SHORT])
-- **Anchor**: `in function name()`
+- **File**: `scripts/little_loops/fsm/executor.py`
+- **Line(s)**: 1090-1096
+- **Anchor**: sub-loop `with:` binding default-seeding — the only existing call site that applies `ParameterSpec.default`
 - **Code**:
 ```
-# Relevant code snippet
+# ParameterSpec.default is read here for sub-loop `with:` bindings only;
+# run.py and lifecycle.py have no equivalent call.
 ```
 
-## Reproduction Steps
-
-## Proposed Fix
-
-
 ## Session Log
+- `/ll:format-issue` - 2026-09-09T20:37:49 - `575c8055-4eaf-4c28-a902-79bb09bf07a6.jsonl`
 - `/ll:capture-issue` - 2026-09-09T20:18:50 - `c67d0e9c-2f18-4a69-ac01-c129392655e2.jsonl`

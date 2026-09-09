@@ -17,6 +17,13 @@ blocked_by:
 relates_to:
 - ENH-3419
 - FEAT-3417
+reconcile_attempted: true
+confidence_score: 85
+outcome_confidence: 60
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3422: Make _backfill_raw_events consume iter_events and shrink HostLayout to path metadata
@@ -114,9 +121,8 @@ N/A — no new decision logic. This issue changes an existing function's paramet
 1. Confirm ENH-3420 phase 1 landed: `detect_sessions(cwd, h)` returns handles for every `h` in `get_project_folder`'s vocabulary.
 2. Add a direct unit test for `cli/logs.py::_extract_ll_event_streams` with a non-default `HostLayout` (no such test exists at any layout today) before touching `HostLayout`.
 3. Rewrite `_backfill_raw_events` to take handles; keep a `jsonl_files` compatibility path only if a test patches it directly.
-4. Retarget `_has_ll_activity`, `_backfill_subagent_runs`, `_iter_events`, `cli/session.py`, `cli/backfill_worker.py` (add `choices=` validation to the worker's free-form `--host`), `user_messages.py:446-448`.
-   > ⚠ Superseded — no argparse to add choices= to; see § Codebase Research Findings under Integration Map
-5. Delete `normalize`/`normalize_file` from `HostLayout`; keep `normalize_qwen_record`/`normalize_gemini_session`/`normalize_omp_session` exported from `session_store/__init__.py` as aliases of the ENH-3420 `parse_*` functions for one release (alias pattern: `git_operations.py:354-355`).
+4. Retarget `_has_ll_activity` and `_extract_ll_event_streams` (`cli/logs.py` — two independent `.normalize` call sites, ~122-125 and ~308-311), `_backfill_subagent_runs`, `_iter_events`, `cli/session.py`, `user_messages.py:446-448`, and `cli/backfill_worker.py`: this file has no argparse (hand-rolled `for i, arg in enumerate(args)` loop, lines 30-41), so add equivalent hand-rolled `--host` validation there instead of a `choices=` kwarg, matching `cli/session.py`'s `backfill_parser` `SystemExit` behavior.
+5. Delete `normalize`/`normalize_file` from `HostLayout`; keep `normalize_qwen_record`/`normalize_gemini_session`/`normalize_omp_session` exported from `session_store/__init__.py` as thin compatibility wrappers over the ENH-3420 `parse_*` functions for one release — the codebase's bare-rebind alias pattern (`git_operations.py:354-355`, `config/core.py:1132-1133`, `cli/verify_triggers.py:169-170`) doesn't transfer here since `normalize`/`normalize_file` (`dict -> dict | None` / `Path -> Iterator[dict]`) and their `parse_*` replacements (`Path -> Iterator[SessionEvent]`) don't share a signature.
 6. Drop the `cli/session.py:702` notice; verify `ll-session backfill --host codex` against `scripts/tests/fixtures/codex/` with `home=tmp_path`.
 7. Docs: `docs/ARCHITECTURE.md` seam note (one seam, two halves), `docs/reference/API.md`, `docs/reference/CLI.md` backfill flags table.
 
@@ -148,5 +154,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-09 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-09_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 60/100 → MODERATE
+
+### Concerns
+- Motivation section is still the unfilled template placeholder (`[Why this issue matters - business value, user impact, technical debt cost]`), capping Criterion 4 at 10/20 per the Structure Cap rule.
+- The bare-rebind back-compat alias convention this codebase otherwise uses doesn't transfer to retiring `HostLayout.normalize`/`normalize_file` (signature mismatch vs. the `parse_*` replacements); Step 5's thin-wrapper approach is a justified but non-standard deviation worth double-checking during implementation.
+
+### Outcome Risk Factors
+- Broad dependent surface: 4 production readers of `HostLayout.normalize`/`normalize_file` (`writers.py` ×2 sites, `cli/logs.py` ×2 sites) plus `cli/session.py`, `cli/backfill_worker.py`, and `user_messages.py` all need correct retargeting in one change — 6-10 dependents, each with different behavior (not a uniform mechanical substitution).
+- qwen idempotency landmine: `writers.py::_iter_events` must stop re-normalizing pre-normalized qwen rows in the same change as the write-path swap, or rows silently vanish on cursor replay — easy to miss since it's a separate read-path file from `lifecycle.py`.
+
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-09T20:34:13 - `2fd45f5b-ae88-495d-9824-d79e9d1a2e5f.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:26:42 - `707b6c2b-2b94-48e8-86f8-1ee81a021633.jsonl`
