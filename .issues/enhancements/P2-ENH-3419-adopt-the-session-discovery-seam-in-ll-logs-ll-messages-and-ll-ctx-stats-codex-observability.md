@@ -17,6 +17,7 @@ blocked_by:
 relates_to:
 - ENH-3422
 missing_artifacts: true
+verify_verdict: VALID
 ---
 
 # ENH-3419: Adopt the session-discovery seam in ll-logs, ll-messages, and ll-ctx-stats (Codex observability)
@@ -66,7 +67,7 @@ Claude Code output for every existing test is unchanged, including agent handlin
 
 ## Proposed Solution
 
-Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle is shared; content interpretation stays per-host). For qwen/gemini/omp/kimi handles, `iter_events` yields the host's existing-normalizer output (ENH-3420's payload rule), so the Claude branches below apply to those hosts unchanged.
+Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle is shared; content interpretation stays per-host). For qwen/gemini/omp handles, `iter_events` yields the host's existing-normalizer output, and opencode/pi are Claude-shaped on disk (ENH-3420's payload rule), so the Claude branches below apply to those five hosts unchanged. kimi-code handles yield **host-native** `wire.jsonl` events (kimi has no normalizer — corrected 2026-09-09), so kimi flows through the lifecycle like codex and produces no Claude-schema matches until a follow-up adds a kimi content mapping.
 
 1. **`user_messages.py`**: `extract_user_messages` and `extract_commands` gain a `handles: list[SessionHandle]` entry point and iterate `iter_events(handle)`; the Claude branch keeps `_parse_user_record` byte-for-byte on `event.payload`. **Codex user-turn mapping (corrected 2026-09-09 against the 0.152.1 fixtures):** neither committed fixture contains any `event_msg` of type `user_message`; the user's prompt lives only in `response_item` events with `payload.type == "message"` and `payload.role == "user"`, text under `payload.content[].text` (`type: "input_text"`). That is the primary source. Two user-role messages per turn must be filtered out, not counted: the host-injected `<environment_context>...</environment_context>` block (first user-role message in `rollout-interactive.jsonl`) and any `role == "developer"` message. If an older CLI version also emits `event_msg.payload.type == "user_message"` (observed in the pre-0.152.1 corpus), deduplicate it against the `response_item` text rather than double-counting; it is the secondary source, not the primary. Unknown `event_msg` types (`task_started`, `task_complete`, `item_completed`, `turn_aborted`, `token_count`) pass through untouched. Keep a thin `project_folder: Path` compatibility wrapper only if a test patches it directly; otherwise update the sole caller `cli/messages.py`.
 2. **`cli/ctx_stats.py`**: `_compute_cache_rate_from_jsonl` picks the newest non-agent handle for the resolved host (or across hosts when `None`). **Codex reader is decided, not conditional** — `scripts/tests/fixtures/codex/README.md` § Per-turn-usage finding confirms `event_msg.payload.type == "token_count"` records with `payload.info.total_token_usage` / `payload.info.last_token_usage` (4 in the interactive fixture, 1 in exec). Two semantics differ from Claude and must be handled:
@@ -123,13 +124,13 @@ Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle
 ### Types
 
 - `SessionHandle` (`session_store/sessions.py:41-57`) — `host`, `session_id`, `path`, `cwd`, `updated_at`, `is_agent`
-- `SessionEvent` (`session_store/sessions.py:60-67`) — `type`, `timestamp`, `host`, `payload` (host-native for claude-code/codex; existing-normalizer output for qwen/gemini/omp/kimi per ENH-3420)
+- `SessionEvent` (`session_store/sessions.py:60-68`) — `type`, `timestamp`, `host`, `payload` (host-native for claude-code/codex; existing-normalizer output for qwen/gemini/omp/kimi per ENH-3420)
 
 ### Signatures
 
-- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` (existing, `sessions.py:253`)
-- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` (existing, `sessions.py:457`)
-- `list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]` (existing, `sessions.py:286`)
+- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` (existing, `sessions.py:255`)
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` (existing, `sessions.py:472`)
+- `list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]` (existing, `sessions.py:288`)
 - `_resolve_host(flag: str | None) -> str | None` (new, one shared helper — suggested home `user_messages.py` beside `get_project_folder`) — `flag or os.environ.get("LL_HOOK_HOST") or None`
 - `extract_user_messages(handles: list[SessionHandle], limit: int | None = None, since: datetime | None = None, include_agent_sessions: bool = True, include_response_context: bool = False) -> list[UserMessage]` — replaces `project_folder: Path` (`user_messages.py:639`); callers pass `detect_sessions(cwd, host, include_agents=include_agent_sessions)`
 - `extract_commands(handles: list[SessionHandle], limit, since, include_agent_sessions=True, tools=None) -> list[CommandRecord]` — same replacement (`user_messages.py:722`); Claude-shaped payloads only
@@ -173,11 +174,35 @@ Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle
 - `docs/reference/HOST_COMPATIBILITY.md` — per-host session-log table and `[^tok-codex]`
 - `docs/reference/CLI.md` — `ll-logs`, `ll-messages`, `ll-ctx-stats` sections
 
+## Verification Notes
+
+Verified 2026-09-09 (`/ll:verify-issues`, graph provider=`codegraph` freshness=`fresh`). All
+`Current Behavior`/`Integration Map`/`Program Design` file:line citations checked against HEAD
+and matched exactly. Two prior findings from this same pass have been corrected in place:
+
+- **`## Tests` fixture value** originally cited "the fixture's last `token_count`" as
+  `total_token_usage: input_tokens=35856/cached=13999/cache_write=21851 → uncached=6, hit_rate≈39.0`
+  — those numbers actually belonged to the **second** of four `token_count` events in
+  `rollout-interactive.jsonl` (line 24, ordinal 23), not the last. Corrected to the actual last
+  event's values (line 33, ordinal 32): `input_tokens=84003/cached_input_tokens=57915/
+  cache_write_input_tokens=26076 → uncached=12, hit_rate_pct≈68.9`, cross-checked by summing
+  `last_token_usage.input_tokens` across all four events (`14002+21854+22068+26079=84003`), which
+  matches the line-33 total and confirms it is the cumulative "last" event.
+- **Program Design line drift** corrected via `ll-code defines`: `iter_events` `sessions.py:457`→
+  `472`; `detect_sessions` `253`→`255`; `list_workspaces` `286`→`288`; `SessionEvent` `60-67`→
+  `60-68`. Signatures and described behavior were already verbatim-correct — only anchors moved.
+
+No decisions-log violations (no active required rules), no evidence-quote fabrications
+(`ll-verify-evidence --json`: `ok: true`), and dependency references (`blocked_by: [FEAT-3417,
+ENH-3420]`, backlink in ENH-3420's `blocks:`) are all valid — FEAT-3417 is `done`, ENH-3420 is
+`open` with `ENH-3419` correctly listed in its `blocks:`.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T19:12:44 - `16a3bdad-e90f-4e75-82df-f1d6a2398c12.jsonl`
 - `review (manual: FEAT-3417 landed; added ENH-3420 as blocker (seam covers 2/8 hosts); LL_HOOK_HOST precedence; Codex user-turn source corrected to response_item role=user; token_count semantics decided; include_agents mapping; extract_commands Claude-only; dict return type; line refs refreshed)` - 2026-09-09T19:10:00
 - `/ll:confidence-check` - 2026-09-09T15:01:24 - `a4ac4148-e562-4d02-a9a9-889fd2f8dc3f.jsonl`
 - `/ll:wire-issue` - 2026-09-09T14:51:24 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
