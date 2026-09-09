@@ -4,7 +4,7 @@ type: BUG
 title: unapplied_decision checker conflates identifiers across multiple decision points
   in one issue
 priority: P2
-status: open
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-09-08'
 captured_at: '2026-09-08T23:54:29Z'
@@ -15,6 +15,7 @@ labels:
 - false-positive
 relates_to:
 - BUG-3413
+closed_reason: superseded
 ---
 
 # BUG-3414: unapplied_decision checker conflates identifiers across multiple decision points in one issue

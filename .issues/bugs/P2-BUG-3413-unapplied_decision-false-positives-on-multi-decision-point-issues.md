@@ -14,6 +14,8 @@ score_complexity: 20
 score_test_coverage: 23
 score_ambiguity: 23
 score_change_surface: 23
+supersedes:
+- BUG-3414
 ---
 
 # BUG-3413: unapplied_decision false-positives on multi-decision-point issues
