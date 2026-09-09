@@ -3,10 +3,11 @@ id: ENH-3423
 type: ENH
 title: verify-issues notes read as unresolved after same-pass fixes
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T19:06:51Z'
+completed_at: '2026-09-09T20:14:11Z'
 program_design_not_applicable: true
 confidence_score: 100
 outcome_confidence: 85
@@ -300,7 +301,30 @@ interactive runs reach section 4's fix path too, (3) add the partially-resolved 
 branch, (4) add the `verify_verdict:` frontmatter-sync rule, and (5) state explicitly that
 existing bare labels and stale frontmatter are not backfilled.
 
+## Resolution
+
+Added `### 4.1 Verdict Phrasing When Fixes Are Applied in the Same Pass` to
+`commands/verify-issues.md` between section 4's bullets and `### 4.5 Append Session Log
+Entries`, exactly as scoped in Implementation Steps: applicability rule (any
+non-`--check` mode reaching section 4's content edits), label-source rule (section 2C
+verdict value, never the collapsed 2.5 enum), the two-branch template (fully resolved
+/ partially resolved with a mandatory `Remaining:` line), and the `verify_verdict:`
+frontmatter-sync rule (rewrite in place if present, never insert). Section 4's opening
+bullet now points at 4.1. Regenerated the three host mirrors
+(`.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`,
+`.kimi-code/skills/ll-verify-issues/SKILL.md`) via `ll-adapt --host <host> --apply`;
+all three `test_host_artifacts_are_not_stale` params pass. Full suite run:
+23685 passed, 5 pre-existing failures unrelated to this change (confirmed via
+`git stash` against unmodified `main`: `test_referenced_env_names_are_covered`,
+`test_no_unallowlisted_raw_priority_regex`, `test_allowlist_entries_still_exist`,
+`test_no_new_unverifiable_evidence`, `test_no_prose_dependency_drift_in_repo`).
+
+**Fix Commit**: (pending commit)
+**Files Changed**: `commands/verify-issues.md`, `.gemini/commands/verify-issues.toml`,
+`.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md`
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T20:13:25 - `92944602-18f5-4634-9223-31cdecc34ddb.jsonl`
 - `/ll:confidence-check` - 2026-09-09T19:37:47 - `0feb3751-5c38-412d-892d-09fae075ee5e.jsonl`
 - `/ll:wire-issue` - 2026-09-09T19:21:35 - `ebf18a6f-ed36-4252-9599-87c271309793.jsonl`
 - `/ll:refine-issue` - 2026-09-09T19:14:29 - `42196ace-6931-433b-9da5-c194d57bddf7.jsonl`

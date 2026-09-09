@@ -351,13 +351,46 @@ Before making any changes, present the verification results to the user:
 ### 4. Update Issue Files
 
 For issues needing updates:
-- Add a `## Verification Notes` section
+- Add a `## Verification Notes` section (see 4.1 for how to phrase the opening
+  line when this pass also applied fixes)
 - Document what changed or needs correction
 - Update file paths and line numbers if moved
 
 For resolved issues:
 - Add resolution note
 - Consider setting `status: done` in frontmatter
+
+### 4.1 Verdict Phrasing When Fixes Are Applied in the Same Pass
+
+**Applies whenever this run is not `CHECK_MODE`** (i.e. `--auto` or interactive) **and**
+section 4 edited the same content the Verification Notes section describes. `--check`
+mode never reaches this rule — it exits before any content edit, so its bare verdict
+label always describes the file's true current state (see 2.5).
+
+**Label source**: use the verdict value from the `#### C. Determine Verdict` table in
+2C (`VALID`, `NEEDS_UPDATE`, `OUTDATED`, etc.) — the verdict as it stood *at detection
+time*, before this pass's fixes were applied. Do not use the collapsed
+`VALID`/`NON_VALID` frontmatter enum from 2.5; that enum is for the frontmatter field
+only, never for Verification Notes prose.
+
+**Never write a bare `Verdict: X` label** in a fix-applying pass — by the time the
+note is written the fix has already landed, so a bare label describes a state that no
+longer exists and reads as an outstanding action item. Use one of these two forms
+instead:
+
+- **Fully resolved** — every finding from this pass was corrected in the same edit:
+  > Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+  > pass, so the issue as it now reads is up to date — this section is a record of
+  > what was wrong and fixed, not an outstanding action item)
+- **Partially resolved** — one or more findings were not corrected (e.g. a decision
+  needing human input, or a destructive change auto mode cannot make): use the same
+  lead line, then add an explicit `Remaining:` line naming each uncorrected finding.
+
+**Frontmatter sync**: if `verify_verdict:` already exists in the issue's frontmatter,
+rewrite it in place to reflect the post-fix state — `VALID` if this pass resolved
+everything, otherwise the 2.5 mapping applied to the residual (unfixed) verdict. Do
+not insert the field if it is absent; inserting it remains `--check` mode's
+responsibility (2.5).
 
 ### 4.5 Append Session Log Entries
 
