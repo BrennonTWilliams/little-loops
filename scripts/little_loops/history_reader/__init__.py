@@ -125,6 +125,7 @@ Public API:
     harness_event_by_id(db_path, attempt_id) -> HarnessEvent | None (ENH-3407)
     authoritative_attempt(db_path, cell_key, repetition) -> HarnessEvent | None (ENH-3407)
     authoritative_attempts(db_path, cell_key) -> list[HarnessEvent] (ENH-3407)
+    admissions_by_reason(db_path, attempt_ids) -> dict[str, int] (ENH-3408)
     recent_verdict_events(verdict_kind, target_id, since, ...) -> list[VerdictEvent]
     verdict_pass_rate(verdict_kind, target_id, since, ...) -> list[dict]
     query_advisor_consults(db_path, ...) -> list[AdvisorConsultRow] (FEAT-3300)
@@ -183,6 +184,7 @@ from little_loops.history_reader.formatting import (
 from little_loops.history_reader.harness import (
     HarnessEvent,
     HighConfidenceAbstention,
+    admissions_by_reason,
     authoritative_attempt,
     authoritative_attempts,
     check_high_confidence_abstention,
@@ -295,6 +297,7 @@ __all__ = [
     "UsageEvent",
     "UserCorrection",
     "VerdictEvent",
+    "admissions_by_reason",
     "agent_usage",
     "aggregate_loop_runs",
     "aggregate_orchestration_runs",

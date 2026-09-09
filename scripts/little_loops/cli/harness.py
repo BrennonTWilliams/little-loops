@@ -209,8 +209,12 @@ def _record_harness_event(
     target_content_hash: str | None = None,
     target_path: str | None = None,
     dirty: int | None = None,
-) -> None:
+) -> int | None:
     """Record one attempt against *cell_key* via :func:`record_attempt` (ENH-3407).
+
+    Returns the new attempt's id (ENH-3408: callers use it to scope
+    ``admissions_by_reason()`` to the ids a run actually wrote), or ``None``
+    when the write is best-effort-suppressed and fails.
 
     ENH-141 adds ``target_content_hash`` / ``target_path`` / ``dirty`` kwargs;
     all three default to None so existing callers (v38 row shape) continue to
@@ -224,8 +228,8 @@ def _record_harness_event(
     audit purpose.
     """
 
-    def _write() -> None:
-        record_attempt(
+    def _write() -> int:
+        return record_attempt(
             DEFAULT_DB_PATH,
             cell_key=cell_key,
             attempt_kind="infra_retry" if retry_of is not None else "repetition",
@@ -248,10 +252,11 @@ def _record_harness_event(
         )
 
     if retry_of is not None:
-        _write()
-    else:
-        with contextlib.suppress(Exception):
-            _write()
+        return _write()
+    try:
+        return _write()
+    except Exception:
+        return None
 
 
 @dataclass
@@ -706,8 +711,15 @@ def _read_target_history(target: str) -> dict | None:
     0%/100% figure (AC7). Returns None (never raises) when neither rate clears
     the threshold, mirroring `_read_prepatch_evidence()`'s absent-is-not-an-error
     contract.
+
+    ENH-3408: superseded rows (an infra-retried timeout's losing attempt) are
+    excluded from both denominators -- a retry chain contributes one row (its
+    surviving attempt) to `n`, not one row per attempt. When the surviving
+    population has any admitted retries, `history_admissions` tabulates them
+    by reason.
     """
     from little_loops.history_reader import (
+        admissions_by_reason,
         harness_eval_abstention_rate,
         harness_eval_pass_rate,
         recent_harness_events,
@@ -728,8 +740,9 @@ def _read_target_history(target: str) -> dict | None:
     # rate, not the row count behind it -- pull the events once to derive both
     # denominators for the AC7 suppression check without duplicating their SQL.
     events = recent_harness_events(target=target, since=since, limit=1000, db=db_path)
-    pass_scored = sum(1 for e in events if e.semantic_passed is not None)
-    judged_scored = sum(1 for e in events if e.semantic_verdict is not None)
+    authoritative_events = [e for e in events if e.superseded_by is None]
+    pass_scored = sum(1 for e in authoritative_events if e.semantic_passed is not None)
+    judged_scored = sum(1 for e in authoritative_events if e.semantic_verdict is not None)
 
     history: dict[str, Any] = {}
     if pass_scored >= _HISTORY_MIN_SCORED:
@@ -744,6 +757,9 @@ def _read_target_history(target: str) -> dict | None:
             history["history_judged_runs"] = judged_scored
     if not history:
         return None
+    admissions = admissions_by_reason(db_path, [e.id for e in events if e.id is not None])
+    if admissions:
+        history["history_admissions"] = admissions
     history["history_since"] = since
     return history
 
@@ -752,9 +768,15 @@ def _format_target_history_line(history: dict) -> str:
     """Render `_read_target_history()`'s dict as one status line (target-scoped)."""
     parts = []
     if "history_pass_rate" in history:
-        parts.append(
-            f"pass {history['history_pass_rate']:.0%} ({history['history_pass_rate_runs']} runs)"
-        )
+        runs_part = f"{history['history_pass_rate_runs']} runs"
+        admissions = history.get("history_admissions")
+        if admissions:
+            breakdown = ", ".join(
+                f"{reason}×{count}"
+                for reason, count in sorted(admissions.items(), key=lambda kv: -kv[1])
+            )
+            runs_part += f", {sum(admissions.values())} infra retries admitted: {breakdown}"
+        parts.append(f"pass {history['history_pass_rate']:.0%} ({runs_part})")
     if "history_abstention_rate" in history:
         parts.append(
             f"abstention {history['history_abstention_rate']:.0%} "
@@ -1137,6 +1159,8 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
     BUG-3196: a flagless run previously reported a 100% pass rate unconditionally.
     See the issue's "Decision: exit codes" table for the full precedence.
     """
+    from little_loops.history_reader import admissions_by_reason
+    from little_loops.session_store import resolve_history_db
     from little_loops.stats import wilson_ci
 
     path = Path(args.path)
@@ -1177,6 +1201,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
     abstain_count = 0
     errored_count = 0
     failures: list[str] = []
+    written_ids: list[int] = []
 
     aggregate_ts = _now_iso()
     aggregate_id: int | None = None
@@ -1206,7 +1231,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
             failures.append(f"{task_file.name} (malformed task file)")
             graded_total += 1
             try:
-                _record_harness_event(
+                written_id = _record_harness_event(
                     runner="dsl-task",
                     target=task_file.name,
                     exit_code=1,
@@ -1222,6 +1247,8 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
                     target_content_hash=_hash_file(task_file),
                     dirty=dirty_int,
                 )
+                if written_id is not None:
+                    written_ids.append(written_id)
             except Exception as exc:
                 print(
                     f"error: retry of attempt {task_retry_of} was not recorded: {exc}",
@@ -1287,7 +1314,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
                 failures.append(f"{task_file.name}{detail}")
 
         try:
-            _record_harness_event(
+            written_id = _record_harness_event(
                 runner="dsl-task",
                 target=task_file.name,
                 exit_code=result.exit_code,
@@ -1303,6 +1330,8 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
                 target_content_hash=_hash_file(task_file),
                 dirty=dirty_int,
             )
+            if written_id is not None:
+                written_ids.append(written_id)
         except Exception as exc:
             print(
                 f"error: retry of attempt {task_retry_of} was not recorded: {exc}",
@@ -1351,6 +1380,13 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
         )
     if failures:
         lines.append("  failed: " + "\n          ".join(failures))
+    admissions = admissions_by_reason(resolve_history_db(DEFAULT_DB_PATH), written_ids)
+    if admissions:
+        breakdown = ", ".join(
+            f"{reason}×{count}"
+            for reason, count in sorted(admissions.items(), key=lambda kv: -kv[1])
+        )
+        lines.append(f"  admissions: {sum(admissions.values())} ({breakdown})")
     print("\n".join(lines))
 
     all_graded_passed = graded_pass == graded_total

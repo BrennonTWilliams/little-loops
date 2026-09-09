@@ -1866,6 +1866,62 @@ class TestCmdDslRetryOf:
             result = cmd_dsl(args)
         assert result == 0
 
+    def test_retry_of_prints_admissions_line(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3408 AC3: an admitted `--retry-of` run reports the admission."""
+        from little_loops.cli.harness import _cell_key
+        from little_loops.session_store import DEFAULT_DB_PATH, record_attempt
+
+        task_file = self._make_task_yaml(tmp_path)
+        fixed_sha = "fixed-test-sha"
+
+        def _fake_run(cmd: list[str], *a: Any, **kw: Any) -> subprocess.CompletedProcess:
+            if isinstance(cmd, list) and cmd[:2] == ["git", "rev-parse"]:
+                return _make_completed(returncode=0, stdout=fixed_sha)
+            if isinstance(cmd, list) and cmd[:2] == ["git", "status"]:
+                return _make_completed(returncode=0, stdout="")
+            return _make_completed(returncode=0, stdout=self._ANSWER_JSON)
+
+        cell_key = _cell_key("dsl-task", task_file.name, fixed_sha)
+        prior_id = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="dsl-task",
+            target=task_file.name,
+            timed_out=True,
+        )
+        args = _make_namespace(runner="dsl", path=str(task_file), retry_of=prior_id)
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=_fake_run),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 0
+        assert "admissions: 1 (timeout×1)" in capsys.readouterr().out
+
+    def test_no_admissions_line_without_retry(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3408 AC3: no `--retry-of` -- no admissions line."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=self._ANSWER_JSON),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 0
+        assert "admissions:" not in capsys.readouterr().out
+
 
 # ---------------------------------------------------------------------------
 # TestHarnessEventPersistence
@@ -2060,14 +2116,29 @@ class TestReadTargetHistory:
 
     def test_window_excludes_old_rows(self) -> None:
         """AC6: rows older than the window are excluded from both rates."""
-        from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
+        from little_loops.cli.harness import (
+            _HISTORY_MIN_SCORED,
+            _HISTORY_WINDOW_DAYS,
+            _read_target_history,
+        )
 
+        now = datetime.now(UTC)
         rows = [
-            {"ts": "2020-01-01T00:00:00Z", "runner": "cmd", "semantic_passed": False}
+            {
+                "ts": (now - timedelta(days=_HISTORY_WINDOW_DAYS + 10)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "runner": "cmd",
+                "semantic_passed": False,
+            }
             for _ in range(_HISTORY_MIN_SCORED)
         ]
         rows += [
-            {"ts": f"2026-08-1{i}T00:00:00Z", "runner": "cmd", "semantic_passed": True}
+            {
+                "ts": (now - timedelta(days=i + 1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "runner": "cmd",
+                "semantic_passed": True,
+            }
             for i in range(_HISTORY_MIN_SCORED)
         ]
         self._seed("some-target", rows)
@@ -2082,6 +2153,151 @@ class TestReadTargetHistory:
         from little_loops.cli.harness import _read_target_history
 
         assert _read_target_history("nonexistent-target") is None
+
+    def test_retry_chain_collapses_below_threshold(self) -> None:
+        """ENH-3408 AC1/AC2: a single retry chain contributes n=1, not one row
+        per attempt -- below `_HISTORY_MIN_SCORED` despite 3 raw rows."""
+        from little_loops.cli.harness import _read_target_history
+        from little_loops.session_store import DEFAULT_DB_PATH, record_attempt
+
+        now = datetime.now(UTC)
+        cell = json.dumps(["cmd", "some-target", "sha1"], separators=(",", ":"))
+        first = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            runner="cmd",
+            target="some-target",
+            timed_out=True,
+            semantic_passed=False,
+        )
+        second = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell,
+            attempt_kind="infra_retry",
+            retry_of=first,
+            reason="timeout",
+            ts=(now + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            runner="cmd",
+            target="some-target",
+            timed_out=True,
+            semantic_passed=False,
+        )
+        record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell,
+            attempt_kind="infra_retry",
+            retry_of=second,
+            reason="timeout",
+            ts=(now + timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            runner="cmd",
+            target="some-target",
+            semantic_passed=True,
+        )
+
+        assert _read_target_history("some-target") is None
+
+    def test_retry_chains_clear_threshold_and_surface_admissions(self) -> None:
+        """ENH-3408 AC1-3: three independent chains (n=3 authoritative rows
+        from 4 raw rows) clear `_HISTORY_MIN_SCORED` and the chain's admission
+        is tabulated by reason."""
+        from little_loops.cli.harness import _read_target_history
+        from little_loops.session_store import DEFAULT_DB_PATH, record_attempt
+
+        now = datetime.now(UTC)
+        # Chain 1: timeout -> graded retry (1 admission).
+        original = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=json.dumps(["cmd", "some-target", "sha0"], separators=(",", ":")),
+            attempt_kind="repetition",
+            ts=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            runner="cmd",
+            target="some-target",
+            timed_out=True,
+            semantic_passed=False,
+        )
+        record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=json.dumps(["cmd", "some-target", "sha0"], separators=(",", ":")),
+            attempt_kind="infra_retry",
+            retry_of=original,
+            reason="timeout",
+            ts=(now + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            runner="cmd",
+            target="some-target",
+            semantic_passed=True,
+        )
+        # Chains 2 and 3: clean, single repetition each.
+        for i, sha in enumerate(["sha1", "sha2"]):
+            record_attempt(
+                DEFAULT_DB_PATH,
+                cell_key=json.dumps(["cmd", "some-target", sha], separators=(",", ":")),
+                attempt_kind="repetition",
+                ts=(now + timedelta(minutes=i + 2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                runner="cmd",
+                target="some-target",
+                semantic_passed=True,
+            )
+
+        history = _read_target_history("some-target")
+
+        assert history is not None
+        assert history["history_pass_rate_runs"] == 3
+        assert history["history_pass_rate"] == 1.0
+        assert history["history_admissions"] == {"timeout": 1}
+
+    def test_no_admissions_key_when_no_admissions(self) -> None:
+        """ENH-3408 AC3: `history_admissions` is omitted entirely when empty."""
+        from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
+
+        now = datetime.now(UTC)
+        self._seed(
+            "some-target",
+            [
+                {
+                    "ts": (now - timedelta(days=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "runner": "cmd",
+                    "semantic_passed": True,
+                }
+                for i in range(_HISTORY_MIN_SCORED)
+            ],
+        )
+
+        history = _read_target_history("some-target")
+
+        assert history is not None
+        assert "history_admissions" not in history
+
+
+class TestFormatTargetHistoryLine:
+    """ENH-3408 AC3: `_format_target_history_line()` renders the admissions suffix."""
+
+    def test_renders_admissions_breakdown(self) -> None:
+        from little_loops.cli.harness import _format_target_history_line
+
+        line = _format_target_history_line(
+            {
+                "history_pass_rate": 0.8,
+                "history_pass_rate_runs": 5,
+                "history_admissions": {"timeout": 2},
+                "history_since": "2026-08-01T00:00:00Z",
+            }
+        )
+        assert "pass 80% (5 runs, 2 infra retries admitted: timeout×2)" in line
+
+    def test_omits_admissions_suffix_when_absent(self) -> None:
+        from little_loops.cli.harness import _format_target_history_line
+
+        line = _format_target_history_line(
+            {
+                "history_pass_rate": 1.0,
+                "history_pass_rate_runs": 3,
+                "history_since": "2026-08-01T00:00:00Z",
+            }
+        )
+        assert "pass 100% (3 runs)" in line
+        assert "admitted" not in line
 
 
 # ---------------------------------------------------------------------------

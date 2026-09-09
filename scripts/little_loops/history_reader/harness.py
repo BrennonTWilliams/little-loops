@@ -11,6 +11,7 @@ Backing tables: ``harness_events`` (``recent_harness_events``,
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from little_loops.history_reader._base import (
 __all__ = [
     "HarnessEvent",
     "HighConfidenceAbstention",
+    "admissions_by_reason",
     "authoritative_attempt",
     "authoritative_attempts",
     "check_high_confidence_abstention",
@@ -34,6 +36,14 @@ __all__ = [
     "harness_eval_pass_rate",
     "recent_harness_events",
 ]
+
+# ENH-3408: single source of truth for "this row is the one that counts" — a
+# bare boolean SQL expression spliced into every counting site (pass rate,
+# abstention rate, authoritative_attempt(s)) via f-string, mirroring
+# ``usage.py``'s ``_WASTED_RUN_PREDICATE`` pattern. A retry chain always
+# collapses to exactly one row matching this predicate per (cell_key,
+# repetition); pre-v49 rows (all three columns NULL) satisfy it too.
+_AUTHORITATIVE_PREDICATE = "superseded_by IS NULL"
 
 
 @dataclass
@@ -161,7 +171,7 @@ def authoritative_attempt(
     try:
         sql = (
             f"SELECT {_HARNESS_EVENT_COLUMNS} FROM harness_events "
-            "WHERE cell_key = ? AND repetition = ? AND superseded_by IS NULL "
+            f"WHERE cell_key = ? AND repetition = ? AND {_AUTHORITATIVE_PREDICATE} "
             "ORDER BY id LIMIT 1"
         )
         row = conn.execute(sql, (cell_key, repetition)).fetchone()
@@ -187,7 +197,7 @@ def authoritative_attempts(db_path: Path | str, cell_key: str) -> list[HarnessEv
     try:
         sql = (
             f"SELECT {_HARNESS_EVENT_COLUMNS} FROM harness_events "
-            "WHERE cell_key = ? AND superseded_by IS NULL "
+            f"WHERE cell_key = ? AND {_AUTHORITATIVE_PREDICATE} "
             "ORDER BY repetition ASC, id ASC"
         )
         rows = conn.execute(sql, (cell_key,)).fetchall()
@@ -215,11 +225,13 @@ def harness_eval_pass_rate(
 ) -> float | None:
     """Return the semantic-verdict pass fraction for *target*, or None if no scored rows (ENH-2741).
 
-    Counts every row with a non-NULL ``semantic_passed``. ``cli/harness.py`` sets
+    Counts every non-superseded row with a non-NULL ``semantic_passed``
+    (ENH-3408: a retry chain contributes its surviving attempt's verdict
+    once, not one row per attempt). ``cli/harness.py`` sets
     ``semantic_passed`` on every non-abstained run regardless of whether
     ``--semantic`` was supplied (exit-code-only runs included), so the
-    denominator is *all non-abstained runs* for *target*, not only the
-    ``check_semantic`` verdict path (ENH-3223).
+    denominator is *all non-abstained authoritative runs* for *target*, not
+    only the ``check_semantic`` verdict path (ENH-3223).
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
@@ -229,7 +241,7 @@ def harness_eval_pass_rate(
         sql = (
             "SELECT SUM(CASE WHEN semantic_passed = 1 THEN 1 ELSE 0 END) AS successes, "
             "COUNT(semantic_passed) AS scored "
-            "FROM harness_events WHERE target = ?"
+            f"FROM harness_events WHERE target = ? AND {_AUTHORITATIVE_PREDICATE}"
         )
         params: list[Any] = [target]
         if since is not None:
@@ -259,7 +271,9 @@ def harness_eval_abstention_rate(
     (callers write ``semantic_passed = NULL`` for a ``cannot_judge`` verdict)
     -- this function reports that excluded slice as its own rate rather than
     letting it silently deflate the pass rate. ``scored`` here counts every
-    row with a non-NULL ``semantic_verdict`` (pass, fail, and abstain), unlike
+    non-superseded row with a non-NULL ``semantic_verdict`` (pass, fail, and
+    abstain; ENH-3408 excludes superseded rows so this denominator converges
+    on the same population as ``harness_eval_pass_rate()``'s), unlike
     ``harness_eval_pass_rate()``'s ``scored`` which only counts non-abstained
     rows -- the two denominators are deliberately different questions.
     """
@@ -274,7 +288,7 @@ def harness_eval_abstention_rate(
             "SELECT SUM(CASE WHEN semantic_verdict = ? OR semantic_verdict LIKE ? ESCAPE '\\' "
             "THEN 1 ELSE 0 END) AS abstentions, "
             "COUNT(semantic_verdict) AS scored "
-            "FROM harness_events WHERE target = ?"
+            f"FROM harness_events WHERE target = ? AND {_AUTHORITATIVE_PREDICATE}"
         )
         params: list[Any] = [CANNOT_JUDGE, f"{CANNOT_JUDGE}\\_%", target]
         if since is not None:
@@ -293,6 +307,36 @@ def harness_eval_abstention_rate(
         "scored": row["scored"],
         "abstention_rate": (row["abstentions"] or 0) / row["scored"],
     }
+
+
+def admissions_by_reason(db_path: Path | str, attempt_ids: Iterable[int]) -> dict[str, int]:
+    """Return admission counts by ``reason`` for the given ``attempt_id``s (ENH-3408).
+
+    Scoped to a caller-supplied set of authoritative attempt ids (a target's
+    windowed history, or one ``cmd_dsl`` invocation's written ids) rather than
+    a global tail, since ``harness_admissions`` has no target/run column of
+    its own. Returns ``{}`` for an empty *attempt_ids* or when none match.
+    """
+    ids = list(attempt_ids)
+    if not ids:
+        return {}
+    db_path = Path(db_path)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return {}
+    try:
+        placeholders = ", ".join("?" for _ in ids)
+        sql = (
+            "SELECT reason, COUNT(*) AS n FROM harness_admissions "
+            f"WHERE attempt_id IN ({placeholders}) GROUP BY reason"
+        )
+        rows = conn.execute(sql, ids).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: admissions_by_reason query failed", exc_info=True)
+        return {}
+    finally:
+        conn.close()
+    return {row["reason"]: row["n"] for row in rows}
 
 
 @dataclass

@@ -4,8 +4,9 @@ title: Count authoritative repetitions in harness pass-rate reporting + admissio
   tabulation
 type: ENH
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-08'
+completed_at: '2026-09-09T00:51:41Z'
 verify_verdict: VALID
 parent: ENH-3397
 labels:
@@ -259,6 +260,15 @@ re-locate by test name.
 
 ## Program Design
 
+### Deviations
+
+- 2026-09-08: `admissions_by_reason()`'s first parameter is named `db_path`, not `db` as
+  written in the Signatures section below. This matches the existing `authoritative_attempt`/
+  `authoritative_attempts` convention in the same file (both use `db_path`), rather than
+  `harness_eval_pass_rate`/`harness_eval_abstention_rate`'s `db=` keyword-default style.
+  Purely a parameter name; the positional call shape and type (`Path | str`) are unchanged,
+  so no caller is affected.
+
 ### Types
 
 No new dataclass. `HarnessEvent` (`history_reader/harness.py:39-77`) already carries
@@ -368,7 +378,39 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 Both concerns raised (fan-out gap; `cmd_dsl` scope) are now resolved in Design Decisions
 D1 and D3. Scores not yet re-run.
 
+## Resolution
+
+Implemented per Design Decisions D1-D5. `history_reader/harness.py` gained
+`_AUTHORITATIVE_PREDICATE = "superseded_by IS NULL"`, applied to
+`harness_eval_pass_rate()`, `harness_eval_abstention_rate()`,
+`authoritative_attempt()`, and `authoritative_attempts()`, plus a new
+`admissions_by_reason(db_path, attempt_ids) -> dict[str, int]` reader
+(re-exported from `history_reader/__init__.py`). In `cli/harness.py`,
+`_record_harness_event()` now returns the written attempt id;
+`_read_target_history()` filters to authoritative rows before computing
+`pass_scored`/`judged_scored` and adds `history_admissions` when non-empty;
+`_format_target_history_line()` renders an `N infra retries admitted:
+reason×count` suffix; `cmd_dsl()` collects written ids and appends an
+`admissions: N (reason×count)` line when non-empty. Docs updated in
+`CLI.md`, `EVALUATION_GUIDE.md`, and `API.md`. One deviation recorded under
+Program Design (parameter name only, no behavioral effect).
+
+Fixed one unrelated pre-existing test flake found during verification:
+`TestReadTargetHistory::test_window_excludes_old_rows` hardcoded absolute
+dates that drift out of the 30-day window as real time passes; switched to
+dates relative to `datetime.now(UTC)`, matching this test class's other
+tests. Confirmed via `git stash` that this failure exists on `main`
+independent of this issue's changes.
+
+Verification: `python -m pytest scripts/tests/` — 23470 passed, 43 skipped,
+0 newly failing (4 pre-existing failures on `main`, confirmed unrelated via
+`git stash` — `test_host_runner.py`, `test_issue_parser.py` (×2),
+`test_verify_evidence.py`, none touching harness/history_reader code).
+`ruff check` and `ruff format --check` clean on all changed files. `mypy`
+clean on all changed `little_loops` modules.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T00:50:38 - `cfbfafe8-3cf2-4a42-b191-42fc40e0d82f.jsonl`
 - `/ll:confidence-check` - 2026-09-09T00:00:23 - `a8ce46a4-dd44-4f62-ad67-4f54e454fdfe.jsonl`
 - `/ll:confidence-check` - 2026-09-08T23:18:50 - `c0ecb5c7-ec7b-42c3-8894-9f9c4066ca97.jsonl`
 - `/ll:verify-issues` - 2026-09-08T23:13:18 - `6838caf5-f9a1-4968-903c-7ebff6345cb2.jsonl`

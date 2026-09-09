@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from little_loops.history_reader import (
+    admissions_by_reason,
     authoritative_attempt,
     authoritative_attempts,
     harness_eval_abstention_rate,
@@ -14,6 +15,7 @@ from little_loops.history_reader import (
     recent_harness_events,
 )
 from little_loops.session_store import (
+    admit_retry,
     record_attempt,
     record_harness_event,
 )
@@ -66,6 +68,35 @@ class TestHarnessEventReaders:
         assert rate is not None
         assert abs(rate - (2 / 3)) < 1e-9
 
+        # ENH-3408: a superseded timeout row is excluded from both the
+        # denominator and the failure count -- only its surviving retry counts.
+        cell = json.dumps(["cmd", "foo", "sha1"], separators=(",", ":"))
+        original_id = record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts="2026-07-01T10:02:00Z",
+            runner="cmd",
+            target="foo",
+            timed_out=True,
+            semantic_passed=False,
+        )
+        record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="infra_retry",
+            retry_of=original_id,
+            reason="timeout",
+            ts="2026-07-01T10:03:00Z",
+            runner="cmd",
+            target="foo",
+            semantic_passed=True,
+        )
+
+        rate = harness_eval_pass_rate("foo", db=db)
+        assert rate is not None
+        assert abs(rate - (3 / 4)) < 1e-9
+
     def test_harness_eval_pass_rate_none_when_all_unscored(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         record_harness_event(db, ts="2026-07-01T10:00:00Z", target="foo", exit_code=0)
@@ -99,6 +130,34 @@ class TestHarnessEventReaders:
         rate = harness_eval_pass_rate("foo", db=db)
         assert rate == 1.0
 
+        # ENH-3408: a superseded timeout row (semantic_passed=False) must not
+        # count as a failure -- only its surviving retry is authoritative.
+        cell = json.dumps(["cmd", "foo", "sha1"], separators=(",", ":"))
+        original_id = record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts="2026-07-01T10:02:00Z",
+            runner="cmd",
+            target="foo",
+            timed_out=True,
+            semantic_passed=False,
+        )
+        record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="infra_retry",
+            retry_of=original_id,
+            reason="timeout",
+            ts="2026-07-01T10:03:00Z",
+            runner="cmd",
+            target="foo",
+            semantic_passed=True,
+        )
+
+        rate = harness_eval_pass_rate("foo", db=db)
+        assert rate == 1.0
+
     def test_harness_eval_abstention_rate(self, tmp_path: Path) -> None:
         """ENH-3185 AC4: abstention is queryable as its own rate, separate from pass rate."""
 
@@ -123,6 +182,39 @@ class TestHarnessEventReaders:
         assert result["scored"] == 4
         assert abs(result["abstention_rate"] - 0.5) < 1e-9
 
+        # ENH-3408: a superseded row's abstained verdict must not enter the
+        # denominator or the abstention count -- only its surviving retry
+        # (a non-abstained verdict here) is authoritative.
+        cell = json.dumps(["cmd", "foo", "sha1"], separators=(",", ":"))
+        original_id = record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts="2026-07-01T10:02:00Z",
+            runner="cmd",
+            target="foo",
+            timed_out=True,
+            semantic_verdict="cannot_judge",
+            semantic_passed=None,
+        )
+        record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="infra_retry",
+            retry_of=original_id,
+            reason="timeout",
+            ts="2026-07-01T10:03:00Z",
+            runner="cmd",
+            target="foo",
+            semantic_verdict="yes",
+            semantic_passed=True,
+        )
+
+        result = harness_eval_abstention_rate("foo", db=db)
+        assert result is not None
+        assert result["abstentions"] == 2  # superseded cannot_judge row excluded
+        assert result["scored"] == 5  # 4 prior + 1 surviving retry
+
     def test_harness_eval_abstention_rate_does_not_match_unrelated_verdict(
         self, tmp_path: Path
     ) -> None:
@@ -137,6 +229,38 @@ class TestHarnessEventReaders:
         result = harness_eval_abstention_rate("foo", db=db)
         assert result is not None
         assert result["abstentions"] == 0
+
+        # ENH-3408: a superseded row's real abstention must not leak into the
+        # count either.
+        cell = json.dumps(["cmd", "foo", "sha1"], separators=(",", ":"))
+        original_id = record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts="2026-07-01T10:01:00Z",
+            runner="cmd",
+            target="foo",
+            timed_out=True,
+            semantic_verdict="cannot_judge",
+            semantic_passed=None,
+        )
+        record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="infra_retry",
+            retry_of=original_id,
+            reason="timeout",
+            ts="2026-07-01T10:02:00Z",
+            runner="cmd",
+            target="foo",
+            semantic_verdict="cannot_judgex",
+            semantic_passed=None,
+        )
+
+        result = harness_eval_abstention_rate("foo", db=db)
+        assert result is not None
+        assert result["abstentions"] == 0
+        assert result["scored"] == 2
 
     def test_harness_eval_abstention_rate_none_when_no_rows(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -247,3 +371,101 @@ class TestAuthoritativeAttempts:
     def test_authoritative_attempts_empty_when_no_rows(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         assert authoritative_attempts(db, self.CELL) == []
+
+
+class TestAuthoritativeRepetitionCounting:
+    """ENH-3408 AC1/AC2: harness_eval_pass_rate() counts authoritative
+    repetitions, not raw attempt rows -- a retry chain collapses to n=1."""
+
+    def test_retry_chain_collapses_to_surviving_attempts_verdict(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        cell = json.dumps(["cmd", "foo", "sha1"], separators=(",", ":"))
+        first = record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="cmd",
+            target="foo",
+            timed_out=True,
+            semantic_passed=False,
+        )
+        second = record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="infra_retry",
+            retry_of=first,
+            reason="timeout",
+            ts="t1",
+            runner="cmd",
+            target="foo",
+            timed_out=True,
+            semantic_passed=False,
+        )
+        record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="infra_retry",
+            retry_of=second,
+            reason="timeout",
+            ts="t2",
+            runner="cmd",
+            target="foo",
+            semantic_passed=True,
+        )
+
+        # n=1 (the last, graded retry) rather than 1/3.
+        rate = harness_eval_pass_rate("foo", db=db)
+        assert rate == 1.0
+
+    def test_two_clean_repetitions_yield_n_of_two(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        cell = json.dumps(["cmd", "foo", "sha1"], separators=(",", ":"))
+        record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="cmd",
+            target="foo",
+            semantic_passed=True,
+        )
+        record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts="t1",
+            runner="cmd",
+            target="foo",
+            semantic_passed=False,
+        )
+
+        rate = harness_eval_pass_rate("foo", db=db)
+        assert rate is not None
+        assert abs(rate - 0.5) < 1e-9
+
+
+class TestAdmissionsByReason:
+    """ENH-3408: admissions_by_reason() — scoped admission tabulation."""
+
+    def test_empty_ids_returns_empty_dict(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        assert admissions_by_reason(db, []) == {}
+
+    def test_no_matching_admissions_returns_empty_dict(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        record_harness_event(db, ts="t0", runner="cmd", target="foo")
+        assert admissions_by_reason(db, [999]) == {}
+
+    def test_counts_by_reason_across_ids(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        sup1 = record_harness_event(db, ts="t0", runner="cmd", target="foo")
+        att1 = record_harness_event(db, ts="t1", runner="cmd", target="foo")
+        sup2 = record_harness_event(db, ts="t2", runner="cmd", target="foo")
+        att2 = record_harness_event(db, ts="t3", runner="cmd", target="foo")
+
+        admit_retry(db, attempt_id=att1, superseded_id=sup1, reason="timeout")
+        admit_retry(db, attempt_id=att2, superseded_id=sup2, reason="network")
+
+        result = admissions_by_reason(db, [att1, att2])
+        assert result == {"timeout": 1, "network": 1}

@@ -262,8 +262,9 @@ present only when applicable:
 |-------|--------------|
 | `expected` | An `expected:` grade was evaluated (DSL tasks) |
 | `prepatch_evidence` | `--issue-id` was given and a persisted pre-patch check bundle exists |
-| `history_pass_rate`, `history_pass_rate_runs` | `.ll/history.db` has ≥3 non-abstained prior runs for this target in the last 30 days (ENH-3223) |
-| `history_abstention_rate`, `history_judged_runs` | `.ll/history.db` has ≥3 prior `--semantic`-judged runs for this target in the last 30 days (ENH-3223) |
+| `history_pass_rate`, `history_pass_rate_runs` | `.ll/history.db` has ≥3 non-abstained **authoritative** prior runs for this target in the last 30 days (ENH-3223, ENH-3408) |
+| `history_abstention_rate`, `history_judged_runs` | `.ll/history.db` has ≥3 prior `--semantic`-judged **authoritative** runs for this target in the last 30 days (ENH-3223, ENH-3408) |
+| `history_admissions` | ≥1 admitted infra retry (ENH-3407) belongs to the counted population — a `{reason: count}` map, e.g. `{"timeout": 2}` (ENH-3408) |
 | `history_since` | Either history field above is present — the ISO 8601 window start |
 
 The `history_*` fields are **target-scoped, not criterion-scoped**: they answer "how often is
@@ -273,6 +274,13 @@ the column that would allow criterion attribution, is not written by any caller 
 are read before this run's own `harness_events` row is written, so they never include the
 current run, and they are omitted entirely (not zero/null) below the 3-run noise floor. Not
 read for the DSL per-task path.
+
+**Authoritative repetitions, not raw rows (ENH-3408):** `history_pass_rate_runs` and
+`history_judged_runs` count only `harness_events` rows with `superseded_by IS NULL` — a
+`--retry-of` chain (a timed-out attempt plus one or more infra retries) contributes exactly
+one row to `n`, using the surviving (non-superseded) attempt's verdict, not one row per
+attempt. This is what makes the reported `n` sound: before ENH-3408, an infra retry inflated
+the sample size and its superseded predecessor counted as a failure in the pass rate.
 
 For `ll-harness dsl` specifically, exit `2` covers four distinct "the run could not produce
 a measurement" triggers: the given path does not exist, the task directory has no `.yaml`
@@ -338,6 +346,9 @@ directory) whose `dsl-task` row matches; a directory `path` combined with `--ret
 refused. A write failure on the retry path is **not** suppressed the way an ordinary run's
 best-effort write is — it exits non-zero with an error naming the attempt, and leaves no new
 row, the prior row un-superseded, and no admission row (the whole write is one transaction).
+When the run does admit a retry, `ll-harness dsl`'s report gains an `admissions:` line, e.g.
+`admissions: 1 (timeout×1)` (ENH-3408); the line is omitted when the invocation admitted
+nothing.
 
 ```bash
 ll-harness cmd "flaky-integration-test" --timeout 30   # times out, e.g. attempt id 42

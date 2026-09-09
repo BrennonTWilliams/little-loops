@@ -105,7 +105,11 @@ DSL pass-rate: 12/14  [0.57, 0.94] (95% CI)
   graded 14 of 16 tasks — 2 ungradable (no `expected:` and no --semantic)
   failed: task-03.yaml (on_yes: expected 'done' got 'finish')
           task-09.yaml (unparseable answer — no JSON object in response)
+  admissions: 1 (timeout×1)
 ```
+
+The `admissions:` line (ENH-3408) appears only when the invocation admitted at least one
+`--retry-of` retry; it is omitted otherwise.
 
 The interval is the point. A 17/20 run and a 170/200 run have the same ratio and very
 different meaning; the CI is what stops you from acting on the first one. `--model` lets you
@@ -310,9 +314,12 @@ and a `PASS` is a null result.
 `--output json` adds `stdout`/`stderr`, a read-only `prepatch_evidence` block when
 `--issue-id` is passed and a bundle exists, and (ENH-3223) `history_pass_rate` /
 `history_abstention_rate` — the run's target's historical rates over the last 30 days, once
-at least 3 prior runs exist. These are **target-scoped**: pooled across every `--semantic`
-string ever run against that target, not attributable to the specific criterion just
-evaluated (`semantic_prompt`, the column that would allow that, is unwritten). See
+at least 3 prior **authoritative** runs exist (ENH-3408: a `--retry-of` chain counts once,
+as its surviving attempt, not once per attempt). These are **target-scoped**: pooled across
+every `--semantic` string ever run against that target, not attributable to the specific
+criterion just evaluated (`semantic_prompt`, the column that would allow that, is
+unwritten). When any admitted retry belongs to the counted population, a
+`history_admissions` map (`{reason: count}`) is folded in too. See
 [CLI Reference → `ll-harness`](../reference/CLI.md#ll-harness) for the full field table.
 
 ### Across runs
@@ -333,10 +340,13 @@ recent_harness_events(runner="skill", target="check-code", limit=20)
 harness_eval_pass_rate("check-code", since="2026-08-01")   # None if nothing scored
 ```
 
-`harness_eval_pass_rate` counts every row with a non-NULL `semantic_passed` — `ll-harness`
-sets this on every non-abstained run, including ones gated solely on `--exit-code` with no
-`--semantic` at all, so its denominator is *all non-abstained runs* for the target, not only
-the semantically-judged ones. A target with zero scored runs returns `None`, not `1.0`.
+`harness_eval_pass_rate` counts every **authoritative** (non-superseded) row with a non-NULL
+`semantic_passed` — `ll-harness` sets this on every non-abstained run, including ones gated
+solely on `--exit-code` with no `--semantic` at all, so its denominator is *all non-abstained
+authoritative runs* for the target, not only the semantically-judged ones. A `--retry-of`
+chain contributes exactly one row (ENH-3408): the surviving attempt, not one row per attempt,
+and its superseded predecessor never counts as a failure. A target with zero scored runs
+returns `None`, not `1.0`.
 
 ---
 
