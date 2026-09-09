@@ -13,6 +13,34 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.fsm.schema import ParameterSpec
+
+
+def seed_parameter_defaults(context: dict[str, Any], parameters: dict[str, "ParameterSpec"]) -> None:
+    """Seed ``parameters.<name>.default`` into context for unbound optional parameters (BUG-3425).
+
+    Historically only the sub-loop ``with:`` binding branch in ``executor.py``
+    applied ``ParameterSpec.default``; every other context-construction path
+    (standalone ``ll-loop run``/``resume``/``simulate``, and the
+    ``context_passthrough`` sub-loop branch) ignored ``fsm.parameters``
+    entirely. This is the shared leaf all of those paths call so a
+    ``parameters:`` declaration works the same way everywhere.
+
+    Uses ``setdefault`` so anything already present (persisted resume context,
+    ``with:`` bindings, passthrough, a loop's own ``context:`` literal, or an
+    earlier ``--context``/positional/program.md seed) wins over the default.
+    ``required: true`` parameters and parameters with ``default: null`` (i.e.
+    ``spec.default is None``) are skipped — an explicit ``default: ""`` is
+    seeded.
+
+    Args:
+        context: The FSM context dict, mutated in place.
+        parameters: ``fsm.parameters`` (or ``child_fsm.parameters``).
+    """
+    for name, spec in parameters.items():
+        if spec.required or spec.default is None:
+            continue
+        context.setdefault(name, spec.default)
 
 
 def seed_confidence_thresholds(context: dict[str, Any], config: Any = None) -> None:

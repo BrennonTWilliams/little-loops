@@ -162,6 +162,14 @@ def cmd_run(
         fsm.prompt_size_guard.warn_chars = args.prompt_size_warn_chars
     if args.llm_model:
         fsm.llm.model = args.llm_model
+
+    # Seed parameters.<name>.default for unbound optional parameters (BUG-3425).
+    # Seeded first so positional input, program.md, and --context (all below)
+    # can still override; setdefault means an existing context: literal wins.
+    from little_loops.fsm.context_seed import seed_parameter_defaults
+
+    seed_parameter_defaults(fsm.context, fsm.parameters)
+
     # Inject positional input arg before --context so --context can override
     if getattr(args, "input", None) is not None:
         raw = args.input
