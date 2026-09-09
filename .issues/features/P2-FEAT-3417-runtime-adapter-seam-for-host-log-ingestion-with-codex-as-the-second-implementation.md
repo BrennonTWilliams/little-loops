@@ -10,6 +10,8 @@ labels:
 - observability
 - testing
 decision_needed: true
+learning_tests_required:
+- codex
 ---
 
 ## Summary
