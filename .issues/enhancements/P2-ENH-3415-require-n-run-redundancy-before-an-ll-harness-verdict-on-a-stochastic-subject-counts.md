@@ -9,7 +9,7 @@ labels:
 - harness
 - evaluation
 - statistics
-decision_needed: true
+decision_needed: false
 ---
 
 ## Summary
@@ -75,7 +75,28 @@ The current Program Design → Call Path/Signatures describe `_evaluate_and_repo
 
 **Option B**: Keep `_evaluate_and_report()`'s signature as pure grading-of-one-result. Add a new sampling loop at each of the five `cmd_*` call sites that wraps the pair of calls (`run_action()`/`_run_prompt_action()` + `_evaluate_and_report()`) n times for a stochastic `RunnerType`, aggregating pass/fail counts across the n calls before deriving `pass_rate` and constructing one final `HarnessEvalOutcome`.
 
+> **Selected:** Option B — leaves `_evaluate_and_report()`'s single-result contract intact and follows the `cmd_dsl` per-function sampling-loop precedent; scored higher than Option A on codebase fit and risk (see Decision Rationale below).
+
 **Recommended**: Option B — `HarnessEvalOutcome` and `_evaluate_and_report()` have zero consumers outside `cli/harness.py` (see Integration Map → Dependent Files), so either option is low-blast-radius, but Option B leaves `_evaluate_and_report()`'s existing single-result contract intact and localizes the new looping logic to the five call sites, which already duplicate the runner-invocation-then-evaluate shape today.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-08.
+
+**Selected**: Option B — loop at the five `cmd_*` call sites
+
+**Reasoning**: Option B preserves `_evaluate_and_report()`'s existing single-result contract and follows the `cmd_dsl` precedent (`cli/harness.py:1223-1340`) of a loop wrapping invoke+evaluate calls that tallies pass/fail counts inside a `cmd_*` function, reusing `wilson_ci` (`stats.py:14`, already used the same way at `cli/harness.py:1374`) for the rate. Option A's single-injected-callable design collides with two already-divergent runner-invocation shapes in the codebase today (`run_action()` vs. `_run_prompt_action()`) and with post-call state (`duration_ms`, `_record_harness_event` inputs) that currently lives outside `_evaluate_and_report()` at each call site — not a mechanical drop-in. Option B's per-site duplication is a real but contained cost, addressable later via extraction the same way `_run_prompt_action()` itself was (BUG-3196).
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (loop inside `_evaluate_and_report()`) | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
+| Option B (loop at `cmd_*` call sites) | 2/3 | 2/3 | 1/3 | 2/3 | 7/12 |
+
+**Key evidence**:
+- Against the rejected approach: `run_action`'s uniform `Callable[[ActionSpec], RunnerResult]` dispatch (`runner_spec.py:395-399`) exists, but `cmd_prompt`/`cmd_dsl` already call the divergent `_run_prompt_action()` wrapper instead, and `duration_ms`/event-recording inputs live outside `_evaluate_and_report()` at every call site today.
+- For the winner: `cmd_dsl`'s existing task-file loop (`cli/harness.py:1223-1340`) is a direct structural precedent for a per-function invoke+evaluate+tally loop; the four non-DSL `cmd_*` handlers already duplicate near-identical boilerplate, so a per-site loop compounds existing duplication rather than introducing a new pattern.
 
 ## Integration Map
 
@@ -103,6 +124,12 @@ Findings below are grouped by the Integration Map's own subsections.
 - `scripts/tests/test_stats.py` — one `Test<FunctionName>` class per function, covering boundary cases (`k=n`, `k=0`, `n=1`) via parametrized `cases` lists — the convention a new stats helper for this issue would follow
 - `scripts/tests/test_runner_spec.py` — 34 existing references to `RunnerType`; would need new cases for a stochastic/deterministic classification function
 
+_Wiring pass added by `/ll:wire-issue`:_
+- **Tests that will break on the literal PASS/FAIL/ABSTAIN report text** once a rate-based verdict is introduced — `TestCmdSkill.test_skill_pass_no_criteria` (`:187`, asserts `"PASS" in out` `:202`), `test_skill_exit_code_fail` (`:236`, `"FAIL" in out` `:248`), `TestCmdCmd.test_cmd_exit_code_fail` (`:407`, `:421`), `test_cmd_json_output` (`:462`, `data["result"] == "PASS"` `:477`), `TestSemanticEvaluator.test_semantic_yes_passes` (`:779`, `:799`), `test_semantic_non_yes_fails` (`:803`, `:823`), `TestAbstentionVerdict.test_semantic_abstain_exits_3` (`:855`, `:875`), `test_exit_code_fail_dominates_semantic_abstain` (`:877`, `:899`), `TestMainHarness.test_main_harness_json_output` (`:970`, `:985`) — all in `scripts/tests/test_cli_harness.py`; whichever `RunnerType`s `is_stochastic_runner()` classifies as stochastic determines which of these actually break
+- **Single-mock-invocation tests that need `side_effect=[...]` conversion** for an n-sample loop (no existing example of this chaining pattern in the file): `TestCmdSkill.test_skill_pass_no_criteria/test_skill_exit_code_pass/test_skill_exit_code_fail` (`:187,224,236`, patch `subprocess.run`), `TestCmdCmd.test_cmd_exit_code_pass/test_cmd_exit_code_fail/test_cmd_no_criteria_always_pass` (`:393,407,423`, patch `Popen`/`DefaultSelector`), `TestCmdMcp.test_mcp_tool_error_exit_code/test_mcp_exit_code_criterion_fail` (`:643,655`, patch `call_mcp_tool`), `TestCmdPrompt.test_prompt_sends_request` (`:676`, patches `subprocess.run` and indexes `captured_prompt[0]`, assuming exactly one call)
+- `scripts/tests/test_runner_spec.py:102-111` — `TestRunnerTypeCompleteness.test_all_harness_runner_kinds_present` and `test_loop_not_in_dispatch_table` are the exact existing precedent for a per-`RunnerType`-member classification/exclusion test; a new `is_stochastic_runner()` completeness test should follow this shape
+- `scripts/little_loops/stats.py:43-79` (`paired_direction()`) and its test `TestPairedDirection` (`scripts/tests/test_stats.py:113`) — a closer structural precedent than `wilson_ci` alone: it tallies raw pass/fail counts, calls `wilson_ci`, then collapses the CI into a discrete three-way verdict (`"inconclusive"` when the CI straddles 0.5) — the same tally-then-threshold-to-discrete-state shape this issue's "rate landing between clear pass and clear fail" behavior needs
+
 ### Dependent Files (Callers/Importers)
 - `cli/harness.py:951` — `cmd_skill()` calls `_evaluate_and_report()` at `:972`
 - `cli/harness.py:1000` — `cmd_cmd()` calls `_evaluate_and_report()` at `:1019`
@@ -112,6 +139,34 @@ Findings below are grouped by the Integration Map's own subsections.
 - `cli/harness.py:983-984,1027-1028,1085-1086,1140-1141,1321-1322` — the only readers of `HarnessEvalOutcome.passed/verdict/abstained`, each immediately after its `_evaluate_and_report()` call site, feeding `_record_harness_event()`
 - `HarnessEvalOutcome` has zero consumers outside `cli/harness.py` itself (repo-wide grep for the class name) — the "Breaking Change" in Impact is narrowly scoped to this one file
 - `queue_store.py` and `cli/queue.py` import `RunnerType` from `runner_spec.py` but have zero references to "harness" — not coupled to this issue's verdict-surface change
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/action.py:218` and `scripts/little_loops/cli/loop/run.py:130` — additional `RunnerType` importers beyond `queue_store.py`/`cli/queue.py`; confirmed not coupled to the harness-verdict change (use `RunnerType` only for generic runner dispatch, never reference `HarnessEvalOutcome`)
+- `scripts/little_loops/session_store/writers.py:1109-1170` — `record_harness_event()` takes `semantic_passed: bool | None` (`:1117`) and coerces `outcome.passed` to a single `int` (`:1075` in `cli/harness.py`) before insert; the DB write path assumes one bool sample per invocation, not an n-sample rate
+- `scripts/little_loops/session_store/schema.py:717-729` — `harness_events` table DDL (`semantic_verdict TEXT`, `semantic_passed INTEGER`); a comment at `:1005` cites `harness_eval_pass_rate()`'s `COUNT(semantic_passed)` denominator, which assumes each row is one independent bool sample
+- `scripts/little_loops/history_reader/harness.py:67-68,228-290` — `harness_eval_pass_rate()`'s SQL (`SUM(CASE WHEN semantic_passed = 1 ...)/COUNT(semantic_passed)`) computes a *historical, across-invocation* rate from these per-row bools — a distinct concept from this issue's new *intra-invocation* n-sample `pass_rate`, but reading the same `semantic_passed` column this issue's write path populates
+- `scripts/little_loops/history_reader/__init__.py:122,192,320` — barrel re-export of `harness_eval_pass_rate`
+- `scripts/tests/test_session_store_writers.py:2220-2244`, `scripts/tests/test_session_store_schema.py:1590-1591`, `scripts/tests/test_history_reader_harness.py` (extensive `semantic_passed=` usage) — existing tests over this persistence path
+- `scripts/little_loops/loops/lib/common.yaml` — `harness_exit` fragment (`:23-29`) hard-codes the current single-trial exit-code contract ("0=pass, 1=fail, 3=abstained") as an `on_yes`/`on_no`/`on_cannot_judge` routing precondition; consumed by `scripts/little_loops/loops/test-coverage-improvement.yaml`, `incremental-refactor.yaml`, and `dead-code-cleanup.yaml` — any change to what triggers exit 0 vs 1 for a stochastic-subject rate verdict is a direct behavioral dependency for these loops
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `### ll-harness` section (`:212`): the summary line (`:214`, "One-shot runner evaluation CLI ... exits `0` (PASS) / `1` (FAIL) / `2` (error/timeout)"), the exit-code list (`:254`), and the `--output json` payload fields table (`:257-269`) all describe single-trial semantics this issue changes for stochastic `RunnerType`s; the `dsl` runner's row (`:224`) already documents rate-based reporting and is the closest existing precedent, but the other four runner rows (`:220-223`) have no rate-reporting language yet
+- `docs/reference/API.md:8992` — `_evaluate_and_report()` prose describing the *existing* `history_pass_rate`/`history_admissions` fold-in (ENH-3223) into the same `--output json` payload this issue adds a new `pass_rate` field to; needs a sentence distinguishing the new intra-invocation rate from this existing across-invocation historical rate
+- `docs/reference/API.md:6144-6146` — second citation of the `harness_exit` fragment / exit-code contract (see `loops/lib/common.yaml` above)
+- `docs/guides/EVALUATION_GUIDE.md` — the "Four runners, all with the same evaluation flags" / shared exit-code-contract prose (`:60-69`), the `passed`-scalar description (`:83-85`, note: its own cited line anchor `harness.py:419-433` is already stale — the code is now at `:805`), the Result/Exit/Semantic single-run table (`:301-309`), the `history_pass_rate` proximity (`:314-323,469`); the term "stochastic" (central to this issue's classification) appears nowhere in `docs/` today and needs introducing, not just patching
+- **Naming-collision risk**: `docs/reference/API.md:8986` records that this codebase already renamed `harness_eval_pass_rate` (not `harness_pass_rate`) specifically to avoid colliding with `ab_writer.ABResults.harness_pass_rate`, an unrelated in-memory field. The Program Design's proposed `HarnessEvalOutcome.pass_rate` would sit in the identical `--output json` payload dict (`harness.py:876-891`) alongside the existing `history_pass_rate`/`history_pass_rate_runs` fields — the same kind of proximity that precedent was renamed to avoid. Flagging for the implementer to consider a more distinguishing name (e.g. `sample_pass_rate`) rather than adopting `pass_rate` unexamined.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Resolve how a stochastic subject's n-sample outcome persists through `record_harness_event()`/`harness_events` (session_store schema stores one `semantic_passed` bool per row) — decide whether each sample becomes its own row, only the aggregate rate is recorded, or both, and whether `harness_eval_pass_rate()`'s historical rollup semantics need to change as a result. Not addressed anywhere in the current Acceptance Criteria.
+- Update `loops/lib/common.yaml`'s `harness_exit` fragment (and verify `test-coverage-improvement.yaml`/`incremental-refactor.yaml`/`dead-code-cleanup.yaml` still route correctly) for whatever exit-code contract a stochastic-subject rate verdict produces.
+- Update `docs/reference/CLI.md` (`### ll-harness` section), `docs/reference/API.md` (`:8992`, `:6144-6146`), and `docs/guides/EVALUATION_GUIDE.md` (four-runner exit-code prose, `passed`-scalar description, Result/Exit/Semantic table) to describe the new pass-rate-over-n verdict surface and define "stochastic" for the first time.
+- Decide the `pass_rate` field name in light of the `history_pass_rate` naming-collision risk above before implementing `HarnessEvalOutcome`'s new field.
+- Convert the single-mock `return_value=` patches in the at-risk tests below to `side_effect=[...]` lists of length n wherever the covered `RunnerType` is classified stochastic.
 
 ## Program Design
 
@@ -166,5 +221,7 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T03:19:28 - `5eb4008f-a2a4-4aff-8262-28202dc28907.jsonl`
+- `/ll:decide-issue` - 2026-09-09T03:12:12 - `98789ba8-7f76-42c3-b7d8-1f86848792ca.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:03:38 - `a4badc70-f3c5-4caf-beea-29940135de9c.jsonl`
 - `/ll:format-issue` - 2026-09-09T02:34:54 - `b326158e-3610-46e0-8daf-a6fb008cff1f.jsonl`

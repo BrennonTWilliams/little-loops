@@ -1,0 +1,12 @@
+{
+  "id": "146cc828-8745-4d78-a446-679da0be67bd",
+  "type": "decision",
+  "timestamp": "2026-09-09T03:13:14Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A's HostLayout.normalize seam is batch/backfill-only and never consumed by extract_user_messages/_compute_cache_rate_from_jsonl, so it cannot deliver the AC's live-watch requirement; Option B matches the issue's own seam-is-refused-on-content design and has SessionEvent/generator precedent in LLEvent and the gemini/omp normalizers.",
+  "rule": "Option B: standalone session-watcher interface (detect_session/watch/stop, SessionEvent, parse_codex_rollout)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: extend HostLayout.normalize/normalize_file with a Codex entry",
+  "issue": "FEAT-3417"
+}

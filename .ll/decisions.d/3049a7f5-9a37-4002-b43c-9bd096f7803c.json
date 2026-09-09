@@ -1,0 +1,12 @@
+{
+  "id": "001483e2-0ef2-421a-b9b4-ca56ee14445b",
+  "type": "decision",
+  "timestamp": "2026-09-09T03:11:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Preserves _evaluate_and_report()'s single-result contract, follows the cmd_dsl per-function sampling-loop precedent, and avoids Option A's collision with two already-divergent runner-invocation shapes (run_action vs _run_prompt_action). Scored 7/12 vs Option A's 5/12.",
+  "rule": "Option B \u2014 loop at the five cmd_* call sites",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: refactor _evaluate_and_report() to own the n-sample loop internally via an injected callable",
+  "issue": "ENH-3415"
+}

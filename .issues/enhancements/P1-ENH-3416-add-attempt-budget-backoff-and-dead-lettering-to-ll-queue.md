@@ -8,6 +8,9 @@ discovered_date: '2026-09-08'
 labels:
 - queue
 - reliability
+learning_tests_required:
+- sqlite3
+- psutil
 
 ---
 
@@ -94,11 +97,23 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - `scripts/little_loops/queue_store.py` — `QueueEntry` (line 267) gains `attempt`/`next_attempt_at` fields; `reset_to_pending` (417) splits into the retry/reclaim paths; a new `dead_letter_entry` function; `claim_entry` (466) must honor `next_attempt_at` eligibility; a new migration entry appended to `_MIGRATIONS` (currently ends at index 1, `SCHEMA_VERSION = 2`, lines 105-131)
 - `scripts/little_loops/cli/queue.py` — `_reclaim_stale` (542) becomes the owner-death reclaim path (must preserve `enqueued_at`); `cmd_requeue` (686) becomes the operator-cancel-with-reason path; `_drain_once` (434) must filter/order pending entries by `next_attempt_at` eligibility; `_STATUS_COLOR` (50-55) needs an entry for the new `dead_letter` status or it silently falls through to the default color
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/queue_store.py:279-296` (`QueueEntry.to_dict()`) — an explicit hand-built dict literal, not `dataclasses.asdict()`; the new `attempt`/`next_attempt_at` (and dead-letter error/reason) fields will not appear in any `--json` output or MCP tool response unless added here explicitly [Agent 2 finding]
+- `scripts/little_loops/cli/queue.py:306-317` (`cmd_status`'s human-readable `status_block` dict) — hand-lists `id`/`action`/`priority`/`status`/`enqueuedAt`/`result` only; needs `attempt`/`nextAttemptAt`/error fields added so non-JSON `ll-queue status <id>` shows them for a backing-off or dead-lettered entry [Agent 2 finding]
+- `scripts/little_loops/mcp_server/tools.py:838` (`queue_list` tool `description=`) — hardcodes `"...entries (pending/running/done/failed)."`; needs `dead_letter` appended, a third independent enumeration of the status set beyond `_STATUS_COLOR` and doc tables [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/mcp_server/tools.py:615-645` (`_tool_queue_requeue`) — independently hand-builds the transition `{"field": "status", "from": "running", "to": "pending"}` in both its dry-run and applied branches (641, 645) and mirrors `ll-queue requeue`'s *current* running→pending meaning verbatim, with no `reason` parameter on its own schema; must track whichever new semantics `cmd_requeue`'s cancel-with-reason path settles into [Agent 2 finding]
+- `scripts/little_loops/mcp_server/tools.py:585-612` (`_tool_queue_remove`), guard at `:601` `if entry.status != "pending":` — an independent status-transition gate, structurally identical to `cli/queue.py:331`'s `cmd_remove` guard (`if entry.status != "pending" and not getattr(args, "force", False):`); both gates must be updated in lockstep with a decision on whether a `dead_letter` entry is removable the same way a `pending` one is [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/mcp_server/tools.py:622,644` — imports and calls `reset_to_pending`/`resolve_entry` from `queue_store` for an MCP tool handler (FEAT-3343); once `reset_to_pending`'s single-call semantics split into retry/reclaim/cancel, this caller must be updated to invoke whichever path matches its MCP-tool intent
 - `scripts/tests/test_queue_store.py:428,438,444` — `TestResetToPending` exercises `reset_to_pending`'s current single-call contract; splitting the call changes what this class needs to assert
 - `scripts/tests/test_cli_queue_run.py:638-746` — `TestReclaimStale`, `TestCmdRequeue` exercise the two current callers of `reset_to_pending`; both patch `little_loops.cli.queue.psutil.Process` rather than starting a real process
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/mcp_server/tools.py:644` (`_tool_queue_requeue`, inside `queue_requeue` MCP tool handler) — a third caller of `reset_to_pending` not previously listed anywhere in this issue (Files to Modify above lists only `mcp_server/tools.py:622,644` as the *call site*; this entry records it as a semantic caller needing its own update once the split lands) [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/cli/queue.py:331` (`cmd_remove`'s `if entry.status != "pending" and not getattr(args, "force", False):` guard) — duplicates the same status-gate independently hardcoded in `mcp_server/tools.py:601`'s `_tool_queue_remove`; see Files to Modify entry above [Agent 2 finding]
+- `scripts/tests/test_cli_surface.py:139` — `("ll-queue", {"add", "list", "status", "remove", "run", "requeue"})`, a literal subcommand-set lock checked against the real `ll-queue --help` output. Program Design does not name a subcommand rename or addition, so no edit is expected here — flagged only so an implementer confirms it stays true if the `requeue` verb's *name* (not just its semantics) changes [Agent 2 + Agent 3 finding]
 
 ### Conventions in Force
 
@@ -115,15 +130,28 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - `scripts/tests/test_cli_queue_run.py` — `TestReclaimStale`, `TestCmdRequeue` (638-746) are the closest existing precedent for new dead-letter/backoff test classes; both patch `psutil.Process` and assert on the persisted `get_entry(entry_id).status` rather than only the function's return value; the file's autouse `_isolate_cwd` fixture and `_add()`/`_add_and_get_id()` helpers are the established harness
 - No existing test locks the *values* of any numeric backoff constant in this codebase (the FSM's `_DEFAULT_RATE_LIMIT_*` are only ever monkeypatched, never asserted equal to their declared defaults) — the enum+frozenset+equality-lock shape (`DeferReason`) is the precedent to follow if this issue's named policy constants are meant to be "locked by a test" literally
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_feat_queue_mcp_tools.py` — not previously listed anywhere in this issue; exercises `mcp_server/tools.py`'s `queue_requeue`/`queue_remove`/`queue_add`/`queue_list`/`queue_get` MCP tools end-to-end over a real stdio MCP client/server (the closest thing to integration coverage this surface has). `test_queue_requeue_running_entry` (142-176) calls `reset_to_pending` via `_tool_queue_requeue` and will break once that call splits into retry/reclaim/cancel paths; its raw-SQL fixture (`UPDATE queue_entries SET status = 'running', owner_pid = 999999 ...`, line 157) will need the new columns/defaults once the migration lands [Agent 1 + Agent 3 finding]
+- `scripts/tests/test_cli_queue.py` — not previously listed anywhere in this issue; imports `list_entries`/`update_entry_result` directly (16, 299, 376) and covers `cmd_list`/`cmd_add`. `test_list_json_unaffected_by_summary_change` (311-328) is a precedent showing this file already polices exact JSON key presence/absence on `to_dict()` output — the closest existing pattern to adapt for asserting the new `attempt`/`nextAttemptAt` keys appear correctly once `to_dict()` is updated [Agent 1 + Agent 3 finding]
+- `scripts/tests/test_cli_queue_run.py` — beyond the already-known `TestReclaimStale`/`TestCmdRequeue`, this file has 13 assertions of `entry.status == "failed"` as the *immediate* post-failure terminal state (lines 121, 137, 153, 175, 212, 290, 412, 426), which will need reworking once some failures instead return to `pending` with backoff rather than landing directly on `failed`/`dead_letter`; its raw-SQL fixture `INSERT INTO queue_entries(id, action, enqueued_at, priority, status, result) VALUES (...)` (line 195) names the exact pre-migration column set and will need the new columns/defaults [Agent 2 + Agent 3 finding]
+- Backoff/retry-counter test-pattern precedent (distinct from the `DeferReason` enum-lock shape already cited above): `TestAPIErrorRetries`/`TestInfraRetry` (`scripts/tests/test_fsm_executor.py:8903-9160`) patch `little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF`/`_DEFAULT_INFRA_RETRY_BACKOFF` to `0` to avoid wall-clock delay, then assert retry counts and emitted events — the closer shape to mirror for a queue-side attempt/backoff-constant test, since it's counter-plus-wall-clock-avoidance shaped rather than enum-derivation shaped [Agent 3 finding]
+
 ### Documentation
 
 - `docs/ARCHITECTURE.md:827-838` ("Queue DB (ll-queue)" section) — describes the current schema/semantics; will need updating for attempt/backoff/dead_letter
 - `docs/reference/API.md:10510-10533` (`little_loops.queue_store` module reference), `:5056-5066` (`ll-queue` CLI entry-point doc)
 - `docs/reference/CLI.md:4052-4135` (`### ll-queue` command reference)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:5299-5304` — separate prose (outside the already-known 4052-4135 range) describing `queue_add`/`queue_remove`/`queue_requeue` as "`ll-queue`'s three mutating tools" and stating `queue_remove`/`queue_requeue` "drop the CLI's `--force` flag (removing/requeuing a non-matching-state entry)" — describes `queue_requeue`'s current running→pending-only semantics and needs revision once the cancel-with-reason path lands [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md:717` — "`ll-queue` persistence configuration (FEAT-2682). Owns the `.ll/queue.db` location..."; would need updating alongside the Configuration section's open question below if attempt-budget/backoff values become configurable [Agent 1 finding]
+
 ### Configuration
 
 - `scripts/little_loops/config-schema.json:2262-2270` — existing `queue` config block (FEAT-2682); this issue's Program Design does not currently specify whether attempt-budget/backoff values are configurable here or fixed as code constants — an open question, not settled by research
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config/features.py:1559-1570` (`QueueConfig` dataclass) and `scripts/little_loops/config/core.py:522-525` (`LLConfig.queue` accessor) — the Python-side parser counterpart to `config-schema.json`'s `queue` block above; currently only parses `db_path`. If the open question above resolves to "configurable," this dataclass is the paired file that must gain the new field(s) alongside the schema — the two halves of this codebase's config surface always move together [Agent 1 finding]
 
 ## Program Design
 
@@ -150,6 +178,21 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - **Retryability classification has no taxonomy to consume.** The Summary explicitly defers to "whatever the open timeout-semantics issue settles," but no issue matching "timeout-semantics" (or a close synonym) exists in `.issues/` (see Scope Boundaries → Codebase Research Findings). UNRESOLVED pending either that issue being filed or this issue's scope absorbing a minimal classification of its own. The existing precedent for the classification *mechanism* (not values) is `classify_failure()`/`FailureType` (`issue_lifecycle.py:141-239`) — a text-pattern function returning `(Enum, reason)` — contrasted with the exit-code-only `retryable_exit_codes` (`fsm/schema.py:713`) this issue explicitly rejects following.
 - **Overflow/trimming has no existing baseline to differentiate from** (see Current Behavior → Codebase Research Findings) — per-path overflow/trimming is new functionality, not a differentiation of pre-existing behavior. Exact per-path rules (which path trims oldest-first vs newest-first, and at what size) are UNRESOLVED.
 
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/queue_store.py:279-296` (`QueueEntry.to_dict()`) — add `attempt`/`next_attempt_at` (and dead-letter error/reason) fields to the explicit dict literal so `--json` output and MCP tool responses include them
+- Update `scripts/little_loops/cli/queue.py:306-317` (`cmd_status`'s `status_block` dict) — add the same fields to the non-JSON `ll-queue status <id>` rendering
+- Update `scripts/little_loops/mcp_server/tools.py:838` (`queue_list` tool description) — append `dead_letter` to the `(pending/running/done/failed)` enumeration
+- Update `scripts/little_loops/mcp_server/tools.py:615-645` (`_tool_queue_requeue`) — replace the hardcoded `"to": "pending"` transition and add a `reason` parameter to the tool's own schema, tracking whichever cancel-with-reason semantics `cmd_requeue` settles into
+- Update `scripts/little_loops/mcp_server/tools.py:585-612` (`_tool_queue_remove`) and `scripts/little_loops/cli/queue.py:331` (`cmd_remove`) in lockstep — decide and encode whether a `dead_letter` entry is removable the same way a `pending` one is today
+- Update `scripts/tests/test_cli_queue_run.py` — rework the 13 assertions hardcoding `status == "failed"` as the immediate post-failure state (lines 121, 137, 153, 175, 212, 290, 412, 426) and the raw-SQL fixture column list at line 195
+- Update `scripts/tests/test_feat_queue_mcp_tools.py` — rework `test_queue_requeue_running_entry` (142-176) for the split `reset_to_pending` call path and its raw-SQL fixture at line 157
+- Add coverage in `scripts/tests/test_cli_queue.py` — extend the `test_list_json_unaffected_by_summary_change` (311-328) pattern to assert the new `attempt`/`nextAttemptAt` keys appear correctly in `--json` output
+
 ## Folded constraints
 
 The following were closed as design constraints with no shippable unit of their own; this issue carries their rule.
@@ -170,5 +213,6 @@ The following were closed as design constraints with no shippable unit of their 
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T03:17:51 - `ae93785e-f7d9-41cc-96ab-d51f1883c15a.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:04:27 - `a4badc70-f3c5-4caf-beea-29940135de9c.jsonl`
 - `/ll:format-issue` - 2026-09-09T02:34:54 - `b326158e-3610-46e0-8daf-a6fb008cff1f.jsonl`
