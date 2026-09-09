@@ -22,20 +22,30 @@ size: Very Large
 ## Summary
 
 Given a list of `WorkspaceMember` rows (from FEAT-3409's
-`discover_workspace_members()`), implement `aggregate_history_dbs()`: attach
-every member's `history.db` read-only onto one connection via SQLite `ATTACH`,
-union the quality-analysis queries, and surface the result through a new
-`--workspace` flag on `ll-history quality`. A member with mismatched or missing
-schema is reported and skipped, never unioned. Source databases are never
-written to.
+`discover_workspace_members()`), implement `aggregate_history_dbs()`: open
+every member's `history.db` read-only, run the quality analysis per member,
+and surface the per-repo breakdown (plus skipped members with reasons) through
+a new `--workspace` flag on `ll-history quality`. A member with mismatched or
+missing schema is reported and skipped, never analyzed. Source databases are
+never written to.
+
+**Scope decision (2026-09-08 pre-implementation review):** workspace-wide
+*totals* (one `QualityAnalysis` computed over the union of all members) are
+split out to a follow-up issue — see Design Notes § "Why totals are deferred".
+This issue ships `per_repo` + `skipped` only. Consequently the multi-`ATTACH`
+union mechanism named in the title is *not* exercised by this issue's code
+path (per-member `mode=ro` connections need no ATTACH); the title is retained
+for continuity with FEAT-3399, and the ATTACH spike result is recorded below
+for the follow-up.
 
 ## Parent Issue
 
 Decomposed from FEAT-3399: Cross-repo history.db aggregation (read-only
 workspace rollup). This child covers the ATTACH-union mechanism, the
 `analyze_agent_quality()` per-schema integration, the `AggregationResult`
-formatting, and the `--workspace` CLI wiring. It depends on FEAT-3409 for the
-`WorkspaceMember` type and `discover_workspace_members()` function.
+formatting, and the `--workspace` CLI wiring. It consumes the `WorkspaceMember` type and
+`discover_workspace_members()` function that FEAT-3409 landed on 2026-09-08
+(`scripts/little_loops/workspace.py`).
 
 ## Current Behavior
 
@@ -48,13 +58,15 @@ across a workspace of several repos in one invocation.
 
 ## Expected Behavior
 
-One invocation attaches every member repo's `history.db` read-only via SQLite
-`ATTACH` and unions the queries, producing a per-repo breakdown plus workspace
-totals. Source databases are never written to. A member with a mismatched or
-missing schema version is reported and skipped rather than silently unioned or
-treated as fatal. With no workspace manifest present (FEAT-3409's
+One invocation opens every member repo's `history.db` read-only and runs the
+quality analysis per member, producing a per-repo breakdown (labeled
+`<repo> (<role>)`) plus a list of skipped members with reasons. Source
+databases are never written to. A member with a mismatched or missing schema
+version is reported and skipped rather than silently analyzed or treated as
+fatal. With no workspace manifest present (FEAT-3409's
 `discover_workspace_members()` returns `[]`), behavior falls back
-byte-for-byte to today's single-repo output.
+byte-for-byte to today's single-repo output. Workspace-wide totals are a
+follow-up (see Design Notes).
 
 ## Use Case
 
@@ -67,25 +79,49 @@ rate, retry inflation) for the whole workspace, not one repo at a time — today
 `ll-history quality` only ever answers for the single repo it's invoked in.
 
 **Goal**: Run `ll-history quality` with the new `--workspace` flag once and
-get a per-repo breakdown plus workspace-wide totals, with any repo whose
-`history.db` schema is stale or missing clearly called out rather than
-silently mixed into the totals.
+get a per-repo breakdown, with any repo whose `history.db` schema is stale or
+missing clearly called out rather than silently analyzed.
 
-**Outcome**: One aggregated report replaces manually running `ll-history
-quality` in each member repo and reconciling the numbers by hand; a
-schema-skewed or absent member is reported by name instead of producing wrong
-totals or crashing the run.
+**Outcome**: One report replaces manually running `ll-history quality` in each
+member repo; a schema-skewed or absent member is reported by name instead of
+producing wrong numbers or crashing the run.
 
 ## Design Notes
 
-The mechanism is SQLite `ATTACH`: attach each member repo's database read-only
-and union the queries. No materialized cross-repo database, no migration of the
-source schemas, no second registry.
+Each member's database is opened through its own raw `file:{path}?mode=ro`
+URI connection (never through an opener that calls `ensure_db()` — see
+"Read-only enforcement" below) and the existing single-repo analysis runs once
+per member against that connection. No materialized cross-repo database, no
+migration of the source schemas, no second registry.
 
 Schema-version skew is the interesting failure. Member databases will not all be
-at the same migration level, and silently unioning across a schema boundary
+at the same migration level, and silently analyzing across a schema boundary
 produces numbers that look fine and are wrong. Skew must be reported and the
 member skipped — never silently mismatched, never normalized.
+
+### Why totals are deferred (2026-09-08 review)
+
+A workspace-wide `QualityAnalysis` cannot be produced by merging N finished
+per-repo instances (rates carry no denominator; verdicts are relative to each
+repo's own baseline — see Codebase Research Findings). The only sound route is
+one analysis run over the *union* of all members' tables, which is exactly
+what multi-`ATTACH` is for. But that union has a second problem this issue's
+research had not surfaced: **issue identifiers collide across repos.** Every
+little-loops repo numbers issues from 1, and the analysis keys on bare
+`issue_num` (`agent_quality.py::_load_closed_issues`, `_session_issue_map`)
+and bare `issue_id` (`rework.py::_load_issue_events`). A union would merge
+different repos' issues that share an ID. Fixing that means either a repo
+discriminator threaded through every keying site in `agent_quality.py` and
+`rework.py`, or an `issue_num` remapping in the union views that also breaks
+`analyze_rework()`'s on-disk `supersedes:` join. Either is its own issue.
+Additionally SQLite's attached-database limit is 10 by default
+(`sqlite3.connect(":memory:").getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)` == 10
+on this interpreter; it cannot be raised above the compile-time
+`SQLITE_MAX_ATTACHED`), so any ATTACH-union design also needs a fail-loud rule
+for workspaces with more than 10 members. Per-member connections have no such
+limit. **Decision:** ship `per_repo` + `skipped` here; file a follow-up for
+union totals that owns the discriminator, the >10-member rule, and the
+`ATTACH` mechanics proven by the spike in Verification Notes.
 
 ## Constraints
 
@@ -157,6 +193,12 @@ member skipped — never silently mismatched, never normalized.
   baseline — `AggregationResult.totals: QualityAnalysis` as a merge of N
   finished per-repo `QualityAnalysis` instances is unsound for these two fields
   specifically.
+- _(2026-09-08 review: the two "approach (a)" findings below and the
+  "option (b) blast radius" wiring note describe the ATTACH-union design,
+  which is now the deferred totals follow-up's concern. They are retained as
+  research for that issue; this issue's per-member-connection design needs no
+  SQL qualification. The `SCHEMA_VERSION` literals in this section are
+  historical — never compare against a number.)_
 - **Exact unqualified-SQL call sites for schema-qualification approach (a)** (8
   total, all `conn.execute(...)` with a bare `FROM <table>`):
   `agent_quality.py:229` (`issue_events`), `agent_quality.py:245`
@@ -210,15 +252,34 @@ _Added by `/ll:refine-issue` — 2026-09-08 — based on codebase analysis:_
   DBs.
 - `scripts/little_loops/issue_history/agent_quality.py` — `analyze_agent_quality()`
   takes a **path**, not a connection: it opens and closes its own
-  `_connect_readonly()` connection internally, and every internal query uses
-  unqualified table names. It cannot currently be pointed at an already-open
-  connection with an ATTACHed schema without either (a) opening one throwaway
-  connection per member exactly as today, or (b) a signature change to accept
-  an open connection/schema-qualifier and schema-qualify every internal SQL
-  string.
+  `_connect_readonly()` connection internally. **Passing a member's path
+  (`db=member.db_path`) is NOT a read-only option** (2026-09-08 review):
+  `history_reader/_base.py::_connect_readonly()` calls `ensure_db(db_path)`
+  first, which opens read-write, runs `_apply_migrations()`, and sets WAL via
+  `_configure_connection()` (`session_store/schema.py:1519-1557,1392`). A
+  stale member would be silently migrated to the current version *before*
+  the skew gate could see it, and even a current member gets `-wal`/`-shm`
+  sidecars written. `analyze_rework()` (`rework.py:292`) opens its own
+  connection the same way. Both functions therefore need a `conn=` parameter
+  (see Program Design § Signatures) so the aggregator can hand in a raw
+  `mode=ro` connection it opened itself.
 - `scripts/little_loops/cli/history.py` — `ll-history quality` subcommand is
   the current single-repo entry point; the no-manifest fallback must reproduce
-  this path unchanged.
+  this path unchanged. **Citation refresh (2026-09-08, after FEAT-3398/3405
+  landed):** `quality_parser` is at lines 266-310 and now defines five flags
+  (`-f/--format`, `--min-sample`, `--sensitivity`, `--baseline-windows`,
+  `--all-windows`); the dispatch block is at lines 508-553, calling
+  `analyze_agent_quality(all_issues, db=db_path, min_sample=…,
+  sensitivity=…, baseline_windows=…, latest_only=not args.all_windows)` at
+  line 535. The `--workspace` path must forward all of `min_sample`,
+  `sensitivity`, `baseline_windows`, `latest_only` to every per-member call.
+- **Per-member `issues` argument** (2026-09-08 review): `analyze_agent_quality()`
+  forwards `issues` to `analyze_rework()` to resolve `supersedes:` edges. The
+  CLI builds `all_issues` from the *invoking* repo's `config` only. Each member
+  needs its own on-disk issues: `find_issues(BRConfig(member.repo_path),
+  status_filter=all_statuses)` (`BRConfig(project_root: Path)`,
+  `config/core.py:277`; `workspace.py:93` already constructs `BRConfig(root)`
+  the same way). `aggregate_history_dbs()` owns this per-member lookup.
 - `analyze_agent_quality()`'s formatter siblings
   `format_agent_quality_text`/`_json`/`_yaml` (`agent_quality.py:588,670,675`)
   all take `analysis: QualityAnalysis` positionally — only
@@ -341,10 +402,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   (`key = 'schema_version'`), **not** `PRAGMA user_version`. Read via
   `read_schema_version(conn)` (`session_store/queries.py`) — returns
   `str | None`, swallows only `sqlite3.OperationalError` (missing table).
-  `SCHEMA_VERSION` (`session_store/schema.py`, currently `48`) is the installed
-  code's target version. A mismatch between a member's `read_schema_version()`
-  value and the aggregator's own `SCHEMA_VERSION` is the exact skew signal this
-  issue's "reported and skipped" requirement needs.
+  `SCHEMA_VERSION` (`session_store/schema.py:25`) is the installed code's
+  target version. Do **not** cite its numeric value anywhere in this issue or
+  in code/tests — it drifted 47 → 48 → 49 within 2026-09-08 alone; compare
+  against the imported constant. A mismatch between a member's
+  `read_schema_version()` value and `str(SCHEMA_VERSION)` is the exact skew
+  signal this issue's "reported and skipped" requirement needs. Note
+  `read_schema_version()` returns `None` for two distinct conditions (no
+  `meta` table vs. no `schema_version` row); the skip reason must
+  distinguish these from a missing file (see Decision Rules).
 
 ### Conventions in Force
 
@@ -455,7 +521,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   trends" / "Quality Metric Definitions") — points to `CLI.md` for flag tables;
   needs a workspace-rollup mention.
 - `docs/reference/API.md:9419` — already states "Current schema version: 45"
-  while `schema.py:25` has `SCHEMA_VERSION = 48` (a pre-existing, unrelated
+  while `schema.py:25`'s `SCHEMA_VERSION` is higher (49 as of 2026-09-08; a pre-existing, unrelated
   staleness) — whoever documents the schema-skew gate here will be editing a
   paragraph that already has a stale version number in it.
 
@@ -473,43 +539,79 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `AggregationResult`: `per_repo: dict[str, QualityAnalysis]`, `totals:
-  QualityAnalysis`, `skipped: list[tuple[str, str]]` (repo, reason)
+- `class AggregationResult` (frozen dataclass, new module per Step 2). **No
+  `totals` field** — see Design Notes § "Why totals are deferred".
+  - `per_repo: dict[str, QualityAnalysis]` — keyed by the display label
+    `f"{member.repo_path.name} ({member.role})"`
+  - `skipped: list[tuple[str, str]]` — (same label, reason string)
+  - `to_dict() -> dict[str, Any]` — for the json/yaml formatters, mirroring
+    `QualityAnalysis.to_dict()`
 
 ### Signatures
 
-- `aggregate_history_dbs(members: list[WorkspaceMember]) -> AggregationResult`
-  (`WorkspaceMember` from FEAT-3409)
+- `aggregate_history_dbs(members: list[WorkspaceMember], *, min_sample: int, sensitivity: float, baseline_windows: int, latest_only: bool) -> AggregationResult`
+  — `WorkspaceMember` from FEAT-3409; the four kwargs mirror
+  `analyze_agent_quality()`'s and are forwarded verbatim per member.
+- `analyze_agent_quality(issues: list[IssueInfo], *, db: Path | str = DEFAULT_DB_PATH, conn: sqlite3.Connection | None = None, min_sample: int = MIN_SAMPLE_SIZE, sensitivity: float = DEFAULT_SENSITIVITY, baseline_windows: int = DEFAULT_BASELINE_WINDOWS, latest_only: bool = True) -> QualityAnalysis`
+  — additive `conn=` kwarg. When given, the function uses it and neither
+  opens nor closes a connection; `db` is ignored.
+- `analyze_rework(issues: list[IssueInfo], *, db: Path | str = DEFAULT_DB_PATH, conn: sqlite3.Connection | None = None, min_sample: int = MIN_SAMPLE_SIZE, follow_up_days: int = FOLLOW_UP_WINDOW_DAYS) -> ReworkAnalysis`
+  — same additive `conn=`; `analyze_agent_quality()` forwards its `conn`
+  here. `orchestrator_labels()` (`_utils.py:74`) already takes a connection.
+  All 31 existing `analyze_agent_quality(` call sites in
+  `test_issue_history_agent_quality.py` and the production caller at
+  `cli/history.py:535` stay unchanged.
 
 ### Call Path
 
-`discover_workspace_members()` [FEAT-3409] -> `aggregate_history_dbs()` (opens
-one connection, `ATTACH DATABASE ? AS repo_N` per member via
-`_connect_readonly()`'s read-only URI pattern) -> `analyze_agent_quality()` per
-attached schema -> `format_agent_quality_markdown()` (extended to render
-`AggregationResult`)
+`discover_workspace_members()` [FEAT-3409] -> `aggregate_history_dbs()`, which
+for each member: `db_path.exists()` guard -> open
+`sqlite3.connect(f"file:{member.db_path}?mode=ro", uri=True)` with
+`row_factory = sqlite3.Row` and `PRAGMA query_only = ON` (modeled on
+`evolution.py::_open_db()`, no `ensure_db()`) -> `read_schema_version(conn)`
+vs `str(SCHEMA_VERSION)` gate -> `find_issues(BRConfig(member.repo_path),
+status_filter=all_statuses)` -> `analyze_agent_quality(issues, conn=conn, …)`
+-> close. Then `format_agent_quality_{text,markdown,json,yaml}` each gain an
+`AggregationResult` rendering (see Step 4/5).
 
-Confirmed current wiring the `--workspace` branch above must insert into:
-`main_history()`'s `quality` dispatch block (`cli/history.py:470-498`) resolves
-a single `db_path` via `resolve_history_db()` at line 474, calls
-`analyze_agent_quality(all_issues, db=db_path, min_sample=min_sample)`
-unconditionally at line 487, then dispatches to one of four
-`format_agent_quality_{json,yaml,markdown,text}` formatters at lines 489-496
-keyed only on `args.format`. The `quality_parser` (`cli/history.py:251-270`)
-defines only `-f/--format` and `--min-sample` today — no `db`/`--db` argument
-exists on this subparser, so `--workspace` would be its first per-invocation
-source-selection flag. Nothing in steps 474-486 (the `db_path` resolve,
-`find_issues()` call, `min_sample` default) depends on there being exactly one
-`db_path`, so the natural insertion point is a conditional between line 474 and
-line 487, before the unconditional formatter dispatch at 489-496.
+Confirmed current wiring the `--workspace` branch above must insert into
+(line numbers refreshed 2026-09-08 after FEAT-3398/3405 landed):
+`main_history()`'s `quality` dispatch block (`cli/history.py:508-553`) resolves
+a single `db_path` via `resolve_history_db()` at line 516, calls
+`analyze_agent_quality(all_issues, db=db_path, min_sample=…, sensitivity=…,
+baseline_windows=…, latest_only=…)` unconditionally at line 535, then
+dispatches to one of four `format_agent_quality_{json,yaml,markdown,text}`
+formatters at lines 544-551 keyed only on `args.format`. The `quality_parser`
+(`cli/history.py:266-310`) defines `-f/--format`, `--min-sample`,
+`--sensitivity`, `--baseline-windows`, `--all-windows` — no `db`/`--db`
+argument exists on this subparser, so `--workspace` would be its first
+per-invocation source-selection flag. Nothing in lines 516-533 (the `db_path`
+resolve, `find_issues()` call, kwarg defaults) depends on there being exactly
+one `db_path`, so the natural insertion point is a conditional after the kwarg
+defaults (line 533) and before the unconditional formatter dispatch.
 
 ### Decision Rules
 
 - **Schema-skew gate**: a member's `read_schema_version(conn)` value that does
-  not equal the aggregator's own `SCHEMA_VERSION` (`session_store/schema.py`,
-  currently 48) is skipped and reported via `AggregationResult.skipped`, never
-  unioned. No normalization path is implied — skew is always "report and skip,"
-  never "coerce."
+  not equal `str(SCHEMA_VERSION)` (imported from `session_store/schema.py`;
+  never a literal) is skipped and reported via `AggregationResult.skipped`,
+  never analyzed. No normalization path is implied — skew is always "report
+  and skip," never "coerce." Skip reasons are three distinct strings so a user
+  can tell them apart: `history.db not found at <path>`, `schema_version
+  missing (no meta row)`, and `schema_version <N> != installed <M>`. A
+  `sqlite3.Error` on open is a fourth: `could not open read-only: <err>`.
+- **`--workspace [PATH]` flag shape** (2026-09-08 review): `nargs="?"`,
+  `const=None`, `default=argparse.SUPPRESS`-style absent sentinel. Bare
+  `--workspace` → `discover_workspace_members(start=project_root)` (config key
+  then ancestor walk); `--workspace PATH` →
+  `discover_workspace_members(Path(PATH), start=project_root)`; flag absent →
+  today's single-repo path **even if a manifest is discoverable**. Only
+  manifest-listed members participate; the invoking repo is included only if
+  the manifest lists it. This is deliberately a different shape from
+  `cli_args.add_corpus_target_args()`'s `--project/--all` group — that helper
+  models "which corpus", not "opt into a declared topology".
+- **No ATTACH limit rule needed here**: per-member connections have no
+  attached-database cap. The follow-up totals issue owns the >10-member rule.
 - **No-manifest fallback**: an empty list (`[]`, never `None`) from FEAT-3409's
   `discover_workspace_members()` falls back to exactly today's single-repo
   `ll-history quality` output, byte-for-byte — no partial-aggregation mode with
@@ -528,117 +630,186 @@ line 487, before the unconditional formatter dispatch at 489-496.
   `role` a required manifest field; without a consumer here it would be dead
   data. `member.db_path` is used as-is — discovery does no existence check, so
   the `db_path.exists()` guard in this issue is the sole missing-DB gate.
-- **Read-only enforcement**: member connections must go through a
-  `mode=ro`-URI-based `_connect_readonly()` variant, never the migrating
-  `session_store.connect()`/`ensure_db()` path in a way that could write — see
-  the three-variant naming collision above; which of the three existing
-  variants to model this on is an open implementation call, since none of them
-  is itself the ATTACH-multiple-read-only-sources shape this issue needs.
+- **Read-only enforcement** (resolved 2026-09-08): member connections are
+  opened by `aggregate_history_dbs()` itself with a raw
+  `file:{path}?mode=ro` URI plus `PRAGMA query_only = ON`, modeled on
+  `issue_history/evolution.py::_open_db()` (`exists()` guard, no
+  `ensure_db()`, `sqlite3.Error` → skip). **Never** `history_reader/_base.py::
+  _connect_readonly()` — it calls `ensure_db()` and would migrate a member
+  in place (see Files to Modify). A source-inspection test in the style of
+  `test_snapshot_builder_never_uses_the_migrating_open_path` asserts the new
+  module never references `ensure_db`, `session_store.connect`, or
+  `history_reader._base._connect_readonly`.
 
 ## Implementation Steps
 
-1. `aggregate_history_dbs()` opens one connection and `ATTACH DATABASE ? AS
-   repo_N` per member — the ATTACH/DETACH bracketing follows
-   `session_store/queries.py::build_snapshot_db()`'s existing precedent, but in
-   the reverse direction (N read-only sources onto one connection, not one
-   read-only source plus a writable scratch); `read_schema_version(conn)` is
-   read per member before any query runs, matching that function's
-   version-read-before-touch ordering. Reuse `resolve_history_db()`'s `root=`
-   parameter (`session_store/db.py:121`, added per BUG-3181) for per-member path
-   resolution rather than reimplementing path discovery.
-2. A member whose `read_schema_version()` disagrees with the aggregator's own
-   `SCHEMA_VERSION` is appended to `AggregationResult.skipped` and excluded
-   from `totals`, never raising.
-3. Resolve the open implementation call for `analyze_agent_quality()`: either
-   call it once per member's own throwaway `_connect_readonly()` connection
-   (bypassing ATTACH for this call, zero SQL changes), or give it a
-   schema-qualifier/open-connection parameter and schema-qualify all 8 internal
-   unqualified queries plus `read_schema_version()`'s own query.
-4. `format_agent_quality_markdown()` is extended to render
-   `AggregationResult`'s per-repo breakdown plus totals; since no existing
-   dataclass-merge precedent exists in this codebase, the `totals:
-   QualityAnalysis` combination is new code, not an adaptation.
-5. Decide the `--workspace --format json/yaml/text` output shape and add a
-   `--workspace` flag to `ll-history quality` (`cli/history.py`), following
-   `cli_args.py::add_corpus_target_args()`'s scope-flag convention (change what
-   gets collected, not which formatter branch runs).
+1. Add `conn: sqlite3.Connection | None = None` to `analyze_agent_quality()`
+   and `analyze_rework()`. When set, use it (no open/close, `db` ignored) and
+   forward it from the former to the latter. Update the `issue_history/__init__.py`
+   docstrings and the `docs/reference/API.md:2380,2393` signature rows.
+2. New module `scripts/little_loops/issue_history/workspace_quality.py` (new)
+   (sits beside `agent_quality.py`; keeps `workspace.py` at the package root
+   free of `issue_history` imports) implementing `AggregationResult` and
+   `aggregate_history_dbs()`. Per member, in order: `db_path.exists()` guard →
+   raw `mode=ro` open (Decision Rules § Read-only enforcement) →
+   `read_schema_version(conn)` vs `str(SCHEMA_VERSION)` gate →
+   `find_issues(BRConfig(member.repo_path), status_filter=all_statuses)` →
+   `analyze_agent_quality(issues, conn=conn, min_sample=…, sensitivity=…,
+   baseline_windows=…, latest_only=…)` → close in `finally`. `member.db_path`
+   is used as-is (FEAT-3409 already resolved it); do **not** re-resolve via
+   `resolve_history_db()` — its env/config chain would redirect a
+   root-anchored path (BUG-3181's contract, per `_connect_readonly()`'s
+   docstring).
+3. Any gate failure appends `(label, reason)` to `AggregationResult.skipped`
+   with one of the four reason strings in Decision Rules and continues to the
+   next member; nothing raises. Manifest-level errors from
+   `discover_workspace_members()` (`FileNotFoundError` for a declared-but-
+   missing path, `yaml.YAMLError`/`KeyError`/`ValueError` for a malformed
+   manifest) are **not** caught by the aggregator — the CLI surfaces them as a
+   user error (non-zero exit, message on stderr).
+4. Extend all four formatters. `format_agent_quality_text/_markdown` gain an
+   `AggregationResult` overload that emits one "## <label>" section per
+   `per_repo` entry (each rendered by the existing single-analysis body) then
+   a "Skipped" section listing `(label, reason)` pairs, or "none". `_json/_yaml`
+   serialize `AggregationResult.to_dict()` → `{"per_repo": {label:
+   QualityAnalysis.to_dict()}, "skipped": [{"repo": …, "reason": …}]}`. A
+   `--workspace` run with a manifest that lists zero analyzable members still
+   emits the structure (empty `per_repo`, populated `skipped`) — it does not
+   fall back to single-repo.
+5. Add `--workspace [PATH]` to `quality_parser` (`cli/history.py:266-310`) per
+   the Decision Rules flag shape, and branch after the kwarg defaults
+   (line 533): flag absent → existing lines 535-551 untouched; flag present →
+   `members = discover_workspace_members(...)`; `members == []` → existing
+   single-repo path (the no-manifest fallback); otherwise
+   `aggregate_history_dbs(members, …)` → formatter dispatch on `args.format`.
 6. Source DBs are asserted unmodified via a `hashlib.sha256` before/after
-   checksum test, following
-   `test_feat3304_artifact_dashboard.py::TestSourceDbUntouched`'s existing
-   template.
-7. Add a multi-ATTACH test modeled on
-   `test_feat3304_artifact_dashboard.py:734-760::TestBuildSnapshotDb`'s
-   behavioral-assertion shape, extended for N simultaneous read-only ATTACHes.
-8. Add a `--workspace` flag test to `TestHistoryQualitySubcommand`
-   (`test_cli_history.py:220-271`), following the same argv-patch + `tmp_path`
-   shape as its four existing tests.
-9. Add a `("docs/reference/CLI.md", "--workspace", "FEAT-3399")` entry to
+   checksum test over every member file **and** an assertion that no
+   `-wal`/`-shm` sidecar appeared, following
+   `test_feat3304_artifact_dashboard.py::TestSourceDbUntouched`'s template;
+   plus the source-inspection test named in Decision Rules § Read-only
+   enforcement. Build member DBs by promoting one of the two existing
+   `_build_history_db(path)` factories (`test_feat3304_artifact_dashboard.py:68`,
+   `test_feat3323_sse_bridge.py:877`) to `scripts/tests/conftest.py` rather
+   than adding a third copy.
+7. Skew-gate tests: one member each for (a) file missing, (b) `meta` table
+   absent, (c) `schema_version` row absent, (d) `schema_version` one behind
+   `SCHEMA_VERSION`, (e) one ahead — all five appear in `skipped` with the
+   matching reason string, the healthy sibling still appears in `per_repo`,
+   and the stale member's file hash is unchanged afterward (proves the gate
+   ran before any migrating path could).
+8. Add `--workspace` flag tests to `TestHistoryQualitySubcommand`
+   (`test_cli_history.py:220`), following the argv-patch + `tmp_path` shape:
+   two-member manifest → both labels in output; bare flag with no manifest →
+   output byte-identical to the no-flag run; `--workspace <missing path>` →
+   non-zero exit with the path on stderr; flag absent with a discoverable
+   manifest → single-repo output (opt-in semantics).
+9. Add a `("docs/reference/CLI.md", "--workspace", "FEAT-3410")` entry to
    `test_wiring_cli_registry.py`'s `DOC_STRINGS_PRESENT` list once the
    `--workspace` flag's CLI.md doc lands.
-10. Update `docs/reference/CLI.md:3162-3206`,
-    `docs/guides/HISTORY_SESSION_GUIDE.md:446-486` for the `--workspace` flag
-    and `AggregationResult` output shape.
-11. Cross-check FEAT-3398's Integration Map citations of
-    `analyze_agent_quality()`/`format_agent_quality_markdown()` signatures,
-    since this issue changes them.
-12. Decide whether the new skip-and-report schema-skew message should align
-    with or deliberately diverge from
-    `cli/artifact/dashboard.py::schema_version_warning()`'s existing
-    warn-semantic wording.
+10. Update `docs/reference/CLI.md:3205` (`#### ll-history quality`),
+    `docs/guides/HISTORY_SESSION_GUIDE.md:446-486`, `docs/reference/API.md`
+    (new module row + `conn=` signature rows), and the package-layout prose at
+    `docs/reference/API.md:8209` / `CONTRIBUTING.md:299`.
+11. ~~Cross-check FEAT-3398/FEAT-3405 citations~~ — **moot** as of 2026-09-08:
+    both landed before this issue (`analyze_agent_quality()` already carries
+    their `sensitivity`/`baseline_windows`/`latest_only` kwargs and
+    `QualityAnalysis.regressions`). Replaced by the forward-all-kwargs rule in
+    Step 2.
+12. Skew-message wording: the reason strings in Decision Rules deliberately
+    diverge from `cli/artifact/dashboard.py::schema_version_warning()` (a
+    *warn* semantic rendered into HTML) and `cli/doctor.py::_schema_drift_check()`
+    (a structural diff). Ours is a *skip* semantic; do not reuse either
+    function or its tests' verbatim strings.
+13. Record the multi-ATTACH read-only spike (Verification Notes) as a `sqlite3`
+    entry in the Learning Test Registry (`/ll:explore-api`), then clear
+    `unproven_mechanism`. The learning test is what the follow-up totals issue
+    will cite; it is not exercised by this issue's production code.
+14. File the follow-up issue for union totals (owner of: ATTACH mechanics,
+    `issue_num`/`issue_id` repo discriminator, >10-member limit rule, and the
+    `totals` field) and link it from this issue's Resolution.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Extend Step 11's cross-check to also cover
-  `.issues/features/P0-FEAT-3405-quality-regression-detection-attribution-and-report-cli-wiring.md`
-  — a live sibling that also proposes signature changes to
-  `analyze_agent_quality()`/its formatters and already names FEAT-3410 as its
-  own coordination partner.
-- Extend Step 12's wording decision to also weigh `cli/doctor.py`'s
-  `_schema_drift_check()` (ENH-3242) wording and the verbatim rendering of
-  `schema_version_warning()` in `templates/dashboard.llat/template.html.j2` —
-  three existing wordings to align with or diverge from, not one.
-- Update `scripts/little_loops/issue_history/__init__.py` — re-exports and
-  docstrings for `analyze_agent_quality`/formatters need updating if their
-  signatures change; add `aggregate_history_dbs`/`AggregationResult` here if
-  they are meant to be publicly importable.
-- Update `docs/reference/API.md:2380,2393` — the signature-reference table
-  rows for `analyze_agent_quality()`/`format_agent_quality_*()` if
-  Implementation Step 3 changes either signature.
-- If Implementation Step 3 picks option (b), update the 17 `db=`-keyword call
-  sites in `test_issue_history_agent_quality.py` plus `cli/history.py:487`
-  and `issue_history/__init__.py:80,248` for the new signature.
+- ~~FEAT-3405 cross-check~~ — moot; FEAT-3405 landed 2026-09-08 (see Step 11).
+- Step 12's wording decision is resolved (diverge from both
+  `schema_version_warning()` and `_schema_drift_check()`); the
+  `templates/dashboard.llat/template.html.j2` rendering is unaffected.
+- Update `scripts/little_loops/issue_history/__init__.py` — docstrings for
+  `analyze_agent_quality`/`analyze_rework` gain the `conn=` kwarg; add
+  `aggregate_history_dbs`/`AggregationResult` to the imports and `__all__`
+  (they are public: the CLI imports them).
+- Update `docs/reference/API.md:2380,2393` — the signature-reference rows for
+  `analyze_agent_quality()` (now with `conn=`) and the four formatters (now
+  accepting `QualityAnalysis | AggregationResult`).
+- The `conn=` kwarg is additive, so the 31 `analyze_agent_quality(` call sites
+  in `test_issue_history_agent_quality.py`, `cli/history.py:535`, and the
+  `issue_history/__init__.py` re-export are all unchanged.
 - Use an explicit `hashlib.sha256` checksum (Step 6), not
   `conftest.py::_guard_real_history_db`, to assert source DBs are untouched —
-  that guard does not intercept `_connect_readonly()`'s own `sqlite3.connect`
-  call.
+  that guard patches `little_loops.session_store.sqlite3.connect` only and
+  will not see the new module's own `sqlite3.connect`.
 
 ## Impact
 
 - **Priority**: P1 — Valuable multi-repo visibility, but each repo's own report
   already exists as a fallback; this is additive rather than blocking.
-- **Effort**: Medium — the ATTACH-union mechanism is well-scoped, but several
-  implementation choices (connection variant, schema-qualification approach,
-  output format shape) remain open and require a deliberate decision during
-  implementation.
+- **Effort**: Medium — with totals deferred, every implementation choice
+  (connection opener, `conn=` plumbing, flag shape, output shape, skip reasons)
+  is now decided above; remaining work is plumbing, formatters, and tests.
 - **Risk**: Low — read-only by design; a schema-skew or missing-DB member
-  degrades to a skip, not a failure. The multi-ATTACH-of-read-only-sources
-  mechanism itself is unproven (no confirming precedent) and should be spiked
-  or verified early.
-- **Breaking Change**: No
+  degrades to a skip, not a failure. The one read-only trap (`ensure_db()` via
+  `history_reader/_base.py::_connect_readonly()`) is fenced by a
+  source-inspection test.
+- **Breaking Change**: No — `conn=` is additive on both analysis functions.
 
 ## Acceptance Criteria
 
-- One invocation reports across ≥2 repos, with per-repo breakdown and workspace
-  totals.
-- Source DBs are provably unmodified after a run (checksum assertion in tests).
-- A repo with a mismatched or missing schema is reported and skipped, not
-  fatal.
+- One invocation reports across ≥2 repos with a per-repo breakdown, each
+  section labeled `<repo> (<role>)`, in all four `--format` modes.
+- Source DBs are provably unmodified after a run: checksum assertion in tests
+  over every member file, no `-wal`/`-shm` sidecars created, and a
+  source-inspection test proving the aggregator never touches a migrating
+  opener.
+- A repo with a mismatched (behind *or* ahead), missing, or unreadable schema
+  is reported by label and reason and skipped, not fatal; the healthy members
+  are still analyzed; the skewed member's file is byte-identical afterward.
+- `--workspace` absent, or present with no discoverable manifest, produces
+  output byte-identical to today's single-repo run; `--workspace <missing
+  path>` exits non-zero with the path on stderr.
+- Workspace-wide totals are **out of scope**; a follow-up issue is filed and
+  linked (Step 14).
 
 ## Verification Notes
 
 - **Graph**: provider=`codegraph` freshness=`fresh`
+- **Pre-implementation review** — 2026-09-08 — five design gaps folded in
+  (see Summary/Design Notes/Decision Rules): (1) the per-member-path call
+  into `analyze_agent_quality()` migrates member DBs via `ensure_db()`, so a
+  `conn=` kwarg is mandatory; (2) `totals: QualityAnalysis` was unsound and
+  any union hits cross-repo `issue_num`/`issue_id` collisions — deferred to a
+  follow-up; (3) per-member `find_issues(BRConfig(member.repo_path))` was
+  unaddressed; (4) `--workspace` flag shape was undefined; (5)
+  `SQLITE_LIMIT_ATTACHED` defaults to 10. Citations refreshed after
+  FEAT-3398/FEAT-3405 landed (`SCHEMA_VERSION` is now 49 — literal removed
+  from this issue; `analyze_agent_quality()` gained three kwargs;
+  `cli/history.py` quality parser 266-310 / dispatch 508-553).
+- **Spike (2026-09-08)** — multi-ATTACH read-only mechanism confirmed on this
+  interpreter, for the follow-up totals issue: three `file:…?mode=ro` URIs
+  attached to a `:memory:` main via `ATTACH DATABASE ? AS repo_N`;
+  `PRAGMA database_list` showed all four schemas; per-schema
+  `repo_N.meta` reads returned each member's own version; a cross-schema
+  `UNION ALL` worked; a view inside an attached schema was queryable via
+  `repo_N.<view>`; an `INSERT` into an attached table raised `attempt to
+  write a readonly database` (the `mode=ro` URI alone enforces this, before
+  `PRAGMA query_only`); sha256 of all three files was unchanged afterward.
+  **Confirmed trap:** an unqualified `FROM issue_events` on that connection
+  silently returned rows from exactly one schema (SQLite search order:
+  temp → main → attached in order), not a union. Note `PRAGMA query_only=ON`
+  also blocks `CREATE TEMP TABLE`/`CREATE TEMP VIEW`, so a union-view design
+  must create its views in the writable `:memory:` main *before* enabling
+  the pragma, or skip the pragma and rely on `mode=ro`.
 - `/ll:verify-issues` — 2026-09-08 — verdict **OUTDATED**. All file:line
   citations, signatures, and mechanism claims checked against current code
   (~20 items spanning `agent_quality.py`, `rework.py`, `_utils.py`,
