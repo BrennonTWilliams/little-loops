@@ -301,6 +301,7 @@ branch, (4) add the `verify_verdict:` frontmatter-sync rule, and (5) state expli
 existing bare labels and stale frontmatter are not backfilled.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T19:37:47 - `0feb3751-5c38-412d-892d-09fae075ee5e.jsonl`
 - `/ll:wire-issue` - 2026-09-09T19:21:35 - `ebf18a6f-ed36-4252-9599-87c271309793.jsonl`
 - `/ll:refine-issue` - 2026-09-09T19:14:29 - `42196ace-6931-433b-9da5-c194d57bddf7.jsonl`
 - `/ll:format-issue` - 2026-09-09T19:10:19 - `6825e935-9173-4255-b699-a7e303deae32.jsonl`
