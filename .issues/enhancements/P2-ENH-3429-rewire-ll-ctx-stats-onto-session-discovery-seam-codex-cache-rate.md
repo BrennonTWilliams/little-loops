@@ -26,10 +26,11 @@ relates_to:
 ## Summary
 
 Decomposed from ENH-3419 (score 8/11, Very Large). Rewires `cli/ctx_stats.py`'s
-`_compute_cache_rate_from_jsonl` to pick its file via `detect_sessions` instead of
-`get_sessions_folder` + newest-file glob, and adds a Codex-native cache-rate reader with the
-correct cumulative/inclusive-token semantics. Depends on ENH-3427 for `_resolve_host` and the
-`--host` flag already registered on `ll-ctx-stats`.
+`_compute_cache_rate_from_jsonl` to pick its file via `session_store/sessions.py`'s
+`detect_sessions` instead of `little_loops/user_messages.py`'s `get_sessions_folder` + newest-file glob, and
+adds a Codex-native cache-rate reader with the correct cumulative/inclusive-token semantics.
+Depends on ENH-3427 for `_resolve_host` and the `--host` flag already registered on
+`ll-ctx-stats`.
 
 ## Parent Issue
 
@@ -43,6 +44,19 @@ from `main_ctx_stats` at ~753) calls `get_sessions_folder(cwd)` (355), picks the
 `agent-*` file, sums Claude-shaped `message.usage` keys (`cache_read_input_tokens`,
 `cache_creation_input_tokens`, `input_tokens`), and returns `{cache_read, cache_write, uncached,
 hit_rate_pct}`, consumed by the text renderer (~473-477) and JSON renderer (~598-601).
+
+## Expected Behavior
+
+`_compute_cache_rate_from_jsonl` picks its file via `detect_sessions(cwd, host,
+include_agents=False, limit=1)` instead of `get_sessions_folder` + newest-file glob, so
+`ll-ctx-stats` gets its cache-rate handle from the same session-discovery seam as `ll-logs` and
+`ll-messages`. For non-Codex hosts the raw per-line reader keeps computing `cache_read`,
+`cache_write`, `uncached`, and `hit_rate_pct` exactly as today. For Codex, a new
+`_codex_cache_usage` reader derives the same four keys from `token_count` events read via
+`iter_events`, correctly treating `total_token_usage` as cumulative (summing `last_token_usage`
+instead) and `input_tokens` as inclusive of cached/cache-write tokens. The JSON renderer gains one
+additive `host` key naming which host the rate was read from; both renderers and all four existing
+return keys are otherwise unchanged.
 
 ## Proposed Solution
 
@@ -110,6 +124,53 @@ hit_rate_pct}`, consumed by the text renderer (~473-477) and JSON renderer (~598
 - `docs/reference/HOST_COMPATIBILITY.md` documents the Codex cache-rate key semantics next to
   `[^tok-codex]`.
 
+## Program Design
+
+### Types
+
+- No new types — reuses `SessionHandle` (`session_store/sessions.py`) and the existing
+  `dict[str, Any] | None` cache-rate return shape (`cache_read`, `cache_write`, `uncached`,
+  `hit_rate_pct`, plus additive `host`).
+
+### Signatures
+
+- `_compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any] | None`
+  (`cli/ctx_stats.py:342`, signature gains `host` to thread through `_resolve_host` from ENH-3427)
+- `_codex_cache_usage(handle: SessionHandle) -> dict[str, Any] | None` (new, `cli/ctx_stats.py`)
+- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit:
+  int | None = None, home: Path | None = None) -> list[SessionHandle]`
+  (`session_store/sessions.py:291`)
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` (`session_store/sessions.py:824`)
+
+### Call Path
+
+`main_ctx_stats` -> `_compute_cache_rate_from_jsonl` -> `detect_sessions` -> (codex branch)
+`_codex_cache_usage` -> `iter_events`; (non-codex branch) existing raw per-line reader on
+`handle.path`.
+
+## Scope Boundaries
+
+- **In scope**: routing file selection through `detect_sessions`; adding the Codex `token_count`
+  cache-rate reader; the additive `host` JSON key; docs for the Codex key semantics.
+- **Out of scope**: qwen/gemini/omp native usage readers — their normalizers strip `message.usage`
+  entirely, so real cache rates for those hosts stay unreachable through `iter_events` until a
+  follow-up adds native usage readers for them (tracked as a documented limitation, not a new
+  issue here). Also out of scope: any change to the text/JSON renderer layout beyond the additive
+  `host` key, and any change to `main_ctx_stats`'s `--host` flag itself (delivered by ENH-3427).
+
+## Impact
+
+- **Priority**: P2 - decomposed from ENH-3419 (score 8/11, Very Large); observability parity for
+  Codex is valuable but not blocking any other in-flight work once ENH-3427 lands.
+- **Effort**: Small - single-file change (`cli/ctx_stats.py`) reusing the seam ENH-3427 already
+  wires up; the Codex reader is a self-contained function with fixture-derived test values already
+  specified.
+- **Risk**: Low - non-codex hosts keep their existing raw per-line reader untouched (explicitly
+  not routed through `iter_events`), so the qwen/gemini/omp test suite is unaffected; the codex
+  branch is new code, not a rewrite of a working path.
+- **Breaking Change**: No - all four existing return keys and both renderers are unchanged; `host`
+  is purely additive.
+
 ## Dependencies
 
 Blocked by ENH-3427 (host-resolution seam). Independent of ENH-3428/ENH-3430 (disjoint files —
@@ -121,4 +182,5 @@ touches `cli/ctx_stats.py` only).
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-09T22:05:58 - `1744c85d-b425-4d1c-b20e-c1e871e66aec.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:08 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`

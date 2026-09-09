@@ -34,8 +34,9 @@ in `discover_all_projects`. Depends on ENH-3427 for `_resolve_host`, `REGISTERED
 **Coordination note**: this issue owns the handles-based `_extract_ll_event_streams` signature;
 ENH-3422 (the backfill/HostLayout shrink) retargets only `_backfill_raw_events`
 (`session_store/lifecycle.py`), the layout-descriptor shrink in `session_store/writers.py`, and the
-`cli/session.py`/`cli/backfill_worker.py` callers — `_has_ll_activity`/`_extract_cwd_from_project`
-deletion happens here, so drop them from ENH-3422's scope.
+`cli/session.py`/`cli/backfill_worker.py` callers. `_has_ll_activity` and `_extract_cwd_from_project`
+(both defined in `cli/logs.py`, lines 97 and 134) are deleted by this issue, not ENH-3422 — drop
+them from ENH-3422's scope.
 
 ## Parent Issue
 
@@ -54,9 +55,57 @@ ll-ctx-stats (Codex observability).
 activity (`_has_ll_activity`, 213), and has seven consumers: `_collect_sequences` (664),
 `_cmd_extract` (780), `_cmd_dead_skills` (1075), `_collect_failure_clusters` (1364), `_cmd_stats`
 (1639), `_cmd_loop_fleet` (2335), `_cmd_fleet_review` (2782), plus the `discover` subcommand
-(3235). `_extract_ll_event_streams` (261-290) still takes a `project_folder` and globs
-`layout.session_glob`. `_collect_sequences` also resolves a `HostLayout` from `LL_HOOK_HOST`
-directly (649).
+(3235). `_extract_ll_event_streams` (261-290, `cli/logs.py`) still takes a `project_folder` and globs
+`effective.session_glob` (the resolved `HostLayout`, defaulting to Claude Code). `_collect_sequences`
+also resolves a `HostLayout` from `LL_HOOK_HOST` directly (649).
+
+## Expected Behavior
+
+- All 11 `get_project_folder` call sites and the `--all` enumeration path route through
+  `detect_sessions`/`list_workspaces` instead of `get_project_folder`/`get_sessions_folder`.
+- With no `--host` flag and no `LL_HOOK_HOST`, `ll-logs sequences`/`extract`/`scan-failures`/
+  `eval-export`/`discover` show sessions from every host that recorded activity for the target
+  workspace (e.g. both a Claude Code and a Codex session in the same cwd); `--host <name>` narrows
+  to one.
+- `--all` enumeration unions workspaces across hosts (deduped on resolved cwd), still applying the
+  existing ll-activity filter so output does not widen to include non-ll workspaces.
+- `_has_ll_activity` and `_extract_cwd_from_project` no longer exist; `_extract_ll_event_streams`
+  takes `SessionHandle` objects instead of a bare `project_folder`.
+- Existing Claude Code and qwen behavior (session content, `agent-*` exclusion, exit codes, stdout
+  contracts) is unchanged.
+
+## Scope Boundaries
+
+- **In scope**: the 11 `get_project_folder` call sites and `discover_all_projects` in
+  `cli/logs.py`; deleting `_has_ll_activity`/`_extract_cwd_from_project`; threading `--host` through
+  all 8 `discover_all_projects` callers; the handles-based `_extract_ll_event_streams` signature.
+- **Out of scope**: `ll-messages` (ENH-3428) and `ll-ctx-stats` (ENH-3429) — disjoint files, separate
+  issues. The `_backfill_raw_events`/`HostLayout` shrink and the `cli/session.py`/
+  `cli/backfill_worker.py` callers — owned by ENH-3422. Fixing `list_workspaces("omp")`'s lossy
+  session-dir encoding — documented gap, not fixed here. Restoring `discover_all_projects`'s
+  lossy-decode `cwd` fallback for synthetic fixtures lacking a `cwd` record — intentionally dropped,
+  not preserved.
+
+## Program Design
+
+### Types
+
+- `SessionHandle` (existing, `session_store/sessions.py`): `host: str`, `session_id: str`,
+  `path: Path`, `cwd: Path`, `updated_at: float`, `is_agent: bool`.
+
+### Signatures
+
+- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` (existing, `session_store/sessions.py`)
+- `list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]` (existing, `session_store/sessions.py`)
+- `_extract_ll_event_streams(handles: list[SessionHandle], *, cutoff: datetime | None = None, until: datetime | None = None) -> dict[str, list[InvocationEvent]]` (rewritten signature, `cli/logs.py`)
+
+### Call Path
+
+`_cmd_sequences` -> `_collect_sequences` -> `detect_sessions` -> `iter_events` ->
+`_extract_ll_event_streams`
+
+`discover_all_projects` -> `list_workspaces` (per host) -> `iter_events` (via `_is_ll_relevant`
+filter) -> dedupe on `cwd`
 
 ## Proposed Solution
 
@@ -127,6 +176,16 @@ directly (649).
   add the `FAILURES_NO_DATA` reachability test.
 - Add a `fleet-review` last-stdout-line-is-path test.
 
+### Behavior Parity
+
+`scripts/tests/test_enh_3166_qwen_normalizer.py`:
+
+| Behavior | Status |
+|---|---|
+| `test_discover_all_projects_finds_qwen_project` — qwen project discoverable via `discover_all_projects` | Preserved (routes through `list_workspaces`/`detect_sessions` instead) |
+| `test_has_ll_activity_detects_normalized_run_shell_command` — direct `_has_ll_activity` unit coverage | Dropped (function deleted; the ll-activity filter it tested is re-applied inside `discover_all_projects`'s per-workspace walk and still exercised via the discover test above) |
+| `test_extract_cwd_honors_chats_glob` — direct `_extract_cwd_from_project` unit coverage | Dropped (function deleted; cwd extraction now lives in `session_store.sessions._first_record_cwd`, already covered by that module's own tests) |
+
 ## Acceptance Criteria
 
 - `ll-logs` obtains sessions via `detect_sessions`/`iter_events` and never calls
@@ -151,6 +210,21 @@ directly (649).
   path still excludes `agent-*` sessions.
 - `docs/reference/CLI.md` and remaining guides no longer frame `ll-logs` as Claude-Code-only.
 
+## Impact
+
+- **Priority**: P2 - widest and highest-risk child of ENH-3419's decomposition (11 call sites, 6
+  functions, 8 `discover_all_projects` callers); blocks full multi-host parity for `ll-logs`.
+- **Effort**: Large - touches 6 functions across `cli/logs.py`, threads `--host` through 8 callers,
+  rewrites `_extract_ll_event_streams`'s signature, deletes 2 functions plus their direct unit
+  tests, and requires `--host codex` test variants across 4 test classes.
+- **Risk**: Medium - behavior changes are scoped and documented (omp gap, dropped lossy-`cwd`
+  fallback for synthetic fixtures), and existing Claude Code/qwen test suites must pass unmodified
+  per the Acceptance Criteria; the main risk is the per-host iteration requirement in `--all`
+  enumeration (calling `detect_sessions(ws, None)` per workspace instead of iterating per host would
+  silently multiply the host-probe cost and break the union-dedupe contract).
+- **Breaking Change**: No for real usage (Claude Code/qwen output unchanged); Yes for synthetic test
+  fixtures relying on the lossy-decode `cwd` fallback, which is intentionally dropped.
+
 ## Dependencies
 
 Blocked by ENH-3427 (host-resolution seam, including the both-spellings probe this issue's
@@ -164,4 +238,5 @@ Blocked by ENH-3427 (host-resolution seam, including the both-spellings probe th
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-09T22:05:30 - `af86aaee-e2d3-4675-b045-b23f45bd4759.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:08 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`

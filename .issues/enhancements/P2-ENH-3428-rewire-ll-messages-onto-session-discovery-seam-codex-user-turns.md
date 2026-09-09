@@ -26,10 +26,24 @@ relates_to:
 ## Summary
 
 Decomposed from ENH-3419 (score 8/11, Very Large). Rewires `user_messages.py`'s
-`extract_user_messages`, `extract_commands`, and `extract_conversation_turns` — plus their sole
-caller `cli/messages.py`'s `main_messages` — off the `project_folder: Path` glob and onto
-`detect_sessions`/`iter_events`, and adds the Codex user-turn extraction. Depends on ENH-3427 for
-`_resolve_host` and the `--host` flag already registered on `ll-messages`.
+`extract_user_messages`, `extract_commands`, and `extract_conversation_turns` off the
+`project_folder: Path` glob and onto `session_store/sessions.py:detect_sessions`/`iter_events`
+(added by ENH-3427), and adds the Codex user-turn extraction. Their sole caller is `main_messages`
+in `cli/messages.py`. Depends on ENH-3427 for `_resolve_host` and the `--host` flag already
+registered on `ll-messages`.
+
+## Expected Behavior
+
+`main_messages` resolves sessions via `detect_sessions(cwd, host=_resolve_host(...))` and passes
+the resulting `list[SessionHandle]` into `extract_user_messages`/`extract_commands`/
+`extract_conversation_turns`, which iterate `iter_events(handle)` per handle instead of globbing
+`project_folder`. Claude Code output is byte-identical to today (same `_parse_user_record` parse
+of `event.payload`). For Codex handles, `extract_user_messages` yields one `UserMessage` per typed
+user prompt (from `response_item` role-`user` messages, deduped against any paired 0.130.0
+`event_msg` `user_message`), excluding `<environment_context>`, `developer`-role messages, and
+`<turn_aborted>`; `extract_commands` yields no records for Codex handles (out of scope — see
+Proposed Solution step 5). `--host codex`/`--host claude-code` narrows to one host; no flag unions
+both. A target with no sessions still exits 1, now via `"No sessions found for: <cwd>"`.
 
 ## Parent Issue
 
@@ -83,6 +97,54 @@ bypasses the glob.
 8. **No-sessions stderr**: change the wording to `"No sessions found for: <cwd>"` (no test asserts
    the old string); exit code stays 1.
 
+## Program Design
+
+### Types
+
+- `SessionHandle` (existing, `session_store/sessions.py`): `host: str`, `session_id: str`,
+  `path: Path`, `cwd: Path`, `updated_at: float`, `is_agent: bool`
+- `UserMessage`, `CommandRecord` (existing, `user_messages.py`) — unchanged shape; only their
+  source of construction changes
+
+### Signatures
+
+- `extract_user_messages(handles: list[SessionHandle], limit: int | None = None, since: datetime | None = None, include_agent_sessions: bool = True, include_response_context: bool = False) -> list[UserMessage]`
+- `extract_commands(handles: list[SessionHandle], limit: int | None = None, since: datetime | None = None, include_agent_sessions: bool = True, tools: list[str] | None = None) -> list[CommandRecord]`
+- `extract_conversation_turns(handles: list[SessionHandle], since: datetime | None = None, context_window: int = 3, include_agent_sessions: bool = True, reader: str = "auto") -> list[list[tuple[str, str]]]`
+
+### Call Path
+
+`main_messages` (`cli/messages.py:173`) -> `detect_sessions` (`session_store/sessions.py:291`) ->
+`extract_user_messages`/`extract_commands`/`extract_conversation_turns` (`user_messages.py`) ->
+`iter_events` (`session_store/sessions.py:824`) -> per-host parser (`_PARSERS[handle.host]`)
+
+## Impact
+
+- **Priority**: P2 - Enables Codex user-turn observability (parent ENH-3419's stated goal) but is
+  one of four decomposed pieces, not standalone user-facing value until ENH-3429/ENH-3430 land too.
+- **Effort**: Medium - three function signatures plus their sole caller change shape, but the
+  change is scoped to two files (`user_messages.py`, `cli/messages.py`) plus docs; no new
+  architecture (`detect_sessions`/`iter_events` already exist post-ENH-3427).
+- **Risk**: Medium - `extract_user_messages`/`extract_commands`/`extract_conversation_turns` are
+  the read path for every `ll-messages` consumer (including the `harvest` state in
+  `docs/guides/EXAMPLES_MINING_GUIDE.md`'s loop); a regression in the Claude Code branch would be
+  silent until a downstream loop's harvest yields zero records.
+- **Breaking Change**: Yes, at the Python API layer - `extract_user_messages`/`extract_commands`/
+  `extract_conversation_turns` change their first positional parameter from `project_folder: Path`
+  to `handles: list[SessionHandle]`. The `ll-messages` CLI surface and its flags are unaffected.
+
+## Scope Boundaries
+
+- Codex `extract_commands` support (mapping `response_item.payload.type == "custom_tool_call"`,
+  `name: "exec"` to `CommandRecord`) is explicitly out of scope — deferred to a follow-up (Proposed
+  Solution step 5).
+- `extract_conversation_turns`'s `--reader db` branch is untouched; only its JSONL (`--reader
+  jsonl`/`auto` fallback) branch moves onto `iter_events`.
+- ENH-3429 (`ll-ctx-stats`) and ENH-3430 (`ll-logs`) are separate issues — this issue touches only
+  `user_messages.py` and `cli/messages.py`.
+- `_resolve_host` and the `--host` flag are ENH-3427's scope, not this issue's — this issue only
+  consumes them.
+
 ## Files to Modify
 
 - `scripts/little_loops/user_messages.py` (`extract_user_messages` 639, `extract_commands` 722,
@@ -98,6 +160,12 @@ bypasses the glob.
 - `scripts/little_loops/loops/lib/cli.yaml:86-94` (`ll_messages` fragment description — stays
   unpinned per decision, description updated to "session logs of every registered host (narrow
   with `--host`)")
+
+### Behavior Parity
+
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `docs/guides/EXAMPLES_MINING_GUIDE.md` | Line 146: "The `harvest` state runs `ll-messages` ... to extract `(input, expected)` pairs from **Claude Code** session logs" | CHANGED | Reworded to host-generic language (e.g. "from session logs of any registered host") now that `--host codex` is supported; the `harvest` state's command line and output format are unchanged. |
 
 ### Tests
 
@@ -144,4 +212,5 @@ touches `user_messages.py`/`cli/messages.py` only).
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-09T22:06:09 - `1744c85d-b425-4d1c-b20e-c1e871e66aec.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:08 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`

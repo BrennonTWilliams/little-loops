@@ -30,12 +30,35 @@ shared host-resolution primitives that the three per-CLI rewires (ENH-3428/3429/
 Nothing here changes any CLI's session-enumeration behavior yet — `--host` is added but the CLIs
 still resolve sessions the old way until the dependent children land.
 
+## Current Behavior
+
+`session_store/sessions.py` resolves the Claude project folder by encoding only `cwd.resolve()`
+(`_detect_claude_sessions` 236-265, `_project_folder_for_layout_host` 331), so a project dir
+encoded from an unresolved symlinked cwd is missed. There is no `--host` flag on `ll-messages`,
+`ll-ctx-stats`, or `ll-logs`, and no shared `REGISTERED_HOSTS` export — `cli/session.py:211-216`
+hand-writes its own 8-item `choices=` list that can drift from the registered hosts. Neither
+`_resolve_host` nor a flag/env/union precedence exists anywhere. `hooks/session_start.py:162`
+calls `get_project_folder(cwd)` without a `host=` kwarg.
+
+## Expected Behavior
+
+`detect_sessions`/`_project_folder_for_layout_host` probe both the resolved and as-recorded cwd
+spelling (resolved wins). `REGISTERED_HOSTS` is importable from `little_loops.session_store` and
+sources the `choices=` list for `ll-messages --host`, `ll-ctx-stats --host`, all 9
+session-touching `ll-logs` subcommands' `--host`, and the retrofitted `ll-session backfill
+--host`. Host resolution follows `--host` > `LL_HOOK_HOST` env > union (`None`) on all three
+CLIs, each with a precedence test; an invalid `--host` exits via argparse `SystemExit`.
+`hooks/session_start.py:162` passes `host=event.host or os.environ.get("LL_HOOK_HOST",
+"claude-code")` to `get_project_folder`, with `_backfill_host` (178) reusing the same hoisted
+expression instead of duplicating it. No CLI's session-enumeration behavior changes yet — the
+`--host` flags are additive and unconsumed until ENH-3428/3429/3430 land.
+
 ## Parent Issue
 
 Decomposed from ENH-3419: Adopt the session-discovery seam in ll-logs, ll-messages, and
 ll-ctx-stats (Codex observability).
 
-## Scope
+## Scope Boundaries
 
 **In scope:**
 
@@ -75,6 +98,27 @@ ll-ctx-stats (Codex observability).
 `iter_events` — that is ENH-3428 (ll-messages), ENH-3429 (ll-ctx-stats), and ENH-3430 (ll-logs).
 The `--host` flags added here are inert until those children consume the resolved host.
 
+## Program Design
+
+### Types
+
+- No new data types — `_resolve_host` returns the existing `str | None` host-id shape used
+  throughout `session_store`.
+
+### Signatures
+
+- `_resolve_host(flag: str | None) -> str | None` (new, `user_messages.py`)
+- `_add_host_arg(parser: argparse.ArgumentParser) -> None` (new, `cli/logs.py`)
+- `REGISTERED_HOSTS: frozenset[str]` (re-exported, `session_store/__init__.py`, sourced from
+  `sessions._REGISTERED_HOSTS`)
+
+### Call Path
+
+`ll-messages`/`ll-ctx-stats`/`ll-logs` argparse setup -> `_add_host_arg` / inline `--host` flag
+(`choices=list(REGISTERED_HOSTS)`) -> `_resolve_host(args.host)` -> (unconsumed until
+ENH-3428/3429/3430). `hooks/session_start.py:162` -> `get_project_folder(cwd, host=...)` ->
+`_detect_claude_sessions` / `_project_folder_for_layout_host` (both-spellings probe).
+
 ## Files to Modify
 
 - `scripts/little_loops/session_store/sessions.py` (`_detect_claude_sessions` 236-265,
@@ -111,6 +155,16 @@ The `--host` flags added here are inert until those children consume the resolve
 - No existing CLI behavior changes: the `--host` flags are additive and unconsumed by session
   enumeration until ENH-3428/3429/3430 land.
 
+## Impact
+
+- **Priority**: P2 - Foundation for three blocked children (ENH-3428/3429/3430); not itself
+  user-facing until they land.
+- **Effort**: Medium - Touches 6 files across `session_store`, three CLIs, and the session_start
+  hook, but each change is additive (new flag/export/helper), not a rewrite.
+- **Risk**: Low - No existing CLI behavior changes; `--host` flags are additive and unconsumed
+  until the dependent children route through them.
+- **Breaking Change**: No
+
 ## Dependencies
 
 Blocks ENH-3428, ENH-3429, ENH-3430 (each consumes `_resolve_host`/`REGISTERED_HOSTS` from here).
@@ -123,4 +177,5 @@ resolve against).
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-09T22:02:48 - `ede486c5-d33a-435b-bb10-2223277286b2.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:07 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`
