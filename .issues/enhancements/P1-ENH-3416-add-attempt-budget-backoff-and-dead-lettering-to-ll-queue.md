@@ -159,6 +159,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/config/features.py:1559-1570` (`QueueConfig` dataclass) and `scripts/little_loops/config/core.py:522-525` (`LLConfig.queue` accessor) — the Python-side parser counterpart to `config-schema.json`'s `queue` block above; currently only parses `db_path`. If the open question above resolves to "configurable," this dataclass is the paired file that must gain the new field(s) alongside the schema — the two halves of this codebase's config surface always move together [Agent 1 finding]
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **Terminal "given up" state has no reusable convention distinct from ordinary failure.** FSM retry-exhaustion (`fsm/schema.py:649-653`, `fsm/executor.py:830-855`) routes to a caller-chosen `on_retry_exhausted` target — some loops point it at the ordinary `failed` terminal (`loops/test-coverage-improvement.yaml:127`, `loops/harness-single-shot.yaml:41`), others at a distinct purpose-named state (`loops/rlhf-svg-generate.yaml:198,326` → `plan_failed`). The merge-coordinator circuit breaker (`parallel/merge_coordinator.py:674-680,1132-1147`) always reuses the plain `MergeStatus.FAILED`, distinguished only by a free-text `error` string — the same shape as this issue's own already-cited `force_stop` precedent. The issue-lifecycle terminal set (`issue_progress.py:12-14`, `_TERMINAL_STATUSES = {done, cancelled}`) is a fixed two-member set, not a three-way ordinary-vs-exhausted split. Both "dedicated status value" and "same status, distinguished by error text" shapes coexist elsewhere with no dominant precedent to follow.
+- **Splitting one "return to prior state" function into several intent-specific functions has precedent, but so does the opposite (single generic function parameterized by target status), on the same entity type.** `close_issue()`/`defer_issue()` (`issue_lifecycle.py:939`, `:1255`) are separately-named, separately-signatured functions per outcome on `IssueInfo` — the shape this issue's Program Design (three requeue paths) follows. `apply_status_transition()` (`cli/issues/set_status.py:93-102`), operating on the same `IssueInfo`/frontmatter entity family, instead takes a generic `status: str` and writes any transition through one shared path. `cancel_run()`/`_cancel_starting_run()` (`cli/loop/lifecycle.py:518,492`) vs. `cmd_resume()` (`:554`) is a third example of the intent-specific shape. Both shapes are live in the codebase today on the same entity family; neither has superseded the other.
+- **No existing bounded collection in this codebase applies two different eviction orders across separate code paths** (searched repo-wide for eviction/trim/prune/maxlen/oldest-first/newest-first terms). `compaction/instant.py:evict_sink_and_window():34` (single caller, `session_store/lifecycle.py:477`), `session_store/lifecycle.py`'s `compact()`/`prune()` (`:1183`, `:1273`, single oldest-past-cutoff rule), and two `deque(maxlen=N)` sites (`fsm/executor.py:333`, `fsm/stall_detector.py:39`) each use exactly one eviction order per collection. "Oldest first"/"newest first" language elsewhere (`fsm/persistence.py:1474,1487`) describes query/listing order, not eviction. This issue's per-path oldest-vs-newest trimming is new functionality with no existing convention to follow or diverge from.
+- **A more general schema-migration lock exists beyond the already-cited `TestV1ToV2Migration` per-migration column diff.** `session_store/schema.py`'s whole-schema manifest lock (`_schema_manifest`/`_reference_manifest_at`/`_load_schema_manifest`, tested at `test_session_store_schema.py:3083-3267`) asserts a freshly-migrated database's full structure (tables, columns, index uniqueness) against a checked-in `schema_manifest.json`, plus a `SCHEMA_VERSION == len(_MIGRATIONS)` count lock (`:2299-2304`). `queue_store.py` has no equivalent manifest file or function — its migration coverage uses only the narrower per-migration `PRAGMA table_info` shape.
+- No shared `compute_backoff()` helper exists anywhere in the codebase (repo-wide search, zero hits) — confirms the prior finding that `fsm/executor.py` and `transport.py` each own independent inline backoff formulas.
+
 ## Program Design
 
 ### Types
@@ -236,6 +246,8 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T03:57:00 - `6d9082d6-8afc-4d51-af36-c0955fd01c58.jsonl`
+- `/ll:refine-issue` - 2026-09-09T03:53:40 - `8963b056-bb60-497d-9529-e15d23112f43.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:43:16 - `96a64da7-7e7c-4bdc-9e11-d16d6c8ed5d2.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:41:28 - `96a64da7-7e7c-4bdc-9e11-d16d6c8ed5d2.jsonl`
 - `/ll:wire-issue` - 2026-09-09T03:17:51 - `ae93785e-f7d9-41cc-96ab-d51f1883c15a.jsonl`

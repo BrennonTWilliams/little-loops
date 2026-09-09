@@ -17,6 +17,12 @@ blocked_by:
 decision_needed: false
 learning_tests_required:
 - sqlite3
+confidence_score: 90
+outcome_confidence: 48
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # FEAT-3418: ATTACH-based union totals for cross-repo history.db aggregation with issue_id discriminator
@@ -293,7 +299,19 @@ first — new scope, not a small addition to FEAT-3410.
 **Open** | Created: 2026-09-09 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 48/100 → LOW
+
+### Outcome Risk Factors
+- `unapplied_decision` gap (format-check): Program Design still references `conn=` and `superseded_by()`, both identifiers tied to the rejected/discussed Option B mechanism — verify these are intentional clarifications (not leftover Option B language) before implementing; this caps the Ambiguity score at 10.
+- Cross-module keying changes across `agent_quality.py`/`rework.py` (~10 discriminator-threading sites plus 8 schema-qualification sites) carry regression risk to the existing single-repo path — add a dedicated `test_feat3418_*.py` file with a deliberate cross-repo ID-collision fixture before/alongside implementation.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T03:47:52 - `5ddcabee-5484-4c88-9c31-8734a1bafe5a.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:42:19 - `b83f9a4d-c528-406f-9176-2cc312651f52.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:17:35 - `ae93785e-f7d9-41cc-96ab-d51f1883c15a.jsonl`
 - `/ll:format-issue` - 2026-09-09T02:56:59 - `b1423fb6-b93c-443b-8f26-be96a57e6e5f.jsonl`

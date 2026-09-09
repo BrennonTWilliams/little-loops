@@ -5696,6 +5696,133 @@ states:
         assert "scope: 'EPIC-3041'" in out
 
 
+class TestContextOverrideCoercion:
+    """--context KEY=VALUE strings coerce to the type the key already carries.
+
+    argparse delivers every value as a string; a YAML ``flag: true`` literal
+    (or ``{type: boolean}`` declaration, or a JSON-positional bool) says what
+    the value IS — ``--context flag=false`` must set ``False``, not the
+    truthy string ``"false"``.
+    """
+
+    def test_boolean_literal_override_to_false(self) -> None:
+        from little_loops.fsm.context_seed import apply_context_overrides
+
+        ctx = {"flag": True, "name": "x"}
+        apply_context_overrides(ctx, ["flag=false", "name=y"])
+        assert ctx["flag"] is False
+        assert ctx["name"] == "y"
+
+    def test_boolean_literal_override_to_true_and_unparseable(self) -> None:
+        from little_loops.fsm.context_seed import apply_context_overrides
+
+        ctx = {"flag": False}
+        apply_context_overrides(ctx, ["flag=true"])
+        assert ctx["flag"] is True
+        apply_context_overrides(ctx, ["flag=maybe"])
+        assert ctx["flag"] == "maybe"  # not a boolean spelling -> raw string
+
+    def test_numeric_literals_parse(self) -> None:
+        from little_loops.fsm.context_seed import apply_context_overrides
+
+        ctx = {"top_k": 3, "ratio": 0.5}
+        apply_context_overrides(ctx, ["top_k=7", "ratio=2.5"])
+        assert ctx["top_k"] == 7
+        assert isinstance(ctx["top_k"], int)
+        assert ctx["ratio"] == 2.5
+        apply_context_overrides(ctx, ["top_k=abc"])
+        assert ctx["top_k"] == "abc"  # failed parse -> raw string
+
+    def test_typed_declarations_coerce(self) -> None:
+        from little_loops.fsm.context_seed import apply_context_overrides
+
+        ctx = {
+            "notify": {"type": "boolean", "default": False, "description": "d"},
+            "limit": {"type": "integer", "default": 10},
+            "score": {"type": "number", "default": 0.5},
+        }
+        apply_context_overrides(ctx, ["notify=true", "limit=3", "score=0.9"])
+        assert ctx["notify"] is True
+        assert ctx["limit"] == 3
+        assert ctx["score"] == 0.9
+
+    def test_undeclared_and_string_keys_stay_raw(self) -> None:
+        from little_loops.fsm.context_seed import apply_context_overrides
+
+        ctx = {"plain": "a"}
+        apply_context_overrides(ctx, ["plain=true", "fresh=42", "k=v=w"])
+        assert ctx["plain"] == "true"  # string-typed: no coercion
+        assert ctx["fresh"] == "42"  # undeclared: no coercion
+        assert ctx["k"] == "v=w"  # partition on first '='
+
+    def test_malformed_entry_exits(self) -> None:
+        from little_loops.fsm.context_seed import apply_context_overrides
+
+        with pytest.raises(SystemExit):
+            apply_context_overrides({}, ["nokey"])
+
+    def test_cmd_run_applies_coerced_overrides(self, tmp_path: Path) -> None:
+        """End to end: cmd_run injects real bools/numbers for typed keys."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "typed-loop.yaml").write_text("""
+name: typed-loop
+initial: init
+context:
+  flag: true
+  top_k: 3
+  plain: "x"
+states:
+  init:
+    action: "echo {{context.flag}} {{context.top_k}} {{context.plain}}"
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+""")
+        args = argparse.Namespace(
+            input=None,
+            context=["flag=false", "top_k=7", "plain=y"],
+            max_iterations=None,
+            delay=None,
+            no_llm=False,
+            llm_model=None,
+            dry_run=True,
+            background=False,
+            foreground_internal=False,
+            quiet=False,
+            verbose=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+            queue=False,
+            program_md=None,
+        )
+        logger = Logger(use_color=False)
+        fsm, _ = load_and_validate(loops_dir / "typed-loop.yaml")
+
+        def fake_load(p: Path):  # type: ignore[override]
+            return fsm, []
+
+        with patch(
+            "little_loops.fsm.validation.load_and_validate",
+            side_effect=fake_load,
+        ):
+            result = cmd_run("typed-loop", args, loops_dir, logger)
+        assert result == 0
+        assert fsm.context["flag"] is False
+        assert fsm.context["top_k"] == 7
+        assert fsm.context["plain"] == "y"
+
+
 class TestCmdStatusJson:
     """Tests for ll-loop status --json."""
 
