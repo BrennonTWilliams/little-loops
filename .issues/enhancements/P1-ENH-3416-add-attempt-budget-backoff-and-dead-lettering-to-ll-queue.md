@@ -11,7 +11,13 @@ labels:
 learning_tests_required:
 - sqlite3
 - psutil
-
+confidence_score: 75
+outcome_confidence: 35
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 0
+missing_artifacts: true
 ---
 
 ## Summary
@@ -207,12 +213,31 @@ The following were closed as design constraints with no shippable unit of their 
 - **Risk**: Medium - a `QueueEntry` schema change (new columns via a migration, following the existing `_apply_migrations` pattern at `queue_store.py:170`) plus a behavior change to `_reclaim_stale`/`reset_to_pending` call sites.
 - **Breaking Change**: Yes - `reset_to_pending`'s single-call semantics split into distinct retry/reclaim/cancel paths; existing callers must pick the right one.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 75/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 35/100 → VERY LOW
+
+### Concerns
+- Architecture Compliance (15/20): two existing backoff-constant conventions in this codebase disagree on jitter (`fsm/executor.py`'s `_DEFAULT_RATE_LIMIT_BACKOFF_BASE` is jittered; `transport.py`'s `_WEBHOOK_RETRY_BASE_S`/`_WEBHOOK_RETRY_MAX_S` is not, no shared `compute_backoff()` helper exists) and the issue does not say which to follow.
+- Issue Well-Specified (10/20): Program Design → Decision Rules explicitly flags three UNRESOLVED items requiring a decision before implementation can proceed cleanly: (a) concrete attempt-budget/backoff constant values, (b) retryability classification taxonomy — deferred to an open "timeout-semantics" issue that does not exist anywhere in `.issues/`, (c) per-path overflow/trimming rules with no existing baseline to differentiate from.
+- Dependencies Satisfied (10/20): the retryability classification this issue relies on is explicitly out of scope and deferred to an unfiled companion issue; Scope Boundaries states this issue "does not own that classification" but nothing currently exists for it to consume, leaving only the existing `classify_failure()`/`FailureType` mechanism as a fallback shape.
+
+### Outcome Risk Factors
+- Complexity (0/25): 16+ distinct change sites across `queue_store.py`, `cli/queue.py`, two MCP tool handlers, four test files, four docs files, and two config files, combined with deep architectural rewiring — `reset_to_pending`'s single-call semantics splits into three distinct code paths, a stated breaking change to existing callers.
+- Ambiguity (10/25): the same three UNRESOLVED design decisions noted above (backoff constants, retryability taxonomy, overflow/trim rules) will require judgment calls during implementation rather than being resolvable purely from the issue text.
+- Change Surface (0/25): 11+ known callers/dependents of `reset_to_pending`/`cmd_requeue` span `cli/queue.py`, `mcp_server/tools.py`, and 13 existing test assertions hardcoding the post-failure `status == "failed"` state — a very wide blast radius for a breaking API split.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-09T03:43:16 - `96a64da7-7e7c-4bdc-9e11-d16d6c8ed5d2.jsonl`
+- `/ll:confidence-check` - 2026-09-09T03:41:28 - `96a64da7-7e7c-4bdc-9e11-d16d6c8ed5d2.jsonl`
 - `/ll:wire-issue` - 2026-09-09T03:17:51 - `ae93785e-f7d9-41cc-96ab-d51f1883c15a.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:04:27 - `a4badc70-f3c5-4caf-beea-29940135de9c.jsonl`
 - `/ll:format-issue` - 2026-09-09T02:34:54 - `b326158e-3610-46e0-8daf-a6fb008cff1f.jsonl`

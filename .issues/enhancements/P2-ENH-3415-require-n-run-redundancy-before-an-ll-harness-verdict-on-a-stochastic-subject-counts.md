@@ -1,6 +1,7 @@
 ---
 id: ENH-3415
-title: Require n-run redundancy before an ll-harness verdict on a stochastic subject counts
+title: Require n-run redundancy before an ll-harness verdict on a stochastic subject
+  counts
 type: ENH
 priority: P2
 status: open
@@ -10,6 +11,12 @@ labels:
 - evaluation
 - statistics
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 48
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 ## Summary
@@ -215,12 +222,26 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - **Risk**: Medium - changes the harness verdict surface (bare pass/fail -> pass-rate-over-n) for a stochastic subject, a behavior change for any caller currently pattern-matching on `HarnessEvalOutcome.passed`.
 - **Breaking Change**: Yes - `HarnessEvalOutcome` gains a field, and stochastic-subject callers must switch from bare pass/fail to a rate.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 48/100 → LOW
+
+### Outcome Risk Factors
+- Persistence strategy for the n-sample outcome is unresolved: the Wiring Phase flags a genuine open decision (each sample as its own `harness_events` row vs. only the aggregate rate vs. both) touching `session_store/schema.py` and `session_store/writers.py`, not just `cli/harness.py` — cross-module depth beyond the five call-site loops themselves.
+- Broad-ish dependent surface for a verdict-format change: 5 `cmd_*` call sites plus `record_harness_event()`/`harness_eval_pass_rate()` plus 3 loop YAMLs (`test-coverage-improvement.yaml`, `incremental-refactor.yaml`, `dead-code-cleanup.yaml`) consuming the `harness_exit` exit-code contract this issue changes.
+- Several judgment calls remain open rather than pre-decided: the `pass_rate` field name (flagged naming-collision risk with `history_pass_rate`), the actual default-n value, and the rate-to-verdict banding thresholds — expect iteration during implementation even though the architectural approach (Option B) is settled.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-09T03:42:56 - `b83f9a4d-c528-406f-9176-2cc312651f52.jsonl`
+- `/ll:confidence-check` - 2026-09-09T03:40:31 - `dc741478-49cb-43bb-b19d-71e11a3fc887.jsonl`
 - `/ll:wire-issue` - 2026-09-09T03:19:28 - `5eb4008f-a2a4-4aff-8262-28202dc28907.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:12:12 - `98789ba8-7f76-42c3-b7d8-1f86848792ca.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:03:38 - `a4badc70-f3c5-4caf-beea-29940135de9c.jsonl`

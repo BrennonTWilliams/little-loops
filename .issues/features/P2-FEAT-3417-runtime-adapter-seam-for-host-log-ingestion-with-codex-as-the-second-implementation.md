@@ -12,6 +12,12 @@ labels:
 decision_needed: false
 learning_tests_required:
 - codex
+confidence_score: 85
+outcome_confidence: 28
+score_complexity: 0
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 0
 ---
 
 ## Summary
@@ -216,12 +222,32 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Medium - touches read paths other automation already depends on (`ll-messages`, `ll-ctx-stats` caching); existing Claude Code session behavior must not change.
 - **Breaking Change**: No - Claude Code session handling is preserved as the first per-host implementation; Codex support is additive.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 28/100 → VERY LOW
+
+### Concerns
+- Architecture Compliance (15/20): Option B deliberately leaves two parallel per-host dispatch mechanisms in the codebase — `HostLayout.normalize`/`normalize_file` (qwen/gemini/omp) stays as-is while a new, independent session-watcher interface is added for `ll-logs`/`ll-ctx-stats`. The issue's own Decision Rationale calls the unification "worth a follow-up issue, not a blocker for this one," but no follow-up issue is filed yet.
+- Issue Well-Specified (15/20): the Wiring Phase explicitly states an open scope question the issue itself does not resolve — whether `cli/logs.py`'s Claude-schema-coupled content functions (`_is_ll_relevant`, `_detect_ll_signal`, `_extract_tool_name`, `_extract_eval_invocation`, `_cmd_matches`, `_record_has_error`) get a per-host equivalent in v1 or are scoped out as Claude-Code-only. An implementer will have to make this call mid-implementation.
+- `unapplied_decision` gap (caps Criterion C at 10/25): `format-check` flags 7 identifiers from the rejected Option A (`extract_user_messages`, `_compute_cache_rate_from_jsonl`, `ll-session backfill --host codex`, `normalize`, `normalize_file`) still present, unmarked, in Program Design and Files to Modify after Option B was selected. Recommend `/ll:reconcile-issue` to either mark these as rejected-option context or remove them from directive sections.
+- Learning-test target mismatch: `learning_tests_required: [codex]` resolves to a "proven" record, but its assertions are about Codex MCP server config (`~/.codex/config.toml` TOML shape) — a different subsystem than the Codex rollout/session-log JSONL format this issue's `parse_codex_rollout` actually depends on. The mechanically-proven status does not cover the real unproven mechanism here; also carries a `−5` Criterion 1 modifier for 1 failing claim.
+
+### Outcome Risk Factors
+- Complexity (0/25): broad enumeration across 16+ sites (6 functions/9+ call sites in `cli/logs.py` alone, plus `user_messages.py`, `cli/ctx_stats.py`, `hooks/session_start.py`, 4+ docs files, 2-3 test files, an FSM loop YAML, and a downstream `/ll:loop-suggester` consumer) combined with deep per-site architectural work — a brand-new `detect`/`watch`/`stop` lifecycle with zero existing precedent in the repo.
+- Change Surface (0/25): very wide blast radius — `get_project_folder`/`get_sessions_folder` alone have 5 non-test callers, `cli/logs.py` has 7 functions to rewire, and external consumers (`.loops/ll-logs-telemetry-digest.yaml`'s exact-string grep, `/ll:loop-suggester --from-sequences`) depend on current behavior/wording that this rewire can silently break.
+- No existing pattern for the `watch()` live-tail test: every current tail-adjacent test (`_cmd_tail`'s `TestTail`) mocks `readline()` entirely — the file-growth harness itself must be originated, not adapted.
+- No committed Codex rollout fixture exists yet, and the issue's "perishable, re-capture periodically" fixture-marker convention has no precedent anywhere in the tree to copy from.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T03:42:59 - `96a64da7-7e7c-4bdc-9e11-d16d6c8ed5d2.jsonl`
 - `/ll:wire-issue` - 2026-09-09T03:26:48 - `0961ed9a-8a16-4f5b-b6df-7c9ad07e35e7.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:13:40 - `1bbd8d24-c939-4e16-a513-a2fcf919d545.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:03:58 - `184f5f10-ed2d-4c54-a9b0-aeaf09c80493.jsonl`

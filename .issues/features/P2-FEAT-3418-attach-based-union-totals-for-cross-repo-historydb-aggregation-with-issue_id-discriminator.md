@@ -14,7 +14,7 @@ labels:
 - multi-repo
 blocked_by:
 - FEAT-3410
-decision_needed: true
+decision_needed: false
 learning_tests_required:
 - sqlite3
 ---
@@ -109,9 +109,30 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 **Option A**: Repo discriminator threaded through every keying site — thread a discriminator into the keys `agent_quality.py::_load_closed_issues`/`_session_issue_map` build (bare `issue_num`, `agent_quality.py:239-264`, corrected line numbers) and `rework.py::_load_issue_events` builds (bare `issue_id`, `rework.py:132-145`), so two repos' rows sharing a number/ID no longer collide in `issue_window`/`events_by_issue`. `WorkspaceMember` (`workspace.py:31-44`) has no dedicated discriminator field today — only `repo_path`, `role`, `db_path` — so this option needs a new discriminator value derived from one of those (or a new field).
 
+> **Selected:** Option A — repo-discriminator threading generalizes to the real `issue_id` collision surface and matches the existing tuple-key-widening idiom already used throughout these modules; Option B's `issue_num`-only remap doesn't touch `issue_id` (the actual primary key) and risks breaking the on-disk `supersedes:` join.
+
 **Option B**: `issue_num` remapping in the union views — offset or remap each attached repo's `issue_num` range in the SQL view/query itself before the existing keying dicts in `agent_quality.py` ever see it, leaving that keying code unchanged. Must keep `issue_id` strings resolvable against `superseded_by()`'s on-disk join (`issue_parser.py:4367-4373`), since that join matches on `issue_id`, not `issue_num`.
 
 Both options are compatible with the existing skip-and-report per-member skew gate (`workspace_quality.py:64-139`) and the `conn=`-forwarding convention already shipped by FEAT-3410 (`agent_quality.py:472-511`, `rework.py:271-278`) — see Program Design for the correction that `aggregate_history_dbs()` itself has no `conn=` parameter yet.
+
+### Decision Rationale
+
+**Selected:** Option A — Repo discriminator threaded through every keying site.
+
+**Reasoning:** The decisive factor is that Option B is named for `issue_num` remapping, but the actual primary key and collision surface is `issue_id` (a `TYPE-NNN` string that `issue_num` is parsed *out of*, per `session_store/schema.py:842-874`), which multiple downstream sites key on directly (`rework.py::_load_issue_events`/`_load_commits`, `_utils.py::orchestrator_labels`). A pure `issue_num` remap leaves those `issue_id` collisions unresolved, and remapping `issue_id` too would risk breaking `issue_parser.py::superseded_by()`'s on-disk set-membership join (`issue_parser.py:4367-4373`), which has no SQL surface to intercept a remap through. Option A's discriminator-threading instead extends the tuple-key-widening pattern (`dict[tuple[str, str], ...]`) already pervasive in `agent_quality.py`/`rework.py`/`quality_regressions.py`/`debt.py`, and `repo_path.name` is already used as a per-member distinguishing label one layer up in `workspace_quality.py::_label()` — giving it direct precedent to build from. Its cost is a larger blast radius (~10 call sites plus a new `WorkspaceMember` field or derived value) and no existing precedent for a *cross-repo* discriminator specifically, but this is a mechanical, low-risk threading change rather than a novel SQL-generation problem across dynamically attached schemas.
+
+**Scoring summary:**
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — Discriminator threading | 2 | 1 | 2 | 1 | 6/12 |
+| B — `issue_num` remap in SQL | 1 | 0 | 1 | 0 | 2/12 |
+
+**Key evidence:**
+- Option B's own name-scope gap: it remaps `issue_num`, not `issue_id` — the string primary key `issue_num` is derived from (`session_store/schema.py:842-874`) — so it structurally fails to resolve the `issue_id`-keyed collision sites (`rework.py:132-145`, `309-312`; `_utils.py:74-88`) without a second, unaddressed transform.
+- Option B also leaves the on-disk `issues: list[IssueInfo]` combination step (feeding `superseded_by()`) unsolved by a SQL-layer-only remap — real footprint extends beyond what the option describes.
+- Option A reuses the pervasive `dict[tuple[str, str], ...]` composite-key idiom already in `agent_quality.py:280,288,309,319,358,387-391,397,437`, `rework.py:344,348`, `quality_regressions.py:189-190,201,226,251,286-288`, `debt.py:164`, and `repo_path.name` is already the per-member label in `workspace_quality.py:64-65`.
+- No existing repo-wide `remap|offset` convention exists for `issue_num`/ID values (confirmed via unfiltered grep) — Option B's core mechanism would be novel SQL generation across up to `SQLITE_LIMIT_ATTACHED` dynamically-named schemas, a materially different shape than the one existing 2-schema ATTACH precedent (`session_store/queries.py:242,291,300`).
 
 ## Integration Map
 
@@ -205,7 +226,7 @@ The on-disk `supersedes:` join `analyze_rework()` must keep resolving (AC #4) is
 
 ### Decision Rules
 
-- **ID-collision resolution** (repo discriminator vs. `issue_num` remapping): unresolved — see `## Proposed Solution` → Option A/Option B. Either choice must leave `superseded_by()`'s `issue_id` set-membership join (above) resolvable against whatever the union stores under `issue_id`.
+- **ID-collision resolution**: **resolved** — Option A (repo discriminator threaded through every keying site), per `## Proposed Solution` → Decision Rationale. The discriminator must leave `superseded_by()`'s `issue_id` set-membership join (above) resolvable against whatever the union stores under `issue_id`.
 - **`SQLITE_LIMIT_ATTACHED` fail-loud threshold**: the guard should call `sqlite3.connect(":memory:").getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)` itself rather than hardcode `10`, since `SQLITE_MAX_ATTACHED` is compile-time and can differ across interpreters/builds. No escape hatch specified anywhere in this issue — any workspace exceeding the limit must raise, with no fallback to a partial/truncated union.
 
 ## Impact
@@ -273,5 +294,6 @@ first — new scope, not a small addition to FEAT-3410.
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-09T03:42:19 - `b83f9a4d-c528-406f-9176-2cc312651f52.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:17:35 - `ae93785e-f7d9-41cc-96ab-d51f1883c15a.jsonl`
 - `/ll:format-issue` - 2026-09-09T02:56:59 - `b1423fb6-b93c-443b-8f26-be96a57e6e5f.jsonl`

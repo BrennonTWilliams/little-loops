@@ -1,0 +1,12 @@
+{
+  "id": "63f763ba-74ad-482b-bf24-36b28031c4a9",
+  "type": "decision",
+  "timestamp": "2026-09-09T03:41:08Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option B remaps issue_num, not the issue_id string primary key that is the actual cross-repo collision surface for several downstream keying sites, and risks breaking the on-disk supersedes: join; Option A extends the pervasive tuple-key-widening idiom already used in agent_quality.py/rework.py and has direct precedent in repo_path.name as a per-member label.",
+  "rule": "Option A \u2014 Repo discriminator threaded through every keying site",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: issue_num remapping in the union views",
+  "issue": "FEAT-3418"
+}
