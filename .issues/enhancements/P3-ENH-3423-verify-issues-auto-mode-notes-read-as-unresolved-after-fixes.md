@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T19:06:51Z'
 program_design_not_applicable: true
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 25
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3423: verify-issues auto-mode notes read as unresolved after fixes
@@ -233,4 +239,5 @@ is not fabricated evidence.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T19:30:24 - `d938b9b6-8e93-4345-bba5-d4048a09c843.jsonl`
 - `/ll:verify-issues` - 2026-09-09T19:25:31 - `4abbc21b-fe6c-468c-baf1-354ba4916426.jsonl`
