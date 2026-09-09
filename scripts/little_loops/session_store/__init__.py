@@ -56,6 +56,17 @@ Public API:
     record_verdict_event(db,...): write one row to ``verdict_events`` + search_index (ENH-2504)
     record_attempt(db,...): allocate a cell's repetition index, write one ``harness_events`` row, admit a retry if `retry_of` is set (ENH-3407)
     admit_retry(db,...): supersede a prior attempt + append one ``harness_admissions`` row (ENH-3407)
+    sessions.py: session-discovery lifecycle seam (list_workspaces/detect_sessions/
+                 iter_events), per-host parsers behind it, content refused above it (FEAT-3417)
+
+Public API (sessions.py, FEAT-3417):
+    SessionHandle:                one session file (host, session_id, path, cwd, updated_at, is_agent)
+    SessionEvent:                 one typed record (type, timestamp, host, payload)
+    list_workspaces(host,...):    every cwd a host has recorded sessions for
+    detect_sessions(cwd,...):     every session for cwd, newest first; host=None unions all hosts
+    iter_events(handle):          typed events for one session, dispatched by handle.host
+    parse_claude_transcript(path): Claude Code per-line JSONL parser
+    parse_codex_rollout(path):    Codex rollout per-line parser
 """
 
 from __future__ import annotations
@@ -115,6 +126,15 @@ from little_loops.session_store.schema import (
     _split_sql_statements,
     connect,
     ensure_db,
+)
+from little_loops.session_store.sessions import (
+    SessionEvent,
+    SessionHandle,
+    detect_sessions,
+    iter_events,
+    list_workspaces,
+    parse_claude_transcript,
+    parse_codex_rollout,
 )
 from little_loops.session_store.writers import (
     HookEventCompletion,
@@ -243,6 +263,13 @@ __all__ = [
     "write_credential_scope",
     "record_attempt",
     "admit_retry",
+    "SessionHandle",
+    "SessionEvent",
+    "list_workspaces",
+    "detect_sessions",
+    "iter_events",
+    "parse_claude_transcript",
+    "parse_codex_rollout",
     # Private functions re-exported for test access
     "_MIGRATIONS",
     "_KIND_TABLE",

@@ -14,11 +14,11 @@ labels:
 relates_to:
 - ENH-3415
 decision_needed: false
-confidence_score: 92
-outcome_confidence: 72
+confidence_score: 97
+outcome_confidence: 77
 score_complexity: 15
 score_test_coverage: 20
-score_ambiguity: 15
+score_ambiguity: 20
 score_change_surface: 22
 ---
 
@@ -404,6 +404,7 @@ _Added by `/ll:confidence-check` — 2026-09-09:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T16:33:20 - `3bf7ddf5-f1c3-4461-90f7-4d411c62ae41.jsonl`
 - `/ll:refine-issue` - 2026-09-09T16:20:49 - `fa9f7cba-187f-4268-b323-59e2fd18c32b.jsonl`
 - `/ll:confidence-check` - 2026-09-09T15:01:48 - `4490c2ea-90df-42ee-8816-5029d9abb8d8.jsonl`
 - `/ll:wire-issue` - 2026-09-09T14:51:25 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
