@@ -14,7 +14,7 @@ labels:
 relates_to:
 - ENH-3415
 program_design_not_applicable: true
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-3421: Frozen external reference/baseline guard for evaluation harnesses
@@ -92,6 +92,47 @@ without requiring loop authors to adopt a second, differently-shaped evaluator. 
 the better fit for `harness-single-shot.yaml`-style whole-loop regression checks, where it is
 already used today.
 
+> **Selected:** Option A — keeps the guard numeric and cheap inside the evaluator
+> `harness-optimize.yaml` already runs, and scored 11/12 vs. Option B's 5/12 on codebase
+> evidence (see Decision Rationale below).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-09.
+
+**Selected**: Option A — frozen-reference field on `EvaluateConfig`/`evaluate_convergence()`
+
+**Reasoning**: Option A has direct, recent precedent (`abstain_on_exit_3`, ENH-3224) for
+threading a new optional `EvaluateConfig` field through `to_dict`/`from_dict` and the
+dispatcher's `interpolate()` call, gets MR-14 unknown-key lint coverage for free via
+`evaluate_config_known_fields()`, and needs no new executor primitive because
+`harness-optimize.yaml`'s `baseline_score` state already sits outside the iterate cycle
+(naturally frozen by ordinary FSM capture semantics). Option B is not directly buildable as
+described: `StateDef.evaluate` permits exactly one evaluator per state, so "a second, required
+check alongside `convergence`" in the same `gate` state requires a new chained state with a
+disjoint `route:` vocabulary (`yes`/`no`/`tie`/`no_baseline` vs. `target`/`progress`/`stall`) —
+a wiring pattern with zero shipped precedent (only doc snippets in
+`AUTOMATIC_HARNESSING_GUIDE.md`) that also stacks a per-iteration LLM-judged blind A/B onto an
+already LLM-heavy 2-hour loop budget.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| Option A | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+| Option B | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
+
+**Key evidence**: the frozen-reference field is backed by 25+ existing `EvaluateConfig` fields
+threaded this exact way (`fsm/schema.py:39-146`), with `evaluate_config_known_fields()`
+auto-registering new fields for MR-14, and `baseline_score` (`harness-optimize.yaml:110-116`)
+already sitting outside the iterate cycle unlike `prev_score`, which `capture_prev` overwrites
+every accepted iteration. The comparator-wiring alternative rests on solid, shipped, tested
+reuse targets in `evaluate_comparator()` and `TestComparatorEvaluator`, but no loop file in the
+repo (`grep "type: comparator"` across `scripts/little_loops/loops/`) wires `check_comparator`
+into a `gate` state — the pattern exists only in documentation, and `StateDef.evaluate` is
+single-valued per state (`fsm/schema.py:696`), forcing a second state rather than an in-place
+addition.
+
 ## Integration Map
 
 ### Files to Modify (candidate — scope not yet decided, see Option A/B above)
@@ -135,5 +176,6 @@ already used today.
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-09T14:19:44 - `79d7b43c-377f-45d3-9e5c-2fc5ef853497.jsonl`
 - `/ll:refine-issue` - 2026-09-09T14:08:38 - `1658f0c5-d510-42b4-beb1-234626dbd6e5.jsonl`
 - `/ll:format-issue` - 2026-09-09T13:23:21 - `94cf9e94-a0b2-480c-8238-e366777de95e.jsonl`

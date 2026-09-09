@@ -15,6 +15,7 @@ blocked_by:
 - ENH-3419
 relates_to:
 - FEAT-3417
+reconcile_attempted: true
 ---
 
 # ENH-3420: Unify HostLayout and the session-discovery seam (or document the boundary)
@@ -93,9 +94,8 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 ### Files to Modify
 - `scripts/little_loops/session_store/writers.py` — `HostLayout` dataclass and `host_layout_for` (~2527-2604); `_iter_events` (~3247)
 - `scripts/little_loops/session_store/lifecycle.py` — `_backfill_raw_events` (747)
-- `scripts/little_loops/session_store/sessions.py` (from FEAT-3417) — add qwen/gemini/omp branches to `detect_sessions`; register `parse_qwen_*`/`parse_gemini_*`/`parse_omp_*` in the parser table
-- `scripts/little_loops/session_store/qwen.py`, `gemini.py`, `omp.py` — normalizers become per-host parsers (already generator-shaped)
-  > ⚠ Superseded — qwen.py is per-record, not generator-shaped; see § Codebase Research Findings under Proposed Solution
+- `scripts/little_loops/session_store/sessions.py` — does not exist in production yet; the seam is currently only the spike at `scripts/tests/spike/session_discovery_lifecycle/lifecycle.py` (FEAT-3417 status: open). Once FEAT-3417 lands this file, add qwen/gemini/omp branches to `detect_sessions` (extending both the spike's `_PARSERS` dict and its `if`/`elif` host-selection chain — the two dispatch idioms coexist there); register `parse_qwen_*`/`parse_gemini_*`/`parse_omp_*` in the parser table
+- `scripts/little_loops/session_store/qwen.py`, `gemini.py`, `omp.py` — normalizers become per-host parsers. gemini (`gemini.py:40`) and omp (`omp.py:54`) are already whole-file generators matching the target `parse_*(handle) -> Iterator[SessionEvent]` shape; qwen's `normalize_qwen_record` (`qwen.py:59`) is per-record with no `yield` and needs wrapping in a per-line loop to become a `parse_qwen_session`-style generator
 - `scripts/little_loops/cli/session.py` (`backfill` subcommand, 664-718) and `scripts/little_loops/cli/backfill_worker.py:57-59` — consume the seam
 - `scripts/little_loops/cli/logs.py` — `_has_ll_activity` (97), `_extract_cwd_from_project` (134), `_extract_ll_event_streams` (261) take `layout: HostLayout | None`; retarget once `HostLayout` shrinks
 - `docs/ARCHITECTURE.md`, `docs/reference/API.md` (`session_store` entry) — either way, document the boundary
@@ -106,7 +106,7 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ### Tests
 - `scripts/tests/test_ll_session.py` (patches `get_project_folder` at 704), `test_enh_3166_qwen_normalizer.py`, `test_enh_3393_gemini_normalizer.py`, `test_enh_omp_normalizer.py` — must pass unmodified
-- FEAT-3417's `test_session_discovery.py` — add qwen/gemini/omp branch tests mirroring the codex ones
+- FEAT-3417 spike's `test_lifecycle.py` (guards `scripts/tests/spike/session_discovery_lifecycle/lifecycle.py`, using `tmp_path`-based `_make_state_db`/`_write_rollout` helpers rather than committed JSONL fixtures, plus a `TestIsolationGuard` with no counterpart in the per-host normalizer test files) — add qwen/gemini/omp branch tests mirroring the codex ones
 
 ### Documentation
 - `docs/ARCHITECTURE.md`, `docs/reference/API.md`, `docs/reference/HOST_COMPATIBILITY.md` (add a "session log readable by" column if unified)
@@ -150,5 +150,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-09T14:15:24 - `aea90797-734c-47d9-89ed-e343ebbf4673.jsonl`
 - `/ll:refine-issue` - 2026-09-09T14:08:38 - `1658f0c5-d510-42b4-beb1-234626dbd6e5.jsonl`
 - `/ll:format-issue` - 2026-09-09T13:22:54 - `94cf9e94-a0b2-480c-8238-e366777de95e.jsonl`

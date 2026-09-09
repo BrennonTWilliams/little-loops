@@ -1,0 +1,12 @@
+{
+  "id": "0770d1f6-b235-4be5-84c0-446edbc4a682",
+  "type": "decision",
+  "timestamp": "2026-09-09T14:19:28Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Direct precedent (ENH-3224 abstain_on_exit_3 field-threading), free MR-14 lint coverage via evaluate_config_known_fields(), and baseline_score already sits outside the iterate cycle so no new executor primitive is needed. Option B is not directly buildable as described: StateDef.evaluate is single-valued per state, forcing a second chained state with a disjoint route vocabulary and zero shipped precedent, plus stacks LLM cost onto an already LLM-heavy loop.",
+  "rule": "Option A: frozen-reference field on EvaluateConfig/evaluate_convergence()",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: wire check_comparator into harness-optimize.yaml's gate state as a second required check",
+  "issue": "ENH-3421"
+}
