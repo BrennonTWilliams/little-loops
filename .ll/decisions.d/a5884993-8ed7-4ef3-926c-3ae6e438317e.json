@@ -1,0 +1,12 @@
+{
+  "id": "3b55e163-7a11-4643-84c1-6fed2c90e2c6",
+  "type": "decision",
+  "timestamp": "2026-09-09T21:33:31Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Downstream iter_events/_PARSERS only read handle.host/handle.path, so synthesis risk on other fields is theoretical; matches existing rebuild()/_iter_events internal-widening convention; Option A introduces concrete regressions (agent-transcript exclusion, no argv precedent for structured Popen payloads, missing cwd contract in backfill_worker.py)",
+  "rule": "Public backfill wrappers (backfill_raw_events/backfill/backfill_incremental) keep jsonl_files: list[Path] and synthesize SessionHandle internally before calling _backfill_raw_events(handles, ...)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: retype the three public wrappers to handles: list[SessionHandle] and ripple to all callers",
+  "issue": "ENH-3422"
+}

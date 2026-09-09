@@ -323,6 +323,7 @@ Manual review 2026-09-09 (post confidence-check), corrections applied in this re
 Earlier pass: `ll-verify-evidence --json` clean; no active decision-log rules; `ll-code --json status` `provider=codegraph freshness=fresh`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T21:32:00 - `821b29bc-73ec-49a6-a196-da3d28ebbdc1.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:15:09 - `15a3a72b-d6e3-4759-990e-0642b22d6179.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T21:04:56 - `a5bdbdca-a5bb-459a-a98a-2040741996e1.jsonl`
 - `/ll:verify-issues` - 2026-09-09T21:00:41 - `9d974726-ede8-4e9b-8bf3-5dc1cbd42201.jsonl`
