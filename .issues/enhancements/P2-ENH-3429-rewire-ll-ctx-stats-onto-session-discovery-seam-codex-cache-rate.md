@@ -19,6 +19,8 @@ relates_to:
 - FEAT-3417
 - ENH-3428
 - ENH-3430
+learning_tests_required:
+- codex
 ---
 
 # ENH-3429: Rewire ll-ctx-stats onto the session-discovery seam (Codex cache-rate reader)
@@ -108,6 +110,15 @@ return keys are otherwise unchanged.
 - The qwen/gemini pair (`test_cli_ctx_stats.py:909,941`) must pass unmodified — they depend on the
   non-codex branch keeping the raw per-line reader.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Confirmed via code-graph query (`ll-code callers-of _compute_cache_rate_from_jsonl`): its only caller is `main_ctx_stats` (`cli/ctx_stats.py:753`); the only importers of `cli/ctx_stats.py` are `cli/__init__.py:58` and `scripts/tests/test_cli_ctx_stats.py:13`. No other call site depends on the current single-arg signature.
+- Confirmed the existing fixture `scripts/tests/fixtures/codex/rollout-interactive.jsonl` already contains 4 `token_count` events; its 4th (last) event matches the values cited in this issue's Tests section exactly (`total_token_usage.input_tokens=84003, cached_input_tokens=57915, cache_write_input_tokens=26076`), and the sum of `last_token_usage.input_tokens` across all four events is `14002+21854+22068+26079=84003`. `test_resolves_codex_rollout_cache_rate` can point at this existing fixture — no new fixture file needs to be authored.
+- Confirmed the current `_compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None` (`cli/ctx_stats.py:340-410`) matches this issue's Current Behavior description exactly: calls `get_sessions_folder(cwd)`, globs non-`agent-*` `*.jsonl` files, takes the newest by `st_mtime`, sums `cache_read_input_tokens`/`cache_creation_input_tokens`/`input_tokens` from `message.usage` on `type == "assistant"` records deduplicated by `uuid`, and returns `round(cache_read / total * 100)` as `hit_rate_pct`.
+- Confirmed `ENH-3427` (this issue's `blocked_by`) is still `open`, and `cli/ctx_stats.py` has no `--host` flag or `_resolve_host` call yet (`grep -n "_resolve_host\|--host" cli/ctx_stats.py` — no hits) — the `blocked_by: [ENH-3427]` edge is accurate and current.
+
 ## Acceptance Criteria
 
 - `ll-ctx-stats` obtains its file via `detect_sessions` (limit=1) and uses `iter_events` for the
@@ -182,5 +193,6 @@ touches `cli/ctx_stats.py` only).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T22:40:45 - `a5a46f1d-6d28-431d-9f96-7d68b9b6445d.jsonl`
 - `/ll:format-issue` - 2026-09-09T22:05:58 - `1744c85d-b425-4d1c-b20e-c1e871e66aec.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:08 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`

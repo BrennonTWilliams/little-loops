@@ -97,6 +97,13 @@ bypasses the glob.
 8. **No-sessions stderr**: change the wording to `"No sessions found for: <cwd>"` (no test asserts
    the old string); exit code stays 1.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Precedent for the Codex-returns-None-from-`get_project_folder` framing: `get_project_folder(host="codex")` already returns `None` unconditionally (landed under FEAT-3417 — Codex never writes `~/.codex/projects/`). `scripts/tests/test_user_messages.py:147-161` (`test_host_codex_returns_none`) documents this and its docstring already directs callers to `little_loops.session_store.sessions.detect_sessions` — i.e. this issue's `handles`-based rewrite is the change that docstring anticipates, not a new direction.
+- Confirmed Codex `SessionEvent` shape from `parse_codex_rollout` (`session_store/sessions.py:631-672`): `event.type` is the raw top-level record `type` (`"response_item"`, `"event_msg"`, `"session_meta"`, ...); `event.payload` is the nested `payload` dict verbatim (`{}` if missing/non-dict), with no subtype filtering at the parser level — `payload.type`/`payload.role` access as described in Proposed Solution step 2 is the correct place to filter `<environment_context>`/`developer`/`<turn_aborted>`, since the parser passes every subtype through untouched by design (see its docstring).
+
 ## Program Design
 
 ### Types
@@ -181,6 +188,13 @@ bypasses the glob.
 - Existing Claude Code tests in all files above pass unmodified except where they patch
   `get_project_folder` directly.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Confirmed via grep: `extract_user_messages`/`extract_commands`/`extract_conversation_turns` have exactly one non-test, non-definition caller each — all three calls are in `scripts/little_loops/cli/messages.py` (lines 192, 201, 250). The "sole caller is `main_messages`" claim in the Summary holds.
+- Test patch-site counts (for the Tests section's re-patch plan): `scripts/tests/test_cli.py` patches `little_loops.user_messages.get_project_folder` at 17 call sites (not just the ~651/~1815 areas named); `scripts/tests/test_cli_messages.py` patches `_PROJECT_FOLDER_PATH` (= `little_loops.user_messages.get_project_folder`) at 10 call sites. All 27 sites need the `detect_sessions` re-patch, not just the two named test classes.
+
 ## Acceptance Criteria
 
 - `ll-messages` (user messages, commands, and `--sft-format --reader auto|jsonl` conversation
@@ -212,5 +226,6 @@ touches `user_messages.py`/`cli/messages.py` only).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T22:40:08 - `419c0f66-ac03-408b-af11-4cdc8ba58375.jsonl`
 - `/ll:format-issue` - 2026-09-09T22:06:09 - `1744c85d-b425-4d1c-b20e-c1e871e66aec.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:08 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`

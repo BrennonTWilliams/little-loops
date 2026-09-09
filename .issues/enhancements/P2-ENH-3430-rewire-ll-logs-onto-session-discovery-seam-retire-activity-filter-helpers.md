@@ -186,6 +186,16 @@ filter) -> dedupe on `cwd`
 | `test_has_ll_activity_detects_normalized_run_shell_command` — direct `_has_ll_activity` unit coverage | Dropped (function deleted; the ll-activity filter it tested is re-applied inside `discover_all_projects`'s per-workspace walk and still exercised via the discover test above) |
 | `test_extract_cwd_honors_chats_glob` — direct `_extract_cwd_from_project` unit coverage | Dropped (function deleted; cwd extraction now lives in `session_store.sessions._first_record_cwd`, already covered by that module's own tests) |
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- `scripts/little_loops/session_store/__init__.py` — public re-exports of the seam this issue rewires onto: `SessionHandle` (132/272), `detect_sessions` (133/275) — confirms these are stable public entry points, not internals.
+- `scripts/little_loops/session_store/sessions.py:466,474` — inline comments there reference `_extract_cwd_from_project` and `discover_all_projects`'s silent-`[]` precedent, corroborating this issue's own note that the lossy-decode `cwd` fallback has no `list_workspaces` equivalent.
+- `docs/reference/API.md:3539-3587` — existing `discover_all_projects` docstring/signature; `:9497-9567` documents the `SessionHandle`/`detect_sessions`/`list_workspaces` seam already, so the doc update in scope is narrower than a fresh write.
+- `scripts/tests/test_fleet_improve.py`, `scripts/tests/test_builtin_loops.py` — additional existing coverage touching `ll-logs fleet-review`/`fleet-loop-improve.yaml`, not previously listed; worth a pass-unmodified check alongside the named test files.
+- Confirmed via repo-wide grep: `_resolve_host`, `REGISTERED_HOSTS`, and a registered `--host` flag do not yet exist anywhere in `scripts/little_loops/` (0 production hits) — ENH-3427's host-resolution seam this issue is `blocked_by` has genuinely not landed yet, not just undocumented.
+
 ## Acceptance Criteria
 
 - `ll-logs` obtains sessions via `detect_sessions`/`iter_events` and never calls
@@ -238,5 +248,6 @@ Blocked by ENH-3427 (host-resolution seam, including the both-spellings probe th
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T22:41:03 - `9fe38579-0a99-4bad-b518-b7f5e109e55f.jsonl`
 - `/ll:format-issue` - 2026-09-09T22:05:30 - `af86aaee-e2d3-4675-b045-b23f45bd4759.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:08 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`
