@@ -95,6 +95,10 @@ above a configurable `history.db` threshold — never auto-compacting.
 - Every `ll-*` CLI entry point wraps its body in `cli_event_context` — no
   per-caller changes needed; verify with
   `grep -rn "cli_event_context" scripts/little_loops/`
+- Confirmed: 41 distinct `main_*()` call sites, each individually wrapping
+  its own body (not a central dispatcher). One documented non-caller:
+  `scripts/little_loops/mcp_server/__init__.py:31` (long-running process,
+  not a one-shot CLI invocation).
 
 ### Similar Patterns
 - `skill_event_context` (same file, `writers.py:587` onward) is the
@@ -105,6 +109,9 @@ above a configurable `history.db` threshold — never auto-compacting.
 - `scripts/tests/test_session_store_writers.py`
 - `scripts/tests/test_ll_session.py`
 - `scripts/tests/test_issue_history_cli.py`
+- Two tests already exercise `cli_event_context` under a simulated locked DB: `TestCliEventContext.test_cli_event_locked_db_does_not_crash_body` (`test_session_store_writers.py:489-511`) monkeypatches `connect` to raise `sqlite3.OperationalError("database is locked")` on the INSERT and asserts the wrapped body still runs; `.test_cli_event_locked_exit_update_does_not_mask_success` (`test_session_store_writers.py:513-542`) does the same for the exit UPDATE via a connection proxy that raises on the `UPDATE cli_events` statement. Neither asserts stderr warning content, and both simulate `sqlite3.OperationalError` specifically, not `OSError`.
+- `test_still_exits_zero_when_db_unwritable` (`test_ll_issues_research_triage.py:140-157`) is the closest existing precedent to Acceptance Criteria item 3: it monkeypatches `connect` to raise `sqlite3.OperationalError`, invokes the full `ll-issues research-triage ... --json` CLI, and asserts exit code 0 with valid JSON parsed from stdout. No existing test does this for `ll-queue list --json` specifically, and none of the three tests found assert a stderr warning was emitted.
+- Every locked-DB test found in the suite (also `test_set_status_cli.py:1286-1325`, `test_hook_post_tool_use.py:189-193`) simulates the failure via `monkeypatch.setattr(<module>, "connect", <raising stub>)`; no test in `scripts/tests/` opens a genuine second `sqlite3.Connection` and holds a real `BEGIN IMMEDIATE`/`BEGIN EXCLUSIVE` lock against the writer under test.
 
 ### Documentation
 - `docs/reference/API.md` (session_store writers section), if the
@@ -114,6 +121,22 @@ above a configurable `history.db` threshold — never auto-compacting.
 - N/A, unless the size guard (Proposed Hardening step 3) is added, in which
   case it needs a new opt-in key under `history` in
   `scripts/little_loops/config-schema.json`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Confirmed via grep: `cli_event_context` is wired per-CLI, not through a central dispatcher — 41 distinct `main_*()` entry points each individually call `with cli_event_context(DEFAULT_DB_PATH, "ll-<name>", sys.argv[1:]):` around their body (e.g. `cli/issues/__init__.py:21`, `cli/queue.py:923`, `cli/harness.py:1751`, `cli/docs.py:23,126,252,329`). One documented exception: `mcp_server/__init__.py:31` explicitly notes no `cli_event_context()` wrapper is used there (a long-running process, not a one-shot CLI invocation).
+- `cli_event_context`'s current guard shape (narrow `except sqlite3.Error` around the INSERT and the exit UPDATE, each independently wrapped, `writers.py:519-536` and `writers.py:543-560`) is itself the result of a prior fix, `BUG-2706` (status `done`, `.issues/bugs/P2-BUG-2706-cli-event-context-crashes-every-ll-cli-on-locked-db.md`) — not the pre-hardening baseline the issue's framing implies. BUG-2706 names `skill_event_context` as the contract it brought `cli_event_context` into line with, and its postmortem states `_BUSY_TIMEOUT_MS = 5000` was deliberately left unchanged during that fix ("raising it only makes contended commands hang longer").
+- `skill_event_context` (`writers.py:577-665`) is not fully consistent with `cli_event_context` today, despite being cited as the analogue to match: its final `finally: conn.close()` (`writers.py:665`) is a bare, unguarded call, whereas `cli_event_context`'s equivalent close calls (`writers.py:530-534`, `writers.py:556-560`) are each independently wrapped in `try/except sqlite3.Error: pass`. Two other EPIC-1707-tagged best-effort writers in the same file — `record_hook_event`/`hook_event_context` — follow the same internal-guard shape as `cli_event_context`; a second, distinct best-effort convention also exists in the file (`record_prompt_opt_event`, `record_correction`, `record_skill_event`), which raises unguarded and relies on the *caller* wrapping in `contextlib.suppress(Exception)` rather than guarding internally.
+- No existing site anywhere in the codebase pairs `except (sqlite3.Error, OSError)` (checked both orderings, repo-wide) — the only occurrence of that tuple is this issue's own prose. Pairing `OSError` with an unrelated exception type in one guard is otherwise a routine, widely-used convention elsewhere in the codebase (`fsm/persistence.py`, `fleet_improve.py`, `decisions.py`), so widening the guard here would follow an established pattern shape, just not one previously applied to this specific pair at this call site.
+- Config-key precedent for a size-gated behavior on `history.db`: `analytics.retention.min_db_size_mb` (`config-schema.json:2087-2108`, default 800) is dual-gated with `min_project_age_days` and consumed via `RetentionConfig.from_dict()` (`config/features.py:1485-1509`) inside `lifecycle.py::prune()` (`lifecycle.py:1273-1358`), which measures size via `db_path.stat().st_size / (1024*1024)`. This is the codebase's only existing "declared threshold, read via a dataclass, compared against `history.db`'s on-disk size" shape — for pruning, not for skipping a write — and is the closest structural precedent if the opt-in size guard (Proposed Hardening step 3) is pursued.
+
+### Tests
+
+- Two tests already exercise `cli_event_context` under a simulated locked DB: `TestCliEventContext.test_cli_event_locked_db_does_not_crash_body` (`test_session_store_writers.py:489-511`) monkeypatches `connect` to raise `sqlite3.OperationalError("database is locked")` on the INSERT and asserts the wrapped body still runs; `.test_cli_event_locked_exit_update_does_not_mask_success` (`test_session_store_writers.py:513-542`) does the same for the exit UPDATE via a connection proxy that raises on the `UPDATE cli_events` statement. Neither asserts stderr warning content, and both simulate `sqlite3.OperationalError` specifically, not `OSError`.
+- `test_still_exits_zero_when_db_unwritable` (`test_ll_issues_research_triage.py:140-157`) is the closest existing precedent to Acceptance Criteria item 3: it monkeypatches `connect` to raise `sqlite3.OperationalError`, invokes the full `ll-issues research-triage ... --json` CLI, and asserts exit code 0 with valid JSON parsed from stdout. No existing test does this for `ll-queue list --json` specifically, and none of the three tests found assert a stderr warning was emitted.
+- Every locked-DB test found in the suite (also `test_set_status_cli.py:1286-1325`, `test_hook_post_tool_use.py:189-193`) simulates the failure via `monkeypatch.setattr(<module>, "connect", <raising stub>)`; no test in `scripts/tests/` opens a genuine second `sqlite3.Connection` and holds a real `BEGIN IMMEDIATE`/`BEGIN EXCLUSIVE` lock against the writer under test.
 
 ## Program Design
 
@@ -144,6 +167,7 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
    code) before changing behavior (Proposed Hardening step 1).
 2. Widen the `except sqlite3.Error` guards around `connect` and the `finally`
    UPDATE to also catch `OSError`, and set a bounded `busy_timeout`.
+   > ⚠ Superseded — busy_timeout already set (5000ms via PRAGMA, `schema.py:1405`); see § Codebase Research Findings under Program Design
 3. Add the opt-in size-guard config key and stderr warning, if pursued.
 4. Add a locked-DB test asserting the wrapped command still emits JSON on
    stdout with exit 0 and a stderr warning.
@@ -191,5 +215,6 @@ becomes a connection-level default, not a new parameter).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T22:49:09 - `05b369f7-30a2-4959-8bec-aa3ab3083faf.jsonl`
 - `/ll:format-issue` - 2026-09-09T22:40:10 - `419c0f66-ac03-408b-af11-4cdc8ba58375.jsonl`
 - `/ll:capture-issue` - 2026-09-09T20:18:50 - `c67d0e9c-2f18-4a69-ac01-c129392655e2.jsonl`

@@ -282,7 +282,7 @@ if headings:
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-09-09 (supersedes the prior same-day pass below the resolved items)_
+_Reconfirmed by `/ll:confidence-check` on 2026-09-09 — no codebase or issue-content changes since the prior same-day pass; scores unchanged._
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 62/100 → MODERATE
@@ -351,6 +351,7 @@ HEAD, separate from the prior refine/wire/confidence-check passes:
   the corpus fix.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T22:49:43 - `727c53cc-cbf3-4369-86bb-82cc2d6abda0.jsonl`
 - `/ll:refine-issue` - 2026-09-09T22:43:06 - `ab41948f-86de-4b0f-a6d4-63b2ea97f9ce.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:28:20 - `90827670-8489-4875-926d-5a23e0d11cfa.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:15:43 - `a39fccc2-5241-4a37-b0f8-a7d240ff4b84.jsonl`

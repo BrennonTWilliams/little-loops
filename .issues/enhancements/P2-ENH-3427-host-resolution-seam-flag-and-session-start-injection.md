@@ -19,6 +19,7 @@ blocks:
 relates_to:
 - ENH-3420
 - FEAT-3417
+reconcile_attempted: true
 ---
 
 # ENH-3427: Host-resolution seam — --host flag, both-spellings probe, and session_start host injection
@@ -135,8 +136,7 @@ ENH-3428/3429/3430). `hooks/session_start.py:162` -> `get_project_folder(cwd, ho
 
 - `scripts/tests/test_session_discovery.py` — both-spellings probe case.
 - `scripts/tests/test_ll_session.py` — `choices=` retrofit still locked by
-  `TestBackfillArgs::test_backfill_host_choices_list`.
-  > ⚠ Superseded — class is `TestArgumentParsing`, not `TestBackfillArgs`
+  `TestArgumentParsing::test_backfill_host_choices_list`.
 - New precedence tests for each of the 3 CLIs' `--host` flag (flag > env > union).
 - Capturing-stub variant of `test_enh_3166_qwen_normalizer.py`'s `TestSessionStartHookPassesHost`.
 
@@ -189,6 +189,7 @@ resolve against).
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-09T22:49:21 - `a5a46f1d-6d28-431d-9f96-7d68b9b6445d.jsonl`
 - `/ll:refine-issue` - 2026-09-09T22:42:52 - `b161ecdd-c676-4054-8cf9-0319c0089035.jsonl`
 - `/ll:format-issue` - 2026-09-09T22:02:48 - `ede486c5-d33a-435b-bb10-2223277286b2.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:07 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`

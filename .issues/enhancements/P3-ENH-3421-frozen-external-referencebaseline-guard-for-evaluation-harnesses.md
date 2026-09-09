@@ -219,6 +219,12 @@ into a `gate` state — the pattern exists only in documentation, and `StateDef.
 single-valued per state (`fsm/schema.py:696`), forcing a second state rather than an in-place
 addition.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **The `interpolate() → float()` idiom is one idiom with three different exception-handling outcomes, not one convention (`codebase-pattern-finder`, 2026-09-09):** it recurs at four dispatcher sites in `evaluators.py` — `previous` (1910-1916), convergence's `target` (1929-1936), convergence's `tolerance` (1944-1949), `output_numeric`'s `target` (1876-1882) — but the `except` block differs by site: `previous` silently continues with `None` (optional field, fails open), `tolerance` silently defaults to `0.0` (optional, fails open), convergence's `target` returns `EvaluationResult(verdict="error", ...)` (required field, fails closed), `output_numeric`'s `target` raises `ValueError` (required, fails closed). No existing `EvaluateConfig` field today combines "optional" with "fails closed when set-but-unresolvable" — the contract Expected Behavior §4 specifies for `reference` composes two separately-established shapes (`previous`'s optional-field triad + convergence `target`'s fail-closed except-branch) rather than mirroring one single existing field end-to-end. This refines rather than contradicts the Decision Rationale's precedent claim: the field-threading mechanics (`abstain_on_exit_3`) and the fail-closed except-block (convergence `target`) are each independently precedented in this codebase; their combination on one optional field is not, though both halves are simple, already-shipped code shapes to copy from.
+
 ## Integration Map
 
 ### Files to Modify (Option A — selected)
@@ -384,6 +390,11 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - The `interpolate(...) → float() → except (InterpolationError, ValueError)` idiom at `fsm/evaluators.py:1908-1916` (already cited above) recurs three more times in the same dispatch function — `output_numeric`'s target (1876-1879), `convergence`'s target (1929-1932), and `convergence`'s tolerance (1945-1948) — confirming it as the codebase's one idiom for resolving an interpolated string to a float with a safe fallback, not a one-off.
 - Confirmed test gap (strengthens the existing claim above): no test in `test_fsm_executor.py` constructs an FSM with one state capturing a value once outside a loop-back edge and a separate looping state resolving that captured value across multiple iterations while asserting it stays unchanged — every `convergence`-type executor test (`test_convergence_evaluator_tracks_progress`/`test_convergence_evaluator_detects_stall`, lines 3207-3279) uses a single self-looping state with a reseed-per-pass value.
 
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **Anchor-drift re-check (2026-09-09, independently re-verified by `codebase-locator`):** two `fsm/executor.py` citations drifted by +2 lines due to commit `f7c485d60` ("fix(fsm): seed parameters.default on every loop launch path", BUG-3425), which added lines earlier in the file (~old line 1086, sub-loop `with:`/`context_passthrough` parameter-default seeding — unrelated to `EvaluateConfig`/`evaluate_convergence`): the ENH-3200 post-evaluation `self.captured[state.capture]["verdict"] = ...` write (cited `2206`) is now at line `2208`; `_build_context()`'s `result=None` reset (cited `3813`) is now at line `3815`. The "Update context with result for routing interpolation" write (line `2190`) is unchanged. Every other file/test/doc anchor this issue cites was independently re-checked against current HEAD and matched exactly — no further drift found.
+- **`convergence_gate` fragment "optionally" list — dominant edit shape confirmed:** 7 of `lib/common.yaml`'s 9 "optionally"-bearing fragment descriptions (e.g. `diff_stall_gate` lines 187-190, `score_stall_gate` lines 207-209) append optional fields as a parenthetical clause directly onto the "must supply:" sentence, each optionally followed by a short aside (a default value or purpose clause). Only `queue_pop` (line 169) uses the minority shape, a standalone "Optionally: ..." sentence. The `evaluate.reference` addition to `convergence_gate`'s description (this issue's planned edit) should follow the dominant inline-parenthetical shape, not `queue_pop`'s outlier.
+
 ## Program Design
 
 ### Types
@@ -522,6 +533,7 @@ done, ENH-1122 deferred, ENH-1793/1828/1829 done.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T22:49:37 - `727c53cc-cbf3-4369-86bb-82cc2d6abda0.jsonl`
 - `/ll:confidence-check` - 2026-09-09T20:28:54 - `76596d00-f30e-4c7e-a5ac-cefe4595fad7.jsonl`
 - `/ll:verify-issues` - 2026-09-09T20:25:16 - `707b6c2b-2b94-48e8-86f8-1ee81a021633.jsonl`
 - `/ll:verify-issues` - 2026-09-09T19:00:48 - `095aaa45-5f8e-445a-8993-2ec43b515f28.jsonl`
