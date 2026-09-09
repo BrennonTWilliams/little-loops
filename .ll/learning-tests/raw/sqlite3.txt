@@ -11,3 +11,16 @@ claim3_foreign_keys_default: 0
 claim4_upsert_returning: ok (1, 999)
 claim5_attach_lazy_file_creation: after_attach=True after_write=True
 sqlite3.sqlite_version: 3.49.2
+
+--- extension 2026-09-09T04:32:39Z (FEAT-3418 required claims) ---
+claim1_readonly_attach_select_wal_source: ok [('r0a',), ('r0b',)]
+claim1_readonly_attach_write_raises: ok raised OperationalError('attempt to write a readonly database')
+claim2_persistent_main_view_over_attached: REFUTED, raised OperationalError('view t cannot reference objects in database r1')
+claim2b_unqualified_select_hits_temp_view: [('r0a',), ('r0b',), ('r1a',)]
+claim3_temp_view_queryable_after_query_only: ok [('r0a',), ('r0b',), ('r1a',)]
+claim3_create_blocked_after_query_only: ok raised OperationalError('attempt to write a readonly database')
+claim4_pragma_table_info_on_attached_view: [(0, 'id', 'INTEGER', 0, None, 0), (1, 'val', 'TEXT', 0, None, 0)]
+claim5_default_attach_limit: 10
+claim5_setlimit_lower_prev=10 now=2
+claim5_setlimit_raise_above_compile_max_prev=2 now=10
+sqlite3.sqlite_version: 3.49.2
