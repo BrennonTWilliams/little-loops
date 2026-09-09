@@ -43,9 +43,6 @@ context:
   quality_threshold: 70     # minimum item score (0-100) to pass quality gate
   min_per_category: 2       # minimum items per category for balanced distribution
   adversarial_cap: 0.3      # max fraction of adversarial/synthetic items
-  data_dir: "data/raw"
-  output_dir: "data/curated"
-  schema_path: "schemas/dataset.json"
 states:
 
   ingest:

@@ -32,18 +32,22 @@ parameters:
   rubric:
     type: string
     required: false
+    default: ""
     description: Rubric criteria for scoring the generated artifact as markdown text
   pass_threshold:
     type: number
     required: false
+    default: 6
     description: Minimum rubric score threshold to accept (default 6)
   artifact_path:
     type: string
     required: false
+    default: "index.html"
     description: Artifact filename relative to run_dir for screenshot capture (default index.html)
   pre_evaluate_cmd:
     type: string
     required: false
+    default: ""
     description: |
       FEAT-3320: optional shell snippet prepended to evaluate's action, before the
       Playwright screenshot. Generic — not an artifact-mode branch — so all 8
@@ -54,12 +58,6 @@ parameters:
 import:
   - lib/harness.yaml
   - lib/common.yaml
-
-context:
-  pass_threshold: 6
-  rubric: ""
-  artifact_path: "index.html"
-  pre_evaluate_cmd: ""
 
 states:
   generate:

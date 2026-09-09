@@ -27,6 +27,7 @@ from little_loops.fsm.context_seed import (
     apply_context_overrides,
     inject_design_context,
     seed_confidence_thresholds,
+    seed_parameter_defaults,
 )
 from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes
 from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
@@ -166,8 +167,6 @@ def cmd_run(
     # Seed parameters.<name>.default for unbound optional parameters (BUG-3425).
     # Seeded first so positional input, program.md, and --context (all below)
     # can still override; setdefault means an existing context: literal wins.
-    from little_loops.fsm.context_seed import seed_parameter_defaults
-
     seed_parameter_defaults(fsm.context, fsm.parameters)
 
     # Inject positional input arg before --context so --context can override

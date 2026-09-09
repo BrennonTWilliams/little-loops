@@ -532,6 +532,35 @@ class TestParameterValidation:
         errors = validate_fsm(fsm)
         assert any("Unknown parameter type" in e.message for e in errors)
 
+    def test_default_type_mismatch_rejected(self) -> None:
+        """BUG-3425: a default that doesn't match the declared type is an error."""
+        spec = ParameterSpec(type="string", default=20)
+        fsm = self._fsm_with_params({"steps": spec})
+        errors = _validate_parameters(fsm)
+        assert any(
+            "default" in e.message and "expected string" in e.message for e in errors
+        )
+
+    def test_default_type_match_accepted(self) -> None:
+        """A default matching its declared type produces no error."""
+        for ptype, default in [
+            ("string", "x"),
+            ("integer", 3),
+            ("number", 2.5),
+            ("boolean", True),
+        ]:
+            spec = ParameterSpec(type=ptype, default=default)
+            fsm = self._fsm_with_params({"p": spec})
+            errors = _validate_parameters(fsm)
+            assert errors == [], f"type '{ptype}' default {default!r} should be valid"
+
+    def test_empty_string_default_accepted(self) -> None:
+        """default: '' is a valid string default, not treated as absent."""
+        spec = ParameterSpec(type="string", default="")
+        fsm = self._fsm_with_params({"p": spec})
+        errors = _validate_parameters(fsm)
+        assert errors == []
+
 
 class TestWithBindingValidation:
     """Validate with: field structural constraints via validate_fsm."""

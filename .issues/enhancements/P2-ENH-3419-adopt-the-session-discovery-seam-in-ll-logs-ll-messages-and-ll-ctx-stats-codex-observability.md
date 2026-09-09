@@ -4,7 +4,7 @@ type: ENH
 title: Adopt the session-discovery seam in ll-logs, ll-messages, and ll-ctx-stats
   (Codex observability)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T05:27:16Z'
@@ -25,6 +25,7 @@ score_complexity: 9
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 0
+size: Very Large
 ---
 
 # ENH-3419: Adopt the session-discovery seam in ll-logs, ll-messages, and ll-ctx-stats (Codex observability)
@@ -351,11 +352,25 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 - Non-mechanical subcomponents carry the real correctness risk: the Codex cache-rate cumulative-vs-per-turn `token_count` semantics, the `cwd` both-spellings probe in `_detect_claude_sessions`/`_project_folder_for_layout_host`, and the Codex user-turn extraction/filtering logic are each judgment-heavy, not text substitutions.
 - Multiple existing test suites (`test_cli.py`, `test_cli_messages.py`, `test_ll_logs.py`) patch `get_project_folder` directly; those patches go dead once the rewire lands and must be re-pointed at `detect_sessions` — an incomplete re-patch would leave tests passing for the wrong reason rather than failing loudly.
 
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-09-09
+- **Reason**: Issue too large for single session (score 8/11, Very Large; outcome_confidence 52/100 LOW with very wide blast radius across 5 files)
+
+### Decomposed Into
+- ENH-3427: Host-resolution seam — --host flag, both-spellings probe, and session_start host injection
+- ENH-3428: Rewire ll-messages onto the session-discovery seam (Codex user-turn support)
+- ENH-3429: Rewire ll-ctx-stats onto the session-discovery seam (Codex cache-rate reader)
+- ENH-3430: Rewire ll-logs onto the session-discovery seam; retire _has_ll_activity/_extract_cwd_from_project
+
 ## Status
 
-**Open** | Created: 2026-09-09 | Priority: P2
+**Done** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-09-09T21:57:15 - `3ffb97df-a1e4-4572-9fad-20e96964df3d.jsonl`
+- `/ll:confidence-check` - 2026-09-09T21:43:41 - `3ffb97df-a1e4-4572-9fad-20e96964df3d.jsonl`
 - `/ll:verify-issues` - 2026-09-09T21:40:45 - `3ffb97df-a1e4-4572-9fad-20e96964df3d.jsonl`
 - `review (manual, pre-implementation round 2: Implementation Steps step 4 "last-total_token_usage" contradiction fixed to sum-of-last_token_usage; real ~/.codex corpus is 399×0.130.0 + 1×0.152.1 → user_message dedup is the common path (text under payload.message), <turn_aborted> added to the injected-tag filter; ctx-stats Codex reader returns None on zero token_count and skips info:null; lossy-decode fallback removal added to Behavior Parity; both-spellings probe scoped to TestDiscover helper only, covers --project too; logs.py:725 is generate_index not a session glob; Codex updated_at confirmed epoch seconds)` - 2026-09-09T23:55:00
 - `/ll:confidence-check` - 2026-09-09T21:23:02 - `378ef5f9-2efe-4141-9b76-45d94b59278c.jsonl`

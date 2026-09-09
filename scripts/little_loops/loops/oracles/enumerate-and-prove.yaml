@@ -19,18 +19,16 @@ parameters:
   max_retries:
     type: string
     required: false
+    default: "2"
     description: Per-target explore-api retries passed to ready-to-implement-gate (default "2")
   tag:
     type: string
     required: false
+    default: "ENUMERATE_JSON"
     description: Tag prefix to scan for in the LLM output (default "ENUMERATE_JSON")
 
 import:
   - lib/common.yaml
-
-context:
-  max_retries: "2"
-  tag: "ENUMERATE_JSON"
 
 states:
 

@@ -5696,6 +5696,48 @@ states:
         assert "scope: 'EPIC-3041'" in out
 
 
+class TestSeedParameterDefaults:
+    """seed_parameter_defaults() seeds parameters.<name>.default into context (BUG-3425)."""
+
+    def test_seeds_int_bool_str_and_empty_string_defaults(self) -> None:
+        from little_loops.fsm.context_seed import seed_parameter_defaults
+        from little_loops.fsm.schema import ParameterSpec
+
+        ctx: dict = {}
+        params = {
+            "count": ParameterSpec(type="integer", default=3),
+            "flag": ParameterSpec(type="boolean", default=False),
+            "name": ParameterSpec(type="string", default="x"),
+            "note": ParameterSpec(type="string", default=""),
+        }
+        seed_parameter_defaults(ctx, params)
+        assert ctx == {"count": 3, "flag": False, "name": "x", "note": ""}
+
+    def test_required_parameter_skipped(self) -> None:
+        from little_loops.fsm.context_seed import seed_parameter_defaults
+        from little_loops.fsm.schema import ParameterSpec
+
+        ctx: dict = {}
+        seed_parameter_defaults(ctx, {"issue_id": ParameterSpec(type="string", required=True)})
+        assert "issue_id" not in ctx
+
+    def test_default_none_skipped(self) -> None:
+        from little_loops.fsm.context_seed import seed_parameter_defaults
+        from little_loops.fsm.schema import ParameterSpec
+
+        ctx: dict = {}
+        seed_parameter_defaults(ctx, {"opt": ParameterSpec(type="string", default=None)})
+        assert "opt" not in ctx
+
+    def test_existing_context_key_not_overwritten(self) -> None:
+        from little_loops.fsm.context_seed import seed_parameter_defaults
+        from little_loops.fsm.schema import ParameterSpec
+
+        ctx = {"count": 99}
+        seed_parameter_defaults(ctx, {"count": ParameterSpec(type="integer", default=3)})
+        assert ctx["count"] == 99
+
+
 class TestContextOverrideCoercion:
     """--context KEY=VALUE strings coerce to the type the key already carries.
 
@@ -5821,6 +5863,140 @@ states:
         assert fsm.context["flag"] is False
         assert fsm.context["top_k"] == 7
         assert fsm.context["plain"] == "y"
+
+    def test_cmd_run_seeds_parameter_defaults_and_context_override_wins(
+        self, tmp_path: Path
+    ) -> None:
+        """BUG-3425: standalone cmd_run seeds parameters.<name>.default; --context wins."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "param-loop.yaml").write_text("""
+name: param-loop
+initial: init
+parameters:
+  max_passes:
+    type: integer
+    default: 3
+  skip_gate:
+    type: string
+    default: ""
+  enabled:
+    type: boolean
+    default: true
+states:
+  init:
+    action: "echo ${context.max_passes} ${context.skip_gate} ${context.enabled}"
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+""")
+        args = argparse.Namespace(
+            input=None,
+            context=["max_passes=5"],
+            max_iterations=None,
+            delay=None,
+            no_llm=False,
+            llm_model=None,
+            dry_run=True,
+            background=False,
+            foreground_internal=False,
+            quiet=False,
+            verbose=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+            queue=False,
+            program_md=None,
+        )
+        logger = Logger(use_color=False)
+        fsm, _ = load_and_validate(loops_dir / "param-loop.yaml")
+
+        def fake_load(p: Path):  # type: ignore[override]
+            return fsm, []
+
+        with patch(
+            "little_loops.fsm.validation.load_and_validate",
+            side_effect=fake_load,
+        ):
+            result = cmd_run("param-loop", args, loops_dir, logger)
+        assert result == 0
+        assert fsm.context["max_passes"] == 5  # --context override wins over default
+        assert fsm.context["skip_gate"] == ""  # empty-string default seeded
+        assert fsm.context["enabled"] is True  # boolean default seeded
+
+    def test_cmd_run_positional_json_dict_input_wins_over_parameter_default(
+        self, tmp_path: Path
+    ) -> None:
+        """BUG-3425: the JSON-dict positional-input unpack (run.py) overrides a
+        seeded parameter default for the same key — seeding happens first so the
+        key is already in fsm.context, which is what the unpack's `k in
+        fsm.context` membership check requires to match at all."""
+        import json
+        from unittest.mock import patch
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "param-loop.yaml").write_text("""
+name: param-loop
+initial: init
+parameters:
+  max_passes:
+    type: integer
+    default: 3
+states:
+  init:
+    action: "echo ${context.max_passes}"
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+""")
+        args = argparse.Namespace(
+            input=json.dumps({"max_passes": 9}),
+            context=[],
+            max_iterations=None,
+            delay=None,
+            no_llm=False,
+            llm_model=None,
+            dry_run=True,
+            background=False,
+            foreground_internal=False,
+            quiet=False,
+            verbose=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+            queue=False,
+            program_md=None,
+        )
+        logger = Logger(use_color=False)
+        fsm, _ = load_and_validate(loops_dir / "param-loop.yaml")
+
+        def fake_load(p: Path):  # type: ignore[override]
+            return fsm, []
+
+        with patch(
+            "little_loops.fsm.validation.load_and_validate",
+            side_effect=fake_load,
+        ):
+            result = cmd_run("param-loop", args, loops_dir, logger)
+        assert result == 0
+        assert fsm.context["max_passes"] == 9
 
 
 class TestCmdStatusJson:
@@ -7611,6 +7787,46 @@ states:
         assert "mixed_key:default" not in combined, (
             f"Validator surfaced key with :default= suffix (BUG-2553 regression):\n{combined}"
         )
+
+    def test_required_parameter_without_context_placeholder_fails_preflight(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3425 shape-(c): a required: true parameter with no `context:`
+        placeholder fails fast at the standalone pre-flight instead of starting
+        with an empty value, mirroring oracles/resolve-decision's issue_id."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "needs-id.yaml").write_text(
+            """
+name: needs-id
+initial: execute
+parameters:
+  issue_id:
+    type: string
+    required: true
+states:
+  execute:
+    action: "echo ${context.issue_id}"
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+"""
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "needs-id"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert result == 1
+        assert "Missing required context variable" in combined
+        assert "'issue_id'" in combined
 
     def test_shell_suffix_ref_does_not_trip_validator(
         self,

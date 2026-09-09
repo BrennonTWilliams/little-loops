@@ -278,6 +278,38 @@ states:
         assert result == 0
 
 
+class TestCmdSimulateParameterDefaults:
+    """BUG-3425: cmd_simulate seeds parameters.<name>.default into context."""
+
+    def test_parameter_default_seeded(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "param-loop.yaml").write_text("""name: param-loop
+initial: init
+max_steps: 3
+parameters:
+  max_passes:
+    type: integer
+    default: 3
+states:
+  init:
+    action: echo "${context.max_passes}"
+    on_yes: done
+  done:
+    terminal: true
+""")
+        args = _make_args(scenario="all-pass")
+        logger = Logger()
+
+        result = cmd_simulate("param-loop", args, loops_dir, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert 'echo "3"' in captured.out  # parameters.max_passes.default (3) was seeded
+
+
 class TestCmdSimulateErrors:
     """Tests for cmd_simulate error handling."""
 

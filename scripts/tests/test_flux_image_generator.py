@@ -191,7 +191,8 @@ class TestLoopStructure:
         wrapper_raw = yaml.safe_load(WRAPPER.read_text())
         oracle_raw = yaml.safe_load(ORACLE.read_text())
         wrapper_steps = wrapper_raw["context"]["steps"]
-        oracle_steps = oracle_raw["context"]["steps"]
+        # BUG-3425: moved from a context: literal to parameters.steps.default.
+        oracle_steps = oracle_raw["parameters"]["steps"]["default"]
         assert wrapper_steps == oracle_steps, (
             f"wrapper context.steps={wrapper_steps} != oracle context.steps={oracle_steps}"
         )
@@ -278,7 +279,12 @@ def flux_stub():
 
 def _render_synthesize(run_dir: Path) -> str:
     """Interpolate the oracle's synthesize action exactly as the engine would."""
+    from little_loops.fsm.context_seed import seed_parameter_defaults
+
     fsm, _ = load_and_validate(ORACLE)
+    # BUG-3425: prompt_file/steps/base_seed now come from parameters.<name>.default
+    # rather than a context: literal — seed them exactly as every real launch path does.
+    seed_parameter_defaults(fsm.context, fsm.parameters)
     ctx = InterpolationContext(
         context={**fsm.context, "run_dir": str(run_dir)},
         captured={},

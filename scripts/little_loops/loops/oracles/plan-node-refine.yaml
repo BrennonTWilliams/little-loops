@@ -69,28 +69,25 @@ parameters:
   max_depth:
     type: integer
     required: false
+    default: 3
     description: "Maximum decomposition depth; decomposition is capped at this depth"
   max_node_iters:
     type: integer
     required: false
+    default: 2
     description: "Per-node refinement budget (research→synthesize→score passes)"
   max_nodes:
     type: integer
     required: false
+    default: 40
     description: "Global cap on total nodes; decomposition is suppressed once reached"
   deadline_epoch:
     type: integer
     required: false
+    default: 0
     description: >-
       Absolute epoch seconds after which the parent's own external-kill
       deadline is reached; 0 (default) means no deadline is tracked.
-
-context:
-  depth: 0
-  max_depth: 3
-  max_node_iters: 2
-  max_nodes: 40
-  deadline_epoch: 0
 
 states:
   setup:

@@ -244,6 +244,8 @@ states:
 
 `with:` is mutually exclusive with `context_passthrough` on the same state. Unknown `with:` keys and missing `required` parameters are caught at load time. Values support `${variable}` interpolation; type validation runs after interpolation at runtime. For the full `ParameterSpec` definition see `scripts/little_loops/fsm/schema.py`.
 
+A `default:` on an optional (`required: false`) parameter seeds into context on every launch path — standalone `ll-loop run`, `ll-loop resume`, `ll-loop simulate`, and both sub-loop dispatch branches (`with:` and `context_passthrough`) — not just `with:` bindings (BUG-3425). Precedence is the same everywhere: `--context` override > `program.md` injection > positional input > persisted resume context / `with:` binding / passthrough > the loop's own `context:` literal > `parameters.<name>.default`. Because the default is seeded automatically, a loop no longer needs to duplicate it as a `context:` literal, and a `required: true` parameter needs no `context:` placeholder — an unbound required parameter is caught at pre-flight (standalone) or raises when a sub-loop's `with:` omits it, exactly as before.
+
 ### Inheritance pattern (`from:`)
 
 For variants that share a skeleton — e.g. APO loops that share `category`, iteration cap, default `context`, and a `done:` terminal state — declare a parent template and have children inherit it via a top-level `from:` field. The loader deep-merges parent into child *before* validation: scalars and lists override, dicts (`context`, `states`, `route`) merge recursively, and the `from:` key is stripped from the result. Cycles raise `ValueError`; missing parents raise `FileNotFoundError`.

@@ -11546,7 +11546,8 @@ class TestHtmlAnythingTemplateModePilot:
         params = oracle_data.get("parameters", {})
         assert "pre_evaluate_cmd" in params
         assert params["pre_evaluate_cmd"].get("required") is not True
-        assert oracle_data.get("context", {}).get("pre_evaluate_cmd") == ""
+        # BUG-3425: moved from a context: literal to parameters.default.
+        assert params["pre_evaluate_cmd"].get("default") == ""
 
     def test_oracle_evaluate_action_prefixes_pre_evaluate_cmd(self, oracle_data: dict) -> None:
         action = oracle_data["states"]["evaluate"]["action"]
@@ -18114,8 +18115,9 @@ class TestLearningGateConsistency:
         impl = rn_remediate["states"]["implement"]["action"]
         assert "${context.skip_learning_gate}" in impl
         assert "--skip-learning-gate" in impl
-        assert "skip_learning_gate" in rn_remediate["context"]
-        assert "skip_learning_gate" in rn_remediate["parameters"]
+        # BUG-3425: moved from a context: literal to parameters.default.
+        assert "skip_learning_gate" not in rn_remediate["context"]
+        assert rn_remediate["parameters"]["skip_learning_gate"]["default"] == ""
 
     # --- rn-implement (parent classifier) ------------------------------------
 
@@ -18464,12 +18466,13 @@ class TestCodeRunGateOracleWiring:
 
     def test_oracle_min_pass_rate_has_default(self, oracle_data: dict) -> None:
         """`min_pass_rate` is `required: false` on the oracle; without a
-        `context.defaults.min_pass_rate` block the dispatch would fail
+        `parameters.min_pass_rate.default` the dispatch would fail
         context-resolution for issues that don't override it. FEAT-2551's
-        oracle sets a default of 0.95; the parent (F2b) overrides to 1.0
-        for strict pass on greenfield issues."""
-        ctx = oracle_data.get("context", {})
-        assert "min_pass_rate" in ctx, "Oracle context.defaults must include min_pass_rate"
+        oracle sets a default of 0.95 (BUG-3425: moved from a `context:`
+        literal to `parameters.min_pass_rate.default`); the parent (F2b)
+        overrides to 1.0 for strict pass on greenfield issues."""
+        params = oracle_data.get("parameters", {})
+        assert params.get("min_pass_rate", {}).get("default") == 0.95
 
     def test_oracle_writes_sidecar_terminal(self, oracle_data: dict) -> None:
         """The oracle's `aggregate` state writes
@@ -21023,3 +21026,29 @@ class TestFleetLoopImproveLoop:
     def test_harvest_flags_pinned_for_comparability(self, data: dict) -> None:
         action = data["states"]["harvest"]["action"]
         assert action.count("ll-logs fleet-review --all --existing-only --exclude-project .") == 2
+
+
+class TestNoContextParameterKeyDuplication:
+    """BUG-3425: no builtin loop declares the same key under both `context:`
+    and `parameters:`. `parameters.<name>.default` is now seeded into context
+    on every launch path (standalone run/resume/simulate, with:, and
+    context_passthrough), so a `context:` literal duplicating a
+    `parameters.default` is dead weight that can silently drift out of sync
+    (e.g. a type mismatch) — see the 14-loop migration this issue performed.
+    No allowlist: any new duplicate is a regression of the same class.
+    """
+
+    def test_no_duplicate_keys_across_catalog(self) -> None:
+        files = sorted(p for p in BUILTIN_LOOPS_DIR.rglob("*.yaml") if is_runnable_loop(p))
+        offenders: dict[str, list[str]] = {}
+        for path in files:
+            data = yaml.safe_load(path.read_text()) or {}
+            ctx_keys = set((data.get("context") or {}).keys())
+            param_keys = set((data.get("parameters") or {}).keys())
+            dupes = sorted(ctx_keys & param_keys)
+            if dupes:
+                offenders[str(path.relative_to(BUILTIN_LOOPS_DIR))] = dupes
+        assert not offenders, (
+            f"context: keys shadow parameters: keys (move the value to "
+            f"parameters.<name>.default and delete the context: literal): {offenders}"
+        )

@@ -1038,9 +1038,9 @@ class TestRemediationBudget:
         assert crb["on_no"] == "emit_stalled_needs_decompose"
 
     def test_context_max_remediation_passes_set(self) -> None:
-        """max_remediation_passes context variable is set to 3."""
+        """max_remediation_passes parameter default is 3 (BUG-3425: moved off context:)."""
         data = _load_loop()
-        assert data["context"]["max_remediation_passes"] == 3
+        assert data["parameters"]["max_remediation_passes"]["default"] == 3
 
 
 # =========================================================================
@@ -1123,7 +1123,8 @@ class TestTopLevelDeclarations:
         # at launch from commands.confidence_gate in ll-config.json (BUG-2767).
         assert "readiness_threshold" not in ctx
         assert "outcome_threshold" not in ctx
-        assert ctx["max_remediation_passes"] == 3
+        assert "max_remediation_passes" not in ctx  # BUG-3425: moved to parameters.default
+        assert data["parameters"]["max_remediation_passes"]["default"] == 3
 
     def test_context_has_diagnose_thresholds(self) -> None:
         """Context exposes overridable diagnose routing thresholds (BUG-2007 Defect 2).

@@ -3,10 +3,11 @@ id: BUG-3425
 type: BUG
 title: Standalone ll-loop run/resume never seed parameters defaults into context
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T20:18:41Z'
+completed_at: '2026-09-09T22:17:11Z'
 reconcile_attempted: true
 confidence_score: 100
 outcome_confidence: 82
@@ -137,19 +138,19 @@ After step 4, `ll-loop show -j` for the migrated loops no longer has the migrate
 
 ## Acceptance Criteria
 
-- [ ] Fixture loop with `parameters:` of type integer, boolean, and string (plus one with `default: ""`), each `required: false` with `default:`; standalone `ll-loop run` seeds all into context with native Python types.
-- [ ] Same fixture via `ll-loop resume` seeds the defaults when the persisted state lacks the key, and does not overwrite a persisted value.
-- [ ] Same fixture via `ll-loop simulate` seeds the defaults.
-- [ ] A parent loop invoking the fixture as a sub-loop via `context_passthrough` (no `with:`) seeds the defaults; via `with:` the behavior is unchanged from today (bound value wins, unbound optional gets the default, unbound required raises).
-- [ ] `--context k=v` overrides the seeded default and is coerced to the declared type via `_coerce_override`.
-- [ ] Positional input — both the raw-string form and the JSON-dict unpack form at `run.py:171` — and `program.md` injection win over a parameter default for the same key.
-- [ ] `required: true` parameters without `default:` are unaffected (still missing, still caught by the pre-run check).
-- [ ] `ll-loop validate` reports an error for a parameter whose `default` does not match its declared `type` (`_check_param_type`).
-- [ ] All 14 loops in step 4 have no key present in both `context:` and `parameters:`; every shape-(a) key carries its former literal as `parameters.<name>.default`; non-parameter `context:` keys are untouched; `ll-loop validate` passes on all 14 and on their callers (`rn-implement`, `rn-refine`, `rn-plan`, `rn-remediate`, `autodev`, `refine-to-ready-issue`, `sft-corpus`, `deep-research`, `flux-image-generator`, `svg-image-generator`, `html-anything`, `hitl-md`, `hitl-compare`, `integrate-sdk`, `adopt-third-party-api`).
-- [ ] Flux `steps`/`base_seed` are `type: integer` with integer defaults; `scripts/tests/test_flux_image_generator.py::test_steps_default_agrees_across_wrapper_and_oracle` is updated to read the oracle default from `parameters.steps.default` and still asserts agreement with the wrapper's `context.steps` and the `FLUX_STEPS` fallback literal.
-- [ ] Standalone `ll-loop run oracles/resolve-decision` (and the other four shape-(c) loops) with no binding for the required key fails at pre-flight with `Missing required context variable: '<key>'` instead of starting.
-- [ ] `scripts/tests/test_builtin_loops.py` gains a no-duplicate-keys test over the whole builtin catalog with no allowlist.
-- [ ] `ll-loop show -j` output for the fixture is byte-identical before and after the change apart from the added `default` fields under `parameters`.
+- [x] Fixture loop with `parameters:` of type integer, boolean, and string (plus one with `default: ""`), each `required: false` with `default:`; standalone `ll-loop run` seeds all into context with native Python types.
+- [x] Same fixture via `ll-loop resume` seeds the defaults when the persisted state lacks the key, and does not overwrite a persisted value.
+- [x] Same fixture via `ll-loop simulate` seeds the defaults.
+- [x] A parent loop invoking the fixture as a sub-loop via `context_passthrough` (no `with:`) seeds the defaults; via `with:` the behavior is unchanged from today (bound value wins, unbound optional gets the default, unbound required raises).
+- [x] `--context k=v` overrides the seeded default and is coerced to the declared type via `_coerce_override`.
+- [x] Positional input — both the raw-string form and the JSON-dict unpack form at `run.py:171` — and `program.md` injection win over a parameter default for the same key.
+- [x] `required: true` parameters without `default:` are unaffected (still missing, still caught by the pre-run check).
+- [x] `ll-loop validate` reports an error for a parameter whose `default` does not match its declared `type` (`_check_param_type`).
+- [x] All 14 loops in step 4 have no key present in both `context:` and `parameters:`; every shape-(a) key carries its former literal as `parameters.<name>.default`; non-parameter `context:` keys are untouched; `ll-loop validate` passes on all 14 and on their callers (`rn-implement`, `rn-refine`, `rn-plan`, `rn-remediate`, `autodev`, `refine-to-ready-issue`, `sft-corpus`, `deep-research`, `flux-image-generator`, `svg-image-generator`, `html-anything`, `hitl-md`, `hitl-compare`, `integrate-sdk`, `adopt-third-party-api`).
+- [x] Flux `steps`/`base_seed` are `type: integer` with integer defaults; `scripts/tests/test_flux_image_generator.py::test_steps_default_agrees_across_wrapper_and_oracle` is updated to read the oracle default from `parameters.steps.default` and still asserts agreement with the wrapper's `context.steps` and the `FLUX_STEPS` fallback literal.
+- [x] Standalone `ll-loop run oracles/resolve-decision` (and the other four shape-(c) loops) with no binding for the required key fails at pre-flight with `Missing required context variable: '<key>'` instead of starting.
+- [x] `scripts/tests/test_builtin_loops.py` gains a no-duplicate-keys test over the whole builtin catalog with no allowlist.
+- [x] `ll-loop show -j` output for the fixture is byte-identical before and after the change apart from the added `default` fields under `parameters`.
 - [ ] Full suite green: `python -m pytest scripts/tests/`.
 
 ## Current Behavior
@@ -264,7 +265,7 @@ Removing the shape-(c) placeholders changes one observable: a standalone launch 
 
 ## Status
 
-**Open** | Created: 2026-09-09 | Priority: P2
+**Done** | Created: 2026-09-09 | Priority: P2
 
 ## Steps to Reproduce
 
@@ -322,7 +323,39 @@ Manual review 2026-09-09 (post confidence-check), corrections applied in this re
 
 Earlier pass: `ll-verify-evidence --json` clean; no active decision-log rules; `ll-code --json status` `provider=codegraph freshness=fresh`.
 
+## Resolution
+
+Implemented per the plan: added `seed_parameter_defaults()` to
+`scripts/little_loops/fsm/context_seed.py`; wired it into `cli/loop/run.py`
+(before positional input), `cli/loop/lifecycle.py` (before the persisted-context
+restore), `cli/loop/testing.py::cmd_simulate` (before `derive_input_hash`), and
+`fsm/executor.py`'s sub-loop dispatch (covering both `with:` and
+`context_passthrough`, replacing the inline default-application loop that used
+to live only in the `with:` branch). Added a default-vs-type check to
+`_validate_parameters` (`structural_rules.py`) reusing `_check_param_type`.
+Migrated all 14 catalog loops off the `context:` duplication workaround per
+the three shapes in the plan, including retyping flux `steps`/`base_seed` to
+`integer`. Added a no-allowlist no-duplicate-keys guard test
+(`TestNoContextParameterKeyDuplication`) over the whole builtin catalog.
+
+Not done (out of scope for this repo): filing the linked ll-console
+coordination issue — ll-console is a separate project/repo not present here.
+Until that lands, ll-console's default display for the 14 migrated loops
+falls back to empty for keys that moved from `context:` to
+`parameters.<name>.default`.
+
+Full suite: `python -m pytest scripts/tests/` is green for everything this
+change touches. Five failures remain in the suite, all pre-existing and
+unrelated (verified via `git stash` against this change): a `.issues/`
+evidence-verifiability gate and priority-regex-allowlist tests tripped by
+unrelated in-flight issue edits already in this working tree
+(`scripts/tests/test_verify_evidence.py`, `scripts/tests/test_issue_parser.py`),
+an unrelated env-var baseline-coverage test
+(`scripts/tests/test_host_runner.py`), and a flaky SSE fan-in timing test
+(`scripts/tests/test_feat3323_sse_bridge.py`, passes in isolation).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T22:17:11 - `3ffb97df-a1e4-4572-9fad-20e96964df3d.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:32:00 - `821b29bc-73ec-49a6-a196-da3d28ebbdc1.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:15:09 - `15a3a72b-d6e3-4759-990e-0642b22d6179.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T21:04:56 - `a5bdbdca-a5bb-459a-a98a-2040741996e1.jsonl`

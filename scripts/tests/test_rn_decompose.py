@@ -262,10 +262,10 @@ class TestParameterContract:
         assert params["run_dir"]["required"] is True
 
     def test_parent_depth_default_in_context(self) -> None:
-        """parent_depth default of 0 is provided via context block."""
+        """parent_depth default of 0 is declared on the parameter (BUG-3425)."""
         data = _load_loop()
-        ctx = data.get("context", {})
-        assert ctx.get("parent_depth") == 0
+        assert data["parameters"]["parent_depth"]["default"] == 0
+        assert "parent_depth" not in data.get("context", {})
 
 
 # ============================================================================

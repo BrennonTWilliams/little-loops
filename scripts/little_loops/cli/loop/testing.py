@@ -215,7 +215,10 @@ def cmd_simulate(
     # simulation — the real runner does this in run.py before FSMExecutor is created.
     if "run_dir" not in fsm.context:
         fsm.context["run_dir"] = str(loops_dir / "runs" / f"{loop_name}-simulate") + "/"
-    from little_loops.fsm.context_seed import derive_input_hash
+    from little_loops.fsm.context_seed import derive_input_hash, seed_parameter_defaults
+
+    # Seed parameters.<name>.default for unbound optional parameters (BUG-3425).
+    seed_parameter_defaults(fsm.context, fsm.parameters)
 
     derive_input_hash(fsm.context)
 

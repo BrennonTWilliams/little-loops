@@ -9,8 +9,6 @@ parameters:
   issue_id:
     type: string
     required: true
-context:
-  issue_id: ""
 
 states:
   confidence_check:

@@ -63,12 +63,14 @@ parameters:
   min_pass_rate:
     type: number
     required: false
+    default: 0.95
     description: |
       Minimum pass_rate threshold for run_test's output_numeric evaluator
       (default 0.95).
   health_bound_seconds:
     type: number
     required: false
+    default: 10
     description: curl --max-time budget for service_health probe (default 10).
   build_cmd:
     type: string
@@ -99,10 +101,6 @@ parameters:
     description: |
       URL to probe for service readiness. When null together with no run_cmd,
       service_health short-circuits to SKIP.
-
-context:
-  min_pass_rate: 0.95
-  health_bound_seconds: 10
 
 states:
   resolve_commands:

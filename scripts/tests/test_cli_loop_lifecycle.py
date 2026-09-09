@@ -1256,6 +1256,78 @@ class TestCmdResumeBackground:
 
         assert pid_file.read_text() == "12345", "Parent-written PID should not be overwritten"
 
+    def test_resume_seeds_parameter_default_when_absent(self, tmp_path: Path) -> None:
+        """BUG-3425: cmd_resume seeds parameters.<name>.default when no state file exists."""
+        from little_loops.fsm.schema import ParameterSpec
+
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.context = {}
+        mock_fsm.parameters = {"max_passes": ParameterSpec(type="integer", default=3)}
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert mock_fsm.context["max_passes"] == 3
+
+    def test_resume_persisted_value_wins_over_parameter_default(self, tmp_path: Path) -> None:
+        """BUG-3425: a persisted context value is not overwritten by the parameter default."""
+        from little_loops.fsm.schema import ParameterSpec
+
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.context = {}
+        mock_fsm.parameters = {"max_passes": ParameterSpec(type="integer", default=3)}
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        state = LoopState(
+            loop_name="test-loop",
+            current_state="do_work",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-07-05T10:30:00Z",
+            updated_at="",
+            status="running",
+            context={"max_passes": 99},
+        )
+        (running_dir / "test-loop.state.json").write_text(
+            json.dumps(state.to_dict(include_context=True))
+        )
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert mock_fsm.context["max_passes"] == 99
+
     def test_background_auto_selects_latest_resumable(self, tmp_path: Path) -> None:
         """Background resume auto-selects the most recent resumable instance (BUG-1817)."""
         logger = MagicMock()

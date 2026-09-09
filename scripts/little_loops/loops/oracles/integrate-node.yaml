@@ -43,8 +43,13 @@ parameters:
     required: true
     description: "Shared run directory holding synth_queue.txt, edges.tsv, nodes/"
 
-context:
-  run_dir: ""
+# BUG-3425: run_dir is required with no default, so a standalone launch without
+# --context run_dir=... now fails fast at the run.py pre-flight instead of
+# silently starting with an empty value. Unchanged hazard: run.py auto-injects
+# a fresh run_dir when the key is absent, so this loop launched without
+# --context run_dir would still run against a fresh dir instead of the shared
+# one — always launch it as `ll-loop run oracles/integrate-node --context
+# run_dir=<shared-dir>`.
 
 states:
   pop:

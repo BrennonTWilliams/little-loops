@@ -19,6 +19,7 @@ from little_loops.fsm.context_seed import (
     apply_context_overrides,
     inject_design_context,
     seed_confidence_thresholds,
+    seed_parameter_defaults,
 )
 from little_loops.fsm.loop_paths import load_loop, resolve_loop_path
 from little_loops.fsm.persistence import (
@@ -648,6 +649,11 @@ def cmd_resume(
         loop_path = resolve_loop_path(loop_name, loops_dir)
     except FileNotFoundError:
         loop_path = None
+
+    # Seed parameters.<name>.default for unbound optional parameters (BUG-3425).
+    # Seeded before the persisted-context restore below so a persisted value
+    # (direct assignment) always wins over a default (setdefault).
+    seed_parameter_defaults(fsm.context, fsm.parameters)
 
     # BUG-2485: restore the persisted FSM context as the base so resumed states
     # that reference ${context.input} (or any program.md / prior --context key)

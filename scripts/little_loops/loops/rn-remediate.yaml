@@ -48,6 +48,7 @@ parameters:
   max_remediation_passes:
     type: integer
     required: false
+    default: 3
     description: "Max remediation iterations before escalation to decomposition (default: 3)"
   run_dir:
     type: path
@@ -56,6 +57,7 @@ parameters:
   skip_learning_gate:
     type: string
     required: false
+    default: ""
     description: "Non-empty bypasses the ENH-2319 learning gate in the inner ll-auto --only (parity with ll-auto --skip-learning-gate)"
 
 context:
@@ -63,7 +65,6 @@ context:
   # commands.confidence_gate.{readiness,outcome}_threshold in ll-config.json
   # (defaults 85 / 65). Declaring them here would shadow that config —
   # the parent (rn-implement) passes its own seeded values via with: (BUG-2767).
-  max_remediation_passes: 3
   # BUG-2007 Defect 2: diagnose routing thresholds, overridable so callers can
   # tune routing to match their score targets. Defaults preserve the prior
   # hardcoded literals so existing callers stay backward-compatible.
@@ -75,18 +76,13 @@ context:
   # refined AND wired at least once before implement. Set false to restore the
   # single-dimension short-circuit behavior. Overridable by the parent via with:.
   require_refine_and_wire: true
-  # Learning-gate skip knob: parity with `ll-auto --skip-learning-gate`. When
-  # non-empty, the inner `ll-auto --only` is invoked with --skip-learning-gate so
-  # the ENH-2319 gate is bypassed for this issue. Threaded from the parent
-  # (rn-implement) via with:. Default empty = gate active (config-gated).
-  skip_learning_gate: ""
   # FEAT-2552: min_pass_rate threshold for the code-run-gate oracle's
   # pass_rate evaluator. Strict 1.0 = every test must pass for IMPLEMENTED.
   # Overridable by the parent via with: binding (rn-implement). Mirrors
-  # max_remediation_passes (line 60) as a per-loop default that callers can
-  # tune; the oracle's own default is 0.95, but F2b pins 1.0 here so a
-  # deliberately broken implementation cannot earn IMPLEMENTED (the
-  # dominant robustness hole in the greenfield family).
+  # parameters.max_remediation_passes.default as a per-loop default that
+  # callers can tune; the oracle's own default is 0.95, but F2b pins 1.0
+  # here so a deliberately broken implementation cannot earn IMPLEMENTED
+  # (the dominant robustness hole in the greenfield family).
   min_pass_rate: 1.0
 
 states:

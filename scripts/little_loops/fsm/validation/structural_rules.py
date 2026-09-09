@@ -256,6 +256,19 @@ def _validate_parameters(fsm: FSMLoop) -> list[ValidationError]:
                 )
             )
 
+        # BUG-3425: a default that doesn't match its declared type silently seeds
+        # the wrong-typed value into context on every launch path now that
+        # seed_parameter_defaults() applies it everywhere, not just with: bindings.
+        if param_spec.type in VALID_PARAMETER_TYPES and param_spec.default is not None:
+            type_error = _check_param_type(param_spec.default, param_spec)
+            if type_error:
+                errors.append(
+                    ValidationError(
+                        message=f"Parameter 'default' {type_error}",
+                        path=path,
+                    )
+                )
+
     return errors
 
 

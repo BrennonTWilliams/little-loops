@@ -9866,6 +9866,42 @@ class TestSubLoopWithBindings:
         child_out = executor.captured["run_child"]["out"]["output"].strip()
         assert child_out == "fast"
 
+    def test_context_passthrough_applies_declared_defaults(self, tmp_path: Path) -> None:
+        """BUG-3425: context_passthrough (no with:) also seeds parameter defaults."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_child(
+            loops_dir,
+            "passthrough-default",
+            (
+                "name: passthrough-default\ninitial: step\n"
+                "parameters:\n"
+                "  mode:\n    type: string\n    default: fast\n"
+                "states:\n"
+                "  step:\n    action: 'echo ${context.mode}'\n    capture: out\n    next: done\n"
+                "  done:\n    terminal: true\n"
+            ),
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="passthrough-default",
+                    context_passthrough=True,
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        child_out = executor.captured["run_child"]["out"]["output"].strip()
+        assert child_out == "fast"
+
     def test_with_merges_child_captures_back(self, tmp_path: Path) -> None:
         """Child captures are merged back into parent when with: is used."""
         loops_dir = tmp_path / ".loops"

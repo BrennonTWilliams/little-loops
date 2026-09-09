@@ -1149,6 +1149,8 @@ states:
 
 `with:` and `context_passthrough` are mutually exclusive on the same state; missing `required: true` parameters and unknown `with:` keys are validation errors. Prefer `with:` for reusable children — a rename in the parent can't silently break the child.
 
+An optional parameter's `default:` is seeded into context on every launch path (standalone `ll-loop run`/`resume`/`simulate`, `with:`, and `context_passthrough`), not just `with:` bindings (BUG-3425). Precedence: `--context` > `program.md` > positional input > persisted resume context / `with:` / passthrough > the loop's own `context:` literal > `parameters.<name>.default`. A loop no longer needs a matching `context:` literal to carry the default, and a `required: true` parameter needs no `context:` placeholder — launching without it fails fast at pre-flight (standalone) or at the `with:` binding check (sub-loop).
+
 **`loop:` references are validated at definition time.** `ll-loop validate` (and `load_and_validate`) checks that every static `loop:` field resolves to an actual file on disk and fails the run with `severity=ERROR` if it does not (BUG-2305; severity was promoted from WARNING to ERROR by BUG-2400). This catches typos and stale sub-loop names before a run starts rather than at runtime. Dynamically interpolated names (`loop: "${context.child_name}"`) are skipped — they can only be checked at runtime. If you see an error like `Loop reference 'fix-quality-and-tests' does not resolve to any file.`, either correct the loop name or ensure the target YAML exists in your loops directory.
 
 When `--show-diagrams` is active, parent and child FSM diagrams render together, with the parent state highlighted throughout child execution — at any nesting depth.

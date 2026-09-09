@@ -41,14 +41,12 @@ parameters:
   parent_depth:
     type: integer
     required: false
+    default: 0
     description: "Current recursion depth (default: 0)"
   run_dir:
     type: path
     required: true
     description: "Parent loop's run directory for queue.txt coupling"
-
-context:
-  parent_depth: 0
 
 states:
   # =========================================================================

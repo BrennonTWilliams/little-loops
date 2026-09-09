@@ -1086,14 +1086,6 @@ class FSMExecutor:
             from little_loops.fsm.interpolation import interpolate_dict
 
             resolved = interpolate_dict(state.with_, ctx)
-            # Apply declared defaults for unbound optional parameters
-            for param_name, param_spec in child_fsm.parameters.items():
-                if (
-                    param_name not in resolved
-                    and not param_spec.required
-                    and param_spec.default is not None
-                ):
-                    resolved[param_name] = param_spec.default
             # Runtime check: required parameters must be present after interpolation
             for param_name, param_spec in child_fsm.parameters.items():
                 if param_spec.required and param_name not in resolved:
@@ -1121,12 +1113,22 @@ class FSMExecutor:
             }
             child_fsm.context = {**self.fsm.context, **captured_as_context, **child_fsm.context}
 
+        # BUG-3425: apply declared parameters.<name>.default for both the with:
+        # and context_passthrough branches. setdefault means a with: binding, a
+        # passthrough-inherited value, or the child's own context: literal (all
+        # merged above) wins over the default.
+        from little_loops.fsm.context_seed import (
+            derive_input_hash,
+            seed_confidence_thresholds,
+            seed_parameter_defaults,
+        )
+
+        seed_parameter_defaults(child_fsm.context, child_fsm.parameters)
+
         # BUG-2767: a child loop launched here never passes through cli/loop/run.py,
         # so it must seed its own confidence-gate thresholds from config. Anything
         # already bound (with:, passthrough, or the child's own context: literals)
         # wins, matching the CLI path's precedence.
-        from little_loops.fsm.context_seed import derive_input_hash, seed_confidence_thresholds
-
         seed_confidence_thresholds(child_fsm.context)
 
         # BUG-2832: a child loop launched here never passes through cli/loop/run.py

@@ -24,9 +24,6 @@ parameters:
     type: string
     required: false
     default: "false"
-context:
-  issue_id: ""
-  skip_probe: "false"
 import:
   - lib/common.yaml
 

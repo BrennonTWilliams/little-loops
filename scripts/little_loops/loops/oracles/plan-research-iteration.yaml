@@ -24,10 +24,6 @@ parameters:
       If "true", overwrite the original source file with the refined plan and
       update the rubric task: field (rn-refine mode). Leave unset for rn-plan.
 
-context:
-  run_dir: ""
-  overwrite_source: "false"
-
 flow:
   - classify_research
   - "route_files?research_files:route_web"
