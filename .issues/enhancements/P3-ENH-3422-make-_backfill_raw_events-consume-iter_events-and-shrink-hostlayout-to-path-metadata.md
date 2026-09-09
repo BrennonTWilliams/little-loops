@@ -170,5 +170,6 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 - qwen idempotency landmine: `writers.py::_iter_events` must stop re-normalizing pre-normalized qwen rows in the same change as the write-path swap, or rows silently vanish on cursor replay — easy to miss since it's a separate read-path file from `lifecycle.py`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T20:36:46 - `33e77cdf-52d2-4350-bc12-c11c654aafbd.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T20:34:13 - `2fd45f5b-ae88-495d-9824-d79e9d1a2e5f.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:26:42 - `707b6c2b-2b94-48e8-86f8-1ee81a021633.jsonl`
