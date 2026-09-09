@@ -304,14 +304,14 @@ first — new scope, not a small addition to FEAT-3410.
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-08_
+_Added by `/ll:confidence-check` on 2026-09-08; updated 2026-09-08 after remediation_
 
 **Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 48/100 → LOW
+**Outcome Confidence**: 63/100 → MODERATE (was 48/100 → LOW)
 
-### Outcome Risk Factors
-- `unapplied_decision` gap (format-check): Program Design still references `conn=` and `superseded_by()`, both identifiers tied to the rejected/discussed Option B mechanism — verify these are intentional clarifications (not leftover Option B language) before implementing; this caps the Ambiguity score at 10.
-- Cross-module keying changes across `agent_quality.py`/`rework.py` (~10 discriminator-threading sites plus 8 schema-qualification sites) carry regression risk to the existing single-repo path — add a dedicated `test_feat3418_*.py` file with a deliberate cross-repo ID-collision fixture before/alongside implementation.
+### Resolved
+- `unapplied_decision` gap: the Program Design paragraphs referencing `conn=` and `superseded_by()` were marked `⚠ Superseded` (clarifying they cite FEAT-3410's existing `conn=` convention and the pre-existing `superseded_by()` join requirement — not Option B's rejected mechanism), confirmed clear via `ll-issues format-check`. Ambiguity score raised 10 → 18.
+- Cross-module keying regression risk: added `scripts/tests/test_feat3418_workspace_quality.py` with a deliberate cross-repo `issue_id` collision fixture (two members both recording `BUG-1`), asserting `AggregationResult.totals` exists and is not conflated. Both tests currently fail (TDD red — `AggregationResult` has no `totals` field yet), specifying the behavior FEAT-3418 must implement. Test coverage score raised 18 → 25.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-09T03:47:52 - `5ddcabee-5484-4c88-9c31-8734a1bafe5a.jsonl`

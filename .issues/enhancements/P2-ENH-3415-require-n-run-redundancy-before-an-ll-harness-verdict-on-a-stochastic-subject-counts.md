@@ -10,7 +10,7 @@ labels:
 - harness
 - evaluation
 - statistics
-decision_needed: true
+decision_needed: false
 confidence_score: 95
 outcome_confidence: 48
 score_complexity: 10
@@ -240,6 +240,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-09T03:58:57 - `9dcdf7fc-6452-4110-90f8-74e389f6f78f.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:48:44 - `5fcac4b3-76bf-4d53-b918-3bca0bf5f931.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:42:56 - `b83f9a4d-c528-406f-9176-2cc312651f52.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:40:31 - `dc741478-49cb-43bb-b19d-71e11a3fc887.jsonl`
