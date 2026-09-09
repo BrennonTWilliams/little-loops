@@ -443,12 +443,33 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - Change Surface (0/25, Pattern A): 11+ callers of `get_project_folder`/`get_sessions_folder` alone, plus external consumers keyed on exact current behavior/wording (`.loops/ll-logs-telemetry-digest.yaml`'s stderr string grep, `/ll:loop-suggester --from-sequences`). Not a uniform mechanical sweep — some sites need per-site judgment (`ctx_stats.py`'s Codex usage-reader decision, `messages.py`'s command/message dedup, `session_start.py`'s host-fallback injection) alongside the many simple call-site swaps.
 - `unapplied_decision` gap also caps Ambiguity at 10/25 (see Concerns above).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-09_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 33/100 → VERY LOW
+
+No hard overrides fire this pass: `check-design` passes (Program Design gate clean), no `blocked_by` dependencies, and `ll-history-context` shows both `codex` (proven, 4/1/0) and `codex-rollout` (proven, 7/0/0) learning-test records — the fixture-capture and production-module steps of Implementation Step 1/2 (`session_store/sessions.py`, `scripts/tests/fixtures/codex/`) are still not started, but that is expected pre-implementation state, not a gate failure. Re-run confirms the prior pass's scores unchanged — no new signal since the last `/ll:reconcile-issue` (05:02:53).
+
+### Concerns
+- Architecture Compliance (15/20): Option B still leaves two parallel per-host dispatch mechanisms (`HostLayout.normalize`/`normalize_file` for qwen/gemini/omp vs. the new session-watcher interface) with no follow-up issue filed yet (checked `.issues/` — none references this unification).
+- No Duplicate Implementations (10/20): partial precedent exists (`get_project_folder`/`get_sessions_folder`'s Codex path probe, `HostLayout`) but no `detect_sessions`/`iter_events` lifecycle exists in production code yet — only the spike (`scripts/tests/spike/session_discovery_lifecycle/`), which is explicitly scoped for promotion in a separate PR and hasn't landed.
+- `unapplied_decision` gap (caps Criterion C at 10/25): `format-check` still flags `extract_user_messages` and `_compute_cache_rate_from_jsonl` as present in Program Design, Implementation Steps, and Files to Modify after Option B was selected. Still likely benign — these are the legitimate Option-B call-path consumers, not rejected-option residue — but mechanically unresolved across two `/ll:reconcile-issue` passes now.
+
+### Outcome Risk Factors
+- Complexity (5/25): Breadth 0/12 (16+ change sites unchanged). Depth 5/13 (Moderate) — the spike proved the sqlite-query + date-dir-fallback + per-host-dispatch algorithm correct in isolation; remaining depth is cross-module production wiring, not architectural rewiring.
+- Test Coverage (18/25): unchanged — spike tests cover the algorithm in isolation only; the production module and its wiring into the three CLIs have no tests yet since they aren't built.
+- Change Surface (0/25, Pattern A): 11+ callers of `get_project_folder`/`get_sessions_folder`, plus external consumers keyed on exact current wording (`.loops/ll-logs-telemetry-digest.yaml`'s stderr grep, `/ll:loop-suggester --from-sequences`). Not a uniform mechanical sweep — several sites need per-site judgment.
+- `unapplied_decision` gap also caps Ambiguity at 10/25 (see Concerns above).
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T05:07:56 - `3b63284d-d89c-432c-a42d-046e5a5d958e.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T05:02:53 - `8b35aec6-fb50-40b3-b5f0-c9df0c9253f6.jsonl`
 - `/ll:confidence-check` - 2026-09-09T04:59:39 - `cc274703-f2ea-4ddf-a916-516d38f11017.jsonl`
 - `/ll:spike` - 2026-09-09T04:55:35 - `f28c7c94-a5ec-4bd6-8ffd-7e716bc73371.jsonl`
