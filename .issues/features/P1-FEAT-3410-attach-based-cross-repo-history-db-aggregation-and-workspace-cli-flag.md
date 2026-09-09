@@ -18,7 +18,7 @@ unproven_mechanism: false
 verify_verdict: VALID
 size: Large
 confidence_score: 100
-outcome_confidence: 64
+outcome_confidence: 89
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
@@ -946,6 +946,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - Criterion A (Complexity) is the next-lowest contributor at 14/25: ~13 distinct files touched (new module, `agent_quality.py`/`rework.py` `conn=` additions, `cli/history.py` wiring, `issue_history/__init__.py` exports, 4 docs files, 3-4 test files) puts Breadth in the 6-15-site band (5/12); per-site depth is mostly Local/Moderate (9/13) since the new aggregator composes several existing calls per member without shared mutable state. Not a blocker, but expect the implementation to touch more files than a typical Medium-effort issue despite Effort being labeled "Medium" in Impact.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T02:24:51 - `d79062d3-b1b9-4961-8159-a13a899d5467.jsonl`
 - `/ll:verify-issues` - 2026-09-09T02:11:38 - `eaffa681-fbae-45e2-b31c-438286e7946e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T01:46:02 - `876d7307-25cb-43ad-ac4c-5e31687d40fd.jsonl`
 - `/ll:format-issue` - 2026-09-08T18:31:14 - `d235f946-7b83-4228-9eed-a9bd5517b547.jsonl`
