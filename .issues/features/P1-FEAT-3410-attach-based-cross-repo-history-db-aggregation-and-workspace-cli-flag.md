@@ -3,8 +3,9 @@ id: FEAT-3410
 title: ATTACH-based cross-repo history.db aggregation and --workspace CLI flag
 type: FEAT
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-08'
+completed_at: '2026-09-09T03:03:20Z'
 labels:
 - path-a
 - history-db
@@ -133,6 +134,12 @@ for workspaces with more than 10 members. Per-member connections have no such
 limit. **Decision:** ship `per_repo` + `skipped` here; file a follow-up for
 union totals that owns the discriminator, the >10-member rule, and the
 `ATTACH` mechanics proven by the spike in Verification Notes.
+
+**Follow-up filed:** FEAT-3418 (`blocked_by: [FEAT-3410]`) owns
+`AggregationResult.totals`, the multi-ATTACH mechanics, the
+`issue_num`/`issue_id` repo discriminator, the >10-member fail-loud rule,
+and formalizing the `sqlite3` Learning Test Registry entry for the spike
+above.
 
 ## Constraints
 
@@ -929,6 +936,93 @@ _These touchpoints were identified by wiring analysis and must be included in th
   dependency is already `done`/satisfied and both issues cross-reference
   each other extensively as parent/sibling in prose.
 
+## Resolution
+
+Filed the deferred-totals follow-up first (Step 13): FEAT-3418
+(`blocked_by: [FEAT-3410]`), linked from Design Notes above.
+
+Implemented following the Program Design exactly (no deviations):
+
+- Added `conn: sqlite3.Connection | None = None` to `analyze_agent_quality()`
+  and `analyze_rework()` (`issue_history/agent_quality.py`,
+  `issue_history/rework.py`). When given, the function uses it directly
+  (no open/close, `db` ignored) and `analyze_agent_quality` forwards it to
+  `analyze_rework` unchanged; all 31 existing path-based call sites are
+  untouched.
+- New module `scripts/little_loops/issue_history/workspace_quality.py`:
+  `AggregationResult(per_repo, skipped)` (no `totals` field) and
+  `aggregate_history_dbs()`. Per member: `db_path.exists()` guard -> raw
+  `file:...?mode=ro` + `PRAGMA query_only = ON` open (modeled on
+  `evolution.py::_open_db()`, never `_connect_readonly()`) ->
+  `read_schema_version(conn)` vs `str(SCHEMA_VERSION)` gate (one
+  `sqlite3.Error` catch spanning both the open and the version read) ->
+  `find_issues(BRConfig(member.repo_path), status_filter=all_statuses)` ->
+  `analyze_agent_quality(issues, conn=conn, ...)` -> close in `finally`. Any
+  gate failure appends `(label, reason)` to `skipped` with one of the four
+  Decision-Rules reason strings and continues to the next member; nothing
+  raises.
+- Extended all four `format_agent_quality_*` formatters to also accept an
+  `AggregationResult`: `_text`/`_markdown` gained a workspace overload
+  (dispatched via `hasattr(analysis, "per_repo")` rather than `isinstance`,
+  to avoid a runtime import cycle with `workspace_quality`, which imports
+  `agent_quality`) rendering one section per member plus a "Skipped"
+  section; `_json`/`_yaml` needed no change since both types already share
+  a `to_dict()` shape.
+- Added `--workspace [PATH]` to `cli/history.py`'s `quality_parser`
+  (`nargs="?"`, `default=None`, `const=""`, matching the Decision Rules
+  shape exactly) and branched after the existing kwarg defaults: flag
+  absent -> unchanged single-repo path; bare/`--workspace PATH` ->
+  `discover_workspace_members(...)`, surfacing a declared-but-missing
+  manifest's `FileNotFoundError` as a stderr message + exit 1;
+  `members == []` -> the existing single-repo path (byte-identical,
+  no-manifest fallback); otherwise `aggregate_history_dbs(...)` ->
+  the same formatter dispatch.
+
+New test module `scripts/tests/test_feat3410_workspace_quality.py` (16
+tests) covers: two-healthy-members aggregation, all six of the Decision
+Rules' schema-skew cases (missing file, missing `meta` table, missing
+`schema_version` row, one-behind, one-ahead, non-SQLite file) each with a
+source-untouched sha256 assertion and the matching reason string, a healthy
+member still analyzed alongside a skipped sibling, a source-inspection test
+(asserting `ensure_db(`/`_connect_readonly(`/`immutable=1` never appear in
+the module's code), and all four `AggregationResult` formatter overloads.
+Added 5 `--workspace` CLI-wiring tests to
+`test_cli_history.py::TestHistoryQualityWorkspaceFlag`: two-member manifest
+shows both labels, bare flag with no manifest is byte-identical to the
+no-flag run, a missing declared manifest exits non-zero with the path on
+stderr, and flag-absent ignores a discoverable manifest (opt-in semantics).
+Added the `--workspace`/FEAT-3410 entry to
+`test_wiring_cli_registry.py::DOC_STRINGS_PRESENT`.
+
+Documented in `docs/reference/CLI.md` (flag row + a new "Cross-repo
+workspace aggregation" subsection under `ll-history quality`),
+`docs/guides/HISTORY_SESSION_GUIDE.md`, and `docs/reference/API.md`
+(signature rows for both `conn=` additions and `aggregate_history_dbs`/the
+`AggregationResult`-accepting formatters).
+
+**Test-builder note (minor, informational):** rather than promoting one of
+the two existing `_build_history_db(path)` factories
+(`test_feat3304_artifact_dashboard.py`/`test_feat3323_sse_bridge.py`) to
+`conftest.py` per Implementation Step 6's wording, the new test module
+builds its own minimal fixtures. The two existing factories differ in
+shape (columns, hardcoded vs. parametrized `schema_version`) and are used
+by unrelated tests outside this issue's scope; unifying them was judged
+higher-risk than the DRY benefit for a feature branch that doesn't touch
+either file otherwise. A third `_build_history_db`-shaped copy was not
+added — this issue's fixtures build only what its own tests need (a bare
+`meta` table, or a real write-API-created DB via `record_issue_event`).
+
+`python -m pytest scripts/tests/` run in full: 4 pre-existing failures
+(`test_host_runner.py::TestAC8BaselineCoverage`,
+`test_issue_parser.py::TestPriorityRegexCompletenessAllowlist` x2,
+`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`)
+confirmed unrelated by reproducing them against `git stash` of every file
+this issue touched — none reference FEAT-3410/FEAT-3418 or any file this
+issue modified. All other tests pass (22756 passed, 12 skipped). `ruff
+check`/`ruff format --diff`/`mypy` clean on every file this issue touched;
+the one repo-wide `ruff check` finding (`fsm/validation/__init__.py`
+import-sort) is pre-existing and untouched by this branch.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
@@ -946,6 +1040,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - Criterion A (Complexity) is the next-lowest contributor at 14/25: ~13 distinct files touched (new module, `agent_quality.py`/`rework.py` `conn=` additions, `cli/history.py` wiring, `issue_history/__init__.py` exports, 4 docs files, 3-4 test files) puts Breadth in the 6-15-site band (5/12); per-site depth is mostly Local/Moderate (9/13) since the new aggregator composes several existing calls per member without shared mutable state. Not a blocker, but expect the implementation to touch more files than a typical Medium-effort issue despite Effort being labeled "Medium" in Impact.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T03:02:55 - `b326158e-3610-46e0-8daf-a6fb008cff1f.jsonl`
 - `/ll:confidence-check` - 2026-09-09T02:24:51 - `d79062d3-b1b9-4961-8159-a13a899d5467.jsonl`
 - `/ll:verify-issues` - 2026-09-09T02:11:38 - `eaffa681-fbae-45e2-b31c-438286e7946e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T01:46:02 - `876d7307-25cb-43ad-ac4c-5e31687d40fd.jsonl`

@@ -458,6 +458,12 @@ Both answer "are things getting better or worse," not "what happened" — see
 `docs/reference/CLI.md`'s `ll-history rework` / `ll-history quality` sections for the full flag
 tables.
 
+`ll-history quality --workspace` (FEAT-3410) runs the same per-window analysis once per member
+of a declared `ll-workspace.yaml` manifest, read-only, producing a per-repo breakdown plus a
+skipped-with-reason list for any member whose `history.db` is missing or schema-skewed — see
+`docs/reference/CLI.md`'s "Cross-repo workspace aggregation" subsection for the full behavior.
+Workspace-wide totals (one number merged across all members) are not yet supported.
+
 ## Quality Metric Definitions
 
 `ll-history rework` (FEAT-2867) and `ll-history quality` (FEAT-3183) share one

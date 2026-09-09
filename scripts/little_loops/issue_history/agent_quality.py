@@ -38,7 +38,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from little_loops.history_reader import _connect_readonly
 from little_loops.issue_history._utils import MetricDefinition, classify_verdict, month_key
@@ -61,6 +61,7 @@ from little_loops.issue_history.rework import (
 from little_loops.session_store import DEFAULT_DB_PATH
 
 if TYPE_CHECKING:
+    from little_loops.issue_history.workspace_quality import AggregationResult
     from little_loops.issue_parser import IssueInfo
 
 logger = logging.getLogger(__name__)
@@ -472,6 +473,7 @@ def analyze_agent_quality(
     issues: list[IssueInfo],
     *,
     db: Path | str = DEFAULT_DB_PATH,
+    conn: sqlite3.Connection | None = None,
     min_sample: int = MIN_SAMPLE_SIZE,
     sensitivity: float = DEFAULT_SENSITIVITY,
     baseline_windows: int = DEFAULT_BASELINE_WINDOWS,
@@ -483,7 +485,13 @@ def analyze_agent_quality(
         issues: All on-disk issues (any status) — forwarded to
             :func:`analyze_rework` to resolve `supersedes:` edges for the
             fix-rate signal.
-        db: Path to ``.ll/history.db``.
+        db: Path to ``.ll/history.db``. Ignored when *conn* is given.
+        conn: An already-open connection to use in place of opening *db*.
+            When given, this function neither opens nor closes it, and
+            forwards it to :func:`analyze_rework` unchanged — the caller
+            owns the connection's lifecycle (FEAT-3410's per-member
+            aggregation, which opens each workspace member's ``history.db``
+            read-only itself).
         min_sample: Minimum closed issues (or loop runs, for retry inflation)
             per window before a rate is reported.
         sensitivity: Relative-move threshold (worse direction) a window must
@@ -498,17 +506,18 @@ def analyze_agent_quality(
     """
     definitions = _definitions(min_sample)
     empty = QualityAnalysis(min_sample_size=min_sample, definitions=definitions)
-    db_path = Path(db)
-    conn = _connect_readonly(db_path)
+    owns_conn = conn is None
     if conn is None:
-        return empty
+        conn = _connect_readonly(Path(db))
+        if conn is None:
+            return empty
 
     try:
         # Retry inflation buckets by (month, loop_name), not orchestrator (see module
         # docstring) -- it must not depend on any closed-issue/orchestrator data below.
         retry_windows = _compute_retry_windows(conn, min_sample)
 
-        rework = analyze_rework(issues, db=db_path, min_sample=min_sample)
+        rework = analyze_rework(issues, conn=conn, min_sample=min_sample)
         if not rework.windows:
             empty_analysis = QualityAnalysis(
                 retry_windows=retry_windows,
@@ -594,7 +603,8 @@ def analyze_agent_quality(
         )
         return result
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def _format_metric_line(label: str, unit_suffix: str, metric: QualityMetric) -> str:
@@ -623,12 +633,50 @@ _METRIC_LABELS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def format_agent_quality_text(analysis: QualityAnalysis) -> str:
-    """Format agent-quality analysis as a plain-text report."""
+def format_agent_quality_text(analysis: QualityAnalysis | AggregationResult) -> str:
+    """Format agent-quality analysis as a plain-text report.
+
+    *analysis* may be a single-repo `QualityAnalysis` or a workspace-wide
+    `AggregationResult` (FEAT-3410) — the latter renders one section per
+    workspace member plus a "Skipped" section. Duck-typed on `per_repo`
+    (rather than `isinstance`) to avoid a runtime import cycle with
+    `workspace_quality`, which imports this module.
+    """
+    if hasattr(analysis, "per_repo"):
+        return _format_agent_quality_text_workspace(cast("AggregationResult", analysis))
     lines: list[str] = ["Agent Quality Report", "=" * 21, ""]
+    lines.extend(_quality_text_body(analysis))
+    return "\n".join(lines)
+
+
+def _format_agent_quality_text_workspace(result: AggregationResult) -> str:
+    lines: list[str] = ["Agent Quality Report (Workspace)", "=" * 33, ""]
+    if not result.per_repo and not result.skipped:
+        lines.append("No workspace members found.")
+        return "\n".join(lines)
+
+    for label, analysis in result.per_repo.items():
+        lines.append(label)
+        lines.append("-" * len(label))
+        lines.extend(_quality_text_body(analysis))
+        lines.append("")
+
+    lines.append("Skipped")
+    lines.append("-" * 7)
+    if result.skipped:
+        for label, reason in result.skipped:
+            lines.append(f"  {label}: {reason}")
+    else:
+        lines.append("  none")
+    return "\n".join(lines)
+
+
+def _quality_text_body(analysis: QualityAnalysis) -> list[str]:
+    """Shared window/retry/regression/notes rendering for the text formatter."""
+    lines: list[str] = []
     if not analysis.windows and not analysis.retry_windows:
         lines.append("No closed-issue history found.")
-        return "\n".join(lines)
+        return lines
 
     for w in analysis.windows:
         lines.append(f"{w.period}  [{w.orchestrator}]  closed={w.closed_count}")
@@ -680,15 +728,51 @@ def format_agent_quality_text(analysis: QualityAnalysis) -> str:
 
     for note in analysis.notes:
         lines.append(f"Note: {note}")
+    return lines
+
+
+def format_agent_quality_markdown(analysis: QualityAnalysis | AggregationResult) -> str:
+    """Format agent-quality analysis as a Markdown report.
+
+    See `format_agent_quality_text` for the `AggregationResult` (FEAT-3410)
+    dispatch rationale.
+    """
+    if hasattr(analysis, "per_repo"):
+        return _format_agent_quality_markdown_workspace(cast("AggregationResult", analysis))
+    lines: list[str] = ["# Agent Quality Report", ""]
+    lines.extend(_quality_markdown_body(analysis))
     return "\n".join(lines)
 
 
-def format_agent_quality_markdown(analysis: QualityAnalysis) -> str:
-    """Format agent-quality analysis as a Markdown report."""
-    lines: list[str] = ["# Agent Quality Report", ""]
+def _format_agent_quality_markdown_workspace(result: AggregationResult) -> str:
+    lines: list[str] = ["# Agent Quality Report (Workspace)", ""]
+    if not result.per_repo and not result.skipped:
+        lines.append("No workspace members found.")
+        return "\n".join(lines)
+
+    for label, analysis in result.per_repo.items():
+        lines.append(f"## {label}")
+        lines.append("")
+        lines.extend(_quality_markdown_body(analysis))
+
+    lines.append("## Skipped")
+    lines.append("")
+    if result.skipped:
+        lines.append("| Repo | Reason |")
+        lines.append("|---|---|")
+        for label, reason in result.skipped:
+            lines.append(f"| {label} | {reason} |")
+    else:
+        lines.append("None.")
+    return "\n".join(lines)
+
+
+def _quality_markdown_body(analysis: QualityAnalysis) -> list[str]:
+    """Shared window/retry/regression/notes rendering for the markdown formatter."""
+    lines: list[str] = []
     if not analysis.windows and not analysis.retry_windows:
         lines.append("No closed-issue history found.")
-        return "\n".join(lines)
+        return lines
 
     if analysis.windows:
         lines.append(
@@ -765,15 +849,19 @@ def format_agent_quality_markdown(analysis: QualityAnalysis) -> str:
 
     for note in analysis.notes:
         lines.append(f"> {note}")
-    return "\n".join(lines)
+    return lines
 
 
-def format_agent_quality_json(analysis: QualityAnalysis) -> str:
-    """Format agent-quality analysis as JSON."""
+def format_agent_quality_json(analysis: QualityAnalysis | AggregationResult) -> str:
+    """Format agent-quality analysis as JSON.
+
+    `AggregationResult.to_dict()` (FEAT-3410) has the same duck-typed
+    `to_dict()` shape as `QualityAnalysis`, so no dispatch is needed here.
+    """
     return json.dumps(analysis.to_dict(), indent=2)
 
 
-def format_agent_quality_yaml(analysis: QualityAnalysis) -> str:
+def format_agent_quality_yaml(analysis: QualityAnalysis | AggregationResult) -> str:
     """Format agent-quality analysis as YAML (falls back to JSON if yaml unavailable)."""
     try:
         import yaml

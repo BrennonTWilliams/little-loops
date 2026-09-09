@@ -316,6 +316,104 @@ class TestHistoryQualitySubcommand:
         assert exc_info.value.code != 0
 
 
+class TestHistoryQualityWorkspaceFlag:
+    """`--workspace` (FEAT-3410): manifest-driven cross-repo aggregation."""
+
+    @staticmethod
+    def _member_db(repo_dir: Path, *, schema_version: str) -> None:
+        import sqlite3
+
+        (repo_dir / ".issues").mkdir(parents=True, exist_ok=True)
+        ll_dir = repo_dir / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(ll_dir / "history.db")
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES ('schema_version', ?)", (schema_version,)
+        )
+        conn.commit()
+        conn.close()
+
+    def test_workspace_flag_two_member_manifest_shows_both_labels(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store.schema import SCHEMA_VERSION
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        self._member_db(tmp_path / "member_a", schema_version=str(SCHEMA_VERSION))
+        self._member_db(tmp_path / "member_b", schema_version=str(SCHEMA_VERSION))
+        (tmp_path / "ll-workspace.yaml").write_text(
+            "members:\n"
+            "  - repo: member_a\n"
+            "    role: primary\n"
+            "  - repo: member_b\n"
+            "    role: sibling\n"
+        )
+
+        with patch.object(sys, "argv", ["ll-history", "quality", "--workspace"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "member_a (primary)" in out
+        assert "member_b (sibling)" in out
+
+    def test_workspace_bare_flag_no_manifest_matches_no_flag_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+
+        with patch.object(sys, "argv", ["ll-history", "quality"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                assert main_history() == 0
+        no_flag_output = capsys.readouterr().out
+
+        with patch.object(sys, "argv", ["ll-history", "quality", "--workspace"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                assert main_history() == 0
+        bare_flag_output = capsys.readouterr().out
+
+        assert bare_flag_output == no_flag_output
+
+    def test_workspace_missing_declared_manifest_exits_nonzero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        missing = tmp_path / "does-not-exist.yaml"
+
+        with patch.object(sys, "argv", ["ll-history", "quality", "--workspace", str(missing)]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result != 0
+        assert str(missing) in capsys.readouterr().err
+
+    def test_workspace_flag_absent_ignores_discoverable_manifest(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store.schema import SCHEMA_VERSION
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        self._member_db(tmp_path / "member_a", schema_version=str(SCHEMA_VERSION))
+        (tmp_path / "ll-workspace.yaml").write_text(
+            "members:\n  - repo: member_a\n    role: primary\n"
+        )
+
+        with patch.object(sys, "argv", ["ll-history", "quality"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "member_a (primary)" not in out
+        assert "No closed-issue history found" in out
+
+
 # ---------------------------------------------------------------------------
 # sessions subcommand — json output
 # ---------------------------------------------------------------------------

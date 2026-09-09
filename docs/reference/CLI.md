@@ -3216,6 +3216,7 @@ against `.ll/history.db`; no network access, no LLM calls.
 | `--sensitivity F` | | Relative-move threshold (worse direction) a window must exceed its baseline by to be flagged as a regression (default: 0.30); rejects negative values |
 | `--baseline-windows N` | | Number of preceding eligible windows averaged into each series' baseline (default: 3); rejects values below 1 |
 | `--all-windows` | | Test every eligible window of each series for regression, not just the latest (default: latest only) |
+| `--workspace [PATH]` | | Aggregate across a declared workspace (FEAT-3410) instead of the single invoking repo — see "Cross-repo workspace aggregation" below |
 
 Metric definitions, per window:
 
@@ -3273,7 +3274,36 @@ ll-history quality --format json          # JSON output, includes metric definit
 ll-history quality --min-sample 3         # Lower the sample-size gate
 ll-history quality --sensitivity 0.2      # More sensitive regression detection
 ll-history quality --all-windows          # Test every window, not just the latest
+ll-history quality --workspace            # Aggregate every member of ll-workspace.yaml
 ```
+
+**Cross-repo workspace aggregation (`--workspace`, FEAT-3410):** given an
+`ll-workspace.yaml` manifest naming member repos (FEAT-3399/FEAT-3409), one
+invocation opens every member's `history.db` **read-only** and runs the same
+per-window analysis above once per member, producing a per-repo breakdown
+(labeled `<repo> (<role>)`) plus a `skipped` list for members whose database
+is missing or schema-skewed. Source databases are never written, migrated,
+or locked for writes — a member is skipped and reported, never silently
+analyzed across a schema mismatch:
+
+- Bare `--workspace` discovers `ll-workspace.yaml` from the invoking repo
+  outward (or via the `history.workspace_manifest_path` config key);
+  `--workspace PATH` names an explicit manifest.
+- `--workspace` absent, or present with no discoverable manifest, produces
+  today's single-repo output byte-for-byte — this flag is strictly opt-in,
+  even when a manifest is discoverable.
+- `--workspace <path>` naming a manifest that does not exist exits non-zero
+  with the path on stderr, rather than silently falling back.
+- A member is skipped (never analyzed) when its `history.db` is missing, its
+  `schema_version` is behind or ahead of the installed version, its `meta`
+  table/row is absent, or the file is unreadable/corrupt — each with its own
+  reason string in the `skipped` output.
+- Workspace-wide *totals* (one merged `QualityAnalysis` across all members)
+  are out of scope for this flag — each member's own `per_repo` entry is a
+  full, independent report; there is no combined-across-repos number yet
+  (tracked separately).
+- `--min-sample`/`--sensitivity`/`--baseline-windows`/`--all-windows` all
+  forward unchanged to every member's analysis.
 
 #### `ll-history audit-issue-collisions`
 

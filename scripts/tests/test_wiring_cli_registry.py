@@ -159,6 +159,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/CLI.md", "ll-issues create", "FEAT-2947"),
     ("docs/reference/CLI.md", "ll-issues scaffold-epic", "FEAT-2947"),
     ("docs/reference/CLI.md", "See [WORKTREES.md](WORKTREES.md)", "ENH-3115"),
+    ("docs/reference/CLI.md", "--workspace", "FEAT-3410"),
 ]
 
 

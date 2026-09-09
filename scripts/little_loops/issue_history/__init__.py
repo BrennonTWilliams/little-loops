@@ -46,11 +46,16 @@ Public exports:
     analyze_agent_effectiveness: Analyze agent effectiveness
     analyze_complexity_proxy: Analyze complexity proxy
     detect_cross_cutting_smells: Detect cross-cutting concerns
-    analyze_rework: Reopen/follow-up/touch-back/revert rates (FEAT-2867)
-    analyze_agent_quality: Fix-rate/correction/cost/tokens/retry-inflation trends (FEAT-3183)
+    analyze_rework: Reopen/follow-up/touch-back/revert rates (FEAT-2867); accepts
+        an optional `conn=` to reuse an already-open connection (FEAT-3410)
+    analyze_agent_quality: Fix-rate/correction/cost/tokens/retry-inflation trends
+        (FEAT-3183); accepts an optional `conn=` to reuse an already-open
+        connection (FEAT-3410)
     detect_quality_regressions: Prior-K-window baseline regression detection (FEAT-3405)
     attribute_change: Attribute a flagged window's drop to a model/host/version shift (FEAT-3405)
     load_window_compositions: Load per-window model/host/ll_version compositions (FEAT-3405)
+    aggregate_history_dbs: Per-workspace-member quality breakdown over several
+        repos' `history.db` files, read-only (FEAT-3410)
 
     # Formatting
     format_summary_text: Format summary as text
@@ -63,10 +68,11 @@ Public exports:
     format_rework_json: Format rework analysis as JSON
     format_rework_markdown: Format rework analysis as markdown
     format_rework_yaml: Format rework analysis as YAML
-    format_agent_quality_text: Format agent-quality analysis as text
-    format_agent_quality_json: Format agent-quality analysis as JSON
-    format_agent_quality_markdown: Format agent-quality analysis as markdown
-    format_agent_quality_yaml: Format agent-quality analysis as YAML
+    format_agent_quality_text: Format agent-quality analysis as text (also
+        renders an AggregationResult, one section per workspace member)
+    format_agent_quality_json: Format agent-quality analysis as JSON (ditto)
+    format_agent_quality_markdown: Format agent-quality analysis as markdown (ditto)
+    format_agent_quality_yaml: Format agent-quality analysis as YAML (ditto)
 
     # Documentation synthesis
     synthesize_docs: Synthesize documentation from issue history
@@ -187,6 +193,7 @@ from little_loops.issue_history.rework import (
     quality_adjusted_throughput,
 )
 from little_loops.issue_history.summary import calculate_summary
+from little_loops.issue_history.workspace_quality import AggregationResult, aggregate_history_dbs
 
 __all__ = [
     # Core dataclasses
@@ -265,6 +272,8 @@ __all__ = [
     "detect_quality_regressions",
     "attribute_change",
     "load_window_compositions",
+    "AggregationResult",
+    "aggregate_history_dbs",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",

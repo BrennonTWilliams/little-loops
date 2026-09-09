@@ -5,12 +5,17 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.cli_args import add_config_arg, add_intent_arg, add_intent_limit_arg, add_json_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
+
+if TYPE_CHECKING:
+    from little_loops.issue_history.agent_quality import QualityAnalysis
+    from little_loops.issue_history.workspace_quality import AggregationResult
 
 
 def _non_negative_float(raw: str) -> float:
@@ -306,6 +311,16 @@ Examples:
             help="Test every eligible window of each series for regression, not just "
             "the latest (default: latest only)",
         )
+        quality_parser.add_argument(
+            "--workspace",
+            nargs="?",
+            default=None,
+            const="",
+            metavar="PATH",
+            help="Aggregate across a declared workspace (FEAT-3410): bare flag "
+            "discovers ll-workspace.yaml from the current repo outward, or pass an "
+            "explicit manifest PATH. Absent (default): today's single-repo report.",
+        )
 
         # sessions subcommand (ENH-1711)
         sessions_parser = subparsers.add_parser(
@@ -532,14 +547,38 @@ Examples:
                 if args.baseline_windows is not None
                 else DEFAULT_BASELINE_WINDOWS
             )
-            quality_analysis = analyze_agent_quality(
-                all_issues,
-                db=db_path,
-                min_sample=min_sample,
-                sensitivity=sensitivity,
-                baseline_windows=baseline_windows,
-                latest_only=not args.all_windows,
-            )
+
+            quality_analysis: QualityAnalysis | AggregationResult | None = None
+            if args.workspace is not None:
+                from little_loops.workspace import discover_workspace_members
+
+                manifest_path = Path(args.workspace) if args.workspace else None
+                try:
+                    members = discover_workspace_members(manifest_path, start=project_root)
+                except FileNotFoundError as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 1
+
+                if members:
+                    from little_loops.issue_history import aggregate_history_dbs
+
+                    quality_analysis = aggregate_history_dbs(
+                        members,
+                        min_sample=min_sample,
+                        sensitivity=sensitivity,
+                        baseline_windows=baseline_windows,
+                        latest_only=not args.all_windows,
+                    )
+
+            if quality_analysis is None:
+                quality_analysis = analyze_agent_quality(
+                    all_issues,
+                    db=db_path,
+                    min_sample=min_sample,
+                    sensitivity=sensitivity,
+                    baseline_windows=baseline_windows,
+                    latest_only=not args.all_windows,
+                )
 
             if args.format == "json":
                 print(format_agent_quality_json(quality_analysis))

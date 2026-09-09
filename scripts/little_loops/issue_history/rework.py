@@ -272,6 +272,7 @@ def analyze_rework(
     issues: list[IssueInfo],
     *,
     db: Path | str = DEFAULT_DB_PATH,
+    conn: sqlite3.Connection | None = None,
     min_sample: int = MIN_SAMPLE_SIZE,
     follow_up_days: int = FOLLOW_UP_WINDOW_DAYS,
 ) -> ReworkAnalysis:
@@ -280,7 +281,10 @@ def analyze_rework(
     Args:
         issues: All on-disk issues (any status) — needed to resolve `supersedes:`
             edges for the reopen signal's cancelled-as-superseded case.
-        db: Path to ``.ll/history.db``.
+        db: Path to ``.ll/history.db``. Ignored when *conn* is given.
+        conn: An already-open connection to use in place of opening *db*.
+            When given, this function neither opens nor closes it — the
+            caller owns its lifecycle (FEAT-3410's per-member aggregation).
         min_sample: Minimum closed issues per window before a rate is reported.
         follow_up_days: Lookahead window for follow-up/touch-back detection.
 
@@ -288,10 +292,11 @@ def analyze_rework(
         ReworkAnalysis with empty windows if the DB is missing/empty.
     """
     empty = ReworkAnalysis(min_sample_size=min_sample, follow_up_window_days=follow_up_days)
-    db_path = Path(db)
-    conn = _connect_readonly(db_path)
+    owns_conn = conn is None
     if conn is None:
-        return empty
+        conn = _connect_readonly(Path(db))
+        if conn is None:
+            return empty
 
     try:
         events_by_issue = _load_issue_events(conn)
@@ -403,7 +408,8 @@ def analyze_rework(
             windows=windows, min_sample_size=min_sample, follow_up_window_days=follow_up_days
         )
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def format_rework_json(analysis: ReworkAnalysis) -> str:

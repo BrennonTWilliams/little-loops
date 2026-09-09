@@ -2379,11 +2379,12 @@ Parse a single completed issue file.
 | `analyze_agent_effectiveness(issues)` | Analyze agent effectiveness by type |
 | `analyze_complexity_proxy(issues)` | Analyze complexity via issue duration |
 | `detect_cross_cutting_smells(issues)` | Detect cross-cutting concern patterns |
-| `analyze_rework(issues, *, db=DEFAULT_DB_PATH, min_sample=5, follow_up_days=14)` | Reopen/follow-up/touch-back/revert rates + quality-adjusted throughput, windowed by `(calendar month, orchestrator)` (FEAT-2867) |
-| `analyze_agent_quality(issues, *, db=DEFAULT_DB_PATH, min_sample=5, sensitivity=0.30, baseline_windows=3, latest_only=True)` | Fix-rate/correction-rate/cost-per-issue/tokens-per-issue (same windows as `analyze_rework`) plus retry inflation on a `(calendar month, loop_name)` axis (FEAT-3183); also runs `detect_quality_regressions()` and stores the result on `QualityAnalysis.regressions` (FEAT-3405) |
+| `analyze_rework(issues, *, db=DEFAULT_DB_PATH, conn=None, min_sample=5, follow_up_days=14)` | Reopen/follow-up/touch-back/revert rates + quality-adjusted throughput, windowed by `(calendar month, orchestrator)` (FEAT-2867). `conn=`, when given, is used in place of opening `db` — neither opened nor closed by this function (FEAT-3410) |
+| `analyze_agent_quality(issues, *, db=DEFAULT_DB_PATH, conn=None, min_sample=5, sensitivity=0.30, baseline_windows=3, latest_only=True)` | Fix-rate/correction-rate/cost-per-issue/tokens-per-issue (same windows as `analyze_rework`) plus retry inflation on a `(calendar month, loop_name)` axis (FEAT-3183); also runs `detect_quality_regressions()` and stores the result on `QualityAnalysis.regressions` (FEAT-3405). `conn=`, when given, is used in place of opening `db` and forwarded to `analyze_rework` unchanged (FEAT-3410) |
 | `detect_quality_regressions(analysis, compositions, *, sensitivity=0.30, baseline_windows=3, latest_only=True)` | Flags the latest (or every, with `latest_only=False`) eligible window of each metric/retry-inflation series against a prior-K-window baseline; deterministic, LLM-free (FEAT-3405) |
 | `attribute_change(window, baseline, *, min_shift=0.25, min_coverage=0.5)` | Names the `(model\|host\|ll_version, value)` whose pooled-baseline share increased most for a flagged window, or `None` for "no attributable change" (FEAT-3405) |
 | `load_window_compositions(conn, issue_window, issue_ids, session_issues)` | Loads per-window model/host/`ll_version` weighted compositions `attribute_change()` consumes (FEAT-3405) |
+| `aggregate_history_dbs(members, *, min_sample, sensitivity, baseline_windows, latest_only)` | Runs `analyze_agent_quality()` once per `WorkspaceMember` (FEAT-3409), each via its own read-only `mode=ro` connection; returns an `AggregationResult(per_repo, skipped)`. A missing, schema-skewed, or unreadable member is skipped and reported, never analyzed (FEAT-3410) |
 
 #### Formatting
 
@@ -2396,7 +2397,7 @@ Parse a single completed issue file.
 | `format_analysis_markdown(analysis)` | Format full analysis as Markdown |
 | `format_analysis_yaml(analysis)` | Format full analysis as YAML |
 | `format_rework_{text,json,markdown,yaml}(analysis)` | Format `ReworkAnalysis` in each of the four formats |
-| `format_agent_quality_{text,json,markdown,yaml}(analysis)` | Format `QualityAnalysis` in each of the four formats |
+| `format_agent_quality_{text,json,markdown,yaml}(analysis)` | Format `QualityAnalysis` in each of the four formats; also accepts an `AggregationResult` (FEAT-3410), rendering one section per workspace member plus a "Skipped" section |
 
 #### Documentation Synthesis
 
