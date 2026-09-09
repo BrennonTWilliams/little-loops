@@ -383,10 +383,15 @@ class TestParseSessionLog:
 class TestSessionLogHostAware:
     """ENH-1945: get_current_session_jsonl resolves paths for non-Claude-Code hosts."""
 
-    def test_get_current_session_jsonl_auto_detects_codex(
+    def test_get_current_session_jsonl_returns_none_under_codex_host(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """get_current_session_jsonl resolves JSONL from Codex dir when LL_HOOK_HOST=codex."""
+        """FEAT-3417: Codex never writes ~/.codex/projects/ (dates key its
+        sessions, not projects) — get_current_session_jsonl returns None under
+        LL_HOOK_HOST=codex even when a directory happens to exist at that
+        path. This directory never fires in production (§ Codex On-Disk
+        Layout); Codex session discovery goes through
+        little_loops.session_store.sessions.detect_sessions instead."""
 
         monkeypatch.setenv("LL_HOOK_HOST", "codex")
         fake_home = tmp_path / "home"
@@ -401,7 +406,7 @@ class TestSessionLogHostAware:
 
         # Don't patch get_project_folder — test the real resolution chain
         result = get_current_session_jsonl()
-        assert result == session_file
+        assert result is None
 
     def test_get_current_session_jsonl_auto_detects_qwen_chats(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -458,10 +463,12 @@ class TestSessionLogHostAware:
         result = get_current_session_jsonl()
         assert result is None
 
-    def test_append_session_log_entry_works_with_codex_host(
+    def test_append_session_log_entry_is_noop_under_codex_host(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """append_session_log_entry auto-detects session from Codex dir."""
+        """FEAT-3417: with Codex session discovery returning None (see
+        test_get_current_session_jsonl_returns_none_under_codex_host),
+        append_session_log_entry can't resolve a session and no-ops."""
         monkeypatch.setenv("LL_HOOK_HOST", "codex")
         fake_home = tmp_path / "home"
         codex_dir = fake_home / ".codex" / "projects"
@@ -474,13 +481,12 @@ class TestSessionLogHostAware:
         monkeypatch.chdir(tmp_path)
 
         issue = tmp_path / "issue.md"
-        issue.write_text("# Issue\n\n---\n\n## Status\n\n**Open**\n")
+        original = "# Issue\n\n---\n\n## Status\n\n**Open**\n"
+        issue.write_text(original)
 
         result = append_session_log_entry(issue, "/ll:manage-issue")
-        assert result is True
-        content = issue.read_text()
-        assert session_file.name in content
-        assert "## Session Log" in content
+        assert result is False
+        assert issue.read_text() == original
 
 
 class TestGetCurrentSessionId:

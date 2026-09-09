@@ -144,10 +144,11 @@ class TestGetProjectFolder:
         result = get_project_folder(host="claude-code")
         assert result == project_dir
 
-    def test_host_codex_probes_codex_projects(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """host="codex" probes ~/.codex/projects/<encoded>."""
+    def test_host_codex_returns_none(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """FEAT-3417: Codex never writes ~/.codex/projects/ (dates key its
+        sessions, not projects) — the probe returns None unconditionally, even
+        when a directory happens to exist at that path. Use
+        little_loops.session_store.sessions.detect_sessions instead."""
         fake_home = tmp_path / "home"
         codex_dir = fake_home / ".codex" / "projects"
         encoded = encode_project_path(str(tmp_path.resolve()))
@@ -157,7 +158,7 @@ class TestGetProjectFolder:
         monkeypatch.chdir(tmp_path)
 
         result = get_project_folder(host="codex")
-        assert result == project_dir
+        assert result is None
 
     def test_host_opencode_probes_opencode_projects(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -505,7 +506,8 @@ class TestGetProjectFolder:
     def test_host_auto_detect_from_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """host=None auto-detects from LL_HOOK_HOST env var."""
+        """host=None auto-detects from LL_HOOK_HOST env var; codex resolves to
+        None regardless (FEAT-3417 — see test_host_codex_returns_none)."""
         monkeypatch.setenv("LL_HOOK_HOST", "codex")
         fake_home = tmp_path / "home"
         codex_dir = fake_home / ".codex" / "projects"
@@ -516,7 +518,7 @@ class TestGetProjectFolder:
         monkeypatch.chdir(tmp_path)
 
         result = get_project_folder()  # host=None → auto-detect
-        assert result == project_dir
+        assert result is None
 
     def test_host_auto_detect_defaults_to_claude_code(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -456,9 +456,10 @@ def _get_claude_project_folder(encoded_path: str) -> Path | None:
 
 
 def _get_codex_project_folder(encoded_path: str) -> Path | None:
-    """Probe the Codex session directory."""
-    project_folder = Path.home() / ".codex" / "projects" / encoded_path
-    return project_folder if project_folder.exists() else None
+    """Codex never writes ``~/.codex/projects/`` (FEAT-3417 § Codex On-Disk
+    Layout); it keys sessions by date, not by project. Use
+    ``little_loops.session_store.sessions.detect_sessions`` instead."""
+    return None
 
 
 def _get_opencode_project_folder(encoded_path: str) -> Path | None:

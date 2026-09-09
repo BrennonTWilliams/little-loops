@@ -229,9 +229,13 @@ class TestHostLayoutRegistry:
         assert layout.tool_names == {}
 
     def test_registered_claude_shaped_hosts_get_projects_roots(self) -> None:
-        assert host_layout_for("codex").projects_root == Path.home() / ".codex" / "projects"
         assert host_layout_for("opencode").projects_root == Path.home() / ".opencode" / "projects"
         assert host_layout_for("pi").projects_root == Path.home() / ".pi" / "projects"
+
+    def test_codex_gets_strict_none_projects_root(self) -> None:
+        """FEAT-3417: codex moved to the strict-None convention (gemini/omp)
+        because it never writes ~/.codex/projects/."""
+        assert host_layout_for("codex").projects_root is None
 
     def test_unknown_host_lenient_subagent_fields_strict_projects_root(self) -> None:
         layout = host_layout_for("mystery-cli")
