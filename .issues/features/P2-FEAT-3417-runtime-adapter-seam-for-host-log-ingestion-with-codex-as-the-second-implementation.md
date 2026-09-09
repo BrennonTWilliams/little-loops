@@ -26,8 +26,9 @@ spike_attempted: true
 spike_completed: true
 blocks:
 - ENH-3419
-relates_to:
 - ENH-3420
+relates_to:
+- ENH-3422
 completed_at: '2026-09-09T18:59:52Z'
 ---
 
