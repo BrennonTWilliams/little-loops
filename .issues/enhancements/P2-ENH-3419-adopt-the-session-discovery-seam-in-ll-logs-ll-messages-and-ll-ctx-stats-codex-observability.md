@@ -18,6 +18,12 @@ relates_to:
 - ENH-3420
 missing_artifacts: true
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 23
+score_ambiguity: 21
+score_change_surface: 16
 ---
 
 # ENH-3419: Adopt the session-discovery seam in ll-logs, ll-messages, and ll-ctx-stats (Codex observability)
@@ -240,6 +246,7 @@ ENH-3420]`, backlink in ENH-3420's `blocks:`) are all valid — FEAT-3417 is `do
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T20:42:30 - `cfabad4e-29d0-4bbf-8a3f-5a2f2c2e4144.jsonl`
 - `review (manual: extract_conversation_turns added to scope; discover_all_projects ll-activity filter + union-dedupe + 7 consumers spelled out; Codex --all overclaim reworded; telemetry-digest FAILURES_NO_DATA branch found unreachable → no-sessions exits 0 with new string; test_cli/test_cli_messages/test_ll_logs get_project_folder patches go dead → re-patch detect_sessions; REGISTERED_HOSTS export for choices=; Codex UserMessage field mapping; additive host key in ctx-stats dict)` - 2026-09-09T21:30:00
 - `/ll:refine-issue` - 2026-09-09T20:25:11 - `1a13a741-5120-4c1e-a389-069561e94486.jsonl`
 - `/ll:verify-issues` - 2026-09-09T19:12:44 - `16a3bdad-e90f-4e75-82df-f1d6a2398c12.jsonl`

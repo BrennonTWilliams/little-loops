@@ -155,5 +155,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ```
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T20:41:28 - `505beecf-ceb4-4da8-912d-d233f746daca.jsonl`
 - `/ll:format-issue` - 2026-09-09T20:37:49 - `575c8055-4eaf-4c28-a902-79bb09bf07a6.jsonl`
 - `/ll:capture-issue` - 2026-09-09T20:18:50 - `c67d0e9c-2f18-4a69-ac01-c129392655e2.jsonl`

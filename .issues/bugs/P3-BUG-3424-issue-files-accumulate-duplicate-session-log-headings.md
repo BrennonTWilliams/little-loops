@@ -8,6 +8,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T19:37:59Z'
 verify_verdict: NON_VALID
+size: Large
 ---
 
 # BUG-3424: Issue files accumulate duplicate Session Log headings
