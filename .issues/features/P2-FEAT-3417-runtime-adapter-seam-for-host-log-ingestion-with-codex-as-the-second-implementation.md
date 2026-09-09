@@ -246,6 +246,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-09T04:03:15 - `25e4ccb6-3e7e-49fc-a6ff-da7c10596c03.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:59:43 - `6a60b145-4b40-4e2a-b6c3-1f8fc4e6cbf8.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T03:48:29 - `4c0c2553-e582-4b1a-aac5-1daf99f32574.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:42:59 - `96a64da7-7e7c-4bdc-9e11-d16d6c8ed5d2.jsonl`

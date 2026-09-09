@@ -18,6 +18,7 @@ score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 0
 missing_artifacts: true
+decision_needed: true
 ---
 
 ## Summary
@@ -96,6 +97,18 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - Searched `.issues/` repo-wide (exact and fuzzy) for a "timeout-semantics" issue — none exists. The Summary's "reusing whatever the open timeout-semantics issue settles" and this section's "it does not own that classification" both defer to an issue that is not filed under that name or a close synonym.
 - Neither the "retryable-vs-fail-fast admission table" nor the "consecutive-failure circuit breaker" companion issues named above are filed under those names either (searched repo-wide). A broader search surfaced two FSM-side issues — `P3-FEAT-1637` (fsm stall detector for repeated state failures) and `P2-ENH-2245` (circuit-breaker recurrent window for non-consecutive state failures) — but both are FSM state-failure detectors, not `ll-queue`-side companions, and neither matches this issue's named companion by scope.
 
+## Proposed Solution
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+**Option A**: Non-jittered iterative doubling (`delay = min(base * 2^(attempt-1), ceiling)`), following the `transport.py` webhook-retry and `parallel/git_lock.py` git-index-lock-retry convention — both are local/same-machine retry loops, the same category as `ll-queue`'s single-writer SQLite retry.
+
+**Option B**: Jittered exponential backoff (`base * 2^(attempt-1) + random.uniform(0, base)`), following `fsm/executor.py`'s rate-limit retry convention — the only jittered backoff site in the codebase, used for an external, distributed host-CLI retry target.
+
+**Recommended**: Option A — every non-jittered backoff site found (webhook retry, git-lock retry, SSE fan-in reconnect) is a local/same-machine retry loop, `ll-queue`'s exact category; the sole jittered site targets an external distributed retry target, a different failure domain than a local drainer retrying its own dispatched action.
+
 ## Integration Map
 
 ### Files to Modify
@@ -168,6 +181,12 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - **No existing bounded collection in this codebase applies two different eviction orders across separate code paths** (searched repo-wide for eviction/trim/prune/maxlen/oldest-first/newest-first terms). `compaction/instant.py:evict_sink_and_window():34` (single caller, `session_store/lifecycle.py:477`), `session_store/lifecycle.py`'s `compact()`/`prune()` (`:1183`, `:1273`, single oldest-past-cutoff rule), and two `deque(maxlen=N)` sites (`fsm/executor.py:333`, `fsm/stall_detector.py:39`) each use exactly one eviction order per collection. "Oldest first"/"newest first" language elsewhere (`fsm/persistence.py:1474,1487`) describes query/listing order, not eviction. This issue's per-path oldest-vs-newest trimming is new functionality with no existing convention to follow or diverge from.
 - **A more general schema-migration lock exists beyond the already-cited `TestV1ToV2Migration` per-migration column diff.** `session_store/schema.py`'s whole-schema manifest lock (`_schema_manifest`/`_reference_manifest_at`/`_load_schema_manifest`, tested at `test_session_store_schema.py:3083-3267`) asserts a freshly-migrated database's full structure (tables, columns, index uniqueness) against a checked-in `schema_manifest.json`, plus a `SCHEMA_VERSION == len(_MIGRATIONS)` count lock (`:2299-2304`). `queue_store.py` has no equivalent manifest file or function — its migration coverage uses only the narrower per-migration `PRAGMA table_info` shape.
 - No shared `compute_backoff()` helper exists anywhere in the codebase (repo-wide search, zero hits) — confirms the prior finding that `fsm/executor.py` and `transport.py` each own independent inline backoff formulas.
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Two additional non-jittered iterative-doubling backoff sites exist beyond the two already cited: `parallel/git_lock.py:130-169` (`GitLock._run_with_retry`, local git index.lock retry, `min(backoff*2, max_backoff)`, no `random` import) and `transport.py`'s SSE fan-in reconnect loop (`_FANIN_MAX_BACKOFF_S`, line 92; doubling at line 1106, no jitter). A repo-wide search for `random\.(uniform|random|randint)` in `scripts/little_loops` returns exactly one hit anywhere in the tree — `fsm/executor.py:3918`, the external host-CLI rate-limit retry already cited. Every non-jittered backoff site found is either local/same-machine (git lock, Unix-socket fan-in, webhook already-cited) or single-shot external (`link_checker.py:356-370`); the sole jittered site targets an external, distributed retry target. `ll-queue`'s retry loop is local/single-writer-SQLite, matching the non-jittered group by this pattern, not the one jittered outlier.
+- Retry/backoff values are bundled into a single dataclass (`config/automation.py:174-195`, `RateLimitsConfig`, with a `from_dict` constructor) only at the user-configurable settings layer; every private module-constant backoff site found (`fsm/executor.py:105-114`, `transport.py:76-77`, `git_lock.py:47-49`) keeps the values as separate scalars, never bundled into a dataclass or `NamedTuple` (zero `NamedTuple` usage exists anywhere in `scripts/little_loops`). No class named `RetryPolicy`/`BackoffPolicy`/`AttemptBudget` exists in the codebase; the closest analog to an attempt-budget counter is `link_checker.py:295` (`Retry429Budget`, a stateful consume-once counter, not a value bundle).
+- No SQL-level oldest-row eviction (`DELETE ... ORDER BY ... LIMIT`) exists anywhere in the codebase (repo-wide search, zero hits) — confirming the earlier finding that per-path overflow/trimming has no baseline. The one adjacent convention found, a "drop-newest" policy on bounded in-memory delivery queues (`transport.py`'s `UnixSocketTransport`/`LocalBridgeTransport`/SSE fan-in queues, e.g. lines 328-333), is a reject-incoming discipline on a live `queue.Queue`, not an oldest-first eviction of persisted rows, and is not a transferable precedent for this issue's persisted-queue overflow/trim question.
 
 ## Program Design
 
@@ -246,6 +265,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T04:03:54 - `92947113-ae24-4c67-9cb1-ea2af355904e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:57:00 - `6d9082d6-8afc-4d51-af36-c0955fd01c58.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:53:40 - `8963b056-bb60-497d-9529-e15d23112f43.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:43:16 - `96a64da7-7e7c-4bdc-9e11-d16d6c8ed5d2.jsonl`

@@ -15,6 +15,7 @@ labels:
 blocked_by:
 - FEAT-3410
 decision_needed: false
+reconcile_attempted: true
 learning_tests_required:
 - sqlite3
 confidence_score: 90
@@ -96,12 +97,13 @@ crossed a threshold on its own.
   reusing IDs).
 - `analyze_rework()`'s on-disk `supersedes:` join still resolves correctly
   against the union.
-- All 8 schema-qualification call sites from FEAT-3410's Integration Map
-  (`agent_quality.py:229,245,259,273,301-304,419-422`,
-  `rework.py:136-137,150-151`, `_utils.py:81-82`, plus
-  `read_schema_version()`) are schema-qualified — an unqualified query
-  against the attached connection is a bug per the confirmed SQLite
-  search-order trap.
+- All 8 schema-qualification call sites are schema-qualified (current
+  line numbers, corrected for +10-line drift in `agent_quality.py`:
+  `agent_quality.py:239,255,269,283,311-314,429-432`,
+  `rework.py:136-137,150-151` (unchanged), `_utils.py:81-82` (unchanged),
+  plus `session_store/queries.py:211` (`read_schema_version()`) — an
+  unqualified query against the attached connection is a bug per the
+  confirmed SQLite search-order trap.
 - A workspace with more than 10 members raises a clear, actionable error
   instead of a silent `SQLITE_LIMIT_ATTACHED` truncation.
 - The `sqlite3` Learning Test Registry entry for this multi-ATTACH spike is
@@ -169,7 +171,8 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - Formatters accepting either a single-repo or aggregated result duck-type on `hasattr(analysis, "per_repo")` rather than `isinstance`, to avoid a `workspace_quality` <-> `agent_quality` import cycle — evidence: `agent_quality.py:636-871` (`format_agent_quality_*`).
 
 ### Tests
-- `scripts/tests/test_feat3410_workspace_quality.py` — existing coverage for `aggregate_history_dbs()`/`AggregationResult`; a FEAT-3418 test file would follow the same `test_feat<NNNN>_<module>.py` naming (`test_feat3418_*.py` — none exists yet).
+- `scripts/tests/test_feat3410_workspace_quality.py` — existing coverage for `aggregate_history_dbs()`/`AggregationResult`.
+- `scripts/tests/test_feat3418_workspace_quality.py` — already added (TDD red, per Confidence Check Notes) with a deliberate cross-repo `issue_id` collision fixture (two members both recording `BUG-1`), asserting `AggregationResult.totals` exists and is not conflated; both tests currently fail pending implementation.
 - `scripts/tests/test_issue_history_agent_quality.py`, `scripts/tests/test_issue_history_rework.py` — existing per-repo coverage of the keying logic this issue must not regress.
 - Fixture pattern for multi-repo scenarios: one `WorkspaceMember` per fake repo under `tmp_path`, each with its own `.ll/<name>-history.db` (never the default-shaped path, since an autouse fixture routes default paths through one shared `LL_HISTORY_DB`) — evidence: `test_feat3410_workspace_quality.py::_healthy_member`/`_bare_sqlite_member`.
 - Source-untouched verification: sha256 the source db before/after every skip-path test — evidence: `test_feat3410_workspace_quality.py::_sha256`, used across `test_missing_meta_table`, `test_schema_behind`, `test_schema_ahead`, `TestSourceDbUntouched::test_main_file_hash_unchanged_after_run`.
@@ -202,14 +205,12 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 `aggregate_history_dbs()` -> `_attach_and_union()` ->
 `analyze_agent_quality(conn=...)` / `analyze_rework(conn=...)` (FEAT-3410's
 `conn=` plumbing) -> schema-qualified queries in `agent_quality.py`/`rework.py`
-> ⚠ Superseded — `aggregate_history_dbs()` itself has no `conn=` parameter; see Codebase Research Findings below for the corrected path through a new `_attach_and_union()`-supplied connection.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 `aggregate_history_dbs()` (`workspace_quality.py:83-90`) has no `conn:` parameter of its own — contrary to what the Call Path above might imply. The `conn=` plumbing that already exists lives on `analyze_agent_quality()` (`agent_quality.py:472-481`) and `analyze_rework()` (`rework.py:271-278`); both already forward an already-open connection unchanged when given one (`owns_conn = conn is None` at `agent_quality.py:509`, `rework.py:295`). A new helper (e.g. `_attach_and_union()`) would need to build the multi-ATTACH connection and hand it into `aggregate_history_dbs()`'s existing `analyze_agent_quality(issues, conn=conn, ...)` call site (lines 127-135), not receive a `conn=` argument on `aggregate_history_dbs()` itself.
-> ⚠ Superseded — the `conn=` mentions above describe FEAT-3410's existing forwarding convention this issue reuses, not Option B's rejected mechanism.
 
 Corrected schema-qualification line numbers — `agent_quality.py`'s sites have drifted +10 lines from this issue's original citations; `rework.py`/`_utils.py` have not drifted:
 
@@ -235,7 +236,6 @@ The on-disk `supersedes:` join `analyze_rework()` must keep resolving (AC #4) is
 ### Decision Rules
 
 - **ID-collision resolution**: **resolved** — Option A (repo discriminator threaded through every keying site), per `## Proposed Solution` → Decision Rationale. The discriminator must leave `superseded_by()`'s `issue_id` set-membership join (above) resolvable against whatever the union stores under `issue_id`.
-  > ⚠ Superseded — `superseded_by()` here names the existing on-disk join both options had to preserve, not Option B's rejected `issue_num` remap.
 - **`SQLITE_LIMIT_ATTACHED` fail-loud threshold**: the guard should call `sqlite3.connect(":memory:").getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)` itself rather than hardcode `10`, since `SQLITE_MAX_ATTACHED` is compile-time and can differ across interpreters/builds. No escape hatch specified anywhere in this issue — any workspace exceeding the limit must raise, with no fallback to a partial/truncated union.
 
 ## Impact
@@ -314,6 +314,7 @@ _Added by `/ll:confidence-check` on 2026-09-08; updated 2026-09-08 after remedia
 - Cross-module keying regression risk: added `scripts/tests/test_feat3418_workspace_quality.py` with a deliberate cross-repo `issue_id` collision fixture (two members both recording `BUG-1`), asserting `AggregationResult.totals` exists and is not conflated. Both tests currently fail (TDD red — `AggregationResult` has no `totals` field yet), specifying the behavior FEAT-3418 must implement. Test coverage score raised 18 → 25.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-09T04:03:56 - `92947113-ae24-4c67-9cb1-ea2af355904e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:47:52 - `5ddcabee-5484-4c88-9c31-8734a1bafe5a.jsonl`
 - `/ll:decide-issue` - 2026-09-09T03:42:19 - `b83f9a4d-c528-406f-9176-2cc312651f52.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:17:35 - `ae93785e-f7d9-41cc-96ab-d51f1883c15a.jsonl`
