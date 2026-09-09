@@ -18,7 +18,7 @@ score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 0
 missing_artifacts: true
-decision_needed: true
+decision_needed: false
 ---
 
 ## Summary
@@ -105,9 +105,30 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 **Option A**: Non-jittered iterative doubling (`delay = min(base * 2^(attempt-1), ceiling)`), following the `transport.py` webhook-retry and `parallel/git_lock.py` git-index-lock-retry convention — both are local/same-machine retry loops, the same category as `ll-queue`'s single-writer SQLite retry.
 
+> **Selected:** Option A — matches all 3 local/same-machine backoff precedents in this codebase; the concurrent-drainer race jitter would otherwise mitigate is already closed by `claim_entry`'s `BEGIN IMMEDIATE` transaction and the `_BUSY_TIMEOUT_MS` pragma.
+
 **Option B**: Jittered exponential backoff (`base * 2^(attempt-1) + random.uniform(0, base)`), following `fsm/executor.py`'s rate-limit retry convention — the only jittered backoff site in the codebase, used for an external, distributed host-CLI retry target.
 
 **Recommended**: Option A — every non-jittered backoff site found (webhook retry, git-lock retry, SSE fan-in reconnect) is a local/same-machine retry loop, `ll-queue`'s exact category; the sole jittered site targets an external distributed retry target, a different failure domain than a local drainer retrying its own dispatched action.
+
+### Decision Rationale
+
+**Selected**: Option A — non-jittered iterative doubling (`delay = min(base * 2^(attempt-1), ceiling)`).
+
+**Reasoning**: `ll-queue` is a local, single-writer-SQLite work queue with no network/distributed-service component in its retry path. Every non-jittered backoff site in the codebase (`transport.py` webhook retry, `transport.py` SSE fan-in reconnect, `parallel/git_lock.py` git-index-lock retry) is local/same-machine; the codebase's sole jittered site (`fsm/executor.py:3918`) targets an external, distributed host-CLI rate-limit retry — a different failure domain. `ll-queue` does support multiple concurrent `--watch` drainers racing over one `queue.db` (BUG-2929), which is the kind of contention jitter usually exists to desynchronize — but that race is already closed at the transaction layer (`claim_entry`'s `BEGIN IMMEDIATE`) and cushioned by SQLite's `_BUSY_TIMEOUT_MS` pragma, independent of backoff timing. Jitter would therefore be a novel application solving a problem this codebase already solves elsewhere, at the cost of being the first jittered site for a local-only retry loop.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 | 1 |
+| Simplicity | 3 | 2 |
+| Testability | 3 | 2 |
+| Risk | 3 | 2 |
+| **Total** | **12/12** | **7/12** |
+
+**Key evidence**:
+- 3 local/same-machine non-jittered precedents (`transport.py:1833,1843`, `transport.py:1106`, `git_lock.py:154,167`) vs. exactly 1 jittered site in the whole codebase, external-target (`fsm/executor.py:3918`)
+- `claim_entry` (`queue_store.py:466-502`) already arbitrates concurrent-drainer races via `BEGIN IMMEDIATE`, and `_BUSY_TIMEOUT_MS` (`queue_store.py:103`) absorbs short write-lock contention — the mechanisms jitter would otherwise duplicate
+- Option A needs no new import (`random` unused) and no new test scaffolding; Option B would need the `random.uniform` monkeypatch pattern already used in `test_fsm_executor.py` to keep tests deterministic
 
 ## Integration Map
 
@@ -265,6 +286,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-09T04:08:14 - `3577db8f-8723-4e0e-adb7-90253d958f56.jsonl`
 - `/ll:refine-issue` - 2026-09-09T04:03:54 - `92947113-ae24-4c67-9cb1-ea2af355904e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:57:00 - `6d9082d6-8afc-4d51-af36-c0955fd01c58.jsonl`
 - `/ll:refine-issue` - 2026-09-09T03:53:40 - `8963b056-bb60-497d-9529-e15d23112f43.jsonl`
