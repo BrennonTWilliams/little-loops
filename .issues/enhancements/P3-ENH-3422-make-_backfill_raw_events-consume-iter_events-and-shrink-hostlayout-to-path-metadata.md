@@ -37,29 +37,77 @@ After ENH-3420 phase 1, `detect_sessions` covers every host but `_backfill_raw_e
 
 [Why this issue matters - business value, user impact, technical debt cost]
 
+## Program Design
+
+### Types
+
+- `SessionHandle` (`session_store/sessions.py:56-73`) — `host: str`, `session_id: str`, `path: Path`, `cwd: Path`, `updated_at: float`, `is_agent: bool = False`. Unchanged by this issue; it is the type `_backfill_raw_events` starts consuming.
+- `SessionEvent` (`session_store/sessions.py:76-83`) — `type: str`, `timestamp: str`, `host: str`, `payload: dict[str, Any]`. `iter_events(handle)` already yields these; `_backfill_raw_events` stores `event.payload` as-is.
+- `HostLayout` (post-shrink, `session_store/writers.py:2456`) — retains only `glob`, `parent_from`, `sidecar_suffix`, `sessions_subdir`, `name`, `projects_root`, `session_glob`; drops `normalize: Callable[[dict], dict | None] | None`, `skip_at_ingest: Callable[[dict], bool] | None`, `normalize_file: Callable[[Path], Iterator[dict]] | None`. `tool_names`/`tool_arg_keys` are untouched by this issue — `_backfill_raw_events` never reads them.
+
+### Signatures
+
+- `_backfill_raw_events(conn: sqlite3.Connection, jsonl_files: list[Path], *, host: str | None = None) -> int` (`lifecycle.py:747`) — current.
+- `_backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle], *, host: str | None = None) -> int` — target.
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` (`session_store/sessions.py:824`) — existing, already implemented by ENH-3420; dispatches through `_PARSERS[handle.host]` (`sessions.py:812-821`) to one of `_parse_claude_shaped`, `parse_codex_rollout`, `parse_kimi_wire`, `parse_qwen_session`, `parse_gemini_session`, `parse_omp_session`.
+
+### Call Path
+
+`backfill_raw_events()` / `backfill()` (`lifecycle.py:859`, `lifecycle.py:1108`) -> `_backfill_raw_events(conn, handles, host=...)` -> `iter_events(handle)` (`sessions.py:824`) -> `_PARSERS[handle.host](handle.path)` -> `INSERT OR IGNORE INTO raw_events(..., raw_line, parsed_json)` with `event.payload` stored verbatim (no `layout.normalize`/`normalize_file` call in this path).
+
+Read/replay side (`writers.py::_iter_events`, `writers.py:3250-3299`) must stop calling `layout.normalize` for qwen rows in the same change — `normalize_qwen_record` is not idempotent (a normalized record carries `message.content`, not `message.parts`; `_message_parts()` at `qwen.py:138-144` returns `None` for every branch on a re-normalized input, so re-normalizing silently drops the row).
+
+### Decision Rules
+
+N/A — no new decision logic. This issue changes an existing function's parameter type and an existing dataclass's field set; it introduces no new gap kind, gate, threshold, or classification rule.
+
 ## Proposed Solution
 
-TBD - requires investigation
+`_backfill_raw_events` (`lifecycle.py:747-831`) switches its per-host branching (`layout.normalize_file` for gemini/omp, raw-line-plus-`skip_at_ingest` for everyone else, with qwen rows landing unnormalized today) for a single loop over `iter_events(handle)` per `SessionHandle`, storing `event.payload` verbatim. The parser dispatch this reuses already exists and is already exercised end-to-end by `test_session_discovery.py` (ENH-3420) — this issue is a consumer swap at the `raw_events` write boundary, not new parsing logic. `HostLayout` sheds `normalize`/`skip_at_ingest`/`normalize_file` once its four production readers (see Integration Map) are retargeted; `tool_names`/`tool_arg_keys` are unaffected. The `writers.py::_iter_events` (private, read/replay path — distinct from the public `sessions.py::iter_events` this issue targets) landmine above must land in the same change, or a pre-normalized qwen row silently vanishes on rebuild.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/session_store/lifecycle.py` — `_backfill_raw_events()` (lines 747-831): change signature to `handles: list[SessionHandle]`, replace the `layout.normalize_file`/`layout.normalize`/`skip_at_ingest` branching with a loop over `iter_events(handle)`.
+- `scripts/little_loops/session_store/writers.py` — `HostLayout` (lines 2456-2511): drop the `normalize`, `skip_at_ingest`, `normalize_file` fields; `host_layout_for()` (lines 2527-2607): drop the corresponding kwargs from the qwen (2545), gemini (2561), omp (2582) branches; `_iter_events()` (lines 3250-3299): stop calling `layout.normalize` at line 3284 for the cursor-replay path (the qwen landmine above).
+- `scripts/little_loops/cli/logs.py` — two independent `.normalize` call sites, not one: `_has_ll_activity()` (lines 97-131, call at ~122-125) **and** `_extract_ll_event_streams()` (lines 261-329, call at ~308-311). The issue's own Current Behavior section names only the first.
+- `scripts/little_loops/cli/session.py` — lines 672 and 711 (`host_layout_for(_backfill_host).sessions_subdir` glob); lines 700-706 (drop the "Codex backfill via detect_sessions() is not wired up yet (ENH-3420)" notice); line 718 (the `backfill(...)` call site).
+- `scripts/little_loops/cli/backfill_worker.py` — line 60 (`layout.session_glob`). **This file has no argparse** (module docstring: "no argparse by design"); `--host` is read via a hand-rolled `for i, arg in enumerate(args)` loop (lines 30-41) with no validation today. "Add `choices=` validation" (Implementation Step 4 below) cannot literally add an argparse `choices=` kwarg here — see the superseded-line note on that step.
+- `scripts/little_loops/user_messages.py` — `get_sessions_folder()` (lines 422-449): `.sessions_subdir` read at line 448.
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/session_store/lifecycle.py:859` — `backfill_raw_events()` calls `_backfill_raw_events(conn, filtered, host=host)`.
+- `scripts/little_loops/session_store/lifecycle.py:1108` — `backfill()` calls `_backfill_raw_events(conn, jsonl_files, host=host)`.
+- `scripts/little_loops/session_store/__init__.py:79` — sole importer of `lifecycle.py` (confirmed via code-graph `importers-of`); re-exports `HostLayout`, `host_layout_for`, `_backfill_subagent_runs` (import block ~147-168, `__all__` ~244-299).
 
-### Similar Patterns
-- TBD - search for consistency
+### Conventions in Force
+- Back-compat aliasing for a retired name in this codebase is a bare module-level rebind with a one-line comment (`OldName = NewName`) — never a wrapper function, `functools.partial`, or `DeprecationWarning` — evidence: `git_operations.py:354-355`, `config/core.py:1132-1133`, `cli/verify_triggers.py:169-170`. This shape assumes matching signatures between old and new; `normalize`/`normalize_file` (`dict -> dict | None` / `Path -> Iterator[dict]`) and their `parse_qwen_session`/`parse_gemini_session`/`parse_omp_session` replacements (`Path -> Iterator[SessionEvent]`) do not share signatures, so the bare-rebind shape does not transfer cleanly to this retirement.
+- Where `--host` choices validation exists, it is a hand-typed argparse `choices=[...]` literal, not imported from a shared constant — evidence: `cli/session.py:211-216`. `_REGISTERED_HOSTS` (`sessions.py:268-277`) holds the same 8 values but neither list references the other.
+- `HostLayout`-backed tests build layouts exclusively through the `host_layout_for(host)` factory and drive ingest through the public `backfill_raw_events()` entry point against fixture files — never a literal `HostLayout(...)` constructor call — evidence: `test_enh_3166_qwen_normalizer.py`, `test_enh_2505_subagent_runs.py` (`layout=host_layout_for(...)` kwarg). A repo-wide search for `HostLayout(` finds it constructed in exactly one place in source: `writers.py::host_layout_for`.
+- The one existing precedent for widening a `_backfill_*` helper's input type kept both old and new branches rather than retiring the old one: `writers.py::_iter_events` accepts `list[Path] | sqlite3.Cursor` via `isinstance` branching (`writers.py:3250-3299`). No function in this codebase currently *consumes* `list[SessionHandle]` as a parameter — every existing use is a producer return type (`detect_sessions` and its private helpers, `sessions.py`) — so `_backfill_raw_events(handles: list[SessionHandle])` is a new consumption shape, not a repeat of an existing one.
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_session_store_schema.py::test_backfill_raw_events_ingests_one_row_per_line` (line 916).
+- `scripts/tests/test_ll_session.py`, `test_enh_3166_qwen_normalizer.py`, `test_enh_3393_gemini_normalizer.py`, `test_enh_omp_normalizer.py`, `test_enh_2505_subagent_runs.py` — named in Expected Behavior as passing unmodified except for retired-field `HostLayout(...)` constructor calls; per Conventions in Force above, none of these files actually construct `HostLayout` literally today, so this constraint is not expected to bite.
+- `scripts/tests/test_hook_session_start.py:277` — asserts `"backfill_worker" in " ".join(calls[0])`; unaffected by the signature change but exercises the `--host` argv path into `backfill_worker.py`.
+- `scripts/tests/test_session_discovery.py` — already covers `detect_sessions`/`iter_events`/`SessionHandle` end-to-end (72 occurrences); the parser dispatch this issue reuses is already under test here.
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/API.md` — session discovery section (lines 9497-9524) already documents `detect_sessions`/`iter_events`/`SessionHandle`/`SessionEvent`; needs the `_backfill_raw_events` signature change reflected.
+- `docs/reference/CLI.md` — `backfill` `--host` flag row (line 3939, inside the flags table lines 3928-3943).
+- `docs/ARCHITECTURE.md` — HostLayout/iter_events/backfill_worker narrative (seam note per Scope Boundaries).
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+### Behavior Parity
+
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `scripts/little_loops/session_store/lifecycle.py::_backfill_raw_events` | Takes `jsonl_files: list[Path]`; branches per host on `layout.normalize_file` (gemini/omp, whole-file) vs. a raw line read plus `skip_at_ingest` (qwen and everyone else) | CHANGED | Replaced by a single loop over `iter_events(handle)` per `handles: list[SessionHandle]`; qwen rows go from raw-stored to pre-normalized (`parse_qwen_session` already applies `normalize_qwen_record`) |
+| `scripts/little_loops/session_store/lifecycle.py::_backfill_raw_events` idempotent `INSERT OR IGNORE` dedup on `(source_path, line_no)` | PRESERVED | Dedup index and idempotency semantics are unchanged by the consumer swap |
+| `scripts/little_loops/cli/backfill_worker.py` `--host` argument handling | Hand-rolled `for i, arg in enumerate(args)` loop (lines 30-41); no validation against a fixed host list today | CHANGED | AC requires rejecting an unknown `--host` with `SystemExit`; cannot literally "add `choices=`" since this file has no argparse — equivalent validation must be hand-rolled to match `cli/session.py`'s behavior |
+| `scripts/little_loops/cli/backfill_worker.py` `layout.session_glob` glob (line 60) | PRESERVED | `session_glob` is a path-metadata `HostLayout` field, retained post-shrink |
 
 ## Implementation Steps
 
@@ -67,6 +115,7 @@ TBD - requires investigation
 2. Add a direct unit test for `cli/logs.py::_extract_ll_event_streams` with a non-default `HostLayout` (no such test exists at any layout today) before touching `HostLayout`.
 3. Rewrite `_backfill_raw_events` to take handles; keep a `jsonl_files` compatibility path only if a test patches it directly.
 4. Retarget `_has_ll_activity`, `_backfill_subagent_runs`, `_iter_events`, `cli/session.py`, `cli/backfill_worker.py` (add `choices=` validation to the worker's free-form `--host`), `user_messages.py:446-448`.
+   > ⚠ Superseded — no argparse to add choices= to; see § Codebase Research Findings under Integration Map
 5. Delete `normalize`/`normalize_file` from `HostLayout`; keep `normalize_qwen_record`/`normalize_gemini_session`/`normalize_omp_session` exported from `session_store/__init__.py` as aliases of the ENH-3420 `parse_*` functions for one release (alias pattern: `git_operations.py:354-355`).
 6. Drop the `cli/session.py:702` notice; verify `ll-session backfill --host codex` against `scripts/tests/fixtures/codex/` with `home=tmp_path`.
 7. Docs: `docs/ARCHITECTURE.md` seam note (one seam, two halves), `docs/reference/API.md`, `docs/reference/CLI.md` backfill flags table.
@@ -97,3 +146,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-09T20:26:42 - `707b6c2b-2b94-48e8-86f8-1ee81a021633.jsonl`

@@ -504,12 +504,26 @@ No `PROPOSAL_UNSOUND`, `EVIDENCE_UNVERIFIED`, or `DECISIONS_VIOLATION` findings 
 clean; no active required decision rules; Option A's exception-handling/test-fixture/AC-coverage
 consequences all check out against the current code).
 
+**Re-verified 2026-09-09 (HEAD `b6eff8b8`):** VALID, no further corrections needed. Confirmed
+none of the files this issue cites (`fsm/schema.py`, `fsm/evaluators.py`, `fsm/executor.py`,
+`fsm/validation/meta_rules.py`, `fsm-loop-schema.json`, `harness-optimize.yaml`,
+`rl-coding-agent.yaml`, `lib/common.yaml`, or any cited test file) changed in the two commits
+landed since the `c7a1d96b` check above. The one touched file in that range
+(`docs/reference/API.md`, via ENH-3420) left both cited anchors (`#### EvaluateConfig` at 6009,
+`def evaluate_convergence(` at 6191) unmoved. Spot-re-read `evaluate_convergence`'s signature
+(schema.py/evaluators.py) and `_has_baseline_reference` (meta_rules.py:581-588) against current
+HEAD — unchanged. `ll-verify-evidence` clean (0 findings); no active required decision rules;
+graph provider `codegraph` fresh. Related-issue statuses re-checked and still match: ENH-3415
+done, ENH-1122 deferred, ENH-1793/1828/1829 done.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P3
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T20:28:54 - `76596d00-f30e-4c7e-a5ac-cefe4595fad7.jsonl`
+- `/ll:verify-issues` - 2026-09-09T20:25:16 - `707b6c2b-2b94-48e8-86f8-1ee81a021633.jsonl`
 - `/ll:verify-issues` - 2026-09-09T19:00:48 - `095aaa45-5f8e-445a-8993-2ec43b515f28.jsonl`
 - `/ll:confidence-check` - 2026-09-09T16:56:08 - `a093caaa-52f1-4637-ac3b-903ace756c35.jsonl`
 - `/ll:confidence-check` - 2026-09-09T16:33:20 - `3bf7ddf5-f1c3-4461-90f7-4d411c62ae41.jsonl`

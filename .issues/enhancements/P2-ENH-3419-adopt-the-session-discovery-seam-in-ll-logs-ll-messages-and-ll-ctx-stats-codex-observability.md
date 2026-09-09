@@ -11,11 +11,11 @@ captured_at: '2026-09-09T05:27:16Z'
 labels:
 - multi-host
 - observability
-blocked_by:
-- FEAT-3417
-- ENH-3420
+blocked_by: []
 relates_to:
 - ENH-3422
+- FEAT-3417
+- ENH-3420
 missing_artifacts: true
 verify_verdict: VALID
 ---
@@ -26,7 +26,7 @@ verify_verdict: VALID
 
 Split from FEAT-3417 on 2026-09-09. FEAT-3417 has landed (`scripts/little_loops/session_store/sessions.py`: `SessionHandle`, `SessionEvent`, `detect_sessions`, `iter_events`, `list_workspaces`, `parse_claude_transcript`, `parse_codex_rollout`; Codex fixtures under `scripts/tests/fixtures/codex/`; `codex-rollout` learning test proven on 0.152.1; dead `~/.codex/projects/` probe retired). This issue is the consumer half: adopt that seam in the three log-derived CLIs (`ll-logs`, `ll-messages`, `ll-ctx-stats`) so a Codex session becomes observable through the same commands as a Claude Code session, and update the docs and the one FSM loop that depend on their current wording.
 
-**Sequencing (2026-09-09 review):** this issue is additionally blocked by ENH-3420 (phase 1 of the seam unification). `detect_sessions` registers only `claude-code` and `codex` today (`sessions.py:250`); rewiring the CLIs onto it before ENH-3420 registers `opencode`/`pi`/`kimi-code`/`qwen`/`gemini`/`omp` would silently regress the qwen/gemini/omp support those CLIs already have (ENH-3165/ENH-3166/ENH-3393) and break `test_cli_ctx_stats.py:909,941` and `test_enh_3166_qwen_normalizer.py:277-296`, which this issue requires to pass unmodified. ENH-3422 (backfill half) is independent of this issue.
+**Sequencing (2026-09-09 review, updated 2026-09-09):** ENH-3420 has landed (status `done`) — `_REGISTERED_HOSTS` (`sessions.py:268-277`) now lists all 8 hosts (`claude-code`, `codex`, `opencode`, `pi`, `kimi-code`, `qwen`, `gemini`, `omp`), so the sequencing concern this paragraph originally raised (rewiring before qwen/gemini/omp were registered would silently regress `test_cli_ctx_stats.py:909,941` / `test_enh_3166_qwen_normalizer.py:277-296`) is resolved; `FEAT-3417` and `ENH-3420` have moved from `blocked_by` to `relates_to` accordingly (both `done`). ENH-3422 (backfill half) remains independent of this issue.
 
 ## Current Behavior
 
@@ -40,6 +40,16 @@ Split from FEAT-3417 on 2026-09-09. FEAT-3417 has landed (`scripts/little_loops/
 No `--host` flag exists on any of the three CLIs (grep-confirmed). The only ambient host source is `LL_HOOK_HOST`, which is exported only inside host hook adapters (`hooks/adapters/*/`), never in a user's interactive shell.
 
 `detect_sessions` (`sessions.py:253-283`) takes `host: str | None = None, *, include_agents: bool = False, limit, home`; `host=None` is a pure union across `_REGISTERED_HOSTS` and does **not** consult `LL_HOOK_HOST`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **Line-citation correction (`user_messages.py`)**: `get_project_folder` is defined at `user_messages.py:373` and `get_sessions_folder` at `user_messages.py:422` (this section's citation of `395,442` has drifted — both functions already accept a `host: str | None = None` kwarg, defaulting via `os.environ.get("LL_HOOK_HOST", "claude-code")` when unset).
+- **Zero production adoption confirmed**: `detect_sessions`/`iter_events`/`list_workspaces` (`session_store/sessions.py`) have no production callers today — only `scripts/tests/test_session_discovery.py` and internal recursion inside `sessions.py` itself use them. Every consumer named above remains on the pre-seam path, confirming this issue's premise.
+- **`_REGISTERED_HOSTS` now covers all 8 hosts** (`sessions.py:268-277`: `claude-code`, `codex`, `opencode`, `pi`, `kimi-code`, `qwen`, `gemini`, `omp`) — ENH-3420 (`status: done`) landed this. See Summary's Sequencing note.
+- **Fail-soft contract to preserve**: every layer in the current path (`get_project_folder`, `get_sessions_folder`, `extract_user_messages`/`extract_commands`, `detect_sessions`, `iter_events`, `_compute_cache_rate_from_jsonl`) returns `None`/`[]`/an empty generator rather than raising, on a missing folder, unknown host, malformed JSONL, or `OSError`. The rewire must not turn any of these into an exception path.
+- **`docs/reference/HOST_COMPATIBILITY.md`'s per-host session-log table** (`## State directory`, ~line 511; row "Session log readable via `detect_sessions()`" ~line 532) already marks all 7 non-`claude-code` hosts ✓, with `[^tok-codex]` (line 313, `codex exec --json` `turn.completed` source) and a second `[^codexsessions]` footnote (`detect_sessions`/`parse_codex_rollout` rollout-file source) already in place. The docs sweep in this issue extends/updates these two existing anchors rather than creating new ones.
 
 ## Expected Behavior
 
@@ -77,6 +87,16 @@ Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle
 3. **`cli/logs.py`**: route the 11 call sites through `detect_sessions(..., include_agents=False)`; route the `--all` enumeration in `discover_all_projects` through `list_workspaces(host, existing_only=...)` (the function already has an `existing_only` kwarg, 167). `_collect_sequences`'s direct `host_layout_for(LL_HOOK_HOST)` at 649 uses the same resolved host. The Claude-schema-coupled content functions stay Claude-Code-only (decided in FEAT-3417). Build on the existing partial precedent: `_has_ll_activity` (97), `_extract_cwd_from_project` (134), `_extract_ll_event_streams` (261) already take `layout: HostLayout | None`; leave that parameter in place (ENH-3422 retires it).
 4. **`hooks/session_start.py:162`**: pass `host=event.host or os.environ.get("LL_HOOK_HOST", "claude-code")` to `get_project_folder(cwd)` — the same expression already computed at line 178 for the backfill worker (`_backfill_host`). This is the one call site in this issue that stays on `get_project_folder` (it feeds the backfill worker, which is ENH-3422's).
 5. **`--host` flag**: add to `ll-logs`, `ll-messages`, `ll-ctx-stats` argparse with the same `choices=` list as `cli/session.py`'s `backfill_parser` (211-216); default `None`; resolved per § Expected Behavior.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **`cli/session.py:211-216`'s `--host` citation (backfill_parser) is confirmed accurate, no drift**: `choices=["claude-code", "codex", "opencode", "pi", "kimi-code", "qwen", "gemini", "omp"]`, `default=None`; its resolution logic lives separately at `cli/session.py:636`, not in the cited range.
+- **No `_resolve_host` helper exists anywhere in the codebase** — a repo-wide search found zero definitions; it is genuinely new code, not something to locate and reuse. Two differently-scoped existing helpers must not be conflated with it: `resolve_host()` (`host_runner.py:2292-2336`) and `resolve_host_named()` (`host_runner.py:2339-2347`) resolve the *orchestration* host (`LL_HOST_CLI`, which host CLI binary to shell out to), not the session-log-discovery host this issue's flag controls.
+- **The flag>env inline pattern this issue proposes centralizing is currently duplicated ad hoc at 5 sites across 4 files**, all using the identical literal default `"claude-code"`: `cli/session.py:636`, `user_messages.py:394-395` and `:442`, `hooks/session_start.py:178`, `cli/logs.py:189-190`. No shared flag+env-var helper exists in `cli_args.py` (596 lines, the shared argparse-helper module) today — whether to centralize via the new helper or continue the ad hoc pattern is an implementation choice, not an established convention either way.
+- **Existing `--host` flag implementations diverge in shape** across the 4 sites that have one: `cli/session.py:211-216` (backfill: `choices=` 8-item list, `default=None`, separate env fallback) is the only one matching this issue's target semantic (session-log-discovery host). `cli/advise.py:132-136` has no `choices=`/env fallback and resolves via `.ll/ll-config.json`'s `advisor.host` (a different semantic — which model/host CLI the advisor uses, not session-log host). `cli/adapt.py:51-56` is `required=True` with no `choices=`/default/env fallback at all. `mcp_server/__init__.py:106` is an unrelated semantic entirely (HTTP bind address).
+- **No existing test covers flag>env precedence** for any CLI's `--host` flag. The closest analog, `test_main_mcp_host_flag_wins_over_config`, tests flag-over-config (a different axis, not flag-over-env). The precedence tests this issue's Acceptance Criteria calls for have no existing pattern to model beyond `test_ll_session.py::TestBackfillArgs::test_backfill_host_choices_list`'s choices-list/invalid-value shape (already cited in this issue's Tests section).
 
 ## Integration Map
 
@@ -140,6 +160,12 @@ Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle
 
 `main_messages` (`cli/messages.py:13`) -> `_resolve_host(args.host)` -> `detect_sessions(cwd, host, include_agents=...)` -> `extract_user_messages(handles, ...)` -> `iter_events(handle)` -> `_parse_user_record(event.payload)` (Claude-shaped hosts) / Codex `response_item` role-`user` mapping (new)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **Anchor drift correction (confirmed against HEAD, `session_store/sessions.py`)**: this section's `### Types`/`### Signatures`/`### Call Path` cite line numbers that have moved since this issue's last refine pass. Current locations: `SessionHandle` class def → `sessions.py:57` (cited: 41-57), `SessionEvent` class def → `sessions.py:77` (cited: 60-68), `detect_sessions` → `sessions.py:291` (cited: 255), `list_workspaces` → `sessions.py:455` (cited: 288), `iter_events` → `sessions.py:824` (cited: 472). Signatures and described behavior are unchanged — only the anchors drifted (the file grew between passes). Use the corrected line numbers above; `resolve_anchor()` does not catch this class of drift because all the stale numbers still resolve to *some* line within the file's current bounds, just not the cited symbol.
+
 ## Implementation Steps
 
 1. Confirm ENH-3420 has landed: `detect_sessions(cwd, "qwen", home=tmp_path)` returns handles for a qwen fixture tree; `from little_loops.session_store import detect_sessions, iter_events, list_workspaces` imports.
@@ -202,6 +228,7 @@ ENH-3420]`, backlink in ENH-3420's `blocks:`) are all valid — FEAT-3417 is `do
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T20:25:11 - `1a13a741-5120-4c1e-a389-069561e94486.jsonl`
 - `/ll:verify-issues` - 2026-09-09T19:12:44 - `16a3bdad-e90f-4e75-82df-f1d6a2398c12.jsonl`
 - `review (manual: FEAT-3417 landed; added ENH-3420 as blocker (seam covers 2/8 hosts); LL_HOOK_HOST precedence; Codex user-turn source corrected to response_item role=user; token_count semantics decided; include_agents mapping; extract_commands Claude-only; dict return type; line refs refreshed)` - 2026-09-09T19:10:00
 - `/ll:confidence-check` - 2026-09-09T15:01:24 - `a4ac4148-e562-4d02-a9a9-889fd2f8dc3f.jsonl`

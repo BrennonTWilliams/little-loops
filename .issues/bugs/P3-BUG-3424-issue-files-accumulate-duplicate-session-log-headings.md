@@ -65,14 +65,41 @@ This bug matters because it silently corrupts an automation signal, not just a c
 - `scripts/little_loops/parallel/orchestrator.py:1999`
 - `scripts/little_loops/mcp_server/tools.py:468`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_parser.py` — `is_formatted()` (~line 422) and `IssueParser.parse_file()` (~line 3861) call `parse_session_log()`/`count_session_commands()`; both silently under-report on already-affected files until the one-shot normalization runs [Agent 1/2 finding]
+- `scripts/little_loops/cli/issues/show.py` — `_parse_card_fields()` (~line 244) calls `parse_session_log()`/`count_session_commands()` to build the `ll-issues show` History field [Agent 1 finding]
+- `scripts/little_loops/cli/issues/search.py` — `_parse_updated_date()` (~line 69) calls `session_log_body()` for the `--date-field updated` sort [Agent 1 finding]
+- `scripts/little_loops/issues/research_triage.py` — `issue_refined_at()` (~lines 303-304) calls `last_command_timestamp()` directly; this is the concrete stale-refine-detection code path the Motivation section references [Agent 1/2 finding]
+- `scripts/little_loops/cli/issues/refine_status.py` — `cmd_refine_status()` reads `IssueInfo.session_commands`/`session_command_counts` for the refinement-depth table's Total column and `refine_count` field [Agent 2 finding]
+- `scripts/little_loops/cli/issues/next_action.py` — gates `NEEDS_REFINE` on `session_command_counts.get("/ll:refine-issue", 0) < max_refine_count`; this enforcement reads through the same undercounted path on any of the 54 already-affected files [Agent 2 finding]
+- `skills/format-issue/SKILL.md:356-364` — embeds a `python3 -c` snippet calling `append_session_log_entry()` directly (a programmatic caller, not a manual-fallback instruction); benefits automatically from the merge fix, no doc change needed [Agent 1 finding]
+
 ### Similar Patterns
 - `grep -rn "## Session Log\|## Resolution" scripts/little_loops/issue_lifecycle.py scripts/little_loops/parallel/orchestrator.py` finds the other footer-template sites (Resolution blocks) that append below an existing Session Log heading and should be checked for the same reuse-existing-heading fix.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/recursive_finalize.py:100-116` (`_append_decomposition_note`) — unconditionally appends a `## Resolution` block via `content.rstrip() + note` with no check for an existing `## Session Log` heading; a third footer-template site beyond the two already cited above [Agent 1 finding]
+- Broader search for the same manual-fallback pattern turned up 5 more sites — `skills/go-no-go/SKILL.md:475`, `skills/confidence-check/SKILL.md:455`, `skills/issue-size-review/SKILL.md:219,250`, `skills/manage-issue/templates.md:388` — but all 5 already implement "if `## Session Log` already exists, append below the header; if not, add before the footer" correctly. No doc change needed at these 5; confirmed by direct read, not just grep hit [Agent 1 finding, verified]
+- `scripts/little_loops/cli/issues/format_check.py`'s existing `duplicate_heading` gap class (ENH-3247) and its `_duplicate_heading_groups()` helper (`issue_parser.py`) only detect a repeated `###` H3 nested under a shared `##` H2 parent — they do not match `##` H2 headings at all, so they structurally cannot catch this bug's duplicate-`## Session Log`-H2 shape. Relevant context for whichever route Implementation Step 3 takes [Agent 2 finding]
 
 ### Tests
 - `scripts/tests/test_session_log.py` (add the two-heading merge fixture from Proposed Solution item (d))
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_session_log.py::TestAppendSessionLogEntry::test_duplicate_session_log_headers_only_inserts_once` (lines 239-252) — existing 2-heading fixture, but only asserts `content.count("/ll:format-issue") == 1`; update to also assert `content.count("## Session Log") == 1` once merge lands [Agent 3 finding]
+- `scripts/tests/test_refine_status.py:1385` — real `append_session_log_entry` caller, not yet in known tests [Agent 1/3 finding]
+- `scripts/tests/test_issues_cli.py` (`TestIssuesAppendLog::test_append_log_writes_entry`) — real `count_session_commands` caller via the CLI, not yet in known tests [Agent 1/3 finding]
+- No test currently locks down `append_session_log_entry`'s return value when a merge occurs but the session JSONL doesn't resolve (merge-without-insert case) — an open semantics gap the new implementation must define and cover, not a pre-existing contract [Agent 3 finding]
+- New regression test for Implementation Step 3 (one-shot normalization) should follow the scan→typed-finding→apply→re-scan-idempotent shape in `scripts/tests/test_ll_issues_normalize.py` (`test_missing_id_auto_fix_renames_and_stamps_frontmatter`) or `scripts/tests/test_ll_issues_format_check.py` (`test_ref_index_built_once_with_fix_apply_recheck`), depending on which CLI route is chosen [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/API.md` (`little_loops.session_log` reference, around line 7691) — document the merge behavior once implemented
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` § "Session Log Auto-Linking" — names `append_session_log_entry()` directly and documents the hook flow that calls it [Agent 2 finding]
+- `docs/reference/OUTPUT_STYLING.md` (History field row) — documents `ll-issues show`'s History column as derived from `parse_session_log`/`count_session_commands` [Agent 2 finding]
+- `docs/reference/CLI.md` (`--date-field` row; `duplicate_heading`/`duplicate_findings_block` prose ~lines 2429-2506) — documents the existing adjacent gap class and would need a new entry if Implementation Step 3 adds a new gap kind [Agent 2 finding]
+- `docs/reference/COMMANDS.md` — documents `go-no-go`'s Findings write-back inserting "before `## Session Log`", an anchor instruction that resolves once duplicates are normalized away [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -109,6 +136,18 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 3. One-shot normalize the 54 already-affected files via `/ll:normalize-issues` or a new `ll-issues` subcommand that reuses the merge logic from step 1.
 4. Add the two-heading regression fixture (Proposed Solution item (d)) to `scripts/tests/test_session_log.py`.
 5. Run `python -m pytest scripts/tests/test_session_log.py` and verify the fix resolves the issue.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_session_log.py::TestAppendSessionLogEntry::test_duplicate_session_log_headers_only_inserts_once` (lines 239-252) — add `assert content.count("## Session Log") == 1` alongside its existing entry-count assertion
+- Decide `append_session_log_entry`'s return-value semantics for the merge-without-insert case (merge occurs but no session JSONL resolves) and add a locking test for it in `scripts/tests/test_session_log.py`
+- Choose the Implementation Step 3 (one-shot normalization) route, then wire it fully:
+  - If via `ll-issues normalize`: add a new kind to `AUTO_FIXABLE_KINDS` in `scripts/little_loops/cli/issues/normalize.py` and extend `add_normalize_parser()`'s help text
+  - If via `ll-issues format-check`: add a new H2-duplicate detector parallel to (not reusing) `_duplicate_heading_groups()` in `scripts/little_loops/issue_parser.py`, register it in the `FormatGaps` dataclass fields / `has_gaps()` / `has_blocking_gaps()` / `to_dict()`, and wire it into `_REPAIR_DISPATCH` + `_print_gaps()` plus the argparse help-text blocks in `scripts/little_loops/cli/issues/format_check.py`
+  - Either route: add the new gap/finding kind to `docs/reference/CLI.md` following the existing `duplicate_heading` entry's convention, and add a matching scan/apply/idempotent test per the Tests subsection above
+- Update `docs/ARCHITECTURE.md` § "Session Log Auto-Linking" and `docs/reference/OUTPUT_STYLING.md` (History field row) to reflect the merge behavior
 
 ## Impact
 
@@ -166,6 +205,7 @@ if headings:
 ```
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T20:29:52 - `c67d0e9c-2f18-4a69-ac01-c129392655e2.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:17:31 - `00b81863-86fd-48f9-b569-027e03323c21.jsonl`
 - `/ll:format-issue` - 2026-09-09T19:43:04 - `aa20b4a6-c20a-46a5-892f-bfa653566c50.jsonl`
 - `/ll:capture-issue` - 2026-09-09T19:38:06 - `43a86a4b-030b-4f3d-98cb-3c4b4bf26ccd.jsonl`
