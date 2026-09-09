@@ -21,12 +21,13 @@ score_change_surface: 10
 
 ## Summary
 
-54 issue files under `.issues/` at HEAD contain two or more line-anchored `## Session Log` H2 headings. The session-log readers in `scripts/little_loops/session_log.py` (`session_log_body`, `parse_session_log`, `count_session_commands`, `last_command_timestamp`) read only the **last** non-fenced section, so every entry in an earlier block is invisible to them — stale-refine detection, per-command timestamps, and command counts all under-report on those files.
+49 issue files under `.issues/` (working tree, 2026-09-09; the capture-time count was 54) contain two line-anchored `## Session Log` H2 headings (none has more than two). The session-log readers in `scripts/little_loops/session_log.py` (`session_log_body`, `parse_session_log`, `count_session_commands`, `last_command_timestamp`) read only the **last** non-fenced section, so every entry in an earlier block is invisible to them — stale-refine detection, per-command timestamps, and command counts all under-report on those files. A further 9 files carry session-log entry lines that sit under **no** `## Session Log` heading at all (orphaned entries), which no heading-based reader or merge can see.
 
-Two observed shapes produce the duplicate:
+Three observed shapes produce the damage:
 
-1. **LLM hand-append at EOF.** A command pass writes `\n\n## Session Log\n- <entry>` at end of file even though a `## Session Log` heading already exists earlier. Reproduced in commit 98dbbaf83 on ENH-3423: the `/ll:verify-issues --auto` pass inserted `## Verification Notes` above the existing Session Log, then started a fresh `## Session Log` at EOF for its own entry. The manual-fallback instruction in `commands/verify-issues.md` section 4.5 (mirrored in `skills/capture-issue/SKILL.md:292`, `skills/decide-issue/SKILL.md:452`, `commands/scan-codebase.md:314`, `commands/ready-issue.md:365`) tells the model how to format the entry and where to put a *new* heading, but never says to reuse an existing heading when one is present.
-2. **Post-Resolution restart.** In 7 of 12 sampled duplicate files the second heading immediately follows a `## Resolution` block. The Resolution templates in `scripts/little_loops/issue_lifecycle.py:355-415` and `scripts/little_loops/parallel/orchestrator.py:1960-1985` are appended at EOF *below* the existing Session Log, and a later pass then opened a new Session Log under the Resolution footer instead of returning to the original heading.
+1. **Post-Resolution restart (dominant: 42 of 49).** The second heading immediately follows a `## Resolution` block. The Resolution templates in `scripts/little_loops/issue_lifecycle.py:355-415`, `scripts/little_loops/parallel/orchestrator.py:1960-1985`, and `scripts/little_loops/recursive_finalize.py:100-116` are appended at EOF *below* the existing Session Log, and a later pass then opens a new Session Log under the Resolution footer instead of returning to the original heading.
+2. **LLM hand-append at EOF.** A command pass writes `\n\n## Session Log\n- <entry>` at end of file even though a `## Session Log` heading already exists earlier. Reproduced in commit 98dbbaf83 on ENH-3423: the `/ll:verify-issues --auto` pass inserted `## Verification Notes` above the existing Session Log, then started a fresh `## Session Log` at EOF for its own entry. The manual-fallback instruction in `commands/verify-issues.md` section 4.5 (mirrored in `skills/capture-issue/SKILL.md:292`, `skills/decide-issue/SKILL.md:452`, `commands/scan-codebase.md:314`, `commands/ready-issue.md:365`) tells the model how to format the entry and where to put a *new* heading, but never says to reuse an existing heading when one is present.
+3. **Section-insert write-back clobbers the heading.** Skills that insert a findings section "before `## Session Log`" via the Edit tool (`skills/confidence-check/rubric.md:618` Confidence Check Notes template, `skills/go-no-go/SKILL.md:383` Go/No-Go Findings, `commands/verify-issues.md` Verification Notes) put the heading line in `old_string` and drop it from `new_string`. Reproduced on **this issue file** by the 2026-09-09 `/ll:confidence-check` pass: the `## Session Log` heading and the first entry's command name (`/ll:refine-issue:gap-analysis`) were replaced by the `## Confidence Check Notes` section, leaving six entries orphaned under that section (one mangled to ` - 2026-09-09T20:38:10 - …`), then a fresh `## Session Log` was appended at EOF for the confidence-check entry; `ll-issues show BUG-3424` reported a History of just `/ll:confidence-check`. Confidence-check's own manual-fallback wording already says "if `## Session Log` already exists, append below the header", so tightening fallback wording (shape 2) does not prevent this shape.
 
 `append_session_log_entry` (`scripts/little_loops/session_log.py:281-343`) is **not** the writer at fault: it correctly finds the last fence-excluded, line-anchored heading (BUG-3202) and inserts under it. But it silently tolerates a duplicate and keeps feeding only the last block, so the file never self-heals and the earlier entries stay orphaned.
 
@@ -37,31 +38,44 @@ Two observed shapes produce the duplicate:
 
 ## Current Behavior
 
-An issue file can end up with more than one non-fenced `## Session Log` H2 heading (see Summary for the two shapes that produce this). Once that happens, `session_log_body`, `parse_session_log`, `count_session_commands`, and `last_command_timestamp` all read only the section under the **last** heading — every entry recorded under an earlier heading becomes invisible to stale-refine detection, command counts, and per-command timestamps. `append_session_log_entry` inserts new entries under the last heading too, so the file never self-heals; the orphaned entries stay orphaned indefinitely.
+An issue file can end up with more than one non-fenced `## Session Log` H2 heading, or with entry lines under no Session Log heading at all (see Summary for the three shapes that produce this). Once that happens, `session_log_body`, `parse_session_log`, `count_session_commands`, and `last_command_timestamp` all read only the section under the **last** heading — every entry recorded under an earlier heading, or orphaned under another section, becomes invisible to stale-refine detection, command counts, and per-command timestamps. `append_session_log_entry` inserts new entries under the last heading too, so the file never self-heals; the orphaned entries stay orphaned indefinitely.
+
+Entry order matters for the fix: `append_session_log_entry` inserts each new entry directly beneath the heading, so every block is newest-first, and a later block always holds newer entries than an earlier one. In 39 of the 49 affected files, concatenating blocks in document order would therefore produce a log whose timestamps are not monotonic.
 
 ## Expected Behavior
 
-An issue file has at most one `## Session Log` heading. When `append_session_log_entry` finds more than one non-fenced heading, it merges every section's entries into a single block (preserving entry order, at the first heading's position) before inserting the new entry — so a single subsequent `ll-issues append-log` call repairs the file and all four readers see the complete history.
+An issue file has at most one `## Session Log` heading, and it is the last section of the file.
+
+- **Readers are tolerant.** `session_log_body` returns the union of every non-fenced `## Session Log` block, so `parse_session_log`, `count_session_commands`, and `last_command_timestamp` report the complete history even on a not-yet-normalized file.
+- **The appender self-heals.** When `append_session_log_entry` resolves a session and finds more than one non-fenced heading, it merges every block into a single block at the first heading's position before inserting the new entry. Merged entries are ordered newest-first: blocks are concatenated in **reverse document order** (later blocks first), each block's internal order kept. When no session resolves, the function returns False before touching the file, exactly as today — the normalizer, not the appender, is the guaranteed repair path.
+- **Footer writers keep Session Log last.** The Resolution templates insert their block *above* an existing `## Session Log` heading instead of appending at EOF, and the findings-section templates insert *above* the heading without consuming it.
+- **The corpus is normalized once** via `ll-issues format-check --fix --apply` with a new `duplicate_session_log` gap kind that reuses the appender's merge. Orphaned entry lines outside any Session Log section are reported as a separate, non-auto-fixable finding, never silently adopted.
 
 ## Motivation
 
 This bug matters because it silently corrupts an automation signal, not just a cosmetic one:
-- Stale-refine detection, `count_session_commands`, and `last_command_timestamp` under-report on all 54 already-affected files, which can make an issue look less-refined (or more stale) than its real session history shows.
+- Stale-refine detection, `count_session_commands`, and `last_command_timestamp` under-report on all 49 already-affected files (plus 9 with orphaned entries), which can make an issue look less-refined (or more stale) than its real session history shows. `next-action` gates `NEEDS_REFINE` on the same undercounted path.
 - The corruption is self-perpetuating: `append_session_log_entry` keeps writing under the last heading, so the file never self-heals without an explicit fix.
 - It closes a gap left by BUG-3202 (heading *matching*) and BUG-3150 (append *locking*) — both hardened `append_session_log_entry` against related failure modes but neither addressed heading *duplication*.
 
 ## Proposed Solution
 
-- (a) In `append_session_log_entry`, when more than one non-fenced `## Session Log` heading exists, merge every section's entries into a single block (preserving entry order, first heading's position) before inserting the new entry — so any subsequent `ll-issues append-log` repairs the file.
-- (b) Tighten every manual-fallback instruction listed above to: "append under the existing `## Session Log` heading if one exists; create the heading only when none does."
-- (c) One-shot normalization of the 54 existing files, either via `/ll:normalize-issues` or a new `ll-issues` subcommand that reuses the merge logic from (a).
-- (d) Regression test: start from a fixture with two `## Session Log` blocks (one above a `## Resolution` footer, one below), call `append_session_log_entry`, assert exactly one heading remains with all prior entries plus the new one preserved in order.
+- (a) Add a pure `merge_session_log_blocks(content: str) -> str` to `session_log.py`: when more than one non-fenced `## Session Log` heading exists, collapse every block into one at the first heading's position, concatenating block bodies in **reverse document order** (later blocks first) so the result stays newest-first. Idempotent on a single-heading file. Call it from `append_session_log_entry` after the entry resolves and before the insert-under-heading logic.
+- (b) Make `session_log_body` return the union of all non-fenced blocks (reverse document order, matching (a)) instead of the last block, so all four readers are correct before normalization.
+- (c) Tighten the five manual-fallback instructions listed above to: "append under the existing `## Session Log` heading if one exists; create the heading only when none does."
+- (d) Fix the section-insert anchors (`skills/confidence-check/rubric.md:618`, `skills/go-no-go/SKILL.md:383`, verify-issues' Verification Notes): instruct the model to anchor the Edit on the blank line *above* `## Session Log` and to keep the heading line verbatim in `new_string`, with an explicit "after the edit, `grep -c '^## Session Log'` must still print 1" check.
+- (e) Make the three Resolution footer templates (`issue_lifecycle.py`, `parallel/orchestrator.py`, `recursive_finalize.py`) insert above an existing `## Session Log` heading rather than appending at EOF, so Session Log stays last and the EOF reflex stops producing duplicates.
+- (f) One-shot normalization via `ll-issues format-check`: new `duplicate_session_log` gap kind (H2-scoped, parallel to the H3-only `duplicate_heading`) whose `--fix --apply` repair calls (a); plus a report-only `orphaned_session_log_entries` finding for entry lines outside any Session Log section (9 files today).
+- (g) Regression tests: two-block fixture (one above a `## Resolution` footer, one below, timestamps interleaved so document order ≠ newest-first), call `append_session_log_entry`, assert one heading, all entries present, new entry first, and timestamps strictly descending. Reader test: `session_log_body`/`count_session_commands` on the same fixture see all entries. No-session test: two-heading fixture, `session_jsonl` unresolvable, assert return False and file byte-identical. CLI test: `format-check --fix --apply` twice, second run byte-identical.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/session_log.py` (`append_session_log_entry` — add merge-before-insert logic)
-- `commands/verify-issues.md` (§4.5 manual-fallback instruction)
+- `scripts/little_loops/session_log.py` (new `merge_session_log_blocks`; `append_session_log_entry` merge-before-insert; `session_log_body` union of blocks)
+- `scripts/little_loops/cli/issues/format_check.py` + `scripts/little_loops/issue_parser.py` (`duplicate_session_log` gap kind and repair; `orphaned_session_log_entries` report-only finding)
+- `scripts/little_loops/issue_lifecycle.py:355-415`, `scripts/little_loops/parallel/orchestrator.py:1960-1985`, `scripts/little_loops/recursive_finalize.py:100-116` (Resolution templates insert above existing Session Log)
+- `commands/verify-issues.md` (§4.5 manual-fallback instruction; Verification Notes insert anchor)
+- `skills/confidence-check/rubric.md:618` and `skills/go-no-go/SKILL.md:383` (findings-section insert anchors, shape 3)
 - `skills/capture-issue/SKILL.md:292`
 - `skills/decide-issue/SKILL.md:452`
 - `commands/scan-codebase.md:314`
@@ -87,7 +101,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/recursive_finalize.py:100-116` (`_append_decomposition_note`) — unconditionally appends a `## Resolution` block via `content.rstrip() + note` with no check for an existing `## Session Log` heading; a third footer-template site beyond the two already cited above [Agent 1 finding]
-- Broader search for the same manual-fallback pattern turned up 5 more sites — `skills/go-no-go/SKILL.md:475`, `skills/confidence-check/SKILL.md:455`, `skills/issue-size-review/SKILL.md:219,250`, `skills/manage-issue/templates.md:388` — but all 5 already implement "if `## Session Log` already exists, append below the header; if not, add before the footer" correctly. No doc change needed at these 5; confirmed by direct read, not just grep hit [Agent 1 finding, verified]
+- Broader search for the same manual-fallback pattern turned up 5 more sites — `skills/go-no-go/SKILL.md:475`, `skills/confidence-check/SKILL.md:455`, `skills/issue-size-review/SKILL.md:219,250`, `skills/manage-issue/templates.md:388` — but all 5 already implement "if `## Session Log` already exists, append below the header; if not, add before the footer" correctly. No fallback-wording change needed at these 5; confirmed by direct read, not just grep hit [Agent 1 finding, verified]. **Review 2026-09-09:** confidence-check nonetheless corrupted this very file through its *findings-section insert* (shape 3), not its fallback wording — the insert anchors at `rubric.md:618` and `go-no-go/SKILL.md:383` are the sites to change, and they are now in Files to Modify.
 - `scripts/little_loops/cli/issues/format_check.py`'s existing `duplicate_heading` gap class (ENH-3247) and its `_duplicate_heading_groups()` helper (`issue_parser.py`) only detect a repeated `###` H3 nested under a shared `##` H2 parent — they do not match `##` H2 headings at all, so they structurally cannot catch this bug's duplicate-`## Session Log`-H2 shape. Relevant context for whichever route Implementation Step 3 takes [Agent 2 finding]
 
 ### Tests
@@ -111,6 +125,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Configuration
 - N/A
+
+### Behavior Parity
+- `session_log_body` (last block → union of all blocks, reverse document order): identical output on every single-heading file; on the 49 duplicate files the old output was a strict subset of the new one. `search.py::_parse_updated_date` reads the first entry's timestamp, which is unchanged because the newest block is the last one and it is placed first.
+- `append_session_log_entry`: unchanged return contract (True when an entry was written, False when no session resolves), unchanged lock scope, unchanged heading-creation path for zero-heading files; the merge is an added step only on the N>1 path.
+- Resolution templates (`issue_lifecycle.py`, `orchestrator.py`, `recursive_finalize.py`): same block text; only the insert position changes (above an existing Session Log instead of EOF). Files with no Session Log still get the block at EOF.
+- Prompt sites (shape 2 and 3): the session-log entry format line parsed by `issue_design_timestamp()` is untouched; only the placement instructions change.
+- `format-check`: two new gap kinds are additive; `duplicate_heading` (H3) semantics are unchanged and the new H2 detector does not reuse it.
 
 ### Codebase Research Findings
 
@@ -140,38 +161,46 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ### Signatures
 
-- `append_session_log_entry(issue_path: Path, command: str, session_jsonl: Path | None = None) -> bool` (existing; gains a merge step when more than one `## Session Log` heading is found)
-- `_merge_session_log_headings(content: str, headings: list[re.Match[str]]) -> str` (new, private helper in `session_log.py`)
+- `merge_session_log_blocks(content: str) -> str` (new, public, pure, in `session_log.py`; collapses N>1 non-fenced `## Session Log` blocks into one at the first heading's position, bodies in reverse document order; returns `content` unchanged when 0 or 1 headings)
+- `append_session_log_entry(issue_path: Path, command: str, session_jsonl: Path | None = None) -> bool` (existing; calls `merge_session_log_blocks` after the entry resolves and before the insert; unchanged early `return False` when no session resolves)
+- `session_log_body(content: str) -> str` (existing; returns the union of all non-fenced blocks in reverse document order instead of the last block)
+- `_duplicate_session_log_headings(content: str) -> list[tuple[int, int, int]]` (new detector in `issue_parser.py`, H2-scoped, fence-excluded; parallel to `_duplicate_heading_groups`, not reusing it)
+- `_orphaned_session_log_entries(content: str) -> list[int]` (new report-only detector in `issue_parser.py`; entry-shaped lines whose enclosing H2 is not `## Session Log`)
+- `_fix_duplicate_session_log(config, source_id, path, targets, *, apply) -> None` (new `format_check.py` repair wrapper over `merge_session_log_blocks`, registered in `_REPAIR_DISPATCH`)
 
 ### Call Path
 
-`cli/issues/append_log.py::cmd_append_log` -> `append_session_log_entry` -> `_merge_session_log_headings` (new, invoked when `len(headings) > 1`) -> `atomic_write`
+`cli/issues/append_log.py::cmd_append_log` -> `append_session_log_entry` -> `merge_session_log_blocks` (when `len(headings) > 1`) -> `atomic_write`
+
+`cli/issues/format_check.py::cmd_format_check --fix --apply` -> `_fix_duplicate_session_log` -> `merge_session_log_blocks` -> write
+
+`session_log_body` (union) -> `parse_session_log` / `count_session_commands` / `last_command_timestamp` -> `issue_parser.py`, `show.py`, `search.py`, `research_triage.py`, `refine_status.py`, `next_action.py`
 
 ## Implementation Steps
 
-1. Add `_merge_session_log_headings` to `session_log.py` and call it from `append_session_log_entry` when more than one non-fenced heading is found, before the existing insert-under-last-heading logic runs.
-2. Tighten the manual-fallback instructions in `commands/verify-issues.md`, `skills/capture-issue/SKILL.md`, `skills/decide-issue/SKILL.md`, `commands/scan-codebase.md`, and `commands/ready-issue.md` to reuse an existing `## Session Log` heading instead of unconditionally creating a new one.
-3. One-shot normalize the 54 already-affected files via `/ll:normalize-issues` or a new `ll-issues` subcommand that reuses the merge logic from step 1.
-4. Add the two-heading regression fixture (Proposed Solution item (d)) to `scripts/tests/test_session_log.py`.
-5. Run `python -m pytest scripts/tests/test_session_log.py` and verify the fix resolves the issue.
+1. **Core (TDD).** Write the tests in Proposed Solution (g) for `merge_session_log_blocks`, the appender, and the readers in `scripts/tests/test_session_log.py`; update `test_duplicate_session_log_headers_only_inserts_once` to assert one heading and that `/ll:other` (01-02) sits above `/ll:capture-issue` (01-01) below the new entry. Then add `merge_session_log_blocks` to `session_log.py` (adjacent to `append_session_log_entry`), call it from the appender, and change `session_log_body` to union all blocks.
+2. **Footer writers.** Change the three Resolution templates (`issue_lifecycle.py`, `parallel/orchestrator.py`, `recursive_finalize.py`) to insert above an existing non-fenced `## Session Log` heading, appending at EOF only when none exists. Add one test per site.
+3. **Normalizer.** `> **Selected:** format-check route.` Add `_duplicate_session_log_headings` and `_orphaned_session_log_entries` detectors to `issue_parser.py`; register `duplicate_session_log` (auto-fixable) and `orphaned_session_log_entries` (report-only) in `FormatGaps` fields / `has_gaps()` / `has_blocking_gaps()` / `to_dict()`; add `_fix_duplicate_session_log` to `_REPAIR_DISPATCH` and `_print_gaps()`, plus the argparse help text in `format_check.py`. Add the scan→fix→re-scan idempotency test in `scripts/tests/test_ll_issues_format_check.py` following `test_fix_apply_collapses_and_is_idempotent`.
+4. **Prompt sites.** Tighten the five manual-fallback instructions (shape 2) and the three findings-section insert anchors (shape 3) per Proposed Solution (c) and (d). Run `ll-adapt --host <gemini|kimi-code|qwen> --apply` after skill edits to keep mirror gates green.
+5. **Run the corpus fix.** `ll-issues format-check --all --fix --apply`; confirm `grep -rlc '^## Session Log' .issues | grep -v ':1$'` is empty; review the orphaned-entries report and hand-repair those 9 files (BUG-3424 itself is already repaired in this pass).
+6. **Docs.** `docs/reference/API.md` (`little_loops.session_log`), `docs/reference/CLI.md` (new gap kinds next to `duplicate_heading`), `docs/ARCHITECTURE.md` § "Session Log Auto-Linking", `docs/reference/OUTPUT_STYLING.md` (History row), `docs/reference/COMMANDS.md` (go-no-go anchor wording).
+7. Run `python -m pytest scripts/tests/` and `ll-issues check-verify-verdict BUG-3424`; the latter needs a `/ll:verify-issues BUG-3424 --auto` pass to clear the stale `NON_VALID` marker before `/ll:manage-issue`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/tests/test_session_log.py::TestAppendSessionLogEntry::test_duplicate_session_log_headers_only_inserts_once` (lines 239-252) — add `assert content.count("## Session Log") == 1` alongside its existing entry-count assertion
-- Decide `append_session_log_entry`'s return-value semantics for the merge-without-insert case (merge occurs but no session JSONL resolves) and add a locking test for it in `scripts/tests/test_session_log.py`
-- Choose the Implementation Step 3 (one-shot normalization) route, then wire it fully:
-  - If via `ll-issues normalize`: add a new kind to `AUTO_FIXABLE_KINDS` in `scripts/little_loops/cli/issues/normalize.py` and extend `add_normalize_parser()`'s help text
-  - If via `ll-issues format-check`: add a new H2-duplicate detector parallel to (not reusing) `_duplicate_heading_groups()` in `scripts/little_loops/issue_parser.py`, register it in the `FormatGaps` dataclass fields / `has_gaps()` / `has_blocking_gaps()` / `to_dict()`, and wire it into `_REPAIR_DISPATCH` + `_print_gaps()` plus the argparse help-text blocks in `scripts/little_loops/cli/issues/format_check.py`
-  - Either route: add the new gap/finding kind to `docs/reference/CLI.md` following the existing `duplicate_heading` entry's convention, and add a matching scan/apply/idempotent test per the Tests subsection above
-- Update `docs/ARCHITECTURE.md` § "Session Log Auto-Linking" and `docs/reference/OUTPUT_STYLING.md` (History field row) to reflect the merge behavior
+- Update `scripts/tests/test_session_log.py::TestAppendSessionLogEntry::test_duplicate_session_log_headers_only_inserts_once` (lines 239-252) — add `assert content.count("## Session Log") == 1` alongside its existing entry-count assertion (folded into Step 1)
+- `append_session_log_entry`'s return-value semantics for the merge-without-insert case: `> **Selected:** keep the existing early return.` When no session JSONL resolves the function returns False before reading the file and performs no merge; `format-check --fix --apply` is the guaranteed repair path. Lock this down with the no-session test in Proposed Solution (g).
+- Implementation Step 3 route: `> **Selected:** ll-issues format-check.` Rationale: `duplicate_heading` already provides the H3 detector/repair/idempotency-test shape to mirror, and `--fix --apply` is the established corpus-repair verb; `normalize.py` has no existing collapse precedent. The `ll-issues normalize` alternative is dropped.
+- Add the new gap kinds to `docs/reference/CLI.md` following the existing `duplicate_heading` entry's convention (folded into Step 6)
+- Update `docs/ARCHITECTURE.md` § "Session Log Auto-Linking" and `docs/reference/OUTPUT_STYLING.md` (History field row) to reflect the merge and union-read behavior (folded into Step 6)
 
 ## Impact
 
-- **Priority**: P3 - matches frontmatter; corrupts an automation signal (stale-refine detection, command counts) on 54 files but is not user-facing or blocking.
-- **Effort**: Medium - one core-function change plus five manual-fallback doc call sites, a one-shot normalization pass, and a new regression test.
-- **Risk**: Low - `append_session_log_entry` already holds a per-file lock (BUG-3150); the merge only triggers when more than one heading is found, so single-heading files are unaffected.
+- **Priority**: P3 - matches frontmatter; corrupts an automation signal (stale-refine detection, command counts, `next-action` refine gating) on 49 files but is not user-facing or blocking.
+- **Effort**: Large - matches frontmatter `size: Large`: one core-module change (merge + union read), three Resolution template sites, a new format-check gap kind with detector/repair/tests, eight prompt-site edits, a corpus fix, and five doc files.
+- **Risk**: Low - `append_session_log_entry` already holds a per-file lock (BUG-3150); the merge only triggers when more than one heading is found, so single-heading files are unaffected. The `session_log_body` union changes reader output only on already-affected files, where the current output is wrong.
 - **Breaking Change**: No
 
 ## Related Key Documentation
@@ -187,12 +216,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 1. Run a flow whose manual-fallback session-log instructions add a `## Session Log` heading unconditionally after another footer section (e.g. `## Resolution` or `## Verification Notes`) was appended below the existing heading — e.g. `/ll:verify-issues --auto` on an issue that already has a Session Log.
 2. Trigger `append_session_log_entry` again on the same file (e.g. via `ll-issues append-log`).
 3. Observe: the file now has two non-fenced `## Session Log` H2 headings; `session_log_body`/`parse_session_log`/`count_session_commands`/`last_command_timestamp` report only the entries under the *last* heading. Concretely reproduced in commit `98dbbaf83` on ENH-3423.
+4. Shape 3: run `/ll:confidence-check` on an issue whose Session Log is the last section and whose run produces findings. The Edit that inserts `## Confidence Check Notes` "before `## Session Log`" may consume the heading line; the subsequent `ll-issues append-log` then creates a new heading at EOF and `ll-issues show <ID>` History shows only `/ll:confidence-check`. Reproduced on this file (`git diff --cached` of the 2026-09-09 confidence-check pass, before the repair in the same day's review).
 
 ## Root Cause
 
 - **File**: `scripts/little_loops/session_log.py`
 - **Anchor**: `in function append_session_log_entry()` (lines 281-343)
-- **Cause**: `append_session_log_entry` finds only the *last* non-fenced, line-anchored `## Session Log` heading and inserts under it (correct per BUG-3202), but never checks whether more than one such heading already exists. The duplicate is introduced upstream: the manual-fallback instructions in `commands/verify-issues.md` §4.5, `skills/capture-issue/SKILL.md:292`, `skills/decide-issue/SKILL.md:452`, `commands/scan-codebase.md:314`, and `commands/ready-issue.md:365` tell the model to add a `## Session Log` heading without checking whether one already exists, and the Resolution templates in `issue_lifecycle.py:355-415` / `parallel/orchestrator.py:1960-1985` append below the existing heading, so a later pass opens a fresh one under the Resolution footer instead of returning to the original.
+- **Cause**: `append_session_log_entry` finds only the *last* non-fenced, line-anchored `## Session Log` heading and inserts under it (correct per BUG-3202), but never checks whether more than one such heading already exists, and `session_log_body` (shared by all four readers) likewise takes only the last block. The duplicate is introduced upstream by three writer shapes: (1) the Resolution templates in `issue_lifecycle.py:355-415` / `parallel/orchestrator.py:1960-1985` / `recursive_finalize.py:100-116` append below the existing heading, so a later pass opens a fresh one under the Resolution footer instead of returning to the original (42 of 49 files); (2) the manual-fallback instructions in `commands/verify-issues.md` §4.5, `skills/capture-issue/SKILL.md:292`, `skills/decide-issue/SKILL.md:452`, `commands/scan-codebase.md:314`, and `commands/ready-issue.md:365` tell the model to add a `## Session Log` heading without checking whether one already exists; (3) findings-section inserts anchored "before `## Session Log`" (`skills/confidence-check/rubric.md:618`, `skills/go-no-go/SKILL.md:383`, verify-issues' Verification Notes) consume the heading line in the Edit, orphaning the existing entries and forcing a fresh heading at EOF.
 
 ## Error Messages
 
@@ -237,13 +267,11 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 - Broad enumeration across the full Integration Map (~18 sites across the core fix, 5 manual-fallback doc/skill call sites, a third wiring-pass footer site, 4+ test files, and 5 documentation files) drives Complexity Breadth to 0/12, even though each site's own change is Local/mechanical.
 - Pattern A blast radius: ~10 caller/reader call sites depend on `append_session_log_entry`/`parse_session_log`/`count_session_commands` (4 direct callers plus 6 reader call sites surfaced by the wiring pass) — a broad-but-manageable surface, not isolated.
 
- - 2026-09-09T20:38:10 - `7cfdc5bc-5d3d-4908-acfc-6508de69f3b6.jsonl`
+## Session Log
+- `/ll:confidence-check` - 2026-09-09T20:46:34 - `cfabad4e-29d0-4bbf-8a3f-5a2f2c2e4144.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-09-09T20:38:10 - `7cfdc5bc-5d3d-4908-acfc-6508de69f3b6.jsonl`
 - `/ll:verify-issues` - 2026-09-09T20:33:33 - `e0943bd8-8b5c-4a1a-9fe6-a5e34b97cca5.jsonl`
 - `/ll:wire-issue` - 2026-09-09T20:29:52 - `c67d0e9c-2f18-4a69-ac01-c129392655e2.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:17:31 - `00b81863-86fd-48f9-b569-027e03323c21.jsonl`
 - `/ll:format-issue` - 2026-09-09T19:43:04 - `aa20b4a6-c20a-46a5-892f-bfa653566c50.jsonl`
 - `/ll:capture-issue` - 2026-09-09T19:38:06 - `43a86a4b-030b-4f3d-98cb-3c4b4bf26ccd.jsonl`
-
-
-## Session Log
-- `/ll:confidence-check` - 2026-09-09T20:46:34 - `cfabad4e-29d0-4bbf-8a3f-5a2f2c2e4144.jsonl`

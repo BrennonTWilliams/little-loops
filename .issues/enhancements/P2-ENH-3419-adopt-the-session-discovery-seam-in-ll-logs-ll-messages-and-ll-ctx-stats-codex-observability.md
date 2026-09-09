@@ -17,7 +17,7 @@ relates_to:
 - FEAT-3417
 - ENH-3420
 missing_artifacts: true
-verify_verdict: VALID
+verify_verdict: PROPOSAL_UNSOUND
 confidence_score: 100
 outcome_confidence: 74
 score_complexity: 14
@@ -173,14 +173,14 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ### Types
 
-- `SessionHandle` (`session_store/sessions.py:41-57`) — `host`, `session_id`, `path`, `cwd`, `updated_at`, `is_agent`
-- `SessionEvent` (`session_store/sessions.py:60-68`) — `type`, `timestamp`, `host`, `payload` (host-native for claude-code/codex; existing-normalizer output for qwen/gemini/omp/kimi per ENH-3420)
+- `SessionHandle` (`session_store/sessions.py:57`) — `host`, `session_id`, `path`, `cwd`, `updated_at`, `is_agent`
+- `SessionEvent` (`session_store/sessions.py:77`) — `type`, `timestamp`, `host`, `payload` (host-native for claude-code/codex; existing-normalizer output for qwen/gemini/omp/kimi per ENH-3420)
 
 ### Signatures
 
-- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` (existing, `sessions.py:255`)
-- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` (existing, `sessions.py:472`)
-- `list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]` (existing, `sessions.py:288`)
+- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` (existing, `sessions.py:291`)
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` (existing, `sessions.py:824`)
+- `list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]` (existing, `sessions.py:455`)
 - `_resolve_host(flag: str | None) -> str | None` (new, one shared helper — suggested home `user_messages.py` beside `get_project_folder`) — `flag or os.environ.get("LL_HOOK_HOST") or None`
 - `extract_user_messages(handles: list[SessionHandle], limit: int | None = None, since: datetime | None = None, include_agent_sessions: bool = True, include_response_context: bool = False) -> list[UserMessage]` — replaces `project_folder: Path` (`user_messages.py:639`); callers pass `detect_sessions(cwd, host, include_agents=include_agent_sessions)`
 - `extract_commands(handles: list[SessionHandle], limit, since, include_agent_sessions=True, tools=None) -> list[CommandRecord]` — same replacement (`user_messages.py:722`); Claude-shaped payloads only
@@ -261,11 +261,67 @@ No decisions-log violations (no active required rules), no evidence-quote fabric
 ENH-3420]`, backlink in ENH-3420's `blocks:`) are all valid — FEAT-3417 is `done`, ENH-3420 is
 `open` with `ENH-3419` correctly listed in its `blocks:`.
 
+**Re-verified 2026-09-09 (`/ll:verify-issues`, later pass).** Verdict at time of check:
+**OUTDATED** (correction below applied in the same pass, so the issue as it now reads is up to
+date — this section is a record of what was wrong and fixed, not an outstanding action item).
+
+- **Program Design `### Types`/`### Signatures` anchor drift, round 2**: this section's own
+  `### Codebase Research Findings` note (below) had already identified that `sessions.py` grew
+  between refine passes and gave corrected line numbers (`SessionHandle`→57, `SessionEvent`→77,
+  `detect_sessions`→291, `list_workspaces`→455, `iter_events`→824), but that correction was never
+  propagated into the `### Types`/`### Signatures` bullets themselves — they still read the
+  stale numbers (41-57, 60-68, 255, 472, 288) from an even earlier pass. Re-verified directly
+  against HEAD (`grep -n '^class SessionHandle\|^class SessionEvent\|^def detect_sessions\|^def
+  list_workspaces\|^def iter_events'`) and confirmed the `Codebase Research Findings` numbers are
+  the current ones; edited the `### Types`/`### Signatures` bullets in place to match.
+- Every other file:line citation checked this pass matched HEAD exactly: `cli/logs.py`'s 11 call
+  sites and their def lines (`_collect_sequences` 633, `_cmd_sequences` 691, `_cmd_extract` 770,
+  `_collect_failure_clusters` 1331, `_cmd_scan_failures` 1552 with its `if`/`return 1` at
+  1554-1556, `_cmd_eval_export` 2028, `discover_all_projects` 166, `_extract_ll_event_streams`
+  261, module docstring line 1); `cli/ctx_stats.py` (`_compute_cache_rate_from_jsonl` 342,
+  `main_ctx_stats` 734 with its call site at 753, current formula at 401-415); `user_messages.py`
+  (`get_project_folder` 373, `get_sessions_folder` 422, `extract_user_messages` 639,
+  `extract_commands` 722, `extract_conversation_turns` 1028); `cli/session.py` backfill `--host`
+  block (211-216) and its resolution logic (636); `.loops/ll-logs-telemetry-digest.yaml:59-67`'s
+  `RC=$?` check firing before the `grep "No session project folder found"` elif, confirming the
+  issue's claim that the `FAILURES_NO_DATA` branch is currently unreachable; `qwen.py`/`gemini.py`
+  normalizer behavior (both strip/never carry `message.usage`); `init/writers.py:281-288`'s
+  `_CLAUDE_MD_DESC_OVERRIDES`. Codex fixture math independently recomputed from
+  `rollout-interactive.jsonl`'s 4 `token_count` events: last event's `total_token_usage` =
+  `{input_tokens: 84003, cached_input_tokens: 57915, cache_write_input_tokens: 26076}` →
+  `uncached = 84003 - 57915 - 26076 = 12`, `hit_rate_pct = round(57915/84003*100) = 69` — matches
+  the issue's asserted test value exactly; sum of `last_token_usage.input_tokens` across all four
+  events (`14002+21854+22068+26079=84003`) matches, confirming cumulative semantics.
+- Decisions log gate: both `.ll/decisions.yaml` and `.ll/decisions.d` present;
+  `ll-issues decisions list --type rule --enforcement required --active-only` exited 0 with no
+  entries — no active required rules, clean pass.
+- `ll-verify-evidence` on this file: `{"ok": true, "count": 0}` — no fabricated evidence spans.
+- **Dependency references re-checked directly** (`ll-issues show ENH-3420`/`FEAT-3417 --json`):
+  both are `Completed`; both list `ENH-3419` in their own `blocks:`. This issue's frontmatter
+  currently carries `blocked_by: []` with `FEAT-3417`/`ENH-3420` in `relates_to` instead (per the
+  Summary's "moved from `blocked_by` to `relates_to`" note, since both blockers are done — the
+  correct move per the deferral-discriminator rule that only `done`/`cancelled` resolve
+  `blocked_by`). The two-passes-back Verification Notes paragraph above still asserts
+  `blocked_by: [FEAT-3417, ENH-3420]` and "ENH-3420 is `open`" — both are now stale relative to
+  the Summary's later edit, not a live dependency defect (§E's backlink check is one-directional
+  from `blocked_by`, and this issue's `blocked_by` is empty, so there is nothing to check).
+  No `DEP_ISSUES` finding.
+- **Remaining (not corrected this pass, flagged for a future refine/wire pass):** the
+  "Downstream consumers to verify" list (loop-suggester `--from-sequences`, `fleet-loop-improve.yaml`,
+  `examples-miner.yaml`/`loops/lib/cli.yaml`) names three integration points with no corresponding
+  Acceptance Criterion asking that they actually be re-run and confirmed post-rewire — an AC
+  coverage gap per the B6 consequence check. Precedence: since a current-state citation defect was
+  also found this pass, the overall verdict stays `OUTDATED` rather than `PROPOSAL_UNSOUND`; this
+  gap is noted for whoever next touches the AC list. Frontmatter `verify_verdict` is set to
+  `PROPOSAL_UNSOUND` (not `VALID`) to reflect this uncorrected residual, per 2.5's mapping applied
+  to the post-fix state.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T20:57:44 - `308c22fb-018f-45ce-acc8-645eeab79f84.jsonl`
 - `review (manual: ctx-stats non-codex branch keeps raw reader — qwen/gemini normalizers strip message.usage; list_workspaces→detect_sessions round-trip fails TestDiscover on macOS → both-spellings probe in seam; _extract_ll_event_streams handles-based + line 649 removed; hit_rate_pct == 69 not ≈ 68.9; history_db kwarg dropped (resolve_history_db already reroutes); omp --all gap documented; ll-messages no-sessions string aligned)` - 2026-09-09T22:15:00
 - `/ll:confidence-check` - 2026-09-09T20:42:30 - `cfabad4e-29d0-4bbf-8a3f-5a2f2c2e4144.jsonl`
 - `review (manual: extract_conversation_turns added to scope; discover_all_projects ll-activity filter + union-dedupe + 7 consumers spelled out; Codex --all overclaim reworded; telemetry-digest FAILURES_NO_DATA branch found unreachable → no-sessions exits 0 with new string; test_cli/test_cli_messages/test_ll_logs get_project_folder patches go dead → re-patch detect_sessions; REGISTERED_HOSTS export for choices=; Codex UserMessage field mapping; additive host key in ctx-stats dict)` - 2026-09-09T21:30:00
