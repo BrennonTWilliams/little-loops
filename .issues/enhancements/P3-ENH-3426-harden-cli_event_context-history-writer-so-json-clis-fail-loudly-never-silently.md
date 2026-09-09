@@ -41,52 +41,108 @@ Belongs with the in-flight session-store lifecycle work (FEAT-3417, ENH-3420). F
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+`cli_event_context` (`writers.py:483-561`) already catches `sqlite3.Error` on
+both the insert (`writers.py:528`) and the `finally` UPDATE (`writers.py:552`)
+and degrades to a no-op with a `logger.warning`. It does **not** catch
+non-`sqlite3.Error` exceptions (`OSError` from disk-full, `MemoryError`) that
+could escape `_pkg.connect()` (`writers.py:521`) or the UPDATE, and `connect()`
+sets no explicit `busy_timeout`, so a long-held lock can block the wrapped
+command rather than fail fast into the existing warning path.
 
 ## Expected Behavior
 
-[What should happen instead]
+Every `ll-*` JSON-emitting CLI wrapped by `cli_event_context` exits
+deterministically: on any history-writer failure (locked DB, oversized DB,
+disk-full, OOM) the wrapped command still completes and prints its JSON on
+stdout with exit 0, plus a one-line warning on stderr — never a silent
+empty-stdout hang or crash.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+This enhancement would:
+- Eliminate a failure mode where analytics-row writes to `history.db` (a
+  side-channel, not the CLI's actual payload) can crash or hang a
+  machine-facing JSON CLI, corrupting automation that parses
+  `ll-queue list --json` / `ll-loop show -j` / `ll-issues ... --json` output.
+- Business value: keeps ll-console and other machine consumers reliable even
+  when `history.db` is large (7.6 GB on the live checkout) or lock-contended.
+- Technical debt: closes the one remaining unguarded path (`connect` and the
+  `finally` UPDATE only catch `sqlite3.Error`, not `OSError`) in an otherwise
+  best-effort writer.
 
 ## Proposed Solution
 
-TBD - requires investigation
+See `## Proposed Hardening` above for the full plan. Summary: widen the
+`except sqlite3.Error` guards already on the insert (`writers.py:528`) and
+`finally` UPDATE (`writers.py:552`) to also catch `OSError` around `connect`
+(`writers.py:521`) and the UPDATE call, add a bounded `busy_timeout` (e.g. 2s)
+to the connection, and consider an opt-in size guard that skips the write
+above a configurable `history.db` threshold — never auto-compacting.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/session_store/writers.py` (`cli_event_context`, `writers.py:483-561`)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- Every `ll-*` CLI entry point wraps its body in `cli_event_context` — no
+  per-caller changes needed; verify with
+  `grep -rn "cli_event_context" scripts/little_loops/`
 
 ### Similar Patterns
-- TBD - search for consistency
+- `skill_event_context` (same file, `writers.py:587` onward) is the
+  best-effort analogue for skill-host completions; keep its error handling
+  consistent with any widened guard added here.
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_session_store_writers.py`
+- `scripts/tests/test_ll_session.py`
+- `scripts/tests/test_issue_history_cli.py`
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/API.md` (session_store writers section), if the
+  `busy_timeout` or size-guard behavior becomes externally documented
 
 ### Configuration
-- N/A or list config files
+- N/A, unless the size guard (Proposed Hardening step 3) is added, in which
+  case it needs a new opt-in key under `history` in
+  `scripts/little_loops/config-schema.json`
+
+## Program Design
+
+### Types
+
+- No new types — reuses `sqlite3.Connection`, existing `cli_events` schema.
+
+### Signatures
+
+- `cli_event_context(binary: str, args: list[str] | None, db_path: Path | None, config: dict | None) -> ContextManager[None]` (unchanged signature, `writers.py:483`)
+- Internal: `_pkg.connect(effective_path, timeout=2.0)` — add explicit `timeout` kwarg at `writers.py:521`
+
+### Call Path
+
+`cli_event_context` (`writers.py:483`) -> `_pkg.connect` (`writers.py:521`, widened `except (sqlite3.Error, OSError)`) -> `conn.execute(...UPDATE cli_events...)` (`writers.py:547`, same widened guard)
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Confirm the exact failure contract from ll-console (stderr content, exit
+   code) before changing behavior (Proposed Hardening step 1).
+2. Widen the `except sqlite3.Error` guards around `connect` and the `finally`
+   UPDATE to also catch `OSError`, and set a bounded `busy_timeout`.
+3. Add the opt-in size-guard config key and stderr warning, if pursued.
+4. Add a locked-DB test asserting the wrapped command still emits JSON on
+   stdout with exit 0 and a stderr warning.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - affects automation reliability, but only under a
+  hard-to-reproduce lock-contention/oversized-DB trigger; not user-facing by
+  default.
+- **Effort**: Small - a widened except clause plus a `busy_timeout` kwarg,
+  scoped to one function.
+- **Risk**: Low - only touches a best-effort analytics side-channel with
+  existing `sqlite3.Error`-catching precedent in the same function.
+- **Breaking Change**: No.
 
 ## Related Key Documentation
 
@@ -94,22 +150,31 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
-
-## Current Pain Point
+**Open** | Created: 2026-09-09 | Priority: P3
 
 ## Success Metrics
 
+- Locked-DB regression test (Acceptance Criteria item 3) passes and stays
+  green in CI.
+- No further silent empty-stdout reports against `ll-*` JSON CLIs after the
+  fix ships.
+
 ## Scope Boundaries
 
-## Backwards Compatibility
+- **In scope**: hardening `cli_event_context`'s connect/insert/finally-UPDATE
+  paths, a bounded `busy_timeout`, an optional opt-in size guard, and
+  confirming the ll-console stderr/exit-code contract first.
+- **Out of scope**: auto-compaction or pruning of `history.db` (manual-only
+  per project rule — see `raw_events` compact()/prune()), replacing SQLite as
+  the history store, and any change to the `cli_events` schema.
 
 ## API/Interface
 
-```python
-# Example interface/signature
-```
+N/A - no public API changes; `cli_event_context`'s call signature is
+unchanged, only its internal error handling widens (optional `busy_timeout`
+becomes a connection-level default, not a new parameter).
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-09T22:40:10 - `419c0f66-ac03-408b-af11-4cdc8ba58375.jsonl`
 - `/ll:capture-issue` - 2026-09-09T20:18:50 - `c67d0e9c-2f18-4a69-ac01-c129392655e2.jsonl`
