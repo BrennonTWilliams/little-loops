@@ -484,7 +484,7 @@ VIEW`/`CREATE VIEW` (re-confirmed 2026-09-09), so `_open_union()` creates
 its TEMP views *before* enabling the pragma.
 
 **This issue owns:** extending the `sqlite3` Learning Test Registry entry
-(via `/ll:explore-api`) with the five claims listed under Integration Map,
+(via `/ll:explore-api`) with claims 1–7 listed under Integration Map (claim 7, attached-view resolution, is verified ad hoc but not yet recorded),
 the TEMP union views with the suffix id discriminator, the suffixed on-disk
 `issues` list for the `supersedes:` join, the attach-limit guard, and the
 `AggregationResult.totals`/`totals_skipped` fields FEAT-3410 deliberately
