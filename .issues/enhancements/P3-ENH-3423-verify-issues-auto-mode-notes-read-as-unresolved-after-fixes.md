@@ -1,7 +1,7 @@
 ---
 id: ENH-3423
 type: ENH
-title: verify-issues auto-mode notes read as unresolved after fixes
+title: verify-issues notes read as unresolved after same-pass fixes
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -16,56 +16,69 @@ score_ambiguity: 25
 score_change_surface: 25
 ---
 
-# ENH-3423: verify-issues auto-mode notes read as unresolved after fixes
+# ENH-3423: verify-issues notes read as unresolved after same-pass fixes
 
 ## Summary
 
 `/ll:verify-issues` (`commands/verify-issues.md`) has no guidance for how the persisted
-`## Verification Notes` section should be worded when `--auto` mode both diagnoses a defect
-and applies the fix in the same pass.
+`## Verification Notes` section should be worded when a run both diagnoses a defect and applies
+the fix in the same pass. This happens in **both** non-check modes: `--auto` (section 3 skipped,
+section 4 applies non-destructive fixes without prompting) and interactive (section 3 gets
+approval, section 4 applies the same fixes). Only `--check` mode never applies fixes.
 
 Observed running `/ll:verify-issues ENH-3421 --auto`: the command found drifted `file:line`
-anchors and one self-contradictory claim in the issue, applied the corrections per section 4's
-auto-mode instructions, then wrote a Verification Notes section that opened with
-`Verdict: NEEDS_UPDATE` — using the raw verdict-table label as the section lead. Read after the
-fact, that reads as an outstanding action item even though the same edit had already resolved
+anchors and one self-contradictory claim in the issue, applied the corrections per section 4,
+then wrote a Verification Notes section that opened with `Verdict: NEEDS_UPDATE` — using the raw
+verdict-table label from `#### C. Determine Verdict` as the section lead. Read after the fact,
+that reads as an outstanding action item even though the same edit had already resolved
 everything it describes. The user had to ask "does it still need update after your changes?
 shouldn't the verdict reflect this?" before it was reworded to "Verdict at time of check:
 NEEDS_UPDATE (corrections below applied in the same pass...)".
 
+The same staleness exists one layer down in the frontmatter. Section 2.5 writes
+`verify_verdict:` only in `--check` mode; a later non-check pass that fixes every finding leaves
+a prior `verify_verdict: NON_VALID` in place. 32 issues under `.issues/` currently carry that
+value, and nothing distinguishes the ones a subsequent fix pass already resolved.
+
 Root cause: section 2.5 ("Check Mode Behavior") defines exactly how the verdict is persisted,
-but only for `--check` mode, which never applies fixes — so its `verify_verdict: NON_VALID` /
-`VALID` labels always describe the file's true current state. Section 4 ("Update Issue Files")
-says to "document what changed or needs correction" but gives no comparable framing rule for
-plain `--auto` mode, where verification and remediation happen in the same pass and a bare
-verdict label goes stale the instant it's written.
-
-Proposed fix: section 4 (or a new subsection) should instruct that when auto-mode applies
-corrections in the same pass as detection, the Verification Notes text must distinguish
-"verdict at detection" from "state after auto-fix" — e.g. requiring phrasing like "Verdict at
-time of check: X (corrections below applied in this pass; issue is now accurate)" rather than a
-bare verdict label, whenever non-destructive fixes were actually applied to the same sections
-the note describes.
-
+but only for `--check` mode, which never applies fixes — so its labels always describe the
+file's true current state. Section 4 ("Update Issue Files") says to "document what changed or
+needs correction" but gives no framing rule for the fix-applying modes, where verification and
+remediation happen in the same pass and a bare verdict label goes stale the instant it's written.
 
 ## Current Behavior
 
-When `/ll:verify-issues --auto` (`commands/verify-issues.md` section 4) detects a defect and
-applies the fix in the same pass, the persisted `## Verification Notes` section opens with the
-bare verdict-table label (e.g. `Verdict: NEEDS_UPDATE`), reusing the raw verdict enum values from
-`#### C. Determine Verdict` as prose — an emergent convention section 4 never actually instructs,
-not something copied from section 2.5 (which only governs the `verify_verdict:` frontmatter
-field). Because the fix has already landed by the time the note is written, the label describes a
-state that no longer exists — a later reader sees "NEEDS_UPDATE" next to corrected content and
-reasonably reads it as an unresolved action item.
+When `/ll:verify-issues` (`commands/verify-issues.md` section 4) detects a defect and applies
+the fix in the same pass — in `--auto` or interactive mode — the persisted
+`## Verification Notes` section opens with the bare verdict-table label (e.g.
+`Verdict: NEEDS_UPDATE`), reusing the raw verdict enum values from `#### C. Determine Verdict`
+as prose — an emergent convention section 4 never actually instructs, not something copied from
+section 2.5 (which only governs the `verify_verdict:` frontmatter field). Because the fix has
+already landed by the time the note is written, the label describes a state that no longer
+exists — a later reader sees "NEEDS_UPDATE" next to corrected content and reasonably reads it
+as an unresolved action item. 221 existing issue files under `.issues/` carry a bare
+`Verdict:` label of this shape.
+
+Separately, if the issue's frontmatter already holds a `verify_verdict:` value from an earlier
+`--check` run, the non-check pass leaves it untouched even after fixing everything it flagged.
 
 ## Expected Behavior
 
-When auto-mode applies non-destructive corrections in the same pass as detection, section 4
-must instruct that the Verification Notes text distinguish "verdict at detection" from "state
-after auto-fix" — e.g. `Verdict at time of check: NEEDS_UPDATE (corrections below applied in
-this pass; issue is now accurate)` — rather than the bare verdict label section 2.5 defines for
-`--check` mode (where no fix is ever applied, so the label stays accurate).
+Whenever section 4 applies corrections in the same pass as detection (any non-`--check` mode),
+the Verification Notes text must distinguish "verdict at detection" from "state after fix",
+using the section 2C verdict value as the label, in one of two shapes:
+
+- **Fully resolved**: `Verdict at time of check: NEEDS_UPDATE (corrections below applied in
+  this pass; issue is now accurate)`
+- **Partially resolved**: the same lead line, followed by an explicit `Remaining:` line listing
+  each finding the pass did not correct (e.g. a decision that needs human input, or a
+  destructive change that auto mode is not allowed to make)
+
+A bare `Verdict: X` label is never written by a fix-applying pass.
+
+If the frontmatter already carries a `verify_verdict:` field, the same pass rewrites it to
+reflect the post-fix state: `VALID` when nothing remains, otherwise the section 2.5 mapping of
+the residual verdict. The field is not inserted if absent — that stays `--check` mode's job.
 
 ## Motivation
 
@@ -73,24 +86,40 @@ A stale-looking verdict label on an already-fixed issue causes readers (includin
 the observed case) to ask whether the issue still needs action, forcing a manual re-read of the
 diff to confirm nothing is actually pending. This directly undermines the purpose of persisting
 Verification Notes — a durable, trustworthy record of what verification found and did — and the
-ambiguity recurs on every `--auto` run that finds and fixes a defect in the same pass, not just
-this one instance.
+ambiguity recurs on every fix-applying run that finds and fixes a defect in the same pass, not
+just this one instance.
+
+The two-branch shape matters for the opposite failure: a "corrections applied; issue is now
+accurate" line with no `Remaining:` clause would hide real pending work just as the bare label
+invented fake pending work.
 
 ## Proposed Solution
 
-Add a subsection to `commands/verify-issues.md` section 4 ("Update Issue Files"), parallel to
-section 2.5's `--check`-mode labeling rule, that governs how `--auto` mode phrases the verdict
-when fixes are applied in the same pass. Reuse the verdict enum already defined in section 2.5
-(`VALID` / `NON_VALID` variants) rather than inventing new labels — only the surrounding phrasing
-changes: prefix the label with "Verdict at time of check:" and append a parenthetical noting
-that corrections were applied in this pass, whenever the same pass edited the section(s) the note
-describes.
+Add a numbered subsection `### 4.1` under section 4 ("Update Issue Files") of
+`commands/verify-issues.md`, parallel to section 2.5's `--check`-mode labeling rule, that
+governs how a fix-applying pass phrases the verdict. Specifically:
+
+1. **Label source**: reuse the verdict value from the `#### C. Determine Verdict` table
+   (`commands/verify-issues.md:234-248`) — `VALID`, `NEEDS_UPDATE`, `OUTDATED`, etc. — not the
+   collapsed `VALID`/`NON_VALID` frontmatter enum from section 2.5. Only the surrounding
+   phrasing changes: prefix the label with "Verdict at time of check:" and append a
+   parenthetical noting that corrections were applied in this pass.
+2. **Two-branch template**: fully-resolved vs. partially-resolved with a mandatory `Remaining:`
+   line, as in Expected Behavior. Formalize the ENH-3421 precedent wording
+   (`.issues/enhancements/P3-ENH-3421-*.md:459-461`) as the fully-resolved form rather than
+   inventing new phrasing.
+3. **Applicability**: the rule fires whenever section 4 edited the section(s) the note
+   describes, in any non-`--check` mode. `--check` mode is unaffected (it never reaches
+   section 4's content edits).
+4. **Frontmatter sync**: if `verify_verdict:` already exists in the frontmatter, rewrite it in
+   place per Expected Behavior. Do not insert it when absent.
 
 ## Integration Map
 
 ### Files to Modify
-- `commands/verify-issues.md` — section 4 ("Update Issue Files"), adding the auto-mode phrasing
-  rule alongside the existing section 2.5 `--check`-mode labeling rule
+- `commands/verify-issues.md` — section 4 ("Update Issue Files"), adding the `### 4.1`
+  fix-applying-pass phrasing rule alongside the existing section 2.5 `--check`-mode labeling
+  rule; section 4's opening "For issues needing updates" bullets should point at 4.1
 
 ### Dependent Files (Callers/Importers)
 - N/A — `commands/verify-issues.md` is invoked directly as `/ll:verify-issues`; no other file
@@ -108,7 +137,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Similar Patterns
 - Section 2.5 ("Check Mode Behavior") already defines the verdict-labeling convention this issue
-  extends; the new auto-mode rule should sit next to it and reuse the same verdict enum
+  extends; the new subsection should sit next to it in spirit and cite the section 2C table
+  for the label value and the section 2.5 mapping for the frontmatter rewrite
 
 ### Tests
 - N/A for parsing/assertion coverage — no test parses `## Verification Notes` body prose or
@@ -138,15 +168,31 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - Live precedent for the proposed fix already exists, hand-written after user pushback in the sibling issue this one was captured from: `.issues/enhancements/P3-ENH-3421-*.md:459-461` reads "Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)." The new subsection should formalize this exact wording as the instruction rather than invent new phrasing.
 - Confirmed no overlap risk with `commands/ready-issue.md`: its three verdict tables (`ready-issue.md:319-330`, `:347-352`, `:541-551`) use a disjoint 7-value enum (`READY`/`CORRECTED`/`BLOCKED`/`NOT_READY`/`CLOSE`/`REGRESSION_LIKELY`/`POSSIBLE_REGRESSION`) and never write a persisted `Verdict: X` body-text label — they route in-session automation only, so the new subsection has no cross-command wording collision to reconcile.
 
+_Added by review — 2026-09-09:_
+
+- Mode flags at `commands/verify-issues.md:38-47`: `--auto` sets `AUTO_MODE`; `--check` sets both `CHECK_MODE` and `AUTO_MODE`. Section 3 (`:338-349`) is skipped only under `AUTO_MODE`; section 4 runs in every mode except `--check`. So interactive runs reach section 4's fix path too — the rule cannot be scoped to `--auto` alone.
+- The only automated caller, `refine-to-ready-issue.yaml`, invokes `/ll:verify-issues <id> --check --auto` and reads `verify_verdict:` immediately afterward. The new rule never fires inside that loop, and the frontmatter-sync step does not interact with its gate because `--check` always rewrites the field before the gate reads it.
+- Counts at HEAD: 221 bare `Verdict:` labels across `.issues/` (excluding "Verdict at time of check" forms); 179 issues carry `verify_verdict:` and 32 of those hold `NON_VALID`. Neither set is backfilled by this issue.
+
 ## Implementation Steps
 
-1. Read `commands/verify-issues.md` sections 2.5 and 4 to confirm the exact verdict enum and
-   existing `--check`-mode labeling instructions
-2. Add a new subsection under section 4 specifying the "Verdict at time of check: X (corrections
-   below applied in this pass; issue is now accurate)" phrasing rule, scoped to `--auto` runs
-   that both detect and fix in the same pass
-3. Verify by re-running `/ll:verify-issues <ID> --auto` against an issue with a known drifted
-   anchor and confirming the resulting Verification Notes no longer reads as an open action item
+1. Read `commands/verify-issues.md` sections 2C (`:234-248`), 2.5 (`:287-336`), and 4
+   (`:351-360`) to confirm the exact verdict table, the `--check`-mode frontmatter mapping, and
+   the current section 4 wording
+2. Insert `### 4.1 Verdict Phrasing When Fixes Are Applied in the Same Pass` between section 4's
+   bullets and `### 4.5 Append Session Log Entries`, containing:
+   - the applicability rule (any non-`--check` mode, whenever section 4 edited the section(s)
+     the note describes)
+   - the label-source rule (section 2C value, never the collapsed section 2.5 enum)
+   - the two-branch template (fully resolved / partially resolved with `Remaining:`)
+   - the frontmatter-sync rule (rewrite `verify_verdict:` in place if present; never insert)
+3. Update section 4's "For issues needing updates" bullets to reference 4.1 for the note's
+   opening line
+4. Regenerate host mirrors (see Wiring Phase) and run the three `test_host_artifacts_are_not_stale`
+   params
+5. Verify by re-running `/ll:verify-issues <ID> --auto` against an issue with a known drifted
+   anchor and confirming the resulting Verification Notes opens with "Verdict at time of check:"
+   and, when something is left unfixed, carries a `Remaining:` line
 
 ### Codebase Research Findings
 
@@ -169,11 +215,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3 - Wording-only defect in a command's persisted output; no functional
-  breakage, but recurs on every auto-fix pass and causes real reader confusion
-- **Effort**: Small - Single markdown subsection added to `commands/verify-issues.md`; no code
-  changes
-- **Risk**: Low - Prompt-instruction change only; no behavior change to detection or fix logic,
-  only to how the already-applied fix is described
+  breakage, but recurs on every fix-applying pass and causes real reader confusion
+- **Effort**: Small - Single markdown subsection added to `commands/verify-issues.md` plus
+  mirror regeneration; no code changes
+- **Risk**: Low - Prompt-instruction change only; no behavior change to detection or fix logic.
+  The frontmatter-sync step only rewrites a field that already exists and only in modes the
+  automated loop never uses.
 - **Breaking Change**: No
 
 ## Related Key Documentation
@@ -186,25 +233,40 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Success Metrics
 
-A fresh `/ll:verify-issues <ID> --auto` run that both detects and fixes a defect produces
-Verification Notes text starting with "Verdict at time of check:" rather than a bare verdict
-label, whenever the fix touched the same section the note describes.
+- A fresh `/ll:verify-issues <ID> --auto` (or interactive) run that both detects and fixes a
+  defect produces Verification Notes text starting with "Verdict at time of check:" rather than
+  a bare verdict label, whenever the fix touched the same section the note describes.
+- When the same run leaves any finding uncorrected, the note carries an explicit `Remaining:`
+  line naming it.
+- If the issue's frontmatter already had `verify_verdict:`, its value after the run matches the
+  post-fix state rather than the pre-fix detection.
 
 ## Scope Boundaries
 
 - Does not change the `--check`-mode verdict labeling in section 2.5 — that path never applies
   fixes, so the bare label already stays accurate
-- Does not add or rename any verdict enum values (`VALID` / `NON_VALID` variants stay as-is)
+- Does not add or rename any verdict enum values (section 2C table and section 2.5 mapping stay
+  as-is)
 - Does not change detection or auto-fix logic itself — only the wording of the note describing
-  an already-applied fix
+  an already-applied fix, and the value of an already-present `verify_verdict:` field
+- Does **not** backfill the 221 existing bare `Verdict:` labels or the 32 existing
+  `verify_verdict: NON_VALID` fields under `.issues/`; those are left as-is
+- Does not insert `verify_verdict:` into frontmatter that lacks it — that remains `--check`
+  mode's responsibility
+- Does not address the duplicate `## Session Log` heading pattern (55 issue files at HEAD,
+  including this one); that is a separate defect in the verify-issues write path or
+  `ll-issues append-log` and should be captured on its own
 
 ## Backwards Compatibility
 
+Existing Verification Notes and frontmatter values are untouched. Consumers of
+`verify_verdict:` (the `check_verify_verdict` gate in `refine-to-ready-issue.yaml`) only read
+the field after a `--check` run that has just rewritten it, so the non-check sync cannot change
+what the gate sees.
+
 ## API/Interface
 
-```python
-# Example interface/signature
-```
+N/A — prompt-instruction change only.
 
 
 ## Verification Notes
@@ -231,13 +293,17 @@ an "e.g." illustrative example of runtime output from a literal file-content quo
 sentence no longer claims the span is copied from file source text. Manual review confirms this
 is not fabricated evidence.
 
+_Review pass — 2026-09-09:_ Rewrote the issue to (1) fix the Proposed Solution's enum reference
+(it cited section 2.5's collapsed `VALID`/`NON_VALID` set; the prose label must come from the
+section 2C table), (2) widen applicability from `--auto` to every non-`--check` mode since
+interactive runs reach section 4's fix path too, (3) add the partially-resolved `Remaining:`
+branch, (4) add the `verify_verdict:` frontmatter-sync rule, and (5) state explicitly that
+existing bare labels and stale frontmatter are not backfilled.
+
 ## Session Log
 - `/ll:wire-issue` - 2026-09-09T19:21:35 - `ebf18a6f-ed36-4252-9599-87c271309793.jsonl`
 - `/ll:refine-issue` - 2026-09-09T19:14:29 - `42196ace-6931-433b-9da5-c194d57bddf7.jsonl`
 - `/ll:format-issue` - 2026-09-09T19:10:19 - `6825e935-9173-4255-b699-a7e303deae32.jsonl`
 - `/ll:capture-issue` - 2026-09-09T19:06:59 - `095aaa45-5f8e-445a-8993-2ec43b515f28.jsonl`
-
-
-## Session Log
 - `/ll:confidence-check` - 2026-09-09T19:30:24 - `d938b9b6-8e93-4345-bba5-d4048a09c843.jsonl`
 - `/ll:verify-issues` - 2026-09-09T19:25:31 - `4abbc21b-fe6c-468c-baf1-354ba4916426.jsonl`

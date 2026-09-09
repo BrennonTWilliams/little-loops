@@ -203,6 +203,7 @@ ENH-3419's acceptance criterion is that `ll-logs`, `ll-messages`, and `ll-ctx-st
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T19:34:17 - `a47061f4-4334-4417-ab2e-b65d6a25ae3b.jsonl`
 - `review (manual, pre-implementation #3: kimi HostLayout entry deferred to ENH-3422 — backfill_worker.py:60 / cli/logs.py:108,145,289 would line-loop wire.jsonl immediately; list_workspaces roots from home not host_layout_for(...).projects_root (real-home leak); kimi session_id = path.parents[2].name (confirmed vs session_index sessionId); include_agents no-op on non-Claude hosts; bounded omp header scan; gemini list_workspaces via projects.json; four stale docstrings not one; matching tests + ACs)` - 2026-09-09T21:00:00
 - `/ll:confidence-check` - 2026-09-09T19:25:52 - `97e52889-4a57-4cad-8e44-59fca7caca21.jsonl`
 - `/ll:verify-issues` - 2026-09-09T19:22:12 - `ebf18a6f-ed36-4252-9599-87c271309793.jsonl`
