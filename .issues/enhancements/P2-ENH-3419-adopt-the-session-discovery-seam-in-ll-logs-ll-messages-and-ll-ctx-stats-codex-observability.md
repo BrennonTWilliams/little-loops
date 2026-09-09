@@ -12,17 +12,18 @@ labels:
 - multi-host
 - observability
 blocked_by: []
-relates_to:
+blocks:
 - ENH-3422
+relates_to:
 - FEAT-3417
 - ENH-3420
 missing_artifacts: true
 verify_verdict: VALID
-confidence_score: 90
-outcome_confidence: 45
+confidence_score: 100
+outcome_confidence: 52
 score_complexity: 9
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 0
 ---
 
@@ -339,8 +340,8 @@ hoist noted (line 178 is after the call at 162).
 
 _Added by `/ll:confidence-check` on 2026-09-09_
 
-**Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 45/100 → LOW
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 52/100 → LOW
 
 ### Outcome Risk Factors
 - Very wide blast radius: 11+ call sites in `cli/logs.py` alone plus `user_messages.py`, `cli/ctx_stats.py`, `hooks/session_start.py`, and `session_store/sessions.py` — broad enumeration across many sites, several of which need bespoke (not uniform) treatment, so a missed or mismatched site is easy to overlook despite the detailed per-site plan.
@@ -352,6 +353,7 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T21:23:02 - `378ef5f9-2efe-4141-9b76-45d94b59278c.jsonl`
 - `review (manual, pre-implementation: exit-0 decision reverted to rc=1 + loop grep reordered (test_ll_logs.py:1224,1822 lock rc=1); all 8 discover_all_projects callers must thread resolved host, getattr for direct-call tests; --host per-subcommand on ll-logs via _add_host_arg; _has_ll_activity/_extract_cwd_from_project deleted + ENH-3422 coordination; _extract_messages_with_context/_extract_turn_pairs named; per-host --all iteration; _extract_ll_event_streams session-id fallback; sum-of-last_token_usage pinned; _backfill_host hoist; downstream-consumer AC gap closed; verify_verdict → VALID)` - 2026-09-09T23:30:00
 - `/ll:confidence-check` - 2026-09-09T21:01:56 - `f3e8c388-f237-4461-9091-b0b23efd2cd3.jsonl`
 - `/ll:verify-issues` - 2026-09-09T20:57:44 - `308c22fb-018f-45ce-acc8-645eeab79f84.jsonl`
