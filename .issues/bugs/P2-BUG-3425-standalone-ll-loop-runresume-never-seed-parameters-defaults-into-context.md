@@ -71,10 +71,21 @@ All three loop-launch paths — sub-loop `with:` binding, standalone `ll-loop ru
 - `scripts/little_loops/loops/rn-remediate.yaml` — move `max_remediation_passes` default from `context:` (line 65) to `parameters:` (line 48)
 - `scripts/little_loops/loops/rn-decompose.yaml` — move `parent_depth` default from `context:` (line 51) to `parameters:` (line 42)
 - `scripts/little_loops/loops/lib/common.yaml:54` — audit `max_retries` and any other `parameters:` entry whose description says "default:"
+  > ⚠ Superseded — this is a fragment `with:` param, no context: duplicate
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml` — same `context:`/`parameters:` duplication: `min_pass_rate` (lines 68/104) and `health_bound_seconds` (lines 72/105) [Agent 1 finding]
+- `scripts/little_loops/loops/oracles/generator-evaluator.yaml` — same pattern: `pass_threshold` (lines 39/59) and `artifact_path` (lines 43/61) [Agent 1 finding]
+- `scripts/little_loops/loops/oracles/generator-evaluator-flux.yaml` — same pattern: `steps` (lines 32/44) and `prompt_file` (lines 28/43) [Agent 1 finding]
+- `scripts/little_loops/loops/oracles/enumerate-and-prove.yaml` — same pattern: `max_retries` (lines 22/32) and `tag` (lines 26/33) [Agent 1 finding]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py:1090-1096` — existing sub-loop `with:` binding consumer of `ParameterSpec.default`; must stay consistent with the new shared helper
 - `scripts/little_loops/fsm/schema.py:1504-1506, 1691` — `ParameterSpec.to_dict` / `ll-loop show -j` emission consumed by ll-console; unaffected by this fix per Explicit Non-Goals
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation/structural_rules.py:229,288-325` — iterates `fsm.parameters`/`child_fsm.parameters` during `ll-loop validate`; the optional Step-4 context-shadows-parameters lint belongs alongside this [Agent 1 finding]
+- `scripts/little_loops/fsm/validation/_base.py:158` — `_check_param_type()` helper called from `structural_rules.py`; existing consumer of `ParameterSpec` [Agent 1 finding]
+- `scripts/little_loops/cli/loop/info.py:1444-1477` (`cmd_show`) — concrete `ll-loop show -j` implementation (`fsm.to_dict()` → `print_json`); must stay byte-identical apart from added `default` fields per AC [Agent 1 finding]
+- `scripts/little_loops/cli/loop/testing.py` (`cmd_simulate`, ~176-220) — a fourth context-construction path (`ll-loop simulate`) that builds `fsm.context` independently and calls none of `apply_context_overrides`/`seed_confidence_thresholds`/`inject_design_context`; will stay unseeded after this fix unless also wired — the issue's "three launch paths" framing misses this one [Agent 2 finding]
 
 ### Similar Patterns
 - `apply_context_overrides` — the existing shared-helper pattern `seed_parameter_defaults` should follow so the two launch paths cannot diverge
@@ -82,8 +93,21 @@ All three loop-launch paths — sub-loop `with:` binding, standalone `ll-loop ru
 ### Tests
 - `scripts/tests/` — new fixture loop with integer/boolean/string `parameters:` (each `default:`, `required: false`) plus tests for standalone `ll-loop run`, `ll-loop resume`, `--context` override precedence, and `required: true` parameters without `default:`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_loop_commands.py:5699-5823` (`TestContextOverrideCoercion`) — existing home for `context_seed.py`/`apply_context_overrides` unit tests (no dedicated `test_context_seed.py` exists); new `seed_parameter_defaults` tests belong here or a sibling class, following `test_cmd_run_applies_coerced_overrides`'s pattern [Agent 3 finding]. No existing test parallels it for the `lifecycle.py:665` resume call site — new coverage needed there specifically [Agent 3 finding]
+- `scripts/tests/test_fsm_executor.py:9832-9868` (`test_with_applies_declared_defaults`) — direct sibling test (`not required and default is not None` seeding) to model new standalone-path tests on [Agent 3 finding]
+- `scripts/tests/test_fsm_schema.py:2909-3049` (`TestParameterSpec`) — existing `ParameterSpec.to_dict`/`from_dict` round-trip coverage; extend for the `default` field paths this fix exercises [Agent 1 finding]
+- `scripts/tests/test_fsm_validation_structural.py:480-533` (`TestParameterValidation`) — existing `_validate_parameters` coverage; extend if the Step-4 optional lint is implemented [Agent 1/3 finding]
+- `scripts/tests/test_rn_remediate.py:1040-1043` (`test_context_max_remediation_passes_set`) and `:1118-1126` (`test_context_defaults_match_spec`) — assert `data["context"]["max_remediation_passes"] == 3` directly; **will break** once the `context:` literal is removed — update to the `TestConfidenceGateThresholdsNotHardcoded`-style contract (absent from `context:`, present via `parameters.max_remediation_passes.default`) [Agent 2/3 finding — tests_to_update]
+- `scripts/tests/test_rn_decompose.py:264-268` (`test_parent_depth_default_in_context`) — asserts `ctx.get("parent_depth") == 0` directly; **will break** the same way [Agent 2/3 finding — tests_to_update]
+- `scripts/tests/test_builtin_loops.py` — `TestMr11MarkerSet.test_marker_set_matches_enumeration` / `MR11_MARKER_ALLOWLIST` entry `("loops/rn-remediate.yaml", "context.max_remediation_passes", "ENH-3358")` ties to the usage-site marker comment at `rn-remediate.yaml:870`; adjacent to the `context:` block being trimmed — verify it still resolves, and re-check the stale line-number comment near `rn-remediate.yaml:86` [Agent 2 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` — `ll-loop run`/`ll-loop resume` parameter-default behavior
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/generalized-fsm-loop.md` § "Typed parameter bindings (`parameters:` / `with:`)" — currently documents `default:` only for the `with:`-bound path; needs a note that standalone `run`/`resume` now also seed it [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` § "Sharing context" (Typed parameter bindings bullet) — same gap [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -109,6 +133,16 @@ All three loop-launch paths — sub-loop `with:` binding, standalone `ll-loop ru
 3. Move the duplicated `context:` literal defaults (rn-remediate, rn-decompose, common.yaml) into `parameters.default` and remove the `context:` duplicates
 4. Optional: add an `ll-loop validate` lint warning when a `context:` value is a dict carrying a `type` key
 5. Verify with the fixture loop against each Acceptance Criterion
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/loops/oracles/code-run-gate.yaml`, `generator-evaluator.yaml`, `generator-evaluator-flux.yaml`, `enumerate-and-prove.yaml` — move each duplicated default from `context:` to `parameters.*.default` and remove the `context:` literal, same treatment as rn-remediate/rn-decompose
+- Update `scripts/tests/test_rn_remediate.py` and `scripts/tests/test_rn_decompose.py` — replace the raw-`context:`-literal assertions with the `TestConfidenceGateThresholdsNotHardcoded`-style contract (absent from `context:`, present via `parameters.*.default`, resolves via `seed_parameter_defaults`)
+- Verify `scripts/tests/test_builtin_loops.py`'s `MR11_MARKER_ALLOWLIST` entry for `context.max_remediation_passes` still resolves against the trimmed `rn-remediate.yaml` `context:` block
+- Decide and record whether `ll-loop simulate` (`cli/loop/testing.py::cmd_simulate`) should also call `seed_parameter_defaults` for parity across all context-construction paths, or is explicitly out of scope for this issue
+- Update `docs/generalized-fsm-loop.md` and `docs/guides/LOOPS_GUIDE.md` — note that `parameters.default` now also seeds on standalone `ll-loop run`/`resume`, not just `with:` bindings
 
 ## Impact
 
@@ -155,6 +189,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ```
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T20:54:46 - `5d5214fd-1a0f-4890-8f02-11b97e9c697b.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:41:28 - `505beecf-ceb4-4da8-912d-d233f746daca.jsonl`
 - `/ll:format-issue` - 2026-09-09T20:37:49 - `575c8055-4eaf-4c28-a902-79bb09bf07a6.jsonl`
 - `/ll:capture-issue` - 2026-09-09T20:18:50 - `c67d0e9c-2f18-4a69-ac01-c129392655e2.jsonl`
