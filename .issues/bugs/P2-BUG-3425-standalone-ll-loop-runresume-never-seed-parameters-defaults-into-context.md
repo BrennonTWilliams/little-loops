@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T20:18:41Z'
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # BUG-3425: Standalone ll-loop run/resume never seed parameters defaults into context
@@ -233,6 +239,7 @@ simulate` decision to Explicit Non-Goals or as a new AC) before this issue is
 marked implementation-ready.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T21:15:09 - `15a3a72b-d6e3-4759-990e-0642b22d6179.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T21:04:56 - `a5bdbdca-a5bb-459a-a98a-2040741996e1.jsonl`
 - `/ll:verify-issues` - 2026-09-09T21:00:41 - `9d974726-ede8-4e9b-8bf3-5dc1cbd42201.jsonl`
 - `/ll:wire-issue` - 2026-09-09T20:54:46 - `5d5214fd-1a0f-4890-8f02-11b97e9c697b.jsonl`

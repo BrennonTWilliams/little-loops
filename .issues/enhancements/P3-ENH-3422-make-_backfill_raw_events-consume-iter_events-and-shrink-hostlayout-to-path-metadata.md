@@ -18,11 +18,11 @@ relates_to:
 - ENH-3419
 - FEAT-3417
 reconcile_attempted: true
-confidence_score: 85
-outcome_confidence: 60
-score_complexity: 14
+confidence_score: 90
+outcome_confidence: 48
+score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 10
 score_change_surface: 10
 ---
 
@@ -202,18 +202,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 _Added by `/ll:confidence-check` on 2026-09-09_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 60/100 → MODERATE
-
-### Concerns
-- Motivation section is still the unfilled template placeholder (`[Why this issue matters - business value, user impact, technical debt cost]`), capping Criterion 4 at 10/20 per the Structure Cap rule.
-- The bare-rebind back-compat alias convention this codebase otherwise uses doesn't transfer to retiring `HostLayout.normalize`/`normalize_file` (signature mismatch vs. the `parse_*` replacements); Step 5's thin-wrapper approach is a justified but non-standard deviation worth double-checking during implementation.
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 48/100 → LOW
 
 ### Outcome Risk Factors
-- Broad dependent surface: 4 production readers of `HostLayout.normalize`/`normalize_file` (`writers.py` ×2 sites, `cli/logs.py` ×2 sites) plus `cli/session.py`, `cli/backfill_worker.py`, and `user_messages.py` all need correct retargeting in one change — 6-10 dependents, each with different behavior (not a uniform mechanical substitution).
-- qwen idempotency landmine: `writers.py::_iter_events` must stop re-normalizing pre-normalized qwen rows in the same change as the write-path swap, or rows silently vanish on cursor replay — easy to miss since it's a separate read-path file from `lifecycle.py`.
+- Genuinely unresolved design decision: the Wiring Phase flags that no code in the tree today converts `list[Path]` → `list[SessionHandle]`, and it's undecided whether `backfill_raw_events()`/`backfill()`/`backfill_incremental()` take `handles: list[SessionHandle]` directly or synthesize handles internally — this should be resolved before Step 3, not discovered mid-implementation.
+- Heterogeneous change surface: 6-10 dependents (`writers.py` ×2 sites, `cli/logs.py` ×2 sites, `cli/session.py`, `cli/backfill_worker.py`, `user_messages.py`) each need different, non-uniform retargeting logic rather than a mechanical substitution.
+- qwen idempotency landmine carried over from ENH-3420: `writers.py::_iter_events`'s cursor-replay path must stop re-normalizing pre-normalized qwen rows in the same change as the write-path swap, or rows silently vanish on rebuild — easy to miss since it's a separate file/path from the write-side change.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T21:15:25 - `15a3a72b-d6e3-4759-990e-0642b22d6179.jsonl`
 - `/ll:wire-issue` - 2026-09-09T21:04:07 - `f3e8c388-f237-4461-9091-b0b23efd2cd3.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:49:55 - `7f9ebdc1-1c66-49aa-88bc-4fc32b3d04be.jsonl`
 - `/ll:confidence-check` - 2026-09-09T20:36:46 - `33e77cdf-52d2-4350-bc12-c11c654aafbd.jsonl`

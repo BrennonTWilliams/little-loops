@@ -9,11 +9,11 @@ discovered_date: '2026-09-09'
 captured_at: '2026-09-09T19:37:59Z'
 verify_verdict: VALID
 size: Large
-confidence_score: 95
-outcome_confidence: 55
+confidence_score: 100
+outcome_confidence: 62
 score_complexity: 9
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 10
 ---
 
@@ -254,18 +254,20 @@ if headings:
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-09_
+_Updated by `/ll:confidence-check` on 2026-09-09 (supersedes the prior same-day pass below the resolved items)_
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 55/100 → LOW
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 62/100 → MODERATE
 
-### Concerns
-- Frontmatter carries `verify_verdict: NON_VALID` (set in commit 15bb60f2d) with no `## Verification Notes` section ever written to the file explaining what `/ll:verify-issues` flagged — the marker is currently unresolved and `ll-issues check-verify-verdict BUG-3424` exits 1. Independent re-verification of the Root Cause and Codebase Research Findings citations in this pass (session_log.py:281-343, fold_research_findings.py, format_check.py's `_collapse_duplicate_headings`/`_duplicate_heading_groups`) found all of them accurate, and `ll-issues format-check` reports zero gaps — but the persisted verdict has not been re-cleared by a follow-up `/ll:verify-issues` pass since.
-- Implementation Step 3 (one-shot normalization route: `ll-issues normalize` vs. `ll-issues format-check`) is explicitly left as an open implementer decision with no `> **Selected:**` marker — this is a real but narrow, well-bounded choice between two documented precedents.
+Both concerns from the prior pass are now resolved: `verify_verdict` is `VALID` with a
+`## Verification Notes` section on file (independent re-verification, 2026-09-09T21:04:19), and
+Implementation Step 3 now carries `> **Selected:** ll-issues format-check.` All deterministic
+gates are clean — `ll-issues check-design`, dependencies (`blocked_by` empty), and
+`format-check`'s parity/claim/structure/decision gap classes all report zero findings.
 
 ### Outcome Risk Factors
-- Broad enumeration across the full Integration Map (~18 sites across the core fix, 5 manual-fallback doc/skill call sites, a third wiring-pass footer site, 4+ test files, and 5 documentation files) drives Complexity Breadth to 0/12, even though each site's own change is Local/mechanical.
-- Pattern A blast radius: ~10 caller/reader call sites depend on `append_session_log_entry`/`parse_session_log`/`count_session_commands` (4 direct callers plus 6 reader call sites surfaced by the wiring pass) — a broad-but-manageable surface, not isolated.
+- Broad enumeration across the full Integration Map (~18-20 sites across the core fix, format-check's new gap kind, 3 Resolution-template sites, 8 manual-fallback/insert-anchor doc-and-skill sites, 4+ test files, and 5 documentation files) drives Complexity Breadth to 0/12, even though each site's own change is Local/mechanical.
+- Pattern A blast radius: ~10 caller/reader call sites depend on `append_session_log_entry`/`session_log_body`/`parse_session_log`/`count_session_commands` (4 direct callers plus 6 reader call sites surfaced by the wiring pass) — a broad-but-manageable surface, not isolated.
 
 ## Verification Notes
 
@@ -321,6 +323,7 @@ HEAD, separate from the prior refine/wire/confidence-check passes:
   the corpus fix.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T21:15:43 - `a39fccc2-5241-4a37-b0f8-a7d240ff4b84.jsonl`
 - `/ll:verify-issues` - 2026-09-09T21:04:19 - `f3e8c388-f237-4461-9091-b0b23efd2cd3.jsonl`
 - `/ll:confidence-check` - 2026-09-09T20:46:34 - `cfabad4e-29d0-4bbf-8a3f-5a2f2c2e4144.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-09T20:38:10 - `7cfdc5bc-5d3d-4908-acfc-6508de69f3b6.jsonl`
