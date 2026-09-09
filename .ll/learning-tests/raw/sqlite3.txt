@@ -24,3 +24,7 @@ claim5_default_attach_limit: 10
 claim5_setlimit_lower_prev=10 now=2
 claim5_setlimit_raise_above_compile_max_prev=2 now=10
 sqlite3.sqlite_version: 3.49.2
+
+--- extension 2026-09-09T04:34:25Z (temp view sqlite_master visibility) ---
+claim6_temp_view_visible_in_temp_master: True
+claim6_temp_view_absent_from_main_master: True

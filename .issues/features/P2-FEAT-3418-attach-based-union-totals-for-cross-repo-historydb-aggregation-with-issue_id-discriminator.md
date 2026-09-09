@@ -60,23 +60,38 @@ made totals unsound as a simple merge of N finished per-repo analyses:
    schemas, or a `repo` column that real tables do not have) forks the SQL
    between the two paths. The design below leaves every query site untouched.
 
-### Design (revised 2026-09-08): union views in `main`
+### Design (revised 2026-09-09): union views in TEMP, not `main`
 
 Attach each analyzable member's `history.db` read-only as schema `r{i}` to a
-`:memory:` connection, then create one **view in `main`** per relation the
+`:memory:` connection, then create one **TEMP view** per relation the
 analysis reads, as a `UNION ALL` over `r0.<rel>`, `r1.<rel>`, .... SQLite
 resolves an unqualified table name in search order `temp -> main -> attached`,
-so once `main.issue_events` exists every existing `FROM issue_events` query
-hits the union view unchanged. The "unqualified query silently reads one
-schema" trap FEAT-3410's spike confirmed only bites when `main` lacks the
-name; defining the name in `main` is the fix, not qualifying the queries.
+so once a temp view named `issue_events` exists every existing
+`FROM issue_events` query hits the union view unchanged.
+
+**Correction (2026-09-09, `/ll:explore-api sqlite3` re-proof):** the
+2026-09-08 spike's "define the name in `main`" conclusion is wrong. SQLite
+rejects `CREATE VIEW main.<name> AS ...` outright whenever the view body
+references *any* attached-schema object — not only in the multi-schema
+`UNION ALL` case; even a single-attachment reference fails
+(`sqlite3.OperationalError: view <name> cannot reference objects in
+database <schema>`), confirmed for both a single-attachment `main` view and
+a two-attachment `UNION ALL` `main` view. Only `CREATE TEMP VIEW <name> AS
+...` (no schema qualifier — temp views cannot be schema-qualified) can span
+attached schemas; the `temp -> main -> attached` resolution order still
+makes an unqualified query hit it. Recorded in
+`.ll/learning-tests/sqlite3.md` as the `unqualified SELECT ... FROM t
+resolves to a persistent main.t VIEW ...` assertion (`result: fail`), with
+the working mechanism captured as the corrective claim in the same record.
+Every `CREATE VIEW main.<relation>` reference in this issue means `CREATE
+TEMP VIEW <relation>`.
 
 The cross-repo discriminator lives **inside the views**, in the id columns
 themselves, for the four id-bearing relations (`issue_events`,
 `issue_sessions`, `commit_events`, `orchestration_runs`):
 
 ```sql
-CREATE VIEW main.issue_events AS
+CREATE TEMP VIEW issue_events AS
 SELECT 'r0:' || issue_id AS issue_id, 0 * 1000000000 + issue_num AS issue_num, <other cols...>
   FROM r0.issue_events
 UNION ALL
@@ -157,12 +172,16 @@ crossed a threshold on its own.
   `FEAT-9 supersedes: [BUG-1]`, while a same-repo `supersedes:` edge still
   is.
 - **No query site in `agent_quality.py`, `rework.py`, `_utils.py`, or
-  `quality_regressions.py` changes.** Instead, `main` defines a union view
-  for each of the 9 relations those sites read: `issue_events`,
-  `issue_sessions`, `correction_retirements`, `user_corrections`,
-  `usage_events`, `loop_runs`, `commit_events`, `orchestration_runs`,
-  `raw_events`. A test asserts all 9 names exist in `main.sqlite_master`
-  after `_open_union()` and that `SELECT COUNT(*) FROM <rel>` on the union
+  `quality_regressions.py` changes.** Instead, `_open_union()` defines a
+  **TEMP** union view for each of the 9 relations those sites read:
+  `issue_events`, `issue_sessions`, `correction_retirements`,
+  `user_corrections`, `usage_events`, `loop_runs`, `commit_events`,
+  `orchestration_runs`, `raw_events` (`main` cannot host these — see Design
+  → 2026-09-09 correction: SQLite rejects a `main`-schema view that
+  references any attached-schema object). A test asserts all 9 names exist
+  in `sqlite_temp_master` (**not** `main.sqlite_master` — a temp view is
+  invisible there, confirmed in `.ll/learning-tests/sqlite3.md`) after
+  `_open_union()` and that `SELECT COUNT(*) FROM <rel>` on the union
   connection equals the sum across members for at least `issue_events` and
   `usage_events`.
 - The id columns of `issue_events`, `issue_sessions`, `commit_events`, and
@@ -240,9 +259,9 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis; revi
 - Importers of `workspace_quality.py`: `agent_quality.py:64`, `cli/history.py:18`, `issue_history/__init__.py:196`, `tests/test_feat3410_workspace_quality.py:22`.
 
 **Conventions in Force**
-- Multi-schema SQL is schema-qualified in the statement text and annotated `# noqa: S608` since identifiers can't be bound — evidence: `session_store/queries.py:242` (`_snapshot_select`), inside the only existing `ATTACH DATABASE` site (`queries.py:291`), paired with `DETACH` in `finally` (300). Here this applies to the `CREATE VIEW main.<rel> AS ... FROM r{i}.<rel>` statements only; closing the `:memory:` connection releases every attach, so no explicit `DETACH` is needed.
+- Multi-schema SQL is schema-qualified in the statement text and annotated `# noqa: S608` since identifiers can't be bound — evidence: `session_store/queries.py:242` (`_snapshot_select`), inside the only existing `ATTACH DATABASE` site (`queries.py:291`), paired with `DETACH` in `finally` (300). Here this applies to the `CREATE TEMP VIEW <rel> AS ... FROM r{i}.<rel>` statements only (no schema qualifier on the view name itself — temp views can't take one); closing the `:memory:` connection releases every attach, so no explicit `DETACH` is needed.
 - Read-only member connections use `sqlite3.connect(f"file:{path}?mode=ro", uri=True)`, never the migrating `connect()`/`ensure_db()` — evidence: `queries.py:191-200`, `workspace_quality.py:68-80`; enforced by `test_feat3410_workspace_quality.py::TestSourceDbUntouched::test_never_uses_migrating_opener`. The union connection must be `sqlite3.connect(":memory:", uri=True)` so `ATTACH DATABASE 'file:...?mode=ro'` is parsed as a URI.
-- `PRAGMA query_only = ON` blocks `CREATE VIEW` (spike); `_open_union()` creates all views first, then sets the pragma. `mode=ro` on each attach already guarantees the members are never written.
+- `PRAGMA query_only = ON` blocks `CREATE TEMP VIEW` (spike; re-confirmed 2026-09-09); `_open_union()` creates all views first, then sets the pragma. `mode=ro` on each attach already guarantees the members are never written.
 - A function handed an open `conn` neither opens nor closes it — evidence: `agent_quality.py:472-511` (`owns_conn = conn is None`), `rework.py:271-299`. `aggregate_history_dbs()` owns the union connection and closes it in `finally`.
 - Per-member fallible steps append `(label, reason)` to `skipped` rather than raising — evidence: `workspace_quality.py:64-139`. The totals pass follows the same shape via `totals_skipped` instead of raising, so an oversized workspace still gets its per-repo breakdown.
 - Value-object dataclasses in `issue_history/` hand-write `to_dict()` one line per field — evidence: `agent_quality.py:143-162`, `workspace_quality.py:45-61`. `AggregationResult` is frozen with `skipped` defaulted, so the new fields must carry defaults.
@@ -271,12 +290,16 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis; revi
 - No dedicated config beyond `history.workspace_manifest_path` (read via `BRConfig` in `workspace.py:93`).
 
 ### Learning Test Registry
-- `.ll/learning-tests/sqlite3.md` exists (`status: proven`, 2026-09-08) with 4 unrelated assertions. Extend it via `/ll:explore-api sqlite3` with the claims this design load-bears on:
-  1. `ATTACH DATABASE 'file:<path>?mode=ro' AS r0` on a `sqlite3.connect(":memory:", uri=True)` connection works, including for a WAL-mode source; an `INSERT` into `r0.<table>` raises "attempt to write a readonly database".
-  2. An unqualified `SELECT ... FROM t` resolves to `main.t` when `main` defines a **view** named `t`, even though `r0.t`/`r1.t` tables exist.
-  3. `CREATE VIEW main.t AS SELECT ... FROM r0.t UNION ALL SELECT ... FROM r1.t` is allowed on a `:memory:` main and remains queryable after `PRAGMA query_only = ON` (which blocks further `CREATE`).
-  4. `PRAGMA r0.table_info(<view>)` returns the column list for a view inside an attached schema (used to build the pass-through column lists).
-  5. `conn.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)` returns 10 here; `conn.setlimit(...)` can lower it but not raise it above the compile-time max.
+- `.ll/learning-tests/sqlite3.md` extended via `/ll:explore-api sqlite3` on 2026-09-09
+  with the 5 claims this design load-bears on, plus one follow-up claim
+  triggered by claim 2's refutation. Results (`status: proven`, 15
+  assertions total, 2 `fail`):
+  1. `ATTACH DATABASE 'file:<path>?mode=ro' AS r0` on a `sqlite3.connect(":memory:", uri=True)` connection works, including for a WAL-mode source; an `INSERT` into `r0.<table>` raises "attempt to write a readonly database". **pass.**
+  2. An unqualified `SELECT ... FROM t` resolves to `main.t` when `main` defines a **view** named `t`, even though `r0.t`/`r1.t` tables exist. **FAIL — refuted.** SQLite rejects `CREATE VIEW main.t` outright when the view body references any attached-schema object (`view t cannot reference objects in database <schema>`), even for a single attachment. Only `CREATE TEMP VIEW t` can span attached schemas; the corrective claim (pass) confirms the same unqualified-resolution behavior works via `temp -> main -> attached` search order once the view is TEMP instead. This is the reason for the Design → 2026-09-09 correction above.
+  3. `CREATE VIEW main.t AS SELECT ... FROM r0.t UNION ALL SELECT ... FROM r1.t` is allowed on a `:memory:` main and remains queryable after `PRAGMA query_only = ON` (which blocks further `CREATE`). **Superseded by claim 2's refutation** — re-tested as `CREATE TEMP VIEW t ...`: **pass** (queryable after `query_only = ON`; further `CREATE TEMP VIEW` is blocked).
+  4. `PRAGMA r0.table_info(<view>)` returns the column list for a view inside an attached schema (used to build the pass-through column lists). **pass.**
+  5. `conn.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)` returns 10 here; `conn.setlimit(...)` can lower it but not raise it above the compile-time max. **pass** (a `setlimit` above 10 is silently clamped back to 10).
+  6. Follow-up: a `CREATE TEMP VIEW` is listed in `sqlite_temp_master`/`temp.sqlite_master`, **not** in `main.sqlite_master` or bare unqualified `sqlite_master`. **pass** — this is why the AC #5 test below asserts against `sqlite_temp_master`, not `main.sqlite_master`.
 
 ### Wiring Phase (added by `/ll:wire-issue`; revised 2026-09-08)
 
@@ -299,8 +322,8 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis; revi
 
 - `aggregate_history_dbs(members, *, min_sample, sensitivity, baseline_windows, latest_only) -> AggregationResult` (unchanged signature; now also fills `totals`/`totals_skipped`)
 - `_attach_limit(conn: sqlite3.Connection) -> int` (new; returns `conn.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)`; monkeypatch seam for tests)
-- `_open_union(db_paths: list[Path]) -> sqlite3.Connection` (new; `:memory:` + `uri=True` + `sqlite3.Row`; ATTACHes each path as `r{i}`, creates the 9 `main` views, then `PRAGMA query_only = ON`; caller has already checked `len(db_paths) <= _attach_limit(conn)`)
-- `_union_view_sql(conn: sqlite3.Connection, relation: str, schema_count: int) -> str` (new; reads `PRAGMA r0.table_info(relation)` for the column list, substitutes the discriminated `issue_id`/`issue_num` expressions when `relation in _ISSUE_KEYED_RELATIONS`, returns the `CREATE VIEW main.<relation> AS ... UNION ALL ...` statement; `# noqa: S608`)
+- `_open_union(db_paths: list[Path]) -> sqlite3.Connection` (new; `:memory:` + `uri=True` + `sqlite3.Row`; ATTACHes each path as `r{i}`, creates the 9 TEMP views, then `PRAGMA query_only = ON`; caller has already checked `len(db_paths) <= _attach_limit(conn)`)
+- `_union_view_sql(conn: sqlite3.Connection, relation: str, schema_count: int) -> str` (new; reads `PRAGMA r0.table_info(relation)` for the column list, substitutes the discriminated `issue_id`/`issue_num` expressions when `relation in _ISSUE_KEYED_RELATIONS`, returns the `CREATE TEMP VIEW <relation> AS ... UNION ALL ...` statement — no schema qualifier on the view name; `main` cannot host a view that references an attached schema, see Design → 2026-09-09 correction; `# noqa: S608`)
 - `_discriminate_issues(issues: list[IssueInfo], prefix: str) -> list[IssueInfo]` (new; `dataclasses.replace(info, issue_id=f"{prefix}{info.issue_id}", supersedes=[f"{prefix}{s}" for s in info.supersedes])`)
 
 ### Call Path
@@ -377,15 +400,27 @@ one schema (SQLite search order: temp -> main -> attached in order), not a
 union — because the bare `:memory:` main had no `issue_events`. The earlier
 conclusion drawn from this ("every unqualified query site needs
 schema-qualified SQL") is **retracted**: the same search order means a
-`main.issue_events` *view* wins over every attached table of that name, so
-the fix is to define the union in `main`, not to rewrite the queries.
+view named `issue_events` wins over every attached table of that name, so
+the fix is to define the union as a view, not to rewrite the queries.
+
+**Further correction (2026-09-09, `/ll:explore-api sqlite3` re-proof):** the
+2026-09-08 conclusion that the union view should live in `main` is itself
+wrong. SQLite rejects `CREATE VIEW main.<name> AS ...` outright when the
+view body references *any* attached-schema object, confirmed for both a
+single-attachment and a two-attachment `UNION ALL` case
+(`sqlite3.OperationalError: view <name> cannot reference objects in
+database <schema>`). Only `CREATE TEMP VIEW <name> AS ...` (no schema
+qualifier) can span attached schemas, and the same `temp -> main ->
+attached` search order still makes an unqualified query resolve to it —
+`temp` is checked *before* `main`, so a TEMP view is if anything a stronger
+fit for this trap than a `main` view would have been.
 `session_store/queries.py::_snapshot_select()`'s `main.{table}`/`snap.{table}`
-precedent applies only to the `CREATE VIEW ... FROM r{i}.<rel>` statements
-`_union_view_sql()` generates.
+precedent applies only to the `CREATE TEMP VIEW ... FROM r{i}.<rel>`
+statements `_union_view_sql()` generates.
 
 Note `PRAGMA query_only=ON` also blocks `CREATE TEMP TABLE`/`CREATE TEMP
-VIEW`/`CREATE VIEW`, so `_open_union()` creates its views in the writable
-`:memory:` main *before* enabling the pragma.
+VIEW`/`CREATE VIEW` (re-confirmed 2026-09-09), so `_open_union()` creates
+its TEMP views *before* enabling the pragma.
 
 **This issue owns:** extending the `sqlite3` Learning Test Registry entry
 (via `/ll:explore-api`) with the five claims listed under Integration Map,
@@ -432,6 +467,7 @@ _Note (2026-09-08, manual review): the scores above predate the Option A → Opt
 - Cross-module keying regression risk: added `scripts/tests/test_feat3418_workspace_quality.py` with a deliberate cross-repo `issue_id` collision fixture (two members both recording `BUG-1`), asserting `AggregationResult.totals` exists and is not conflated. Both tests currently fail (TDD red — `AggregationResult` has no `totals` field yet), specifying the behavior FEAT-3418 must implement. Test coverage score raised 18 → 25.
 
 ## Session Log
+- `/ll:explore-api sqlite3` - 2026-09-09 - extended `.ll/learning-tests/sqlite3.md` with FEAT-3418's 5 required claims (+1 follow-up); refuted the `CREATE VIEW main.<relation>` design premise (SQLite rejects a `main`-schema view referencing any attached object) and confirmed `CREATE TEMP VIEW` as the working mechanism, with temp-view visibility living in `sqlite_temp_master` not `main.sqlite_master`; reconciled Design, Program Design, Integration Map, Conventions, AC #5, and the Spike Result section accordingly
 - `/ll:wire-issue` - 2026-09-09T04:15:40 - `e1e686a9-1440-44fa-b3e0-814ed4ea3e38.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T04:03:56 - `92947113-ae24-4c67-9cb1-ea2af355904e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T03:47:52 - `5ddcabee-5484-4c88-9c31-8734a1bafe5a.jsonl`

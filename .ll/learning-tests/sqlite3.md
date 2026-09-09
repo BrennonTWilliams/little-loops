@@ -33,5 +33,7 @@ assertions:
   result: pass
 - claim: conn.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED) returns 10 here; conn.setlimit(...) can lower it but cannot raise it above the compile-time max (a setlimit above the max is silently clamped back to the max)
   result: pass
+- claim: A CREATE TEMP VIEW is listed in sqlite_temp_master (or temp.sqlite_master), not in main.sqlite_master or bare unqualified sqlite_master
+  result: pass
 raw_output_path: .ll/learning-tests/raw/sqlite3.txt
 ---
