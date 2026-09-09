@@ -15,7 +15,7 @@ blocked_by:
 - FEAT-3409
 parent: FEAT-3399
 unproven_mechanism: false
-verify_verdict: NON_VALID
+verify_verdict: VALID
 size: Large
 confidence_score: 100
 outcome_confidence: 64
@@ -904,6 +904,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
   proposal-vs-code check does not apply (issue uses Program Design /
   Decision Rules / Implementation Steps instead, matching FEAT-3409's own
   precedent).
+- **Graph**: provider=`codegraph` freshness=`fresh`
+- `/ll:verify-issues` — 2026-09-09 — verdict **VALID** (superseding the
+  stale `NON_VALID` frontmatter left by the since-corrected 47→48 drift).
+  `session_store/schema.py:25` `SCHEMA_VERSION` confirmed `49`, matching this
+  issue's own Design Notes ("49 as of 2026-09-08") — no literal is cited in
+  Decision Rules/Program Design, per this issue's own rule. `blocked_by:
+  [FEAT-3409]` resolves and is now `status: done` (satisfied). FEAT-3409's
+  landed code confirmed to match every assumption this issue's design
+  depends on: `WorkspaceMember` (`workspace.py:31-44`, frozen dataclass,
+  fields `repo_path: Path`/`role: str`/`db_path: Path`) and
+  `discover_workspace_members(manifest_path: Path | None = None, *, start:
+  Path | None = None) -> list[WorkspaceMember]` (`workspace.py:163-165`)
+  match this issue's Call Path/Decision Rules verbatim, including the
+  `[]`-vs-`FileNotFoundError` declared/discovered split.
+  `analyze_agent_quality()` (`agent_quality.py:471-479`) confirmed to still
+  lack `conn=` — Implementation Step 1 is accurately scoped as not-yet-done,
+  not stale. `cli/history.py` formatter dispatch confirmed at lines 545-551
+  (issue cites 544-551, off by one, immaterial). `ll-verify-evidence --json`
+  reported zero unverifiable spans; no active required decision rules exist;
+  `ll-code --json status` reports `provider=codegraph`, `freshness=fresh`.
+  **DEP_ISSUES (minor, informational)**: FEAT-3409 has no `## Blocks`
+  section naming FEAT-3410 (MISSING_BACKLINK) — cosmetic only, since the
+  dependency is already `done`/satisfied and both issues cross-reference
+  each other extensively as parent/sibling in prose.
 
 ## Status
 
@@ -922,6 +946,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - Criterion A (Complexity) is the next-lowest contributor at 14/25: ~13 distinct files touched (new module, `agent_quality.py`/`rework.py` `conn=` additions, `cli/history.py` wiring, `issue_history/__init__.py` exports, 4 docs files, 3-4 test files) puts Breadth in the 6-15-site band (5/12); per-site depth is mostly Local/Moderate (9/13) since the new aggregator composes several existing calls per member without shared mutable state. Not a blocker, but expect the implementation to touch more files than a typical Medium-effort issue despite Effort being labeled "Medium" in Impact.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T02:11:38 - `eaffa681-fbae-45e2-b31c-438286e7946e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T01:46:02 - `876d7307-25cb-43ad-ac4c-5e31687d40fd.jsonl`
 - `/ll:format-issue` - 2026-09-08T18:31:14 - `d235f946-7b83-4228-9eed-a9bd5517b547.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T18:20:35 - `7bee39e0-dbd1-43e1-ab8d-3353f1d8f05f.jsonl`
