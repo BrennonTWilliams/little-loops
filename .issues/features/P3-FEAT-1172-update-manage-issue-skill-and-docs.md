@@ -111,17 +111,12 @@ Implemented the final completion-path update for the FEAT-1162 family:
 TDD was followed: the four new doc-wiring tests failed with assertions before the edits and pass after. Full suite: 4978 passed, 5 skipped. The one ruff warning and one mypy warning found are pre-existing (unrelated files).
 
 ## Session Log
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-4. Create `scripts/tests/test_feat1172_doc_wiring.py` — a doc-wiring test asserting that `completed_at` appears in the `docs/reference/ISSUE_TEMPLATE.md` frontmatter fields table, following the pattern in `scripts/tests/test_enh1138_doc_wiring.py`
-
-## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-18T21:12:22 - `d491456c-76f4-49f2-b873-5e4c42016793.jsonl`
 - `/ll:manage-issue` - 2026-04-18T21:11:47Z - `d491456c-76f4-49f2-b873-5e4c42016793.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `ec44b430-72d7-40d7-80da-a4758ee0bea7.jsonl`
 - `/ll:wire-issue` - 2026-04-18T21:05:45 - `dc8fa437-a5ed-4e83-a696-6f08da57756c.jsonl`
 - `/ll:refine-issue` - 2026-04-18T21:01:00 - `7ab691fc-9228-4fdb-a8dd-351434afc882.jsonl`
 - `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `ec44b430-72d7-40d7-80da-a4758ee0bea7.jsonl`
+### Wiring Phase (added by `/ll:wire-issue`)
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+4. Create `scripts/tests/test_feat1172_doc_wiring.py` — a doc-wiring test asserting that `completed_at` appears in the `docs/reference/ISSUE_TEMPLATE.md` frontmatter fields table, following the pattern in `scripts/tests/test_enh1138_doc_wiring.py`
+- `hook:posttooluse-git-mv` - 2026-04-18T21:12:22 - `d491456c-76f4-49f2-b873-5e4c42016793.jsonl`

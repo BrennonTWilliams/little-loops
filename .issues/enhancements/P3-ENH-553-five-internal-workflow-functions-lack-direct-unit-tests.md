@@ -137,31 +137,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `testing`, `workflow-analyzer`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad88b8c4-a11d-4def-9567-0558f25a7e4b.jsonl`
-- `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
-- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
-- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
-- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
-- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
-- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
-- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
-- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — NEEDS_UPDATE: _load_messages now imported; scope reduced to 4 functions
-- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `_load_messages` confirmed imported at test file line 24 with tests at 1506+; 4 remaining untested functions confirmed: `_detect_handoff`, `_group_by_session`, `_load_patterns`, `_get_message_category`; issue content updated to reflect scope
-
-## Resolution
-
-Added direct unit tests for all four untested functions in `test_workflow_sequence_analyzer.py`:
-
-- Imported `_detect_handoff`, `_get_message_category`, `_group_by_session`, `_load_patterns` in the module-level import block
-- `TestDetectHandoff` — 5 tests covering known markers, no-match, mid-sentence, case-insensitivity, empty string
-- `TestGroupBySession` — 3 tests covering grouping, missing `session_id` defaulting to `"unknown"`, empty input
-- `TestLoadPatterns` — 3 tests covering valid YAML, empty file returning `{}`, missing file raising `FileNotFoundError`
-- `TestGetMessageCategory` — 4 tests covering found uuid, unknown uuid, non-str category, empty patterns
-
-All 3355 tests pass (`python -m pytest scripts/tests/`).
-
-## Session Log
-- `/ll:manage-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `ad88b8c4-a11d-4def-9567-0558f25a7e4b.jsonl`
+- `/ll:manage-issue` - 2026-03-13T00:00:00Z - `<unknown>.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `_load_messages` confirmed imported at test file line 24 with tests at 1506+; 4 remaining untested functions confirmed: `_detect_handoff`, `_group_by_session`, `_load_patterns`, `_get_message_category`; issue content updated to reflect scope
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — NEEDS_UPDATE: _load_messages now imported; scope reduced to 4 functions
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
+- `/ll:format-issue` - 2026-03-03 - `c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 
 ## Status
 

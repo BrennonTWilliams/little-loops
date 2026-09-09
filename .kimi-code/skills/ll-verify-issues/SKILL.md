@@ -407,6 +407,11 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 - `/ll:verify-issues` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
 
+Append it under the existing `## Session Log` heading if one exists; create the
+heading only when none does, immediately above the `---`/`## Status` footer (or at
+end of file if no footer exists). Never add a second `## Session Log` heading —
+doing so orphans every entry recorded under the earlier one (BUG-3424).
+
 ### 5. Output Report
 
 ```markdown

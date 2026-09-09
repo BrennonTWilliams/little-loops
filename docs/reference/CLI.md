@@ -1566,7 +1566,7 @@ Search issues with filters and sorting.
 | `--label` | Filter by label tag (repeatable) |
 | `--since` | Only issues on or after DATE (YYYY-MM-DD) |
 | `--until` | Only issues on or before DATE (YYYY-MM-DD) |
-| `--date-field` | Date field to filter on: `discovered` (default) prefers `captured_at` frontmatter (sub-day resolution) and falls back to `discovered_date`; `updated` uses the last `## Session Log` entry timestamp, falling back to file mtime |
+| `--date-field` | Date field to filter on: `discovered` (default) prefers `captured_at` frontmatter (sub-day resolution) and falls back to `discovered_date`; `updated` uses the newest `## Session Log` entry timestamp (BUG-3424: `max()` over every parsed timestamp, not the last line in document order — entries are written newest-first, so "last" was the *oldest* entry), falling back to file mtime |
 | `--sort` | Sort field: `priority` (default), `id`, `date`, `type`, `title`, `created`, `completed`, `confidence`, `outcome`, `refinement` |
 | `--asc` / `--desc` | Sort direction |
 | `--format` | Output format: `table` (default), `list`, `ids` |
@@ -2315,7 +2315,7 @@ ll-issues check-open-questions ENH-2446   # Exit 0 — no unresolved decision su
 
 #### `ll-issues format-check`
 
-Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in twenty-six classes (re-derive this count from `dataclasses.fields(FormatGaps)` rather than trusting the number written here): `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), `boilerplate` (a required section's body still equals its `creation_template`), `malformed_id` (frontmatter `id` present but not matching the filename-derived `TYPE-NNN`, BUG-2769), `prose_dep_drift` (FEAT-2849: the body claims a dependency in prose — "Depends on ID", "Blocked by ID", "Requires ID", the synonyms "blocked on"/"gated on"/"waiting on"/"contingent on"/"predicated on", or a `## Blocked By` section — on an active issue absent from `blocked_by`/`depends_on`; temporal phrasings like "after ID"/"once ID" are deliberately not matched), `stale_prose_dep` (FEAT-2849: the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge), `program_design_nonspecific` (ENH-2852: the `## Program Design` section is present and non-boilerplate but lacks a signature-shaped line or a resolving `Call Path` anchor; opt-in per project via `.ll/program-design-cutover.json`), `deprecated_key` (ENH-2876: frontmatter carries a retired key like hand-authored `superseded_by` or a coerced status synonym like `status: completed`, each reported with its mandatory prose reason), `multi_frontmatter` (BUG-2955: the issue carries more than one YAML frontmatter block in its header region), `testable`, `stale_file_ref`, `unmarked_superseded_directive`, `duplicate_findings_block`, `ambiguous_file_ref`, `missing_behavior_parity`, `soft_dep_hard_edge`, `malformed_dep_id`, `stale_symbol_ref`, `mislocated_symbol_ref`, `stale_cli_flag`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders`, `unapplied_decision` (ENH-3256: a recorded `> **Selected:**` decision whose rejected option's discriminating identifiers still appear, unmarked, in a directive section — caps `/ll:confidence-check` Criterion C), and `priority_drift` (BUG-3286: the filename's `P<n>-` prefix and the frontmatter `priority:` key are both present and disagree — the filename prefix is authoritative; the remedy is `ll-issues prioritize --apply`) (each documented below). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.
+Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in twenty-eight classes (re-derive this count from `dataclasses.fields(FormatGaps)` rather than trusting the number written here): `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), `boilerplate` (a required section's body still equals its `creation_template`), `malformed_id` (frontmatter `id` present but not matching the filename-derived `TYPE-NNN`, BUG-2769), `prose_dep_drift` (FEAT-2849: the body claims a dependency in prose — "Depends on ID", "Blocked by ID", "Requires ID", the synonyms "blocked on"/"gated on"/"waiting on"/"contingent on"/"predicated on", or a `## Blocked By` section — on an active issue absent from `blocked_by`/`depends_on`; temporal phrasings like "after ID"/"once ID" are deliberately not matched), `stale_prose_dep` (FEAT-2849: the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge), `program_design_nonspecific` (ENH-2852: the `## Program Design` section is present and non-boilerplate but lacks a signature-shaped line or a resolving `Call Path` anchor; opt-in per project via `.ll/program-design-cutover.json`), `deprecated_key` (ENH-2876: frontmatter carries a retired key like hand-authored `superseded_by` or a coerced status synonym like `status: completed`, each reported with its mandatory prose reason), `multi_frontmatter` (BUG-2955: the issue carries more than one YAML frontmatter block in its header region), `testable`, `stale_file_ref`, `unmarked_superseded_directive`, `duplicate_findings_block`, `ambiguous_file_ref`, `missing_behavior_parity`, `soft_dep_hard_edge`, `malformed_dep_id`, `stale_symbol_ref`, `mislocated_symbol_ref`, `stale_cli_flag`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders`, `unapplied_decision` (ENH-3256: a recorded `> **Selected:**` decision whose rejected option's discriminating identifiers still appear, unmarked, in a directive section — caps `/ll:confidence-check` Criterion C), `priority_drift` (BUG-3286: the filename's `P<n>-` prefix and the frontmatter `priority:` key are both present and disagree — the filename prefix is authoritative; the remedy is `ll-issues prioritize --apply`), `duplicate_session_log` (BUG-3424: more than one non-fenced `## Session Log` H2 heading), and `orphaned_session_log_entries` (BUG-3424: an entry-shaped line outside any Session Log section — advisory-only) (each documented below). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.
 
 A single-ID run still parses the whole corpus internally (needed to classify `prose_dep_drift` vs `stale_prose_dep` against every other issue's status), but suppresses *other* issues' `deprecated frontmatter key` warnings rather than printing one line per offending file — the targeted issue's own warnings (if any) still surface normally. When other issues were suppressed, a one-line stderr tally follows the verdict: `(N other issue(s) have deprecated frontmatter keys — run \`ll-issues format-check\` to list)`. The full `--all` sweep is unaffected — it still reports every file's deprecated keys (ENH-2961).
 
@@ -2458,6 +2458,18 @@ them deterministically (no LLM). `duplicate_heading` excludes
 fenced code blocks — a duplicate heading or empty stub inside an illustrative
 ` ``` ` block is documentation, not a gap.
 
+Also reports `duplicate_session_log` (BUG-3424) — more than one non-fenced,
+line-anchored `## Session Log` H2 heading, formatted `"## Session Log (N)"` —
+and `orphaned_session_log_entries` (BUG-3424) — an entry-shaped bullet line
+outside any non-fenced `## Session Log` section (including before the first
+H2), formatted `"line N"`. `duplicate_session_log` is H2-scoped, parallel to
+`duplicate_heading` (H3-scoped) but not built on it, and blocking; `--fix`
+repairs it via `little_loops.session_log.merge_session_log_blocks()` — the
+same merge `append_session_log_entry()` now runs before every insert.
+`orphaned_session_log_entries` is **advisory-only**: report-only, no `--fix`
+handler, since the remedy needs a human decision about where the entry
+belongs.
+
 Also reports `template_placeholders` (ENH-3244) — a literal unfilled template
 placeholder (e.g. `TBD - requires codebase analysis`, `[Major phase 1]`)
 still present in the section whose `creation_template` emits it, formatted
@@ -2489,13 +2501,16 @@ deposit time — the idempotent write makes either order safe),
 `ll-issues fold-findings` uses), `duplicate_heading` (collapse duplicate
 headings, concatenating bodies in document order — never drops a body),
 `empty_provenance_stub` (delete empty stubs, normalizing surrounding
-whitespace to exactly one blank line), and `template_placeholders`
+whitespace to exactly one blank line), `template_placeholders`
 (ENH-3248: fill the four frontmatter-derivable tokens above; every other
-placeholder token is left in place). Dry-run by default; combine with
+placeholder token is left in place), and `duplicate_session_log` (BUG-3424:
+collapse via `little_loops.session_log.merge_session_log_blocks()` —
+exact-duplicate entry lines dropped, remainder stable-sorted by parsed
+timestamp descending). Dry-run by default; combine with
 `--apply` to write. **`--all --fix --apply` (sweep mode) is restricted to
 `prose_dep_drift`** — the only repair that writes frontmatter through an
 existing idempotent command rather than rewriting the markdown body; the
-other four repairs run in single-issue mode only, to keep a sweep's blast
+other five repairs run in single-issue mode only, to keep a sweep's blast
 radius reviewable.
 
 | Argument/Flag | Default | Description |
@@ -2504,14 +2519,14 @@ radius reviewable.
 | `--all` / `-a` | `false` | Sweep every active issue instead of one (FEAT-2850) |
 | `--next` | `false` | Target the highest-priority active issue, no type filter (same selection as `find_highest_priority_issue`); mutually exclusive with `issue_id`/`--all`; exits 1 with "No active issues found." on an empty backlog (ENH-2946) |
 | `--format {text,json}` | `text` | Output format |
-| `--fix` | `false` | Preview repairs for `prose_dep_drift`, `duplicate_findings_block`, `duplicate_heading`, `empty_provenance_stub`, and `template_placeholders` (frontmatter-derivable tokens only) gaps via the repair dispatch table (dry-run by default; the latter four are single-issue mode only — ENH-3247, ENH-3248) |
+| `--fix` | `false` | Preview repairs for `prose_dep_drift`, `duplicate_findings_block`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders` (frontmatter-derivable tokens only), and `duplicate_session_log` gaps via the repair dispatch table (dry-run by default; all but `prose_dep_drift` are single-issue mode only — ENH-3247, ENH-3248, BUG-3424) |
 | `--apply` | `false` | With `--fix`, write the proposed repairs instead of previewing them |
 
 **Examples:**
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
                                                # stderr: "(N other issue(s) have deprecated frontmatter keys — run `ll-issues format-check` to list)" when applicable
-ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "duplicate_findings_block": [...], "ambiguous_file_ref": [...], "missing_behavior_parity": [...], "soft_dep_hard_edge": [...], "malformed_dep_id": [...], "stale_symbol_ref": [...], "mislocated_symbol_ref": [...], "stale_cli_flag": [...], "duplicate_heading": [...], "empty_provenance_stub": [...], "template_placeholders": [...], "unapplied_decision": [...], "priority_drift": [...], "superseded_marker_count": 0}
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "duplicate_findings_block": [...], "ambiguous_file_ref": [...], "missing_behavior_parity": [...], "soft_dep_hard_edge": [...], "malformed_dep_id": [...], "stale_symbol_ref": [...], "mislocated_symbol_ref": [...], "stale_cli_flag": [...], "duplicate_heading": [...], "empty_provenance_stub": [...], "template_placeholders": [...], "unapplied_decision": [...], "priority_drift": [...], "duplicate_session_log": [...], "orphaned_session_log_entries": [...], "superseded_marker_count": 0}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ll-issues format-check ENH-2426 --fix --apply # single-issue: also collapses duplicate headings/findings blocks, deletes empty provenance stubs, and fills frontmatter-derivable template placeholders

@@ -428,7 +428,7 @@ Evaluate whether one or more issues should be implemented using an adversarial d
 
 The reason appears inline in verdict output (`NO-GO ✗ (CLOSE)`), batch summaries, and `--check` mode per-issue lines.
 
-**Findings write-back:** After rendering a verdict, go-no-go checks whether the judge's output references specific files or functions not already in the issue body. If significant new information is found, it offers to insert a `## Go/No-Go Findings` section into the issue file (before `## Session Log`). In `--auto` mode the write happens without prompting; in `--check` mode writes are skipped entirely.
+**Findings write-back:** After rendering a verdict, go-no-go checks whether the judge's output references specific files or functions not already in the issue body. If significant new information is found, it offers to insert a `## Go/No-Go Findings` section into the issue file (before `## Session Log`, anchored on the blank line above the heading so the existing `## Session Log` heading is kept verbatim — BUG-3424). In `--auto` mode the write happens without prompting; in `--check` mode writes are skipped entirely.
 
 **Decisions log:** When decisions log is enabled, appends a `decision` entry to the log (as an append-only `.ll/decisions.d/*.json` fragment). Silently skipped if the log is absent (neither `.ll/decisions.yaml` nor `.ll/decisions.d/`).
 

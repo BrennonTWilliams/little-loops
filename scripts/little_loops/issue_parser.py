@@ -508,8 +508,13 @@ def _normalize_whitespace(text: str) -> str:
 # hard gate out of what is meant to be a "maybe set testable: false" nudge.
 # `unapplied_decision_detail` (ENH-3280) is a structured projection of the
 # already-blocking `unapplied_decision` class, not an independent gap -- it
-# must never drive the exit code on its own.
-_ADVISORY_GAP_CLASSES: frozenset[str] = frozenset({"testable", "unapplied_decision_detail"})
+# must never drive the exit code on its own. `orphaned_session_log_entries`
+# (BUG-3424) is report-only by design (Proposed Solution (f)): the orphan
+# count is a heuristic scan, not a repair target, so it must never fail the
+# exit code on its own either.
+_ADVISORY_GAP_CLASSES: frozenset[str] = frozenset(
+    {"testable", "unapplied_decision_detail", "orphaned_session_log_entries"}
+)
 
 
 @dataclass
@@ -549,6 +554,11 @@ class FormatGaps:
     # ENH-3280: structured (section, identifier) projection of unapplied_decision,
     # for machine consumers that would otherwise re-parse the reason string.
     unapplied_decision_detail: list[dict[str, str]] = field(default_factory=list)
+    # BUG-3424: more than one non-fenced ``## Session Log`` H2 heading exists.
+    duplicate_session_log: list[str] = field(default_factory=list)
+    # BUG-3424: an entry-shaped bullet line sits outside any ``## Session Log``
+    # section. Advisory (see _ADVISORY_GAP_CLASSES) -- report-only, no repair.
+    orphaned_session_log_entries: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -580,6 +590,8 @@ class FormatGaps:
             or self.template_placeholders
             or self.unapplied_decision
             or self.priority_drift
+            or self.duplicate_session_log
+            or self.orphaned_session_log_entries
         )
 
     @property
@@ -624,6 +636,8 @@ class FormatGaps:
             "unapplied_decision": self.unapplied_decision,
             "priority_drift": self.priority_drift,
             "unapplied_decision_detail": self.unapplied_decision_detail,
+            "duplicate_session_log": self.duplicate_session_log,
+            "orphaned_session_log_entries": self.orphaned_session_log_entries,
         }
 
 
@@ -868,6 +882,19 @@ def check_format_gaps(
             prefix is authoritative (:func:`resolve_priority`); the remedy is
             re-running ``ll-issues prioritize --apply``, which reconciles
             both sources in one operation.
+        duplicate_session_log: more than one non-fenced, line-anchored
+            ``## Session Log`` H2 heading exists (BUG-3424) — e.g. a
+            ``## Resolution`` footer write-back or a findings-section insert
+            that consumed the original heading and forced a fresh one at EOF.
+            H2-scoped, parallel to ``duplicate_heading`` (H3-scoped) but not
+            built on it. Blocking; repaired by
+            :func:`~little_loops.session_log.merge_session_log_blocks`.
+        orphaned_session_log_entries: an entry-shaped bullet line (matching
+            :data:`_ORPHAN_ENTRY_RE`) sits outside any non-fenced
+            ``## Session Log`` section — including before the first H2
+            (BUG-3424). Advisory (:data:`_ADVISORY_GAP_CLASSES`): report-only,
+            since the remedy is human judgment about where the entry belongs,
+            not an auto-fix.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -1187,6 +1214,10 @@ def check_format_gaps(
     gaps.duplicate_heading.extend(_duplicate_headings(content))
     gaps.empty_provenance_stub.extend(_empty_provenance_stubs(content))
     gaps.template_placeholders.extend(_template_placeholders(content, issue_type, templates_dir))
+    gaps.duplicate_session_log.extend(_duplicate_session_log_report(content))
+    gaps.orphaned_session_log_entries.extend(
+        f"line {n}" for n in _orphaned_session_log_entries(content)
+    )
 
     return gaps
 
@@ -1306,6 +1337,82 @@ def _duplicate_heading_groups(
 def _duplicate_headings(content: str) -> list[str]:
     """Gap-report strings for the ``duplicate_heading`` class (ENH-3247)."""
     return [f"{h2} > {h3} ({len(spans)})" for h2, h3, spans in _duplicate_heading_groups(content)]
+
+
+def _duplicate_session_log_headings(content: str) -> list[tuple[int, int, int]]:
+    """Return ``(block_start, body_start, block_end)`` per heading, when N>1 (BUG-3424).
+
+    H2-scoped detector for a bare, line-anchored ``## Session Log`` heading
+    repeated in a single file — parallel to :func:`_duplicate_heading_groups`
+    (which is H3-scoped, nested under a named H2 parent) but not built on it,
+    since ``## Session Log`` has no parent H2 to group under. Empty when 0 or
+    1 non-fenced heading exists. Reuses the exact same heading regex and
+    block-boundary scan as
+    :func:`~little_loops.session_log.merge_session_log_blocks` (next
+    fence-excluded ``\\n##``/``\\n---`` terminator, or end of file), so the
+    detector and its repair (:func:`~little_loops.session_log.merge_session_log_blocks`
+    again, via ``format_check.py``'s ``_fix_duplicate_session_log``) can never
+    disagree about what "a block" is.
+    """
+    from little_loops.session_log import _SESSION_LOG_HEADING_RE, _SESSION_LOG_TERMINATOR_RE
+    from little_loops.text_utils import fence_spans, in_fence
+
+    fences = fence_spans(content)
+    headings = [
+        m
+        for m in _SESSION_LOG_HEADING_RE.finditer(content)
+        if not in_fence(m.start(), m.end(), fences)
+    ]
+    if len(headings) <= 1:
+        return []
+
+    blocks: list[tuple[int, int, int]] = []
+    for m in headings:
+        body_start = m.end()
+        leading_blank = re.compile(r"\n+").match(content, body_start)
+        if leading_blank:
+            body_start = leading_blank.end()
+        block_end = len(content)
+        for term in _SESSION_LOG_TERMINATOR_RE.finditer(content, body_start):
+            if not in_fence(term.start(), term.end(), fences):
+                block_end = term.start()
+                break
+        blocks.append((m.start(), body_start, block_end))
+    return blocks
+
+
+def _duplicate_session_log_report(content: str) -> list[str]:
+    """Gap-report strings for the ``duplicate_session_log`` class (BUG-3424)."""
+    spans = _duplicate_session_log_headings(content)
+    return [f"## Session Log ({len(spans)})"] if spans else []
+
+
+# BUG-3424 Proposed Solution (f): the orphan definition is pinned so the count
+# is reproducible across scans — a line matching this shape, fence-excluded,
+# whose enclosing non-fenced H2 is not "Session Log" (including no H2 at all).
+_ORPHAN_ENTRY_RE = re.compile(r"^- `/[\w:-]+` - \d{4}-\d{2}-\d{2}", re.MULTILINE)
+
+
+def _orphaned_session_log_entries(content: str) -> list[int]:
+    """Return 1-based line numbers of entry-shaped lines outside any Session Log (BUG-3424).
+
+    Advisory detector (:data:`_ADVISORY_GAP_CLASSES`): report-only, no
+    ``--fix`` handler. Fence-masked; a line before the first H2 counts as
+    orphaned too (``enclosing`` is None there, which never equals
+    ``"Session Log"``).
+    """
+    from little_loops.text_utils import fence_spans, in_fence
+
+    fences = fence_spans(content)
+    sections = _iter_h2_sections_fence_masked(content, fences)
+    orphaned: list[int] = []
+    for m in _ORPHAN_ENTRY_RE.finditer(content):
+        if in_fence(m.start(), m.end(), fences):
+            continue
+        enclosing = next((h for h, start, end in sections if start <= m.start() < end), None)
+        if enclosing != "Session Log":
+            orphaned.append(content.count("\n", 0, m.start()) + 1)
+    return orphaned
 
 
 def _empty_provenance_stub_matches(content: str) -> list[re.Match[str]]:

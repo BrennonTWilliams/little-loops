@@ -240,40 +240,12 @@ ENH-540, ENH-541, ENH-542, FEAT-543 share `scripts/little_loops/cli/loop/info.py
 `enhancement`, `cli`, `ux`, `captured`
 
 ## Session Log
-
+- `/ll:confidence-check` - 2026-03-05T12:03:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T12:02:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
+- `/ll:verify-issues` - 2026-03-05T12:01:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
+- `/ll:format-issue` - 2026-03-05T12:00:00 - `ec462971-7c6a-4df7-ac85-37adb7889f90.jsonl`
 - `/ll:capture-issue` - 2026-03-05T00:00:00 - `06c58b54-ce27-447a-8683-f1add2d8414b.jsonl`
 - `/ll:format-issue` - 2026-03-05T00:00:00 - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
-- `/ll:format-issue` - 2026-03-05T12:00:00 - `ec462971-7c6a-4df7-ac85-37adb7889f90.jsonl`
-- `/ll:verify-issues` - 2026-03-05T12:01:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
-- `/ll:map-dependencies` - 2026-03-05T12:02:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
-- `/ll:confidence-check` - 2026-03-05T12:03:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
-
-## Resolution
-
-**Completed** 2026-03-05
-
-### Changes Made
-
-- `scripts/little_loops/cli/loop/info.py`: Full rewrite of display logic
-  - **Bug fix**: Separated `down_labels` and `up_labels` onto distinct rows in vertical connector section, eliminating label collision (e.g., `fail/error│pnextal` → clean separate rows)
-  - **Multi-row boxes**: Added `_box_inner_lines()` helper; diagram boxes now show state name + type badge `[shell/prompt/...]` on first row, action preview on second row; verbose mode wraps all action lines
-  - **Compact metadata header**: Merged paradigm/stats onto separator line; source/config on compact second line (`handoff: X`, `max: N iter`, `llm: model=Y`)
-  - **State overview table**: Added `_print_state_overview_table()` between diagram and state detail; shows State/Type/Action Preview/Transitions columns
-  - **Color transitions**: Added `_colorize_label()` for state detail transition list; added `_colorize_diagram_labels()` regex post-processor for diagram edge labels (no-op in non-TTY)
-  - **State section headers**: Changed from `[name] [INITIAL] (type)` to `── name ─── INITIAL · type ──` separator style
-- `scripts/tests/test_ll_loop_commands.py`: Updated 5 test assertions to match new output format
-
-### Success Criteria Met
-
-- ✅ No label collision in vertical connector rows
-- ✅ State type badges in diagram boxes
-- ✅ State overview table between diagram and state detail
-- ✅ Transition labels colorized (suppressed in non-TTY)
-- ✅ Verbose mode shows full action (no truncation)
-- ✅ All 91 display/command tests pass; full suite 3280 passed
-
-## Session Log
-
 - `/ll:manage-issue` - 2026-03-05T00:00:00 - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 
 ## Status

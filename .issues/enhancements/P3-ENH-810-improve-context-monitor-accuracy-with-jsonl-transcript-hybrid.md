@@ -166,20 +166,7 @@ enhancement, context-monitor, accuracy, hooks, jq
 
 ## Session Log
 - `/ll:ready-issue` - 2026-03-19T04:40:42 - `c76ff1ee-0e20-46ac-b7b8-1af1a8922ddd.jsonl`
-- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `0769f82c-7917-4279-b938-66dfdf42d867.jsonl`
 - `/ll:refine-issue` - 2026-03-19T04:15:40 - `17e62d86-ce17-4688-90e3-90ca6ccc7acc.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `0769f82c-7917-4279-b938-66dfdf42d867.jsonl`
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `11790a5c-4ad1-498a-9649-93255e24e9c4.jsonl`
-
----
-
-## Resolution
-
-Implemented 2026-03-18. Changes:
-- `hooks/scripts/context-monitor.sh`: Reads `USE_TRANSCRIPT_BASELINE` config, extracts `TRANSCRIPT_PATH` from stdin, adds `get_transcript_baseline()` function, uses API-exact baseline + current-turn delta when transcript available, stores `transcript_baseline_tokens` in state JSON
-- `config-schema.json`: Added `use_transcript_baseline` boolean property (default `true`) to `context_monitor` block
-- `scripts/tests/test_hooks_integration.py`: Two new tests — baseline used when JSONL present, fallback when absent
-- `docs/guides/SESSION_HANDOFF.md`: Added Transcript Baseline Mode section with accuracy comparison table; updated state file format example
-- `docs/reference/CONFIGURATION.md`: Added `use_transcript_baseline` row to `context_monitor` table
-
-## Session Log
 - `/ll:manage-issue` - 2026-03-18T00:00:00Z - implementation complete

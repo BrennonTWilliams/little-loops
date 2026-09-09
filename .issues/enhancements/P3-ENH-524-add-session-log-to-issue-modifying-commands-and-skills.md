@@ -110,70 +110,18 @@ After updating the issue, append a session log entry:
 
 ```markdown
 ## Session Log
+- `/ll:refine-issue` - 2026-03-03T12:00:00Z - `2b5cd253-19da-4e4f-813e-cf37aab9832b.jsonl`
+- `/ll:ready-issue` - 2026-03-03T12:00:00Z - `fa7608ed-9d5f-447a-9ef6-600644b1d11f.jsonl`
+- `/ll:capture-issue` - 2026-03-03T00:00:00Z - `f3f89019-8d96-425f-80aa-cd975bd7521c.jsonl`
+- `/ll:format-issue` - 2026-03-03T00:00:00Z - `d89e72fb-8a73-4022-8536-d2864de87a77.jsonl`
+- `/ll:manage-issue` - 2026-03-03T00:00:00Z - `9ca133f6-3509-4ee0-a78a-2b75838b643d.jsonl`
 - `/ll:<command-name>` - [ISO timestamp] - `[path to current session JSONL]`
 ```
-
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
-```
-
 Additional reference implementations to consult for placement conventions:
 - `commands/scan-codebase.md:314` — `### 5.5. Append Session Log Entries` (multi-file loop context)
 - `skills/capture-issue/SKILL.md:246` — inline numbered sub-item (simplest pattern)
 - `skills/manage-issue/SKILL.md:385` + `templates.md:331` — delegates format to templates.md
-
-## Related Key Documentation
-
-| Document | Relevance |
-|---|---|
-| `commands/refine-issue.md:384` | Reference implementation of Session Log step |
-| `skills/format-issue/SKILL.md:264` | Reference implementation in skill context |
-| `skills/manage-issue/templates.md:331` | Canonical Session Log entry format template |
-| `scripts/little_loops/session_log.py` | Python module for session log operations |
-
-## Integration Map
-
-### Files to Modify
-
-- `commands/ready-issue.md` — add Session Log step after Step 5 auto-correction body (~line 223) and after close verdict execution
-- `commands/verify-issues.md` — add Session Log step after Step 4 "Update Issue Files" body (~line 118); renumber Output Report to Step 6
-- `skills/confidence-check/SKILL.md` — add Session Log step after Phase 4 "Update Frontmatter" close (~line 391)
-- `commands/tradeoff-review-issues.md` — add Session Log step in two locations within Phase 5: after closure `git mv` (~line 249) and after review notes template (~line 274)
-- `skills/issue-size-review/SKILL.md` — add Session Log step in two locations within Phase 5: after child issue creation (~line 126) and after parent `git mv` (~line 149)
-
-### Similar Patterns (Reference Implementations)
-
-- `commands/refine-issue.md:384` — standalone `### 7. Append Session Log` step; **canonical template for commands**
-- `skills/format-issue/SKILL.md:264` — merged step heading `### 5. Update Issue File and Append Session Log`; canonical for skills
-- `commands/scan-codebase.md:314` — `### 5.5. Append Session Log Entries`; model for multi-file loop contexts
-- `skills/capture-issue/SKILL.md:246` — inline numbered sub-item; simplest pattern
-- `skills/manage-issue/SKILL.md:385` + `templates.md:331` — step references external template file
-
-### Supporting Modules
-
-- `scripts/little_loops/session_log.py` (85 lines) — exports `get_current_session_jsonl(cwd)` and `append_session_log_entry(issue_path, command, session_jsonl=None)`; **not called by command/skill markdown** — the markdown files include inline LLM instructions that reproduce the same logic
-- `scripts/tests/test_session_log.py` — covers the Python module; no changes needed for this ENH
-
-### Tests
-
-No automated tests for command/skill markdown behavior (LLM-instruction-based). The Python module is tested separately; it is unchanged by this ENH.
-
-## Impact
-
-- **Priority**: P3 - Low; fills an audit trail gap but does not affect functionality or correctness
-- **Effort**: Small - markdown-only additions to 5 command/skill files; no Python code changes
-- **Risk**: Low - changes are LLM instruction text only; no behavioral regressions possible for existing commands
-- **Breaking Change**: No
-
-## Labels
-
-`enhancement`, `audit-trail`, `session-log`, `commands`, `skills`
-
-## Session Log
-- `/ll:capture-issue` - 2026-03-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3f89019-8d96-425f-80aa-cd975bd7521c.jsonl`
-- `/ll:format-issue` - 2026-03-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d89e72fb-8a73-4022-8536-d2864de87a77.jsonl`
-- `/ll:refine-issue` - 2026-03-03T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b5cd253-19da-4e4f-813e-cf37aab9832b.jsonl`
-- `/ll:ready-issue` - 2026-03-03T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa7608ed-9d5f-447a-9ef6-600644b1d11f.jsonl`
-- `/ll:manage-issue` - 2026-03-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ca133f6-3509-4ee0-a78a-2b75838b643d.jsonl`
 
 ---
 

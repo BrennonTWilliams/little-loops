@@ -895,7 +895,7 @@ def check_format_gaps(
 
 Grade an issue's structural format gaps against its type template (ENH-2426). Deterministic (no LLM) — backs the `ll-issues format-check` subcommand and the `ensure_formatted` gate in `rn-remediate.yaml`. Unlike `is_formatted()`, this always runs the structural analysis; it does not honor the `/ll:format-issue` session-log shortcut, since every issue reaching the gate has already run that command.
 
-Reports twenty-six gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep`, `program_design_nonspecific`, `deprecated_key`, `multi_frontmatter`, `testable`, `stale_file_ref`, `unmarked_superseded_directive`, `duplicate_findings_block`, `ambiguous_file_ref`, `missing_behavior_parity`, `soft_dep_hard_edge`, `malformed_dep_id`, `stale_symbol_ref`, `mislocated_symbol_ref`, `stale_cli_flag`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders`, `unapplied_decision`, `priority_drift` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output; re-derive this count from `dataclasses.fields(FormatGaps)` rather than trusting the number written here):
+Reports twenty-eight gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep`, `program_design_nonspecific`, `deprecated_key`, `multi_frontmatter`, `testable`, `stale_file_ref`, `unmarked_superseded_directive`, `duplicate_findings_block`, `ambiguous_file_ref`, `missing_behavior_parity`, `soft_dep_hard_edge`, `malformed_dep_id`, `stale_symbol_ref`, `mislocated_symbol_ref`, `stale_cli_flag`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders`, `unapplied_decision`, `priority_drift`, `duplicate_session_log`, `orphaned_session_log_entries` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output; re-derive this count from `dataclasses.fields(FormatGaps)` rather than trusting the number written here):
 - **missing** — a required section header is absent from the body.
 - **renamed** — a present section header is `deprecated: true` in the template with an extractable canonical replacement in its `deprecation_reason` (e.g. `"Proposed Fix" -> "Proposed Solution"`).
 - **empty** — a required section header is present but its body is whitespace-only.
@@ -922,6 +922,8 @@ Reports twenty-six gap classes on the returned `FormatGaps` dataclass (`missing`
 - **template_placeholders** (ENH-3244) — a literal unfilled template placeholder (e.g. `TBD - requires codebase analysis`, `[Major phase 1]`) still present in the section whose `creation_template` emits it. Section-scoped, fence- and inline-backtick-masked, and excludes `## Program Design`. Detection only — no `--fix` handler is registered.
 - **unapplied_decision** (ENH-3256) — an issue's `> **Selected:**` callout in `## Proposed Solution` names a winning option while a backticked identifier unique to a *rejected* option (`REJ - SEL`, the discriminating identifier set) still appears, unmarked, in `## Proposed Solution`, `## Program Design`, `## Implementation Steps`, `### Files to Modify`, or `## Acceptance Criteria`. A recorded decision is not proof the decision was *applied*. Options are enumerated from `## Proposed Solution` only, the selected block is identified by matching the callout's option title against each option heading (not by presence-only markers, which cannot distinguish selected from rejected), and a mention is exempt when `⚠ Superseded` appears in the same paragraph. Report-only; caps `/ll:confidence-check` Criterion C, never a hard override.
 - **priority_drift** (BUG-3286) — the filename's `P<n>-` prefix and the frontmatter `priority:` key are both present and disagree. Scoped to the file's own name and frontmatter — no cross-file comparison — and silent when either source is absent (an absent frontmatter `priority:` is the normal state for most of a corpus, not drift). The filename prefix is authoritative (`resolve_priority()`); the remedy is `ll-issues prioritize --apply`, which reconciles both sources in one operation.
+- **duplicate_session_log** (BUG-3424) — more than one non-fenced, line-anchored `## Session Log` H2 heading exists in the file. H2-scoped, parallel to `duplicate_heading` (H3-scoped) but not built on it. Blocking; `--fix --apply` repairs it via `little_loops.session_log.merge_session_log_blocks()`.
+- **orphaned_session_log_entries** (BUG-3424) — an entry-shaped bullet line (`` - `/ll:cmd` - YYYY-MM-DD... ``) sits outside any non-fenced `## Session Log` section, including before the first H2. Advisory-only (`_ADVISORY_GAP_CLASSES`): report-only, no `--fix` handler — the remedy needs a human decision about where the entry belongs.
 
 **Parameters:**
 - `issue_path` - Path to the issue markdown file
@@ -3459,7 +3461,7 @@ from pathlib import Path
 project_folder = get_project_folder()
 
 # Map specific directory for Claude Code
-project_folder = get_project_folder(Path("/Users/me/my-project"), host="claude-code")
+project_folder = get_project_folder(Path("/Users/me/my-project"), host="claude-code")  # ll-private-ok: illustrative placeholder, not a real path
 # Returns: ~/.claude/projects/-Users-me-my-project
 
 # Map for Codex
@@ -3563,7 +3565,7 @@ from little_loops.cli.logs import discover_all_projects
 from little_loops.logger import Logger
 
 logger = Logger.get()
-projects = discover_all_projects(logger)
+projects = discover_all_projects(logger)  # ll-private-ok: illustrative placeholder, not a real path
 # ['/Users/me/my-project', '/Users/me/other-project']
 
 # Discover Codex projects
@@ -7699,8 +7701,57 @@ from little_loops.session_log import (
     last_command_timestamp,
     get_current_session_jsonl,
     append_session_log_entry,
+    merge_session_log_blocks,
+    session_log_body,
 )
 ```
+
+### session_log_body
+
+```python
+def session_log_body(content: str) -> str | None
+```
+
+Return the union of every non-fenced `## Session Log` section's body, joined in
+plain document order (BUG-3424). Shared read-side extraction for
+`parse_session_log()`, `count_session_commands()`, and
+`last_command_timestamp()` — before BUG-3424 this returned only the *last*
+block, so a file with more than one non-fenced heading silently under-reported
+every entry recorded under an earlier one. On a single-heading file the
+output is unchanged from before.
+
+**Parameters:**
+- `content` - Full text of an issue markdown file
+
+**Returns:** The section body (bodies joined by a newline when more than one
+heading exists), or `None` when no non-fenced `## Session Log` heading exists
+
+### merge_session_log_blocks
+
+```python
+def merge_session_log_blocks(content: str) -> str
+```
+
+Collapse more than one non-fenced `## Session Log` heading into one (BUG-3424).
+Returns *content* unchanged — byte-identical, no reordering — when 0 or 1
+heading exists. When more than one exists, every block's entry lines are
+gathered in document order, exact-duplicate lines are dropped (first
+occurrence kept), and the remainder is stable-sorted by parsed timestamp
+descending (a date-only stamp reads as midnight); a line with no parseable
+timestamp keeps its relative position and trails every sorted entry. The
+merged block lands at the *first* heading's position. Reverse-document-order
+concatenation was rejected: blocks interleave in time and can share entry
+lines, so neither document order nor its reverse is reliably newest-first.
+
+Called by `append_session_log_entry()` after the entry resolves and before
+the insert, and by `ll-issues format-check --fix --apply`'s
+`duplicate_session_log` repair.
+
+**Parameters:**
+- `content` - Full text of an issue markdown file
+
+**Returns:** The rewritten markdown with exactly one `## Session Log`
+heading, or *content* unchanged when it already has 0 or 1
 
 ### parse_session_log
 
@@ -7767,7 +7818,7 @@ def append_session_log_entry(
 ) -> bool
 ```
 
-Append a session log entry to an issue file. Creates or appends to the `## Session Log` section with command name, ISO timestamp, and session JSONL path.
+Append a session log entry to an issue file. Creates or appends to the `## Session Log` section with command name, ISO timestamp, and session JSONL path. BUG-3424: before inserting, calls `merge_session_log_blocks()` to collapse any pre-existing duplicate `## Session Log` headings into one — so a file left in a duplicate-heading state by an earlier bug self-heals on the next append rather than accumulating a third heading.
 
 **Parameters:**
 - `issue_path` - Path to the issue markdown file
@@ -10074,7 +10125,7 @@ event = LLHookEvent(
     host="claude-code",
     intent="pre_compact",
     payload={"transcript_path": "/tmp/session.jsonl"},
-    cwd="/Users/me/project",
+    cwd="/Users/me/project",  # ll-private-ok: illustrative placeholder, not a real path
 )
 event.to_dict()
 # {"host": "claude-code", "intent": "pre_compact", "ts": "", "payload": {...}, "cwd": "..."}

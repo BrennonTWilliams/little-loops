@@ -272,34 +272,19 @@ _Updated by `/ll:confidence-check` on 2026-06-01_
 - **`test_ready_issue_lint.py` is sparse (3 tests)** — adding `TestReadyIssueHistoryContextInjection` to an under-covered file; follow the structural assertion pattern from `test_confidence_check_skill.py` (`_phase_text()`, index by section heading, assert instruction present).
 
 ## Session Log
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `ba34fa14-184f-4634-a086-e871150a0d8d.jsonl`
 - `/ll:decide-issue` - 2026-06-01T09:56:25 - `831c4a34-e82d-488d-b084-d4912e138029.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `f852d1a3-b49c-432a-ba01-2926efe363e5.jsonl`
 - `/ll:wire-issue` - 2026-06-01T09:48:57 - `c26d3996-cd2d-42e5-9600-0b2cc780f9e2.jsonl`
 - `/ll:refine-issue` - 2026-06-01T09:43:21 - `95b7f3c2-3fcd-4f33-80c2-3f6916684161.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:51 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `ba34fa14-184f-4634-a086-e871150a0d8d.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `f852d1a3-b49c-432a-ba01-2926efe363e5.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:14 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:17 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
-
-- `/ll:capture-issue` - 2026-05-26T00:48:43Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2c695cf-9995-4a8f-9ec7-81cdca0d77e5.jsonl`
-
----
-
-## Resolution
-
-- **Status**: Decomposed
-- **Completed**: 2026-06-01
-- **Reason**: Issue too large for single session (score: 11/11, Very Large)
-
-### Decomposed Into
-- ENH-1846: Scaffold ll-history-context CLI (Option B) with tests and docs
-- ENH-1847: Wire ll-history-context into refine-issue, ready-issue, and confidence-check
-
-## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:capture-issue` - 2026-05-26T00:48:43Z - `a2c695cf-9995-4a8f-9ec7-81cdca0d77e5.jsonl`
 
 ---
 

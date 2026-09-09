@@ -243,36 +243,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 codex, opencode, host-compat, hooks, research
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-16T01:30:35 - `a9295ab3-e370-4d50-972c-f57b3351c85c.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `ff5a9d33-4fc9-4e41-bd42-e698ee5d9bc4.jsonl`
-- `/ll:wire-issue` - 2026-05-16T01:26:43 - `0600aa3b-3387-43bd-8031-c99dd738f678.jsonl`
-- `/ll:refine-issue` - 2026-05-16T01:20:08 - `f61156e5-c934-4f2e-9979-6661ce4645b5.jsonl`
-- `/ll:format-issue` - 2026-05-16T01:12:39 - `5d7ee9ab-8a73-4e53-ab38-769eb0a66c86.jsonl`
-
-- `/ll:capture-issue` - 2026-05-16T01:06:58Z - `2d955b55-acdc-43a2-860d-7cf32946c8df.jsonl`
-
-## Resolution
-
-Research complete. Decision: **opt-in-only with `post_tool_use` as fire-and-forget; sidecar deferred.**
-
-- `thoughts/research/hot-path-hook-intents.md` created with findings on all five research questions
-- Codex `plugin_hooks` moot — stable `hooks` API can wire `PreToolUse`/`PostToolUse` today
-- OpenCode TypeScript layer is long-lived; Python cold-start (~100ms) still applies per event
-- Sidecar viable with existing `UnixSocketTransport` + `launch_background_loop()` primitives; deferred until benchmark (p95 ≥ 400ms) proves necessary
-- `post_tool_use` wired as fire-and-forget (zero user-visible latency)
-- `scripts/tests/bench_opencode_adapter.py` created to measure cold-start p95
-- `docs/reference/HOST_COMPATIBILITY.md` and EPIC-1463 updated with decision outcome
-- FEAT-1489 filed for implementation
-
-## Session Log
 - `/ll:manage-issue` - 2026-05-16T01:32:44Z - current session
-
 - `/ll:ready-issue` - 2026-05-16T01:30:35 - `a9295ab3-e370-4d50-972c-f57b3351c85c.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `ff5a9d33-4fc9-4e41-bd42-e698ee5d9bc4.jsonl`
 - `/ll:wire-issue` - 2026-05-16T01:26:43 - `0600aa3b-3387-43bd-8031-c99dd738f678.jsonl`
 - `/ll:refine-issue` - 2026-05-16T01:20:08 - `f61156e5-c934-4f2e-9979-6661ce4645b5.jsonl`
 - `/ll:format-issue` - 2026-05-16T01:12:39 - `5d7ee9ab-8a73-4e53-ab38-769eb0a66c86.jsonl`
 - `/ll:capture-issue` - 2026-05-16T01:06:58Z - `2d955b55-acdc-43a2-860d-7cf32946c8df.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `ff5a9d33-4fc9-4e41-bd42-e698ee5d9bc4.jsonl`
 
 ## Status
 - **Status**: Done

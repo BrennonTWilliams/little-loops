@@ -202,25 +202,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `ll-loop`, `cli`, `status`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-24T09:16:42Z - `37b4893f-ff78-469e-81fd-13c1990e6c1f.jsonl`
 - `/ll:ready-issue` - 2026-05-24T09:12:08 - `37b4893f-ff78-469e-81fd-13c1990e6c1f.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
 - `/ll:wire-issue` - 2026-05-24T07:38:53 - `92f99b2b-14c2-4ff7-94e7-d8d309f75b40.jsonl`
 - `/ll:refine-issue` - 2026-05-24T07:30:37 - `d0b6698c-6d8e-4600-a555-2bcb55bba112.jsonl`
 - `/ll:format-issue` - 2026-05-24T05:07:32 - `c6eeae06-e4aa-4cf4-b5de-f799be9249c8.jsonl`
 - `/ll:capture-issue` - 2026-05-24T04:52:29Z - `f605fdcc-8000-4585-8dc4-835fc0020291.jsonl`
-
----
-
-## Resolution
-
-Fixed in `scripts/little_loops/cli/loop/lifecycle.py`. Added two helpers:
-- `_format_log_label(running_dir, stem)` — returns one of three `Log:` labels based on `.pid`/`.log` file presence
-- `_get_events_info(running_dir, stem)` — returns the events file path and a formatted detail line (count + age of last event)
-
-Both `_status_single()` and the multi-instance branch of `cmd_status()` now use these helpers for both human-readable and JSON output. The `events_file` field is added to all JSON responses.
-
-## Session Log
-- `/ll:manage-issue` - 2026-05-24T09:16:42Z - `37b4893f-ff78-469e-81fd-13c1990e6c1f.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
 
 ---
 

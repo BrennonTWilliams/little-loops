@@ -3,10 +3,11 @@ id: BUG-3424
 type: BUG
 title: Issue files accumulate duplicate Session Log headings
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T19:37:59Z'
+completed_at: '2026-09-09T23:31:02Z'
 verify_verdict: VALID
 size: Large
 confidence_score: 100
@@ -350,7 +351,31 @@ HEAD, separate from the prior refine/wire/confidence-check passes:
   the exact count doesn't gate the fix design; worth a fresh count when Implementation Step 5 runs
   the corpus fix.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_log.py`: added `merge_session_log_blocks()` (collapses N>1 non-fenced `## Session Log` headings, exact-dedup then stable-sort by parsed timestamp descending); `append_session_log_entry()` now calls it before every insert; `session_log_body()` returns the union of all non-fenced blocks in document order instead of only the last.
+- `scripts/little_loops/cli/issues/search.py`: `_parse_updated_date()` now takes `max(timestamps)` instead of `timestamps[-1]` (item h).
+- `scripts/little_loops/issue_parser.py`: new `duplicate_session_log` (blocking) and `orphaned_session_log_entries` (advisory) `FormatGaps` fields, with `_duplicate_session_log_headings()`/`_orphaned_session_log_entries()` detectors.
+- `scripts/little_loops/cli/issues/format_check.py`: new `_fix_duplicate_session_log` repair wired into `_REPAIR_DISPATCH`; `--fix`/gap-class help text and `_print_gaps` updated.
+- `commands/verify-issues.md`, `commands/scan-codebase.md`, `commands/ready-issue.md`, `skills/capture-issue/SKILL.md`, `skills/decide-issue/SKILL.md`: tightened the manual-fallback session-log instruction (item c).
+- `skills/confidence-check/rubric.md`, `skills/go-no-go/SKILL.md`: findings-section insert now anchors on the blank line above `## Session Log` and keeps the heading verbatim (item d); `commands/verify-issues.md` already routed through the same tightened fallback, so no separate insert-anchor fix was needed there (its duplicate was shape 2, not shape 3).
+- Ran `ll-adapt --host {gemini,kimi-code,qwen} --apply` to keep the mirrored skill/command copies in sync.
+- Corpus fix: ran `ll-issues format-check <ID> --fix --apply` per-file (single-issue mode, not `--all`) across all 49 duplicate-heading files — see Deviations below — leaving 0 files with more than one `## Session Log` heading (re-verified via `_duplicate_session_log_headings`). Orphan count from the pinned detector: **36 entries across 27 files** (vs. 9 at capture / 11-12 in the earlier verify pass); left un-repaired (see Deviations).
+- Docs: `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/ARCHITECTURE.md`, `docs/reference/OUTPUT_STYLING.md`, `docs/reference/COMMANDS.md`.
+- Tests: `scripts/tests/test_session_log.py` (`TestMergeSessionLogBlocks`, `TestSessionLogBodyUnion`, plus updates to the existing duplicate-heading/no-session cases), `scripts/tests/test_issues_search.py` (newest-first fixture for item h), `scripts/tests/test_ll_issues_format_check.py` (`TestFormatCheckDuplicateSessionLogFix`, JSON-output field additions).
+
+### Deviations
+- **2026-09-09**: Implementation Step 5 says to run the corpus fix via `ll-issues format-check --all --fix --apply`. `_SWEEP_SAFE_REPAIRS` (`format_check.py`) restricts `--all --fix --apply` to `prose_dep_drift` by existing design ("Impact › Risk — sweep blast radius" comment predating this issue) — every body-rewriting repair, including the structurally identical `duplicate_heading`/`duplicate_findings_block`, is single-issue-mode only. Making `duplicate_session_log` sweep-safe would have been inconsistent with that standing decision, so the corpus fix instead looped `ll-issues format-check <ID> --fix --apply` over the 49 affected IDs individually — same repair function, same result, no change to the sweep-safety boundary.
+- **2026-09-09**: Step 5 also says to "hand-repair" the orphan-count files. `orphaned_session_log_entries` is explicitly advisory/report-only by design (Proposed Solution (f)) because the remedy needs a human decision about where each entry belongs; mechanically relocating 36 entries across 27 files without that judgment risked misplacing them. Left as a recorded, un-actioned finding for a follow-up pass rather than auto-applied here.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T23:30:26 - `a29c3127-073c-4881-95b4-061e8465cc19.jsonl`
+- `/ll:ready-issue` - 2026-09-09T22:54:21 - `0aede491-c6d9-4b06-bdcc-2f1ac48ef2b1.jsonl`
 - `/ll:confidence-check` - 2026-09-09T22:49:43 - `727c53cc-cbf3-4369-86bb-82cc2d6abda0.jsonl`
 - `/ll:refine-issue` - 2026-09-09T22:43:06 - `ab41948f-86de-4b0f-a6d4-63b2ea97f9ce.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:28:20 - `90827670-8489-4875-926d-5a23e0d11cfa.jsonl`

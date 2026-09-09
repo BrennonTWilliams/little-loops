@@ -379,7 +379,7 @@ Options: Yes / No
 
 **No findings case**: When `HAS_FINDINGS` is false (judge output contains no novel file/function references beyond what the issue already documents): Skip (no update needed).
 
-If the user confirms (interactive) or `AUTO_MODE` is true with findings, use the `Edit` tool to insert a `## Go/No-Go Findings` section into the issue file. Insert before `## Session Log` (or before `## Status` if no session log section exists):
+If the user confirms (interactive) or `AUTO_MODE` is true with findings, use the `Edit` tool to insert a `## Go/No-Go Findings` section into the issue file. Insert before `## Session Log` (or before `## Status` if no session log section exists). Anchor `old_string`/`new_string` on the **blank line above** `## Session Log` — never on the heading line itself — and keep the `## Session Log` heading verbatim in `new_string`; the insert must not consume or drop it. BUG-3424: an Edit that puts the heading in `old_string` and omits it from `new_string` orphans every entry already recorded under it and forces a second `## Session Log` heading to be created later. After the edit, `grep -c '^## Session Log' <issue-file>` must still print `1`.
 
 ```markdown
 ## Go/No-Go Findings

@@ -228,42 +228,16 @@ Not used in any current loop yet — fully implemented at `evaluators.py:308-370
 
 ## Session Log
 - `/ll:ready-issue` - 2026-03-16T03:08:17 - `a590fac7-717d-4396-af44-4bfba0feb1a2.jsonl`
-- `/ll:confidence-check` - 2026-03-15T12:00:00Z - `1f2a9635-b943-494d-b273-e6a6ca4c03c9.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `747c5f9b-360d-4e87-ae12-b8e2fc7167bf.jsonl`
 - `/ll:refine-issue` - 2026-03-16T00:58:22 - `88954013-7439-4bde-96ee-7533696b0537.jsonl`
 - `/ll:refine-issue` - 2026-03-16T00:52:08 - `42bbd8c6-c965-46f9-b9f1-23535801a250.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
-- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
-
-- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab9873-e77b-46a5-b50b-85782d3bc37c.jsonl`
-- `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2503a31-5075-415e-95d5-959cac6eec58.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
-
-## Resolution
-
-- **Status**: Completed
-- **Date**: 2026-03-15
-- **Implemented by**: `/ll:manage-issue`
-
-### Changes Made
-
-1. **`loops/apo-feedback-refinement.yaml`** — New built-in: feedback-driven refinement loop. FSM: `generate_candidate → evaluate_candidate → route_convergence → (apply_candidate|refine) → done`. Uses `output_contains` routing on CONVERGED/NEEDS_REFINE tags. Context slots: `prompt_file`, `eval_criteria`, `quality_threshold`.
-
-2. **`loops/apo-contrastive.yaml`** — New built-in: contrastive optimization loop. FSM: `generate_variants → score_and_select → route_convergence → (done|generate_variants)`. Generates N variants per iteration and selects the best. Context slots: `prompt_file`, `eval_criteria`, `num_variants`, `quality_threshold`.
-
-3. **`scripts/tests/test_builtin_loops.py`** — Updated `test_expected_loops_exist` to include both new loop names.
-
-4. **`scripts/little_loops/cli/loop/__init__.py`** — Added `--builtin` flag to `list` subparser and `run` subparser.
-
-5. **`scripts/little_loops/cli/loop/info.py`** — `cmd_list()` skips project loops when `--builtin` is set, showing only built-ins.
-
-6. **`scripts/little_loops/cli/loop/run.py`** — `cmd_run()` resolves directly from `get_builtin_loops_dir()` when `--builtin` is set, bypassing `resolve_loop_path()`.
-
-7. **`docs/guides/LOOPS_GUIDE.md`** — Added APO loops to the built-in loops table; added new "Prompt Optimization Loops (APO)" section with full technique descriptions, context variable tables, invocation examples, FSM diagrams, and usage tips.
-
-## Session Log
+- `/ll:confidence-check` - 2026-03-15T12:00:00Z - `1f2a9635-b943-494d-b273-e6a6ca4c03c9.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `747c5f9b-360d-4e87-ae12-b8e2fc7167bf.jsonl`
 - `/ll:manage-issue` - 2026-03-15T00:00:00Z - current session
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `75ab9873-e77b-46a5-b50b-85782d3bc37c.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `d2503a31-5075-415e-95d5-959cac6eec58.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
 
 ---
 

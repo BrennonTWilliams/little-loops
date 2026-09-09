@@ -175,30 +175,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `workflow-analyzer`, `cli`, `captured`
 
 ## Session Log
-
-- `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
-- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
-- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
-- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
-- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
-- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
-- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
-- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd72e0e6-0056-429e-acc1-dfeca54c9cb1.jsonl`
-
----
-
-## Resolution
-
-Implemented in `scripts/little_loops/workflow_sequence_analyzer.py`:
-- Added `overlap_threshold` and `boundary_threshold` parameters to `analyze_workflows()` with defaults 0.3 and 0.6
-- Passed both through to `_cluster_by_entities` and `_compute_boundaries` call sites
-- Added `--overlap-threshold` and `--boundary-threshold` CLI flags to `analyze_parser` in `main()`
-- Added `[0.0, 1.0]` range validation for both CLI flags with clear error messages
-- Added 3 integration tests in `test_workflow_sequence_analyzer.py` covering non-default threshold values and regression
-
-## Session Log
-
-- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `cd72e0e6-0056-429e-acc1-dfeca54c9cb1.jsonl`
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `current-session.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
+- `/ll:format-issue` - 2026-03-03 - `c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 
 ## Status
 

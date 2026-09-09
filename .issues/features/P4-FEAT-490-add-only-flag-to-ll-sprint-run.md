@@ -92,34 +92,15 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 - **2026-03-05** — VALID. `add_only_arg` in `cli_args.py` confirmed; not called in `cli/sprint/__init__.py` run parser setup. `cli/parallel.py:119` has `add_only_arg(parser)` as the model to follow.
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `cd72e0e6-0056-429e-acc1-dfeca54c9cb1.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed FEAT-441 from Blocked By (completed/satisfied)
+- `/ll:refine-issue` - 2026-03-03T23:10:00Z - `6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (line 608) to Related Key Documentation
+- `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-441
+- `/ll:format-issue` - 2026-03-03 - `9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
+- `/ll:format-issue` - 2026-03-03 - `c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:format-issue` - 2026-02-25 - `6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 - `/ll:verify-issues` - 2026-02-25 - Updated file reference from `cli/sprint.py:106-121` to `cli/sprint/__init__.py:111-126` (sprint CLI was refactored into a package)
 - `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified; add_only_arg(parser) at cli/parallel.py:119 confirmed as the model; ParallelConfig.only_ids confirmed as the wiring target; no knowledge gaps identified
-- `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-441
-- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
-- `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (line 608) to Related Key Documentation
-- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
-
----
-
-## Resolution
-
-- Added `add_only_arg(run_parser)` to `cli/sprint/__init__.py` run parser setup
-- Added `--only` filter logic in `cli/sprint/run.py` after skip filter: validates IDs against sprint definition and returns error for unknown IDs
-- Added 4 tests in `TestSprintOnlyFlag` covering filter behavior, unknown ID error, no-filter passthrough, and parser registration
-- All 65 sprint tests pass; lint and mypy clean
-
-## Status
-
-**Completed** | Created: 2026-02-24 | Completed: 2026-03-06 | Priority: P4
-
-## Blocks
-
-- FEAT-488
-
-## Session Log
-- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed FEAT-441 from Blocked By (completed/satisfied)
-- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
-- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl`
-- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd72e0e6-0056-429e-acc1-dfeca54c9cb1.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`

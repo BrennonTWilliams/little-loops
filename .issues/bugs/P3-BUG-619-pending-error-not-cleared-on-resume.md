@@ -108,24 +108,12 @@ self._executor._pending_error = None   # add this line
 - **Code snippet matches current code** at commit HEAD
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
-- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
-- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
-- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
-- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
-- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a096c63-7157-4f45-854b-aefc9dbae8d2.jsonl`
-
----
-
-## Resolution
-
-- **Status**: Completed
-- **Completed**: 2026-03-07
-- **Fix**: Added `self._executor._pending_error = None` alongside the existing `_pending_handoff` reset in `PersistentExecutor.resume()` (`persistence.py:405`). Also updated the comment to reflect both signals are cleared.
-- **Test**: Added `test_resume_clears_pending_signals` in `test_fsm_persistence.py` verifying both `_pending_handoff` and `_pending_error` are `None` after `resume()`, even when pre-set to stale values.
-
-## Session Log
-- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
+- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `0a096c63-7157-4f45-854b-aefc9dbae8d2.jsonl`
+- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `current.jsonl`
 
 ## Status
 

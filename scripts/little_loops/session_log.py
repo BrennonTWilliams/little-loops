@@ -36,8 +36,23 @@ _TIMESTAMPED_ENTRY_RE = re.compile(
 )
 
 
+def _session_log_block_body(content: str, spans: list[tuple[int, int]], start: int) -> str:
+    """Return one heading's body given its body-start offset (BUG-3424 helper).
+
+    Shared boundary scan for both :func:`session_log_body` (all blocks) and
+    :func:`merge_session_log_blocks` (per-heading spans): the end of a block
+    is the next fence-excluded ``\\n##``/``\\n---`` terminator, or end of file.
+    """
+    end = len(content)
+    for term in _SESSION_LOG_TERMINATOR_RE.finditer(content, start):
+        if not in_fence(term.start(), term.end(), spans):
+            end = term.start()
+            break
+    return content[start:end]
+
+
 def session_log_body(content: str) -> str | None:
-    """Return the last (fence-excluded) ``## Session Log`` section's raw body.
+    """Return the union of every (fence-excluded) ``## Session Log`` section's body.
 
     Shared read-side extraction for :func:`parse_session_log`,
     :func:`count_session_commands`, and :func:`last_command_timestamp`
@@ -51,11 +66,19 @@ def session_log_body(content: str) -> str | None:
     next ``\\n##`` or ``\\n---``) is fence-aware too, so a fenced example
     containing either shape no longer truncates the real section early.
 
+    BUG-3424: when a file carries more than one non-fenced heading (a
+    pre-normalization duplicate), every block's body is returned — joined in
+    plain document order — rather than only the last one, so the four readers
+    built on this function see the complete history even before
+    :func:`merge_session_log_blocks` collapses the file. On a single-heading
+    file this returns exactly what it always did.
+
     Args:
         content: Full text of an issue markdown file.
 
     Returns:
-        The section body, or None when no (non-fenced) ``## Session Log``
+        The section body (bodies joined by a newline when more than one
+        heading exists), or None when no (non-fenced) ``## Session Log``
         heading exists.
     """
     spans = fence_spans(content)
@@ -67,17 +90,103 @@ def session_log_body(content: str) -> str | None:
     if not headings:
         return None
 
-    start = headings[-1].end()
-    leading_blank = re.compile(r"\n+").match(content, start)
-    if leading_blank:
-        start = leading_blank.end()
+    bodies = []
+    for m in headings:
+        start = m.end()
+        leading_blank = re.compile(r"\n+").match(content, start)
+        if leading_blank:
+            start = leading_blank.end()
+        bodies.append(_session_log_block_body(content, spans, start))
+    return "\n".join(bodies)
 
-    end = len(content)
-    for term in _SESSION_LOG_TERMINATOR_RE.finditer(content, start):
-        if not in_fence(term.start(), term.end(), spans):
-            end = term.start()
-            break
-    return content[start:end]
+
+def merge_session_log_blocks(content: str) -> str:
+    """Collapse N>1 non-fenced ``## Session Log`` headings into one (BUG-3424).
+
+    Returns *content* unchanged (byte-identical, no reordering) when 0 or 1
+    non-fenced heading exists — only the N>1 path rewrites anything.
+
+    When more than one heading exists, every block's entry lines are gathered
+    in document order, **exact-duplicate lines are dropped** (keeping the
+    first occurrence), and the remainder is **stable-sorted by parsed
+    timestamp descending** using :data:`_TIMESTAMPED_ENTRY_RE` (a date-only
+    stamp reads as midnight, matching :func:`last_command_timestamp`); a line
+    with no parseable timestamp keeps its relative (first-seen) position and
+    is placed after every sorted entry. The merged block lands at the
+    *first* heading's position — the fold-on-touch convention
+    :func:`~little_loops.issues.fold_research_findings.fold_research_findings`
+    and ``format_check.py``'s ``_collapse_duplicate_headings`` both already
+    use — with every later block spliced out.
+
+    Reverse-document-order concatenation was rejected (corpus evidence, see
+    BUG-3424): blocks interleave in time and 10 of the corpus's 49 duplicate
+    files share entry lines across blocks, so neither document order nor its
+    reverse is reliably newest-first.
+
+    Args:
+        content: Full text of an issue markdown file.
+
+    Returns:
+        The rewritten markdown with exactly one ``## Session Log`` heading,
+        or *content* unchanged when it already has 0 or 1.
+    """
+    spans = fence_spans(content)
+    headings = [
+        m
+        for m in _SESSION_LOG_HEADING_RE.finditer(content)
+        if not in_fence(m.start(), m.end(), spans)
+    ]
+    if len(headings) <= 1:
+        return content
+
+    blocks: list[tuple[int, int]] = []  # (block_start, block_end) per heading
+    for m in headings:
+        body_start = m.end()
+        leading_blank = re.compile(r"\n+").match(content, body_start)
+        if leading_blank:
+            body_start = leading_blank.end()
+        block_end = len(content)
+        for term in _SESSION_LOG_TERMINATOR_RE.finditer(content, body_start):
+            if not in_fence(term.start(), term.end(), spans):
+                block_end = term.start()
+                break
+        blocks.append((m.start(), block_end))
+
+    seen: set[str] = set()
+    ordered_lines: list[str] = []
+    for m, (_, block_end) in zip(headings, blocks, strict=True):
+        body_start = m.end()
+        leading_blank = re.compile(r"\n+").match(content, body_start)
+        if leading_blank:
+            body_start = leading_blank.end()
+        for line in content[body_start:block_end].splitlines():
+            if not line.strip() or line in seen:
+                continue
+            seen.add(line)
+            ordered_lines.append(line)
+
+    timestamped: list[tuple[datetime, str]] = []
+    untimestamped: list[str] = []
+    for line in ordered_lines:
+        match = _TIMESTAMPED_ENTRY_RE.search(line)
+        if match is None:
+            untimestamped.append(line)
+            continue
+        try:
+            parsed = datetime.fromisoformat(match.group(2).rstrip("Z"))
+        except ValueError:
+            untimestamped.append(line)
+            continue
+        timestamped.append((parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed, line))
+
+    timestamped.sort(key=lambda item: item[0], reverse=True)
+    merged_lines = [line for _, line in timestamped] + untimestamped
+    merged_body = "\n".join(merged_lines)
+
+    first_start = blocks[0][0]
+    last_end = blocks[-1][1]
+    block_text = f"## Session Log\n{merged_body}\n" if merged_body else "## Session Log\n"
+    return content[:first_start] + block_text + content[last_end:]
 
 
 def parse_session_log(content: str) -> list[str]:
@@ -314,6 +423,7 @@ def append_session_log_entry(
     # (the other holders) do not call this function.
     with acquire_lock(issue_lock_path(issue_path)):
         content = issue_path.read_text()
+        content = merge_session_log_blocks(content)
 
         spans = fence_spans(content)
         headings = [

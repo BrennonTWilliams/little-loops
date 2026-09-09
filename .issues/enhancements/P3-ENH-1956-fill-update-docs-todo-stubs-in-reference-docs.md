@@ -177,16 +177,7 @@ The issue's central claim — that 9 documentation stubs are empty placeholders 
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-05T22:50:03 - `9edc7d68-d293-44b8-9ade-dcbf5f7e3a91.jsonl`
-- `/ll:verify-issues` - 2026-06-05T22:39:51 - `ae6caec5-fde4-4de8-88b8-3e9ec6696e94.jsonl`
-- `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:manage-issue` - 2026-06-05T22:53:40 - `1be5ae86-349e-45ad-b934-f43301caf590.jsonl`
-
-## Status
-
-**Open** | Created: 2026-06-04 | Priority: P3
-
-## Session Log
 - `/ll:ready-issue` - 2026-06-05T22:50:03 - `9edc7d68-d293-44b8-9ade-dcbf5f7e3a91.jsonl`
 - `/ll:verify-issues` - 2026-06-05T22:39:51 - `ae6caec5-fde4-4de8-88b8-3e9ec6696e94.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

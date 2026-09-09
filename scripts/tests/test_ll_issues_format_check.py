@@ -373,6 +373,10 @@ class TestFormatCheckJsonOutput:
             # ENH-3280: structured (section, identifier) projection of
             # unapplied_decision, for machine consumers.
             "unapplied_decision_detail": [],
+            # BUG-3424: more than one non-fenced ## Session Log H2 heading.
+            "duplicate_session_log": [],
+            # BUG-3424: entry-shaped line outside any ## Session Log section.
+            "orphaned_session_log_entries": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -1909,6 +1913,129 @@ class TestFormatCheckDuplicateHeadingFix:
 
         assert path.read_text() == before
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckDuplicateSessionLogFix (BUG-3424)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckDuplicateSessionLogFix:
+    """``--fix``/``--apply`` collapses duplicate ``## Session Log`` headings."""
+
+    def _write_dup_session_log_bug(
+        self, format_check_dir: Path, bug_id: str, filename: str
+    ) -> Path:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}")
+        body += (
+            "\n\n## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/a.jsonl`\n\n"
+            "## Session Log\n"
+            "- `/ll:other` - 2026-01-02T00:00:00 - `/b.jsonl`\n"
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_detected_as_duplicate_session_log_gap(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_dup_session_log_bug(format_check_dir, "BUG-9420", "P3-BUG-9420-test-bug.md")
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9420", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "duplicate_session_log: ## Session Log (2)" in out
+
+    def test_fix_without_apply_previews_and_does_not_write(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_dup_session_log_bug(
+            format_check_dir, "BUG-9421", "P3-BUG-9421-test-bug.md"
+        )
+        before = path.read_text()
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9421", "--fix", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "would collapse duplicate Session Log headings" in out
+        assert path.read_text() == before
+
+    def test_fix_apply_collapses_and_is_idempotent(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_dup_session_log_bug(
+            format_check_dir, "BUG-9422", "P3-BUG-9422-test-bug.md"
+        )
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9422",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+        after_first = path.read_text()
+
+        assert result == 0
+        assert "duplicate_session_log" not in out
+        assert after_first.count("## Session Log") == 1
+        assert "/ll:capture-issue" in after_first
+        assert "/ll:other" in after_first
+
+        result2 = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9422",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert result2 == 0
+        assert path.read_text() == after_first
+
+    def test_orphaned_entries_are_advisory_only(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """orphaned_session_log_entries reports but never fails the exit code."""
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9423")
+        body += "\n\n## Reopened\n- `/ll:manage-issue` - 2026-01-01T00:00:00 - `/a.jsonl`\n"
+        path = _write_issue(format_check_dir, "P3-BUG-9423-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9423", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "orphaned_session_log_entries:" in out
+        assert path.read_text() == body
 
 
 # ---------------------------------------------------------------------------

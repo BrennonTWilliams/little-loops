@@ -616,7 +616,14 @@ The following examples illustrate how Criterion A distinguishes wide-shallow swe
 ## Confidence Check Notes template
 
 Append this section to the issue file when `HAS_FINDINGS` is true, inserting it
-before `## Session Log` (or before `## Status` if no session log exists):
+before `## Session Log` (or before `## Status` if no session log exists). When
+using the `Edit` tool, anchor `old_string`/`new_string` on the **blank line
+above** `## Session Log` — never on the heading line itself — and keep the
+`## Session Log` heading verbatim in `new_string`; the insert must not consume
+or drop it. BUG-3424: an Edit that puts the heading in `old_string` and omits
+it from `new_string` orphans every entry already recorded under it and forces
+a second `## Session Log` heading to be created later. After the edit, `grep
+-c '^## Session Log' <issue-file>` must still print `1`.
 
 ```markdown
 ## Confidence Check Notes

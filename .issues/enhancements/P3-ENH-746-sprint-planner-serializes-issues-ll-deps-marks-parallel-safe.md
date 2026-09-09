@@ -116,32 +116,12 @@ if self.scopes & other.scopes:
 ---
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-14T17:20:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbba52dd-723c-4153-b516-f72f796098d4.jsonl`
-- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4f8ab9f-1efb-428f-b354-1f4d317af06f.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0cfcb50-cb6d-4bdb-bcf5-8e42ca20dd02.jsonl`
-- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d24d5545-ed0e-442c-bda6-db81c236d356.jsonl`
-- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/33fcb067-47f1-425b-a171-05818ef871c0.jsonl`
-
----
-
-## Resolution
-
-**Implemented Option D** — removed scope matching from `overlaps_with()` and introduced `contends_with()` that retains scope checking for worktree isolation.
-
-### Changes
-
-- `file_hints.py`: Removed scope-match block from `overlaps_with()` (lines 142–144). Added `contends_with()` method that delegates to `overlaps_with()` then adds scope matching.
-- `overlap_detector.py`: Updated `check_overlap()` to call `contends_with()` instead of `overlaps_with()` — preserves worktree safety.
-- `test_file_hints.py`: Updated `test_scope_match` → `test_scope_only_no_file_overlap_not_split` (now asserts `False` for `overlaps_with()`). Added `TestFileHintsContendsWithScope` class testing `contends_with()`.
-- `test_dependency_graph.py`: Added `test_shared_scope_no_file_overlap_not_split` regression test in `TestRefineWavesForContention`.
-
-### Verification
-
-All 144 tests pass. Sprint planner no longer serializes scope-only overlaps.
-
----
-## Session Log
-- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-03-14T17:20:00Z - `bbba52dd-723c-4153-b516-f72f796098d4.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `d4f8ab9f-1efb-428f-b354-1f4d317af06f.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `c0cfcb50-cb6d-4bdb-bcf5-8e42ca20dd02.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `d24d5545-ed0e-442c-bda6-db81c236d356.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `33fcb067-47f1-425b-a171-05818ef871c0.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `current.jsonl`
 
 ---
 ## Status

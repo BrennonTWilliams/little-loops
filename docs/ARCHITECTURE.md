@@ -1439,6 +1439,7 @@ When an issue file is written with `status: done` in its frontmatter, a PostTool
 - Hook script: `hooks/scripts/issue-completion-log.sh`
 - Uses `little_loops.session_log.append_session_log_entry()` with source `hook:posttooluse-git-mv`
 - Session JSONL path is read directly from the `transcript_path` field in the PostToolUse stdin payload
+- BUG-3424: `append_session_log_entry()` collapses any pre-existing duplicate `## Session Log` headings (via `merge_session_log_blocks()`) before inserting, so a file left in a duplicate-heading state self-heals on its next hook-driven append.
 
 ---
 

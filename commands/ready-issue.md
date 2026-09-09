@@ -374,6 +374,10 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 - `/ll:ready-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
 
+Append it under the existing `## Session Log` heading if one exists; create the
+heading only when none does, immediately above the `---` / `## Status` footer.
+Never add a second `## Session Log` heading (BUG-3424).
+
 After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 
 **IMPORTANT**: The `## VALIDATED_FILE` section is REQUIRED for ALL verdicts (READY, CORRECTED, NOT_READY, and CLOSE). This enables automation to verify the correct file was processed. Never omit this section.

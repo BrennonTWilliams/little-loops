@@ -215,28 +215,10 @@ New short-form CLI options (additive — existing long forms preserved):
 - `/ll:ready-issue` - 2026-04-01T22:01:39 - `c509a9e3-f1f9-4a0d-aea8-18ad4562dea2.jsonl`
 - `/ll:refine-issue` - 2026-04-01T21:43:37 - `3b4eae71-f640-463f-b8dc-e190ea206a9d.jsonl`
 - `/ll:format-issue` - 2026-04-01T21:39:07 - `674284e2-26fb-4e5f-8988-b52f3854ef01.jsonl`
-- `/ll:capture-issue` - 2026-04-01 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4505b861-be5c-4195-9079-b2b3bcde3985.jsonl`
+- `/ll:capture-issue` - 2026-04-01 - `4505b861-be5c-4195-9079-b2b3bcde3985.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00 - `99a98fe8-6dc1-4507-bb32-fba2edc2d681.jsonl`
-
----
-
-## Resolution
-
-**Implemented** in `scripts/little_loops/cli/issues/__init__.py`. Added short forms for all 8 high-frequency options across all applicable subcommands:
-- `-T` (`--type`): list, search, count, sequence, impact-effort, refine-status
-- `-p` (`--priority`): list, search, count
-- `-S` (`--status`): list, search, count
-- `-j` (`--json`): list, search, count, sequence, show, refine-status, next-issue, next-issues
-- `-s` (`--sort`): list, search
-- `-f` (`--format`): search, refine-status
-- `-n` (`--limit`): search, sequence (list already had it)
-- `-C` (`--config`): already done by ENH-907 via `add_config_arg()`
-
-Added 10 short-form tests in `scripts/tests/test_issues_cli.py` (`TestIssuesCLIShortForms`). All 125 tests pass.
-
-## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-01T22:05:19 - `fc7893d1-dd13-4e96-94d9-4598fb9fa5b5.jsonl`
 - `/ll:manage-issue` - 2026-04-01T00:00:00 - `c509a9e3-f1f9-4a0d-aea8-18ad4562dea2.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-01T22:05:19 - `fc7893d1-dd13-4e96-94d9-4598fb9fa5b5.jsonl`
 
 ## Status
 

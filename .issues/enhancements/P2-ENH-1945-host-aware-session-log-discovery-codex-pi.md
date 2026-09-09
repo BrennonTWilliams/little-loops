@@ -166,7 +166,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_session_log.py` — test JSONL path resolution for Codex
 - `scripts/tests/test_hook_session_start.py` — add `LLHookEvent(host="codex", payload={"transcript_path": ...})` tests; verify `_run_backfill()` consumes `transcript_path` directly
 - `scripts/tests/test_ll_session.py` — add `--host codex` flag integration tests with mock Codex session dir
-- `scripts/tests/test_ll_logs.py` — add discover/extract tests with `~/.codex/sessions/...` alongside `~/.claude/projects/...`
+- `scripts/tests/test_ll_logs.py` — add discover/extract tests with `~/.codex/sessions/...` alongside `~/.claude/projects/...` <!-- ll-private-ok: doc placeholder ellipsis, not a real path -->
 - `scripts/tests/test_cli.py` — add companion `ll-logs discover` tests with Codex session directories (currently hardcodes `~/.claude/projects/`)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -231,7 +231,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 8. Update host-specific error messages to be host-generic:
    - `cli/session.py:306` — `"No Claude project folder found; cannot discover JSONL files."` → host-aware wording
-   - `cli/logs.py:246-247` — `"No Claude project folder found for: {cwd_path}"` and `"Expected: ~/.claude/projects/..."` → host-aware wording
+   - `cli/logs.py:246-247` — `"No Claude project folder found for: {cwd_path}"` and `"Expected: ~/.claude/projects/..."` → host-aware wording <!-- ll-private-ok: doc placeholder ellipsis, not a real path -->
    - `cli/messages.py:176-177` — same pattern of Claude-Code-specific error messages
 9. Update `docs/reference/EVENT-SCHEMA.md:81` — remove or qualify the statement "`session_start` — reads no payload keys; operates via `Path.cwd()`" since `_run_backfill()` will now consume `transcript_path` from the payload for non-Claude-Code hosts.
 10. Update `docs/reference/CLI.md:1806-1807` — document the new `--host` flag for `ll-session backfill`; broaden `ll-messages`/`ll-logs` descriptions from "Claude Code session logs" to host-agnostic language.
@@ -283,50 +283,19 @@ _Added by `/ll:confidence-check` on 2026-06-04 (re-evaluated 2026-06-04T23:55:00
 _Note: Prior risk factor about host naming inconsistency removed — re-verification confirmed `_HOST_RUNNER_REGISTRY` keys and `LL_HOOK_HOST` defaults use identical `"claude-code"` convention; no discrepancy exists._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-05T03:03:07Z - `c17dcb46-2efe-44d2-87f9-b15aa27a2593.jsonl`
+- `/ll:confidence-check` - 2026-06-05T02:45:00 - `d3831c55-0b33-4127-9ff5-55a6e3c393cb.jsonl`
 - `/ll:ready-issue` - 2026-06-05T02:39:46 - `1e58badc-006a-4950-accc-d7f1de9bdf36.jsonl`
 - `/ll:refine-issue` - 2026-06-05T02:31:21 - `f09b04f7-6149-4dd9-8ab2-cba36c640b61.jsonl`
+- `/ll:confidence-check` - 2026-06-04T23:55:00 - `2d527f2f-a26e-4fef-a416-cbfeb70ef7af.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:50:47 - `849453dc-052d-4d7f-89cc-55354ccfde5a.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:50:31 - `8826ca14-a9b9-4717-b939-4425b44d5d7c.jsonl`
-- `/ll:confidence-check` - 2026-06-04T23:55:00 - `2d527f2f-a26e-4fef-a416-cbfeb70ef7af.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:45:00 - `4627729e-f88a-487e-88f9-6298bfd77cbd.jsonl`
 - `/ll:decide-issue` - 2026-06-04T23:32:03 - `ab09a645-db24-4bab-bd83-45ebf6d1f4bf.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:30:00 - `e484df0a-bfc4-4607-bd41-973d4785157e.jsonl`
 - `/ll:wire-issue` - 2026-06-04T23:21:59 - `d827f3a5-6a61-49a6-9999-a9cdd389d50d.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:12:24 - `51a4f1e1-9f20-480f-843f-156ec1efd738.jsonl`
-
 - `/ll:capture-issue` - 2026-06-04T19:18:32Z - `15020717-6ee7-4d89-bd61-d70602429425.jsonl`
-- `/ll:confidence-check` - 2026-06-05T02:45:00 - `d3831c55-0b33-4127-9ff5-55a6e3c393cb.jsonl`
-
----
-
-## Resolution
-
-- **Action**: improve
-- **Completed**: 2026-06-05
-- **Status**: Completed
-
-### Changes Made
-- `scripts/little_loops/user_messages.py` — Added `host` keyword-only parameter to `get_project_folder()` with host-specific helpers for Claude Code, Codex, OpenCode, and Pi. Auto-detects host from `LL_HOOK_HOST` env var.
-- `scripts/little_loops/hooks/session_start.py` — Removed `del event` blocker; `_run_backfill()` now consumes `transcript_path` from Codex/OpenCode hook payloads directly, falling back to host-aware directory probing.
-- `scripts/little_loops/cli/session.py` — Added `--host` flag to `ll-session backfill`; fixed full backfill gap (passes `jsonl_files` even without `--since`); updated error messages to be host-agnostic.
-- `scripts/little_loops/cli/logs.py` — `discover_all_projects()` now accepts `host` parameter and probes host-specific session directories; updated error messages.
-- `scripts/little_loops/cli/messages.py` — Updated error messages to host-agnostic wording.
-- `scripts/tests/test_user_messages.py` — Added 9 host-aware tests for `get_project_folder()`.
-- `scripts/tests/test_hook_session_start.py` — Added 4 Codex `transcript_path` tests; fixed `test_backfill_warning_logged` for new jsonl_files guard.
-- `scripts/tests/test_session_log.py` — Added 3 host-aware session log tests.
-- `docs/reference/EVENT-SCHEMA.md` — Updated `session_start` payload notes for `transcript_path` consumption.
-- `.claude/CLAUDE.md` — Added `--host` flag to `ll-session` subcommand listing.
-
-### Verification Results
-- Tests: PASS (9887 passed, 0 failed)
-- Lint: PASS (ruff check clean)
-- Types: PASS (mypy clean)
-- Integration: PASS (all 4 checks)
-
----
-
-## Session Log
-- `/ll:manage-issue` - 2026-06-05T03:03:07Z - `c17dcb46-2efe-44d2-87f9-b15aa27a2593.jsonl`
 
 ---
 

@@ -78,6 +78,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_circuit_breaker_doc_wiring.py` — new test file needed, follow pattern in `scripts/tests/test_create_extension_wiring.py`; assert `"rate_limits: RateLimitsConfig"` in `API.md`, `"circuit_breaker_enabled"` and `"circuit_breaker_path"` in `show-output.md`, `areas.md`, `reference.md`, and `loop-types.md` [Agent 3 finding]
 - `scripts/tests/test_create_extension_wiring.py:56-58` — existing test reads `areas.md` and asserts `"Authorize all 14"` is present; new `areas.md` content must not disturb this string (constraint, not to update) [Agent 2 finding]
 
+- All existing tests are unaffected by these prose-only skill changes
+- **ENH-1141 test file does NOT yet exist** — no `test_enh1138*`, `test_enh1141*`, or `test_*doc_wiring*` found in `scripts/tests/`. When ENH-1141 lands, it will likely assert substrings added by this issue
+- **Test template**: `scripts/tests/test_create_extension_wiring.py` is the canonical pattern — one `class Test<Concept>Wiring` per target file, one `content = FILE.read_text(); assert "<substring>" in content` per required change, no fixtures or mocks
+
 ### Patterns to Follow
 
 - **API.md CommandsConfig row** (`docs/reference/API.md:100`): extend existing parenthetical → `(includes \`confidence_gate: ConfidenceGateConfig\`, \`tdd_mode: bool\`, \`rate_limits: RateLimitsConfig\`)`
@@ -103,12 +107,6 @@ _Wiring pass added by `/ll:wire-issue`:_
   ```
 - **areas.md Current Values block** — add `rate_limits:` nested block after `max_refine_count` (line 322) mirroring the `confidence_gate:` nesting pattern
 
-### Tests
-
-- All existing tests are unaffected by these prose-only skill changes
-- **ENH-1141 test file does NOT yet exist** — no `test_enh1138*`, `test_enh1141*`, or `test_*doc_wiring*` found in `scripts/tests/`. When ENH-1141 lands, it will likely assert substrings added by this issue
-- **Test template**: `scripts/tests/test_create_extension_wiring.py` is the canonical pattern — one `class Test<Concept>Wiring` per target file, one `content = FILE.read_text(); assert "<substring>" in content` per required change, no fixtures or mocks
-
 ## Implementation Steps
 
 1. **Update `docs/reference/API.md:100`** — add `rate_limits: RateLimitsConfig` to the `CommandsConfig` attribute list
@@ -131,32 +129,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Session Log
 - `/ll:ready-issue` - 2026-04-17T06:43:25 - `a9253dba-044a-4492-bd2a-c8135b63d643.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `4d263f7b-fc36-4cab-8a74-a78825b49d65.jsonl`
 - `/ll:wire-issue` - 2026-04-17T06:40:09 - `05017e96-f5f9-48c7-8516-44ca084f620b.jsonl`
 - `/ll:refine-issue` - 2026-04-17T06:36:12 - `a8cd9c76-1934-4bbf-95dc-7b9f55681882.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `4d263f7b-fc36-4cab-8a74-a78825b49d65.jsonl`
 - `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
-
----
-
-## Status
-- [x] Completed
-
-## Resolution
-
-Implemented 2026-04-17. Surfaced `rate_limits` config block in all user-facing
-documentation and skills so users can discover and configure cross-worktree
-circuit-breaker knobs added by ENH-1134.
-
-**Files modified:**
-- `docs/reference/API.md` — extended `CommandsConfig` row parenthetical with `rate_limits: RateLimitsConfig`
-- `skills/configure/show-output.md` — added `rate_limits` nested block (4 keys + defaults) to `commands --show` template
-- `skills/configure/areas.md` — added `rate_limits` to Current Values block; added Round 3 with 2 questions (circuit breaker enable, circuit path)
-- `skills/create-loop/reference.md` — documented `circuit_breaker_enabled` and `circuit_breaker_path` in rate-limit fields section
-- `skills/create-loop/loop-types.md` — added circuit-breaker YAML lines to the rate-limit example
-- `scripts/tests/test_circuit_breaker_doc_wiring.py` — 9 wiring assertions across 5 target files
-
-**Verification:** 4912 tests pass, ruff clean. Pre-existing mypy `wcwidth` import-stub warning unrelated to this change.
-
-## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-17T06:47:34 - `459c2294-9b6d-47c2-9f97-328232145283.jsonl`
 - `/ll:manage-issue` - 2026-04-17T00:00:00Z - implementation
+- `hook:posttooluse-git-mv` - 2026-04-17T06:47:34 - `459c2294-9b6d-47c2-9f97-328232145283.jsonl`

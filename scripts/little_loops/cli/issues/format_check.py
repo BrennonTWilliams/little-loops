@@ -67,7 +67,8 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/"
         "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
         "stale_cli_flag/duplicate_heading/empty_provenance_stub/"
-        "template_placeholders/unapplied_decision/priority_drift)",
+        "template_placeholders/unapplied_decision/priority_drift/"
+        "duplicate_session_log/orphaned_session_log_entries)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -100,10 +101,12 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         action="store_true",
         help="Preview repairs for prose_dep_drift (backfill blocked_by via "
         "`ll-issues link`), duplicate_findings_block (fold via `ll-issues "
-        "fold-findings`), duplicate_heading, empty_provenance_stub, and "
-        "template_placeholders (frontmatter-derivable tokens only) gaps "
-        "(dry-run by default; combine with --apply to write). The latter "
-        "four are single-issue mode only — --all --fix --apply is "
+        "fold-findings`), duplicate_heading, empty_provenance_stub, "
+        "template_placeholders (frontmatter-derivable tokens only), and "
+        "duplicate_session_log (merge via "
+        "little_loops.session_log.merge_session_log_blocks, BUG-3424) gaps "
+        "(dry-run by default; combine with --apply to write). All but "
+        "prose_dep_drift are single-issue mode only — --all --fix --apply is "
         "restricted to the frontmatter-only prose_dep_drift repair (ENH-3247)",
     )
     p.add_argument(
@@ -250,6 +253,31 @@ def _collapse_duplicate_headings(content: str) -> str:
         out = rewritten[:first_start] + block + (f"\n{tail}" if tail.strip() else tail)
 
 
+def _fix_duplicate_session_log(
+    config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
+) -> None:
+    """Collapse duplicate ``## Session Log`` headings into one (BUG-3424).
+
+    Pure, fence-masked, idempotent transform in
+    :func:`~little_loops.session_log.merge_session_log_blocks` — the same
+    merge :func:`~little_loops.session_log.append_session_log_entry` now
+    runs before every insert. Same unused-argument rationale as
+    :func:`_fix_duplicate_headings`: the transform recomputes the duplicate
+    groups directly from the file.
+    """
+    from little_loops.file_utils import atomic_write
+    from little_loops.session_log import merge_session_log_blocks
+
+    content = path.read_text(encoding="utf-8")
+    updated = merge_session_log_blocks(content)
+    if updated == content:
+        return
+    if apply:
+        atomic_write(path, updated)
+    else:
+        print("  [dry-run] would collapse duplicate Session Log headings")
+
+
 def _remove_empty_provenance_stubs(content: str) -> str:
     """Delete every empty ``_Added by …:_`` stub, normalizing surrounding blanks.
 
@@ -366,6 +394,7 @@ _REPAIR_DISPATCH = {
     "duplicate_heading": _fix_duplicate_headings,
     "empty_provenance_stub": _fix_empty_provenance_stubs,
     "template_placeholders": _fix_template_placeholders,
+    "duplicate_session_log": _fix_duplicate_session_log,
 }
 
 # Impact › Risk — sweep blast radius: --all --fix --apply may only run
@@ -479,6 +508,10 @@ def _print_gaps(gaps: FormatGaps) -> None:
             f"  priority_drift: {entry} (filename prefix wins; reconcile with "
             "ll-issues prioritize --apply)"
         )
+    for entry in gaps.duplicate_session_log:
+        print(f"  duplicate_session_log: {entry}")
+    for entry in gaps.orphaned_session_log_entries:
+        print(f"  orphaned_session_log_entries: {entry} (report-only; no --fix)")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -490,7 +523,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/
     soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
     stale_cli_flag/duplicate_heading/empty_provenance_stub/
-    template_placeholders/unapplied_decision/priority_drift.
+    template_placeholders/unapplied_decision/priority_drift/
+    duplicate_session_log/orphaned_session_log_entries.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered

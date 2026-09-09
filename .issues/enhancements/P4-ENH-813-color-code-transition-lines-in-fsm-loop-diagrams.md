@@ -124,25 +124,9 @@ N/A
 
 ## Session Log
 - `/ll:ready-issue` - 2026-03-19T17:01:49 - `38f32c30-0a2d-4aa0-9954-b85ea88edc63.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `6c179030-87aa-47bd-98f0-dbd231f6dfc2.jsonl`
 - `/ll:refine-issue` - 2026-03-19T16:50:19 - `e80258f6-4af5-48f4-ac62-be9934b1952f.jsonl`
-- `/ll:capture-issue` - 2026-03-19T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe93df18-9bd8-4ea2-b803-eb08b9798bc3.jsonl`
-
----
-
-## Resolution
-
-- **Status**: completed
-- **Completed**: 2026-03-19
-- **Implementation**:
-  - Added `_edge_line_color(label)` helper in `layout.py` that maps edge labels to ANSI codes using the same priority cascade as `_colorize_label()`
-  - Colorized connector characters (│, ─, ▼, ▶, corner chars) at draw time in all four rendering sections: forward inter-layer edges, same-layer horizontal edges, back-edge left-margin, skip-forward right-margin
-  - Extended `_EDGE_LABEL_COLORS` with `"blocked": "31"` and `"retry_exhausted": "38;5;208"`
-  - Updated `_collect_edges()` to include `on_blocked` and `on_retry_exhausted` transitions
-  - Updated `docs/reference/OUTPUT_STYLING.md` edge color table and section description
-  - Added 8 TDD tests in `TestEdgeLineColorization` class
-
-## Session Log
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `6c179030-87aa-47bd-98f0-dbd231f6dfc2.jsonl`
+- `/ll:capture-issue` - 2026-03-19T00:00:00Z - `fe93df18-9bd8-4ea2-b803-eb08b9798bc3.jsonl`
 - `/ll:manage-issue` - 2026-03-19T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ## Status

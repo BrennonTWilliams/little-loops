@@ -336,21 +336,8 @@ CHANGELOG:19 FEAT-1112 release note).
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-24T00:01:04Z - implementation + verification
-
-## Confidence Check Notes
-
-_Added by `/ll:confidence-check` on 2026-05-23_
-
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 73/100 → MODERATE
-
-### Outcome Risk Factors
-- **Wide enumeration across 30+ sites without a verification sweep** — Integration Map enumerates every file but specifies no post-implementation check. Add a final step: `grep -rn 'session\.db' scripts/ hooks/ docs/ .gitignore README.md CONTRIBUTING.md | grep -v '\.issues/'` should return zero hits; any remainder is a miss. This closes the gap that cost 15 points in Criterion D.
-- **Novel migration pattern** — `ensure_db()` is the codebase's first transparent write-side rename. Existing in-process migrations are read-only fallbacks; rename-style migrations are user-invoked CLIs. Call this out explicitly in the PR description so reviewers understand it's intentional.
-
-## Session Log
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `254f6dbe-67d6-4708-98a6-e02c9e7c7d23.jsonl`
 - `/ll:wire-issue` - 2026-05-23T23:36:49 - `6b6b8c22-4624-47e4-a6df-c62189c87ec3.jsonl`
 - `/ll:refine-issue` - 2026-05-23T23:27:16 - `879ef0aa-ab10-4b20-a07d-bc946499c21d.jsonl`
 - `/ll:format-issue` - 2026-05-23T19:14:07 - `b0c42e29-d786-4417-87f6-edeb32ecf0f3.jsonl`
-- `/ll:capture-issue` - 2026-05-23T19:10:14Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<current>.jsonl`
+- `/ll:capture-issue` - 2026-05-23T19:10:14Z - `<current>.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `254f6dbe-67d6-4708-98a6-e02c9e7c7d23.jsonl`

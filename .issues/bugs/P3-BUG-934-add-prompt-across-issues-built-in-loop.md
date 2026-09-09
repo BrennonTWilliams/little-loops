@@ -390,37 +390,11 @@ All claims verified valid against current codebase:
 - `/ll:verify-issues` - 2026-04-03T21:12:05 - `da412530-a136-4ca2-8ad0-561ef83f8cfa.jsonl`
 - `/ll:refine-issue` - 2026-04-03T20:38:33 - `e9fb6d8e-2848-4332-aa27-d55b2a74404d.jsonl`
 - `/ll:verify-issues` - 2026-04-03T06:30:59 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `dc85b7a5-3260-4421-838d-a5b229e66e87.jsonl`
 - `/ll:refine-issue` - 2026-04-03T06:27:30 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:format-issue` - 2026-04-03T06:22:15 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `dc85b7a5-3260-4421-838d-a5b229e66e87.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-
----
-
-## Resolution
-
-**Implemented** on 2026-04-03.
-
-### Changes Made
-
-- `scripts/little_loops/loops/prompt-across-issues.yaml` — new loop with state flow:
-  `init → discover → prepare_prompt → execute → advance → (loop: discover | done | error)`
-- `scripts/tests/test_builtin_loops.py` — added `"prompt-across-issues"` to
-  `test_expected_loops_exist` and `TestPromptAcrossIssuesLoop` structural test class
-- `scripts/little_loops/loops/README.md` — added entry under Issue Management section
-
-### Acceptance Criteria Verification
-
-- [x] `ll-loop run prompt-across-issues "<prompt>"` discovers all open/active issues and runs the prompt for each, sequentially — implemented via temp-file pending list
-- [x] `{issue_id}` placeholder substituted with current issue's ID via `prepare_prompt` shell sed state
-- [x] Empty/missing `input` exits in init state with descriptive error message
-- [x] `completed/` and `deferred/` issues excluded — `ll-issues list --json` defaults to `--status active`
-- [x] Loop respects `max_iterations` (500) and `timeout` (28800s) guards
-- [x] Discoverable via `ll-loop list` — globbed automatically by `info.py`
-- [x] `ll-loop test prompt-across-issues` dry-run passes — covered by `test_all_validate_as_valid_fsm`
-
-## Session Log
 - `/ll:manage-issue` - 2026-04-03T00:00:00Z - current session
 
 ## Status

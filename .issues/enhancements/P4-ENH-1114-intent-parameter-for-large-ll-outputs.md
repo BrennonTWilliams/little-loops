@@ -94,8 +94,6 @@ def add_intent_limit_arg(parser: argparse.ArgumentParser) -> None:
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — based on codebase analysis:_
-
 ### Files to Modify
 
 - `scripts/little_loops/cli_args.py` — Add `add_intent_arg(parser)` and `add_intent_limit_arg(parser)` helpers; follow `add_handoff_threshold_arg()` pattern (default=None for intent string, default=50 for limit)
@@ -139,8 +137,6 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Implementation Steps
 
 ### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Step 1: Flag Wire-up (before FEAT-1112)
 
@@ -205,9 +201,10 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - FEAT-1112 is `done` — the `ll-session` CLI and SQLiteTransport have landed. Both Step 1 and Step 2 are now unblocked.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-14T14:05:23Z - current-session.jsonl
 - `/ll:ready-issue` - 2026-06-14T13:56:33 - `9304600e-4768-49a5-9623-900288160649.jsonl`
-- `/ll:confidence-check` - 2026-06-14T00:00:00 - `ad54f88c-5ca1-4909-9b5c-dfa5e3078af8.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:47 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
+- `/ll:confidence-check` - 2026-06-14T00:00:00 - `ad54f88c-5ca1-4909-9b5c-dfa5e3078af8.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
 - `/ll:format-issue` - 2026-06-05T22:18:08 - `4aca9a88-34ed-4bf8-bf0d-7490f0e759bf.jsonl`
@@ -216,9 +213,9 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - `/ll:verify-issues` - 2026-06-02T22:48:35 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `340fa85e-4e72-49ac-847d-86142062faa9.jsonl`
 - `/ll:wire-issue` - 2026-05-18T10:11:01 - `340fa85e-4e72-49ac-847d-86142062faa9.jsonl`
 - `/ll:refine-issue` - 2026-05-18T10:06:57 - `8e94093a-31ac-4afe-8d9f-df3bc2a5bd8f.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `340fa85e-4e72-49ac-847d-86142062faa9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T20:57:51 - `75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
@@ -227,55 +224,3 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:06 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-
----
-
-## Scope Boundaries
-
-~~**Note** (added by `/ll:audit-issue-conflicts` — superseded 2026-06-03): The `ranking.py` BM25 module introduced by this issue is an interim implementation. Once FEAT-1112 (unified SQLite + FTS5 store) lands, the ranking backend should be replaced with FTS5. Implement `ranking.py` as a thin, swappable backend so the transition is a drop-in replacement, not a rewrite.~~ **Superseded** — do not author `ranking.py`. See authoritative constraint below.
-
-**Implementation constraint** (added by `/ll:audit-issue-conflicts` 2026-05-04): `ranking.py` MUST NOT be authored — neither as an interim nor as a final implementation. Do not build a BM25 layer. FEAT-1112 ships. The correct sequence is: (1) wire the `--intent` flag UI into the affected CLIs with full unranked output as a no-op placeholder, (2) wait for FEAT-1112's FTS5 store to land, (3) implement ranking directly against FTS5. Building the BM25 interim layer creates throwaway code with HIGH technical debt (confirmed by tradeoff review 2026-04-26).
-
-- **Cross-issue coordination** (added by `/ll:audit-issue-conflicts` 2026-05-17): Schema extensions to FEAT-1112's `tool_events` table must be coordinated with FEAT-1160. ENH-1114 adds FTS5 intent-ranking indexing; FEAT-1160 adds per-tool `bytes_in`/`bytes_out`/`cache_hit` columns. Both must target FEAT-1112's migration framework to avoid column collisions — implement sequentially after FEAT-1112 ships, not concurrently.
-
----
-
-## Tradeoff Review Note
-
-**Reviewed**: 2026-04-26 by `/ll:tradeoff-review-issues`
-
-### Scores
-| Dimension | Score |
-|-----------|-------|
-| Utility to project | MEDIUM |
-| Implementation effort | HIGH |
-| Complexity added | MEDIUM |
-| Technical debt risk | HIGH |
-| Maintenance overhead | MEDIUM |
-
-### Recommendation
-Update first — This issue is explicitly blocked by FEAT-1112 (SQLite + FTS5 store), which does not yet exist. The proposed `ranking.py` BM25 module is designed to be thrown away once FEAT-1112 lands, creating throwaway tech debt. Defer implementation until FEAT-1112 is complete and replace BM25 backend directly with FTS5 rather than building the interim layer. If you do implement the interim, ensure `ranking.py` is a thin swappable backend with no callers hard-coupling to BM25 specifics.
-
----
-
-## Status
-
-**Done** | Created: 2026-04-15 | Priority: P4
-
-## Scope Note
-
-**Detached from its former parent epic on 2026-06-12 (epic audit)**: this issue was tangential/off-theme for the epic's stated scope and now stands alone in the backlog.
-
-## Resolution
-
-Implemented Step 1 (flag wire-up) as specified. Added `add_intent_arg()` and `add_intent_limit_arg()` helpers to `cli_args.py` and wired `--intent`/`--intent-limit` into three CLIs:
-- `ll-history` (top-level parser)
-- `ll-deps` (top-level parser)
-- `ll-workflows analyze` subparser
-
-All flags are no-op pass-throughs. No `ranking.py` or BM25 module created. Documentation updated in `docs/reference/CLI.md`, `docs/reference/API.md`, and `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md`. Tests added to `test_cli_args.py`, `test_issue_history_cli.py`, and `test_workflow_sequence_analyzer.py`.
-
-Step 2 (FTS5 ranking against FEAT-1112's store) is a separate future implementation.
-
-## Session Log
-- `/ll:manage-issue` - 2026-06-14T14:05:23Z - current-session.jsonl

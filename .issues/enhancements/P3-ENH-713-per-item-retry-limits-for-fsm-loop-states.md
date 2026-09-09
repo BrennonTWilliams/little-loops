@@ -166,42 +166,12 @@ Validation constraint: if `max_retries` is set, `on_retry_exhausted` must also b
 ## Session Log
 - `/ll:ready-issue` - 2026-03-15T00:16:50 - `b6e044d7-fe83-4ee4-be68-f064fab42c64.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:capture-issue` - 2026-03-12 - `3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-03-13 - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13 - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:confidence-check` - 2026-03-13 - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-
----
-
-## Verification Notes
-
-- **Date**: 2026-03-13
-- **Verdict**: VALID
-- `scripts/little_loops/fsm/schema.py` has no `max_retries` or `on_retry_exhausted` fields on `StateConfig`. `executor.py` has no retry tracking dict. `loops/issue-refinement.yaml` lines 101-111 confirm the manual `/tmp/issue-refinement-commit-count` shell counter workaround is present. Feature not yet implemented.
-
-## Resolution
-
-- **Date**: 2026-03-14
-- **Verdict**: IMPLEMENTED
-
-### Changes Made
-
-- `scripts/little_loops/fsm/schema.py`: Added `max_retries: int | None` and `on_retry_exhausted: str | None` to `StateConfig`; updated `to_dict()`, `from_dict()`, and `get_referenced_states()`.
-- `scripts/little_loops/fsm/executor.py`: Added `_retry_counts: dict[str, int]` and `_prev_state: str | None` to `FSMExecutor.__init__()`; added retry tracking and exhaustion check in `run()` before each state execution; emits `retry_exhausted` event.
-- `scripts/little_loops/fsm/validation.py`: Added validation that `max_retries` and `on_retry_exhausted` must be set together and `max_retries >= 1`.
-- `scripts/little_loops/fsm/fsm-loop-schema.json`: Added `max_retries` and `on_retry_exhausted` to `stateConfig` definition.
-- `scripts/little_loops/fsm/persistence.py`: Added `retry_counts: dict[str, int]` to `LoopState`; persisted in `_save_state()` and restored in `resume()`.
-- `scripts/tests/test_fsm_executor.py`: Added `TestPerStateRetryLimits` class with 7 tests.
-- `skills/create-loop/reference.md`: Added `max_retries`/`on_retry_exhausted` section under Advanced State Configuration.
-- `skills/create-loop/loop-types.md`: Added `max_retries` usage note to Harness Variant B template.
-
-### Semantics
-
-`max_retries: N` allows N retries after the initial execution (N+1 total consecutive entries before exhaustion). Counter resets when a different state is entered. Counts and `on_retry_exhausted` target are persisted across handoffs/resumes.
-
-## Session Log
-- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:capture-issue` - 2026-03-12 - `3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
 
 ## Status
 

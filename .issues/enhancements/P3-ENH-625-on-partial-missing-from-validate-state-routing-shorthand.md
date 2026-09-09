@@ -91,27 +91,13 @@ has_shorthand = (
 `enhancement`, `fsm`, `validation`, `captured`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
-- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
-- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
-- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
-- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl` — Added `## Blocks: FEAT-634` backlink (was missing)
-- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
-
-## Blocks
-
-- FEAT-634 (paradigm compiler `on_partial` routing — prerequisite: ENH-625 must be merged first)
-
-## Resolution
-
-Added `or state.on_partial is not None` to the `has_shorthand` check in `_validate_state_routing()`. Added test `test_on_partial_only_shorthand_is_valid` to `test_fsm_schema.py`. All 3374 tests pass.
-
-### Changes
-- `scripts/little_loops/fsm/validation.py` — `has_shorthand` now includes `on_partial`
-- `scripts/tests/test_fsm_schema.py` — new test verifying `on_partial`-only state passes routing validation
-
-## Session Log
-- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
+- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl` — Added `## Blocks: FEAT-634` backlink (was missing)
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `current.jsonl`
 
 ## Status
 

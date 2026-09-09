@@ -151,22 +151,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 - `/ll:ready-issue` - 2026-04-06T15:15:13 - `ef062685-c5d4-4cf0-9d98-3192f4daee5f.jsonl`
 - `/ll:refine-issue` - 2026-04-06T15:00:08 - `8815b708-27f4-4123-8e08-59ca7fade218.jsonl`
-- `/ll:capture-issue` - 2026-04-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50b40e21-0da1-463a-8746-aa62a9c2590b.jsonl`
+- `/ll:capture-issue` - 2026-04-06T00:00:00Z - `50b40e21-0da1-463a-8746-aa62a9c2590b.jsonl`
 - `/ll:wire-issue` - 2026-04-06T00:00:00Z - `5346cd1d-cff6-400f-8cb5-496b5c442901.jsonl`
 - `/ll:confidence-check` - 2026-04-06T00:00:00Z - `05cbe6ce-f48f-46a4-bc0d-de973bc80f17.jsonl`
-
----
-
-## Resolution
-
-- **Status**: Completed
-- **Date**: 2026-04-06
-- **Changes**:
-  - `scripts/little_loops/issue_manager.py`: replaced single-line `{command!r}` display in `run_claude_command()` with structured multi-line output — shows `(N lines)` count header, first 5 lines with per-line truncation at `terminal_width() - 4`, and `... (N more lines)` trailer; lazy-imports `terminal_width` from `little_loops.cli.output` to avoid circular import
-  - `scripts/tests/test_subprocess_mocks.py`: added 3 new tests in `TestRunClaudeCommand` asserting on `logger.info.call_args_list` for abbreviated format, short-command (no trailer), and long-line truncation
-  - `docs/reference/CLI.md`: added `--verbose` / `-v` row to the ll-auto flags table
-
-## Session Log
 - `/ll:manage-issue` - 2026-04-06T00:00:00Z - improvement complete
 
 ---

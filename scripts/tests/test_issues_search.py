@@ -641,6 +641,26 @@ class TestSearchDateFieldUpdated:
         assert code == 0
         assert "BUG-020" in out
 
+    def test_updated_newest_first_entry_order_uses_newest_date(
+        self, temp_project_dir: Path, sample_config: dict, updated_issues_dir: Path
+    ) -> None:
+        """BUG-3424 item (h): real appends are newest-first, so the newest date
+        is not reliably the *last* entry in the section — `_parse_updated_date`
+        must take the max, not `timestamps[-1]`."""
+        bugs_dir = updated_issues_dir / "bugs"
+        (bugs_dir / "P1-BUG-021-newest-first.md").write_text(
+            "---\ndiscovered_date: 2026-01-01T00:00:00Z\n---\n"
+            "# BUG-021: Issue with newest-first session entries\n\n## Summary\nNewest first.\n\n"
+            "## Session Log\n"
+            "- `/ll:refine-issue` - 2026-03-20T14:30:00 - `/some/path.jsonl`\n"
+            "- `/ll:verify-issues` - 2026-01-10T08:00:00 - `/some/path.jsonl`\n"
+        )
+        code, out = _run_search(
+            temp_project_dir, "--date-field", "updated", "--since", "2026-03-01"
+        )
+        assert code == 0
+        assert "BUG-021" in out
+
     def test_updated_differs_from_discovered_when_session_log_present(
         self, temp_project_dir: Path, updated_issues_dir: Path
     ) -> None:

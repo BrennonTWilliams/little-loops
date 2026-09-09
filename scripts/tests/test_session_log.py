@@ -13,8 +13,10 @@ import pytest
 from little_loops.session_log import (
     append_session_log_entry,
     get_current_session_jsonl,
+    merge_session_log_blocks,
     parse_session_log,
     read_latest_effort_from_session_jsonl,
+    session_log_body,
 )
 from little_loops.user_messages import encode_project_path
 
@@ -237,6 +239,13 @@ class TestAppendSessionLogEntry:
         assert "/ll:format-issue" in content
 
     def test_duplicate_session_log_headers_only_inserts_once(self, tmp_path: Path) -> None:
+        """BUG-3424: the appender merges N>1 headings to one before inserting.
+
+        Entries land newest-timestamp-first (merge sort), not block order: the
+        brand-new entry (today) sits above ``/ll:other`` (01-02), which sits
+        above ``/ll:capture-issue`` (01-01), even though ``/ll:capture-issue``
+        was in the first block.
+        """
         issue = tmp_path / "issue.md"
         issue.write_text(
             "# Issue\n\n## Session Log\n"
@@ -250,6 +259,29 @@ class TestAppendSessionLogEntry:
 
         content = issue.read_text()
         assert content.count("/ll:format-issue") == 1
+        assert content.count("## Session Log") == 1
+        assert (
+            content.index("/ll:format-issue")
+            < content.index("/ll:other")
+            < content.index("/ll:capture-issue")
+        )
+
+    def test_no_session_two_heading_file_left_untouched(self, tmp_path: Path) -> None:
+        """BUG-3424: merge-without-insert never fires; unresolved session is a no-op."""
+        issue = tmp_path / "issue.md"
+        original = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/old.jsonl`\n\n"
+            "## Session Log\n"
+            "- `/ll:other` - 2026-01-02T00:00:00 - `/other.jsonl`\n"
+        )
+        issue.write_text(original)
+
+        with patch("little_loops.session_log.get_current_session_jsonl", return_value=None):
+            result = append_session_log_entry(issue, "/ll:test")
+
+        assert result is False
+        assert issue.read_text() == original
 
     def test_entry_format(self, tmp_path: Path) -> None:
         issue = tmp_path / "issue.md"
@@ -291,6 +323,133 @@ class TestAppendSessionLogEntry:
         append_session_log_entry(issue, "/ll:test", session_jsonl=jsonl)
 
         assert list(tmp_path.glob("*.tmp")) == []
+
+
+class TestMergeSessionLogBlocks:
+    """Tests for merge_session_log_blocks (BUG-3424)."""
+
+    def test_no_heading_returned_unchanged(self) -> None:
+        content = "# Issue\n\n## Summary\nNo session log here.\n"
+        assert merge_session_log_blocks(content) == content
+
+    def test_single_heading_returned_byte_identical(self) -> None:
+        """Idempotent: a single block is never reordered, even out of order."""
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:other` - 2026-01-02T00:00:00 - `/other.jsonl`\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/old.jsonl`\n"
+        )
+        assert merge_session_log_blocks(content) == content
+
+    def test_collapses_to_one_heading(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/a.jsonl`\n\n"
+            "## Session Log\n"
+            "- `/ll:other` - 2026-01-02T00:00:00 - `/b.jsonl`\n"
+        )
+        merged = merge_session_log_blocks(content)
+        assert merged.count("## Session Log") == 1
+        assert "/ll:capture-issue" in merged
+        assert "/ll:other" in merged
+
+    def test_deduplicates_shared_entry_lines_across_blocks(self) -> None:
+        """Mirrors P3-ENH-1090 and the 10 corpus files with overlapping blocks:
+        the first block holds the newer entries, one line is shared verbatim
+        by both blocks, and the shared line must survive exactly once."""
+        shared = "- `/ll:refine-issue` - 2026-04-13T00:00:00 - `/shared.jsonl`\n"
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:ready-issue` - 2026-04-13T01:00:00 - `/c.jsonl`\n"
+            "- `/ll:wire-issue` - 2026-04-13T00:30:00 - `/d.jsonl`\n"
+            f"{shared}\n"
+            "## Session Log\n"
+            "- `/ll:manage-issue` - 2026-04-12T00:00:00 - `/e.jsonl`\n"
+            f"{shared}"
+        )
+        merged = merge_session_log_blocks(content)
+        assert merged.count("## Session Log") == 1
+        assert merged.count("/ll:refine-issue") == 1
+        assert merged.count("/ll:ready-issue") == 1
+        assert merged.count("/ll:wire-issue") == 1
+        assert merged.count("/ll:manage-issue") == 1
+
+    def test_sorts_newest_first_regardless_of_block_position(self) -> None:
+        """Reverse-document-order concatenation is rejected: block order is not
+        reliably chronological, so the merge must sort on parsed timestamps."""
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:manage-issue` - 2026-04-12T00:00:00 - `/old.jsonl`\n\n"
+            "## Session Log\n"
+            "- `/ll:ready-issue` - 2026-04-13T01:00:00 - `/new.jsonl`\n"
+            "- `/ll:wire-issue` - 2026-04-13T00:30:00 - `/mid.jsonl`\n"
+        )
+        merged = merge_session_log_blocks(content)
+        assert (
+            merged.index("/ll:ready-issue")
+            < merged.index("/ll:wire-issue")
+            < merged.index("/ll:manage-issue")
+        )
+
+    def test_oldest_first_legacy_block_gets_sorted(self) -> None:
+        """7 of 98 corpus blocks are oldest-first; the merge must not assume
+        either block is already sorted."""
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/a.jsonl`\n"
+            "- `/ll:format-issue` - 2026-01-02T00:00:00 - `/b.jsonl`\n\n"
+            "## Session Log\n"
+            "- `/ll:refine-issue` - 2026-01-03T00:00:00 - `/c.jsonl`\n"
+        )
+        merged = merge_session_log_blocks(content)
+        assert (
+            merged.index("/ll:refine-issue")
+            < merged.index("/ll:format-issue")
+            < merged.index("/ll:capture-issue")
+        )
+
+    def test_unparseable_line_lands_after_sorted_entries(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- some malformed entry with no timestamp\n\n"
+            "## Session Log\n"
+            "- `/ll:refine-issue` - 2026-01-01T00:00:00 - `/a.jsonl`\n"
+        )
+        merged = merge_session_log_blocks(content)
+        assert merged.index("/ll:refine-issue") < merged.index("malformed entry")
+
+    def test_preserves_footer_after_last_block(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/a.jsonl`\n\n"
+            "## Session Log\n"
+            "- `/ll:other` - 2026-01-02T00:00:00 - `/b.jsonl`\n\n"
+            "---\n\n## Status\n\n**Open**\n"
+        )
+        merged = merge_session_log_blocks(content)
+        assert merged.count("## Session Log") == 1
+        assert "## Status" in merged
+        assert merged.index("## Session Log") < merged.index("## Status")
+
+
+class TestSessionLogBodyUnion:
+    """Tests for session_log_body reading the union of duplicate blocks (BUG-3424)."""
+
+    def test_single_heading_unchanged(self) -> None:
+        content = "# Issue\n\n## Session Log\n- `/ll:test` - 2026-01-01T00:00:00 - `/a.jsonl`\n"
+        assert session_log_body(content) == "- `/ll:test` - 2026-01-01T00:00:00 - `/a.jsonl`\n"
+
+    def test_sees_entries_in_every_block(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/a.jsonl`\n\n"
+            "## Session Log\n"
+            "- `/ll:other` - 2026-01-02T00:00:00 - `/b.jsonl`\n"
+        )
+        body = session_log_body(content)
+        assert body is not None
+        assert "/ll:capture-issue" in body
+        assert "/ll:other" in body
 
 
 class TestParseSessionLog:

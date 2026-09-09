@@ -219,51 +219,28 @@ _(ENH-539 removed — completed as duplicate of ENH-626)_
 Update first — HIGH utility (debugging 200+ event logs is a real pain point), but the `--since` duration parser is a non-trivial utility that will also be needed by `ll-messages` and `ll-history`. Before implementing, extract the duration string parser (`"1h"` → seconds, `"30m"` → seconds, `"2d"` → seconds) as a shared utility in `little_loops/text_utils.py` or a new `time_utils.py`. This reduces maintenance overhead (one implementation vs three) and makes the feature scope cleaner. Once that utility exists, the filtering implementation is straightforward.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-21T05:18:57 - `d1483dac-eb16-416c-b40a-40b278600abf.jsonl`
 - `/ll:ready-issue` - 2026-03-21T05:12:01 - `6094f1ed-fc91-436b-b28b-8b1cc75631f6.jsonl`
 - `/ll:verify-issues` - 2026-03-21T05:10:38 - `1082d080-3f73-4dbb-aa8e-13649c83fe55.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:refine-issue` - 2026-03-21T00:21:44 - `5299772f-969e-4905-ae98-f9ec59c250bf.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:verify-issues` - 2026-03-15T17:23:15 - `7c4b6f16-1629-4fbe-91ed-e715b7a19026.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:18 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
-- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no --event, --state, --json, --since flags
-- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: filters still absent; removed stale Blocked By ENH-539 (completed as duplicate of ENH-626)
-- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bc8b254-8ac0-409d-b79d-9795de6dc39e.jsonl` — BLOCKED: ENH-537 and ENH-538 still active; corrected line numbers (info.py 62-84→215-237, __init__.py 127-131→189-197, test classes 135/182→251/298)
-- `/ll:ready-issue` - 2026-03-09T01:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f9e39e-c3bf-48c6-aaac-9fe47e01c93e.jsonl` — CORRECTED: ENH-537 and ENH-538 confirmed completed; removed from Blocked By
-- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — DEP_ISSUES: removed completed ENH-668 from Blocked By
-- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b127a26e-89b4-4ff9-9b9c-bfe355a44c02.jsonl` — BLOCKED: ENH-541 still active; corrected line numbers (info.py 215-237→297-325, __init__.py 189-197→205-220, tests 251/298→324/371); noted --json/--verbose/--full already implemented via ENH-740
-
-- `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
-- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_ll_loop_commands.py:101` (TestCmdHistory) and `:148` (TestHistoryTail)
-- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
-- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed BUG-529 from Blocked By (completed/satisfied)
-- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Merged duplicate Session Log sections, fixed malformed footer structure
-- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — VALID; updated test line numbers 101→135 and 148→182
-- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Added Blocked By ENH-537, ENH-538, ENH-539 (docs/generalized-fsm-loop.md overlap)
-- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — readiness: 93/100 PROCEED, outcome: 93/100 HIGH CONFIDENCE
-- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
-
----
-
-## Resolution
-
-**Implemented** on 2026-03-21 by `/ll:manage-issue feature implement FEAT-543`
-
-### Changes
-
-- `scripts/little_loops/text_utils.py`: Added `parse_duration(s: str) -> int` — parses `"1h"`, `"30m"`, `"2d"`, `"45s"` into seconds; raises `ValueError` on bad input
-- `scripts/little_loops/cli/loop/__init__.py`: Added `--event`/`-e`, `--state`/`-s`, `--since` args to `history_parser`
-- `scripts/little_loops/cli/loop/info.py`: Implemented `--event`, `--state`, `--since` filtering in `cmd_history()` — filters applied after `action_output` pre-filter and before `--tail` slice
-- `scripts/tests/test_ll_loop_parsing.py`: Added `TestParseDuration` class (8 tests)
-- `scripts/tests/test_ll_loop_commands.py`: Added `TestHistoryFiltering` class with `mixed_events_file` fixture (6 tests)
-
-### Verification
-
-- 3810 tests passed, 4 skipped — full suite clean
-- `ruff check` — all checks passed
-- `mypy` — no issues found in 3 source files
-
-## Session Log
-- `/ll:manage-issue` - 2026-03-21T05:18:57 - `d1483dac-eb16-416c-b40a-40b278600abf.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `b127a26e-89b4-4ff9-9b9c-bfe355a44c02.jsonl` — BLOCKED: ENH-541 still active; corrected line numbers (info.py 215-237→297-325, __init__.py 189-197→205-220, tests 251/298→324/371); noted --json/--verbose/--full already implemented via ENH-740
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — DEP_ISSUES: removed completed ENH-668 from Blocked By
+- `/ll:ready-issue` - 2026-03-09T01:00:00Z - `74f9e39e-c3bf-48c6-aaac-9fe47e01c93e.jsonl` — CORRECTED: ENH-537 and ENH-538 confirmed completed; removed from Blocked By
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `7bc8b254-8ac0-409d-b79d-9795de6dc39e.jsonl` — BLOCKED: ENH-537 and ENH-538 still active; corrected line numbers (info.py 62-84→215-237, __init__.py 127-131→189-197, test classes 135/182→251/298)
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: filters still absent; removed stale Blocked By ENH-539 (completed as duplicate of ENH-626)
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no --event, --state, --json, --since flags
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Merged duplicate Session Log sections, fixed malformed footer structure
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — VALID; updated test line numbers 101→135 and 148→182
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Added Blocked By ENH-537, ENH-538, ENH-539 (docs/generalized-fsm-loop.md overlap)
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — readiness: 93/100 PROCEED, outcome: 93/100 HIGH CONFIDENCE
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed BUG-529 from Blocked By (completed/satisfied)
+- `/ll:format-issue` - 2026-03-03 - `c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_ll_loop_commands.py:101` (TestCmdHistory) and `:148` (TestHistoryTail)
 
 ## Status
 

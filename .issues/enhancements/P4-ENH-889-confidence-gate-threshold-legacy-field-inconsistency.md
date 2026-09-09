@@ -210,21 +210,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `/ll:refine-issue` - 2026-03-25T23:42:16 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 - `/ll:format-issue` - 2026-03-25T23:37:01 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 - `/ll:confidence-check` - 2026-03-25T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-
----
-
-## Resolution
-
-- Removed `threshold` field from `ConfidenceGateConfig` dataclass (`automation.py:94-110`)
-- Updated `from_dict()` to use legacy fallback pattern: `readiness_threshold=data.get("readiness_threshold", data.get("threshold", 85))` (`automation.py`)
-- Fixed `BRConfig.to_dict()` to export `readiness_threshold` and `outcome_threshold` instead of `threshold` (`core.py:400-403`)
-- Migrated `skills/manage-issue/SKILL.md:173` from `confidence_gate.threshold` → `confidence_gate.readiness_threshold`
-- Removed `"threshold": 85` from `docs/reference/CONFIGURATION.md` example block and table row
-- Updated `TestConfidenceGateConfig` and `TestCommandsConfig` tests to use `readiness_threshold`/`outcome_threshold`
-- Added 3 new tests: legacy fallback behavior (2 tests) and `to_dict()` schema alignment (1 test)
-- All 116 tests pass
-
-## Session Log
 - `/ll:manage-issue` - 2026-03-25T00:00:00 - improvement complete
 
 ## Status

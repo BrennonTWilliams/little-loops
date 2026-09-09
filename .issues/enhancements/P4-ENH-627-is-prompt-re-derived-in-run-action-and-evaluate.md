@@ -145,22 +145,12 @@ The existing `TestActionType` class in `test_fsm_executor.py:233–348` tests de
 `enhancement`, `fsm`, `executor`, `refactor`, `captured`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
-- `/ll:format-issue` - 2026-03-07T22:10:34Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
-- `/ll:refine-issue` - 2026-03-07T22:30:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92d72a99-e16b-4c87-9ec6-73861d732416.jsonl`
-- `/ll:confidence-check` - 2026-03-07T23:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4838eb0-1445-40b3-888f-e1478bd2dbcf.jsonl`
-- `/ll:ready-issue` - 2026-03-07T23:30:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b465cdda-4652-4db9-85ba-9f6d533dcac8.jsonl`
-
-## Resolution
-
-- **Status**: Completed
-- **Resolved**: 2026-03-07
-- **Solution**: Extracted `_is_prompt_action(self, state: StateConfig) -> bool` helper on `FSMExecutor`. Both `_run_action` and `_evaluate` now call this method. The heuristic fallback uses `state.action` (raw template) consistently, eliminating the divergence with the post-interpolation string.
-- **Files Changed**: `scripts/little_loops/fsm/executor.py`
-- **Tests**: 140 passed (0 failures)
-
-## Session Log
-- `/ll:manage-issue` - 2026-03-07T23:45:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-03-07T23:45:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-03-07T23:30:00Z - `b465cdda-4652-4db9-85ba-9f6d533dcac8.jsonl`
+- `/ll:confidence-check` - 2026-03-07T23:00:00Z - `a4838eb0-1445-40b3-888f-e1478bd2dbcf.jsonl`
+- `/ll:refine-issue` - 2026-03-07T22:30:00Z - `92d72a99-e16b-4c87-9ec6-73861d732416.jsonl`
+- `/ll:format-issue` - 2026-03-07T22:10:34Z - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
 
 ---
 

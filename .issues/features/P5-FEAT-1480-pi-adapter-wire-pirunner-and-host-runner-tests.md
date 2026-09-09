@@ -91,29 +91,12 @@ In `scripts/little_loops/host_runner.py` at `PiRunner` class (lines ~478–532):
 2026-06-19 (NEEDS_UPDATE): PiRunner confirmed at `host_runner.py:698` (issue body estimates :478-532 — significant drift). All 4 `build_*` methods still raise `HostNotConfigured`. FEAT-1714 prerequisite (`pi-headless-cli.md`) still absent. Refresh all line number references before starting.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
-
-## Status
-
-**Open** | Created: 2026-05-15 | Priority: P5
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts` 2026-05-18): This issue modifies `host_runner.py` to wire `PiRunner` (lines 478–532). ENH-1529 also modifies `host_runner.py` to add `_sandbox_args()` and thread `sandbox_mode` through `CodexRunner` (lines 270–418). The two changes target different class regions and are non-overlapping, but landing both PRs simultaneously on the same file can produce near-miss merge conflicts during rebase. Sequence or merge these PRs deliberately; review both diff hunks together before landing.
-
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): This issue's `test_ll_hook_host_env_var_propagates_pi` test in `test_hook_intents.py` tests the **Python-side host routing** — that the intent dispatcher reads `LL_HOOK_HOST=pi` and routes correctly. FEAT-1478's sentinel-file test in `test_pi_adapter.py` verifies the **TypeScript adapter** sets `LL_HOOK_HOST=pi` before spawning Python. Both tests are needed, but their assertions must be non-overlapping to avoid redundancy: this issue asserts Python routing behavior; FEAT-1478 asserts env-var propagation from the TypeScript layer.
-
-## Session Log
 - `/ll:verify-issues` - 2026-06-20T00:34:46 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
+- `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:51 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:59 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
-
-- `/ll:verify-issues` - 2026-06-05T01:35:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
+- `/ll:verify-issues` - 2026-06-05T01:35:35 - `579edc97-1110-41b7-9283-1612d1e82fee.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T20:02:29 - `0860b18c-08b7-4093-862a-cc8046f35aaa.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:55 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:19 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`

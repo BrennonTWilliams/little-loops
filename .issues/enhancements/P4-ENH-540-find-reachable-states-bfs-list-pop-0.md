@@ -126,43 +126,17 @@ Internal implementation detail only — no external impact.
 `enhancement`, `ll-loop`, `performance`, `scan-codebase`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` — CORRECTED: updated line ref 264–279 → 323–338; `to_visit.pop(0)` confirmed at line 338
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: pop(0) at validation.py:279
-- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `to_visit.pop(0)` confirmed at `validation.py:321` (line shifted from 279)
-
-- `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
-- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `schema.py` BFS traversal as fix location
-- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
-- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `_find_reachable_states` at `validation.py:264`; `to_visit.pop(0)` confirmed at line 279; no `deque` import in `validation.py`
-- `/ll:format-issue` (v2.0) - 2026-03-06 - Converted to v2.0 ENH template: added Motivation with quantified impact (10-20x improvement for 50+ state FSMs), Success Metrics (4 criteria), API/Interface section (no public API change), restructured Scope Boundaries (in/out framing), expanded Proposed Solution with complete function body
-- `/ll:confidence-check` - 2026-03-06 - Readiness: 92/100 PROCEED; Outcome: 88/100 HIGH CONFIDENCE. Single 3-line change, well-understood algorithm, identical pattern in codebase (info.py), zero breaking changes
-
----
-
-## Verification Notes
-
-- **Date**: 2026-03-13
-- **Verdict**: VALID
-- `scripts/little_loops/fsm/validation.py` line 339 confirms `to_visit.pop(0)` is present. No `deque` import found in `validation.py`. The `info.py` already uses `deque` for BFS (as noted in the issue). Enhancement not yet applied.
-
-## Blocks
-- ENH-654
-
----
-
-## Resolution
-
-- **Date**: 2026-03-14
-- **Action**: improve
-- **Outcome**: Applied 3-line change in `scripts/little_loops/fsm/validation.py`:
-  1. Added `from collections import deque` to imports
-  2. Changed `to_visit: list[str] = [fsm.initial]` → `to_visit: deque[str] = deque([fsm.initial])`
-  3. Changed `to_visit.pop(0)` → `to_visit.popleft()`
-- **Verification**: 3354/3355 tests passed; 1 failure (`test_sprint_stranded_issues_not_marked_completed`) is a pre-existing flaky test (passes in isolation, unrelated to FSM validation)
-
-## Session Log
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl` — CORRECTED: updated line ref 264–279 → 323–338; `to_visit.pop(0)` confirmed at line 338
 - `/ll:manage-issue` - 2026-03-14T00:00:00Z - Implemented deque optimization; all validation tests pass
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `to_visit.pop(0)` confirmed at `validation.py:321` (line shifted from 279)
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: pop(0) at validation.py:279
+- `/ll:confidence-check` - 2026-03-06 - Readiness: 92/100 PROCEED; Outcome: 88/100 HIGH CONFIDENCE. Single 3-line change, well-understood algorithm, identical pattern in codebase (info.py), zero breaking changes
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `_find_reachable_states` at `validation.py:264`; `to_visit.pop(0)` confirmed at line 279; no `deque` import in `validation.py`
+- `/ll:format-issue` - 2026-03-03 - `c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `schema.py` BFS traversal as fix location
+- `/ll:format-issue` (v2.0) - 2026-03-06 - Converted to v2.0 ENH template: added Motivation with quantified impact (10-20x improvement for 50+ state FSMs), Success Metrics (4 criteria), API/Interface section (no public API change), restructured Scope Boundaries (in/out framing), expanded Proposed Solution with complete function body
 
 ## Status
 

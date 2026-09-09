@@ -448,7 +448,7 @@ fi
 ll-issues append-log <path-to-issue-file> /ll:decide-issue
 ```
 
-If `ll-issues` is not available, append manually to the Session Log section:
+If `ll-issues` is not available, append manually under the existing `## Session Log` heading if one exists (create it only when none does, above `## Status` — never a second heading, BUG-3424):
 
 ```
 - `/ll:decide-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`

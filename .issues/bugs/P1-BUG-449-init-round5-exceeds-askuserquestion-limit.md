@@ -98,37 +98,8 @@ When users enable all optional features during init, the wizard silently fails o
 ## Session Log
 - `/ll:format-issue` - 2026-02-22 - `38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
 - `/ll:format-issue` - 2026-02-22 - `6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
-
-## Blocks
-
-- ENH-451
-- ENH-454
-- ENH-455
-- ENH-456
-- ENH-457
-
----
-
-## Resolution
-
-**Status**: Resolved
-**Resolved**: 2026-02-22
-**PR/Commit**: fix(init): split Round 5 into 5a/5b to respect AskUserQuestion 4-question limit
-
-### Changes Made
-
-- `skills/init/interactive.md`: Refactored Round 5 into Round 5a (first ≤4 active questions) and Round 5b (overflow batch, only presented when active count > 4). Updated the conditions list from 5 entries to 6 (expanding "sync_settings" into separate `priority_labels` and `sync_completed` entries). Updated the Interactive Mode Summary table to show 5a and 5b as distinct rows.
-
-### Verification
-
-- File reads correctly with the new split structure
-- All 6 questions are preserved and assigned to the correct sub-round
-- Round 5b is clearly gated on active count > 4, so behavior is unchanged when ≤4 conditions are active
-
-## Session Log
-- `/ll:format-issue` - 2026-02-22 - `38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
-- `/ll:format-issue` - 2026-02-22 - `6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
 - `/ll:manage-issue bug fix BUG-449` - 2026-02-22
+
 ## Blocks
 
 - ENH-451

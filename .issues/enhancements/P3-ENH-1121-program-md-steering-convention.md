@@ -253,63 +253,16 @@ _Added by `/ll:go-no-go` on 2026-04-25_ — ~~**NO-GO (SKIP)**~~ **GO** _(revise
 - `ll-loop install harness-optimize` + editing the `context:` block is documented at `docs/guides/LOOPS_GUIDE.md:270` as the existing durable-defaults path, solving the core UX problem today without new code
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-25T18:30:57Z - `096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`
 - `/ll:ready-issue` - 2026-04-25T18:14:51 - `096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`
-- `/ll:confidence-check` - 2026-04-25T00:00:00 - `cb86effc-6421-4dbf-b1a1-86368e1d4644.jsonl`
 - `/ll:wire-issue` - 2026-04-25T18:09:23 - `435d237f-22dd-4664-8fe2-215738a163f3.jsonl`
 - `/ll:refine-issue` - 2026-04-25T18:02:52 - `c63d5643-3cd6-4194-a8ec-e96b36f6f089.jsonl`
 - `/ll:verify-issues` - 2026-04-25T17:54:43 - `008a2f03-f9f5-4084-b150-f39e97039172.jsonl`
 - `/ll:wire-issue` - 2026-04-25T17:52:54 - `96749c6f-f17b-4d10-b158-4822f481e6b6.jsonl`
-- `/ll:confidence-check` - 2026-04-25T00:00:00 - `71b43b70-5185-4ea0-abcc-f27ef3f5177c.jsonl`
-- `/ll:go-no-go` - 2026-04-25T00:00:00 - `c5791a1c-1f5c-4e4c-aa52-09e8dd7d510d.jsonl`
 - `/ll:ready-issue` - 2026-04-25T17:26:45 - `587fda44-a2b8-4c66-9daa-c634f91dbf78.jsonl`
 - `/ll:format-issue` - 2026-04-25T01:21:29 - `4acbc6d5-2175-415e-8228-17ec102d80fe.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00 - `cb86effc-6421-4dbf-b1a1-86368e1d4644.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00 - `71b43b70-5185-4ea0-abcc-f27ef3f5177c.jsonl`
+- `/ll:go-no-go` - 2026-04-25T00:00:00 - `c5791a1c-1f5c-4e4c-aa52-09e8dd7d510d.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:capture-issue` - 2026-04-16T00:00:00Z - `2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
-
----
-
-## Verification Notes
-
-**Verdict**: VALID — Verified 2026-04-25
-
-- `scripts/little_loops/cli/loop/__init__.py` — no `--program-md` flag or `.ll/program.md` loading logic ✓
-- `scripts/little_loops/cli/loop/run.py` — context injection pipeline at lines 62-81 (for kv loop at line 77) unchanged; no `program.md` merge ✓
-- `scripts/little_loops/loops/harness-optimize.yaml` — `load_directive` state (line 24) reads trajectory only; `${captured.directive.output}` not wired into `propose` state ✓
-- `docs/reference/program-md.md` — does not exist ✓
-- `scripts/tests/test_ll_loop_program_md.py` — does not exist ✓
-- LOOPS_GUIDE.md wiring touchpoints: Run Flags table (~line 1878), harness-optimize table entry (~line 670), Harness Loops section (~line 1730) — all exist, line numbers accurate within ±3 lines ✓
-- Feature not yet implemented ✓
-
-## Status
-
-Completed
-
-## Resolution
-
-Implemented 2026-04-25 via `/ll:manage-issue enhancement implement ENH-1121`.
-
-### Changes made
-
-- `scripts/little_loops/cli/loop/__init__.py` — added `--program-md PATH` flag to `run` subparser
-- `scripts/little_loops/cli/loop/run.py` — added `_parse_program_md()` helper and context merge (precedence: CLI args > program.md > YAML defaults)
-- `scripts/little_loops/cli/loop/_helpers.py` — added `--program-md PATH` forwarding in `run_background()`
-- `scripts/little_loops/loops/harness-optimize.yaml` — updated `load_directive` to extract `## Directive` section with awk; wired `${captured.directive.output}` into `propose` prompt
-- `docs/reference/program-md.md` — created convention doc with section reference, precedence rules, worked example
-- `docs/guides/LOOPS_GUIDE.md` — added `--program-md` to Run Flags table; added `harness-optimize` + `program.md` subsection; expanded `harness-optimize` table entry
-- `docs/reference/loops.md` — updated invocation examples, state graph description, and Resume Behavior
-- `docs/reference/CLI.md` — added `--program-md PATH` row to `ll-loop run` flags table
-- `scripts/tests/test_ll_loop_program_md.py` — new test file (14 tests: parsing, graceful fallback, precedence, integration)
-- `scripts/tests/test_cli_loop_background.py` — added forwarding/non-forwarding tests for `--program-md`
-- Test namespace updates: added `program_md=None` to `_make_args` helpers in `test_cli_loop_lifecycle.py` (×2), `test_cli_loop_worktree.py`, `test_ll_loop_commands.py`; added `--program-md` to `_create_run_parser()` in `test_ll_loop_parsing.py`
-
-### Acceptance criteria
-
-- [x] `ll-loop run <name>` reads `.ll/program.md` when present and merges parsed fields into loop context
-- [x] CLI args override file values; absent file is not an error for loops that don't require it
-- [x] `harness-optimize` (FEAT-1120) consumes the file's Directive/Targets/Benchmark fields
-- [x] `docs/reference/program-md.md` documents the convention with a worked example
-- [x] Unit test covers: file present + parsed, file absent + graceful fallback, CLI override wins
-- [x] No regression: existing loops unaffected (5318 passed, 5 skipped)
-
-## Session Log
-- `/ll:manage-issue` - 2026-04-25T18:30:57Z - `096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`

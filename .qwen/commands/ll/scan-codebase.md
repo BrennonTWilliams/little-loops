@@ -316,6 +316,10 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 - `/ll:scan-codebase` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
 
+Append it under the existing `## Session Log` heading if one exists; create the
+heading only when none does, immediately above the `---` / `## Status` footer.
+Never add a second `## Session Log` heading (BUG-3424).
+
 ### 6. Output Report
 
 ```markdown

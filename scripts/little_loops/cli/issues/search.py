@@ -74,8 +74,13 @@ def _parse_updated_date(content: str, file_path: Path) -> date | None:
     if body:
         timestamps = _TIMESTAMP_RE.findall(body)
         if timestamps:
+            # BUG-3424 item (h): max, not timestamps[-1]. session_log_body now
+            # returns entries in document order (possibly across more than one
+            # block pre-normalization), which is not reliably newest-last, and
+            # even a single well-formed block is written newest-first — so the
+            # last entry was already the *oldest* one, not the most recent.
             try:
-                return date.fromisoformat(timestamps[-1])
+                return date.fromisoformat(max(timestamps))
             except ValueError:
                 pass
 

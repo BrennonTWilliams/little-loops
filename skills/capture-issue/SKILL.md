@@ -289,11 +289,15 @@ See [templates.md](templates.md) for the complete issue file template structure.
 ll-issues append-log <path-to-issue-file> /ll:capture-issue
 ```
 
-If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required), adding the `## Session Log` section before the `---` / `## Status` footer:
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
 
 ```
 - `/ll:capture-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
+
+Append it under the existing `## Session Log` heading if one exists; create the
+heading only when none does, immediately above the `---` / `## Status` footer.
+Never add a second `## Session Log` heading (BUG-3424).
 
    For FEAT or EPIC captures, append a decision entry to the log (silent no-op when the decisions log is absent; skip entirely for BUG type). The log is hybrid storage — a legacy `.ll/decisions.yaml` flat file and/or `.ll/decisions.d/*.json` fragments — so gate on either (a fresh, never-compacted install has only the fragment dir):
 
