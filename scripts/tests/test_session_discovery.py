@@ -506,3 +506,88 @@ class TestIsolationGuard:
     def test_spike_directory_removed(self):
         spike_dir = Path(__file__).parent / "spike" / "session_discovery_lifecycle"
         assert not spike_dir.exists(), "spike directory should be removed after promotion"
+
+
+class TestNonObjectJsonLines:
+    """A line that parses as JSON but is not an object must be skipped, not
+    raise — the generator/scan convention is 'never raise' (gemini/omp)."""
+
+    def test_parsers_skip_non_object_lines(self, tmp_path):
+        codex = tmp_path / "codex.jsonl"
+        codex.write_text(
+            json.dumps({"type": "session_meta", "payload": {"id": "x", "cwd": "/w"}})
+            + '\n[1, 2]\n"str"\n42\n'
+            + json.dumps({"type": "event_msg", "payload": "not-a-dict"})
+            + "\n"
+        )
+        claude = tmp_path / "claude.jsonl"
+        claude.write_text('[1, 2]\n"str"\n' + json.dumps({"type": "user"}) + "\n")
+
+        codex_events = list(ss.parse_codex_rollout(codex))
+        claude_events = list(ss.parse_claude_transcript(claude))
+
+        assert [e.type for e in codex_events] == ["session_meta", "event_msg"]
+        assert codex_events[1].payload == {}  # non-dict payload coerced, not raised
+        assert [e.type for e in claude_events] == ["user"]
+
+    def test_scan_fallback_and_list_workspaces_skip_non_object_headers(self, tmp_path):
+        home = tmp_path
+        cwd = Path("/repo/project")
+        day_dir = home / ".codex" / "sessions" / "2026" / "09" / "09"
+        day_dir.mkdir(parents=True)
+        (day_dir / "rollout-bad-list.jsonl").write_text("[1, 2]\n")
+        (day_dir / "rollout-bad-payload.jsonl").write_text(
+            json.dumps({"type": "session_meta", "payload": "str"}) + "\n"
+        )
+        _write_rollout(day_dir / "rollout-good.jsonl", "sess-good", str(cwd))
+
+        handles = ss.detect_sessions(cwd, "codex", home=home)
+        workspaces = ss.list_workspaces("codex", home=home, existing_only=False)
+
+        assert [h.session_id for h in handles] == ["sess-good"]
+        assert workspaces == [cwd]
+
+    def test_claude_list_workspaces_skips_non_object_records(self, tmp_path):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.user_messages import encode_project_path
+
+        project_dir = home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))
+        project_dir.mkdir(parents=True)
+        (project_dir / "sess.jsonl").write_text("[1, 2]\n" + json.dumps({"cwd": str(cwd)}) + "\n")
+
+        assert ss.list_workspaces("claude-code", home=home) == [cwd]
+
+
+class TestCodexSqliteScanParity:
+    def test_sqlite_path_and_scan_fallback_return_same_sessions(self, tmp_path):
+        """AC: for a fixture tree containing one archived rollout, the sqlite
+        `threads` path and the date-dir scan fallback discover the same
+        sessions. Compared on (session_id, path): `updated_at` legitimately
+        differs (DB integer vs. file mtime) and `is_agent` has no scan-side
+        signal, so full handle equality is not the contract."""
+        home = tmp_path
+        cwd = Path("/repo/project")
+        live = home / ".codex" / "sessions" / "2026" / "09" / "08" / "rollout-live.jsonl"
+        archived = home / ".codex" / "archived_sessions" / "rollout-archived.jsonl"
+        _write_rollout(live, "sess-live", str(cwd))
+        _write_rollout(archived, "sess-archived", str(cwd))
+        db = home / ".codex" / "state_1.sqlite"
+        _make_state_db(
+            db,
+            [
+                ("sess-live", str(live), str(cwd), "exec", "1", "2000"),
+                ("sess-archived", str(archived), str(cwd), "exec", "1", "1000"),
+            ],
+        )
+
+        via_sqlite = ss.detect_sessions(cwd, "codex", home=home)
+        db.unlink()
+        via_scan = ss.detect_sessions(cwd, "codex", home=home)
+
+        key = lambda hs: {(h.session_id, h.path) for h in hs}  # noqa: E731
+        assert (
+            key(via_sqlite) == key(via_scan) == {("sess-live", live), ("sess-archived", archived)}
+        )
+        assert all(h.host == "codex" and h.cwd == cwd for h in via_sqlite + via_scan)

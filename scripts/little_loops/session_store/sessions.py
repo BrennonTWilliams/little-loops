@@ -169,8 +169,10 @@ def _scan_rollout_tree(root: Path, cwd: Path) -> list[SessionHandle]:
             header = json.loads(first_line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(header, dict):
+            continue
         payload = header.get("payload", {})
-        if payload.get("cwd") not in cwd_spellings:
+        if not isinstance(payload, dict) or payload.get("cwd") not in cwd_spellings:
             continue
         handles.append(
             SessionHandle(
@@ -336,6 +338,8 @@ def _first_record_cwd(project_dir: Path) -> Path | None:
                         record = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    if not isinstance(record, dict):
+                        continue
                     cwd = record.get("cwd")
                     if isinstance(cwd, str) and cwd:
                         return Path(cwd)
@@ -377,7 +381,10 @@ def _list_codex_workspaces(home: Path) -> list[Path]:
                 header = json.loads(first_line)
             except json.JSONDecodeError:
                 continue
-            cwd = header.get("payload", {}).get("cwd")
+            if not isinstance(header, dict):
+                continue
+            payload = header.get("payload", {})
+            cwd = payload.get("cwd") if isinstance(payload, dict) else None
             if isinstance(cwd, str) and cwd:
                 cwds.add(cwd)
     return [Path(c) for c in cwds]
@@ -385,6 +392,9 @@ def _list_codex_workspaces(home: Path) -> list[Path]:
 
 def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
     """Per-line parse of a Codex rollout. Malformed/missing file -> no yield.
+
+    A line that parses as JSON but is not an object (``[1, 2]``, ``"str"``)
+    is skipped like a malformed line — this generator never raises.
 
     Every top-level ``type`` and every subtype nested under
     ``response_item.payload.type``/``event_msg.payload.type`` is passed
@@ -413,11 +423,14 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
                 record = json.loads(raw_line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(record, dict):
+                continue
+            payload = record.get("payload")
             yield SessionEvent(
                 type=record.get("type", ""),
                 timestamp=record.get("timestamp", ""),
                 host="codex",
-                payload=record.get("payload", {}),
+                payload=payload if isinstance(payload, dict) else {},
             )
 
 
@@ -439,6 +452,8 @@ def parse_claude_transcript(path: Path) -> Iterator[SessionEvent]:
             try:
                 record = json.loads(raw_line)
             except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
                 continue
             yield SessionEvent(
                 type=record.get("type", ""),

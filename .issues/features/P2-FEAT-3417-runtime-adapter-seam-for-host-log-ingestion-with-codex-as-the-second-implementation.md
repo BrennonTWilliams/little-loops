@@ -3,7 +3,7 @@ id: FEAT-3417
 title: Runtime-adapter seam for host log ingestion, with Codex as the second implementation
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-08'
 labels:
 - multi-host
@@ -28,6 +28,7 @@ blocks:
 - ENH-3419
 relates_to:
 - ENH-3420
+completed_at: '2026-09-09T18:59:52Z'
 ---
 
 ## Summary
@@ -214,7 +215,7 @@ Decided by `/ll:decide-issue` on 2026-09-08; corrected by review the same day (t
 - `LLEvent` (`events.py:32`) / `LLHookEvent` (`hooks/types.py:21`) are the field-shape precedent for `SessionEvent`; `history_reader/models.py`'s `ts`-named dataclasses are a different (DB-row) convention and not the model.
 
 ### Tests
-- **New** `scripts/tests/test_session_discovery.py` — promote the spike's 11 tests, then add: `host=None` union ordering across a fake `~/.claude` + `~/.codex`; `include_agents` on both hosts; `list_workspaces` for both hosts; `cwd` vs `cwd.resolve()` match on the sqlite path **and** the scan fallback; scan fallback finds a rollout placed under `archived_sessions/YYYY/MM/DD/` and orders it with `sessions/` rollouts by date; unusable-DB fallback — write garbage bytes to `state_1.sqlite` so `connect` succeeds and the `sqlite3.DatabaseError` fires at the first statement (this is the real failure point; a missing file or a schema mismatch are separate, already-covered cases); parser tests against both committed fixtures (header id/cwd/cli_version, oversized line 1, `turn_aborted` passthrough). Template for `SessionEvent`: `test_hook_intents.py::TestLLHookEvent`; for detect branches: `test_host_runner.py::TestResolveHost::test_detect_binary_probe_order`.
+- **New** `scripts/tests/test_session_discovery.py` — promote the spike's 11 tests, then add: `host=None` union ordering across a fake `~/.claude` + `~/.codex`; `include_agents` on both hosts; `list_workspaces` for both hosts; `cwd` vs `cwd.resolve()` match on the sqlite path **and** the scan fallback; scan fallback finds a rollout placed directly under `archived_sessions/` (flat on 0.152.1) and orders it with `sessions/` rollouts by `updated_at`; unusable-DB fallback — write garbage bytes to `state_1.sqlite` so `connect` succeeds and the `sqlite3.DatabaseError` fires at the first statement (this is the real failure point; a missing file or a schema mismatch are separate, already-covered cases); parser tests against both committed fixtures (header id/cwd/cli_version, oversized line 1, `turn_aborted` passthrough). Template for `SessionEvent`: `test_hook_intents.py::TestLLHookEvent`; for detect branches: `test_host_runner.py::TestResolveHost::test_detect_binary_probe_order`.
 - `scripts/tests/test_user_messages.py:147` — rewrite `test_host_codex_probes_codex_projects` to assert the `None` contract; `:509` (`LL_HOOK_HOST=codex`) likewise.
 - `scripts/tests/test_enh_3166_qwen_normalizer.py:232` — `test_registered_claude_shaped_hosts_get_projects_roots` asserts `host_layout_for("codex").projects_root == ~/.codex/projects`; move `codex` to the strict-`None` assertion alongside gemini/omp.
 - `scripts/tests/test_session_log.py:386` (`test_get_current_session_jsonl_auto_detects_codex`) and `:461` (`test_append_session_log_entry_works_with_codex_host`) build a fake `~/.codex/projects/<encoded>/codex-session.jsonl` and expect `get_current_session_jsonl()` to resolve it under `LL_HOOK_HOST=codex`; after step 3 it returns `None`. Rewrite both to assert the `None`/no-op outcome (the `:448` "returns None for missing dir" test already passes and stays). No production behaviour changes: the directory never existed, so these tests were locking a path that never fired.
@@ -249,7 +250,7 @@ _Revised 2026-09-08 (watch/stop dropped) and 2026-09-09 (host=None, is_agent, li
 ### Signatures
 
 - `list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]` — every cwd the host has recorded sessions for; empty for a host with no home. Claude Code: `projects_root` walk + a local cwd-from-first-record read (not `cli/logs.py`'s helper — see Dependent Files). Codex: `SELECT DISTINCT cwd FROM threads`, scan fallback over line-1 `cwd`s
-- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` — sessions for a workspace, newest `updated_at` first; `host=None` unions all registered hosts; empty list when none (never raises for a missing host home). **`limit` applies once, after the cross-host merge** (global newest-N, not N per host). `home=None` → `Path.home()`; tests pass `tmp_path`. Claude Code: `home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))` computed locally (not `get_sessions_folder`, which ignores `home`) + `*.jsonl` glob, `agent-*` → `is_agent`. Codex: sqlite `threads` query (both `cwd` spellings) with a scan fallback over both `sessions/` and `archived_sessions/` date trees (both `cwd` spellings), per § Codex On-Disk Layout
+- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` — sessions for a workspace, newest `updated_at` first; `host=None` unions all registered hosts; empty list when none (never raises for a missing host home). **`limit` applies once, after the cross-host merge** (global newest-N, not N per host). `home=None` → `Path.home()`; tests pass `tmp_path`. Claude Code: `home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))` computed locally (not `get_sessions_folder`, which ignores `home`) + `*.jsonl` glob, `agent-*` → `is_agent`. Codex: sqlite `threads` query (both `cwd` spellings) with a scan fallback over both `sessions/` (date-keyed) and `archived_sessions/` (flat on 0.152.1; walked with a defensive `**/*.jsonl` glob) (both `cwd` spellings), per § Codex On-Disk Layout
 - `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` — typed events for one finished-or-growing file, read once from offset 0; dispatches to the per-host parser by `handle.host`; unknown host → no yield
 - `parse_codex_rollout(path: Path) -> Iterator[SessionEvent]` — Codex parser; reads line 1 for `session_meta` (id, cwd, cli_version); bare `return` on a missing/unparseable header, matching the gemini/omp generator convention; docstring records the oversized-line-1 note and the per-turn-usage finding
 - `parse_claude_transcript(path: Path) -> Iterator[SessionEvent]` — the existing Claude Code per-line read lifted verbatim; `payload` is the whole record
@@ -335,12 +336,31 @@ Six corrections folded in, all verified against HEAD and the live `~/.codex`: (1
 
 Five more, verified against HEAD, the live `~/.codex` (schema v31, 8,858 threads, all cli 0.98.0/0.130.0, zero `agent_role`/`thread_spawn_edges` rows, no `archived_sessions/`, no `state_6` — 0.152.1 has not run here yet) and openai/codex `main`: (1) frontmatter `verify_verdict: NON_VALID` was stale and failed `ll-issues check-verify-verdict` — re-verified; (2) Codex archives by **moving** the rollout to `~/.codex/archived_sessions/` and derives `threads.archived` from that path, so the scan fallback now walks both trees (§ Archived threads) instead of leaving it as a capture-time question; (3) the "only two tests change" AC undercounted — `test_enh_3166_qwen_normalizer.py:232` and `test_session_log.py:386`/`:461` also lock the dead `~/.codex/projects/` layout; (4) Program Design said the Claude Code branch used `get_sessions_folder`, which reads `Path.home()` and would have ignored the `home` override — it now computes the dir locally from `home` + `encode_project_path` on the **resolved** cwd, and the dual-spelling match is stated for the scan fallback too; (5) the unusable-DB test targets the first statement, not `connect` (which succeeds on garbage), and the learning-test claim retirement names the mechanism (hand-delete + `check`) since the CLI has no per-claim retire.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store/sessions.py` (new, df112fecc): `SessionHandle`, `SessionEvent`, `list_workspaces`, `detect_sessions` (`host=None` union, post-merge `limit`, `include_agents`, dual `cwd` match on both Codex paths, `archived_sessions/` in the scan fallback, keyword-only `home`), `iter_events`, `parse_claude_transcript`, `parse_codex_rollout`; registered in `session_store/__init__.py`. Follow-up (this close-out): every `json.loads` site skips a line that is valid JSON but not an object (`[1, 2]`, `"str"`) instead of raising `AttributeError`, honouring the never-raise generator convention.
+- `scripts/little_loops/user_messages.py` `_get_codex_project_folder` → `None`; `session_store/writers.py` `host_layout_for("codex").projects_root` → `None`; `cli/session.py` full-backfill branch prints the ENH-3420 notice for `--host codex` (f9768d61a).
+- `scripts/tests/fixtures/codex/{rollout-interactive,rollout-exec}.jsonl` + `README.md` (f8d2e98e0): captured on `codex-cli 0.152.1`, sanitized (`/workspace/project`, `base_instructions.text` truncated), `ll-verify-private-refs` clean.
+- `.ll/learning-tests/codex-rollout.md` re-proven with 11 claims on 0.152.1 (b0644082b); the one failing MCP claim in `.ll/learning-tests/codex.md` retired.
+- `scripts/tests/test_session_discovery.py`: 11 promoted spike tests + the promotion-review additions + (close-out) `TestNonObjectJsonLines` and `TestCodexSqliteScanParity` (sqlite path and scan fallback return the same `(session_id, path)` set for a tree with one archived rollout — the AC's parity test). The five tests locking the dead `~/.codex/projects/` layout rewritten to the `None` contract; spike directory deleted.
+- Docs: `docs/reference/API.md` session-discovery entry, `docs/reference/HOST_COMPATIBILITY.md` "readable via `detect_sessions`" row, `docs/codex/usage.md` rollout-files subsection (f9768d61a, e1f8efcc4).
+
+### Known gaps (recorded, not blocking)
+- `is_agent` on the Codex sqlite path is driven by `threads.agent_role` only; `thread_spawn_edges` membership (Decided #2) is not queried — every local capture has zero rows there and its column schema is unverified. The scan fallback always reports `is_agent=False`: `session_meta.payload.originator` does not distinguish subagents on 0.152.1. A capture from a real subagent invocation is needed to prove either branch; revisit when ENH-3419 needs it.
+- Commits df112fecc and f9768d61a also carry unrelated edits to the ENH-3421 issue file (swept into the same `git add`); already on `main`, left as-is.
+
 ## Status
 
-**Open** | Created: 2026-09-08 | Priority: P2
+**Done** | Created: 2026-09-08 | Completed: 2026-09-09 | Priority: P2
 
 
 ## Session Log
+- `review (manual, close-out: non-object JSONL guard, sqlite/scan parity test, Resolution, status done)` - 2026-09-09T18:59:52 - `afba10ff-c898-4395-9b45-7465d462497e.jsonl`
 - `/ll:confidence-check` - 2026-09-09T16:02:36 - `861a7bfd-cb99-4e5e-b348-13b72b2b1f2e.jsonl`
 - `/ll:verify-issues` - 2026-09-09T15:16:42 - `01ac0527-014a-4819-be27-8ea9cf7de48d.jsonl`
 - `review (manual, second pass: stale verify_verdict, archived_sessions/ in scan fallback, 3 more tests lock dead layout, Claude branch honours home + resolved cwd, first-statement DB error + claim-retire mechanism)` - 2026-09-09T14:30:00
