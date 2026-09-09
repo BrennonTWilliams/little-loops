@@ -42,7 +42,7 @@ After ENH-3420 phase 1, `detect_sessions` covers every host but `_backfill_raw_e
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+`_backfill_raw_events` and the read-path `_iter_events` each carry their own per-host normalization branching today, duplicating the host-dispatch logic that ENH-3420 already centralized in `iter_events`/`_PARSERS`. That duplication is the direct cause of the qwen landmine this issue has to close (`normalize_qwen_record` applied twice silently drops rows) and is why Codex sessions currently can't be ingested at all — `cli/session.py:702` prints a standing "not wired up yet" notice and a Codex backfill ingests 0 sessions, even though `iter_events` has supported Codex since ENH-3420 landed. Leaving the two paths unmerged means every future host addition (kimi-code today, whatever comes next) has to be wired into ingestion *and* normalization *and* the four other `HostLayout.normalize`/`normalize_file` readers separately, instead of once through `iter_events`. Completing this consumer swap is what lets `raw_events` — and everything downstream that aggregates over it (`ll-ctx-stats`, `ll-history`, FEAT-3418's workspace totals) — treat all 8 registered hosts uniformly, and it closes out the seam-unification work ENH-3420 started rather than leaving it half-migrated.
 
 ## Program Design
 
@@ -85,6 +85,8 @@ N/A — no new decision logic. This issue changes an existing function's paramet
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/session_store/lifecycle.py:859` — `backfill_raw_events()` calls `_backfill_raw_events(conn, filtered, host=host)`.
 - `scripts/little_loops/session_store/lifecycle.py:1108` — `backfill()` calls `_backfill_raw_events(conn, jsonl_files, host=host)`.
+- `scripts/little_loops/session_store/lifecycle.py:1129` — `backfill_incremental()`, a thin wrapper over `backfill_raw_events()` (per its own docstring) used by the `SessionStart` hook worker; not previously listed among this issue's dependents.
+- `scripts/little_loops/session_store/lifecycle.py:959-1023` (`rebuild()`) via `_raw_events_cursor()` at line 998 — the concrete call path that feeds stored `raw_events` rows into `writers.py::_iter_events`'s cursor-replay branch (lines 3268-3289), where the qwen non-idempotency landmine (line 3284) actually fires.
 - `scripts/little_loops/session_store/__init__.py:79` — sole importer of `lifecycle.py` (confirmed via code-graph `importers-of`); re-exports `HostLayout`, `host_layout_for`, `_backfill_subagent_runs` (import block ~147-168, `__all__` ~244-299).
 
 ### Conventions in Force
@@ -115,6 +117,15 @@ N/A — no new decision logic. This issue changes an existing function's paramet
 | `scripts/little_loops/session_store/lifecycle.py::_backfill_raw_events` idempotent `INSERT OR IGNORE` dedup on `(source_path, line_no)` | PRESERVED | Dedup index and idempotency semantics are unchanged by the consumer swap |
 | `scripts/little_loops/cli/backfill_worker.py` `--host` argument handling | Hand-rolled `for i, arg in enumerate(args)` loop (lines 30-41); no validation against a fixed host list today | CHANGED | AC requires rejecting an unknown `--host` with `SystemExit`; cannot literally "add `choices=`" since this file has no argparse — equivalent validation must be hand-rolled to match `cli/session.py`'s behavior |
 | `scripts/little_loops/cli/backfill_worker.py` `layout.session_glob` glob (line 60) | PRESERVED | `session_glob` is a path-metadata `HostLayout` field, retained post-shrink |
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **Dataclass field retirement has no delete-with-zero-readers precedent in this codebase**: the closest analog (`IssuesConfig.completed_dir`/`.deferred_dir`, `config/features.py:234-235`) is annotated `# DEPRECATED: use X instead` on the field declaration but keeps live readers (`config/core.py:571-572`, `cli/migrate.py:122-146`) — it documents "deprecate in place while still read," not "delete once the last reader is gone." A repo-wide search for field-retirement language (`field retired`, `no longer read`, `removed field`, `deprecated field`, `kept for backward`) found no precedent for outright deletion. Step 5's plan to delete `normalize`/`normalize_file` outright (rather than deprecate-in-place) has no existing convention either confirming or refuting it — it is uncharted, not just "non-standard."
+- **`--host` is validated four different, non-interoperating ways today**, not just the two already named above (`cli/session.py`'s `choices=` vs. `session_store/sessions.py::_REGISTERED_HOSTS`): `init/cli.py:33-34,184-185` keeps its own `_KNOWN_HOSTS` frozenset and **logs-and-continues** (`error(...); continue`) rather than exiting on an unknown host; `adapters/core.py:53-78`'s `_EMITTER_MAP` is a *6-host* subset (missing `opencode`/`pi`) that raises a custom `AdapterError`, caught by its caller (`cli/adapt.py:86-90`) and converted to `print(...); return 1` — not `SystemExit` at all. No shared `validate_host` helper exists anywhere in the codebase (searched repo-wide). AC 4's `SystemExit`-on-unknown-host requirement for `backfill_worker.py` matches only `cli/session.py`'s convention, not the other two.
+- `scripts/tests/test_session_discovery.py::test_kimi_host_layout_unchanged_and_backfill_glob_ingests_zero` (line 711) — an existing test explicitly citing ENH-3422 by number as a regression guard: asserts `host_layout_for("kimi-code")` stays the generic default and `backfill_worker.py`'s `path_arg.glob(layout.session_glob)` still matches zero files.
+- `scripts/tests/test_ll_session.py::TestArgumentParsing::test_backfill_host_choices_list` (lines 41-61) — existing coverage for `cli/session.py`'s `--host` `choices=` list, asserting `pytest.raises(SystemExit)` for `"not-a-real-host"`. No equivalent test exists for `cli/backfill_worker.py` today (confirmed: no `test_backfill_worker*.py` file exists) — AC 4's new `backfill_worker.py` validation has no existing test to extend, only this one to pattern-match.
 
 ## Implementation Steps
 
@@ -170,6 +181,7 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 - qwen idempotency landmine: `writers.py::_iter_events` must stop re-normalizing pre-normalized qwen rows in the same change as the write-path swap, or rows silently vanish on cursor replay — easy to miss since it's a separate read-path file from `lifecycle.py`.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T20:49:55 - `7f9ebdc1-1c66-49aa-88bc-4fc32b3d04be.jsonl`
 - `/ll:confidence-check` - 2026-09-09T20:36:46 - `33e77cdf-52d2-4350-bc12-c11c654aafbd.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T20:34:13 - `2fd45f5b-ae88-495d-9824-d79e9d1a2e5f.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:26:42 - `707b6c2b-2b94-48e8-86f8-1ee81a021633.jsonl`
