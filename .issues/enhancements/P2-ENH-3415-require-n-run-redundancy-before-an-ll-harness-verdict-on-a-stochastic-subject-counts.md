@@ -11,7 +11,7 @@ labels:
 - harness
 - evaluation
 - statistics
-related:
+relates_to:
 - ENH-3421
 decision_needed: false
 confidence_score: 100
