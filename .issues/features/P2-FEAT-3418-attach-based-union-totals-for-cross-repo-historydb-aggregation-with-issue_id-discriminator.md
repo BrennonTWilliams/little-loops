@@ -202,12 +202,14 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 `aggregate_history_dbs()` -> `_attach_and_union()` ->
 `analyze_agent_quality(conn=...)` / `analyze_rework(conn=...)` (FEAT-3410's
 `conn=` plumbing) -> schema-qualified queries in `agent_quality.py`/`rework.py`
+> ⚠ Superseded — `aggregate_history_dbs()` itself has no `conn=` parameter; see Codebase Research Findings below for the corrected path through a new `_attach_and_union()`-supplied connection.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 `aggregate_history_dbs()` (`workspace_quality.py:83-90`) has no `conn:` parameter of its own — contrary to what the Call Path above might imply. The `conn=` plumbing that already exists lives on `analyze_agent_quality()` (`agent_quality.py:472-481`) and `analyze_rework()` (`rework.py:271-278`); both already forward an already-open connection unchanged when given one (`owns_conn = conn is None` at `agent_quality.py:509`, `rework.py:295`). A new helper (e.g. `_attach_and_union()`) would need to build the multi-ATTACH connection and hand it into `aggregate_history_dbs()`'s existing `analyze_agent_quality(issues, conn=conn, ...)` call site (lines 127-135), not receive a `conn=` argument on `aggregate_history_dbs()` itself.
+> ⚠ Superseded — the `conn=` mentions above describe FEAT-3410's existing forwarding convention this issue reuses, not Option B's rejected mechanism.
 
 Corrected schema-qualification line numbers — `agent_quality.py`'s sites have drifted +10 lines from this issue's original citations; `rework.py`/`_utils.py` have not drifted:
 
@@ -233,6 +235,7 @@ The on-disk `supersedes:` join `analyze_rework()` must keep resolving (AC #4) is
 ### Decision Rules
 
 - **ID-collision resolution**: **resolved** — Option A (repo discriminator threaded through every keying site), per `## Proposed Solution` → Decision Rationale. The discriminator must leave `superseded_by()`'s `issue_id` set-membership join (above) resolvable against whatever the union stores under `issue_id`.
+  > ⚠ Superseded — `superseded_by()` here names the existing on-disk join both options had to preserve, not Option B's rejected `issue_num` remap.
 - **`SQLITE_LIMIT_ATTACHED` fail-loud threshold**: the guard should call `sqlite3.connect(":memory:").getlimit(sqlite3.SQLITE_LIMIT_ATTACHED)` itself rather than hardcode `10`, since `SQLITE_MAX_ATTACHED` is compile-time and can differ across interpreters/builds. No escape hatch specified anywhere in this issue — any workspace exceeding the limit must raise, with no fallback to a partial/truncated union.
 
 ## Impact
