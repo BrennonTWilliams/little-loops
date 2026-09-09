@@ -2145,6 +2145,11 @@
           "default": null,
           "description": "Override the default .ll/history.db location; relative paths resolve against the project root. The LL_HISTORY_DB env var takes precedence over this (ENH-2623)."
         },
+        "workspace_manifest_path": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Path to a ll-workspace.yaml manifest declaring workspace membership for cross-repo history.db aggregation (FEAT-3409). Relative paths resolve against the project root; ~ is expanded. Overrides the nearest-ancestor-walk default. A declared-but-missing manifest raises FileNotFoundError rather than degrading to an empty member list."
+        },
         "session_digest": {
           "type": "object",
           "description": "Session digest injection configuration (ENH-1907).",

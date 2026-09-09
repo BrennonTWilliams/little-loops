@@ -3783,7 +3783,7 @@ ll-loop run ll-logs-telemetry-digest    # Full telemetry digest pass
 
 ### ll-session
 
-Query the unified session store (SQLite + FTS5) — the per-project `.ll/history.db` populated by `SQLiteTransport`, `AutoManager` (live-writes issue lifecycle events during `ll-auto` runs), and `ll-session backfill` (for historical data captured before ENH-1691). Lets operators search and inspect session activity without re-parsing the scattered JSON/markdown sources the analyze-* skills read.
+Query the unified session store (SQLite + FTS5) — the per-project `.ll/history.db` populated by `SQLiteTransport`, `AutoManager` (live-writes issue lifecycle events during `ll-auto` runs), and `ll-session backfill` (for historical data captured before ENH-1691). Lets operators search and inspect session activity without re-parsing the scattered JSON/markdown sources the analyze-* skills read. For a multi-repo workspace, `little_loops.workspace.discover_workspace_members()` (FEAT-3409) discovers each member's `.ll/history.db` path from a declared `ll-workspace.yaml` manifest.
 
 **Global flags:**
 

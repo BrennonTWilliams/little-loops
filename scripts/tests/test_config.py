@@ -4325,6 +4325,14 @@ class TestHistoryConfig:
         cfg = HistoryConfig.from_dict({"db_path": "/data/history.db"})
         assert cfg.db_path == "/data/history.db"
 
+    def test_workspace_manifest_path_default_none(self) -> None:
+        cfg = HistoryConfig.from_dict({})
+        assert cfg.workspace_manifest_path is None
+
+    def test_workspace_manifest_path_override(self) -> None:
+        cfg = HistoryConfig.from_dict({"workspace_manifest_path": "../ll-workspace.yaml"})
+        assert cfg.workspace_manifest_path == "../ll-workspace.yaml"
+
 
 class TestBRConfigHistoryIntegration:
     """Integration tests for BRConfig.history property (ENH-1913)."""

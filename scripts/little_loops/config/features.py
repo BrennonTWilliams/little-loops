@@ -1521,6 +1521,7 @@ class HistoryConfig:
     effort_fields: list[str] = field(default_factory=lambda: ["session_count", "cycle_time_days"])
     max_age_days: int | None = None
     db_path: str | None = None
+    workspace_manifest_path: str | None = None
     planning_skills: list[str] = field(
         default_factory=lambda: ["create-sprint", "scope-epic", "manage-issue", "review-epic"]
     )
@@ -1539,6 +1540,7 @@ class HistoryConfig:
             effort_fields=data.get("effort_fields", ["session_count", "cycle_time_days"]),
             max_age_days=data.get("max_age_days", None),
             db_path=data.get("db_path", None),
+            workspace_manifest_path=data.get("workspace_manifest_path", None),
             planning_skills=data.get(
                 "planning_skills",
                 ["create-sprint", "scope-epic", "manage-issue", "review-epic"],

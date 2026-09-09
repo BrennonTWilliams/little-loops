@@ -627,6 +627,22 @@ class TestConfigSchema:
         assert "string" in db_path["type"]
         assert db_path["default"] is None
 
+    def test_history_workspace_manifest_path_in_schema(self) -> None:
+        """history.workspace_manifest_path must be declared as a nullable string (FEAT-3409).
+
+        additionalProperties: false on the history block rejects the key otherwise.
+        """
+        data = json.loads(_load_schema_text())
+        history = data["properties"]["history"]
+        assert "workspace_manifest_path" in history["properties"], (
+            "history.workspace_manifest_path is not declared; "
+            "additionalProperties: false rejects it otherwise"
+        )
+        workspace_manifest_path = history["properties"]["workspace_manifest_path"]
+        assert "null" in workspace_manifest_path["type"]
+        assert "string" in workspace_manifest_path["type"]
+        assert workspace_manifest_path["default"] is None
+
     def test_history_compaction_in_schema(self) -> None:
         """history.compaction must be declared (FEAT-1712); additionalProperties: false rejects it otherwise."""
         data = json.loads(_load_schema_text())

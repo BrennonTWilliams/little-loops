@@ -3,8 +3,9 @@ id: FEAT-3409
 title: Workspace membership discovery for cross-repo history.db aggregation
 type: FEAT
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-08'
+completed_at: '2026-09-09T01:12:52Z'
 labels:
 - path-a
 - history-db
@@ -921,6 +922,57 @@ _Re-verified `/ll:verify-issues` — 2026-09-08 — graph: provider=`codegraph` 
   `HistoryConfig` wiring) remain closed; no residual gap.
 - Verdict: **VALID** — unchanged from the prior pass.
 
+## Resolution
+
+Implemented `discover_workspace_members()` and `WorkspaceMember` in a new
+top-level module, `scripts/little_loops/workspace.py`, following the
+Program Design exactly (no deviations):
+
+- `WorkspaceMember` (`frozen=True`): `repo_path: Path`, `role: str`,
+  `db_path: Path` — always absolute/resolved.
+- `discover_workspace_members(manifest_path=None, *, start=None)` resolves
+  the manifest via explicit arg → `history.workspace_manifest_path` config
+  key (read through `BRConfig`, so `.ll/ll.local.md` overrides apply) →
+  nearest-ancestor walk from `start` (default `Path.cwd()`), implemented as
+  private helpers `_ResolvedManifest`, `_find_manifest_upward()`,
+  `_config_manifest_path()`, `_resolve_manifest_path()`.
+- Declared-but-missing (explicit arg / config key) raises `FileNotFoundError`
+  naming the path and provenance; an undeclared ancestor-walk miss returns
+  `[]`. Malformed manifests propagate unmodified (`yaml.YAMLError`,
+  `KeyError` for a missing `repo`/`role`, `ValueError` for bad shape/types or
+  a duplicate resolved `db_path`).
+- `db_path` defaults to `(repo_path / ".ll" / "history.db").resolve()` via a
+  plain `Path` join (never `resolve_history_db()`, avoiding its
+  `LL_HISTORY_DB` composition hazard); `repo`/`db_path`/the config value all
+  expand `~`.
+
+Wired `history.workspace_manifest_path: str | None = None` into
+`HistoryConfig` (`config/features.py`) and `config-schema.json`'s `history`
+object (nested property, per the decided Option A). Added
+`## little_loops.workspace` to `docs/reference/API.md` (plus a module-table
+row), a `history.workspace_manifest_path` row to
+`docs/reference/CONFIGURATION.md`, and cross-reference notes in
+`docs/ARCHITECTURE.md` and `docs/reference/CLI.md`'s per-project `.ll/history.db`
+framing.
+
+New test module `scripts/tests/test_workspace.py` (41 tests) covers every
+Acceptance Criterion: happy-path parsing, `frozen=True`, absent-by-discovery
+vs. absent-by-declaration, `~` expansion, the `start` parameter, the
+`BRConfig`/`ll.local.md` config-key path (including the stray-`.ll`-ancestor
+regression), value-type edge cases, relative `db_path` resolution, duplicate/
+empty/`members: []` handling, no-existence-check, malformed-manifest
+propagation, and the full manifest-path-resolution precedence chain. Added
+matching tests to `test_config.py::TestHistoryConfig` and
+`test_config_schema.py`, and a `DOC_STRINGS_PRESENT` row pinning the new
+API.md section.
+
+Full suite: `python -m pytest scripts/tests/ -m "not integration and not
+conformance"` — 22735 passed, 12 skipped, 4 pre-existing failures unrelated
+to this change (confirmed identical on `main` before this work: two
+`test_issue_parser.py` priority-regex-allowlist tests, one
+`test_host_runner.py` env-coverage test, one `test_verify_evidence.py`
+evidence-gate test flagging unrelated `.issues/` files).
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P1
@@ -974,6 +1026,7 @@ Acceptance Criteria updated to match. The prior `VALID` verify verdict
 predates these edits._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T01:12:26 - `0d98227d-f55c-44b8-982e-554d4e5e6b82.jsonl`
 - `/ll:confidence-check` - 2026-09-08T23:50:57 - `5c976392-360d-4fe2-a643-ab8c1e09418d.jsonl`
 - `/ll:confidence-check` - 2026-09-08T23:19:00 - `ee9b6e9d-61e7-4275-89c2-f498d623ae45.jsonl`
 - `/ll:verify-issues` - 2026-09-08T23:15:34 - `3dd7ffea-f30a-4c9b-8a7c-b75eee0560e1.jsonl`

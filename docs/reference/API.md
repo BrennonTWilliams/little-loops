@@ -44,6 +44,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.logo` | CLI logo display |
 | `little_loops.frontmatter` | YAML frontmatter read/write utilities |
 | `little_loops.decisions` | Decisions and rules log data layer (FEAT-1891) |
+| `little_loops.workspace` | Workspace membership discovery for cross-repo `.ll/history.db` aggregation (FEAT-3409) — `discover_workspace_members()` parses `ll-workspace.yaml` into `WorkspaceMember` rows. |
 | `little_loops.decisions_sync` | Sync active required rules to `.ll/ll.local.md` |
 | `little_loops.learning_tests` | Learning test registry — CRUD for `.ll/learning-tests/` records |
 | `little_loops.doc_counts` | Documentation count verification |
@@ -89,7 +90,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.queue_store` | Persisted `ll-queue` entry store (`.ll/queue.db`; FEAT-2682) — schema `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid}` with tiered `(priority, enqueuedAt)` ordering. |
 | `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4), invoked from `rn-decompose` and `autodev`'s decomposition states (ENH-2615). |
 | `little_loops.rn_synth_queue` | Readiness-gated concurrent queue for `rn-refine` bottom-up synthesis (ENH-2565) — `try_pop_ready()`, `mark_complete()`, `queue_is_empty()`, plus a `main(argv)` CLI shim; lock-file coordinated. |
-| `little_loops.session_store` | Unified per-project SQLite + FTS5 history store (`.ll/history.db`; FEAT-1112) — single source of truth for tool events, file modifications, issue transitions, loop runs, and user corrections. |
+| `little_loops.session_store` | Unified per-project SQLite + FTS5 history store (`.ll/history.db`; FEAT-1112) — single source of truth for tool events, file modifications, issue transitions, loop runs, and user corrections. Per-project by default; see `little_loops.workspace` (FEAT-3409) for declaring a multi-repo workspace to aggregate several projects' stores. |
 | `little_loops.sft_formatter` | SFT (supervised fine-tuning) data format converters — ChatML and siblings — used by `ll-messages --sft-format`. |
 | `little_loops.skill_expander` | Pre-expand skill/command Markdown content for subprocess prompts (replaces ToolSearch → Skill deferred-tool dependency in `ll-auto`). |
 | `little_loops.stats` | Statistical utilities — Wilson 95% binomial confidence intervals for honest uncertainty reporting at small sample sizes. |
@@ -12173,6 +12174,48 @@ def parse_manage_issue_output(output: str) -> dict[str, Any]
 Extracts structured data from `/ll:manage-issue` output: parses `RESULT` for a `Status: <word>` line, `FILES_CHANGED`/`FILES_CREATED`/`COMMITS` as `- ` bullet lists, `VERIFICATION` via `parse_status_lines`, and `OODA_IMPACT` as `- key: VALUE` pairs.
 
 **Returns:** a dict with `status` (`"COMPLETED"`, `"FAILED"`, `"BLOCKED"`, or `"UNKNOWN"`), `files_changed: list[str]`, `files_created: list[str]`, `commits: list[str]`, `verification: dict[str, str]`, `ooda_impact: dict[str, str]`, and `sections: dict[str, str]` (all parsed sections).
+
+---
+
+## little_loops.workspace
+
+Workspace membership discovery for cross-repo `.ll/history.db` aggregation (FEAT-3409). Parses an `ll-workspace.yaml` manifest naming member repos by path with a role apiece into a `WorkspaceMember` list — the sole intended consumer is FEAT-3410's `ATTACH`-based cross-repo aggregation, which iterates the returned members to build one `ATTACH DATABASE` call per member. Hand-parsed with `yaml.safe_load()`, following `little_loops.decisions`'s dispatch-model precedent — no schema-validator dependency.
+
+### WorkspaceMember
+
+```python
+@dataclass(frozen=True)
+class WorkspaceMember:
+    repo_path: Path
+    role: str
+    db_path: Path
+```
+
+One repo in a declared workspace. `repo_path` and `db_path` are always absolute and resolved (symlinks followed), regardless of how they were spelled in the manifest. Frozen because the value crosses the producer (`little_loops.workspace`) / consumer (FEAT-3410) boundary — the convention `host_runner.HostInvocation` establishes for new value objects of this shape.
+
+### discover_workspace_members
+
+```python
+def discover_workspace_members(
+    manifest_path: Path | None = None, *, start: Path | None = None
+) -> list[WorkspaceMember]
+```
+
+Parses `ll-workspace.yaml` into a list of `WorkspaceMember` rows. Manifest path resolution, highest precedence first:
+
+1. Explicit `manifest_path` — normalized with `.expanduser().resolve()` before use.
+2. `history.workspace_manifest_path` from the project config rooted at `find_project_root(start)`, read through `BRConfig` (so a `.ll/ll.local.md` override is honored).
+3. The nearest ancestor of `start` (itself, then each parent) containing `ll-workspace.yaml`.
+
+`start` (default `Path.cwd()`) seeds steps 2 and 3; step 1 ignores it.
+
+**Absent-by-discovery vs absent-by-declaration:** a manifest resolved via step 1 or 2 ("declared") that does not exist on disk raises `FileNotFoundError` naming the path and its provenance — a typo there must not silently look like "no workspace declared". A manifest resolved via step 3 ("discovered") that does not exist returns `[]` (never `None`), so a project with no workspace manifest falls back to single-repo behavior byte-for-byte.
+
+A present-but-malformed manifest is not wrapped (no-wrap/propagate, mirroring `little_loops.decisions.load_decisions()`): bad YAML syntax raises `yaml.YAMLError` unmodified; a missing `repo`/`role` key raises `KeyError`; a non-mapping top level, a missing/non-list `members`, a non-mapping entry, a non-string/empty `repo`/`role`, or a present non-string `db_path` raises `ValueError`.
+
+Per entry: `repo` resolves against the manifest's parent directory; `db_path` (optional) resolves against *that entry's* resolved `repo_path` — not the manifest directory — defaulting to `(repo_path / ".ll" / "history.db").resolve()` via a plain `Path` join, never `resolve_history_db()` (its unconditional `LL_HISTORY_DB` env-var check would collapse every member's `db_path` onto the same value across a single process). The default is `.resolve()`d exactly like an explicit `db_path`, so two entries aliasing one database through a symlink still collide. `repo` and `db_path` are passed through `Path.expanduser()` so `~` works in a gitignored, machine-local manifest. Two entries whose resolved `db_path` collide raise `ValueError` naming the path. A member's own `history.db_path` config key is never consulted — a member with a custom one must repeat it in the manifest.
+
+No existence check is performed on `repo_path` or `db_path`; FEAT-3410 owns skip-and-report for a missing or schema-skewed member database.
 
 ---
 

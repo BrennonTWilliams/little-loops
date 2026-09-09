@@ -614,6 +614,7 @@ enabled; these keys control how skills and CLI tools *read* that data.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `history.db_path` | `string\|null` | `null` | Override the default `.ll/history.db` location; relative paths resolve against the project root. The `LL_HISTORY_DB` env var takes precedence over this (ENH-2623). |
+| `history.workspace_manifest_path` | `string\|null` | `null` | Path to an `ll-workspace.yaml` manifest declaring workspace membership for cross-repo `.ll/history.db` aggregation (FEAT-3409). Relative paths resolve against the project root; `~` is expanded (a deliberate divergence from `history.db_path`, which does not expand `~`). Overrides the nearest-ancestor-walk default `discover_workspace_members()` otherwise uses. A declared-but-missing manifest — this key set to a nonexistent path — raises `FileNotFoundError` rather than degrading to an empty member list; only an *undeclared* (ancestor-walk) miss degrades. A member repo's own `history.db_path` is not consulted by workspace discovery — a member with a custom one must repeat it in the manifest. |
 | `history.velocity_window` | `integer` | `10` | Number of recent issues to use when computing velocity (ENH-1905). |
 | `history.effort_fields` | `list[str]` | `["session_count", "cycle_time_days"]` | Fields extracted from history.db for effort reporting (ENH-1905). |
 | `history.max_age_days` | `integer\|null` | `null` | Maximum age in days for history entries; `null` = no limit (ENH-1905). |
