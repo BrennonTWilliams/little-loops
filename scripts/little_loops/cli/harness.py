@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -18,11 +19,19 @@ from typing import Any
 
 import yaml
 
+from little_loops.cli.history import _positive_int
 from little_loops.cli.output import configure_output, print_json, status_block, use_color_enabled
 from little_loops.fsm.evaluators import EvaluationResult, evaluate_llm_structured
 from little_loops.fsm.verdicts import is_abstention_verdict
 from little_loops.logger import Logger
-from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType, run_action
+from little_loops.runner_spec import (
+    DEFAULT_STOCHASTIC_SAMPLES,
+    ActionSpec,
+    RunnerResult,
+    RunnerType,
+    is_stochastic_runner,
+    run_action,
+)
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
     cli_event_context,
@@ -31,6 +40,7 @@ from little_loops.session_store import (
     record_harness_event,
 )
 from little_loops.skill_expander import _find_plugin_root, _resolve_content_path
+from little_loops.stats import wilson_ci
 
 __all__ = [
     "RunnerResult",
@@ -541,6 +551,22 @@ Exit codes:
                 "and admits the retry in one transaction."
             ),
         )
+        p.add_argument(
+            "--samples",
+            dest="samples",
+            type=_positive_int,
+            default=None,
+            metavar="N",
+            help=(
+                "Number of times to run the subject and grade it (ENH-3415). "
+                "Default: DEFAULT_STOCHASTIC_SAMPLES (3) for stochastic runners "
+                "(skill, prompt), 1 for deterministic runners (cmd, mcp). An "
+                "explicit value overrides in both directions. Wall time and "
+                "--timeout budget scale with n. Ignored (forced to 1) when "
+                "--retry-of is given without an explicit --samples. Refused "
+                "on the dsl runner when > 1."
+            ),
+        )
 
     def _add_trace_flags(p: argparse.ArgumentParser) -> None:
         """FEAT-2878: trace-assertion mode flags, layered onto SKILL/PROMPT.
@@ -668,6 +694,37 @@ def _parse_harness_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 @dataclass
+class SampleTally:
+    """Aggregated per-sample grading counts for an n-sample invocation (ENH-3415 D8).
+
+    `graded` is `passed + failed` (D3) -- abstained/errored samples are
+    recorded but excluded from the graded denominator.
+    """
+
+    requested: int
+    graded: int = 0
+    passed: int = 0
+    failed: int = 0
+    abstained: int = 0
+    errored: int = 0
+    ci_lo: float | None = None
+    ci_hi: float | None = None
+
+    def record(self, rc: int) -> None:
+        """Tally one sample's `_grade()` exit code (ENH-3415 D3)."""
+        if rc == 2:
+            self.errored += 1
+        elif rc == 3:
+            self.abstained += 1
+        elif rc == 0:
+            self.passed += 1
+            self.graded += 1
+        else:  # rc == 1
+            self.failed += 1
+            self.graded += 1
+
+
+@dataclass
 class HarnessEvalOutcome:
     """Evaluation outcome carried alongside `_evaluate_and_report()`'s exit code."""
 
@@ -675,6 +732,8 @@ class HarnessEvalOutcome:
     verdict: str | None
     eval_result: EvaluationResult | None
     abstained: bool = False
+    sample_pass_rate: float | None = None
+    samples: SampleTally | None = None
 
 
 def _read_prepatch_evidence(issue_id: str | None) -> dict | None:
@@ -786,6 +845,252 @@ def _format_target_history_line(history: dict) -> str:
     return f"Target history since {since_date}: " + ", ".join(parts)
 
 
+def _grade(
+    runner_label: str,
+    result: RunnerResult,
+    args: argparse.Namespace,
+    *,
+    expected_grade: ExpectedGrade | None = None,
+) -> tuple[int, HarnessEvalOutcome]:
+    """Grade *result* against criteria. No stdout or DB writes (ENH-3415).
+
+    Extracted from `_evaluate_and_report()` so an n-sample loop can grade each
+    sample without also printing/persisting per-sample. Still performs the
+    `--semantic` judge call (`evaluate_llm_structured()`) when set -- that is
+    not a side effect this function's contract excludes, just not a pure one.
+    """
+    if result.timed_out or result.error is not None:
+        return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
+
+    passed = True
+    abstained = False
+    eval_result: EvaluationResult | None = None
+
+    if args.exit_code is not None and result.exit_code != args.exit_code:
+        passed = False
+
+    # BUG-3196: an `expected:` mismatch is a hard failure that outranks
+    # abstention (folded before the --semantic block, same as --exit-code).
+    # UNGRADED is deliberately excluded here — it carries no verdict of its
+    # own and must not force `passed = False`; cmd_dsl reads its status
+    # directly to exclude the task from the denominator instead.
+    if (
+        expected_grade is not None
+        and expected_grade.status is not GradeStatus.UNGRADED
+        and not expected_grade.passed
+    ):
+        passed = False
+
+    if args.semantic is not None:
+        eval_result = evaluate_llm_structured(output=result.stdout, prompt=args.semantic)
+        # ENH-3185 AC9: an abstention is neither a pass nor a failure — report
+        # it separately rather than folding it into `passed = False`. Precedence
+        # is fail > abstain > pass, so a mixed exit_code-fail + semantic-abstain
+        # run still reports FAIL/exit 1.
+        if is_abstention_verdict(eval_result.verdict):
+            abstained = True
+        elif eval_result.verdict != "yes":
+            passed = False
+
+    outcome = HarnessEvalOutcome(
+        passed=passed,
+        verdict=eval_result.verdict if eval_result is not None else None,
+        eval_result=eval_result,
+        abstained=abstained,
+    )
+    # ENH-3185 AC9: 0=pass, 1=fail (unchanged), 2=harness/infra error (already
+    # taken above, never reused here), 3=inconclusive (no failure, >=1 abstention).
+    if not passed:
+        exit_code = 1
+    elif abstained:
+        exit_code = 3
+    else:
+        exit_code = 0
+    return exit_code, outcome
+
+
+def _effective_samples(args: argparse.Namespace, runner: RunnerType) -> int:
+    """Resolve the effective sample count for one invocation (ENH-3415 D7).
+
+    An explicit ``--samples`` always wins (raising n on a deterministic
+    runner is a legitimate way to chase flakiness). Otherwise ``--retry-of``
+    without ``--samples`` pins n to 1 (D2) -- a retry supersedes exactly one
+    attempt. Absent both, a stochastic ``RunnerType`` defaults to
+    ``DEFAULT_STOCHASTIC_SAMPLES``; everything else defaults to 1.
+    """
+    samples = getattr(args, "samples", None)
+    if samples is not None:
+        return samples
+    if getattr(args, "retry_of", None) is not None:
+        return 1
+    if is_stochastic_runner(runner):
+        return DEFAULT_STOCHASTIC_SAMPLES
+    return 1
+
+
+def _band_samples(tally: SampleTally) -> tuple[str, int]:
+    """Band a SampleTally into a verdict label + exit code (ENH-3415 D3/D4/D5).
+
+    Precedence: no graded sample and >=1 errored -> ERROR/2; no graded
+    sample (all abstained) -> ABSTAIN/3; every requested sample graded and
+    passed -> PASS/0; every graded sample failed -> FAIL/1; otherwise
+    (mixed, or passes alongside any abstention/error) -> INCONCLUSIVE/3.
+    """
+    if tally.graded == 0 and tally.errored > 0:
+        return "ERROR", 2
+    if tally.graded == 0:
+        return "ABSTAIN", 3
+    if tally.passed == tally.requested:
+        return "PASS", 0
+    if tally.passed == 0 and tally.graded > 0:
+        return "FAIL", 1
+    return "INCONCLUSIVE", 3
+
+
+def _report_samples(
+    runner_label: str,
+    tally: SampleTally,
+    sample_results: list[dict[str, Any]],
+    args: argparse.Namespace,
+    *,
+    label: str,
+    prepatch_evidence: dict | None,
+    target_history: dict | None,
+) -> None:
+    """Print one aggregate report for an n>1 sample invocation (ENH-3415 D8).
+
+    Called once, after the sample loop -- never per sample -- so the JSON
+    payload stays a single object and the history/prepatch lines are not
+    duplicated n times.
+    """
+    if tally.graded > 0:
+        tally.ci_lo, tally.ci_hi = wilson_ci(tally.passed, tally.graded)
+    sample_pass_rate = tally.passed / tally.graded if tally.graded else None
+
+    if args.output == "json":
+        payload: dict[str, Any] = {
+            "runner": runner_label,
+            "result": label,
+            "sample_pass_rate": sample_pass_rate,
+            "samples": {
+                "requested": tally.requested,
+                "graded": tally.graded,
+                "passed": tally.passed,
+                "failed": tally.failed,
+                "abstained": tally.abstained,
+                "errored": tally.errored,
+                "ci_lo": tally.ci_lo,
+                "ci_hi": tally.ci_hi,
+                "results": sample_results,
+            },
+        }
+        if prepatch_evidence is not None:
+            payload["prepatch_evidence"] = prepatch_evidence
+        if target_history is not None:
+            payload.update(target_history)
+        print_json(payload)
+        return
+
+    print(status_block({"Runner": runner_label, "Result": label}))
+    if tally.graded > 0:
+        samples_line = (
+            f"Samples: {tally.passed}/{tally.graded} graded  "
+            f"[{tally.ci_lo:.2f}, {tally.ci_hi:.2f}] (95% CI)"
+        )
+    else:
+        samples_line = f"Samples: {tally.passed}/{tally.graded} graded"
+    extras = []
+    if tally.errored:
+        extras.append(f"{tally.errored} errored")
+    if tally.abstained:
+        extras.append(f"{tally.abstained} abstained")
+    if extras:
+        samples_line += ", " + ", ".join(extras)
+    print(samples_line)
+    if prepatch_evidence is not None:
+        print(f"Pre-patch check: {prepatch_evidence.get('verdict', 'unknown')}")
+    if target_history is not None:
+        print(_format_target_history_line(target_history))
+    for entry in sample_results:
+        stdout = entry.get("stdout")
+        if not stdout:
+            continue
+        if args.verbose or entry.get("result") != "PASS":
+            print(f"--- sample {entry['index']} ---")
+            sys.stdout.write(stdout)
+            if not stdout.endswith("\n"):
+                print()
+
+
+def _retry_samples_refusal(retry_of: int | None, args: argparse.Namespace) -> str | None:
+    """Refuse ``--retry-of`` combined with an explicit ``--samples`` > 1 (ENH-3415 D2)."""
+    samples = getattr(args, "samples", None)
+    if retry_of is not None and samples is not None and samples > 1:
+        return (
+            f"error: --retry-of {retry_of}: cannot combine with --samples {samples} "
+            "(a retry supersedes exactly one attempt)"
+        )
+    return None
+
+
+def _run_sample_loop(
+    runner_label: str,
+    args: argparse.Namespace,
+    n: int,
+    invoke: Callable[[], tuple[RunnerResult, int]],
+    record: Callable[[RunnerResult, int, HarnessEvalOutcome], None],
+) -> int:
+    """Run *invoke* n times, grading/tallying/recording each sample (ENH-3415).
+
+    Shared by the four non-DSL ``cmd_*`` handlers. *invoke* performs one
+    runner invocation and returns ``(result, duration_ms)``; *record* persists
+    one sample via ``_record_harness_event()`` (D1: one ``repetition`` row per
+    sample). The loop never stops early on a pass (D9): all *n* samples run.
+    History/prepatch are read once, before the first sample, and the single
+    aggregate report is printed once, after the last (D8).
+    """
+    prepatch_evidence = _read_prepatch_evidence(getattr(args, "issue_id", None))
+    target_history = _read_target_history(args.target)
+    tally = SampleTally(requested=n)
+    sample_results: list[dict[str, Any]] = []
+    for i in range(n):
+        result, duration_ms = invoke()
+        rc, outcome = _grade(runner_label, result, args)
+        tally.record(rc)
+        record(result, duration_ms, outcome)
+        label = {2: "ERROR", 3: "ABSTAIN", 0: "PASS"}.get(rc, "FAIL")
+        error = (
+            result.error if result.error is not None else ("timeout" if result.timed_out else None)
+        )
+        entry: dict[str, Any] = {
+            "index": i,
+            "exit_code": result.exit_code,
+            "exit_code_check": (
+                str(result.exit_code)
+                if args.exit_code is None
+                else f"{result.exit_code} (expected {args.exit_code})"
+            ),
+            "semantic": outcome.verdict if outcome.verdict is not None else "[not checked]",
+            "result": label,
+            "error": error,
+        }
+        if args.verbose or label != "PASS":
+            entry["stdout"] = result.stdout
+            entry["stderr"] = result.stderr
+        sample_results.append(entry)
+    verdict_label, exit_code = _band_samples(tally)
+    _report_samples(
+        runner_label,
+        tally,
+        sample_results,
+        args,
+        label=verdict_label,
+        prepatch_evidence=prepatch_evidence,
+        target_history=target_history,
+    )
+    return exit_code
+
+
 def _evaluate_and_report(
     runner_label: str,
     result: RunnerResult,
@@ -802,40 +1107,15 @@ def _evaluate_and_report(
         _report(runner_label, result, args, error_msg=result.error)
         return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
 
-    passed = True
-    abstained = False
+    exit_code, outcome = _grade(runner_label, result, args, expected_grade=expected_grade)
+    passed = outcome.passed
+    abstained = outcome.abstained
+    eval_result = outcome.eval_result
+
     exit_code_display = str(result.exit_code)
-    semantic_display = "[not checked]"
-    eval_result: EvaluationResult | None = None
-
     if args.exit_code is not None:
-        if result.exit_code != args.exit_code:
-            passed = False
         exit_code_display = f"{result.exit_code} (expected {args.exit_code})"
-
-    # BUG-3196: an `expected:` mismatch is a hard failure that outranks
-    # abstention (folded before the --semantic block, same as --exit-code).
-    # UNGRADED is deliberately excluded here — it carries no verdict of its
-    # own and must not force `passed = False`; cmd_dsl reads its status
-    # directly to exclude the task from the denominator instead.
-    if (
-        expected_grade is not None
-        and expected_grade.status is not GradeStatus.UNGRADED
-        and not expected_grade.passed
-    ):
-        passed = False
-
-    if args.semantic is not None:
-        eval_result = evaluate_llm_structured(output=result.stdout, prompt=args.semantic)
-        semantic_display = eval_result.verdict
-        # ENH-3185 AC9: an abstention is neither a pass nor a failure — report
-        # it separately rather than folding it into `passed = False`. Precedence
-        # is fail > abstain > pass, so a mixed exit_code-fail + semantic-abstain
-        # run still reports FAIL/exit 1.
-        if is_abstention_verdict(eval_result.verdict):
-            abstained = True
-        elif eval_result.verdict != "yes":
-            passed = False
+    semantic_display = eval_result.verdict if eval_result is not None else "[not checked]"
 
     if not passed:
         overall = "FAIL"
@@ -909,20 +1189,6 @@ def _evaluate_and_report(
             if not result.stdout.endswith("\n"):
                 print()
 
-    outcome = HarnessEvalOutcome(
-        passed=passed,
-        verdict=eval_result.verdict if eval_result is not None else None,
-        eval_result=eval_result,
-        abstained=abstained,
-    )
-    # ENH-3185 AC9: 0=pass, 1=fail (unchanged), 2=harness/infra error (already
-    # taken above, never reused here), 3=inconclusive (no failure, >=1 abstention).
-    if not passed:
-        exit_code = 1
-    elif abstained:
-        exit_code = 3
-    else:
-        exit_code = 0
     return exit_code, outcome
 
 
@@ -955,27 +1221,35 @@ def cmd_skill(args: argparse.Namespace) -> int:
     head_sha = _git_output("rev-parse", "HEAD")
     cell_key = _cell_key("skill", args.target, head_sha)
     retry_of = getattr(args, "retry_of", None)
+    samples_refusal = _retry_samples_refusal(retry_of, args)
+    if samples_refusal is not None:
+        print(samples_refusal, file=sys.stderr)
+        return 1
     refusal = _retry_gate(retry_of, cell_key)
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 1
-    spec = ActionSpec(
-        name=args.target,
-        runner=RunnerType.SKILL,
-        target=args.target,
-        args={"runner_args": runner_args},
-        timeout=args.timeout,
-    )
-    start = time.monotonic()
-    result = run_action(spec)
-    duration_ms = int((time.monotonic() - start) * 1000)
-    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    n = _effective_samples(args, RunnerType.SKILL)
     skill_path = _resolve_skill_target_path(args.target)
     target_path_str = str(skill_path) if skill_path is not None else None
     target_hash = _hash_file(skill_path) if skill_path is not None else None
-    dirty_val = _git_dirty()
-    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-    try:
+
+    def _invoke() -> tuple[RunnerResult, int]:
+        spec = ActionSpec(
+            name=args.target,
+            runner=RunnerType.SKILL,
+            target=args.target,
+            args={"runner_args": runner_args},
+            timeout=args.timeout,
+        )
+        start = time.monotonic()
+        result = run_action(spec)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return result, duration_ms
+
+    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> None:
+        dirty_val = _git_dirty()
+        dirty_int: int | None = None if dirty_val is None else int(dirty_val)
         _record_harness_event(
             runner="skill",
             target=args.target,
@@ -991,6 +1265,14 @@ def cmd_skill(args: argparse.Namespace) -> int:
             target_path=target_path_str,
             dirty=dirty_int,
         )
+
+    if n > 1:
+        return _run_sample_loop(runner_label, args, n, _invoke, _record)
+
+    result, duration_ms = _invoke()
+    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    try:
+        _record(result, duration_ms, outcome)
     except Exception as exc:
         print(f"error: retry of attempt {retry_of} was not recorded: {exc}", file=sys.stderr)
         return 1
@@ -1003,23 +1285,31 @@ def cmd_cmd(args: argparse.Namespace) -> int:
     head_sha = _git_output("rev-parse", "HEAD")
     cell_key = _cell_key("cmd", args.target, head_sha)
     retry_of = getattr(args, "retry_of", None)
+    samples_refusal = _retry_samples_refusal(retry_of, args)
+    if samples_refusal is not None:
+        print(samples_refusal, file=sys.stderr)
+        return 1
     refusal = _retry_gate(retry_of, cell_key)
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 1
-    spec = ActionSpec(
-        name=args.target,
-        runner=RunnerType.CMD,
-        target=args.target,
-        timeout=args.timeout,
-    )
-    start = time.monotonic()
-    result = run_action(spec)
-    duration_ms = int((time.monotonic() - start) * 1000)
-    rc, outcome = _evaluate_and_report(runner_label, result, args)
-    dirty_val = _git_dirty()
-    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-    try:
+    n = _effective_samples(args, RunnerType.CMD)
+
+    def _invoke() -> tuple[RunnerResult, int]:
+        spec = ActionSpec(
+            name=args.target,
+            runner=RunnerType.CMD,
+            target=args.target,
+            timeout=args.timeout,
+        )
+        start = time.monotonic()
+        result = run_action(spec)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return result, duration_ms
+
+    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> None:
+        dirty_val = _git_dirty()
+        dirty_int: int | None = None if dirty_val is None else int(dirty_val)
         _record_harness_event(
             runner="cmd",
             target=args.target,
@@ -1033,6 +1323,14 @@ def cmd_cmd(args: argparse.Namespace) -> int:
             retry_of=retry_of,
             dirty=dirty_int,
         )
+
+    if n > 1:
+        return _run_sample_loop(runner_label, args, n, _invoke, _record)
+
+    result, duration_ms = _invoke()
+    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    try:
+        _record(result, duration_ms, outcome)
     except Exception as exc:
         print(f"error: retry of attempt {retry_of} was not recorded: {exc}", file=sys.stderr)
         return 1
@@ -1059,25 +1357,32 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     head_sha = _git_output("rev-parse", "HEAD")
     cell_key = _cell_key("mcp", args.target, head_sha)
     retry_of = getattr(args, "retry_of", None)
+    samples_refusal = _retry_samples_refusal(retry_of, args)
+    if samples_refusal is not None:
+        print(samples_refusal, file=sys.stderr)
+        return 1
     refusal = _retry_gate(retry_of, cell_key)
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 1
+    n = _effective_samples(args, RunnerType.MCP)
 
-    spec = ActionSpec(
-        name=args.target,
-        runner=RunnerType.MCP,
-        target=args.target,
-        args={"mcp_params": params},
-        timeout=args.timeout,
-    )
-    start = time.monotonic()
-    result = run_action(spec)
-    duration_ms = int((time.monotonic() - start) * 1000)
-    rc, outcome = _evaluate_and_report(runner_label, result, args)
-    dirty_val = _git_dirty()
-    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-    try:
+    def _invoke() -> tuple[RunnerResult, int]:
+        spec = ActionSpec(
+            name=args.target,
+            runner=RunnerType.MCP,
+            target=args.target,
+            args={"mcp_params": params},
+            timeout=args.timeout,
+        )
+        start = time.monotonic()
+        result = run_action(spec)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return result, duration_ms
+
+    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> None:
+        dirty_val = _git_dirty()
+        dirty_int: int | None = None if dirty_val is None else int(dirty_val)
         _record_harness_event(
             runner="mcp",
             target=args.target,
@@ -1091,6 +1396,14 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             retry_of=retry_of,
             dirty=dirty_int,
         )
+
+    if n > 1:
+        return _run_sample_loop(runner_label, args, n, _invoke, _record)
+
+    result, duration_ms = _invoke()
+    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    try:
+        _record(result, duration_ms, outcome)
     except Exception as exc:
         print(f"error: retry of attempt {retry_of} was not recorded: {exc}", file=sys.stderr)
         return 1
@@ -1124,15 +1437,22 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     head_sha = _git_output("rev-parse", "HEAD")
     cell_key = _cell_key("prompt", args.target, head_sha)
     retry_of = getattr(args, "retry_of", None)
+    samples_refusal = _retry_samples_refusal(retry_of, args)
+    if samples_refusal is not None:
+        print(samples_refusal, file=sys.stderr)
+        return 1
     refusal = _retry_gate(retry_of, cell_key)
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 1
-    result, duration_ms = _run_prompt_action(args.target, args)
-    rc, outcome = _evaluate_and_report(runner_label, result, args)
-    dirty_val = _git_dirty()
-    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-    try:
+    n = _effective_samples(args, RunnerType.PROMPT)
+
+    def _invoke() -> tuple[RunnerResult, int]:
+        return _run_prompt_action(args.target, args)
+
+    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> None:
+        dirty_val = _git_dirty()
+        dirty_int: int | None = None if dirty_val is None else int(dirty_val)
         _record_harness_event(
             runner="prompt",
             target=args.target,
@@ -1147,6 +1467,14 @@ def cmd_prompt(args: argparse.Namespace) -> int:
             target_content_hash=_hash_bytes(args.target.encode("utf-8")),
             dirty=dirty_int,
         )
+
+    if n > 1:
+        return _run_sample_loop(runner_label, args, n, _invoke, _record)
+
+    result, duration_ms = _invoke()
+    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    try:
+        _record(result, duration_ms, outcome)
     except Exception as exc:
         print(f"error: retry of attempt {retry_of} was not recorded: {exc}", file=sys.stderr)
         return 1
@@ -1161,7 +1489,19 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
     """
     from little_loops.history_reader import admissions_by_reason
     from little_loops.session_store import resolve_history_db
-    from little_loops.stats import wilson_ci
+
+    # ENH-3415 Scope Boundaries: the dsl runner already resamples across
+    # tasks with its own parent/child harness_events rows; per-task
+    # resampling would multiply cost and complicate that row structure, so
+    # it is a follow-up, not this issue.
+    samples = getattr(args, "samples", None)
+    if samples is not None and samples > 1:
+        print(
+            f"error: --samples {samples}: not supported on the dsl runner "
+            "(it already resamples across tasks)",
+            file=sys.stderr,
+        )
+        return 1
 
     path = Path(args.path)
     if path.is_dir():

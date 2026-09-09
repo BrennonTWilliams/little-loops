@@ -1991,6 +1991,12 @@ def _build_eval_fixture(inv: _EvalInvocation, outcome: str) -> dict:
         "exit_code": None,
         "semantic": None,
         "timeout": 120,
+        # ENH-3415: no session-log signal for --samples exists today (this
+        # fixture format never captured exit_code/semantic/timeout from the
+        # log either), so this is always None on export; carried through so
+        # a fixture that does set it round-trips instead of silently
+        # dropping the flag on replay.
+        "samples": None,
         "input_context": input_context,
         "issue_id": issue_id,
         "skill_name": skill_name,
@@ -2014,6 +2020,8 @@ def _fixture_to_harness_argv(fixture: dict) -> list[str]:
     timeout = fixture.get("timeout")
     if timeout is not None and timeout != 120:
         argv.extend(["--timeout", str(timeout)])
+    if fixture.get("samples") is not None:
+        argv.extend(["--samples", str(fixture["samples"])])
     return argv
 
 

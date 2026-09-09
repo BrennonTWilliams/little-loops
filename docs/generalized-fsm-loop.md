@@ -643,7 +643,10 @@ states that explicitly set the flag. **Always pair it with a declared
 cap (re-running the command) and then falls to `on_error` anyway — worse than
 not setting the flag at all. `loops/lib/common.yaml`'s `harness_exit`
 fragment is the worked example: `fragment: harness_exit` plus
-`on_yes`/`on_no`/`on_cannot_judge`.
+`on_yes`/`on_no`/`on_cannot_judge`. `ll-harness` reuses exit 3, unchanged, for
+an n-sample `INCONCLUSIVE` verdict on a stochastic runner graded over N>1
+samples (ENH-3415) — a rate landing between clear pass and clear fail — so
+`on_cannot_judge` already routes that case too; no new exit code was added.
 
 #### `output_numeric`
 

@@ -111,6 +111,42 @@ class TestRunnerTypeCompleteness:
             run_action(spec)
 
 
+class TestIsStochasticRunner:
+    """ENH-3415 D6: classification of every dispatched RunnerType."""
+
+    def test_skill_and_prompt_are_stochastic(self) -> None:
+        from little_loops.runner_spec import is_stochastic_runner
+
+        assert is_stochastic_runner(RunnerType.SKILL) is True
+        assert is_stochastic_runner(RunnerType.PROMPT) is True
+
+    def test_cmd_and_mcp_are_deterministic(self) -> None:
+        from little_loops.runner_spec import is_stochastic_runner
+
+        assert is_stochastic_runner(RunnerType.CMD) is False
+        assert is_stochastic_runner(RunnerType.MCP) is False
+
+    def test_dsl_is_stochastic(self) -> None:
+        from little_loops.runner_spec import is_stochastic_runner
+
+        assert is_stochastic_runner(RunnerType.DSL) is True
+
+    def test_loop_excluded_raises(self) -> None:
+        from little_loops.runner_spec import is_stochastic_runner
+
+        with pytest.raises(KeyError):
+            is_stochastic_runner(RunnerType.LOOP)
+
+    def test_every_dispatched_runner_classified(self) -> None:
+        """Completeness: every RunnerType except LOOP has a classification."""
+        from little_loops.runner_spec import is_stochastic_runner
+
+        for member in RunnerType:
+            if member is RunnerType.LOOP:
+                continue
+            assert isinstance(is_stochastic_runner(member), bool)
+
+
 class TestRunActionDispatch:
     def test_skill_dispatch_matches_legacy_shape(self) -> None:
         spec = ActionSpec(

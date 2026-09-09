@@ -53,6 +53,8 @@ __all__ = [
     "ActionSpec",
     "run_action",
     "scope_runner_error",
+    "is_stochastic_runner",
+    "DEFAULT_STOCHASTIC_SAMPLES",
 ]
 
 
@@ -65,6 +67,33 @@ class RunnerType(Enum):
     PROMPT = "prompt"
     DSL = "dsl"
     LOOP = "loop"
+
+
+# ENH-3415 D6: whether a RunnerType's subject varies run to run (an LLM-driven
+# host CLI invocation) vs. is deterministic (a subprocess/tool call with no
+# LLM in the loop). DSL is "stochastic" in the sense that its per-task PROMPT
+# calls are, but it already loops across tasks and resamples separately (see
+# ll-harness's own --samples refusal for the dsl runner) so its own default
+# stays 1. LOOP is never dispatched by run_action() and is omitted here;
+# is_stochastic_runner(RunnerType.LOOP) raises KeyError, which is acceptable.
+_STOCHASTIC_RUNNERS: dict[RunnerType, bool] = {
+    RunnerType.SKILL: True,
+    RunnerType.PROMPT: True,
+    RunnerType.CMD: False,
+    RunnerType.MCP: False,
+    RunnerType.DSL: True,
+}
+
+DEFAULT_STOCHASTIC_SAMPLES = 3
+
+
+def is_stochastic_runner(runner: RunnerType) -> bool:
+    """Return whether *runner*'s subject is stochastic (ENH-3415 D6).
+
+    Raises ``KeyError`` for ``RunnerType.LOOP``, which is never dispatched by
+    :func:`run_action` and has no meaningful classification here.
+    """
+    return _STOCHASTIC_RUNNERS[runner]
 
 
 @dataclass

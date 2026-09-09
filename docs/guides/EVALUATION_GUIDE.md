@@ -55,18 +55,28 @@ does not fail loudly — it converges confidently on the wrong thing.
 | FSM eval harness | A loop YAML, retries on failure | `llm_structured` verdict on a user-perspective run | You want to evaluate a *feature* the way a user experiences it |
 | `ll-harness dsl` | A directory of task files, batch | Pass rate with a 95% Wilson interval | You want a *rate* across many small tasks, comparable across models |
 
-### `ll-harness` — the one-shot runner
+### `ll-harness` — the runner evaluation CLI
 
 Four runners, all with the same evaluation flags (`scripts/little_loops/cli/harness.py`):
 
-| Runner | Invokes |
-|---|---|
-| `ll-harness skill <name>` | A little-loops skill via the active host CLI |
-| `ll-harness cmd "<shell>"` | A shell command |
-| `ll-harness mcp <server>:<tool>` | An MCP tool call |
-| `ll-harness prompt "<text>"` | A raw prompt to the host model |
+| Runner | Invokes | Subject |
+|---|---|---|
+| `ll-harness skill <name>` | A little-loops skill via the active host CLI | stochastic |
+| `ll-harness cmd "<shell>"` | A shell command | deterministic |
+| `ll-harness mcp <server>:<tool>` | An MCP tool call | deterministic |
+| `ll-harness prompt "<text>"` | A raw prompt to the host model | stochastic |
 
-Exit codes are the contract: `0` PASS, `1` FAIL, `2` internal error or timeout.
+**Stochastic vs. deterministic (ENH-3415):** `skill`/`prompt` drive an LLM host CLI, so the
+same target can behave differently run to run; `cmd`/`mcp` are a subprocess call / arbitrary
+tool call with no LLM in the loop, so one run is as good as another. A one-shot verdict on a
+stochastic subject can't distinguish a real capability from a lucky sample, so `ll-harness`
+grades the stochastic runners over `DEFAULT_STOCHASTIC_SAMPLES` (3) runs by default instead of
+one — see [N-sample redundancy for stochastic subjects](#n-sample-redundancy-for-stochastic-subjects-enh-3415)
+below for the pass-rate verdict surface, `--samples` override, and the preflight-vs-promotion
+boundary. `cmd`/`mcp` stay one-shot by default.
+
+Exit codes are the contract: `0` PASS, `1` FAIL, `2` internal error or timeout, `3` ABSTAIN or
+(ENH-3415) INCONCLUSIVE.
 
 Two independent gates, both optional:
 
@@ -77,12 +87,14 @@ Two independent gates, both optional:
 `--retry-of ID` (ENH-3407) marks a run as an infra retry of attempt `ID` rather than a fresh
 sample: it's gated before the run (refused, exit 1, if the prior attempt isn't a genuine
 timeout for this same cell), and on success supersedes the prior row instead of counting as
-an independent repetition. See [CLI Reference → `ll-harness`](../reference/CLI.md#ll-harness)
-for the full refusal-rule list.
+an independent repetition. `--retry-of` without an explicit `--samples` pins the effective
+sample count to 1 even on a stochastic runner (a retry supersedes exactly one attempt); an
+explicit `--samples` > 1 alongside `--retry-of` is refused, exit 1 (ENH-3415). See
+[CLI Reference → `ll-harness`](../reference/CLI.md#ll-harness) for the full refusal-rule list.
 
 **Pass both or you are not measuring anything.** With neither flag, `passed` initializes to
-`True` and no check ever flips it (`harness.py:419-433`) — the command reports PASS
-unconditionally. See [Gotchas](#gotchas).
+`True` and no check ever flips it (`_grade()`, `harness.py:~865`) — the command reports PASS
+unconditionally (on every sample, if graded over N>1). See [Gotchas](#gotchas).
 
 ### The FSM eval harness
 
@@ -322,6 +334,40 @@ unwritten). When any admitted retry belongs to the counted population, a
 `history_admissions` map (`{reason: count}`) is folded in too. See
 [CLI Reference → `ll-harness`](../reference/CLI.md#ll-harness) for the full field table.
 
+### N-sample redundancy for stochastic subjects (ENH-3415)
+
+A subject is **stochastic** here if an LLM host CLI drives it — the `skill` and `prompt`
+runners — so its behavior varies run to run even with an unchanged target. `cmd` and `mcp`
+are **deterministic** (a subprocess call / arbitrary tool call, no LLM in the loop) and stay
+one-shot. A one-shot verdict on a stochastic subject can't tell a real capability from a lucky
+sample, so `ll-harness` grades `skill`/`prompt` over `DEFAULT_STOCHASTIC_SAMPLES` (3) runs by
+default and reports a pass-rate instead of a bare pass/fail; `--samples N` overrides in either
+direction on any runner. The sample loop never stops early on a pass — all N samples always
+run, so a flaky subject can't get lucky on run 1 and skip the rest.
+
+The verdict bands on the raw tally, not a confidence-interval threshold: `PASS` requires every
+requested sample to be graded and pass (a pass alongside any abstention or timeout is
+`INCONCLUSIVE`, exit 3, not a softened pass); `FAIL` requires every graded sample to fail;
+anything else — including all-abstained (`ABSTAIN`, exit 3) or all-errored (`ERROR`, exit 2) —
+falls to `INCONCLUSIVE`/exit 3. Operating characteristic to keep in mind when choosing N: a
+runner with a true per-run pass probability *p* still slips through a `PASS` at *pⁿ*
+(0.7³ ≈ 0.34, 0.7⁵ ≈ 0.17) — raise `--samples` for tighter certification, at the cost of
+`--timeout`-multiplied wall time and host-CLI/judge-call cost.
+
+**Preflight vs. promotion is a load-bearing boundary, not a detail.** A capability *preflight*
+probe (e.g. checking a host CLI can do X at all) may stop on the first confirming sample —
+that's a budget decision, not a correctness one. A verdict that gates a promotion decision
+(closing an issue, merging a change, selecting a candidate) may **not** stop early: this is
+exactly the n-sample-redundancy guard evolutionary-search harnesses treat as mandatory
+structure, not optional rigor, and it is why `ll-harness`'s sample loop always runs to N.
+Never let whichever code path happens to run last silently decide this for you.
+
+Each sample is persisted as its own `attempt_kind='repetition'` row (same write path as a
+one-shot run), so this invocation's own `sample_pass_rate` and the cross-invocation
+`history_pass_rate` below are the same statistic over different windows. `dsl` already
+resamples across its own task set and refuses an explicit `--samples` > 1 rather than
+resampling each task on top of that.
+
 ### Across runs
 
 Every `ll-harness` invocation writes a row to the `harness_events` table in `.ll/history.db`
@@ -445,8 +491,9 @@ the outer invocation.
 ## Gotchas
 
 - **`ll-harness` with no `--exit-code` and no `--semantic` always passes.** `passed` starts
-  `True` and only a requested check can flip it (`harness.py:419-433`). `ll-harness skill
-  check-code` alone reports PASS whatever the skill did.
+  `True` and only a requested check can flip it (`_grade()`, `harness.py:~865`). `ll-harness
+  skill check-code` alone reports PASS whatever the skill did — and, since `skill` defaults to
+  3 samples (ENH-3415), it reports `PASS` 3/3 whatever the skill did on all 3 runs.
 
 - **A generated eval harness declares no `scope:`.** It will validate, run, and take a
   repo-root lock that false-conflicts with every other concurrent loop. Add `scope:` before

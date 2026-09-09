@@ -4,12 +4,15 @@ title: Require n-run redundancy before an ll-harness verdict on a stochastic sub
   counts
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-08'
+completed_at: '2026-09-09T05:50:46Z'
 labels:
 - harness
 - evaluation
 - statistics
+related:
+- ENH-3421
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 82
@@ -279,6 +282,28 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Rewritten 2026-09-08 to reflect the decided Option B plus review decisions D1–D9; the earlier draft (loop inside `_evaluate_and_report()`, a `cmd_run` entry point) is superseded._
 
+### Deviations
+
+_Added during implementation — 2026-09-09:_
+
+- **A shared `_run_sample_loop()` helper, not one inline loop per call site.** The Call Path
+  section describes the n-sample loop as living directly inside each of `cmd_skill`/`cmd_cmd`/
+  `cmd_mcp`/`cmd_prompt`. Implementation factors the loop mechanics (tally, per-sample grading,
+  building `samples.results` entries, banding, calling `_report_samples()`) into one shared
+  `_run_sample_loop(runner_label, args, n, invoke, record)` used by all four handlers, each
+  passing its own `invoke`/`record` closures for the runner-specific invocation and
+  `_record_harness_event()` kwargs. This does not change Option B's core selection
+  (`_evaluate_and_report()`'s single-result contract stays intact and untouched by any of
+  this); it only avoids duplicating ~30 lines of identical loop-control-flow four times. Also
+  added `_retry_samples_refusal()` as a small shared helper for the D2 refusal check, called
+  by all four handlers *before* `_retry_gate()` (reordered from the Call Path pseudocode's
+  implied ordering) so the refusal fires without needing a real prior `harness_events` row to
+  exist first.
+- **`_report_samples()` takes an explicit `label: str` keyword-only parameter.** The Call Path
+  pseudocode elides the exact arguments passed to `_report_samples()` after computing
+  `label, exit_code = _band_samples(tally)`; implementation passes `label` through explicitly
+  rather than having `_report_samples()` recompute it from `tally`.
+
 ### Types
 
 - `RunnerType` (`scripts/little_loops/runner_spec.py:59-67`) — existing enum; unchanged. Classification lives beside it, not on it.
@@ -368,12 +393,56 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - ~~Several judgment calls remain open~~ — closed by D4 (count banding), D6 (default n=3), D8 (`sample_pass_rate`/`SampleTally`).
 - Remaining: the `_grade()` extraction (added in review) touches the shared grading path used by `cmd_dsl`; regression risk is contained by `TestCmdDsl` but the extraction must be done first and verified green before the sample loop is added.
 
+## Resolution
+
+Implemented per the decided Option B design (see Program Design → Deviations for two small
+implementation-level refinements — a shared `_run_sample_loop()` helper instead of four
+inline copies, and a reordered D2 refusal check).
+
+- `runner_spec.py`: `_STOCHASTIC_RUNNERS` classification dict, `DEFAULT_STOCHASTIC_SAMPLES = 3`,
+  `is_stochastic_runner()` (D6), with a completeness test mirroring `TestRunnerTypeCompleteness`.
+- `cli/harness.py`: extracted `_grade()` (grading only, no stdout/DB writes) from
+  `_evaluate_and_report()`, which now delegates to it and is otherwise byte-identical for n=1
+  and `cmd_dsl`. New `SampleTally`, `_effective_samples()` (D7), `_band_samples()` (D3/D4/D5),
+  `_report_samples()` (D8), `_retry_samples_refusal()` (D2), and `_run_sample_loop()` shared by
+  `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt`. `--samples N` added to the shared evaluator
+  flags (`_positive_int` reused from `cli/history.py`). `cmd_dsl` refuses `--samples` > 1.
+- `cli/logs.py`: `_build_eval_fixture()`/`_fixture_to_harness_argv()` carry a `samples` field
+  through the eval-export fixture round-trip (AC10).
+- Docs updated per the Wiring Phase: `docs/reference/CLI.md` (`--samples` flag, n>1 JSON/text
+  report shape, exit-3 description), `docs/reference/API.md` (intra- vs cross-invocation rate
+  distinction, exit-3 reuse), `docs/guides/EVALUATION_GUIDE.md` (new "N-sample redundancy for
+  stochastic subjects" section defining "stochastic", the *pⁿ* operating characteristic, and
+  the preflight-vs-promotion boundary; stale `harness.py:419-433` anchor fixed), `docs/reference/
+  EVENT-SCHEMA.md` and `docs/generalized-fsm-loop.md` (exit-3 reuse), and `loops/lib/common.yaml`'s
+  `harness_exit` fragment description (prose only — the 0/1/3 contract is unchanged).
+- Tests: new unit tests for `is_stochastic_runner`/`_effective_samples`/`_band_samples`/
+  `SampleTally.record`, and integration tests for the default n=3, `--samples` override in both
+  directions, all five verdict bands (including the "2 pass + 1 abstain/error → INCONCLUSIVE,
+  not PASS" case), no-early-exit-on-pass, an errored sample not stopping the loop, exactly-one-
+  JSON-object output, the pre-loop single history read, per-sample `repetition` rows (and that a
+  later invocation's `history_pass_rate` counts them), the `--retry-of`+`--samples`>1 refusal,
+  `--retry-of` alone pinning n to 1 on a stochastic runner, and the `dsl` refusal. `_make_namespace()`
+  in `test_cli_harness.py` now defaults `samples=1` so pre-existing tests keep their pre-ENH-3415
+  single-invocation behavior unless a test opts into the sample loop explicitly.
+- Verification: `python -m pytest scripts/tests/ -q -m "not integration and not conformance"`
+  passes (22802 passed; the 6 residual failures — `test_host_runner.py`,
+  `test_issue_parser.py` ×2, `test_verify_evidence.py`, `test_feat3418_workspace_quality.py` ×2
+  — are pre-existing and unrelated: none touch a file this issue changed, confirmed via
+  `git diff --stat`). `ruff check`/`ruff format --check`/`mypy` clean on every changed file.
+  `ll-loop validate` passes for the three `harness_exit` consumer loops (pre-existing
+  unrelated warnings only).
+- Per the Summary's own instruction, filed ENH-3421 (P3) as the stub for the frozen-external-
+  reference/baseline guard called out in "Why redundancy has to be structural"; wired both
+  ways via `related:`.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T05:50:22 - `14a3300d-cd3a-4c89-a5cb-ae4cd98e17ec.jsonl`
 - `/ll:confidence-check` - 2026-09-09T04:51:06 - `9f7ba440-a9e9-425e-a48b-4802e0b2ac21.jsonl`
 - pre-implementation review (manual) - 2026-09-09 - revised D2 (`--retry-of` implies n=1), D4 (PASS requires `passed == requested`), D7 (`_positive_int`, timeout scaling), D8 (n>1 JSON shape; history/prepatch read before the loop), `_grade()` I/O wording, struck the stale test-breakage bullet, updated AC3–AC7 and Impact, noted the missing frozen-baseline follow-up issue
 - `/ll:confidence-check` - 2026-09-09T04:41:40 - `4d4ff5a0-23ef-4021-a8a3-820b60906276.jsonl`

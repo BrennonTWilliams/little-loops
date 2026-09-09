@@ -4635,6 +4635,7 @@ class TestEvalExportMapping:
             "exit_code": None,
             "semantic": None,
             "timeout": 120,
+            "samples": None,
             "input_context": "refine FEAT-1971 in the backlog",
             "issue_id": "FEAT-1971",
             "skill_name": "refine-issue",
@@ -4683,6 +4684,18 @@ class TestEvalExportMapping:
         ns = _parse_harness_args(argv)
         assert ns.runner == "skill"
         assert ns.target == "check-code"
+        assert ns.samples is None
+
+    def test_fixture_to_harness_argv_preserves_samples(self) -> None:
+        """ENH-3415 AC10: a fixture carrying --samples round-trips through the parser."""
+        from little_loops.cli.harness import _parse_harness_args
+
+        inv = _EvalInvocation("skill", "check-code", "s", "2026-06-06T00:00:00Z", "")
+        fixture = _build_eval_fixture(inv, "accepted")
+        fixture["samples"] = 5
+        argv = _fixture_to_harness_argv(fixture)
+        ns = _parse_harness_args(argv)
+        assert ns.samples == 5
 
 
 class TestEvalExportRoundTrip:

@@ -6138,7 +6138,10 @@ Map Unix exit code to verdict: 0→success, 1→failure, 2+→error. When
 **not** a global remap, since exit code 3 is not OS-reserved: only invocations
 known to follow a tool's ABSTAIN exit-code contract (e.g. `ll-harness`, whose
 own exit-code mapping is `0`=pass, `1`=fail, `3`=abstained — see
-`cli/harness.py`) should set it. Pair the flag with a declared
+`cli/harness.py`) should set it. Exit 3 is reused, unchanged, for an
+n-sample `INCONCLUSIVE` verdict on a stochastic runner (ENH-3415) — a caller
+gating on exit 3 already treats an unresolved verdict as "cannot judge", so
+no new routing state is needed. Pair the flag with a declared
 `on_cannot_judge` route; a state that sets the flag with no such route holds
 up to `_ABSTENTION_HOLD_CAP` (2), re-running the command, before falling to
 `on_error` anyway — strictly worse than not opting in. The `loops/lib/common.yaml`
@@ -8990,6 +8993,8 @@ Read-side API for `harness_events` rows (ENH-2739's schema, written by `record_h
 `admissions_by_reason(db_path, attempt_ids)` (ENH-3408) returns admission counts by `reason` for a caller-supplied set of attempt ids — e.g. a target's windowed history, or one `cmd_dsl` invocation's written ids — since `harness_admissions` has no target/run column of its own to scope by directly. Returns `{}` for an empty `attempt_ids` or when none match.
 
 **CLI:** `ll-session recent --kind harness` and `ll-session search --fts "<target>" --kind harness` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch (ENH-2739) — no CLI code change was needed for this read API. `ll-harness` itself is a consumer of both rollups (ENH-3223): `_evaluate_and_report()` folds the run's target's historical pass/abstention rate (target-scoped, 30-day window, suppressed below 3 scored authoritative runs) and, when any admission belongs to that population, a `history_admissions` map, into its `--output json` payload and text report — see [CLI Reference → `ll-harness`](CLI.md#ll-harness).
+
+`history_pass_rate` (above) is a **cross-invocation** rate: it pools every past *authoritative* run for a target, read once per invocation before that invocation's own runs are recorded. ENH-3415 adds a distinct **intra-invocation** `sample_pass_rate` when a stochastic runner (`skill`/`prompt`) is graded over N>1 samples in one `ll-harness` call — the fraction of *that call's own* samples that passed. Each sample is still persisted as its own `attempt_kind='repetition'` row via the same write path, so the two rates are the same statistic computed over different windows (one invocation's samples vs. every invocation's history) rather than two different metrics.
 
 ### VerdictEvent / recent_verdict_events / verdict_pass_rate
 

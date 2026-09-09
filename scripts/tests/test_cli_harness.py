@@ -55,6 +55,9 @@ def _make_namespace(**kwargs: Any) -> Any:
         output="text",
         verbose=False,
         model=None,
+        # ENH-3415: pin existing tests to the pre-sampling single-invocation
+        # shape; tests exercising the n-sample loop override this explicitly.
+        samples=1,
     )
     for k, v in kwargs.items():
         setattr(ns, k, v)
@@ -897,6 +900,350 @@ class TestAbstentionVerdict:
         assert result == 1
         out = capsys.readouterr().out
         assert "FAIL" in out
+
+
+# ---------------------------------------------------------------------------
+# TestSampleLoop (ENH-3415)
+# ---------------------------------------------------------------------------
+
+
+class TestEffectiveSamples:
+    """Unit tests for _effective_samples() (D7)."""
+
+    def test_explicit_samples_wins_over_default(self) -> None:
+        from little_loops.cli.harness import _effective_samples
+        from little_loops.runner_spec import RunnerType
+
+        args = _make_namespace(runner="skill", target="x", samples=1)
+        assert _effective_samples(args, RunnerType.SKILL) == 1
+
+    def test_explicit_samples_raises_deterministic_default(self) -> None:
+        from little_loops.cli.harness import _effective_samples
+        from little_loops.runner_spec import RunnerType
+
+        args = _make_namespace(runner="cmd", target="x", samples=5)
+        assert _effective_samples(args, RunnerType.CMD) == 5
+
+    def test_stochastic_default_is_three(self) -> None:
+        from little_loops.cli.harness import _effective_samples
+        from little_loops.runner_spec import RunnerType
+
+        args = _make_namespace(runner="skill", target="x", samples=None)
+        assert _effective_samples(args, RunnerType.SKILL) == 3
+
+    def test_deterministic_default_is_one(self) -> None:
+        from little_loops.cli.harness import _effective_samples
+        from little_loops.runner_spec import RunnerType
+
+        args = _make_namespace(runner="cmd", target="x", samples=None)
+        assert _effective_samples(args, RunnerType.CMD) == 1
+
+    def test_retry_of_without_samples_pins_to_one(self) -> None:
+        from little_loops.cli.harness import _effective_samples
+        from little_loops.runner_spec import RunnerType
+
+        args = _make_namespace(runner="skill", target="x", samples=None, retry_of=42)
+        assert _effective_samples(args, RunnerType.SKILL) == 1
+
+
+class TestBandSamples:
+    """Unit tests for _band_samples() (D3/D4/D5)."""
+
+    def test_all_pass_is_pass(self) -> None:
+        from little_loops.cli.harness import SampleTally, _band_samples
+
+        tally = SampleTally(requested=3, graded=3, passed=3)
+        assert _band_samples(tally) == ("PASS", 0)
+
+    def test_all_fail_is_fail(self) -> None:
+        from little_loops.cli.harness import SampleTally, _band_samples
+
+        tally = SampleTally(requested=3, graded=3, passed=0, failed=3)
+        assert _band_samples(tally) == ("FAIL", 1)
+
+    def test_all_abstained_is_abstain(self) -> None:
+        from little_loops.cli.harness import SampleTally, _band_samples
+
+        tally = SampleTally(requested=3, graded=0, abstained=3)
+        assert _band_samples(tally) == ("ABSTAIN", 3)
+
+    def test_all_errored_is_error(self) -> None:
+        from little_loops.cli.harness import SampleTally, _band_samples
+
+        tally = SampleTally(requested=3, graded=0, errored=3)
+        assert _band_samples(tally) == ("ERROR", 2)
+
+    def test_two_pass_one_abstain_is_inconclusive(self) -> None:
+        from little_loops.cli.harness import SampleTally, _band_samples
+
+        tally = SampleTally(requested=3, graded=2, passed=2, abstained=1)
+        assert _band_samples(tally) == ("INCONCLUSIVE", 3)
+
+    def test_two_pass_one_errored_is_inconclusive(self) -> None:
+        """A shortfall (timeout etc.) alongside passes does not certify PASS."""
+        from little_loops.cli.harness import SampleTally, _band_samples
+
+        tally = SampleTally(requested=3, graded=2, passed=2, errored=1)
+        assert _band_samples(tally) == ("INCONCLUSIVE", 3)
+
+    def test_mixed_pass_fail_is_inconclusive(self) -> None:
+        from little_loops.cli.harness import SampleTally, _band_samples
+
+        tally = SampleTally(requested=3, graded=3, passed=2, failed=1)
+        assert _band_samples(tally) == ("INCONCLUSIVE", 3)
+
+
+class TestSampleTallyRecord:
+    """Unit tests for SampleTally.record() (D3)."""
+
+    def test_tallies_every_exit_code(self) -> None:
+        from little_loops.cli.harness import SampleTally
+
+        tally = SampleTally(requested=4)
+        for rc in (0, 1, 2, 3):
+            tally.record(rc)
+        assert tally.passed == 1
+        assert tally.failed == 1
+        assert tally.errored == 1
+        assert tally.abstained == 1
+        assert tally.graded == 2
+
+
+class TestSampleLoopIntegration:
+    """Integration tests for the n-sample loop wired through cmd_skill/cmd_cmd (ENH-3415)."""
+
+    @pytest.fixture(autouse=True)
+    def _stub_git(self) -> Any:
+        """Keep the sample-invocation subprocess.run side_effect list from being
+        consumed by the unrelated `git` subprocess calls each cmd_* handler makes
+        (head sha lookup, dirty check)."""
+        with (
+            patch("little_loops.cli.harness._git_output", return_value="abc123"),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+        ):
+            yield
+
+    def test_default_samples_for_skill_is_three_and_passes(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], samples=None)
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "PASS" in out
+        assert "Samples: 3/3 graded" in out
+
+    def test_samples_flag_raises_n_on_deterministic_runner(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], samples=5)
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(5)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls) as mock_run,
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        assert mock_run.call_count == 5
+
+    def test_no_early_exit_on_pass(self, capsys: pytest.CaptureFixture) -> None:
+        """pass, pass, fail: all 3 samples run; verdict is INCONCLUSIVE (D9)."""
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], samples=3)
+        calls = [
+            _make_completed(returncode=0, stdout="ok"),
+            _make_completed(returncode=0, stdout="ok"),
+            _make_completed(returncode=1, stdout="bad"),
+        ]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls) as mock_run,
+        ):
+            args_with_exit_code = args
+            args_with_exit_code.exit_code = 0
+            result = cmd_skill(args_with_exit_code)
+
+        assert mock_run.call_count == 3
+        assert result == 3
+        out = capsys.readouterr().out
+        assert "INCONCLUSIVE" in out
+
+    def test_errored_sample_does_not_stop_loop(self, capsys: pytest.CaptureFixture) -> None:
+        """A timeout on sample 2 of 3 does not discard samples 3 (D3/AC8)."""
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], samples=3)
+        calls = [
+            _make_completed(returncode=0, stdout="ok"),
+            subprocess.TimeoutExpired(cmd="claude", timeout=120),
+            _make_completed(returncode=0, stdout="ok"),
+        ]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls) as mock_run,
+        ):
+            result = cmd_skill(args)
+
+        assert mock_run.call_count == 3
+        # 2 passed, 1 errored, none failed -> passed(2) != requested(3) -> INCONCLUSIVE
+        assert result == 3
+        out = capsys.readouterr().out
+        assert "1 errored" in out
+
+    def test_single_json_object_for_n_greater_than_one(self) -> None:
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            samples=3,
+            output="json",
+        )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        import io
+        import sys as _sys
+
+        buf = io.StringIO()
+        old_stdout = _sys.stdout
+        _sys.stdout = buf
+        try:
+            with (
+                patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+                patch("subprocess.run", side_effect=calls),
+            ):
+                result = cmd_skill(args)
+        finally:
+            _sys.stdout = old_stdout
+
+        assert result == 0
+        printed = buf.getvalue().strip()
+        payload = json.loads(printed)  # raises if more than one JSON object was printed
+        assert payload["result"] == "PASS"
+        assert payload["samples"]["requested"] == 3
+        assert payload["sample_pass_rate"] == 1.0
+
+    def test_history_read_once_before_the_loop(self) -> None:
+        """AC5/D8: history is read exactly once, before the first sample.
+
+        `_HISTORY_MIN_SCORED == 3 == DEFAULT_STOCHASTIC_SAMPLES`, so a bug
+        that read history after (rather than before) the sample loop would
+        let a first-ever n=3 invocation's own rows clear the suppression
+        threshold and report a history line derived entirely from itself.
+        """
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            samples=3,
+            output="json",
+        )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls),
+            patch(
+                "little_loops.cli.harness._read_target_history", return_value=None
+            ) as mock_history,
+        ):
+            cmd_skill(args)
+
+        assert mock_history.call_count == 1
+
+    def test_n_samples_persist_as_distinct_repetition_rows(self) -> None:
+        """AC6: each sample is its own attempt_kind='repetition' row."""
+        from little_loops.session_store import recent
+
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], samples=3)
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls),
+        ):
+            cmd_skill(args)
+
+        rows = recent(kind="harness", limit=10)
+        assert len(rows) == 3
+        assert all(r["attempt_kind"] == "repetition" for r in rows)
+        assert len({r["repetition"] for r in rows}) == 3
+
+    def test_subsequent_invocation_history_counts_the_n_samples(self) -> None:
+        """AC6: a later invocation's history_pass_rate_runs counts the earlier n=3 samples."""
+        from little_loops.history_reader import harness_eval_pass_rate
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], samples=3)
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls),
+        ):
+            cmd_skill(args)
+
+        rate = harness_eval_pass_rate("check-code", db=resolve_history_db(DEFAULT_DB_PATH))
+        assert rate == 1.0
+
+    def test_retry_of_with_explicit_samples_gt_1_refused(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC7: --retry-of + explicit --samples > 1 is refused before any invocation."""
+        args = _make_namespace(runner="cmd", target="echo hi", retry_of=1, samples=2)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_cmd(args)
+
+        assert result == 1
+        mock_run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "--retry-of" in err
+        assert "--samples" in err
+
+    def test_retry_of_without_samples_runs_exactly_one_sample(self) -> None:
+        """AC7: --retry-of without --samples on skill (stochastic) pins n to 1, not 3 (D2)."""
+        from little_loops.session_store import DEFAULT_DB_PATH, recent, record_attempt
+
+        fixed_sha = "abc123"
+        cell_key = json.dumps(["skill", "check-code", fixed_sha], separators=(",", ":"))
+        prior_id = record_attempt(
+            DEFAULT_DB_PATH,
+            cell_key=cell_key,
+            attempt_kind="repetition",
+            ts="t0",
+            runner="skill",
+            target="check-code",
+            timed_out=True,
+        )
+        args = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], retry_of=prior_id, samples=None
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout="ok"),
+            ) as mock_run,
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        assert mock_run.call_count == 1
+        rows = recent(kind="harness", limit=10)
+        infra_retries = [r for r in rows if r["attempt_kind"] == "infra_retry"]
+        assert len(infra_retries) == 1
+
+    def test_dsl_refuses_samples_gt_1(self, capsys: pytest.CaptureFixture, tmp_path: Path) -> None:
+        """dsl already resamples across tasks; --samples > 1 is refused (Scope Boundaries)."""
+        task_file = tmp_path / "task.yaml"
+        task_file.write_text(
+            "prompt: hi\nblanks: []\nexpected: {}\nsource_dsl: loop\ntask_type: t\n"
+        )
+        args = _make_namespace(runner="dsl", path=str(task_file), samples=2)
+        result = cmd_dsl(args)
+
+        assert result == 1
+        err = capsys.readouterr().err
+        assert "--samples" in err
 
 
 # ---------------------------------------------------------------------------

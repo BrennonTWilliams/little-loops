@@ -23,8 +23,13 @@ fragments:
   harness_exit:
     description: |
       Shell command that invokes `ll-harness` (or any command following its
-      ABSTAIN exit-code contract: 0=pass, 1=fail, 3=abstained) and routes an
-      abstained run distinctly from a crash (ENH-3224).
+      ABSTAIN exit-code contract: 0=pass, 1=fail, 3=abstained or inconclusive
+      sample rate) and routes an abstained/inconclusive run distinctly from a
+      crash (ENH-3224). Exit 3 is unchanged by ENH-3415's n-sample redundancy:
+      a stochastic `ll-harness` runner (skill/prompt) graded over N>1 samples
+      reuses exit 3 for an INCONCLUSIVE verdict (a rate landing between clear
+      pass and clear fail), so this fragment's on_cannot_judge route already
+      covers it with no change.
       State must supply: action, on_yes, on_no, on_cannot_judge (and
       optionally on_error, timeout).
       REQUIRED: declare on_cannot_judge. Without it, an abstention holds up

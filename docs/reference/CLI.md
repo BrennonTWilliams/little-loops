@@ -211,7 +211,7 @@ ll-advise --signal user_requested --question "..." --host codex --model gpt-5.1 
 
 ### ll-harness
 
-One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Claude prompt, captures its output, and exits `0` (PASS) / `1` (FAIL) / `2` (error/timeout) based on optional criteria.
+Runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Claude prompt, captures its output, and exits `0` (PASS) / `1` (FAIL) / `2` (error/timeout) based on optional criteria. Stochastic (LLM-driven) subjects are graded over N samples by default rather than one-shot (ENH-3415; see `--samples` below).
 
 **Runners:**
 
@@ -233,6 +233,7 @@ One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or
 | `--output FORMAT` | `text` (default) or `json` |
 | `--verbose` | Show full captured output even on PASS |
 | `--retry-of ID` | Mark this run as a retry of attempt `ID` (`harness_events.id`); see "Retrying a run" below (ENH-3407) |
+| `--samples N` | Run the subject N times and grade a pass-rate instead of one pass/fail (ENH-3415). Default: 3 for the stochastic `skill`/`prompt` runners (an LLM host CLI drives the subject), 1 for the deterministic `cmd`/`mcp` runners. An explicit value overrides in either direction and scales wall time / `--timeout` budget by N. Forced to 1 when `--retry-of` is given without an explicit `--samples` (a retry supersedes exactly one attempt); refused with exit 1 on the `dsl` runner (see its row below) and when combined with an explicit `--samples` > 1 alongside `--retry-of`. |
 
 **mcp-specific flag:**
 `--args JSON` — JSON arguments forwarded to the MCP tool (default: `{}`).
@@ -241,7 +242,7 @@ One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or
 `--model MODEL` — Override the Claude model used for the prompt (e.g. `claude-haiku-4-5-20251001`). Omit to use the host session default.
 
 **dsl-specific flag:**
-`--model MODEL` — Override the Claude model for all task invocations. Run `ll-harness dsl` once per model to compare pass rates across models.
+`--model MODEL` — Override the Claude model for all task invocations. Run `ll-harness dsl` once per model to compare pass rates across models. `dsl` already resamples across its own task set, so it refuses an explicit `--samples` > 1 (ENH-3415) rather than resampling each task on top of that.
 
 `dsl` grades each task against its own `expected:` mapping when the task declares one (a
 structured `json`-fenced answer contract is appended to the prompt and compared key-by-key,
@@ -251,12 +252,13 @@ a `--semantic` abstention — see `docs/guides/EVALUATION_GUIDE.md`). A task wit
 **ungraded**: excluded from the pass-rate denominator and reported on its own line, not
 counted as a pass (BUG-3196).
 
-**Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout, `3` = ABSTAIN (no
-failure, but the semantic judge could not evaluate the check).
+**Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout, `3` = ABSTAIN/INCONCLUSIVE
+(no failure, but the semantic judge could not evaluate the check, or an n-sample rate landed
+between clear pass and clear fail — ENH-3415; see "N-sample redundancy" below).
 
-**`--output json` payload fields (`skill`/`cmd`/`mcp`/`prompt` runners):** always present:
-`runner`, `exit_code`, `exit_code_check`, `semantic`, `result`, `stdout`, `stderr`. Additive,
-present only when applicable:
+**`--output json` payload fields (`skill`/`cmd`/`mcp`/`prompt` runners, effective n = 1):**
+always present: `runner`, `exit_code`, `exit_code_check`, `semantic`, `result`, `stdout`,
+`stderr`. Additive, present only when applicable:
 
 | Field | Present when |
 |-------|--------------|
@@ -266,6 +268,24 @@ present only when applicable:
 | `history_abstention_rate`, `history_judged_runs` | `.ll/history.db` has ≥3 prior `--semantic`-judged **authoritative** runs for this target in the last 30 days (ENH-3223, ENH-3408) |
 | `history_admissions` | ≥1 admitted infra retry (ENH-3407) belongs to the counted population — a `{reason: count}` map, e.g. `{"timeout": 2}` (ENH-3408) |
 | `history_since` | Either history field above is present — the ISO 8601 window start |
+
+**N-sample redundancy (ENH-3415):** when the effective sample count (`--samples`, or the
+runner's default) is > 1, the shape above does not apply. There is no top-level `exit_code`/
+`stdout`/`stderr` — a per-sample result has no single honest value to report there. Instead
+the payload carries `result` (`PASS`/`FAIL`/`ABSTAIN`/`ERROR`/`INCONCLUSIVE`),
+`sample_pass_rate` (`passed / graded`, or `null` when nothing graded), and a `samples` object:
+`requested`, `graded` (`passed + failed`; abstained/errored samples are excluded from this
+denominator), `passed`, `failed`, `abstained`, `errored`, `ci_lo`/`ci_hi` (Wilson 95% CI over
+`graded`), and `results` (one entry per sample, in run order, with `index`/`exit_code`/
+`exit_code_check`/`semantic`/`result`/`error`; `stdout`/`stderr` added per entry only under
+`--verbose` or when that sample did not pass). `PASS` requires every requested sample to be
+graded and pass — a pass alongside any abstention or error is `INCONCLUSIVE`, not a softened
+`PASS`, since that outcome could not distinguish a real capability from a lucky sample. The
+sample loop never stops early on a pass: all N samples always run. Each sample is persisted as
+its own `attempt_kind='repetition'` `harness_events` row, so the intra-invocation
+`sample_pass_rate` and the cross-invocation `history_pass_rate` above are the same statistic
+computed over different windows — see `docs/guides/EVALUATION_GUIDE.md` for the "stochastic"
+classification and the operating-characteristic tradeoff of raising/lowering N.
 
 The `history_*` fields are **target-scoped, not criterion-scoped**: they answer "how often is
 this target abstained on / does this target pass", pooled across every `--semantic` string
