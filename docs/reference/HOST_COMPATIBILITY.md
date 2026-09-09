@@ -518,7 +518,8 @@ the adapter.
 | Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] |
 | Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] |
 | Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] |
-| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] | ✓ — `~/.gemini/tmp/<slug>/` resolved via `~/.gemini/projects.json` (slug registry), falling back to `~/.gemini/tmp/<sha256(cwd)>/` for pre-registry dirs; session JSONL under `chats/session-*.jsonl` (ENH-3393)[^geminiwire] | ✓ — `~/.omp/agent/sessions/<encoded cwd>/` (`PI_CONFIG_DIR`/`XDG_DATA_HOME`-aware; home/tmp-relative or legacy-absolute encoding), probing the legacy `--<abs>--` encoding when the current one is absent; session JSONL directly under it as `<ts>_<sessionId>.jsonl` (ENH-3394)[^ompwire] |
+| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | ✗ — `get_project_folder`/`get_sessions_folder` return `None` for Codex; readable via `detect_sessions` instead[^codexsessions] | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] | ✓ — `~/.gemini/tmp/<slug>/` resolved via `~/.gemini/projects.json` (slug registry), falling back to `~/.gemini/tmp/<sha256(cwd)>/` for pre-registry dirs; session JSONL under `chats/session-*.jsonl` (ENH-3393)[^geminiwire] | ✓ — `~/.omp/agent/sessions/<encoded cwd>/` (`PI_CONFIG_DIR`/`XDG_DATA_HOME`-aware; home/tmp-relative or legacy-absolute encoding), probing the legacy `--<abs>--` encoding when the current one is absent; session JSONL directly under it as `<ts>_<sessionId>.jsonl` (ENH-3394)[^ompwire] |
+| Session log readable via `detect_sessions()` (FEAT-3417) | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
     config probe only. Research spike **ENH-1722** evaluated extending
@@ -532,6 +533,18 @@ the adapter.
     followed; `LL_STATE_DIR`'s reach remains bounded to the config probe.
     If a future feature needs full per-host state redirection, file a
     separate issue rather than silently expanding `LL_STATE_DIR`'s reach.
+
+[^codexsessions]: Codex never writes `~/.codex/projects/`; it keys sessions
+    by **date**, not by project (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`,
+    archived ones moved flat into `~/.codex/archived_sessions/`). FEAT-3417
+    added `little_loops.session_store.sessions.detect_sessions(cwd, "codex")`,
+    which queries the newest `~/.codex/state_*.sqlite`'s `threads` table
+    (falling back to a date-dir scan) instead of routing through
+    `get_project_folder`. `parse_codex_rollout` confirms per-turn token usage
+    (`event_msg.payload.type == "token_count"`) is present directly in the
+    rollout file — see [^tok-codex] for the complementary `codex exec --json`
+    stdout source. See `docs/codex/usage.md` § Rollout files for the on-disk
+    layout this was verified against (codex-cli 0.152.1).
 
 [^kimiwire]: Kimi wire files (`session_*/agents/main/wire.jsonl`) use a
     typed-event schema, not Claude's message schema — session-folder

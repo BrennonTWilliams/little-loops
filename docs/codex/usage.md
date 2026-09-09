@@ -84,6 +84,36 @@ either way.
 
 ---
 
+## Rollout files (session logs)
+
+Codex writes one **rollout** JSONL file per session at
+`~/.codex/sessions/YYYY/MM/DD/rollout-<ISO-timestamp>-<uuid>.jsonl`, keyed by
+**date**, not by project — there is no `~/.codex/projects/`. Archived threads
+(`codex archive <session-id>`) move flat into `~/.codex/archived_sessions/`
+(confirmed on codex-cli 0.152.1: no `YYYY/MM/DD/` subdirectory there).
+
+`get_project_folder(host="codex")` therefore always returns `None`. Use
+`little_loops.session_store.sessions.detect_sessions(cwd, "codex")` instead
+(FEAT-3417): it queries the newest `~/.codex/state_*.sqlite`'s `threads`
+table (matching both the caller's `cwd` spelling and its resolved form),
+falling back to a scan of `sessions/` and `archived_sessions/` when the DB is
+absent, unusable, or lacks the expected columns. `iter_events(handle)`
+dispatches to `parse_codex_rollout`, which yields every record's host-native
+`payload` untouched — including record types not yet documented (Codex has
+added `world_state` at the top level and `custom_tool_call`/
+`custom_tool_call_output`/`reasoning`/`item_completed` subtypes since the
+0.98.0/0.130.0 corpus this was first verified against; the parser passes all
+of them through rather than enumerating a fixed vocabulary).
+
+Per-turn token usage is present directly in the rollout file
+(`event_msg.payload.type == "token_count"`) — see
+[HOST_COMPATIBILITY.md `[^tok-codex]`](../reference/HOST_COMPATIBILITY.md)
+for the complementary `codex exec --json` stdout source. Captured real-shape
+fixtures live at `scripts/tests/fixtures/codex/` with a re-capture rule keyed
+to `cli_version`.
+
+---
+
 ## Current Limitations
 
 ### `--agent` (persona selection)
