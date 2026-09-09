@@ -18,10 +18,10 @@ decision_needed: false
 learning_tests_required:
 - sqlite3
 confidence_score: 90
-outcome_confidence: 48
+outcome_confidence: 63
 score_complexity: 10
-score_test_coverage: 18
-score_ambiguity: 10
+score_test_coverage: 25
+score_ambiguity: 18
 score_change_surface: 10
 ---
 
