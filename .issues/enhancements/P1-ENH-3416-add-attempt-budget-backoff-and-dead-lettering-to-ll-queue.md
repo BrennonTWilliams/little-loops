@@ -447,6 +447,7 @@ _Added by `/ll:confidence-check` on 2026-09-08 against the prior revision; score
 **Open** | Created: 2026-09-08 | Priority: P1
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T04:36:14 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - manual review rewrite - 2026-09-09 - design layer rewritten; wiring findings retained
 - `/ll:wire-issue` - 2026-09-09T04:19:11 - `31613f06-17db-4122-af95-f9089ed7405e.jsonl`
 - `/ll:decide-issue` - 2026-09-09T04:08:14 - `3577db8f-8723-4e0e-adb7-90253d958f56.jsonl`

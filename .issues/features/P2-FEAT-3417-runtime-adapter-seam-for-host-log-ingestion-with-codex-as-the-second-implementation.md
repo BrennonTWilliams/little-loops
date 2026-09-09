@@ -20,6 +20,7 @@ score_complexity: 0
 score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 0
+verify_verdict: NON_VALID
 ---
 
 ## Summary
@@ -331,12 +332,48 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 - No committed Codex rollout fixture exists yet, and the issue's "perishable, re-capture periodically" fixture-marker convention has no precedent anywhere in the tree to copy from.
 - Learning-test target mismatch: `learning_tests_required: [codex]` resolves to a "proven" record, but its assertions are about Codex MCP server config (`~/.codex/config.toml` TOML shape) — a different subsystem than the Codex rollout/session-log JSONL format this issue's `parse_codex_rollout` actually depends on. The mechanically-proven status does not cover the real unproven mechanism here.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-08._
+
+Spot-checked ~15 `file:line` citations against current HEAD (`cli/messages.py:173,192`;
+`user_messages.py:373,422,458,638,721,858`; `cli/ctx_stats.py:342,753`; `cli/logs.py`'s
+module docstring and `get_project_folder()` call sites; `session_store/writers.py:2527-2604`
+`host_layout_for`; `hooks/session_start.py:162,178`; `.loops/ll-logs-telemetry-digest.yaml:66`;
+`events.py:32` `LLEvent`; `gemini.py`/`omp.py` docstrings) — all match verbatim, including
+the exact `host_layout_for("codex").projects_root` → `~/.codex/projects` dead-path claim.
+Decisions log: no active required rules. `ll-verify-evidence`: clean (0 findings).
+
+Two gaps found, both minor and fixable without re-research:
+
+1. **Count error, not a citation error** (Integration Map → Wiring Phase, `cli/logs.py`
+   bullet): states "9 direct, un-hosted `get_project_folder(...)` calls across 6
+   functions," but the same sentence's own line list (653, 658, 667, 693, 774, 783,
+   1353, 1358, 1367, 1554, 2032) totals **11**, and all 11 verified as real call sites
+   (grep-confirmed, none passing `host=`). Fix: change "9" to "11".
+2. **AC coverage gap** (check 2B.6): the second wiring pass's "four uncoordinated
+   raw-transcript readers" point (`hooks/session_start.py`'s primary branch,
+   `cli/backfill_worker.py`'s single-file path, `hooks/pre_compact.py`,
+   `hooks/scripts/context-monitor.sh`) is left as an open "Decide whether... need
+   routing... or stay separate" question with no corresponding Acceptance Criterion —
+   unlike every other such fork in this issue (e.g. the `HostLayout`/watcher
+   duplication, the `cli/logs.py` content-function scope-out), which was resolved via
+   an explicit "**Decided**" annotation. This should be resolved the same way (either
+   an AC/Implementation Step, or an explicit "out of scope, follow-up issue" call)
+   before implementation.
+
+Verdict: **NEEDS_UPDATE**. Everything else — Program Design signatures, Proposed
+Solution decision rationale, Codex on-disk-layout claims (self-disclosed as
+maintainer-verified and not independently reproducible from the repo), and the
+remaining Integration Map / Acceptance Criteria — holds.
+
 ## Status
 
 **Open** | Created: 2026-09-08 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T04:36:35 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - `review (manual, Codex layout corrections)` - 2026-09-09T04:28:06 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - `/ll:wire-issue` - 2026-09-09T04:17:56 - `3577db8f-8723-4e0e-adb7-90253d958f56.jsonl`
 - `/ll:decide-issue` - 2026-09-09T04:03:15 - `25e4ccb6-3e7e-49fc-a6ff-da7c10596c03.jsonl`
