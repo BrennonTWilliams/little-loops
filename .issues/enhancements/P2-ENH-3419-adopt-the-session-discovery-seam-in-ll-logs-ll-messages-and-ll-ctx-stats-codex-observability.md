@@ -71,12 +71,24 @@ Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle
 - `scripts/little_loops/hooks/session_start.py:162`
 - `.loops/ll-logs-telemetry-digest.yaml:66` — greps `ll-logs scan-failures` stderr for the literal `"No session project folder found"` to distinguish `FAILURES_NO_DATA` from `FAILURES_ERROR`. Keep that exact string in the no-sessions branch, or update the loop in the same change.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py` (module docstring lines 16, 18) — "Claude Code logs" / "~/.claude/projects/" framing, same sweep as the doc updates below.
+- Note (caller-suitability, `cli/ctx_stats.py`): this issue's Program Design states `_compute_cache_rate_from_jsonl(handles: list[SessionHandle]) -> float | None`, but the function currently returns `dict[str, Any] | None` (keys `cache_read`, `cache_write`, `uncached`, `hit_rate_pct`), consumed by this same file's text renderer (~473-477) and JSON renderer (~598-601, emitting `cache_hit_rate_pct`/`cache_read_tokens`/`cache_write_tokens`/`uncached_tokens`). Preserve the dict shape (update the Program Design signature instead) or update both consumption sites in the same change — do not ship a bare `float | None` without touching lines 473-477 and 598-601.
+
 ### Dependent Files (must not change)
 - `get_project_folder`/`get_sessions_folder`'s `Path | None` contract stays for `session_log.py:159-212`, `fsm/continuity.py:43`, `cli/session.py:664,702,718` (tests lock it: `test_session_log.py:26-95,384-458`, `test_fsm_continuity.py:53,61,82`, `test_ll_session.py:704`).
 - transcript_path-driven raw readers (`hooks/session_start.py:150-161`, `cli/backfill_worker.py:52-53`, `hooks/pre_compact.py:108-120`, `hooks/scripts/context-monitor.sh`) stay separate — decided out of scope in FEAT-3417.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/writers.py`'s `_CLAUDE_MD_DESC_OVERRIDES` (lines 282-288) deliberately keeps `"ll-messages": "Extract user messages from Claude Code logs"` / `"ll-logs": "... from Claude project logs"` for `.claude/CLAUDE.md` output specifically (the generic `_LL_COMMANDS` table at line 223 is already host-generic). This override is regression-test-locked by `test_init_core.py::test_claude_md_keeps_claude_specific_lines` (~1841-1845, asserts `"Claude Code logs" in content`) alongside `test_content_is_host_generic` (~1833-1839, asserts `AGENTS.md` never contains `"Claude"`). This is intentional design (`.claude/CLAUDE.md` is inherently Claude Code's own config) — the docs sweep in this issue must NOT touch this override or its test.
+
 ### Downstream consumers to verify
 - `/ll:loop-suggester --from-sequences` (`commands/loop-suggester.md:740-768`, `skills/ll-loop-suggester/SKILL.md:303-309,408,631,650`) shells out to `ll-logs sequences --json`; confirm Codex-sourced sessions appear once `_collect_sequences` is rewired.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/fleet-loop-improve.yaml:78,80` — shells out to `ll-logs fleet-review --all --existing-only --exclude-project . | tail -n 1` and derives a `.json` sidecar path from the returned `.md` path; depends on `_cmd_fleet_review`'s (already-listed, `cli/logs.py:2843`) current stdout contract surviving the rewire.
+- `scripts/little_loops/loops/examples-miner.yaml:38` and `scripts/little_loops/loops/lib/cli.yaml:86-94` (`ll_messages` fragment) — both shell out to `ll-messages --stdout` with no `--host` (default/union path); should be unaffected since Claude Code output must stay byte-identical, but re-run once the seam lands to confirm.
+- `scripts/little_loops/loops/sft-corpus.yaml:53` — `ll-messages --sft-format --reader db` routes through `history.db`, not the JSONL/`get_project_folder` path being rewired — confirmed NOT affected.
 
 ### Tests
 - `scripts/tests/test_ll_logs.py` — `TestSequences`/`TestArgumentParsingSequences` (797-1339), `TestExtract` (1547-2127), `TestScanFailures` (2924-4155), `TestEvalExport*` (4437-4841). Every `_make_project_dir` helper hard-codes the Claude layout and patches `Path.home`; add `LL_HOOK_HOST=codex` / `--host codex` variants using FEAT-3417's committed fixtures under `scripts/tests/fixtures/codex/`.
@@ -84,10 +96,23 @@ Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle
 - `scripts/tests/test_user_messages.py` — add Codex content tests (user_message extraction, response_item dedup) and an `include_agent_sessions=True` regression through the new path.
 - Existing Claude Code tests in all three files must pass unmodified except where they patch `get_project_folder` directly.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli.py` — `TestMainMessagesIntegration` (~651) and `TestMainMessagesAdditionalCoverage` (~1815), 18 call sites patching `little_loops.user_messages.get_project_folder`/`extract_user_messages`/`extract_commands` with a `MagicMock` — not in the original known-test list; will not break outright but need extended assertions to cover host-threading.
+- `scripts/tests/test_cli_messages.py` — entirely dedicated to `main_messages()` flag interactions, also patches `little_loops.user_messages.get_project_folder`; same update needed as `test_cli.py` above.
+- `scripts/tests/test_bug_3216_telemetry_digest_invocations.py` — regex-extracts every `ll-logs` invocation out of `.loops/ll-logs-telemetry-digest.yaml` and feeds the argv into `cli/logs.py`'s real argparse parser; run after adding `--host` to confirm the parser surface still accepts the loop's existing invocations.
+- Test gap: no existing test asserts that `hooks/session_start.py:162`'s `get_project_folder(cwd)` call receives a `host=` kwarg (all patches use a `*a, **kw`-swallowing lambda). Add a capturing-stub variant of `TestSessionStartHookPassesHost` (`test_enh_3166_qwen_normalizer.py:577-638`) that asserts on the `get_project_folder` call's kwargs, not just the backfill-worker argv.
+- Test gap: no `--host` flag-parsing test exists yet for `ll-logs`/`ll-messages`/`ll-ctx-stats`. Model new tests on `test_ll_session.py::TestBackfillArgs::test_backfill_host_choices_list` (41-61), which locks the choices list + rejects an invalid host via `pytest.raises(SystemExit)`.
+
 ### Documentation
 - `docs/reference/CLI.md` — `### ll-logs` ("from Claude Code session logs") and `### ll-messages` (line ~3552, same framing); document the new `--host` flag on all three.
 - `docs/guides/HISTORY_SESSION_GUIDE.md` (~503), `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` (10, 81, 429-454), `docs/guides/EXAMPLES_MINING_GUIDE.md` (146, 421) — remove or qualify Claude-Code-only framing.
 - `docs/reference/HOST_COMPATIBILITY.md` — record the `ll-ctx-stats` Codex cache-rate outcome.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:3424-3629,5461-5462` — full signature/docstring/usage-example documentation for `extract_user_messages`, `get_project_folder`, `get_sessions_folder`, showing the pre-change `project_folder: Path` parameter; update alongside the code signature change.
+- `scripts/little_loops/cli/__init__.py` module docstring (lines 16, 18) — hardcodes `"ll-messages: Extract user messages from Claude Code logs"` and `"ll-logs: ... from ~/.claude/projects/"`; update this source-level docstring too, not just `docs/reference/CLI.md`.
+- `scripts/little_loops/loops/lib/cli.yaml:86-94`'s `ll_messages` fragment description text ("Extract user messages from **Claude Code session logs**") carries the same Claude-Code-only framing as `docs/reference/CLI.md` and should be updated in the same sweep.
+- Convention note: `docs/reference/CLI.md`'s shared "Common Flags" table does not list `--host` despite three existing consumers (`ll-session`, `ll-advise`, `ll-adapt`) — document the new `--host` flag per-tool-section (matching current practice), not by adding it to the shared table.
 
 ## Program Design
 
@@ -117,6 +142,17 @@ Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle
 6. `hooks/session_start.py:162` host injection.
 7. Docs sweep (CLI.md, three guides, HOST_COMPATIBILITY.md); verify `/ll:loop-suggester --from-sequences` against a workspace with a Codex session.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Resolve the `_compute_cache_rate_from_jsonl` return-type mismatch between this issue's Program Design (`float | None`) and the function's actual `dict[str, Any] | None` shape consumed by `cli/ctx_stats.py`'s text renderer (~473-477) and JSON renderer (~598-601) — preserve the dict or update both render sites in the same change.
+- Update `scripts/little_loops/cli/__init__.py` module docstring (lines 16, 18) and `scripts/little_loops/loops/lib/cli.yaml`'s `ll_messages` fragment description (86-94) alongside the `docs/reference/CLI.md`/guides sweep — same "Claude Code logs" framing lives here too.
+- Do NOT touch `scripts/little_loops/init/writers.py`'s `_CLAUDE_MD_DESC_OVERRIDES` (282-288) or its regression test `test_init_core.py::test_claude_md_keeps_claude_specific_lines` — that Claude-specific wording is intentional and test-locked, unrelated to this issue's Claude-Code-only-framing removal.
+- Add `--host` argparse tests for `ll-logs`/`ll-messages`/`ll-ctx-stats` modeled on `test_ll_session.py::TestBackfillArgs::test_backfill_host_choices_list` (41-61); add a capturing-stub test asserting `hooks/session_start.py:162` threads `host=` into `get_project_folder`, extending `test_enh_3166_qwen_normalizer.py`'s `TestSessionStartHookPassesHost` pattern (577-638).
+- Update `scripts/tests/test_cli.py` (`TestMainMessagesIntegration`/`TestMainMessagesAdditionalCoverage`) and `scripts/tests/test_cli_messages.py`'s mocked `get_project_folder`/`extract_user_messages`/`extract_commands` call sites for the new parameter shape; re-run `test_bug_3216_telemetry_digest_invocations.py` after adding `--host` to confirm the loop-YAML-derived argv still parses.
+- Verify `scripts/little_loops/loops/fleet-loop-improve.yaml`, `examples-miner.yaml`, and `loops/lib/cli.yaml` still work post-rewire (no code change expected — default/union path).
+
 ## Impact
 
 - **Priority**: P2 — this is the half that makes FEAT-3417 user-visible.
@@ -143,5 +179,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T14:51:24 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
 - `/ll:refine-issue` - 2026-09-09T14:01:26 - `fc9ca416-ac94-40a4-8082-2af225a0464c.jsonl`
 - `/ll:format-issue` - 2026-09-09T13:22:13 - `94cf9e94-a0b2-480c-8238-e366777de95e.jsonl`

@@ -94,6 +94,10 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 ### Files to Modify
 - `scripts/little_loops/session_store/writers.py` — `HostLayout` dataclass and `host_layout_for` (~2527-2604); `_iter_events` (~3247)
 - `scripts/little_loops/session_store/lifecycle.py` — `_backfill_raw_events` (747)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/logs.py`'s `_has_ll_activity` (97) is a **third** production reader of `HostLayout.normalize` beyond `writers.py::_iter_events` and `lifecycle.py::_backfill_raw_events` — it calls `effective.normalize(record)` directly to recognize qwen `functionCall` records. If `HostLayout` shrinks to path-only metadata, this call site must move too.
+- `scripts/little_loops/session_store/writers.py`'s `_backfill_subagent_runs` (~2667-2698) is a fourth production function reading `HostLayout` fields directly (`.glob`, `.parent_from`, `.sidecar_suffix`) — not one of the two "already known" `.normalize`/`.normalize_file` sites, but still couples to the dataclass shape.
 - `scripts/little_loops/session_store/sessions.py` — does not exist in production yet; the seam is currently only the spike at `scripts/tests/spike/session_discovery_lifecycle/lifecycle.py` (FEAT-3417 status: open). Once FEAT-3417 lands this file, add qwen/gemini/omp branches to `detect_sessions` (extending both the spike's `_PARSERS` dict and its `if`/`elif` host-selection chain — the two dispatch idioms coexist there); register `parse_qwen_*`/`parse_gemini_*`/`parse_omp_*` in the parser table
 - `scripts/little_loops/session_store/qwen.py`, `gemini.py`, `omp.py` — normalizers become per-host parsers. gemini (`gemini.py:40`) and omp (`omp.py:54`) are already whole-file generators matching the target `parse_*(handle) -> Iterator[SessionEvent]` shape; qwen's `normalize_qwen_record` (`qwen.py:59`) is per-record with no `yield` and needs wrapping in a per-line loop to become a `parse_qwen_session`-style generator
 - `scripts/little_loops/cli/session.py` (`backfill` subcommand, 664-718) and `scripts/little_loops/cli/backfill_worker.py:57-59` — consume the seam
@@ -104,12 +108,28 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - `session_store/__init__.py` re-exports the normalizers by name (lines ~67/91/100, `__all__` 176-283); keep the names as aliases for one release if they are renamed
 - `hooks/session_start.py:162-178` spawns the backfill worker with `--host`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/user_messages.py:446,448` — imports `host_layout_for` and reads `.sessions_subdir` directly inside `get_sessions_folder`; a new direct caller beyond the ones already listed.
+- `scripts/tests/test_enh_2505_subagent_runs.py` — imports and calls `host_layout_for` repeatedly (with `"qwen"`, `"claude-code"`, `"gemini"`, `"omp"`) feeding `_backfill_subagent_runs`; add to the "must pass unmodified" test set alongside the three per-host normalizer tests.
+- `scripts/little_loops/cli/session.py:672,705` (inside the `backfill` subcommand body, distinct lines from the 664-718 range's argparse def) reads `.sessions_subdir` directly.
+- `scripts/little_loops/cli/backfill_worker.py:60` reads `.session_glob` directly; has no `--host` choices validation (free-form string, ad hoc parsed) unlike `cli/session.py`'s `backfill_parser` (choices list at 211-216).
+
 ### Tests
 - `scripts/tests/test_ll_session.py` (patches `get_project_folder` at 704), `test_enh_3166_qwen_normalizer.py`, `test_enh_3393_gemini_normalizer.py`, `test_enh_omp_normalizer.py` — must pass unmodified
 - FEAT-3417 spike's `test_lifecycle.py` (guards `scripts/tests/spike/session_discovery_lifecycle/lifecycle.py`, using `tmp_path`-based `_make_state_db`/`_write_rollout` helpers rather than committed JSONL fixtures, plus a `TestIsolationGuard` with no counterpart in the per-host normalizer test files) — add qwen/gemini/omp branch tests mirroring the codex ones
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `cli/backfill_worker.py` already has direct test coverage — `test_enh_3166_qwen_normalizer.py::TestBackfillWorkerHost` (528-575) calls `worker_main([...])` directly, exercising the `host_layout_for`/`.session_glob` seam; update this class if `host_layout_for` or `HostLayout.session_glob` is renamed/moved (existing-to-update, not new-to-write).
+- Test gap: `cli/logs.py`'s `_extract_ll_event_streams` (261) has **zero** test coverage with any `HostLayout` (default or non-default) anywhere in the tree — only reached indirectly via `test_ll_logs.py`'s CLI-level tests at default layout. `_has_ll_activity` and `_extract_cwd_from_project` do have non-default (`qwen`) coverage in `test_enh_3166_qwen_normalizer.py` (lines 284-296). Add a direct unit test for `_extract_ll_event_streams` with a non-default layout before this issue's changes land, since it is one of the four functions this issue's own Integration Map says must retarget.
+- Alias pattern to follow if normalizers are renamed: `scripts/little_loops/git_operations.py:354-355` — `_file_matches_pattern = file_matches_pattern` with a one-line comment, exercised directly by `test_gitignore_suggestions.py` (imports and calls the alias, not just the canonical name). Closest in-repo template for "new_name canonical, old_name = new_name."
+
 ### Documentation
 - `docs/ARCHITECTURE.md`, `docs/reference/API.md`, `docs/reference/HOST_COMPATIBILITY.md` (add a "session log readable by" column if unified)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:3573,9502-9505` — documents `host_layout_for(host).projects_root` and the production (underscore-prefixed) `_iter_events` plus its callers `_backfill_sessions`/`_backfill_tool_events`; update alongside whichever path is chosen.
+- `docs/reference/HOST_COMPATIBILITY.md:582,599,616` — already discusses `HostLayout.normalize_file` and `host_layout_for("omp").projects_root` in host-compatibility terms; extend rather than duplicate.
+- `docs/reference/CLI.md`'s `backfill` flags table hand-enumerates the host list literally (`claude-code, codex, opencode, pi, kimi-code, qwen, gemini, or omp`) — this needs updating if the supported-host set changes, independent of unify-vs-document.
 
 ### Codebase Research Findings
 
@@ -126,6 +146,16 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 2. If unify: add qwen/gemini/omp `detect_sessions` branches (wrap existing folder probes + `sessions_subdir`); lift normalizers to `parse_*` generators; make `_backfill_raw_events` consume `iter_events` and normalize at the write boundary; shrink `HostLayout` to path metadata; drop the `backfill --host codex` notice.
 3. If document: write the two-seam boundary into `docs/ARCHITECTURE.md` with the "new host implements X first" rule.
 4. Verify: existing backfill/normalizer tests unmodified; `ll-session backfill --host codex` against FEAT-3417 fixtures (unify path only).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- If unify: also retarget `cli/logs.py::_has_ll_activity` (a third `.normalize` reader) and `writers.py::_backfill_subagent_runs` (a fourth `HostLayout`-field reader), not just `_iter_events`/`_backfill_raw_events`.
+- Add a direct unit test for `cli/logs.py::_extract_ll_event_streams` with a non-default `HostLayout` — no such test exists today at any layout.
+- Add `test_enh_2505_subagent_runs.py` to the "must pass unmodified" test list.
+- If normalizers are renamed, follow `git_operations.py:354-355`'s alias pattern (`_file_matches_pattern = file_matches_pattern` + comment), not a `DeprecationWarning`.
+- Update `docs/reference/CLI.md`'s literal `--host` choices enumeration under the `backfill` flags table regardless of unify-vs-document outcome.
 
 ## Impact
 
@@ -150,6 +180,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T14:51:25 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T14:15:24 - `aea90797-734c-47d9-89ed-e343ebbf4673.jsonl`
 - `/ll:refine-issue` - 2026-09-09T14:08:38 - `1658f0c5-d510-42b4-beb1-234626dbd6e5.jsonl`
 - `/ll:format-issue` - 2026-09-09T13:22:54 - `94cf9e94-a0b2-480c-8238-e366777de95e.jsonl`

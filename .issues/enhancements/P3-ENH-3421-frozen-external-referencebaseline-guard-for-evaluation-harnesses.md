@@ -69,6 +69,10 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 - Confirmed candidate: `harness-optimize.yaml` is the one loop in the codebase confirmed to exhibit the drift risk this issue describes — it populates `convergence_gate`'s `evaluate.previous` with a rolling `prev_score` that advances every accepted iteration. Other `convergence_gate` consumers (`agent-eval-improve.yaml`, `rl-policy.yaml`) do **not** populate `evaluate.previous` at all — they compare only against a fixed target, not a rolling prior score — so they do not currently exhibit this drift shape and are not confirmed in-scope. `rl-coding-agent.yaml` and `test-coverage-improvement.yaml` also use the `convergence_gate` fragment; whether they populate `evaluate.previous` with a rolling value was not confirmed either way and needs a direct check before scoping them in or out.
 
+_Resolved by `/ll:wire-issue` — 2026-09-09:_
+- `scripts/little_loops/loops/rl-coding-agent.yaml` **IS** in scope: its `score` state (`convergence_gate` fragment, lines 109-112) sets `previous: "${captured.prev_reward.output}"`, fed by a `persist_reward` state inside the same iterate cycle (`capture: prev_reward`, line 137, re-capturing the just-observed reward every pass) — the identical rolling-reseed shape as `harness-optimize.yaml`'s `capture_prev`/`prev_score`.
+- `scripts/little_loops/loops/test-coverage-improvement.yaml` is **NOT** in scope: its `extract_percentage` state (`convergence_gate` fragment, lines 69-71) sets only `target`/`tolerance`, no `previous` key at all — same fixed-target shape as `agent-eval-improve.yaml`/`rl-policy.yaml`.
+
 ## Proposed Solution
 
 **Option A**: Add a frozen-reference input to the `convergence` evaluator itself — a new
@@ -144,17 +148,85 @@ addition.
 - Option B: `scripts/little_loops/loops/harness-optimize.yaml`'s `gate` state — add a second
   `check_comparator` evaluator entry with `auto_promote: false`.
 
+_Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — `definitions.evaluateConfig.properties`
+  (property block starts ~718) hand-lists every `EvaluateConfig` field and sets
+  `"additionalProperties": false`. This is a **hard, test-enforced** companion edit distinct from
+  the dynamic MR-14 lint — `test_fsm_schema.py:262-278`
+  (`test_schema_json_evaluate_config_properties_match_dataclass_fields`) diffs this file's
+  property keys against `dataclasses.fields(EvaluateConfig)` and **fails outright** if the new
+  field is added to the dataclass without a matching property block here. Not named in this
+  issue's Program Design and not covered by the MR-14 auto-registration the Decision Rationale
+  cites — that auto-registration is real (`evaluate_config_known_fields()` derives from the
+  dataclass, no manual list) but is a separate mechanism from this JSON-Schema mirror.
+- `scripts/little_loops/fsm/validation/meta_rules.py` — MR-2's `_has_baseline_reference` (~581-597)
+  builds its `candidates` list by hand: `[ev.previous, ev.source]` plus `ev.target` if it's a
+  string. This is a **hardcoded, non-dynamic** field list (unlike MR-14's
+  `evaluate_config_known_fields()`) — if `harness-optimize.yaml`'s gate state references the
+  frozen baseline only via the new field (not via `evaluate.previous`), MR-2's
+  `_has_baseline_reference` needs the new field name added to `candidates` manually or it will
+  stop recognizing the loop as meeting the baseline-reference requirement.
+- Precedent to mirror exactly (per the Decision Rationale's own citation): `abstain_on_exit_3`
+  (ENH-3224) touches `fsm/schema.py`'s docstring `Attributes:` entry, the field declaration
+  (line 123), the `to_dict()` skip-if-default emit (173-174), and `from_dict()` parse (235); no
+  `fsm/executor.py` change is needed since the dispatcher receives `state.evaluate` as a whole
+  config object (`executor.py:3150-3156`) and never unpacks individual fields itself. For a
+  string-valued reference field (vs. `abstain_on_exit_3`'s bool), the closer sibling is `previous`'s
+  `if self.previous is not None: result["previous"] = self.previous` / `previous=data.get("previous")`
+  shape (schema.py:177-178, 237), and the `interpolate(config.previous, context)` +
+  `try/except (InterpolationError, ValueError)` resolution block in `evaluate()`'s `convergence`
+  branch (`fsm/evaluators.py:1908-1916`) is the exact shape a new frozen-reference field's
+  resolution should mirror.
+
 ### Tests
 - `scripts/tests/test_fsm_evaluators.py` — `TestComparatorEvaluator` (line 2357) and the
   `evaluate_convergence` call sites (lines 453-500) cover whichever evaluator the chosen option
   extends.
 - `scripts/tests/test_harness_optimize.py` — rubric/behavior tests for the loop itself.
 
+_Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
+- `scripts/tests/test_fsm_schema.py:262-278` (`test_schema_json_evaluate_config_properties_match_dataclass_fields`)
+  will fail until `fsm-loop-schema.json` gets the matching property (see Files to Modify above) —
+  the test itself needs no edit, only the schema file does. `test_fsm_schema.py:257-260`
+  (`test_known_fields_helper_matches_dataclass_fields`) passes automatically once the field is
+  declared — no edit needed there.
+- `scripts/tests/test_fsm_evaluators.py::TestExitCodeEvaluator` (80-95) and the dispatcher-level
+  `test_dispatch_exit_code_abstain_on_exit_3`/`test_dispatch_exit_code_without_abstain_flag`
+  (~1601-1615) are the exact test shapes to mirror for a new field: one pair of raw-function tests
+  in the matching `TestConvergenceEvaluator` class (448) proving default-unset behavior is
+  unchanged and the field-set behavior differs, plus one dispatcher-level pair proving
+  `interpolate()` resolution works (model: `test_dispatch_convergence_with_previous`, 657-663).
+- `scripts/tests/test_fsm_fragments.py::TestConvergenceGateFragment` (1526-1610) is the template
+  class to extend if the new field is threaded through the `convergence_gate` fragment description
+  in `lib/common.yaml`.
+- Test gap: no existing `FSMExecutor`-level test proves a captured value stays frozen across
+  multiple loop iterations while a sibling captured value (like `prev_score`) keeps advancing —
+  `test_fsm_executor.py:3207-3243` (`test_convergence_evaluator_tracks_progress`) only exercises
+  the rolling `${prev.output}` shape. `test_harness_optimize.py:97-108`
+  (`test_baseline_score_uses_run_benchmark_fragment`) is the closest existing precedent for the
+  "seeded once, never reassigned" state shape, but it is a static/structural YAML-dict assertion,
+  not a dynamic multi-iteration execution test — a new dynamic test is needed to prove the frozen
+  field's value doesn't drift across iterations the way `capture_prev` does.
+
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — already hosts the MR-1..MR-14 design-rule table
   and baseline semantics (MR-2); natural home for the new rule.
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — documents the existing `--baseline` vs.
   `check_comparator` distinction this guard sits beside.
+
+_Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
+- `docs/reference/API.md:6009-6064` — the `#### EvaluateConfig` section reproduces every field as
+  a code block; already stale relative to `schema.py` (omits `abstain_on_exit_3` from the code
+  block itself) — add the new field here too, and note the existing drift for a future pass.
+- `docs/generalized-fsm-loop.md:712-731` — the `convergence` evaluator-type section's worked YAML
+  example and "Result details" line (`{ current, previous, target, delta }`) needs a new example
+  line and a `details` update if the new field adds a details key.
+- `docs/guides/LOOPS_REFERENCE.md:3489` — the `convergence_gate` fragment's field-contract table
+  row ("optionally evaluate.previous, route.error") needs the new optional field added to its
+  "optionally" list.
+- `docs/reference/CLI.md:978` — the MR-2 rule prose ("a captured baseline value in
+  `evaluate.previous`, `evaluate.target`, or `evaluate.source`") needs updating if the new field
+  becomes an additional accepted baseline-reference site (see MR-2 `_has_baseline_reference` above).
 
 ### Related Issues (context, not this issue's scope)
 - `ENH-1122` (deferred) — a *different* "frozen" concept (byte-region edit-mutation guard for
@@ -176,6 +248,7 @@ addition.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-09T14:51:25 - `8e56ec89-cd99-46e0-b932-f07e5ea9315c.jsonl`
 - `/ll:decide-issue` - 2026-09-09T14:19:44 - `79d7b43c-377f-45d3-9e5c-2fc5ef853497.jsonl`
 - `/ll:refine-issue` - 2026-09-09T14:08:38 - `1658f0c5-d510-42b4-beb1-234626dbd6e5.jsonl`
 - `/ll:format-issue` - 2026-09-09T13:23:21 - `94cf9e94-a0b2-480c-8238-e366777de95e.jsonl`
