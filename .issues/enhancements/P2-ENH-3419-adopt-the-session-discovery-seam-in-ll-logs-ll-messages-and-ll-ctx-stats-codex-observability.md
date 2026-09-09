@@ -18,12 +18,12 @@ relates_to:
 - ENH-3420
 missing_artifacts: true
 verify_verdict: PROPOSAL_UNSOUND
-confidence_score: 100
-outcome_confidence: 74
-score_complexity: 14
-score_test_coverage: 23
-score_ambiguity: 21
-score_change_surface: 16
+confidence_score: 90
+outcome_confidence: 45
+score_complexity: 9
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 0
 ---
 
 # ENH-3419: Adopt the session-discovery seam in ll-logs, ll-messages, and ll-ctx-stats (Codex observability)
@@ -316,11 +316,24 @@ date — this section is a record of what was wrong and fixed, not an outstandin
   `PROPOSAL_UNSOUND` (not `VALID`) to reflect this uncorrected residual, per 2.5's mapping applied
   to the post-fix state.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-09_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 45/100 → LOW
+
+### Outcome Risk Factors
+- Very wide blast radius: 11+ call sites in `cli/logs.py` alone plus `user_messages.py`, `cli/ctx_stats.py`, `hooks/session_start.py`, and `session_store/sessions.py` — broad enumeration across many sites, several of which need bespoke (not uniform) treatment, so a missed or mismatched site is easy to overlook despite the detailed per-site plan.
+- Non-mechanical subcomponents carry the real correctness risk: the Codex cache-rate cumulative-vs-per-turn `token_count` semantics, the `cwd` both-spellings probe in `_detect_claude_sessions`/`_project_folder_for_layout_host`, and the Codex user-turn extraction/filtering logic are each judgment-heavy, not text substitutions.
+- Multiple existing test suites (`test_cli.py`, `test_cli_messages.py`, `test_ll_logs.py`) patch `get_project_folder` directly; those patches go dead once the rewire lands and must be re-pointed at `detect_sessions` — an incomplete re-patch would leave tests passing for the wrong reason rather than failing loudly.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T21:01:56 - `f3e8c388-f237-4461-9091-b0b23efd2cd3.jsonl`
 - `/ll:verify-issues` - 2026-09-09T20:57:44 - `308c22fb-018f-45ce-acc8-645eeab79f84.jsonl`
 - `review (manual: ctx-stats non-codex branch keeps raw reader — qwen/gemini normalizers strip message.usage; list_workspaces→detect_sessions round-trip fails TestDiscover on macOS → both-spellings probe in seam; _extract_ll_event_streams handles-based + line 649 removed; hit_rate_pct == 69 not ≈ 68.9; history_db kwarg dropped (resolve_history_db already reroutes); omp --all gap documented; ll-messages no-sessions string aligned)` - 2026-09-09T22:15:00
 - `/ll:confidence-check` - 2026-09-09T20:42:30 - `cfabad4e-29d0-4bbf-8a3f-5a2f2c2e4144.jsonl`

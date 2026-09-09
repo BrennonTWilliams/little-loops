@@ -19,8 +19,8 @@ Standalone `ll-loop run` and `ll-loop resume` never apply loop-level `parameters
 
 The builtin loops duplicate the default as a literal under `context:`:
 
-- `scripts/little_loops/loops/rn-remediate.yaml:65` — `max_remediation_passes: 3` under `context:` while the `parameters:` entry at line 48 carries only a description saying "(default: 3)" and no `default:` field.
-- `scripts/little_loops/loops/rn-decompose.yaml:51` — `parent_depth: 0` under `context:` mirroring the `parameters:` entry at line 42 ("(default: 0)").
+- `scripts/little_loops/loops/rn-remediate.yaml:66` — `max_remediation_passes: 3` under `context:` while the `parameters:` entry at line 48 carries only a description saying "(default: 3)" and no `default:` field.
+- `scripts/little_loops/loops/rn-decompose.yaml:51` — `parent_depth: 0` under `context:` mirroring the `parameters:` entry at line 41 ("(default: 0)").
 - The comment at `rn-remediate.yaml:86` explicitly calls `max_remediation_passes` "a per-loop default that callers can tune", i.e. the literal exists to serve what `parameters.default` should already provide.
 
 ## Origin
@@ -68,8 +68,8 @@ All three loop-launch paths — sub-loop `with:` binding, standalone `ll-loop ru
 - `scripts/little_loops/fsm/context_seed.py` — add `seed_parameter_defaults()`
 - `scripts/little_loops/cli/loop/run.py` — call before the `apply_context_overrides` call at line 190
 - `scripts/little_loops/cli/loop/lifecycle.py` — call before line 665
-- `scripts/little_loops/loops/rn-remediate.yaml` — move `max_remediation_passes` default from `context:` (line 65) to `parameters:` (line 48)
-- `scripts/little_loops/loops/rn-decompose.yaml` — move `parent_depth` default from `context:` (line 51) to `parameters:` (line 42)
+- `scripts/little_loops/loops/rn-remediate.yaml` — move `max_remediation_passes` default from `context:` (line 66) to `parameters:` (line 48)
+- `scripts/little_loops/loops/rn-decompose.yaml` — move `parent_depth` default from `context:` (line 51) to `parameters:` (line 41)
 - `scripts/little_loops/loops/lib/common.yaml:54` — audit `max_retries` and any other `parameters:` entry whose description says "default:"
   > ⚠ Superseded — this is a fragment `with:` param, no context: duplicate
 - `scripts/little_loops/loops/oracles/code-run-gate.yaml` — same `context:`/`parameters:` duplication: `min_pass_rate` (lines 68/104) and `health_bound_seconds` (lines 72/105) [Agent 1 finding]
@@ -188,7 +188,51 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 # run.py and lifecycle.py have no equivalent call.
 ```
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (line-anchor corrections below applied
+in the same pass, so the issue as it now reads is up to date for those two items
+— this section is a record of what was wrong and fixed, not an outstanding
+action item for them; the AC-coverage gap below is a separate, unresolved
+finding).
+
+- Fixed two off-by-one anchor citations in `## Current Workaround In The
+  Catalog`: `rn-remediate.yaml:65` → `:66` (the `max_remediation_passes: 3`
+  context literal), `rn-decompose.yaml`'s `parameters:` entry line `42` → `41`
+  (the `parent_depth:` key). All other file/line anchors in this issue
+  (`run.py:190`, `run.py:278`, `lifecycle.py:665`, `executor.py:1090-1096`,
+  `context_seed.py`, `structural_rules.py:229,288-325`, `_base.py:158`,
+  `info.py:1444` `cmd_show`, `testing.py:176` `cmd_simulate`, all cited test
+  class/function names and line numbers, and the two docs section headers)
+  verified exact against current HEAD.
+- `ll-verify-evidence --json` on this file: clean (`"ok": true`, 0 findings) —
+  no fabricated evidence quotes.
+- No active required decision-log rules (`ll-issues decisions list` returned
+  no entries) — decisions check ran, no conflict.
+- `ll-code --json status`: `provider=codegraph freshness=fresh` — used to
+  cross-check `ParameterSpec` fields and the `_coerce_override` int/float/bool
+  branches referenced by the Program Design.
+
+**Remaining (proposal-vs-code consequence check, ENH-3250):** Acceptance
+Criterion 7 ("rn-remediate and rn-decompose carry their defaults under
+`parameters:` only; `ll-loop validate` passes on both") covers only 2 of the
+6 loop files the Integration Map and Implementation Steps' Wiring Phase
+require modifying — `code-run-gate.yaml`, `generator-evaluator.yaml`,
+`generator-evaluator-flux.yaml`, and `enumerate-and-prove.yaml` have no
+corresponding AC verifying their `context:`/`parameters:` duplication was
+removed or that `ll-loop validate` passes on them post-migration. Separately,
+the Wiring Phase explicitly defers a scope decision ("Decide and record
+whether `ll-loop simulate` ... should also call `seed_parameter_defaults` ...
+or is explicitly out of scope") that the issue never makes — it is neither an
+AC nor listed under `## Explicit Non-Goals`, so an implementer has no forcing
+function either way. Both are AC/Integration-Map coverage gaps, not claims
+about current-state fact, so they don't change today's verdict — but they
+should be resolved (extend AC 7 to the 4 oracle loops; add the `ll-loop
+simulate` decision to Explicit Non-Goals or as a new AC) before this issue is
+marked implementation-ready.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-09T21:00:41 - `9d974726-ede8-4e9b-8bf3-5dc1cbd42201.jsonl`
 - `/ll:wire-issue` - 2026-09-09T20:54:46 - `5d5214fd-1a0f-4890-8f02-11b97e9c697b.jsonl`
 - `/ll:refine-issue` - 2026-09-09T20:41:28 - `505beecf-ceb4-4da8-912d-d233f746daca.jsonl`
 - `/ll:format-issue` - 2026-09-09T20:37:49 - `575c8055-4eaf-4c28-a902-79bb09bf07a6.jsonl`
