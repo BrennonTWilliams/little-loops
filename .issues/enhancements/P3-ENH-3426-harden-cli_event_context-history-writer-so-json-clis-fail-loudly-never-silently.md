@@ -49,6 +49,13 @@ could escape `_pkg.connect()` (`writers.py:521`) or the UPDATE, and `connect()`
 sets no explicit `busy_timeout`, so a long-held lock can block the wrapped
 command rather than fail fast into the existing warning path.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- `resolve_history_db(db_path)` (`writers.py:506`) is **not** inside any try/except — it runs unconditionally before the `if gate_open:` block (`writers.py:519`) and the `try:` that guards the INSERT (`writers.py:520`). This corrects the "What Is Verified" claim that "writers.py:520-521 runs inside the try" for both `resolve_history_db` and `connect` together: only `_pkg.connect()` (line 521) is inside the try; `resolve_history_db()` (line 506) is fully unguarded, as is the `config`-gating block (`writers.py:512-518`, `AnalyticsCaptureConfig.from_dict`/`feature_enabled_for`). Any exception from `resolve_history_db` → `_resolve_db_path` (`session_store/db.py:72`) propagates before the wrapped CLI body ever runs — the whole `ll-*` command crashes, not just the analytics row.
+- The claim "`connect()` sets no explicit `busy_timeout`" is inaccurate. `connect()` (`schema.py:1560-1569`) calls `ensure_db(path)` then `_configure_connection(conn)` (`schema.py:1392-1408`), which unconditionally executes `PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}` (`_BUSY_TIMEOUT_MS = 5000`, `schema.py:124`) on every connection opened through `connect()` — including `cli_event_context`'s. That pragma call has its own narrow `except sqlite3.OperationalError` (`schema.py:1407`), separate from `cli_event_context`'s guard. A busy_timeout already exists (5s, applied via SQLite `PRAGMA`, not the `sqlite3.connect(timeout=...)` Python kwarg).
+
 ## Expected Behavior
 
 Every `ll-*` JSON-emitting CLI wrapped by `cli_event_context` exits
@@ -122,6 +129,14 @@ above a configurable `history.db` threshold — never auto-compacting.
 ### Call Path
 
 `cli_event_context` (`writers.py:483`) -> `_pkg.connect` (`writers.py:521`, widened `except (sqlite3.Error, OSError)`) -> `conn.execute(...UPDATE cli_events...)` (`writers.py:547`, same widened guard)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Actual current signature (`writers.py:483-488`): `cli_event_context(db_path: Path | str = DEFAULT_DB_PATH, binary: str = "", args: list[str] | None = None, config: dict | None = None) -> Generator[None, None, None]`. This corrects the "Signatures" entry above: param order is `db_path, binary, args, config` (not `binary`-first), `db_path` defaults to `DEFAULT_DB_PATH` (not `None`), and the return annotation is `Generator[None, None, None]` (not `ContextManager[None]`). Confirmed against all 41 real call sites, which pass positionally as `cli_event_context(DEFAULT_DB_PATH, "ll-<name>", sys.argv[1:])` (e.g. `cli/issues/__init__.py:21`, `cli/queue.py:923`, `cli/session.py:424`).
+- `_pkg.connect` (`writers.py:521`) resolves to `little_loops.session_store.connect`, re-exported verbatim from `schema.connect` (`schema.py:1560-1569`) — not a wrapper with its own defaults. `schema.connect()` calls `ensure_db(path)` (mkdir + migrations, can raise `OSError`) before `sqlite3.connect(str(db_path))` (`schema.py:1566`, no `timeout=` kwarg — the 5s stdlib default applies at the Python connect level), then `_configure_connection()` applies the 5000ms `PRAGMA busy_timeout` described above.
+- No call site in the repo passes an explicit `timeout=` kwarg to `sqlite3.connect()` (checked all 25 `sqlite3.connect(` sites across `session_store/`, `cli/`, `queue_store.py`, `codequery/`, `history_reader/`). The codebase's sole busy-wait precedent is the shared `PRAGMA busy_timeout` in `_configure_connection` (`schema.py:1392-1408`), independently mirrored (not shared code) in `queue_store.py`'s own `_configure_connection` (`queue_store.py:202-214`).
 
 ## Implementation Steps
 

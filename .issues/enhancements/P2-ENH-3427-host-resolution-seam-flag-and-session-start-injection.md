@@ -136,8 +136,20 @@ ENH-3428/3429/3430). `hooks/session_start.py:162` -> `get_project_folder(cwd, ho
 - `scripts/tests/test_session_discovery.py` — both-spellings probe case.
 - `scripts/tests/test_ll_session.py` — `choices=` retrofit still locked by
   `TestBackfillArgs::test_backfill_host_choices_list`.
+  > ⚠ Superseded — class is `TestArgumentParsing`, not `TestBackfillArgs`
 - New precedence tests for each of the 3 CLIs' `--host` flag (flag > env > union).
 - Capturing-stub variant of `test_enh_3166_qwen_normalizer.py`'s `TestSessionStartHookPassesHost`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- Confirmed importers of `session_store/sessions.py` (needs the `REGISTERED_HOSTS` re-export too): `session_store/__init__.py:130` (existing `sessions` import block).
+- Confirmed importers of `user_messages.py` (home of the new `_resolve_host` and existing `get_project_folder`): `session_store/sessions.py:44`, `session_log.py:15`, `fsm/continuity.py:22`, `cli/logs.py:35`, `cli/ctx_stats.py:34`, `cli/session.py:71`, and tests `test_ll_logs.py:60`, `test_session_log.py:19`, `test_fsm_continuity.py:16`, `test_cli_ctx_stats.py:32`, `test_cli_messages.py:26`, `test_user_messages.py:20`.
+- Convention: shared per-subcommand argparse-flag helpers (`add_json_arg`, `add_window_args`, `add_corpus_target_args`) live in `scripts/little_loops/cli_args.py`, not inside the CLI module they're applied to, and each subparser calls the helper individually at its own registration site (`cli/logs.py:2932,2953,2959,...`) rather than looping over a collected parser list. The issue's suggested home for `_add_host_arg` (inside `cli/logs.py` itself) departs from this convention — a placement choice for the implementer, not resolved here.
+- Convention: existing `choices=` lists sourced from a shared constant wrap it as `list(CONST)` (`cli/session.py:120,132` against `session_store/schema.py:27`'s `VALID_KINDS`) or `sorted(CONST)` (`cli/issues/create.py:516`). The current `ll-session backfill --host` choices list (`cli/session.py:213`) is the one site in the codebase that still hand-writes the literal instead of wrapping a constant — confirms the issue's premise for the retrofit.
+- No flag>env precedence helper exists anywhere in the codebase today; three call sites independently inline the same `flag or os.environ.get("LL_HOOK_HOST", "claude-code")` expression: `cli/session.py:636`, `hooks/session_start.py:178`, and inside `get_project_folder` itself (`user_messages.py:394-395`) — no prior art `_resolve_host` would need to reconcile with.
+- `cli/logs.py` has no `"digest"` subcommand/parser by that name today — the Scope Boundaries exclusion list ("not tail/diff/digest") names a subcommand that does not exist in this file; harmless (nothing to exclude), but there is no `digest_parser` to find.
 
 ## Acceptance Criteria
 
@@ -177,5 +189,6 @@ resolve against).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T22:42:52 - `b161ecdd-c676-4054-8cf9-0319c0089035.jsonl`
 - `/ll:format-issue` - 2026-09-09T22:02:48 - `ede486c5-d33a-435b-bb10-2223277286b2.jsonl`
 - `/ll:issue-size-review` - 2026-09-09T21:57:07 - `0ecdfd2a-1186-4e76-ae8e-586f75aad086.jsonl`

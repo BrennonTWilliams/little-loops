@@ -102,6 +102,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/next_action.py` — gates `NEEDS_REFINE` on `session_command_counts.get("/ll:refine-issue", 0) < max_refine_count`; this enforcement reads through the same undercounted path on any of the 54 already-affected files [Agent 2 finding]
 - `skills/format-issue/SKILL.md:356-364` — embeds a `python3 -c` snippet calling `append_session_log_entry()` directly (a programmatic caller, not a manual-fallback instruction); benefits automatically from the merge fix, no doc change needed [Agent 1 finding]
 
+_Refine pass added by `/ll:refine-issue` — 2026-09-09:_
+- `scripts/little_loops/advisor.py:369` — imports `get_current_session_id` from `session_log.py`; not previously listed among dependent files [Agent 1 finding]
+- `hooks/scripts/issue-completion-log.sh:66` — non-Python caller invoking `append_session_log_entry` via inline Python; benefits automatically from the merge fix, but was not previously enumerated among callers [Agent 1 finding]
+
 ### Similar Patterns
 - `grep -rn "## Session Log\|## Resolution" scripts/little_loops/issue_lifecycle.py scripts/little_loops/parallel/orchestrator.py` finds the other footer-template sites (Resolution blocks). **Review 2026-09-09:** checked — they append below the existing Session Log but then call `append_session_log_entry`, which reuses the heading; no change needed (Proposed Solution (e) dropped).
 
@@ -169,6 +173,10 @@ _Pre-implementation review — 2026-09-09 — corpus scan of the 49 duplicate fi
 - **Ordering:** 7 of 98 blocks are oldest-first. Reverse-document-order concatenation leaves 46 of 49 files non-monotonic (parsed datetimes); example `P3-ENH-1090`, whose first block holds 04-13 entries and whose last block holds only a 04-12 `/ll:manage-issue` entry.
 - **`search.py::_parse_updated_date`** reads `timestamps[-1]` of `session_log_body`; on a newest-first block that is the oldest entry. Its test fixture (`test_issues_search.py:562-600`) uses one entry per file, so the bug is currently invisible to the suite.
 - **`has_blocking_gaps()`** (`issue_parser.py:586-596`) is `any(field) for field not in _ADVISORY_GAP_CLASSES` (`issue_parser.py:512`, currently `{"testable", "unapplied_decision_detail"}`), so a new gap field is blocking by default; advisory status requires adding the field name to that frozenset.
+
+_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
+
+- **Locator research-triage re-check (2026-09-09)**: the `docs/reference/CLI.md` change that made `ll-issues research-triage` report the `locator` axis as not-covered (commit `f7c485d60`, BUG-3425) only touched an unrelated MR-13 parameter-default-type-mismatch section (~line 1000); the `duplicate_heading`/`duplicate_findings_block`/`--fix` prose (~lines 2429-2517) and the `--date-field` row (~line 1569) this issue cites are unchanged, same content and line numbers. Reflog-timestamp triangulation of every commit after the last refine pass (2026-09-09T20:38:10 UTC) shows none touch `session_log.py`, `issue_parser.py`, `format_check.py`, `search.py`, or the 8 prompt/skill sites in this issue's Integration Map — all are either BUG-3425 FSM-param-seeding work or issue-markdown refine/verify passes on other issues.
 
 ## Program Design
 
@@ -343,6 +351,7 @@ HEAD, separate from the prior refine/wire/confidence-check passes:
   the corpus fix.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-09T22:43:06 - `ab41948f-86de-4b0f-a6d4-63b2ea97f9ce.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:28:20 - `90827670-8489-4875-926d-5a23e0d11cfa.jsonl`
 - `/ll:confidence-check` - 2026-09-09T21:15:43 - `a39fccc2-5241-4a37-b0f8-a7d240ff4b84.jsonl`
 - `/ll:verify-issues` - 2026-09-09T21:04:19 - `f3e8c388-f237-4461-9091-b0b23efd2cd3.jsonl`
