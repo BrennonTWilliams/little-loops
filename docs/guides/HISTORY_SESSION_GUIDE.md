@@ -460,9 +460,10 @@ tables.
 
 `ll-history quality --workspace` (FEAT-3410) runs the same per-window analysis once per member
 of a declared `ll-workspace.yaml` manifest, read-only, producing a per-repo breakdown plus a
-skipped-with-reason list for any member whose `history.db` is missing or schema-skewed — see
-`docs/reference/CLI.md`'s "Cross-repo workspace aggregation" subsection for the full behavior.
-Workspace-wide totals (one number merged across all members) are not yet supported.
+skipped-with-reason list for any member whose `history.db` is missing or schema-skewed, plus a
+workspace-wide *totals* number (FEAT-3418) computed over the union of every gated member's
+tables — see `docs/reference/CLI.md`'s "Cross-repo workspace aggregation" subsection for the
+full behavior, including the cross-repo id-collision handling and the attach-limit fallback.
 
 ## Quality Metric Definitions
 

@@ -3318,12 +3318,17 @@ analyzed across a schema mismatch:
   `schema_version` is behind or ahead of the installed version, its `meta`
   table/row is absent, or the file is unreadable/corrupt — each with its own
   reason string in the `skipped` output.
-- Workspace-wide *totals* (one merged `QualityAnalysis` across all members)
-  are out of scope for this flag — each member's own `per_repo` entry is a
-  full, independent report; there is no combined-across-repos number yet
-  (tracked separately).
+- Workspace-wide *totals* (FEAT-3418): one additional `QualityAnalysis`
+  computed over the union of every gated member's tables — via multi-`ATTACH`
+  plus a `#r{i}` id-discriminator that keeps cross-repo `issue_num`/`issue_id`
+  collisions from conflating (every little-loops repo numbers issues from 1)
+  — is rendered as a "Workspace totals" section (or the skip reason) and
+  exposed as `totals`/`totals_skipped` in JSON/YAML output. `totals` is
+  `None` (with `totals_skipped` explaining why) when zero members are
+  analyzable, or when the analyzable-member count exceeds this SQLite
+  build's `SQLITE_LIMIT_ATTACHED`; `per_repo` is unaffected either way.
 - `--min-sample`/`--sensitivity`/`--baseline-windows`/`--all-windows` all
-  forward unchanged to every member's analysis.
+  forward unchanged to every member's analysis, including the totals pass.
 
 #### `ll-history audit-issue-collisions`
 

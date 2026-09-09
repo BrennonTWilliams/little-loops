@@ -2384,7 +2384,7 @@ Parse a single completed issue file.
 | `detect_quality_regressions(analysis, compositions, *, sensitivity=0.30, baseline_windows=3, latest_only=True)` | Flags the latest (or every, with `latest_only=False`) eligible window of each metric/retry-inflation series against a prior-K-window baseline; deterministic, LLM-free (FEAT-3405) |
 | `attribute_change(window, baseline, *, min_shift=0.25, min_coverage=0.5)` | Names the `(model\|host\|ll_version, value)` whose pooled-baseline share increased most for a flagged window, or `None` for "no attributable change" (FEAT-3405) |
 | `load_window_compositions(conn, issue_window, issue_ids, session_issues)` | Loads per-window model/host/`ll_version` weighted compositions `attribute_change()` consumes (FEAT-3405) |
-| `aggregate_history_dbs(members, *, min_sample, sensitivity, baseline_windows, latest_only)` | Runs `analyze_agent_quality()` once per `WorkspaceMember` (FEAT-3409), each via its own read-only `mode=ro` connection; returns an `AggregationResult(per_repo, skipped)`. A missing, schema-skewed, or unreadable member is skipped and reported, never analyzed (FEAT-3410) |
+| `aggregate_history_dbs(members, *, min_sample, sensitivity, baseline_windows, latest_only)` | Runs `analyze_agent_quality()` once per `WorkspaceMember` (FEAT-3409), each via its own read-only `mode=ro` connection; returns an `AggregationResult(per_repo, skipped, totals, totals_skipped)`. A missing, schema-skewed, or unreadable member is skipped and reported, never analyzed (FEAT-3410). `totals` is one additional `QualityAnalysis` over every gated member's `history.db` tables, joined via multi-`ATTACH` + per-relation **TEMP** union views with a `#r{i}` id-discriminator that keeps cross-repo `issue_num`/`issue_id` collisions from conflating; `None` (with `totals_skipped` set) when no member is analyzable or the analyzable count exceeds `SQLITE_LIMIT_ATTACHED` (FEAT-3418) |
 
 #### Formatting
 
@@ -2397,7 +2397,7 @@ Parse a single completed issue file.
 | `format_analysis_markdown(analysis)` | Format full analysis as Markdown |
 | `format_analysis_yaml(analysis)` | Format full analysis as YAML |
 | `format_rework_{text,json,markdown,yaml}(analysis)` | Format `ReworkAnalysis` in each of the four formats |
-| `format_agent_quality_{text,json,markdown,yaml}(analysis)` | Format `QualityAnalysis` in each of the four formats; also accepts an `AggregationResult` (FEAT-3410), rendering one section per workspace member plus a "Skipped" section |
+| `format_agent_quality_{text,json,markdown,yaml}(analysis)` | Format `QualityAnalysis` in each of the four formats; also accepts an `AggregationResult` (FEAT-3410), rendering one section per workspace member, a "Workspace totals" section (or its skip reason, FEAT-3418), and a "Skipped" section |
 
 #### Documentation Synthesis
 

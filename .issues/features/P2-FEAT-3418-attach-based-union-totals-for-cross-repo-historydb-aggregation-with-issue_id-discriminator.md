@@ -4,10 +4,11 @@ type: FEAT
 title: ATTACH-based union totals for cross-repo history.db aggregation with issue_id
   discriminator
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T02:36:19Z'
+completed_at: '2026-09-09T06:49:45Z'
 labels:
 - path-a
 - history-db
@@ -509,9 +510,32 @@ first — new scope, not a small addition to FEAT-3410.
   foundation; this issue's union path reuses the same skew gate before
   attaching a member.
 
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history/workspace_quality.py`: added `AggregationResult.totals`/`totals_skipped`; new `_open_union()`, `_open_memory()`, `_union_view_sql()`, `_attach_limit()`, `_discriminate_issues()`, `_discriminator()`, `_UNION_RELATIONS`, `_ISSUE_NUM_STRIDE`; `aggregate_history_dbs()` now runs a totals pass over the gated members' union connection after the per-member loop.
+- `scripts/little_loops/issue_history/agent_quality.py`: workspace text/markdown formatters render a "Workspace totals" section (or the skip reason).
+- `scripts/little_loops/issue_history/__init__.py`: package docstring mentions the totals section.
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`: replaced "totals are deferred" notes with the FEAT-3418 mechanism/behavior.
+- `scripts/tests/test_feat3418_workspace_quality.py`: extended the two pre-existing TDD-red tests with 9 more covering the attach-limit guard, the 9-TEMP-view/summed-count invariant, cross-repo `supersedes:` scoping, the follow-up-fix discriminator-suffix survival, denominator-not-averaged, one-member/zero-member edge counts, `find_issues()` call-count reuse, and source-untouched sha256.
+- `scripts/tests/test_feat3410_workspace_quality.py`: added formatter cases for `totals` set and `totals_skipped` set.
+- `scripts/tests/test_cli_history.py`: `TestHistoryQualityWorkspaceFlag._member_db()` now builds a real migrated schema via `ensure_db()` instead of a hand-rolled `meta`-only table — a schema-version-matching member is guaranteed (by this issue's own design) to have every union-view relation, which the old bare fixture didn't.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 23641 passed, 43 skipped, 5 pre-existing failures unrelated to this change, confirmed present on `main` before this work via `git stash`)
+- Lint: PASS
+- Types: PASS
+- Run: PASS (manual smoke test of `aggregate_history_dbs()` + `format_agent_quality_text/json` against a real two-member, colliding-`BUG-1` workspace)
+
 ## Status
 
-**Open** | Created: 2026-09-09 | Priority: P2
+**Done** | Created: 2026-09-09 | Completed: 2026-09-09 | Priority: P2
 
 
 ## Confidence Check Notes
@@ -568,6 +592,7 @@ _Added by `/ll:verify-issues` — 2026-09-09:_
 - **Graph**: provider=`codegraph` freshness=`fresh`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T06:49:09 - `e2ceecf2-51a3-4c26-9a50-a9b8113b2e80.jsonl`
 - `/ll:confidence-check` - 2026-09-09T05:00:50 - `cc274703-f2ea-4ddf-a916-516d38f11017.jsonl`
 - manual pre-implementation review - 2026-09-08 - switched the `issue_id` discriminator from `r{i}:` prefix to `#r{i}` suffix (`rework.py:207` `startswith("BUG-")` would silently zero follow-up fixes in totals); made view-column substitution per column present (`commit_events`/`orchestration_runs` lack `issue_num`); verified ad hoc that attached-schema views resolve unqualified names in their own schema despite a same-named TEMP view (queued as registry claim 7); added `issue_sessions` to the AC #5 count test, a follow-up-fix AC, a `find_issues()`-reuse AC, and the shared-session-id limitation; scrubbed remaining "views in `main`" wording
 - `/ll:confidence-check` - 2026-09-09T04:48:07 - `3759f748-350f-446f-874e-34c9fb809eb9.jsonl`

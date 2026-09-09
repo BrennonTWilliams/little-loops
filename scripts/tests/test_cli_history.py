@@ -321,18 +321,31 @@ class TestHistoryQualityWorkspaceFlag:
 
     @staticmethod
     def _member_db(repo_dir: Path, *, schema_version: str) -> None:
+        """A member db with the *full* current schema (all tables), then a schema_version override.
+
+        FEAT-3418's totals pass reads every one of the 9 union-view relations
+        via ``PRAGMA table_info()``, which assumes a schema-version-matching
+        member actually has those tables (true for any real, migrated
+        ``history.db``) -- so this builds a real schema via `ensure_db()`
+        rather than a hand-rolled ``meta``-only table, then overwrites
+        ``schema_version`` when a caller needs a skewed value.
+        """
         import sqlite3
+
+        from little_loops.session_store.schema import SCHEMA_VERSION, ensure_db
 
         (repo_dir / ".issues").mkdir(parents=True, exist_ok=True)
         ll_dir = repo_dir / ".ll"
         ll_dir.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(ll_dir / "history.db")
-        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
-        conn.execute(
-            "INSERT INTO meta (key, value) VALUES ('schema_version', ?)", (schema_version,)
-        )
-        conn.commit()
-        conn.close()
+        db_path = ll_dir / "history.db"
+        ensure_db(db_path)
+        if schema_version != str(SCHEMA_VERSION):
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "UPDATE meta SET value = ? WHERE key = 'schema_version'", (schema_version,)
+            )
+            conn.commit()
+            conn.close()
 
     def test_workspace_flag_two_member_manifest_shows_both_labels(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

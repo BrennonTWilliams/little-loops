@@ -638,9 +638,10 @@ def format_agent_quality_text(analysis: QualityAnalysis | AggregationResult) -> 
 
     *analysis* may be a single-repo `QualityAnalysis` or a workspace-wide
     `AggregationResult` (FEAT-3410) — the latter renders one section per
-    workspace member plus a "Skipped" section. Duck-typed on `per_repo`
-    (rather than `isinstance`) to avoid a runtime import cycle with
-    `workspace_quality`, which imports this module.
+    workspace member, a "Workspace totals" section (FEAT-3418), and a
+    "Skipped" section. Duck-typed on `per_repo` (rather than `isinstance`)
+    to avoid a runtime import cycle with `workspace_quality`, which imports
+    this module.
     """
     if hasattr(analysis, "per_repo"):
         return _format_agent_quality_text_workspace(cast("AggregationResult", analysis))
@@ -660,6 +661,14 @@ def _format_agent_quality_text_workspace(result: AggregationResult) -> str:
         lines.append("-" * len(label))
         lines.extend(_quality_text_body(analysis))
         lines.append("")
+
+    lines.append("Workspace totals")
+    lines.append("-" * 16)
+    if result.totals is not None:
+        lines.extend(_quality_text_body(result.totals))
+    else:
+        lines.append(f"  skipped: {result.totals_skipped}")
+    lines.append("")
 
     lines.append("Skipped")
     lines.append("-" * 7)
@@ -754,6 +763,14 @@ def _format_agent_quality_markdown_workspace(result: AggregationResult) -> str:
         lines.append(f"## {label}")
         lines.append("")
         lines.extend(_quality_markdown_body(analysis))
+
+    lines.append("## Workspace totals")
+    lines.append("")
+    if result.totals is not None:
+        lines.extend(_quality_markdown_body(result.totals))
+    else:
+        lines.append(f"Skipped: {result.totals_skipped}")
+    lines.append("")
 
     lines.append("## Skipped")
     lines.append("")

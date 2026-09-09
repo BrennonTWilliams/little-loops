@@ -272,3 +272,39 @@ class TestAggregationResultFormatters:
         )
         assert "none" in format_agent_quality_text(result).lower()
         assert "None." in format_agent_quality_markdown(result)
+
+    def test_totals_set_renders_workspace_totals_section(self) -> None:
+        from little_loops.issue_history.agent_quality import QualityAnalysis
+
+        result = AggregationResult(
+            per_repo={"repo_a (primary)": QualityAnalysis(min_sample_size=1)},
+            skipped=[],
+            totals=QualityAnalysis(min_sample_size=1),
+        )
+        assert "Workspace totals" in format_agent_quality_text(result)
+        assert "## Workspace totals" in format_agent_quality_markdown(result)
+        assert format_agent_quality_json(result)  # totals/totals_skipped keys present
+
+        import json
+
+        out = json.loads(format_agent_quality_json(result))
+        assert out["totals"] is not None
+        assert out["totals_skipped"] is None
+
+    def test_totals_skipped_renders_reason(self) -> None:
+        from little_loops.issue_history.agent_quality import QualityAnalysis
+
+        result = AggregationResult(
+            per_repo={"repo_a (primary)": QualityAnalysis(min_sample_size=1)},
+            skipped=[],
+            totals=None,
+            totals_skipped="no analyzable members",
+        )
+        assert "no analyzable members" in format_agent_quality_text(result)
+        assert "no analyzable members" in format_agent_quality_markdown(result)
+
+        import json
+
+        out = json.loads(format_agent_quality_json(result))
+        assert out["totals"] is None
+        assert out["totals_skipped"] == "no analyzable members"

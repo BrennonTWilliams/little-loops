@@ -69,7 +69,8 @@ Public exports:
     format_rework_markdown: Format rework analysis as markdown
     format_rework_yaml: Format rework analysis as YAML
     format_agent_quality_text: Format agent-quality analysis as text (also
-        renders an AggregationResult, one section per workspace member)
+        renders an AggregationResult, one section per workspace member, plus
+        a workspace-totals section)
     format_agent_quality_json: Format agent-quality analysis as JSON (ditto)
     format_agent_quality_markdown: Format agent-quality analysis as markdown (ditto)
     format_agent_quality_yaml: Format agent-quality analysis as YAML (ditto)
