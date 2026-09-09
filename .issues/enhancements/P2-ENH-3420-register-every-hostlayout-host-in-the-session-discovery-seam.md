@@ -1,7 +1,8 @@
 ---
 id: ENH-3420
 type: ENH
-title: Register every HostLayout host in the session-discovery seam (unify, phase 1)
+title: Register every HostLayout host in the session-discovery seam (unify, phase
+  1)
 priority: P2
 status: open
 discovered_by: ll-issues-create
@@ -19,6 +20,12 @@ blocks:
 relates_to:
 - FEAT-3417
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 23
 ---
 
 # ENH-3420: Register every HostLayout host in the session-discovery seam (unify, phase 1)
@@ -176,6 +183,7 @@ ENH-3419's acceptance criterion is that `ll-logs`, `ll-messages`, and `ll-ctx-st
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T19:25:52 - `97e52889-4a57-4cad-8e44-59fca7caca21.jsonl`
 - `/ll:verify-issues` - 2026-09-09T19:22:12 - `ebf18a6f-ed36-4252-9599-87c271309793.jsonl`
 - `review (manual, pre-implementation: kimi is host-native not Claude-shaped — passthrough parser + HostLayout glob; home threaded into user_messages probes instead of reimplemented (omp encoder reads Path.home); gemini/omp session_id from header; gemini isinstance guard; parse_qwen_session skips no skip_at_ingest; ENH-3422 non-idempotent-normalize hand-off; line anchors refreshed)` - 2026-09-09T20:30:00
 - `review (manual: FEAT-3417 landed — dropped stale "spike only" findings; decided unify; split ingest half to ENH-3422; flipped dependency so this blocks ENH-3419; P3→P2; per-host payload rule)` - 2026-09-09T19:10:00

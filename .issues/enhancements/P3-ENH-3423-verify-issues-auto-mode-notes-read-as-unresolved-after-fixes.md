@@ -46,10 +46,12 @@ the note describes.
 
 When `/ll:verify-issues --auto` (`commands/verify-issues.md` section 4) detects a defect and
 applies the fix in the same pass, the persisted `## Verification Notes` section opens with the
-bare verdict-table label (e.g. `Verdict: NEEDS_UPDATE`), copied verbatim from the `--check`-mode
-labeling rule in section 2.5. Because the fix has already landed by the time the note is
-written, the label describes a state that no longer exists — a later reader sees "NEEDS_UPDATE"
-next to corrected content and reasonably reads it as an unresolved action item.
+bare verdict-table label (e.g. `Verdict: NEEDS_UPDATE`), reusing the raw verdict enum values from
+`#### C. Determine Verdict` as prose — an emergent convention section 4 never actually instructs,
+not something copied from section 2.5 (which only governs the `verify_verdict:` frontmatter
+field). Because the fix has already landed by the time the note is written, the label describes a
+state that no longer exists — a later reader sees "NEEDS_UPDATE" next to corrected content and
+reasonably reads it as an unresolved action item.
 
 ## Expected Behavior
 
@@ -199,8 +201,36 @@ label, whenever the fix touched the same section the note describes.
 ```
 
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-09:_
+
+Verdict at time of check: **VALID**. All claims about the current state of
+`commands/verify-issues.md` were checked against HEAD and confirmed accurate: section 2.5 spans
+lines 287-336 exactly as cited, section 4 is the unlettered two-bullet-group block at lines
+351-361 with no wording rule for `## Verification Notes` prose, `4.5` occupies the next sibling
+heading so a new subsection must number `4.1`, and the ENH-3421 precedent quote at
+`.issues/enhancements/P3-ENH-3421-*.md:459-461` matches verbatim.
+
+`ll-verify-evidence` initially flagged the **Current Behavior** section (line 49): it had
+attributed `Verdict: NEEDS_UPDATE` as "copied verbatim from the `--check`-mode labeling rule in
+section 2.5" — but section 2.5 only mandates a `verify_verdict:` **frontmatter** value
+(`NON_VALID`/`VALID`/etc.), never a `Verdict: X` **prose** string, so that exact framing was
+inaccurate. Corrected in place: the sentence now attributes the bare-label convention to reuse of
+the `#### C. Determine Verdict` enum table as prose, matching this issue's own Codebase Research
+Findings (line 126), which already identified the convention as "emergent, not instructed." The
+tool still flags the `Verdict: NEEDS_UPDATE` span after the fix — this is the known low-precision
+detector behavior BUG-3282 documented (0.13-0.20 precision, advisory-only): it can't distinguish
+an "e.g." illustrative example of runtime output from a literal file-content quote, and the
+sentence no longer claims the span is copied from file source text. Manual review confirms this
+is not fabricated evidence.
+
 ## Session Log
 - `/ll:wire-issue` - 2026-09-09T19:21:35 - `ebf18a6f-ed36-4252-9599-87c271309793.jsonl`
 - `/ll:refine-issue` - 2026-09-09T19:14:29 - `42196ace-6931-433b-9da5-c194d57bddf7.jsonl`
 - `/ll:format-issue` - 2026-09-09T19:10:19 - `6825e935-9173-4255-b699-a7e303deae32.jsonl`
 - `/ll:capture-issue` - 2026-09-09T19:06:59 - `095aaa45-5f8e-445a-8993-2ec43b515f28.jsonl`
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-09T19:25:31 - `4abbc21b-fe6c-468c-baf1-354ba4916426.jsonl`
