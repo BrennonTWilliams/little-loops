@@ -46,6 +46,11 @@ The three CLIs obtain sessions through `detect_sessions(cwd, host=None)` (union 
 
 `ll-adapt --host codex` ships today, so little-loops writes artifacts for Codex and then cannot read a single Codex session back. Goal 6's dataset export (`ll-logs eval-export`) and goal 7's quality rollups (`ll-logs scan-failures`, `fleet-review`) silently cover one host while claiming to generalize. FEAT-3417 builds the seam; without this issue nothing consumes it.
 
+## Scope Boundaries
+
+- **In scope**: rewiring `ll-logs`, `ll-messages`, `ll-ctx-stats` (and `user_messages.py`'s `extract_user_messages`/`extract_commands`) onto `detect_sessions`/`iter_events`/`list_workspaces`; adding a `--host` flag to all three CLIs; the Codex `user_message`/`response_item` dedup logic in `extract_user_messages`; the `ll-ctx-stats` Codex cache-rate reader (or its "unavailable" fallback); the `hooks/session_start.py:162` host injection; the docs sweep listed under Integration Map.
+- **Out of scope**: adding Codex-native equivalents of the Claude-schema-coupled content functions in `cli/logs.py` (`_is_ll_relevant`, `_detect_ll_signal`, `_extract_tool_name`, `_extract_eval_invocation`, `_cmd_matches`, `_record_has_error`) — Codex events flow through the lifecycle but produce no ll-signal matches until a follow-up issue adds them (decided in FEAT-3417). qwen/gemini/omp support — `detect_sessions` gains Codex only here; wiring the other hosts into the seam (or unifying it with `HostLayout`) is ENH-3420. The `transcript_path`-driven raw readers (`hooks/session_start.py:150-161`, `cli/backfill_worker.py:52-53`, `hooks/pre_compact.py:108-120`, `hooks/scripts/context-monitor.sh`) stay untouched, per FEAT-3417's decided boundary.
+
 ## Proposed Solution
 
 Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle is shared; content interpretation stays per-host):
@@ -84,6 +89,24 @@ Per-consumer, following FEAT-3417's "seam is refused on content" rule (lifecycle
 - `docs/guides/HISTORY_SESSION_GUIDE.md` (~503), `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` (10, 81, 429-454), `docs/guides/EXAMPLES_MINING_GUIDE.md` (146, 421) — remove or qualify Claude-Code-only framing.
 - `docs/reference/HOST_COMPATIBILITY.md` — record the `ll-ctx-stats` Codex cache-rate outcome.
 
+## Program Design
+
+### Types
+
+- `SessionHandle` (`session_store/sessions.py`, FEAT-3417) — discovered-session identity, carries `host` and the agent discriminator
+- `SessionEvent` (`session_store/sessions.py`, FEAT-3417) — one record, `payload` kept host-native (no cross-host normalization)
+
+### Signatures
+
+- `detect_sessions(cwd: Path, host: str | None = None) -> list[SessionHandle]` (FEAT-3417, existing)
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` (FEAT-3417, existing)
+- `extract_user_messages(handles: list[SessionHandle], limit: int | None = None, since: datetime | None = None, include_agent_sessions: bool = True, include_response_context: bool = False) -> list[UserMessage]` — replaces the current `project_folder: Path` parameter (`user_messages.py:638`)
+- `_compute_cache_rate_from_jsonl(handles: list[SessionHandle]) -> float | None` — replaces the current `cwd: Path` parameter (`cli/ctx_stats.py:342`)
+
+### Call Path
+
+`main_messages` (`cli/messages.py:13`) -> `detect_sessions(cwd, host=args.host)` -> `extract_user_messages(handles, ...)` -> `iter_events(handle)` -> `_parse_user_record(event.payload)` (Claude) / Codex `event_msg.payload` mapping (new)
+
 ## Implementation Steps
 
 1. Confirm FEAT-3417 has landed: `from little_loops.session_store import detect_sessions, iter_events, list_workspaces` imports, fixtures exist under `scripts/tests/fixtures/codex/`, and the fixture README records whether the interactive rollout carries per-turn usage (drives step 4).
@@ -117,3 +140,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-09T14:01:26 - `fc9ca416-ac94-40a4-8082-2af225a0464c.jsonl`
+- `/ll:format-issue` - 2026-09-09T13:22:13 - `94cf9e94-a0b2-480c-8238-e366777de95e.jsonl`
