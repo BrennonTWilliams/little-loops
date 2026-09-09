@@ -449,9 +449,9 @@ def get_sessions_folder(cwd: Path | None = None, *, host: str | None = None) -> 
     return project_folder / subdir if subdir else project_folder
 
 
-def _get_claude_project_folder(encoded_path: str) -> Path | None:
+def _get_claude_project_folder(encoded_path: str, *, home: Path | None = None) -> Path | None:
     """Probe the Claude Code session directory."""
-    project_folder = Path.home() / ".claude" / "projects" / encoded_path
+    project_folder = (home or Path.home()) / ".claude" / "projects" / encoded_path
     return project_folder if project_folder.exists() else None
 
 
@@ -462,19 +462,19 @@ def _get_codex_project_folder(encoded_path: str) -> Path | None:
     return None
 
 
-def _get_opencode_project_folder(encoded_path: str) -> Path | None:
+def _get_opencode_project_folder(encoded_path: str, *, home: Path | None = None) -> Path | None:
     """Probe the OpenCode session directory."""
-    project_folder = Path.home() / ".opencode" / "projects" / encoded_path
+    project_folder = (home or Path.home()) / ".opencode" / "projects" / encoded_path
     return project_folder if project_folder.exists() else None
 
 
-def _get_pi_project_folder(encoded_path: str) -> Path | None:
+def _get_pi_project_folder(encoded_path: str, *, home: Path | None = None) -> Path | None:
     """Probe the Pi session directory (stub; Pi adapter deferred per FEAT-992)."""
-    project_folder = Path.home() / ".pi" / "projects" / encoded_path
+    project_folder = (home or Path.home()) / ".pi" / "projects" / encoded_path
     return project_folder if project_folder.exists() else None
 
 
-def _get_kimi_project_folder(cwd: Path) -> Path | None:
+def _get_kimi_project_folder(cwd: Path, *, home: Path | None = None) -> Path | None:
     """Resolve the Kimi Code workspace session folder for *cwd*.
 
     Kimi keys session logs by workspace id (``wd_<name>_<hash>`` under
@@ -489,7 +489,7 @@ def _get_kimi_project_folder(cwd: Path) -> Path | None:
     typed-event schema, not Claude's message schema — extraction-layer
     parsing for backfill is tracked separately (ENH-2918).
     """
-    kimi_home = Path(os.environ.get("KIMI_CODE_HOME") or (Path.home() / ".kimi-code"))
+    kimi_home = Path(os.environ.get("KIMI_CODE_HOME") or ((home or Path.home()) / ".kimi-code"))
     index = kimi_home / "session_index.jsonl"
     if not index.is_file():
         return None
@@ -513,7 +513,7 @@ def _get_kimi_project_folder(cwd: Path) -> Path | None:
     return workspace_folder
 
 
-def _get_qwen_project_folder(encoded_path: str) -> Path | None:
+def _get_qwen_project_folder(encoded_path: str, *, home: Path | None = None) -> Path | None:
     """Probe the Qwen Code project folder (FEAT-3155 spike, qwen 0.21.6).
 
     Qwen dash-encodes the **symlink-resolved** cwd the same way Claude Code
@@ -528,11 +528,11 @@ def _get_qwen_project_folder(encoded_path: str) -> Path | None:
     backfill extraction normalizes them into Claude shape at rebuild time
     (ENH-3166).
     """
-    project_folder = Path.home() / ".qwen" / "projects" / encoded_path
+    project_folder = (home or Path.home()) / ".qwen" / "projects" / encoded_path
     return project_folder if project_folder.exists() else None
 
 
-def _get_gemini_project_folder(cwd: Path) -> Path | None:
+def _get_gemini_project_folder(cwd: Path, *, home: Path | None = None) -> Path | None:
     """Resolve the Gemini CLI project folder for *cwd* (ENH-3393, gemini-cli 0.46.0).
 
     Gemini keys project dirs by a human slug registered in
@@ -544,7 +544,7 @@ def _get_gemini_project_folder(cwd: Path) -> Path | None:
     is tried as a fallback when the slug lookup misses or the registry is
     absent. Returns ``None`` when neither probe finds an on-disk project dir.
     """
-    gemini_home = Path.home() / ".gemini"
+    gemini_home = (home or Path.home()) / ".gemini"
     target = str(cwd.resolve())
     registry = gemini_home / "projects.json"
     if registry.is_file():
@@ -561,7 +561,7 @@ def _get_gemini_project_folder(cwd: Path) -> Path | None:
     return hashed_folder if hashed_folder.exists() else None
 
 
-def encode_omp_session_dir(cwd: Path) -> str:
+def encode_omp_session_dir(cwd: Path, *, home: Path | None = None) -> str:
     """Encode *cwd* the way omp (oh-my-pi) names its session directory (ENH-3394, omp 18.0.11).
 
     Mirrors ``getDefaultSessionDirName`` in the vendored
@@ -575,8 +575,8 @@ def encode_omp_session_dir(cwd: Path) -> str:
     mangle it).
     """
     resolved = str(cwd.resolve())
-    home = str(Path.home().resolve())
-    home_relative = os.path.relpath(resolved, home)
+    home_str = str((home or Path.home()).resolve())
+    home_relative = os.path.relpath(resolved, home_str)
     if home_relative == ".":
         home_relative = ""
     if home_relative == "" or (
@@ -605,7 +605,7 @@ def _encode_omp_legacy_absolute_dir(resolved_cwd: str) -> str:
     return f"--{encoded}--"
 
 
-def _omp_sessions_root() -> Path:
+def _omp_sessions_root(*, home: Path | None = None) -> Path:
     """Resolve ``~/.omp/agent/sessions``, honoring ``PI_CONFIG_DIR``/``XDG_DATA_HOME``.
 
     ``XDG_DATA_HOME`` flattens the ``agent/`` prefix (``$XDG_DATA_HOME/omp/sessions``,
@@ -616,10 +616,10 @@ def _omp_sessions_root() -> Path:
     if xdg_data_home:
         return Path(xdg_data_home) / "omp" / "sessions"
     config_dir_name = os.environ.get("PI_CONFIG_DIR") or ".omp"
-    return Path.home() / config_dir_name / "agent" / "sessions"
+    return (home or Path.home()) / config_dir_name / "agent" / "sessions"
 
 
-def _get_omp_project_folder(cwd: Path) -> Path | None:
+def _get_omp_project_folder(cwd: Path, *, home: Path | None = None) -> Path | None:
     """Resolve the omp (oh-my-pi) session directory for *cwd* (ENH-3394, omp 18.0.11).
 
     Probes the current encoding (:func:`encode_omp_session_dir`) first, then
@@ -628,8 +628,8 @@ def _get_omp_project_folder(cwd: Path) -> Path | None:
     (``migrateHomeSessionDirs``), but an untouched legacy dir may still be on
     disk. Returns ``None`` when neither probe finds an on-disk session dir.
     """
-    sessions_root = _omp_sessions_root()
-    current = sessions_root / encode_omp_session_dir(cwd)
+    sessions_root = _omp_sessions_root(home=home)
+    current = sessions_root / encode_omp_session_dir(cwd, home=home)
     if current.exists():
         return current
     legacy = sessions_root / _encode_omp_legacy_absolute_dir(str(cwd.resolve()))

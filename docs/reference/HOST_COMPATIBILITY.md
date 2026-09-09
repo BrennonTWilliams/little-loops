@@ -519,7 +519,7 @@ the adapter.
 | Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] |
 | Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] |
 | Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | ✗ — `get_project_folder`/`get_sessions_folder` return `None` for Codex; readable via `detect_sessions` instead[^codexsessions] | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] | ✓ — `~/.gemini/tmp/<slug>/` resolved via `~/.gemini/projects.json` (slug registry), falling back to `~/.gemini/tmp/<sha256(cwd)>/` for pre-registry dirs; session JSONL under `chats/session-*.jsonl` (ENH-3393)[^geminiwire] | ✓ — `~/.omp/agent/sessions/<encoded cwd>/` (`PI_CONFIG_DIR`/`XDG_DATA_HOME`-aware; home/tmp-relative or legacy-absolute encoding), probing the legacy `--<abs>--` encoding when the current one is absent; session JSONL directly under it as `<ts>_<sessionId>.jsonl` (ENH-3394)[^ompwire] |
-| Session log readable via `detect_sessions()` (FEAT-3417) | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Session log readable via `detect_sessions()` (FEAT-3417; opencode/kimi-code/qwen/gemini/omp added by ENH-3420) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
     config probe only. Research spike **ENH-1722** evaluated extending
@@ -549,7 +549,11 @@ the adapter.
 [^kimiwire]: Kimi wire files (`session_*/agents/main/wire.jsonl`) use a
     typed-event schema, not Claude's message schema — session-folder
     *resolution* works (FEAT-2918), but `ll-session backfill` message
-    *extraction* does not parse them yet (ENH-2918 follow-up).
+    *extraction* does not parse them yet (ENH-2918 follow-up). Discoverable
+    via `detect_sessions()`/`iter_events()` as of ENH-3420: `parse_kimi_wire`
+    yields the raw typed events (`payload` = whole record, host-native, no
+    Claude-shape mapping) — `HostLayout`/`ll-session backfill` extraction is
+    still ENH-2918/ENH-3422's, unaffected by this.
 
 [^qwenwire]: Qwen chat files (`~/.qwen/projects/<cwd>/chats/<id>.jsonl`)
     use qwen's own message schema — Claude-shaped at the envelope level

@@ -60,13 +60,16 @@ def normalize_gemini_session(path: Path) -> Iterator[dict]:
                 record = json.loads(raw_line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(record, dict):
+                continue
             if line_no == 1:
                 session_id = record.get("sessionId")
                 continue
             if "$rewindTo" in record:
                 continue
             if "$set" in record:
-                messages = record["$set"].get("messages")
+                set_value = record["$set"]
+                messages = set_value.get("messages") if isinstance(set_value, dict) else None
                 if isinstance(messages, list):
                     for message in messages:
                         yield from _normalize_gemini_message(message, session_id)

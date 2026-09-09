@@ -1478,6 +1478,17 @@ When `session_capture.enabled: true` is set in `.ll/ll-config.json`, a PostToolU
 
 ---
 
+### Session-Discovery Seam (Discovery/Read vs. Ingest)
+
+`little_loops.session_store` reads host session logs through two mechanisms that intentionally coexist — one for discovery/reading, one for ingest into `raw_events`:
+
+- **Discovery and reading**: `sessions.py`'s `detect_sessions()`/`iter_events()`/`list_workspaces()`. As of FEAT-3417 (Codex, Claude Code) and ENH-3420 (opencode, pi, kimi-code, qwen, gemini, omp), every host `get_project_folder()` knows is registered here. Payload is host-native where no normalizer to Claude shape exists (`claude-code`, `codex`, `kimi-code`); where a host already ships a normalizer for the `HostLayout` seam below (`qwen`, `gemini`, `omp`), payload is that normalizer's own output, wrapped and host-stamped; `opencode`/`pi` are Claude-shaped on disk and reuse the Claude per-line loop.
+- **Ingest to `history.db`**: `writers.py`'s `HostLayout`/`host_layout_for()`, consumed by `_backfill_raw_events`, `cli/session.py backfill`, `cli/backfill_worker.py`, and `cli/logs.py`'s project-folder helpers. This is untouched by ENH-3420 — deliberately: a `HostLayout` entry for kimi-code would make `backfill_worker.py`/`cli/logs.py` start line-looping `session_*/agents/main/wire.jsonl` through the Claude-line parser immediately, since those call sites still glob `session_glob` directly rather than going through `iter_events()`.
+
+ENH-3422 (phase 2) retargets `_backfill_raw_events` to consume `iter_events()` instead of parsing files itself, at which point `HostLayout` shrinks to path metadata and a kimi entry becomes safe to add. Until then, treat `sessions.py` as the superset seam for anything that only needs to *read* session content, and `HostLayout` as the ingest-side seam.
+
+---
+
 ### Context Efficiency
 
 > **Efficiency metric: tokens-per-task, not tokens-per-request.**

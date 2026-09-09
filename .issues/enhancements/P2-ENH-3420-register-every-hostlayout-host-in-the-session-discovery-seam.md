@@ -4,10 +4,11 @@ type: ENH
 title: Register every HostLayout host in the session-discovery seam (unify, phase
   1)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T05:27:16Z'
+completed_at: '2026-09-09T20:04:11Z'
 labels:
 - multi-host
 - architecture
@@ -92,6 +93,25 @@ ENH-3419's acceptance criterion is that `ll-logs`, `ll-messages`, and `ll-ctx-st
 - **Out of scope**: ENH-3422 (backfill consuming `iter_events`, `HostLayout` shrink, the `backfill --host codex` notice, **and the `HostLayout` kimi entry** — safe only once the worker stops line-looping `session_glob` results); ENH-3419's CLI rewiring; Codex- or kimi-native equivalents of the Claude-schema content functions in `cli/logs.py`; a kimi normalizer to Claude shape; the `transcript_path`-driven raw readers (`hooks/session_start.py:150-161`, `cli/backfill_worker.py:52-53`, `hooks/pre_compact.py:108-120`, `hooks/scripts/context-monitor.sh`).
 
 ## Program Design
+
+### Deviations
+
+- **2026-09-09 (implementation)**: `_detect_layout_sessions` does not inline
+  the per-host probe dispatch as the § Call Path sketch shows
+  (`_detect_layout_sessions("qwen", ...) -> _get_qwen_project_folder(encoded,
+  home=home) -> ...`). It instead delegates to a small new helper,
+  `_project_folder_for_layout_host(host, cwd, home) -> Path | None`, which
+  holds the `if host in (...)` dispatch to the seven per-host probes
+  (`_get_opencode_project_folder`/`_get_pi_project_folder`/
+  `_get_qwen_project_folder`/`_get_kimi_project_folder`/
+  `_get_gemini_project_folder`/`_get_omp_project_folder`). Net call path is
+  unchanged (`detect_sessions -> _detect_layout_sessions ->
+  _project_folder_for_layout_host -> _get_<host>_project_folder(...,
+  home=home)`); this only isolates the dispatch table so
+  `_detect_layout_sessions` itself stays readable. `_list_claude_workspaces`
+  matches the designed signature (`home, *, projects_root, session_glob`)
+  with optional-with-defaults rather than required kwargs, which is
+  behaviorally identical for every call site added here.
 
 ### Types
 
@@ -198,11 +218,60 @@ ENH-3419's acceptance criterion is that `ll-logs`, `ll-messages`, and `ll-ctx-st
 - `docs/reference/HOST_COMPATIBILITY.md` — per-host session-log table (row 523), `[^kimiwire]` (549)
 - `docs/reference/API.md` — `little_loops.session_store.sessions` entry (9497)
 
+## Resolution
+
+Implemented per § Proposed Solution / § Program Design:
+
+- `home: Path | None = None` threaded into the seven `user_messages.py`
+  private probes (`_get_claude_project_folder`, `_get_opencode_project_folder`,
+  `_get_pi_project_folder`, `_get_qwen_project_folder`,
+  `_get_kimi_project_folder`, `_get_gemini_project_folder`,
+  `_get_omp_project_folder`) plus `_omp_sessions_root`/`encode_omp_session_dir`,
+  each defaulting to `Path.home()` at call time (byte-identical default path).
+- `sessions.py`: `_REGISTERED_HOSTS` grew to all 8 hosts; `_KIMI_WIRE_GLOB`
+  module constant (no `HostLayout` kimi branch — deferred to ENH-3422);
+  `_detect_layout_sessions`/`_project_folder_for_layout_host`/
+  `_header_session_id` added; `detect_sessions` gained the six new branches;
+  `_detect_claude_sessions` now delegates to `_get_claude_project_folder`
+  instead of reimplementing the join.
+- Four new parsers (`parse_qwen_session`, `parse_gemini_session`,
+  `parse_omp_session`, `parse_kimi_wire`) plus `parse_opencode_transcript`/
+  `parse_pi_transcript` via a shared `_parse_claude_shaped` helper; all
+  registered in `_PARSERS` and exported from `session_store/__init__.py`.
+- `isinstance(record, dict)` guard added to `normalize_gemini_session` (line-1
+  header and the `$set` value).
+- `list_workspaces` gained `opencode`/`pi`/`qwen` (parameterized
+  `_list_claude_workspaces`), `gemini` (`projects.json` keys), and
+  `kimi-code` (`session_index.jsonl` `workDir`s) branches; `omp` stays `[]`.
+  Every root is computed from `home` directly, never
+  `host_layout_for(...).projects_root` (real-home leak guard).
+- Docstrings amended (module, `SessionHandle`, `_detect_claude_sessions`,
+  `detect_sessions`); `docs/reference/HOST_COMPATIBILITY.md`,
+  `docs/ARCHITECTURE.md` (new § Session-Discovery Seam), and
+  `docs/reference/API.md` updated.
+- One minor deviation from the § Call Path sketch (dispatch factored into
+  `_project_folder_for_layout_host`, net call path unchanged) — logged under
+  § Program Design → Deviations.
+
+**Tests**: 62 new/extended tests added to `test_session_discovery.py`
+covering per-host discovery, `session_id` derivation, `include_agents`
+no-op, `iter_events` payload equivalence with the existing normalizers, the
+omp bounded-scan and home-relative-encoding cases, the `home`-leak guard,
+the kimi `host_layout_for`/glob regression guard, and a 4-host union test.
+Full suite: `python -m pytest scripts/tests/` — 23686 passed (verified
+against unmodified `main` via `git stash`: the 4 pre-existing failures
+(`test_host_runner`, `test_issue_parser` priority-regex allowlist ×2,
+`test_verify_evidence` repo gate) and 1 flaky SSE-bridge socket-timeout test
+are unrelated to this change and reproduce/pass identically without it).
+`ruff check` and `python -m mypy scripts/little_loops/` both clean.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-09T20:03:58 - `81a269cd-db9f-4d79-812a-51953a79e174.jsonl`
+- `/ll:ready-issue` - 2026-09-09T19:41:47 - `ed3828ec-69b8-4fcb-985e-b313632d6d32.jsonl`
 - `/ll:confidence-check` - 2026-09-09T19:34:17 - `a47061f4-4334-4417-ab2e-b65d6a25ae3b.jsonl`
 - `review (manual, pre-implementation #3: kimi HostLayout entry deferred to ENH-3422 — backfill_worker.py:60 / cli/logs.py:108,145,289 would line-loop wire.jsonl immediately; list_workspaces roots from home not host_layout_for(...).projects_root (real-home leak); kimi session_id = path.parents[2].name (confirmed vs session_index sessionId); include_agents no-op on non-Claude hosts; bounded omp header scan; gemini list_workspaces via projects.json; four stale docstrings not one; matching tests + ACs)` - 2026-09-09T21:00:00
 - `/ll:confidence-check` - 2026-09-09T19:25:52 - `97e52889-4a57-4cad-8e44-59fca7caca21.jsonl`

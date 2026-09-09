@@ -9494,11 +9494,13 @@ from little_loops.session_store import (
 )
 ```
 
-### Session discovery: list_workspaces / detect_sessions / iter_events (FEAT-3417)
+### Session discovery: list_workspaces / detect_sessions / iter_events (FEAT-3417, ENH-3420)
 
 `little_loops.session_store.sessions` is a separate seam from the write-side
 helpers above: a batch-read lifecycle for discovering and parsing host
-session transcripts on disk, independent of `.ll/history.db`.
+session transcripts on disk, independent of `.ll/history.db`. As of ENH-3420
+every host `get_project_folder()` knows is registered here: `claude-code`,
+`codex`, `opencode`, `pi`, `kimi-code`, `qwen`, `gemini`, `omp`.
 
 ```python
 def list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]
@@ -9509,6 +9511,12 @@ def detect_sessions(
 def iter_events(handle: SessionHandle) -> Iterator[SessionEvent]
 def parse_claude_transcript(path: Path) -> Iterator[SessionEvent]
 def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]
+def parse_opencode_transcript(path: Path) -> Iterator[SessionEvent]
+def parse_pi_transcript(path: Path) -> Iterator[SessionEvent]
+def parse_kimi_wire(path: Path) -> Iterator[SessionEvent]
+def parse_qwen_session(path: Path) -> Iterator[SessionEvent]
+def parse_gemini_session(path: Path) -> Iterator[SessionEvent]
+def parse_omp_session(path: Path) -> Iterator[SessionEvent]
 ```
 
 `SessionHandle` (`host`, `session_id`, `path`, `cwd`, `updated_at`, `is_agent`)
@@ -9519,12 +9527,32 @@ applies once, after that cross-host merge. Live `watch`/`stop` are
 deliberately absent (v1 ships the batch half only) — `SessionHandle` carries
 `path` so a future `watch` needs no signature change above it.
 
-**The seam is refused on content**: `parse_codex_rollout` and
-`parse_claude_transcript` share no code above this module — each yields its
-host's native record shape in `payload` untouched, rather than normalizing
-into a shared schema (contrast with `HostLayout.normalize`/`normalize_file`
-below, which does normalize qwen/gemini/omp into Claude-shaped records). The
-two seams coexist pending ENH-3420.
+**Per-host payload rule (ENH-3420)**: payload is host-native where no
+normalizer to Claude shape exists (`claude-code`, `codex`, `kimi-code` —
+`parse_kimi_wire` yields kimi's raw typed events, unmapped); where a host
+already ships a normalizer for the `HostLayout`/`writers.py` seam (`qwen`,
+`gemini`, `omp`), payload is that normalizer's own output, wrapped and
+host-stamped rather than reimplemented (`parse_qwen_session`,
+`parse_gemini_session`, `parse_omp_session`); `opencode`/`pi` are
+Claude-shaped on disk already and reuse the Claude per-line loop
+(`parse_opencode_transcript`, `parse_pi_transcript`), each stamping its own
+`host`. `HostLayout` itself is untouched by this phase — see
+[ARCHITECTURE.md § Session-Discovery Seam](../ARCHITECTURE.md#session-discovery-seam-discoveryread-vs-ingest)
+for why a kimi `HostLayout` entry is deferred to ENH-3422.
+
+`include_agents` is honoured wherever the host's session glob reaches agent
+transcripts — today only `claude-code` (`agent-*.jsonl`); on every other
+registered host it is a documented no-op, since no other host's glob matches
+an agent-prefixed name.
+
+`SessionHandle.session_id` is the host's real session id: filename stem for
+`claude-code`/`opencode`/`pi`/`qwen` (and `codex` via the DB or line-1
+`payload.id`); the header `sessionId` for `gemini` and the `type: "session"`
+record's `id` for `omp` (read via the private `_header_session_id(host,
+path)`, falling back to the filename stem when the header is missing or
+malformed); for `kimi-code`, the `session_*` directory two levels up
+(`path.parents[2].name` — never the filename stem, which is always
+`"wire"`).
 
 Claude Code: reads `home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))`
 directly (not `get_project_folder`/`get_sessions_folder`, both of which read
@@ -9537,7 +9565,13 @@ unusable, or schema-mismatched — see
 [docs/codex/usage.md](../codex/usage.md) for the on-disk layout this was
 verified against. `_get_codex_project_folder`/`host_layout_for("codex").projects_root`
 are `None`: Codex never writes `~/.codex/projects/`, so `detect_sessions` is
-the only working Codex session-discovery path.
+the only working Codex session-discovery path. `opencode`/`pi`/`kimi-code`/
+`qwen`/`gemini`/`omp` all delegate to the same `home`-aware private probes
+`get_project_folder()` uses (`_get_<host>_project_folder(..., home=home)` in
+`user_messages.py`), so behaviour matches that public seam exactly minus the
+`home` override — every one of those probes, plus `_omp_sessions_root` and
+`encode_omp_session_dir`, accepts the same `home: Path | None = None` kwarg,
+defaulting to `Path.home()` at call time (byte-identical default path).
 
 ### raw_events / rebuild / compact (ENH-2581)
 

@@ -135,6 +135,12 @@ from little_loops.session_store.sessions import (
     list_workspaces,
     parse_claude_transcript,
     parse_codex_rollout,
+    parse_gemini_session,
+    parse_kimi_wire,
+    parse_omp_session,
+    parse_opencode_transcript,
+    parse_pi_transcript,
+    parse_qwen_session,
 )
 from little_loops.session_store.writers import (
     HookEventCompletion,
@@ -270,6 +276,12 @@ __all__ = [
     "iter_events",
     "parse_claude_transcript",
     "parse_codex_rollout",
+    "parse_opencode_transcript",
+    "parse_pi_transcript",
+    "parse_kimi_wire",
+    "parse_qwen_session",
+    "parse_gemini_session",
+    "parse_omp_session",
     # Private functions re-exported for test access
     "_MIGRATIONS",
     "_KIND_TABLE",

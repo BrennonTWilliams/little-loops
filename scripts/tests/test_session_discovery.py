@@ -591,3 +591,449 @@ class TestCodexSqliteScanParity:
             key(via_sqlite) == key(via_scan) == {("sess-live", live), ("sess-archived", archived)}
         )
         assert all(h.host == "codex" and h.cwd == cwd for h in via_sqlite + via_scan)
+
+
+# --- ENH-3420: opencode/pi/kimi-code/qwen/gemini/omp registered in the seam ---
+
+
+class TestDetectSessionsOpencodePi:
+    """opencode/pi are Claude-shaped on disk; same home-aware probe pattern
+    as claude-code, stamped with their own host."""
+
+    def test_detect_sessions_opencode_resolves_via_home_not_real_home(
+        self, tmp_path, monkeypatch
+    ):
+        decoy_home = tmp_path / "decoy-home"
+        monkeypatch.setattr(Path, "home", lambda: decoy_home)
+        home = tmp_path / "explicit-home"
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.user_messages import encode_project_path
+
+        project_dir = home / ".opencode" / "projects" / encode_project_path(str(cwd.resolve()))
+        project_dir.mkdir(parents=True)
+        (project_dir / "sess-1.jsonl").write_text(json.dumps({"type": "user"}) + "\n")
+
+        handles = ss.detect_sessions(cwd, "opencode", home=home)
+
+        assert len(handles) == 1
+        assert handles[0].host == "opencode"
+        assert handles[0].session_id == "sess-1"
+
+    def test_detect_sessions_pi_resolves_via_home(self, tmp_path):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.user_messages import encode_project_path
+
+        project_dir = home / ".pi" / "projects" / encode_project_path(str(cwd.resolve()))
+        project_dir.mkdir(parents=True)
+        (project_dir / "sess-1.jsonl").write_text(json.dumps({"type": "user"}) + "\n")
+
+        handles = ss.detect_sessions(cwd, "pi", home=home)
+
+        assert [h.session_id for h in handles] == ["sess-1"]
+        assert handles[0].host == "pi"
+
+    def test_iter_events_opencode_and_pi_stamp_their_own_host(self, tmp_path):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.user_messages import encode_project_path
+
+        encoded = encode_project_path(str(cwd.resolve()))
+        for host, cli_dir in (("opencode", ".opencode"), ("pi", ".pi")):
+            project_dir = home / cli_dir / "projects" / encoded
+            project_dir.mkdir(parents=True)
+            (project_dir / "sess.jsonl").write_text(
+                json.dumps({"type": "user", "message": {"role": "user"}}) + "\n"
+            )
+            handle = ss.detect_sessions(cwd, host, home=home)[0]
+            events = list(ss.iter_events(handle))
+            assert [e.host for e in events] == [host]
+            assert events[0].payload["type"] == "user"
+
+
+class TestDetectSessionsKimiCode:
+    def _make_kimi_workspace(self, home: Path, cwd: Path, monkeypatch) -> Path:
+        monkeypatch.delenv("KIMI_CODE_HOME", raising=False)
+        kimi_home = home / ".kimi-code"
+        session_dir = kimi_home / "sessions" / "wd_proj" / "session_1"
+        wire = session_dir / "agents" / "main" / "wire.jsonl"
+        wire.parent.mkdir(parents=True)
+        wire.write_text(
+            json.dumps({"type": "tool_call", "timestamp": "2026-09-09T00:00:00Z"})
+            + "\n"
+            + json.dumps({"type": "tool_result", "timestamp": "2026-09-09T00:00:01Z"})
+            + "\n"
+        )
+        (kimi_home / "session_index.jsonl").write_text(
+            json.dumps(
+                {
+                    "sessionId": "session_1",
+                    "sessionDir": str(session_dir),
+                    "workDir": str(cwd.resolve()),
+                }
+            )
+            + "\n"
+        )
+        return wire
+
+    def test_detect_sessions_kimi_resolves_via_session_index_and_wire_glob(
+        self, tmp_path, monkeypatch
+    ):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        wire = self._make_kimi_workspace(home, cwd, monkeypatch)
+
+        handles = ss.detect_sessions(cwd, "kimi-code", home=home)
+
+        assert len(handles) == 1
+        assert handles[0].path == wire
+        # session_id is the session_* directory name, never the "wire" stem.
+        assert handles[0].session_id == "session_1"
+        assert handles[0].host == "kimi-code"
+
+    def test_iter_events_kimi_wire_is_raw_passthrough(self, tmp_path, monkeypatch):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        self._make_kimi_workspace(home, cwd, monkeypatch)
+        handle = ss.detect_sessions(cwd, "kimi-code", home=home)[0]
+
+        events = list(ss.iter_events(handle))
+
+        assert [e.type for e in events] == ["tool_call", "tool_result"]
+        assert all(e.host == "kimi-code" for e in events)
+        assert events[0].payload["type"] == "tool_call"
+
+    def test_kimi_host_layout_unchanged_and_backfill_glob_ingests_zero(self, tmp_path, monkeypatch):
+        """Regression guard for the deferred kimi HostLayout entry (ENH-3422):
+        host_layout_for("kimi-code") stays the generic default, so
+        backfill_worker's directory-glob path (`path_arg.glob(layout.session_glob)`)
+        still matches zero files against a kimi workspace dir."""
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        self._make_kimi_workspace(home, cwd, monkeypatch)
+        kimi_workspace_dir = home / ".kimi-code" / "sessions" / "wd_proj"
+
+        from little_loops.session_store import host_layout_for
+
+        layout = host_layout_for("kimi-code")
+        assert layout.session_glob == "*.jsonl"
+        assert list(kimi_workspace_dir.glob(layout.session_glob)) == []
+
+
+class TestDetectSessionsLayoutNormalizedHosts:
+    """qwen/gemini/omp: iter_events payload equals the existing normalizer's
+    output for the same file, host stamped; session_id per the per-host rule."""
+
+    def test_qwen_iter_events_matches_normalize_qwen_record(self, tmp_path, fixtures_dir):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.session_store.qwen import normalize_qwen_record
+        from little_loops.user_messages import encode_project_path
+
+        project_dir = home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve()))
+        chats_dir = project_dir / "chats"
+        chats_dir.mkdir(parents=True)
+        fixture = fixtures_dir / "qwen" / "session.jsonl"
+        session_file = chats_dir / "61c364ea.jsonl"
+        session_file.write_text(fixture.read_text(encoding="utf-8"))
+
+        handles = ss.detect_sessions(cwd, "qwen", home=home)
+        assert len(handles) == 1
+        assert handles[0].session_id == "61c364ea"
+
+        events = list(ss.iter_events(handles[0]))
+        expected = [
+            r
+            for r in (
+                normalize_qwen_record(json.loads(line))
+                for line in fixture.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+            if r is not None
+        ]
+        assert [e.payload for e in events] == expected
+        assert all(e.host == "qwen" for e in events)
+
+    def test_gemini_iter_events_matches_normalizer_and_session_id_from_header(
+        self, tmp_path, fixtures_dir
+    ):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.session_store.gemini import normalize_gemini_session
+
+        chats_dir = home / ".gemini" / "tmp" / "some-slug" / "chats"
+        chats_dir.mkdir(parents=True)
+        fixture = fixtures_dir / "gemini" / "session.jsonl"
+        session_file = chats_dir / "session-1.jsonl"
+        session_file.write_text(fixture.read_text(encoding="utf-8"))
+        (home / ".gemini" / "projects.json").write_text(
+            json.dumps({"projects": {str(cwd.resolve()): "some-slug"}})
+        )
+
+        handles = ss.detect_sessions(cwd, "gemini", home=home)
+        assert len(handles) == 1
+        # From the header, not the "session-1" filename stem.
+        assert handles[0].session_id == "11111111-2222-3333-4444-555555555555"
+
+        events = list(ss.iter_events(handles[0]))
+        expected = list(normalize_gemini_session(fixture))
+        assert [e.payload for e in events] == expected
+        assert all(e.host == "gemini" for e in events)
+
+    def test_omp_iter_events_matches_normalizer_and_session_id_from_header(
+        self, tmp_path, fixtures_dir, monkeypatch
+    ):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        from little_loops.session_store.omp import normalize_omp_session
+        from little_loops.user_messages import encode_omp_session_dir
+
+        encoded = encode_omp_session_dir(cwd, home=home)
+        session_dir = home / ".omp" / "agent" / "sessions" / encoded
+        session_dir.mkdir(parents=True)
+        fixture = fixtures_dir / "omp" / "session.jsonl"
+        session_file = session_dir / "1780000000000_11111111-2222-3333-4444-555555555555.jsonl"
+        session_file.write_text(fixture.read_text(encoding="utf-8"))
+
+        handles = ss.detect_sessions(cwd, "omp", home=home)
+        assert len(handles) == 1
+        # From the "type": "session" record, not the filename stem.
+        assert handles[0].session_id == "11111111-2222-3333-4444-555555555555"
+
+        events = list(ss.iter_events(handles[0]))
+        expected = list(normalize_omp_session(fixture))
+        assert [e.payload for e in events] == expected
+        assert all(e.host == "omp" for e in events)
+
+    def test_omp_home_relative_encoding_honors_home_override(self, tmp_path, monkeypatch):
+        """A cwd under an explicit home must resolve to the home-relative
+        "-<rel>" encoding computed against *that* home, proving
+        encode_omp_session_dir(home=...) is honored end-to-end through
+        detect_sessions (no Path.home patching reaches the right answer)."""
+        decoy_home = tmp_path / "decoy-home"
+        monkeypatch.setattr(Path, "home", lambda: decoy_home)
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        home = tmp_path / "explicit-home"
+        cwd = home / "workspace" / "project"
+        cwd.mkdir(parents=True)
+        from little_loops.user_messages import encode_omp_session_dir
+
+        expected_encoded = encode_omp_session_dir(cwd, home=home)
+        assert expected_encoded == "-workspace-project"
+        session_dir = home / ".omp" / "agent" / "sessions" / expected_encoded
+        session_dir.mkdir(parents=True)
+        session_file = session_dir / "ts_sess.jsonl"
+        session_file.write_text(json.dumps({"type": "session", "id": "sess", "cwd": str(cwd)}) + "\n")
+
+        handles = ss.detect_sessions(cwd, "omp", home=home)
+
+        assert len(handles) == 1
+        assert handles[0].path == session_file
+
+
+class TestIncludeAgentsNoOpOnNonClaudeHosts:
+    def test_qwen_include_agents_is_a_no_op(self, tmp_path):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.user_messages import encode_project_path
+
+        project_dir = home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve()))
+        chats_dir = project_dir / "chats"
+        chats_dir.mkdir(parents=True)
+        (chats_dir / "sess-1.jsonl").write_text(json.dumps({"type": "user"}) + "\n")
+        subagent_dir = project_dir / "subagents" / "sess-1"
+        subagent_dir.mkdir(parents=True)
+        (subagent_dir / "agent.jsonl").write_text(json.dumps({"type": "user"}) + "\n")
+
+        without = ss.detect_sessions(cwd, "qwen", home=home, include_agents=False)
+        with_agents = ss.detect_sessions(cwd, "qwen", home=home, include_agents=True)
+
+        assert without == with_agents
+
+
+class TestHeaderSessionId:
+    def test_omp_header_scan_stops_at_first_message_line(self, tmp_path):
+        path = tmp_path / "session.jsonl"
+        lines = [
+            json.dumps({"type": "title"}),
+            json.dumps({"type": "session", "id": "sess-omp"}),
+            json.dumps({"type": "message", "id": "m1", "message": {"role": "user"}}),
+        ]
+        path.write_text("\n".join(lines) + "\n")
+
+        assert ss._header_session_id("omp", path) == "sess-omp"
+
+    def test_omp_header_scan_is_bounded_stops_before_a_later_session_record(self, tmp_path):
+        """No `type: "session"` record before the first message: must return
+        None, never continue past the message to a later (contradicting)
+        session record — proves the scan is bounded, not whole-file like
+        normalize_omp_session's."""
+        path = tmp_path / "session.jsonl"
+        lines = [
+            json.dumps({"type": "message", "id": "m1", "message": {"role": "user"}}),
+            json.dumps({"type": "session", "id": "should-not-be-seen"}),
+        ]
+        path.write_text("\n".join(lines) + "\n")
+
+        assert ss._header_session_id("omp", path) is None
+
+    def test_gemini_header_from_line_one(self, tmp_path):
+        path = tmp_path / "session.jsonl"
+        path.write_text(json.dumps({"sessionId": "sess-gem"}) + "\n")
+
+        assert ss._header_session_id("gemini", path) == "sess-gem"
+
+    def test_gemini_malformed_header_returns_none(self, tmp_path):
+        path = tmp_path / "session.jsonl"
+        path.write_text("[1, 2]\n")
+
+        assert ss._header_session_id("gemini", path) is None
+
+
+class TestListWorkspacesLayoutHosts:
+    def test_opencode_home_leak_guard(self, tmp_path, monkeypatch):
+        decoy_home = tmp_path / "decoy-home-with-sessions"
+        from little_loops.user_messages import encode_project_path
+
+        decoy_project = (
+            decoy_home / ".opencode" / "projects" / encode_project_path("/some/other/cwd")
+        )
+        decoy_project.mkdir(parents=True)
+        (decoy_project / "sess.jsonl").write_text(json.dumps({"cwd": "/some/other/cwd"}) + "\n")
+        monkeypatch.setattr(Path, "home", lambda: decoy_home)
+
+        empty_home = tmp_path / "empty-home"
+        empty_home.mkdir()
+
+        assert ss.list_workspaces("opencode", home=empty_home) == []
+
+    def test_qwen_list_workspaces(self, tmp_path):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.user_messages import encode_project_path
+
+        chats_dir = (
+            home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve())) / "chats"
+        )
+        chats_dir.mkdir(parents=True)
+        (chats_dir / "sess.jsonl").write_text(json.dumps({"cwd": str(cwd)}) + "\n")
+
+        assert ss.list_workspaces("qwen", home=home) == [cwd]
+
+    def test_gemini_list_workspaces_via_projects_json(self, tmp_path):
+        home = tmp_path
+        cwd = Path("/repo/gemini-project")
+        (home / ".gemini").mkdir(parents=True)
+        (home / ".gemini" / "projects.json").write_text(
+            json.dumps({"projects": {str(cwd): "some-slug"}})
+        )
+
+        assert ss.list_workspaces("gemini", home=home, existing_only=False) == [cwd]
+
+    def test_gemini_list_workspaces_missing_registry_returns_empty(self, tmp_path):
+        assert ss.list_workspaces("gemini", home=tmp_path) == []
+
+    def test_kimi_list_workspaces_via_session_index(self, tmp_path, monkeypatch):
+        home = tmp_path
+        monkeypatch.delenv("KIMI_CODE_HOME", raising=False)
+        kimi_home = home / ".kimi-code"
+        kimi_home.mkdir(parents=True)
+        cwd = Path("/repo/kimi-project")
+        (kimi_home / "session_index.jsonl").write_text(
+            json.dumps({"sessionId": "session_1", "sessionDir": "/x", "workDir": str(cwd)}) + "\n"
+        )
+
+        assert ss.list_workspaces("kimi-code", home=home, existing_only=False) == [cwd]
+
+    def test_omp_list_workspaces_always_empty(self, tmp_path):
+        assert ss.list_workspaces("omp", home=tmp_path) == []
+
+
+class TestNonObjectJsonLinesExtended:
+    """Extends TestNonObjectJsonLines to gemini and kimi (ENH-3420)."""
+
+    def test_gemini_non_object_line1_and_set_value_do_not_raise(self, tmp_path):
+        path = tmp_path / "session.jsonl"
+        path.write_text(
+            "[1, 2]\n"
+            + json.dumps({"$set": "not-a-dict"})
+            + "\n"
+            + json.dumps({"id": "m1", "timestamp": "t", "type": "user", "content": []})
+            + "\n"
+        )
+
+        from little_loops.session_store.gemini import normalize_gemini_session
+
+        events = list(normalize_gemini_session(path))
+
+        assert len(events) == 1
+        assert events[0]["sessionId"] is None
+
+    def test_parse_kimi_wire_skips_non_object_lines(self, tmp_path):
+        path = tmp_path / "wire.jsonl"
+        path.write_text(
+            '[1, 2]\n"str"\n42\n' + json.dumps({"type": "tool_call", "timestamp": "t"}) + "\n"
+        )
+
+        events = list(ss.parse_kimi_wire(path))
+
+        assert [e.type for e in events] == ["tool_call"]
+        assert all(e.host == "kimi-code" for e in events)
+
+
+class TestDetectSessionsUnionAcrossFourHosts:
+    def test_union_returns_four_hosts_newest_first(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        import os
+
+        from little_loops.user_messages import encode_omp_session_dir, encode_project_path
+
+        claude_dir = home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))
+        claude_dir.mkdir(parents=True)
+        claude_file = claude_dir / "claude-sess.jsonl"
+        claude_file.write_text("{}\n")
+        os.utime(claude_file, (100, 100))
+
+        codex_rollout = home / "codex-sess.jsonl"
+        _write_rollout(codex_rollout, "codex-sess", str(cwd))
+        _make_state_db(
+            home / ".codex" / "state_1.sqlite",
+            [("codex-sess", str(codex_rollout), str(cwd), "exec", "1", "400")],
+        )
+
+        qwen_chats = (
+            home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve())) / "chats"
+        )
+        qwen_chats.mkdir(parents=True)
+        qwen_file = qwen_chats / "qwen-sess.jsonl"
+        qwen_file.write_text("{}\n")
+        os.utime(qwen_file, (200, 200))
+
+        omp_dir = home / ".omp" / "agent" / "sessions" / encode_omp_session_dir(cwd, home=home)
+        omp_dir.mkdir(parents=True)
+        omp_file = omp_dir / "ts_omp-sess.jsonl"
+        omp_file.write_text(json.dumps({"type": "session", "id": "omp-sess"}) + "\n")
+        os.utime(omp_file, (300, 300))
+
+        handles = ss.detect_sessions(cwd, home=home)
+
+        assert len(handles) == 4
+        assert [h.host for h in handles] == ["codex", "omp", "qwen", "claude-code"]

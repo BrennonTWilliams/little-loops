@@ -7,27 +7,33 @@ Live ``watch``/``stop`` are deferred to the first consumer that tails a host
 session (a dashboard); ``SessionHandle`` carries ``path`` so a later ``watch``
 needs no signature change above it.
 
-**The seam is refused on content.** Per-host parsers (``parse_codex_rollout``,
-``parse_claude_transcript``) share no content-level code above this module:
-tool-call shapes and token accounting do not overlap enough between hosts to
-justify a common abstraction, and forcing one would produce a
-lowest-common-denominator record worse than two honest per-host ones. This is
-a deliberate departure from the existing ``HostLayout.normalize``/
-``normalize_file`` seam (``writers.py``, covering qwen/gemini/omp), which
-translates host-native records into a shared Claude-shaped record; the two
-seams coexist until ENH-3420 decides whether to unify them.
+**Payload rule (ENH-3420, unify phase 1).** Payload is host-native where no
+normalizer to Claude shape exists (``claude-code``, ``codex``, ``kimi-code``);
+where a host already ships a normalizer to Claude shape for the
+``HostLayout``/``writers.py`` seam (``qwen``, ``gemini``, ``omp``), payload is
+that normalizer's own output, wrapped and host-stamped here rather than
+reimplemented; ``opencode``/``pi`` are Claude-shaped on disk already and reuse
+the Claude per-line loop with their own host stamped. The two discovery
+mechanisms this module and ``HostLayout`` used to be — one per-host parser
+here, one normalizer-to-Claude-shape seam there — are unified for discovery
+and reading as of this phase; ``HostLayout`` itself (ingest to
+``raw_events``) is untouched until ENH-3422.
 
 Every function takes ``home: Path | None = None`` (resolving to ``Path.home()``
 at call time) so tests never touch a real ``~/.codex`` or ``~/.claude`` —
-pass ``home=tmp_path``. This is distinct from ``get_project_folder``/
-``get_sessions_folder``, which read ``Path.home()`` directly and therefore
-cannot be reused here without dropping the override (see the Claude Code
-branch of :func:`detect_sessions`).
+pass ``home=tmp_path``. The private per-host probes in ``user_messages.py``
+(``_get_<host>_project_folder``, ``_omp_sessions_root``,
+``encode_omp_session_dir``) accept the same ``home=`` kwarg, defaulting to
+``Path.home()`` at call time, so this module calls them directly instead of
+reimplementing their path joins — the one exception is Codex, which has no
+project-folder probe at all (it keys sessions by date, not by project; see
+:func:`_detect_codex_sessions`).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from collections.abc import Iterator
@@ -35,12 +41,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from little_loops.user_messages import encode_project_path
+from little_loops.user_messages import (
+    _get_claude_project_folder,
+    _get_gemini_project_folder,
+    _get_kimi_project_folder,
+    _get_omp_project_folder,
+    _get_opencode_project_folder,
+    _get_pi_project_folder,
+    _get_qwen_project_folder,
+    encode_project_path,
+)
 
 
 @dataclass(frozen=True)
 class SessionHandle:
-    """One session file: a Codex rollout, or a Claude Code ``<uuid>.jsonl``.
+    """One session file, for any registered host (Codex rollout, Claude Code
+    ``<uuid>.jsonl``, or an opencode/pi/kimi-code/qwen/gemini/omp session file).
 
     ``cwd`` is always the caller's spelling of the workspace, even when the
     Codex row matched on ``cwd.resolve()`` — so handles from both hosts
@@ -220,15 +236,15 @@ def _detect_codex_sessions(
 def _detect_claude_sessions(
     cwd: Path, home: Path, limit: int | None, include_agents: bool
 ) -> list[SessionHandle]:
-    """``home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))``.
+    """Delegates to ``_get_claude_project_folder(encoded, home=home)``.
 
-    Computed locally rather than via ``get_project_folder``/
-    ``get_sessions_folder``, both of which read ``Path.home()`` internally
-    and would ignore the ``home`` override. Encodes the **resolved** cwd,
-    exactly as ``get_project_folder`` does.
+    That probe is now ``home``-aware (ENH-3420), so this no longer needs its
+    own local reimplementation of the path join. Encodes the **resolved**
+    cwd, exactly as ``get_project_folder`` does.
     """
-    project_dir = home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))
-    if not project_dir.is_dir():
+    encoded = encode_project_path(str(cwd.resolve()))
+    project_dir = _get_claude_project_folder(encoded, home=home)
+    if project_dir is None or not project_dir.is_dir():
         return []
     handles = []
     for jsonl in project_dir.glob("*.jsonl"):
@@ -249,7 +265,27 @@ def _detect_claude_sessions(
     return handles[:limit] if limit else handles
 
 
-_REGISTERED_HOSTS = ("claude-code", "codex")
+_REGISTERED_HOSTS = (
+    "claude-code",
+    "codex",
+    "opencode",
+    "pi",
+    "kimi-code",
+    "qwen",
+    "gemini",
+    "omp",
+)
+
+# The only per-host path metadata this seam owns instead of reading off
+# HostLayout: a kimi HostLayout entry would go live in backfill_worker/
+# cli/logs.py immediately (they still line-loop session_glob results today),
+# so it stays deferred to ENH-3422 and this module supplies its own glob.
+_KIMI_WIRE_GLOB = "session_*/agents/main/wire.jsonl"
+
+# Hosts handled by _detect_layout_sessions/_project_folder_for_layout_host
+# (every registered host other than codex and claude-code, which have their
+# own dedicated discovery functions above).
+_LAYOUT_HOSTS = ("opencode", "pi", "kimi-code", "qwen", "gemini", "omp")
 
 
 def detect_sessions(
@@ -268,6 +304,11 @@ def detect_sessions(
     sessions invisible by default. ``limit`` applies once, after the
     cross-host merge (global newest-N, not N per host). Never raises for a
     missing host home; returns ``[]``.
+
+    ``include_agents`` is honoured wherever the host's session glob reaches
+    agent transcripts — today only ``claude-code`` (``agent-*.jsonl``); on
+    every other registered host it is a documented no-op (ENH-3420 § Current
+    Behavior) because no other host's glob matches an agent-prefixed name.
     """
     resolved_home = home if home is not None else Path.home()
     if host is None:
@@ -282,7 +323,133 @@ def detect_sessions(
         return _detect_codex_sessions(cwd, resolved_home, limit, include_agents)
     if host == "claude-code":
         return _detect_claude_sessions(cwd, resolved_home, limit, include_agents)
+    if host in _LAYOUT_HOSTS:
+        return _detect_layout_sessions(host, cwd, resolved_home, limit, include_agents)
     return []
+
+
+def _project_folder_for_layout_host(host: str, cwd: Path, home: Path) -> Path | None:
+    """Resolve the on-disk project folder for one ``_LAYOUT_HOSTS`` member.
+
+    Delegates to the same ``home``-aware private probes ``get_project_folder``
+    uses, so behaviour matches that public seam exactly minus the ``home``
+    override.
+    """
+    if host in ("opencode", "pi", "qwen"):
+        encoded = encode_project_path(str(cwd.resolve()))
+        probe = {
+            "opencode": _get_opencode_project_folder,
+            "pi": _get_pi_project_folder,
+            "qwen": _get_qwen_project_folder,
+        }[host]
+        return probe(encoded, home=home)
+    if host == "kimi-code":
+        return _get_kimi_project_folder(cwd, home=home)
+    if host == "gemini":
+        return _get_gemini_project_folder(cwd, home=home)
+    if host == "omp":
+        return _get_omp_project_folder(cwd, home=home)
+    return None
+
+
+def _header_session_id(host: str, path: Path) -> str | None:
+    """Read a gemini/omp session id from the file, or ``None`` on any failure.
+
+    gemini: line 1's ``sessionId``. omp: scans for the first ``type:
+    "session"`` record's ``id``, **stopping at the first ``type: "message"``
+    line** — the header always precedes every message when present, and
+    discovery over many sessions must not read a whole file just to find no
+    header. Both apply the ``isinstance(record, dict)`` guard and never raise;
+    a malformed line is skipped, not fatal.
+    """
+    try:
+        handle = path.open(encoding="utf-8")
+    except OSError:
+        return None
+    with handle:
+        if host == "gemini":
+            first_line = handle.readline().strip()
+            if not first_line:
+                return None
+            try:
+                record = json.loads(first_line)
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(record, dict):
+                return None
+            session_id = record.get("sessionId")
+            return session_id if isinstance(session_id, str) and session_id else None
+        if host == "omp":
+            for raw_line in handle:
+                raw_line = raw_line.strip()
+                if not raw_line:
+                    continue
+                try:
+                    record = json.loads(raw_line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                record_type = record.get("type")
+                if record_type == "session":
+                    session_id = record.get("id")
+                    return session_id if isinstance(session_id, str) and session_id else None
+                if record_type == "message":
+                    return None
+            return None
+    return None
+
+
+def _detect_layout_sessions(
+    host: str, cwd: Path, home: Path, limit: int | None, include_agents: bool
+) -> list[SessionHandle]:
+    """Shared discovery for every ``_LAYOUT_HOSTS`` member.
+
+    Resolves the project folder via :func:`_project_folder_for_layout_host`,
+    then globs ``HostLayout.session_glob`` relative to it (already encoding
+    any subdir, e.g. qwen's ``"chats/*.jsonl"``) — except kimi-code, whose
+    glob is the module-level :data:`_KIMI_WIRE_GLOB`, never
+    ``host_layout_for("kimi-code")`` (that stays the generic ``"*.jsonl"``
+    default; see ENH-3420 § Current Behavior for why a kimi ``HostLayout``
+    entry is deferred to ENH-3422). ``session_id`` is derived per the
+    per-host rule: filename stem for opencode/pi/qwen, the file header (with
+    stem fallback) for gemini/omp, and the ``session_*`` directory two levels
+    up for kimi-code (never the stem, which is always ``"wire"``).
+    """
+    project = _project_folder_for_layout_host(host, cwd, home)
+    if project is None or not project.is_dir():
+        return []
+    if host == "kimi-code":
+        session_glob = _KIMI_WIRE_GLOB
+    else:
+        from little_loops.session_store.writers import host_layout_for
+
+        session_glob = host_layout_for(host).session_glob
+    handles = []
+    for path in project.glob(session_glob):
+        if not path.is_file():
+            continue
+        is_agent = path.name.startswith("agent-")
+        if is_agent and not include_agents:
+            continue
+        if host == "kimi-code":
+            session_id = path.parents[2].name
+        elif host in ("gemini", "omp"):
+            session_id = _header_session_id(host, path) or path.stem
+        else:
+            session_id = path.stem
+        handles.append(
+            SessionHandle(
+                host=host,
+                session_id=session_id,
+                path=path,
+                cwd=cwd,
+                updated_at=path.stat().st_mtime,
+                is_agent=is_agent,
+            )
+        )
+    handles.sort(key=lambda h: h.updated_at, reverse=True)
+    return handles[:limit] if limit else handles
 
 
 def list_workspaces(
@@ -290,18 +457,45 @@ def list_workspaces(
 ) -> list[Path]:
     """Every cwd *host* has recorded sessions for; empty for a host with no home.
 
-    Claude Code: walk ``projects_root``, reading each project's first
-    non-agent JSONL record for its ``cwd`` (a local reimplementation, not
-    ``cli/logs.py``'s ``_extract_cwd_from_project`` — importing that would
-    invert the ``session_store`` -> ``cli`` dependency direction). Codex:
+    Claude Code/opencode/pi/qwen: walk the host's ``<home>/.<cli>/projects``
+    root — computed from ``home`` directly, **never**
+    ``host_layout_for(...).projects_root`` (that reads the real
+    ``Path.home()`` internally and would leak past a ``home=`` override) —
+    reading each project's first non-agent session-JSONL record for its
+    ``cwd`` (a local reimplementation, not ``cli/logs.py``'s
+    ``_extract_cwd_from_project`` — importing that would invert the
+    ``session_store`` -> ``cli`` dependency direction). Codex:
     ``SELECT DISTINCT cwd FROM threads``, or the scan fallback's distinct
-    line-1 ``cwd``s when the DB is unusable.
+    line-1 ``cwd``s when the DB is unusable. Gemini: the ``projects`` keys of
+    ``<home>/.gemini/projects.json``. Kimi-code: distinct ``workDir`` values
+    from ``session_index.jsonl``. Omp: always ``[]`` — its session-dir
+    encoding is lossy (``/``, ``\\``, ``:`` all collapse to ``-``), so
+    recovering ``cwd`` would require reading every session file's header;
+    matches ``discover_all_projects``'s existing silent-``[]`` precedent.
     """
     resolved_home = home if home is not None else Path.home()
     if host == "claude-code":
         workspaces = _list_claude_workspaces(resolved_home)
     elif host == "codex":
         workspaces = _list_codex_workspaces(resolved_home)
+    elif host == "opencode":
+        workspaces = _list_claude_workspaces(
+            resolved_home, projects_root=resolved_home / ".opencode" / "projects"
+        )
+    elif host == "pi":
+        workspaces = _list_claude_workspaces(
+            resolved_home, projects_root=resolved_home / ".pi" / "projects"
+        )
+    elif host == "qwen":
+        workspaces = _list_claude_workspaces(
+            resolved_home,
+            projects_root=resolved_home / ".qwen" / "projects",
+            session_glob="chats/*.jsonl",
+        )
+    elif host == "gemini":
+        workspaces = _list_gemini_workspaces(resolved_home)
+    elif host == "kimi-code":
+        workspaces = _list_kimi_workspaces(resolved_home)
     else:
         return []
     if existing_only:
@@ -309,23 +503,67 @@ def list_workspaces(
     return workspaces
 
 
-def _list_claude_workspaces(home: Path) -> list[Path]:
-    projects_root = home / ".claude" / "projects"
-    if not projects_root.is_dir():
+def _list_claude_workspaces(
+    home: Path, *, projects_root: Path | None = None, session_glob: str = "*.jsonl"
+) -> list[Path]:
+    root = projects_root if projects_root is not None else home / ".claude" / "projects"
+    if not root.is_dir():
         return []
     workspaces = []
-    for project_dir in projects_root.iterdir():
+    for project_dir in root.iterdir():
         if not project_dir.is_dir():
             continue
-        cwd = _first_record_cwd(project_dir)
+        cwd = _first_record_cwd(project_dir, session_glob)
         if cwd is not None:
             workspaces.append(cwd)
     return workspaces
 
 
-def _first_record_cwd(project_dir: Path) -> Path | None:
-    """First ``cwd`` field found in *project_dir*'s non-agent JSONL files."""
-    for jsonl_file in project_dir.glob("*.jsonl"):
+def _list_gemini_workspaces(home: Path) -> list[Path]:
+    """The ``projects`` keys of ``<home>/.gemini/projects.json`` — absolute cwds."""
+    registry = home / ".gemini" / "projects.json"
+    if not registry.is_file():
+        return []
+    try:
+        data = json.loads(registry.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    projects = data.get("projects") if isinstance(data, dict) else None
+    if not isinstance(projects, dict):
+        return []
+    return [Path(cwd) for cwd in projects if isinstance(cwd, str) and cwd]
+
+
+def _list_kimi_workspaces(home: Path) -> list[Path]:
+    """Distinct ``workDir`` values from ``$KIMI_CODE_HOME``-or-``<home>/.kimi-code``'s
+    ``session_index.jsonl``."""
+    kimi_home = Path(os.environ.get("KIMI_CODE_HOME") or (home / ".kimi-code"))
+    index = kimi_home / "session_index.jsonl"
+    if not index.is_file():
+        return []
+    work_dirs: set[str] = set()
+    try:
+        for line in index.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(entry, dict):
+                continue
+            work_dir = entry.get("workDir")
+            if isinstance(work_dir, str) and work_dir:
+                work_dirs.add(work_dir)
+    except OSError:
+        return []
+    return [Path(w) for w in work_dirs]
+
+
+def _first_record_cwd(project_dir: Path, session_glob: str = "*.jsonl") -> Path | None:
+    """First ``cwd`` field found in *project_dir*'s non-agent session-JSONL files."""
+    for jsonl_file in project_dir.glob(session_glob):
         if jsonl_file.name.startswith("agent-"):
             continue
         try:
@@ -434,11 +672,13 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
             )
 
 
-def parse_claude_transcript(path: Path) -> Iterator[SessionEvent]:
-    """Per-line parse of a Claude Code session JSONL, lifted verbatim.
+def _parse_claude_shaped(path: Path, host: str) -> Iterator[SessionEvent]:
+    """Per-line parse of a Claude-shaped-on-disk session JSONL, host stamped.
 
-    Unlike the Codex parser, ``payload`` is the whole record — Claude Code's
-    JSONL has no separate envelope/payload split.
+    Shared body for every host whose on-disk records are already Claude
+    shape at the envelope level (``claude-code``, ``opencode``, ``pi``) —
+    unlike the Codex parser, ``payload`` is the whole record, since these
+    hosts' JSONL has no separate envelope/payload split.
     """
     try:
         handle = path.open(encoding="utf-8")
@@ -458,14 +698,126 @@ def parse_claude_transcript(path: Path) -> Iterator[SessionEvent]:
             yield SessionEvent(
                 type=record.get("type", ""),
                 timestamp=record.get("timestamp", ""),
-                host="claude-code",
+                host=host,
                 payload=record,
             )
+
+
+def parse_claude_transcript(path: Path) -> Iterator[SessionEvent]:
+    """Per-line parse of a Claude Code session JSONL, lifted verbatim."""
+    yield from _parse_claude_shaped(path, "claude-code")
+
+
+def parse_opencode_transcript(path: Path) -> Iterator[SessionEvent]:
+    """Per-line parse of an OpenCode session JSONL (Claude-shaped on disk)."""
+    yield from _parse_claude_shaped(path, "opencode")
+
+
+def parse_pi_transcript(path: Path) -> Iterator[SessionEvent]:
+    """Per-line parse of a Pi session JSONL (Claude-shaped on disk)."""
+    yield from _parse_claude_shaped(path, "pi")
+
+
+def parse_kimi_wire(path: Path) -> Iterator[SessionEvent]:
+    """Per-line raw passthrough of kimi's ``wire.jsonl`` typed events.
+
+    Same never-raise guards as :func:`parse_codex_rollout`; ``payload`` is
+    the whole record — kimi has no normalizer to Claude shape yet (a follow-up,
+    not this issue).
+    """
+    try:
+        handle = path.open(encoding="utf-8")
+    except OSError:
+        return
+    with handle:
+        for raw_line in handle:
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
+            try:
+                record = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            yield SessionEvent(
+                type=record.get("type", ""),
+                timestamp=record.get("timestamp", ""),
+                host="kimi-code",
+                payload=record,
+            )
+
+
+def parse_qwen_session(path: Path) -> Iterator[SessionEvent]:
+    """Per-line qwen parse via :func:`normalize_qwen_record`, host stamped.
+
+    No ``qwen_skip_at_ingest``: that is an ingest volume guard and redundant
+    on the read path (``ui_telemetry`` records are ``type: "system"``, which
+    ``normalize_qwen_record`` already drops).
+    """
+    from little_loops.session_store.qwen import normalize_qwen_record
+
+    try:
+        handle = path.open(encoding="utf-8")
+    except OSError:
+        return
+    with handle:
+        for raw_line in handle:
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
+            try:
+                record = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            normalized = normalize_qwen_record(record)
+            if normalized is None:
+                continue
+            yield SessionEvent(
+                type=normalized.get("type", ""),
+                timestamp=normalized.get("timestamp", ""),
+                host="qwen",
+                payload=normalized,
+            )
+
+
+def parse_gemini_session(path: Path) -> Iterator[SessionEvent]:
+    """Wrap :func:`normalize_gemini_session`, host stamped."""
+    from little_loops.session_store.gemini import normalize_gemini_session
+
+    for record in normalize_gemini_session(path):
+        yield SessionEvent(
+            type=record.get("type", ""),
+            timestamp=record.get("timestamp", ""),
+            host="gemini",
+            payload=record,
+        )
+
+
+def parse_omp_session(path: Path) -> Iterator[SessionEvent]:
+    """Wrap :func:`normalize_omp_session`, host stamped."""
+    from little_loops.session_store.omp import normalize_omp_session
+
+    for record in normalize_omp_session(path):
+        yield SessionEvent(
+            type=record.get("type", ""),
+            timestamp=record.get("timestamp", ""),
+            host="omp",
+            payload=record,
+        )
 
 
 _PARSERS = {
     "codex": parse_codex_rollout,
     "claude-code": parse_claude_transcript,
+    "opencode": parse_opencode_transcript,
+    "pi": parse_pi_transcript,
+    "kimi-code": parse_kimi_wire,
+    "qwen": parse_qwen_session,
+    "gemini": parse_gemini_session,
+    "omp": parse_omp_session,
 }
 
 
