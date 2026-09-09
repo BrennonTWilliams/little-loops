@@ -15,8 +15,8 @@ learning_tests_required:
 - codex
 - codex-rollout
 confidence_score: 85
-outcome_confidence: 28
-score_complexity: 0
+outcome_confidence: 33
+score_complexity: 5
 score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 0

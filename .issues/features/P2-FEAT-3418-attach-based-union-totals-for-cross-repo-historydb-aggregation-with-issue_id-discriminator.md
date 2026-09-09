@@ -568,6 +568,7 @@ _Added by `/ll:verify-issues` — 2026-09-09:_
 - **Graph**: provider=`codegraph` freshness=`fresh`.
 
 ## Session Log
+- manual pre-implementation review - 2026-09-08 - switched the `issue_id` discriminator from `r{i}:` prefix to `#r{i}` suffix (`rework.py:207` `startswith("BUG-")` would silently zero follow-up fixes in totals); made view-column substitution per column present (`commit_events`/`orchestration_runs` lack `issue_num`); verified ad hoc that attached-schema views resolve unqualified names in their own schema despite a same-named TEMP view (queued as registry claim 7); added `issue_sessions` to the AC #5 count test, a follow-up-fix AC, a `find_issues()`-reuse AC, and the shared-session-id limitation; scrubbed remaining "views in `main`" wording
 - `/ll:confidence-check` - 2026-09-09T04:48:07 - `3759f748-350f-446f-874e-34c9fb809eb9.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:43:19 - `1db05808-40f4-4b9e-826c-e9c14764e1f0.jsonl`
 - `/ll:explore-api sqlite3` - 2026-09-09 - extended `.ll/learning-tests/sqlite3.md` with FEAT-3418's 5 required claims (+1 follow-up); refuted the `CREATE VIEW main.<relation>` design premise (SQLite rejects a `main`-schema view referencing any attached object) and confirmed `CREATE TEMP VIEW` as the working mechanism, with temp-view visibility living in `sqlite_temp_master` not `main.sqlite_master`; reconciled Design, Program Design, Integration Map, Conventions, AC #5, and the Spike Result section accordingly
