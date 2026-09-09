@@ -15,7 +15,11 @@ from typing import Any
 from little_loops.cli.loop.runner import run_background
 from little_loops.cli.loop.signals import register_loop_signal_handlers
 from little_loops.fsm.concurrency import _process_alive
-from little_loops.fsm.context_seed import inject_design_context, seed_confidence_thresholds
+from little_loops.fsm.context_seed import (
+    apply_context_overrides,
+    inject_design_context,
+    seed_confidence_thresholds,
+)
 from little_loops.fsm.loop_paths import load_loop, resolve_loop_path
 from little_loops.fsm.persistence import (
     LoopState,
@@ -655,11 +659,10 @@ def cmd_resume(
         for key, value in state_for_display.context.items():
             fsm.context[key] = value
 
-    for kv in getattr(args, "context", None) or []:
-        if "=" not in kv:
-            raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
-        key, _, value = kv.partition("=")
-        fsm.context[key.strip()] = value.strip()
+    # KEY=VALUE strings, coerced to the type the key already carries
+    # (boolean/number literals and {type:} declarations) — shared with
+    # cmd_resume so the two --context paths cannot diverge.
+    apply_context_overrides(fsm.context, getattr(args, "context", None) or [])
 
     # Re-inject run_dir using the same instance_id as the original run so resumed
     # loops write artifacts to the same directory they started with.

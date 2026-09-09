@@ -95,3 +95,65 @@ def derive_input_hash(context: dict[str, Any]) -> None:
     """
     if "input_hash" not in context and isinstance(context.get("input"), str):
         context["input_hash"] = hashlib.sha256(context["input"].encode()).hexdigest()[:12]
+
+
+def apply_context_overrides(context: dict[str, Any], overrides: list[str]) -> None:
+    """Apply ``--context KEY=VALUE`` CLI overrides, coerced to declared types.
+
+    ``argparse`` hands every value in as a string, but the key being replaced
+    usually says what the value *is*: a YAML ``flag: true`` literal (or a
+    ``{type: boolean}`` FEAT-1311 declaration, or a JSON-positional unpack
+    that already wrote a real ``bool``) makes ``--context flag=false`` mean
+    ``False`` — the raw string ``"false"`` is truthy everywhere the context
+    is consumed (Jinja tests, Python routing), so an uncoerced override could
+    never turn a default-``true`` flag off. Number-ish keys parse to real
+    numbers for the same reason. Coercion only happens when the current
+    value's shape (``bool``/``int``/``float`` instance, or a ``type:``-keyed
+    dict) declares the intent; everything else — undeclared keys, plain
+    string fields, failed parses — stays the raw string, preserving the
+    historical behavior for existing invocations.
+
+    Shared by ``cli/loop/run.py`` and ``cli/loop/lifecycle.py`` (resume) so
+    the two ``--context`` paths cannot diverge.
+
+    Args:
+        context: The FSM context dict, mutated in place.
+        overrides: Raw ``KEY=VALUE`` argv entries (``args.context``).
+
+    Raises:
+        SystemExit: On a malformed entry without ``=`` (CLI usage error).
+    """
+    for kv in overrides:
+        if "=" not in kv:
+            raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
+        key, _, value = kv.partition("=")
+        context[key.strip()] = _coerce_override(context.get(key.strip()), value.strip())
+
+
+def _coerce_override(current: Any, value: str) -> Any:
+    """Coerce one ``--context`` string to the type its key already carries."""
+    if isinstance(current, bool):
+        lowered = value.lower()
+        return lowered == "true" if lowered in ("true", "false") else value
+    if isinstance(current, int):
+        try:
+            return int(value)
+        except ValueError:
+            return value
+    if isinstance(current, float):
+        try:
+            return float(value)
+        except ValueError:
+            return value
+    declared = current if isinstance(current, dict) else None
+    decl_type = (declared or {}).get("type")
+    if decl_type == "boolean":
+        lowered = value.lower()
+        if lowered in ("true", "false"):
+            return lowered == "true"
+    elif decl_type in ("number", "integer"):
+        try:
+            return int(value) if decl_type == "integer" else float(value)
+        except ValueError:
+            return value
+    return value

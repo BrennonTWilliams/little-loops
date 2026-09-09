@@ -23,7 +23,11 @@ from little_loops.cli.loop.runner import (
     run_foreground,
 )
 from little_loops.cli.loop.signals import register_loop_signal_handlers
-from little_loops.fsm.context_seed import inject_design_context, seed_confidence_thresholds
+from little_loops.fsm.context_seed import (
+    apply_context_overrides,
+    inject_design_context,
+    seed_confidence_thresholds,
+)
 from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes
 from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 from little_loops.logger import Logger
@@ -180,11 +184,10 @@ def cmd_run(
     )
     for key, value in _parse_program_md(program_md_path).items():
         fsm.context[key] = value
-    for kv in getattr(args, "context", None) or []:
-        if "=" not in kv:
-            raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
-        key, _, value = kv.partition("=")
-        fsm.context[key.strip()] = value.strip()
+    # KEY=VALUE strings, coerced to the type the key already carries
+    # (boolean/number literals and {type:} declarations) — shared with
+    # cmd_resume so the two --context paths cannot diverge.
+    apply_context_overrides(fsm.context, getattr(args, "context", None) or [])
 
     # Generate instance_id early so run_dir can be derived before the validation scan
     if getattr(args, "foreground_internal", False):

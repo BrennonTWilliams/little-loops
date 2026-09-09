@@ -1,0 +1,12 @@
+{
+  "id": "16c5e887-4bbc-45ff-94ef-fb2704bb078b",
+  "type": "decision",
+  "timestamp": "2026-09-09T04:07:56Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-queue is a local single-writer-SQLite queue matching every non-jittered backoff precedent in the codebase (transport.py webhook/fan-in, git_lock.py); the sole jittered site targets an external distributed retry. The concurrent-drainer race jitter would mitigate is already closed by claim_entry's BEGIN IMMEDIATE transaction and the busy_timeout pragma.",
+  "rule": "Non-jittered iterative-doubling backoff (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Jittered exponential backoff (Option B), following fsm/executor.py's external rate-limit retry convention",
+  "issue": "ENH-3416"
+}
