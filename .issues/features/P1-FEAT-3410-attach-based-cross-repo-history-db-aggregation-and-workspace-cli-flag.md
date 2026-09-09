@@ -17,6 +17,13 @@ parent: FEAT-3399
 unproven_mechanism: true
 verify_verdict: NON_VALID
 size: Very Large
+confidence_score: 100
+outcome_confidence: 64
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
+spike_needed: true
 ---
 
 ## Summary
@@ -834,7 +841,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-09-08 | Priority: P1
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-08_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Outcome Risk Factors
+- `unproven_mechanism: true` is still set and neither `spike_attempted` nor `spike_completed` is stamped, so the Outcome Confidence Cap (ENH-3350) forces the aggregate to 64 regardless of the raw Criteria A-D sum (89). The multi-ATTACH mechanism was already exercised inline (see Verification Notes § Spike) but not yet formalized — Implementation Step 13 (record a `sqlite3` Learning Test Registry entry via `/ll:explore-api`, then clear `unproven_mechanism`) is the prerequisite to lift this cap.
+- Criterion A (Complexity) is the next-lowest contributor at 14/25: ~13 distinct files touched (new module, `agent_quality.py`/`rework.py` `conn=` additions, `cli/history.py` wiring, `issue_history/__init__.py` exports, 4 docs files, 3-4 test files) puts Breadth in the 6-15-site band (5/12); per-site depth is mostly Local/Moderate (9/13) since the new aggregator composes several existing calls per member without shared mutable state. Not a blocker, but expect the implementation to touch more files than a typical Medium-effort issue despite Effort being labeled "Medium" in Impact.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T01:46:02 - `876d7307-25cb-43ad-ac4c-5e31687d40fd.jsonl`
 - `/ll:format-issue` - 2026-09-08T18:31:14 - `d235f946-7b83-4228-9eed-a9bd5517b547.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-08T18:20:35 - `7bee39e0-dbd1-43e1-ab8d-3353f1d8f05f.jsonl`
 - `/ll:verify-issues` - 2026-09-08T18:14:31 - `0c248636-ebaa-42e8-a21d-567126bbbb58.jsonl`
