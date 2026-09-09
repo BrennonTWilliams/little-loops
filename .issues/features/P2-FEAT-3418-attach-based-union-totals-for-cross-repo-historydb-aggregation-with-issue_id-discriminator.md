@@ -18,12 +18,12 @@ decision_needed: false
 reconcile_attempted: true
 learning_tests_required:
 - sqlite3
-confidence_score: 90
-outcome_confidence: 63
-score_complexity: 10
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 10
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-3418: ATTACH-based union totals for cross-repo history.db aggregation with issue_id discriminator
@@ -507,6 +507,7 @@ _Added by `/ll:verify-issues` — 2026-09-09:_
 - **Graph**: provider=`codegraph` freshness=`fresh`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-09T04:48:07 - `3759f748-350f-446f-874e-34c9fb809eb9.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:43:19 - `1db05808-40f4-4b9e-826c-e9c14764e1f0.jsonl`
 - `/ll:explore-api sqlite3` - 2026-09-09 - extended `.ll/learning-tests/sqlite3.md` with FEAT-3418's 5 required claims (+1 follow-up); refuted the `CREATE VIEW main.<relation>` design premise (SQLite rejects a `main`-schema view referencing any attached object) and confirmed `CREATE TEMP VIEW` as the working mechanism, with temp-view visibility living in `sqlite_temp_master` not `main.sqlite_master`; reconciled Design, Program Design, Integration Map, Conventions, AC #5, and the Spike Result section accordingly
 - `/ll:wire-issue` - 2026-09-09T04:15:40 - `e1e686a9-1440-44fa-b3e0-814ed4ea3e38.jsonl`

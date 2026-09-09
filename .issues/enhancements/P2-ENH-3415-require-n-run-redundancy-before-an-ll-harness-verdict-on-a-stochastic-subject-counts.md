@@ -58,7 +58,7 @@ The argument comes from evolutionary-search harnesses that select a candidate on
 - **N-sample redundancy.** High-variance evaluation environments produce flukes. Mandating multiple evaluations per unique match-up is what stops a single lucky win from promoting a candidate — the thing that separates principled selection from prompt-and-hope.
 - **A frozen external reference.** A candidate is tested against both the incumbent and an unchanged baseline, so a lineage cannot drift into a self-referential local optimum where every generation only beats its immediate parent.
 
-Neither is novel as statistics. What is worth copying is the posture: the loop is not considered runnable without them. The second guard is out of scope here and belongs in its own issue; this issue supplies the first.
+Neither is novel as statistics. What is worth copying is the posture: the loop is not considered runnable without them. The second guard is out of scope here and belongs in its own issue; this issue supplies the first. **No such issue exists yet** (checked 2026-09-09: nothing in `.issues/` describes a frozen external reference / baseline guard for `ll-harness`). File a stub for it when this issue is implemented and add it under `related:` so the deferral is tracked rather than lost.
 
 ## Dependencies and tensions to resolve explicitly
 
@@ -353,7 +353,7 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - **Priority**: P2 - a stochastic verdict today certifies a lucky sample rather than a real capability; not yet gating a live promotion decision, but any harness-driven promotion built on the current one-shot verdict is unsound.
 - **Effort**: Medium - extracts `_grade()` from `_evaluate_and_report`, adds a sample loop at four `cmd_*` call sites in `cli/harness.py`, a classification table in `runner_spec.py`, one new flag, and doc updates; no schema, writer, or FSM-evaluator change (D1, D5).
 - **Risk**: Low-Medium - exit codes and the n=1 output surface are unchanged; the new code path is reached only for `skill`/`prompt` by default or via an explicit `--samples`. The main regression risk is the `_grade()` extraction altering `cmd_dsl`'s per-task behavior, covered by the ~33 existing `TestCmdDsl` tests.
-- **Breaking Change**: No - `HarnessEvalOutcome` gains defaulted fields and has no consumers outside `cli/harness.py`; the 0/1/2/3 exit contract is preserved. **Behavior change to call out**: default `ll-harness skill` and `ll-harness prompt` invocations now run the subject 3x, so wall time and host-CLI cost triple and one invocation writes three `harness_events` rows. No shipped loop, skill, command, or hook invokes those two runners today, so the change lands on hand-run and future callers only.
+- **Breaking Change**: No - `HarnessEvalOutcome` gains defaulted fields and has no consumers outside `cli/harness.py`; the 0/1/2/3 exit contract is preserved. **Behavior change to call out**: default `ll-harness skill` and `ll-harness prompt` invocations now run the subject 3x, so wall time (up to 3 × `--timeout`), host-CLI cost, and `--semantic` judge calls triple, and one invocation writes three `harness_events` rows. `--output json` for those two runners changes shape by default (D8: no top-level `exit_code`/`stdout`/`stderr`; per-sample `samples.results` instead). No shipped loop, skill, command, or hook invokes those two runners today, so the change lands on hand-run and future callers only; `cli/logs.py` fixture replays of `skill`/`prompt` invocations also pay 3x unless the fixture carries `--samples 1`.
 
 ## Confidence Check Notes
 
@@ -374,6 +374,7 @@ _Added by `/ll:confidence-check` on 2026-09-08_
 
 
 ## Session Log
+- pre-implementation review (manual) - 2026-09-09 - revised D2 (`--retry-of` implies n=1), D4 (PASS requires `passed == requested`), D7 (`_positive_int`, timeout scaling), D8 (n>1 JSON shape; history/prepatch read before the loop), `_grade()` I/O wording, struck the stale test-breakage bullet, updated AC3–AC7 and Impact, noted the missing frozen-baseline follow-up issue
 - `/ll:confidence-check` - 2026-09-09T04:41:40 - `4d4ff5a0-23ef-4021-a8a3-820b60906276.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:38:13 - `8dab0813-a8db-483a-974b-e9db8e0998dc.jsonl`
 - pre-implementation review (manual) - 2026-09-08 - added "Pre-Implementation Review Decisions" D1–D9, Option B print caveat, rewrote Program Design / Acceptance Criteria / Impact

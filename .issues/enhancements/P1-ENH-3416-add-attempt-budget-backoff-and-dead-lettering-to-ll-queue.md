@@ -424,15 +424,19 @@ tests.
   `dead_letter_entry`, `cancel_entry`, `revive_entry`; `reset_to_pending`
   docstring.
 - `scripts/little_loops/cli/queue.py` — `_drain_once` eligibility filter,
-  classification branch, `force_stop` → `cancel_entry`; `_reclaim_stale`
-  budget check; `cmd_requeue` widening; new `cmd_cancel` + argparse
+  classification branch, `force_stop` → `cancel_entry`, guard-miss re-read;
+  `_reclaim_stale` budget check + tuple return; `_report_reclaim` (`:665`)
+  two-count message; `cmd_requeue` widening; new `cmd_cancel` + argparse
   subparser; `_STATUS_COLOR` entries for `dead_letter`/`cancelled`;
   `cmd_status`'s `status_block` (`:306-317`) gains `attempt`, `nextAttemptAt`,
-  and reason/error; `_format_action_summary` (`:85`) — no new branch needed
-  (the `running` elapsed-time suffix is the only status-conditional; explicit
-  no-op); `_verify_owner_alive` docstring (`:514-523`) still accurate since
-  `cmd_requeue` remains a requeue; the `--force to requeue anyway` message
-  (`:713-717`) stays.
+  and reason/error; `_format_action_summary` (`:85`) gains the
+  `attempt=N` / `retry in Xs` suffix parts; `_verify_owner_alive` docstring
+  (`:514-523`) still accurate since `cmd_requeue` remains a requeue; the
+  `--force to requeue anyway` message (`:713-717`) stays. **Prose that says
+  the second signal marks the entry `failed` must change to `cancelled`**:
+  `_drain_once` docstring (`:455-458`), `_run_watch` docstring (`:633-639`),
+  and the `--watch` help string (`:846-848`). The module-level
+  `_current_loop_proc` comment is unaffected.
 - `scripts/little_loops/mcp_server/tools.py` — `_tool_queue_requeue`
   (`:615-645`) widens its status guard to match `cmd_requeue` and computes
   the `changes[].from` from the actual status; `queue_list` description
@@ -493,11 +497,17 @@ tests.
   `now`).
 - `scripts/tests/test_cli_queue_run.py` — new classes for the classification
   branch (drive `_drain_once` directly with a stubbed `run_action` returning
-  transient stderr, real stderr, and `timed_out=True`), the `force_stop` →
-  `cancelled` path (currently untested), `_reclaim_stale` exhaustion, and
-  `cmd_cancel`. Precedent for asserting the doubling sequence:
-  `test_git_lock.py::TestRetryLogic` (209-248). Precedent for exhaustion
-  logging: `test_transport.py:1604-1623`.
+  retryable stderr, real stderr, `"timeout"`-only stderr, a LOOP
+  `"terminal failure"`, and `timed_out=True`), the `force_stop` →
+  `cancelled` path (currently untested; grep for `"interrupted by operator"`
+  in `scripts/tests/` finds nothing), the cancel-race lock (stubbed
+  `run_action` calls `cancel_entry` on its own entry before returning
+  success), `_reclaim_stale` exhaustion, and `cmd_cancel`. Precedent for
+  asserting the doubling sequence: `test_git_lock.py::TestRetryLogic`
+  (209-248). Precedent for exhaustion logging: `test_transport.py:1604-1623`.
+- `scripts/tests/test_queue_store.py` — `TestUpdateEntryResult` gains a case
+  asserting a write to a non-running row returns False and leaves the row
+  unchanged (the new guard).
 - `_STATUS_COLOR` has no test today; the status-set lock covers it.
 - `_verify_owner_alive`'s `claimed_at` fallback (`cli/queue.py:531-536`) is
   untested but out of scope here.
@@ -505,7 +515,10 @@ tests.
 ### Documentation
 
 - `docs/ARCHITECTURE.md:827-838` — Queue DB section: schema, statuses,
-  migration table row at `:834`.
+  migration table row at `:834`; the final paragraph's "marks that entry
+  `failed`" (second-signal shutdown) becomes `cancelled`; note the
+  status-guarded completion write alongside the `claim_entry` BEGIN IMMEDIATE
+  prose.
 - `docs/reference/API.md:90`, `:10510-10533` — `QueueEntry` field lists and
   module reference; `:5056-5066` CLI entry point.
 - `docs/reference/CLI.md:4052-4135` — `ll-queue` reference: field list
@@ -526,10 +539,10 @@ guards are not in play.
 
 ## Implementation Steps
 
-1. `queue_store.py`: constants, `compute_backoff_s`, migration + `SCHEMA_VERSION = 3`, `QueueEntry` fields/`to_dict`/`_from_row`.
-2. `queue_store.py`: `claim_entry` increment + time gate; `schedule_retry`, `dead_letter_entry`, `cancel_entry`, `revive_entry`; `reset_to_pending` docstring.
-3. `cli/queue.py`: `_classify_dispatch`; `_drain_once` eligibility filter, outcome branch, `force_stop` → `cancel_entry`, backing-off count in the one-shot summary.
-4. `cli/queue.py`: `_reclaim_stale` budget check; `cmd_requeue` widening; `cmd_cancel` + subparser; `_STATUS_COLOR`; `cmd_status` block.
+1. `queue_store.py`: constants (incl. `QUEUE_RETRYABLE_REASONS`), `_utcnow`, `compute_backoff_s`, migration + `SCHEMA_VERSION = 3`, `QueueEntry` fields/`to_dict`/`_from_row`.
+2. `queue_store.py`: `claim_entry` increment + time gate; `update_entry_result` status guard; `schedule_retry`, `dead_letter_entry`, `cancel_entry(extra=)`, `revive_entry` (preserves `result.previous`); `reset_to_pending` docstring.
+3. `cli/queue.py`: `_classify_dispatch` (timeout → LOOP terminal → reason allowlist); `_drain_once` eligibility filter, outcome branch, `force_stop` → `cancel_entry`, guard-miss re-read, backing-off count in the one-shot summary.
+4. `cli/queue.py`: `_reclaim_stale` budget check + tuple return; `_report_reclaim`; `cmd_requeue` widening; `cmd_cancel` + subparser; `_STATUS_COLOR`; `cmd_status` block; `_format_action_summary` suffix; `failed`→`cancelled` prose in docstrings/help.
 5. `mcp_server/tools.py`: `_tool_queue_requeue` guard + `changes[].from`; `queue_list` description; optional `queue_cancel`.
 6. Tests per the Tests section, including the three lock tests (retryable-join, constants, status-set) and `test_cli_surface.py:139`.
 7. Docs per the Documentation section.
@@ -539,7 +552,7 @@ guards are not in play.
 - **Priority**: P1 — an entry that kills its drainer is re-dispatched forever today.
 - **Effort**: Medium — one migration, five small store functions, one new subcommand, one classification branch. Reduced from Large by cutting overflow/trimming and keeping `reset_to_pending`/`requeue` contracts intact.
 - **Risk**: Medium — behavior change: transient failures now retry instead of landing on `failed`. Bounded by `QUEUE_MAX_ATTEMPTS` and by the explicit non-retryable mapping for timeouts and real errors.
-- **Breaking Change**: No — `reset_to_pending` keeps its contract; `requeue` only widens accepted statuses; new statuses are additive. Consumers filtering on `status == "failed"` will no longer see transient failures there until the budget is exhausted.
+- **Breaking Change**: No — `reset_to_pending` keeps its contract; `requeue` only widens accepted statuses; new statuses are additive. Consumers filtering on `status == "failed"` will no longer see transient failures there until the budget is exhausted. `update_entry_result` now returns False (no-op) on a non-running row; no in-tree caller relied on writing a completion to a non-running entry.
 
 ## Confidence Check Notes
 
@@ -550,6 +563,7 @@ _Added by `/ll:confidence-check` on 2026-09-08 against the prior revision; score
 **Open** | Created: 2026-09-08 | Priority: P1
 
 ## Session Log
+- manual review - 2026-09-08 - added cancel-vs-dispatch status guard, `QUEUE_RETRYABLE_REASONS` allowlist + LOOP terminal rule, `_utcnow` seam, corrected owner-death message / `next_attempt_at` base / CMD-timeout-stderr claim, `cancel_entry(extra=)`, `result.previous` on revive, `list` backoff suffix, two-count reclaim report, dropped grep-shaped constants test
 - `/ll:confidence-check` - 2026-09-09T04:38:32 - `4a00b9f5-2c1a-4bb9-8901-1abcda8ab946.jsonl`
 - `/ll:verify-issues` - 2026-09-09T04:36:14 - `a78c41f1-909c-4220-a4df-fe4ab8b7ba0c.jsonl`
 - manual review rewrite - 2026-09-09 - design layer rewritten; wiring findings retained
