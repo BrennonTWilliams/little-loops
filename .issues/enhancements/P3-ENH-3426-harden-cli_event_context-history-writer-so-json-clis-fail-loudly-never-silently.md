@@ -108,24 +108,28 @@ even a consumer-side kill during that wait cannot lose it.
 ## Motivation
 
 This enhancement would:
-- Eliminate a failure mode where analytics-row writes to `history.db` (a
-  side-channel, not the CLI's actual payload) can crash or hang a
-  machine-facing JSON CLI, corrupting automation that parses
-  `ll-queue list --json` / `ll-loop show -j` / `ll-issues ... --json` output.
+- Close the remaining theoretical failure modes where analytics-row writes to
+  `history.db` (a side-channel, not the CLI's actual payload) can crash a
+  machine-facing JSON CLI or lose its buffered payload, corrupting automation
+  that parses `ll-queue list --json` / `ll-loop show -j` /
+  `ll-issues ... --json` output. None of these has been reproduced; the
+  locked-DB case is already handled (BUG-2706).
 - Business value: keeps ll-console and other machine consumers reliable even
-  when `history.db` is lock-contended.
-- Technical debt: closes the one remaining unguarded path (`connect` and the
-  `finally` UPDATE only catch `sqlite3.Error`, not `OSError`) in an otherwise
-  best-effort writer.
+  when `history.db` is lock-contended or the analytics config is malformed.
+- Technical debt: brings `cli_event_context` to a true "no analytics-path
+  exception escapes" guarantee (`except Exception`) instead of the current
+  `sqlite3.Error`-only guard, and flushes stdout before the exit-side wait.
 
 ## Proposed Solution
 
-See `## Proposed Hardening` above for the full plan. Summary: widen the
-`except sqlite3.Error` guards already on the insert (`writers.py:528`) and
-`finally` UPDATE (`writers.py:552`) to also catch `OSError` around `connect`
-(`writers.py:521`) and the UPDATE call, and guard `resolve_history_db` and the
-config-gating prefix so no analytics-path exception reaches the wrapped body.
-No size guard: DB size does not affect the writer path (see What Is Verified).
+See `## Proposed Hardening` above for the full plan. Summary: replace the
+`except sqlite3.Error` guards on the insert (`writers.py:528`) and `finally`
+UPDATE (`writers.py:552`) with `except Exception`, and extend the first guard
+upward to cover `resolve_history_db` (`writers.py:506`), the config-gating
+prefix (`writers.py:512-518`) and `connect` (`writers.py:521`) so no
+analytics-path exception reaches the wrapped body; flush stdout/stderr at the
+top of the `finally` before the UPDATE; make the warning one line. No size
+guard: DB size does not affect the writer path (see What Is Verified).
 
 ## Integration Map
 
