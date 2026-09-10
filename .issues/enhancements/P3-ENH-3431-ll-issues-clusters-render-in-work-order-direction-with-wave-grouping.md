@@ -160,6 +160,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 - N/A
 
+### Behavior Parity
+
+_Added 2026-09-09 pre-implementation review; covers every behavior of the code being replaced or re-rooted:_
+
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `clusters.py::_topo_sort_cluster` | Kahn topo order over raw `issue.blocked_by` only, ignoring `blocks`/`depends_on`/`--edges` | CHANGED | `_order_and_waves` orders over the normalized, `--edges`-filtered edge list. A `blocks`-only declaration now orders; `--edges=relates_to` now yields no ordering (was: still ordered by `blocked_by`). Deliberate; the old behavior was the "topo-sorts correctly" illusion. |
+| `clusters.py::_topo_sort_cluster` | Cycle members appended in sorted-ID order after the acyclic prefix; `has_cycle=True` | PRESERVED | Same in `_order_and_waves`; the bucket is labelled `unresolved` in `waves` output because downstream-of-cycle nodes share it. |
+| `clusters.py::_cluster_edges` | One edge per unordered pair, `blocked_by > blocks > parent > depends_on > relates_to` | CHANGED | One ordering edge + one annotation edge per pair. `parent`+`depends_on` no longer loses the ordering fact; 2-cycles survive. JSON `edges` may carry two entries per pair. |
+| `clusters.py::_render_cluster_tree` | Hub root (max degree, topo tie-break) for every cluster | PRESERVED for pure `parent`/`relates_to` clusters, CHANGED otherwise | Gate is `has_ordering_edges`; FEAT-2337's EPIC-hierarchy case keeps the exact existing rendering and is covered by a regression test. |
+| `clusters.py::_render_cluster_tree` | Every edge appears once, as branch or `⤷` cross-ref; nothing demoted to a trailing list | PRESERVED | Re-rooted walk keeps the "every edge rendered" invariant; `~` replaces `→`/`←` for annotation edges. |
+| `clusters.py::_render_cluster_diagram` | `▲` for edges pointing against the stack; `relates_to` in arrow slots; skip edges in a trailing text list | CHANGED | All `▼`/`needs`; annotations never in arrow slots; skip edges moved into the box as `unblocks:`. |
+| `clusters.py::_cluster_header` | `hub ENH-NNNN` token for every multi-issue cluster | PRESERVED for pure annotation clusters, CHANGED otherwise | `start ENH-NNNN` / `N start` + `M waves` when ordering edges exist. Pinned test strings at `test_issues_cli.py:6132` and `TestIssuesCLIClustersLegendAndHeader` updated. |
+| `clusters.py::_print_legend` | One line per present relationship type with source/target prose | CHANGED | Three-entry legend (`needs`, `prefers`, `~`); only entries present in the output are printed (same suppression rule). |
+| `cmd_clusters` default layout | `tree` | CHANGED | `waves`; `--compact` → `list` alias preserved; explicit `--layout` still wins over `--compact`. |
+| `cmd_clusters` JSON branch | `cluster_index`, `issue_count`, `issues[{id,priority,title}]`, `edges[{from,to,relationship}]`; identical across `--layout` values | PRESERVED (additive) | New `wave`, `ready`, `normalized_edges`; cross-layout equality kept. |
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
@@ -229,15 +246,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3 - Usability defect in a planning tool; no data or automation is wrong, but the primary use case (ordering) is currently unanswerable from the output.
-- **Effort**: Medium - One new normalization + wave helper, one new renderer, three renderers and the header/legend/JSON adjusted; all contained in `clusters.py` plus argparse and docs.
-- **Risk**: Low - Pure rendering change; JSON additions are additive. Only the header token (`hub` → `start`) and the default layout change observable text.
-- **Breaking Change**: No (JSON `edges` unchanged; header text and default layout change are cosmetic but should be called out in CHANGELOG)
+- **Effort**: Medium - Normalization, a single order+waves pass, a readiness helper, one new renderer, three renderers and the header/legend/JSON adjusted, plus the `_cluster_edges` dedup change; all contained in `clusters.py` plus argparse, docs, CHANGELOG.
+- **Risk**: Low-Medium - Rendering plus one data-shape change: the per-category dedup can emit two `edges` entries for one pair, and the topo order now honours `blocks`/`depends_on`/`--edges` (previously `blocked_by`-only), so existing order-sensitive tests may shift. JSON additions are additive.
+- **Breaking Change**: No (JSON `edges` shape unchanged; header text and default layout change are cosmetic; CHANGELOG entry required per Proposed Solution item 10)
 
 ## API/Interface
 
-- `ll-issues clusters --layout {waves,tree,list,boxes}`: new `waves` value; default changes from `tree` to `waves` (or `tree` becomes wave-rooted — see Open Questions). `--compact` alias unchanged.
-- JSON output: additive fields `issues[].wave` and `normalized_edges`. Existing `edges` array unchanged (backward compatible).
-- Header line format changes (`hub` → `start` + wave count). Any consumer grepping `hub ` breaks — grep `scripts/`, `skills/`, `commands/`, `loops/` for that token before changing.
+- `ll-issues clusters --layout {waves,tree,list,boxes}`: new `waves` value; default changes from `tree` to `waves`; `tree` is re-rooted at wave-1 issues when ordering edges exist. `--compact` alias unchanged.
+- JSON output: additive fields `issues[].wave` (int or `null`), `issues[].ready` (bool), and `normalized_edges` (`{before, after, strength: "hard"|"weak"}`). Existing `edges` array keeps its shape but may now hold two entries for one pair (one ordering, one annotation) — consumers that assumed one-edge-per-pair should be checked (none found in-repo).
+- Header line format changes (`hub` → `start ENH-NNNN` / `N start` + wave count) only for clusters with ordering edges; `hub` is retained for pure `parent`/`relates_to` clusters. Repo-wide grep for `hub ` confirmed clean outside `clusters.py` and its tests.
+- One additional issue-directory scan per invocation (`find_issues_for_graph`) for readiness; negligible for `.issues/` sizes in practice.
 
 ## Tests
 
@@ -265,9 +283,16 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ## Open Questions
 
-- Default layout: introduce `waves` as the new default, or make `tree` wave-rooted and keep it default? Recommendation: add `waves` as default; a wave-rooted `tree` is still worth doing for deep chains where waves lose the "which specific issue unblocks me" reading.
-- Should `relates_to` act as an intra-wave tiebreaker for line ordering? Recommendation: yes, but never as an edge that creates a new wave.
-- Should a `status: blocked` issue landing in wave 1 (all blockers done, hence filtered out) be flagged as stale status? Cheap to add; propose a `⚠ status is blocked but no active blockers` suffix.
+_Resolved 2026-09-09 during pre-implementation review; decisions folded into Proposed Solution:_
+
+- Default layout → `waves` is the new default; `tree` is also re-rooted (item 5).
+- `relates_to` as intra-wave tiebreaker → yes, never wave-creating (item 4).
+- Stale `status: blocked` flag → yes, driven by the same readiness superset (item 3).
+- Soft edges in wave computation → yes, `depends_on` orders and participates in cycle detection; the strength tag is `weak` to avoid colliding with the existing `--edges=hard` alias (items 1, 2).
+- Mixed `parent` + ordering clusters in `tree` → `parent` branches to wave-1 children only (item 5).
+- Multi-root header → `N start` (item 7); wave headers drop "(after X)" in favour of always-on per-line `needs` (item 4).
+
+No open questions remain.
 
 ## Related Key Documentation
 
