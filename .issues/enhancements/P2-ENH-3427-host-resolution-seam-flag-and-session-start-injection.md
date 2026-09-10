@@ -21,11 +21,11 @@ relates_to:
 - ENH-3420
 - FEAT-3417
 reconcile_attempted: true
-confidence_score: 95
-outcome_confidence: 67
-score_complexity: 14
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 10
 verify_verdict: VALID
 ---
@@ -202,15 +202,10 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ### Signatures
 
-- `_resolve_host(flag: str | None, *, default: str | None = None) -> str | None` (new,
-  `user_messages.py`) — `flag or os.environ.get("LL_HOOK_HOST") or default`; declared via two
-  `@overload`s so `default: str` narrows the return to `str` (see Scope Boundaries item 3)
-- `_cwd_spellings(cwd: Path) -> list[str]` (new, `user_messages.py`; imported by `sessions.py`) —
-  `[str(cwd.resolve()), str(cwd.absolute())]` deduped, resolved first
-- `add_host_arg(parser: argparse.ArgumentParser, *, help_text: str = <union default>) -> None`
-  (new, `cli_args.py`; lazy-imports `REGISTERED_HOSTS` in the body)
-- `REGISTERED_HOSTS: tuple[str, ...]` (re-exported unchanged, `session_store/__init__.py`, sourced
-  from `sessions._REGISTERED_HOSTS`)
+- `_resolve_host(flag: str | None, *, default: str | None = None) -> str | None` (new, user_messages.py) — `flag or os.environ.get("LL_HOOK_HOST") or default`; declared via two `@overload`s so `default: str` narrows the return to `str` (see Scope Boundaries item 3)
+- `_cwd_spellings(cwd: Path) -> list[str]` (new, user_messages.py; imported by sessions.py) — `[str(cwd.resolve()), str(cwd.absolute())]` deduped, resolved first
+- `add_host_arg(parser: argparse.ArgumentParser, *, help_text: str = ...) -> None` (new, cli_args.py; lazy-imports `REGISTERED_HOSTS` in the body) — default is a union-accurate string (see Scope Boundaries item 4)
+- `REGISTERED_HOSTS: tuple[str, ...]` (re-exported unchanged, session_store/__init__.py, sourced from sessions._REGISTERED_HOSTS)
 
 ### Call Path
 
@@ -359,8 +354,22 @@ an outstanding action item).
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-09_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 78/100 → MODERATE
+
+_Update 2026-09-09_: the Program Design hard override noted below is resolved — the four
+`### Signatures` bullets were reflowed onto single unwrapped lines (they previously wrapped
+mid-signature, which broke the gate's per-line regex) and `add_host_arg`'s `<union default>`
+placeholder (a spaced token, invalid as a default value) was replaced with `...`. `ll-issues
+check-design ENH-3427` now exits 0 (`is_specific: True`). No gaps remain.
+
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T00:45:13 - `d1b11d5d-bd78-420e-91a1-5dfc94d4273b.jsonl`
 - `/ll:verify-issues` - 2026-09-10T00:40:45 - `71fb98cc-4ad6-4857-8a2d-91b008deb266.jsonl`
 - manual review - 2026-09-09 - added `@overload` typing for `_resolve_host` (mypy at the three `default="claude-code"` callers); `add_host_arg` gets a `help_text` kwarg and lazy-imports `REGISTERED_HOSTS` (keeps `cli_args.py` a leaf); both-spellings probe explicitly covers every encoded-path branch of `get_project_folder`; `_cwd_spellings` uses `absolute()` for the second spelling; `detect_sessions` docstring 301-304 added to Files to Modify; dropped dangling `digest` finding
 - `/ll:verify-issues` - 2026-09-10T00:15:40 - `8cef5fbd-618e-46ee-a7cc-dbfb9095952c.jsonl`

@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T23:02:24Z'
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 84
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-3431: ll-issues clusters: render in work-order direction with wave grouping
@@ -322,6 +328,7 @@ what was wrong and fixed, not an outstanding action item)
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T00:41:54 - `97e9a91b-37ac-40a1-9a74-7e667495ec29.jsonl`
 - `/ll:verify-issues` - 2026-09-10T00:39:39 - `059c253f-56e8-4e6a-b8dc-44697d81f559.jsonl`
 - `/ll:verify-issues` - 2026-09-10T00:27:31 - `5b36b229-aecd-464e-a51e-d8fefd4480a0.jsonl`
 - `/ll:verify-issues` - 2026-09-09T23:38:11 - `8a31ffc6-a676-4cb1-9565-9ce146e62087.jsonl`

@@ -20,19 +20,26 @@ score_change_surface: 25
 
 ## Summary
 
-Every `ll-*` CLI entry point wraps its body in `cli_event_context` (`scripts/little_loops/session_store/writers.py:505-548`), which opens `.ll/history.db`, inserts a `cli_events` row, and updates it with exit code and duration on exit. When `history.db` is held by a concurrent writer past the 5 s `busy_timeout`, a machine consumer of a JSON-emitting command (`ll-queue list --json`, `ll-loop show -j`, `ll-issues ... --json`) can observe the failure mode the ll-console agent reported on 2026-09-09: the process dies with empty stdout. ll-console tolerates it (non-zero exit maps to its `QueueError`), but the contract for a JSON-emitting CLI should be explicit: exit non-zero **and** print a diagnostic to stderr, never a silent empty stdout.
+Every `ll-*` CLI entry point wraps its body in `cli_event_context` (`scripts/little_loops/session_store/writers.py:483-561`), which opens `.ll/history.db`, inserts a `cli_events` row, and updates it with exit code and duration on exit. The writer is best-effort for `sqlite3.Error` only (BUG-2706); any other exception on the analytics path (`OSError`, malformed `analytics.capture` config raising `AttributeError`/`TypeError`) still escapes and crashes the wrapped command, and the command's buffered JSON is not flushed before the exit UPDATE waits on `busy_timeout`. This issue closes both gaps so a machine consumer of a JSON-emitting command (`ll-queue list --json`, `ll-loop show -j`, `ll-issues ... --json`) always gets its payload on stdout with exit 0, plus a stderr warning, regardless of what the history writer hits.
+
+**Provenance correction (2026-09-10 review)**: this issue was captured from an ll-console report of `ll-queue list --json` dying with empty stdout, attributed to a locked `history.db`. That attribution is unsupported — see "What Is Verified". `ll-queue list` reads a **different** database, `.ll/queue.db`, unguarded; that is the far more likely cause of the reported symptom and is out of scope here (tracked as a sibling BUG — see Scope Boundaries). This issue is pure hardening of `cli_event_context`, not a fix for a reproduced failure.
 
 ## What Is Verified
 
 - On this checkout, with the same 7.6 GB `history.db`, `ll-queue list --json` returned exit 0 with `[]` on stdout in 0.2 s. The crash **did not reproduce** here. The likely trigger was a concurrent writer holding the SQLite lock while the ll-console session ran it.
 - Database size is **not** a factor (2026-09-09 review). `history.db` is 7.6 GB / 1.9M pages / 1.49M `raw_events` rows / 342K `cli_events` rows (WAL mode, zero freelist) — routine for SQLite (281 TB limit). `cli_event_context` only does a single-row INSERT and UPDATE, both O(log n) B-tree tail operations independent of file size, as the 0.2 s result above shows. The only size-sensitive path is a schema migration in `ensure_db` on first connect after an upgrade (one-time, not steady-state); WAL checkpoint cost scales with WAL size (5 MB here), not DB size. The original size-guard proposal was dropped on this basis.
 - `cli_event_context` already catches `sqlite3.Error` on the insert (writers.py:528) and logs a warning rather than raising, so the insert path is not the hole. Unhandled surfaces remain: `resolve_history_db` / `_pkg.connect` (schema migration on first connect after an upgrade, writers.py:520-521 runs inside the try but `connect` may block on `busy_timeout` rather than raise), the `finally` UPDATE (writers.py:543 onward), and any non-`sqlite3.Error` exception (e.g. `OSError` from disk-full, `MemoryError`) escaping either.
+- **A locked `history.db` cannot produce the reported symptom with the current code (2026-09-10 review).** Simulated a `connect()` that raises `OperationalError("database is locked")` around a body that prints JSON: result was exit 0, the JSON on stdout, and the `cli_event_context: insert failed` warning (with traceback) on stderr. Both the insert and the exit UPDATE are already guarded (BUG-2706). "Non-zero exit + empty stdout" from a lock is therefore not reachable via this writer today.
+- **The reported symptom matches a locked `.ll/queue.db`, not `history.db`.** `ll-queue list` calls `list_entries(QUEUE_DB_PATH)` at `cli/queue.py:249` with no exception guard; `QUEUE_DB_PATH` is `.ll/queue.db` (`queue_store.py:68`), a separate file with its own `busy_timeout` (`queue_store.py:202-214`). A lock held past that timeout raises straight out of `cmd_list`: traceback on stderr, exit 1, nothing on stdout. `ll-mcp`'s `queue_list` tool calls the same `list_entries` and has the same exposure, so the Context note below about ll-console being insulated by the MCP move holds only for `history.db`. Out of scope here — see Scope Boundaries.
+- **Second real hazard: buffered stdout lost to a consumer kill.** Stdout to a pipe is block-buffered, so the wrapped body's JSON sits in the process buffer while the `finally` UPDATE waits on `busy_timeout`. ll-console's `_run()` in `loop_client.py:42` / `issues_client.py:47` uses `subprocess.run(timeout=30)` and kills the child on expiry, discarding that buffer. Today's worst-case analytics stall (≈5 s on enter + ≈5 s on exit, plus a possible migration connection) is under 30 s, so this is not the current trigger, but it is the only mechanism by which this writer can yield "empty stdout" — and it is closed by flushing stdout before the exit UPDATE (Proposed Hardening step 4).
 
 ## Proposed Hardening
 
 1. ~~Establish the failure contract first: ask the ll-console side for the exact stderr and exit code from the observed failure before changing behavior.~~ **Superseded (2026-09-09, `/ll:confidence-check` follow-up)**: no logged stderr/exit-code artifact from the original failure exists anywhere in ll-console's repo — it was a live-session observation, never committed. More importantly, ll-console's queue path no longer reproduces it: commit `56448d3` ("speak MCP stdio directly to ll-mcp", 2026-09-09T21:04:38Z — ~46 min after this issue was captured) repointed `queue_client.py` off the `ll-queue list --json` CLI shell-out onto `ll-mcp`'s `queue_list` tool over stdio. That tool (`_tool_queue_list`, `scripts/little_loops/mcp_server/tools.py:478`) wraps `queue_store.list_entries()` directly and never touches `cli_event_context` or `history.db` — so a locked history.db can no longer affect ll-console's queue reads at all. The remaining real exposure is other direct `ll-queue`/`ll-loop`/`ll-issues` CLI consumers, including ll-console's own `loop_client.py`/`issues_client.py`, which still shell out to `ll-loop`/`ll-issues` per subprocess.
-2. Make the history writer best-effort on every path: wrap `connect` and the `finally` UPDATE in the same `sqlite3.Error`/`OSError` guard as the insert, with a bounded `busy_timeout` (e.g. 2 s) so a locked or slow DB degrades to "no analytics row" instead of stalling or killing the command.
-3. Add a test that simulates a locked DB (second connection holding an exclusive lock) and asserts the wrapped command still emits its JSON on stdout with exit 0, plus a warning on stderr.
+2. Make the history writer best-effort on every path with **`except Exception`**, not `(sqlite3.Error, OSError)`: one guard around the whole pre-`yield` prefix (`resolve_history_db`, the config-gating block, `connect`, INSERT, commit) and one around the exit UPDATE. Rationale (2026-09-10 review): the stated contract is "no analytics-path exception reaches the wrapped body"; the issue's own research found `AttributeError`/`TypeError` from the config-gating prefix that an `OSError` tuple would not catch; the 2-tuple has zero repo precedent while `Exception`-wide suppression is the established EPIC-2457 convention for best-effort writers; and `cli_event_context` is the outermost frame of every `ll-*` CLI, so nothing above it can catch a leak. Never wrap the `yield` itself — body exceptions must still propagate (`except BaseException: exit_code = 1; raise` stays as-is). No new `busy_timeout`: the existing 5000 ms `PRAGMA` (`schema.py:124`, `:1405`) already covers every connection through `connect()`.
+3. Add a test (mocked lock, not a real second connection — see Acceptance Criteria item 3) that invokes the `ll-queue` entry point and asserts it still emits its JSON on stdout with exit 0, plus a warning on stderr.
+4. **Flush stdout before the exit UPDATE** (added 2026-09-10 review): at the top of the `finally` block, `with contextlib.suppress(Exception): sys.stdout.flush()` so the body's payload reaches the consumer before any analytics-side `busy_timeout` wait. This is the only change that makes "never a silent empty stdout" literally true for this writer (see What Is Verified, buffered-stdout hazard). Do the same for `sys.stderr` — cheap and symmetrical.
+5. Decide the stderr diagnostic shape and make code and docs agree (2026-09-10 review): Expected Behavior promises a **one-line** warning, but both existing guards pass `exc_info=True`, which prints a full traceback to stderr on every degraded run of a JSON CLI. Recommended: drop `exc_info=True` from the two `cli_event_context` warnings and include `type(exc).__name__: exc` in the one-line message instead (keep `exc_info` in `logger.debug` if a traceback is wanted for diagnosis). Note that stderr delivery relies on Python's `logging.lastResort` handler (WARNING and above) because no `logging.basicConfig` exists anywhere in the package — document this on the function docstring so a future logging change does not silently swallow the diagnostic.
 
 ## Context
 
@@ -40,11 +47,16 @@ Belongs with the in-flight session-store lifecycle work (FEAT-3417, ENH-3420). F
 
 **Update (2026-09-09)**: the reported symptom is no longer reproducible via ll-console — its `queue_client.py` moved off the `ll-queue list --json` CLI shell-out onto `ll-mcp`'s `queue_list` tool over stdio the same day (commit `56448d3`, ~46 min after this issue was captured), and that tool path never touches `cli_event_context`/`history.db`. The hardening is still worthwhile for the CLI consumers that remain: automation calling `ll-queue`/`ll-loop`/`ll-issues` `--json` directly, and ll-console's own `loop_client.py`/`issues_client.py`, which still shell out to `ll-loop`/`ll-issues` per subprocess.
 
+**Update (2026-09-10 review)**: the paragraph above is only half right. The MCP `queue_list` tool bypasses `history.db`, but it still calls `queue_store.list_entries()` against `.ll/queue.db` unguarded — the same exposure `ll-queue list` has at `cli/queue.py:249`, and the more plausible cause of the original report (see What Is Verified). That path is tracked separately; this issue does not claim to fix the ll-console symptom.
+
 ## Acceptance Criteria
 
-- [ ] Any exception raised by the history writer (`resolve_history_db`, the config-gating prefix, connect, insert, finally-update) is caught and logged; the wrapped command's stdout and exit code are unaffected.
-- [ ] The existing `busy_timeout` (5000ms via `PRAGMA`, applied unconditionally through `connect()` at `schema.py:1405`) is documented as already covering `cli_event_context`'s connection; no new timeout is introduced.
-- [ ] Test: locked `history.db` → `ll-queue list --json` prints valid JSON, exits 0, warning on stderr.
+- [ ] Any `Exception` raised by the history writer (`resolve_history_db`, the config-gating prefix, connect, insert, finally-update) is caught via `except Exception` and logged; the wrapped command's stdout and exit code are unaffected. Exceptions raised by the wrapped body still propagate unchanged.
+- [ ] The existing `busy_timeout` (5000ms via `PRAGMA`, applied unconditionally through `connect()` at `schema.py:1405`) is documented as already covering `cli_event_context`'s connection; no new timeout is introduced. The docstring also records that the stderr warning is delivered by Python's `logging.lastResort` handler (no `logging.basicConfig` in the package).
+- [ ] `sys.stdout` (and `sys.stderr`) are flushed, under `contextlib.suppress(Exception)`, at the start of the `finally` block before the exit UPDATE runs, so the body's payload is delivered before any analytics-side wait.
+- [ ] The degraded-path stderr diagnostic is a single line (no `exc_info=True` traceback on the WARNING record) and Expected Behavior matches what the code emits.
+- [ ] Test: locked `history.db` → `ll-queue list --json` prints valid JSON, exits 0, warning on stderr. Shape: monkeypatch `little_loops.session_store.connect` to raise `sqlite3.OperationalError("database is locked")` (the existing pattern at `test_session_store_writers.py:489-511`), invoke `main_queue` with `sys.argv` set to `["ll-queue", "list", "--json"]` against a `tmp_path` queue DB, capture with `capsys`, assert `json.loads(out)` succeeds, return value is 0, and `"cli_event_context: insert failed" in caplog.text`. Do **not** hold a real second connection with `BEGIN IMMEDIATE`: that costs a full 5 s `busy_timeout` per test unless `_BUSY_TIMEOUT_MS` is also monkeypatched down, and adds nothing the mock does not already prove.
+- [ ] Test: a non-`sqlite3.Error` on the analytics path (e.g. `config={"analytics": "oops"}` raising `AttributeError` in the gating prefix, or `connect` raising `OSError`) is swallowed with a warning and the body still runs.
 
 
 ## Current Behavior
@@ -53,9 +65,12 @@ Belongs with the in-flight session-store lifecycle work (FEAT-3417, ENH-3420). F
 both the insert (`writers.py:528`) and the `finally` UPDATE (`writers.py:552`)
 and degrades to a no-op with a `logger.warning`. It does **not** catch
 non-`sqlite3.Error` exceptions (`OSError` from disk-full, `MemoryError`) that
-could escape `_pkg.connect()` (`writers.py:521`) or the UPDATE, and `connect()`
-sets no explicit `busy_timeout`, so a long-held lock can block the wrapped
-command rather than fail fast into the existing warning path.
+could escape `_pkg.connect()` (`writers.py:521`) or the UPDATE, nor the
+`AttributeError`/`TypeError` a malformed `analytics.capture` config raises in
+the unguarded gating prefix (`writers.py:512-518`). It does not flush stdout
+before the exit UPDATE, so the body's buffered JSON is at the mercy of the
+`busy_timeout` wait if a consumer kills the process. (`connect()` does apply a
+5000 ms `PRAGMA busy_timeout` — see Codebase Research Findings.)
 
 ### Codebase Research Findings
 
@@ -83,9 +98,12 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 Every `ll-*` JSON-emitting CLI wrapped by `cli_event_context` exits
 deterministically: on any history-writer failure (locked DB, disk-full,
-OOM) the wrapped command still completes and prints its JSON on
-stdout with exit 0, plus a one-line warning on stderr — never a silent
-empty-stdout hang or crash.
+OOM, malformed analytics config) the wrapped command still completes and
+prints its JSON on stdout with exit 0, plus a one-line
+`cli_event_context: ... failed for 'll-<name>' (<ExcType>: <msg>)` warning on
+stderr — no traceback, never a silent empty-stdout crash. The payload is
+flushed to the consumer before the exit UPDATE waits on `busy_timeout`, so
+even a consumer-side kill during that wait cannot lose it.
 
 ## Motivation
 
