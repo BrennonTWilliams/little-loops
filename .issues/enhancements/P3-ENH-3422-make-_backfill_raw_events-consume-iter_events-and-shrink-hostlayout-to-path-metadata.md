@@ -19,12 +19,12 @@ relates_to:
 - FEAT-3417
 reconcile_attempted: true
 decision_needed: false
-confidence_score: 80
-outcome_confidence: 37
-score_complexity: 9
-score_test_coverage: 18
-score_ambiguity: 10
-score_change_surface: 0
+confidence_score: 98
+outcome_confidence: 79
+score_complexity: 16
+score_test_coverage: 24
+score_ambiguity: 22
+score_change_surface: 17
 ---
 
 # ENH-3422: Make _backfill_raw_events consume iter_events and shrink HostLayout to path metadata
@@ -424,7 +424,44 @@ _The 2026-09-09 `/ll:confidence-check` (readiness 80, outcome 37) predates the
 done) and its "unapplied decision" and "qwen landmine" risk factors are addressed
 by the amended Option B and D2. Re-run `/ll:confidence-check` before implementing._
 
+## Verification Notes
+
+`/ll:verify-issues --auto`, 2026-09-10, against `main` at `7c34c8ab9`. Graph:
+provider=`codegraph` freshness=`fresh`.
+
+**Verdict: VALID.** Spot-checked a representative, high-priority sample of the
+issue's dozens of `file:line` citations — all still exact at current HEAD:
+`_backfill_raw_events` signature and branch A/B line ranges (`lifecycle.py:747,
+778, 799-831`), the `(source_path, line_no)` dedup index (`schema.py:488-489`),
+`SessionEvent` fields and `_PARSERS` dispatch incl. the shared
+`_parse_claude_shaped` helper (`sessions.py:78-84, 707-750, 844-853`), the "zero
+callers of `iter_events` in the ingest/backfill/rebuild path" claim (confirmed
+independently via grep and `ll-code callers-of iter_events` — all five callers
+are in `user_messages.py`/`cli/logs.py`/`cli/ctx_stats.py`, none in
+`lifecycle.py`/`writers.py`'s backfill chain, which calls the distinct
+`_iter_events`), kimi-code's missing `HostLayout` entry and `_KIMI_WIRE_GLOB`
+special case (`sessions.py:301, 444-445, 457`), the codex notice and both glob
+sites in `cli/session.py` (`699-704`, `671-673`, `710-712`), `backfill_worker.py`'s
+unvalidated `--host` (`58-63`), the `HostLayout` field set and `_iter_events`
+qwen-normalize block (`writers.py:2477-2532, 3295-3308`), and
+`qwen.py`/`__init__.py`'s current `qwen_skip_at_ingest` export vs. the
+not-yet-existing `is_raw_qwen_record` (correctly scoped as new by D2).
+`ll-verify-evidence --json`: `{"ok": true, "count": 0}`, no fabricated quotes.
+Decisions log: no active required rules, no conflict. B6 (proposal-vs-code):
+no exception-handler or test-fixture defects found; every D1–D8 decision has
+matching AC coverage (D7 folds into the first generic AC bullet).
+
+**Dependency note (informational, not corrected here):** `blocked_by:
+[ENH-3430]` is satisfied — ENH-3430 is `done`. Minor `MISSING_BACKLINK`:
+ENH-3430's own `blocks:` frontmatter lists only `ENH-3433`, not `ENH-3422`
+(ENH-3422 appears there only under `relates_to`). Since ENH-3430 is already
+done this doesn't block anything; fix on ENH-3430's file if backlink hygiene
+is wanted. `relates_to: [ENH-3420, FEAT-3417]` both resolve and are `done`. No
+dependency cycle.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T14:58:25 - `7a2c33dc-838a-4428-a666-2d83524f51c4.jsonl`
+- `/ll:verify-issues` - 2026-09-10T14:52:43 - `adc278c6-e79b-4356-bad0-d665b6ed7604.jsonl`
 - `review (manual: consolidated rewrite; folded in D1–D8 — SessionEvent.line_no, legacy-qwen replay shim, session_id fallback + handles_from_paths/session_id_for, handles= on wrappers + detect_sessions for codex, kimi HostLayout entry, raw_line non-verbatim, no compat wrappers + delete qwen_skip_at_ingest, worker return-1 validation)` - 2026-09-10T15:30:00
 - `/ll:reconcile-issue` - 2026-09-10T14:36:37 - `aa91b0ac-cc46-43a1-808f-2a072895521c.jsonl`
 - `/ll:refine-issue` - 2026-09-10T06:29:07 - `3676ef66-ff64-449a-a773-2f0386e3eedc.jsonl`
