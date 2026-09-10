@@ -323,7 +323,19 @@ record of what was wrong and fixed, not an outstanding action item).
   beyond the stale `timeout=2.0` fragment above (already corrected); the
   widened-guard plan and AC coverage are otherwise internally consistent.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-10_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 89/100 → HIGH CONFIDENCE
+
+### Concerns
+- No repo-wide precedent exists for the exact 2-tuple `except (sqlite3.Error, OSError)` (nearest is a 3-tuple at `set_status.py:178`); the tuple-with-`OSError` shape itself is common (100+ sites), so this is a minor, low-risk deviation.
+- `cli_event_context`'s insert and exit-UPDATE paths are already partially guarded by the prior fix BUG-2706 (`sqlite3.Error` only); this issue extends existing partial coverage (widen to `OSError`, guard `resolve_history_db`/config-gating prefix) rather than building on a clean slate — re-verify the extension doesn't disturb BUG-2706's existing guard behavior.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T00:41:39 - `d1b11d5d-bd78-420e-91a1-5dfc94d4273b.jsonl`
 - `/ll:verify-issues` - 2026-09-10T00:28:01 - `626872e1-6f1e-434a-bfbc-2499d9a3d127.jsonl`
 - `/ll:verify-issues` - 2026-09-10T00:20:35 - `6e1e18a4-dc28-495d-a48a-ed24698d5775.jsonl`
 - `/ll:confidence-check` - 2026-09-10T00:02:36 - `e1e987d9-5a25-4adf-9f93-78b6e7b380b0.jsonl`

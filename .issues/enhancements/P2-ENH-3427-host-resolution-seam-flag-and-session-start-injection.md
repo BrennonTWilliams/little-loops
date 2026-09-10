@@ -361,6 +361,7 @@ an outstanding action item).
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-10T00:40:45 - `71fb98cc-4ad6-4857-8a2d-91b008deb266.jsonl`
 - manual review - 2026-09-09 - added `@overload` typing for `_resolve_host` (mypy at the three `default="claude-code"` callers); `add_host_arg` gets a `help_text` kwarg and lazy-imports `REGISTERED_HOSTS` (keeps `cli_args.py` a leaf); both-spellings probe explicitly covers every encoded-path branch of `get_project_folder`; `_cwd_spellings` uses `absolute()` for the second spelling; `detect_sessions` docstring 301-304 added to Files to Modify; dropped dangling `digest` finding
 - `/ll:verify-issues` - 2026-09-10T00:15:40 - `8cef5fbd-618e-46ee-a7cc-dbfb9095952c.jsonl`
 - manual review - 2026-09-09 - corrected `REGISTERED_HOSTS` type (tuple, drop `sorted()`); added `default=` to `_resolve_host` so single-host sites don't fall to union; replaced untestable per-CLI precedence ACs with helper-level tests + per-CLI registration tests; resolved `add_host_arg` placement to `cli_args.py`; extended both-spellings probe to `get_project_folder` via shared `_cwd_spellings`; fixed API.md line ref (9608)
