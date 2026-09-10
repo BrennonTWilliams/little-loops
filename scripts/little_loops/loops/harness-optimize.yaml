@@ -3,8 +3,9 @@ category: optimization
 description: |
   Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md).
   Each iteration proposes an edit to a declared target file set, runs a benchmark
-  via lib/benchmark.yaml, accepts the change if score rises (or meets target),
-  and reverts otherwise. Commits accepted mutations to the current branch.
+  via lib/benchmark.yaml, accepts the change if score rises (or meets target)
+  and is never below the frozen baseline, and reverts otherwise. Commits
+  accepted mutations to the current branch.
   Trajectory persists per mode: whole-file mode writes to
   .ll/runs/harness-optimize-<unix-ts>/states/whole-file/trajectory.jsonl (the path
   init_run mints and captures as traj_path); state mode writes to
@@ -195,6 +196,7 @@ states:
       target: "${context.target_score}"
       tolerance: 0.02
       previous: "${captured.prev_score.output}"
+      reference: "${captured.baseline.output}"
     route:
       target: commit_and_log
       progress: commit_and_log
@@ -225,7 +227,7 @@ states:
       else
         TRAJ="${captured.traj_path.output}"  # ll-lint: mr11-ok(captured.traj_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
-      echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":true,"commit_sha":"${captured.last_commit.output}"}' \
+      echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":true,"commit_sha":"${captured.last_commit.output}","baseline":${captured.baseline.output}}' \
         >> "$TRAJ"
       if [ -n "$STATE_NAME" ]; then
         exit 0
@@ -247,7 +249,7 @@ states:
       else
         TRAJ="${captured.traj_path.output}"  # ll-lint: mr11-ok(captured.traj_path.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
-      echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":false,"commit_sha":""}' \
+      echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":false,"commit_sha":"","baseline":${captured.baseline.output}}' \
         >> "$TRAJ"
       if [ -n "$STATE_NAME" ]; then
         exit 0

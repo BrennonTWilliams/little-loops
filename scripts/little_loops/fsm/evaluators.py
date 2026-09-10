@@ -441,8 +441,9 @@ def evaluate_convergence(
     target: float,
     tolerance: float = 0,
     direction: str = "minimize",
+    reference: float | None = None,
 ) -> EvaluationResult:
-    """Compare current value to target and previous.
+    """Compare current value to target, previous, and a frozen reference.
 
     Args:
         current: Current metric value
@@ -450,31 +451,49 @@ def evaluate_convergence(
         target: Target value to reach
         tolerance: Acceptable distance from target
         direction: 'minimize' or 'maximize'
+        reference: Frozen baseline value that does not advance across
+            iterations (None if not set). Checked before the target-reached
+            branch (ENH-3421) so a candidate within tolerance of target but
+            below this reference is not silently accepted.
 
     Returns:
         EvaluationResult with verdict:
+            - Regressed vs. reference -> stall (details["regressed_vs_reference"])
             - Value within tolerance of target -> target
             - Value improved toward target -> progress
             - Value unchanged or worsened -> stall
     """
+    if reference is not None:
+        regressed = current > reference if direction == "minimize" else current < reference
+        if regressed:
+            return EvaluationResult(
+                verdict="stall",
+                details={
+                    "current": current,
+                    "target": target,
+                    "reference": reference,
+                    "regressed_vs_reference": True,
+                },
+            )
+
     # Check if target reached (within tolerance)
     if abs(current - target) <= tolerance:
-        return EvaluationResult(
-            verdict="target",
-            details={"current": current, "target": target, "delta": 0},
-        )
+        details: dict[str, Any] = {"current": current, "target": target, "delta": 0}
+        if reference is not None:
+            details["reference"] = reference
+        return EvaluationResult(verdict="target", details=details)
 
     # First iteration has no previous value
     if previous is None:
-        return EvaluationResult(
-            verdict="progress",
-            details={
-                "current": current,
-                "previous": None,
-                "target": target,
-                "delta": None,
-            },
-        )
+        details = {
+            "current": current,
+            "previous": None,
+            "target": target,
+            "delta": None,
+        }
+        if reference is not None:
+            details["reference"] = reference
+        return EvaluationResult(verdict="progress", details=details)
 
     # Calculate progress
     delta = current - previous
@@ -488,16 +507,17 @@ def evaluate_convergence(
 
     verdict = "progress" if made_progress else "stall"
 
-    return EvaluationResult(
-        verdict=verdict,
-        details={
-            "current": current,
-            "previous": previous,
-            "target": target,
-            "delta": delta,
-            "direction": direction,
-        },
-    )
+    details = {
+        "current": current,
+        "previous": previous,
+        "target": target,
+        "delta": delta,
+        "direction": direction,
+    }
+    if reference is not None:
+        details["reference"] = reference
+
+    return EvaluationResult(verdict=verdict, details=details)
 
 
 def evaluate_classify(
@@ -1915,6 +1935,24 @@ def evaluate(
                 # Previous unavailable on first iteration, continue with None
                 pass
 
+        # Resolve frozen reference (ENH-3421). Unlike previous, a reference
+        # that is set but unresolvable fails closed (verdict=error) rather
+        # than silently falling back to None: a silently-disabled guard is
+        # worse than none. "Set" mirrors previous's truthiness test — an
+        # empty string or None is unset, not an error.
+        reference: float | None = None
+        if config.reference:
+            if isinstance(config.reference, str):
+                try:
+                    reference = float(interpolate(config.reference, context))
+                except (InterpolationError, ValueError) as e:
+                    return EvaluationResult(
+                        verdict="error",
+                        details={"error": f"Cannot resolve reference: {e}"},
+                    )
+            else:
+                reference = float(config.reference)
+
         # Parse current value from output
         try:
             current = float(output.strip())
@@ -1956,6 +1994,7 @@ def evaluate(
             target=convergence_target,
             tolerance=tolerance,
             direction=config.direction,
+            reference=reference,
         )
 
     elif eval_type == "diff_stall":

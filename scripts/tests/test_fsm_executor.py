@@ -3279,6 +3279,78 @@ class TestEvaluators:
         assert result.final_state == "stuck"
         assert result.iterations == 2
 
+    def test_convergence_evaluator_reference_stays_frozen_across_iterations(self) -> None:
+        """ENH-3421: a captured reference must not drift the way prev_score does.
+
+        seed_baseline captures the frozen reference once, seed_prev seeds the
+        first measure iteration's previous value, then measure self-loops ≥3
+        times. Every emitted 'evaluate' event must show the same reference
+        while previous advances each pass.
+        """
+        fsm = FSMLoop(
+            name="test",
+            initial="seed_baseline",
+            max_steps=10,
+            states={
+                "seed_baseline": StateConfig(
+                    action="baseline.sh",
+                    capture="baseline",
+                    next="seed_prev",
+                ),
+                "seed_prev": StateConfig(
+                    action="seed_prev.sh",
+                    next="measure",
+                ),
+                "measure": StateConfig(
+                    action="count.sh",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target=0,
+                        tolerance=0,
+                        direction="minimize",
+                        previous="${prev.output}",
+                        reference="${captured.baseline.output}",
+                    ),
+                    route=RouteConfig(
+                        routes={"target": "done", "progress": "measure", "stall": "stuck"},
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "stuck": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        mock_runner.results = [
+            ("baseline.sh", {"output": "5"}),  # frozen reference
+            ("seed_prev.sh", {"output": "6"}),  # seeds first measure's previous
+            ("count.sh", {"output": "4"}),  # iter 1: progress (4 < 6, 4 <= reference 5)
+            ("count.sh", {"output": "3"}),  # iter 2: progress
+            ("count.sh", {"output": "1"}),  # iter 3: progress
+            ("count.sh", {"output": "0"}),  # iter 4: target reached
+        ]
+        mock_runner.use_indexed_order = True
+
+        events: list[dict] = []
+        result = FSMExecutor(fsm, action_runner=mock_runner, event_callback=events.append).run()
+
+        assert result.final_state == "done"
+
+        measure_events = [
+            e for e in events if e.get("event") == "evaluate" and e.get("type") == "convergence"
+        ]
+        assert len(measure_events) >= 3, (
+            f"expected >=3 convergence evaluations, got {measure_events}"
+        )
+        assert all(e["reference"] == 5 for e in measure_events), (
+            "reference must stay frozen across every iteration"
+        )
+        previous_values = [e["previous"] for e in measure_events if "previous" in e]
+        assert len(previous_values) >= 2
+        assert previous_values == sorted(previous_values, reverse=True), (
+            f"previous must advance (rolling) each iteration, got {previous_values}"
+        )
+
     def test_llm_structured_evaluator_routes_on_verdict(self) -> None:
         """llm_structured evaluator calls LLM and routes based on verdict."""
         fsm = FSMLoop(

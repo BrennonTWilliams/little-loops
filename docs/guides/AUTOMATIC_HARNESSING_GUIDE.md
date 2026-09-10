@@ -369,6 +369,12 @@ check_comparator:
 
 **Note**: `comparator` calls the LLM (via `evaluate_blind_comparator`) and does **not** satisfy MR-1 in meta-loops. Pair it with a non-LLM evaluator (e.g., `diff_stall` or `exit_code`) when `modifies_harness: true`.
 
+**Numeric sibling (ENH-3421)**: for harnesses that already emit a numeric score,
+`convergence`'s `evaluate.reference` field is a cheaper, non-LLM alternative to this
+blind-A/B guard — it compares the current score directly to a frozen baseline value
+(no LLM call, no `.loops/baselines/` file) and is checked before the target-reached
+branch. See [`HARNESS_OPTIMIZATION_GUIDE.md`'s frozen-reference guard](HARNESS_OPTIMIZATION_GUIDE.md#the-canonical-shape).
+
 ### Diff Invariants (`check_invariants`)
 
 Runs `git diff --stat HEAD | wc -l | tr -d ' '` and checks that the line count is less than 50 using an `output_numeric` evaluator. This catches runaway changes — if a skill modifies far more than expected, the loop retries rather than advancing.

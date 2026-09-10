@@ -302,6 +302,21 @@ Two properties make this shape safe by construction:
   satisfies MR-1 by construction (there is no `check_semantic` to pair). The accept/revert
   branch is the operational answer to "half of edits are detrimental."
 
+**Frozen-reference guard (ENH-3421).** MR-2's captured-baseline requirement (above) only
+ensures *some* evaluator references a baseline — it does not stop the reference itself from
+drifting. `harness-optimize.yaml`'s `gate` state compares each candidate to both its
+immediate parent (`evaluate.previous`, seeded from `prev_score`, which advances on every
+acceptance) and a second, genuinely frozen value (`evaluate.reference`, seeded once from
+`baseline_score`'s captured output and never re-captured). Without the second check, a
+lineage of accepted candidates could each beat the one before it while drifting below the
+original external bar — concretely, `evaluate_convergence()`'s target-reached branch
+returns `target` (and `harness-optimize.yaml` commits) for any candidate within `tolerance`
+of `target_score`, even one below baseline; `reference` is checked *before* that branch so
+it closes this gap. The run-level effect is **not** skip-and-retry: a reference regression
+routes the same as any other `stall` (`gate.route.stall → revert_and_log →
+write_trajectory_rejected`), which ends the whole-file run or closes the current queued
+state's segment — see `write_trajectory_rejected`'s routing in the state table above.
+
 Artifacts isolate per run under `${context.run_dir}/states/<state>/trajectory.jsonl`
 (resolved by the loop runner, not hard-coded by the doc; the actual default for `harness-optimize` is `.ll/runs/harness-optimize-<timestamp>/...`),
 recording every iteration's score and accept/reject verdict — so the trajectory survives

@@ -271,6 +271,38 @@ class TestMetaLoopValidation:
         ]
         assert mr2_warnings == [], f"Unexpected MR-2 WARNING: {mr2_warnings}"
 
+    def test_mr2_does_not_fire_when_capture_referenced_in_reference(self) -> None:
+        """MR-2 does not fire when the only baseline reference is evaluate.reference (ENH-3421)."""
+        fsm = self._meta_fsm(
+            states={
+                "measure": make_state(
+                    action_type="shell",
+                    action="./score.sh",
+                    capture="baseline",
+                    next="gate",
+                ),
+                "gate": make_state(
+                    action_type="shell",
+                    action="./score.sh",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target="${context.target_score}",
+                        reference="${captured.baseline.output}",
+                        direction="maximize",
+                    ),
+                    route={"target": "done", "progress": "done", "stall": "done"},
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr2_warnings = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "baseline" in e.message
+        ]
+        assert mr2_warnings == [], f"Unexpected MR-2 WARNING: {mr2_warnings}"
+
     def test_mr2_suppressed_by_meta_self_eval_ok(self) -> None:
         """meta_self_eval_ok: true suppresses MR-2."""
         fsm = self._meta_fsm(

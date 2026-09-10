@@ -721,16 +721,26 @@ evaluate:
   target: 0
   tolerance: 0              # Optional: success when within tolerance
   previous: "${prev.output}" # Previous measurement
+  reference: "${captured.baseline.output}" # Optional: frozen baseline (ENH-3421)
   direction: minimize       # minimize (default) or maximize
 ```
 
 | Scenario | Verdict |
 |----------|---------|
+| `reference` set and current regressed vs. it (checked first) | `stall` |
 | Value within tolerance of target | `target` |
 | Value improved toward target | `progress` |
 | Value unchanged or worsened | `stall` |
 
-Result details: `{ current: <number>, previous: <number>, target: <number>, delta: <number> }`
+`reference`, unlike `previous`, must not advance across iterations — it guards
+against a lineage of accepted candidates drifting below a fixed external bar
+(e.g. captured once, before the iterate loop, and never re-captured). It is
+checked before the target-reached branch, so a candidate within `tolerance` of
+`target` but below `reference` still returns `stall`. A `reference` that is set
+but fails to resolve to a float returns verdict `error` (fail-closed), unlike
+an unresolvable `previous`, which silently falls back to `None`.
+
+Result details: `{ current: <number>, previous: <number>, target: <number>, delta: <number>, reference: <number> }` (`reference` only present when the field is set)
 
 #### `diff_stall`
 
@@ -1877,6 +1887,16 @@ class TestConvergenceEvaluator:
             current=5, previous=5, target=0, tolerance=0
         )
         assert result["verdict"] == "stall"
+
+    def test_reference_regression(self):
+        # ENH-3421: a candidate within tolerance of target but below the
+        # frozen reference is still stall — checked before the target branch.
+        result = evaluate_convergence(
+            current=0.79, previous=0.85, target=0.80, tolerance=0.02,
+            direction="maximize", reference=0.85,
+        )
+        assert result["verdict"] == "stall"
+        assert result["details"]["regressed_vs_reference"] is True
 ```
 
 ### 2. Mock Strategy for LLM Evaluation

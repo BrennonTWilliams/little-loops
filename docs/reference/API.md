@@ -6044,6 +6044,7 @@ class EvaluateConfig:
     uncertain_suffix: bool = False     # Append _uncertain to low-confidence
     source: str | None = None          # Override default source
     previous: str | None = None        # Previous value reference
+    reference: str | None = None       # For convergence: frozen baseline that must not advance across iterations (ENH-3421)
     direction: Literal["minimize", "maximize"] = "minimize"
     scope: list[str] | None = None     # For diff_stall: limit git diff to these paths
     max_stall: int = 1                 # For diff_stall/score_stall: consecutive no-progress rounds before failure
@@ -6196,9 +6197,15 @@ def evaluate_convergence(
     target: float,
     tolerance: float = 0,
     direction: str = "minimize",
+    reference: float | None = None,
 ) -> EvaluationResult
 ```
-Compare current value to target and previous. Returns: target, progress, or stall.
+Compare current value to target, previous, and an optional frozen reference.
+When `reference` is set, it is checked *before* the target-reached branch
+(ENH-3421): a candidate that regresses below it returns `stall` even if
+within `tolerance` of `target`, closing a gap where the target short-circuit
+would otherwise accept a below-baseline candidate. Returns: target, progress,
+or stall.
 
 #### Tier 2 Evaluators (LLM-based)
 

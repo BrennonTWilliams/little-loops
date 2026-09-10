@@ -805,6 +805,14 @@
           "type": "string",
           "description": "Previous value reference for convergence"
         },
+        "reference": {
+          "description": "Frozen baseline reference for convergence (ENH-3421). Unlike previous, must not advance across iterations; checked before the target-reached branch. A value that is set but unresolvable is a fail-closed error.",
+          "oneOf": [
+            { "type": "integer" },
+            { "type": "number" },
+            { "type": "string" }
+          ]
+        },
         "direction": {
           "type": "string",
           "description": "Optimization direction for convergence",

@@ -503,6 +503,45 @@ class TestConvergenceEvaluator:
         assert result.details["target"] == 0
         assert result.details["direction"] == "minimize"
 
+    def test_reference_unset_behavior_unchanged(self) -> None:
+        """reference=None (default) leaves behavior byte-for-byte identical (ENH-3421)."""
+        result = evaluate_convergence(0.79, 0.85, 0.80, tolerance=0.02, direction="maximize")
+        assert result.verdict == "target"
+        assert "reference" not in result.details
+
+    def test_reference_regression_maximize_beats_target_short_circuit(self) -> None:
+        """A candidate within tolerance of target but below reference is stall, not target."""
+        result = evaluate_convergence(
+            0.79, 0.85, 0.80, tolerance=0.02, direction="maximize", reference=0.85
+        )
+        assert result.verdict == "stall"
+        assert result.details["regressed_vs_reference"] is True
+        assert result.details["reference"] == 0.85
+
+    def test_reference_equal_is_not_a_regression_maximize(self) -> None:
+        """current == reference is not a regression for maximize."""
+        result = evaluate_convergence(
+            0.85, 0.85, 0.80, tolerance=0.02, direction="maximize", reference=0.85
+        )
+        assert result.verdict != "stall" or "regressed_vs_reference" not in result.details
+
+    def test_reference_regression_minimize(self) -> None:
+        """minimize direction treats current > reference as the regression."""
+        result = evaluate_convergence(6, 5, 0, tolerance=0, direction="minimize", reference=5)
+        assert result.verdict == "stall"
+        assert result.details["regressed_vs_reference"] is True
+
+    def test_reference_equal_is_not_a_regression_minimize(self) -> None:
+        """current == reference is not a regression for minimize."""
+        result = evaluate_convergence(5, 5, 0, tolerance=0, direction="minimize", reference=5)
+        assert "regressed_vs_reference" not in result.details
+
+    def test_reference_included_in_progress_details(self) -> None:
+        """reference appears in details on the progress path too (not just stall)."""
+        result = evaluate_convergence(8, 5, 10, direction="maximize", reference=4)
+        assert result.verdict == "progress"
+        assert result.details["reference"] == 4
+
 
 class TestClassifyEvaluator:
     """Tests for classify evaluator."""
@@ -668,6 +707,74 @@ class TestEvaluateDispatcher:
         ctx = InterpolationContext()
         result = evaluate(config, "0.5", 0, ctx)
         assert result.verdict == "target"
+
+    def test_dispatch_convergence_reference_unresolvable_errors(self) -> None:
+        """A set but unresolvable/non-numeric reference fails closed (ENH-3421)."""
+        config = EvaluateConfig(
+            type="convergence",
+            target=0.80,
+            tolerance=0.02,
+            direction="maximize",
+            reference="${captured.baseline.output}",
+        )
+        ctx = InterpolationContext()  # captured.baseline not set -> resolves to literal template
+        result = evaluate(config, "0.79", 0, ctx)
+        assert result.verdict == "error"
+        assert "reference" in result.details["error"]
+
+    def test_dispatch_convergence_previous_unresolvable_reference_unset_unchanged(self) -> None:
+        """previous unresolvable + reference unset still falls back to None (unchanged)."""
+        config = EvaluateConfig(type="convergence", target=0, previous="${captured.missing.output}")
+        ctx = InterpolationContext()
+        result = evaluate(config, "5", 0, ctx)
+        assert result.verdict == "progress"
+        assert result.details["previous"] is None
+
+    def test_dispatch_convergence_reference_empty_string_is_unset(self) -> None:
+        """reference='' behaves identically to reference=None (not an error)."""
+        config = EvaluateConfig(
+            type="convergence", target=0.80, tolerance=0.02, direction="maximize", reference=""
+        )
+        ctx = InterpolationContext()
+        result = evaluate(config, "0.79", 0, ctx)
+        assert result.verdict == "target"
+
+    def test_dispatch_convergence_reference_literal_number(self) -> None:
+        """A non-string literal reference (YAML `reference: 0.85`) is used directly."""
+        config = EvaluateConfig(
+            type="convergence",
+            target=0.80,
+            tolerance=0.02,
+            direction="maximize",
+            reference=0.85,
+        )
+        ctx = InterpolationContext()
+        result = evaluate(config, "0.79", 0, ctx)
+        assert result.verdict == "stall"
+        assert result.details["regressed_vs_reference"] is True
+
+    def test_dispatch_convergence_reference_resolved(self) -> None:
+        """reference resolves via interpolate() and gates the candidate."""
+        config = EvaluateConfig(
+            type="convergence",
+            target=0.80,
+            tolerance=0.02,
+            direction="maximize",
+            reference="${captured.baseline.output}",
+        )
+        ctx = InterpolationContext(captured={"baseline": {"output": "0.85"}})
+        result = evaluate(config, "0.79", 0, ctx)
+        assert result.verdict == "stall"
+        assert result.details["reference"] == 0.85
+
+    def test_dispatch_non_convergence_type_ignores_reference(self) -> None:
+        """reference is convergence-only; other evaluator types silently ignore it."""
+        config = EvaluateConfig(type="exit_code", reference="1.0")
+        ctx = InterpolationContext()
+        with_reference = evaluate(config, "", 0, ctx)
+
+        without_reference = evaluate(EvaluateConfig(type="exit_code"), "", 0, ctx)
+        assert with_reference.verdict == without_reference.verdict == "yes"
 
     def test_dispatch_convergence_interpolated_target(self) -> None:
         """convergence with interpolated target works."""

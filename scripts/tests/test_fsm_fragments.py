@@ -1556,6 +1556,12 @@ class TestConvergenceGateFragment:
         assert "description" in frag, "convergence_gate fragment is missing a description field"
         assert frag["description"].strip(), "convergence_gate fragment has an empty description"
 
+    def test_convergence_gate_description_documents_reference(self) -> None:
+        """ENH-3421: the frozen-baseline reference field must be documented as optional."""
+        data = self._load_common_yaml()
+        frag = data["fragments"]["convergence_gate"]
+        assert "evaluate.reference" in frag["description"]
+
     def test_convergence_gate_resolves_in_loop(self) -> None:
         """Full resolve_fragments integration against the real lib/common.yaml."""
         loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"

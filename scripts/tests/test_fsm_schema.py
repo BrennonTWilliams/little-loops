@@ -235,6 +235,45 @@ class TestEvaluateConfig:
 
         assert restored.key == original.key
 
+    def test_reference_field_default_none(self) -> None:
+        """reference defaults to None when not set (ENH-3421)."""
+        config = EvaluateConfig(type="convergence", target=0.95)
+
+        assert config.reference is None
+
+    def test_to_dict_includes_reference_when_set(self) -> None:
+        """to_dict emits reference when set."""
+        config = EvaluateConfig(type="convergence", target=0.95, reference="0.85")
+        result = config.to_dict()
+
+        assert result["reference"] == "0.85"
+
+    def test_to_dict_omits_reference_when_none(self) -> None:
+        """to_dict omits reference when unset."""
+        config = EvaluateConfig(type="convergence", target=0.95)
+        result = config.to_dict()
+
+        assert "reference" not in result
+
+    def test_from_dict_reads_reference(self) -> None:
+        """from_dict reads reference from the data dict."""
+        data = {"type": "convergence", "target": 0.95, "reference": "${captured.baseline.output}"}
+        config = EvaluateConfig.from_dict(data)
+
+        assert config.reference == "${captured.baseline.output}"
+
+    def test_reference_roundtrip_serialization(self) -> None:
+        """Roundtrip through to_dict and from_dict preserves reference."""
+        original = EvaluateConfig(
+            type="convergence",
+            target=0.95,
+            reference="${captured.baseline.output}",
+        )
+
+        restored = EvaluateConfig.from_dict(original.to_dict())
+
+        assert restored.reference == original.reference
+
     def test_from_dict_silently_drops_unknown_key(self) -> None:
         """ENH-2896: pins the CURRENT (pre-lint) behavior — from_dict silently
         drops a key it doesn't recognize, with no exception or diagnostic. The

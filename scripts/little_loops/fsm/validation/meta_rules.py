@@ -585,7 +585,7 @@ def _has_baseline_reference(fsm: FSMLoop, capture_names: set[str]) -> bool:
         if ev is None:
             continue
         # Check string fields that may interpolate captured values
-        candidates = [ev.previous, ev.source]
+        candidates = [ev.previous, ev.source, ev.reference]
         if isinstance(ev.target, str):
             candidates.append(ev.target)
         for field_val in candidates:

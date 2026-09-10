@@ -133,6 +133,27 @@ class TestHarnessOptimizeStates:
         )
         assert "target" in evaluate
         assert "tolerance" in evaluate
+        # ENH-3421: gate must also compare against the frozen baseline, not just
+        # the rolling prev_score, so a lineage of promotions can't drift below it.
+        assert evaluate.get("reference") == "${captured.baseline.output}"
+
+    def test_only_baseline_score_captures_baseline(self, loop_data: dict) -> None:
+        """ENH-3421: baseline must stay frozen — no other state may re-capture it."""
+        for name, state in loop_data["states"].items():
+            if name == "baseline_score":
+                continue
+            assert state.get("capture") != "baseline", (
+                f"state {name!r} must not capture 'baseline' — that would un-freeze "
+                "the reference gate's reads of captured.baseline.output"
+            )
+
+    def test_trajectory_lines_include_baseline(self, loop_data: dict) -> None:
+        """ENH-3421: both accepted/rejected trajectory lines surface the baseline
+        so a reader can tell a rejection was a reference regression."""
+        accepted_action = loop_data["states"]["write_trajectory_accepted"].get("action", "")
+        rejected_action = loop_data["states"]["write_trajectory_rejected"].get("action", "")
+        assert '"baseline":${captured.baseline.output}' in accepted_action
+        assert '"baseline":${captured.baseline.output}' in rejected_action
 
     def test_gate_routes_correctly(self, loop_data: dict) -> None:
         state = loop_data["states"]["gate"]

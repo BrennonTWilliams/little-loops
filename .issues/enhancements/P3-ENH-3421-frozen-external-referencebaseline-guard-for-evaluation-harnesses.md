@@ -3,10 +3,11 @@ id: ENH-3421
 type: ENH
 title: Frozen external reference/baseline guard for evaluation harnesses
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T05:49:43Z'
+completed_at: '2026-09-10T00:36:04Z'
 labels:
 - harness
 - evaluation
@@ -580,12 +581,60 @@ HEAD — unchanged. `ll-verify-evidence` clean (0 findings); no active required 
 graph provider `codegraph` fresh. Related-issue statuses re-checked and still match: ENH-3415
 done, ENH-1122 deferred, ENH-1793/1828/1829 done.
 
+## Resolution
+
+Implemented Option A exactly as specified in Program Design / Integration Map:
+
+- `EvaluateConfig.reference: str | None` added (`fsm/schema.py`), threaded through
+  `to_dict`/`from_dict` and the `fsm-loop-schema.json` mirror.
+- `evaluate_convergence()` gained a `reference` parameter, checked before the
+  target-reached branch; regression returns `stall` with
+  `details["regressed_vs_reference"] = True` and `details["reference"]`. The
+  dispatcher's `convergence` branch resolves `config.reference` fail-closed
+  (unresolvable-when-set → `error`), mirroring `previous`'s truthiness test for
+  "unset" and `target`'s `isinstance(str)` split for literal-number support.
+- `_has_baseline_reference` (MR-2, `meta_rules.py`) recognizes `evaluate.reference`
+  as a baseline-reference site.
+- `harness-optimize.yaml`'s `gate` state sets `reference: "${captured.baseline.output}"`;
+  both `write_trajectory_accepted`/`write_trajectory_rejected` now include
+  `"baseline":${captured.baseline.output}` in their JSON lines; the loop's header
+  `description:` documents the baseline floor.
+- `convergence_gate` fragment description (`lib/common.yaml`) documents the new
+  optional field.
+- `rl-coding-agent.yaml` left untouched, per Scope Boundaries.
+- Docs updated: `API.md` (`EvaluateConfig` block + `evaluate_convergence` signature),
+  `generalized-fsm-loop.md` (convergence section + worked Python example),
+  `LOOPS_REFERENCE.md` (fragment table), `CLI.md` (MR-2 prose),
+  `HARNESS_OPTIMIZATION_GUIDE.md` (frozen-reference guard + run-level effect),
+  `AUTOMATIC_HARNESSING_GUIDE.md` (numeric-sibling cross-reference to `check_comparator`).
+
+Tests added: five-field cluster in `test_fsm_schema.py::TestEvaluateConfig`; raw-function
+and dispatcher-level tests in `test_fsm_evaluators.py::TestConvergenceEvaluator`/
+`TestEvaluateDispatcher` (regression ordering, equality edge cases, fail-closed
+resolution, empty-string-is-unset, literal-number support, non-convergence-type
+no-op); a new dynamic multi-iteration `FSMExecutor` test proving `reference` stays
+frozen while `previous` advances (`test_fsm_executor.py`); extended
+`test_gate_has_convergence_evaluator` plus two new `harness-optimize.yaml`
+structural tests (`test_harness_optimize.py`); a `convergence_gate` fragment
+description test (`test_fsm_fragments.py`); an MR-2 non-regression test proving
+`evaluate.reference` alone satisfies the baseline-reference requirement
+(`test_fsm_validation_meta_rules.py`).
+
+All Acceptance Criteria verified. `ll-loop validate` passes clean (no MR-14 warning)
+on `harness-optimize.yaml` and `rl-coding-agent.yaml` (unchanged, confirmed via
+`git diff --stat`). Full suite: `python -m pytest scripts/tests/` — 23738 passed, 43
+skipped, 5 failed; all 5 failures confirmed pre-existing on `main` (evidence/priority-
+regex/env-coverage gates against unrelated issue files), independently reproduced by
+stashing this issue's changes and re-running the same five tests against unmodified
+`main`.
+
 ## Status
 
-**Open** | Created: 2026-09-09 | Priority: P3
+**Done** | Created: 2026-09-09 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T00:35:08 - `8553e451-2589-4dd9-9160-5ff0cff96de4.jsonl`
 - `/ll:confidence-check` - 2026-09-10T00:03:50 - `e1e987d9-5a25-4adf-9f93-78b6e7b380b0.jsonl`
 - `/ll:refine-issue` - 2026-09-09T22:49:37 - `727c53cc-cbf3-4369-86bb-82cc2d6abda0.jsonl`
 - `/ll:confidence-check` - 2026-09-09T20:28:54 - `76596d00-f30e-4c7e-a5ac-cefe4595fad7.jsonl`

@@ -155,7 +155,9 @@ fragments:
       evaluate.target (convergence threshold, e.g. "${context.coverage_target}"),
       evaluate.tolerance (acceptable delta before declaring stall),
       route.target, route.progress, route.stall (and optionally route.error,
-      evaluate.previous for stall-detection across iterations).
+      evaluate.previous for stall-detection across iterations, evaluate.reference
+      for a frozen baseline that must not advance across iterations — a
+      candidate below it routes stall even if within tolerance of target).
     action_type: shell
     evaluate:
       type: convergence

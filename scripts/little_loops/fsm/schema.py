@@ -71,6 +71,12 @@ class EvaluateConfig:
             falling to on_error anyway.
         source: Override default source (current action output)
         previous: Previous value reference for convergence
+        reference: Frozen baseline reference for convergence (ENH-3421). Unlike
+            previous, this value must not advance across iterations — it guards
+            against a lineage of accepted candidates drifting below a fixed
+            external bar. Checked before the target-reached branch. A value
+            that is set but fails to resolve to a float is a fail-closed error,
+            not a silent fallback (unlike previous).
         direction: Optimization direction for convergence (minimize/maximize)
         scope: Paths to limit git diff to for diff_stall evaluator
         max_stall: Consecutive no-change iterations before failure (diff_stall/score_stall)
@@ -123,6 +129,7 @@ class EvaluateConfig:
     abstain_on_exit_3: bool = False
     source: str | None = None
     previous: str | None = None
+    reference: str | None = None  # for convergence: frozen baseline (ENH-3421)
     direction: Literal["minimize", "maximize"] = "minimize"
     scope: list[str] | None = None  # for diff_stall: limit git diff to these paths
     max_stall: int = 1  # for diff_stall/score_stall: consecutive no-progress rounds before failure
@@ -176,6 +183,8 @@ class EvaluateConfig:
             result["source"] = self.source
         if self.previous is not None:
             result["previous"] = self.previous
+        if self.reference is not None:
+            result["reference"] = self.reference
         if self.direction != "minimize":
             result["direction"] = self.direction
         if self.scope is not None:
@@ -235,6 +244,7 @@ class EvaluateConfig:
             abstain_on_exit_3=data.get("abstain_on_exit_3", False),
             source=data.get("source"),
             previous=data.get("previous"),
+            reference=data.get("reference"),
             direction=data.get("direction", "minimize"),
             scope=data.get("scope"),
             max_stall=data.get("max_stall", 1),
