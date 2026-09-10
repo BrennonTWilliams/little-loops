@@ -41,6 +41,7 @@ from little_loops.config.core import (
     parse_local_override_frontmatter,
     resolve_config_path,
 )
+from little_loops.hooks import resolve_hook_root
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
     # non-Claude-Code hosts (Codex, OpenCode). The event object must be preserved
     # so the backfill daemon thread can read it.
 
-    cwd = Path.cwd()
+    root = resolve_hook_root(event)
     feedback_lines: list[str] = []
 
     # 1. Clean up prior-session state (best-effort, suppress all errors).
@@ -91,7 +92,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         with contextlib.suppress(Exception):
             from little_loops.config.features import HistoryConfig as _HistoryConfig
 
-            _early_config_path = resolve_config_path(cwd)
+            _early_config_path = resolve_config_path(root)
             _early_raw: dict[str, Any] = {}
             if _early_config_path is not None:
                 _early_raw = json.loads(_early_config_path.read_text(encoding="utf-8"))
@@ -102,7 +103,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
             return LLHookResult(exit_code=0, feedback=None, stdout=_STAY_IN_TURN_INSTRUCTION)
 
     # 2. Resolve base config.
-    config_path = resolve_config_path(cwd)
+    config_path = resolve_config_path(root)
     base_config: dict[str, Any] = {}
     if config_path is not None:
         try:
@@ -111,7 +112,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
             base_config = {}
 
     # 3. Apply local overrides if present.
-    local_file = cwd / _LOCAL_OVERRIDE_FILE
+    local_file = root / _LOCAL_OVERRIDE_FILE
     overrides_applied = False
     merged_config: dict[str, Any] = base_config
     if local_file.is_file():
@@ -132,7 +133,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         with contextlib.suppress(Exception):
             from little_loops.session_store import ensure_db, resolve_history_db
 
-            ensure_db(resolve_history_db(cwd / ".ll" / "history.db"))
+            ensure_db(resolve_history_db(root / ".ll" / "history.db"))
 
         # ENH-1830 / BUG-1882: trigger incremental JSONL backfill in a detached
         # subprocess so it outlives the short-lived hook process. A daemon thread
@@ -144,7 +145,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         _db_path = (
             Path(_os.environ["LL_HISTORY_DB"])
             if _os.environ.get("LL_HISTORY_DB")
-            else cwd / ".ll" / "history.db"
+            else root / ".ll" / "history.db"
         )
 
         with contextlib.suppress(Exception):
@@ -166,7 +167,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 # The worker resolves the host's session glob itself
                 # (ENH-3166) — pass the project root, not a pre-joined
                 # sessions subdirectory.
-                _pf = get_project_folder(cwd, host=_backfill_host)
+                _pf = get_project_folder(root, host=_backfill_host)
                 _backfill_path = str(_pf) if _pf is not None else None
 
             if _backfill_path is not None and not _os.environ.get("LL_NON_INTERACTIVE"):
@@ -201,7 +202,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    cwd=str(cwd),
+                    cwd=str(root),
                 )
 
         # ENH-1907: Inject project-context digest (best-effort, opt-in).
@@ -257,7 +258,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         feedback_lines.append("[little-loops] Warning: No config found. Run ll-init to create one.")
 
     # 6. Feature-flag validation warnings.
-    feedback_lines.extend(_validate_features(merged_config, project_root=cwd))
+    feedback_lines.extend(_validate_features(merged_config, project_root=root))
 
     # BUG-3058: the stay-in-turn contract is a property of running headlessly,
     # not of pruning. It used to be emitted only on the pruned early-return

@@ -23,6 +23,7 @@ from typing import Any
 from little_loops.config.core import resolve_config_path
 from little_loops.config.features import PreCompactRubricConfig
 from little_loops.file_utils import acquire_lock, atomic_write_json
+from little_loops.hooks import resolve_hook_root
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 _FEEDBACK = (
@@ -106,9 +107,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
     try:
         payload = event.payload or {}
         transcript_path = payload.get("transcript_path") or ""
+        root = resolve_hook_root(event)
 
         # Rubric gate (ENH-2341): defer state writing when reasoning unit is open.
-        rubric_cfg = _load_rubric_config(Path.cwd())
+        rubric_cfg = _load_rubric_config(root)
         if rubric_cfg.enabled and transcript_path:
             try:
                 raw = Path(transcript_path).read_text(encoding="utf-8", errors="replace")
@@ -164,20 +166,20 @@ def handle(event: LLHookEvent) -> LLHookResult:
         except TimeoutError:
             atomic_write_json(state_file, state)
 
-        _record_compaction(state["compacted_at"], event.session_id)
+        _record_compaction(state["compacted_at"], event.session_id, root)
     except Exception:
         return LLHookResult(exit_code=0)
 
     return LLHookResult(exit_code=2, feedback=_FEEDBACK)
 
 
-def _record_compaction(compacted_at: str, session_id: str | None) -> None:
+def _record_compaction(compacted_at: str, session_id: str | None, root: Path) -> None:
     """Best-effort ``compaction`` lifecycle row — never raises (ENH-2495)."""
     try:
         from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
 
         record_session_lifecycle_event(
-            resolve_history_db(Path.cwd() / ".ll" / "history.db"),
+            resolve_history_db(root / ".ll" / "history.db"),
             session_id=session_id,
             event="compaction",
             detail={"source": "host_precompact", "state_preserved": True},

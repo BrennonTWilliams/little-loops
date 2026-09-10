@@ -26,6 +26,7 @@ from pathlib import Path
 
 from little_loops.config.core import resolve_config_path
 from little_loops.config.features import LearningTestsConfig
+from little_loops.hooks import resolve_hook_root
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.learning_tests import check_learning_test
 from little_loops.learning_tests.gate import format_nudge_message, is_record_stale
@@ -91,7 +92,7 @@ def gate(event: LLHookEvent) -> LLHookResult:
     Returns a nudge (exit_code=0, feedback=...) when the installed package has
     no proven record or the existing record is stale.  Silent pass otherwise.
     """
-    cwd = Path(event.cwd) if event.cwd else Path.cwd()
+    cwd = resolve_hook_root(event)
     lt_config = _load_lt_config(cwd)
 
     if not lt_config.enabled:

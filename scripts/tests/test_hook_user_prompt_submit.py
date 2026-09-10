@@ -724,3 +724,35 @@ class TestKimiPromptBlocks:
         assert result.exit_code == 0
         assert result.stdout
         assert "implement authentication flow" in result.stdout
+
+
+class TestUserPromptSubmitSubdirectoryCwd:
+    """BUG-3434: config/DB resolution must walk up from a subdirectory cwd."""
+
+    def test_subdirectory_cwd_resolves_root_config_and_db(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        subdir = tmp_path / "scripts"
+        subdir.mkdir()
+        monkeypatch.chdir(subdir)
+
+        result = handle(
+            _event({"prompt": "no, don't do that", "session_id": "sess-sub1"}, cwd=str(subdir))
+        )
+        assert result.exit_code == 0
+        assert result.stdout is None, "config was found; must not print the no-config warning"
+
+        db_path = tmp_path / ".ll" / "history.db"
+        assert db_path.is_file(), "history.db must land at the resolved project root"
+        assert not (subdir / ".ll").exists(), "no stray .ll/ should be created under the subdir"
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                "SELECT content, session_id, source FROM user_corrections"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row[1] == "sess-sub1"

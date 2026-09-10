@@ -24,6 +24,7 @@ from typing import Any
 
 from little_loops.config.core import resolve_config_path
 from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled
+from little_loops.hooks import resolve_hook_root
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 # Matches a file-path token inside a Bash command string.  Two alternatives:
@@ -140,7 +141,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
     Analytics writes are gated on ``analytics.enabled``; auto-commit is gated on
     ``issues.auto_commit``. Both features degrade silently on failure.
     """
-    cwd = Path(event.cwd) if event.cwd else Path.cwd()
+    cwd = resolve_hook_root(event)
     config = _load_config(cwd)
 
     payload = event.payload or {}

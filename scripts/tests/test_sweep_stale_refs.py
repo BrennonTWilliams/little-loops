@@ -479,3 +479,22 @@ class TestAutoFixFile:
         p = self._write(tmp_path, "ENH-99 is open.\n")
         modified = _auto_fix_file(p, done_ids={"FEAT-1000"})
         assert modified is False
+
+
+class TestSweepStaleRefsSubdirectoryCwd:
+    """BUG-3434: config/lifecycle-row resolution must walk up from a subdirectory cwd."""
+
+    def test_subdirectory_cwd_resolves_root_config(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_lifecycle_events
+
+        _write_config(tmp_path)
+        subdir = tmp_path / "scripts"
+        subdir.mkdir()
+
+        result = handle(_event(cwd=str(subdir)))
+
+        assert result.exit_code == 0
+        assert not (subdir / ".ll").exists(), "no stray .ll/ should be created under the subdir"
+
+        rows = recent_lifecycle_events(event="stale_ref_sweep", db=tmp_path / ".ll" / "history.db")
+        assert len(rows) == 1

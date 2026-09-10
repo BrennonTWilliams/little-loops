@@ -25,6 +25,7 @@ from typing import Any
 
 from little_loops.config.core import resolve_config_path
 from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled
+from little_loops.hooks import resolve_hook_root
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.session_store import (
     is_correction,
@@ -94,8 +95,8 @@ def handle(event: LLHookEvent) -> LLHookResult:
     if not user_prompt.strip():
         return LLHookResult(exit_code=0)
 
-    cwd = Path.cwd()
-    config = _load_config(cwd)
+    root = resolve_hook_root(event)
+    config = _load_config(root)
     # analytics.enabled gates prompt_opt_events the same way it gates the two
     # sibling writers below (ENH-2498). Rows can only be written once config
     # is loaded, so the empty-prompt return above and the no-config branch
@@ -110,7 +111,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
             return
         with contextlib.suppress(Exception):
             record_prompt_opt_event(
-                cwd / ".ll" / "history.db",
+                root / ".ll" / "history.db",
                 session_id=session_id,
                 offered=offered,
                 mode=mode,
@@ -125,13 +126,13 @@ def handle(event: LLHookEvent) -> LLHookResult:
             if capture.corrections:
                 with contextlib.suppress(Exception):
                     record_correction(
-                        cwd / ".ll" / "history.db", session_id, user_prompt, "user_prompt_submit"
+                        root / ".ll" / "history.db", session_id, user_prompt, "user_prompt_submit"
                     )
         m = re.match(r"^/ll:([a-z][a-z0-9-]*)(.*)", user_prompt.strip(), re.DOTALL)
         if m:
             with contextlib.suppress(Exception):
                 record_skill_event(
-                    cwd / ".ll" / "history.db",
+                    root / ".ll" / "history.db",
                     session_id,
                     m.group(1),
                     m.group(2).strip()[:200],

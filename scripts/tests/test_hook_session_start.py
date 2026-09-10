@@ -761,3 +761,29 @@ class TestAmbientAutomationEnvHermeticity:
             "conftest env scrub regressed.\n"
             f"stdout tail:\n{proc.stdout[-3000:]}\n\nstderr tail:\n{proc.stderr[-2000:]}"
         )
+
+
+class TestSessionStartSubdirectoryCwd:
+    """BUG-3434: config/local-override resolution must walk up from a subdirectory cwd."""
+
+    def test_subdirectory_cwd_resolves_root_config_and_overrides(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps({"a": 1}))
+        (tmp_path / ".ll" / "ll.local.md").write_text("---\na: 2\n---\n# Local overrides\n")
+        subdir = tmp_path / "scripts"
+        subdir.mkdir()
+        monkeypatch.chdir(subdir)
+
+        result = handle(
+            LLHookEvent(host="claude-code", intent="session_start", payload={}, cwd=str(subdir))
+        )
+
+        assert result.exit_code == 0
+        assert result.feedback is not None
+        assert "Config loaded:" in result.feedback
+        assert "Local overrides applied from:" in result.feedback
+        assert not (subdir / ".ll").exists(), "no stray .ll/ should be created under the subdir"
+        assert result.stdout is not None
+        assert json.loads(result.stdout) == {"a": 2}

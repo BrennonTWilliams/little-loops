@@ -22,6 +22,7 @@ from pathlib import Path
 
 from little_loops.config.core import resolve_config_path
 from little_loops.config.features import LearningTestsConfig
+from little_loops.hooks import resolve_hook_root
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.learning_tests import check_learning_test
 from little_loops.learning_tests.gate import describe_staleness, is_record_stale
@@ -89,7 +90,7 @@ def _extract_packages(content: str, file_path: str) -> list[str]:
 
 def gate(event: LLHookEvent) -> LLHookResult:
     """Check file imports against the Learning Test Registry and nudge on gaps."""
-    cwd = Path(event.cwd) if event.cwd else Path.cwd()
+    cwd = resolve_hook_root(event)
     lt_config = _load_lt_config(cwd)
 
     if not lt_config.enabled:

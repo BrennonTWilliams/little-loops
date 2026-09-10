@@ -3,10 +3,11 @@ id: BUG-3434
 type: BUG
 title: Hook config resolution does not walk up from subdirectory cwd
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T19:27:53Z'
+completed_at: '2026-09-10T20:41:54Z'
 confidence_score: 100
 outcome_confidence: 78
 score_complexity: 18
@@ -158,6 +159,25 @@ changes the documented meaning of `LLHookEvent.cwd` ("working directory the
 host was operating in"); the helper is lower-risk.
 
 ## Program Design
+
+### Deviations
+
+- **2026-09-10**: `scripts/little_loops/hooks/drift_check.py` was listed in
+  the Scope Boundary / Integration Map as one of the eight call sites to
+  migrate, but on inspection it already walks up correctly:
+  `_resolve_state_path()` resolves via `resolve_ll_dir(start=cwd)` →
+  `find_project_root()` before `_throttle_days()` is ever called, and
+  `_throttle_days(root)` (not `_throttle_days(cwd)`) is invoked with that
+  already-resolved root. No change made to this file — the audit's
+  `drift_check.py:100,125` line references predated this file's own
+  ENH-2927 walk-up fix and no longer describe a live bug.
+- `scripts/little_loops/hooks/sweep_stale_refs.py` uses a different idiom
+  (`payload.get("cwd") or event.cwd`, not the plain
+  `Path(event.cwd) if event.cwd else Path.cwd()` pattern the other six hooks
+  share) so it was not routed through `resolve_hook_root(event)` directly;
+  instead its existing `cwd` is walked up in place via
+  `find_project_root(cwd) or cwd` to preserve the payload-cwd precedence
+  while still fixing the walk-up gap.
 
 ### Signatures
 
@@ -362,7 +382,42 @@ cwd = Path.cwd()
 config = _load_config(cwd)
 ```
 
+## Resolution
+
+Added `resolve_hook_root(event: LLHookEvent) -> Path` to
+`scripts/little_loops/hooks/__init__.py`, walking up via
+`find_project_root()` with a raw-cwd fallback. Wired it through:
+
+- `main_hooks()` — `_hooks_telemetry_enabled` + `hook_event_context` DB path.
+- `user_prompt_submit.handle()` — config load and all three `history.db` paths.
+- `session_start.handle()` — both `resolve_config_path` sites plus
+  `ll.local.md`, `history.db`, `get_project_folder`, the backfill subprocess
+  cwd, and `_validate_features`'s `project_root`.
+- `post_tool_use.py`, `install_learning_gate.py`, `learning_tests_gate.py`,
+  `pre_compact.py` — replaced their `Path(event.cwd) if event.cwd else
+  Path.cwd()` / bare `Path.cwd()` idiom with `resolve_hook_root(event)`.
+- `sweep_stale_refs.py` — walked its existing `payload["cwd"] or event.cwd`
+  value up via `find_project_root(cwd) or cwd` (kept the payload-cwd
+  precedence rather than switching to `resolve_hook_root(event)` directly).
+- `drift_check.py` — verified already correct (see Program Design →
+  Deviations); no change needed.
+
+Added regression coverage: `TestResolveHookRoot` (unit tests for the new
+helper) in `test_hook_intents.py`, and subdirectory-cwd tests in
+`test_hook_user_prompt_submit.py`, `test_hook_session_start.py`, and
+`test_sweep_stale_refs.py`. Fixed a stale line-number entry in
+`test_issue_parser.py`'s priority-regex allowlist that the new import in
+`post_tool_use.py` shifted by one line.
+
+Full suite: 23887 passed / 43 skipped (excluding one pre-existing,
+unrelated failure in `test_verify_evidence.py::TestRepoGate` against an
+uncommitted `ENH-3435` issue file predating this session). `ruff check`,
+`ruff format --check`, and `mypy scripts/little_loops/` all clean on
+every changed file.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T20:41:48 - `64e21902-051b-47d8-ac28-323418badd12.jsonl`
+- `/ll:ready-issue` - 2026-09-10T20:19:20 - `001a54e1-1d47-4c04-9575-71e91821717e.jsonl`
 - `/ll:confidence-check` - 2026-09-10T20:16:01 - `c7d048dd-d2da-4a91-bc50-3b4d5d2b6e1c.jsonl`
 - `/ll:wire-issue` - 2026-09-10T19:54:14 - `7febd81a-0c8b-40ff-bcac-1caebbdf68db.jsonl`
 - `/ll:refine-issue` - 2026-09-10T19:42:20 - `5cd3d4a5-9327-4e89-b2f9-8ae0356518ce.jsonl`

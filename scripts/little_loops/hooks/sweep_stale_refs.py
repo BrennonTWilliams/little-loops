@@ -31,6 +31,7 @@ from little_loops.config.core import BRConfig, resolve_config_path
 from little_loops.file_utils import atomic_write
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.issue_parser import find_issues
+from little_loops.paths import find_project_root
 from little_loops.text_utils import _CODE_FENCE
 
 # Matches any issue ID token (e.g. FEAT-1112, ENH-42, BUG-007, EPIC-3)
@@ -150,6 +151,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         payload = event.payload or {}
         raw_cwd = payload.get("cwd") or (event.cwd or "")
         cwd = Path(raw_cwd) if raw_cwd else Path.cwd()
+        cwd = find_project_root(cwd) or cwd
 
         # ENH-3210: reconcile orphaned subagent_runs rows. Placed ahead of both
         # early returns below (`if not done_ids` / `if not all_findings`) — the

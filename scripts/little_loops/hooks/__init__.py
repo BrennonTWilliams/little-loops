@@ -60,8 +60,28 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.hooks.types import LLHookEvent, LLHookResult
+from little_loops.paths import find_project_root
 
-__all__ = ["LLHookEvent", "LLHookResult", "main_hooks"]
+__all__ = ["LLHookEvent", "LLHookResult", "main_hooks", "resolve_hook_root"]
+
+
+def resolve_hook_root(event: LLHookEvent) -> Path:
+    """Project root for a hook invocation; falls back to the raw cwd.
+
+    Walks up from ``event.cwd`` (or ``Path.cwd()`` when unset) via
+    :func:`~little_loops.paths.find_project_root` so a hook firing from a
+    subdirectory of a configured project (e.g. after a ``cd scripts/`` build
+    step) still resolves the real project root instead of looking for
+    ``.ll/ll-config.json`` directly under the subdirectory (BUG-3434). Falls
+    back to the raw cwd unchanged when no ``.ll``-bearing ancestor is found —
+    preserves today's behavior for unconfigured directories and for
+    host-only projects without a ``.ll/`` (see ``find_project_root``'s
+    ``.ll``-gated walk-up).
+    """
+    cwd = Path(event.cwd) if event.cwd else Path.cwd()
+    root = find_project_root(cwd)
+    return root if root is not None else cwd
+
 
 # Host event name each intent fires under, per hooks/hooks.json (ENH-2506).
 # Several intents share a host event (e.g. session_end fires as a secondary
@@ -207,12 +227,12 @@ def main_hooks() -> int:
         cwd=os.getcwd(),
         session_id=payload.get("session_id"),
     )
-    cwd = Path(event.cwd) if event.cwd else Path.cwd()
-    if _hooks_telemetry_enabled(cwd):
+    root = resolve_hook_root(event)
+    if _hooks_telemetry_enabled(root):
         from little_loops.session_store import hook_event_context
 
         with hook_event_context(
-            cwd / ".ll" / "history.db",
+            root / ".ll" / "history.db",
             session_id=event.session_id,
             event_name=_INTENT_EVENT_NAME.get(intent, intent),
             matcher=str(payload.get("tool_name")) if payload.get("tool_name") else None,

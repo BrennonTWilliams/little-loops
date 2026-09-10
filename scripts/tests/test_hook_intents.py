@@ -12,7 +12,9 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
+from little_loops.hooks import resolve_hook_root
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 
@@ -255,6 +257,29 @@ class TestLLHookResult:
         assert restored.decision is None
         assert restored.data == {}
         assert restored.stdout is None
+
+
+class TestResolveHookRoot:
+    """BUG-3434: ``resolve_hook_root`` walks up from a subdirectory event.cwd."""
+
+    def test_nested_subdirectory_resolves_to_root(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        sub = tmp_path / "scripts" / "little_loops"
+        sub.mkdir(parents=True)
+
+        event = LLHookEvent(host="claude-code", intent="session_start", payload={}, cwd=str(sub))
+        assert resolve_hook_root(event) == tmp_path
+
+    def test_no_ll_anywhere_falls_back_to_raw_cwd(self, tmp_path: Path) -> None:
+        event = LLHookEvent(
+            host="claude-code", intent="session_start", payload={}, cwd=str(tmp_path)
+        )
+        assert resolve_hook_root(event) == tmp_path
+
+    def test_none_cwd_falls_back_to_process_cwd(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        event = LLHookEvent(host="claude-code", intent="session_start", payload={}, cwd=None)
+        assert resolve_hook_root(event) == tmp_path
 
 
 class TestHooksMainModule:

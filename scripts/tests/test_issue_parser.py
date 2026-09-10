@@ -4850,8 +4850,8 @@ class TestPriorityRegexCompletenessAllowlist:
             "artifact attribution in evidence prose; optional prefix group discarded",
         },
         "hooks/post_tool_use.py": {
-            97: "gates 'is this an issue file'; does not read priority as a value",
-            107: "extracts ID+slug from an issue filename; does not read priority as a value",
+            98: "gates 'is this an issue file'; does not read priority as a value",
+            108: "extracts ID+slug from an issue filename; does not read priority as a value",
         },
         "issue_history/parsing.py": {
             52: "comment describing the deliberately out-of-scope analytics filename convention",
