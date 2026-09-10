@@ -1,0 +1,11 @@
+{
+  "id": "0a2f6c0c-21e3-4476-bedd-149a5a31e233",
+  "type": "decision",
+  "timestamp": "2026-09-10T23:53:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Scope flags change what is collected, never which formatter runs (history.py quality precedent); summary already owns the ISO window convention on the same CLI.",
+  "rule": "ll-history activity reuses the quality --workspace scope-flag and summary --since/--until ISO-date conventions",
+  "scope": "issue",
+  "issue": "FEAT-3446"
+}
