@@ -4835,8 +4835,8 @@ class TestPriorityRegexCompletenessAllowlist:
             541: "normalized-filename convention check help text",
         },
         "cli/issues/search.py": {
-            109: "--priority P1-P3 range argument parser, not a filename regex",
-            115: "--priority P# argument parser, not a filename regex",
+            114: "--priority P1-P3 range argument parser, not a filename regex",
+            120: "--priority P# argument parser, not a filename regex",
         },
         "cli/issues/skip.py": {
             47: "prefix rewrite writing the already-validated args.priority into the "
@@ -4871,28 +4871,28 @@ class TestPriorityRegexCompletenessAllowlist:
             177: "resolve_issue_path's P-TYPE-NNN user-input parsing; priority captured from "
             "input, not resolved planning priority",
             351: "docstring for is_normalized",
-            1016: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
+            1043: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            1809: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            1916: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            3790: "comment describing the P[0-5]-NNN- filename shape",
-            3794: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            4060: "comment describing the P[0-5]-NNN- filename shape",
+            4064: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            3815: "_generate_id_from_filename strips a leading priority token before "
+            4085: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
             21: "_ID_RE: prose-dependency ID shape, optional prefix group discarded",
         },
         "mcp_server/tools.py": {
-            765: "JSON-schema pattern for a priority argument, not a filename read",
-            908: "JSON-schema pattern for a priority argument, not a filename read",
+            795: "JSON-schema pattern for a priority argument, not a filename read",
+            941: "JSON-schema pattern for a priority argument, not a filename read",
         },
         "session_store/writers.py": {
-            2685: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "
+            2935: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "
             "_derive_type_priority (BUG-3286 step 7 Deviation — no BRConfig in scope to "
             "call resolve_priority here)",
-            2747: "docstring for _derive_type_priority",
+            2997: "docstring for _derive_type_priority",
         },
         "sync.py": {
             292: "comment describing the P[0-5]-TYPE-NNN- filename shape",

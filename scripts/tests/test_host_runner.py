@@ -2444,6 +2444,8 @@ class TestAC8BaselineCoverage:
             r"os\.getenv\([\'\"]([A-Z_][A-Z0-9_]*)[\'\"]",
         ]
         for path in pkg_dir.glob("**/*.py"):
+            if "node_modules" in path.parts:
+                continue
             text = path.read_text(encoding="utf-8", errors="ignore")
             for pattern in patterns:
                 names |= {m.group(1) for m in _re.finditer(pattern, text)}
