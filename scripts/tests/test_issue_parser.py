@@ -4823,7 +4823,7 @@ class TestPriorityRegexCompletenessAllowlist:
     # little_loops.issue_parser.resolve_priority.
     _ALLOWLIST: dict[str, dict[int, str]] = {
         "cli/issues/clusters.py": {
-            68: "`[P3]`-style priority tag inside cluster body text, not a filename read",
+            74: "`[P3]`-style priority tag inside cluster body text, not a filename read",
         },
         "cli/issues/normalize.py": {
             154: "_slug_for strips the prefix to build a slug; a text op, not a priority read",

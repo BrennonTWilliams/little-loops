@@ -5309,12 +5309,12 @@ class TestIssuesCLIClusters:
         issues_dir_fan_out: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Skip-level edges appear as annotations below the grid for fan-out clusters.
+        """Skip-level edges fold into the source box as an `unblocks:` line (ENH-3431).
 
         BUG-020 blocks both BUG-021 and BUG-022. The consecutive grid can only show
-        BUG-020→BUG-021; the BUG-020→BUG-022 edge is non-consecutive and must appear
-        as a skip-edge annotation line below the diagram. Skip-edge demotion is a
-        --layout boxes artifact (the tree default shows all edges inline).
+        BUG-020→BUG-021 as an arrow; the BUG-020→BUG-022 edge is non-consecutive and
+        must still appear, folded into BUG-020's own box content as `unblocks:
+        BUG-022` rather than a trailing external annotation.
         """
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -5335,32 +5335,192 @@ class TestIssuesCLIClusters:
         assert "BUG-020" in output
         assert "BUG-021" in output
         assert "BUG-022" in output
-        # The skip-edge annotation line must show both endpoints and the relation
-        assert "→" in output, "Skip-edge annotation arrow must be present"
         lines = output.splitlines()
-        annotation_lines = [ln for ln in lines if "BUG-020" in ln and "BUG-022" in ln]
-        assert annotation_lines, (
-            "No annotation line found containing both BUG-020 and BUG-022 "
-            "(skip-level edge BUG-020→BUG-022 must appear as annotation)"
+        unblocks_lines = [ln for ln in lines if "unblocks" in ln and "BUG-022" in ln]
+        assert unblocks_lines, (
+            "No `unblocks:` line found containing BUG-022 "
+            "(skip-level edge BUG-020→BUG-022 must fold into BUG-020's box)"
         )
+
+
+class TestClustersNormalizeEdges:
+    """Unit tests for ENH-3431's `_normalize_edges` ordering-edge normalization."""
+
+    def test_blocked_by_blocks_depends_on_collapse_to_same_fact(self) -> None:
+        """blocked_by/blocks/depends_on all normalize to one (before, after) fact."""
+        from little_loops.cli.issues.clusters import _normalize_edges
+
+        # A blocked_by B -> B before A
+        assert _normalize_edges([("A", "B", "blocked_by")]) == [("B", "A", "hard")]
+        # B blocks A -> B before A (same fact, opposite spelling)
+        assert _normalize_edges([("B", "A", "blocks")]) == [("B", "A", "hard")]
+        # A depends_on B -> B before A, weak strength
+        assert _normalize_edges([("A", "B", "depends_on")]) == [("B", "A", "weak")]
+
+    def test_relates_to_and_parent_excluded(self) -> None:
+        """relates_to and parent are annotations, never ordering facts."""
+        from little_loops.cli.issues.clusters import _normalize_edges
+
+        assert _normalize_edges([("A", "B", "relates_to"), ("A", "B", "parent")]) == []
+
+
+class TestClustersOrderAndWaves:
+    """Unit tests for ENH-3431's `_order_and_waves` single Kahn + longest-path pass."""
+
+    def test_motivating_example_waves(self) -> None:
+        """5-issue example: 3427 -> {3428,3429,3430} -> 3422 yields waves 1/2/2/2/3."""
+        from little_loops.cli.issues.clusters import _order_and_waves
+
+        ids = ["3427", "3428", "3429", "3430", "3422"]
+        normalized = [
+            ("3427", "3428", "hard"),
+            ("3427", "3429", "hard"),
+            ("3427", "3430", "hard"),
+            ("3430", "3422", "hard"),
+        ]
+        ordered, waves, has_cycle = _order_and_waves(ids, normalized)
+        assert has_cycle is False
+        assert waves == {"3427": 1, "3428": 2, "3429": 2, "3430": 2, "3422": 3}
+        assert ordered.index("3427") < ordered.index("3428")
+        assert ordered.index("3430") < ordered.index("3422")
+
+    def test_diamond_longest_path_depth(self) -> None:
+        """Diamond DAG (A->B, A->C, B->D, C->D) gives D longest-path depth, not BFS depth."""
+        from little_loops.cli.issues.clusters import _order_and_waves
+
+        ids = ["A", "B", "C", "D"]
+        normalized = [
+            ("A", "B", "hard"),
+            ("A", "C", "hard"),
+            ("B", "D", "hard"),
+            ("C", "D", "hard"),
+        ]
+        _, waves, has_cycle = _order_and_waves(ids, normalized)
+        assert has_cycle is False
+        assert waves == {"A": 1, "B": 2, "C": 2, "D": 3}
+
+    def test_blocks_only_declaration_still_orders(self) -> None:
+        """An issue declaring only `blocks: [X]` (no reciprocal blocked_by) still orders."""
+        from little_loops.cli.issues.clusters import _order_and_waves
+
+        ids = ["X", "Y"]
+        normalized = [("Y", "X", "hard")]  # Y blocks X -> Y before X
+        _, waves, has_cycle = _order_and_waves(ids, normalized)
+        assert has_cycle is False
+        assert waves == {"Y": 1, "X": 2}
+
+    def test_two_cycle_lands_in_unresolved_bucket(self) -> None:
+        """A blocked_by B + B blocked_by A survive as two edges and form a real cycle."""
+        from little_loops.cli.issues.clusters import _normalize_edges, _order_and_waves
+
+        edges = [("A", "B", "blocked_by"), ("B", "A", "blocked_by")]
+        normalized = _normalize_edges(edges)
+        assert len(normalized) == 2, "both directions of the 2-cycle must survive"
+
+        ordered, waves, has_cycle = _order_and_waves(["A", "B"], normalized)
+        assert has_cycle is True
+        assert waves == {"A": None, "B": None}
+        assert set(ordered) == {"A", "B"}
+
+    def test_downstream_of_cycle_also_unresolved(self) -> None:
+        """A node whose only prerequisite is inside a cycle is also unresolved."""
+        from little_loops.cli.issues.clusters import _order_and_waves
+
+        ids = ["A", "B", "C"]
+        normalized = [("A", "B", "hard"), ("B", "A", "hard"), ("B", "C", "hard")]
+        _, waves, has_cycle = _order_and_waves(ids, normalized)
+        assert has_cycle is True
+        assert waves == {"A": None, "B": None, "C": None}
+
+    def test_relates_to_only_edges_yield_no_ordering(self) -> None:
+        """--edges=relates_to means _cluster_edges yields no ordering edges -> all wave 1."""
+        from little_loops.cli.issues.clusters import _normalize_edges, _order_and_waves
+
+        edges = [("A", "B", "relates_to")]
+        normalized = _normalize_edges(edges)
+        assert normalized == []
+        _, waves, has_cycle = _order_and_waves(["A", "B"], normalized)
+        assert has_cycle is False
+        assert waves == {"A": 1, "B": 1}
+
+
+class TestClustersReadyIds:
+    """Unit tests for ENH-3431's `_ready_ids` readiness/stale-blocked helper."""
+
+    def _issue(self, **kwargs: Any) -> Any:
+        from little_loops.issue_parser import IssueInfo
+
+        defaults: dict[str, Any] = {
+            "issue_id": "X",
+            "issue_type": "bug",
+            "priority": "P2",
+            "title": "T",
+            "status": "open",
+            "path": Path("x.md"),
+            "blocked_by": [],
+            "blocks": [],
+            "depends_on": [],
+            "relates_to": [],
+            "parent": None,
+        }
+        defaults.update(kwargs)
+        return IssueInfo(**defaults)
+
+    def test_deferred_blocker_is_not_ready(self) -> None:
+        from little_loops.cli.issues.clusters import _ready_ids
+
+        issue = self._issue(issue_id="X", blocked_by=["Y"])
+        issues_map = {"X": issue}
+        ready, stale = _ready_ids(["X"], issues_map, non_terminal_ids={"Y"})
+        assert "X" not in ready
+        assert "X" not in stale
+
+    def test_done_blocker_absent_from_superset_is_ready(self) -> None:
+        from little_loops.cli.issues.clusters import _ready_ids
+
+        issue = self._issue(issue_id="X", blocked_by=["Y"])
+        issues_map = {"X": issue}
+        ready, _ = _ready_ids(["X"], issues_map, non_terminal_ids=set())
+        assert "X" in ready
+
+    def test_dangling_blocker_is_ready(self) -> None:
+        from little_loops.cli.issues.clusters import _ready_ids
+
+        issue = self._issue(issue_id="X", blocked_by=["NONEXISTENT-999"])
+        issues_map = {"X": issue}
+        ready, _ = _ready_ids(["X"], issues_map, non_terminal_ids={"Y"})
+        assert "X" in ready
+
+    def test_status_blocked_with_only_terminal_blockers_is_stale(self) -> None:
+        from little_loops.cli.issues.clusters import _ready_ids
+
+        issue = self._issue(issue_id="X", status="blocked", blocked_by=["Y"])
+        issues_map = {"X": issue}
+        ready, stale = _ready_ids(["X"], issues_map, non_terminal_ids=set())
+        assert "X" in ready
+        assert "X" in stale
+
+    def test_readiness_ignores_edges_filter_for_depends_on(self) -> None:
+        """Readiness always reads raw blocked_by/depends_on regardless of --edges."""
+        from little_loops.cli.issues.clusters import _ready_ids
+
+        issue = self._issue(issue_id="X", depends_on=["Y"])
+        issues_map = {"X": issue}
+        ready, _ = _ready_ids(["X"], issues_map, non_terminal_ids={"Y"})
+        assert "X" not in ready
 
 
 class TestIssuesCLIClustersTreeLayout:
     """Tests for the FEAT-2337 indented tree layout (default) and --layout flag."""
 
-    def test_tree_is_default_and_shows_all_hub_edges(
+    def test_waves_is_now_default(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         issues_dir_fan_out: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Default layout is the tree; every hub edge appears inline, no skip-edge dump.
-
-        BUG-020 blocks BUG-021 and BUG-022. In the box layout BUG-020→BUG-022 was
-        demoted to a trailing skip-edge line. The tree must render both edges in
-        the primary layout with ├──/└── connectors and no ` → ` skip-edge block.
-        """
+        """Default layout is `waves` (ENH-3431), not the tree (no --layout given)."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         with patch.object(
@@ -5371,7 +5531,35 @@ class TestIssuesCLIClustersTreeLayout:
             assert main_issues() == 0
         out = capsys.readouterr().out
 
-        assert "├── " in out or "└── " in out, "Tree connectors must be present by default"
+        assert "Wave 1" in out, "waves layout must be the default"
+        assert "├── " not in out and "└── " not in out, "Tree connectors are not the default"
+
+    def test_explicit_tree_shows_all_hub_edges(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--layout tree: every hub edge appears inline, no skip-edge dump.
+
+        BUG-020 blocks BUG-021 and BUG-022. In the box layout BUG-020→BUG-022 was
+        demoted to a trailing skip-edge line. The tree must render both edges in
+        the primary layout with ├──/└── connectors and no ` → ` skip-edge block.
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "tree", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        out = capsys.readouterr().out
+
+        assert "├── " in out or "└── " in out, "Tree connectors must be present"
         assert "BUG-020" in out and "BUG-021" in out and "BUG-022" in out
         # Both fan-out edges are tree branches; neither is relegated to a
         # `SRC → DST rel` skip-edge annotation line (the box-layout artifact).
@@ -5379,7 +5567,7 @@ class TestIssuesCLIClustersTreeLayout:
             ln for ln in out.splitlines() if "BUG-020" in ln and "BUG-022" in ln and " → " in ln
         ]
         assert not skip_lines, f"No edge may be demoted to a skip-edge list: {skip_lines}"
-        # No box borders in the default tree layout.
+        # No box borders in the tree layout.
         assert "┌─" not in out and "└─────" not in out
 
     def test_layout_boxes_restores_legacy_stack(
@@ -5389,7 +5577,7 @@ class TestIssuesCLIClustersTreeLayout:
         issues_dir_fan_out: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """--layout boxes renders the legacy box-stack with the skip-edge annotation."""
+        """--layout boxes renders box borders with the skip edge folded into the box (ENH-3431)."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         with patch.object(
@@ -5402,8 +5590,8 @@ class TestIssuesCLIClustersTreeLayout:
             assert main_issues() == 0
         out = capsys.readouterr().out
         assert "┌─" in out, "boxes layout must draw box borders"
-        # Legacy behavior: BUG-020→BUG-022 is a skip-edge annotation line.
-        assert any("BUG-020" in ln and "BUG-022" in ln and "→" in ln for ln in out.splitlines())
+        # BUG-020→BUG-022 is a skip-edge, folded into BUG-020's own box as `unblocks:`.
+        assert any("unblocks" in ln and "BUG-022" in ln for ln in out.splitlines())
 
     def test_layout_list_matches_compact(
         self,
@@ -5468,24 +5656,28 @@ class TestIssuesCLIClustersTreeLayout:
         issues_dir_multi_root: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Multi-parent shared child: both blocked_by edges appear as tree branches.
+        """Multi-parent shared child: both blocked_by edges are represented in the tree.
 
         BUG-010 and BUG-011 both block BUG-012 with no edge between the roots.
-        BUG-012 is the hub (degree 2), so it roots the tree and both blocked_by
-        edges render as ├──/└── branches — neither is dropped.
+        Both are wave-1 roots (ENH-3431 re-roots at wave-1, not the hub); BUG-012
+        hangs as a branch under whichever root visits it first, and the other
+        root's edge to BUG-012 renders as a ⤷ cross-reference — neither is dropped.
         """
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         with patch.object(
-            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "tree", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
             assert main_issues() == 0
         out = capsys.readouterr().out
         assert "BUG-010" in out and "BUG-011" in out and "BUG-012" in out
-        # Both blocked_by edges are rendered (two annotated branches).
-        assert out.count("blocked_by") >= 2, "Both shared-child edges must be shown"
+        assert "⤷" in out, "The second root's edge to the shared child is a cross-reference"
+        assert "blocked_by" in out, "The cross-reference edge must be labelled"
+        assert out.count("BUG-012") >= 2, "shared child appears as a branch and a cross-reference"
 
     def test_tree_cross_edge_shown_for_dag(
         self,
@@ -5516,7 +5708,9 @@ class TestIssuesCLIClustersTreeLayout:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         with patch.object(
-            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "tree", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -5534,12 +5728,15 @@ class TestIssuesCLIClustersTreeLayout:
     ) -> None:
         """Regression pin for BUG-3411: hub arrow direction tracks from_id/to_id.
 
-        BUG-301 (hub) is blocked_by BUG-300, and BUG-302 is blocked_by BUG-301.
-        The hub is from_id in the first edge and to_id in the second, so the two
-        blocked_by branches correctly render opposite glyphs (`→` vs `←`) — this
-        is the fixed semantic direction, not a walk-relative flip. BUG-3411's
-        investigation found the reported "flip" was already correct output;
-        this test pins that behavior so it isn't miscategorized as a bug again.
+        Narrowed by ENH-3431: any ``blocked_by``/``blocks``/``depends_on`` edge
+        now makes the cluster ordering-edge re-rooted, where branch arrows are
+        suppressed entirely (the tree structure alone conveys direction) — so
+        the arrow-flip surface this pinned only survives for the pure
+        ``parent``/``relates_to`` hub path (FEAT-2337's unchanged case). BUG-300
+        relates_to BUG-301 (hub, from_id in that edge) and BUG-301 relates_to
+        BUG-302 (hub is to_id... no, from_id here too) are arranged so the hub is
+        ``to_id`` in one edge and ``from_id`` in the other, giving opposite
+        glyphs — this is the fixed semantic direction, not a walk-relative flip.
         """
         issues_base = temp_project_dir / ".issues"
         bugs_dir = issues_base / "bugs"
@@ -5547,26 +5744,25 @@ class TestIssuesCLIClustersTreeLayout:
         (issues_base / "completed").mkdir(parents=True)
         (issues_base / "deferred").mkdir(parents=True)
         (bugs_dir / "P0-BUG-300-root.md").write_text(
-            "# BUG-300: Root\n\n## Summary\nA.\n\n## Blocks\n- BUG-301\n"
+            "---\nrelates_to:\n  - BUG-301\n---\n\n# BUG-300: Root\n\n## Summary\nA.\n"
         )
         (bugs_dir / "P1-BUG-301-hub.md").write_text(
-            "# BUG-301: Hub\n\n## Summary\nB.\n\n"
-            "## Blocked By\n- BUG-300\n\n## Blocks\n- BUG-302\n"
+            "---\nrelates_to:\n  - BUG-302\n---\n\n# BUG-301: Hub\n\n## Summary\nB.\n"
         )
-        (bugs_dir / "P2-BUG-302-leaf.md").write_text(
-            "# BUG-302: Leaf\n\n## Summary\nC.\n\n## Blocked By\n- BUG-301\n"
-        )
+        (bugs_dir / "P2-BUG-302-leaf.md").write_text("# BUG-302: Leaf\n\n## Summary\nC.\n")
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         with patch.object(
-            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "tree", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
             assert main_issues() == 0
         out = capsys.readouterr().out
-        assert "→ blocked_by" in out, "hub-as-from_id edge must render →"
-        assert "← blocked_by" in out, "hub-as-to_id edge must render ←"
+        assert "→ relates_to" in out, "hub-as-from_id edge must render →"
+        assert "← relates_to" in out, "hub-as-to_id edge must render ←"
 
     def test_tree_cycle_terminates(
         self,
@@ -5611,6 +5807,62 @@ class TestIssuesCLIClustersTreeLayout:
             return json.loads(capsys.readouterr().out)
 
         assert _json([]) == _json(["--layout", "boxes"]) == _json(["--layout", "tree"])
+
+    def test_json_includes_wave_ready_and_normalized_edges(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json emits wave/ready per issue and a normalized_edges array (ENH-3431)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        data = json.loads(capsys.readouterr().out)
+        cluster = data[0]
+        for item in cluster["issues"]:
+            assert "wave" in item
+            assert "ready" in item
+        by_id = {item["id"]: item for item in cluster["issues"]}
+        assert by_id["BUG-020"]["wave"] == 1
+        assert by_id["BUG-020"]["ready"] is True
+        assert by_id["BUG-021"]["wave"] == 2
+        assert "normalized_edges" in cluster
+        for edge in cluster["normalized_edges"]:
+            assert set(edge) == {"before", "after", "strength"}
+
+    def test_waves_layout_renders_wave_headers(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--layout waves groups issues by wave with needs/unblocks annotations."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "waves", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        out = capsys.readouterr().out
+        assert "Wave 1  (no in-cluster prerequisite)" in out
+        assert "Wave 2" in out
+        assert "BUG-020" in out and "ready" in out
+        assert "needs BUG-020" in out
+        assert "unblocks BUG-021, BUG-022" in out
 
 
 @pytest.fixture
@@ -5837,7 +6089,12 @@ class TestIssuesCLIClustersLegendAndHeader:
         issues_dir_with_cycle: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """The overview line reports singular cluster/edge/cycle counts."""
+        """The overview line reports singular cluster/issue/cycle counts.
+
+        ENH-3431: a genuine 2-cycle now survives dedup as two edges (see
+        `test_enriched_header_inline_cycle_flag`), so edges is no longer
+        singular here.
+        """
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -5850,7 +6107,7 @@ class TestIssuesCLIClustersLegendAndHeader:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "1 cluster · 2 issues · 1 edge · 1 cycle" in captured.out
+        assert "1 cluster · 2 issues · 2 edges · 1 cycle" in captured.out
 
     def test_skip_edge_notation_unified(
         self,
@@ -5860,7 +6117,7 @@ class TestIssuesCLIClustersLegendAndHeader:
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Skip-edge annotations use the inline colored-label notation, not (rel)."""
+        """Skip-edge annotations fold into the box as `unblocks:` (ENH-3431), not (rel)."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         monkeypatch.setenv("NO_COLOR", "1")
@@ -5879,14 +6136,9 @@ class TestIssuesCLIClustersLegendAndHeader:
         # Old parenthesized notation is gone
         assert "(blocked_by)" not in captured.out
         skip_lines = [
-            ln
-            for ln in captured.out.splitlines()
-            if "BUG-020" in ln and "BUG-022" in ln and "→" in ln
+            ln for ln in captured.out.splitlines() if "unblocks" in ln and "BUG-022" in ln
         ]
         assert skip_lines, "Skip-edge annotation line must be present"
-        assert any(ln.endswith("blocked_by") for ln in skip_lines), (
-            "Skip-edge line must end with the bare relationship label"
-        )
 
     def test_edge_color_has_no_sibling_entry(self) -> None:
         """The dead 'sibling' mapping is removed from EDGE_COLOR."""
@@ -6116,7 +6368,12 @@ class TestIssuesCLIClustersScoping:
         issues_dir_with_deps: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """The cluster header carries hub, priority spread, and edge count inline."""
+        """The cluster header carries start/waves, priority spread, and edge count inline.
+
+        ENH-3431: a cluster with ordering edges reports `start`/`N waves`
+        instead of `hub` — BUG-001 → BUG-002 → BUG-003 has a single wave-1
+        issue (BUG-001) and 3 waves.
+        """
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -6129,7 +6386,10 @@ class TestIssuesCLIClustersScoping:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "Cluster 1 (3 issues) · hub BUG-002 · P0×1 P1×1 P2×1 · 2 edges" in captured.out
+        assert (
+            "Cluster 1 (3 issues) · start BUG-001 · 3 waves · P0×1 P1×1 P2×1 · 2 edges"
+            in captured.out
+        )
 
     def test_enriched_header_inline_cycle_flag(
         self,
@@ -6138,7 +6398,12 @@ class TestIssuesCLIClustersScoping:
         issues_dir_with_cycle: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Clusters with a dependency cycle carry an inline cycle flag in the header."""
+        """Clusters with a dependency cycle carry an inline cycle flag in the header.
+
+        ENH-3431: a genuine 2-cycle ("A blocked_by B" + "B blocked_by A") now
+        survives dedup as two edges (previously collapsed to one), and has no
+        wave-1 member, so the header reports `0 start · 0 waves`.
+        """
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -6151,7 +6416,8 @@ class TestIssuesCLIClustersScoping:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "· 1 edge · cycle ───" in captured.out
+        assert "0 start · 0 waves" in captured.out
+        assert "· 2 edges · cycle ───" in captured.out
 
     def test_enriched_header_blocked_count(
         self,

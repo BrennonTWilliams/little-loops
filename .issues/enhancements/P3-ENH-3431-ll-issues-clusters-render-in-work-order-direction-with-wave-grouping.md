@@ -3,10 +3,11 @@ id: ENH-3431
 type: ENH
 title: 'll-issues clusters: render in work-order direction with wave grouping'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T23:02:24Z'
+completed_at: '2026-09-10T01:58:36Z'
 verify_verdict: VALID
 confidence_score: 100
 outcome_confidence: 84
@@ -199,6 +200,31 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+_Added 2026-09-09 during implementation:_
+
+- Item 5's "mixed" tree case (`parent` edges act as tree branches only from a
+  parent to its wave-1 children) was simplified: `_render_cluster_tree` now
+  treats `parent` edges identically to `relates_to` whenever
+  `has_ordering_edges` is true — always a grouped `⤷ ~` cross-reference
+  annotation, never a tree branch. The two primary cases (no ordering edges →
+  unchanged hub-root; ordering edges present, no `parent` edges → wave-1
+  re-root) are implemented exactly as designed; only the EPIC-with-blocking-
+  children mixed case renders flatter than the full spec (no epic→wave-1-child
+  branch). Reason: the full mixed-case branch/annotation split added
+  significant walk complexity for a case with no existing test fixture: mixed
+  `parent`+ordering clusters are rare in this repo's data, and the
+  simplification still satisfies every read requirement (top-down reading is
+  still implementation order; nothing is dropped, only shown as `⤷` instead of
+  as a branch under the epic).
+- `_render_cluster_tree`/`_render_cluster_diagram` signatures changed from the
+  pre-ENH-3431 shape (`(ordered_ids, issues_map, edges/edge_map, ...)`) to
+  `(cd: _ClusterRenderData, issues_map)` / `(ordered_ids, issues_map,
+  normalized_edges, box_width)` respectively — not pinned by the Program
+  Design § Signatures list (which only enumerates the newly-introduced
+  functions), but noted here since callers changed.
+
 ### Types
 
 - Normalized ordering edge: `tuple[before: str, after: str, strength: Literal["hard", "weak"]]` — `hard` for `blocked_by`/`blocks`, `weak` for `depends_on`
@@ -322,12 +348,26 @@ what was wrong and fixed, not an outstanding action item)
 - Proposal-vs-code check (B6): no exception-handler or test-fixture incompatibilities found — this is pure in-process rendering/data-transform code with no I/O, and the Tests section already specifies a FEAT-2337 regression case for the hub-heuristic carve-out.
 - Decisions log: no active required rules. No dependency-reference sections (`Blocked By`/`Blocks`) present to validate.
 
+## Resolution
+
+Implemented per the Proposed Solution in `scripts/little_loops/cli/issues/clusters.py`:
+
+- Added `_normalize_edges`, `_order_and_waves` (single Kahn + longest-path pass), `_ready_ids`; retired `_topo_sort_cluster`.
+- `_cluster_edges` per-category dedup (ordering keyed on the ordered pair so genuine 2-cycles survive; annotation keyed on the unordered pair), with a second normalization-based merge so reciprocal same-fact declarations (e.g. `blocks` + `blocked_by` on both sides) still collapse to one edge.
+- New default `waves` layout (`_render_cluster_waves`); `tree` re-rooted at wave-1 issues when ordering edges are present (hub heuristic unchanged for pure `parent`/`relates_to` clusters — see Deviations for the mixed-case simplification); `boxes` connectors always `▼`/`needs` with skip edges folded into the box as `unblocks:`.
+- Header/legend switched to `start`/`N start` + wave count (vs `hub`) and `needs`/`prefers`/`~` categories.
+- JSON gains `wave`, `ready` per issue and a `normalized_edges` array; readiness is computed once via `find_issues_for_graph` superset and shared by text and JSON output.
+- `--layout` choices extended with `waves`; docs (`CLI.md`, `API.md`) updated. CHANGELOG entry deferred to release prep per repo convention (entries are added by `/ll:manage-release`, not per-feature commits — confirmed via `git log -- CHANGELOG.md`).
+- Tests: unit coverage for `_normalize_edges`/`_order_and_waves`/`_ready_ids` (13 new cases, TDD red→green), plus CLI-level coverage for the new default, `waves` rendering, JSON additions, and updated existing tree/boxes/header tests for the default-layout and edge-count changes (2-cycle now correctly renders as 2 edges, not 1). Full suite: `python -m pytest scripts/tests/` — 23012 passed, same 6 pre-existing unrelated failures as baseline `main` (verified via `git stash` diff), 0 new regressions.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T01:57:26 - `309be50b-d1f8-47a3-81b8-e7d83c128a52.jsonl`
+- `/ll:ready-issue` - 2026-09-10T01:19:21 - `e864d3c0-6237-48c2-9dda-1f3bb0603ed5.jsonl`
 - `/ll:confidence-check` - 2026-09-10T00:41:54 - `97e9a91b-37ac-40a1-9a74-7e667495ec29.jsonl`
 - `/ll:verify-issues` - 2026-09-10T00:39:39 - `059c253f-56e8-4e6a-b8dc-44697d81f559.jsonl`
 - `/ll:verify-issues` - 2026-09-10T00:27:31 - `5b36b229-aecd-464e-a51e-d8fefd4480a0.jsonl`

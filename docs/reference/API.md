@@ -4604,7 +4604,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `next-issue` | Single highest-confidence issue ID (alias: `nx`) |
 | `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |
 | `append-log` | Append a session log entry to an issue file |
-| `clusters` | Visualize issue dependency clusters as box diagrams (`--include-orphans`, `--min-connections N`, `--json`, `--edges SET`, `--status SET`) |
+| `clusters` | Visualize issue dependency clusters in work-order direction with wave grouping (`--layout {waves,tree,list,boxes}`, default `waves`, `--include-orphans`, `--min-connections N`, `--json`, `--edges SET`, `--status SET`) |
 | `anchor-sweep` | Rewrite bare `file:line` references in active issue files to enclosing anchor form (`--dry-run`, `--issues-dir DIR`) |
 | `fingerprint` | Extract structured fingerprint (id, files_to_modify, key_terms) from an issue file as JSON; used by `audit-issue-conflicts` Phase 2b (`--cross-theme`) |
 | `find-similar` | Score title word-overlap similarity (Jaccard, `text_utils.py`) between text and the issue corpus, or pairwise via `--batch` (alias: `fs`); `--against open\|all`, `--threshold T`, `--limit N` (ENH-2941) |

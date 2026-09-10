@@ -534,13 +534,15 @@ Examples:
         )
         cl.add_argument(
             "--layout",
-            choices=["tree", "list", "boxes"],
+            choices=["waves", "tree", "list", "boxes"],
             default=None,
             dest="layout",
             help=(
-                "Diagram layout: tree (default, indented multi-root dependency tree "
-                "with every edge shown), list (one line per issue with edge "
-                "annotations), boxes (legacy vertical box-stack). "
+                "Diagram layout: waves (default, grouped by dependency wave with "
+                "per-line needs/unblocks/~ annotations), tree (indented multi-root "
+                "dependency tree, re-rooted at wave-1 issues when ordering edges "
+                "are present), list (one line per issue with edge annotations), "
+                "boxes (legacy vertical box-stack). "
                 "An explicit --layout overrides --compact."
             ),
         )

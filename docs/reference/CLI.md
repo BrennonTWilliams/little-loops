@@ -1921,26 +1921,29 @@ ll-issues ep EPIC-1773 --format markdown         # EPIC progress as markdown
 
 #### `ll-issues clusters` / `ll-issues cl`
 
-Visualize issue dependency clusters. Walks all relationship types across active issues by default and renders each connected component. The default `tree` layout draws an indented, multi-root dependency tree (`├──`/`└──` connectors) in which **every** edge is shown — hub/parent hierarchies (e.g. one EPIC with many `parent:` children) render with the hub at the root and depth shown naturally, and DAG cross-edges or cycle back-edges appear as `⤷` cross-references rather than being demoted to a trailing skip-edge list.
+Visualize issue dependency clusters in **work-order** direction (ENH-3431): `blocked_by`/`blocks`/`depends_on` are normalized to a single "before" fact so reading any layout top-down is reading implementation order, instead of the raw semantic direction the frontmatter spells. Walks all relationship types across active issues by default and renders each connected component, grouped into 1-indexed dependency **waves** (longest-path depth). The default `waves` layout groups issues by wave, printing each issue's own `needs` (hard/weak prerequisite) and `unblocks` (successor) lists inline so the legend is never required to interpret the diagram; `~` marks undirected `relates_to`/`parent` annotations, which never participate in ordering. `--layout tree` draws an indented, multi-root dependency tree (`├──`/`└──` connectors), re-rooted at wave-1 issues when the cluster has ordering edges — a pure `parent`/`relates_to` cluster (e.g. one EPIC with many `parent:` children) keeps the original hub-degree root instead.
 
 **Flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--layout {tree,list,boxes}` | `tree` | Diagram layout. `tree` (default): indented multi-root dependency tree with every edge shown inline. `list`: one line per issue with edge annotations (compact). `boxes`: legacy vertical box-stack with arrows between consecutive boxes and a trailing skip-edge list. An explicit `--layout` overrides `--compact`. |
+| `--layout {waves,tree,list,boxes}` | `waves` | Diagram layout. `waves` (default): grouped by dependency wave with per-line `needs`/`unblocks`/`~` annotations. `tree`: indented multi-root dependency tree, re-rooted at wave-1 issues when ordering edges are present (unchanged hub-root heuristic for pure `parent`/`relates_to` clusters). `list`: one line per issue with edge annotations (compact). `boxes`: legacy vertical box-stack — connectors are always `▼`/`needs` (topo order already respects "before" direction) and skip-level edges fold into the source box as an `unblocks:` line instead of a trailing list. An explicit `--layout` overrides `--compact`. |
 | `--compact` / `--summary` | off | Alias for `--layout list`. |
-| `--edges SET` | `all` | Relationship types to follow. Aliases: `all` (all types), `blocking` (`blocked_by`+`blocks` only — legacy behaviour), `hard` (`blocked_by`+`blocks`+`depends_on`). Or a comma-separated list of: `blocked_by,blocks,depends_on,relates_to,parent`. |
+| `--edges SET` | `all` | Relationship types to follow. Aliases: `all` (all types), `blocking` (`blocked_by`+`blocks` only — legacy behaviour), `hard` (`blocked_by`+`blocks`+`depends_on` — an `--edges` alias unrelated to the `hard`/`weak` *strength* tag described below). Or a comma-separated list of: `blocked_by,blocks,depends_on,relates_to,parent`. Readiness (the `ready`/`⏳ waits on` markers) always reads raw `blocked_by`/`depends_on` regardless of this filter — a filtered-out edge does not make an issue ready. |
 | `--status SET` | `active` | Issue statuses to include. Aliases: `active` (`open`/`in_progress`/`blocked`), `+deferred` (active + deferred), `all` (everything except cancelled). Or a comma-separated list of canonical status values. |
 | `--cluster N` | — | Render only the Nth cluster (1-indexed). |
 | `--limit N` | — | Render at most N clusters; the footer reports how many were suppressed. |
 | `--include-orphans` | off | Include 1-issue clusters (isolated issues with no relationships). |
 | `--min-connections N` | 0 | Only show clusters where at least one issue has N or more connections. |
-| `--json` / `-j` | off | Output as JSON array. Each element has `cluster_index`, `issue_count`, `issues`, and `edges` (with `relationship` values: `blocked_by`, `blocks`, `depends_on`, `relates_to`, `parent`). Output is identical across all `--layout` values. |
+| `--json` / `-j` | off | Output as JSON array. Each element has `cluster_index`, `issue_count`, `issues` (each with `id`, `priority`, `title`, `wave`: int or `null` for an unresolved/cycle member, `ready`: bool), `edges` (raw, with `relationship` values: `blocked_by`, `blocks`, `depends_on`, `relates_to`, `parent` — a pair may now carry two entries, one ordering + one annotation), and `normalized_edges` (`{before, after, strength: "hard"\|"weak"}`). Output is identical across all `--layout` values. |
+
+The header line reports `start ENH-NNNN` (or `N start` for multiple wave-1 issues) plus `M waves` for clusters with ordering edges, or `hub ENH-NNNN` for pure `parent`/`relates_to` clusters (no ordering edges) — the two tokens never both appear on one cluster.
 
 **Examples:**
 
 ```bash
-ll-issues clusters                          # Indented dependency tree (default), active issues
+ll-issues clusters                          # Wave-grouped work order (default), active issues
+ll-issues clusters --layout tree            # Indented dependency tree, re-rooted at wave 1
 ll-issues clusters --layout list            # Compact one-line-per-issue view
 ll-issues clusters --layout boxes           # Legacy vertical box-stack
 ll-issues clusters --edges=blocking         # Legacy view: blocked_by/blocks only
