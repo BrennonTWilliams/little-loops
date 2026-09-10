@@ -11,8 +11,7 @@ labels:
 - multi-host
 - observability
 parent: ENH-3419
-blocked_by:
-- ENH-3427
+blocked_by: []
 blocks: []
 relates_to:
 - ENH-3420
@@ -21,6 +20,8 @@ relates_to:
 - ENH-3429
 - ENH-3422
 unproven_mechanism: true
+spike_completed: true
+spike_attempted: true
 ---
 
 # ENH-3430: Rewire ll-logs onto the session-discovery seam; retire _has_ll_activity/_extract_cwd_from_project
@@ -147,8 +148,8 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
    `list_workspaces` has no such fallback; documented as a behavior change (real Claude Code
    records always carry `cwd`, so only synthetic fixtures are affected).
 6. **`list_workspaces → detect_sessions(ws)` round-trip**: must tolerate an unresolved recorded
-   `cwd` on macOS (`/var/...` → `/private/var/...`) — this depends on ENH-3427's both-spellings
-   probe having landed in `session_store/sessions.py`.
+   `cwd` on macOS (`/var/...` → `/private/var/...`) — the both-spellings probe this relies on has
+   landed in `session_store/sessions.py` (ENH-3427, done).
 7. **No-sessions stderr**: `_cmd_scan_failures`/`sequences`/`extract`/`eval-export` change the
    wording to `"No sessions found for: <cwd>"`; exit code stays **1** (two existing tests lock
    `rc=1`: `test_sequences_project_not_found_returns_1` 1224, `test_extract_project_not_found_
@@ -294,10 +295,29 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 ## Dependencies
 
-Blocked by ENH-3427 (host-resolution seam, including the both-spellings probe this issue's
-`TestDiscover` tests need). Independent of ENH-3428/ENH-3429 (disjoint files — touches
+ENH-3427 (host-resolution seam, including the both-spellings probe this issue's `TestDiscover`
+tests need) is done — this issue is unblocked. Independent of ENH-3428/ENH-3429 (disjoint files — touches
 `cli/logs.py` only). Coordinates with ENH-3422: this issue deletes `_has_ll_activity`/
 `_extract_cwd_from_project`, so ENH-3422 must not retarget them.
+
+## Spike Results
+
+_Added by `/ll:spike` on 2026-09-09_
+
+**Retired risks**
+
+| Risk (from Proposed Solution's flagged ⚠ finding) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| No precedent for the per-host `list_workspaces` union/dedupe mechanism | `TestUnionDedupe::test_same_cwd_under_two_hosts_collapses_to_one_entry`, `test_distinct_cwds_across_hosts_both_survive` | ✓ pass |
+| macOS resolved-vs-as-recorded spelling must still dedupe (step 6 hazard) | `TestUnionDedupe::test_resolved_vs_as_recorded_spelling_still_dedupes` | ✓ pass |
+| Union must not widen past the existing ll-activity filter | `TestUnionDedupe::test_ll_activity_filter_excludes_non_ll_workspace` | ✓ pass |
+| `detect_sessions(ws, None)` per-workspace cost-multiplication anti-pattern (Impact → Risk) | `TestUnionDedupe::test_never_calls_detect_sessions_with_host_none_per_workspace` | ✓ pass |
+| Isolation guard | `TestSpikeIsolation::test_spike_does_not_import_cli_logs_discover_all_projects` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/enh3430_workspace_union/`
+**Plan**: `.ll/spikes/spike-ENH-3430.md`
+**Verification**: 6 tests pass across 3 commands (spike suite, `test_session_discovery.py` 57 passed, `test_ll_logs.py -k TestDiscover` 18 passed).
+**Promotion**: move the proven per-host-iterate/resolve-dedupe/filter-after-dedupe shape into `discover_all_projects`'s `--all` path in `scripts/little_loops/cli/logs.py` in a separate PR (issue step 2).
 
 ## Status
 
@@ -305,6 +325,7 @@ Blocked by ENH-3427 (host-resolution seam, including the both-spellings probe th
 
 
 ## Session Log
+- `/ll:spike` - 2026-09-10T04:47:39 - `ccf26c86-7b45-4520-a14e-087ff209985d.jsonl`
 - `/ll:refine-issue` - 2026-09-10T04:37:29 - `58c863fa-c03a-4046-a3d0-1ff2020ab466.jsonl`
 - `/ll:refine-issue` - 2026-09-09T22:41:03 - `9fe38579-0a99-4bad-b518-b7f5e109e55f.jsonl`
 - `/ll:format-issue` - 2026-09-09T22:05:30 - `af86aaee-e2d3-4675-b045-b23f45bd4759.jsonl`
