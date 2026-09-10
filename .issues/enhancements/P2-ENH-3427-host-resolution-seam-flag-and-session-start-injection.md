@@ -27,6 +27,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
+verify_verdict: VALID
 ---
 
 # ENH-3427: Host-resolution seam — --host flag, both-spellings probe, and session_start host injection
@@ -140,7 +141,7 @@ ll-ctx-stats (Codex observability).
    env beats default, neither → default; plus `default="claude-code"` returning that). Per CLI
    (`ll-logs` × 9 subcommands, `ll-messages`, `ll-ctx-stats`, `ll-session backfill`), test only:
    `--host codex` parses and populates `args.host`, and an invalid value raises `SystemExit` —
-   model on `test_ll_session.py::TestBackfillArgs::test_backfill_host_choices_list` (41-61).
+   model on `test_ll_session.py::TestArgumentParsing::test_backfill_host_choices_list` (41-61).
    CLI-level precedence assertions (resolved host reaching `detect_sessions`) belong to the three
    children.
 
@@ -298,12 +299,37 @@ Blocks ENH-3428, ENH-3429, ENH-3430 (each consumes `_resolve_host`/`REGISTERED_H
 Relates to ENH-3420 and FEAT-3417 (both `done`, built the underlying seam this issue's flags
 resolve against).
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same pass, so the
+issue as it now reads is up to date — this section is a record of what was wrong and fixed, not
+an outstanding action item).
+
+- Graph: provider=`codegraph` freshness=`stale` — not relied on for the checks below beyond a
+  lead; all findings were confirmed by direct file/grep reads.
+- Every file/line citation checked (`sessions.py:236-288,331-352`, `user_messages.py:373-448`,
+  `session_store/__init__.py:108-144,202-205`, `cli/session.py:205-217,628-636`,
+  `hooks/session_start.py:150-190`, `hooks/__init__.py:198-208`, `fsm/continuity.py:38-46`,
+  `cli/ctx_stats.py:350-358`, `cli/messages.py:168-176`, `config/core.py:170-180`,
+  `config-schema.json:1562` for the `hooks.host` enum, `host_runner.py:2292` for `resolve_host`)
+  matched the current code exactly, including negative claims (`REGISTERED_HOSTS`/`add_host_arg`
+  confirmed absent everywhere, no `"digest"` subcommand in `cli/logs.py`).
+- One citation was wrong: Scope Boundaries item 6 modeled the per-CLI flag test on
+  `test_ll_session.py::TestBackfillArgs::test_backfill_host_choices_list` — no `TestBackfillArgs`
+  class exists in that file; the test lives under `TestArgumentParsing` (confirmed both by the
+  file itself and by the Tests section two paragraphs below, which already cited it correctly).
+  Corrected in place.
+- `ll-verify-evidence` returned clean (no fabricated evidence spans). No active required decision
+  rules exist to check against. Dependency references (`blocked_by`/`blocks`/parent) all resolve
+  and backlink correctly with ENH-3419/3428/3429/3430.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-10T00:15:40 - `8cef5fbd-618e-46ee-a7cc-dbfb9095952c.jsonl`
 - manual review - 2026-09-09 - corrected `REGISTERED_HOSTS` type (tuple, drop `sorted()`); added `default=` to `_resolve_host` so single-host sites don't fall to union; replaced untestable per-CLI precedence ACs with helper-level tests + per-CLI registration tests; resolved `add_host_arg` placement to `cli_args.py`; extended both-spellings probe to `get_project_folder` via shared `_cwd_spellings`; fixed API.md line ref (9608)
 - `/ll:wire-issue` - 2026-09-09T23:40:07 - `f26a7fac-7d40-43e0-b983-b0f480089473.jsonl`
 - `/ll:refine-issue` - 2026-09-09T23:24:12 - `a29c3127-073c-4881-95b4-061e8465cc19.jsonl`
