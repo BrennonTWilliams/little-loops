@@ -8,7 +8,7 @@ status: open
 discovered_date: '2026-09-10'
 labels: []
 decision_needed: false
-verify_verdict: EVIDENCE_UNVERIFIED
+verify_verdict: VALID
 relates_to:
 - ENH-3397
 - ENH-3407
@@ -293,12 +293,24 @@ Load-bearing causal/identity claims were verified by reading the artifact direct
 
 Verdict at time of check: **EVIDENCE_UNVERIFIED** (the two line-number drifts above were corrected in this same pass; the evidence-quote finding was reviewed but not altered — see rationale above for why no text change is warranted).
 
+_Re-verified by `/ll:verify-issues --auto` — 2026-09-10 (second pass, no content changes since the prior pass):_
+
+- **Evidence-quote check (B7) re-run**: `ll-verify-evidence` now returns clean (`"ok": true, "count": 0`), including with `--max-revisions 200` — the previously flagged backtick span `` `_cell_key(runner, target, head_sha)` `` (line 60) is no longer reported as unverifiable. Content at that line is unchanged since the prior pass; no explanation for the changed tool result was found, but the check is deterministic CLI output, not LLM judgment, so this pass takes it as authoritative rather than re-asserting the earlier finding from memory.
+- **Citation drift re-check**: `cli/harness.py` unmodified since `24aff43b8` (predates the prior verify pass) and `fsm/evaluators.py` unmodified since `e1a0f9aa8`; spot-checked ~12 of the ~45 cited `file:line` refs (`_record_harness_event:206`, `_build_harness_parser:466`, `SampleTally:697`, `_effective_samples:912`, `_run_sample_loop:1036`, `cmd_skill:1217`, `cmd_cmd:1282`, `cmd_mcp:1340`, `cmd_prompt:1433`, `cmd_dsl:1484`/`1497-1504`, `_cell_key` dsl-task call at `:1568`, `record_attempt` docstring's `dirty` line at `writers.py:1297`) — all exact, no drift. `writers.py`'s only change since the prior pass (`f9768d61a`) is 1,300+ lines below the cited `record_attempt` definition.
+- **Decisions gate**: re-ran, still clean (no active required rules).
+- **Dependencies**: `ENH-3397`/`ENH-3407`/`ENH-3415`/`ENH-3421` re-confirmed `status: done`.
+- **Graph**: provider=`codegraph` freshness=`fresh` (`indexed_at=2026-09-10T20:42:02Z`, `head_moved=0 commits`, `dirty_files=0`).
+
+Verdict at time of check: **VALID**.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T21:47:23 - `fe4ada0a-affa-483c-9e19-fd1d1033676d.jsonl`
+- `/ll:verify-issues` - 2026-09-10T21:45:18 - `c32904f3-4dde-4a04-9178-94f45f7b6256.jsonl`
 - manual design review (second) - 2026-09-10T22:00:00 - folded: incumbent resolution via HEAD blob hash, unpopulated semantic condition columns, AC2/AC6 contradiction, shared cell_key, head_sha dropped from match key, no in-repo caller, refusal exit 2, `_run_sample_loop` refactor, pyyaml learning-test requirement removed
 - `/ll:confidence-check` - 2026-09-10T21:18:25 - `cb64c4c5-a65d-4682-9d8c-8e6101e55812.jsonl`
 - `/ll:verify-issues` - 2026-09-10T21:15:12 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`
