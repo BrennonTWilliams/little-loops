@@ -1,19 +1,26 @@
 ---
 id: ENH-3435
-title: Measure and cache an unmutated baseline arm before the first change, and make the cache bidirectional
+title: Measure and cache an unmutated baseline arm before the first change, and make
+  the cache bidirectional
 type: ENH
 priority: P2
 status: open
 discovered_date: '2026-09-10'
 labels: []
 learning_tests_required:
-  - pyyaml
+- pyyaml
 decision_needed: false
 verify_verdict: EVIDENCE_UNVERIFIED
 relates_to:
-  - ENH-3397
-  - ENH-3407
-  - ENH-3415
+- ENH-3397
+- ENH-3407
+- ENH-3415
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 ## Summary
@@ -266,6 +273,7 @@ Verdict at time of check: **EVIDENCE_UNVERIFIED** (the two line-number drifts ab
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T21:18:25 - `cb64c4c5-a65d-4682-9d8c-8e6101e55812.jsonl`
 - `/ll:verify-issues` - 2026-09-10T21:15:12 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`
 - `/ll:decide-issue` - 2026-09-10T21:05:51 - `85832143-3cff-4024-be6a-21db797b611c.jsonl`
 - manual design review - 2026-09-10T21:30:00 - folded review findings (two-invocation contract, content-hash key, store decision, cmd_dsl exclusion, delta definition)
