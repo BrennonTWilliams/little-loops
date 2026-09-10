@@ -143,7 +143,7 @@ harvest (shell, 120s)
   produces: harvested_examples (JSON lines)
 ```
 
-The `harvest` state runs `ll-messages` with `--examples-format` to extract `(input, expected)` pairs from Claude Code session logs. Each record is a JSON object on its own line:
+The `harvest` state runs `ll-messages` with `--examples-format` to extract `(input, expected)` pairs from session logs of any registered host (unions every host by default; narrow with `--host`). Each record is a JSON object on its own line:
 
 ```json
 {
@@ -418,7 +418,7 @@ Set context variables with `--context key=value` flags or by editing the loop's 
 | `corpus.json` (or `corpus_state_file`) | `calibrate` (Read tool, optional) | Not written by the miner | Persisted calibration state for freshness decay |
 | `examples.json` (or `examples_file`) | `run_optimizer` inner loop | `write_examples` (intermediate), `publish` (final) | The training corpus for `apo-textgrad` |
 | `.issues/**/*.md` (`status: done`) | `judge` (session log entry count via Bash) | Never | Source of revision distance heuristic |
-| Session JSONL files in `~/.claude/projects/` | `ll-messages` in `harvest` | Never | Source of raw harvested candidates |
+| Session log files of any registered host (e.g. `~/.claude/projects/`, `~/.codex/sessions/`) | `ll-messages` in `harvest` | Never | Source of raw harvested candidates |
 
 ---
 

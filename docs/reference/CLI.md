@@ -3594,7 +3594,7 @@ ll-help --format json            # Structured output for tooling
 
 ### ll-messages
 
-Extract user messages from Claude Code session logs.
+Extract user messages from session logs of any registered host (Claude Code, Codex, and more) via the session-discovery seam; narrow to one host with `--host`.
 
 **Flags:**
 
@@ -3615,7 +3615,7 @@ Extract user messages from Claude Code session logs.
 | `--examples-format` | | Output `(input, output)` training pairs instead of raw messages (requires `--skill`); mutually exclusive with `--sft-format` |
 | `--sft-format` | | Output conversation turns in SFT training format as JSON-lines (`chatml`, `alpaca`, `sharegpt`); mutually exclusive with `--examples-format` |
 | `--context-window` | | Number of context turn-pairs per window in `--examples-format` or `--sft-format` (default: 3) |
-| `--host` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed by session enumeration (ENH-3427) |
+| `--host` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); narrows session enumeration via `detect_sessions` (ENH-3428). For Codex, yields typed user prompts; `--tools`/`--commands-only` extract commands for Claude-shaped hosts only (Codex has none yet) |
 
 **Examples:**
 ```bash
@@ -3633,6 +3633,7 @@ ll-messages --skill refine-issue --examples-format --context-window 5 --stdout
 ll-messages --sft-format chatml --stdout
 ll-messages --sft-format sharegpt --context-window 3 --since 2026-05-01 --stdout
 ll-messages --sft-format alpaca --output data/sft/raw.jsonl
+ll-messages --host codex --stdout          # Codex user prompts only
 ```
 
 ---

@@ -13,7 +13,7 @@ Provides command-line interfaces for automated issue management:
 - ll-sprint: Define and execute curated issue sets with dependency-aware ordering
 - ll-loop: Execute FSM-based automation loops
 - ll-workflows: Identify multi-step workflow patterns from user message history
-- ll-messages: Extract user messages from Claude Code logs
+- ll-messages: Extract user messages from session logs of any registered host (--host to narrow)
 - ll-history: Completed issue statistics and analysis
 - ll-logs: Discover, extract, and analyze ll-relevant JSONL entries from ~/.claude/projects/ (scan-failures mines failed ll-* calls)
 - ll-session: Query the unified session store (SQLite + FTS5)

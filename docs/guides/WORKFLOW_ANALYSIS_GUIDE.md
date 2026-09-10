@@ -78,7 +78,7 @@ Each step's output is the next step's input. Partial results are always preserve
 
 ## Prerequisites: Extracting Messages (`ll-messages`)
 
-Before running the analysis pipeline, you need a JSONL file of your user messages. `ll-messages` extracts these from your Claude Code session logs.
+Before running the analysis pipeline, you need a JSONL file of your user messages. `ll-messages` extracts these from your session logs, unioning every registered host by default (narrow with `--host`).
 
 ```bash
 # Last 100 messages (default)

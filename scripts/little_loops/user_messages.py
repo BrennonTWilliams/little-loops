@@ -11,10 +11,11 @@ Usage as CLI:
     ll-messages --stdout           # Print to terminal instead of file
 
 Usage as library:
-    from little_loops.user_messages import extract_user_messages, get_project_folder
+    from little_loops.session_store import detect_sessions
+    from little_loops.user_messages import extract_user_messages
 
-    project_folder = get_project_folder()
-    messages = extract_user_messages(project_folder, limit=50)
+    handles = detect_sessions(Path.cwd())
+    messages = extract_user_messages(handles, limit=50)
 """
 
 from __future__ import annotations
@@ -28,7 +29,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import overload
+from typing import TYPE_CHECKING, overload
+
+if TYPE_CHECKING:
+    from little_loops.session_store.sessions import SessionHandle
 
 __all__ = [
     "UserMessage",
@@ -681,78 +685,85 @@ def _get_omp_project_folder(cwd: Path, *, home: Path | None = None) -> Path | No
     return legacy if legacy.exists() else None
 
 
+# Hosts whose on-disk payload is Claude-shaped (either natively, or via a
+# normalizer to Claude shape) and so flow through the shared parse helpers
+# below (_parse_user_record / _parse_command_record). Codex has its own
+# extraction path; kimi-code has no normalizer yet and is skipped entirely.
+_CLAUDE_SHAPED_HOSTS = ("claude-code", "opencode", "pi", "qwen", "gemini", "omp")
+
+# Injected/synthetic user-role text in Codex rollouts that is not a real typed
+# prompt (ENH-3428): the host-injected environment banner and an aborted turn
+# marker. Matched against the stripped text's opening tag.
+_CODEX_EXCLUDED_USER_TEXT_PREFIXES = ("<environment_context>", "<turn_aborted>")
+
+
+def _parse_timestamp_or_fallback(timestamp_str: str, fallback_mtime: float) -> datetime:
+    """Parse an ISO-8601 (``Z``-suffixed) timestamp, falling back to a file mtime.
+
+    Shared by every per-record parser in this module: on a missing or
+    malformed timestamp, ``fallback_mtime`` (a handle's ``updated_at`` or a
+    file's ``st_mtime``) stands in so records always sort consistently.
+    """
+    try:
+        ts = (timestamp_str or "").replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(ts)
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.replace(tzinfo=None)
+        return timestamp
+    except (ValueError, AttributeError):
+        return datetime.fromtimestamp(fallback_mtime)
+
+
 def extract_user_messages(
-    project_folder: Path,
+    handles: list[SessionHandle],
     limit: int | None = None,
     since: datetime | None = None,
     include_agent_sessions: bool = True,
     include_response_context: bool = False,
 ) -> list[UserMessage]:
-    """Extract user messages from all JSONL session files.
+    """Extract user messages from every session *handles* names (ENH-3428).
 
-    Filters:
-    - type == "user"
-    - message.content is string (real user input)
-    - message.content is array but [0].type != "tool_result"
+    Dispatches per ``handle.host``: Claude-shaped hosts (``claude-code``,
+    ``opencode``, ``pi``, ``qwen``, ``gemini``, ``omp``) filter records the
+    same way as always (type == "user", string or text-block content, not a
+    tool_result); ``codex`` yields one message per typed user prompt (see
+    :func:`_extract_codex_user_messages`); ``kimi-code`` yields nothing (no
+    normalizer to Claude shape yet).
 
     Args:
-        project_folder: Path to Claude project folder
+        handles: Session handles to read, e.g. from ``detect_sessions``
         limit: Maximum number of messages to return
         since: Only include messages after this datetime
-        include_agent_sessions: Whether to include agent-*.jsonl files
-        include_response_context: Whether to include metadata from assistant responses
+        include_agent_sessions: Whether to include handles with ``is_agent=True``
+        include_response_context: Whether to include metadata from assistant
+            responses (Claude-shaped hosts only)
 
     Returns:
         Messages sorted by timestamp, most recent first.
     """
+    from little_loops.session_store.sessions import iter_events
+
     messages: list[UserMessage] = []
 
-    # Find all JSONL files
-    pattern = "*.jsonl"
-    jsonl_files = list(project_folder.glob(pattern))
-
-    for jsonl_file in jsonl_files:
-        # Skip agent sessions if requested
-        if not include_agent_sessions and jsonl_file.name.startswith("agent-"):
+    for handle in handles:
+        if not include_agent_sessions and handle.is_agent:
+            continue
+        if handle.host == "kimi-code":
+            continue
+        if handle.host == "codex":
+            messages.extend(_extract_codex_user_messages(handle, since))
+            continue
+        if handle.host not in _CLAUDE_SHAPED_HOSTS:
             continue
 
-        try:
-            # If we need response context, read all records first to pair user/assistant
-            if include_response_context:
-                all_records: list[dict] = []
-                with open(jsonl_file, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            record = json.loads(line)
-                            all_records.append(record)
-                        except json.JSONDecodeError:
-                            continue
-
-                # Process records, pairing user messages with their responses
-                messages.extend(_extract_messages_with_context(all_records, jsonl_file, since))
-            else:
-                # Original behavior: stream through file
-                with open(jsonl_file, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-
-                        try:
-                            record = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-
-                        msg = _parse_user_record(record, jsonl_file, since)
-                        if msg is not None:
-                            messages.append(msg)
-
-        except OSError:
-            # Skip files that can't be read
-            continue
+        if include_response_context:
+            all_records = [event.payload for event in iter_events(handle)]
+            messages.extend(_extract_messages_with_context(all_records, handle, since))
+        else:
+            for event in iter_events(handle):
+                msg = _parse_user_record(event.payload, handle, since)
+                if msg is not None:
+                    messages.append(msg)
 
     # Sort by timestamp, most recent first
     messages.sort(key=lambda m: m.timestamp, reverse=True)
@@ -764,22 +775,136 @@ def extract_user_messages(
     return messages
 
 
+def _extract_codex_user_messages(
+    handle: SessionHandle,
+    since: datetime | None,
+) -> list[UserMessage]:
+    """Extract typed user prompts from a Codex rollout handle (ENH-3428).
+
+    Reads ``response_item`` records with ``payload.type == "message"`` and
+    ``payload.role == "user"`` (joining ``input_text`` content blocks), and
+    ``event_msg`` records with ``payload.type == "user_message"`` (its text
+    under ``payload.message`` — the shape 0.98.0/0.130.0 pair alongside the
+    ``response_item`` for the same turn; 0.152.1 omits it). Both a
+    ``response_item`` and its paired ``event_msg`` carry identical text, so
+    the last-emitted text is tracked and an order-independent duplicate is
+    dropped, regardless of which of the two arrives first — this also lets a
+    file carrying only the ``event_msg`` still yield its prompt.
+    """
+    from little_loops.session_store.sessions import iter_events
+
+    messages: list[UserMessage] = []
+    cwd_val = str(handle.cwd)
+    git_branch_val: str | None = None
+    last_emitted_text: str | None = None
+    line_no = 0
+
+    for event in iter_events(handle):
+        line_no += 1
+
+        if event.type == "session_meta":
+            seen_cwd = event.payload.get("cwd")
+            if isinstance(seen_cwd, str) and seen_cwd:
+                cwd_val = seen_cwd
+            git = event.payload.get("git")
+            if isinstance(git, dict):
+                branch = git.get("branch")
+                if isinstance(branch, str) and branch:
+                    git_branch_val = branch
+            continue
+
+        if event.type == "response_item":
+            payload = event.payload
+            if payload.get("type") != "message" or payload.get("role") != "user":
+                continue
+            content = payload.get("content")
+            if not isinstance(content, list):
+                continue
+            text = "".join(
+                block.get("text", "")
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "input_text"
+            )
+            if text.strip().startswith(_CODEX_EXCLUDED_USER_TEXT_PREFIXES):
+                continue
+            if text == last_emitted_text:
+                continue
+            payload_id = payload.get("id")
+            uuid = payload_id if isinstance(payload_id, str) and payload_id else None
+            msg = _build_codex_user_message(
+                text, event.timestamp, handle, cwd_val, git_branch_val, uuid, line_no, since
+            )
+            if msg is not None:
+                messages.append(msg)
+                last_emitted_text = text
+            continue
+
+        if event.type == "event_msg":
+            payload = event.payload
+            if payload.get("type") != "user_message":
+                continue
+            msg_text = payload.get("message")
+            if not isinstance(msg_text, str):
+                continue
+            if msg_text.strip().startswith(_CODEX_EXCLUDED_USER_TEXT_PREFIXES):
+                continue
+            if msg_text == last_emitted_text:
+                continue
+            msg = _build_codex_user_message(
+                msg_text, event.timestamp, handle, cwd_val, git_branch_val, None, line_no, since
+            )
+            if msg is not None:
+                messages.append(msg)
+                last_emitted_text = msg_text
+            continue
+
+    return messages
+
+
+def _build_codex_user_message(
+    text: str,
+    timestamp_str: str,
+    handle: SessionHandle,
+    cwd_val: str,
+    git_branch_val: str | None,
+    uuid: str | None,
+    line_no: int,
+    since: datetime | None,
+) -> UserMessage | None:
+    """Build a ``UserMessage`` for one Codex user-turn candidate, or ``None`` if filtered."""
+    timestamp = _parse_timestamp_or_fallback(timestamp_str, handle.updated_at)
+    if since and timestamp < since:
+        return None
+    return UserMessage(
+        content=text,
+        timestamp=timestamp,
+        session_id=handle.session_id,
+        uuid=uuid or f"{handle.session_id}:{line_no}",
+        cwd=cwd_val,
+        git_branch=git_branch_val,
+        is_sidechain=False,
+    )
+
+
 def extract_commands(
-    project_folder: Path,
+    handles: list[SessionHandle],
     limit: int | None = None,
     since: datetime | None = None,
     include_agent_sessions: bool = True,
     tools: list[str] | None = None,
 ) -> list[CommandRecord]:
-    """Extract CLI commands from assistant tool_use messages.
+    """Extract CLI commands from assistant tool_use messages (ENH-3428).
 
     Parses assistant messages for tool_use blocks and extracts command strings.
+    Claude-shaped hosts only (``claude-code``, ``opencode``, ``pi``, ``qwen``,
+    ``gemini``, ``omp``) — ``codex`` and ``kimi-code`` handles yield no records
+    (Codex's ``custom_tool_call`` equivalent is a follow-up, out of scope here).
 
     Args:
-        project_folder: Path to Claude project folder
+        handles: Session handles to read, e.g. from ``detect_sessions``
         limit: Maximum number of commands to return
         since: Only include commands after this datetime
-        include_agent_sessions: Whether to include agent-*.jsonl files
+        include_agent_sessions: Whether to include handles with ``is_agent=True``
         tools: Filter to specific tools (default: ["Bash"])
 
     Returns:
@@ -788,35 +913,19 @@ def extract_commands(
     if tools is None:
         tools = ["Bash"]
 
+    from little_loops.session_store.sessions import iter_events
+
     commands: list[CommandRecord] = []
 
-    # Find all JSONL files
-    pattern = "*.jsonl"
-    jsonl_files = list(project_folder.glob(pattern))
-
-    for jsonl_file in jsonl_files:
-        # Skip agent sessions if requested
-        if not include_agent_sessions and jsonl_file.name.startswith("agent-"):
+    for handle in handles:
+        if not include_agent_sessions and handle.is_agent:
+            continue
+        if handle.host not in _CLAUDE_SHAPED_HOSTS:
             continue
 
-        try:
-            with open(jsonl_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-
-                    cmds = _parse_command_record(record, jsonl_file, since, tools)
-                    commands.extend(cmds)
-
-        except OSError:
-            # Skip files that can't be read
-            continue
+        for event in iter_events(handle):
+            cmds = _parse_command_record(event.payload, handle, since, tools)
+            commands.extend(cmds)
 
     # Sort by timestamp, most recent first
     commands.sort(key=lambda c: c.timestamp, reverse=True)
@@ -830,15 +939,15 @@ def extract_commands(
 
 def _parse_command_record(
     record: dict,
-    jsonl_file: Path,
+    handle: SessionHandle,
     since: datetime | None,
     tools: list[str],
 ) -> list[CommandRecord]:
     """Parse CLI commands from an assistant record.
 
     Args:
-        record: The JSON record from JSONL
-        jsonl_file: Source file (for fallback timestamp)
+        record: The JSON record from the session event's payload
+        handle: Source session handle (for fallback timestamp/session_id/cwd)
         since: Filter for commands after this datetime
         tools: Tool names to extract (e.g., ["Bash"])
 
@@ -855,15 +964,7 @@ def _parse_command_record(
     if not isinstance(content, list):
         return []
 
-    # Parse timestamp
-    timestamp_str = record.get("timestamp", "")
-    try:
-        timestamp_str = timestamp_str.replace("Z", "+00:00")
-        timestamp = datetime.fromisoformat(timestamp_str)
-        if timestamp.tzinfo is not None:
-            timestamp = timestamp.replace(tzinfo=None)
-    except (ValueError, AttributeError):
-        timestamp = datetime.fromtimestamp(jsonl_file.stat().st_mtime)
+    timestamp = _parse_timestamp_or_fallback(record.get("timestamp", ""), handle.updated_at)
 
     # Apply since filter
     if since and timestamp < since:
@@ -890,10 +991,10 @@ def _parse_command_record(
             CommandRecord(
                 content=command_str,
                 timestamp=timestamp,
-                session_id=record.get("sessionId", ""),
+                session_id=record.get("sessionId") or handle.session_id,
                 uuid=record.get("uuid", ""),
                 tool=tool_name,
-                cwd=record.get("cwd"),
+                cwd=record.get("cwd") or str(handle.cwd),
                 git_branch=record.get("gitBranch"),
             )
         )
@@ -903,14 +1004,14 @@ def _parse_command_record(
 
 def _parse_user_record(
     record: dict,
-    jsonl_file: Path,
+    handle: SessionHandle,
     since: datetime | None,
 ) -> UserMessage | None:
-    """Parse a single user record into a UserMessage.
+    """Parse a single Claude-shaped user record into a UserMessage.
 
     Args:
-        record: The JSON record from JSONL
-        jsonl_file: Source file (for fallback timestamp)
+        record: The JSON record from the session event's payload
+        handle: Source session handle (for fallback timestamp/session_id/cwd)
         since: Filter for messages after this datetime
 
     Returns:
@@ -948,18 +1049,7 @@ def _parse_user_record(
     else:
         return None
 
-    # Parse timestamp
-    timestamp_str = record.get("timestamp", "")
-    try:
-        # Handle ISO 8601 format with Z suffix
-        timestamp_str = timestamp_str.replace("Z", "+00:00")
-        timestamp = datetime.fromisoformat(timestamp_str)
-        # Convert to naive datetime for consistent comparison
-        if timestamp.tzinfo is not None:
-            timestamp = timestamp.replace(tzinfo=None)
-    except (ValueError, AttributeError):
-        # Use file modification time as fallback
-        timestamp = datetime.fromtimestamp(jsonl_file.stat().st_mtime)
+    timestamp = _parse_timestamp_or_fallback(record.get("timestamp", ""), handle.updated_at)
 
     # Apply since filter
     if since and timestamp < since:
@@ -969,9 +1059,9 @@ def _parse_user_record(
     return UserMessage(
         content=message_content,
         timestamp=timestamp,
-        session_id=record.get("sessionId", ""),
+        session_id=record.get("sessionId") or handle.session_id,
         uuid=record.get("uuid", ""),
-        cwd=record.get("cwd"),
+        cwd=record.get("cwd") or str(handle.cwd),
         git_branch=record.get("gitBranch"),
         is_sidechain=record.get("isSidechain", False),
     )
@@ -979,7 +1069,7 @@ def _parse_user_record(
 
 def _extract_messages_with_context(
     records: list[dict],
-    jsonl_file: Path,
+    handle: SessionHandle,
     since: datetime | None,
 ) -> list[UserMessage]:
     """Extract user messages with response context from a list of records.
@@ -988,8 +1078,8 @@ def _extract_messages_with_context(
     next user message, aggregating tool usage and file changes.
 
     Args:
-        records: List of all records from a JSONL file
-        jsonl_file: Source file (for fallback timestamp)
+        records: List of all record payloads from a session handle
+        handle: Source session handle (for fallback timestamp/session_id/cwd)
         since: Filter for messages after this datetime
 
     Returns:
@@ -1005,7 +1095,7 @@ def _extract_messages_with_context(
             if current_msg is not None:
                 current_msg.response_metadata = _aggregate_response_metadata(current_responses)
                 messages.append(current_msg)
-            current_msg = _parse_user_record(record, jsonl_file, since)
+            current_msg = _parse_user_record(record, handle, since)
             current_responses = []
         elif record.get("type") == "assistant" and current_msg is not None:
             current_responses.append(record)
@@ -1020,7 +1110,7 @@ def _extract_messages_with_context(
 
 def _extract_turn_pairs(
     records: list[dict],
-    jsonl_file: Path,
+    handle: SessionHandle,
     since: datetime | None,
 ) -> list[tuple[str, str]]:
     """Extract (user_text, assistant_text) pairs from a record stream.
@@ -1029,8 +1119,8 @@ def _extract_turn_pairs(
     pairs them with the preceding user message.
 
     Args:
-        records: All records from a JSONL session file
-        jsonl_file: Source file (for _parse_user_record fallback timestamp)
+        records: All record payloads from a session handle
+        handle: Source session handle (for _parse_user_record fallback timestamp)
         since: Filter for turns after this datetime
 
     Returns:
@@ -1044,7 +1134,7 @@ def _extract_turn_pairs(
         if record.get("type") == "user":
             if current_user is not None and assistant_texts:
                 pairs.append((current_user, "\n\n".join(assistant_texts)))
-            msg = _parse_user_record(record, jsonl_file, since)
+            msg = _parse_user_record(record, handle, since)
             current_user = msg.content if msg is not None else None
             assistant_texts = []
         elif record.get("type") == "assistant" and current_user is not None:
@@ -1062,16 +1152,8 @@ def _extract_turn_pairs(
     return pairs
 
 
-def _mtime(path: Path) -> float:
-    """Return file modification time as a Unix float, or 0.0 if inaccessible."""
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return 0.0
-
-
 def extract_conversation_turns(
-    project_folder: Path,
+    handles: list[SessionHandle],
     since: datetime | None = None,
     context_window: int = 3,
     include_agent_sessions: bool = True,
@@ -1083,12 +1165,14 @@ def extract_conversation_turns(
     JSONL parsing when the database is missing, empty, or predates schema v11.
     Use ``reader="db"`` to require DB-only (errors if unavailable) or
     ``reader="jsonl"`` to skip the DB and use the existing JSONL path directly.
+    The JSONL path is Claude-shaped-hosts only (``codex``/``kimi-code`` handles
+    yield no windows; see :func:`_extract_turn_pairs`).
 
     Args:
-        project_folder: Path to Claude project folder
+        handles: Session handles to read, e.g. from ``detect_sessions``
         since: Only include turns from sessions containing messages after this datetime
         context_window: Number of (user, assistant) turn pairs per output window
-        include_agent_sessions: Whether to include agent-*.jsonl files
+        include_agent_sessions: Whether to include handles with ``is_agent=True``
         reader: ``"auto"`` (DB-first, JSONL fallback), ``"db"`` (DB only),
             or ``"jsonl"`` (JSONL only, current behavior)
 
@@ -1097,13 +1181,14 @@ def extract_conversation_turns(
         alternating between "user" and "assistant".
     """
     from little_loops.history_reader import conversation_turns as db_conversation_turns
-    from little_loops.session_store import resolve_history_db
+    from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+    from little_loops.session_store.sessions import iter_events
 
     reader = reader.lower()
 
     # -- DB path: try history_reader first, optionally fall back to JSONL --
     if reader in ("auto", "db"):
-        db_path = resolve_history_db(project_folder / ".ll" / "history.db")
+        db_path = resolve_history_db(DEFAULT_DB_PATH)
         db_windows = db_conversation_turns(
             db_path=db_path,
             since=since,
@@ -1137,42 +1222,29 @@ def extract_conversation_turns(
     # -- JSONL path (fallback for "auto", direct for "jsonl") --
     windows: list[list[tuple[str, str]]] = []
 
-    jsonl_files = list(project_folder.glob("*.jsonl"))
+    eligible_handles = [h for h in handles if h.host in _CLAUDE_SHAPED_HOSTS]
     if since is not None:
         cutoff_ts = (since - timedelta(seconds=60)).timestamp()
-        jsonl_files = [f for f in jsonl_files if _mtime(f) >= cutoff_ts]
+        eligible_handles = [h for h in eligible_handles if h.updated_at >= cutoff_ts]
 
-    for jsonl_file in jsonl_files:
-        if not include_agent_sessions and jsonl_file.name.startswith("agent-"):
+    for handle in eligible_handles:
+        if not include_agent_sessions and handle.is_agent:
             continue
 
-        try:
-            all_records: list[dict] = []
-            with open(jsonl_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        all_records.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
+        all_records = [event.payload for event in iter_events(handle)]
+        turn_pairs = _extract_turn_pairs(all_records, handle, since)
 
-            turn_pairs = _extract_turn_pairs(all_records, jsonl_file, since)
-
-            # Emit sliding windows of context_window turn-pairs
-            n = len(turn_pairs)
-            if n == 0:
-                continue
-            for i in range(max(1, n - context_window + 1)):
-                window_pairs = turn_pairs[i : i + context_window]
-                window: list[tuple[str, str]] = []
-                for user_text, assistant_text in window_pairs:
-                    window.append(("user", user_text))
-                    window.append(("assistant", assistant_text))
-                windows.append(window)
-        except OSError:
+        # Emit sliding windows of context_window turn-pairs
+        n = len(turn_pairs)
+        if n == 0:
             continue
+        for i in range(max(1, n - context_window + 1)):
+            window_pairs = turn_pairs[i : i + context_window]
+            window: list[tuple[str, str]] = []
+            for user_text, assistant_text in window_pairs:
+                window.append(("user", user_text))
+                window.append(("assistant", assistant_text))
+            windows.append(window)
 
     return windows
 

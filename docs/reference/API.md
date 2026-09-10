@@ -3595,7 +3595,7 @@ Returns an empty list for unknown host identifiers.
 
 ```python
 def extract_user_messages(
-    project_folder: Path,
+    handles: list[SessionHandle],
     limit: int | None = None,
     since: datetime | None = None,
     include_agent_sessions: bool = True,
@@ -3603,34 +3603,45 @@ def extract_user_messages(
 ) -> list[UserMessage]
 ```
 
-Extract user messages from all JSONL session files in a project folder.
+Extract user messages from every session `handles` names (ENH-3428). Reads via the
+session-discovery seam (`detect_sessions`/`iter_events` in `session_store/sessions.py`)
+instead of globbing a project folder, so it works across every registered host, not
+just Claude Code.
+
+Dispatches per `handle.host`: Claude-shaped hosts (`claude-code`, `opencode`, `pi`,
+`qwen`, `gemini`, `omp`) parse the same way as always; `codex` yields one message per
+typed user prompt (`response_item`/`event_msg` de-duplicated); `kimi-code` yields
+nothing (no normalizer to Claude shape yet).
 
 **Parameters:**
-- `project_folder` - Path to Claude project folder
+- `handles` - Session handles to read, e.g. from `detect_sessions(cwd)`
 - `limit` - Maximum number of messages to return
 - `since` - Only include messages after this datetime
-- `include_agent_sessions` - Whether to include agent-*.jsonl files
-- `include_response_context` - Whether to include the assistant response immediately following each user message
+- `include_agent_sessions` - Whether to include handles with `is_agent=True`
+- `include_response_context` - Whether to include the assistant response immediately following each user message (Claude-shaped hosts only)
 
 **Returns:** Messages sorted by timestamp, most recent first.
 
 **Filters:**
-- Only messages with `type == "user"`
-- Excludes tool results (array content with `tool_result` type)
+- Claude-shaped hosts: only records with `type == "user"`, excluding tool results (array content with `tool_result` type)
+- Codex: `response_item` messages with `role == "user"`, excluding the injected `<environment_context>` block, `developer`-role messages, and `<turn_aborted>`
 
 **Example:**
 ```python
 from datetime import datetime
-from little_loops.user_messages import extract_user_messages, get_project_folder
+from pathlib import Path
 
-project_folder = get_project_folder()
-if project_folder:
+from little_loops.session_store import detect_sessions
+from little_loops.user_messages import extract_user_messages
+
+handles = detect_sessions(Path.cwd())  # every registered host; pass host=... to narrow
+if handles:
     # Get last 50 messages
-    messages = extract_user_messages(project_folder, limit=50)
+    messages = extract_user_messages(handles, limit=50)
 
     # Get messages since a date
     since = datetime(2026, 1, 1)
-    recent = extract_user_messages(project_folder, since=since)
+    recent = extract_user_messages(handles, since=since)
 
     for msg in messages:
         print(f"[{msg.timestamp}] {msg.content[:50]}...")

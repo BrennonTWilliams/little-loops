@@ -9,7 +9,8 @@ main_messages() that is NOT already tested:
 - --exclude-agents propagation to both extractors
 
 Note: imports inside main_messages() are function-local, so mocking goes to
-source modules (little_loops.user_messages.*), NOT to little_loops.cli.messages.*.
+source modules (little_loops.user_messages.*, little_loops.session_store.*),
+NOT to little_loops.cli.messages.*.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.cli.messages import main_messages
+from little_loops.session_store.sessions import SessionHandle
 from little_loops.user_messages import CommandRecord, UserMessage
 
 # ---------------------------------------------------------------------------
@@ -49,9 +51,23 @@ def _make_command(session_id: str = "sess-1", content: str = "pytest") -> Comman
     )
 
 
-# Mock path for get_project_folder — imported from little_loops.user_messages
-# inside main_messages(), so must be patched at source module
-_PROJECT_FOLDER_PATH = "little_loops.user_messages.get_project_folder"
+def _make_handles(count: int = 1) -> list[SessionHandle]:
+    return [
+        SessionHandle(
+            host="claude-code",
+            session_id=f"sess-{i}",
+            path=Path(f"/mock/project/sess-{i}.jsonl"),
+            cwd=Path("/mock/project"),
+            updated_at=1.0,
+        )
+        for i in range(count)
+    ]
+
+
+# ENH-3428: main_messages() enumerates sessions via detect_sessions (session-discovery
+# seam) instead of get_project_folder. detect_sessions is imported lazily inside
+# main_messages() from little_loops.session_store, so it must be patched there.
+_DETECT_SESSIONS_PATH = "little_loops.session_store.detect_sessions"
 _EXTRACT_MESSAGES_PATH = "little_loops.user_messages.extract_user_messages"
 _EXTRACT_COMMANDS_PATH = "little_loops.user_messages.extract_commands"
 
@@ -62,11 +78,11 @@ _EXTRACT_COMMANDS_PATH = "little_loops.user_messages.extract_commands"
 
 
 class TestMessagesHostFlag:
-    """--host (ENH-3427) parses and is validated against REGISTERED_HOSTS; inert until
-    a future issue consumes it for session enumeration."""
+    """--host is validated against REGISTERED_HOSTS and, as of ENH-3428, narrows
+    session enumeration by passing through to detect_sessions(host=...)."""
 
     def test_host_flag_parses_and_main_messages_still_succeeds(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
                 with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
                     with patch(
@@ -76,6 +92,22 @@ class TestMessagesHostFlag:
                         with patch.object(sys, "argv", ["ll-messages", "--host", "codex"]):
                             result = main_messages()
         assert result == 0
+
+    def test_host_flag_narrows_detect_sessions_call(self) -> None:
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()) as mock_detect:
+            with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
+                with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
+                    with patch.object(sys, "argv", ["ll-messages", "--host", "codex"]):
+                        main_messages()
+        assert mock_detect.call_args.kwargs.get("host") == "codex"
+
+    def test_no_host_flag_unions_every_host(self) -> None:
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()) as mock_detect:
+            with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
+                with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
+                    with patch.object(sys, "argv", ["ll-messages"]):
+                        main_messages()
+        assert mock_detect.call_args.kwargs.get("host") is None
 
     def test_host_flag_rejects_invalid_choice(self) -> None:
         with patch.object(sys, "argv", ["ll-messages", "--host", "not-a-real-host"]):
@@ -87,7 +119,7 @@ class TestMessagesCommandsOnly:
     """--commands-only skips extract_user_messages and extracts only commands."""
 
     def test_commands_only_does_not_call_extract_user_messages(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH) as mock_msgs:
                 with patch(_EXTRACT_COMMANDS_PATH, return_value=[_make_command()]):
                     with patch(
@@ -100,7 +132,7 @@ class TestMessagesCommandsOnly:
         mock_msgs.assert_not_called()
 
     def test_commands_only_does_call_extract_commands(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
                 with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
                     mock_cmds.return_value = [_make_command()]
@@ -114,7 +146,7 @@ class TestMessagesCommandsOnly:
         mock_cmds.assert_called_once()
 
     def test_commands_only_with_since_date_parses_correctly(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
                 mock_cmds.return_value = [_make_command()]
                 with patch(
@@ -141,7 +173,7 @@ class TestMessagesSkipCli:
     """--skip-cli skips extract_commands; user messages still extracted."""
 
     def test_skip_cli_does_not_call_extract_commands(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[_make_message()]):
                 with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
                     with patch(
@@ -154,7 +186,7 @@ class TestMessagesSkipCli:
         mock_cmds.assert_not_called()
 
     def test_skip_cli_still_extracts_messages(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH) as mock_msgs:
                 mock_msgs.return_value = [_make_message()]
                 with patch(
@@ -176,7 +208,7 @@ class TestMessagesStdout:
     """--stdout prints records to stdout instead of writing a file."""
 
     def test_stdout_flag_does_not_write_file(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[_make_message()]):
                 with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
                     with patch("little_loops.cli.messages._save_combined") as mock_save:
@@ -187,7 +219,7 @@ class TestMessagesStdout:
 
     def test_stdout_flag_prints_json_lines(self, capsys: pytest.CaptureFixture[str]) -> None:
         msg = _make_message(content="test stdout message")
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[msg]):
                 with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
                     with patch.object(sys, "argv", ["ll-messages", "--stdout"]):
@@ -210,7 +242,7 @@ class TestMessagesExcludeAgentsIntegration:
     """Test that --exclude-agents propagates correctly to both extractors."""
 
     def test_exclude_agents_passed_to_messages_extractor(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH) as mock_msgs:
                 mock_msgs.return_value = []
                 with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
@@ -221,7 +253,7 @@ class TestMessagesExcludeAgentsIntegration:
         assert call_kwargs.get("include_agent_sessions") is False
 
     def test_exclude_agents_passed_to_commands_extractor(self) -> None:
-        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
                 with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
                     mock_cmds.return_value = []

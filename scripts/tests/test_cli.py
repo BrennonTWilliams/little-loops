@@ -648,6 +648,22 @@ class TestMainParallelIntegration:
             assert call_kwargs["verbose"] is True
 
 
+def _make_message_handles(count: int = 1) -> list:
+    """SessionHandle stand-ins for main_messages tests (ENH-3428: patches detect_sessions)."""
+    from little_loops.session_store.sessions import SessionHandle
+
+    return [
+        SessionHandle(
+            host="claude-code",
+            session_id=f"sess-{i}",
+            path=Path(f"/mock/project/sess-{i}.jsonl"),
+            cwd=Path("/mock/project"),
+            updated_at=1.0,
+        )
+        for i in range(count)
+    ]
+
+
 class TestMainMessagesIntegration:
     """Integration tests for main_messages entry point."""
 
@@ -657,8 +673,8 @@ class TestMainMessagesIntegration:
 
         from little_loops.user_messages import UserMessage
 
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [
                     UserMessage(
@@ -688,8 +704,8 @@ class TestMainMessagesIntegration:
 
     def test_main_messages_with_limit(self) -> None:
         """main_messages respects the --limit argument."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
@@ -708,8 +724,8 @@ class TestMainMessagesIntegration:
         """main_messages parses --since date correctly."""
         from datetime import datetime
 
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
@@ -727,8 +743,8 @@ class TestMainMessagesIntegration:
         """-S is accepted as --since in ll-messages (ENH-910)."""
         from datetime import datetime
 
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
@@ -748,8 +764,8 @@ class TestMainMessagesIntegration:
 
         from little_loops.user_messages import UserMessage
 
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [
                     UserMessage(
@@ -769,10 +785,10 @@ class TestMainMessagesIntegration:
             captured = capsys.readouterr()
             assert "Test" in captured.out
 
-    def test_main_messages_no_project_folder(self) -> None:
-        """main_messages returns error when project folder not found."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = None
+    def test_main_messages_no_sessions_found(self) -> None:
+        """main_messages returns error when no sessions are found."""
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = []
 
             with patch.object(sys, "argv", ["ll-messages"]):
                 from little_loops.cli import main_messages
@@ -783,8 +799,8 @@ class TestMainMessagesIntegration:
 
     def test_main_messages_invalid_date_format(self) -> None:
         """main_messages returns error for invalid date format."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
 
             with patch.object(sys, "argv", ["ll-messages", "--since", "invalid-date"]):
                 from little_loops.cli import main_messages
@@ -1821,8 +1837,8 @@ class TestMainMessagesAdditionalCoverage:
 
         from little_loops.user_messages import UserMessage
 
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [
                     UserMessage(
@@ -1851,8 +1867,8 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_cwd_working_directory_override(self) -> None:
         """main_messages uses --cwd for project folder lookup."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
@@ -1862,12 +1878,12 @@ class TestMainMessagesAdditionalCoverage:
                     result = main_messages()
 
             assert result == 0
-            mock_get_folder.assert_called_once_with(Path("/custom/cwd"))
+            assert mock_detect.call_args.args[0] == Path("/custom/cwd")
 
     def test_exclude_agents_flag(self) -> None:
         """main_messages passes include_agent_sessions=False when --exclude-agents."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
@@ -1882,8 +1898,8 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_include_response_context_flag(self) -> None:
         """main_messages passes include_response_context=True when flag set."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
@@ -1898,8 +1914,8 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_empty_messages_returns_zero(self) -> None:
         """main_messages returns 0 when no messages found (with warning)."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []  # Empty list
 
@@ -1912,8 +1928,8 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_verbose_logging_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
         """main_messages creates Logger with verbose=True when --verbose set."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
                 with patch("little_loops.user_messages.save_messages") as mock_save:
@@ -1926,8 +1942,9 @@ class TestMainMessagesAdditionalCoverage:
 
             captured = capsys.readouterr()
             assert result == 0
-            # Verbose output should include progress messages
-            assert "Project folder:" in captured.out or "Limit:" in captured.out
+            # Verbose output should include progress messages (per-host session
+            # counts, ENH-3428) or the always-logged limit line
+            assert "session(s)" in captured.out or "Limit:" in captured.out
 
     def test_skill_filter_narrows_to_matching_sessions(self) -> None:
         """--skill filters both messages and commands to sessions where the skill was invoked."""
@@ -1959,8 +1976,8 @@ class TestMainMessagesAdditionalCoverage:
             tool="Bash",
         )
 
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [matching_msg, non_matching_msg]
                 with patch("little_loops.user_messages.extract_commands") as mock_cmds:
@@ -1996,8 +2013,8 @@ class TestMainMessagesAdditionalCoverage:
             uuid="uuid-1",
         )
 
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [msg]
 
@@ -2023,8 +2040,8 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_sft_format_and_examples_format_mutually_exclusive(self) -> None:
         """--sft-format and --examples-format cannot be used together."""
-        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
-            mock_get_folder.return_value = Path("/mock/project")
+        with patch("little_loops.session_store.detect_sessions") as mock_detect:
+            mock_detect.return_value = _make_message_handles()
             with patch.object(
                 sys,
                 "argv",
@@ -2065,10 +2082,21 @@ class TestMainMessagesAdditionalCoverage:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_dir = Path(tmpdir)
-            (project_dir / "session.jsonl").write_text("\n".join(json.dumps(r) for r in records))
+            session_file = project_dir / "session.jsonl"
+            session_file.write_text("\n".join(json.dumps(r) for r in records))
 
-            with patch("little_loops.user_messages.get_project_folder") as mock_folder:
-                mock_folder.return_value = project_dir
+            from little_loops.session_store.sessions import SessionHandle
+
+            handle = SessionHandle(
+                host="claude-code",
+                session_id="session",
+                path=session_file,
+                cwd=project_dir,
+                updated_at=session_file.stat().st_mtime,
+            )
+
+            with patch("little_loops.session_store.detect_sessions") as mock_detect:
+                mock_detect.return_value = [handle]
                 with patch.object(
                     sys,
                     "argv",

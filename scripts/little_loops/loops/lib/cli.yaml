@@ -85,9 +85,10 @@ fragments:
 
   ll_messages:
     description: |
-      Extract user messages from Claude Code session logs to stdout.
+      Extract user messages from session logs of every registered host (narrow
+      with --host) to stdout.
       State must supply: on_yes, on_no.
-      Optional action override: add --skill, --examples-format, --sft-format {chatml,alpaca,sharegpt}, --context-window, --since.
+      Optional action override: add --host, --skill, --examples-format, --sft-format {chatml,alpaca,sharegpt}, --context-window, --since.
     action_type: shell
     action: "ll-messages --stdout"
     evaluate:

@@ -1,4 +1,4 @@
-"""ll-messages: Extract user messages from Claude Code session logs."""
+"""ll-messages: Extract user messages from session logs of any registered host."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 def main_messages() -> int:
     """Entry point for ll-messages command.
 
-    Extract user messages from Claude Code session logs.
+    Extract user messages from session logs of any registered host.
 
     Returns:
         Exit code (0 = success)
@@ -23,17 +23,18 @@ def main_messages() -> int:
         import json
         from datetime import datetime
 
+        from little_loops.session_store import detect_sessions
         from little_loops.user_messages import (
             CommandRecord,
             UserMessage,
+            _resolve_host,
             build_examples,
             extract_commands,
             extract_user_messages,
-            get_project_folder,
         )
 
         parser = argparse.ArgumentParser(
-            description="Extract user messages from Claude Code logs",
+            description="Extract user messages from session logs of any registered host",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
@@ -170,15 +171,21 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
                     logger.error("Use YYYY-MM-DD or ISO format")
                     return 1
 
-        # Get project folder
+        # Discover sessions via the session-discovery seam (ENH-3428)
         cwd = args.cwd or Path.cwd()
-        project_folder = get_project_folder(cwd)
+        host = _resolve_host(args.host, default=None)
+        handles = detect_sessions(cwd, host=host, include_agents=not args.exclude_agents)
 
-        if project_folder is None:
-            logger.error(f"No session project folder found for: {cwd}")
+        if not handles:
+            logger.error(f"No sessions found for: {cwd}")
             return 1
 
-        logger.info(f"Project folder: {project_folder}")
+        if args.verbose:
+            from collections import Counter
+
+            host_counts = Counter(h.host for h in handles)
+            for host_name, count in sorted(host_counts.items()):
+                logger.info(f"{host_name}: {count} session(s)")
         logger.info(f"Limit: {args.limit}")
         if since:
             logger.info(f"Since: {since}")
@@ -192,7 +199,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
 
         if not args.commands_only:
             messages = extract_user_messages(
-                project_folder=project_folder,
+                handles=handles,
                 limit=None,  # Apply limit after merging
                 since=since,
                 include_agent_sessions=not args.exclude_agents,
@@ -201,7 +208,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
 
         if not args.skip_cli or args.commands_only:
             commands = extract_commands(
-                project_folder=project_folder,
+                handles=handles,
                 limit=None,  # Apply limit after merging
                 since=since,
                 include_agent_sessions=not args.exclude_agents,
@@ -250,7 +257,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
                 args.sft_format
             ]
             windows = extract_conversation_turns(
-                project_folder=project_folder,
+                handles=handles,
                 since=since,
                 context_window=args.context_window,
                 include_agent_sessions=not args.exclude_agents,

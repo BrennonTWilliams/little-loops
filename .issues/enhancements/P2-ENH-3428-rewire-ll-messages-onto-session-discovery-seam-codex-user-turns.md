@@ -3,10 +3,11 @@ id: ENH-3428
 type: ENH
 title: Rewire ll-messages onto the session-discovery seam (Codex user-turn support)
 priority: P2
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T21:54:30Z'
+completed_at: '2026-09-10T02:56:04Z'
 labels:
 - multi-host
 - observability
@@ -316,12 +317,32 @@ ENH-3427 (host-resolution seam) is complete (verified `ll-issues show ENH-3427` 
 2026-09-09) — `blocked_by` cleared. Independent of ENH-3429/ENH-3430 (disjoint files — touches
 `user_messages.py`/`cli/messages.py` only).
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-10
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/user_messages.py`: `extract_user_messages`/`extract_commands`/`extract_conversation_turns` take `handles: list[SessionHandle]` and read via `iter_events` instead of globbing `project_folder`; added Codex user-turn extraction (`_extract_codex_user_messages`, `_build_codex_user_message`) with `response_item`/`event_msg` order-independent dedup and `<environment_context>`/`developer`/`<turn_aborted>` exclusion; `_parse_user_record`/`_parse_command_record` gained handle-based `session_id`/`cwd` fallback; added shared `_parse_timestamp_or_fallback` helper; removed now-dead `_mtime`.
+- `scripts/little_loops/cli/messages.py`: `main_messages` resolves sessions via `_resolve_host` + `detect_sessions(host=..., include_agents=...)` instead of `get_project_folder`; verbose mode logs a per-host session count instead of the removed "Project folder:" line; no-sessions error is now `"No sessions found for: <cwd>"`.
+- `scripts/tests/test_user_messages.py`, `scripts/tests/test_cli.py`, `scripts/tests/test_cli_messages.py`: re-pointed to build `SessionHandle`s / patch `detect_sessions` instead of `get_project_folder`; added Codex extraction, per-host dispatch, and dedup test coverage.
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/EXAMPLES_MINING_GUIDE.md`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md`, `scripts/little_loops/cli/__init__.py`, `scripts/little_loops/loops/lib/cli.yaml`: dropped Claude-Code-only framing; documented `--host` and the multi-host behavior.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 23025 passed, 12 skipped; 6 pre-existing failures unrelated to this issue, confirmed via `git stash` to fail identically without this change: `test_host_runner.py::TestAC8BaselineCoverage`, `test_issue_parser.py::TestPriorityRegexCompletenessAllowlist` (x2), `test_issue_parser.py::TestBug3295ContainmentCorpusDifferential`, `test_verify_evidence.py::TestRepoGate`, `test_prose_dep_sweep_gate.py`)
+- Lint: PASS (`ruff check` on all changed files)
+- Types: PASS (`mypy scripts/little_loops/user_messages.py scripts/little_loops/cli/messages.py`)
+- Run: PASS (manually verified `ll-messages --stdout`, `--host claude-code --verbose`, and `--host codex --verbose` against real session data on this machine — 1790 real Codex rollouts correctly yielded typed user prompts with `<environment_context>`/developer/turn_aborted excluded)
+- Integration: PASS (`ll-verify-docs` count check passes; no other production caller of the changed functions)
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T02:55:32 - `7404ab20-8130-4df4-a992-c730bf1293b4.jsonl`
 - `/ll:confidence-check` - 2026-09-10T01:47:40 - `e5f879ce-163c-470b-875a-3db482daf36b.jsonl`
 - `/ll:verify-issues` - 2026-09-10T01:43:25 - `500e387d-536a-4805-8735-c07c052de2f7.jsonl`
 - manual review - 2026-09-09 - per-host dispatch (step 0), db-branch path, patch target, uuid/git_branch fallbacks, order-independent dedup, corpus survey, cite refresh

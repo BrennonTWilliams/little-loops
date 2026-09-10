@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from little_loops.session_store.sessions import SessionHandle
 from little_loops.user_messages import (
     CommandRecord,
     ExampleRecord,
@@ -38,6 +39,28 @@ from little_loops.user_messages import (
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+
+def _handles(
+    folder: Path, *, host: str = "claude-code", cwd: Path | None = None
+) -> list[SessionHandle]:
+    """Build a SessionHandle for every ``*.jsonl`` file in *folder* (test helper, ENH-3428).
+
+    Mirrors what ``detect_sessions`` would build for a claude-code project
+    folder, without touching a real ``~/.claude``.
+    """
+    resolved_cwd = cwd or Path("/repo/project")
+    return [
+        SessionHandle(
+            host=host,
+            session_id=jsonl_file.stem,
+            path=jsonl_file,
+            cwd=resolved_cwd,
+            updated_at=jsonl_file.stat().st_mtime,
+            is_agent=jsonl_file.name.startswith("agent-"),
+        )
+        for jsonl_file in sorted(folder.glob("*.jsonl"))
+    ]
 
 
 class TestUserMessage:
@@ -761,7 +784,7 @@ class TestExtractUserMessages:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder)
+        messages = extract_user_messages(_handles(temp_project_folder))
 
         assert len(messages) == 2
         assert messages[0].content == "Another message"  # Most recent first
@@ -787,7 +810,7 @@ class TestExtractUserMessages:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder)
+        messages = extract_user_messages(_handles(temp_project_folder))
 
         assert len(messages) == 1
         assert messages[0].content == "Real user message"
@@ -805,7 +828,7 @@ class TestExtractUserMessages:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder)
+        messages = extract_user_messages(_handles(temp_project_folder))
 
         assert len(messages) == 1
         assert messages[0].content == "Text block message"
@@ -830,7 +853,7 @@ class TestExtractUserMessages:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder)
+        messages = extract_user_messages(_handles(temp_project_folder))
 
         assert len(messages) == 1
         assert messages[0].content == "User message"
@@ -849,7 +872,7 @@ class TestExtractUserMessages:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder, limit=3)
+        messages = extract_user_messages(_handles(temp_project_folder), limit=3)
 
         assert len(messages) == 3
 
@@ -874,7 +897,7 @@ class TestExtractUserMessages:
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
         since = datetime(2026, 1, 5, 0, 0, 0)
-        messages = extract_user_messages(temp_project_folder, since=since)
+        messages = extract_user_messages(_handles(temp_project_folder), since=since)
 
         assert len(messages) == 1
         assert messages[0].content == "New message"
@@ -902,7 +925,9 @@ class TestExtractUserMessages:
         self._write_jsonl(temp_project_folder / "session.jsonl", user_records)
         self._write_jsonl(temp_project_folder / "agent-session.jsonl", agent_records)
 
-        messages = extract_user_messages(temp_project_folder, include_agent_sessions=False)
+        messages = extract_user_messages(
+            _handles(temp_project_folder), include_agent_sessions=False
+        )
 
         assert len(messages) == 1
         assert messages[0].content == "User session message"
@@ -930,9 +955,228 @@ class TestExtractUserMessages:
         self._write_jsonl(temp_project_folder / "session.jsonl", user_records)
         self._write_jsonl(temp_project_folder / "agent-session.jsonl", agent_records)
 
-        messages = extract_user_messages(temp_project_folder)
+        messages = extract_user_messages(_handles(temp_project_folder))
 
         assert len(messages) == 2
+
+
+def _write_codex_rollout(path: Path, lines: list[dict]) -> None:
+    """Write a synthetic Codex rollout JSONL (test helper, ENH-3428)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for line in lines:
+            f.write(json.dumps(line) + "\n")
+
+
+def _codex_handle(path: Path, *, session_id: str = "sess-codex", cwd: Path | None = None):
+    return SessionHandle(
+        host="codex",
+        session_id=session_id,
+        path=path,
+        cwd=cwd or Path("/repo/project"),
+        updated_at=path.stat().st_mtime,
+    )
+
+
+def _codex_user_message(text: str, *, msg_id: str | None = None) -> dict:
+    content = [{"type": "input_text", "text": text}]
+    payload: dict = {"type": "message", "role": "user", "content": content}
+    if msg_id is not None:
+        payload["id"] = msg_id
+    return {"type": "response_item", "timestamp": "2026-01-10T12:00:00Z", "payload": payload}
+
+
+class TestExtractUserMessagesCodex:
+    """Codex user-turn extraction (ENH-3428): response_item + event_msg dedup,
+    exclusion filters, uuid/cwd/git_branch mapping."""
+
+    def test_extracts_real_user_prompt_from_response_item(self, tmp_path: Path) -> None:
+        rollout = tmp_path / "rollout.jsonl"
+        _write_codex_rollout(
+            rollout,
+            [_codex_user_message("list the files", msg_id="msg_abc123")],
+        )
+        messages = extract_user_messages([_codex_handle(rollout)])
+
+        assert len(messages) == 1
+        assert messages[0].content == "list the files"
+        assert messages[0].uuid == "msg_abc123"
+        assert messages[0].session_id == "sess-codex"
+        assert messages[0].is_sidechain is False
+
+    def test_uuid_falls_back_to_session_id_and_line_when_payload_has_no_id(
+        self, tmp_path: Path
+    ) -> None:
+        rollout = tmp_path / "rollout.jsonl"
+        _write_codex_rollout(rollout, [_codex_user_message("no id here")])
+        messages = extract_user_messages([_codex_handle(rollout, session_id="sess-x")])
+
+        assert len(messages) == 1
+        assert messages[0].uuid == "sess-x:1"
+
+    def test_excludes_environment_context_developer_and_turn_aborted(self, tmp_path: Path) -> None:
+        rollout = tmp_path / "rollout.jsonl"
+        _write_codex_rollout(
+            rollout,
+            [
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-10T12:00:00Z",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "<environment_context>\n<cwd>/x</cwd>\n</environment_context>",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-10T12:00:01Z",
+                    "payload": {
+                        "type": "message",
+                        "role": "developer",
+                        "content": [{"type": "input_text", "text": "skill instructions"}],
+                    },
+                },
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-10T12:00:02Z",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "<turn_aborted>reason</turn_aborted>"}
+                        ],
+                    },
+                },
+                _codex_user_message("the real prompt"),
+            ],
+        )
+        messages = extract_user_messages([_codex_handle(rollout)])
+
+        assert len(messages) == 1
+        assert messages[0].content == "the real prompt"
+
+    def test_paired_response_item_and_event_msg_dedup_regardless_of_order(
+        self, tmp_path: Path
+    ) -> None:
+        rollout = tmp_path / "rollout.jsonl"
+        _write_codex_rollout(
+            rollout,
+            [
+                _codex_user_message("same text"),
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-10T12:00:00Z",
+                    "payload": {"type": "user_message", "message": "same text"},
+                },
+            ],
+        )
+        messages = extract_user_messages([_codex_handle(rollout)])
+
+        assert len(messages) == 1
+        assert messages[0].content == "same text"
+
+    def test_event_msg_only_turn_still_yields_prompt(self, tmp_path: Path) -> None:
+        rollout = tmp_path / "rollout.jsonl"
+        _write_codex_rollout(
+            rollout,
+            [
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-10T12:00:00Z",
+                    "payload": {"type": "user_message", "message": "event-only prompt"},
+                },
+            ],
+        )
+        messages = extract_user_messages([_codex_handle(rollout)])
+
+        assert len(messages) == 1
+        assert messages[0].content == "event-only prompt"
+
+    def test_cwd_and_git_branch_from_session_meta(self, tmp_path: Path) -> None:
+        rollout = tmp_path / "rollout.jsonl"
+        _write_codex_rollout(
+            rollout,
+            [
+                {
+                    "type": "session_meta",
+                    "timestamp": "2026-01-10T11:59:00Z",
+                    "payload": {"cwd": "/workspace/project", "git": {"branch": "feat-x"}},
+                },
+                _codex_user_message("hi"),
+            ],
+        )
+        messages = extract_user_messages([_codex_handle(rollout, cwd=Path("/fallback"))])
+
+        assert len(messages) == 1
+        assert messages[0].cwd == "/workspace/project"
+        assert messages[0].git_branch == "feat-x"
+
+    def test_cwd_falls_back_to_handle_when_no_session_meta(self, tmp_path: Path) -> None:
+        rollout = tmp_path / "rollout.jsonl"
+        _write_codex_rollout(rollout, [_codex_user_message("hi")])
+        messages = extract_user_messages([_codex_handle(rollout, cwd=Path("/fallback/cwd"))])
+
+        assert len(messages) == 1
+        assert messages[0].cwd == "/fallback/cwd"
+        assert messages[0].git_branch is None
+
+    def test_extract_commands_yields_nothing_for_codex_handles(self, tmp_path: Path) -> None:
+        rollout = tmp_path / "rollout.jsonl"
+        _write_codex_rollout(rollout, [_codex_user_message("hi")])
+        assert extract_commands([_codex_handle(rollout)]) == []
+
+
+class TestExtractUserMessagesHostDispatch:
+    """Per-host dispatch (ENH-3428): kimi-code skipped, non-claude-code Claude-shaped
+    hosts get handle-based session_id/cwd fallback."""
+
+    def test_kimi_code_handles_yield_no_messages(self, tmp_path: Path) -> None:
+        wire = tmp_path / "wire.jsonl"
+        wire.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {"content": "hello"},
+                    "timestamp": "2026-01-10T12:00:00Z",
+                }
+            )
+            + "\n"
+        )
+        handle = SessionHandle(
+            host="kimi-code",
+            session_id="sess-kimi",
+            path=wire,
+            cwd=Path("/repo"),
+            updated_at=wire.stat().st_mtime,
+        )
+        assert extract_user_messages([handle]) == []
+        assert extract_commands([handle]) == []
+
+    def test_opencode_handle_falls_back_to_handle_session_id_and_cwd(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        # No sessionId/cwd on the record itself — opencode/pi/qwen/gemini/omp
+        # records don't reliably carry them (ENH-3428 step 0).
+        transcript.write_text(
+            json.dumps({"type": "user", "message": {"content": "hi from opencode"}}) + "\n"
+        )
+        handle = SessionHandle(
+            host="opencode",
+            session_id="sess-oc",
+            path=transcript,
+            cwd=Path("/repo/oc-project"),
+            updated_at=transcript.stat().st_mtime,
+        )
+        messages = extract_user_messages([handle])
+
+        assert len(messages) == 1
+        assert messages[0].session_id == "sess-oc"
+        assert messages[0].cwd == "/repo/oc-project"
 
 
 class TestSaveMessages:
@@ -1423,7 +1667,9 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder, include_response_context=True)
+        messages = extract_user_messages(
+            _handles(temp_project_folder), include_response_context=True
+        )
 
         assert len(messages) == 1
         assert messages[0].response_metadata is not None
@@ -1453,7 +1699,7 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder)
+        messages = extract_user_messages(_handles(temp_project_folder))
 
         assert len(messages) == 1
         assert messages[0].response_metadata is None
@@ -1502,7 +1748,9 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder, include_response_context=True)
+        messages = extract_user_messages(
+            _handles(temp_project_folder), include_response_context=True
+        )
 
         assert len(messages) == 2
         # Most recent first
@@ -1576,7 +1824,9 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder, include_response_context=True)
+        messages = extract_user_messages(
+            _handles(temp_project_folder), include_response_context=True
+        )
 
         assert len(messages) == 1
         assert messages[0].response_metadata is not None
@@ -1619,7 +1869,9 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(temp_project_folder, include_response_context=True)
+        messages = extract_user_messages(
+            _handles(temp_project_folder), include_response_context=True
+        )
 
         assert len(messages) == 2
         # Most recent first - the one without response
@@ -1654,7 +1906,7 @@ class TestExtractUserMessagesWithResponseContext:
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
         messages = extract_user_messages(
-            temp_project_folder, limit=3, include_response_context=True
+            _handles(temp_project_folder), limit=3, include_response_context=True
         )
 
         assert len(messages) == 3
@@ -1736,7 +1988,7 @@ class TestExtractCommands:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        commands = extract_commands(temp_project_folder)
+        commands = extract_commands(_handles(temp_project_folder))
 
         assert len(commands) == 1
         assert commands[0].content == "python -m pytest"
@@ -1766,7 +2018,7 @@ class TestExtractCommands:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        commands = extract_commands(temp_project_folder)
+        commands = extract_commands(_handles(temp_project_folder))
 
         assert len(commands) == 1
         assert commands[0].content == "pytest"
@@ -1790,7 +2042,7 @@ class TestExtractCommands:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        commands = extract_commands(temp_project_folder)
+        commands = extract_commands(_handles(temp_project_folder))
 
         assert len(commands) == 2
 
@@ -1813,7 +2065,7 @@ class TestExtractCommands:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        commands = extract_commands(temp_project_folder, tools=["Bash"])
+        commands = extract_commands(_handles(temp_project_folder), tools=["Bash"])
 
         assert len(commands) == 1
         assert commands[0].tool == "Bash"
@@ -1836,7 +2088,7 @@ class TestExtractCommands:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        commands = extract_commands(temp_project_folder, limit=3)
+        commands = extract_commands(_handles(temp_project_folder), limit=3)
 
         assert len(commands) == 3
 
@@ -1869,7 +2121,7 @@ class TestExtractCommands:
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
         since = datetime(2026, 1, 5, 0, 0, 0)
-        commands = extract_commands(temp_project_folder, since=since)
+        commands = extract_commands(_handles(temp_project_folder), since=since)
 
         assert len(commands) == 1
         assert commands[0].content == "new_cmd"
@@ -1893,7 +2145,7 @@ class TestExtractCommands:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        commands = extract_commands(temp_project_folder)
+        commands = extract_commands(_handles(temp_project_folder))
 
         assert len(commands) == 1
         assert commands[0].content == "valid"
@@ -1929,7 +2181,7 @@ class TestExtractCommands:
         self._write_jsonl(temp_project_folder / "session.jsonl", user_records)
         self._write_jsonl(temp_project_folder / "agent-session.jsonl", agent_records)
 
-        commands = extract_commands(temp_project_folder, include_agent_sessions=False)
+        commands = extract_commands(_handles(temp_project_folder), include_agent_sessions=False)
 
         assert len(commands) == 1
         assert commands[0].content == "user_cmd"
@@ -2254,7 +2506,7 @@ class TestSFTFormatter:
             session_file = project_dir / "session.jsonl"
             session_file.write_text("\n".join(json.dumps(r) for r in records))
 
-            windows = extract_conversation_turns(project_dir, context_window=3)
+            windows = extract_conversation_turns(_handles(project_dir), context_window=3)
 
         assert len(windows) == 1
         window = windows[0]
@@ -2290,7 +2542,7 @@ class TestSFTFormatter:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_dir = Path(tmpdir)
             (project_dir / "session.jsonl").write_text("\n".join(json.dumps(r) for r in records))
-            windows = extract_conversation_turns(project_dir, context_window=3)
+            windows = extract_conversation_turns(_handles(project_dir), context_window=3)
 
         # 5 pairs, window=3 → 3 windows (sliding: [0,1,2], [1,2,3], [2,3,4])
         assert len(windows) == 3
@@ -2344,12 +2596,56 @@ class TestSFTFormatter:
             new_ts = datetime(2025, 6, 2).timestamp()
             os.utime(new_file, (new_ts, new_ts))
 
-            windows = extract_conversation_turns(project_dir, since=since)
+            windows = extract_conversation_turns(_handles(project_dir), since=since)
 
         all_turns = [turn for window in windows for turn in window]
         user_texts = [content for role, content in all_turns if role == "user"]
         assert any("new" in t for t in user_texts), "new session turns should be present"
         assert not any("old" in t for t in user_texts), "old session turns should be skipped"
+
+    def test_codex_and_kimi_code_handles_yield_no_windows(self, tmp_path: Path) -> None:
+        """extract_conversation_turns's JSONL branch is Claude-shaped-hosts only (ENH-3428)."""
+        from little_loops.session_store.sessions import SessionHandle
+        from little_loops.user_messages import extract_conversation_turns
+
+        codex_rollout = tmp_path / "rollout.jsonl"
+        codex_rollout.write_text(
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hi"}],
+                    },
+                }
+            )
+            + "\n"
+        )
+        kimi_wire = tmp_path / "wire.jsonl"
+        kimi_wire.write_text(json.dumps({"type": "user", "message": "hi"}) + "\n")
+
+        handles = [
+            SessionHandle(
+                host="codex",
+                session_id="sess-codex",
+                path=codex_rollout,
+                cwd=tmp_path,
+                updated_at=codex_rollout.stat().st_mtime,
+            ),
+            SessionHandle(
+                host="kimi-code",
+                session_id="sess-kimi",
+                path=kimi_wire,
+                cwd=tmp_path,
+                updated_at=kimi_wire.stat().st_mtime,
+            ),
+        ]
+
+        windows = extract_conversation_turns(handles, reader="jsonl")
+
+        assert windows == []
 
 
 class TestResolveHost:
