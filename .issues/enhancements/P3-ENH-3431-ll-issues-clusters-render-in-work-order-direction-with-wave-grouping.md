@@ -22,7 +22,7 @@ All three layouts draw each edge in the direction the frontmatter spells it: `bl
 
 ## Expected Behavior
 
-Reading any layout top-down is reading the implementation order. Issues with no in-cluster prerequisite appear first and are marked ready; issues that can proceed in parallel are visibly grouped in the same wave; every edge label reads in one consistent direction (`needs` / `unblocks`) so the legend is not required to interpret the diagram; `relates_to` and `parent` are shown as undirected annotations and never as ordering edges.
+Reading any layout top-down is reading the implementation order. Issues with no in-cluster prerequisite appear first (wave 1) and are marked `ready` only when every one of their `blocked_by` targets — including targets outside the cluster or outside the `--status` filter — is terminal (`done`/`cancelled`); issues that can proceed in parallel are visibly grouped in the same wave; every edge label reads in one consistent direction (`needs` / `unblocks`) so the legend is not required to interpret the diagram; `relates_to` and `parent` are shown as undirected annotations and never as ordering edges. The topo order used by `list`/`boxes`/`tree` and the wave numbers used by `waves`/JSON come from the same normalized edge set, so all layouts agree.
 
 ## Motivation
 
@@ -49,31 +49,45 @@ Root causes in `scripts/little_loops/cli/issues/clusters.py`:
 - `_render_cluster_tree` picks roots by descending degree, tie-broken by topo index (the hub heuristic). Correct for EPIC/`parent` hierarchies, wrong for blocking chains.
 - `_render_cluster_diagram` only draws connectors between *consecutive* topo-sorted nodes and treats `relates_to` as a connector, so parallelism is never visible.
 - `_topo_sort_cluster` produces a flat order but no level/wave information; `clusters.py` itself has no wave helper — the two related helpers found elsewhere in the package (`LayerAssigner.assign()`, `DependencyGraph.get_execution_waves()`) use different algorithms/edge sets and are not drop-ins (see Codebase Research Findings below).
+- `_topo_sort_cluster` is fed a raw `issue.blocked_by` map (`cmd_clusters`, `clusters.py:638-648`), so the render order ignores `blocks`, `depends_on`, and the `--edges` filter entirely. An issue that declares only `blocks: [X]` (no reciprocal `blocked_by` on X) is invisible to the sort. Any wave computation built on a different edge set than this sort would make `ordered_ids` and `waves` disagree.
+- `_cluster_edges` dedups per unordered pair with `_EDGE_PRIORITY` ranking `parent` (2) above `depends_on` (3): a child with both `parent: EPIC-1` and `depends_on: EPIC-1` keeps only the annotation and loses the ordering fact. The same dedup collapses a 2-cycle (`A blocked_by B`, `B blocked_by A`) into a single edge, so cycle detection cannot rely on the deduped list.
+- "No in-cluster prerequisite" is not "ready": under the default `--status=active`, a blocker that is `deferred`, filtered out, or a dangling ID is simply absent, so the blocked issue would land in wave 1. Per CLAUDE.md only `done`/`cancelled` resolve dependency edges; `find_issues_for_graph` (`issue_parser.py:4452-4471`, BUG-2897) exists for exactly this superset-then-narrow pattern.
 
 ## Proposed Solution
 
-1. **Normalize ordering edges** (new step after `_cluster_edges`): map `X blocked_by Y`, `Y blocks X`, and `X depends_on Y` to a single directed fact `Y → X` ("Y before X"), tagged `hard` (`blocked_by`/`blocks`) or `soft` (`depends_on`). `relates_to` and `parent` are not ordering facts: keep them as undirected annotations (`~`), never as tree branches or arrow slots.
+1. **Normalize ordering edges** (`_normalize_edges`): map `X blocked_by Y`, `Y blocks X`, and `X depends_on Y` to a single directed fact `Y → X` ("Y before X"), tagged `hard` (`blocked_by`/`blocks`) or `weak` (`depends_on`). `relates_to` and `parent` are not ordering facts: keep them as undirected annotations (`~`), never as tree branches (except the mixed-cluster rule in item 4) or arrow slots.
 
-2. **Wave computation** (`_wave_levels`): longest-path depth over the normalized DAG, built on the existing Kahn sort. Wave 1 = no in-cluster prerequisite ("ready now"). Cycle members fall into a final "cycle" bucket, reusing the existing `has_cycle` fallback warning.
+   - **Dedup per category, not per pair.** Change `_cluster_edges` so each unordered pair may keep *one ordering edge* (priority `blocked_by` > `blocks` > `depends_on`) *and one annotation edge* (`parent` > `relates_to`) — today `parent` outranks `depends_on` and silently drops the ordering fact. Contradictory ordering declarations on one pair (`A blocked_by B` and `A blocks B`) resolve by that same priority. The raw JSON `edges` array keeps its current shape but may now contain two entries for one pair.
+   - **Keep both directions of a 2-cycle.** Normalization must operate on the pre-dedup candidate list (or dedup on the *ordered* pair) so `A blocked_by B` + `B blocked_by A` survives as two normalized edges and is detected as a cycle. Cycle detection never reads the pair-deduped list.
+   - Naming: the existing `--edges=hard` alias already includes `depends_on` (`_HARD_EDGE_TYPES`, `clusters.py:53`). The strength tag therefore uses `hard`/`weak`, not `hard`/`soft`, and the CLI.md prose calls this out so the two vocabularies don't read as contradictory.
 
-3. **New default layout `waves`** (or make `tree` wave-aware — see Open Questions). Each line says what it needs and what it unblocks so the legend is unnecessary:
+2. **One ordering pass** (`_order_and_waves`): Kahn's algorithm over the *normalized* edge list (hard and weak edges both order; `--edges` filtering applies because the input is the filtered `_cluster_edges` output). Returns `(ordered_ids, waves, has_cycle)` in a single call so `list`/`boxes`/`tree` order and `waves`/JSON wave numbers can never disagree. Wave = longest-path depth, 1-indexed. Replaces the `blocked_by_map` input to `_topo_sort_cluster` in `cmd_clusters` (`clusters.py:638-648`); `_topo_sort_cluster` itself is either retired or reduced to a thin wrapper. Nodes that never reach in-degree 0 — cycle members *and* anything downstream of a cycle — go into a final **`unresolved`** bucket (not labelled "cycle", since downstream nodes aren't in the cycle) in sorted-ID order, and `has_cycle` stays true, reusing the existing fallback warning.
+
+3. **Readiness** (`_ready_ids`): wave 1 means "no in-cluster prerequisite", which is *not* "ready". Load the non-terminal superset via `find_issues_for_graph(config)` (`issue_parser.py:4452`, the BUG-2897 pattern) once per command, and mark an issue `ready` only when every ID in its raw `blocked_by`/`depends_on` is absent from that superset (i.e. terminal or nonexistent). A wave-1 issue with a `deferred` or `--status`-filtered blocker renders without `ready` and with a `⏳ waits on ENH-NNNN (deferred)` suffix. The same superset answers the reverse case: a `status: blocked` issue whose blockers are all terminal gets `⚠ status is blocked but no active blockers`. The display list is still the `--status`-narrowed `find_issues` result; the superset is only consulted for readiness.
+
+4. **New default layout `waves`**. Every line always prints its own `needs` list (when non-empty) and `unblocks` list; wave headers carry no "(after X)" parenthetical, because that label is only well-defined when every member shares one prerequisite. Wave 1's header reads `(no in-cluster prerequisite)`; `ready` is a per-line marker:
 
 ```
 ─── Cluster 1 (5 issues) · 3 waves · start ENH-3427 · P2×4 P3×1 ───
-Wave 1  (ready now)
-  [P2] ENH-3427  Host-resolution seam — --host flag, …
+Wave 1  (no in-cluster prerequisite)
+  [P2] ENH-3427  Host-resolution seam — --host flag, …          ready
                  unblocks ENH-3428, ENH-3429, ENH-3430
 
-Wave 2  (after ENH-3427)
-  [P2] ENH-3428  Rewire ll-messages …        ~ ENH-3429, ENH-3430
-  [P2] ENH-3429  Rewire ll-ctx-stats …       ~ ENH-3430
-  [P2] ENH-3430  Rewire ll-logs …            unblocks ENH-3422
+Wave 2
+  [P2] ENH-3428  Rewire ll-messages …        needs ENH-3427   ~ ENH-3429, ENH-3430
+  [P2] ENH-3429  Rewire ll-ctx-stats …       needs ENH-3427   ~ ENH-3430
+  [P2] ENH-3430  Rewire ll-logs …            needs ENH-3427   unblocks ENH-3422
 
-Wave 3  (after ENH-3430)
-  [P3] ENH-3422  Make _backfill_raw_events …
+Wave 3
+  [P3] ENH-3422  Make _backfill_raw_events … needs ENH-3430
+
+Unresolved (cycle)
+  …only present when has_cycle…
 ```
 
-4. **Re-root `tree`** at wave-1 issues (instead of the hub), walk only "before" edges downstream, label children `needs <parent>` only when the parent is not the direct tree parent; cross-edges and `relates_to` stay as `⤷` lines with `~` for undirected:
+   Within a wave, lines sort by priority, then by `relates_to` adjacency (issues related to each other stay together), then by ID.
+
+5. **Re-root `tree`** at wave-1 issues (instead of the hub), walk "before" edges downstream, annotate `needs <X>` on a child only for prerequisites that are not its direct tree parent; cross-edges and `relates_to` stay as `⤷` lines with `~` for undirected:
 
 ```
 [P2] ENH-3427  Host-resolution seam …                    ready
@@ -85,19 +99,25 @@ Wave 3  (after ENH-3430)
     └── [P3] ENH-3422  Make _backfill_raw_events …
 ```
 
-   Keep the hub-root heuristic only when the cluster's edges are all `parent`/`relates_to` (no ordering edges) — that is the EPIC-hierarchy case FEAT-2337 designed it for.
+   Three root-selection cases, gated on the cluster's edge mix:
+   - **No ordering edges** (all `parent`/`relates_to`): keep the existing hub-root heuristic verbatim — the EPIC-hierarchy case FEAT-2337 designed it for.
+   - **Only ordering edges**: roots are the wave-1 issues in wave-line order; branches are "before" edges only.
+   - **Mixed** (the common real case: an EPIC with `parent` children where some children block each other): `parent` edges act as tree branches *only from a parent to its wave-1 children*; deeper children hang under their blockers via "before" edges as usual. Result reads EPIC → ready children → downstream. A node with no `parent` edge and wave 1 is still its own root. A `parent` edge to a non-wave-1 child renders as `⤷ ~ parent EPIC-N` under that child.
 
-5. **`boxes`**: with normalized edges the topo stack is already in execution order, so every arrow is `▼` and the label reads `needs`. Move skip edges into the box as an `unblocks:` line; drop `relates_to` from arrow slots. Boxes stays a secondary layout (a single column cannot show parallelism).
+6. **`boxes`**: with the stack ordered from normalized edges, every arrow between consecutive nodes is `▼` and the label reads `needs`. Move skip edges into the box as an `unblocks:` line; drop `relates_to` from arrow slots. Boxes stays a secondary layout (a single column cannot show parallelism).
 
-6. **Header/legend**: replace `hub ENH-XXXX` with `start ENH-XXXX · N waves`. Legend shrinks to `needs` (hard, must finish first), `prefers` (soft), `~` (related, no ordering).
+7. **Header/legend**: when the cluster has ordering edges, replace `hub ENH-XXXX` with `start ENH-XXXX` if exactly one wave-1 issue exists, otherwise `N start` (e.g. `3 start`), followed by `· M waves`. When the cluster has no ordering edges, keep `hub ENH-XXXX` so header and tree body agree (both hub computations at `clusters.py:131` and `:254` switch on the same gate). Legend shrinks to `needs` (hard, must finish first), `prefers` (weak, `depends_on`), `~` (related, no ordering).
 
-7. **JSON**: add `wave` (int) per issue and a `normalized_edges` array (`{before, after, strength}`) alongside the existing raw `edges`, so automation gets the same answer as the terminal.
+8. **JSON**: add `wave` (int, `null` for unresolved) and `ready` (bool) per issue, and a `normalized_edges` array (`{before, after, strength}`) alongside the existing raw `edges`, so automation gets the same answer as the terminal. The JSON branch must call the same `_order_and_waves` + `_ready_ids` the text path uses.
 
-8. `--edges` semantics unchanged; `--edges=blocking` simply yields no `soft` edges and no `~` annotations.
+9. `--edges` semantics unchanged; `--edges=blocking` simply yields no `weak` edges and no `~` annotations. Readiness (item 3) always reads raw `blocked_by`/`depends_on` regardless of `--edges`, because a filtered-out edge does not make an issue ready.
+
+10. **CHANGELOG**: entry under the next concrete version section (not `[Unreleased]`) for the default-layout change, the `hub`→`start` header token, and the new JSON fields.
 
 ## Scope Boundaries
 
-- Out of scope: changing `--edges` filter semantics — unchanged per item 8 of Proposed Solution.
+- Out of scope: changing `--edges` filter semantics — unchanged per item 9 of Proposed Solution.
+- Out of scope: changing `find_issues`/`find_issues_for_graph` — the readiness check only *calls* the existing superset loader.
 - Out of scope: `dependency_mapper/formatting.py::format_epic_tree` or any other EPIC-hierarchy rendering path — this issue only touches `scripts/little_loops/cli/issues/clusters.py`.
 - Out of scope: making `tree` wave-rooted by default. `waves` becomes the new default layout (Open Questions recommendation); `tree` keeps its existing hub-root heuristic for pure `parent`/`relates_to` clusters and is re-rooted at wave-1 issues only when ordering edges are present (item 4).
 - Out of scope: adding wave/topological-level grouping to other commands (`sprint.py`, `dependency_mapper/`) — confined to `ll-issues clusters`.
@@ -106,8 +126,9 @@ Wave 3  (after ENH-3430)
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/issues/clusters.py` — `_cluster_edges`, `_topo_sort_cluster`, `_ClusterRenderData`, `_render_cluster_tree`, `_render_cluster_diagram`, `_render_cluster_compact`, `_cluster_header`, `_print_legend`, `cmd_clusters` (JSON branch + layout dispatch)
+- `scripts/little_loops/cli/issues/clusters.py` — `_cluster_edges` (per-category dedup), `_topo_sort_cluster` (replaced by `_order_and_waves`), `_ClusterRenderData`, `_render_cluster_tree`, `_render_cluster_diagram`, `_render_cluster_compact`, `_cluster_header`, `_print_legend`, `cmd_clusters` (JSON branch + layout dispatch + `find_issues_for_graph` superset load)
 - `scripts/little_loops/cli/issues/__init__.py` — `--layout` choices and help text (~line 536)
+- `CHANGELOG.md` — entry per Proposed Solution item 10
 
 ### Dependent Files (Callers/Importers)
 - `_draw_box` from `scripts/little_loops/cli/loop/layout.py` (imported by `_render_cluster_diagram`; unchanged)
@@ -157,18 +178,21 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ### Types
 
-- Normalized ordering edge: `tuple[before: str, after: str, strength: Literal["hard", "soft"]]` — `hard` for `blocked_by`/`blocks`, `soft` for `depends_on`
-- Wave map: `dict[str, int]` — issue ID to 1-indexed wave number
+- Normalized ordering edge: `tuple[before: str, after: str, strength: Literal["hard", "weak"]]` — `hard` for `blocked_by`/`blocks`, `weak` for `depends_on`
+- Wave map: `dict[str, int | None]` — issue ID to 1-indexed wave number; `None` for the unresolved bucket
+- `_ClusterRenderData` gains `waves: dict[str, int | None]`, `normalized_edges: list[tuple[str, str, str]]`, `ready: set[str]`, `stale_blocked: set[str]`, `has_ordering_edges: bool`
 
 ### Signatures
 
-- `_normalize_edges(edges: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]`
-- `_wave_levels(ids: list[str], normalized: list[tuple[str, str, str]]) -> dict[str, int]`
-- `_render_cluster_waves(data: _ClusterRenderData) -> str`
+- `_cluster_edges(cluster_ids, issues, edge_types) -> list[tuple[str, str, str]]` — signature unchanged; dedup becomes per-category (one ordering + one annotation edge per pair)
+- `_normalize_edges(edges: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]` — `(before, after, strength)`; input is the per-category-deduped list so both directions of a 2-cycle survive
+- `_order_and_waves(ids: list[str], normalized: list[tuple[str, str, str]]) -> tuple[list[str], dict[str, int | None], bool]` — `(ordered_ids, waves, has_cycle)`; single Kahn pass, longest-path depth; replaces `_topo_sort_cluster`
+- `_ready_ids(ids: list[str], issues_map: dict[str, IssueInfo], non_terminal_ids: set[str]) -> tuple[set[str], set[str]]` — `(ready, stale_blocked)`; reads raw `blocked_by`/`depends_on`, ignores `--edges`
+- `_render_cluster_waves(cd: _ClusterRenderData, issues_map: dict[str, IssueInfo]) -> list[str]`
 
 ### Call Path
 
-`cmd_clusters` -> `_cluster_edges` -> `_normalize_edges` -> `_wave_levels` -> `_render_cluster_waves` (also feeds re-rooted `_render_cluster_tree` and reworked `_render_cluster_diagram`)
+`cmd_clusters` -> `find_issues` (display set) + `find_issues_for_graph` (readiness superset) -> `_cluster_edges` -> `_normalize_edges` -> `_order_and_waves` -> `_ready_ids` -> `_render_cluster_waves` | re-rooted `_render_cluster_tree` | reworked `_render_cluster_diagram` | `_render_cluster_compact`. The JSON branch runs the same chain through `_ready_ids`.
 
 ### Codebase Research Findings
 
@@ -182,14 +206,17 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `_normalize_edges(edges) -> list[tuple[str, str, str]]` (`before, after, strength`) and `_wave_levels(ids, normalized) -> dict[str, int]` next to `_topo_sort_cluster`; extend `_ClusterRenderData` with `waves` and `normalized_edges`.
-2. Add `_render_cluster_waves`; register `waves` in the `--layout` choices in `scripts/little_loops/cli/issues/__init__.py` (~line 536) and in the dispatch in `cmd_clusters`.
-3. Change root selection and edge walk in `_render_cluster_tree`; gate the hub heuristic on "no ordering edges present".
-4. Update `_render_cluster_diagram` arrow/label logic and skip-edge placement.
-5. Update `_cluster_header` and `_print_legend`.
-6. Extend JSON branch in `cmd_clusters`.
-7. Update `docs/reference/CLI.md` § `ll-issues clusters` (flag table, examples, default-layout prose) and the `--layout` help string.
-8. Tests (see below).
+1. Change `_cluster_edges` dedup to per-category (one ordering edge + one annotation edge per unordered pair; ordering priority `blocked_by` > `blocks` > `depends_on`, annotation priority `parent` > `relates_to`). Existing tests asserting a single edge per pair for a `parent`+`depends_on` pair will need updating.
+2. Add `_normalize_edges` and `_order_and_waves` next to `_topo_sort_cluster`; retire `_topo_sort_cluster` (or reduce to a wrapper). Extend `_ClusterRenderData` per Program Design.
+3. Add `_ready_ids`; in `cmd_clusters` load the readiness superset with `find_issues_for_graph(config)` once, build `non_terminal_ids`, and pass it through. Wire the same into the JSON branch (`clusters.py:600-622`), which today never computes order or cycles.
+4. Add `_render_cluster_waves`; register `waves` in the `--layout` choices in `scripts/little_loops/cli/issues/__init__.py` (~line 536), make it the default in the dispatch in `cmd_clusters` (`clusters.py:633-635`), and keep `--compact` → `list`.
+5. Change root selection and edge walk in `_render_cluster_tree` per the three-case rule (no ordering edges → hub; only ordering → wave-1 roots; mixed → `parent` branches to wave-1 children only).
+6. Update `_render_cluster_diagram` arrow/label logic and skip-edge placement.
+7. Update `_cluster_header` (`start`/`N start`/`hub` rule, wave count) and `_print_legend`; both hub sites switch on `has_ordering_edges`.
+8. Extend JSON branch with `wave`, `ready`, `normalized_edges`.
+9. Update `docs/reference/CLI.md` § `ll-issues clusters` (flag table, examples, default-layout prose, `hard`-alias vs `weak`-strength note) and the `--layout` help string.
+10. Add `CHANGELOG.md` entry.
+11. Tests (see below).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -216,13 +243,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 Existing coverage lives in `scripts/tests/test_issue_parser.py` (`cmd_clusters` / `_render_cluster_tree` tests). Add:
 
-- `_normalize_edges`: `blocked_by`, `blocks`, `depends_on` all collapse to the same `(before, after)`; `relates_to`/`parent` are excluded; duplicate pair with mixed strength keeps `hard`.
-- `_wave_levels`: the 5-issue example above yields waves `{3427:1, 3428:2, 3429:2, 3430:2, 3422:3}`; diamond DAG gives longest-path depth (not BFS depth); cycle members land in the final bucket and `has_cycle` stays true.
-- `waves` layout snapshot for the example; wave-1 issues render before everything else; parallel issues in one wave never get an arrow between them.
-- `tree` layout: root is a wave-1 issue, not the hub; hub-root heuristic still applies to a pure `parent`-edge EPIC cluster (regression for FEAT-2337).
+- `_cluster_edges` dedup: a pair with `parent` + `depends_on` yields two edges (one ordering, one annotation); a pair with `blocked_by` + `parent` yields both; `A blocked_by B` + `A blocks B` yields one ordering edge (`blocked_by` wins); `A blocked_by B` + `B blocked_by A` yields both directions.
+- `_normalize_edges`: `blocked_by`, `blocks`, `depends_on` all collapse to the same `(before, after)`; `relates_to`/`parent` are excluded; strength is `hard` for the first two and `weak` for `depends_on`.
+- `_order_and_waves`: the 5-issue example above yields waves `{3427:1, 3428:2, 3429:2, 3430:2, 3422:3}` and `ordered_ids` consistent with those waves; diamond DAG gives longest-path depth (not BFS depth); an issue that only declares `blocks: [X]` (no reciprocal) still orders before X; a `depends_on`-only chain still produces waves; 2-cycle members land in the unresolved bucket with `wave=None`, a node downstream of the cycle also lands there, and `has_cycle` stays true; `--edges=relates_to` yields all wave 1 and `has_ordering_edges=False`.
+- `_ready_ids`: wave-1 issue with a `deferred` blocker is not `ready` and gets the `⏳ waits on` suffix; wave-1 issue whose blocker is `done` (absent from superset) is `ready`; wave-1 issue with a dangling blocker ID is `ready`; `status: blocked` issue with only terminal blockers lands in `stale_blocked`; readiness ignores `--edges=blocking` for a `depends_on` blocker.
+- `waves` layout snapshot for the example; wave-1 issues render before everything else; every non-wave-1 line carries `needs`; no wave header contains "(after"; parallel issues in one wave never get an arrow between them; unresolved bucket renders last with the existing cycle warning.
+- `tree` layout: root is a wave-1 issue, not the hub; hub-root heuristic still applies to a pure `parent`-edge EPIC cluster (regression for FEAT-2337); mixed cluster (EPIC + `parent` children + child-to-child `blocked_by`) renders EPIC as root, wave-1 children as branches, blocked children under their blockers, and `⤷ ~ parent` on non-wave-1 children.
 - `boxes`: no `▲` glyph appears with normalized edges; `relates_to` never occupies an arrow slot.
-- JSON: `wave` present on every issue; `normalized_edges` matches `_normalize_edges`; `edges` unchanged.
-- Header/legend: `start` token and wave count; `hub` absent when ordering edges exist.
+- JSON: `wave` and `ready` present on every issue (`wave: null` for unresolved); `normalized_edges` matches `_normalize_edges`; `edges` unchanged in shape; cross-layout equality at `test_issues_cli.py:5613` still holds.
+- Header/legend: `start ENH-NNNN` with one wave-1 issue, `N start` with several, wave count present; `hub` absent when ordering edges exist and present (matching the tree root) when none do.
+- Allowlist gate: `_PRIORITY_TAG_RE` line key in `test_issue_parser.py:4824-4827` bumped if any top-level constant is added above line 68.
 
 ### Codebase Research Findings
 

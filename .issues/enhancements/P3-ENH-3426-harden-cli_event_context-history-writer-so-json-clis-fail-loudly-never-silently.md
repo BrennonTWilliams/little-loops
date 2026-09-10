@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T20:18:42Z'
 reconcile_attempted: true
+confidence_score: 85
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3426: Harden cli_event_context history writer so JSON CLIs fail loudly, never silently
@@ -256,8 +262,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 N/A - no public API changes; `cli_event_context`'s call signature is
 unchanged, only its internal error handling widens.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-09_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 89/100 → HIGH CONFIDENCE
+
+### Concerns
+- No repo-wide precedent exists for the exact 2-tuple `except (sqlite3.Error, OSError)` (nearest is a 3-tuple at `set_status.py:178`); the tuple-with-`OSError` shape itself is common (100+ sites), so this is a minor, low-risk deviation.
+- Implementation Step 1 calls for confirming the exact ll-console failure contract (stderr content, exit code) before changing behavior; the issue notes this has not yet been confirmed.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T00:02:36 - `e1e987d9-5a25-4adf-9f93-78b6e7b380b0.jsonl`
 - `/ll:wire-issue` - 2026-09-09T23:41:59 - `5825e8f7-a405-4f10-9f6c-b98ebb708843.jsonl`
 - `/ll:refine-issue` - 2026-09-09T23:23:47 - `00ea4689-f70b-4623-84a3-269ac3fcabb8.jsonl`
 - `/ll:reconcile-issue` - 2026-09-09T23:10:51 - `719e35d3-e0ad-40bf-86c3-2b6c7827a005.jsonl`
