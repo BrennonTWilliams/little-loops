@@ -9,6 +9,9 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
 parent: EPIC-3436
+learning_tests_required:
+- pytest-xdist
+- pytest
 ---
 
 # BUG-3443: test_env_var_overrides_cpu_count asserts against host CPU count instead of patching os.cpu_count
@@ -40,6 +43,35 @@ conftest.pytest_xdist_auto_num_workers clamps the PYTEST_XDIST_AUTO_NUM_WORKERS 
 - **Anchor**: `in TestXdistAutoNumWorkers.test_env_var_overrides_cpu_count()`
 - **Cause**: The test is the only one in the class that does not patch `os.cpu_count`, so its assertion `== 3` is evaluated against the host's real core count through the clamp `max(1, min(int(env), cpus - 2))` in `conftest.pytest_xdist_auto_num_workers`. The clamp was added to the hook after this test was written; the test and two docstrings were never updated.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+- Confirmed: the hook reads `cpus = os.cpu_count() or 4` at `scripts/tests/conftest.py:63` and clamps at :71 (`return max(1, min(int(env), cpus - 2))`); the test at `scripts/tests/test_conftest_cap.py:47-50` calls the hook with env=3 and no cpu_count patch, so on hosts with ≤5 logical cores the clamp yields 2 and `assert 2 == 3` fails
+- The five siblings (`test_conftest_cap.py:52-81`) all wrap the assertion in `with patch("os.cpu_count", return_value=N)`; the unpatched test predates the clamp introduced under BUG-2788
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+- Files to Modify: `scripts/tests/test_conftest_cap.py` — the only file this fix touches (test body at :47-50, two stale docstrings at :42 and :48, one new sibling test joining `TestXdistAutoNumWorkers` :37-81)
+- Untouched dependency — the hook under test: `pytest_xdist_auto_num_workers` (`scripts/tests/conftest.py:51-78`; `cpus = os.cpu_count() or 4` :63, env read :64, clamp `return max(1, min(int(env), cpus - 2))` :71, no-env fallback `return max(2, cpus // 2)` :78)
+- Loader shim: the test file loads the hook as an independent module via `importlib.util.spec_from_file_location("conftest_under_test", _CONFTEST_PATH)` (`test_conftest_cap.py:30-34`); the double-load is documented by a comment at `scripts/tests/conftest.py:278`
+- Importers of the test file: none — pytest collection is its only entry point (repo-wide grep found no CI config, docs, or other test importing `test_conftest_cap`)
+- Production writer of the env var (context, not modified): `verify_epic_branch_before_merge` setdefaults `PYTEST_XDIST_AUTO_NUM_WORKERS` to `str(max(2, (os.cpu_count() or 4) // 4))` for child verify-gate runs (`scripts/little_loops/worktree_utils.py:738`); that computed value has no test coverage
+- Tests: the five siblings at `test_conftest_cap.py:52-81` already pin cpu_count; no shared env/cpu fixture exists in `scripts/tests/helpers.py` or `scripts/tests/conftest.py` to reuse — the new test needs no new machinery
+- Configuration: `scripts/pyproject.toml:245-251` (addopts comment) documents the cap and the override; `.github/workflows/ci.yml` never sets `PYTEST_XDIST_AUTO_NUM_WORKERS` (repo-wide `.github/` grep: no hits), so the failure surfaces on any runner with ≤5 logical cores
+- Documentation: `docs/development/TROUBLESHOOTING.md:849` already describes the knob as clamped to `cpus-2` — post-clamp text, no update needed
+- Prior art: the clamp was introduced by BUG-2788 (`max(1, min(N, cpus-2))`); the test file was created under BUG-2501
+- Conventions in force: cpu_count patching uses ONLY the string-target `unittest.mock.patch` context manager — `with patch("os.cpu_count", return_value=N)` (`test_conftest_cap.py:55,61,67,73,79`); `monkeypatch.setattr(os, "cpu_count", ...)` and decorator-form `@patch("os.cpu_count")` have zero occurrences tree-wide
+- Conventions in force: env vars go through the `monkeypatch` fixture while OS functions go through `patch` context managers (suite-wide: 263 `monkeypatch.setenv` uses across 49 files vs 5 `patch.dict(os.environ)` in 2)
+- Conventions in force: tests that ignore the env var still scrub it defensively via `monkeypatch.delenv("PYTEST_XDIST_AUTO_NUM_WORKERS", raising=False)` (`test_conftest_cap.py:60,66,72,78`), and every test in the class passes `MagicMock()` as the hook's config arg
+- Conventions in force: clamp tests name `<input>_<verb>_<expected>` using verbs floors/yields/clamps/caps (`test_conftest_cap.py:58,64,70,76`; `test_git_lock.py:228`; `test_loop_suggester.py:190,200`), with boundary values injected as explicit inputs rather than ambient (`test_git_lock.py:230-235`); single-value clamp tests assert bare `==` with no message
+- Conventions in force: every test method in `TestXdistAutoNumWorkers` carries a single-sentence RST docstring with double-backtick literals stating input → contract (`test_conftest_cap.py:48,53,59,65,71,77`)
+- Scope boundary (research note, not a directive): the module docstring at `test_conftest_cap.py:6` and the hook comment at `scripts/tests/conftest.py:60-61` also predate the clamp; this issue's named scope covers only :42 and :48 — extending it is the implementer's call, not required
+
 ## Program Design
 
 ### Signatures
@@ -50,6 +82,17 @@ conftest.pytest_xdist_auto_num_workers clamps the PYTEST_XDIST_AUTO_NUM_WORKERS 
 ### Call Path
 
 pytest runner -> `TestXdistAutoNumWorkers` -> `conftest.pytest_xdist_auto_num_workers` (module loaded via `importlib.util.spec_from_file_location`) -> `os.cpu_count` (patched) / `os.environ.get("PYTEST_XDIST_AUTO_NUM_WORKERS")`
+
+## Implementation Steps
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+1. `TestXdistAutoNumWorkers.test_env_var_overrides_cpu_count` (`scripts/tests/test_conftest_cap.py:47-50`) passes on hosts of any core count — its hook assertion is made host-independent the same way the five siblings are, and its docstring (`:48`) states the clamped contract rather than "returns N verbatim"
+2. The class docstring bullet at `test_conftest_cap.py:42` states that the override is honored but bounded by `cpus - 2`
+3. A clamp-pinning test exists in the class asserting `env=99, cpus=4 -> 2`, with both operands injected explicitly and naming from the floors/yields/clamps family already in the file
+4. `python -m pytest scripts/tests/test_conftest_cap.py -v` passes, and the full gate `python -m pytest scripts/tests/` exits 0
 
 ## Impact
 
@@ -64,5 +107,6 @@ pytest runner -> `TestXdistAutoNumWorkers` -> `conftest.pytest_xdist_auto_num_wo
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-10T23:51:06 - `4d1eb983-c328-4793-b35a-8ba87f2992d7.jsonl`
 - `/ll:format-issue` - 2026-09-10T22:12:19 - `895d3ceb-7c4a-44b3-826e-65829f565276.jsonl`
 - `/ll:scope-epic` - 2026-09-10T21:15:18 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`

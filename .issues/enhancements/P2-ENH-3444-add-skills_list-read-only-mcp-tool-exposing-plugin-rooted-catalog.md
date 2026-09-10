@@ -7,6 +7,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:35:03Z'
+learning_tests_required:
+- mcp
 ---
 
 # ENH-3444: Add skills_list read-only MCP tool exposing plugin-rooted catalog
@@ -124,6 +126,18 @@ extraction. The tool is therefore a thin exposure, not a new design:
 ### Configuration
 - N/A — no config knob; tool presence is registry-level
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+- Anti-anchor constraint: `mcp_server/server.py:_resolve_skills_root()` (server.py:40-79) is NOT a valid anchor for this tool. It resolves a 4-candidate chain (`LL_MCP_SKILLS_ROOT` env → `CLAUDE_PLUGIN_ROOT/skills` → in-package wheel copy via `importlib.resources` → `_find_plugin_root()/skills`, each `.is_dir()`-validated) and serves the prompts surface (server.py:195). `_classify_action` consults none of the first three candidates, so a `_resolve_skills_root`-anchored catalog would list names that cannot classify `runner: skill`. Bare `skill_expander._find_plugin_root()` is the only parity-preserving anchor.
+- `cli/doctor.py:258` (`_skills_commands_data`, doctor.py:253-261) is the only production caller of `assemble_tool_catalog` today — passes `Path.cwd()` and consumes only `len(entries)`; an additive optional `kind` field cannot affect it.
+- Tier-1 roster conventions: `_TOOLS` list order is the entirety of the ordering guarantee (tools.py:771-772); tier-1 entries keep `annotations=None` so `tools/list` shape is unchanged — pinned by `test_feat_3352_mcp_loop_list.py:303-312`. The `handle_list_tools` docstring says "the fixed sixteen-tool catalog" (tools.py:1232) and the module docstring carries the same count (tools.py:1-3) — both count references must be updated when the roster grows.
+- Return-shape fact: a list payload travels in `content[0].text` only; `structured_content` is attached only when the payload is a dict (tools.py:1325-1334). `skills_list` returns a list, so consumers parse `content[0].text`.
+- `_find_plugin_root()` (skill_expander.py:25-35) honors exactly one env var (`CLAUDE_PLUGIN_ROOT`), returns it unconditionally with no `.is_dir()` validation, else falls back to three-parents-up from `skill_expander.py` — never consults `project_root`, `LL_MCP_PROJECT_ROOT`, config, or cwd. "Unresolvable root" therefore includes an env var pointing at a nonexistent dir.
+- Classification nuance behind the parity AC: `_resolve_content_path` (skill_expander.py:38-52) resolves `commands/<name>.md` too, so command names also classify `RunnerType.SKILL` (not CMD) — the AC's `_classify_action(...) is RunnerType.SKILL` assertion holds for both kinds. Precedence caveat: the LOOP branch runs first via `BRConfig(Path.cwd())` (queue.py:183-195), so a skill/command name colliding with a loop in the *consumer's* cwd project classifies LOOP before the skill branch is reached.
+- Grounded capability claim (searched by name and by capability repo-wide): no existing MCP tool enumerates skills or commands — `_tool_skills_list`/`skills_list` have zero occurrences in the tool surface; the only `skills_list` string hits are an unrelated local variable in `cli/verify_triggers.py:582-606`, this issue file, and a decision fragment.
+
 ## Implementation Steps
 
 1. Add `kind` to `ToolDefinition` and set it in the three entry builders
@@ -136,6 +150,14 @@ extraction. The tool is therefore a thin exposure, not a new design:
    `[]` on unresolvable root, identical output across `--project-root` values, `kind`
    present, agents absent.
 4. Update the `docs/reference/API.md` tool roster; run `python -m pytest scripts/tests/`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+- Fixture-isolation seam already exists: `test_mcp_server.py:826-888` patches `"little_loops.skill_expander._find_plugin_root"` with a lambda (plus `importlib.resources.files`) to isolate the server from the real install. Because `queue.py:165` imports `_find_plugin_root` function-locally at call time, patching the `little_loops.skill_expander` module attribute also redirects `_classify_action` — a same-process classification-parity test against a tmp plugin root works through that single patch.
+- MCP tool tests use a full in-process handshake, not direct handler calls: `pytest.importorskip("mcp")` at module top, `anyio.run` wrapping `async with Client(build_server(transport="stdio", project_root=...))` + `client.call_tool(...)`; payload helper asserts `not result.is_error` then `json.loads(result.content[0].text)` (test_feat_3352_mcp_loop_list.py:25-33).
+- `ToolDefinition` is `@dataclass(frozen=True)` (tool_catalog.py:28-41); existing tests construct it with 3 positional args (test_tool_catalog.py:180-212) — the new `kind` field must carry a default for those constructions to keep working.
 
 ## Impact
 
@@ -214,5 +236,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-10T23:49:39 - `7ee27d53-14b5-4247-8a45-3ace1bb3ba2a.jsonl`
 - `/ll:format-issue` - 2026-09-10T23:42:00 - `d0293195-1c81-4d81-ac17-fa584ee4566b.jsonl`
 - `/ll:capture-issue` - 2026-09-10T23:35:10 - `e38fd574-1060-4376-8bc3-e25c31d15dce.jsonl`
