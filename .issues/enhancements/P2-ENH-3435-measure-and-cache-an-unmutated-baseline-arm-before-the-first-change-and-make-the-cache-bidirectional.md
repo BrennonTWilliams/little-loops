@@ -20,6 +20,10 @@ Cache resilience is part of the contract: a corrupt or partial cache entry must 
 
 `ll-harness` comparisons are incumbent-relative: a candidate is graded against whatever the incumbent lineage last produced, and any "before" number cited in a verdict is remembered from an earlier run rather than measured as part of this one. The existing cache is one-directional — a result paid for on one path is not reusable by the other. The two sibling guards are now in place: n-run redundancy (ENH-3415) supplies a sound n, and the frozen external reference (ENH-3421) supplies an external anchor. Both assume a baseline exists; neither makes producing the unmutated incumbent-arm baseline a phase of the run itself. This issue is that remaining piece.
 
+## Expected Behavior
+
+Before an `ll-harness` run reports any delta, it executes n unmutated runs of the incumbent (same task set, same effective n, same conditions as the candidate arm) and records that result as the measured baseline. Verdicts compute deltas only against this measured baseline — never against a remembered number from a prior run. The baseline result persists to a disk cache in a defined shape that both the loop and post-hoc analysis read and write, so a rollout paid for on either path is reusable by the other. A corrupt or partial cache entry triggers re-measurement rather than being trusted, and every reported delta states whether its baseline was freshly measured or reused from cache, along with the n and conditions it was measured under.
+
 ## Design
 
 Mechanics borrowed from evolutionary-search harness design, where the baseline arm is treated as mandatory loop structure rather than optional rigor:
@@ -52,3 +56,5 @@ On the run model (ENH-3397): baseline runs are ordinary repetitions recorded aga
 - **Effort**: Medium — a new baseline phase in the harness run path, a disk cache with a defined shape and degradation rule, and tests for both directions of the cache contract.
 - **Risk**: Low-medium — additive path; the existing verdict surface is unchanged when no baseline is requested.
 - **Breaking Change**: No.
+
+**Open** | Created: 2026-09-10 | Priority: P2
