@@ -30,13 +30,15 @@ Every `ll-*` CLI entry point wraps its body in `cli_event_context` (`scripts/lit
 
 ## Proposed Hardening
 
-1. Establish the failure contract first: ask the ll-console side for the exact stderr and exit code from the observed failure before changing behavior. If stderr was empty on a non-zero exit, that is the defect; if stdout was empty on exit 0, that is a different and worse defect.
+1. ~~Establish the failure contract first: ask the ll-console side for the exact stderr and exit code from the observed failure before changing behavior.~~ **Superseded (2026-09-09, `/ll:confidence-check` follow-up)**: no logged stderr/exit-code artifact from the original failure exists anywhere in ll-console's repo — it was a live-session observation, never committed. More importantly, ll-console's queue path no longer reproduces it: commit `56448d3` ("speak MCP stdio directly to ll-mcp", 2026-09-09T21:04:38Z — ~46 min after this issue was captured) repointed `queue_client.py` off the `ll-queue list --json` CLI shell-out onto `ll-mcp`'s `queue_list` tool over stdio. That tool (`_tool_queue_list`, `scripts/little_loops/mcp_server/tools.py:478`) wraps `queue_store.list_entries()` directly and never touches `cli_event_context` or `history.db` — so a locked history.db can no longer affect ll-console's queue reads at all. The remaining real exposure is other direct `ll-queue`/`ll-loop`/`ll-issues` CLI consumers, including ll-console's own `loop_client.py`/`issues_client.py`, which still shell out to `ll-loop`/`ll-issues` per subprocess.
 2. Make the history writer best-effort on every path: wrap `connect` and the `finally` UPDATE in the same `sqlite3.Error`/`OSError` guard as the insert, with a bounded `busy_timeout` (e.g. 2 s) so a locked or slow DB degrades to "no analytics row" instead of stalling or killing the command.
 3. Add a test that simulates a locked DB (second connection holding an exclusive lock) and asserts the wrapped command still emits its JSON on stdout with exit 0, plus a warning on stderr.
 
 ## Context
 
 Belongs with the in-flight session-store lifecycle work (FEAT-3417, ENH-3420). Flagged by the ll-console agent as a concern to route here rather than PR themselves.
+
+**Update (2026-09-09)**: the reported symptom is no longer reproducible via ll-console — its `queue_client.py` moved off the `ll-queue list --json` CLI shell-out onto `ll-mcp`'s `queue_list` tool over stdio the same day (commit `56448d3`, ~46 min after this issue was captured), and that tool path never touches `cli_event_context`/`history.db`. The hardening is still worthwhile for the CLI consumers that remain: automation calling `ll-queue`/`ll-loop`/`ll-issues` `--json` directly, and ll-console's own `loop_client.py`/`issues_client.py`, which still shell out to `ll-loop`/`ll-issues` per subprocess.
 
 ## Acceptance Criteria
 
@@ -203,8 +205,10 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Confirm the exact failure contract from ll-console (stderr content, exit
-   code) before changing behavior (Proposed Hardening step 1).
+1. ~~Confirm the exact failure contract from ll-console (stderr content, exit
+   code) before changing behavior~~ — superseded; see Proposed Hardening step
+   1 and Context for why this can no longer be confirmed via ll-console and
+   is no longer a blocker.
 2. Widen the exception guards to also catch `OSError` — no new `busy_timeout`
    is needed, it is already set unconditionally (5000ms via `PRAGMA`,
    `schema.py:1405`). Wrap `resolve_history_db()` (`writers.py:506`), the
