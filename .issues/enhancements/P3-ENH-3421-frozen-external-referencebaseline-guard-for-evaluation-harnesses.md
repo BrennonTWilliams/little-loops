@@ -113,6 +113,28 @@ Solution.
    behavior byte-for-byte identical to today; all existing convergence tests pass unmodified.
 6. **Details on every path.** When `reference` resolves, `details["reference"]` is included
    in `target`/`progress`/`stall` results too, so trajectory logs can show the bar.
+7. **Literal-number tolerance.** `reference` is declared `str | None` to parallel `previous`,
+   but a YAML author may write `reference: 0.85`, which arrives from `from_dict` as a float and
+   would blow up `interpolate()` (typed `template: str`). Mirror convergence `target`'s
+   `isinstance(config.target, str)` branch (`fsm/evaluators.py:1929-1938`) rather than
+   `previous`'s string-only shape: a non-string value is used via `float(config.reference)`
+   directly; a string is interpolated and parsed, failing closed per §4.
+
+### What a regression does to the run (review addition 2026-09-09)
+
+In `harness-optimize.yaml` a `stall` verdict is **segment-ending**, not "revert and retry":
+`gate.route.stall → revert_and_log → write_trajectory_rejected`, whose action exits 1 in
+whole-file mode and routes `on_no: done` (asserted deliberately by
+`test_harness_optimize.py::test_write_trajectory_rejected_routes_based_on_mode`, lines 168-177);
+in state mode it exits 0 and routes `on_yes: check_queue`, which dequeues the *next* state.
+The fail-closed `error` verdict (§4) takes the same `revert_and_log` edge. So the practical
+effect of this guard is: a candidate below the frozen baseline ends the whole-file run (or
+closes out the current state's segment) with a rejected trajectory line, rather than being
+skipped and re-proposed. This is pre-existing routing, not something this issue changes, but
+the guide docs and Impact must describe it accurately, and the new dynamic executor test
+(Acceptance Criteria) must **not** model `harness-optimize.yaml`'s routing — it needs a
+self-looping `stall`/`progress` route to observe ≥3 iterations. Whether stop-on-first-rejection
+is sensible for a hill-climber at all is a separate ENH candidate (see Pre-implementation review).
 
 ## Scope Boundaries
 
@@ -232,7 +254,9 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
   field, plus docstring `Attributes:` entry, `to_dict()` emit-when-set, `from_dict()` parse.
 - `scripts/little_loops/fsm/evaluators.py:438` (`evaluate_convergence`) — new `reference`
   parameter, checked **before** the target-reached branch (Expected Behavior §1); dispatcher
-  `convergence` branch (~1908) — resolve `config.reference` fail-closed (§4).
+  `convergence` branch (~1908) — resolve `config.reference` fail-closed (§4), with the
+  `isinstance(..., str)` split from the `target` resolution block (1929-1938) so a YAML literal
+  number is accepted without interpolation (§7).
 - `scripts/little_loops/loops/lib/common.yaml` (`convergence_gate` fragment, ~151-162) —
   description only: add `evaluate.reference` to the "optionally" list.
 - `scripts/little_loops/loops/harness-optimize.yaml` `gate` state — add
@@ -254,7 +278,15 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
   (`executor.py:3813`); the ENH-3200 post-evaluation capture write persists only `verdict`, never
   `details` (`executor.py:2206`). A `${result.details...:default=false}` reference would silently
   resolve to `false` on every line. The `baseline` value is a bare float (scorer contract), so it
-  is valid JSON unquoted, same as the existing `score` field.
+  is valid JSON unquoted, same as the existing `score` field. Captured output is already
+  `rstrip("\n\r")`-ed at capture time (`executor.py:2682`), so no trailing newline can break the
+  JSON line. Verified 2026-09-09 by applying both trajectory edits plus `reference:` to a temp
+  copy and running `ll-loop validate`: passes with only the expected MR-14 unknown-key warning
+  (which disappears once the field exists) and **no MR-11 shell-safety finding** on the new
+  `${captured.baseline.output}` sites — no `# ll-lint: mr11-ok(...)` marker is needed.
+- `scripts/little_loops/loops/harness-optimize.yaml` header `description:` (lines 3-7) — currently
+  "accepts the change if score rises (or meets target), and reverts otherwise"; add "and is never
+  below the baseline" (or equivalent) so the loop's own summary matches the new gate.
 - `scripts/little_loops/loops/rl-coding-agent.yaml` — **not modified** (out of scope, see Scope
   Boundaries).
 - `scripts/little_loops/fsm/validation/structural_rules.py` — **not modified**. The
@@ -351,7 +383,10 @@ _Wiring pass added by `/ll:wire-issue` (Option A candidate wiring):_
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — already hosts the MR-1..MR-14 design-rule table
-  and baseline semantics (MR-2); natural home for the new rule.
+  and baseline semantics (MR-2); natural home for the new rule. Document the run-level effect
+  honestly: in `harness-optimize.yaml` a reference regression ends the whole-file run / closes
+  the current state segment (Expected Behavior → "What a regression does to the run"), it does
+  not skip-and-retry.
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — documents the existing `--baseline` vs.
   `check_comparator` distinction this guard sits beside.
 
@@ -437,6 +472,8 @@ into their JSON line, not from the evaluator's `details` (unreachable from a lat
 - [ ] Dispatcher: `EvaluateConfig(type="convergence", reference="${captured.baseline.output}", ...)` with an unresolvable or non-numeric capture returns verdict `error` naming `reference`; with `previous` unresolvable and `reference` unset, behavior is unchanged (`previous` still falls back to `None`).
 - [ ] New `FSMExecutor` test: a seed state captures a value once, a looping `convergence` state sets both `previous` (via `${prev.output}`, not a same-state capture — see Tests → rolling-`previous` trap) and `reference` (the seed capture) and runs ≥3 iterations; observed through `event_callback` `evaluate` events, `reference` is identical on every iteration while `previous` advances.
 - [ ] Dispatcher: `EvaluateConfig(type="convergence", reference="", ...)` and `reference=None` behave identically (unset; Expected Behavior §4 truthiness rule) — the empty string does **not** produce an `error` verdict.
+- [ ] Dispatcher: `EvaluateConfig(type="convergence", reference=0.85, ...)` (a non-string literal, as `from_dict` yields for YAML `reference: 0.85`) is used directly without `interpolate()` and gates the same as `reference="0.85"` (Expected Behavior §7).
+- [ ] `harness-optimize.yaml`'s header `description:` mentions the baseline floor, and `HARNESS_OPTIMIZATION_GUIDE.md` states that a reference regression ends the whole-file run / current state segment rather than retrying (Expected Behavior → "What a regression does to the run").
 - [ ] `test_fsm_schema.py::test_schema_json_evaluate_config_properties_match_dataclass_fields` passes (property added to `fsm-loop-schema.json`); the five-test `reference` cluster in `TestEvaluateConfig` (default-none / to_dict-includes / to_dict-omits / from_dict / roundtrip) passes.
 - [ ] `ll-loop validate scripts/little_loops/loops/harness-optimize.yaml` passes with `reference` set in `gate`, and a synthetic loop whose *only* captured-baseline reference is `evaluate.reference` passes MR-2.
 - [ ] `test_harness_optimize.py`: the existing `test_gate_has_convergence_evaluator` additionally asserts `gate.evaluate.reference == "${captured.baseline.output}"`; new tests assert no state other than `baseline_score` has `capture: baseline`, and that both `write_trajectory_accepted` and `write_trajectory_rejected` actions contain `"baseline":${captured.baseline.output}`.
@@ -449,7 +486,7 @@ into their JSON line, not from the evaluator's `details` (unreachable from a lat
 
 - **Priority**: P3 - matches the filed priority; the concrete defect (a candidate within tolerance of `target_score` but below the baseline is committed by `harness-optimize.yaml`) is real but bounded — the loop cannot drift below `target - tolerance`.
 - **Effort**: Medium - ~9 files across three layers (dataclass + JSON-schema mirror, evaluator + dispatcher, MR-2 validation, loop YAML) plus one new dynamic multi-iteration executor test with no existing precedent to mirror.
-- **Risk**: Low - the field is optional and defaults to unset, leaving every existing `convergence` consumer byte-for-byte unchanged; the only behavioral change is in `harness-optimize.yaml`'s `gate`, where a previously-accepted regression now routes to the existing `revert_and_log` edge.
+- **Risk**: Low - the field is optional and defaults to unset, leaving every existing `convergence` consumer byte-for-byte unchanged; the only behavioral change is in `harness-optimize.yaml`'s `gate`, where a previously-accepted regression now routes to the existing `revert_and_log` edge — which, per the loop's existing `write_trajectory_rejected` routing, ends the whole-file run or closes the current state segment (see Expected Behavior → "What a regression does to the run").
 - **Breaking Change**: No
 
 ## Confidence Check Notes
@@ -485,6 +522,22 @@ scoping AC and a note that no `structural_rules.py` consumer is needed; (4) two 
 `target_score` is documented as an early-stop threshold (`harness-optimize.yaml:26`) but
 `route.target → commit_and_log → … → capture_prev → propose` never stops in non-state mode —
 candidate for a separate ENH.
+
+### Second pre-implementation review (2026-09-09, manual)
+
+Re-verified against HEAD: `evaluate_convergence` target short-circuit at `evaluators.py:461`,
+dispatcher branch at 1908, MR-2 hand-built list at `meta_rules.py:588`, capture `rstrip` at
+`executor.py:2682`. Applied the planned `harness-optimize.yaml` edits to a temp copy and ran
+`ll-loop validate`: valid, only the expected MR-14 warning, no MR-11 finding. Three additions
+folded in: (1) Expected Behavior §7 + AC — accept a YAML literal number for `reference` via
+`target`'s `isinstance(str)` split, since `interpolate()` is typed `str`; (2) Expected Behavior
+"What a regression does to the run" + Impact + guide-doc note — a `stall`/`error` in
+`harness-optimize.yaml` is segment-ending (`write_trajectory_rejected` → `done` in whole-file
+mode, → `check_queue` in state mode; asserted by `test_harness_optimize.py:168-177`), not
+skip-and-retry, and the dynamic executor test must use its own self-looping route;
+(3) the loop's header `description:` (lines 3-7) added as a doc site. Observed, out of scope:
+stop-on-first-rejection is odd for a hill-climber — separate ENH candidate alongside the
+`target_score` early-stop note above.
 
 ## Verification Notes
 
