@@ -1,0 +1,11 @@
+{
+  "id": "a49ab435-7706-4f94-bf6f-a057f39edc6e",
+  "type": "decision",
+  "timestamp": "2026-09-10T23:53:47Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Every little-loops repo numbers issues from 1, so same-ID issues across repos are different logical issues (FEAT-3418 discriminator rationale); run_ids are UUIDs unique to one db and idx_issue_events_dedup already dedupes per db, so counts are exactly sum-decomposable without the union view machinery.",
+  "rule": "Workspace activity counts sum per-repo results; no ATTACH union and no bare issue_id cross-repo dedup",
+  "scope": "issue",
+  "issue": "FEAT-3445"
+}
