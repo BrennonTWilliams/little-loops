@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import itertools
 import json
+import logging
 import re
 import sqlite3
 import threading
@@ -487,7 +488,7 @@ class TestCliEventContext:
         assert rows[0]["binary"] == "ll-test-env-var"
 
     def test_cli_event_locked_db_does_not_crash_body(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         """A locked/unavailable DB on enter must not block the wrapped command.
 
@@ -506,12 +507,14 @@ class TestCliEventContext:
 
         db = tmp_path / "session.db"
         ran = False
-        with cli_event_context(db, binary="ll-issues", args=["show", "2701"]):
-            ran = True
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            with cli_event_context(db, binary="ll-issues", args=["show", "2701"]):
+                ran = True
         assert ran, "wrapped command body must run even when the analytics INSERT fails"
+        assert "cli_event_context: enter failed for" in caplog.text
 
     def test_cli_event_locked_exit_update_does_not_mask_success(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         """A lock on the exit UPDATE must not raise out of a successful command."""
         import little_loops.session_store as ss
@@ -537,9 +540,44 @@ class TestCliEventContext:
 
         db = tmp_path / "session.db"
         ran = False
-        with cli_event_context(db, binary="ll-issues", args=["show", "2701"]):
-            ran = True
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            with cli_event_context(db, binary="ll-issues", args=["show", "2701"]):
+                ran = True
         assert ran, "command body must complete even when the exit UPDATE fails"
+        assert "cli_event_context: exit update failed for" in caplog.text
+
+    def test_cli_event_non_sqlite_error_in_enter_is_swallowed(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A non-sqlite3.Error on the analytics enter path must not escape either.
+
+        Malformed ``analytics.capture`` config (a non-dict ``analytics`` or
+        ``capture`` value, or a non-string entry in ``cli_commands``) raises
+        ``AttributeError``/``TypeError`` in the config-gating prefix
+        (writers.py:512-518), which predates the try/except around
+        connect/INSERT. The whole enter-side prefix must be guarded.
+        """
+        db = tmp_path / "session.db"
+
+        ran = False
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            with cli_event_context(db, binary="ll-issues", args=[], config={"analytics": "oops"}):
+                ran = True
+        assert ran, "AttributeError from a non-dict analytics config must not crash the body"
+        assert "cli_event_context: enter failed for" in caplog.text
+
+        caplog.clear()
+        ran = False
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            with cli_event_context(
+                db,
+                binary="ll-issues",
+                args=[],
+                config={"analytics": {"capture": {"cli_commands": [42]}}},
+            ):
+                ran = True
+        assert ran, "TypeError from a non-string cli_commands entry must not crash the body"
+        assert "cli_event_context: enter failed for" in caplog.text
 
     def test_cli_event_context_explicit_path_not_redirected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

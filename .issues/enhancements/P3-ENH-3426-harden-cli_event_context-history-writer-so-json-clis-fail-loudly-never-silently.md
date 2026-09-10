@@ -3,10 +3,11 @@ id: ENH-3426
 type: ENH
 title: Harden cli_event_context history writer so JSON CLIs fail loudly, never silently
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T20:18:42Z'
+completed_at: '2026-09-10T03:10:36Z'
 reconcile_attempted: true
 confidence_score: 85
 verify_verdict: VALID
@@ -61,13 +62,13 @@ Belongs with the in-flight session-store lifecycle work (FEAT-3417, ENH-3420). F
 
 ## Acceptance Criteria
 
-- [ ] Any `Exception` raised by the history writer (`resolve_history_db`, the config-gating prefix, connect, insert, finally-update) is caught via `except Exception` and logged; the wrapped command's stdout and exit code are unaffected. Exceptions raised by the wrapped body still propagate unchanged.
-- [ ] The existing `busy_timeout` (5000ms via `PRAGMA`, applied unconditionally through `connect()` at `schema.py:1405`) is documented as already covering `cli_event_context`'s connection; no new timeout is introduced. The docstring also records that the stderr warning is delivered by Python's `logging.lastResort` handler (no `logging.basicConfig` in the package).
-- [ ] `sys.stdout` (and `sys.stderr`) are flushed, under `contextlib.suppress(Exception)`, at the start of the `finally` block before the exit UPDATE runs, so the body's payload is delivered before any analytics-side wait.
-- [ ] The degraded-path WARNING records use the pinned format strings from Proposed Hardening step 5 (`cli_event_context: enter failed for %r (%s: %s)` / `cli_event_context: exit update failed for %r (%s: %s)`), carry no `exc_info=True`, and Expected Behavior matches what the code emits.
-- [ ] Test (in-process, `caplog`): locked `history.db` → `ll-queue list --json` prints valid JSON, exits 0, and a WARNING record is logged. Lives in `scripts/tests/test_cli_queue.py`, whose autouse fixture already does `monkeypatch.chdir(tmp_path)` so `QUEUE_DB_PATH` (`Path(".ll/queue.db")`, resolved via project-root discovery per ENH-2927) lands in an isolated dir. Shape: monkeypatch `little_loops.session_store.connect` to raise `sqlite3.OperationalError("database is locked")` (the existing pattern at `test_session_store_writers.py:489-511`) — this patches only the **history.db** connect; `queue_store.connect` is a separate function and stays real, which is the point — then `patch("sys.argv", ["ll-queue", "list", "--json"])`, call `main_queue()`, capture with `capsys`, assert `json.loads(out)` succeeds, return value is 0, and `"cli_event_context: enter failed for" in caplog.text` under `caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers")`. Do **not** hold a real second connection with `BEGIN IMMEDIATE`: that costs a full 5 s `busy_timeout` per test unless `_BUSY_TIMEOUT_MS` is also monkeypatched down, and adds nothing the mock does not already prove. Note: `caplog` attaches a root handler, so `logging.lastResort` does not fire under this test — it proves the record was emitted, not that stderr received it (that is the next AC).
-- [ ] Test (subprocess, stderr): one test runs `[sys.executable, "-c", "<patch little_loops.session_store.connect to raise; import sys; sys.argv=['ll-queue','list','--json']; from little_loops.cli.queue import main_queue; raise SystemExit(main_queue())>"]` via `subprocess.run(capture_output=True, text=True, cwd=tmp_path_with_.ll)` and asserts: returncode 0, `json.loads(stdout)` succeeds, and `stderr.strip().splitlines()` is exactly **one** line containing `cli_event_context: enter failed for 'll-queue' (OperationalError: database is locked)`. This is the only test that exercises the real `logging.lastResort` stderr path and the no-traceback promise; it also guards the docstring claim about `lastResort` against a future `NullHandler`/`basicConfig` being added to the package.
-- [ ] Test: a non-`sqlite3.Error` on the analytics path (e.g. `config={"analytics": "oops"}` raising `AttributeError` in the gating prefix, or `connect` raising `OSError`) is swallowed with a warning and the body still runs. Lives in `test_session_store_writers.py::TestCliEventContext` next to the two existing locked-DB tests.
+- [x] Any `Exception` raised by the history writer (`resolve_history_db`, the config-gating prefix, connect, insert, finally-update) is caught via `except Exception` and logged; the wrapped command's stdout and exit code are unaffected. Exceptions raised by the wrapped body still propagate unchanged.
+- [x] The existing `busy_timeout` (5000ms via `PRAGMA`, applied unconditionally through `connect()` at `schema.py:1405`) is documented as already covering `cli_event_context`'s connection; no new timeout is introduced. The docstring also records that the stderr warning is delivered by Python's `logging.lastResort` handler (no `logging.basicConfig` in the package).
+- [x] `sys.stdout` (and `sys.stderr`) are flushed, under `contextlib.suppress(Exception)`, at the start of the `finally` block before the exit UPDATE runs, so the body's payload is delivered before any analytics-side wait.
+- [x] The degraded-path WARNING records use the pinned format strings from Proposed Hardening step 5 (`cli_event_context: enter failed for %r (%s: %s)` / `cli_event_context: exit update failed for %r (%s: %s)`), carry no `exc_info=True`, and Expected Behavior matches what the code emits.
+- [x] Test (in-process, `caplog`): locked `history.db` → `ll-queue list --json` prints valid JSON, exits 0, and a WARNING record is logged. Lives in `scripts/tests/test_cli_queue.py`, whose autouse fixture already does `monkeypatch.chdir(tmp_path)` so `QUEUE_DB_PATH` (`Path(".ll/queue.db")`, resolved via project-root discovery per ENH-2927) lands in an isolated dir. Shape: monkeypatch `little_loops.session_store.connect` to raise `sqlite3.OperationalError("database is locked")` (the existing pattern at `test_session_store_writers.py:489-511`) — this patches only the **history.db** connect; `queue_store.connect` is a separate function and stays real, which is the point — then `patch("sys.argv", ["ll-queue", "list", "--json"])`, call `main_queue()`, capture with `capsys`, assert `json.loads(out)` succeeds, return value is 0, and `"cli_event_context: enter failed for" in caplog.text` under `caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers")`. Do **not** hold a real second connection with `BEGIN IMMEDIATE`: that costs a full 5 s `busy_timeout` per test unless `_BUSY_TIMEOUT_MS` is also monkeypatched down, and adds nothing the mock does not already prove. Note: `caplog` attaches a root handler, so `logging.lastResort` does not fire under this test — it proves the record was emitted, not that stderr received it (that is the next AC).
+- [x] Test (subprocess, stderr): one test runs `[sys.executable, "-c", "<patch little_loops.session_store.connect to raise; import sys; sys.argv=['ll-queue','list','--json']; from little_loops.cli.queue import main_queue; raise SystemExit(main_queue())>"]` via `subprocess.run(capture_output=True, text=True, cwd=tmp_path_with_.ll)` and asserts: returncode 0, `json.loads(stdout)` succeeds, and `stderr.strip().splitlines()` is exactly **one** line containing `cli_event_context: enter failed for 'll-queue' (OperationalError: database is locked)`. This is the only test that exercises the real `logging.lastResort` stderr path and the no-traceback promise; it also guards the docstring claim about `lastResort` against a future `NullHandler`/`basicConfig` being added to the package.
+- [x] Test: a non-`sqlite3.Error` on the analytics path (e.g. `config={"analytics": "oops"}` raising `AttributeError` in the gating prefix, or `connect` raising `OSError`) is swallowed with a warning and the body still runs. Lives in `test_session_store_writers.py::TestCliEventContext` next to the two existing locked-DB tests.
 
 
 ## Current Behavior
@@ -225,6 +226,10 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - **Consistency check on EPIC-2457 precedent (2026-09-10)**: Proposed Hardening step 2 cites "the established EPIC-2457 convention for best-effort writers" as precedent for widening `cli_event_context`'s own internal guard to `except Exception`. Pattern search across the codebase's two disagreeing best-effort conventions confirms EPIC-2457's actual shape is caller-side suppression (writer raises unguarded, caller wraps in `with contextlib.suppress(Exception):` — `record_correction`/`record_skill_event` in `writers.py`, called from `hooks/user_prompt_submit.py:126-129`), not an internal guard widened to `Exception`. No repo-wide site pairs an internal `except` (the shape `cli_event_context` already has) with `except Exception` — the internal-guard family (`cli_event_context`, `skill_event_context`, `hook_event_context`/`record_hook_event`, 60+ sites) is uniformly `except sqlite3.Error`. Does not change the recommendation — `cli_event_context` should stay internally guarded per its own existing shape, just widened, which more closely matches a third convention (outer hook entry-points wrapping their whole body in bare `except Exception`, e.g. `hooks/subagent_stop.py:30-52`) than EPIC-2457's caller-suppress convention. See the fuller version of this finding under Program Design → Codebase Research Findings.
 - **No reusable abstraction exists (2026-09-10)**: confirmed no shared helper exists anywhere in the repo for (a) defensively flushing stdout/stderr before a blocking call — 8 `.flush()` sites found repo-wide, all unguarded, none paired with `contextlib.suppress` — or (b) formatting a one-line `type(exc).__name__: exc` diagnostic for `logger.warning` specifically (the string shape exists at 4 sites, but only in `print()`/f-string/`pytest.fail` contexts, never inside a `logger.warning` call). Both pieces of this hardening are new code, not reuse of an existing utility.
 
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+- Line-number drift only (`/ll:refine-issue`, 2026-09-10): the API.md cross-reference cited above as `API.md:9674` has shifted to `API.md:9684` (unrelated content added by an intervening commit, `8fd880adc`). Content unchanged — still a passing mention inside `### skill_event_context`, still no dedicated `### cli_event_context` subsection. No action needed beyond citing the corrected line.
+
 ## Program Design
 
 ### Types
@@ -312,6 +317,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store/writers.py`: widened `cli_event_context`'s enter-side guard to one `try/except Exception` spanning `resolve_history_db`, the `analytics.capture` config gate, `connect`, and the INSERT; widened the exit-side `finally` UPDATE guard to `except Exception`; added best-effort `sys.stdout`/`sys.stderr` flushes at the top of `finally`, before the UPDATE; switched both warnings to the pinned one-line format (`enter failed for %r (%s: %s)` / `exit update failed for %r (%s: %s)`), dropping `exc_info=True`; updated the docstring for the widened contract, the existing `busy_timeout`, and the `logging.lastResort` stderr delivery path.
+- `scripts/tests/test_session_store_writers.py`: extended the two existing `TestCliEventContext` locked-DB tests to assert the new pinned `caplog` substrings; added `test_cli_event_non_sqlite_error_in_enter_is_swallowed` covering `AttributeError` (non-dict `analytics` config) and `TypeError` (non-string `cli_commands` entry).
+- `scripts/tests/test_cli_queue.py`: added `TestCliEventContextHardening` with an in-process `caplog` test (locked history.db → `ll-queue list --json` still returns valid JSON/exit 0/warning logged) and a subprocess test asserting the real `logging.lastResort` stderr delivery is exactly one line with no traceback.
+- `docs/reference/API.md`: added a `### cli_event_context` subsection (inserted immediately before `### skill_event_context`) documenting the best-effort contract.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 23,805 passed, 43 skipped, 6 pre-existing failures confirmed unrelated via stash-and-rerun: `test_host_runner.py`, `test_issue_parser.py` (x3), `test_verify_evidence.py`, `test_prose_dep_sweep_gate.py` — all fail identically with this issue's changes stashed out, driven by other in-flight `.issues/` content, not `cli_event_context`)
+- Lint: PASS (`ruff check` on all touched files)
+- Format: PASS (`ruff format` applied, scoped to touched files)
+- Types: PASS (`mypy` on `writers.py`)
+- Integration: PASS (implementation matches the issue's own Program Design Call Path verbatim; no deviations)
 
 ## Status
 
@@ -409,6 +433,8 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 - `cli_event_context`'s insert and exit-UPDATE paths are already partially guarded by the prior fix BUG-2706 (`sqlite3.Error` only); this issue extends existing partial coverage (widen to `Exception`, guard `resolve_history_db`/config-gating prefix) rather than building on a clean slate — re-verify the extension doesn't disturb BUG-2706's existing guard behavior (its two `TestCliEventContext` locked-DB tests must stay green).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T03:10:19 - `2c12d64c-59a0-4f2f-b6fc-e0795ee3aefa.jsonl`
+- `/ll:refine-issue` - 2026-09-10T02:27:41 - `7404ab20-8130-4df4-a992-c730bf1293b4.jsonl`
 - `/ll:confidence-check` - 2026-09-10T02:20:11 - `af4992d2-ba11-4986-b738-91e4bac9c385.jsonl`
 - `/ll:refine-issue` - 2026-09-10T01:54:48 - `13270282-d9ad-49f5-8239-cf39c3df395e.jsonl`
 - `/ll:verify-issues` - 2026-09-10T01:47:41 - `e5f879ce-163c-470b-875a-3db482daf36b.jsonl`

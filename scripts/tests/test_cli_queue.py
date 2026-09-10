@@ -7,6 +7,9 @@ FSM PID-liveness queue subsystem (little_loops.cli.loop.queue).
 from __future__ import annotations
 
 import json
+import logging
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -328,6 +331,73 @@ class TestCmdList:
         assert "summary" not in data[0]
         assert data[0]["attempt"] == 0
         assert data[0]["nextAttemptAt"] is None
+
+
+class TestCliEventContextHardening:
+    """ENH-3426: history-writer failures must never take down a JSON CLI."""
+
+    def test_locked_history_db_still_emits_json_with_warning(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A locked history.db must not block ll-queue list --json's payload.
+
+        This patches only little_loops.session_store.connect (history.db) —
+        queue_store.connect is a separate function and stays real, so this
+        proves the analytics side-channel cannot swallow the queue payload.
+        """
+        import sqlite3
+
+        import little_loops.session_store as ss
+
+        def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(ss, "connect", _locked_connect)
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            with patch("sys.argv", ["ll-queue", "list", "--json"]):
+                result = main_queue()
+        assert result == 0
+        assert json.loads(capsys.readouterr().out) == []
+        assert "cli_event_context: enter failed for" in caplog.text
+
+    def test_locked_history_db_stderr_is_one_line_no_traceback(self, tmp_path: Path) -> None:
+        """Real subprocess check of the logging.lastResort stderr delivery path.
+
+        Only this test exercises the actual stderr handler (no traceback) —
+        the in-process caplog test above proves the record was emitted, not
+        that stderr received exactly one clean line.
+        """
+        (tmp_path / ".ll").mkdir()
+        script = (
+            "import sqlite3\n"
+            "import little_loops.session_store as ss\n"
+            "def _locked_connect(*a, **k):\n"
+            "    raise sqlite3.OperationalError('database is locked')\n"
+            "ss.connect = _locked_connect\n"
+            "import sys\n"
+            "sys.argv = ['ll-queue', 'list', '--json']\n"
+            "from little_loops.cli.queue import main_queue\n"
+            "raise SystemExit(main_queue())\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert proc.returncode == 0
+        assert json.loads(proc.stdout) == []
+        lines = proc.stderr.strip().splitlines()
+        assert len(lines) == 1
+        assert (
+            "cli_event_context: enter failed for 'll-queue' (OperationalError: database is locked)"
+            in lines[0]
+        )
 
 
 class TestCmdStatus:

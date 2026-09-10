@@ -9679,6 +9679,20 @@ Sweeps `raw_events` rows older than `analytics.retention.raw_event_max_age_days`
 
 `prune()` now deletes only `raw_events` rows already marked `compacted=1` past the cutoff (previously it deleted directly from `tool_events`/`cli_events`/`file_events`/`message_events` and never touched `search_index`, leaving stale FTS rows behind a since-deleted event — the "FTS5 leak"). Because `rebuild()` always wipes+re-populates `search_index` from current cache-table state, running `rebuild()` after a `prune()` brings FTS row counts back in sync.
 
+### cli_event_context
+
+```python
+@contextmanager
+def cli_event_context(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    binary: str = "",
+    args: list[str] | None = None,
+    config: dict | None = None,
+) -> Generator[None, None, None]
+```
+
+Inserts a `cli_events` row on enter; updates `exit_code` and `duration_ms` on exit. Every `ll-*` CLI entry point wraps its body in this context manager. Best-effort per the EPIC-1707 graceful-degradation contract (ENH-3426): no exception on the analytics path — `resolve_history_db`, the `analytics.capture` config gate, `connect`, the enter INSERT, or the exit UPDATE — may reach the wrapped command; every one of those steps is guarded with `except Exception`. Only errors raised by the wrapped body itself propagate. The connection carries the same 5000ms `PRAGMA busy_timeout` (`schema.py:1405`) applied unconditionally by `connect()`; no separate timeout is configured here. `sys.stdout`/`sys.stderr` are flushed (best-effort) at the top of the `finally` block, before the exit UPDATE runs, so the wrapped body's payload reaches its consumer even if that consumer kills the process while the UPDATE is waiting on the busy timeout. Degraded-path warnings are a single line with no traceback (`cli_event_context: enter failed for %r (%s: %s)` / `exit update failed for ...`), delivered to stderr via Python's `logging.lastResort` handler — the package configures no `logging.basicConfig`/handler of its own.
+
 ### skill_event_context
 
 ```python

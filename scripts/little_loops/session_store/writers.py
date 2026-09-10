@@ -18,11 +18,12 @@ import logging
 import re
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import zlib
 from collections.abc import Callable, Generator, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -489,12 +490,23 @@ def cli_event_context(
     """Insert a ``cli_events`` row on enter; update exit_code and duration_ms on exit.
 
     Best-effort per the EPIC-1707 graceful-degradation contract (matching
-    :func:`skill_event_context`): a missing, locked, or otherwise unavailable
-    database must never block the wrapped command. If the enter ``INSERT`` fails
-    (e.g. ``OperationalError: database is locked`` under multi-writer contention),
-    the analytics row is skipped and the command body still runs; a failure of the
-    exit ``UPDATE`` never masks a successful command either. Only errors raised by
-    the wrapped body propagate.
+    :func:`skill_event_context`): no exception on the analytics path —
+    ``resolve_history_db``, the ``analytics.capture`` config gate, ``connect``,
+    the enter INSERT, or the exit UPDATE — may reach the wrapped command; every
+    one of those steps is guarded with ``except Exception``. Only errors raised
+    by the wrapped body itself propagate (``except BaseException: exit_code =
+    1; raise``).
+
+    The connection already carries a 5000ms ``PRAGMA busy_timeout`` applied
+    unconditionally by ``connect()`` (``schema.py:1405``); no separate timeout
+    is configured here. ``sys.stdout``/``sys.stderr`` are flushed (best-effort)
+    at the top of the ``finally`` block, before the exit UPDATE runs, so the
+    wrapped body's payload reaches its consumer even if that consumer kills
+    the process while the UPDATE is waiting on the busy timeout. Degraded-path
+    warnings are one line with no traceback, delivered to stderr via Python's
+    ``logging.lastResort`` handler — this package configures no
+    ``logging.basicConfig``/handler of its own, so adding one later could
+    change or swallow this delivery path.
 
     Gated by ``analytics.capture.cli_commands`` (ENH-2932): when ``config`` is
     provided, ``binary`` must match one of the configured glob patterns or the
@@ -503,21 +515,23 @@ def cli_event_context(
     """
     if args is None:
         args = []
-    effective_path = resolve_history_db(db_path)
     conn: sqlite3.Connection | None = None
     row_id: int | None = None
     start = time.time()
     ts = _now()
     gate_open = True
-    if config is not None:
-        from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
+    try:
+        effective_path = resolve_history_db(db_path)
+        if config is not None:
+            from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
 
-        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
-        gate_open = feature_enabled_for(
-            {"cli_commands": capture.cli_commands}, "cli_commands", binary
-        )
-    if gate_open:
-        try:
+            capture = AnalyticsCaptureConfig.from_dict(
+                config.get("analytics", {}).get("capture", {})
+            )
+            gate_open = feature_enabled_for(
+                {"cli_commands": capture.cli_commands}, "cli_commands", binary
+            )
+        if gate_open:
             conn = _pkg.connect(effective_path)
             cursor = conn.execute(
                 "INSERT INTO cli_events(ts, binary, args) VALUES(?, ?, ?)",
@@ -525,15 +539,17 @@ def cli_event_context(
             )
             row_id = cursor.lastrowid
             conn.commit()
-        except sqlite3.Error:
-            logger.warning("cli_event_context: insert failed for %r", binary, exc_info=True)
-            if conn is not None:
-                try:
-                    conn.close()
-                except sqlite3.Error:
-                    pass
-            conn = None
-            row_id = None
+    except Exception as exc:
+        logger.warning(
+            "cli_event_context: enter failed for %r (%s: %s)", binary, type(exc).__name__, exc
+        )
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        conn = None
+        row_id = None
     exit_code = 0
     try:
         yield
@@ -541,6 +557,10 @@ def cli_event_context(
         exit_code = 1
         raise
     finally:
+        with suppress(Exception):
+            sys.stdout.flush()
+        with suppress(Exception):
+            sys.stderr.flush()
         if conn is not None and row_id is not None:
             duration_ms = int((time.time() - start) * 1000)
             try:
@@ -549,9 +569,12 @@ def cli_event_context(
                     (exit_code, duration_ms, row_id),
                 )
                 conn.commit()
-            except sqlite3.Error:
+            except Exception as exc:
                 logger.warning(
-                    "cli_event_context: exit update failed for %r", binary, exc_info=True
+                    "cli_event_context: exit update failed for %r (%s: %s)",
+                    binary,
+                    type(exc).__name__,
+                    exc,
                 )
             finally:
                 try:
@@ -2240,9 +2263,7 @@ def write_credential_scope(
         )
         conn.commit()
     except sqlite3.Error:
-        logger.warning(
-            "write_credential_scope: insert failed for run_id=%r", run_id, exc_info=True
-        )
+        logger.warning("write_credential_scope: insert failed for run_id=%r", run_id, exc_info=True)
         return False
     finally:
         if conn is not None:
