@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.162.0] - 2026-09-10
+
+### Added
+
+- **FEAT-3398**: Quality-regression detection with model/host/version attribution
+- **FEAT-3399**: Cross-repo history.db aggregation (read-only workspace rollup)
+- **FEAT-3404**: Add `ll_version` history.db stamp and typed reader path (orchestration_runs/loop_runs)
+- **FEAT-3405**: Quality-regression detection, attribution, and report/CLI wiring
+- **FEAT-3409**: Workspace membership discovery for cross-repo history.db aggregation
+- **FEAT-3410**: ATTACH-based cross-repo history.db aggregation and `--workspace` CLI flag
+- **FEAT-3417**: Runtime-adapter seam for host log ingestion, with Codex as the second implementation
+- **FEAT-3418**: ATTACH-based union totals for cross-repo history.db aggregation with `issue_id` discriminator
+- feat(context-override): extract shared type-coercion logic for `--context` CLI parsing (599e6a7)
+- feat(events): enable socket events transport (90c1e13)
+
+### Fixed
+
+- **BUG-3400**: Credential scoping: unguarded gh probe, scopes `[]` bypasses validation, queue path not gh-isolated or audited
+- **BUG-3401**: Unmocked `cmd_resume` tests bind live sockets in the real `.ll/` and fail after the third bind per process
+- **BUG-3402**: `gh auth` token bypasses `GH_CONFIG_DIR` isolation via macOS Keychain
+- **BUG-3411**: `ll-issues clusters` tree layout: arrow direction relative to hub, not semantic source
+- **BUG-3412**: `check-unresolved-decisions` merges sibling decision points sharing a tier into one group
+- **BUG-3413**: `unapplied_decision` false-positives on multi-decision-point issues
+- **BUG-3424**: Issue files accumulate duplicate Session Log headings
+- **BUG-3425**: Standalone `ll-loop run`/`resume` never seed parameter defaults into context
+- **BUG-3432**: `ll-queue list` crashes with traceback and empty stdout on sqlite `OperationalError`; `ll-mcp queue_list` surfaces the raw sqlite message
+- fix(code-quality): remove quoted type annotation and sort imports (b691a06)
+- fix(tests): update priority-regex allowlist line numbers and skip node_modules in env scan (4ead0c3)
+
+### Changed
+
+- **ENH-3204**: Record the credential scope a run was granted for after-the-fact audit
+- **ENH-3205**: Scope gh operations via `GH_TOKEN` and per-task `GH_CONFIG_DIR` isolation
+- **ENH-3233**: Deny-by-default env projection core — chokepoint, capability registry, and baseline
+- **ENH-3234**: ActionSpec credential scope declaration and `runner_spec.py` wiring
+- **ENH-3235**: FSM StateConfig credential scope declaration and `fsm/runners.py` wiring
+- **ENH-3395**: Deny-by-default env projection chokepoint and baseline
+- **ENH-3396**: Credential-scope registry: `resolve_scopes()` and fail-loud validation
+- **ENH-3397**: Distinguish repetition, infrastructure retry, and continuation in `ll-harness`
+- **ENH-3403**: `ActionSpec.scopes` silently ignored by skill/prompt/mcp runners
+- **ENH-3406**: `harness_events` run-model columns + `harness_admissions` table (schema)
+- **ENH-3407**: `record_attempt`/`admit_retry`/`authoritative_attempt` writers + `--retry-of` CLI gate
+- **ENH-3408**: Count authoritative repetitions in harness pass-rate reporting + admissions tabulation
+- **ENH-3415**: Require n-run redundancy before an `ll-harness` verdict on a stochastic subject counts
+- **ENH-3416**: Add attempt budget, backoff, and dead-lettering to `ll-queue`
+- **ENH-3419**: Adopt the session-discovery seam in `ll-logs`, `ll-messages`, and `ll-ctx-stats` (Codex observability)
+- **ENH-3420**: Register every HostLayout host in the session-discovery seam (unify, phase 1)
+- **ENH-3421**: Frozen external reference/baseline guard for evaluation harnesses
+- **ENH-3422**: Make `_backfill_raw_events` consume `iter_events` and shrink HostLayout to path metadata
+- **ENH-3423**: `verify-issues` notes read as unresolved after same-pass fixes
+- **ENH-3426**: Harden `cli_event_context` history writer so JSON CLIs fail loudly, never silently
+- **ENH-3427**: Host-resolution seam — `--host` flag, both-spellings probe, and session_start host injection
+- **ENH-3428**: Rewire `ll-messages` onto the session-discovery seam (Codex user-turn support)
+- **ENH-3429**: Rewire `ll-ctx-stats` onto the session-discovery seam (Codex cache-rate reader)
+- **ENH-3430**: Rewire `ll-logs` onto the session-discovery seam; retire `_has_ll_activity`/`_extract_cwd_from_project`
+- **ENH-3431**: `ll-issues clusters`: render in work-order direction with wave grouping
+- **ENH-3433**: Detect ll activity in Codex-shaped session records so `ll-logs` sees Codex sessions
+
+### Maintenance
+
+- ci: put venv and a claude host stub on PATH for the unit-tests job (39a5516)
+
+[1.162.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.161.0...v1.162.0
+
 ## [1.161.0] - 2026-09-06
 
 ### Added
