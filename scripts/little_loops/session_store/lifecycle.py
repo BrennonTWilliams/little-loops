@@ -721,10 +721,13 @@ def _backfill_sessions(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cu
     the first hit (the cursor path has no file boundary), instead skipping
     further parse attempts for a source once its session_id is known.
 
-    codex/kimi-code payloads carry no ``sessionId`` field of their own (ENH-3422
-    D3 — their id lives only in ``raw_events.session_id``, filled at ingest via
-    ``handle.session_id``), so the cursor path also falls back to that column
-    directly for any source the record-content pass above found nothing for.
+    Raw codex payloads (every subtype except the exec calls
+    :class:`~little_loops.session_store.codex.CodexNormalizer` normalizes,
+    ENH-3433) and kimi-code payloads carry no ``sessionId`` field of their
+    own (ENH-3422 D3 — their id lives only in ``raw_events.session_id``,
+    filled at ingest via ``handle.session_id``), so the cursor path also
+    falls back to that column directly for any source the record-content
+    pass above found nothing for.
     """
     count = 0
     seen: set[str] = set()

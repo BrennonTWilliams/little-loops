@@ -3,10 +3,11 @@ id: ENH-3433
 type: ENH
 title: Detect ll activity in Codex-shaped session records so ll-logs sees Codex sessions
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T05:10:54Z'
+completed_at: '2026-09-10T16:32:27Z'
 reconcile_attempted: true
 labels:
 - multi-host
@@ -214,9 +215,30 @@ Verdict at time of check: **EVIDENCE_UNVERIFIED** (`ll-verify-evidence --json`, 
 - The "Current Behavior" quote `const r = await tools.exec_command({ cmd: "<shell command>", workdir: ... })`, attributed to `scripts/tests/fixtures/codex/rollout-interactive.jsonl`, did not appear verbatim in that fixture — the issue's quote was a paraphrase (placeholders `<shell command>` / `workdir: ...` substituted for the literal values), not a fabricated claim about the shape. Per the advisory policy (F3, decided 2026-08-21) this was the known low-precision *paraphrase* class and was not routed to `reconcile_issue` automatically; it was fixed in a subsequent refine pass regardless.
 - Everything else checked at that time was accurate and current; see git history of this file for the full prior note if needed.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-10
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store/codex.py` (new): `CodexNormalizer` + `_extract_exec_cmd` + `_command_text` — maps Codex `custom_tool_call`/`custom_tool_call_output` exec pairs to Claude-shaped `assistant`/`user` records, with `is_error` sourced from the paired `event_msg`/`item_completed`/`CommandExecution` item (never from output text), sticky per `call_id` across multi-exec snippets.
+- `scripts/little_loops/session_store/sessions.py`: `parse_codex_rollout` now instantiates one `CodexNormalizer` per file (seeded from line 1's `session_meta` id/cwd) and applies it per line; docstring rewritten to the new pass-through contract.
+- `scripts/little_loops/session_store/__init__.py`: exports `CodexNormalizer`.
+- `scripts/little_loops/session_store/lifecycle.py`: `_backfill_sessions` docstring narrowed ("raw codex payloads" instead of blanket "codex payloads").
+- `docs/codex/usage.md`, `docs/reference/HOST_COMPATIBILITY.md` (`[^codexsessions]` footnote), `docs/reference/CLI.md` (`--host codex` row), `docs/reference/API.md` (per-host payload rule) — pass-through contract and `ll-logs` support documented.
+- `scripts/tests/fixtures/codex/README.md` — documents the `CommandExecution` fields and the line 14/15 failed-exec sample.
+- Tests: new `scripts/tests/test_enh_3433_codex_normalizer.py` (22 cases — fixture ground truth + edge cases); `test_session_discovery.py` flips the two exec-subtype pass-through assertions and adds `test_codex_iter_events_matches_codex_normalizer`; `test_session_store_lifecycle.py` widens the `event_type` allow-set and adds a `rebuild()` → `tool_events` derivation test; `test_ll_logs.py` adds `TestCodexExecLlSignalDetection` (sequences/discover/eval-export/scan-failures against a synthetic Codex-only workspace).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 23,100 passed, 12 skipped; the 4 pre-existing failures — `test_host_runner.py`, `test_issue_parser.py` allowlist drift, `test_verify_evidence.py` — reproduce identically on `main` without this change, confirmed via `git stash`)
+- Lint: PASS (`ruff check` on all changed files)
+- Format: PASS (`ruff format --check` on all changed files)
+- Types: PASS (`mypy` on all changed `session_store` modules)
+
 ## Status
 
-**Open** | Created: 2026-09-10 | Priority: P3
+**Done** | Created: 2026-09-10 | Priority: P3
 
 ## Confidence Check Notes
 
@@ -233,6 +255,8 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 - Ambiguity (**resolved 2026-09-10 review #2**): the `is_error` rule was unresolved pending a failed-exec capture; the committed interactive fixture already holds one (line 14, `exit_code: 1`), and the rule now reads `item_completed`/`CommandExecution` rather than output text. Residual ambiguity is the n=3 ordering assumption behind the `call_id` ↔ `CommandExecution` pairing, mitigated by the cmd-equality cross-check and the "unpaired output carries no `is_error`" fallback.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T16:31:58 - `efb43142-becd-41eb-8dea-6eb82f5733c5.jsonl`
+- `/ll:ready-issue` - 2026-09-10T16:09:57 - `92737788-0f03-464c-9f45-b7f7fc849877.jsonl`
 - `/ll:confidence-check` - 2026-09-10T16:07:19 - `3d8ed72a-4faa-4d6d-92a9-d8317c808de3.jsonl`
 - `review (manual: pre-implementation review #3 — second breaking test found (test_session_store_lifecycle.py:179 event_type allow-set); sessions-row AC reframed (already derived via raw_events.session_id fallback, only tool_events is new); ENH-3422 status refreshed to done/unreleased, its issue text dropped from the edit list in favour of live CLI.md + lifecycle.py:724 docstring; is_error made sticky per call_id for multi-exec snippets; cmd-extraction failure now still emits the assistant record with the raw snippet; missing call_id tolerated; cwd stamp noted as reader-less parity)` - 2026-09-10
 - `/ll:confidence-check` - 2026-09-10T15:54:48 - `21c5962e-dd8c-4b48-a500-198a5333f5bd.jsonl`

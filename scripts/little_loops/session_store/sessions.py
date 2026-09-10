@@ -739,10 +739,24 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
     Every top-level ``type`` and every subtype nested under
     ``response_item.payload.type``/``event_msg.payload.type`` is passed
     through untouched in ``payload`` — including ones not documented at
-    promotion time (``world_state`` at the top level; ``custom_tool_call``,
-    ``custom_tool_call_output``, ``reasoning``, ``item_completed`` as
-    subtypes; confirmed on codex-cli 0.152.1). This parser never enumerates
-    the subtype vocabulary, so a vendor addition needs no code change here.
+    promotion time (``world_state`` at the top level; ``reasoning``,
+    ``item_completed`` as subtypes; confirmed on codex-cli 0.152.1) —
+    **except** ``response_item``/``custom_tool_call`` (``name == "exec"``)
+    and its paired ``custom_tool_call_output``, which
+    :class:`~little_loops.session_store.codex.CodexNormalizer` replaces with
+    Claude-shaped ``assistant``/``user`` records so the ll-signal readers in
+    ``cli/logs.py`` can see Codex shell activity (ENH-3433). This parser
+    still never enumerates the rest of the subtype vocabulary, so a vendor
+    addition to any other type needs no code change here.
+
+    Stateful across the file: line 1's ``session_meta`` payload seeds the
+    normalizer's ``session_id``/``cwd`` (read once, before any tool call),
+    and the normalizer itself carries ``call_id`` pairing state between the
+    ``custom_tool_call``/``item_completed``/``custom_tool_call_output``
+    triple for each exec. **Rows ingested into ``raw_events`` before this
+    normalizer existed still yield a ``sessions`` row on ``rebuild()`` (via
+    the ``raw_events.session_id`` fallback) but no ``tool_events`` rows** —
+    re-deriving those requires deleting and re-ingesting the source rows.
 
     ``base_instructions.text`` is inlined into line 1's ``session_meta``
     payload (~18KB uncompressed in the committed fixtures) — Python's
@@ -750,11 +764,14 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
     hazard for this parser itself, only for a downstream consumer with a
     fixed read buffer.
     """
+    from little_loops.session_store.codex import CodexNormalizer
+
     try:
         handle = path.open(encoding="utf-8")
     except OSError:
         return
     with handle:
+        normalizer: CodexNormalizer | None = None
         for line_no, raw_line in enumerate(handle, start=1):
             raw_line = raw_line.strip()
             if not raw_line:
@@ -764,6 +781,23 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
             except json.JSONDecodeError:
                 continue
             if not isinstance(record, dict):
+                continue
+            if normalizer is None:
+                payload = record.get("payload")
+                header = payload if isinstance(payload, dict) else {}
+                normalizer = CodexNormalizer(
+                    session_id=str(header.get("id", "")),
+                    cwd=str(header.get("cwd", "")),
+                )
+            normalized = normalizer(record)
+            if normalized is not None:
+                yield SessionEvent(
+                    type=normalized.get("type", ""),
+                    timestamp=normalized.get("timestamp", ""),
+                    host="codex",
+                    payload=normalized,
+                    line_no=line_no,
+                )
                 continue
             payload = record.get("payload")
             yield SessionEvent(

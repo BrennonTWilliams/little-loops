@@ -6839,3 +6839,194 @@ class TestMultiHostDiscovery:
         assert all(host is not None for _cwd, host in calls), (
             f"detect_sessions called with host=None: {calls}"
         )
+
+
+class TestCodexExecLlSignalDetection:
+    """ENH-3433 AC: ll-signal readers see Codex exec calls once normalized.
+
+    Builds a synthetic Codex rollout (date-dir scan fallback layout, no
+    state_*.sqlite — matching what a test-built home has) containing two
+    ll-* exec calls so ll-logs sequences/discover/eval-export/scan-failures
+    all pick up the Codex-only activity.
+    """
+
+    @staticmethod
+    def _exec_triple(call_id: str, cmd: str, ts_prefix: str, *, failed: bool = False) -> list[dict]:
+        exit_code = 1 if failed else 0
+        status = "failed" if failed else "completed"
+        return [
+            {
+                "timestamp": f"{ts_prefix}00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call",
+                    "call_id": call_id,
+                    "name": "exec",
+                    "input": (
+                        "const r = await tools.exec_command({\n"
+                        f'  cmd: "{cmd}",\n'
+                        '  workdir: "/workspace/project",\n'
+                        "});\ntext(r.output);\n"
+                    ),
+                },
+            },
+            {
+                "timestamp": f"{ts_prefix}01Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "item_completed",
+                    "item": {
+                        "type": "CommandExecution",
+                        "id": f"exec-{call_id}",
+                        "command": ["/bin/zsh", "-lc", cmd],
+                        "status": status,
+                        "exit_code": exit_code,
+                    },
+                },
+            },
+            {
+                "timestamp": f"{ts_prefix}02Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call_output",
+                    "call_id": call_id,
+                    "output": [
+                        {
+                            "type": "input_text",
+                            "text": "Script completed\nWall time 0.1 seconds\nOutput:\n",
+                        },
+                        {"type": "input_text", "text": "some output"},
+                    ],
+                },
+            },
+        ]
+
+    def _write_rollout(
+        self, home: Path, session_id: str, cwd: Path, *, failed: bool = False
+    ) -> Path:
+        day_dir = home / ".codex" / "sessions" / "2026" / "01" / "01"
+        day_dir.mkdir(parents=True, exist_ok=True)
+        rollout = day_dir / f"rollout-{session_id}.jsonl"
+        lines = [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "type": "session_meta",
+                "payload": {"id": session_id, "cwd": str(cwd), "cli_version": "0.152.1"},
+            },
+            *self._exec_triple("call_1", "ll-issues list", "2026-01-01T00:00:1", failed=failed),
+            *self._exec_triple("call_2", "ll-loop status", "2026-01-01T00:00:2"),
+        ]
+        with open(rollout, "w") as f:
+            for line in lines:
+                f.write(json.dumps(line) + "\n")
+        return rollout
+
+    def test_sequences_lists_ll_issues_invocation(self, tmp_path: Path, capsys) -> None:
+        home = tmp_path / "home"
+        cwd = home / "proj"
+        cwd.mkdir(parents=True)
+        self._write_rollout(home, "codex-sess", cwd)
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch(
+                "sys.argv",
+                ["ll-logs", "sequences", "--project", str(cwd), "--host", "codex", "--json"],
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out, "expected at least one chain"
+        assert any("ll-issues" in chain for r in out for chain in r["chain"])
+
+    def test_discover_finds_codex_only_workspace_via_date_dir_scan(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        home = tmp_path / "home"
+        cwd = home / "proj"
+        cwd.mkdir(parents=True)
+        self._write_rollout(home, "codex-sess", cwd)
+        # No state_*.sqlite anywhere under home/.codex — forces the
+        # date-dir scan fallback path.
+        assert not list((home / ".codex").glob("state_*.sqlite"))
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch("sys.argv", ["ll-logs", "discover", "--host", "codex"]),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        out_lines = [line for line in capsys.readouterr().out.splitlines() if line]
+        assert str(cwd.resolve()) in out_lines
+
+    def test_eval_export_emits_cmd_fixture_with_session_id_and_failed_outcome(
+        self, tmp_path: Path
+    ) -> None:
+        import yaml
+
+        home = tmp_path / "home"
+        cwd = home / "proj"
+        cwd.mkdir(parents=True)
+        self._write_rollout(home, "codex-sess", cwd, failed=True)
+        out_file = tmp_path / "evals.yaml"
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch(
+                "little_loops.history_reader.lookup_session_metadata",
+                return_value={},
+            ),
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "eval-export",
+                    "--project",
+                    str(cwd),
+                    "--host",
+                    "codex",
+                    "--out",
+                    str(out_file),
+                ],
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        fixtures = yaml.safe_load(out_file.read_text())
+        cmd_fixtures = [fx for fx in fixtures if fx["runner"] == "cmd"]
+        assert cmd_fixtures
+        assert all(fx["session_id"] == "codex-sess" for fx in cmd_fixtures)
+        assert all(fx["outcome"] == "failed" for fx in cmd_fixtures)
+
+    def test_scan_failures_clusters_on_ll_issues(self, tmp_path: Path, capsys) -> None:
+        home = tmp_path / "home"
+        cwd = home / "proj"
+        cwd.mkdir(parents=True)
+        self._write_rollout(home, "codex-sess", cwd, failed=True)
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "scan-failures",
+                    "--project",
+                    str(cwd),
+                    "--host",
+                    "codex",
+                    "--json",
+                ],
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        out = json.loads(capsys.readouterr().out)
+        assert any(c["tool"] == "ll-issues" for c in out)
+        cluster = next(c for c in out if c["tool"] == "ll-issues")
+        assert "codex-sess" in cluster["session_ids"]

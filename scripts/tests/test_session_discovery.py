@@ -501,15 +501,29 @@ class TestParseCodexRolloutFixtures:
         assert len(world_state_events) == 1
         assert set(world_state_events[0].payload.keys()) >= {"full", "state"}
 
-        # 0.152.1 response_item/event_msg subtypes pass through untouched too.
+        # 0.152.1 response_item/event_msg subtypes pass through untouched,
+        # except custom_tool_call/custom_tool_call_output (ENH-3433): those
+        # two are replaced by Claude-shaped assistant/user records so the
+        # ll-signal readers in cli/logs.py can see them.
         subtypes = {
             e.payload.get("type") for e in events if e.type in ("response_item", "event_msg")
         }
-        assert "custom_tool_call" in subtypes
-        assert "custom_tool_call_output" in subtypes
+        assert "custom_tool_call" not in subtypes
+        assert "custom_tool_call_output" not in subtypes
         assert "reasoning" in subtypes
         assert "item_completed" in subtypes
         assert "token_count" in subtypes
+
+        # The three exec calls now surface as assistant/user pairs, linked
+        # by call_id (the pairing custom_tool_call/custom_tool_call_output
+        # never shared before this issue).
+        assistant_events = [e for e in events if e.type == "assistant"]
+        user_events = [e for e in events if e.type == "user"]
+        assert len(assistant_events) == 3
+        assert len(user_events) == 3
+        call_ids = {e.payload["message"]["content"][0]["id"] for e in assistant_events}
+        result_ids = {e.payload["message"]["content"][0]["tool_use_id"] for e in user_events}
+        assert call_ids == result_ids
 
     def test_parses_exec_fixture_header(self, fixtures_dir):
         path = fixtures_dir / "codex" / "rollout-exec.jsonl"
@@ -782,6 +796,44 @@ class TestDetectSessionsLayoutNormalizedHosts:
         ]
         assert [e.payload for e in events] == expected
         assert all(e.host == "qwen" for e in events)
+
+    def test_codex_iter_events_matches_codex_normalizer(self, tmp_path, fixtures_dir):
+        home = tmp_path
+        cwd = Path("/workspace/project")
+        day_dir = home / ".codex" / "sessions" / "2026" / "09" / "09"
+        day_dir.mkdir(parents=True)
+        fixture = fixtures_dir / "codex" / "rollout-interactive.jsonl"
+        rollout = day_dir / "rollout-interactive.jsonl"
+        rollout.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+
+        handles = ss.detect_sessions(cwd, "codex", home=home)
+        assert len(handles) == 1
+
+        events = list(ss.iter_events(handles[0]))
+
+        from little_loops.session_store.codex import CodexNormalizer
+
+        lines = [
+            json.loads(line)
+            for line in fixture.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        header_payload = lines[0].get("payload", {})
+        normalizer = CodexNormalizer(
+            session_id=str(header_payload.get("id", "")),
+            cwd=str(header_payload.get("cwd", "")),
+        )
+        expected = []
+        for record in lines:
+            normalized = normalizer(record)
+            if normalized is not None:
+                expected.append(normalized)
+            else:
+                payload = record.get("payload")
+                expected.append(payload if isinstance(payload, dict) else {})
+
+        assert [e.payload for e in events] == expected
+        assert all(e.host == "codex" for e in events)
 
     def test_gemini_iter_events_matches_normalizer_and_session_id_from_header(
         self, tmp_path, fixtures_dir

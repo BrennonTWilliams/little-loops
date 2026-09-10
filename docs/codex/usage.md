@@ -100,10 +100,26 @@ falling back to a scan of `sessions/` and `archived_sessions/` when the DB is
 absent, unusable, or lacks the expected columns. `iter_events(handle)`
 dispatches to `parse_codex_rollout`, which yields every record's host-native
 `payload` untouched — including record types not yet documented (Codex has
-added `world_state` at the top level and `custom_tool_call`/
-`custom_tool_call_output`/`reasoning`/`item_completed` subtypes since the
-0.98.0/0.130.0 corpus this was first verified against; the parser passes all
-of them through rather than enumerating a fixed vocabulary).
+added `world_state` at the top level and `reasoning`/`item_completed`
+subtypes since the 0.98.0/0.130.0 corpus this was first verified against;
+the parser passes all of them through rather than enumerating a fixed
+vocabulary) — **except** `response_item`/`custom_tool_call` (`name ==
+"exec"`) and its paired `custom_tool_call_output`, which
+`CodexNormalizer` (ENH-3433) replaces with Claude-shaped `assistant`/`user`
+records so `ll-logs` can see Codex shell activity: the model-authored JS
+snippet's `cmd:` value becomes a `Bash` tool_use, and the output becomes a
+`tool_result` whose `is_error` is `True` only when the paired
+`event_msg`/`item_completed` item (`item.type == "CommandExecution"`)
+reports `status == "failed"` or a non-zero `exit_code` — the output text
+itself carries no failure marker (the `"Script completed\nWall time N
+seconds\nOutput:\n"` header is identical on success and failure). That
+`CommandExecution` item still passes through untouched as its own
+`event_msg` event; it carries `command` (`["/bin/zsh", "-lc", "<cmd>"]` on
+0.152.1), `cwd`, `status`, `exit_code`, `stdout`, `stderr`,
+`aggregated_output`, `duration`, and `formatted_output`. Codex has no
+`/ll:` skill-dispatch or queue-operation analogue, so those two ll-signal
+carriers are not applicable to Codex; kimi-code has no normalizer yet
+(remaining gap).
 
 Per-turn token usage is present directly in the rollout file
 (`event_msg.payload.type == "token_count"`) — see

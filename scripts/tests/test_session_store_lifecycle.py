@@ -217,8 +217,62 @@ class TestBackfillCodexHandlesD4:
             "event_msg",
             "turn_context",
             "world_state",
+            # ENH-3433: exec calls are normalized to Claude-shaped
+            # assistant/user records at the parser.
+            "assistant",
+            "user",
         }
         assert {row[1] for row in rows} <= envelope_types
+
+    def test_rebuild_derives_codex_tool_events(self, tmp_path: Path, fixtures_dir) -> None:
+        """ENH-3433 AC: rebuild() derives Bash tool_events rows from Codex
+        exec calls now that the parser normalizes them to Claude shape."""
+        from little_loops.session_store.sessions import detect_sessions
+
+        tmp_home = tmp_path
+        day_dir = tmp_home / ".codex" / "sessions" / "2026" / "09" / "08"
+        day_dir.mkdir(parents=True)
+        (day_dir / "rollout-interactive.jsonl").write_text(
+            (fixtures_dir / "codex" / "rollout-interactive.jsonl").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        cwd = Path("/workspace/project")
+        handles = detect_sessions(cwd, "codex", home=tmp_home)
+        assert len(handles) == 1
+
+        db = tmp_path / "session.db"
+        backfill(
+            db,
+            issues_dir=tmp_path / "no-issues",
+            loops_dir=tmp_path / "no-loops",
+            handles=handles,
+            host="codex",
+        )
+
+        session_id = "01a086ea-c8bc-79f1-9faa-1ce2716aa80f"
+
+        counts = rebuild(db)
+        assert counts["tools"] >= 3
+
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT tool_name FROM tool_events WHERE session_id = ?", (session_id,)
+            ).fetchall()
+            # Already derived via the raw_events.session_id fallback
+            # (ENH-3422 D3), not new to this issue — asserted unchanged.
+            sessions_after = conn.execute(
+                "SELECT COUNT(*) FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert [row[0] for row in rows] == ["Bash", "Bash", "Bash"]
+        assert sessions_after == 1
+
+        # Idempotent: a second rebuild() yields identical counts.
+        counts_again = rebuild(db)
+        assert counts_again["tools"] == counts["tools"]
 
 
 class TestBackfillMessages:

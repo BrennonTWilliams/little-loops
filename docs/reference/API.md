@@ -9596,11 +9596,19 @@ deliberately absent (v1 ships the batch half only) — `SessionHandle` carries
 `path` so a future `watch` needs no signature change above it.
 
 **Per-host payload rule (ENH-3420)**: payload is host-native where no
-normalizer to Claude shape exists (`claude-code`, `codex`, `kimi-code` —
+normalizer to Claude shape exists (`claude-code`, `kimi-code` —
 `parse_kimi_wire` yields kimi's raw typed events, unmapped); where a host
 already ships a normalizer (`qwen`, `gemini`, `omp`), payload is that
 normalizer's own output, wrapped and host-stamped rather than reimplemented
-(`parse_qwen_session`, `parse_gemini_session`, `parse_omp_session`);
+(`parse_qwen_session`, `parse_gemini_session`, `parse_omp_session`).
+`codex` is a partial case (ENH-3433): `CodexNormalizer` (module
+`little_loops.session_store.codex`) replaces exactly the shell-exec subset
+(`custom_tool_call`/`custom_tool_call_output`) with Claude-shaped
+`assistant`/`user` records — `parse_codex_rollout` applies it per-line,
+seeding the normalizer's `session_id`/`cwd` from line 1's `session_meta`
+payload — while every other Codex record type still passes through
+host-native, unlike `qwen`/`gemini`/`omp` where `None` from the normalizer
+means *drop*.
 `opencode`/`pi` are Claude-shaped on disk already and reuse the Claude
 per-line loop (`parse_opencode_transcript`, `parse_pi_transcript`), each
 stamping its own `host`. `SessionEvent.line_no` (ENH-3422) is the real file

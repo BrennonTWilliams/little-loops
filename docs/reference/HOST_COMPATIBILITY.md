@@ -565,6 +565,20 @@ the adapter.
     stdout source. See `docs/codex/usage.md` § Rollout files for the on-disk
     layout this was verified against (codex-cli 0.152.1).
 
+    **`ll-logs` support (ENH-3433):** `CodexNormalizer` maps a Codex shell
+    `exec` call (`custom_tool_call`/`custom_tool_call_output`) to a
+    Claude-shaped `assistant`/`user` pair at the parser, so `ll-logs
+    sequences`/`extract`/`scan-failures`/`eval-export` and the `--all`
+    ll-activity filter all see Codex-invoked `ll-*` commands the same way
+    they see Claude's. `_is_ll_relevant`'s queue-operation and
+    `<command-name>/ll:` user-prompt signals have no Codex analogue — Codex
+    has no `/ll:` skill-dispatch, and none of its three user-prompt carriers
+    (`event_msg`/`user_message`, `response_item`/`message` with
+    `role == "user"`, `event_msg`/`item_completed` with `item.type ==
+    "UserMessage"`) surface an `ll-`-prefixed marker either — so both are
+    documented as not applicable rather than emulated. kimi-code has no
+    normalizer yet and remains the gap this leaves open.
+
 [^kimiwire]: Kimi wire files (`session_*/agents/main/wire.jsonl`) use a
     typed-event schema, not Claude's message schema — session-folder
     *resolution* works (FEAT-2918), and as of ENH-3422 `ll-session backfill

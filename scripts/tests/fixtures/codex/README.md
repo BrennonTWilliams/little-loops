@@ -92,4 +92,25 @@ the full list; summary:
   `session_id`, `thread_source`.
 
 The parser must treat all of these as opaque pass-through content — no new
-schema/enum for the discovery seam.
+schema/enum for the discovery seam — **except** `custom_tool_call`/
+`custom_tool_call_output` (ENH-3433), which `CodexNormalizer` replaces with
+Claude-shaped `assistant`/`user` records.
+
+## `item_completed`/`CommandExecution` (ENH-3433)
+
+Sits between a `custom_tool_call` and its `custom_tool_call_output` (observed
+order on all 3 fixture execs: `custom_tool_call` → `item_completed` →
+`custom_tool_call_output`). `item.type == "CommandExecution"` carries the
+already-parsed shell invocation — fields: `id` (`exec-<uuid>`, shares no key
+with the `custom_tool_call`'s `call_id`), `command` (`["/bin/zsh", "-lc",
+"<cmd>"]`), `cwd` (a `file://` URI), `status` (`"completed"`/`"failed"`),
+`exit_code`, `stdout`, `stderr`, `aggregated_output`, `duration`,
+`formatted_output`. `CodexNormalizer` reads this item to flag the paired
+`custom_tool_call_output`'s `is_error`, then lets it pass through untouched
+as its own `event_msg` event. **Line 14 of `rollout-interactive.jsonl` is
+the committed real-capture failed-exec sample**: `status: "failed"`,
+`exit_code: 1`, `aggregated_output` ending in `sed: pyproject.toml: No such
+file or directory\n` — its paired output at line 15 has the exact same
+`"Script completed\nWall time 0.1 seconds\nOutput:\n"` header as every
+successful call's, which is why the failure signal must come from this item,
+never from the output text.
