@@ -136,7 +136,9 @@ No size guard: DB size does not affect the writer path (see What Is Verified).
 - `scripts/tests/test_issue_history_cli.py`
 - Two tests already exercise `cli_event_context` under a simulated locked DB: `TestCliEventContext.test_cli_event_locked_db_does_not_crash_body` (`test_session_store_writers.py:489-511`) monkeypatches `connect` to raise `sqlite3.OperationalError("database is locked")` on the INSERT and asserts the wrapped body still runs; `.test_cli_event_locked_exit_update_does_not_mask_success` (`test_session_store_writers.py:513-542`) does the same for the exit UPDATE via a connection proxy that raises on the `UPDATE cli_events` statement. Neither asserts stderr warning content, and both simulate `sqlite3.OperationalError` specifically, not `OSError`.
 - `test_still_exits_zero_when_db_unwritable` (`test_ll_issues_research_triage.py:140-157`) is the closest existing precedent to Acceptance Criteria item 3: it monkeypatches `connect` to raise `sqlite3.OperationalError`, invokes the full `ll-issues research-triage ... --json` CLI, and asserts exit code 0 with valid JSON parsed from stdout. No existing test does this for `ll-queue list --json` specifically, and none of the three tests found assert a stderr warning was emitted.
-- Every locked-DB test found in the suite (also `test_set_status_cli.py:1286-1325`, `test_hook_post_tool_use.py:189-193`) simulates the failure via `monkeypatch.setattr(<module>, "connect", <raising stub>)`; no test in `scripts/tests/` opens a genuine second `sqlite3.Connection` and holds a real `BEGIN IMMEDIATE`/`BEGIN EXCLUSIVE` lock against the writer under test.
+- Every locked-DB test found in the suite (also `test_set_status_cli.py:1286-1325`, `test_hook_post_tool_use.py:184-199`) simulates the failure via `monkeypatch.setattr(<module>, "connect", <raising stub>)`; no test in `scripts/tests/` opens a genuine second `sqlite3.Connection` and holds a real `BEGIN IMMEDIATE`/`BEGIN EXCLUSIVE` lock against the writer under test.
+
+_Correction (`/ll:verify-issues`, 2026-09-10):_ `test_set_status_cli.py`'s `test_sqlite_error_is_caught_and_logged` (1289-1325) does **not** monkeypatch `connect` — it patches `little_loops.session_store.record_issue_event` directly with `side_effect=sqlite3.OperationalError("locked")`. It is not a `cli_event_context`-shaped locked-DB test at all (no `connect`/`busy_timeout` path exercised); it belongs in the "closest analogue for a caplog-based warning assertion" category (as already used at line 143/176 above), not the "monkeypatches `connect`" group. The other three tests in this bullet's list (`test_session_store_writers.py`, `test_ll_issues_research_triage.py`, `test_hook_post_tool_use.py`) do monkeypatch `connect` as described.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_config.py` (`TestFeatureEnabledForHelper`, line 1963-2019; `TestAnalyticsCaptureConfig`, line 2022-2097) — existing coverage only exercises well-formed `analytics.capture` dicts, `None`, bare strings, and non-list `correction_patterns` (`test_correction_patterns_malformed_non_list`/`_mixed`, line 2085/2091). No test simulates a non-dict `analytics` or `capture` value (e.g. `{"analytics": "oops"}`, raising `AttributeError` at `writers.py:512-518`'s `config.get("analytics", {}).get("capture", {})` chain) or non-string entries inside `skills`/`cli_commands` reaching `fnmatch.fnmatch()` in `feature_enabled_for` (`TypeError`) — the exact unguarded surface this issue's own Codebase Research Findings already identified (above) but had not yet scheduled a test file for. [Agent 3 finding]
@@ -166,7 +168,7 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 - Best-effort error handling in this codebase follows two disagreeing conventions, and `cli_event_context` already belongs to one of them: (1) internal guard — the function itself catches `sqlite3.Error` and logs a warning (`cli_event_context`, `skill_event_context`, `record_hook_event`/`hook_event_context`, all under the EPIC-1707 contract); (2) caller-side suppress — the function raises unguarded and every call site wraps it in `with contextlib.suppress(Exception):` (`record_correction`, `record_skill_event`, `record_prompt_opt_event`, `record_harness_event`, `record_verdict_event`, `record_review_event`, `record_test_run_event`, EPIC-2457 contract). None of the 41 `cli_event_context` call sites use `contextlib.suppress` — widening its guard should stay within convention (1), not adopt (2).
 - No repo-wide precedent exists for the exact 2-tuple `except (sqlite3.Error, OSError)` (either ordering) — searched with an adjacency-anchored regex, zero hits. The closest is a 3-tuple, `except (sqlite3.Error, ImportError, OSError)` at `cli/issues/set_status.py:178`. Pairing `OSError` with an unrelated exception type in one guard is otherwise routine (100+ sites repo-wide), so widening here follows a common shape, just not a previously-used exact pairing.
-- All four locked-DB tests found in the suite (`test_session_store_writers.py:489-542`, `test_ll_issues_research_triage.py:140-157`, `test_set_status_cli.py:1286-1325`, `test_hook_post_tool_use.py:184-199`) simulate the failure via `monkeypatch.setattr(<module>, "connect", <raising stub>)` raising `sqlite3.OperationalError("database is locked")`; none open a real second connection holding `BEGIN IMMEDIATE`/`BEGIN EXCLUSIVE`, and none assert stderr/warning text specifically (only exit code and/or stdout JSON). A `caplog`-based warning-text assertion convention exists elsewhere (`test_session_store_schema.py:2313-2341`) but has not been applied to any locked-DB scenario.
+- All four locked-DB tests found in the suite (`test_session_store_writers.py:489-542`, `test_ll_issues_research_triage.py:140-157`, `test_set_status_cli.py:1286-1325`, `test_hook_post_tool_use.py:184-199`) simulate the failure via `monkeypatch.setattr(<module>, "connect", <raising stub>)` raising `sqlite3.OperationalError("database is locked")`; none open a real second connection holding `BEGIN IMMEDIATE`/`BEGIN EXCLUSIVE`, and none assert stderr/warning text specifically (only exit code and/or stdout JSON). A `caplog`-based warning-text assertion convention exists elsewhere (`test_session_store_schema.py:2313-2341`) but has not been applied to any locked-DB scenario. **Correction (`/ll:verify-issues`, 2026-09-10):** `test_set_status_cli.py:1289-1325` is misclassified here — see the correction under `### Tests` above; it patches `record_issue_event`, not `connect`. Only three of the four listed tests actually monkeypatch `connect`.
 
 _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
@@ -184,7 +186,7 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 ### Signatures
 
 - `cli_event_context(binary: str, args: list[str] | None, db_path: Path | None, config: dict | None) -> ContextManager[None]` (unchanged signature, `writers.py:483`)
-- Internal: `_pkg.connect(effective_path, timeout=2.0)` — add explicit `timeout` kwarg at `writers.py:521`
+- ~~Internal: `_pkg.connect(effective_path, timeout=2.0)` — add explicit `timeout` kwarg at `writers.py:521`~~ **Superseded (`/ll:verify-issues`, 2026-09-10)**: this entry was never updated after the issue's own later research (below, and Acceptance Criteria item 2 / Implementation Steps item 2) concluded no new timeout is needed — the existing 5000ms `PRAGMA busy_timeout` already covers every connection through `connect()`. Do not implement this line; it predates and contradicts the issue's current, authoritative guidance.
 
 ### Call Path
 
@@ -277,7 +279,53 @@ _Added by `/ll:confidence-check` on 2026-09-09_
 - No repo-wide precedent exists for the exact 2-tuple `except (sqlite3.Error, OSError)` (nearest is a 3-tuple at `set_status.py:178`); the tuple-with-`OSError` shape itself is common (100+ sites), so this is a minor, low-risk deviation.
 - Implementation Step 1 calls for confirming the exact ll-console failure contract (stderr content, exit code) before changing behavior; the issue notes this has not yet been confirmed.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-10_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the
+same pass, so the issue as it now reads is up to date — this section is a
+record of what was wrong and fixed, not an outstanding action item).
+
+- Every `writers.py`/`schema.py` line citation checked against the current
+  checkout (`writers.py:483-561`, `:506`, `:512-518`, `:521`, `:528`, `:547`,
+  `:552`, `:602`, `:698`; `schema.py:124`, `:1392-1408`, `:1405`, `:1407`,
+  `:1424-1438`, `:1550`, `:1560-1569`, `:1565-1567`) is exact — no drift, no
+  refinement needed.
+- Test citations checked: `test_session_store_writers.py:489-542`,
+  `test_ll_issues_research_triage.py:140-157`, `test_hook_post_tool_use.py`
+  (test body at 184-199), and `test_set_status_cli.py:1289-1325` all exist as
+  described in file/line terms. One factual error found and fixed in the same
+  pass: `test_set_status_cli.py`'s test monkeypatches `record_issue_event`,
+  not `connect` — two Tests-section bullets claimed otherwise (corrected
+  inline above).
+- One stale Program Design entry found and struck through: the `Signatures`
+  section's `timeout=2.0` kwarg proposal predates and contradicts the issue's
+  own later conclusion (AC #2, Implementation Steps #2) that no new timeout
+  is needed — corrected inline above.
+- BUG-2706 (cited as the prior fix this issue builds on) confirmed `status:
+  done`.
+- Decisions log (`.ll/decisions.d/`) checked: no active required rules —
+  clean pass, no conflict possible.
+- `ll-verify-evidence --json` flagged one span ("with contextlib.suppress
+  (Exception):", attributed to EPIC-2457, `## Codebase Research Findings`
+  line ~167) as not appearing verbatim in EPIC-2457. Manually confirmed as a
+  tool attribution artifact, not fabricated evidence: EPIC-2457 does contain
+  the substance (`contextlib.suppress(Exception)`-guarded writes, lines
+  85/265) and the code pattern itself is real and correctly attributed to the
+  seven named call sites (`user_prompt_submit.py`, `action.py`,
+  `pytest_history_plugin.py`) — the mismatch is only the added `with ...:`
+  wrapper syntax in the issue's prose vs. EPIC-2457's bare function-name
+  form. No correction needed.
+- No `## Blocked By`/`## Blocks` sections present — no dependency checks
+  apply.
+- Proposal-vs-code consequence check (B6): no unsound consequence found
+  beyond the stale `timeout=2.0` fragment above (already corrected); the
+  widened-guard plan and AC coverage are otherwise internally consistent.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-10T00:28:01 - `626872e1-6f1e-434a-bfbc-2499d9a3d127.jsonl`
+- `/ll:verify-issues` - 2026-09-10T00:20:35 - `6e1e18a4-dc28-495d-a48a-ed24698d5775.jsonl`
 - `/ll:confidence-check` - 2026-09-10T00:02:36 - `e1e987d9-5a25-4adf-9f93-78b6e7b380b0.jsonl`
 - `/ll:wire-issue` - 2026-09-09T23:41:59 - `5825e8f7-a405-4f10-9f6c-b98ebb708843.jsonl`
 - `/ll:refine-issue` - 2026-09-09T23:23:47 - `00ea4689-f70b-4623-84a3-269ac3fcabb8.jsonl`

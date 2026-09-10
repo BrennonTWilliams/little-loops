@@ -82,9 +82,18 @@ ll-ctx-stats (Codex observability).
    (`sessions.py:245`), the opencode/pi/qwen branch of `_project_folder_for_layout_host`
    (`sessions.py:339`; the kimi/gemini/omp branches pass raw `cwd` to their probes and are
    unaffected), and the public `get_project_folder` (`user_messages.py:400`). Add one shared
-   helper (e.g. `_cwd_spellings(cwd) -> list[str]`: `str(cwd.resolve())` first, `str(cwd)` second,
-   deduped when equal) and apply it at all three sites — probe each spelling in order, first hit
-   wins. Mirrors what the codex path already does (`sessions.py:131` DB match, `:174` scan match).
+   helper (e.g. `_cwd_spellings(cwd) -> list[str]`: `str(cwd.resolve())` first,
+   `str(cwd.absolute())` second — `absolute()` rather than `str(cwd)` so a relative `Path`
+   argument doesn't encode a relative fragment; it never resolves symlinks — deduped when equal)
+   and apply it at all three sites — probe each spelling in order, first hit wins. Mirrors what
+   the codex path already does (`sessions.py:131` DB match, `:174` scan match).
+   **Scope inside `get_project_folder`**: the single `path_str` at line 400 feeds the
+   `claude-code`, `opencode`, `pi`, and `qwen` branches (and `codex`, which returns `None`
+   regardless). The probe must loop spellings for **every** encoded-path branch, not just
+   `claude-code` — otherwise `_project_folder_for_layout_host`'s opencode/pi/qwen probe (which
+   does get the loop) and `get_project_folder`'s would disagree, breaking the docstring's
+   "matches that public seam exactly" promise. Restructure as: for each spelling, encode, call
+   the host's probe, return the first non-`None`.
    Covering `get_project_folder` too is deliberate: `_project_folder_for_layout_host`'s docstring
    promises it "matches that public seam exactly", and the session_start hook plus every
    pre-ENH-3430 `ll-logs` call site still go through `get_project_folder` — leaving it
@@ -113,11 +122,31 @@ ll-ctx-stats (Codex observability).
    precedence expression. Docstring note: `LL_HOOK_HOST` is exported only by the hook adapter
    shims into the hook subprocess environment, so the env tier effectively never fires for an
    interactive CLI run — it exists for automation contexts that inherit that env.
+   **Typing (mypy)**: a flat `-> str | None` return fails `python -m mypy` at all three
+   `default="claude-code"` callers — `cli/session.py:636` annotates `_backfill_host: str`,
+   `get_sessions_folder` passes the result to `host_layout_for(host: str)`
+   (`writers.py:2527`, call at `user_messages.py:448`), and `session_start.py:179` extends a
+   `list[str]` with it. Declare the helper with `typing.overload`: `(flag, *, default: str) ->
+   str` and `(flag, *, default: None = None) -> str | None`, so single-host callers get a plain
+   `str` without an `assert`/`cast` at each site.
 4. **`--host` flag on all three CLIs**, default `None`, `choices=list(REGISTERED_HOSTS)`, registered
    through one public `add_host_arg(parser: argparse.ArgumentParser) -> None` helper in
    `scripts/little_loops/cli_args.py` (every existing sibling — `add_json_arg`, `add_window_args`,
    `add_corpus_target_args` — is a public `add_*_arg` there, so no underscore and not inside
-   `cli/logs.py`). One helper = one help string + one choices source across all four consumers:
+   `cli/logs.py`). One helper = one choices source across all four consumers. Two constraints on
+   the helper itself:
+   - **Help text must be parameterised**: `ll-session backfill` defaults to `"claude-code"`
+     (single host) while the three new CLIs default to union, so a single hard-coded help string
+     is wrong for one of them. Give the helper a `help_text` kwarg with a union-accurate default
+     (e.g. "Restrict to one host (default: LL_HOOK_HOST if set, else all registered hosts)"), the
+     same shape as `add_json_arg(parser, help_text=...)` (`cli_args.py:324`) and
+     `add_skip_arg(parser, help_text=...)` (`cli_args.py:57`); the backfill retrofit passes its
+     existing wording.
+   - **Lazy-import `REGISTERED_HOSTS` inside the function body**, not at `cli_args.py` module
+     level. `cli_args.py` has zero `little_loops` imports today and 53 importers; a top-level
+     `from little_loops.session_store import REGISTERED_HOSTS` would pull sqlite, `writers.py`,
+     and `host_runner` into every CLI's startup path. Precedent: `user_messages.py:446` already
+     lazy-imports `host_layout_for` from `session_store` for the same reason.
    - `ll-messages` and `ll-ctx-stats` are flat parsers — call the helper on the top-level parser.
    - `ll-logs` is a subparser CLI; call the helper at each of the 9 session-touching subcommands'
      registration sites (`discover`, `extract`, `sequences`, `stats`, `scan-failures`,
@@ -174,10 +203,12 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 ### Signatures
 
 - `_resolve_host(flag: str | None, *, default: str | None = None) -> str | None` (new,
-  `user_messages.py`) — `flag or os.environ.get("LL_HOOK_HOST") or default`
+  `user_messages.py`) — `flag or os.environ.get("LL_HOOK_HOST") or default`; declared via two
+  `@overload`s so `default: str` narrows the return to `str` (see Scope Boundaries item 3)
 - `_cwd_spellings(cwd: Path) -> list[str]` (new, `user_messages.py`; imported by `sessions.py`) —
-  `[str(cwd.resolve()), str(cwd)]` deduped, resolved first
-- `add_host_arg(parser: argparse.ArgumentParser) -> None` (new, `cli_args.py`)
+  `[str(cwd.resolve()), str(cwd.absolute())]` deduped, resolved first
+- `add_host_arg(parser: argparse.ArgumentParser, *, help_text: str = <union default>) -> None`
+  (new, `cli_args.py`; lazy-imports `REGISTERED_HOSTS` in the body)
 - `REGISTERED_HOSTS: tuple[str, ...]` (re-exported unchanged, `session_store/__init__.py`, sourced
   from `sessions._REGISTERED_HOSTS`)
 
@@ -194,7 +225,9 @@ default="claude-code")` -> `get_project_folder(cwd, host=...)` -> `_cwd_spelling
 ## Files to Modify
 
 - `scripts/little_loops/session_store/sessions.py` (`_detect_claude_sessions` 245,
-  `_project_folder_for_layout_host` 339 — both-spellings probe; docstring at 332-337)
+  `_project_folder_for_layout_host` 339 — both-spellings probe; docstrings at 239-244 and
+  332-337; `detect_sessions` docstring 301-304 justifies the union default with "none of the
+  eventual consumers has a `--host` flag" — reword now that they do)
 - `scripts/little_loops/session_store/__init__.py` (`REGISTERED_HOSTS` re-export + `__all__`)
 - `scripts/little_loops/user_messages.py` (new `_resolve_host` and `_cwd_spellings` helpers;
   `get_project_folder:394-395,400` and `get_sessions_folder:442` refactored onto them)
@@ -258,7 +291,6 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 - Convention: shared per-subcommand argparse-flag helpers (`add_json_arg`, `add_window_args`, `add_corpus_target_args`) live in `scripts/little_loops/cli_args.py`, not inside the CLI module they're applied to, and each subparser calls the helper individually at its own registration site (`cli/logs.py:2932,2953,2959,...`) rather than looping over a collected parser list. Resolved: `add_host_arg` lives in `cli_args.py` and is called per registration site.
 - Convention: existing `choices=` lists sourced from a shared constant wrap it as `list(CONST)` (`cli/session.py:120,132` against `session_store/schema.py:27`'s `VALID_KINDS`) or `sorted(CONST)` (`cli/issues/create.py:516`). The current `ll-session backfill --host` choices list (`cli/session.py:213`) is the one site in the codebase that still hand-writes the literal instead of wrapping a constant — confirms the issue's premise for the retrofit.
 - No flag>env precedence helper exists anywhere in the codebase today; three call sites independently inline the same `flag or os.environ.get("LL_HOOK_HOST", "claude-code")` expression: `cli/session.py:636`, `hooks/session_start.py:178`, and inside `get_project_folder` itself (`user_messages.py:394-395`) — no prior art `_resolve_host` would need to reconcile with.
-- `cli/logs.py` has no `"digest"` subcommand/parser by that name today — the Scope Boundaries exclusion list ("not tail/diff/digest") names a subcommand that does not exist in this file; harmless (nothing to exclude), but there is no `digest_parser` to find.
 
 ## Acceptance Criteria
 
@@ -329,6 +361,7 @@ an outstanding action item).
 
 
 ## Session Log
+- manual review - 2026-09-09 - added `@overload` typing for `_resolve_host` (mypy at the three `default="claude-code"` callers); `add_host_arg` gets a `help_text` kwarg and lazy-imports `REGISTERED_HOSTS` (keeps `cli_args.py` a leaf); both-spellings probe explicitly covers every encoded-path branch of `get_project_folder`; `_cwd_spellings` uses `absolute()` for the second spelling; `detect_sessions` docstring 301-304 added to Files to Modify; dropped dangling `digest` finding
 - `/ll:verify-issues` - 2026-09-10T00:15:40 - `8cef5fbd-618e-46ee-a7cc-dbfb9095952c.jsonl`
 - manual review - 2026-09-09 - corrected `REGISTERED_HOSTS` type (tuple, drop `sorted()`); added `default=` to `_resolve_host` so single-host sites don't fall to union; replaced untestable per-CLI precedence ACs with helper-level tests + per-CLI registration tests; resolved `add_host_arg` placement to `cli_args.py`; extended both-spellings probe to `get_project_folder` via shared `_cwd_spellings`; fixed API.md line ref (9608)
 - `/ll:wire-issue` - 2026-09-09T23:40:07 - `f26a7fac-7d40-43e0-b983-b0f480089473.jsonl`
