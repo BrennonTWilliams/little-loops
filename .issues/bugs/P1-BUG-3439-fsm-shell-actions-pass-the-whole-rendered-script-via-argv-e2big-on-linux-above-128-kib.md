@@ -9,7 +9,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
 parent: EPIC-3436
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3439: FSM shell actions pass the whole rendered script via argv; E2BIG on Linux above 128 KiB
@@ -69,9 +69,30 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 **Option A**: Temp file — write the rendered action to a tempfile in the existing try/finally scope, spawn `["bash", str(path)]`, unlink in `finally`. Deadlock-free regardless of size; no pipe-buffer interaction with the selector loop. (Exact tempfile API is itself a contested convention: mkstemp vs NamedTemporaryFile(delete=False) — see finding above.)
 
+> **Selected:** Option A — the codebase's established mechanism for handing large payloads to a child (two production precedents), deadlock-free, fully covered by existing test templates.
+
 **Option B**: stdin (`bash -s`) — spawn `["bash", "-s"]` and feed `action` via `process.stdin` from a writer thread. Avoids temp files, but a naive inline `stdin.write(action)` deadlocks once the script exceeds the 64 KiB pipe buffer (bash must buffer the whole command line before executing), so it requires the thread — and no stdin-fed one-shot script precedent exists in this codebase.
 
 **Recommended**: Option A — precedent-backed by the two existing temp-file-via-argv sites (host_runner.py:921-929, route_table.py:634-653); Option B's writer-thread mechanism has no confirming usage site here.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-10.
+
+**Selected**: Option A: Temp file
+
+**Reasoning**: The exact mechanism — write tempfile, spawn child on its path, unlink in `finally` on every exit path — has two production precedents (`host_runner.py:921-929` + cleanup at `:2499-2501`; `fsm/route_table.py:634-653`, the latter inside `fsm/` itself), and both fix sites already run a temp-resource try/finally (`gh_tmp`) around the exact Popen being changed. Option B introduces a mechanism with zero confirming usage sites repo-wide (no `bash -s` spawn, no stdin writer thread, no one-shot Python stdin feed; the only `stdin=PIPE` production sites are long-lived request/response protocols that deliberately avoid bulk writes per the deadlock hazard documented at `verify_evidence.py:800-809`), plus a new writer-vs-killpg failure mode on the timeout path that the existing selector loops and mock-based tests would neither exercise nor catch. Implementation note: follow the `NamedTemporaryFile(delete=False, prefix="ll-", suffix=...)` + unlink-in-finally precedent rather than the issue Summary's `mkstemp(suffix=".sh")` spelling — `mkstemp` in this codebase is exclusively the atomic-rename pattern (8 sites, never write-then-spawn).
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A: Temp file | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option B: stdin (`bash -s`) | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
+
+**Key evidence**:
+- Temp file (winner): precedents `host_runner.py:921-929`/`:2499-2501` and `route_table.py:634-653`; existing temp-resource finally at both fix sites (`runners.py:334`/`:462-464`, `runner_spec.py:312`/`:383-385`); full test template chain (cleanup pins `test_host_runner.py:2275-2309`, large-payload direct-drive `test_fsm_executor.py:5968-5986`); no test pins the production bash argv, so the substitution breaks nothing.
+- stdin feed via `bash -s` (rejected): confirming shapes only (mcp_call.py daemon stderr-drain thread `:232-238`, TS one-shot feeds, `_stdio_call` test harness `test_mcp_server.py:997-1083`) but no confirming usage site; new concurrency hazard (writer thread blocked in `stdin.write` when `_kill_process_group` fires on timeout) with no production handling pattern to copy.
 
 ## Integration Map
 
@@ -125,6 +146,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 **Open** | Created: 2026-09-10 | Priority: P1
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-10T23:50:48 - `2f1f154f-c743-4a68-8aab-afcd2a716a72.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:16:55 - `4d4128b6-b8af-45c0-91e2-96dbe681ff8a.jsonl`
 - `/ll:format-issue` - 2026-09-10T22:00:28 - `bfcda7a0-6b47-49e9-8ffb-70e8847bdc09.jsonl`
 - `/ll:scope-epic` - 2026-09-10T21:15:17 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`

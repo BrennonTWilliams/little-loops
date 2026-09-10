@@ -9,7 +9,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
 parent: EPIC-3436
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3438: rn-refine commit_leaf reports COMMITTED without committing and routes failure to record_leaf_done
@@ -54,7 +54,7 @@ Additionally, `commit_leaf`'s `on_error: record_leaf_done` routes infra failures
 Rewrite the `commit_leaf` action with an explicit failure surface:
 
 ```bash
-set -euo pipefail
+set -e
 RUN_DIR="${captured.run_dir.output}"
 git add -A
 if git diff --cached --quiet; then
@@ -83,7 +83,28 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 **Option B**: Follow the corpus forms — bare `set -e` (the only in-loop precedent, `fleet-loop-improve.yaml` state `commit`, paired there with `evaluate: {type: exit_code}` + `on_no`/`on_error: revert`), reserving `set -o pipefail` for commented pipeline sites (12 sites, e.g. `rn-remediate.yaml:484-486`). Functionally equivalent for this action.
 
+> **Selected:** Option B — bare `set -e` matches the only errfail precedent in any loop action body (`fleet-loop-improve.yaml` `commit`); `set -euo pipefail` has zero loop-action-body precedent (0 of 16 corpus `set -` headers).
+
 **Recommended**: Option B — corpus consistency; per-site commented guards are the in-tree rule and the loop corpus contains no `set -euo pipefail` action body. Either option satisfies the AC (non-zero exit, no `COMMITTED` marker on failure).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-10.
+
+**Selected**: Option B — bare `set -e` action header
+
+**Reasoning**: Bare `set -e` is the only errfail form in any loop action body — 3 sites, all in `fleet-loop-improve.yaml` (states `preflight`/`harvest`/`commit`), including its `commit` state with the same failure semantics this fix needs; the combined `set -euo pipefail` appears in 0 of 16 corpus `set -` headers (standalone `.sh` scripts only). The engine contract (plain `bash -c` at `fsm/runners.py:348`; non-zero exit → `on_error` at `fsm/executor.py:2120-2122`) makes the two forms functionally identical for this pipeline-free body, so corpus consistency is the tiebreaker.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (`set -euo pipefail`) | 1/3 | 3/3 | 3/3 | 2/3 | 9/12 |
+| Option B (bare `set -e`) | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+
+**Key evidence**:
+- Combined form: functionally sound and inert-safe (no pipeline for pipefail to guard, no unset var post-interpolation), no validator or test forbids it — but it introduces a first-of-its-kind action-body form.
+- Bare `set -e`: matches the verified corpus exactly — it ships in `fleet-loop-improve.yaml`'s `commit` state (paired with `evaluate: {type: exit_code}` + `on_no`/`on_error: revert`); `set -o pipefail` is uniformly reserved for 12 commented per-pipeline sites, all guarding actual pipelines.
 
 ## Integration Map
 
@@ -143,7 +164,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Rewrite `commit_leaf` action with `set -euo pipefail` and unconditional baseline write on the success path only.
+1. Rewrite `commit_leaf` action with bare `set -e` (corpus form, per Decision Rationale) and unconditional baseline write on the success path only.
 2. Reroute `commit_leaf.on_error` to `record_failure` (or add `record_leaf_commit_failed`).
 3. Audit/fix sibling swallow shapes (`capture_baseline`, `verify_leaf`) or file follow-up issues.
    > ⚠ Superseded — `capture_baseline` does not exist; see § Codebase Research Findings under Implementation Steps
@@ -172,6 +193,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-10T23:42:12 - `d0293195-1c81-4d81-ac17-fa584ee4566b.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:03:56 - `c5f928c1-0152-48c5-b6b1-4132651d57a3.jsonl`
 - `/ll:format-issue` - 2026-09-10T21:55:58 - `82016d7d-cfd1-41eb-a02d-fdc1a376c905.jsonl`
 - `/ll:scope-epic` - 2026-09-10T21:15:16 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`

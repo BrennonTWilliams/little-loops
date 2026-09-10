@@ -1,0 +1,12 @@
+{
+  "id": "a0718d9a-d50d-427d-992a-a2feb8d16362",
+  "type": "decision",
+  "timestamp": "2026-09-10T23:50:20Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Two production precedents for write-tempfile-then-spawn-unlink-in-finally (host_runner.py:921-929, fsm/route_table.py:634-653); both fix sites already run a gh_tmp temp-resource try/finally. stdin/bash -s has zero confirming usage sites and adds a writer-vs-killpg hazard. Follow the NamedTemporaryFile(delete=False) convention, not mkstemp.",
+  "rule": "Option A: temp file \u2014 FSM shell actions spawn via bash on a script tempfile, not argv",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: stdin (bash -s) with writer thread \u2014 no repo precedent, new concurrency failure mode",
+  "issue": "BUG-3439"
+}

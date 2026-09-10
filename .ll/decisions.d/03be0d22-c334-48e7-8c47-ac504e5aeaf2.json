@@ -1,0 +1,12 @@
+{
+  "id": "3c7e7d28-958c-4bf7-9e7a-300124a693f2",
+  "type": "decision",
+  "timestamp": "2026-09-10T23:41:23Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Bare set -e is the only errfail form in any loop action body (3 sites, fleet-loop-improve.yaml incl. its commit state); the combined form has zero loop-action-body precedent (standalone .sh scripts only). Engine contract (plain bash -c, non-zero exit routes to on_error) makes both forms functionally identical for pipeline-free bodies.",
+  "rule": "Loop action bodies use bare set -e for errfail, never set -euo pipefail",
+  "scope": "issue",
+  "alternatives_rejected": "set -euo pipefail (Option A): inert-safe here but first-of-its-kind action-body form, 0 of 16 corpus set- headers",
+  "issue": "BUG-3438"
+}
