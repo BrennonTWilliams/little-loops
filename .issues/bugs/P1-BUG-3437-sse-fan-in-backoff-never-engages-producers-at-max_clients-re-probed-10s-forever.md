@@ -80,6 +80,35 @@ brittle absolute `< 10` threshold.
   as the wait period) with the classification threshold (`rescan_s` as the
   flap window), making the comparison structurally unsatisfiable.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+- **Files to Modify**:
+  - `scripts/little_loops/transport.py` — reap-block guard (line ~1105: `if not reader.forwarded_any and elapsed < rescan_s:`) compared against the new immediate-EOF window instead; new `_FANIN_IMMEDIATE_EOF_S` module constant alongside `_FANIN_CONNECT_TIMEOUT`/`_FANIN_MAX_BACKOFF_S` under the `# FEAT-3323: SseBridge (ll-artifact serve) constants.` header (transport.py:87-92); `_fan_in_producer_sockets` docstring "dies within one `rescan_s` of connecting" (transport.py:1080-1084) reworded to the new window
+  - `scripts/tests/test_feat3323_sse_bridge.py` — rewrite `test_producer_at_max_clients_backs_off_sub_linearly` (:323-348): the two-window `second_window_rejections < 10` assertion (:344) becomes a ≥3-window decay-shape comparison
+- **Dependent Files (Callers/Importers)**:
+  - `scripts/little_loops/cli/artifact/serve.py:34,193` — only construction path of `SseBridge`/`serve_sse_bridge`; unchanged by the fix but its blast radius
+  - `scripts/little_loops/cli/loop/runner.py:541` — consumes `get_stats().get("client_rejections", 0)` into loop-run log suffixes; today that counter balloons at rescan cadence per at-cap producer — after the fix it flattens, changing what operators see in that log line (no code change needed)
+  - `scripts/little_loops/config/features.py:1318` — `BridgeEventsConfig.rescan_s: float = 2.0` feeds the fan-in thread arg (transport.py:1301); unchanged
+- **Conventions in Force**:
+  - Rate-limit/threshold windows are dedicated module constants sized independently of the loop's poll period, never the poll period itself — evidence: `_REJECT_LOG_INTERVAL_SEC = 5.0` (transport.py:66) compared as `now - last_log_ts >= _REJECT_LOG_INTERVAL_SEC` inside loops that poll at `_ACCEPT_POLL_TIMEOUT = 1.0` / `_CLIENT_QUEUE_POLL_TIMEOUT = 0.5`; the current `elapsed < rescan_s` guard is the one site in the file violating this rule
+  - Backoff constants spell seconds with an `_S` suffix and live as module constants under a component header — `_FANIN_MAX_BACKOFF_S` (transport.py:92), `_WEBHOOK_RETRY_BASE_S`/`_WEBHOOK_RETRY_MAX_S` (:76-77); the `_SEC` spelling exists only in the older log-interval constants (:65-66), so `_FANIN_IMMEDIATE_EOF_S` follows the backoff-family spelling
+  - Every backoff site owns its own `min(base * 2^n, cap)` expression; no shared utility exists — asserted deliberate in the `compute_backoff_s()` docstring (queue_store.py:194-197)
+  - transport.py docstrings cite FEAT-3323 design bullets via `§ <Section> → <bullet>` markers — `§ Fan-in → Backoff` at transport.py:958, 969, 1082; keep the marker on the reworded flap sentence
+- **Mirror sites describing the (currently dead) backoff contract — must move with the fix or they keep documenting the unsatisfiable `rescan_s` window**:
+  - `scripts/little_loops/config-schema.json:1730` — `rescan_s` description: "Also the base of the per-path connect-then-immediate-EOF backoff (doubles per consecutive flap, capped at 60s)"
+  - `docs/reference/API.md:11197` — Fan-in paragraph: "A reader that dies within one `rescan_s` of connecting without forwarding a single line (a producer at `max_clients` accepting-then-closing) marks its path 'flapping'"
+  - `docs/reference/CONFIGURATION.md:1752` — `events.bridge.rescan_s` row repeats the schema text verbatim
+- **Tests**:
+  - `scripts/tests/test_feat3323_sse_bridge.py` — primary file: `TestSseBridgeFanIn` (:197), the failing test (:323), `_make_config` seam (:105, takes `rescan_s`), holder-socket pattern (:328-330, raw `socket.socket(AF_UNIX)` occupying the `max_clients=1` slot + `_wait_until(lambda: _client_count(producer) == 1)`), teardown order bridge → holder → producer (:345-348)
+  - `scripts/tests/test_transport.py` — `test_max_clients_cap_rejects_extra_connection` (:512) and `test_rejection_logging_is_rate_limited` (:543) pin the producer-side rejection behavior the fix must not disturb
+  - `scripts/tests/test_config.py:2537-2550` and `scripts/tests/test_config_schema.py:842-847` — pin `rescan_s` default 2 / `max_clients` default 8; unaffected (they assert defaults, not the description text)
+- **Documentation**: `docs/ARCHITECTURE.md:630` describes the fan-in pipeline at behavior level with no window mention — verify after the fix, likely no edit needed
+- **Configuration**: no `events.bridge` override exists in `.ll/ll-config.json` (this project runs on code defaults); `rescan_s` default originates in `BridgeEventsConfig` (features.py:1318)
+
 ## Program Design
 
 ### Signatures
@@ -94,6 +123,20 @@ brittle absolute `< 10` threshold.
 `SseBridge` fan-in thread (`threading.Thread(target=_fan_in_producer_sockets, ...)` at transport.py:1300-1301) -> reap block -> flap classification (`elapsed < _FANIN_IMMEDIATE_EOF_S`) -> `state.interval = min(state.interval * 2, _FANIN_MAX_BACKOFF_S)` -> `_candidate_producer_paths()` probe gated by `state.next_attempt` (line 1124)
 
 `test_producer_at_max_clients_backs_off_sub_linearly` (test_feat3323_sse_bridge.py:323) -> sample `producer.get_stats()["client_rejections"]` across ≥3 windows -> assert window N+1 < window N (decay shape)
+
+## Implementation Steps
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+- The flap classifier engages: in `_fan_in_producer_sockets`'s reap block (transport.py:1090-1117), `elapsed = now - reader.connected_at` is compared against the new dedicated `_FANIN_IMMEDIATE_EOF_S` window (connected_at-relative), not against `rescan_s`. The window must exceed one loop detection period — death is detected only on the rescan *after* `stop.wait(timeout=rescan_s)` (transport.py:1162), so a first-rescan reap of a connect-then-EOF reader lands at `elapsed >= rescan_s` and must still qualify
+- Doubling/cap/reset semantics are unchanged once reachable: `state.interval = min(state.interval * 2, _FANIN_MAX_BACKOFF_S)` (transport.py:1106), `state.next_attempt` probe gating (:1117, :1124), `_on_forward` reset to `rescan_s` on first forwarded line (:1145-1151), non-flap death resets to `rescan_s` (:1115)
+- The "closed the connection immediately; at max_clients?" warning (transport.py:1108-1112) logs once per flapping path via the `state.warned` latch — dead code today, observable after the fix
+- `test_producer_at_max_clients_backs_off_sub_linearly` (test_feat3323_sse_bridge.py:323-348) asserts decay shape — rejections in window N+1 < window N across ≥3 sampled windows — instead of the absolute `second_window_rejections < 10` (:344); verified by `python -m pytest scripts/tests/test_feat3323_sse_bridge.py -k backs_off_sub_linearly -v`
+- Mirror sites reworded to the new window so none still documents the `rescan_s`-relative flap rule: transport.py docstring (:1080-1084), config-schema.json `rescan_s` description (:1730), API.md Fan-in paragraph (:11197), CONFIGURATION.md `events.bridge.rescan_s` row (:1752)
+- No regression in producer-side rejection behavior: `python -m pytest scripts/tests/test_transport.py -k "max_clients or rejection" -v` passes unchanged; full gate `python -m pytest scripts/tests/` exits 0
+- Timing-robustness constraints for the rewritten test (suite conventions, evidence: `_wait_until` docstring test_transport.py:94; raised-budget comments test_feat3323_sse_bridge.py:210-231): `_wait_until` is for setup conditions only (holder-socket occupancy), never for measurement windows; window boundaries use `time.monotonic()` deadlines; budgets carry load-justifying comments (CI unit runner is 4-CPU vs 14 local; B1 forensics measured a flat 9-10 rejections/s over 6 one-second windows, thoughts/ci-unit-test-failures-2026-09-10.md §B1); real time + `_make_config` knobs are the transport-test idiom — no test in the suite patches a transport.py module constant (constant-patching is the fsm.executor convention, test_fsm_executor.py:7836); the test stays unmarked (no `integration`/`slow` mark) so it runs in the CI unit gate
 
 ## Impact
 
@@ -117,5 +160,19 @@ brittle absolute `< 10` threshold.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-10T22:52:59 - `748bc362-b07a-4742-bc35-52128c70dda1.jsonl`
 - `/ll:format-issue` - 2026-09-10T21:53:10 - `c062bf88-70c8-43b9-ac0c-360218fcb6ff.jsonl`
 - `/ll:scope-epic` - 2026-09-10T21:15:16 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`
+
+## Acceptance Criteria
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
+
+- `python -m pytest scripts/tests/test_feat3323_sse_bridge.py -k backs_off_sub_linearly -v` passes, asserting rejections in window N+1 < window N across ≥3 sampled windows with `rescan_s=0.05` and an occupied `max_clients=1` producer
+- Doubling is live: consecutive flap rejections of one path produce monotonically decreasing per-window counts (interval growth toward `_FANIN_MAX_BACKOFF_S`), not the flat ~rescan-cadence accumulation measured in B1
+- The "closed the connection immediately; at max_clients?" warning logs exactly once per flapping path (`state.warned` latch, transport.py:1108-1112)
+- Interval resets to `rescan_s` on first forwarded line (`_on_forward`, transport.py:1145-1151) and on a non-flap reader death (:1115) — existing semantics preserved
+- Mirror documentation matches the new window: transport.py `_fan_in_producer_sockets` docstring, config-schema.json `rescan_s` description, API.md Fan-in paragraph, CONFIGURATION.md `events.bridge.rescan_s` row — none still describes the flap threshold as `rescan_s`-relative
+- `python -m pytest scripts/tests/` exits 0 (the authoritative CI gate per CLAUDE.md), with `test_transport.py` rejection/cap tests passing unchanged
