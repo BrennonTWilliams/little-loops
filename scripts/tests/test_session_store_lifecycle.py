@@ -172,6 +172,55 @@ class TestBackfill:
         assert any(r["kind"] == "issue" for r in results)
 
 
+class TestBackfillCodexHandlesD4:
+    """ENH-3422 D4: codex has no project folder to glob, so backfill() takes
+    handles= (from detect_sessions) instead of jsonl_files=."""
+
+    def test_backfill_ingests_codex_fixtures_via_handles(
+        self, tmp_path: Path, fixtures_dir
+    ) -> None:
+        from little_loops.session_store.sessions import detect_sessions
+
+        tmp_home = tmp_path
+        day_dir = tmp_home / ".codex" / "sessions" / "2026" / "09" / "08"
+        day_dir.mkdir(parents=True)
+        for name in ("rollout-interactive.jsonl", "rollout-exec.jsonl"):
+            (day_dir / name).write_text(
+                (fixtures_dir / "codex" / name).read_text(encoding="utf-8"), encoding="utf-8"
+            )
+
+        cwd = Path("/workspace/project")
+        handles = detect_sessions(cwd, "codex", home=tmp_home)
+        assert len(handles) == 2
+
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no-issues",
+            loops_dir=tmp_path / "no-loops",
+            handles=handles,
+            host="codex",
+        )
+        assert counts["raw_events"] > 0
+
+        conn = connect(db)
+        try:
+            rows = conn.execute("SELECT host, event_type, ts FROM raw_events").fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == counts["raw_events"]
+        assert {row[0] for row in rows} == {"codex"}
+        assert all(row[2] for row in rows)  # ts non-empty
+        envelope_types = {
+            "session_meta",
+            "response_item",
+            "event_msg",
+            "turn_context",
+            "world_state",
+        }
+        assert {row[1] for row in rows} <= envelope_types
+
+
 class TestBackfillMessages:
     """_backfill_messages() seeds message_events from user JSONL blocks."""
 
@@ -475,6 +524,97 @@ class TestBackfillDedup:
         rows = recent(db, kind="issue")
         assert len(rows) == 1
         assert rows[0]["issue_id"] == "BUG-10"
+
+
+class TestBackfillRawEventsDirectHandles:
+    """_backfill_raw_events(conn, handles) with literal SessionHandle objects
+    (ENH-3422) — no discovery/widening involved."""
+
+    def test_literal_handles_ingest_one_row_per_event(self, tmp_path: Path) -> None:
+        from little_loops.session_store.lifecycle import _backfill_raw_events
+        from little_loops.session_store.sessions import SessionHandle
+
+        jsonl = tmp_path / "claude.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "s1",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hi"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        handle = SessionHandle(
+            host="claude-code",
+            session_id="s1",
+            path=jsonl,
+            cwd=tmp_path,
+            updated_at=1.0,
+        )
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            count = _backfill_raw_events(conn, [handle], host="claude-code")
+            conn.commit()
+            row = conn.execute("SELECT event_type, session_id, line_no FROM raw_events").fetchone()
+        finally:
+            conn.close()
+        assert count == 1
+        assert tuple(row) == ("user", "s1", 1)
+
+    def test_unknown_host_handle_yields_nothing(self, tmp_path: Path) -> None:
+        from little_loops.session_store.lifecycle import _backfill_raw_events
+        from little_loops.session_store.sessions import SessionHandle
+
+        handle = SessionHandle(
+            host="unknown-host",
+            session_id="x",
+            path=tmp_path / "missing.jsonl",
+            cwd=tmp_path,
+            updated_at=0.0,
+        )
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            count = _backfill_raw_events(conn, [handle])
+        finally:
+            conn.close()
+        assert count == 0
+
+
+class TestBackfillWrapperContractD4:
+    """jsonl_files= and handles= are mutually exclusive on every public wrapper
+    (ENH-3422 D4)."""
+
+    def test_backfill_raw_events_rejects_both(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError):
+            backfill_raw_events(
+                tmp_path / "session.db", jsonl_files=[tmp_path / "a.jsonl"], handles=[]
+            )
+
+    def test_backfill_rejects_both(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError):
+            backfill(
+                tmp_path / "session.db",
+                issues_dir=tmp_path / "no",
+                loops_dir=tmp_path / "no",
+                jsonl_files=[tmp_path / "a.jsonl"],
+                handles=[],
+            )
+
+    def test_backfill_incremental_rejects_both(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError):
+            backfill_incremental(
+                tmp_path / "session.db",
+                jsonl_files=[tmp_path / "a.jsonl"],
+                handles=[],
+                since_ts=0.0,
+            )
 
 
 class TestBackfillIncremental:

@@ -31,6 +31,11 @@ import little_loops.session_store as _pkg
 from little_loops.host_runner import project_child_env, resolve_host
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.schema import SCHEMA_VERSION, _configure_connection
+from little_loops.session_store.sessions import (
+    SessionHandle,
+    handles_from_paths,
+    iter_events,
+)
 from little_loops.session_store.writers import (
     _backfill_assistant_messages,
     _backfill_commit_events,
@@ -715,6 +720,11 @@ def _backfill_sessions(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cu
     per-file loop this no longer short-circuits to the next physical file on
     the first hit (the cursor path has no file boundary), instead skipping
     further parse attempts for a source once its session_id is known.
+
+    codex/kimi-code payloads carry no ``sessionId`` field of their own (ENH-3422
+    D3 — their id lives only in ``raw_events.session_id``, filled at ingest via
+    ``handle.session_id``), so the cursor path also falls back to that column
+    directly for any source the record-content pass above found nothing for.
     """
     count = 0
     seen: set[str] = set()
@@ -733,130 +743,110 @@ def _backfill_sessions(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cu
             )
             count += cur.rowcount
             seen.add(source_label)
+    if isinstance(source, sqlite3.Cursor):
+        for source_path, session_id in conn.execute(
+            "SELECT DISTINCT source_path, session_id FROM raw_events WHERE session_id IS NOT NULL"
+        ):
+            if source_path in seen:
+                continue
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (str(session_id), source_path),
+            )
+            count += cur.rowcount
+            seen.add(source_path)
     return count
 
 
-def _mtime(path: Path) -> float:
-    """Return file modification time as a Unix float, or 0.0 if inaccessible."""
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return 0.0
-
-
 def _backfill_raw_events(
-    conn: sqlite3.Connection, jsonl_files: list[Path], *, host: str | None = None
+    conn: sqlite3.Connection, handles: list[SessionHandle], *, host: str | None = None
 ) -> int:
-    """Parse *jsonl_files* and INSERT OR IGNORE one row per line into raw_events.
+    """Parse *handles* via ``iter_events`` and INSERT OR IGNORE one row per event.
 
     Idempotent via the ``(source_path, line_no)`` dedup index. ``event_type``
-    is the record's own ``type`` field (``"user"``, ``"assistant"``, ...) —
-    one JSONL line can feed multiple derived cache rows (e.g. an assistant
-    line yields both an assistant_messages row and zero-or-more tool_events
-    rows), so raw_events stores the source line verbatim rather than a
-    cache-table kind (ENH-2581).
+    is the event's own ``type`` (``"user"``, ``"assistant"``, ...) — one
+    source event can feed multiple derived cache rows (e.g. an assistant
+    event yields both an assistant_messages row and zero-or-more tool_events
+    rows), so raw_events stores the event payload rather than a cache-table
+    kind (ENH-2581).
 
     *host* overrides the ambient ``resolve_host().name`` for the
     ``raw_events.host`` column (ENH-3166) — ``ll-session backfill --host
-    qwen`` must stamp qwen, not whatever CLI orchestrates the call. The
-    host's layout ``skip_at_ingest`` guard (when set) drops high-volume
-    record families before they reach ``raw_events``.
+    qwen`` must stamp qwen, not whatever CLI orchestrates the call; it does
+    **not** override ``handle.host``, which drives ``iter_events`` dispatch —
+    a handle carries its own true host regardless of which CLI invocation
+    orchestrates the call.
 
-    When the layout carries a ``normalize_file`` callable (ENH-3393 — hosts
-    whose session id lives only in a file header, e.g. gemini), the file is
-    read through that callable instead of parsed line-by-line: each yielded
-    Claude-shaped, session-id-stamped dict becomes one row, with its
-    enumeration index standing in for ``line_no`` (there is no verbatim
-    per-line source once header state and inline tool calls have been
-    unpacked). Hosts without ``normalize_file`` are byte-for-byte unaffected.
+    ENH-3422 (D1-D6): every host is ingested through the single
+    ``iter_events``/``_PARSERS`` dispatch instead of per-host ``HostLayout``
+    branching. ``line_no`` comes from ``event.line_no`` (real file line
+    number for per-line hosts; enumeration index for gemini/omp, matching
+    prior behavior). ``session_id`` falls back to ``handle.session_id`` when
+    the payload carries none (codex/kimi, D3). ``raw_line``/``parsed_json``
+    are both the re-serialized ``event.payload`` (D6) — no longer verbatim
+    for per-line hosts, but JSON-equal to the parser's own output.
     """
     effective_host = host if host is not None else resolve_host().name
-    layout = host_layout_for(effective_host)
-    skip = layout.skip_at_ingest
     count = 0
-    for jsonl_file in jsonl_files:
-        if layout.normalize_file is not None:
-            source_path = str(jsonl_file)
-            for line_no, record in enumerate(layout.normalize_file(jsonl_file), start=1):
-                serialized = json.dumps(record)
-                cur = conn.execute(
-                    "INSERT OR IGNORE INTO raw_events"
-                    "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
-                    " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        str(record.get("timestamp") or ""),
-                        record.get("sessionId"),
-                        effective_host,
-                        source_path,
-                        line_no,
-                        str(record.get("type") or "unknown"),
-                        _pack_payload(serialized),
-                        _pack_payload(serialized),
-                    ),
-                )
-                count += cur.rowcount
-            continue
-        try:
-            handle = jsonl_file.open(encoding="utf-8")
-        except OSError:
-            continue
-        source_path = str(jsonl_file)
-        with handle:
-            for line_no, line in enumerate(handle, start=1):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if skip is not None and skip(record):
-                    continue
-                cur = conn.execute(
-                    "INSERT OR IGNORE INTO raw_events"
-                    "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
-                    " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        str(record.get("timestamp") or ""),
-                        record.get("sessionId"),
-                        effective_host,
-                        source_path,
-                        line_no,
-                        str(record.get("type") or "unknown"),
-                        _pack_payload(line),
-                        _pack_payload(json.dumps(record)),
-                    ),
-                )
-                count += cur.rowcount
+    for handle in handles:
+        source_path = str(handle.path)
+        for event in iter_events(handle):
+            serialized = json.dumps(event.payload)
+            session_id = event.payload.get("sessionId") or handle.session_id
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO raw_events"
+                "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+                " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    event.timestamp,
+                    session_id,
+                    effective_host,
+                    source_path,
+                    event.line_no,
+                    event.type or "unknown",
+                    _pack_payload(serialized),
+                    _pack_payload(serialized),
+                ),
+            )
+            count += cur.rowcount
     return count
 
 
 def backfill_raw_events(
     db: Path | str = DEFAULT_DB_PATH,
     *,
-    jsonl_files: list[Path],
+    jsonl_files: list[Path] | None = None,
+    handles: list[SessionHandle] | None = None,
     since_ts: float | None = None,
     host: str | None = None,
 ) -> int:
-    """Parse JSONL files and INSERT OR IGNORE rows into raw_events.
+    """Parse session sources and INSERT OR IGNORE rows into raw_events.
 
-    Idempotent via ``INSERT OR IGNORE`` on ``(source_path, line_no)``. Filters
-    *jsonl_files* by mtime >= *since_ts* when given (``None`` processes every
-    provided file). Updates the ``last_raw_event_ts`` meta key on success —
+    Idempotent via ``INSERT OR IGNORE`` on ``(source_path, line_no)``. Accepts
+    either *jsonl_files* (widened internally via ``handles_from_paths``,
+    ENH-3422 D4 — the codex CLI path has no project folder to glob, so it
+    must pass *handles* directly) or *handles*; passing both raises
+    ``ValueError``, passing neither ingests nothing. Filters by
+    ``handle.updated_at`` >= *since_ts* when given (``None`` processes every
+    provided source). Updates the ``last_raw_event_ts`` meta key on success —
     the single watermark that replaces ``last_backfill_ts`` /
     ``last_backfill_ts_assistant_messages`` / ``last_backfill_ts_skill_events``
     (ENH-2581). *host* names the host whose transcripts are ingested for the
-    ``raw_events.host`` column (ENH-3166); omitted, the ambient host is used.
+    ``raw_events.host`` column (ENH-3166), and the host used to synthesize
+    handles when widening *jsonl_files*; omitted, the ambient host is used.
     Returns the count of new rows inserted.
     """
+    if jsonl_files is not None and handles is not None:
+        raise ValueError("backfill_raw_events: pass jsonl_files or handles, not both")
+    effective_host = host if host is not None else resolve_host().name
+    if handles is None:
+        handles = handles_from_paths(jsonl_files or [], effective_host)
     conn = _pkg.connect(db)
     try:
         filtered = (
-            [f for f in jsonl_files if _mtime(f) >= since_ts]
-            if since_ts is not None
-            else jsonl_files
+            [h for h in handles if h.updated_at >= since_ts] if since_ts is not None else handles
         )
-        count = _backfill_raw_events(conn, filtered, host=host)
+        count = _backfill_raw_events(conn, filtered, host=effective_host)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1056,6 +1046,7 @@ def backfill(
     issues_dir: Path | None = None,
     loops_dir: Path | None = None,
     jsonl_files: list[Path] | None = None,
+    handles: list[SessionHandle] | None = None,
     config: dict | None = None,
     max_sessions: int | None = None,
     repo_root: Path | None = None,
@@ -1073,9 +1064,11 @@ def backfill(
     *sessions_root* is given and is a directory) directly. When *host* is
     given, the subagent-transcript walk uses that host's layout descriptor
     (ENH-3165 — qwen nests ``subagents/<session-id>/`` with ``.meta.json``
-    sidecars); omitted, the Claude shape is preserved verbatim. Session JSONL
-    lines are ingested into ``raw_events`` only (ENH-2581) — the JSONL-derived
-    cache tables (``tool_events``, ``message_events``, ``assistant_messages``,
+    sidecars); omitted, the Claude shape is preserved verbatim. Session
+    sources (*jsonl_files*, widened via ``handles_from_paths``, or *handles*
+    directly — ENH-3422 D4; passing both raises ``ValueError``) are ingested
+    into ``raw_events`` only (ENH-2581) — the JSONL-derived cache tables
+    (``tool_events``, ``message_events``, ``assistant_messages``,
     ``skill_events``, ``sessions``) are **not** populated here; call
     :func:`rebuild` (or pass ``also_rebuild=True`` to do both in one call) to
     materialize them from ``raw_events``.
@@ -1083,6 +1076,8 @@ def backfill(
     Returns a per-kind count of rows inserted/derived. Sources that are
     absent are skipped silently.
     """
+    if jsonl_files is not None and handles is not None:
+        raise ValueError("backfill: pass jsonl_files or handles, not both")
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
     if registry_dir is None:
@@ -1104,8 +1099,15 @@ def backfill(
             counts["loops"] = _backfill_loops(conn, loops_dir)
         if repo_root is not None and (repo_root / ".git").exists():
             counts["commits"] = _backfill_commit_events(conn, repo_root)
-        if jsonl_files:
-            counts["raw_events"] = _backfill_raw_events(conn, jsonl_files, host=host)
+        if jsonl_files or handles:
+            raw_handles = (
+                handles
+                if handles is not None
+                else handles_from_paths(
+                    jsonl_files or [], host if host is not None else resolve_host().name
+                )
+            )
+            counts["raw_events"] = _backfill_raw_events(conn, raw_handles, host=host)
         if registry_dir.is_dir():
             counts["learning_tests"] = _backfill_learning_test_events(conn, registry_dir)
         if sessions_root is not None and sessions_root.is_dir():
@@ -1129,22 +1131,25 @@ def backfill(
 def backfill_incremental(
     db: Path | str = DEFAULT_DB_PATH,
     *,
-    jsonl_files: list[Path],
+    jsonl_files: list[Path] | None = None,
+    handles: list[SessionHandle] | None = None,
     since_ts: float | None = None,
     config: dict | None = None,
     also_rebuild: bool = False,
     host: str | None = None,
 ) -> dict[str, int]:
-    """Ingest JSONL files modified after *since_ts* into ``raw_events``.
+    """Ingest session sources modified after *since_ts* into ``raw_events``.
 
     Thin wrapper over :func:`backfill_raw_events` (ENH-2581): ingest only.
     The three legacy per-table watermarks (``last_backfill_ts``,
     ``last_backfill_ts_assistant_messages``, ``last_backfill_ts_skill_events``)
     collapse to the single ``last_raw_event_ts`` key maintained by
-    :func:`backfill_raw_events`.
+    :func:`backfill_raw_events`. Accepts either *jsonl_files* or *handles*
+    (ENH-3422 D4; both given raises ``ValueError``, validated by the
+    delegate).
 
     If *since_ts* is ``None``, reads ``last_raw_event_ts`` from the ``meta``
-    table (defaults to 0.0 — all files — when the key is absent or NULL).
+    table (defaults to 0.0 — all sources — when the key is absent or NULL).
 
     Pass ``also_rebuild=True`` to materialize the JSONL-derived cache tables
     from ``raw_events`` afterward in the same call — used by the
@@ -1152,7 +1157,7 @@ def backfill_incremental(
     ``cli/backfill_worker.py --rebuild``).
 
     Issues and loop-state JSON are NOT backfilled here; this variant is
-    JSONL-only and designed for low-latency background use in session hooks.
+    ingest-only and designed for low-latency background use in session hooks.
     *host* names the host whose transcripts are ingested for the
     ``raw_events.host`` column (ENH-3166); omitted, the ambient host is used.
     Errors are not suppressed — the caller (session hook) catches them and
@@ -1173,7 +1178,9 @@ def backfill_incremental(
         else:
             since_ts = 0.0
 
-    raw_count = backfill_raw_events(db, jsonl_files=jsonl_files, since_ts=since_ts, host=host)
+    raw_count = backfill_raw_events(
+        db, jsonl_files=jsonl_files, handles=handles, since_ts=since_ts, host=host
+    )
     counts: dict[str, int] = {"raw_events": raw_count}
     if also_rebuild:
         counts.update(rebuild(db, config=config))

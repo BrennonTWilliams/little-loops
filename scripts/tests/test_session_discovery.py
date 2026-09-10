@@ -728,22 +728,24 @@ class TestDetectSessionsKimiCode:
         assert all(e.host == "kimi-code" for e in events)
         assert events[0].payload["type"] == "tool_call"
 
-    def test_kimi_host_layout_unchanged_and_backfill_glob_ingests_zero(self, tmp_path, monkeypatch):
-        """Regression guard for the deferred kimi HostLayout entry (ENH-3422):
-        host_layout_for("kimi-code") stays the generic default, so
-        backfill_worker's directory-glob path (`path_arg.glob(layout.session_glob)`)
-        still matches zero files against a kimi workspace dir."""
+    def test_kimi_host_layout_has_real_entry_and_backfill_glob_finds_wire(
+        self, tmp_path, monkeypatch
+    ):
+        """kimi-code gets a real HostLayout entry as of ENH-3422 (D5, inverting
+        the prior deferral regression guard): host_layout_for("kimi-code")
+        carries the wire glob, so backfill_worker's directory-glob path
+        (`path_arg.glob(layout.session_glob)`) now finds the wire file."""
         home = tmp_path
         cwd = tmp_path / "project"
         cwd.mkdir()
-        self._make_kimi_workspace(home, cwd, monkeypatch)
+        wire = self._make_kimi_workspace(home, cwd, monkeypatch)
         kimi_workspace_dir = home / ".kimi-code" / "sessions" / "wd_proj"
 
         from little_loops.session_store import host_layout_for
 
         layout = host_layout_for("kimi-code")
-        assert layout.session_glob == "*.jsonl"
-        assert list(kimi_workspace_dir.glob(layout.session_glob)) == []
+        assert layout.session_glob == "session_*/agents/main/wire.jsonl"
+        assert list(kimi_workspace_dir.glob(layout.session_glob)) == [wire]
 
 
 class TestDetectSessionsLayoutNormalizedHosts:
@@ -863,6 +865,96 @@ class TestDetectSessionsLayoutNormalizedHosts:
 
         assert len(handles) == 1
         assert handles[0].path == session_file
+
+
+class TestHandlesFromPathsMatchesDiscoveryD3:
+    """ENH-3422 D3: handles_from_paths derives the same session_id
+    detect_sessions reports for the same file, for every host whose id
+    doesn't come from the plain filename stem — gemini/omp (file header),
+    kimi-code (the session_* directory two levels up), and codex (the
+    line-1 payload.id, mirroring _scan_rollout_tree)."""
+
+    def test_gemini_session_id_matches_header_rule(self, tmp_path, fixtures_dir):
+        fixture = fixtures_dir / "gemini" / "session.jsonl"
+        session_file = tmp_path / "session-1.jsonl"
+        session_file.write_text(fixture.read_text(encoding="utf-8"))
+
+        handles = ss.handles_from_paths([session_file], "gemini")
+
+        assert len(handles) == 1
+        assert handles[0].session_id == "11111111-2222-3333-4444-555555555555"
+        assert handles[0].host == "gemini"
+
+    def test_omp_session_id_matches_header_rule(self, tmp_path, fixtures_dir):
+        fixture = fixtures_dir / "omp" / "session.jsonl"
+        session_file = tmp_path / "1780000000000_11111111-2222-3333-4444-555555555555.jsonl"
+        session_file.write_text(fixture.read_text(encoding="utf-8"))
+
+        handles = ss.handles_from_paths([session_file], "omp")
+
+        assert len(handles) == 1
+        assert handles[0].session_id == "11111111-2222-3333-4444-555555555555"
+
+    def test_kimi_session_id_matches_directory_rule(self, tmp_path):
+        session_dir = tmp_path / ".kimi-code" / "sessions" / "wd_proj" / "session_1"
+        wire = session_dir / "agents" / "main" / "wire.jsonl"
+        wire.parent.mkdir(parents=True)
+        wire.write_text(
+            json.dumps({"type": "tool_call", "timestamp": "2026-09-09T00:00:00Z"}) + "\n"
+        )
+
+        handles = ss.handles_from_paths([wire], "kimi-code")
+
+        assert len(handles) == 1
+        assert handles[0].session_id == "session_1"
+
+    def test_codex_session_id_matches_header_rule(self, fixtures_dir):
+        fixture = fixtures_dir / "codex" / "rollout-interactive.jsonl"
+        with fixture.open(encoding="utf-8") as f:
+            expected_id = json.loads(f.readline())["payload"]["id"]
+
+        handles = ss.handles_from_paths([fixture], "codex")
+
+        assert len(handles) == 1
+        assert handles[0].session_id == expected_id
+
+
+class TestBackfillRawEventsCodexHandleD3:
+    """ENH-3422 D3: a codex handle's session_id (not present in the payload's
+    own sessionId field) still reaches raw_events.session_id via the
+    handle.session_id fallback, and _backfill_sessions seeds it."""
+
+    def test_codex_handle_seeds_session_id_via_fallback(self, tmp_path, fixtures_dir):
+        from little_loops.session_store import connect, ensure_db, rebuild
+        from little_loops.session_store.lifecycle import _backfill_raw_events
+
+        fixture = fixtures_dir / "codex" / "rollout-interactive.jsonl"
+        with fixture.open(encoding="utf-8") as f:
+            expected_id = json.loads(f.readline())["payload"]["id"]
+
+        handle = ss.handles_from_paths([fixture], "codex")[0]
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            count = _backfill_raw_events(conn, [handle], host="codex")
+            conn.commit()
+            session_ids = {
+                row[0] for row in conn.execute("SELECT DISTINCT session_id FROM raw_events")
+            }
+        finally:
+            conn.close()
+        assert count > 0
+        assert session_ids == {expected_id}
+
+        counts = rebuild(db)
+        assert counts["sessions"] == 1
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT session_id FROM sessions").fetchone()
+        finally:
+            conn.close()
+        assert row[0] == expected_id
 
 
 class TestIncludeAgentsNoOpOnNonClaudeHosts:
@@ -1072,9 +1164,7 @@ class TestDetectSessionsStatRace:
 
         return flaky
 
-    def test_codex_scan_fallback_skips_file_that_vanishes_before_stat(
-        self, tmp_path, monkeypatch
-    ):
+    def test_codex_scan_fallback_skips_file_that_vanishes_before_stat(self, tmp_path, monkeypatch):
         home = tmp_path
         cwd = Path("/repo/project")
         survivor = home / ".codex" / "sessions" / "2026" / "09" / "08" / "survivor.jsonl"

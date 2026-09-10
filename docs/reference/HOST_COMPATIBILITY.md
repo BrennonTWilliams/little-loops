@@ -567,12 +567,14 @@ the adapter.
 
 [^kimiwire]: Kimi wire files (`session_*/agents/main/wire.jsonl`) use a
     typed-event schema, not Claude's message schema — session-folder
-    *resolution* works (FEAT-2918), but `ll-session backfill` message
-    *extraction* does not parse them yet (ENH-2918 follow-up). Discoverable
-    via `detect_sessions()`/`iter_events()` as of ENH-3420: `parse_kimi_wire`
-    yields the raw typed events (`payload` = whole record, host-native, no
-    Claude-shape mapping) — `HostLayout`/`ll-session backfill` extraction is
-    still ENH-2918/ENH-3422's, unaffected by this.
+    *resolution* works (FEAT-2918), and as of ENH-3422 `ll-session backfill
+    --host kimi-code` ingests every event into `raw_events` (`host_layout_for
+    ("kimi-code")` carries the real `session_glob`, no longer the generic
+    default). `parse_kimi_wire` yields the raw typed events untouched
+    (`payload` = whole record, host-native, no Claude-shape mapping), so
+    kimi is ingest-only: the JSONL-derived cache tables (`tool_events`,
+    `message_events`, ...) still don't populate from it — a Claude-shape
+    normalizer for kimi remains a follow-up (ENH-2918).
 
 [^qwenwire]: Qwen chat files (`~/.qwen/projects/<cwd>/chats/<id>.jsonl`)
     use qwen's own message schema — Claude-shaped at the envelope level
@@ -581,10 +583,18 @@ the adapter.
     message body (`message.parts[]`, `functionCall`/`functionResponse`, role
     `"model"`, a disjoint tool-name vocabulary, `provenance`/subtype fields).
     Since ENH-3166, `ll-session backfill --host qwen` ingests them stamped
-    `host="qwen"` (regardless of the ambient host), skips `ui_telemetry`
-    records at ingest (~47% of qwen volume, no rebuild consumer until the
-    deferred `usage_events` stretch lands), and normalizes the rest into
-    Claude shape at rebuild time inside `_iter_events` — `parts[]`→`content[]`,
+    `host="qwen"` (regardless of the ambient host). As of ENH-3422,
+    normalization into Claude shape happens at **ingest** time inside
+    `sessions.py::parse_qwen_session` (via `normalize_qwen_record`), not at
+    rebuild time — any record with no Claude-shaped equivalent (`ui_telemetry`
+    and every other `type: "system"` record, ~47% of qwen volume plus the
+    rest with no rebuild consumer; the earlier `qwen_skip_at_ingest` guard
+    only covered the `ui_telemetry` subset and is retired) is dropped before
+    it ever reaches `raw_events`, not just filtered at rebuild. A DB holding
+    rows ingested before ENH-3422 (raw wire format, `message.parts[]`) still
+    rebuilds correctly: `writers.py::_iter_events`'s replay shim detects that
+    shape (`qwen.py::is_raw_qwen_record`) and re-normalizes only those rows —
+    `parts[]`→`content[]`,
     `functionCall`→`tool_use` with `id` preserved and tool names
     canonicalized (`run_shell_command`→`Bash`, `edit`→`Edit`,
     `read_file`→`Read`, `grep_search`→`Grep`, `write_file`→`Write`,
@@ -616,10 +626,13 @@ the adapter.
     session's `projectHash` header field), and the session id lives **only**
     in a file header line, not on each record. `ll-session backfill --host
     gemini` reads each file end-to-end via a file-level normalizer
-    (`HostLayout.normalize_file`, ENH-3393 — a new contract alongside the
-    per-record `normalize` qwen uses, since a per-record normalizer can't
-    stamp `raw_events.session_id` without file-level header state) that
-    unpacks the initial `$set.messages` array (the session-context turn),
+    (`sessions.py::parse_gemini_session` wrapping `normalize_gemini_session`,
+    ENH-3393; since ENH-3422 this is the ingest path itself — there is no
+    separate `HostLayout.normalize_file` contract anymore — a per-record
+    normalizer can't stamp `raw_events.session_id` without file-level header
+    state, so `SessionEvent.line_no` is the enumeration index over the
+    normalizer's yield rather than a real file line number) that unpacks the
+    initial `$set.messages` array (the session-context turn),
     reads later bare `user`/`gemini` records, skips `$rewindTo` markers and
     metadata-only `$set` patches, and splits each inline `toolCalls[]` entry
     into a `tool_use` block on the assistant turn plus a synthetic
@@ -633,8 +646,9 @@ the adapter.
 [^ompwire]: omp (oh-my-pi 18.0.11) session files are a fourth shape: a
     fixed-width title-slot line precedes the session header on every
     physical file, and the session id lives **only** in that header, not on
-    each record — reusing gemini's `HostLayout.normalize_file` contract
-    (ENH-3393) rather than qwen's per-record one. Each conversational line
+    each record — reusing gemini's file-level normalizer shape
+    (`sessions.py::parse_omp_session` wrapping `normalize_omp_session`,
+    ENH-3393) rather than qwen's per-record one. Each conversational line
     is `{type: "message", id, parentId, timestamp, message: AgentMessage}`,
     and the message's own `role` (`"user"`, `"developer"`, `"assistant"`,
     `"toolResult"`) — not Claude's flat user/assistant split — is what

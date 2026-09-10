@@ -942,6 +942,52 @@ class TestRawEventsTable:
         assert row["compacted"] == 0
         assert row["host"]  # populated from resolve_host().name
 
+    def test_line_no_survives_blank_and_malformed_lines(self, tmp_path: Path) -> None:
+        """ENH-3422 D1: blank/malformed lines still consume a real file line
+        number, so raw_events.line_no matches the file rather than an
+        enumeration over successfully-parsed records — re-ingesting after
+        upgrade produces no duplicate rows."""
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "sessionId": "s1",
+                            "timestamp": "2026-05-22T00:00:00Z",
+                            "message": {"content": "one"},
+                        }
+                    ),
+                    "",  # line 2: blank
+                    "not json",  # line 3: malformed
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "sessionId": "s1",
+                            "timestamp": "2026-05-22T00:00:01Z",
+                            "message": {"content": "two"},
+                        }
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "history.db"
+        count = backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        assert count == 2
+        conn = connect(db)
+        try:
+            rows = conn.execute("SELECT line_no FROM raw_events ORDER BY line_no").fetchall()
+        finally:
+            conn.close()
+        assert [r[0] for r in rows] == [1, 4]
+
+        # Dedup index still collides on re-ingest.
+        second = backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        assert second == 0
+
     def test_dedup_on_source_path_and_line_no(self, tmp_path: Path) -> None:
         """Re-ingesting the same file produces no duplicate raw_events rows."""
         jsonl = tmp_path / "s.jsonl"
@@ -1668,9 +1714,7 @@ class TestSchemaV49HarnessRunModel:
         conn = sqlite3.connect(str(db))
         try:
             with pytest.raises(sqlite3.IntegrityError):
-                conn.execute(
-                    "INSERT INTO harness_events (ts, attempt_kind) VALUES ('t', 'bogus')"
-                )
+                conn.execute("INSERT INTO harness_events (ts, attempt_kind) VALUES ('t', 'bogus')")
             conn.execute("INSERT INTO harness_events (ts, attempt_kind) VALUES ('t', NULL)")
         finally:
             conn.close()
@@ -1691,9 +1735,7 @@ class TestSchemaV49HarnessRunModel:
             "reason",
         }
 
-    def test_harness_admissions_reason_check_rejects_invalid_value(
-        self, tmp_path: Path
-    ) -> None:
+    def test_harness_admissions_reason_check_rejects_invalid_value(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         ensure_db(db)
         conn = sqlite3.connect(str(db))
@@ -1773,8 +1815,12 @@ class TestSchemaV49HarnessRunModel:
         ensure_db(db)
         conn = sqlite3.connect(str(db))
         try:
-            conn.execute("INSERT INTO harness_events (ts, cell_key, repetition) VALUES ('t', NULL, 1)")
-            conn.execute("INSERT INTO harness_events (ts, cell_key, repetition) VALUES ('t', NULL, 1)")
+            conn.execute(
+                "INSERT INTO harness_events (ts, cell_key, repetition) VALUES ('t', NULL, 1)"
+            )
+            conn.execute(
+                "INSERT INTO harness_events (ts, cell_key, repetition) VALUES ('t', NULL, 1)"
+            )
         finally:
             conn.close()
 

@@ -4,10 +4,11 @@ type: ENH
 title: Make _backfill_raw_events consume iter_events and shrink HostLayout to path
   metadata
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T19:03:19Z'
+completed_at: '2026-09-10T15:48:11Z'
 labels:
 - multi-host
 - architecture
@@ -151,6 +152,26 @@ aggregates over it (`ll-ctx-stats`, `ll-history`, FEAT-3418 workspace totals) �
 treat all 8 hosts uniformly and closes the seam ENH-3420 opened.
 
 ## Program Design
+
+### Deviations
+
+- **2026-09-10 (implementation).** The Call Path section didn't mention
+  `_backfill_sessions` (`lifecycle.py`) needing a change, but D3's own
+  rationale — "`_backfill_sessions` keys on the same [`sessionId`] field, so
+  those sessions would never be seeded" — is only fixed at the
+  `raw_events.session_id` column (via the `handle.session_id` fallback in
+  `_backfill_raw_events`). `_backfill_sessions` itself re-derives
+  `session_id` fresh from each replayed record's own JSON body
+  (`record.get("sessionId")`), which codex/kimi payloads never carry, so the
+  AC line "`_backfill_sessions` seeds them" would have stayed false without a
+  matching change there. Added a host-agnostic fallback pass (cursor-source
+  only): after the existing record-content loop, query
+  `raw_events(source_path, session_id)` directly for any source the loop
+  found no `sessionId` for, and seed `sessions` from that column instead.
+  Doesn't touch the `list[Path]` source path or any other consumer's
+  behavior; `INSERT OR IGNORE` on the `session_id` PRIMARY KEY makes it a
+  no-op for already-seeded rows. Covered by
+  `TestBackfillRawEventsCodexHandleD3` (`test_session_discovery.py`).
 
 ### Types
 
@@ -460,6 +481,7 @@ is wanted. `relates_to: [ENH-3420, FEAT-3417]` both resolve and are `done`. No
 dependency cycle.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T15:47:54 - `60603960-f7ef-45f5-89b9-8c484017089f.jsonl`
 - `/ll:confidence-check` - 2026-09-10T14:58:25 - `7a2c33dc-838a-4428-a666-2d83524f51c4.jsonl`
 - `/ll:verify-issues` - 2026-09-10T14:52:43 - `adc278c6-e79b-4356-bad0-d665b6ed7604.jsonl`
 - `review (manual: consolidated rewrite; folded in D1–D8 — SessionEvent.line_no, legacy-qwen replay shim, session_id fallback + handles_from_paths/session_id_for, handles= on wrappers + detect_sessions for codex, kimi HostLayout entry, raw_line non-verbatim, no compat wrappers + delete qwen_skip_at_ingest, worker return-1 validation)` - 2026-09-10T15:30:00

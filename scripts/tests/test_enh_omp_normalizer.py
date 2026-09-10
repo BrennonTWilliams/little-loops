@@ -135,18 +135,23 @@ class TestHostLayoutRegistryOmp:
         assert layout.projects_root is None
         assert layout.session_glob == "*.jsonl"
         assert layout.sessions_subdir == ""
-        assert layout.normalize is None
-        assert layout.normalize_file is normalize_omp_session
+        assert not hasattr(layout, "normalize")
+        assert not hasattr(layout, "normalize_file")
 
     def test_claude_layout_has_no_file_level_normalizer(self) -> None:
-        assert host_layout_for("claude-code").normalize_file is None
+        assert not hasattr(host_layout_for("claude-code"), "normalize_file")
 
     def test_gemini_layout_has_no_omp_normalizer(self) -> None:
-        """The gemini and omp file-level contracts coexist without leaking."""
-        from little_loops.session_store import normalize_gemini_session
+        """The gemini and omp file-level contracts coexist without leaking —
+        normalization now lives in the sessions.py parsers (ENH-3422), not on
+        HostLayout, so this only pins that omp's session_glob/name stay
+        distinct from gemini's."""
+        gemini_layout = host_layout_for("gemini")
+        omp_layout = host_layout_for("omp")
 
-        assert host_layout_for("gemini").normalize_file is normalize_gemini_session
-        assert host_layout_for("gemini").normalize_file is not normalize_omp_session
+        assert gemini_layout.name == "gemini"
+        assert omp_layout.name == "omp"
+        assert gemini_layout.session_glob != omp_layout.session_glob
 
 
 class TestBackfillRawEventsNormalizeFileOmp:

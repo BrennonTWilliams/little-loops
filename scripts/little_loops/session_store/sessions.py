@@ -16,8 +16,8 @@ reimplemented; ``opencode``/``pi`` are Claude-shaped on disk already and reuse
 the Claude per-line loop with their own host stamped. The two discovery
 mechanisms this module and ``HostLayout`` used to be — one per-host parser
 here, one normalizer-to-Claude-shape seam there — are unified for discovery
-and reading as of this phase; ``HostLayout`` itself (ingest to
-``raw_events``) is untouched until ENH-3422.
+and reading as of this phase; the ingest half (``raw_events``, via
+``iter_events``) was unified in ENH-3422.
 
 Every function takes ``home: Path | None = None`` (resolving to ``Path.home()``
 at call time) so tests never touch a real ``~/.codex`` or ``~/.claude`` —
@@ -76,12 +76,19 @@ class SessionHandle:
 
 @dataclass(frozen=True)
 class SessionEvent:
-    """One typed record from a session file, host-native payload untouched."""
+    """One typed record from a session file, host-native payload untouched.
+
+    ``line_no`` (ENH-3422) is the real file line number for per-line hosts
+    (blank/malformed lines consume a number, matching the ``raw_events``
+    ``(source_path, line_no)`` dedup index) and the enumeration index over a
+    file-level normalizer's yield for gemini/omp.
+    """
 
     type: str
     timestamp: str
     host: str
     payload: dict[str, Any] = field(default_factory=dict)
+    line_no: int | None = None
 
 
 _STATE_DB_RE = re.compile(r"^state_(\d+)\.sqlite$")
@@ -294,12 +301,6 @@ _REGISTERED_HOSTS = (
     "omp",
 )
 
-# The only per-host path metadata this seam owns instead of reading off
-# HostLayout: a kimi HostLayout entry would go live in backfill_worker/
-# cli/logs.py immediately (they still line-loop session_glob results today),
-# so it stays deferred to ENH-3422 and this module supplies its own glob.
-_KIMI_WIRE_GLOB = "session_*/agents/main/wire.jsonl"
-
 # Hosts handled by _detect_layout_sessions/_project_folder_for_layout_host
 # (every registered host other than codex and claude-code, which have their
 # own dedicated discovery functions above).
@@ -422,6 +423,86 @@ def _header_session_id(host: str, path: Path) -> str | None:
     return None
 
 
+def _codex_header_session_id(path: Path) -> str | None:
+    """Read a codex session id from line 1's ``payload.id``, or ``None``.
+
+    Mirrors :func:`_scan_rollout_tree`'s inline ``payload.get("id", ...)``
+    rule so :func:`session_id_for` agrees with codex discovery.
+    """
+    try:
+        with path.open(encoding="utf-8") as f:
+            first_line = f.readline()
+    except OSError:
+        return None
+    if not first_line.strip():
+        return None
+    try:
+        header = json.loads(first_line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(header, dict):
+        return None
+    payload = header.get("payload", {})
+    if not isinstance(payload, dict):
+        return None
+    session_id = payload.get("id")
+    return session_id if isinstance(session_id, str) and session_id else None
+
+
+def session_id_for(host: str, path: Path) -> str:
+    """Derive *path*'s session id per *host*'s own rule (ENH-3422, D3).
+
+    kimi-code: the ``session_*`` directory two levels up (never the stem,
+    which is always ``"wire"``). gemini/omp: the file header's session id,
+    falling back to the stem (:func:`_header_session_id`). codex: line 1's
+    ``payload.id``, falling back to the stem (:func:`_codex_header_session_id`,
+    matching :func:`_scan_rollout_tree`). Every other host: the file stem.
+    Shared by :func:`_detect_layout_sessions` and :func:`handles_from_paths`
+    so discovery and path-synthesis cannot drift.
+    """
+    if host == "kimi-code":
+        return path.parents[2].name
+    if host in ("gemini", "omp"):
+        return _header_session_id(host, path) or path.stem
+    if host == "codex":
+        return _codex_header_session_id(path) or path.stem
+    return path.stem
+
+
+def handles_from_paths(
+    paths: list[Path], host: str, *, cwd: Path | None = None
+) -> list[SessionHandle]:
+    """Synthesize ``SessionHandle``\\ s for *paths* already known to be *host*'s.
+
+    Widens the legacy ``list[Path]`` shape the public backfill wrappers still
+    accept into the ``SessionHandle`` shape :func:`iter_events` needs
+    (ENH-3422, D4). ``session_id`` comes from :func:`session_id_for` — the
+    same rule discovery applies — so a handle synthesized here and one
+    :func:`detect_sessions` produces for the same file agree (D3).
+    ``updated_at`` is the file's mtime; a file that vanishes between glob and
+    stat (BUG-2489 TOCTOU) is skipped, not raised. ``cwd`` defaults to
+    ``Path.cwd()``.
+    """
+    resolved_cwd = cwd if cwd is not None else Path.cwd()
+    handles = []
+    for path in paths:
+        try:
+            updated_at = path.stat().st_mtime
+        except OSError:
+            continue
+        handles.append(
+            SessionHandle(
+                host=host,
+                session_id=session_id_for(host, path),
+                path=path,
+                cwd=resolved_cwd,
+                updated_at=updated_at,
+                is_agent=path.name.startswith("agent-"),
+            )
+        )
+    return handles
+
+
 def _detect_layout_sessions(
     host: str, cwd: Path, home: Path, limit: int | None, include_agents: bool
 ) -> list[SessionHandle]:
@@ -429,24 +510,18 @@ def _detect_layout_sessions(
 
     Resolves the project folder via :func:`_project_folder_for_layout_host`,
     then globs ``HostLayout.session_glob`` relative to it (already encoding
-    any subdir, e.g. qwen's ``"chats/*.jsonl"``) — except kimi-code, whose
-    glob is the module-level :data:`_KIMI_WIRE_GLOB`, never
-    ``host_layout_for("kimi-code")`` (that stays the generic ``"*.jsonl"``
-    default; see ENH-3420 § Current Behavior for why a kimi ``HostLayout``
-    entry is deferred to ENH-3422). ``session_id`` is derived per the
-    per-host rule: filename stem for opencode/pi/qwen, the file header (with
-    stem fallback) for gemini/omp, and the ``session_*`` directory two levels
-    up for kimi-code (never the stem, which is always ``"wire"``).
+    any subdir, e.g. qwen's ``"chats/*.jsonl"``, or kimi-code's
+    ``"session_*/agents/main/wire.jsonl"`` since ENH-3422 gave it a real
+    entry). ``session_id`` is derived by :func:`session_id_for`, shared with
+    :func:`handles_from_paths` so discovery and path-synthesis cannot drift
+    (D3).
     """
     project = _project_folder_for_layout_host(host, cwd, home)
     if project is None or not project.is_dir():
         return []
-    if host == "kimi-code":
-        session_glob = _KIMI_WIRE_GLOB
-    else:
-        from little_loops.session_store.writers import host_layout_for
+    from little_loops.session_store.writers import host_layout_for
 
-        session_glob = host_layout_for(host).session_glob
+    session_glob = host_layout_for(host).session_glob
     handles = []
     for path in project.glob(session_glob):
         if not path.is_file():
@@ -454,12 +529,7 @@ def _detect_layout_sessions(
         is_agent = path.name.startswith("agent-")
         if is_agent and not include_agents:
             continue
-        if host == "kimi-code":
-            session_id = path.parents[2].name
-        elif host in ("gemini", "omp"):
-            session_id = _header_session_id(host, path) or path.stem
-        else:
-            session_id = path.stem
+        session_id = session_id_for(host, path)
         # BUG-2489: guard against a TOCTOU race where the live host process
         # rotates or deletes the file between the glob above and this stat.
         try:
@@ -685,7 +755,7 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
     except OSError:
         return
     with handle:
-        for raw_line in handle:
+        for line_no, raw_line in enumerate(handle, start=1):
             raw_line = raw_line.strip()
             if not raw_line:
                 continue
@@ -701,6 +771,7 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
                 timestamp=record.get("timestamp", ""),
                 host="codex",
                 payload=payload if isinstance(payload, dict) else {},
+                line_no=line_no,
             )
 
 
@@ -717,7 +788,7 @@ def _parse_claude_shaped(path: Path, host: str) -> Iterator[SessionEvent]:
     except OSError:
         return
     with handle:
-        for raw_line in handle:
+        for line_no, raw_line in enumerate(handle, start=1):
             raw_line = raw_line.strip()
             if not raw_line:
                 continue
@@ -732,6 +803,7 @@ def _parse_claude_shaped(path: Path, host: str) -> Iterator[SessionEvent]:
                 timestamp=record.get("timestamp", ""),
                 host=host,
                 payload=record,
+                line_no=line_no,
             )
 
 
@@ -762,7 +834,7 @@ def parse_kimi_wire(path: Path) -> Iterator[SessionEvent]:
     except OSError:
         return
     with handle:
-        for raw_line in handle:
+        for line_no, raw_line in enumerate(handle, start=1):
             raw_line = raw_line.strip()
             if not raw_line:
                 continue
@@ -777,6 +849,7 @@ def parse_kimi_wire(path: Path) -> Iterator[SessionEvent]:
                 timestamp=record.get("timestamp", ""),
                 host="kimi-code",
                 payload=record,
+                line_no=line_no,
             )
 
 
@@ -794,7 +867,7 @@ def parse_qwen_session(path: Path) -> Iterator[SessionEvent]:
     except OSError:
         return
     with handle:
-        for raw_line in handle:
+        for line_no, raw_line in enumerate(handle, start=1):
             raw_line = raw_line.strip()
             if not raw_line:
                 continue
@@ -812,6 +885,7 @@ def parse_qwen_session(path: Path) -> Iterator[SessionEvent]:
                 timestamp=normalized.get("timestamp", ""),
                 host="qwen",
                 payload=normalized,
+                line_no=line_no,
             )
 
 
@@ -819,12 +893,13 @@ def parse_gemini_session(path: Path) -> Iterator[SessionEvent]:
     """Wrap :func:`normalize_gemini_session`, host stamped."""
     from little_loops.session_store.gemini import normalize_gemini_session
 
-    for record in normalize_gemini_session(path):
+    for line_no, record in enumerate(normalize_gemini_session(path), start=1):
         yield SessionEvent(
             type=record.get("type", ""),
             timestamp=record.get("timestamp", ""),
             host="gemini",
             payload=record,
+            line_no=line_no,
         )
 
 
@@ -832,12 +907,13 @@ def parse_omp_session(path: Path) -> Iterator[SessionEvent]:
     """Wrap :func:`normalize_omp_session`, host stamped."""
     from little_loops.session_store.omp import normalize_omp_session
 
-    for record in normalize_omp_session(path):
+    for line_no, record in enumerate(normalize_omp_session(path), start=1):
         yield SessionEvent(
             type=record.get("type", ""),
             timestamp=record.get("timestamp", ""),
             host="omp",
             payload=record,
+            line_no=line_no,
         )
 
 

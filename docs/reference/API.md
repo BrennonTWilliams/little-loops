@@ -9598,15 +9598,18 @@ deliberately absent (v1 ships the batch half only) — `SessionHandle` carries
 **Per-host payload rule (ENH-3420)**: payload is host-native where no
 normalizer to Claude shape exists (`claude-code`, `codex`, `kimi-code` —
 `parse_kimi_wire` yields kimi's raw typed events, unmapped); where a host
-already ships a normalizer for the `HostLayout`/`writers.py` seam (`qwen`,
-`gemini`, `omp`), payload is that normalizer's own output, wrapped and
-host-stamped rather than reimplemented (`parse_qwen_session`,
-`parse_gemini_session`, `parse_omp_session`); `opencode`/`pi` are
-Claude-shaped on disk already and reuse the Claude per-line loop
-(`parse_opencode_transcript`, `parse_pi_transcript`), each stamping its own
-`host`. `HostLayout` itself is untouched by this phase — see
-[ARCHITECTURE.md § Session-Discovery Seam](../ARCHITECTURE.md#session-discovery-seam-discoveryread-vs-ingest)
-for why a kimi `HostLayout` entry is deferred to ENH-3422.
+already ships a normalizer (`qwen`, `gemini`, `omp`), payload is that
+normalizer's own output, wrapped and host-stamped rather than reimplemented
+(`parse_qwen_session`, `parse_gemini_session`, `parse_omp_session`);
+`opencode`/`pi` are Claude-shaped on disk already and reuse the Claude
+per-line loop (`parse_opencode_transcript`, `parse_pi_transcript`), each
+stamping its own `host`. `SessionEvent.line_no` (ENH-3422) is the real file
+line number for per-line hosts (blank/malformed lines still consume a
+number) and the enumeration index over the normalizer's yield for
+gemini/omp — see
+[ARCHITECTURE.md § Session-Discovery Seam](../ARCHITECTURE.md#session-discovery-seam-discoveryread-and-ingest-unified).
+`kimi-code` has a real `HostLayout` entry as of ENH-3422 (no longer
+deferred).
 
 `include_agents` is honoured wherever the host's session glob reaches agent
 transcripts — today only `claude-code` (`agent-*.jsonl`); on every other
@@ -9620,7 +9623,14 @@ record's `id` for `omp` (read via the private `_header_session_id(host,
 path)`, falling back to the filename stem when the header is missing or
 malformed); for `kimi-code`, the `session_*` directory two levels up
 (`path.parents[2].name` — never the filename stem, which is always
-`"wire"`).
+`"wire"`). This per-host rule is exposed directly as
+`session_id_for(host: str, path: Path) -> str` (ENH-3422), shared by
+`_detect_layout_sessions` and by `handles_from_paths(paths: list[Path], host:
+str, *, cwd: Path | None = None) -> list[SessionHandle]` — the latter
+synthesizes handles for a `list[Path]` already known to belong to one host
+(mtime for `updated_at`, skipped on `OSError`; `cwd` defaults to
+`Path.cwd()`), used internally to widen the public backfill wrappers'
+`jsonl_files=` argument.
 
 Claude Code: probes `home / ".claude" / "projects" / encode_project_path(spelling)` for both
 the resolved and as-recorded spellings of `cwd` (resolved first, via the shared
@@ -9642,15 +9652,23 @@ the only working Codex session-discovery path. `opencode`/`pi`/`kimi-code`/
 `encode_omp_session_dir`, accepts the same `home: Path | None = None` kwarg,
 defaulting to `Path.home()` at call time (byte-identical default path).
 
-### raw_events / rebuild / compact (ENH-2581)
+### raw_events / rebuild / compact (ENH-2581, ingest unified in ENH-3422)
 
-`raw_events` is the source of truth for the JSONL-derived cache tables (`tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`): one row per JSONL line, storing both the verbatim `raw_line` and its parsed fields (`ts`, `session_id`, `host`, `source_path`, `line_no`, `event_type`). `backfill()`/`backfill_incremental()` now ingest into `raw_events` only — pass `also_rebuild=True` to also materialize the cache tables in the same call.
+`raw_events` is the source of truth for the JSONL-derived cache tables (`tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`): one row per source event, storing both the re-serialized `raw_line` (JSON-equal to the parser's own output; no longer required to be byte-verbatim for any host as of ENH-3422 D6) and its parsed fields (`ts`, `session_id`, `host`, `source_path`, `line_no`, `event_type`). `backfill()`/`backfill_incremental()` now ingest into `raw_events` only — pass `also_rebuild=True` to also materialize the cache tables in the same call.
+
+```python
+def _backfill_raw_events(
+    conn: sqlite3.Connection, handles: list[SessionHandle], *, host: str | None = None
+) -> int
+```
+
+Loops `iter_events(handle)` for every handle and inserts one `raw_events` row per yielded `SessionEvent` — no per-host branching (ENH-3422). `session_id` is `event.payload.get("sessionId") or handle.session_id`, so Codex/kimi-code rows (whose payloads carry no `sessionId` field) still get a non-null `session_id` from the handle. The three public wrappers (`backfill_raw_events`/`backfill`/`backfill_incremental`) keep their `jsonl_files: list[Path]` parameter (widened internally via `handles_from_paths`) and additionally accept `handles: list[SessionHandle] | None = None` directly; passing both raises `ValueError`.
 
 ```python
 def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, str], None, None]
 ```
 
-Dispatch helper letting the JSONL-derived `_backfill_*` functions (`_backfill_sessions`, `_backfill_tool_events`, `_backfill_usage_events`, `_backfill_messages`, `_backfill_assistant_messages`, `_backfill_skill_events`) accept either a legacy `list[Path]` (re-reads files line-by-line) or a `raw_events` cursor selecting `(raw_line, source_path)` — the mechanism `rebuild()` uses to replay previously-ingested lines without touching the filesystem.
+Dispatch helper letting the JSONL-derived `_backfill_*` functions (`_backfill_sessions`, `_backfill_tool_events`, `_backfill_usage_events`, `_backfill_messages`, `_backfill_assistant_messages`, `_backfill_skill_events`) accept either a legacy `list[Path]` (re-reads files line-by-line) or a `raw_events` cursor selecting `(raw_line, source_path, host)` — the mechanism `rebuild()` uses to replay previously-ingested lines without touching the filesystem. Since ENH-3422, ingest itself normalizes at write time (via the `sessions.py` parsers), so this replay path carries only one host-specific shim: a DB holding rows ingested before ENH-3422 may still have raw (pre-normalization) qwen wire format (`message.parts`); rows shaped that way (`qwen.py::is_raw_qwen_record`) are re-normalized via `normalize_qwen_record` on replay, everything else (including current-format qwen rows and every other host) passes through untouched.
 
 ```python
 def rebuild(

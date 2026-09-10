@@ -125,15 +125,15 @@ class TestHostLayoutRegistryGemini:
         assert layout.projects_root is None
         assert layout.session_glob == "chats/session-*.jsonl"
         assert layout.sessions_subdir == "chats"
-        assert layout.normalize is None
-        assert layout.normalize_file is normalize_gemini_session
+        assert not hasattr(layout, "normalize")
+        assert not hasattr(layout, "normalize_file")
 
     def test_claude_layout_has_no_file_level_normalizer(self) -> None:
-        assert host_layout_for("claude-code").normalize_file is None
+        assert not hasattr(host_layout_for("claude-code"), "normalize_file")
 
     def test_qwen_layout_has_no_file_level_normalizer(self) -> None:
         """The record-level qwen contract and the file-level gemini contract coexist."""
-        assert host_layout_for("qwen").normalize_file is None
+        assert not hasattr(host_layout_for("qwen"), "normalize_file")
 
 
 class TestBackfillRawEventsNormalizeFile:
@@ -232,7 +232,8 @@ class TestClaudeParityUnaffectedByNormalizeFile:
             raw_line = conn.execute("SELECT raw_line FROM raw_events").fetchone()[0]
         finally:
             conn.close()
-        # Verbatim source line preserved exactly for normalize_file=None hosts.
+        # Re-serialized payload is JSON-equal to the source line (ENH-3422 D6:
+        # raw_line is no longer required to be byte-verbatim for any host).
         assert json.loads(_unpack_payload(raw_line))["message"]["content"] == "hello"
 
 

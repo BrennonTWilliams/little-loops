@@ -108,7 +108,7 @@ from little_loops.session_store.queries import (
     recent,
     search,
 )
-from little_loops.session_store.qwen import normalize_qwen_record, qwen_skip_at_ingest
+from little_loops.session_store.qwen import is_raw_qwen_record, normalize_qwen_record
 from little_loops.session_store.schema import (
     _BUSY_TIMEOUT_MS,
     _KIND_TABLE,
@@ -249,7 +249,7 @@ __all__ = [
     "normalize_gemini_session",
     "normalize_omp_session",
     "normalize_qwen_record",
-    "qwen_skip_at_ingest",
+    "is_raw_qwen_record",
     "canonicalize_issue_id",
     "write_file_event",
     "cli_event_context",

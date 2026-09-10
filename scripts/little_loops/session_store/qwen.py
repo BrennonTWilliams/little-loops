@@ -124,15 +124,19 @@ def normalize_qwen_record(record: dict) -> dict | None:
     return None
 
 
-def qwen_skip_at_ingest(record: dict) -> bool:
-    """Ingest-time volume guard for the qwen layout (see ``HostLayout``).
+def is_raw_qwen_record(record: dict) -> bool:
+    """True when *record* is still raw qwen wire format (ENH-3422, D2).
 
-    ``subtype: "ui_telemetry"`` is ~47% of qwen record volume and feeds no
-    rebuild consumer today (the ``usage_events`` stretch goal is deferred),
-    so it never reaches ``raw_events``. Every other record family ingests
-    verbatim.
+    Discriminates on record *shape*, not provenance: a raw record's
+    ``message.parts`` is a list (see :func:`_message_parts`); a record
+    already run through :func:`normalize_qwen_record` has ``message.content``
+    instead. Used by the ``rebuild()`` replay shim to re-normalize only the
+    legacy rows a pre-ENH-3422 ``raw_events`` table may still hold —
+    ``sessions.py::parse_qwen_session`` normalizes at ingest now, so a
+    normalized record's ``message.parts`` is absent and this returns
+    ``False``.
     """
-    return record.get("subtype") == "ui_telemetry"
+    return _message_parts(record) is not None
 
 
 def _message_parts(record: dict) -> list | None:

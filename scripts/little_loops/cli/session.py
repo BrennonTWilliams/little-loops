@@ -57,6 +57,7 @@ from little_loops.session_store import (
     cli_event_context,
     compact,
     connect,
+    detect_sessions,
     export_history,
     export_tables_help,
     host_layout_for,
@@ -660,27 +661,41 @@ def main_session() -> int:
                 except ValueError:
                     logger.error(f"Invalid date: {since_flag!r}. Use YYYY-MM-DD or ISO 8601.")
                     return 1
-                project_folder = get_project_folder(host=args.host)
-                if project_folder is None:
-                    logger.error("No session project folder found; cannot discover JSONL files.")
-                    return 1
-                # Session JSONL sits in the layout's sessions subdir for hosts
-                # like qwen (chats/); the subdir is "" for Claude-shaped hosts
-                # so the join is a no-op there (ENH-3165).
-                jsonl_files = list(
-                    (project_folder / host_layout_for(_backfill_host).sessions_subdir).glob(
-                        "*.jsonl"
-                    )
-                )
                 also_rebuild = getattr(args, "rebuild", False)
-                inc_counts = backfill_incremental(
-                    args.db,
-                    jsonl_files=jsonl_files,
-                    since_ts=since_ts,
-                    config=_config,
-                    also_rebuild=also_rebuild,
-                    host=_backfill_host,
-                )
+                if _backfill_host == "codex":
+                    # get_project_folder(host="codex") is always None by design
+                    # (ENH-3420/ENH-3422 D4) — Codex keys sessions by cwd, not a
+                    # projects/ tree, so discovery goes through detect_sessions.
+                    codex_handles = detect_sessions(Path.cwd(), "codex")
+                    inc_counts = backfill_incremental(
+                        args.db,
+                        handles=codex_handles,
+                        since_ts=since_ts,
+                        config=_config,
+                        also_rebuild=also_rebuild,
+                        host=_backfill_host,
+                    )
+                else:
+                    project_folder = get_project_folder(host=args.host)
+                    if project_folder is None:
+                        logger.error(
+                            "No session project folder found; cannot discover JSONL files."
+                        )
+                        return 1
+                    # session_glob already encodes any subdir (e.g. qwen's
+                    # "chats/*.jsonl", kimi-code's "session_*/agents/main/wire.jsonl"
+                    # since ENH-3422); matches cli/backfill_worker.py (D5).
+                    jsonl_files = list(
+                        project_folder.glob(host_layout_for(_backfill_host).session_glob)
+                    )
+                    inc_counts = backfill_incremental(
+                        args.db,
+                        jsonl_files=jsonl_files,
+                        since_ts=since_ts,
+                        config=_config,
+                        also_rebuild=also_rebuild,
+                        host=_backfill_host,
+                    )
                 inc_total = sum(inc_counts.values())
                 logger.success(
                     f"Backfilled {inc_total} rows (incremental, since {since_flag}; "
@@ -696,34 +711,44 @@ def main_session() -> int:
                 if getattr(args, "extract_decisions", False):
                     _run_extract_decisions(since=since_flag)
                 return 0
+            # Full backfill (no --since): discover session sources so
+            # non-Claude-Code hosts also get message/tool/session backfill
+            # (ENH-1945). Codex has no project folder to glob (get_project_folder
+            # always returns None for it by design) so it discovers via
+            # detect_sessions and is cwd-scoped, ingest-only — no
+            # sessions_root, since it has no subagent-transcript mapping
+            # (ENH-3422 D4).
             if _backfill_host == "codex":
-                logger.warning(
-                    "Codex backfill via detect_sessions() is not wired up yet "
-                    "(ENH-3420); ~/.codex/projects/ never exists, so a Codex "
-                    "full backfill finds 0 sessions."
+                codex_handles = detect_sessions(Path.cwd(), "codex")
+                counts = backfill(
+                    args.db,
+                    handles=codex_handles,
+                    config=_config,
+                    max_sessions=max_sessions,
+                    repo_root=Path.cwd(),
+                    sessions_root=None,
+                    host=_backfill_host,
+                    also_rebuild=getattr(args, "rebuild", False),
                 )
-            # Full backfill (no --since): discover JSONL files so non-Claude-Code
-            # hosts also get message/tool/session backfill (ENH-1945).
-            project_folder = get_project_folder(host=args.host)
-            full_jsonl_files: list[Path] | None = (
-                list(
-                    (project_folder / host_layout_for(_backfill_host).sessions_subdir).glob(
-                        "*.jsonl"
-                    )
+            else:
+                project_folder = get_project_folder(host=args.host)
+                # session_glob already encodes any subdir (D5); matches
+                # cli/backfill_worker.py.
+                full_jsonl_files: list[Path] | None = (
+                    list(project_folder.glob(host_layout_for(_backfill_host).session_glob))
+                    if project_folder
+                    else None
                 )
-                if project_folder
-                else None
-            )
-            counts = backfill(
-                args.db,
-                jsonl_files=full_jsonl_files,
-                config=_config,
-                max_sessions=max_sessions,
-                repo_root=Path.cwd(),
-                sessions_root=project_folder,
-                host=_backfill_host,
-                also_rebuild=getattr(args, "rebuild", False),
-            )
+                counts = backfill(
+                    args.db,
+                    jsonl_files=full_jsonl_files,
+                    config=_config,
+                    max_sessions=max_sessions,
+                    repo_root=Path.cwd(),
+                    sessions_root=project_folder,
+                    host=_backfill_host,
+                    also_rebuild=getattr(args, "rebuild", False),
+                )
             total = sum(counts.values())
             logger.success(
                 f"Backfilled {total} rows "

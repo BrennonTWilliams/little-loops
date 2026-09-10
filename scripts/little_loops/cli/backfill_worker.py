@@ -11,8 +11,10 @@ tables from ``raw_events`` in the same call — passed by the hook only when
 ``SCHEMA_VERSION`` has changed since the last rebuild (see
 ``session_start.py``). ``--host`` (ENH-3166) names the host whose transcripts
 *path* holds, so ``raw_events`` rows are stamped with the ingested host
-instead of the ambient one. This file has no argparse by design
-(minimal-parsing style); both flags are checked ad hoc to match.
+instead of the ambient one; an unrecognized host is rejected (ENH-3422 D8).
+This file has no argparse by design (minimal-parsing style); both flags are
+checked ad hoc to match, and ``--host`` validation follows this file's own
+``return 1`` convention rather than raising ``SystemExit``.
 """
 
 from __future__ import annotations
@@ -45,6 +47,17 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    if host is not None:
+        from little_loops.session_store import REGISTERED_HOSTS
+
+        if host not in REGISTERED_HOSTS:
+            print(
+                f"backfill_worker: unknown --host {host!r}; expected one of "
+                f"{', '.join(REGISTERED_HOSTS)}",
+                file=sys.stderr,
+            )
+            return 1
 
     db_path = Path(positional[0])
     path_arg = Path(positional[1])

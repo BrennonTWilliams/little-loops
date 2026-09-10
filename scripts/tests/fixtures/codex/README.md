@@ -9,6 +9,11 @@ applied below).
   (`rg --files`, `find`, `sed -n`) and one `reasoning` item.
 - `rollout-exec.jsonl` — a `codex exec "echo hello"` one-shot.
 
+Also used as the AC fixtures for ENH-3422 D4: `test_backfill_ingests_codex_fixtures_via_handles`
+(`scripts/tests/test_session_store_lifecycle.py`) places both files under a
+`tmp_home/.codex/sessions/2026/09/08/` layout and drives them through
+`detect_sessions()` → `backfill(handles=...)` end to end.
+
 ## cli_version
 
 `0.152.1` (both fixtures). **Re-capture rule**: re-run `ll-learning-tests prove

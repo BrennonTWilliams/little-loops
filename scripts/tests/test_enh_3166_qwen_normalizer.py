@@ -36,8 +36,8 @@ from little_loops.session_store import (
     connect,
     ensure_db,
     host_layout_for,
+    is_raw_qwen_record,
     normalize_qwen_record,
-    qwen_skip_at_ingest,
     rebuild,
 )
 from little_loops.user_messages import encode_project_path
@@ -177,17 +177,23 @@ class TestNormalizeQwenRecord:
             assert out[key] == record[key]
 
 
-class TestQwenSkipAtIngest:
-    def test_ui_telemetry_is_skipped(self) -> None:
+class TestIsRawQwenRecord:
+    def test_raw_record_is_detected(self) -> None:
+        record = _load_fixture(SESSION_FIXTURE)[1]
+        assert is_raw_qwen_record(record) is True
+
+    def test_normalized_record_is_not_raw(self) -> None:
+        record = _load_fixture(SESSION_FIXTURE)[1]
+        normalized = normalize_qwen_record(record)
+        assert normalized is not None
+        assert is_raw_qwen_record(normalized) is False
+
+    def test_ui_telemetry_has_no_normalized_equivalent(self) -> None:
+        """subsumed volume guard (ENH-3422 D7): system-type records including
+        ui_telemetry never survive normalize_qwen_record."""
         telemetry = _load_fixture(NOISE_FIXTURE)[2]
         assert telemetry["subtype"] == "ui_telemetry"
-        assert qwen_skip_at_ingest(telemetry) is True
-
-    def test_other_records_are_kept(self) -> None:
-        for record in _load_fixture(SESSION_FIXTURE):
-            assert qwen_skip_at_ingest(record) is False
-        notification = _load_fixture(NOISE_FIXTURE)[0]
-        assert qwen_skip_at_ingest(notification) is False
+        assert normalize_qwen_record(telemetry) is None
 
 
 class TestHostLayoutRegistry:
@@ -212,8 +218,8 @@ class TestHostLayoutRegistry:
         assert layout.tool_names["glob"] == "Glob"
         assert layout.tool_names["list_directory"] == "LS"
         assert layout.tool_names["todo_write"] == "TodoWrite"
-        assert layout.normalize is not None
-        assert layout.skip_at_ingest is not None
+        assert not hasattr(layout, "normalize")
+        assert not hasattr(layout, "skip_at_ingest")
 
     def test_claude_layout_is_normalizer_free(self) -> None:
         layout = host_layout_for("claude-code")
@@ -221,8 +227,8 @@ class TestHostLayoutRegistry:
         assert layout.projects_root == Path.home() / ".claude" / "projects"
         assert layout.session_glob == "*.jsonl"
         assert layout.sessions_subdir == ""
-        assert layout.normalize is None
-        assert layout.skip_at_ingest is None
+        assert not hasattr(layout, "normalize")
+        assert not hasattr(layout, "skip_at_ingest")
         assert layout.tool_names == {}
 
     def test_registered_claude_shaped_hosts_get_projects_roots(self) -> None:
@@ -302,11 +308,54 @@ class TestRawEventsHostPlumbing:
             conn.close()
         assert hosts == {"qwen"}
 
-    def test_ui_telemetry_skipped_at_ingest_for_qwen(
+    def test_line_no_survives_blank_and_malformed_lines(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """~47% of qwen volume is ui_telemetry with no rebuild consumer —
-        skip it at ingest (documented decision, ENH-3166)."""
+        """ENH-3422 D1, qwen variant: blank/malformed lines still consume a
+        real file line number even though the qwen parser also drops
+        no-Claude-shaped-equivalent records — line_no tracks the file, not
+        an enumeration of surviving records."""
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        lines = _load_fixture(SESSION_FIXTURE)
+        jsonl = tmp_path / "qwen-blanks.jsonl"
+        jsonl.write_text(
+            "\n".join(
+                [
+                    json.dumps(lines[0]),
+                    "",  # line 2: blank
+                    "not json",  # line 3: malformed
+                    json.dumps(lines[1]),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        count = backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="qwen")
+
+        assert count == 2
+        conn = connect(db)
+        try:
+            rows = conn.execute("SELECT line_no FROM raw_events ORDER BY line_no").fetchall()
+        finally:
+            conn.close()
+        assert [r[0] for r in rows] == [1, 4]
+
+        second = backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="qwen")
+        assert second == 0
+
+    def test_non_actionable_qwen_records_are_not_ingested(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ingest now goes through parse_qwen_session's own normalize_qwen_record
+        (ENH-3422) instead of the retired skip_at_ingest volume guard: every
+        noise-fixture record — ui_telemetry, slash_command, at_command (all
+        type "system"), and the non-real-user/subtyped user records — has no
+        Claude-shaped equivalent and is dropped at ingest, not just
+        ui_telemetry (the guard's volume target). Subsumes the narrower
+        ENH-3166 ui_telemetry-only guard (D7)."""
         monkeypatch.setenv("LL_HOST_CLI", "claude-code")
         db = tmp_path / "history.db"
         ensure_db(db)
@@ -318,14 +367,7 @@ class TestRawEventsHostPlumbing:
             rows = conn.execute("SELECT raw_line FROM raw_events").fetchall()
         finally:
             conn.close()
-        from little_loops.session_store.writers import _unpack_payload
-
-        unpacked = [_unpack_payload(raw) for (raw,) in rows]
-        telemetry = sum(1 for line in unpacked if '"ui_telemetry"' in line)
-        # 6 fixture lines minus the 2 ui_telemetry records (the remaining
-        # system records — slash_command, at_command — still ingest verbatim)
-        assert len(unpacked) == 4
-        assert telemetry == 0
+        assert rows == []
 
     def test_no_host_stamps_ambient(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("LL_HOST_CLI", "claude-code")
@@ -445,6 +487,106 @@ class TestRebuildQwenRecords:
         assert counts["usage_events"] == 0
 
 
+class TestRebuildMixedLegacyAndCurrentQwenRowsD2:
+    """D2: a DB holding one raw-wire-format qwen row (pre-ENH-3422 shape) and
+    one already-normalized row (post-ENH-3422 ingest shape) rebuilds both
+    into the derived tables, and a second rebuild() yields identical counts
+    — the replay shim (is_raw_qwen_record) is idempotent over mixed rows."""
+
+    def test_mixed_raw_and_normalized_qwen_rows_rebuild_identically(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        db = tmp_path / "history.db"
+        ensure_db(db)
+
+        raw_record = {
+            "uuid": "raw-1",
+            "sessionId": "mixed-s1",
+            "timestamp": "2026-09-10T00:00:00Z",
+            "type": "assistant",
+            "cwd": "/tmp/mixed",
+            "message": {
+                "role": "model",
+                "parts": [
+                    {"text": "raw row reply"},
+                    {
+                        "functionCall": {
+                            "id": "call-1",
+                            "name": "read_file",
+                            "args": {"path": "a.py"},
+                        }
+                    },
+                ],
+            },
+        }
+        normalized_record = normalize_qwen_record(
+            {
+                "uuid": "norm-1",
+                "sessionId": "mixed-s1",
+                "timestamp": "2026-09-10T00:00:01Z",
+                "type": "user",
+                "provenance": "real_user",
+                "cwd": "/tmp/mixed",
+                "message": {"role": "user", "parts": [{"text": "already normalized"}]},
+            }
+        )
+        assert normalized_record is not None
+        assert is_raw_qwen_record(raw_record) is True
+        assert is_raw_qwen_record(normalized_record) is False
+
+        conn = connect(db)
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+            " VALUES(?, ?, 'qwen', 'mixed.jsonl', 1, ?, ?, ?)",
+            (
+                raw_record["timestamp"],
+                raw_record["sessionId"],
+                raw_record["type"],
+                json.dumps(raw_record),
+                json.dumps(raw_record),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+            " VALUES(?, ?, 'qwen', 'mixed.jsonl', 2, ?, ?, ?)",
+            (
+                normalized_record["timestamp"],
+                normalized_record["sessionId"],
+                normalized_record["type"],
+                json.dumps(normalized_record),
+                json.dumps(normalized_record),
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        first = rebuild(db)
+        second = rebuild(db)
+
+        for key in (
+            "sessions",
+            "tools",
+            "messages",
+            "assistant_messages",
+            "usage_events",
+            "skill_events",
+            "prompt_opt_events",
+        ):
+            assert first[key] == second[key], key
+
+        assert first["sessions"] == 1
+        assert first["tools"] == 1  # the raw row's functionCall
+        assert first["messages"] == 1  # the already-normalized user row
+        assert first["assistant_messages"] == 1  # the raw row, re-normalized on replay
+        # No qwen record shape here feeds these consumers — pinned at zero.
+        assert first["usage_events"] == 0
+        assert first["skill_events"] == 0
+        assert first["prompt_opt_events"] == 0
+
+
 class TestClaudeParity:
     """Claude-host ingestion/rebuild behavior is unchanged (byte-identical AC)."""
 
@@ -557,6 +699,30 @@ class TestBackfillWorkerHost:
             conn.close()
         assert hosts == {"qwen"}
         assert sessions == 1  # --rebuild ran
+
+    def test_unknown_host_returns_1_with_stderr_message(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3422 D8: an unrecognized --host is rejected via this file's own
+        return-1 convention, not SystemExit."""
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        project, db = self._make_qwen_project(tmp_path)
+
+        exit_code = worker_main([str(db), str(project), "--host", "not-a-host"])
+
+        assert exit_code == 1
+        err = capsys.readouterr().err
+        assert "not-a-host" in err
+
+    def test_valid_host_still_returns_0(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        project, db = self._make_qwen_project(tmp_path)
+
+        exit_code = worker_main([str(db), str(project), "--host", "qwen"])
+
+        assert exit_code == 0
 
 
 class TestSessionStartHookPassesHost:

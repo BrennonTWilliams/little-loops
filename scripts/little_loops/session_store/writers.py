@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 import zlib
-from collections.abc import Callable, Generator, Iterator, Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -2479,10 +2479,9 @@ class HostLayout:
 
     Widened from ENH-3165's subagent-only descriptor by ENH-3166: the
     subagent fields keep their ENH-3165 meaning while the added fields drive
-    session discovery (``projects_root``/``session_glob``), wire-format
-    normalization (``tool_names``/``tool_arg_keys``/``normalize``) and the
-    ingest volume guard (``skip_at_ingest``). One record per host — a second
-    host table would drift from the first.
+    session discovery (``projects_root``/``session_glob``) and wire-format
+    metadata (``tool_names``/``tool_arg_keys``). One record per host — a
+    second host table would drift from the first.
 
     ``glob`` is evaluated against the host's project folder and yields the
     directories that directly contain ``*.jsonl`` subagent transcripts;
@@ -2500,22 +2499,14 @@ class HostLayout:
     or hosts like kimi that resolve sessions through an index file).
     ``session_glob`` is the glob, relative to a project folder, that reaches
     top-level session JSONL (``"chats/*.jsonl"`` for qwen, ``"*.jsonl"`` for
-    Claude-shaped hosts). ``normalize`` maps one raw record into the
-    Claude-shaped form the ``_backfill_*`` extractors consume (``None`` when
-    the host is already Claude-shaped); ``skip_at_ingest`` optionally drops
-    high-volume record families before they reach ``raw_events``.
+    Claude-shaped hosts).
 
-    ``normalize_file`` (ENH-3393) is for hosts whose session id lives only in
-    a file header, not on each record (gemini, omp per ENH-3394) — the
-    per-record ``normalize`` contract can't stamp ``raw_events.session_id``
-    without file-level state. When set, :func:`_backfill_raw_events` reads
-    the whole file through this callable instead of parsing it line-by-line;
-    each yielded dict is already Claude-shaped with ``sessionId`` stamped, and
-    is stored as both ``raw_line`` and ``parsed_json`` (there is no single
-    verbatim source line once header state and inline tool calls have been
-    unpacked into separate records). Mutually exclusive with ``normalize``/
-    ``skip_at_ingest`` in practice — a file-level normalizer owns the full
-    record shape and should apply its own volume filtering internally.
+    Ingest-time wire-format normalization moved off this dataclass in
+    ENH-3422: every host's ``raw_events`` ingest now goes through
+    ``session_store.sessions.iter_events``/``_PARSERS`` instead of the
+    ``normalize``/``skip_at_ingest``/``normalize_file`` callables this class
+    used to carry (deleted; see the per-host ``parse_*`` functions in
+    ``sessions.py`` for the normalizer dispatch that replaces them).
     """
 
     glob: str
@@ -2527,9 +2518,6 @@ class HostLayout:
     session_glob: str = "*.jsonl"
     tool_names: dict[str, str] = field(default_factory=dict)
     tool_arg_keys: dict[str, dict[str, str]] = field(default_factory=dict)
-    normalize: Callable[[dict], dict | None] | None = None
-    skip_at_ingest: Callable[[dict], bool] | None = None
-    normalize_file: Callable[[Path], Iterator[dict]] | None = None
 
 
 @dataclass(frozen=True)
@@ -2556,12 +2544,7 @@ def host_layout_for(host: str) -> HostLayout:
     """
     home = Path.home()
     if host == "qwen":
-        from little_loops.session_store.qwen import (
-            QWEN_TOOL_ARG_KEYS,
-            QWEN_TOOL_NAMES,
-            normalize_qwen_record,
-            qwen_skip_at_ingest,
-        )
+        from little_loops.session_store.qwen import QWEN_TOOL_ARG_KEYS, QWEN_TOOL_NAMES
 
         return HostLayout(
             glob="subagents/*",
@@ -2573,12 +2556,8 @@ def host_layout_for(host: str) -> HostLayout:
             session_glob="chats/*.jsonl",
             tool_names=QWEN_TOOL_NAMES,
             tool_arg_keys=QWEN_TOOL_ARG_KEYS,
-            normalize=normalize_qwen_record,
-            skip_at_ingest=qwen_skip_at_ingest,
         )
     if host == "gemini":
-        from little_loops.session_store.gemini import normalize_gemini_session
-
         return HostLayout(
             glob="*/subagents",
             parent_from="parent_dir",
@@ -2587,11 +2566,8 @@ def host_layout_for(host: str) -> HostLayout:
             name="gemini",
             projects_root=None,
             session_glob="chats/session-*.jsonl",
-            normalize_file=normalize_gemini_session,
         )
     if host == "omp":
-        from little_loops.session_store.omp import normalize_omp_session
-
         # Child-session subagent_runs mapping is deferred (ENH-3394 Scope
         # Boundaries): omp's real child layout is `<parent-stem>/<agentId>.jsonl`
         # (a dir named after the parent transcript's filename stem, not its
@@ -2607,7 +2583,20 @@ def host_layout_for(host: str) -> HostLayout:
             sessions_subdir="",
             name="omp",
             projects_root=None,
-            normalize_file=normalize_omp_session,
+        )
+    if host == "kimi-code":
+        # Real entry as of ENH-3422 (previously deferred; sessions.py's
+        # discovery special case and its module-level glob constant are gone
+        # too). Subagent fields are left at the Claude-shaped defaults below —
+        # kimi has no subagent_runs mapping of its own yet.
+        return HostLayout(
+            glob="*/subagents",
+            parent_from="parent_dir",
+            sidecar_suffix=None,
+            sessions_subdir="",
+            name="kimi-code",
+            projects_root=None,
+            session_glob="session_*/agents/main/wire.jsonl",
         )
     # "codex" is deliberately absent (FEAT-3417): it never writes
     # ~/.codex/projects/ (dates key its sessions, not projects), so it gets
@@ -3278,31 +3267,28 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
     re-reading the filesystem (ENH-2581). Cursor-sourced ``raw_line`` values pass
     through :func:`_unpack_payload` (compressed BLOB → text; legacy TEXT unchanged).
 
-    When the cursor selects a third ``host`` column (ENH-3166), rows whose
-    host layout carries a ``normalize`` callable are parsed, normalized into
-    the Claude-shaped form the extractors consume, and re-serialized; records
-    the normalizer drops (``None``) are skipped. Rows with a missing host
-    (legacy cursors, ``list[Path]`` sources) or a normalizer-free layout pass
-    through untouched — every existing claude-code row bypasses the
-    loads/normalize/dumps round-trip entirely.
+    Ingest-time normalization moved onto the ``sessions.py`` parsers in
+    ENH-3422, so rows ingested after that change are already Claude-shaped.
+    Rows ingested before it store raw qwen wire format (``message.parts``),
+    which the extractors don't understand — the one host-specific shim left
+    here (ENH-3422, D2) re-normalizes those legacy rows on replay, keyed on
+    record *shape* (:func:`is_raw_qwen_record`) rather than on ``HostLayout``,
+    so it is idempotent over a DB holding both legacy and current qwen rows.
     """
     if isinstance(source, sqlite3.Cursor):
-        layouts: dict[str, HostLayout] = {}
+        from little_loops.session_store.qwen import is_raw_qwen_record, normalize_qwen_record
+
         for row in source:
             line = _unpack_payload(row[0])
             source_label = row[1]
             host = row[2] if len(row) > 2 else None
-            if host:
-                layout = layouts.get(host)
-                if layout is None:
-                    layout = host_layout_for(str(host))
-                    layouts[str(host)] = layout
-                if layout.normalize is not None:
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    normalized = layout.normalize(record)
+            if host == "qwen":
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if is_raw_qwen_record(record):
+                    normalized = normalize_qwen_record(record)
                     if normalized is None:
                         continue
                     line = json.dumps(normalized)
