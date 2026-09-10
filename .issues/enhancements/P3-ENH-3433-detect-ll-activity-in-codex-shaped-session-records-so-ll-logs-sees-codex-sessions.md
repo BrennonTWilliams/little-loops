@@ -8,7 +8,6 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T05:10:54Z'
 reconcile_attempted: true
-verify_verdict: EVIDENCE_UNVERIFIED
 labels:
 - multi-host
 - observability
@@ -17,8 +16,9 @@ blocks: []
 relates_to:
 - ENH-3422
 - ENH-3429
-confidence_score: 90
+confidence_score: 100
 outcome_confidence: 67
+verify_verdict: VALID
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
@@ -186,25 +186,31 @@ ENH-3430 (the handles-based readers in `cli/logs.py`; the `sessionId`/`handle.se
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues --auto` — 2026-09-10._
+_Added by `/ll:verify-issues --auto` — 2026-09-10 (re-run, supersedes the prior pass below)._
 
-**Verdict: EVIDENCE_UNVERIFIED** (`ll-verify-evidence --json`, check B7, BUG-3282).
+**Verdict: VALID.**
 
-- The "Current Behavior" quote `const r = await tools.exec_command({ cmd: "<shell command>", workdir: ... })`, attributed to `scripts/tests/fixtures/codex/rollout-interactive.jsonl`, does not appear verbatim in that fixture at HEAD or in the working tree. The fixture's actual ordinal-12 `input` string is `const r = await tools.exec_command({\n  cmd: "rg --files scripts/little_loops; sed -n '1,240p' pyproject.toml",\n  workdir: "/workspace/project",\n  yield_time_ms: 10000,\n  max_output_tokens: 20000\n});\ntext(r.output);\n` — the issue's quote is a paraphrase (placeholders `<shell command>` / `workdir: ...` substituted for the literal values), not a fabricated claim about the shape. Per the current advisory policy (F3, decided 2026-08-21) this is the known low-precision *paraphrase* class and is **not** routed to `reconcile_issue`; flagging here only so the persisted `verify_verdict` reflects the deterministic check result. Recommended fix if this issue is reconciled: replace the placeholder quote with a literal fixture excerpt or mark it as illustrative prose rather than a quote.
-- Everything else checked is accurate and current, including several assumptions that depend on ENH-3430 already being live in the working tree (uncommitted, matches this session's git status):
-  - `codex.py` does not yet exist under `scripts/little_loops/session_store/` — consistent with this issue being unimplemented.
-  - `parse_codex_rollout` (line 659), `parse_kimi_wire` (749), `parse_qwen_session` (779) in `sessions.py` match cited line numbers exactly; the current docstring still promises blanket pass-through as quoted.
-  - `_is_ll_relevant`, `_detect_ll_signal`, `_record_has_error`, `_extract_eval_invocation`, `_collect_failure_clusters` in `cli/logs.py` (ENH-3430 already rewired onto `iter_events`/handles in the working tree) still key on Claude record shape (`user`/`assistant`/`queue-operation`, `Bash` tool_use) exactly as described; the `record.get("sessionId") or handle.session_id` fallback and the `tool_use.id` / `tool_result.tool_use_id` pairing in `_collect_failure_clusters` are present verbatim as claimed.
-  - `_codex_cache_usage` (`cli/ctx_stats.py:351`) filters on `event.type == "event_msg"` / `payload.get("type") == "token_count"` only, confirming it is unaffected by the proposed `custom_tool_call`/`custom_tool_call_output` remapping.
-  - The ENH-3422 sentence `"kimi-code rows are host-native \`wire.jsonl\` events (no normalizer), like codex."` exists verbatim as quoted.
-  - `docs/reference/HOST_COMPATIBILITY.md`'s only two `ll-logs` mentions are at lines 596 and 651 (unrelated prose) as claimed; the `[^codexsessions]` footnote exists and does not yet state `ll-logs` support.
-  - `docs/reference/API.md:9585` and `docs/codex/usage.md:101` match exactly.
-  - Test citations `test_session_discovery.py:486` (exact), `:517`/`:548` (off by a few lines — actual bodies at ~514/~546, same test class, not a material discrepancy), `:753`, `:1006-1012` all correspond to the described tests.
-  - No active required decision rules exist in `.ll/decisions.yaml`/`.ll/decisions.d/` to check for `DECISIONS_VIOLATION`.
-  - Proposal-vs-code consequence check (B6): no `except`-clause or test-fixture incompatibility found; `test_parses_interactive_fixture_header_and_unknown_types_pass_through`'s two exec-subtype assertions are correctly identified as the only test needing to flip.
-- Not independently reverified: the corpus-survey claim ("8,859 rollouts … only 3 exec calls, zero failures") is a point-in-time empirical scan of `~/.codex/sessions` on the dev machine and was not re-run by this pass.
+- The previously-flagged `EVIDENCE_UNVERIFIED` finding is resolved: `ll-verify-evidence --json` now returns `"ok": true, "count": 0`. The "Current Behavior" quote at line 41 is the literal fixture excerpt (`cmd: "rg --files scripts/little_loops; sed -n '1,240p' pyproject.toml", workdir: "/workspace/project", yield_time_ms: 10000, max_output_tokens: 20000`), not the placeholder paraphrase the prior pass caught — the quote was corrected in an intervening edit (the 2026-09-10T15:16:33 `/ll:refine-issue` pass, per Session Log).
+- `codex.py` still does not exist under `scripts/little_loops/session_store/` — consistent with this issue being unimplemented.
+- `parse_codex_rollout` (733), `parse_kimi_wire` (825), `parse_qwen_session` (856) in `sessions.py` match the "Re-refine findings" citations exactly (not the stale 659/749/779 still quoted in Current Behavior/Files-to-Modify prose, which that section already caveats as citation drift — "locate by name").
+- `docs/reference/API.md:9581` (`parse_codex_rollout` signature) and the `[^codexsessions]` footnote at `docs/reference/HOST_COMPATIBILITY.md:556` both match exactly.
+- `test_session_discovery.py:486` (`test_parses_interactive_fixture_header_and_unknown_types_pass_through`) matches exactly; `TestDetectSessionsLayoutNormalizedHosts` is now at line 751 and `test_qwen_iter_events_matches_normalize_qwen_record` at 755 (cited as 749/753 — off by 2, not material).
+- **New minor drift since the last pass**: `docs/reference/HOST_COMPATIBILITY.md`'s two unrelated `ll-logs` mentions have moved from 596/651 (recorded in the prior Re-refine findings entry as "652, not 651") to **606/666** — both still unrelated prose, so the substance of that citation still holds, just the line numbers have drifted further under continued unrelated edits to the file. Not worth a standalone update given the file's own precedent of treating this class of drift as non-substantive.
+- `cli/logs.py` readers (`_is_ll_relevant`, `_detect_ll_signal`, `_record_has_error`, `_extract_eval_invocation`, `_collect_failure_clusters`) all still exist by name and key on Claude record shape as described.
+- No active required decision rules in `.ll/decisions.yaml`/`.ll/decisions.d/` — no `DECISIONS_VIOLATION`.
+- Proposal-vs-code consequence check (B6): no new exception-handler or test-fixture incompatibility found beyond what the prior pass already identified.
+- Not independently reverified (unchanged from prior pass): the corpus-survey claim ("8,859 rollouts … only 3 exec calls, zero failures") is a point-in-time empirical scan not re-run by this pass.
 
 **Graph**: provider=`codegraph` freshness=`stale` (not used to originate a verdict; all checks above were confirmed by direct grep/read).
+
+---
+
+_Prior pass — `/ll:verify-issues --auto` — 2026-09-10T05:39:27, superseded above._
+
+Verdict at time of check: **EVIDENCE_UNVERIFIED** (`ll-verify-evidence --json`, check B7, BUG-3282) — corrections applied in a later pass (the 2026-09-10T15:16:33 `/ll:refine-issue`), so the issue as it now reads is up to date; this record is retained as a history of what was wrong and fixed, not an outstanding action item.
+
+- The "Current Behavior" quote `const r = await tools.exec_command({ cmd: "<shell command>", workdir: ... })`, attributed to `scripts/tests/fixtures/codex/rollout-interactive.jsonl`, did not appear verbatim in that fixture — the issue's quote was a paraphrase (placeholders `<shell command>` / `workdir: ...` substituted for the literal values), not a fabricated claim about the shape. Per the advisory policy (F3, decided 2026-08-21) this was the known low-precision *paraphrase* class and was not routed to `reconcile_issue` automatically; it was fixed in a subsequent refine pass regardless.
+- Everything else checked at that time was accurate and current; see git history of this file for the full prior note if needed.
 
 ## Status
 
@@ -225,6 +231,8 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 - Ambiguity (**resolved 2026-09-10 review #2**): the `is_error` rule was unresolved pending a failed-exec capture; the committed interactive fixture already holds one (line 14, `exit_code: 1`), and the rule now reads `item_completed`/`CommandExecution` rather than output text. Residual ambiguity is the n=3 ordering assumption behind the `call_id` ↔ `CommandExecution` pairing, mitigated by the cmd-equality cross-check and the "unpaired output carries no `is_error`" fallback.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T15:54:48 - `21c5962e-dd8c-4b48-a500-198a5333f5bd.jsonl`
+- `/ll:verify-issues` - 2026-09-10T15:52:18 - `64b459cf-2462-4a5c-9ed6-1756ff29f3ea.jsonl`
 - `review (manual: pre-implementation review #2 — failed-exec sample already in committed fixture (line 14, exit_code 1); output-text is_error rule shown unworkable (identical header on failure); is_error sourced from item_completed/CommandExecution with cmd-keyed pairing; normalizer becomes stateful CodexNormalizer class; ENH-3422 rebuild() consequence decided (Codex no longer ingest-only, no replay shim); capture step, rollout-exec-failure fixture, and stale "like codex" strike removed; (b) check widened to three carriers; blocked_by cleared)` - 2026-09-10
 - `/ll:confidence-check` - 2026-09-10T15:23:39 - `3d67c671-8653-4204-85ba-84a503b35f40.jsonl`
 - `/ll:refine-issue` - 2026-09-10T15:16:33 - `60603960-f7ef-45f5-89b9-8c484017089f.jsonl`
