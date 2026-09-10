@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T19:27:53Z'
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-3434: Hook config resolution does not walk up from subdirectory cwd
