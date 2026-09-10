@@ -40,12 +40,25 @@ A read-only `ll-queue list` (CLI and MCP tool) should not crash with a traceback
 - `scripts/tests/test_feat_queue_mcp_tools.py`
 - `scripts/tests/test_queue_store.py`
 
+## Program Design
+
+### Signatures
+
+- `cmd_list(args: argparse.Namespace) -> int` (`cli/queue.py:245`) — wrap the existing `list_entries` call in `try`/`except sqlite3.OperationalError`
+- `_tool_queue_list(_arguments: dict[str, Any], *, project_root: Path) -> Any` (`mcp_server/tools.py:478`) — same wrap
+
+### Call Path
+
+`cmd_list` -> `queue_store.list_entries` (raises `sqlite3.OperationalError` on lock) -> caught -> `cli.output.print_json({"error": msg, "locked": True})` (json mode) or `print(msg, file=sys.stderr)` (text mode), `return 1` — mirrors the existing `AmbiguousEntryIdError`/not-found handling in `cli/queue.py:283-300`.
+
+`_tool_queue_list` -> `queue_store.list_entries` (raises `sqlite3.OperationalError` on lock) -> caught -> `raise ValueError(msg)` — matches the `raise ValueError(...)` convention used by every other `_tool_*` function in `mcp_server/tools.py` for tool-level failures (e.g. `:141`, `:502`, `:600`).
+
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - Read-only CLI/MCP crash under lock contention; hits automation consumers (`ll-auto`, `ll-parallel`, `ll-queue run --watch`) but is not data loss and has a race-dependent trigger, consistent with existing P3.
+- **Effort**: Small - Reuses the `try`/`except` + `print_json({"error": ...})` + `return 1` pattern already present in `cmd_status`/`cmd_remove` (`cli/queue.py:283-300`) and the `raise ValueError` convention already used by every other `_tool_*` function in `tools.py`; no new abstractions or store-layer changes needed.
+- **Risk**: Low - Read-only path, purely additive exception handling around an existing call; behavior on the non-locked path is unchanged.
+- **Breaking Change**: No - `--json` success-case payload shape is unchanged; the failure case, which previously exited with a traceback, now gains a distinguishable `error`/`locked` key instead.
 
 ## Steps to Reproduce
 
@@ -62,3 +75,7 @@ A read-only `ll-queue list` (CLI and MCP tool) should not crash with a traceback
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-10T02:20:14 - `53454f7b-c63c-4adf-8a13-82f32f7513d8.jsonl`

@@ -409,6 +409,7 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 - `cli_event_context`'s insert and exit-UPDATE paths are already partially guarded by the prior fix BUG-2706 (`sqlite3.Error` only); this issue extends existing partial coverage (widen to `Exception`, guard `resolve_history_db`/config-gating prefix) rather than building on a clean slate — re-verify the extension doesn't disturb BUG-2706's existing guard behavior (its two `TestCliEventContext` locked-DB tests must stay green).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T02:20:11 - `af4992d2-ba11-4986-b738-91e4bac9c385.jsonl`
 - `/ll:refine-issue` - 2026-09-10T01:54:48 - `13270282-d9ad-49f5-8239-cf39c3df395e.jsonl`
 - `/ll:verify-issues` - 2026-09-10T01:47:41 - `e5f879ce-163c-470b-875a-3db482daf36b.jsonl`
 - `/ll:confidence-check` - 2026-09-10T01:22:23 - `af1b5be3-0894-42b0-b637-6b7a540d5db7.jsonl`
