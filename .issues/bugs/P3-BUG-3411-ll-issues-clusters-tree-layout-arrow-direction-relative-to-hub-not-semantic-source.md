@@ -212,6 +212,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Steps to Reproduce
 
 1. In a repo with a cluster where the hub node is the `from_id` for one edge and the `to_id` for another edge of the same relationship type (e.g. `blocked_by`), run `ll-issues clusters` (default `--layout tree`).
+<!-- ll-evidence-ok: illustrative `ll-issues clusters` rendered-output example ("e.g."), not a quote from ENH-3407's own file -->
 2. Observe the hub's two neighbors of the same relationship type render with opposite arrow glyphs — e.g. hub `ENH-3407` shows `ENH-3406 → blocked_by` for one edge and `ENH-3408 ← blocked_by` for the other, despite both being `blocked_by` edges and both frontmatter records being internally consistent with a single forward dependency chain.
 3. Compare against `ll-issues clusters --layout list` on the same cluster: it renders both edges consistently from each node's own fixed perspective, with no flip.
 

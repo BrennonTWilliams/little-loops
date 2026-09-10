@@ -52,6 +52,7 @@ remediation happen in the same pass and a bare verdict label goes stale the inst
 When `/ll:verify-issues` (`commands/verify-issues.md` section 4) detects a defect and applies
 the fix in the same pass — in `--auto` or interactive mode — the persisted
 `## Verification Notes` section opens with the bare verdict-table label (e.g.
+<!-- ll-evidence-ok: illustrative example of the emergent note-opening convention, not a literal quote from commands/verify-issues.md -->
 `Verdict: NEEDS_UPDATE`), reusing the raw verdict enum values from `#### C. Determine Verdict`
 as prose — an emergent convention section 4 never actually instructs, not something copied from
 section 2.5 (which only governs the `verify_verdict:` frontmatter field). Because the fix has

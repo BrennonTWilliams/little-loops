@@ -40,9 +40,9 @@ per issue, even when `## Proposed Solution` documents several:
 2. `_option_block_spans()` (`:1494-1535`) enumerates **every** `### Option X` /
    `**Option X**` heading across the **entire** section, not scoped per
    decision point.
-3. `matching = [... if _option_label(heading) == label]` (`:1620`) finds the one
-   block whose label matches the first callout's option letter — call it
-   `selected_index`.
+3. `matching = [i for i, (_, _, heading) in enumerate(group) if _option_label(heading) == label]`
+   (`:1829`) finds the one block whose label matches the first callout's
+   option letter — call it `selected_index`.
 4. Every other block in the section — `rej_ids` (`:1626-1629`) — is unioned
    together and treated as "rejected", **including the selected option of every
    other decision point** in the same issue, because those blocks don't carry
@@ -73,7 +73,8 @@ belong to.
   with 2+ resolved decision points in `## Proposed Solution`, which caps
   Criterion C (Ambiguity) in `/ll:confidence-check`'s outcome-confidence
   scoring even when every decision is genuinely resolved — `FEAT-3409` scored
-  `score_ambiguity: 10/25` almost entirely on this false-positive list.
+  `score_ambiguity: 10` (out of a 25-point scale) almost entirely on this
+  false-positive list.
 - Though advisory (does not block `/ll:ready-issue`), the noise could mislead
   a contributor into stripping load-bearing selected-option content from a
   well-formed issue just to satisfy the checker.

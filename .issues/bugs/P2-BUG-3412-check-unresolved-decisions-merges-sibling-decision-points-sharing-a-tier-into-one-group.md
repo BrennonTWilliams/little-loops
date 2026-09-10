@@ -330,6 +330,7 @@ but the frontmatter flag no longer signals it, so downstream automation (`/ll:wi
    Steps — so a fresh fixture is required.)
 2. Resolve only the *first* decision point by inserting a `> **Selected:** Option A — ...`
    callout on its winning option. Leave the second (or later) decision point's options with no
+   <!-- ll-evidence-ok: hypothetical repro text ("e.g."), not a quote from FEAT-3409 -->
    Selected callout (e.g. only a `**Recommended**: Option B` line, or nothing at all).
 3. Run `ll-issues check-unresolved-decisions <ID>`.
 

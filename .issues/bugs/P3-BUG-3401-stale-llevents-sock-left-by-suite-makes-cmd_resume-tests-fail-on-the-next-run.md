@@ -62,6 +62,7 @@ The more likely mechanism, found by tracing `wire_transports()` itself (`scripts
 
 1. On `main` at or after `90c1e137`, ensure `.ll/` has no `events*.sock` files (`rm -f .ll/events*.sock`) to rule out the stale-file hypothesis.
 2. Run `python -m pytest scripts/tests/test_cli_loop_lifecycle.py -n 0 -p no:randomly`.
+<!-- ll-evidence-ok: observed pytest run output/CLI flags, not a quote from the test file's own source -->
 3. Observe (verified 2026-09-08): `34 failed, 104 passed`. The first failure is the **third** unmocked `cmd_resume` test in collection order (`TestCmdResume::test_resume_with_minutes_duration`), raising `RuntimeError: ... pid-suffixed path .ll/events-<pid>.sock is claimed by a live listener`. The same 34 fail under the default `-n logical --dist loadfile` addopts.
 4. After the run, `.ll/events.sock` and `.ll/events-<pid>.sock` (plus `events-99999.sock`) exist as orphans — the artifact previously mistaken for the cause.
 
