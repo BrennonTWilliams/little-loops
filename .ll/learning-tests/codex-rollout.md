@@ -25,5 +25,11 @@ assertions:
   result: pass
 - claim: event_msg records with payload.type == token_count appear in an interactive-session rollout file (cli_version 0.152.1)
   result: pass
+- claim: token_count.info.total_token_usage is cumulative — each event's total_token_usage.input_tokens equals the running sum of every prior (and its own) last_token_usage.input_tokens (ENH-3429, cli_version 0.152.1)
+  result: pass
+- claim: token_count.info.last_token_usage.input_tokens is inclusive of cached_input_tokens and cache_write_input_tokens (input_tokens >= cached_input_tokens + cache_write_input_tokens) on every observed event (ENH-3429, cli_version 0.152.1)
+  result: pass
+- claim: token_count events with payload.info == null occur on rate-limit-only events (ENH-3429)
+  result: untested
 raw_output_path: .ll/learning-tests/raw/codex-rollout.txt
 ---

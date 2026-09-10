@@ -31,8 +31,15 @@ from little_loops.learning_tests import list_records
 from little_loops.learning_tests.gate import is_record_stale
 from little_loops.learning_tests.import_scan import get_imported_packages
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
-from little_loops.user_messages import get_sessions_folder
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    SessionHandle,
+    cli_event_context,
+    detect_sessions,
+    iter_events,
+    resolve_history_db,
+)
+from little_loops.user_messages import _resolve_host
 
 DEFAULT_DB_RELPATH = Path(".ll") / "history.db"
 DEFAULT_STATE_RELPATH = Path(".ll") / "ll-context-state.json"
@@ -341,39 +348,75 @@ def _load_fallback_state(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None:
-    """Compute session-aggregate cache hit rate from the most recent JSONL transcript.
+def _codex_cache_usage(handle: SessionHandle) -> dict[str, Any] | None:
+    """Compute cache hit rate from a Codex rollout's ``token_count`` events.
 
-    Reads the most recently modified non-agent JSONL file in the project's
-    session directory (``~/.claude/projects/<dir>/`` for the default host;
-    ``get_sessions_folder`` joins the per-host sessions subdir such as qwen's
-    ``chats/`` — ENH-3165), sums ``cache_read_input_tokens``,
-    ``cache_creation_input_tokens``, and ``input_tokens`` across all unique
-    assistant entries (deduplicated by UUID to avoid double-counting), and
-    returns the aggregate hit rate.
+    ``last_token_usage`` (not the cumulative ``total_token_usage``, which
+    resets across a mid-session compaction) is summed across every
+    ``token_count`` event to get the session-aggregate ``input_tokens``,
+    ``cached_input_tokens``, and ``cache_write_input_tokens``. Codex
+    ``input_tokens`` is inclusive of cached/cache-write tokens (unlike
+    Claude's disjoint three-way split), so ``uncached`` is derived by
+    subtraction and clamped to 0 in case a future CLI version switches
+    ``input_tokens`` to exclusive. Events with ``info: null`` (rate-limit-only
+    events) are skipped. Returns ``None`` when no usable ``token_count``
+    event is seen, exactly as the Claude reader returns ``None`` on
+    ``total == 0``.
+    """
+    input_tokens = 0
+    cached_input_tokens = 0
+    cache_write_input_tokens = 0
+
+    for event in iter_events(handle):
+        if event.type != "event_msg" or event.payload.get("type") != "token_count":
+            continue
+        info = event.payload.get("info")
+        if not info:
+            continue
+        last = info.get("last_token_usage") or {}
+        input_tokens += int(last.get("input_tokens", 0))
+        cached_input_tokens += int(last.get("cached_input_tokens", 0))
+        cache_write_input_tokens += int(last.get("cache_write_input_tokens", 0))
+
+    cache_read = cached_input_tokens
+    cache_write = cache_write_input_tokens
+    uncached = max(0, input_tokens - cached_input_tokens - cache_write_input_tokens)
+    total = cache_read + cache_write + uncached
+    if total == 0:
+        return None
+
+    return {
+        "cache_read": cache_read,
+        "cache_write": cache_write,
+        "uncached": uncached,
+        "hit_rate_pct": round(cache_read / total * 100),
+        "host": handle.host,
+    }
+
+
+def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any] | None:
+    """Compute session-aggregate cache hit rate from the most recent session.
+
+    Picks the newest non-agent session for *host* (or, when ``host`` is
+    ``None``, the newest across every registered host) via
+    :func:`detect_sessions`. Codex sessions are read through
+    :func:`_codex_cache_usage` (``token_count`` events via ``iter_events``);
+    every other host keeps the raw per-line reader over the transcript,
+    summing ``cache_read_input_tokens``, ``cache_creation_input_tokens``, and
+    ``input_tokens`` across all unique assistant entries (deduplicated by
+    UUID to avoid double-counting). qwen/gemini/omp real cache rates stay
+    unreachable this way — their normalizers strip ``message.usage`` — a
+    native usage reader for them is a follow-up, not this function's job.
 
     Formula: hit_rate = cache_read / (cache_read + cache_write + uncached) * 100
     """
-    project_folder = get_sessions_folder(cwd)
-    if project_folder is None:
+    handles = detect_sessions(cwd, host, include_agents=False, limit=1)
+    if not handles:
         return None
+    latest = handles[0]
 
-    jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
-    if not jsonl_files:
-        return None
-
-    # Guard the stat() against a TOCTOU race (BUG-2489): the live host process can
-    # rotate or delete a .jsonl between the glob() above and the stat() below. This
-    # inlines get_current_session_jsonl's idiom, so the fix there does not cover it.
-    dated: list[tuple[float, Path]] = []
-    for f in jsonl_files:
-        try:
-            dated.append((f.stat().st_mtime, f))
-        except OSError:
-            continue
-    if not dated:
-        return None
-    latest = max(dated, key=lambda pair: pair[0])[1]
+    if latest.host == "codex":
+        return _codex_cache_usage(latest)
 
     cache_read = 0
     cache_write = 0
@@ -381,7 +424,7 @@ def _compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None:
     seen_uuids: set[str] = set()
 
     try:
-        with open(latest, encoding="utf-8") as handle:
+        with open(latest.path, encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if not line:
@@ -415,6 +458,7 @@ def _compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None:
         "cache_write": cache_write,
         "uncached": uncached,
         "hit_rate_pct": round(cache_read / total * 100),
+        "host": latest.host,
     }
 
 
@@ -477,7 +521,11 @@ def _render(
         cw = cache_rate["cache_write"]
         u = cache_rate["uncached"]
         pct = cache_rate["hit_rate_pct"]
-        print(f"Cache hit rate: {pct}%  (cache_read={cr:,} | cache_write={cw:,} | uncached={u:,})")
+        rate_host = cache_rate.get("host")
+        suffix = f" [{rate_host}]" if rate_host and rate_host != "claude-code" else ""
+        print(
+            f"Cache hit rate: {pct}%  (cache_read={cr:,} | cache_write={cw:,} | uncached={u:,}){suffix}"
+        )
 
     if skill_stats:
         print()
@@ -601,6 +649,7 @@ def _print_json(
             "cache_read_tokens": cache_rate["cache_read"] if cache_rate else None,
             "cache_write_tokens": cache_rate["cache_write"] if cache_rate else None,
             "uncached_tokens": cache_rate["uncached"] if cache_rate else None,
+            "cache_rate_host": cache_rate.get("host") if cache_rate else None,
             "per_tool": summary["per_tool"],
             "skill_health": skill_health,
             "learning_tests": lt_stats,
@@ -752,7 +801,8 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         summary = _aggregate_tool_events(db_path)
         skill_stats = _aggregate_skill_stats(db_path)
         fallback = _load_fallback_state(state_path) if summary is None else None
-        cache_rate = _compute_cache_rate_from_jsonl(cwd)
+        host = _resolve_host(args.host, default=None)
+        cache_rate = _compute_cache_rate_from_jsonl(cwd, host)
         lt_config = _load_lt_config(cwd)
         lt_stats = _compute_learning_tests_stats(cwd, lt_config)
         usage_events = _aggregate_usage_events(db_path)

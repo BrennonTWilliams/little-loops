@@ -54,3 +54,22 @@ Note: `ll-learning-tests prove codex-rollout` (run 2026-09-09) replayed the stal
 not generate evidence for claims 8-11 (added to an already-`proven` target).
 Claims 8-11 above were verified manually against the live ~/.codex state and
 the freshly captured fixtures, cli_version 0.152.1.
+
+=== Claim 12: total_token_usage is cumulative (2026-09-09, ENH-3429, cli 0.152.1) ===
+interactive rollout (01a086ea-c8bc-79f1-9faa-1ce2716aa80f.jsonl), 4 token_count
+events, last_token_usage.input_tokens per event: [14002, 21854, 22068, 26079];
+running sum after each event: [14002, 35856, 57924, 84003];
+total_token_usage.input_tokens per event: [14002, 35856, 57924, 84003]
+match at every event: True
+
+=== Claim 13: last_token_usage.input_tokens is inclusive of cached/cache-write (2026-09-09, ENH-3429, cli 0.152.1) ===
+same 4 events: input_tokens >= cached_input_tokens + cache_write_input_tokens holds
+for all 4 (e.g. event 4: 26079 >= 22065 + 4011 -> 26079 >= 26076): True
+
+=== Claim 14: token_count events with info == null occur on rate-limit-only events (ENH-3429) ===
+scanned every *.jsonl under ~/.codex/sessions/ and ~/.codex/archived_sessions/
+(8860 files): 2 files contain token_count events (5 events total, all with a
+non-null info); 0 events with info == null were found in this local corpus.
+result: untested — not refuted, but no local evidence of the rate-limit-only
+info:null shape; the reader's `if not info: continue` guard is exercised by a
+synthetic unit test instead (test_codex_skips_null_info_token_count_event).

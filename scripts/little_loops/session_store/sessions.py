@@ -191,13 +191,19 @@ def _scan_rollout_tree(root: Path, cwd: Path) -> list[SessionHandle]:
         payload = header.get("payload", {})
         if not isinstance(payload, dict) or payload.get("cwd") not in cwd_spellings:
             continue
+        # BUG-2489: guard against a TOCTOU race where the live host process
+        # rotates or deletes the rollout between the glob above and this stat.
+        try:
+            updated_at = rollout.stat().st_mtime
+        except OSError:
+            continue
         handles.append(
             SessionHandle(
                 host="codex",
                 session_id=payload.get("id", rollout.stem),
                 path=rollout,
                 cwd=cwd,
-                updated_at=rollout.stat().st_mtime,
+                updated_at=updated_at,
             )
         )
     return handles
@@ -257,13 +263,19 @@ def _detect_claude_sessions(
         is_agent = jsonl.name.startswith("agent-")
         if is_agent and not include_agents:
             continue
+        # BUG-2489: guard against a TOCTOU race where the live host process
+        # rotates or deletes the file between the glob above and this stat.
+        try:
+            updated_at = jsonl.stat().st_mtime
+        except OSError:
+            continue
         handles.append(
             SessionHandle(
                 host="claude-code",
                 session_id=jsonl.stem,
                 path=jsonl,
                 cwd=cwd,
-                updated_at=jsonl.stat().st_mtime,
+                updated_at=updated_at,
                 is_agent=is_agent,
             )
         )
@@ -448,13 +460,19 @@ def _detect_layout_sessions(
             session_id = _header_session_id(host, path) or path.stem
         else:
             session_id = path.stem
+        # BUG-2489: guard against a TOCTOU race where the live host process
+        # rotates or deletes the file between the glob above and this stat.
+        try:
+            updated_at = path.stat().st_mtime
+        except OSError:
+            continue
         handles.append(
             SessionHandle(
                 host=host,
                 session_id=session_id,
                 path=path,
                 cwd=cwd,
-                updated_at=path.stat().st_mtime,
+                updated_at=updated_at,
                 is_agent=is_agent,
             )
         )

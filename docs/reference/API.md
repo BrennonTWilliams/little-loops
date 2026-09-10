@@ -3520,8 +3520,9 @@ deeper under ``chats/`` — this helper performs that join. For Claude-shaped ho
 
 Use this instead of ``get_project_folder()`` whenever you glob ``*.jsonl``
 non-recursively or index a transcript by ``<session-id>.jsonl`` (the
-``get_current_session_jsonl``, ``fsm.continuity``, and ``ll-ctx-stats`` cache-rate
-call sites all resolve through it).
+``get_current_session_jsonl`` and ``fsm.continuity`` call sites resolve through
+it; ``ll-ctx-stats``'s cache-rate reader moved off this helper onto
+``detect_sessions`` — ENH-3429).
 
 **Parameters:**
 - `cwd` - Working directory to map (default: current directory)

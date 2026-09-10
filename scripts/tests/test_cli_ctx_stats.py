@@ -24,6 +24,7 @@ from little_loops.cli.ctx_stats import (
 )
 from little_loops.learning_tests import LearnTestRecord, write_record
 from little_loops.session_store import (
+    SessionHandle,
     connect,
     ensure_db,
     record_context_pressure_event,
@@ -683,27 +684,28 @@ class TestComputeCacheRateFromJsonl:
             for entry in entries:
                 f.write(json.dumps(entry) + "\n")
 
+    def _handle(self, path: Path, *, host: str = "claude-code", session_id: str = "s1"):
+        return SessionHandle(
+            host=host, session_id=session_id, path=path, cwd=path.parent, updated_at=0.0
+        )
+
     def test_returns_none_when_no_project_folder(self, tmp_path: Path) -> None:
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=None):
-            assert _compute_cache_rate_from_jsonl(tmp_path) is None
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[]):
+            assert _compute_cache_rate_from_jsonl(tmp_path, None) is None
 
     def test_returns_none_when_no_jsonl_files(self, tmp_path: Path) -> None:
-        project_folder = tmp_path / "projects"
-        project_folder.mkdir()
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            assert _compute_cache_rate_from_jsonl(tmp_path) is None
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[]):
+            assert _compute_cache_rate_from_jsonl(tmp_path, None) is None
 
     def test_skips_file_that_vanishes_before_stat(self, tmp_path: Path) -> None:
-        """BUG-2489: a .jsonl deleted between glob() and stat() is skipped, not raised.
-
-        Mirrors the TOCTOU guard in session_log.get_current_session_jsonl — this is a
-        byte-for-byte duplicate of the unguarded idiom that ll-ctx-stats hits against
-        the live host session dir.
-        """
+        """BUG-2489: the TOCTOU guard now lives inside detect_sessions (see
+        test_session_discovery.py's stat-race cases); here it's enough that a
+        handle detect_sessions did return is read normally."""
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
+        survivor = project_folder / "survivor.jsonl"
         self._write_jsonl(
-            project_folder / "survivor.jsonl",
+            survivor,
             [
                 {
                     "type": "assistant",
@@ -718,40 +720,26 @@ class TestComputeCacheRateFromJsonl:
                 }
             ],
         )
-        (project_folder / "ghost.jsonl").write_text("{}")
-
-        real_stat = Path.stat
-
-        def flaky_stat(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-            if self.name == "ghost.jsonl":
-                raise FileNotFoundError(2, "No such file or directory", str(self))
-            return real_stat(self, *args, **kwargs)
-
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            with patch.object(Path, "stat", flaky_stat):
-                result = _compute_cache_rate_from_jsonl(tmp_path)
+        with patch(
+            "little_loops.cli.ctx_stats.detect_sessions",
+            return_value=[self._handle(survivor)],
+        ):
+            result = _compute_cache_rate_from_jsonl(tmp_path, None)
         assert result is not None
         assert result["cache_read"] == 100
 
     def test_returns_none_when_all_files_vanish(self, tmp_path: Path) -> None:
-        """BUG-2489: if every listed .jsonl vanishes before stat, return None."""
-        project_folder = tmp_path / "projects"
-        project_folder.mkdir()
-        (project_folder / "a.jsonl").write_text("{}")
-        (project_folder / "b.jsonl").write_text("{}")
-
-        def all_gone(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-            raise FileNotFoundError(2, "No such file or directory", str(self))
-
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            with patch.object(Path, "stat", all_gone):
-                assert _compute_cache_rate_from_jsonl(tmp_path) is None
+        """BUG-2489: if every session vanished before detect_sessions could stat it,
+        detect_sessions returns no handles and this reader returns None."""
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[]):
+            assert _compute_cache_rate_from_jsonl(tmp_path, None) is None
 
     def test_computes_hit_rate(self, tmp_path: Path) -> None:
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
+        session = project_folder / "session.jsonl"
         self._write_jsonl(
-            project_folder / "session.jsonl",
+            session,
             [
                 {
                     "type": "assistant",
@@ -766,8 +754,10 @@ class TestComputeCacheRateFromJsonl:
                 }
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            result = _compute_cache_rate_from_jsonl(tmp_path)
+        with patch(
+            "little_loops.cli.ctx_stats.detect_sessions", return_value=[self._handle(session)]
+        ):
+            result = _compute_cache_rate_from_jsonl(tmp_path, None)
         assert result is not None
         assert result["cache_read"] == 61559
         assert result["cache_write"] == 3689
@@ -778,8 +768,9 @@ class TestComputeCacheRateFromJsonl:
     def test_aggregates_multiple_turns(self, tmp_path: Path) -> None:
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
+        session = project_folder / "session.jsonl"
         self._write_jsonl(
-            project_folder / "session.jsonl",
+            session,
             [
                 {
                     "type": "assistant",
@@ -805,8 +796,10 @@ class TestComputeCacheRateFromJsonl:
                 },
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            result = _compute_cache_rate_from_jsonl(tmp_path)
+        with patch(
+            "little_loops.cli.ctx_stats.detect_sessions", return_value=[self._handle(session)]
+        ):
+            result = _compute_cache_rate_from_jsonl(tmp_path, None)
         assert result is not None
         assert result["cache_read"] == 300
         assert result["cache_write"] == 30
@@ -815,8 +808,9 @@ class TestComputeCacheRateFromJsonl:
     def test_deduplicates_by_uuid(self, tmp_path: Path) -> None:
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
+        session = project_folder / "session.jsonl"
         self._write_jsonl(
-            project_folder / "session.jsonl",
+            session,
             [
                 {
                     "type": "assistant",
@@ -842,40 +836,32 @@ class TestComputeCacheRateFromJsonl:
                 },
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            result = _compute_cache_rate_from_jsonl(tmp_path)
+        with patch(
+            "little_loops.cli.ctx_stats.detect_sessions", return_value=[self._handle(session)]
+        ):
+            result = _compute_cache_rate_from_jsonl(tmp_path, None)
         assert result is not None
         assert result["cache_read"] == 100  # counted once only
         assert result["cache_write"] == 10
 
     def test_skips_agent_jsonl_files(self, tmp_path: Path) -> None:
+        """detect_sessions already filters agent-* files (include_agents=False);
+        the newest non-agent handle it returns is what this reader reads."""
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
-        self._write_jsonl(
-            project_folder / "agent-worker.jsonl",
-            [
-                {
-                    "type": "assistant",
-                    "uuid": "a1",
-                    "message": {
-                        "usage": {
-                            "cache_read_input_tokens": 9000,
-                            "cache_creation_input_tokens": 0,
-                            "input_tokens": 1,
-                        }
-                    },
-                }
-            ],
-        )
-        (project_folder / "session.jsonl").write_text("")
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            assert _compute_cache_rate_from_jsonl(tmp_path) is None
+        session = project_folder / "session.jsonl"
+        session.write_text("")
+        with patch(
+            "little_loops.cli.ctx_stats.detect_sessions", return_value=[self._handle(session)]
+        ):
+            assert _compute_cache_rate_from_jsonl(tmp_path, None) is None
 
     def test_returns_none_when_total_zero(self, tmp_path: Path) -> None:
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
+        session = project_folder / "session.jsonl"
         self._write_jsonl(
-            project_folder / "session.jsonl",
+            session,
             [
                 {
                     "type": "assistant",
@@ -890,14 +876,17 @@ class TestComputeCacheRateFromJsonl:
                 }
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            assert _compute_cache_rate_from_jsonl(tmp_path) is None
+        with patch(
+            "little_loops.cli.ctx_stats.detect_sessions", return_value=[self._handle(session)]
+        ):
+            assert _compute_cache_rate_from_jsonl(tmp_path, None) is None
 
     def test_skips_non_assistant_entries(self, tmp_path: Path) -> None:
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
+        session = project_folder / "session.jsonl"
         self._write_jsonl(
-            project_folder / "session.jsonl",
+            session,
             [
                 {"type": "user", "message": {"content": "hello"}},
                 {
@@ -913,8 +902,10 @@ class TestComputeCacheRateFromJsonl:
                 },
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
-            result = _compute_cache_rate_from_jsonl(tmp_path)
+        with patch(
+            "little_loops.cli.ctx_stats.detect_sessions", return_value=[self._handle(session)]
+        ):
+            result = _compute_cache_rate_from_jsonl(tmp_path, None)
         assert result is not None
         assert result["cache_read"] == 50
 
@@ -946,7 +937,7 @@ class TestComputeCacheRateFromJsonl:
         )
         monkeypatch.setattr(Path, "home", lambda: fake_home)
 
-        result = _compute_cache_rate_from_jsonl(tmp_path)
+        result = _compute_cache_rate_from_jsonl(tmp_path, None)
         assert result is not None
         assert result["cache_read"] == 61559
 
@@ -983,9 +974,95 @@ class TestComputeCacheRateFromJsonl:
         )
         monkeypatch.setattr(Path, "home", lambda: fake_home)
 
-        result = _compute_cache_rate_from_jsonl(tmp_path)
+        result = _compute_cache_rate_from_jsonl(tmp_path, None)
         assert result is not None
         assert result["cache_read"] == 61559
+
+    def test_resolves_codex_rollout_cache_rate(self, fixtures_dir: Path, tmp_path: Path) -> None:
+        """Fixture's 4th (last) token_count event: input_tokens=84003,
+        cached_input_tokens=57915, cache_write_input_tokens=26076 ->
+        uncached=12, hit_rate_pct==69. Sum of last_token_usage.input_tokens
+        across all four events (14002+21854+22068+26079=84003) independently
+        confirms the cumulative-sum semantics."""
+        fixture = fixtures_dir / "codex" / "rollout-interactive.jsonl"
+        handle = self._handle(fixture, host="codex", session_id="rollout")
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
+            result = _compute_cache_rate_from_jsonl(tmp_path, "codex")
+        assert result is not None
+        assert result["cache_read"] == 57915
+        assert result["cache_write"] == 26076
+        assert result["uncached"] == 12
+        assert result["hit_rate_pct"] == 69
+        assert result["host"] == "codex"
+
+    def test_codex_no_token_count_event_returns_none(self, tmp_path: Path) -> None:
+        session = tmp_path / "rollout.jsonl"
+        self._write_jsonl(
+            session,
+            [{"timestamp": "t", "type": "event_msg", "payload": {"type": "agent_reasoning"}}],
+        )
+        handle = self._handle(session, host="codex", session_id="rollout")
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
+            assert _compute_cache_rate_from_jsonl(tmp_path, "codex") is None
+
+    def test_codex_skips_null_info_token_count_event(self, tmp_path: Path) -> None:
+        session = tmp_path / "rollout.jsonl"
+        self._write_jsonl(
+            session,
+            [
+                {"timestamp": "t", "type": "event_msg", "payload": {"type": "token_count", "info": None}},
+                {
+                    "timestamp": "t",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "last_token_usage": {
+                                "input_tokens": 100,
+                                "cached_input_tokens": 60,
+                                "cache_write_input_tokens": 30,
+                            }
+                        },
+                    },
+                },
+            ],
+        )
+        handle = self._handle(session, host="codex", session_id="rollout")
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
+            result = _compute_cache_rate_from_jsonl(tmp_path, "codex")
+        assert result is not None
+        assert result["cache_read"] == 60
+        assert result["cache_write"] == 30
+        assert result["uncached"] == 10
+
+    def test_codex_clamps_negative_uncached_to_zero(self, tmp_path: Path) -> None:
+        """A future CLI version might switch input_tokens to exclusive; guard
+        against printing a hit rate above 100%."""
+        session = tmp_path / "rollout.jsonl"
+        self._write_jsonl(
+            session,
+            [
+                {
+                    "timestamp": "t",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "last_token_usage": {
+                                "input_tokens": 10,
+                                "cached_input_tokens": 60,
+                                "cache_write_input_tokens": 30,
+                            }
+                        },
+                    },
+                }
+            ],
+        )
+        handle = self._handle(session, host="codex", session_id="rollout")
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
+            result = _compute_cache_rate_from_jsonl(tmp_path, "codex")
+        assert result is not None
+        assert result["uncached"] == 0
 
 
 class TestCacheHitRateInOutput:
@@ -1060,6 +1137,61 @@ class TestCacheHitRateInOutput:
         assert rc == 0
         data = json.loads(output)
         assert data["cache_hit_rate_pct"] is None
+
+    def test_hit_rate_line_shows_host_suffix_for_non_claude_host(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        cache_rate = {
+            "cache_read": 57915,
+            "cache_write": 26076,
+            "uncached": 12,
+            "hit_rate_pct": 69,
+            "host": "codex",
+        }
+        rc, output = self._populate_and_run(tmp_path, monkeypatch, cache_rate=cache_rate)
+        assert rc == 0
+        assert "Cache hit rate: 69%" in output
+        assert output.count("Cache hit rate:") == 1
+        line = next(line for line in output.splitlines() if line.startswith("Cache hit rate:"))
+        assert line.endswith(" [codex]")
+
+    def test_hit_rate_line_byte_identical_for_claude_code_host(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        cache_rate = {
+            "cache_read": 61559,
+            "cache_write": 3689,
+            "uncached": 1,
+            "hit_rate_pct": 94,
+            "host": "claude-code",
+        }
+        rc, output = self._populate_and_run(tmp_path, monkeypatch, cache_rate=cache_rate)
+        assert rc == 0
+        line = next(line for line in output.splitlines() if line.startswith("Cache hit rate:"))
+        assert line == "Cache hit rate: 94%  (cache_read=61,559 | cache_write=3,689 | uncached=1)"
+
+    def test_json_includes_cache_rate_host(self, tmp_path: Path, monkeypatch) -> None:
+        cache_rate = {
+            "cache_read": 57915,
+            "cache_write": 26076,
+            "uncached": 12,
+            "hit_rate_pct": 69,
+            "host": "codex",
+        }
+        rc, output = self._populate_and_run(
+            tmp_path, monkeypatch, extra_argv=["--json"], cache_rate=cache_rate
+        )
+        assert rc == 0
+        data = json.loads(output)
+        assert data["cache_rate_host"] == "codex"
+
+    def test_json_cache_rate_host_null_when_no_jsonl(self, tmp_path: Path, monkeypatch) -> None:
+        rc, output = self._populate_and_run(
+            tmp_path, monkeypatch, extra_argv=["--json"], cache_rate=None
+        )
+        assert rc == 0
+        data = json.loads(output)
+        assert data["cache_rate_host"] is None
 
 
 class TestLearningTestsSection:

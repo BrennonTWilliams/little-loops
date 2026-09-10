@@ -1055,3 +1055,69 @@ class TestDetectSessionsUnionAcrossFourHosts:
 
         assert len(handles) == 4
         assert [h.host for h in handles] == ["codex", "omp", "qwen", "claude-code"]
+
+
+class TestDetectSessionsStatRace:
+    """BUG-2489: a session file deleted between glob() and stat() is skipped,
+    not raised, in all three discovery paths (ENH-3429 — the codex-rollout
+    scan fallback, claude-code, and the shared _LAYOUT_HOSTS path)."""
+
+    def _flaky_stat(self, victim_name: str):
+        real_stat = Path.stat
+
+        def flaky(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if self.name == victim_name:
+                raise FileNotFoundError(2, "No such file or directory", str(self))
+            return real_stat(self, *args, **kwargs)
+
+        return flaky
+
+    def test_codex_scan_fallback_skips_file_that_vanishes_before_stat(
+        self, tmp_path, monkeypatch
+    ):
+        home = tmp_path
+        cwd = Path("/repo/project")
+        survivor = home / ".codex" / "sessions" / "2026" / "09" / "08" / "survivor.jsonl"
+        ghost = home / ".codex" / "sessions" / "2026" / "09" / "08" / "ghost.jsonl"
+        _write_rollout(survivor, "sess-survivor", str(cwd))
+        _write_rollout(ghost, "sess-ghost", str(cwd))
+
+        monkeypatch.setattr(Path, "stat", self._flaky_stat("ghost.jsonl"))
+
+        handles = ss.detect_sessions(cwd, "codex", home=home)
+
+        assert [h.session_id for h in handles] == ["sess-survivor"]
+
+    def test_claude_code_skips_file_that_vanishes_before_stat(self, tmp_path, monkeypatch):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.user_messages import encode_project_path
+
+        project_dir = home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))
+        project_dir.mkdir(parents=True)
+        (project_dir / "survivor.jsonl").write_text("{}\n")
+        (project_dir / "ghost.jsonl").write_text("{}\n")
+
+        monkeypatch.setattr(Path, "stat", self._flaky_stat("ghost.jsonl"))
+
+        handles = ss.detect_sessions(cwd, "claude-code", home=home)
+
+        assert [h.session_id for h in handles] == ["survivor"]
+
+    def test_layout_host_skips_file_that_vanishes_before_stat(self, tmp_path, monkeypatch):
+        home = tmp_path
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        from little_loops.user_messages import encode_project_path
+
+        chats_dir = home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve())) / "chats"
+        chats_dir.mkdir(parents=True)
+        (chats_dir / "survivor.jsonl").write_text("{}\n")
+        (chats_dir / "ghost.jsonl").write_text("{}\n")
+
+        monkeypatch.setattr(Path, "stat", self._flaky_stat("ghost.jsonl"))
+
+        handles = ss.detect_sessions(cwd, "qwen", home=home)
+
+        assert [h.session_id for h in handles] == ["survivor"]

@@ -312,6 +312,25 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 
 [^tok-codex]: **Codex CLI — confirmed and implemented (FEAT-2123).** `codex exec --json` emits NDJSON `ThreadEvent`s tagged by a `type` field; the terminal `turn.completed` event carries a `usage` object (`codex-rs/exec/src/exec_events.rs::Usage`, openai/codex `main` branch, verified 2026-09-01) with `input_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, `output_tokens`, `reasoning_output_tokens` — no `total_tokens` and no `model` field (Codex never echoes the requested model back in the JSONL stream). `run_claude_command()`'s shared per-line parser (`subprocess_utils.py`) now branches on `etype == "turn.completed"` and maps this usage block onto `TokenUsage` (`cached_input_tokens` → `cache_read_tokens`, `cache_write_input_tokens` → `cache_creation_tokens`, `model` defaults to `"unknown"`), invoking `on_usage_detailed` the same as the Claude `"result"` branch.
 
+    **`ll-ctx-stats`'s cache-rate reader — the complementary rollout-file source
+    (ENH-3429).** Independent of the `codex exec --json` `turn.completed` usage
+    above, `cli/ctx_stats.py`'s `_codex_cache_usage` derives the same four
+    `cache_read`/`cache_write`/`uncached`/`hit_rate_pct` keys the Claude reader
+    returns, but from a rollout's `event_msg.payload.type == "token_count"`
+    events (see [^codexsessions]) instead of a live `turn.completed` stream.
+    Two semantics differ from Claude and from the `turn.completed` usage block
+    above, both confirmed against a live 0.152.1 rollout
+    (`.ll/learning-tests/codex-rollout.md`): `info.total_token_usage` is
+    **cumulative** across the session (resets across a mid-session compaction),
+    so the reader sums `info.last_token_usage` across every `token_count` event
+    instead; and `last_token_usage.input_tokens` is **inclusive** of
+    `cached_input_tokens`/`cache_write_input_tokens` (unlike Claude's disjoint
+    three-way split), so `uncached = max(0, input_tokens - cached_input_tokens
+    - cache_write_input_tokens)`. The cache line only appears for sessions from
+    a CLI version that emits `token_count` events (0.152.1 confirmed; 0.130.0
+    does not — most local rollouts predate this and carry none). A
+    `token_count` event with `info: null` (rate-limit-only) is skipped.
+
 [^runnercap]: `permission skip` and `tool allowlist` are reported `✗` by `ll-doctor`
     for OpenCode. For Codex, **ENH-2124** researched the native equivalents
     (`thoughts/research/codex-runner-capability-gaps.md`) and

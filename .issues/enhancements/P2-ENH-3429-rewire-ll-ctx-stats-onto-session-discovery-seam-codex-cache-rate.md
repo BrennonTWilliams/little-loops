@@ -3,10 +3,11 @@ id: ENH-3429
 type: ENH
 title: Rewire ll-ctx-stats onto the session-discovery seam (Codex cache-rate reader)
 priority: P2
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T21:54:30Z'
+completed_at: '2026-09-10T04:22:16Z'
 labels:
 - multi-host
 - observability
@@ -342,12 +343,50 @@ an outstanding action item).
   pair that don't); the qwen/gemini test line numbers (909/941 → actual 921/953); and the
   `docs/reference/CLI.md` `--host` bullet line cite (478 → 476).
 
+## Resolution
+
+Implemented as specified. `main_ctx_stats` resolves `host` via
+`_resolve_host(args.host, default=None)` and threads it into
+`_compute_cache_rate_from_jsonl(cwd, host)`, which now selects its file via
+`detect_sessions(cwd, host, include_agents=False, limit=1)`; the
+`get_sessions_folder` import was dropped from `ctx_stats.py`. Non-codex hosts
+keep the original raw per-line reader unchanged. A new `_codex_cache_usage`
+reader sums `last_token_usage` across every `token_count` event (never the
+cumulative `total_token_usage`), derives `uncached` via the inclusive-`
+input_tokens` formula with a `max(0, ...)` clamp, and skips `info: null`
+events — verified against both the checked-in fixture and a live 0.152.1
+rollout on disk (`hit_rate_pct == 69` for the fixture, matching the issue's
+worked example). The additive `host` key surfaces as `cache_rate_host` in
+`--json` and a ` [<host>]` suffix on the text line for any non-`claude-code`
+host; the `claude-code` text line and all four pre-existing keys are
+byte-identical to before. Added the BUG-2489 `OSError` guard to the three
+previously-unguarded `.stat()` calls in `sessions.py`
+(`_scan_rollout_tree`/`_detect_claude_sessions`/`_detect_layout_sessions`),
+each with a dedicated stat-race regression test in
+`test_session_discovery.py`. Migrated all 12
+`TestComputeCacheRateFromJsonl` tests to patch `detect_sessions` instead of
+`get_sessions_folder`, added four new codex-specific cases (fixture-derived
+hit rate, no-`token_count`, `info: null` skip, negative-`uncached` clamp),
+and four new renderer cases for the host suffix/`cache_rate_host`. Extended
+the `codex-rollout` learning-test record with the cumulative/inclusive
+assertions (both verified live-`pass`) plus the `info: null` claim, recorded
+honestly as `untested` — a full scan of the local `~/.codex/sessions` and
+`archived_sessions` corpus (8,860 files) found zero occurrences of a
+`token_count` event with `info: null`, so the reader's skip guard is
+exercised by a synthetic unit test instead. Updated
+`HOST_COMPATIBILITY.md`'s `[^tok-codex]` footnote and `CLI.md`'s `--host`/
+`--json` bullets for `ll-ctx-stats`, and fixed the now-stale `ll-ctx-stats`
+clause in `API.md`'s `get_sessions_folder` doc entry (wire-issue finding).
+No `## Program Design` deviations — implementation matches the documented
+types/signatures/call path exactly.
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T04:22:02 - `df363e3f-b3dc-4444-8a3c-d392cca3a64a.jsonl`
 - `/ll:confidence-check` - 2026-09-10T02:52:23 - `756850bc-9733-44c4-8072-7050bfbe2c2c.jsonl`
 - `/ll:verify-issues` - 2026-09-10T02:48:32 - `ccf4b116-f388-4b46-b017-1735a236d98c.jsonl`
 - `/ll:wire-issue` - 2026-09-10T02:41:27 - `7404ab20-8130-4df4-a992-c730bf1293b4.jsonl`
