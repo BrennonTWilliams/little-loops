@@ -4,10 +4,11 @@ type: BUG
 title: ll-queue list crashes with traceback and empty stdout on sqlite OperationalError;
   ll-mcp queue_list surfaces the raw sqlite message
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T01:41:55Z'
+completed_at: '2026-09-10T04:37:08Z'
 learning_tests_required:
 - sqlite3
 - mcp
@@ -149,6 +150,8 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - [ ] `ll-queue status <id> --json` (via `_not_found_or_ambiguous`) under the same monkeypatch: `{"error": ..., "id": <id>}` on stdout, exit 1; the non-error not-found and ambiguous branches are unchanged (existing tests still pass).
 - [ ] MCP `queue_list` under the same monkeypatch, exercised through `client.call_tool` in `test_feat_queue_mcp_tools.py`: `result.is_error is True` and `result.content[0].text` names the queue database and contains `database is locked`.
 - [ ] MCP `queue_get` under the same monkeypatch: `is_error is True` with the same message shape; `test_queue_get_unknown_id_is_error` still passes.
+- [ ] MCP `queue_remove` under the same monkeypatch: `is_error is True` and `result.content[0].text` names the queue database and contains `database is locked`; `test_queue_remove_dry_run_then_apply` still passes.
+- [ ] MCP `queue_requeue` under the same monkeypatch: `is_error is True` and `result.content[0].text` names the queue database and contains `database is locked`; `test_queue_requeue_running_entry` and `test_queue_requeue_dead_letter_entry` still pass.
 - [ ] No `locked` key or any new boolean sentinel is introduced in any JSON payload.
 - [ ] `docs/reference/CLI.md` `ll-queue list` table (`:4138-4150`) and the `queue_list` sentence (`:5433`) each gain one sentence describing the error case.
 - [ ] `queue_store.py` is unchanged.
@@ -199,6 +202,10 @@ reports on prescriptive sections (Scope Decisions/Program Design/Acceptance
 Criteria) but does not rewrite them; route through `/ll:reconcile-issue` or a manual
 edit.
 
+**Update (`/ll:ready-issue`, 2026-09-09):** the two missing Acceptance Criteria for
+`_tool_queue_remove`/`_tool_queue_requeue` have been added above, closing the gap
+this section flagged. The four-tool MCP grouping is now fully covered by AC.
+
 Graph: provider=`codegraph` freshness=`stale` — not used to originate any verdict;
 every cited symbol was confirmed by a direct file read per the freshness-demotion
 rule.
@@ -218,12 +225,33 @@ Note: holding `BEGIN IMMEDIATE` on a second real connection does **not** reprodu
 - BUG-2706 — the analogous locked-DB fix for `cli_event_context`.
 - Follow-up (to file): `_drain_once` / `_reclaim_stale` `OperationalError` handling in the `ll-queue run --watch` loop (log-and-continue with a consecutive-failure ceiling) — see Scope Decisions.
 
+## Resolution
+
+Implemented exactly as scoped: `cmd_list` and `_not_found_or_ambiguous` in
+`scripts/little_loops/cli/queue.py` now catch `sqlite3.OperationalError` and report
+`{"error": <msg>}` (JSON) / stderr line (text) with exit 1, instead of an unhandled
+traceback. The four MCP tools (`_tool_queue_list`, `_tool_queue_get`,
+`_tool_queue_remove`, `_tool_queue_requeue` in `scripts/little_loops/mcp_server/tools.py`)
+now catch the same exception and re-raise `ValueError` via a shared `_queue_read_error`
+helper, so the already-structured `is_error=True` result carries a queue.db-attributed
+message instead of the raw sqlite text. `queue_store.py` untouched, as scoped. TDD
+(Red confirmed against pre-fix code, then Green): added
+`test_list_operational_error_json`/`_text` and `test_status_operational_error_json` to
+`test_cli_queue.py`, and four `test_queue_{list,get,remove,requeue}_operational_error_is_structured`
+tests to `test_feat_queue_mcp_tools.py`. `docs/reference/CLI.md` gained the two
+sentences the AC required (`list` flags section, and the `queue_list`/`queue_get`
+tool-return sentence). Full suite: 23823 passed, 43 skipped, 6 pre-existing failures
+(repo-wide corpus/gate tests unrelated to this change — confirmed identical on
+unmodified `main` via `git stash`).
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T04:37:03 - `58c863fa-c03a-4046-a3d0-1ff2020ab466.jsonl`
+- `/ll:ready-issue` - 2026-09-10T04:24:54 - `e3be7bb0-3462-4876-a3ba-5e1e717b63e1.jsonl`
 - `/ll:confidence-check` - 2026-09-10T03:26:56 - `cc7ebe5f-c73c-4a1e-8191-adbb508e3997.jsonl`
 - `/ll:verify-issues` - 2026-09-10T03:16:08 - `5034953b-2c32-4c04-8aeb-ef755a4d9eb0.jsonl`
 - `/ll:wire-issue` - 2026-09-10T02:45:55 - `ccf4b116-f388-4b46-b017-1735a236d98c.jsonl`

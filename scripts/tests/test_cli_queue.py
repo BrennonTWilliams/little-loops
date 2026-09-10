@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -332,6 +333,42 @@ class TestCmdList:
         assert data[0]["attempt"] == 0
         assert data[0]["nextAttemptAt"] is None
 
+    def test_list_operational_error_json(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3432: a locked/unreadable queue.db must not crash with a traceback."""
+        import little_loops.queue_store as qs
+
+        def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(qs, "connect", _locked_connect)
+
+        with patch("sys.argv", ["ll-queue", "list", "--json"]):
+            result = main_queue()
+        assert result == 1
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        data = json.loads(captured.out)
+        assert "database is locked" in data["error"]
+
+    def test_list_operational_error_text(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import little_loops.queue_store as qs
+
+        def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(qs, "connect", _locked_connect)
+
+        with patch("sys.argv", ["ll-queue", "list"]):
+            result = main_queue()
+        assert result == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "database is locked" in captured.err
+
 
 class TestCliEventContextHardening:
     """ENH-3426: history-writer failures must never take down a JSON CLI."""
@@ -429,6 +466,24 @@ class TestCmdStatus:
         assert result == 1
         data = json.loads(capsys.readouterr().out)
         assert "error" in data
+
+    def test_status_operational_error_json(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3432: _not_found_or_ambiguous must not let OperationalError propagate."""
+        import little_loops.queue_store as qs
+
+        def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(qs, "connect", _locked_connect)
+
+        with patch("sys.argv", ["ll-queue", "status", "deadbeefdeadbeef", "--json"]):
+            result = main_queue()
+        assert result == 1
+        data = json.loads(capsys.readouterr().out)
+        assert "database is locked" in data["error"]
+        assert data["id"] == "deadbeefdeadbeef"
 
 
 class TestCmdRemove:

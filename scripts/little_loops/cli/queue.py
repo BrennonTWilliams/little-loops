@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -246,9 +247,18 @@ def cmd_list(args: argparse.Namespace) -> int:
     from little_loops.cli.output import colorize, print_json
     from little_loops.queue_store import list_entries
 
-    entries = list_entries(QUEUE_DB_PATH)
+    json_mode = getattr(args, "json", False)
+    try:
+        entries = list_entries(QUEUE_DB_PATH)
+    except sqlite3.OperationalError as exc:
+        msg = f"Could not read queue database {QUEUE_DB_PATH}: {exc}"
+        if json_mode:
+            print_json({"error": msg})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
 
-    if getattr(args, "json", False):
+    if json_mode:
         print_json([e.to_dict() for e in entries])
         return 0
 
@@ -285,6 +295,13 @@ def _not_found_or_ambiguous(args: argparse.Namespace) -> int | None:
         entry = resolve_entry(args.id, QUEUE_DB_PATH)
     except AmbiguousEntryIdError as exc:
         msg = str(exc)
+        if json_mode:
+            print_json({"error": msg, "id": args.id})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
+    except sqlite3.OperationalError as exc:
+        msg = f"Could not read queue database {QUEUE_DB_PATH}: {exc}"
         if json_mode:
             print_json({"error": msg, "id": args.id})
         else:

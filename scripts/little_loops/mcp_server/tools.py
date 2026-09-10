@@ -36,6 +36,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -475,6 +476,19 @@ def _tool_issue_append_log(arguments: dict[str, Any], *, project_root: Path, app
     }
 
 
+def _queue_read_error(exc: sqlite3.OperationalError, project_root: Path) -> ValueError:
+    """Build the queue.db-attributed message a `sqlite3.OperationalError` becomes (BUG-3432).
+
+    Shared by every queue tool that reads via `list_entries`/`resolve_entry`, so a client
+    sees a message naming the database instead of the bare sqlite string — mirrors the
+    `raise ValueError(...)` convention every other `_tool_*` failure already uses.
+    """
+    from little_loops.queue_store import _resolve_queue_db_path
+
+    db_path = _resolve_queue_db_path(root=project_root)
+    return ValueError(f"Could not read queue database {db_path}: {exc}")
+
+
 def _tool_queue_list(_arguments: dict[str, Any], *, project_root: Path) -> Any:
     """List all persisted `ll-queue` entries (`ll-queue list`).
 
@@ -485,7 +499,10 @@ def _tool_queue_list(_arguments: dict[str, Any], *, project_root: Path) -> Any:
     """
     from little_loops.queue_store import list_entries
 
-    entries = list_entries(root=project_root)
+    try:
+        entries = list_entries(root=project_root)
+    except sqlite3.OperationalError as exc:
+        raise _queue_read_error(exc, project_root) from exc
     return [entry.to_dict() for entry in entries]
 
 
@@ -501,7 +518,10 @@ def _tool_queue_get(arguments: dict[str, Any], *, project_root: Path) -> Any:
     if not entry_id:
         raise ValueError("queue_get requires a non-empty id")
 
-    entry = resolve_entry(entry_id, root=project_root)
+    try:
+        entry = resolve_entry(entry_id, root=project_root)
+    except sqlite3.OperationalError as exc:
+        raise _queue_read_error(exc, project_root) from exc
     if entry is None:
         raise ValueError(f"Queue entry not found: {entry_id!r}")
     return entry.to_dict()
@@ -595,7 +615,10 @@ def _tool_queue_remove(arguments: dict[str, Any], *, project_root: Path, apply: 
     if not entry_id:
         raise ValueError("queue_remove requires a non-empty id")
 
-    entry = resolve_entry(entry_id, root=project_root)
+    try:
+        entry = resolve_entry(entry_id, root=project_root)
+    except sqlite3.OperationalError as exc:
+        raise _queue_read_error(exc, project_root) from exc
     if entry is None:
         raise ValueError(f"Queue entry not found: {entry_id!r}")
     if entry.status != "pending":
@@ -628,7 +651,10 @@ def _tool_queue_requeue(arguments: dict[str, Any], *, project_root: Path, apply:
     if not entry_id:
         raise ValueError("queue_requeue requires a non-empty id")
 
-    entry = resolve_entry(entry_id, root=project_root)
+    try:
+        entry = resolve_entry(entry_id, root=project_root)
+    except sqlite3.OperationalError as exc:
+        raise _queue_read_error(exc, project_root) from exc
     if entry is None:
         raise ValueError(f"Queue entry not found: {entry_id!r}")
     if entry.status not in ("running", "dead_letter", "failed", "cancelled"):

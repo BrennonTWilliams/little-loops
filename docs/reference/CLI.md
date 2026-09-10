@@ -4149,6 +4149,10 @@ the future (ENH-3416), and — for `running` entries — elapsed time since `enq
 Truncated to 40 chars unless `--wide` is passed; full values remain available via
 `ll-queue status <id> --json`.
 
+If the queue database can't be read (e.g. `sqlite3.OperationalError`), `list` reports a
+structured error naming the database instead of crashing: `{"error": <msg>}` on stdout
+with `--json`, or the message on stderr in text mode — either way, exit 1 (BUG-3432).
+
 **`status`/`remove` flags:**
 
 | Flag | Description |
@@ -5430,7 +5434,7 @@ real one.
 | `loop_start` | `loop` | string | **yes** | Loop name to run |
 | | `context` | string[] | no | `KEY=VALUE` context overrides, mirrors `ll-loop run --context` |
 
-`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. `queue_list` returns a list of entries, byte-identical to `ll-queue list --json` (each entry's `to_dict()` shape). `queue_get` returns a single entry's `to_dict()` shape, or a tool-level error if `id` doesn't resolve. Each mutating tool returns
+`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. `queue_list` returns a list of entries, byte-identical to `ll-queue list --json` (each entry's `to_dict()` shape), or a tool-level error naming the queue database if it can't be read (e.g. `sqlite3.OperationalError`). `queue_get` returns a single entry's `to_dict()` shape, or a tool-level error if `id` doesn't resolve or the queue database can't be read. Each mutating tool returns
 `{applied, tool, target, changes}`; `issue_capture`'s `target` is `{type, priority, slug,
 directory}` plus a `rendered_body` on a dry-run and `{issue_id, path}` on apply. `queue_add`
 returns `{entry: {name, runner, target, args, timeout, priority}}` on a dry-run (the classified

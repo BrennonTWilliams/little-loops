@@ -9,6 +9,7 @@ Skips entirely when the `mcp` extra isn't installed.
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -205,6 +206,98 @@ def test_queue_requeue_dead_letter_entry(tmp_path, monkeypatch) -> None:
             fetched = _payload(await client.call_tool("queue_get", {"id": entry.id}))
             assert fetched["status"] == "pending"
             assert fetched["attempt"] == 0
+
+    anyio.run(run)
+
+
+def test_queue_list_operational_error_is_structured(tmp_path, monkeypatch) -> None:
+    """BUG-3432: a locked/unreadable queue.db must surface a queue.db-attributed
+    ValueError, not the raw sqlite text, via the already-structured is_error path."""
+    project = _make_project(tmp_path, monkeypatch)
+    import little_loops.queue_store as qs
+
+    def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+        raise sqlite3.OperationalError("database is locked")
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            monkeypatch.setattr(qs, "connect", _locked_connect)
+            result = await client.call_tool("queue_list", {})
+            assert result.is_error
+            text = result.content[0].text
+            assert "queue database" in text
+            assert "database is locked" in text
+
+    anyio.run(run)
+
+
+def test_queue_get_operational_error_is_structured(tmp_path, monkeypatch) -> None:
+    project = _make_project(tmp_path, monkeypatch)
+    import little_loops.queue_store as qs
+
+    def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+        raise sqlite3.OperationalError("database is locked")
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            monkeypatch.setattr(qs, "connect", _locked_connect)
+            result = await client.call_tool("queue_get", {"id": "deadbeef"})
+            assert result.is_error
+            text = result.content[0].text
+            assert "queue database" in text
+            assert "database is locked" in text
+
+    anyio.run(run)
+
+
+def test_queue_remove_operational_error_is_structured(tmp_path, monkeypatch) -> None:
+    project = _make_project(tmp_path, monkeypatch)
+    import little_loops.queue_store as qs
+
+    def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+        raise sqlite3.OperationalError("database is locked")
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            added = _payload(
+                await client.call_tool(
+                    "queue_add", {"target": "audit-docs", "runner": "cmd", "apply": True}
+                )
+            )
+            entry_id = added["entry"]["id"]
+
+            monkeypatch.setattr(qs, "connect", _locked_connect)
+            result = await client.call_tool("queue_remove", {"id": entry_id})
+            assert result.is_error
+            text = result.content[0].text
+            assert "queue database" in text
+            assert "database is locked" in text
+
+    anyio.run(run)
+
+
+def test_queue_requeue_operational_error_is_structured(tmp_path, monkeypatch) -> None:
+    project = _make_project(tmp_path, monkeypatch)
+    import little_loops.queue_store as qs
+
+    def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+        raise sqlite3.OperationalError("database is locked")
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            added = _payload(
+                await client.call_tool(
+                    "queue_add", {"target": "audit-docs", "runner": "cmd", "apply": True}
+                )
+            )
+            entry_id = added["entry"]["id"]
+
+            monkeypatch.setattr(qs, "connect", _locked_connect)
+            result = await client.call_tool("queue_requeue", {"id": entry_id})
+            assert result.is_error
+            text = result.content[0].text
+            assert "queue database" in text
+            assert "database is locked" in text
 
     anyio.run(run)
 
