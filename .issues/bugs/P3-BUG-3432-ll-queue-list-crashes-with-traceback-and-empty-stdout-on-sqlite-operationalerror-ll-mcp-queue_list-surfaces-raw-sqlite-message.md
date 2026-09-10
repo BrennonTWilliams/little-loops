@@ -9,8 +9,14 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T01:41:55Z'
 learning_tests_required:
-  - sqlite3
-  - mcp
+- sqlite3
+- mcp
+confidence_score: 95
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-3432: ll-queue list crashes with traceback and empty stdout on sqlite OperationalError; ll-mcp queue_list surfaces the raw sqlite message
@@ -155,6 +161,48 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - **Risk**: Low - Read-only path, purely additive exception handling around existing calls; behavior on the non-error path is unchanged.
 - **Breaking Change**: No - `--json` success-case payload shape is unchanged; the failure case, which previously exited with a traceback and empty stdout, now emits `{"error": ...}`.
 
+## Verification Notes
+
+**Verdict: PROPOSAL_UNSOUND.** Every claim about current-code state checked out exact —
+file paths, line numbers, and code shapes all confirmed by direct read: `cmd_list`
+(`cli/queue.py:245-260`), `_not_found_or_ambiguous` (`:273-303`, catches only
+`AmbiguousEntryIdError`), the unguarded `list_entries` calls in `_drain_once`/
+`_reclaim_stale` (`:554`/`:680`), `_tool_queue_list`/`_tool_queue_get`
+(`mcp_server/tools.py:478-489`/`:492-507`), the `resolve_entry` call sites inside
+`_tool_queue_remove`/`_tool_queue_requeue` (`:598`/`:631`), `handle_call_tool`'s
+blanket `except Exception` (`:1283-1297`, confirmed to also cover the mutating-tool
+branch at `:1287` since both sit inside the same `try`), `MUTATING_TOOLS` membership
+(`policy.py:55-65` — `queue_remove`/`queue_requeue` are mutating, `queue_list`/
+`queue_get` are not, immaterial to the shared `except` claim), and
+`queue_store.py`'s `connect`/`_configure_connection`/`_apply_migrations`/`ensure_db`/
+`resolve_entry`'s `list_entries` call at `:469`. The "no read-side retry helper" and
+"no `locked` boolean sentinel" repo-wide claims were re-run and still return no hits.
+`ll-verify-evidence` reports clean (no fabricated quotes); no active required
+decision rules are in force.
+
+The defect is prospective, not retrospective: **Scope Decisions** and the wire-issue
+pass both put all four MCP tools — `_tool_queue_list`, `_tool_queue_get`,
+`_tool_queue_remove`, `_tool_queue_requeue` — in scope for the same one-line
+`ValueError`-wrapping change, explicitly reasoning that "doing one and 'flagging'
+three would leave the MCP surface inconsistent." But the **Acceptance Criteria only
+exercise `queue_list` and `queue_get`** — there is no AC asserting that
+`_tool_queue_remove`/`_tool_queue_requeue` raise the new structured, queue.db-
+attributed `ValueError` (instead of the raw sqlite text) under the same
+`OperationalError` monkeypatch. An implementer working strictly off the AC checklist
+could land the fix on 2 of the 4 declared-in-scope tools untested, reproducing the
+inconsistent-surface outcome the four-tool grouping exists to prevent.
+
+Remaining: add two Acceptance Criteria (mirroring the existing `queue_list`/
+`queue_get` pair) covering `_tool_queue_remove`/`_tool_queue_requeue` under the
+`OperationalError` monkeypatch. Not corrected in this pass — `/ll:verify-issues`
+reports on prescriptive sections (Scope Decisions/Program Design/Acceptance
+Criteria) but does not rewrite them; route through `/ll:reconcile-issue` or a manual
+edit.
+
+Graph: provider=`codegraph` freshness=`stale` — not used to originate any verdict;
+every cited symbol was confirmed by a direct file read per the freshness-demotion
+rule.
+
 ## Steps to Reproduce
 
 1. Monkeypatch `little_loops.queue_store.connect` to raise `sqlite3.OperationalError("database is locked")` (the pattern used throughout `scripts/tests/` for locked-DB cases).
@@ -176,6 +224,8 @@ Note: holding `BEGIN IMMEDIATE` on a second real connection does **not** reprodu
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T03:26:56 - `cc7ebe5f-c73c-4a1e-8191-adbb508e3997.jsonl`
+- `/ll:verify-issues` - 2026-09-10T03:16:08 - `5034953b-2c32-4c04-8aeb-ef755a4d9eb0.jsonl`
 - `/ll:wire-issue` - 2026-09-10T02:45:55 - `ccf4b116-f388-4b46-b017-1735a236d98c.jsonl`
 - `/ll:refine-issue` - 2026-09-10T02:40:25 - `904e00dc-d918-45ce-a5a3-6476558d4520.jsonl`
 - `/ll:format-issue` - 2026-09-10T02:20:14 - `53454f7b-c63c-4adf-8a13-82f32f7513d8.jsonl`
