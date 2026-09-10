@@ -258,7 +258,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   `test_enh_3166_qwen_normalizer.py`'s `_make_qwen_home` pattern), not a second committed fixture
   dir. [Agent 3 finding]
 - `scripts/tests/test_enh_3166_qwen_normalizer.py` — delete `test_has_ll_activity_detects_
-  normalized_run_shell_command` (288) and `test_extract_cwd_honors_chats_glob` (298);
+  normalized_run_shell_command` (288) and `test_extract_cwd_honors_chats_glob` (296);
   `test_discover_all_projects_finds_qwen_project` (277) stays and must pass through the new path.
 - `scripts/tests/test_bug_3216_telemetry_digest_invocations.py` — re-run after adding `--host`;
   add the `FAILURES_NO_DATA` reachability test.
@@ -319,7 +319,11 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
   `_extract_ll_event_streams` (def cited as 261–290) is currently at 266–342 — also grown, not just shifted.
 - **`scripts/tests/test_ll_logs.py` line numbers drift independently, by a flat +70** for every citation checked, against an edit unrelated to `4e32bcc2a`: `test_discover_finds_project_via_queue_operation` 138→208, `test_discover_finds_project_with_dotted_worktree_subpath` 171→241, `test_discover_skips_non_ll_project` 204→274, `test_sequences_project_not_found_returns_1` 1224→1294, `test_extract_project_not_found_returns_1` 1822→1892. The two direct-call tests cited as "6051, 6093" do **not** share that +70 constant — their current `def` lines are 6098 and 6129 respectively; each needs independent re-verification at implementation time, not a blanket offset.
-- **`scripts/tests/test_enh_3166_qwen_normalizer.py` line citations (277, 288, 298) are unchanged and still exact** — this file was untouched by whatever produced the `test_ll_logs.py` drift.
+- **`scripts/tests/test_enh_3166_qwen_normalizer.py` line citations** — this file was untouched by
+  whatever produced the `test_ll_logs.py` drift. `test_discover_all_projects_finds_qwen_project`
+  (277) and `test_has_ll_activity_detects_normalized_run_shell_command` (288) are exact;
+  `test_extract_cwd_honors_chats_glob` was previously cited as 298 but is actually **296** —
+  corrected in the Tests section above (`/ll:verify-issues`, 2026-09-10).
 
 ## Acceptance Criteria
 
@@ -387,12 +391,33 @@ _Added by `/ll:spike` on 2026-09-09_
 **Verification**: 6 tests pass across 3 commands (spike suite, `test_session_discovery.py` 57 passed, `test_ll_logs.py -k TestDiscover` 18 passed).
 **Promotion**: move the proven per-host-iterate/resolve-dedupe/filter-after-dedupe shape into `discover_all_projects`'s `--all` path in `scripts/little_loops/cli/logs.py` in a separate PR (issue step 2).
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same pass, so the
+issue as it now reads is up to date — this section is a record of what was wrong and fixed, not
+an outstanding action item).
+
+Cross-checked essentially every `path:line` citation in this issue (`cli/logs.py`, `test_ll_logs.py`,
+`test_enh_3166_qwen_normalizer.py`, `docs/reference/API.md`, `.loops/ll-logs-telemetry-digest.yaml`)
+against the current working tree, plus the cited landed commit (`4e32bcc2a`, confirmed via `git log`),
+the sibling issues' status (ENH-3428/ENH-3429 both `done`), and `list_workspaces`'s zero-production-caller
+claim (confirmed via `ll-code callers-of` — its only caller is the spike scaffolding under
+`scripts/tests/spike/`, not production code). All checked out exact except one: the Tests section cited
+`test_extract_cwd_honors_chats_glob` at line 298; it is actually at line **296**. The Codebase Research
+Findings entry asserting this file's citations were "unchanged and still exact" was therefore itself
+inaccurate on this one point. Both are corrected above.
+
+- Graph: provider=`codegraph` freshness=`fresh`
+- Decisions log: no active required rules (empty)
+- `ll-verify-evidence`: clean (`ok: true`, 0 findings)
+
 ## Status
 
 **Open** | Created: 2026-09-09 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-10T05:03:34 - `e36592b8-1523-4c49-b004-6d3cb2829c0d.jsonl`
 - `/ll:wire-issue` - 2026-09-10T04:58:46 - `708c4534-09ef-4d36-b24d-5c4dcb26fe1d.jsonl`
 - `/ll:spike` - 2026-09-10T04:47:39 - `ccf26c86-7b45-4520-a14e-087ff209985d.jsonl`
 - `/ll:refine-issue` - 2026-09-10T04:37:29 - `58c863fa-c03a-4046-a3d0-1ff2020ab466.jsonl`
