@@ -291,12 +291,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Scope Boundaries
 
 - **In scope**: hardening `cli_event_context`'s connect/insert/finally-UPDATE
-  paths (plus the unguarded `resolve_history_db` / config-gating prefix) and
-  confirming the ll-console stderr/exit-code contract first.
-- **Out of scope**: any size-gated behavior on `history.db` (size does not
-  affect the writer; 7.6 GB / 1.5M rows is routine for SQLite), auto-compaction or pruning of `history.db` (manual-only
-  per project rule — see `raw_events` compact()/prune()), replacing SQLite as
-  the history store, and any change to the `cli_events` schema.
+  paths (plus the unguarded `resolve_history_db` / config-gating prefix),
+  flushing stdout before the exit UPDATE, and the one-line stderr warning.
+- **Out of scope — needs its own BUG**: the unguarded `.ll/queue.db` read in
+  `ll-queue list` (`cli/queue.py:249`, `list_entries(QUEUE_DB_PATH)`) and the
+  same call inside `ll-mcp`'s `queue_list` tool. A locked queue.db there
+  produces the exact symptom this issue was captured from (traceback, exit 1,
+  empty stdout) and is not touched by any change to `cli_event_context`.
+- **Out of scope**: the `except BaseException: exit_code = 1` fidelity nit
+  (`SystemExit(2)` from argparse and `SystemExit(0)` are both recorded as 1);
+  `skill_event_context`'s bare `conn.close()`; any size-gated behavior on
+  `history.db` (size does not affect the writer; 7.6 GB / 1.5M rows is routine
+  for SQLite); auto-compaction or pruning of `history.db` (manual-only per
+  project rule — see `raw_events` compact()/prune()); replacing SQLite as the
+  history store; and any change to the `cli_events` schema.
 
 ## API/Interface
 
