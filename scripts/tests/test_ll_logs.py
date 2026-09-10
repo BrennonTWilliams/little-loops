@@ -81,6 +81,76 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.project == Path("/tmp")
 
+    # Subcommands requiring the --project/--all mutually-exclusive target group
+    # (via add_corpus_target_args) need --all added so the flag test isolates
+    # --host parsing from that unrelated required-group error.
+    _HOST_SUBCOMMANDS_NEEDING_ALL = {
+        "extract",
+        "sequences",
+        "stats",
+        "scan-failures",
+        "dead-skills",
+        "loop-fleet",
+        "fleet-review",
+    }
+
+    @pytest.mark.parametrize(
+        "subcommand",
+        [
+            "discover",
+            "extract",
+            "sequences",
+            "stats",
+            "scan-failures",
+            "dead-skills",
+            "eval-export",
+            "loop-fleet",
+            "fleet-review",
+        ],
+    )
+    def test_host_flag_parses_on_session_touching_subcommands(self, subcommand: str) -> None:
+        """--host (ENH-3427) is registered on all 9 session-touching subcommands."""
+        argv = ["ll-logs", subcommand, "--host", "codex"]
+        if subcommand in self._HOST_SUBCOMMANDS_NEEDING_ALL:
+            argv.append("--all")
+        with patch("sys.argv", argv):
+            args = _parse_args()
+        assert args.host == "codex"
+
+    @pytest.mark.parametrize(
+        "subcommand",
+        [
+            "discover",
+            "extract",
+            "sequences",
+            "stats",
+            "scan-failures",
+            "dead-skills",
+            "eval-export",
+            "loop-fleet",
+            "fleet-review",
+        ],
+    )
+    def test_host_flag_rejects_invalid_choice(self, subcommand: str) -> None:
+        argv = ["ll-logs", subcommand, "--host", "not-a-real-host"]
+        if subcommand in self._HOST_SUBCOMMANDS_NEEDING_ALL:
+            argv.append("--all")
+        with patch("sys.argv", argv):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_tail_has_no_host_flag(self) -> None:
+        """tail streams loop log files, not session-store discovery — no --host (ENH-3427)."""
+        with patch("sys.argv", ["ll-logs", "tail", "--loop", "myloop", "--host", "codex"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_diff_has_no_host_flag(self) -> None:
+        """diff resolves sessions via the history DB, not project-folder discovery — no --host (ENH-3427)."""
+        with patch("sys.argv", ["ll-logs", "diff", "a", "b", "--host", "codex"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
 
 class TestDiscover:
     """Integration tests for the discover subcommand."""

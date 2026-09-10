@@ -127,6 +127,7 @@ from little_loops.session_store.schema import (
     connect,
     ensure_db,
 )
+from little_loops.session_store.sessions import _REGISTERED_HOSTS as REGISTERED_HOSTS
 from little_loops.session_store.sessions import (
     SessionEvent,
     SessionHandle,
@@ -203,6 +204,7 @@ __all__ = [
     "DEFAULT_DB_PATH",
     "SCHEMA_VERSION",
     "VALID_KINDS",
+    "REGISTERED_HOSTS",
     "ensure_db",
     "connect",
     "normalize_issue_id",

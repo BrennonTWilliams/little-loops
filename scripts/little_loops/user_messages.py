@@ -24,9 +24,11 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import overload
 
 __all__ = [
     "UserMessage",
@@ -370,11 +372,54 @@ def encode_project_path(path_str: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]", "-", path_str)
 
 
+@overload
+def _resolve_host(flag: str | None, *, default: str) -> str: ...
+@overload
+def _resolve_host(flag: str | None, *, default: None = None) -> str | None: ...
+def _resolve_host(flag: str | None, *, default: str | None = None) -> str | None:
+    """Resolve a host identifier by precedence: ``flag`` > ``LL_HOOK_HOST`` > ``default``.
+
+    Detection order (first match wins):
+
+    1. ``flag`` — an explicit ``--host`` CLI argument.
+    2. ``LL_HOOK_HOST`` environment variable — exported only by the hook
+       adapter shims into the hook subprocess environment, so this tier
+       effectively never fires for an interactive CLI run; it exists for
+       automation contexts that inherit that env.
+    3. ``default`` — ``None`` means union across every registered host;
+       single-host call sites pass ``default="claude-code"``.
+
+    Args:
+        flag: Explicit host from a ``--host`` argument, or None.
+        default: Fallback when neither ``flag`` nor the env var is set.
+
+    Returns:
+        The resolved host identifier, or None when ``default`` is None and
+        neither ``flag`` nor the env var was set.
+    """
+    return flag or os.environ.get("LL_HOOK_HOST") or default
+
+
+def _cwd_spellings(cwd: Path) -> list[str]:
+    """Both spellings of *cwd* to probe for an encoded project folder, resolved first.
+
+    ``resolve()`` follows symlinks; ``absolute()`` does not — so a project
+    folder encoded from an unresolved symlinked cwd is still found by the
+    second spelling. Deduped when the two agree (no symlink involved).
+    """
+    resolved = str(cwd.resolve())
+    as_recorded = str(cwd.absolute())
+    return [resolved] if resolved == as_recorded else [resolved, as_recorded]
+
+
 def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> Path | None:
     """Map current directory to the host's session-log project folder.
 
     Converts the working directory into the host-specific encoded path and
-    probes the host's session directory for matching JSONL files.
+    probes the host's session directory for matching JSONL files. For hosts
+    whose on-disk layout keys off an encoded path (``claude-code``, ``codex``,
+    ``opencode``, ``pi``, ``qwen``), both the resolved and as-recorded
+    spellings of *cwd* are probed, resolved first (see :func:`_cwd_spellings`).
 
     Args:
         cwd: Working directory to map. If None, uses current directory.
@@ -391,31 +436,31 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
     """
     if cwd is None:
         cwd = Path.cwd()
-    if host is None:
-        host = os.environ.get("LL_HOOK_HOST", "claude-code")
+    host = _resolve_host(host, default="claude-code")
 
-    # Convert path to dash-separated format, matching Claude Code's on-disk
-    # scheme: every non-alphanumeric char (not just "/") maps 1:1 to "-".
-    # /home/user/.worktrees -> -home-user--worktrees (each special char its own dash)
-    path_str = str(cwd.resolve())
-    encoded_path = encode_project_path(path_str)
-
-    if host == "claude-code":
-        return _get_claude_project_folder(encoded_path)
-    elif host == "codex":
-        return _get_codex_project_folder(encoded_path)
-    elif host == "opencode":
-        return _get_opencode_project_folder(encoded_path)
-    elif host == "pi":
-        return _get_pi_project_folder(encoded_path)
-    elif host == "kimi-code":
+    if host == "kimi-code":
         return _get_kimi_project_folder(cwd)
-    elif host == "qwen":
-        return _get_qwen_project_folder(encoded_path)
-    elif host == "gemini":
+    if host == "gemini":
         return _get_gemini_project_folder(cwd)
-    elif host == "omp":
+    if host == "omp":
         return _get_omp_project_folder(cwd)
+
+    # Every remaining registered host keys its on-disk layout off the
+    # dash-encoded path (see encode_project_path); probe both cwd spellings.
+    probes: dict[str, Callable[[str], Path | None]] = {
+        "claude-code": _get_claude_project_folder,
+        "codex": _get_codex_project_folder,
+        "opencode": _get_opencode_project_folder,
+        "pi": _get_pi_project_folder,
+        "qwen": _get_qwen_project_folder,
+    }
+    probe = probes.get(host)
+    if probe is None:
+        return None
+    for path_str in _cwd_spellings(cwd):
+        result = probe(encode_project_path(path_str))
+        if result is not None:
+            return result
     return None
 
 
@@ -439,7 +484,7 @@ def get_sessions_folder(cwd: Path | None = None, *, host: str | None = None) -> 
         Path to the session-JSONL folder, or None when the host has no
         recorded sessions for *cwd*.
     """
-    effective_host = host if host is not None else os.environ.get("LL_HOOK_HOST", "claude-code")
+    effective_host = _resolve_host(host, default="claude-code")
     project_folder = get_project_folder(cwd, host=effective_host)
     if project_folder is None:
         return None

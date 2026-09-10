@@ -331,6 +331,34 @@ def add_json_arg(parser: argparse.ArgumentParser, help_text: str = "Output as JS
     parser.add_argument("-j", "--json", action="store_true", help=help_text)
 
 
+def add_host_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    help_text: str = (
+        "Restrict to one host (default: LL_HOOK_HOST if set, else all registered hosts)"
+    ),
+) -> None:
+    """Add --host argument, choices sourced from REGISTERED_HOSTS.
+
+    Args:
+        parser: The argument parser to add the argument to
+        help_text: Optional custom help text. Defaults to a union-accurate
+            description; single-host call sites (e.g. ``ll-session backfill``)
+            pass their own wording since they default to one host, not union.
+    """
+    # Lazy import: cli_args.py has zero little_loops imports at module level
+    # and 53 importers, so a top-level import would pull sqlite, writers.py,
+    # and host_runner into every CLI's startup path.
+    from little_loops.session_store import REGISTERED_HOSTS
+
+    parser.add_argument(
+        "--host",
+        choices=list(REGISTERED_HOSTS),
+        default=None,
+        help=help_text,
+    )
+
+
 def parse_issue_ids(value: str | None) -> set[str] | None:
     """Parse comma-separated issue IDs into a set.
 

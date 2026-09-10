@@ -473,6 +473,7 @@ When `usage_events` rows join to a `loop_runs` row on `run_id` (ENH-2721's schem
 **Flags:**
 - `--db PATH` — Use a non-default session database (default `.ll/history.db`; also resolves `LL_HISTORY_DB` / `history.db_path` config when omitted, ENH-2623).
 - `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not. When learning tests are enabled it also includes a `learning_tests` key with `{total, proven, stale, refuted, orphans}`. A `waste` key holds a list of `{loop_name, tokens_total, tokens_wasted, waste_pct, runs_total, runs_wasted}` (empty list when the DB exists with no joinable rows, `null` when the DB is absent). A `context_pressure` key holds `{samples, peak_pct, avg_pct, crossings}` aggregated across `context_pressure_events` (`crossings` maps level string → count; `null` when the DB is absent, ENH-2507).
+- `--host HOST` — Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts). Choices: `claude-code`, `codex`, `opencode`, `pi`, `kimi-code`, `qwen`, `gemini`, `omp`. Additive and not yet consumed by session enumeration (ENH-3427).
 
 When `context_pressure_events` has rows (schema v34+, written by `context-monitor.sh` on every sampled `PostToolUse`), the report also includes a **Context pressure curve** section: sample count, peak/average `used_pct` across all sessions, and a per-level crossing tally (ENH-2507).
 
@@ -3611,6 +3612,7 @@ Extract user messages from Claude Code session logs.
 | `--examples-format` | | Output `(input, output)` training pairs instead of raw messages (requires `--skill`); mutually exclusive with `--sft-format` |
 | `--sft-format` | | Output conversation turns in SFT training format as JSON-lines (`chatml`, `alpaca`, `sharegpt`); mutually exclusive with `--examples-format` |
 | `--context-window` | | Number of context turn-pairs per window in `--examples-format` or `--sft-format` (default: 3) |
+| `--host` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed by session enumeration (ENH-3427) |
 
 **Examples:**
 ```bash
@@ -3657,6 +3659,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--json` | `-j` | Output as JSON: `{"paths": [...]}` |
+| `--host HOST` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 **`tail` flags:**
 
@@ -3673,6 +3676,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--project DIR` | Working directory of the target project |
 | `--cmd TOOL` | Filter to records containing this ll- tool name (e.g. `ll-history`) |
 | `-j`, `--json` | Output as JSON (per-project rows, totals, `skipped`, `cmd_filter`, `zero_match`) |
+| `--host HOST` | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 On success, `extract` prints a per-project + totals summary (sessions/records
 written, output dir) instead of nothing; unreadable JSONL files are reported
@@ -3692,6 +3696,7 @@ zero records says so explicitly rather than looking like a no-op.
 | `--since DATE` | | Only consider records on or after DATE (YYYY-MM-DD); mutually exclusive with `--window-days` |
 | `--until DATE` | | Only consider records on or before DATE (YYYY-MM-DD); composes with `--window-days` or `--since` for a closed range |
 | `--json` | `-j` | Output as JSON: `[{"chain": [...], "count": N, "edges": [{"from": "...", "to": "...", "freq": f, "pmi": 1.23, "lift": 3.4}], "pmi": 1.23, "lift": 3.4}]`; `pmi`/`lift` are optional additive fields; `lift < 1.0` signals a frequency-prior-equivalent pair |
+| `--host HOST` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 `--all` and `--project` are mutually exclusive for `extract`, `sequences`, `stats`, `dead-skills`, `scan-failures`, `loop-fleet`, and `eval-export`. `--window-days` and `--since` are mutually exclusive (both express a lower bound); `--until` composes with either.
 
@@ -3706,6 +3711,7 @@ zero records says so explicitly rather than looking like a no-op.
 | `--until DATE` | | Only consider records on or before DATE (YYYY-MM-DD) |
 | `--sort {freq,corrections}` | | Sort by invocation frequency or correction count (default: freq) |
 | `--json` | `-j` | Output as JSON: `[{"skill": str, "invocations": int, "corrections": int, "correction_rate": float}]` |
+| `--host HOST` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 **`dead-skills` flags:**
 
@@ -3719,6 +3725,7 @@ zero records says so explicitly rather than looking like a no-op.
 | `--threshold N` | | Skills with invocations ≤ N are "rarely" invoked (default: 3) |
 | `--sort {tier,name}` | | Sort by tier (never before rarely) then invocation count, or alphabetically (default: tier) |
 | `--json` | `-j` | Output as JSON: `[{"skill": str, "invocations": int, "tier": "never"\|"rarely"}]` |
+| `--host HOST` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 **`scan-failures` flags:**
 
@@ -3734,6 +3741,7 @@ zero records says so explicitly rather than looking like a no-op.
 | `--limit N` | | Cap output to top N clusters by count (0 = unlimited, default) |
 | `--skill NAME` | | Limit clusters to `ll-*` CLI failures that occurred while NAME was the enclosing skill (`<command-name>` marker or `Skill` tool_use block); `ll:` prefix optional. Does not filter failures of NAME's own `Read`/`Edit`/`Grep` calls — this subcommand never sees those. Attribution is heuristic |
 | `--json` | `-j` | Output as JSON: `[{"tool": str, "count": int, "normalized_sig": str, "sample_error": str, "session_ids": [...], "skills": [...]}]` |
+| `--host HOST` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 **`diff` flags:**
 
@@ -3753,6 +3761,7 @@ zero records says so explicitly rather than looking like a no-op.
 | `--limit N` | | Cap output record count (0 = unlimited) |
 | `--out PATH` | | Write output to file (default: stdout) |
 | `--json` | `-j` | JSON output instead of default YAML |
+| `--host HOST` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 **`loop-fleet` flags:**
 
@@ -3768,6 +3777,7 @@ zero records says so explicitly rather than looking like a no-op.
 | `--sort {success,name}` | | Sort by success rate ascending (worst first) or alphabetically (default: success) |
 | `--limit N` | | Cap `--json` output to N most recent per-run rows (0 = unlimited, default); does not affect the aggregated table |
 | `--json` | `-j` | Output as JSON: one row per run — `[{"loop_name": str, "project": str, "run_folder": str, "final_state": str, "iterations": int, "outcome": str, "ts": str, "attribution": "builtin"\|"custom"\|"shadowed"}]`. `shadowed` means the run executed a project-local `.loops/<name>.yaml`/`.loops/<name>.fsm.yaml` copy that shares the built-in's name — the human-readable table's Type column carries the same three values, one row per `(loop, attribution)` pair (never merged) |
+| `--host HOST` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 **`fleet-review` flags:**
 
@@ -3785,6 +3795,7 @@ zero records says so explicitly rather than looking like a no-op.
 | `--appendix-top N` | | Cap each of the `scan-failures`/`sequences` appendices to the top N rows by count; `0` = unlimited (default: `20`) |
 | `--no-appendices` | | Skip the `scan-failures`/`sequences` collectors entirely (faster RE-MEASURE-only run); the sidecar and flagged-loop table are unaffected |
 | `--json` | `-j` | Print the sidecar dict to stdout; writes no `.md`/`.json` files and never enters the baseline chain |
+| `--host HOST` | | Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts); additive and not yet consumed (ENH-3427) |
 
 `fleet-review` writes `.loops/diagnostics/fleet-review-<stamp>.md` and
 `.loops/diagnostics/fleet-review-<stamp>.json` under `Path.cwd()/.loops/diagnostics/`, where

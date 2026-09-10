@@ -283,6 +283,51 @@ class TestSessionStartBackfillThread:
         handle(_event())
         assert calls == [], "no subprocess should be spawned when project has no config"
 
+    def test_get_project_folder_receives_host_kwarg(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3427: session_start.py:162 passes host=_resolve_host(event.host, ...)
+        to get_project_folder, rather than calling it with cwd only."""
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+        self._mock_popen(monkeypatch)
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        import little_loops.user_messages as um
+
+        captured: dict = {}
+
+        def _capture(*a, **kw):
+            captured["args"] = a
+            captured["kwargs"] = kw
+            return in_tmp
+
+        monkeypatch.setattr(um, "get_project_folder", _capture)
+        handle(LLHookEvent(host="qwen", intent="session_start", payload={}))
+        assert captured["kwargs"].get("host") == "qwen"
+
+    def test_get_project_folder_host_falls_back_on_falsy_event_host(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A falsy ``event.host`` (only possible via direct LLHookEvent construction,
+        never through the real adapter dispatch) falls back to LL_HOOK_HOST/default."""
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+        self._mock_popen(monkeypatch)
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
+        monkeypatch.setenv("LL_HOOK_HOST", "gemini")
+        import little_loops.user_messages as um
+
+        captured: dict = {}
+
+        def _capture(*a, **kw):
+            captured["kwargs"] = kw
+            return in_tmp
+
+        monkeypatch.setattr(um, "get_project_folder", _capture)
+        handle(LLHookEvent(host="", intent="session_start", payload={}))
+        assert captured["kwargs"].get("host") == "gemini"
+
     def test_backfill_error_does_not_propagate(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

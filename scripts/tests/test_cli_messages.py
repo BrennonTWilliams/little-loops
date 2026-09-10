@@ -61,6 +61,28 @@ _EXTRACT_COMMANDS_PATH = "little_loops.user_messages.extract_commands"
 # ---------------------------------------------------------------------------
 
 
+class TestMessagesHostFlag:
+    """--host (ENH-3427) parses and is validated against REGISTERED_HOSTS; inert until
+    a future issue consumes it for session enumeration."""
+
+    def test_host_flag_parses_and_main_messages_still_succeeds(self) -> None:
+        with patch(_PROJECT_FOLDER_PATH, return_value=Path("/mock/project")):
+            with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
+                with patch(_EXTRACT_COMMANDS_PATH, return_value=[]):
+                    with patch(
+                        "little_loops.cli.messages._save_combined",
+                        return_value=Path("/out.jsonl"),
+                    ):
+                        with patch.object(sys, "argv", ["ll-messages", "--host", "codex"]):
+                            result = main_messages()
+        assert result == 0
+
+    def test_host_flag_rejects_invalid_choice(self) -> None:
+        with patch.object(sys, "argv", ["ll-messages", "--host", "not-a-real-host"]):
+            with pytest.raises(SystemExit):
+                main_messages()
+
+
 class TestMessagesCommandsOnly:
     """--commands-only skips extract_user_messages and extracts only commands."""
 

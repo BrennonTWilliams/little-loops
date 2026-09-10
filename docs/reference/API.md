@@ -3442,7 +3442,9 @@ def get_project_folder(
 
 Map a directory to the host's session-log project folder. Dispatches to host-specific
 helpers for Claude Code, Codex, OpenCode, Pi, Kimi Code, Qwen Code, Gemini CLI, and omp
-(oh-my-pi).
+(oh-my-pi). For hosts whose on-disk layout keys off an encoded path (``claude-code``,
+``codex``, ``opencode``, ``pi``, ``qwen``), both the resolved and as-recorded spellings of
+``cwd`` are probed, resolved first (ENH-3427).
 
 **Parameters:**
 - `cwd` - Working directory to map (default: current directory)
@@ -9612,9 +9614,10 @@ malformed); for `kimi-code`, the `session_*` directory two levels up
 (`path.parents[2].name` — never the filename stem, which is always
 `"wire"`).
 
-Claude Code: reads `home / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))`
-directly (not `get_project_folder`/`get_sessions_folder`, both of which read
-`Path.home()` and would ignore `home`). Codex: queries the newest
+Claude Code: probes `home / ".claude" / "projects" / encode_project_path(spelling)` for both
+the resolved and as-recorded spellings of `cwd` (resolved first, via the shared
+`_cwd_spellings` helper — ENH-3427), directly (not `get_project_folder`/`get_sessions_folder`,
+both of which read `Path.home()` and would ignore `home`). Codex: queries the newest
 `~/.codex/state_*.sqlite`'s `threads` table (matching both `cwd` and
 `cwd.resolve()`), falling back to a scan of `sessions/` and
 `archived_sessions/` (both date-keyed and flat trees) when the DB is absent,

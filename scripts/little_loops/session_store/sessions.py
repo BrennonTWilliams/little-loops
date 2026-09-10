@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.user_messages import (
+    _cwd_spellings,
     _get_claude_project_folder,
     _get_gemini_project_folder,
     _get_kimi_project_folder,
@@ -239,11 +240,16 @@ def _detect_claude_sessions(
     """Delegates to ``_get_claude_project_folder(encoded, home=home)``.
 
     That probe is now ``home``-aware (ENH-3420), so this no longer needs its
-    own local reimplementation of the path join. Encodes the **resolved**
-    cwd, exactly as ``get_project_folder`` does.
+    own local reimplementation of the path join. Probes both the resolved
+    and as-recorded spellings of cwd (resolved first, see
+    ``_cwd_spellings``), exactly as ``get_project_folder`` does.
     """
-    encoded = encode_project_path(str(cwd.resolve()))
-    project_dir = _get_claude_project_folder(encoded, home=home)
+    project_dir = None
+    for path_str in _cwd_spellings(cwd):
+        encoded = encode_project_path(path_str)
+        project_dir = _get_claude_project_folder(encoded, home=home)
+        if project_dir is not None:
+            break
     if project_dir is None or not project_dir.is_dir():
         return []
     handles = []
@@ -299,11 +305,12 @@ def detect_sessions(
     """Every session for *cwd*, newest ``updated_at`` first.
 
     ``host=None`` unions every registered host's sessions for *cwd*, each
-    handle carrying its own ``host`` — none of the eventual consumers has a
-    ``--host`` flag, so a required ``host`` argument would leave Codex
-    sessions invisible by default. ``limit`` applies once, after the
-    cross-host merge (global newest-N, not N per host). Never raises for a
-    missing host home; returns ``[]``.
+    handle carrying its own ``host`` — a required ``host`` argument would
+    leave Codex sessions invisible by default when a caller's ``--host`` flag
+    is unset (the three CLI consumers default their own ``--host`` to
+    ``None``/union for the same reason, ENH-3427). ``limit`` applies once,
+    after the cross-host merge (global newest-N, not N per host). Never
+    raises for a missing host home; returns ``[]``.
 
     ``include_agents`` is honoured wherever the host's session glob reaches
     agent transcripts — today only ``claude-code`` (``agent-*.jsonl``); on
@@ -336,13 +343,16 @@ def _project_folder_for_layout_host(host: str, cwd: Path, home: Path) -> Path | 
     override.
     """
     if host in ("opencode", "pi", "qwen"):
-        encoded = encode_project_path(str(cwd.resolve()))
         probe = {
             "opencode": _get_opencode_project_folder,
             "pi": _get_pi_project_folder,
             "qwen": _get_qwen_project_folder,
         }[host]
-        return probe(encoded, home=home)
+        for path_str in _cwd_spellings(cwd):
+            result = probe(encode_project_path(path_str), home=home)
+            if result is not None:
+                return result
+        return None
     if host == "kimi-code":
         return _get_kimi_project_folder(cwd, home=home)
     if host == "gemini":

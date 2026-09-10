@@ -24,6 +24,7 @@ from little_loops.cli.output import (
     terminal_width,
     use_color_enabled,
 )
+from little_loops.cli_args import add_host_arg
 from little_loops.config.features import LearningTestsConfig
 from little_loops.issue_parser import slugify
 from little_loops.learning_tests import list_records
@@ -72,6 +73,7 @@ Exit codes:
         action="store_true",
         help="Output as JSON",
     )
+    add_host_arg(parser)
     return parser
 
 

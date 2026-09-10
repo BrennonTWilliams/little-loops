@@ -21,7 +21,12 @@ from little_loops.cli.loop.info import (  # private symbol: cross-module couplin
     _format_history_event,
 )
 from little_loops.cli.output import configure_output, print_json, table, use_color_enabled
-from little_loops.cli_args import add_corpus_target_args, add_json_arg, add_window_args
+from little_loops.cli_args import (
+    add_corpus_target_args,
+    add_host_arg,
+    add_json_arg,
+    add_window_args,
+)
 from little_loops.config import BRConfig
 from little_loops.fsm.loop_paths import get_builtin_loops_dir
 from little_loops.logger import Logger
@@ -2936,6 +2941,7 @@ Examples:
         default=False,
         help="Only emit paths that currently exist on disk; suppress all diagnostic output.",
     )
+    add_host_arg(discover_parser)
 
     tail_parser = subparsers.add_parser(
         "tail",
@@ -2957,6 +2963,7 @@ Examples:
         help="Filter to records containing this ll- tool name (e.g. ll-history)",
     )
     add_json_arg(extract_parser)
+    add_host_arg(extract_parser)
 
     sequences_parser = subparsers.add_parser(
         "sequences",
@@ -2986,6 +2993,7 @@ Examples:
     )
     add_window_args(sequences_parser)
     add_json_arg(sequences_parser)
+    add_host_arg(sequences_parser)
 
     stats_parser = subparsers.add_parser(
         "stats",
@@ -3000,6 +3008,7 @@ Examples:
         help="Sort output by invocation frequency or correction count (default: freq)",
     )
     add_json_arg(stats_parser)
+    add_host_arg(stats_parser)
 
     scan_failures_parser = subparsers.add_parser(
         "scan-failures",
@@ -3039,6 +3048,7 @@ Examples:
         ),
     )
     add_json_arg(scan_failures_parser)
+    add_host_arg(scan_failures_parser)
 
     dead_skills_parser = subparsers.add_parser(
         "dead-skills",
@@ -3064,6 +3074,7 @@ Examples:
         help="Sort by tier (never before rarely) then count, or alphabetically (default: tier)",
     )
     add_json_arg(dead_skills_parser)
+    add_host_arg(dead_skills_parser)
 
     diff_parser = subparsers.add_parser(
         "diff",
@@ -3110,6 +3121,7 @@ Examples:
         help="Write output to file (default: stdout)",
     )
     add_json_arg(eval_export_parser, help_text="JSON output instead of YAML (default: YAML)")
+    add_host_arg(eval_export_parser)
 
     loop_fleet_parser = subparsers.add_parser(
         "loop-fleet",
@@ -3144,6 +3156,7 @@ Examples:
         help="Cap --json output to N most recent runs (0 = unlimited)",
     )
     add_json_arg(loop_fleet_parser)
+    add_host_arg(loop_fleet_parser)
 
     fleet_review_parser = subparsers.add_parser(
         "fleet-review",
@@ -3205,6 +3218,7 @@ Examples:
         fleet_review_parser,
         help_text="Print the JSON baseline sidecar to stdout and write no files",
     )
+    add_host_arg(fleet_review_parser)
 
     return parser
 

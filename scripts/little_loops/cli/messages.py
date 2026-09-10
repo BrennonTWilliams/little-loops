@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from little_loops.cli_args import add_host_arg
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
@@ -82,6 +83,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
             type=Path,
             help="Working directory to use (default: current directory)",
         )
+        add_host_arg(parser)
         parser.add_argument(
             "--exclude-agents",
             action="store_true",

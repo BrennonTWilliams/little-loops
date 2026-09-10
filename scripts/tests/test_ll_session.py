@@ -60,6 +60,16 @@ class TestArgumentParsing:
             with pytest.raises(SystemExit):
                 _parse_args()
 
+    def test_registered_hosts_importable_and_matches_backfill_choices(self) -> None:
+        """REGISTERED_HOSTS (ENH-3427) is the same ordered tuple sessions._REGISTERED_HOSTS
+        is, and is the source `add_host_arg` draws `choices=` from."""
+        from little_loops.session_store import REGISTERED_HOSTS
+        from little_loops.session_store.sessions import _REGISTERED_HOSTS
+
+        assert REGISTERED_HOSTS == _REGISTERED_HOSTS
+        assert "claude-code" in REGISTERED_HOSTS
+        assert REGISTERED_HOSTS[0] == "claude-code"
+
     def test_path_subcommand(self) -> None:
         with patch("sys.argv", ["ll-session", "path", "abc123"]):
             args = _parse_args()

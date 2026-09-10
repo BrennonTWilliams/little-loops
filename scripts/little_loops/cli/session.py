@@ -29,14 +29,13 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
-from little_loops.cli_args import add_json_arg
+from little_loops.cli_args import add_host_arg, add_json_arg
 from little_loops.history_reader import (
     ll_describe,
     ll_expand,
@@ -208,11 +207,9 @@ Examples:
         default=None,
         help="Only process JSONL files modified after DATE (ISO 8601 or YYYY-MM-DD); uses incremental mode",
     )
-    backfill_parser.add_argument(
-        "--host",
-        choices=["claude-code", "codex", "opencode", "pi", "kimi-code", "qwen", "gemini", "omp"],
-        default=None,
-        help="Host to discover session logs for (default: auto-detect from LL_HOOK_HOST env)",
+    add_host_arg(
+        backfill_parser,
+        help_text="Host to discover session logs for (default: auto-detect from LL_HOOK_HOST env)",
     )
     backfill_parser.add_argument(
         "--extract-decisions",
@@ -633,7 +630,9 @@ def main_session() -> int:
 
             # Effective host for layout lookups: --host wins, else the same
             # LL_HOOK_HOST auto-detect that get_project_folder uses (ENH-3165).
-            _backfill_host: str = args.host or os.environ.get("LL_HOOK_HOST", "claude-code")
+            from little_loops.user_messages import _resolve_host
+
+            _backfill_host: str = _resolve_host(args.host, default="claude-code")
 
             # Read project config so compaction settings are respected (same
             # pattern as the prune handler).

@@ -4,10 +4,11 @@ type: ENH
 title: "Host-resolution seam \u2014 --host flag, both-spellings probe, and session_start\
   \ host injection"
 priority: P2
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T21:54:30Z'
+completed_at: '2026-09-10T01:17:37Z'
 labels:
 - multi-host
 - observability
@@ -369,6 +370,7 @@ check-design ENH-3427` now exits 0 (`is_specific: True`). No gaps remain.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T01:17:20 - `8b0effe7-a077-4ba9-a972-431f3a871ca4.jsonl`
 - `/ll:confidence-check` - 2026-09-10T00:45:13 - `d1b11d5d-bd78-420e-91a1-5dfc94d4273b.jsonl`
 - `/ll:verify-issues` - 2026-09-10T00:40:45 - `71fb98cc-4ad6-4857-8a2d-91b008deb266.jsonl`
 - manual review - 2026-09-09 - added `@overload` typing for `_resolve_host` (mypy at the three `default="claude-code"` callers); `add_host_arg` gets a `help_text` kwarg and lazy-imports `REGISTERED_HOSTS` (keeps `cli_args.py` a leaf); both-spellings probe explicitly covers every encoded-path branch of `get_project_folder`; `_cwd_spellings` uses `absolute()` for the second spelling; `detect_sessions` docstring 301-304 added to Files to Modify; dropped dangling `digest` finding

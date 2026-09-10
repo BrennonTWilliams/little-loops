@@ -298,6 +298,28 @@ class TestDetectSessionsClaudeCode:
         agent_handle = next(h for h in all_handles if h.session_id == "agent-sess-2")
         assert agent_handle.is_agent is True
 
+    def test_detect_sessions_finds_dir_encoded_from_unresolved_symlinked_cwd(self, tmp_path):
+        """A project dir encoded from an unresolved symlinked cwd is found via the
+        both-spellings probe (ENH-3427) — the resolved-only encoding used to miss it."""
+        home = tmp_path / "home"
+        real_dir = tmp_path / "real"
+        real_dir.mkdir()
+        symlink_cwd = tmp_path / "link"
+        symlink_cwd.symlink_to(real_dir)
+
+        from little_loops.user_messages import encode_project_path
+
+        encoded = encode_project_path(str(symlink_cwd.absolute()))
+        project_dir = home / ".claude" / "projects" / encoded
+        session_file = project_dir / "sess-1.jsonl"
+        session_file.parent.mkdir(parents=True)
+        session_file.write_text(json.dumps({"type": "user", "cwd": str(symlink_cwd)}) + "\n")
+
+        handles = ss.detect_sessions(symlink_cwd, "claude-code", home=home)
+
+        assert len(handles) == 1
+        assert handles[0].path == session_file
+
 
 class TestDetectSessionsHostNone:
     def test_detect_sessions_host_none_unions_and_orders_across_hosts(self, tmp_path):
@@ -600,9 +622,7 @@ class TestDetectSessionsOpencodePi:
     """opencode/pi are Claude-shaped on disk; same home-aware probe pattern
     as claude-code, stamped with their own host."""
 
-    def test_detect_sessions_opencode_resolves_via_home_not_real_home(
-        self, tmp_path, monkeypatch
-    ):
+    def test_detect_sessions_opencode_resolves_via_home_not_real_home(self, tmp_path, monkeypatch):
         decoy_home = tmp_path / "decoy-home"
         monkeypatch.setattr(Path, "home", lambda: decoy_home)
         home = tmp_path / "explicit-home"
@@ -835,7 +855,9 @@ class TestDetectSessionsLayoutNormalizedHosts:
         session_dir = home / ".omp" / "agent" / "sessions" / expected_encoded
         session_dir.mkdir(parents=True)
         session_file = session_dir / "ts_sess.jsonl"
-        session_file.write_text(json.dumps({"type": "session", "id": "sess", "cwd": str(cwd)}) + "\n")
+        session_file.write_text(
+            json.dumps({"type": "session", "id": "sess", "cwd": str(cwd)}) + "\n"
+        )
 
         handles = ss.detect_sessions(cwd, "omp", home=home)
 
@@ -926,9 +948,7 @@ class TestListWorkspacesLayoutHosts:
         cwd.mkdir()
         from little_loops.user_messages import encode_project_path
 
-        chats_dir = (
-            home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve())) / "chats"
-        )
+        chats_dir = home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve())) / "chats"
         chats_dir.mkdir(parents=True)
         (chats_dir / "sess.jsonl").write_text(json.dumps({"cwd": str(cwd)}) + "\n")
 
@@ -1019,9 +1039,7 @@ class TestDetectSessionsUnionAcrossFourHosts:
             [("codex-sess", str(codex_rollout), str(cwd), "exec", "1", "400")],
         )
 
-        qwen_chats = (
-            home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve())) / "chats"
-        )
+        qwen_chats = home / ".qwen" / "projects" / encode_project_path(str(cwd.resolve())) / "chats"
         qwen_chats.mkdir(parents=True)
         qwen_file = qwen_chats / "qwen-sess.jsonl"
         qwen_file.write_text("{}\n")

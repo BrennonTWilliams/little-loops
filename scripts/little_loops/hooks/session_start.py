@@ -148,7 +148,14 @@ def handle(event: LLHookEvent) -> LLHookResult:
         )
 
         with contextlib.suppress(Exception):
-            from little_loops.user_messages import get_project_folder
+            from little_loops.user_messages import _resolve_host, get_project_folder
+
+            # ENH-3166: stamp raw_events with the ingested host from the
+            # adapter envelope, not the worker's ambient host. ENH-3427:
+            # hoisted above get_project_folder so both uses share one
+            # resolved value instead of duplicating the flag-or-env-default
+            # expression.
+            _backfill_host = _resolve_host(event.host, default="claude-code")
 
             # ENH-1945: consume transcript_path from hook payload when available.
             payload = event.payload or {}
@@ -159,7 +166,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 # The worker resolves the host's session glob itself
                 # (ENH-3166) — pass the project root, not a pre-joined
                 # sessions subdirectory.
-                _pf = get_project_folder(cwd)
+                _pf = get_project_folder(cwd, host=_backfill_host)
                 _backfill_path = str(_pf) if _pf is not None else None
 
             if _backfill_path is not None and not _os.environ.get("LL_NON_INTERACTIVE"):
@@ -173,9 +180,6 @@ def handle(event: LLHookEvent) -> LLHookResult:
                     str(_db_path),
                     _backfill_path,
                 ]
-                # ENH-3166: stamp raw_events with the ingested host from the
-                # adapter envelope, not the worker's ambient host.
-                _backfill_host = event.host or _os.environ.get("LL_HOOK_HOST", "claude-code")
                 _worker_argv.extend(["--host", _backfill_host])
                 with contextlib.suppress(Exception):
                     from little_loops.session_store import SCHEMA_VERSION, connect

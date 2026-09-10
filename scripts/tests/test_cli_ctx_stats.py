@@ -152,6 +152,18 @@ class TestParser:
         args = _parse_args(["-j"])
         assert args.json_mode is True
 
+    def test_host_flag_parses(self) -> None:
+        args = _parse_args(["--host", "codex"])
+        assert args.host == "codex"
+
+    def test_host_flag_default_none(self) -> None:
+        args = _parse_args([])
+        assert args.host is None
+
+    def test_host_flag_rejects_invalid_choice(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse_args(["--host", "not-a-real-host"])
+
 
 class TestProgressBar:
     """Inline progress-bar formatter."""

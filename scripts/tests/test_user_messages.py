@@ -2350,3 +2350,83 @@ class TestSFTFormatter:
         user_texts = [content for role, content in all_turns if role == "user"]
         assert any("new" in t for t in user_texts), "new session turns should be present"
         assert not any("old" in t for t in user_texts), "old session turns should be skipped"
+
+
+class TestResolveHost:
+    """_resolve_host precedence: --host flag > LL_HOOK_HOST env > default (ENH-3427)."""
+
+    def test_flag_wins_over_env_and_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.user_messages import _resolve_host
+
+        monkeypatch.setenv("LL_HOOK_HOST", "qwen")
+        assert _resolve_host("codex", default="claude-code") == "codex"
+
+    def test_env_wins_over_default_when_flag_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.user_messages import _resolve_host
+
+        monkeypatch.setenv("LL_HOOK_HOST", "qwen")
+        assert _resolve_host(None, default="claude-code") == "qwen"
+
+    def test_default_used_when_neither_flag_nor_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.user_messages import _resolve_host
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        assert _resolve_host(None, default="claude-code") == "claude-code"
+
+    def test_default_claude_code_returned(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.user_messages import _resolve_host
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        assert _resolve_host(None, default="claude-code") == "claude-code"
+
+    def test_no_default_means_union_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """default=None (the CLI union default) with neither flag nor env resolves to None."""
+        from little_loops.user_messages import _resolve_host
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        assert _resolve_host(None) is None
+
+
+class TestCwdSpellingsProbe:
+    """Both-spellings probe: resolved cwd spelling tried first, as-recorded second (ENH-3427)."""
+
+    def test_get_project_folder_finds_unresolved_encoded_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A Claude project dir encoded from an unresolved symlinked cwd is still found."""
+        real_dir = tmp_path / "real"
+        real_dir.mkdir()
+        symlink_dir = tmp_path / "link"
+        symlink_dir.symlink_to(real_dir)
+
+        fake_home = tmp_path / "fakehome"
+        claude_projects = fake_home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+
+        # Encode from the as-recorded (unresolved, symlinked) spelling, not cwd.resolve().
+        encoded = encode_project_path(str(symlink_dir.absolute()))
+        (claude_projects / encoded).mkdir()
+
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        result = get_project_folder(symlink_dir, host="claude-code")
+        assert result == claude_projects / encoded
+
+    def test_resolved_spelling_still_tried_first(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Existing resolved-spelling behavior is unchanged when only that spelling exists."""
+        real_dir = tmp_path / "real2"
+        real_dir.mkdir()
+
+        fake_home = tmp_path / "fakehome2"
+        claude_projects = fake_home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+
+        encoded = encode_project_path(str(real_dir.resolve()))
+        (claude_projects / encoded).mkdir()
+
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        result = get_project_folder(real_dir, host="claude-code")
+        assert result == claude_projects / encoded
