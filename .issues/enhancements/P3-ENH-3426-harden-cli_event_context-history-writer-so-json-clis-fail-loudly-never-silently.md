@@ -212,7 +212,9 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
 
 ### Call Path
 
-`cli_event_context` (`writers.py:483`) -> `_pkg.connect` (`writers.py:521`, widened `except (sqlite3.Error, OSError)`) -> `conn.execute(...UPDATE cli_events...)` (`writers.py:547`, same widened guard)
+`cli_event_context` (`writers.py:483`) -> [one `try/except Exception` spanning `resolve_history_db` (`:506`), config gate (`:512-518`), `_pkg.connect` (`:521`), INSERT+commit (`:522-527`)] -> `yield` (unguarded, `except BaseException: exit_code = 1; raise` unchanged) -> `finally`: `suppress(Exception): sys.stdout.flush(); sys.stderr.flush()` -> [`try/except Exception` around `conn.execute(...UPDATE cli_events...)` + commit (`:547-551`)] -> guarded `conn.close()`.
+
+`gate_open`/`effective_path` must be initialised before the first `try` so the `except` branch can leave `conn`/`row_id` as `None` and the `finally` skips the UPDATE exactly as it does today for a failed insert.
 
 ### Codebase Research Findings
 
