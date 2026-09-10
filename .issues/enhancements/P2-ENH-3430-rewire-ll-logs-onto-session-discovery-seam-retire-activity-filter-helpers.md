@@ -169,14 +169,57 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - **No existing precedent for step 2's per-host `list_workspaces` union**: `list_workspaces` has zero production callers anywhere in the codebase today (confirmed via `ll-code callers-of`, returning empty, and independently via a repo-wide grep — every one of its 10 repo-wide hits is its own definition/docstring, the `session_store/__init__.py` re-export, its own direct unit tests in `test_session_discovery.py`, or documentation/issue-file mentions). Neither `cli/messages.py` nor `cli/ctx_stats.py` needed multi-workspace enumeration, so neither established a per-host-iterate-then-dedupe-on-cwd pattern to check this step's algorithm against. No shared "dedupe a list of `Path`s across hosts" utility exists in the codebase either (the two closest hits, `recursive_finalize.py:_dedup` and `sprint.py`'s inline `forward_ids | backward_ids`, both operate on ID strings, not `Path`s). This step's mechanism is genuinely new code with no confirming precedent anywhere — only `list_workspaces`'s own definition and unit tests exist as reference.
   ⚠ Unproven mechanism — no precedent for multi-host list_workspaces union/dedupe
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/API.md:3544-3593` — rewrite `discover_all_projects`'s Implementation
+  paragraph to drop the `_has_ll_activity()`/`host_layout_for(host).projects_root` description in
+  favor of `list_workspaces`/`detect_sessions`.
+- Update `docs/reference/HOST_COMPATIBILITY.md` — reword `[^qwenwire]` and `[^ompwire]` footnotes to
+  attribute behavior to the new mechanism (the omp gap moves from "`host_layout_for("omp").
+  projects_root` is `None`" to "`list_workspaces("omp")` always returns `[]`").
+- Update `scripts/little_loops/session_store/sessions.py`'s `list_workspaces()` docstring (~lines
+  494, 502) — remove the dangling references to `_extract_cwd_from_project` and
+  `discover_all_projects`'s dropped fallback once both are gone.
+- Fix `scripts/little_loops/cli/__init__.py` docstring citation from line 16 to line 18.
+- Verify all 16 session-touching `TestDiscover` tests pass unmodified (not just the 3-4 named in
+  Tests below) — see the Tests section correction.
+
 ## Files to Modify
 
 - `scripts/little_loops/cli/logs.py` (module docstring line 1; `discover_all_projects` 166-215;
   the 6 functions/11 call sites above; 649; `_cmd_fleet_review` ~2843; delete 97, 134)
 - `.loops/ll-logs-telemetry-digest.yaml:63-67`
-- `scripts/little_loops/cli/__init__.py` module docstring line 16
+- `scripts/little_loops/cli/__init__.py` module docstring — currently line 18, not line 16 as
+  originally cited (`/ll:wire-issue` finding, verified via Grep)
 - `docs/reference/CLI.md` — `### ll-logs` section
 - `docs/guides/*` — remaining `ll-logs` Claude-Code-only framing not already covered by ENH-3428
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:3544-3593` (`### discover_all_projects`) — Implementation paragraph names
+  `_has_ll_activity()` and `host_layout_for(host).projects_root` by name; both are removed by this
+  issue, so the paragraph must be rewritten to describe the `list_workspaces`/`detect_sessions`
+  mechanism instead. Not previously in Files to Modify (only `docs/reference/CLI.md` was named).
+  [Agent 2 finding, confirmed by Agent 1]
+- `docs/reference/API.md:9569-9647` (`### Session discovery: list_workspaces / detect_sessions /
+  iter_events (FEAT-3417, ENH-3420)`) — this section already documents the target mechanism
+  correctly; no content change needed, but the issue's own citation of "9497-9567" for this section
+  (Codebase Research Findings, 2026-09-09 pass) is off by ~72 lines — actual location confirmed
+  above. [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md` — `[^qwenwire]` (~line 596) and `[^ompwire]` (~lines
+  651-653) footnotes attribute `ll-logs`'s qwen-discovery and omp-gap behavior to the
+  `host_layout_for`/`_has_ll_activity` mechanism this issue deletes; the omp gap's *symptom*
+  persists post-rewrite but the *cause* changes to `list_workspaces("omp")` always returning `[]`
+  (per Proposed Solution step 2) — footnote text needs updating to match. [Agent 2 finding]
+- `scripts/little_loops/session_store/sessions.py` — `list_workspaces()`'s own docstring (currently
+  lines 494 and 502, drifted from the issue's existing citation of "466,474") names
+  `_extract_cwd_from_project` and references "`discover_all_projects`'s existing silent-`[]`
+  precedent" (the lossy-decode `cwd` fallback this issue's Scope Boundaries says is intentionally
+  dropped) — both become dangling references once this issue deletes the function and drops the
+  fallback; docstring needs rewording. [Agent 2 finding]
 
 ### Tests
 
@@ -190,6 +233,30 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
   `TestExtract`) to `detect_sessions`. `test_sequences_project_not_found_returns_1` (1224) and
   `test_extract_project_not_found_returns_1` (1822) pass unmodified. Direct-call tests at 6051,
   6093 pass unmodified (read `getattr(args, "host", None)`).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `TestDiscover` (`test_ll_logs.py`, class spans current lines 155-708) actually contains **18**
+  `test_` methods, not the "four" the Acceptance Criteria cites (see marker there) — confirmed
+  independently by both Agent 1 (caller tracer) and Agent 3 (test-gap finder). Current lines: 193,
+  208, 241, 274, 305, 344, 382, 417, 447, 453, 470, 477, 517, 558, 597, 614, 659, 674. Of these,
+  `test_stale_worktree_path_emits_no_warning` (344) directly calls
+  `discover_all_projects(test_logger, host="claude-code")`; 15 exercise it indirectly via
+  `main_logs()` CLI dispatch of the `discover` subcommand; `test_main_logs_no_subcommand_returns_1`
+  (447) and `test_tail_subcommand_args` (470) don't touch it at all. All 16 that do touch it must
+  pass unmodified — not just the 3-4 named above. [Agent 1 + Agent 3 finding]
+- `test_ll_logs.py:2124` `test_extract_all_unresolvable_project_emits_warning` (patch site at 2154)
+  is the actual test the issue's citation "~2083 in `TestExtract`" refers to — confirmed the only
+  test in the file that patches `little_loops.cli.logs.get_project_folder` directly. [Agent 3
+  finding]
+- No existing test in the repo asserts the literal new stderr text `"No sessions found for: <cwd>"`
+  — the closest precedent, `test_cli.py:788` `test_main_messages_no_sessions_found`, asserts only
+  `result == 1`. New tests for this issue's step 7 have no message-text assertion pattern to copy;
+  write the assertion directly. [Agent 3 finding]
+- No committed fixture directories exist for qwen/opencode/gemini (only `scripts/tests/fixtures/
+  codex/`) — the union-dedupe test ("same cwd recorded under two hosts appears once") should pair
+  the committed codex fixture with an inline-built claude-code or qwen home (see
+  `test_enh_3166_qwen_normalizer.py`'s `_make_qwen_home` pattern), not a second committed fixture
+  dir. [Agent 3 finding]
 - `scripts/tests/test_enh_3166_qwen_normalizer.py` — delete `test_has_ll_activity_detects_
   normalized_run_shell_command` (288) and `test_extract_cwd_honors_chats_glob` (298);
   `test_discover_all_projects_finds_qwen_project` (277) stays and must pass through the new path.
@@ -261,6 +328,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
   `list_workspaces`, unions hosts when none is resolved (deduped on cwd; omp workspaces documented
   as a gap), and still applies the ll-activity filter (all four `TestDiscover` tests pass
   unmodified on macOS and Linux).
+   > ⚠ Superseded — TestDiscover has 18 tests, not four
 - `_extract_ll_event_streams` takes handles, buckets on `payload.get("sessionId") or
   handle.session_id`, and `cli/logs.py` no longer calls `host_layout_for(LL_HOOK_HOST)` (line 649
   removed); `_has_ll_activity` and `_extract_cwd_from_project` no longer exist; `ll-logs sequences`
@@ -325,6 +393,7 @@ _Added by `/ll:spike` on 2026-09-09_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-10T04:58:46 - `708c4534-09ef-4d36-b24d-5c4dcb26fe1d.jsonl`
 - `/ll:spike` - 2026-09-10T04:47:39 - `ccf26c86-7b45-4520-a14e-087ff209985d.jsonl`
 - `/ll:refine-issue` - 2026-09-10T04:37:29 - `58c863fa-c03a-4046-a3d0-1ff2020ab466.jsonl`
 - `/ll:refine-issue` - 2026-09-09T22:41:03 - `9fe38579-0a99-4bad-b518-b7f5e109e55f.jsonl`
