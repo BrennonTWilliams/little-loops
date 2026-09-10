@@ -235,14 +235,24 @@ _Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
    code) before changing behavior~~ — superseded; see Proposed Hardening step
    1 and Context for why this can no longer be confirmed via ll-console and
    is no longer a blocker.
-2. Widen the exception guards to also catch `OSError` — no new `busy_timeout`
+2. Widen both exception guards to `except Exception` — no new `busy_timeout`
    is needed, it is already set unconditionally (5000ms via `PRAGMA`,
-   `schema.py:1405`). Wrap `resolve_history_db()` (`writers.py:506`), the
-   config-gating prefix (`writers.py:512-518`), `_pkg.connect()`
-   (`writers.py:521`), and the `finally` UPDATE (`writers.py:547`) so no
-   analytics-path exception reaches the wrapped body.
-3. Add a locked-DB test asserting the wrapped command still emits JSON on
-   stdout with exit 0 and a stderr warning.
+   `schema.py:1405`). Extend the first guard to wrap `resolve_history_db()`
+   (`writers.py:506`), the config-gating prefix (`writers.py:512-518`),
+   `_pkg.connect()` (`writers.py:521`) and the INSERT; keep the second around
+   the `finally` UPDATE (`writers.py:547`). Never wrap the `yield`.
+3. At the top of the `finally`, flush `sys.stdout` and `sys.stderr` under
+   `contextlib.suppress(Exception)` before the UPDATE.
+4. Drop `exc_info=True` from the two WARNING records; put
+   `type(exc).__name__: exc` in the message so stderr gets one line. Update
+   the docstring: `Exception`-wide contract, and the note that stderr delivery
+   comes from `logging.lastResort`.
+5. Add the locked-DB `ll-queue list --json` test and the non-`sqlite3.Error`
+   test described in Acceptance Criteria; extend the two existing
+   `TestCliEventContext` locked-DB tests to assert `caplog.text`.
+6. Add a `### cli_event_context` subsection to `docs/reference/API.md`
+   (insertion point in Integration Map → Documentation) stating the
+   best-effort contract.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -256,8 +266,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Priority**: P3 - affects automation reliability, but only under a
   hard-to-reproduce lock-contention trigger; not user-facing by
   default.
-- **Effort**: Small - a widened except clause plus a `busy_timeout` kwarg,
-  scoped to one function.
+- **Effort**: Small - two widened except clauses, a stdout flush, and a
+  one-line warning format, scoped to one function plus tests and an API.md
+  subsection.
 - **Risk**: Low - only touches a best-effort analytics side-channel with
   existing `sqlite3.Error`-catching precedent in the same function.
 - **Breaking Change**: No.
