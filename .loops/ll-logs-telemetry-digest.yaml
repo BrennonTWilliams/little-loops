@@ -61,10 +61,14 @@ states:
       ll-logs scan-failures --project . --json > "$OUT" 2> "$ERR"
       RC=$?
       echo "exit_code=$RC" >> "$ERR"
-      if [ "$RC" -ne 0 ]; then
-        echo "FAILURES_ERROR:rc=$RC"
-      elif grep -q "No session project folder found" "$ERR"; then
+      # ENH-3430: the no-sessions message reuses the same rc=1 as a real
+      # error (session-discovery seam, not a folder-lookup), so the grep
+      # must run BEFORE the `$RC -ne 0` check -- otherwise a missing-sessions
+      # exit would always fall into FAILURES_ERROR instead of FAILURES_NO_DATA.
+      if grep -q "No sessions found for:" "$ERR"; then
         echo "FAILURES_NO_DATA"
+      elif [ "$RC" -ne 0 ]; then
+        echo "FAILURES_ERROR:rc=$RC"
       else
         COUNT=$(python3 -c "
       import json

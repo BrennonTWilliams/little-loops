@@ -3,10 +3,11 @@ id: ENH-3430
 type: ENH
 title: Rewire ll-logs onto the session-discovery seam; retire _has_ll_activity/_extract_cwd_from_project
 priority: P2
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-09'
 captured_at: '2026-09-09T21:54:30Z'
+completed_at: '2026-09-10T05:52:29Z'
 labels:
 - multi-host
 - observability
@@ -129,6 +130,49 @@ also resolves a `HostLayout` from `LL_HOOK_HOST` directly (649).
 `_discover_workspace_handles` -> `list_workspaces` (per host) -> `detect_sessions(ws, host)` ->
 `iter_events` (via `_is_ll_relevant` early-exit filter) -> dedupe on resolved `cwd`, merging
 handles -> session consumers iterate the handles directly (no second `detect_sessions`)
+
+### Deviations
+
+_Added during implementation — 2026-09-10:_
+
+- **`_collect_sequences`/`_collect_failure_clusters` take a flat `handles:
+  list[SessionHandle]`, not a `(cwd, project_folder)`-pair list or a
+  `dict[Path, list[SessionHandle]]`.** `SessionHandle.cwd` already carries the
+  workspace path each handle belongs to, so a flat list is sufficient — the
+  per-workspace grouping `_cmd_extract`/`_collect_failure_clusters` need is
+  derived by grouping on `handle.cwd` inline rather than threading a second
+  structure. Two direct-call unit tests (`test_collect_failure_clusters_projects_
+  param_skips_discovery`, `test_collect_sequences_projects_param_skips_
+  discovery`) built real handles via `detect_sessions(...)` instead of the
+  old `projects=[Path]` kwarg and were renamed to `..._handles_param_...`;
+  the issue's own verification pass had already flagged these two as needing
+  independent re-verification at implementation time.
+- **`_cmd_fleet_review` calls `_discover_workspace_handles` directly (not
+  `discover_all_projects`) for its own `--all` project list**, then reuses
+  the same handles for the sequences/failure-clusters appendices — avoiding
+  the double full-corpus parse that calling `discover_all_projects()` and
+  then separately re-detecting handles for the appendix would cause (the
+  same "parses every session file twice" anti-pattern the design calls out
+  elsewhere). `discover_all_projects`'s own behavior/signature is unchanged
+  for its other 4 callers. Two `--exclude-project` tests that previously
+  patched `little_loops.cli.logs.discover_all_projects` were updated to
+  patch `_discover_workspace_handles` instead.
+- **A new `_detect_project_handles(cwd, host, logger)` helper detects with
+  `include_agents=True` first, then filters to non-agent handles**, instead
+  of detecting straight to `include_agents=False`. A project whose only
+  session is agent-authored (`agent-*.jsonl`) has zero *non-agent* handles
+  either way, but that must read as "sessions exist, nothing to report" (exit
+  0, matching pre-ENH-3430 `get_project_folder`-based behavior — folder
+  existence, not non-agent-session existence, was the old gate) rather than
+  "no sessions found for this cwd" (exit 1). Detecting `include_agents=False`
+  directly conflates the two. `_cmd_eval_export` (no `Logger` in scope)
+  inlines the same include-then-filter shape instead of reusing the helper.
+- **`_cmd_extract` probes `handle.path.open()` before calling `iter_events`**
+  for each handle. `iter_events` swallows an unreadable file's `OSError`
+  internally (no yield, no raise) so the file-glob-based `skipped` reporting
+  `test_extract_unreadable_file_reported` locks (a directory named
+  `*.jsonl` raising `IsADirectoryError`) has no other way to observe the
+  failure from the handles-based call path.
 
 ### Codebase Research Findings
 
@@ -506,12 +550,37 @@ inaccurate on this one point. Both are corrected above.
 - Decisions log: no active required rules (empty)
 - `ll-verify-evidence`: clean (`ok: true`, 0 findings)
 
+## Resolution
+
+Implemented per the Proposed Solution and Program Design (see the Deviations
+note above for the handful of implementation-time shape choices). All 11
+`get_project_folder` call sites and `discover_all_projects`'s `--all`
+enumeration now route through `detect_sessions`/`list_workspaces`;
+`_has_ll_activity`/`_extract_cwd_from_project` are deleted;
+`_extract_ll_event_streams` takes handles. `grep -n "HostLayout\|
+host_layout_for\|get_project_folder" scripts/little_loops/cli/logs.py`
+returns nothing. `.loops/ll-logs-telemetry-digest.yaml`'s `scan_failures`
+state was reordered so the no-sessions grep precedes the `$RC -ne 0` check
+(new reachability test added). Docs updated: `docs/reference/API.md`
+(`discover_all_projects`), `docs/reference/HOST_COMPATIBILITY.md`
+(`[^qwenwire]`/`[^ompwire]` footnotes), `session_store/sessions.py`'s
+`list_workspaces` docstring, `docs/reference/CLI.md`'s `ll-logs` section,
+`cli/__init__.py`'s module docstring. New tests cover Codex enumeration
+(zero events, no error), cross-host union-dedupe on resolved cwd, `--host`
+narrowing, and the never-`detect_sessions(ws, host=None)`-per-workspace
+invariant. Full suite: `python -m pytest scripts/tests/ -m "not integration
+and not conformance"` — 23054 passed (5 pre-existing, unrelated failures in
+issue-corpus content gates, confirmed via `git stash` bisection against this
+branch's changes).
+
 ## Status
 
-**Open** | Created: 2026-09-09 | Priority: P2
+**Done** | Created: 2026-09-09 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-10T05:51:12 - `6d2a11b3-eb6b-4880-aa61-0eef42449941.jsonl`
+- `/ll:ready-issue` - 2026-09-10T05:15:07 - `a8fe155c-3e79-4be7-acb8-dbfab060910b.jsonl`
 - `/ll:confidence-check` - 2026-09-10T05:11:43 - `51fa31d9-9254-42c4-8c79-febaa46ffa25.jsonl`
 - `review (manual: pre-implementation review — Codex AC narrowed, handles-returning discovery core, sessionId fallback generalized, test 2124 note, existing_only, ENH-3422 grep gate, non-session --all widening)` - 2026-09-10
 - `/ll:verify-issues` - 2026-09-10T05:03:34 - `e36592b8-1523-4c49-b004-6d3cb2829c0d.jsonl`

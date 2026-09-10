@@ -3640,13 +3640,13 @@ ll-messages --host codex --stdout          # Codex user prompts only
 
 ### ll-logs
 
-Discover and extract ll-relevant JSONL entries from Claude Code session logs. Also generates `logs/index.md` after extraction. The `sequences` subcommand mines tool-chain n-grams for workflow analysis. The `stats` subcommand aggregates per-skill invocation frequency and correction rate from `.ll/history.db`. The `dead-skills` subcommand cross-references the skill catalog against the log corpus to flag never-invoked and rarely-invoked skills. The `scan-failures` subcommand mines failed `ll-*` Bash calls to propose bug issue files.
+Discover and extract ll-relevant log entries across every registered host, via the session-discovery seam (`--host` to narrow; default unions every registered host). Also generates `logs/index.md` after extraction. The `sequences` subcommand mines tool-chain n-grams for workflow analysis. The `stats` subcommand aggregates per-skill invocation frequency and correction rate from `.ll/history.db`. The `dead-skills` subcommand cross-references the skill catalog against the log corpus to flag never-invoked and rarely-invoked skills. The `scan-failures` subcommand mines failed `ll-*` Bash calls to propose bug issue files.
 
 **Subcommands:**
 
 | Subcommand | Description |
 |------------|-------------|
-| `discover` | List all Claude projects with ll activity (one path per line, sorted) |
+| `discover` | List all workspaces with ll activity (one path per line, sorted) |
 | `tail` | Stream live events from an active loop session |
 | `extract` | Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl` |
 | `sequences` | Extract tool-chain n-grams of ll invocations from JSONL logs |

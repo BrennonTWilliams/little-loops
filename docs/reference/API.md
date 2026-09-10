@@ -3545,22 +3545,23 @@ sessions_dir = get_sessions_folder()  # host auto-detected from LL_HOOK_HOST
 
 ```python
 def discover_all_projects(
-    logger: Logger, *, host: str | None = None
+    logger: Logger, *, host: str | None = None, existing_only: bool = False
 ) -> list[Path]
 ```
 
-Discover all projects with ll activity for the given host. Iterates the host's session
-directory (e.g. ``~/.claude/projects/`` for Claude Code, ``~/.codex/projects/`` for
-Codex), resolves each directory name back to an absolute path, checks for ll-relevant
-JSONL records, and returns a sorted list of paths that exist on disk.
+Discover all workspaces with ll activity for the given host, via the session-discovery
+seam (``list_workspaces``/``detect_sessions``/``iter_events``, ENH-3430).
 
 **Parameters:**
-- ``logger`` - Logger instance for warnings.
+- ``logger`` - Logger instance for diagnostics.
 - ``host`` - Host identifier: ``"claude-code"``, ``"codex"``, ``"opencode"``, ``"pi"``,
-  ``"kimi-code"``, ``"qwen"``, ``"gemini"``, or ``"omp"``. If ``None``, auto-detects from
-  the ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
+  ``"kimi-code"``, ``"qwen"``, ``"gemini"``, or ``"omp"``. If ``None``, unions every
+  registered host's workspaces — callers resolve ``--host``/``LL_HOOK_HOST`` via
+  ``_resolve_host()`` before calling this; it no longer auto-detects internally.
+- ``existing_only`` - When ``True``, silently skip a decoded workspace path that no
+  longer exists on disk; when ``False`` (default), log a debug line for it.
 
-**Returns:** Sorted list of decoded absolute paths for projects with ll activity.
+**Returns:** Sorted list of decoded absolute paths for workspaces with ll activity.
 
 **Example:**
 ```python
@@ -3575,21 +3576,16 @@ projects = discover_all_projects(logger)  # ll-private-ok: illustrative placehol
 projects = discover_all_projects(logger, host="codex")
 ```
 
-**Implementation:** Iterates the host's ``host_layout_for(host).projects_root`` — the
-static ``~/.<cli>/projects`` directory registered for Claude Code, Codex, OpenCode,
-Pi, and Qwen Code. Hosts that resolve sessions through an index or registry instead of
-a static root (Kimi Code via ``session_index.jsonl``; Gemini via
-``~/.gemini/projects.json`` / the ``sha256(cwd)`` fallback, ENH-3393) have
-``projects_root is None`` and are not walked here — they surface an empty list rather
-than a guessed path, matching the ``get_project_folder()`` docstring's "no static
-root" contract. Decodes project directory names back to absolute paths by preferring
-the ``cwd`` field from JSONL records first, then falling back to string-replacing
-``-`` with ``/``. The fallback decode is inherently lossy — the encode side
-(``encode_project_path()``) maps dots, underscores, and hyphens all onto the same
-``-``, so a bare reverse-replace can't reconstruct the original path exactly. This is
-why the ``cwd``-from-JSONL preference exists: it is the only exact source of the
-original path, and the round trip only holds because that field is checked first.
-Filters to directories that contain ll-relevant JSONL records via ``_has_ll_activity()``.
+**Implementation:** A thin wrapper —
+``sorted(_discover_workspace_handles(logger, host=host, existing_only=existing_only).keys())``.
+``_discover_workspace_handles`` iterates hosts one at a time (never
+``detect_sessions(ws, host=None)`` per workspace, which would probe every registered host
+for every candidate) — for each host, ``list_workspaces(host)`` yields its recorded
+workspaces, and ``detect_sessions(workspace, host)`` is called exactly once per
+``(workspace, host)`` pair. Handles are merged across hosts under the same resolved-cwd
+key (so a workspace recorded under both Claude Code and Codex keeps both hosts' handles),
+and the merged set survives only if the existing ll-activity filter
+(``_is_ll_relevant`` walked over ``iter_events``) finds a signal in *any* of them.
 Returns an empty list for unknown host identifiers.
 
 ### extract_user_messages

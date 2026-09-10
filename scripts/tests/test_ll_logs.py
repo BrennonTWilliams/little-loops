@@ -56,8 +56,8 @@ from little_loops.cli.logs import (
     main_logs,
 )
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate
-from little_loops.session_store import ensure_db
-from little_loops.user_messages import encode_project_path, get_project_folder
+from little_loops.session_store import detect_sessions, ensure_db
+from little_loops.user_messages import encode_project_path
 
 
 class TestArgumentParsing:
@@ -2120,46 +2120,6 @@ class TestExtract:
                 result = main_logs()
 
             assert result == 0
-
-    def test_extract_all_unresolvable_project_emits_warning(self, capsys) -> None:
-        """Under --all, a project whose folder does not resolve emits a warning (to stderr)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = Path(tmpdir) / "home"
-            output_cwd = Path(tmpdir) / "output"
-            output_cwd.mkdir(parents=True, exist_ok=True)
-            claude_projects = home / ".claude" / "projects"
-            claude_projects.mkdir(parents=True, exist_ok=True)
-
-            session_id = "sess-resolved"
-            self._make_project_dir(
-                claude_projects, home, "resolved_proj", [self._ll_queue_record(session_id)]
-            )
-
-            unresolved_path = home / "unresolved_proj"
-
-            def fake_get_project_folder(cwd_path: Path):
-                if cwd_path == unresolved_path:
-                    return None
-                return get_project_folder(cwd_path)
-
-            with (
-                patch("sys.argv", ["ll-logs", "extract", "--all"]),
-                patch("pathlib.Path.home", return_value=home),
-                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
-                patch(
-                    "little_loops.cli.logs.discover_all_projects",
-                    return_value=[unresolved_path, home / "resolved_proj"],
-                ),
-                patch(
-                    "little_loops.cli.logs.get_project_folder", side_effect=fake_get_project_folder
-                ),
-            ):
-                result = main_logs()
-
-            assert result == 0
-            captured = capsys.readouterr()
-            assert str(unresolved_path) in captured.err
-            assert str(unresolved_path) not in captured.out
 
 
 def _populate_skill_events(
@@ -4509,12 +4469,13 @@ class TestEvalExport:
 
     @staticmethod
     def _setup_project_folder() -> tuple[Path, Path]:
-        """Create a fake ~/.claude/projects/<encoded-cwd> pair.
+        """Create a fake ~/.claude/projects/<encoded-cwd> pair with one session.
 
         Mirrors the fixture pattern from ``TestExtract.test_extract_project_creates_output_file``
-        (see scripts/tests/test_ll_logs.py:1483-1514) so that
-        ``get_project_folder`` resolves to a real directory and ``_cmd_eval_export``
-        passes its project-folder check.
+        (see scripts/tests/test_ll_logs.py:1483-1514) so that ``detect_sessions``
+        (ENH-3430) finds at least one non-agent session and ``_cmd_eval_export``
+        passes its "no sessions found" check. The one session record carries no
+        ll invocation signal, so it never affects extracted fixture counts.
 
         Returns:
             ``(home, fake_cwd)`` tuple. Both must be patched into the test via
@@ -4527,7 +4488,20 @@ class TestEvalExport:
         fake_cwd.mkdir(parents=True, exist_ok=True)
         (home / ".claude" / "projects").mkdir(parents=True, exist_ok=True)
         encoded = encode_project_path(str(fake_cwd.resolve()))
-        (home / ".claude" / "projects" / encoded).mkdir(parents=True, exist_ok=True)
+        proj_dir = home / ".claude" / "projects" / encoded
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        (proj_dir / "session.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {"role": "user", "content": "hello"},
+                    "sessionId": "sess-noop",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         return home, fake_cwd
 
     def test_help_shows_all_flags(self, capsys: pytest.CaptureFixture) -> None:
@@ -6095,7 +6069,7 @@ class TestFleetReview:
 
     # --- collector projects= tests ---
 
-    def test_collect_failure_clusters_projects_param_skips_discovery(self, tmp_path) -> None:
+    def test_collect_failure_clusters_handles_param_skips_discovery(self, tmp_path) -> None:
         home = tmp_path / "home"
         claude_projects = home / ".claude" / "projects"
         claude_projects.mkdir(parents=True)
@@ -6114,19 +6088,20 @@ class TestFleetReview:
         with (
             patch("pathlib.Path.home", return_value=home),
             patch(
-                "little_loops.cli.logs.discover_all_projects",
+                "little_loops.cli.logs._discover_workspace_handles",
                 side_effect=AssertionError("should not be called"),
             ),
         ):
+            handles = detect_sessions(project_path, "claude-code", home=home)
             args = argparse.Namespace(
                 project=None, window_days=None, since=None, until=None, skill=None, limit=0
             )
-            clusters = _collect_failure_clusters(args, MagicMock(), projects=[project_path])
+            clusters = _collect_failure_clusters(args, MagicMock(), handles=handles)
 
         assert len(clusters) == 1
         assert clusters[0].cwd_path == project_path
 
-    def test_collect_sequences_projects_param_skips_discovery(self, tmp_path) -> None:
+    def test_collect_sequences_handles_param_skips_discovery(self, tmp_path) -> None:
         home = tmp_path / "home"
         claude_projects = home / ".claude" / "projects"
         claude_projects.mkdir(parents=True)
@@ -6155,10 +6130,11 @@ class TestFleetReview:
         with (
             patch("pathlib.Path.home", return_value=home),
             patch(
-                "little_loops.cli.logs.discover_all_projects",
+                "little_loops.cli.logs._discover_workspace_handles",
                 side_effect=AssertionError("should not be called"),
             ),
         ):
+            handles = detect_sessions(project_path, "claude-code", home=home)
             args = argparse.Namespace(
                 project=None,
                 window_days=None,
@@ -6168,7 +6144,7 @@ class TestFleetReview:
                 min_count=1,
                 top=None,
             )
-            results = _collect_sequences(args, MagicMock(), projects=[project_path])
+            results = _collect_sequences(args, MagicMock(), handles=handles)
 
         assert len(results) == 1
         assert results[0].chain == ["scan-codebase", "refine-issue"]
@@ -6592,7 +6568,10 @@ class TestFleetReview:
                 "sys.argv",
                 ["ll-logs", "fleet-review", "--all", "--exclude-project", str(proj_a)],
             ),
-            patch("little_loops.cli.logs.discover_all_projects", return_value=[proj_a, proj_b]),
+            patch(
+                "little_loops.cli.logs._discover_workspace_handles",
+                return_value={proj_a: [], proj_b: []},
+            ),
             patch(
                 "little_loops.cli.logs._get_builtin_loop_names",
                 return_value=frozenset(["only-in-a", "only-in-b"]),
@@ -6622,7 +6601,10 @@ class TestFleetReview:
                 "sys.argv",
                 ["ll-logs", "fleet-review", "--all", "--exclude-project", str(link)],
             ),
-            patch("little_loops.cli.logs.discover_all_projects", return_value=[proj_a]),
+            patch(
+                "little_loops.cli.logs._discover_workspace_handles",
+                return_value={proj_a: []},
+            ),
             patch(
                 "little_loops.cli.logs._get_builtin_loop_names",
                 return_value=frozenset(["only-in-a"]),
@@ -6667,3 +6649,193 @@ class TestIsFlaggedParity:
     def test_attribution_is_not_checked_here(self) -> None:
         """Sidecar ``loops`` are builtin-only; callers with aggregates filter themselves."""
         assert is_flagged(10, 0, "failed", threshold=50, min_runs=3) is True
+
+
+class TestMultiHostDiscovery:
+    """ENH-3430: ``--all``/``discover`` union every registered host for the same
+    workspace (deduped on resolved cwd, handles merged across hosts); ``--host``/
+    ``LL_HOOK_HOST`` narrows to one. Codex is enumerated and walked without error
+    but contributes zero ll events -- no Codex-shape signal detector exists yet
+    (that is ENH-3433, blocked by this issue)."""
+
+    @staticmethod
+    def _make_claude_project(
+        claude_projects: Path, home: Path, subpath: str, records: list[dict]
+    ) -> Path:
+        project_path = home / subpath
+        project_path.mkdir(parents=True, exist_ok=True)
+        encoded = encode_project_path(str(project_path.resolve()))
+        proj_dir = claude_projects / encoded
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        with open(proj_dir / "session.jsonl", "w") as f:
+            for record in records:
+                f.write(json.dumps(record) + "\n")
+        return project_path
+
+    @staticmethod
+    def _make_codex_session(
+        home: Path, session_id: str, cwd: Path, extra_lines: list[dict]
+    ) -> None:
+        rollout = home / f"rollout-{session_id}.jsonl"
+        with open(rollout, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "type": "session_meta",
+                        "payload": {"id": session_id, "cwd": str(cwd), "cli_version": "0.152.1"},
+                    }
+                )
+                + "\n"
+            )
+            for line in extra_lines:
+                f.write(json.dumps(line) + "\n")
+
+        db = home / ".codex" / "state_1.sqlite"
+        db.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(db)
+        cols = ["id", "rollout_path", "cwd", "source", "created_at", "updated_at"]
+        conn.execute(f"CREATE TABLE threads ({', '.join(c + ' TEXT' for c in cols)})")
+        conn.execute(
+            "INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, str(rollout), str(cwd), "exec", "1000", "2000"),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_discover_unions_claude_and_codex_workspace_without_error(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        home = tmp_path / "home"
+        claude_projects = home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+
+        project_path = self._make_claude_project(
+            claude_projects,
+            home,
+            "proj",
+            [
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "content": "/ll:scan-codebase",
+                    "sessionId": "s1",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "cwd": str((home / "proj").resolve()),
+                }
+            ],
+        )
+        self._make_codex_session(
+            home,
+            "codex-sess",
+            project_path.resolve(),
+            [
+                {
+                    "timestamp": "2026-01-01T00:00:01Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "custom_tool_call",
+                        "input": 'tools.exec_command({ cmd: "ls" })',
+                    },
+                }
+            ],
+        )
+
+        with (
+            patch("sys.argv", ["ll-logs", "discover"]),
+            patch("pathlib.Path.home", return_value=home),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        out_lines = [line for line in capsys.readouterr().out.splitlines() if line]
+        # Deduped on resolved cwd: the workspace appears exactly once even
+        # though both claude-code and codex recorded a session for it.
+        assert out_lines == [str(project_path.resolve())]
+
+    def test_host_flag_narrows_to_one_host(self, tmp_path: Path, capsys) -> None:
+        home = tmp_path / "home"
+        claude_projects = home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+        claude_proj = self._make_claude_project(
+            claude_projects,
+            home,
+            "claude_proj",
+            [
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "content": "/ll:scan-codebase",
+                    "sessionId": "s1",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "cwd": str((home / "claude_proj").resolve()),
+                }
+            ],
+        )
+
+        qwen_project = home / "qwen_proj"
+        qwen_project.mkdir(parents=True, exist_ok=True)
+        qwen_encoded = encode_project_path(str(qwen_project.resolve()))
+        chats = home / ".qwen" / "projects" / qwen_encoded / "chats"
+        chats.mkdir(parents=True)
+        qwen_fixture = (
+            (Path(__file__).parent / "fixtures" / "qwen" / "session.jsonl")
+            .read_text(encoding="utf-8")
+            .replace("/tmp/ll-qwen-fixture", str(qwen_project.resolve()))
+        )
+        (chats / "sess.jsonl").write_text(qwen_fixture, encoding="utf-8")
+
+        with (
+            patch("sys.argv", ["ll-logs", "discover", "--host", "qwen"]),
+            patch("pathlib.Path.home", return_value=home),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        out_lines = [line for line in capsys.readouterr().out.splitlines() if line]
+        assert out_lines == [str(qwen_project.resolve())]
+        assert str(claude_proj.resolve()) not in out_lines
+
+    def test_discover_never_calls_detect_sessions_with_host_none(self, tmp_path: Path) -> None:
+        """Extends the spike's ``test_never_calls_detect_sessions_with_host_none_per_workspace``
+        against production code: the union default must iterate hosts one at a
+        time and call ``detect_sessions(ws, <concrete host>)`` -- never
+        ``detect_sessions(ws, None)`` per workspace, which would probe every
+        registered host for every candidate workspace (ENH-3430 Impact -> Risk)."""
+        home = tmp_path / "home"
+        claude_projects = home / ".claude" / "projects"
+        claude_projects.mkdir(parents=True)
+        self._make_claude_project(
+            claude_projects,
+            home,
+            "proj",
+            [
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "content": "/ll:scan-codebase",
+                    "sessionId": "s1",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "cwd": str((home / "proj").resolve()),
+                }
+            ],
+        )
+
+        calls: list[tuple[Path, str | None]] = []
+        real_detect_sessions = detect_sessions
+
+        def spy(cwd, host=None, **kwargs):
+            calls.append((cwd, host))
+            return real_detect_sessions(cwd, host, **kwargs)
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch("little_loops.cli.logs.detect_sessions", side_effect=spy),
+        ):
+            logger = logging.getLogger("test")
+            discover_all_projects(logger, host=None)
+
+        assert calls, "detect_sessions was never called"
+        assert all(host is not None for _cwd, host in calls), (
+            f"detect_sessions called with host=None: {calls}"
+        )

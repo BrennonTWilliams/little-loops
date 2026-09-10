@@ -490,16 +490,20 @@ def list_workspaces(
     ``host_layout_for(...).projects_root`` (that reads the real
     ``Path.home()`` internally and would leak past a ``home=`` override) —
     reading each project's first non-agent session-JSONL record for its
-    ``cwd`` (a local reimplementation, not ``cli/logs.py``'s
-    ``_extract_cwd_from_project`` — importing that would invert the
-    ``session_store`` -> ``cli`` dependency direction). Codex:
-    ``SELECT DISTINCT cwd FROM threads``, or the scan fallback's distinct
-    line-1 ``cwd``s when the DB is unusable. Gemini: the ``projects`` keys of
-    ``<home>/.gemini/projects.json``. Kimi-code: distinct ``workDir`` values
-    from ``session_index.jsonl``. Omp: always ``[]`` — its session-dir
-    encoding is lossy (``/``, ``\\``, ``:`` all collapse to ``-``), so
-    recovering ``cwd`` would require reading every session file's header;
-    matches ``discover_all_projects``'s existing silent-``[]`` precedent.
+    ``cwd`` (a local reimplementation, not ``cli/logs.py``'s own code —
+    importing from there would invert the ``session_store`` -> ``cli``
+    dependency direction; ``cli/logs.py``'s prior local implementation,
+    ``_extract_cwd_from_project``, was deleted in ENH-3430 once this
+    function became the seam every discovery caller routes through).
+    Codex: ``SELECT DISTINCT cwd FROM threads``, or the scan fallback's
+    distinct line-1 ``cwd``s when the DB is unusable. Gemini: the
+    ``projects`` keys of ``<home>/.gemini/projects.json``. Kimi-code:
+    distinct ``workDir`` values from ``session_index.jsonl``. Omp: always
+    ``[]`` — its session-dir encoding is lossy (``/``, ``\\``, ``:`` all
+    collapse to ``-``), so recovering ``cwd`` would require reading every
+    session file's header; ``cli/logs.py``'s ``discover_all_projects``
+    (ENH-3430) surfaces this the same way — a silent ``[]`` for omp under
+    ``--all``, not an error.
     """
     resolved_home = home if home is not None else Path.home()
     if host == "claude-code":

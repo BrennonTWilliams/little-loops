@@ -8,8 +8,8 @@ These tests pin down:
 - ``normalize_qwen_record`` — the record-level mapping into Claude shape
 - ``host_layout_for`` — the widened descriptor (projects root, session glob,
   tool vocabulary, normalizer, ingest volume guard)
-- ``discover_all_projects`` / ``_has_ll_activity`` / ``_extract_cwd_from_project``
-  honoring ``chats/`` and normalized qwen ll activity
+- ``discover_all_projects`` honoring ``chats/`` and normalized qwen ll activity
+  (ENH-3430: via the session-discovery seam's ``list_workspaces``/``detect_sessions``)
 - ``raw_events.host`` stamped from the ingested files (CLI + hook worker),
   not the ambient host
 - ``rebuild()`` deriving ``tool_events``/``message_events``/
@@ -29,11 +29,7 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.cli.backfill_worker import main as worker_main
-from little_loops.cli.logs import (
-    _extract_cwd_from_project,
-    _has_ll_activity,
-    discover_all_projects,
-)
+from little_loops.cli.logs import discover_all_projects
 from little_loops.session_store import (
     HostLayout,
     backfill_raw_events,
@@ -44,6 +40,7 @@ from little_loops.session_store import (
     qwen_skip_at_ingest,
     rebuild,
 )
+from little_loops.user_messages import encode_project_path
 
 FIXTURES = Path(__file__).parent / "fixtures" / "qwen"
 SESSION_FIXTURE = FIXTURES / "session.jsonl"
@@ -265,7 +262,7 @@ class TestQwenDiscovery:
         home = tmp_path / "home"
         project = tmp_path / "work" / "myproj"
         project.mkdir(parents=True)
-        encoded = str(project).replace("/", "-")
+        encoded = encode_project_path(str(project.resolve()))
         chats = home / ".qwen" / "projects" / encoded / "chats"
         chats.mkdir(parents=True)
         text = SESSION_FIXTURE.read_text(encoding="utf-8").replace(
@@ -284,22 +281,6 @@ class TestQwenDiscovery:
             found = discover_all_projects(logger, host="qwen")
 
         assert found == [project]
-
-    def test_has_ll_activity_detects_normalized_run_shell_command(self, tmp_path: Path) -> None:
-        """A run_shell_command functionCall whose args.command matches ll-\\w+
-        must register as ll activity once normalized (not just Claude Bash)."""
-        home, _project, project_dir = self._make_qwen_home(tmp_path)
-
-        with patch("pathlib.Path.home", return_value=home):
-            assert _has_ll_activity(project_dir, host_layout_for("qwen")) is True
-
-    def test_extract_cwd_honors_chats_glob(self, tmp_path: Path) -> None:
-        home, project, project_dir = self._make_qwen_home(tmp_path)
-
-        with patch("pathlib.Path.home", return_value=home):
-            cwd = _extract_cwd_from_project(project_dir, host_layout_for("qwen"))
-
-        assert cwd == project
 
 
 class TestRawEventsHostPlumbing:

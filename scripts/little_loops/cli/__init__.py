@@ -15,7 +15,7 @@ Provides command-line interfaces for automated issue management:
 - ll-workflows: Identify multi-step workflow patterns from user message history
 - ll-messages: Extract user messages from session logs of any registered host (--host to narrow)
 - ll-history: Completed issue statistics and analysis
-- ll-logs: Discover, extract, and analyze ll-relevant JSONL entries from ~/.claude/projects/ (scan-failures mines failed ll-* calls)
+- ll-logs: Discover, extract, and analyze ll-relevant log entries across every registered host (--host to narrow; scan-failures mines failed ll-* calls)
 - ll-session: Query the unified session store (SQLite + FTS5)
 - ll-compact-session: Manually trigger LCM session-memory compaction for one session (distinct from `ll-session compact`'s retention sweep)
 - ll-history-context: render a ## Historical Context block for an issue from .ll/history.db

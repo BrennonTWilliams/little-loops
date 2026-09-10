@@ -174,6 +174,21 @@ class TestFailureIsDistinguishableFromEmpty:
         assert "RC=$?" in action, f"{state}: does not capture the invocation's exit status"
         assert 'if [ "$RC" -ne 0 ]' in action, f"{state}: does not branch on exit status"
 
+    def test_scan_failures_no_data_grep_precedes_rc_check(self) -> None:
+        """ENH-3430: `ll-logs scan-failures` now exits 1 for BOTH a real error and
+        "no sessions found for <cwd>" -- if the `$RC -ne 0` branch ran first it
+        would always win, making FAILURES_NO_DATA unreachable. The no-sessions
+        grep must appear before the RC check in the action's source order."""
+        action = yaml.safe_load(_loop_text())["states"]["scan_failures"]["action"]
+        no_data_pos = action.find("No sessions found for:")
+        rc_check_pos = action.find('[ "$RC" -ne 0 ]')
+        assert no_data_pos != -1, "scan_failures: no-sessions grep string not found"
+        assert rc_check_pos != -1, "scan_failures: RC check not found"
+        assert no_data_pos < rc_check_pos, (
+            "scan_failures: the no-sessions grep must precede the RC check, "
+            "or FAILURES_NO_DATA can never be reached (rc=1 for both cases)"
+        )
+
     @pytest.mark.parametrize("state", ["scan_failures", "check_dead_skills"])
     def test_unparseable_artifact_is_not_zero(self, state: str) -> None:
         """The old `except: print(0)` made usage text look like an empty result."""

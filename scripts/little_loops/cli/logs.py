@@ -1,4 +1,4 @@
-"""ll-logs: Discover, extract, analyze log entries from ~/.claude/projects/."""
+"""ll-logs: Discover, extract, analyze ll-relevant log entries across every registered host."""
 
 from __future__ import annotations
 
@@ -32,12 +32,15 @@ from little_loops.fsm.loop_paths import get_builtin_loops_dir
 from little_loops.logger import Logger
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
-    HostLayout,
+    REGISTERED_HOSTS,
+    SessionHandle,
     cli_event_context,
-    host_layout_for,
+    detect_sessions,
+    iter_events,
+    list_workspaces,
     resolve_history_db,
 )
-from little_loops.user_messages import get_project_folder
+from little_loops.user_messages import _resolve_host
 
 if TYPE_CHECKING:
     from little_loops.fsm.validation import ValidationError
@@ -99,136 +102,87 @@ def _is_ll_relevant(record: dict) -> bool:
     return False
 
 
-def _has_ll_activity(project_folder: Path, layout: HostLayout | None = None) -> bool:
-    """Return True if any non-agent JSONL file in project_folder has ll activity.
+def _workspace_has_ll_activity(handles: list[SessionHandle]) -> bool:
+    """Early-exit walk over parsed events across every handle for one workspace.
 
-    *layout* supplies the session glob and the record normalizer (ENH-3166):
-    qwen sessions live under ``chats/`` and their ``functionCall`` records
-    are normalized into Claude shape before the ``_is_ll_relevant`` test, so
-    ``run_shell_command``/``args.command`` reaches the existing
-    ``Bash``/``input.command`` predicate. Defaults to the Claude layout.
+    Replaces the old file-glob-based ``_has_ll_activity``: normalization to
+    Claude shape (qwen/gemini/omp) and envelope/payload splitting (Codex) now
+    happen inside ``iter_events`` itself, so this just applies
+    ``_is_ll_relevant`` to each event's payload.
     """
-    effective = layout if layout is not None else host_layout_for("claude-code")
-    jsonl_files = [
-        f for f in project_folder.glob(effective.session_glob) if not f.name.startswith("agent-")
-    ]
-
-    for jsonl_file in jsonl_files:
-        try:
-            with open(jsonl_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if effective.normalize is not None:
-                        record = effective.normalize(record)
-                        if record is None:
-                            continue
-                    if _is_ll_relevant(record):
-                        return True
-        except OSError:
+    for handle in handles:
+        if handle.is_agent:
             continue
-
+        for event in iter_events(handle):
+            if _is_ll_relevant(event.payload):
+                return True
     return False
 
 
-def _extract_cwd_from_project(project_dir: Path, layout: HostLayout | None = None) -> Path | None:
-    """Extract the project working directory from cwd fields in JSONL records.
+def _discover_workspace_handles(
+    logger: Logger, *, host: str | None, existing_only: bool = False
+) -> dict[Path, list[SessionHandle]]:
+    """The handles-returning core behind ``--all`` discovery (ENH-3430).
 
-    Claude Code encodes project paths by replacing '/' with '-', which is
-    lossy for paths containing hyphens. Reading the cwd field from JSONL
-    records gives the canonical path without ambiguity. *layout* supplies the
-    session glob (ENH-3166) — qwen sessions live under ``chats/``; defaults
-    to the Claude layout.
+    Iterates **per host, not per workspace with ``host=None``** —
+    ``detect_sessions(ws, host)`` is called at most once per ``(workspace,
+    host)`` pair, never with ``host=None`` (that would probe every registered
+    host for every candidate workspace). Dedupes on resolved cwd but *merges*
+    handles across hosts under the deduped key, so a workspace recorded under
+    two hosts keeps both hosts' handles rather than only the first-seen
+    host's. The ll-activity filter is evaluated once per deduped workspace
+    against the full merged handle set, so a workspace survives if *any*
+    host's handles show activity (e.g. Claude Code activity keeps a workspace
+    whose Codex handles alone contribute zero events).
+
+    ``existing_only`` mirrors ``discover_all_projects``'s historical
+    contract: ``False`` (default) logs a debug line for a decoded path that
+    no longer exists on disk; ``True`` skips it silently.
     """
-    effective = layout if layout is not None else host_layout_for("claude-code")
-    jsonl_files = [
-        f for f in project_dir.glob(effective.session_glob) if not f.name.startswith("agent-")
-    ]
-    for jsonl_file in jsonl_files:
-        try:
-            with open(jsonl_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                        cwd = record.get("cwd")
-                        if isinstance(cwd, str) and cwd:
-                            return Path(cwd)
-                    except json.JSONDecodeError:
-                        continue
-        except OSError:
+    hosts = (host,) if host is not None else REGISTERED_HOSTS
+
+    decoded_by_key: dict[str, Path] = {}
+    handles_by_key: dict[str, list[SessionHandle]] = {}
+
+    for one_host in hosts:
+        for workspace in list_workspaces(one_host, existing_only=False):
+            if not workspace.exists():
+                if not existing_only:
+                    logger.debug(f"Decoded path does not exist: {workspace}")
+                continue
+            key = str(workspace.resolve())
+            found = detect_sessions(workspace, one_host, include_agents=False)
+            decoded_by_key.setdefault(key, workspace)
+            handles_by_key.setdefault(key, []).extend(found)
+
+    results: dict[Path, list[SessionHandle]] = {}
+    for key, handles in handles_by_key.items():
+        if not _workspace_has_ll_activity(handles):
             continue
-    return None
+        results[decoded_by_key[key]] = handles
+    return results
 
 
 def discover_all_projects(
     logger: Logger, *, host: str | None = None, existing_only: bool = False
 ) -> list[Path]:
-    """Discover all projects with ll activity for the given host.
-
-    Iterates the host's session directory (e.g. ``~/.claude/projects/`` for
-    Claude Code, ``~/.codex/projects/`` for Codex), resolves each directory
-    name back to an absolute path, checks for ll-relevant JSONL records, and
-    returns a sorted list of paths that exist on disk.
+    """Discover all workspaces with ll activity for the given host.
 
     Args:
         logger: Logger instance for diagnostics.
-        host: Host identifier. If None, auto-detects from ``LL_HOOK_HOST``
-            env var (default ``"claude-code"``).
+        host: Host identifier to restrict discovery to. ``None`` unions every
+            registered host (callers resolve ``--host``/``LL_HOOK_HOST`` via
+            ``_resolve_host`` before calling this).
         existing_only: When True, silently skip paths that don't exist on disk
             (no debug message). Useful for scripted consumers that want clean
             stderr as well as clean stdout.
 
     Returns:
-        Sorted list of decoded absolute paths for projects with ll activity.
+        Sorted list of decoded absolute paths for workspaces with ll activity.
     """
-    import os as _os
-
-    if host is None:
-        host = _os.environ.get("LL_HOOK_HOST", "claude-code")
-
-    # Hosts register their projects root in the layout descriptor (ENH-3166);
-    # unregistered hosts (kimi resolves via session_index.jsonl, unknown
-    # hosts have no known root) surface as None rather than a guessed path.
-    layout = host_layout_for(host)
-    projects_root = layout.projects_root
-    if projects_root is None:
-        logger.debug(f"No projects root registered for host: {host}")
-        return []
-
-    if not projects_root.exists():
-        return []
-
-    results: list[Path] = []
-
-    for project_dir in projects_root.iterdir():
-        if not project_dir.is_dir():
-            continue
-
-        # Prefer cwd field from JSONL records; fall back to lossy decode.
-        # The lossy decode ("-Users-foo-bar" -> "/Users/foo/bar") breaks for
-        # paths that contain hyphens (e.g. "little-loops", macOS per-user
-        # temp dirs like /tmp/claude-501/).
-        decoded_path = _extract_cwd_from_project(project_dir, layout) or Path(
-            project_dir.name.replace("-", "/")
-        )
-
-        if not decoded_path.exists():
-            if not existing_only:
-                logger.debug(f"Decoded path does not exist: {decoded_path}")
-            continue
-
-        if _has_ll_activity(project_dir, layout):
-            results.append(decoded_path)
-
-    return sorted(results)
+    return sorted(
+        _discover_workspace_handles(logger, host=host, existing_only=existing_only).keys()
+    )
 
 
 def _cmd_matches(record: dict, cmd: str) -> bool:
@@ -264,23 +218,20 @@ class InvocationEvent:
 
 
 def _extract_ll_event_streams(
-    project_folder: Path,
+    handles: list[SessionHandle],
     *,
     cutoff: datetime | None = None,
     until: datetime | None = None,
-    layout: HostLayout | None = None,
 ) -> dict[str, list[InvocationEvent]]:
-    """Extract per-session ordered ll-invocation event streams from JSONL files.
+    """Extract per-session ordered ll-invocation event streams from session handles.
 
-    Walks JSONL files (skipping ``agent-*``), filters to records with ll activity,
-    extracts the tool/skill name, and returns a dict mapping ``sessionId`` to a
-    timestamp-sorted list of ``InvocationEvent``. *layout* supplies the
-    session glob and the record normalizer (ENH-3166) so qwen ``chats/``
-    sessions and ``functionCall`` records are recognized; defaults to the
-    Claude layout.
+    Walks each handle's parsed events via ``iter_events`` (per-host
+    normalization to Claude shape, where one exists, already applied),
+    filters to records with an ll invocation signal, and returns a dict
+    mapping session id to a timestamp-sorted list of ``InvocationEvent``.
 
     Args:
-        project_folder: Path to the host's project session directory.
+        handles: Session handles to walk (already host/agent filtered by the caller).
         cutoff: If set, exclude records with timestamps before this datetime.
         until: If set, exclude records with timestamps after this datetime.
 
@@ -288,43 +239,23 @@ def _extract_ll_event_streams(
         Dict of ``{session_id: [InvocationEvent, ...]}`` with events sorted by timestamp.
     """
     events_by_session: dict[str, list[InvocationEvent]] = {}
-
-    effective = layout if layout is not None else host_layout_for("claude-code")
-    jsonl_files = [
-        f for f in project_folder.glob(effective.session_glob) if not f.name.startswith("agent-")
-    ]
-    if not jsonl_files:
+    if not handles:
         return events_by_session
 
     all_events: list[InvocationEvent] = []
 
-    for jsonl_file in jsonl_files:
-        try:
-            with open(jsonl_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
+    for handle in handles:
+        for event in iter_events(handle):
+            record = event.payload
+            tool_name = _extract_tool_name(record)
+            if tool_name is None:
+                continue
 
-                    if effective.normalize is not None:
-                        record = effective.normalize(record)
-                        if record is None:
-                            continue
-                    tool_name = _extract_tool_name(record)
-                    if tool_name is None:
-                        continue
+            ts = record.get("timestamp", "")
+            sid = record.get("sessionId") or handle.session_id
 
-                    ts = record.get("timestamp", "")
-                    sid = record.get("sessionId", "")
-
-                    evt = InvocationEvent(tool_name=tool_name, timestamp=ts, session_id=sid)
-                    all_events.append(evt)
-        except OSError:
-            continue
+            evt = InvocationEvent(tool_name=tool_name, timestamp=ts, session_id=sid)
+            all_events.append(evt)
 
     # Apply wall-clock cutoff/until filters
     if cutoff is not None:
@@ -635,58 +566,39 @@ def _compute_edges(
     return edges
 
 
+def _detect_project_handles(
+    cwd_path: Path, host: str | None, logger: Logger
+) -> list[SessionHandle] | None:
+    """Detect non-agent session handles for a single ``--project`` target.
+
+    Detects with ``include_agents=True`` first so "the project has sessions,
+    but only agent-* ones" (empty non-agent result, existing behavior) is
+    distinguished from "no sessions at all for this cwd" (error, exit 1) —
+    detecting straight to ``include_agents=False`` would conflate the two.
+    Returns ``None`` (having already logged the error) for the latter case.
+    """
+    all_handles = detect_sessions(cwd_path, host, include_agents=True)
+    if not all_handles:
+        logger.error(f"No sessions found for: {cwd_path}")
+        return None
+    return [h for h in all_handles if not h.is_agent]
+
+
 def _collect_sequences(
     args: argparse.Namespace,
     logger: Logger,
     *,
-    projects: list[Path] | None = None,
+    handles: list[SessionHandle],
 ) -> list[ChainResult]:
-    """Extract ranked n-gram chains of ll invocations from JSONL logs.
+    """Extract ranked n-gram chains of ll invocations from session handles.
 
-    Extracted from ``_cmd_sequences`` (Decisions #7): project discovery +
-    ``_extract_ll_event_streams`` + ``_count_ngrams`` + ``_build_chain_results``;
-    printing stays in ``_cmd_sequences``. When *projects* is given, skips
-    ``discover_all_projects()`` and maps each path through
-    ``get_project_folder()`` instead (Decisions #11).
+    Extracted from ``_cmd_sequences`` (Decisions #7): event extraction +
+    ``_count_ngrams`` + ``_build_chain_results``; printing stays in
+    ``_cmd_sequences``. Discovery happens once in the caller and is passed in
+    via *handles* (ENH-3430) — this function never re-detects sessions.
     """
-    import os as _os
-
-    layout = host_layout_for(_os.environ.get("LL_HOOK_HOST", "claude-code"))
-    if projects is not None:
-        project_items = []
-        for decoded_path in projects:
-            folder = get_project_folder(decoded_path)
-            if folder is not None:
-                project_items.append((decoded_path, folder))
-    elif args.project:
-        cwd_path: Path = args.project
-        project_folder = get_project_folder(cwd_path)
-        if project_folder is None:
-            logger.error(f"No session project folder found for: {cwd_path}")
-            return []
-        project_items = [(cwd_path, project_folder)]
-    else:
-        decoded_paths = discover_all_projects(logger)
-        project_items = []
-        for decoded_path in decoded_paths:
-            folder = get_project_folder(decoded_path)
-            if folder is not None:
-                project_items.append((decoded_path, folder))
-
     cutoff, until = _resolve_window(args)
-
-    # Aggregate events across all projects
-    all_events: dict[str, list[InvocationEvent]] = {}
-    for _cwd_path, project_folder in project_items:
-        events = _extract_ll_event_streams(
-            project_folder, cutoff=cutoff, until=until, layout=layout
-        )
-        for sid, evt_list in events.items():
-            all_events.setdefault(sid, []).extend(evt_list)
-
-    # Sort each session's events by timestamp
-    for sid in all_events:
-        all_events[sid].sort(key=lambda e: e.timestamp)
+    all_events = _extract_ll_event_streams(handles, cutoff=cutoff, until=until)
 
     # Count n-grams
     counter, unigram_counter = _count_ngrams(all_events, min_len=args.min_len)
@@ -694,12 +606,16 @@ def _collect_sequences(
 
 
 def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
-    """Extract n-grams of ll invocations from JSONL log files."""
-    if args.project and get_project_folder(args.project) is None:
-        logger.error(f"No session project folder found for: {args.project}")
-        return 1
+    """Extract n-grams of ll invocations from session logs."""
+    host = _resolve_host(getattr(args, "host", None))
+    if args.project:
+        handles = _detect_project_handles(args.project, host, logger)
+        if handles is None:
+            return 1
+    else:
+        handles = [h for hs in _discover_workspace_handles(logger, host=host).values() for h in hs]
 
-    results = _collect_sequences(args, logger)
+    results = _collect_sequences(args, logger, handles=handles)
 
     if args.json:
         print_json([r.to_dict() for r in results])
@@ -773,50 +689,44 @@ def generate_index(logs_dir: Path) -> None:
 
 
 def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
-    """Extract ll-relevant JSONL records to logs/<slug>/<session-id>.jsonl."""
+    """Extract ll-relevant records to logs/<slug>/<session-id>.jsonl."""
+    host = _resolve_host(getattr(args, "host", None))
     if args.project:
         cwd_path: Path = args.project
-        project_folder = get_project_folder(cwd_path)
-        if project_folder is None:
-            logger.error(f"No session project folder found for: {cwd_path}")
+        handles = _detect_project_handles(cwd_path, host, logger)
+        if handles is None:
             return 1
-        project_items = [(cwd_path, project_folder)]
     else:
-        decoded_paths = discover_all_projects(logger)
-        project_items = []
-        for decoded_path in decoded_paths:
-            folder = get_project_folder(decoded_path)
-            if folder is not None:
-                project_items.append((decoded_path, folder))
-            else:
-                logger.warning(f"No session project folder found for: {decoded_path}")
+        handles = [h for hs in _discover_workspace_handles(logger, host=host).values() for h in hs]
+
+    by_cwd: dict[Path, list[SessionHandle]] = defaultdict(list)
+    for h in handles:
+        by_cwd[h.cwd].append(h)
 
     rows: list[dict] = []
     skipped: list[str] = []
     matched_before_filter = 0
 
-    for cwd_path, project_folder in project_items:
+    for cwd_path, cwd_handles in by_cwd.items():
         slug = cwd_path.resolve().name
         buckets: dict[str, list[dict]] = {}
 
-        jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
-        for jsonl_file in jsonl_files:
+        for handle in cwd_handles:
+            # iter_events() swallows an unreadable file silently (no
+            # exception, no yield); probe openability directly first so an
+            # unreadable session is still reported in `skipped` (BUG-2489-
+            # adjacent contract test_extract_unreadable_file_reported locks).
             try:
-                with open(jsonl_file, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            record = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        if _is_ll_relevant(record):
-                            session_id = record.get("sessionId", "")
-                            buckets.setdefault(session_id, []).append(record)
+                with open(handle.path, encoding="utf-8"):
+                    pass
             except OSError:
-                skipped.append(str(jsonl_file))
+                skipped.append(str(handle.path))
                 continue
+            for event in iter_events(handle):
+                record = event.payload
+                if _is_ll_relevant(record):
+                    session_id = record.get("sessionId") or handle.session_id
+                    buckets.setdefault(session_id, []).append(record)
 
         matched_before_filter += sum(len(records) for records in buckets.values())
 
@@ -1077,7 +987,8 @@ def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
         db_paths = [Path(args.project) / ".ll" / "history.db"]
         catalog_root = Path(args.project)
     else:
-        decoded_paths = discover_all_projects(logger)
+        host = _resolve_host(getattr(args, "host", None))
+        decoded_paths = discover_all_projects(logger, host=host)
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
         catalog_root = Path.cwd()
 
@@ -1337,171 +1248,135 @@ def _collect_failure_clusters(
     args: argparse.Namespace,
     logger: Logger,
     *,
-    projects: list[Path] | None = None,
+    handles: list[SessionHandle],
 ) -> list[_FailureCluster]:
-    """Mine and cluster failed ll-* Bash calls from session JSONL logs.
+    """Mine and cluster failed ll-* Bash calls from session handles.
 
     Extracted from ``_cmd_scan_failures`` (Decisions #7): everything through
     the skill-filter/limit steps. ``--capture`` and printing stay in the
-    caller. When *projects* is given, skips ``discover_all_projects()`` and
-    maps each path through ``get_project_folder()`` instead (Decisions #11);
-    ``_cmd_scan_failures`` itself always calls with ``projects=None`` and
-    keeps its own ``--project``/``--all`` discovery unchanged.
+    caller. Discovery happens once in the caller and is passed in via
+    *handles* (ENH-3430) — this function never re-detects sessions.
     """
     from little_loops.issue_lifecycle import FailureType, classify_failure
 
     _cli_allowlist = _load_cli_allowlist(Path.cwd())
 
-    if projects is not None:
-        project_items = []
-        for decoded_path in projects:
-            folder = get_project_folder(decoded_path)
-            if folder is not None:
-                project_items.append((decoded_path, folder))
-    elif args.project:
-        cwd_path: Path = args.project
-        project_folder = get_project_folder(cwd_path)
-        if project_folder is None:
-            logger.error(f"No session project folder found for: {cwd_path}")
-            return []
-        project_items = [(cwd_path, project_folder)]
-    else:
-        decoded_paths = discover_all_projects(logger)
-        project_items = []
-        for decoded_path in decoded_paths:
-            folder = get_project_folder(decoded_path)
-            if folder is not None:
-                project_items.append((decoded_path, folder))
-
     # raw_clusters maps (cwd_path, tool_name, normalized_sig) -> _RawCluster
     raw_clusters: dict[tuple[Path, str, str], _RawCluster] = {}
 
-    for _cwd_path, project_folder in project_items:
-        jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
+    for handle in handles:
+        _cwd_path = handle.cwd
+        # pending maps tool_use_id -> (ll_tool_name, timestamp, enclosing_skill)
+        pending: dict[str, tuple[str, str, str | None]] = {}
+        # current_skill tracks the enclosing skill as records stream by (reset per handle)
+        current_skill: str | None = None
 
-        for jsonl_file in jsonl_files:
-            # pending maps tool_use_id -> (ll_tool_name, timestamp, enclosing_skill)
-            pending: dict[str, tuple[str, str, str | None]] = {}
-            # current_skill tracks the enclosing skill as records stream by (reset per file)
-            current_skill: str | None = None
+        for event in iter_events(handle):
+            record = event.payload
+            record_type = record.get("type")
+            ts = record.get("timestamp", "")
+            session_id = record.get("sessionId") or handle.session_id
 
-            try:
-                with open(jsonl_file, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            record = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
+            if record_type == "assistant":
+                message = record.get("message", {})
+                content = message.get("content", [])
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") != "tool_use":
+                        continue
+                    if block.get("name") == "Skill":
+                        skill_input = block.get("input", {}).get("skill", "")
+                        if skill_input:
+                            current_skill = skill_input.removeprefix("ll:")
+                        continue
+                    if block.get("name") != "Bash":
+                        continue
+                    cmd = block.get("input", {}).get("command", "")
+                    m = _LL_BASH_RE.search(cmd)
+                    if not m:
+                        continue
+                    tool_name = m.group(1)
+                    # Skip tokens that are not real ll CLIs (e.g. sample-a, sample-b)
+                    if _cli_allowlist and tool_name not in _cli_allowlist:
+                        continue
+                    block_id = block.get("id", "")
+                    if block_id:
+                        pending[block_id] = (tool_name, ts, current_skill)
 
-                        record_type = record.get("type")
-                        ts = record.get("timestamp", "")
-                        session_id = record.get("sessionId", "")
+            elif record_type == "user":
+                message = record.get("message", {})
+                content = message.get("content", [])
+                if isinstance(content, str):
+                    # Real user turn (not a tool_result carrier): re-derive
+                    # current_skill from a <command-name> marker, resetting
+                    # to None on no match (e.g. /clear, /model).
+                    m2 = _COMMAND_NAME_SKILL_RE.search(content)
+                    if m2:
+                        name = m2.group(1)
+                        if name.endswith("</command-name>"):
+                            name = name[: -len("</command-name>")]
+                        current_skill = name
+                    else:
+                        current_skill = None
+                    continue
+                if not isinstance(content, list) or not content:
+                    continue
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") != "tool_result":
+                        continue
+                    tool_use_id = block.get("tool_use_id", "")
+                    if tool_use_id not in pending:
+                        continue
+                    tool_name, _invoke_ts, skill = pending.pop(tool_use_id)
 
-                        if record_type == "assistant":
-                            message = record.get("message", {})
-                            content = message.get("content", [])
-                            if not isinstance(content, list):
-                                continue
-                            for block in content:
-                                if not isinstance(block, dict):
-                                    continue
-                                if block.get("type") != "tool_use":
-                                    continue
-                                if block.get("name") == "Skill":
-                                    skill_input = block.get("input", {}).get("skill", "")
-                                    if skill_input:
-                                        current_skill = skill_input.removeprefix("ll:")
-                                    continue
-                                if block.get("name") != "Bash":
-                                    continue
-                                cmd = block.get("input", {}).get("command", "")
-                                m = _LL_BASH_RE.search(cmd)
-                                if not m:
-                                    continue
-                                tool_name = m.group(1)
-                                # Skip tokens that are not real ll CLIs (e.g. sample-a, sample-b)
-                                if _cli_allowlist and tool_name not in _cli_allowlist:
-                                    continue
-                                block_id = block.get("id", "")
-                                if block_id:
-                                    pending[block_id] = (tool_name, ts, current_skill)
+                    # Skip ll-verify-* tools — exit 1 is expected gate behavior
+                    if _LL_VERIFY_RE.match(tool_name):
+                        continue
 
-                        elif record_type == "user":
-                            message = record.get("message", {})
-                            content = message.get("content", [])
-                            if isinstance(content, str):
-                                # Real user turn (not a tool_result carrier): re-derive
-                                # current_skill from a <command-name> marker, resetting
-                                # to None on no match (e.g. /clear, /model).
-                                m2 = _COMMAND_NAME_SKILL_RE.search(content)
-                                if m2:
-                                    name = m2.group(1)
-                                    if name.endswith("</command-name>"):
-                                        name = name[: -len("</command-name>")]
-                                    current_skill = name
-                                else:
-                                    current_skill = None
-                                continue
-                            if not isinstance(content, list) or not content:
-                                continue
-                            for block in content:
-                                if not isinstance(block, dict):
-                                    continue
-                                if block.get("type") != "tool_result":
-                                    continue
-                                tool_use_id = block.get("tool_use_id", "")
-                                if tool_use_id not in pending:
-                                    continue
-                                tool_name, _invoke_ts, skill = pending.pop(tool_use_id)
+                    is_error_flag = block.get("is_error") is True
+                    raw_content = block.get("content", "")
+                    error_text = _extract_error_text(raw_content)
+                    has_traceback = "Traceback (most recent call last)" in error_text
 
-                                # Skip ll-verify-* tools — exit 1 is expected gate behavior
-                                if _LL_VERIFY_RE.match(tool_name):
-                                    continue
+                    if not (is_error_flag or has_traceback):
+                        continue
 
-                                is_error_flag = block.get("is_error") is True
-                                raw_content = block.get("content", "")
-                                error_text = _extract_error_text(raw_content)
-                                has_traceback = "Traceback (most recent call last)" in error_text
+                    returncode = 1 if is_error_flag else 0
+                    failure_type, _reason = classify_failure(error_text, returncode)
+                    if failure_type in (
+                        FailureType.TRANSIENT,
+                        FailureType.NON_RECOVERABLE,
+                        FailureType.INFRA_RETRY,
+                    ):
+                        continue
 
-                                if not (is_error_flag or has_traceback):
-                                    continue
+                    normalized_sig = _normalize_error_sig(error_text)
+                    key = (_cwd_path, tool_name, normalized_sig)
 
-                                returncode = 1 if is_error_flag else 0
-                                failure_type, _reason = classify_failure(error_text, returncode)
-                                if failure_type in (
-                                    FailureType.TRANSIENT,
-                                    FailureType.NON_RECOVERABLE,
-                                    FailureType.INFRA_RETRY,
-                                ):
-                                    continue
+                    if key in raw_clusters:
+                        rc = raw_clusters[key]
+                        if session_id not in rc.session_ids:
+                            rc.session_ids.append(session_id)
+                        rc.count += 1
+                        rc.latest_ts = ts
+                    else:
+                        rc = _RawCluster(
+                            count=1,
+                            sample_error=error_text[:500],
+                            session_ids=[session_id],
+                            latest_ts=ts,
+                        )
+                        raw_clusters[key] = rc
 
-                                normalized_sig = _normalize_error_sig(error_text)
-                                key = (_cwd_path, tool_name, normalized_sig)
-
-                                if key in raw_clusters:
-                                    rc = raw_clusters[key]
-                                    if session_id not in rc.session_ids:
-                                        rc.session_ids.append(session_id)
-                                    rc.count += 1
-                                    rc.latest_ts = ts
-                                else:
-                                    rc = _RawCluster(
-                                        count=1,
-                                        sample_error=error_text[:500],
-                                        session_ids=[session_id],
-                                        latest_ts=ts,
-                                    )
-                                    raw_clusters[key] = rc
-
-                                rc.skill_counts[skill] = rc.skill_counts.get(skill, 0) + 1
-                                skill_sids = rc.skill_sessions.setdefault(skill, [])
-                                if session_id not in skill_sids:
-                                    skill_sids.append(session_id)
-            except OSError:
-                continue
+                    rc.skill_counts[skill] = rc.skill_counts.get(skill, 0) + 1
+                    skill_sids = rc.skill_sessions.setdefault(skill, [])
+                    if session_id not in skill_sids:
+                        skill_sids.append(session_id)
 
     # Apply wall-clock cutoff/until filters
     cutoff, until = _resolve_window(args)
@@ -1555,12 +1430,16 @@ def _collect_failure_clusters(
 
 
 def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
-    """Mine failed ll-* Bash calls from interactive session JSONL logs."""
-    if args.project and get_project_folder(args.project) is None:
-        logger.error(f"No session project folder found for: {args.project}")
-        return 1
+    """Mine failed ll-* Bash calls from interactive session logs."""
+    host = _resolve_host(getattr(args, "host", None))
+    if args.project:
+        handles = _detect_project_handles(args.project, host, logger)
+        if handles is None:
+            return 1
+    else:
+        handles = [h for hs in _discover_workspace_handles(logger, host=host).values() for h in hs]
 
-    clusters = _collect_failure_clusters(args, logger)
+    clusters = _collect_failure_clusters(args, logger, handles=handles)
 
     if not clusters:
         if not args.json:
@@ -1641,7 +1520,8 @@ def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
     if args.project:
         db_paths = [args.project / ".ll" / "history.db"]
     else:
-        decoded_paths = discover_all_projects(logger)
+        host = _resolve_host(getattr(args, "host", None))
+        decoded_paths = discover_all_projects(logger, host=host)
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
 
     cutoff, until = _resolve_window(args)
@@ -2042,37 +1922,33 @@ def _cmd_eval_export(args: argparse.Namespace) -> int:
     from little_loops.history_reader import lookup_session_metadata
 
     cwd_path = Path(args.project) if args.project else Path.cwd()
-    project_folder = get_project_folder(cwd_path)
-    if project_folder is None:
-        print(f"No session project folder found for: {cwd_path}", file=sys.stderr)
+    host = _resolve_host(getattr(args, "host", None))
+    all_handles = detect_sessions(cwd_path, host, include_agents=True)
+    if not all_handles:
+        print(f"No sessions found for: {cwd_path}", file=sys.stderr)
         return 1
+    handles = [h for h in all_handles if not h.is_agent]
     db_path = resolve_history_db(cwd_path / ".ll" / "history.db")
 
-    # Single JSONL pass: collect raw invocations + per-session error flags together
-    # (avoids the double-parse the decision warns against).
+    # Single pass over every handle's events: collect raw invocations +
+    # per-session error flags together (avoids the double-parse the decision
+    # warns against).
     invocations: list[_EvalInvocation] = []
     session_has_error: dict[str, bool] = {}
-    jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
-    for jsonl_file in jsonl_files:
-        try:
-            with open(jsonl_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if _record_has_error(record):
-                        sid = record.get("sessionId", "")
-                        if sid:
-                            session_has_error[sid] = True
-                    inv = _extract_eval_invocation(record)
-                    if inv is not None:
-                        invocations.append(inv)
-        except OSError:
-            continue
+    for handle in handles:
+        for event in iter_events(handle):
+            record = event.payload
+            sid = record.get("sessionId") or handle.session_id
+            if _record_has_error(record):
+                if sid:
+                    session_has_error[sid] = True
+            inv = _extract_eval_invocation(record)
+            if inv is not None:
+                if not inv.session_id:
+                    inv = _EvalInvocation(
+                        inv.runner, inv.target, sid, inv.timestamp, inv.input_context
+                    )
+                invocations.append(inv)
 
     # Stable, deterministic order: by timestamp then session.
     invocations.sort(key=lambda e: (e.timestamp, e.session_id))
@@ -2337,7 +2213,8 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
     if args.project:
         projects = [Path(args.project)]
     else:
-        projects = discover_all_projects(logger, existing_only=args.existing_only)
+        host = _resolve_host(getattr(args, "host", None))
+        projects = discover_all_projects(logger, host=host, existing_only=args.existing_only)
 
     all_runs: list[_LoopRunRecord] = []
     for proj in projects:
@@ -2778,13 +2655,23 @@ def _cmd_fleet_review(args: argparse.Namespace, logger: Logger) -> int:
     ``--json`` prints the sidecar and writes no files at all.
     """
     builtin_names = _get_builtin_loop_names()
+    host = _resolve_host(getattr(args, "host", None))
 
     if args.project:
         # Absolute paths throughout (Decisions #4/#9): the sidecar and report's
         # `cd <project> && ...` lines must be copy-pasteable.
         discovered = [Path(args.project).resolve()]
+        project_handles: dict[Path, list[SessionHandle]] = {
+            discovered[0]: detect_sessions(discovered[0], host, include_agents=False)
+        }
     else:
-        discovered = discover_all_projects(logger, existing_only=args.existing_only)
+        # Reuse the same handles for the appendix collectors below instead of
+        # a second discovery pass (discover_all_projects's own path-only
+        # signature would force a re-detect that parses every session twice).
+        project_handles = _discover_workspace_handles(
+            logger, host=host, existing_only=args.existing_only
+        )
+        discovered = sorted(project_handles.keys())
 
     exclude_raw = getattr(args, "exclude_project", None) or []
     excluded_resolved = {Path(p).resolve() for p in exclude_raw}
@@ -2853,8 +2740,9 @@ def _cmd_fleet_review(args: argparse.Namespace, logger: Logger) -> int:
             min_count=1,
             top=appendix_top_param,
         )
-        clusters = _collect_failure_clusters(appendix_ns, logger, projects=projects)
-        sequences_result = _collect_sequences(appendix_ns, logger, projects=projects)
+        appendix_handles = [h for p in projects for h in project_handles.get(p, [])]
+        clusters = _collect_failure_clusters(appendix_ns, logger, handles=appendix_handles)
+        sequences_result = _collect_sequences(appendix_ns, logger, handles=appendix_handles)
 
     generated = datetime.now(UTC)
     stamp = generated.strftime("%Y%m%dT%H%M%SZ")
@@ -3246,7 +3134,8 @@ def main_logs() -> int:
             return 1
 
         if args.command == "discover":
-            projects = discover_all_projects(logger, existing_only=args.existing_only)
+            host = _resolve_host(getattr(args, "host", None))
+            projects = discover_all_projects(logger, host=host, existing_only=args.existing_only)
             if args.json:
                 print_json({"paths": [str(p) for p in projects]})
             else:

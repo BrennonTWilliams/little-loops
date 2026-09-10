@@ -593,8 +593,9 @@ the adapter.
     `tool_result` blocks (`is_error` from `toolCallResult.status`), and only
     `provenance: real_user` user records **without a subtype** reaching
     `message_events` (`notification` and `mid_turn_user_message` excluded —
-    the latter carries `provenance: real_user` too). `ll-logs` discovery
-    recognizes qwen projects via the same descriptor. Session-folder
+    the latter carries `provenance: real_user` too). `ll-logs --all`
+    discovery recognizes qwen projects via `list_workspaces("qwen")`
+    (ENH-3430), which walks the same `chats/*.jsonl` glob. Session-folder
     *resolution* works (ENH-3161; the cwd is dash-encoded after symlink
     resolution, matching the `transcript_path` layout observed by the
     FEAT-3155 spike). Since ENH-3165, `get_project_folder()` returns the
@@ -649,8 +650,14 @@ the adapter.
     `child_dir` `subagent_runs` mode, so that mapping is deferred to a
     follow-up; `subagent_runs` backfill yields zero rows (not an error) in
     the meantime. `ll-logs` project discovery does not enumerate omp
-    projects — like gemini, `host_layout_for("omp").projects_root` is
-    `None` (cwd-encoding-derived, not a static iterable root).
+    projects: `list_workspaces("omp")` (the session-discovery seam
+    `--all` enumeration routes through as of ENH-3430) always returns
+    `[]` — omp's session-dir encoding collapses `/`, `\`, and `:` all
+    onto `-`, so recovering `cwd` would require reading every session
+    file's header rather than a cheap directory listing. Gemini, by
+    contrast, *is* enumerable under `--all` via its own
+    `~/.gemini/projects.json` registry (unlike the old
+    `host_layout_for("gemini").projects_root is None` gap this replaced).
 
 [^qwenmarket]: **FEAT-3155 R3 finding** — the marketplace auto-conversion
     (`qwen extensions install BrennonTWilliams/little-loops:ll`) installs
