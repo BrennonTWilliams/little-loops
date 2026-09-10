@@ -29,315 +29,403 @@ score_change_surface: 0
 
 # ENH-3422: Make _backfill_raw_events consume iter_events and shrink HostLayout to path metadata
 
+> **Rewritten 2026-09-10** to consolidate eight refine/wire passes and fold in the
+> pre-implementation review. Line numbers were verified on 2026-09-10 against
+> `main` at `415d6b1cb`; re-derive by grep at implementation time rather than
+> trusting them. The Session Log at the bottom is preserved verbatim.
+
 ## Summary
 
-Phase 2 of the `HostLayout` / session-discovery-seam unification, split out of ENH-3420 on 2026-09-09 so that ENH-3419 is gated only on the discovery half (ENH-3420 phase 1: every `HostLayout` host registered in `detect_sessions`/`iter_events`). This issue is the ingest half: `session_store/lifecycle.py`'s `_backfill_raw_events` stops taking `jsonl_files: list[Path]` and instead consumes `iter_events(handle)` for each `SessionHandle` — which already yields Claude-shaped records for qwen/gemini/omp under ENH-3420's payload rule, so no normalization happens at the write boundary; the writer stores `event.payload` as-is; `HostLayout` shrinks to path metadata (`sessions_subdir`, `session_glob`, `projects_root`, subagent fields) with its `normalize`/`normalize_file` members retired; `ll-session backfill --host codex` ingests the FEAT-3417 fixtures instead of printing the ENH-3420 notice.
+Phase 2 of the `HostLayout` / session-discovery-seam unification (ENH-3420 was
+phase 1, ENH-3430 rewired `ll-logs`). This issue is the **ingest half**:
+`session_store/lifecycle.py::_backfill_raw_events` stops taking bare paths and
+consumes `iter_events(handle)` for each `SessionHandle`, so every one of the 8
+registered hosts is ingested through the one parser dispatch that already exists
+(`sessions.py::_PARSERS`) instead of through a second, duplicated per-host branch
+at the write boundary. `HostLayout` shrinks to path metadata (its
+`normalize`/`skip_at_ingest`/`normalize_file` callables are deleted), kimi-code
+gets the `HostLayout` entry that three code comments and the docs defer to this
+issue by number, and `ll-session backfill --host codex` ingests real Codex
+rollouts instead of printing the standing "not wired up yet (ENH-3420)" notice.
 
-**Sequencing (2026-09-09 review):** ENH-3420 is `done`, so the blocker is now **ENH-3430**, which lands first and owns the `cli/logs.py` half of this work: it converts `_extract_ll_event_streams` to `handles: list[SessionHandle]` (removing its `.normalize` call site) and **deletes** `_has_ll_activity` and `_extract_cwd_from_project` outright (their only caller, `discover_all_projects`, is rewritten onto `list_workspaces`/`detect_sessions`). After ENH-3430, `cli/logs.py` has no `HostLayout` reference left, and this issue's remaining `.normalize` consumers are `lifecycle.py::_backfill_raw_events` and `writers.py::_iter_events` only.
+Eight design decisions folded in from the 2026-09-10 review are recorded under
+`## Proposed Solution → ### Design decisions (D1–D8)`. Each has a matching
+Acceptance Criterion. **D1 (line-number provenance) and D2 (legacy qwen rows) are
+data-integrity fixes for existing `history.db` files, not cleanups — do not drop
+them to shrink scope.**
 
 ## Current Behavior
 
-After ENH-3420 phase 1, `detect_sessions` covers every host but `_backfill_raw_events` (`lifecycle.py:747`) still globs `jsonl_files` from `get_project_folder()` + `HostLayout.session_glob`, normalizing through `HostLayout.normalize` (qwen, per record) / `HostLayout.normalize_file` (gemini/omp, per file). `cli/session.py:702` prints "Codex backfill via detect_sessions() is not wired up yet (ENH-3420)" and a Codex full backfill ingests 0 sessions. `HostLayout` is read directly by `writers.py::_iter_events` (~3250), `writers.py::_backfill_subagent_runs` (~2670, `.glob`/`.parent_from`/`.sidecar_suffix`), `cli/logs.py::_has_ll_activity` (97, `.normalize`), `cli/session.py:672,705` (`.sessions_subdir`), `cli/backfill_worker.py:60` (`.session_glob`), `user_messages.py:446-448` (`.sessions_subdir`).
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- **Blocker corrected (2026-09-09, this pass)**: `blocked_by` frontmatter changed from ENH-3419 to ENH-3430. Fresh re-verification (codebase-analyzer) found ENH-3419's frontmatter `status: done`, but its own `## Resolution` section reads `**Status**: Decomposed` — it was split into ENH-3427/3428/3429/3430 with **zero code changes landed**; all four decomposed children are `status: open`. `cli/logs.py` still calls `HostLayout.normalize` today at both previously-uncited call sites: `_has_ll_activity` (def `cli/logs.py:97`, call at `cli/logs.py:123`) and `_extract_ll_event_streams` (def `cli/logs.py:261`, call at `cli/logs.py:309`) — the exact retirement this issue's Files-to-Modify verification grep (`grep -n "HostLayout\|host_layout_for" scripts/little_loops/cli/logs.py`) assumed would return nothing. Of the four decomposed children, **ENH-3430** ("Rewire ll-logs onto the session-discovery seam; retire _has_ll_activity/_extract_cwd_from_project") is the one that actually owns this retirement — `blocked_by` now points there instead of the done-but-undelivered ENH-3419.
-
-_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
-
-- **Blocker landed and its condition verified satisfied (2026-09-10, this pass)**: `blocked_by` (ENH-3430) is now `status: done` (`completed_at: 2026-09-10T05:52:29Z`). Independently re-ran the exact gate this issue's coordination note and ENH-3430's own AC both name: `grep -n "HostLayout\|host_layout_for\|get_project_folder" scripts/little_loops/cli/logs.py` returns zero hits (only unrelated substrings like `_normalize_error_sig` match a bare `normalize` grep). `_has_ll_activity`/`_extract_cwd_from_project` are confirmed gone repo-wide (source only, no hits outside `.issues/`/`.ll/decisions.d/`); `_extract_ll_event_streams` now takes `handles: list[SessionHandle]` (def `cli/logs.py:220`, call `cli/logs.py:601`). The specific condition `blocked_by` exists for — "`cli/logs.py` has no `HostLayout` reference left" — is satisfied. Nothing in this issue's remaining scope (`lifecycle.py`; `writers.py`'s `HostLayout`/`host_layout_for`/`_iter_events`/six `_backfill_*` functions; `cli/session.py`; `cli/backfill_worker.py`; `user_messages.py`) references any of ENH-3430's own deliverables (`detect_sessions`, `list_workspaces`, `_discover_workspace_handles`) — the two workstreams were always disjoint code paths sharing only the `HostLayout` dataclass as a data contract, and that contract's last `cli/logs.py` reader is gone.
+- `_backfill_raw_events(conn, jsonl_files: list[Path], *, host)` (`lifecycle.py:747-831`)
+  resolves one `HostLayout` per call and branches:
+  - **Branch A** (`HostLayout.normalize_file`, gemini/omp, lines 778-798): enumerates
+    the file-level normalizer's yielded Claude-shaped dicts; `line_no` is the
+    enumeration index; `raw_line` and `parsed_json` both store the re-serialized dict.
+  - **Branch B** (everything else, lines 799-830): reads the file line by line;
+    `line_no` is the **real file line number** (blank/malformed lines consume a
+    number and are skipped); `raw_line` is the verbatim stripped line; qwen rows
+    are stored **raw** (wire format), filtered only by `skip_at_ingest`.
+- `raw_events` dedup is the unique index on `(source_path, line_no)`
+  (`schema.py:488-489`). `backfill_raw_events()` re-ingests every file whose mtime
+  is past the watermark and relies on that index to make re-ingest a no-op.
+- `writers.py::_iter_events` (3271-3320) is the **only** place qwen rows are
+  normalized today: on cursor replay it calls `HostLayout.normalize` for any host whose
+  layout carries one (3300-3308). `rebuild()` (`lifecycle.py:959`) replays every
+  `raw_events` row through it into seven consumers: `_backfill_sessions`
+  (`lifecycle.py:708`) plus `_backfill_tool_events`, `_backfill_usage_events`,
+  `_backfill_messages`, `_backfill_assistant_messages`, `_backfill_prompt_opt`,
+  `_backfill_skill_events` in `writers.py`.
+- `sessions.py::iter_events` (856) dispatches via `_PARSERS` (844-853) to
+  `parse_codex_rollout`, `_parse_claude_shaped` (claude-code/opencode/pi),
+  `parse_kimi_wire`, `parse_qwen_session`, `parse_gemini_session`,
+  `parse_omp_session` (663-841). `parse_qwen_session` already applies
+  `normalize_qwen_record`, so its events are pre-normalized. `SessionEvent`
+  (`sessions.py:78`) carries `type`, `timestamp`, `host`, `payload` — **no line
+  number and no verbatim line**. For codex, `payload` is the *inner* payload; the
+  envelope `type`/`timestamp` live only on the event.
+- `iter_events` has **zero callers** in the ingest/backfill/rebuild path today.
+- `cli/session.py:699-704` prints the ENH-3420 notice for `--host codex`;
+  `get_project_folder(host="codex")` returns `None` by design (`user_messages.py:507`,
+  Codex never writes `~/.codex/projects/`), so the codex full backfill globs nothing.
+  Both `cli/session.py` glob sites (671-673, 710-712) hardcode a flat `"*.jsonl"`
+  pattern under the layout's sessions subdirectory, whereas
+  `cli/backfill_worker.py:59-60` uses the layout's full `HostLayout.session_glob`
+  — the two disagree for any host with a nested glob.
+- kimi-code has no `HostLayout` entry: `host_layout_for("kimi-code")` is the generic
+  default and `sessions.py::_detect_layout_sessions` special-cases it with the
+  module-level `_KIMI_WIRE_GLOB` (301, 444-445). `sessions.py:20,300,436` and
+  `docs/reference/API.md:9539,9541` say the entry is "deferred to ENH-3422";
+  `test_session_discovery.py:731` guards the deferral by this issue's number.
+- `cli/backfill_worker.py` has no argparse (by design) and no `--host` validation;
+  its existing error branches `print(..., file=sys.stderr); return 1` (42-47, 61-63).
+- The `ll-logs` CLI module no longer references the layout dataclass (ENH-3430,
+  verified 2026-09-10 by grepping `scripts/little_loops/cli/logs.py` for the
+  dataclass name, its factory, and the project-folder helper: no hits). The remaining `.normalize`/`.normalize_file`/`.skip_at_ingest`
+  readers are `lifecycle.py::_backfill_raw_events` and `writers.py::_iter_events` only.
 
 ## Expected Behavior
 
-`_backfill_raw_events(conn, handles: list[SessionHandle], *, host: str | None = None) -> int` iterates `iter_events(handle)`; the `raw_events` row's `raw_line`/`parsed_json` are Claude-shaped for every normalizer host (gemini/omp rows are already pre-normalized at rest; **qwen rows change** from raw-plus-`skip_at_ingest` to pre-normalized, since `parse_qwen_session` already applies `normalize_qwen_record`). **Landmine (ENH-3420 hand-off):** `normalize_qwen_record` is not idempotent — a normalized record carries `message.content`, not `message.parts`, so re-normalizing it returns `None`. `writers.py::_iter_events` (~3250) must stop re-normalizing qwen rows in the same change, or every pre-normalized qwen row silently vanishes on cursor replay; add a regression test that rebuilds from pre-normalized qwen `raw_events` and asserts the row count. kimi-code rows are host-native `wire.jsonl` events (no normalizer), like codex. `ll-session backfill --host codex` writes Codex rollouts into `raw_events` with `host = "codex"`. `HostLayout.normalize`/`normalize_file` are removed once no production reader remains; the four direct readers above are retargeted. Existing backfill tests (`test_ll_session.py`, `test_enh_3166_qwen_normalizer.py`, `test_enh_3393_gemini_normalizer.py`, `test_enh_omp_normalizer.py`, `test_enh_2505_subagent_runs.py`) pass unmodified except where they construct a `HostLayout` with the retired fields.
+- `_backfill_raw_events(conn, handles: list[SessionHandle], *, host=None) -> int`
+  loops `iter_events(handle)` and stores `event.payload` as the row for every host.
+  Column sources: `ts` ← `event.timestamp`; `event_type` ← `event.type`;
+  `session_id` ← `event.payload.get("sessionId") or handle.session_id`;
+  `line_no` ← `event.line_no` (new field, D1); `raw_line`/`parsed_json` ←
+  `json.dumps(event.payload)` (D6).
+- The three public wrappers keep `jsonl_files: list[Path]` **and** gain an
+  optional `handles: list[SessionHandle] | None = None` (D4). Paths are widened to
+  handles via a new `sessions.py::handles_from_paths(paths, host)` that reuses the
+  per-host `session_id` derivation discovery already uses (D3).
+- `raw_events.line_no` for per-line hosts is still the real file line number, so
+  an existing DB re-ingested after upgrade produces no duplicates (D1).
+- qwen rows ingested after this change are pre-normalized; qwen rows ingested
+  before it (raw wire format) still rebuild correctly (D2). Rebuild is idempotent
+  over a DB containing both kinds.
+- `HostLayout` retains `glob`, `parent_from`, `sidecar_suffix`, `sessions_subdir`,
+  `name`, `projects_root`, `session_glob`, `tool_names`, `tool_arg_keys`; the
+  `normalize`, `skip_at_ingest`, `normalize_file` fields are deleted, and
+  `qwen_skip_at_ingest` is deleted with them (D7). The `normalize_*` functions are
+  untouched — they are the parsers' implementation, not aliases.
+- `host_layout_for("kimi-code")` returns a real entry with
+  `session_glob = "session_*/agents/main/wire.jsonl"`; `_KIMI_WIRE_GLOB` and the
+  kimi special case in `_detect_layout_sessions` are removed (D5).
+- `ll-session backfill --host codex` (full and `--since`) discovers rollouts via
+  `detect_sessions(Path.cwd(), "codex")` and ingests them with `host = "codex"`,
+  `session_id` from the `session_meta` header, `event_type` = envelope type; the
+  ENH-3420 notice is gone (D4). Codex is ingest-only for now — no derived-table
+  rows, stated in docs.
+- `cli/backfill_worker.py` rejects an unknown `--host` with a stderr message and
+  `return 1` (D8).
+- Both `cli/session.py` glob sites use `host_layout_for(h).session_glob` relative
+  to the project folder, matching `backfill_worker.py`.
 
 ## Motivation
 
-`_backfill_raw_events` and the read-path `_iter_events` each carry their own per-host normalization branching today, duplicating the host-dispatch logic that ENH-3420 already centralized in `iter_events`/`_PARSERS`. That duplication is the direct cause of the qwen landmine this issue has to close (`normalize_qwen_record` applied twice silently drops rows) and is why Codex sessions currently can't be ingested at all — `cli/session.py:702` prints a standing "not wired up yet" notice and a Codex backfill ingests 0 sessions, even though `iter_events` has supported Codex since ENH-3420 landed. Leaving the two paths unmerged means every future host addition (kimi-code today, whatever comes next) has to be wired into ingestion *and* normalization *and* the four other `HostLayout.normalize`/`normalize_file` readers separately, instead of once through `iter_events`. Completing this consumer swap is what lets `raw_events` — and everything downstream that aggregates over it (`ll-ctx-stats`, `ll-history`, FEAT-3418's workspace totals) — treat all 8 registered hosts uniformly, and it closes out the seam-unification work ENH-3420 started rather than leaving it half-migrated.
+`_backfill_raw_events` and `writers.py::_iter_events` each carry their own per-host
+normalization branching, duplicating the dispatch ENH-3420 centralized in
+`iter_events`/`_PARSERS`. That duplication is the direct cause of the qwen
+double-normalization landmine (D2) and of Codex being un-ingestible even though
+`iter_events` has parsed Codex since ENH-3420. Every new host (kimi today) has to
+be wired into ingestion *and* replay normalization *and* the `HostLayout` readers
+separately. Finishing the consumer swap lets `raw_events` — and everything that
+aggregates over it (`ll-ctx-stats`, `ll-history`, FEAT-3418 workspace totals) —
+treat all 8 hosts uniformly and closes the seam ENH-3420 opened.
 
 ## Program Design
 
 ### Types
 
-- `SessionHandle` (`session_store/sessions.py:56-73`) — `host: str`, `session_id: str`, `path: Path`, `cwd: Path`, `updated_at: float`, `is_agent: bool = False`. Unchanged by this issue; it is the type `_backfill_raw_events` starts consuming.
-- `SessionEvent` (`session_store/sessions.py:76-83`) — `type: str`, `timestamp: str`, `host: str`, `payload: dict[str, Any]`. `iter_events(handle)` already yields these; `_backfill_raw_events` stores `event.payload` as-is.
-- `HostLayout` (post-shrink, `session_store/writers.py:2456`) — retains only `glob`, `parent_from`, `sidecar_suffix`, `sessions_subdir`, `name`, `projects_root`, `session_glob`; drops `normalize: Callable[[dict], dict | None] | None`, `skip_at_ingest: Callable[[dict], bool] | None`, `normalize_file: Callable[[Path], Iterator[dict]] | None`. `tool_names`/`tool_arg_keys` are untouched by this issue — `_backfill_raw_events` never reads them.
+- `SessionHandle` (`sessions.py:58`) — `host`, `session_id`, `path`, `cwd`,
+  `updated_at`, `is_agent`. Unchanged.
+- `SessionEvent` (`sessions.py:78`) — gains `line_no: int | None = None` (D1).
+  Per-line parsers (`parse_codex_rollout`, `_parse_claude_shaped`,
+  `parse_kimi_wire`, `parse_qwen_session`) set it from their
+  `enumerate(handle, start=1)`; `parse_gemini_session`/`parse_omp_session` set it
+  from `enumerate(..., start=1)` over the normalizer's yield (same value Branch A
+  stores today).
+- `HostLayout` (`writers.py:2477`) — post-shrink field set listed under Expected
+  Behavior; plus a new kimi-code entry in `host_layout_for` (D5).
 
 ### Signatures
 
-- `_backfill_raw_events(conn: sqlite3.Connection, jsonl_files: list[Path], *, host: str | None = None) -> int` (`lifecycle.py:747`) — current.
-- `_backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle], *, host: str | None = None) -> int` — target.
-- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` (`session_store/sessions.py:824`) — existing, already implemented by ENH-3420; dispatches through `_PARSERS[handle.host]` (`sessions.py:812-821`) to one of `_parse_claude_shaped`, `parse_codex_rollout`, `parse_kimi_wire`, `parse_qwen_session`, `parse_gemini_session`, `parse_omp_session`.
+- `_backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle], *, host: str | None = None) -> int` — target (`lifecycle.py:747`).
+- `backfill_raw_events(db, *, jsonl_files: list[Path] | None = None, handles: list[SessionHandle] | None = None, since_ts=None, host=None) -> int` — `jsonl_files` widened via `handles_from_paths`; `since_ts` filters on `handle.updated_at`; exactly one of the two may be given (D4). Same shape added to `backfill()` and `backfill_incremental()`.
+- `handles_from_paths(paths: list[Path], host: str, *, cwd: Path | None = None) -> list[SessionHandle]` — new, `sessions.py`; `session_id` via `session_id_for` (D3), `updated_at` from mtime (skip on `OSError`, BUG-2489 pattern), `is_agent = name.startswith("agent-")`, `cwd` defaults to `Path.cwd()`.
+- `session_id_for(host: str, path: Path) -> str` — new, `sessions.py`; extracted from the inline rule at `_detect_layout_sessions:457-462` plus the codex header read (`_detect_codex_sessions`' `payload.get("id", rollout.stem)`); `_detect_layout_sessions` calls it too so discovery and synthesis cannot drift (D3).
+- `is_raw_qwen_record(record: dict) -> bool` — new, `qwen.py`; true when `_message_parts(record)` is not `None` (D2).
+- `iter_events(handle) -> Iterator[SessionEvent]` (`sessions.py:856`) — unchanged.
 
 ### Call Path
 
-`backfill_raw_events()` / `backfill()` (`lifecycle.py:859`, `lifecycle.py:1108`) -> `_backfill_raw_events(conn, handles, host=...)` -> `iter_events(handle)` (`sessions.py:824`) -> `_PARSERS[handle.host](handle.path)` -> `INSERT OR IGNORE INTO raw_events(..., raw_line, parsed_json)` with `event.payload` stored verbatim (no `layout.normalize`/`normalize_file` call in this path).
+`backfill_raw_events()` / `backfill()` / `backfill_incremental()` → (`jsonl_files` given) `handles_from_paths(paths, host)` → `_backfill_raw_events(conn, handles, host=...)` → `iter_events(handle)` → `_PARSERS[handle.host](handle.path)` → `INSERT OR IGNORE INTO raw_events(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)`.
 
-Read/replay side (`writers.py::_iter_events`, `writers.py:3250-3299`) must stop calling `layout.normalize` for qwen rows in the same change — `normalize_qwen_record` is not idempotent (a normalized record carries `message.content`, not `message.parts`; `_message_parts()` at `qwen.py:138-144` returns `None` for every branch on a re-normalized input, so re-normalizing silently drops the row).
+Replay: `rebuild()` → `_raw_events_cursor()` → `writers.py::_iter_events` → for `host == "qwen"` rows only, `if is_raw_qwen_record(record): normalize_qwen_record(record)` (legacy-row shim, D2) → the seven `_backfill_*` consumers.
+
+Codex CLI: `cli/session.py` → `detect_sessions(Path.cwd(), "codex")` → `backfill(..., handles=...)` / `backfill_incremental(..., handles=...)`.
 
 ### Decision Rules
 
-N/A — no new decision logic. This issue changes an existing function's parameter type and an existing dataclass's field set; it introduces no new gap kind, gate, threshold, or classification rule.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- **`unapplied_decision` gap resolved (verification, not a fix)**: `ll-issues format-check` flags `backfill()`/`backfill_incremental()`/`backfill_raw_events()`/`detect_sessions()` as "rejected option" identifiers still present in Proposed Solution/Program Design. Verified against current code: all four are legitimate. `backfill_raw_events()` (`lifecycle.py:834-868`), `backfill()` (`lifecycle.py:1053-1126`), and `backfill_incremental()` (`lifecycle.py:1129-1180`) are the three public wrappers Option B explicitly *retains* with unchanged `jsonl_files: list[Path]` signatures — their appearances describe the selected design, not Option A residue. `detect_sessions()` (`sessions.py:291-328`, `include_agents=False` at line 295) appears only as evidence supporting *why* Option B was chosen over Option A (Option A would have swapped callers onto `detect_sessions()`, silently dropping agent transcripts) — it names a real, already-existing function used for contrast, not a piece of the rejected proposal carried forward as if selected. No text change needed; this closes the Confidence Check's "worth a pass to confirm" risk factor.
-- **Confirmed current line ranges for `_backfill_raw_events`'s two branches** (`lifecycle.py:747-831`): Branch A (`normalize_file`, gemini/omp) spans lines 778-798 (guarded by `if layout.normalize_file is not None:` at 778, `continue`s at 798 before ever reaching Branch B); Branch B (raw-line-read + `skip_at_ingest`, qwen + Claude-shaped hosts) spans lines 799-830. `effective_host`/`layout` are resolved once per call (773-776), so the branch choice is per-host, not per-file.
-- **Confirmed `writers.py::_iter_events` qwen landmine call site still live** at the exact cited location: `layout.normalize is not None:` guard at line 3279, `normalized = layout.normalize(record)` at line 3284 (matches the issue's citation exactly), `if normalized is None: continue` at 3285-3286.
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- **`_backfill_raw_events` current implementation re-confirmed fresh (2026-09-09)** at `lifecycle.py:747-831`: `effective_host`/`layout`/`skip` resolved once at lines 773-776. Branch A (`normalize_file`, gemini/omp, lines 778-798): `enumerate(layout.normalize_file(jsonl_file), start=1)` yields Claude-shaped dicts; `line_no` is the enumeration index, not a real source line number; **both** `raw_line` and `parsed_json` columns store `_pack_payload(serialized)` of the re-serialized normalized dict (793-794) — there is no true verbatim source line for gemini/omp today. Branch B (raw-line + `skip_at_ingest`, qwen/Claude-shaped hosts, lines 799-830): `raw_line` stores `_pack_payload(line)`, the true verbatim stripped source line (826); `parsed_json` stores a re-serialization of the parsed dict (827), not the original bytes. Both branches share one `INSERT OR IGNORE INTO raw_events(...)` statement; the dedup key is the table's unique index on `(source_path, line_no)` (schema-level, per the docstring at `lifecycle.py:752`).
-- **`iter_events`/`_PARSERS` re-confirmed fresh**: `_PARSERS` (`sessions.py:812-821`) registers all 8 hosts (codex, claude-code, opencode, pi, kimi-code, qwen, gemini, omp). `parse_qwen_session` (`sessions.py:751-783`) yields `SessionEvent(payload=normalized)` where `normalized = normalize_qwen_record(record)` — confirms qwen rows through `iter_events` are already pre-normalized, matching the issue's Expected Behavior claim. `parse_gemini_session`/`parse_omp_session` (786-809) likewise wrap their existing normalizers. `parse_codex_rollout`/`_parse_claude_shaped`/`parse_kimi_wire` yield host-native payloads unchanged.
-- **`writers.py::_iter_events` qwen landmine re-confirmed unchanged** at the exact cited lines: guard `if layout.normalize is not None:` (3279), `normalized = layout.normalize(record)` (3284), `if normalized is None: continue` (3285-3286) — identical to the issue's existing citation, no drift since the last pass.
-
-_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
-
-- **Line-citation drift since this issue's last refine pass (2026-09-10T04:51:50Z)** — re-derive line numbers fresh at implementation time rather than trusting the ranges already cited in this section and in Integration Map; attribution confirmed per-file below:
-  - `lifecycle.py` — **no drift**. `_backfill_raw_events` still exactly 747-831 (Branch A 778-798, Branch B 799-830); `backfill_raw_events()`/`backfill()`/`backfill_incremental()`/`rebuild()`/`_backfill_sessions()` defs (834/1053/1129/959/708) and call sites (859, 1108) all unchanged.
-  - `writers.py` — **uniform +21 drift** from `HostLayout` (now 2477, cited 2456) through every `_backfill_*` def cited (`_backfill_skill_events` now 3690, cited 3669). `_iter_events()` now spans 3271-3320 (cited 3250-3299); the qwen landmine guard `if layout.normalize is not None:` now at line 3300 (cited 3279), `normalized = layout.normalize(record)` now at line 3305 (cited 3284), `if normalized is None: continue` now at 3306-3307 (cited 3285-3286) — shape unchanged, only line numbers shifted. Source of the +21 lines is **unattributed** — neither ENH-3427 nor ENH-3430 names `writers.py` in scope, and neither issue's marker/helper (`ENH-3427`, `ENH-3430`, `_resolve_host`, `REGISTERED_HOSTS`, `resolve_host()`) appears anywhere in the file.
-  - `sessions.py` — **uneven drift**: `SessionHandle`/`SessionEvent` only +2 (now 58/78, cited 56-73/76-83); `_PARSERS`/`iter_events` +32 (now 844/856, cited 812-821/824) — roughly 30 lines inserted between `SessionEvent` and `_PARSERS`, outside this issue's citations.
-  - `user_messages.py` — **+49 drift, attributable to ENH-3427**: `get_sessions_folder()` now 471-498 (cited 422-449), `.sessions_subdir` read now line 497 (cited 448); the function body now opens with `effective_host = _resolve_host(host, default="claude-code")` (line 491), a call that did not exist at this issue's last citation.
-  - `cli/session.py` — negligible -1 drift (`host_layout_for(...)` calls now 671/710, cited 672/711); the `"Codex backfill via detect_sessions() is not wired up yet (ENH-3420)"` notice is still present verbatim at 700-704, confirming Implementation Step 6 has not yet landed.
-  - `cli/backfill_worker.py` — **no drift** (`layout.session_glob` still exactly line 60).
-  - `sessions.py`'s three "ENH-3422" comments (cited 19-20/279-282/412-414) are now at 20/300/436 — drift attributable to ENH-3427 (which added `REGISTERED_HOSTS`/the both-spellings probe to this file).
+- `_backfill_raw_events`: no per-host branching. `session_id` fallback order is payload `sessionId`, then `handle.session_id`.
+- `writers.py::_iter_events`: the qwen shim is the only host-specific branch and is keyed on record *shape*, not on `HostLayout`; it is marked removable once no pre-ENH-3422 qwen rows exist.
+- Public wrappers: `jsonl_files` and `handles` both given → `ValueError`; neither → no ingest (existing `if jsonl_files:` behaviour in `backfill()` preserved).
 
 ## Proposed Solution
 
-`_backfill_raw_events` (`lifecycle.py:747-831`) switches its per-host branching (`layout.normalize_file` for gemini/omp, raw-line-plus-`skip_at_ingest` for everyone else, with qwen rows landing unnormalized today) for a single loop over `iter_events(handle)` per `SessionHandle`, storing `event.payload` verbatim. The parser dispatch this reuses already exists and is already exercised end-to-end by `test_session_discovery.py` (ENH-3420) — this issue is a consumer swap at the `raw_events` write boundary, not new parsing logic. `HostLayout` sheds `normalize`/`skip_at_ingest`/`normalize_file` once its four production readers (see Integration Map) are retargeted; `tool_names`/`tool_arg_keys` are unaffected. The `writers.py::_iter_events` (private, read/replay path — distinct from the public `sessions.py::iter_events` this issue targets) landmine above must land in the same change, or a pre-normalized qwen row silently vanishes on rebuild.
+### Option A — public wrappers retyped to handles only
 
-**RESOLVED — Path→SessionHandle boundary:** the three public wrappers — `backfill_raw_events()`/`backfill()`/`backfill_incremental()` (`lifecycle.py:834-868,1050-1126,1129-1180`) — still declare `jsonl_files: list[Path]`. No code in the tree today converts a bare `Path` to a `SessionHandle` (`detect_sessions()` is the only producer, via DB query or directory scan, never glob-then-wrap). Decided below (Option B — see `### Decision Rationale`):
+The three public wrappers replace their path-typed parameter with a handles-typed
+one and ripple that change into every caller (the session CLI, the backfill
+worker, the session-start hook's argv boundary) and ~30 test call sites.
 
-### Option A — Public wrappers take `list[SessionHandle]` directly
+- **Pro**: one type through the whole chain.
+- **Con**: widest blast radius; discovery-based callers would silently drop
+  agent transcripts (discovery defaults to excluding them); the worker receives no
+  working-directory argument today; no precedent for a structured object crossing
+  the hook-to-worker subprocess boundary.
 
-`backfill_raw_events()`/`backfill()`/`backfill_incremental()` change their own parameter from `jsonl_files: list[Path]` to `handles: list[SessionHandle]`, passing straight through to `_backfill_raw_events`. Ripples into every caller that currently builds a `list[Path]` via glob: `cli/session.py:671-684,709-727`, `cli/backfill_worker.py:52-67`, `hooks/session_start.py:159-179` (crosses a `subprocess.Popen` argv boundary, not just a function call) — each must switch from globbing paths to producing `SessionHandle`s itself (e.g. via `detect_sessions()`). Also touches the ~30 test call sites listed under Dependent Files that call `backfill_raw_events(db, jsonl_files=[...], ...)` against `list[Path]`.
+### Option B — wrappers keep paths, widen internally *(selected, amended)*
 
-- **Pro**: one consistent type through the whole call chain — no synthesis logic to write or trust.
-- **Con**: widest blast radius; breaks every existing caller's signature, including the hook and worker argv boundaries, in the same change.
+> **Selected:** Option B, amended by D4 — the wrappers keep `jsonl_files` and
+> **also** accept `handles=`, because the codex CLI path cannot produce paths at all
+> (no project folder exists to glob). Widening is via `handles_from_paths`, which
+> reuses discovery's own `session_id` rule (D3) rather than "trivially synthesizing"
+> — the original rationale's claim that only `handle.host`/`handle.path` are read
+> downstream was wrong once `raw_events.session_id` falls back to
+> `handle.session_id` for codex/kimi.
 
-### Option B — Public wrappers keep `list[Path]`, convert internally
-
-> **Selected:** Option B — `_backfill_raw_events`/`iter_events` only ever read `handle.host`/`handle.path` downstream (both trivially correct to synthesize), matches this codebase's existing convention of widening internally rather than rippling public signatures (`rebuild()`/`writers.py::_iter_events`'s `list[Path] | sqlite3.Cursor` Union precedent), and avoids Option A's concrete regressions: silently dropping `agent-*.jsonl` transcripts (`detect_sessions()` defaults `include_agents=False`), no existing precedent for passing a structured object across the `hooks/session_start.py` → `backfill_worker.py` subprocess argv boundary, and a missing `cwd` argv contract in `backfill_worker.py` today.
-
-`backfill_raw_events()`/`backfill()`/`backfill_incremental()` keep their existing `jsonl_files: list[Path]` signature and internally synthesize one `SessionHandle` per path (`host`, `session_id`, `path`, `cwd`, `updated_at`, `is_agent`) before calling `_backfill_raw_events(handles, ...)`.
-
-- **Pro**: fully backward-compatible at the public-wrapper boundary; no caller signature changes, so the ~30 existing test call sites and the three production callers (`cli/session.py`, `cli/backfill_worker.py`, `hooks/session_start.py`) are unaffected.
-- **Con**: introduces a new Path→SessionHandle synthesis path with no existing precedent in the codebase — every current `SessionHandle` producer goes through `detect_sessions()`'s DB query or directory scan, never glob-then-wrap. Synthesized fields like `is_agent`/`cwd` may not match what `detect_sessions()` would have produced for the same file, a correctness risk if downstream logic ever depends on them.
+- **Pro**: no caller or test signature changes for the path case; the worker/hook
+  boundary is untouched; matches the `list[Path] | sqlite3.Cursor` widening
+  precedent in `writers.py::_iter_events`.
+- **Con**: a new path→handle synthesis helper; mitigated by sharing
+  `session_id_for` with discovery.
 
 ### Decision Rationale
 
-**Selected: Option B — public wrappers keep `list[Path]`, convert internally.**
-
-Codebase evidence (via two parallel `ll:codebase-pattern-finder` agents) showed the downstream write path — `_backfill_raw_events` → `iter_events(handle)` (`sessions.py:824-829`) → `_PARSERS[handle.host](handle.path)` — reads only `handle.host` and `handle.path`; `session_id`/`cwd`/`updated_at`/`is_agent` are never read anywhere in this call chain (repo-wide grep confirmed zero production reads outside `sessions.py`'s own discovery code). Option B's "synthesis risk" for those fields is therefore live only against a hypothetical future dependent, not the code this issue touches. Option A, by contrast, surfaced concrete regressions: `cli/session.py`'s current glob doesn't exclude `agent-*.jsonl`, but `detect_sessions()` defaults `include_agents=False` — swapping in `detect_sessions()` would silently drop agent transcripts from a full backfill; `cli/backfill_worker.py` doesn't currently receive `cwd` and would need a new argv parameter to call `detect_sessions()` itself; and `hooks/session_start.py`'s `subprocess.Popen` boundary into `backfill_worker.py` has no precedent anywhere in the codebase for serializing a structured object (only plain strings/paths cross that boundary today), while re-deriving via `detect_sessions()` in the worker would replace the hook's specific-file fast path with a full project-folder discovery on every invocation. Codebase convention also favors Option B: `rebuild()` (`lifecycle.py:959-964`) and `writers.py::_iter_events`'s `list[Path] | sqlite3.Cursor` Union (`writers.py:3250-3299`) are the existing precedent for widening an internal representation without rippling the public signature to every caller — no precedent was found for the opposite (retype a public `list[Path]` parameter and ripple it to every external caller).
-
 | Option | Consistency | Simplicity | Testability | Risk | Total |
 |---|---|---|---|---|---|
-| A — wrappers take `list[SessionHandle]` | 1 | 0 | 1 | 0 | 2/12 |
-| B — wrappers keep `list[Path]`, convert internally | 3 | 2 | 3 | 3 | 11/12 |
+| A — wrappers retyped to handles only | 1 | 0 | 1 | 0 | 2/12 |
+| B (amended) — keep paths, add `handles=`, widen internally | 3 | 2 | 3 | 3 | 11/12 |
 
-Key evidence: `iter_events`/`_PARSERS` read only `.host`/`.path` (`sessions.py:824-829,631-821`); `detect_sessions()`'s `include_agents=False` default vs. `cli/session.py`'s current unfiltered glob (`sessions.py:291-328` vs. `cli/session.py:671-675,709-714`); `cli/backfill_worker.py` has no `cwd` today (`backfill_worker.py:24-67`); no `Popen` argv boundary in this codebase carries a serialized structured object (12-file `subprocess.Popen` grep, zero `json.dumps`+argv pairing in prod code); `rebuild()`/`_iter_events` Union precedent for internal-only widening (`lifecycle.py:959-964`, `writers.py:3250-3299`).
+Decided 2026-09-09 via `/ll:decide-issue`; amended 2026-09-10 (D3/D4) after review
+found the codex CLI path and the `session_id` column both need handles.
+
+### Design decisions (D1–D8, folded in 2026-09-10)
+
+- **D1 — `line_no` provenance.** Add `line_no: int | None` to `SessionEvent`,
+  populated by every parser. Without it the writer would have to enumerate yielded
+  events, which shifts numbering whenever a line is skipped (always, for qwen, since
+  `normalize_qwen_record` drops `system` rows). Because the dedup index is
+  `(source_path, line_no)` and incremental backfill re-ingests whole files past the
+  watermark, a shifted numbering duplicates every previously ingested row in an
+  existing DB. This is the one place the issue *does* touch `sessions.py` parsers.
+  gemini/omp keep their enumeration-index semantics (identical to today).
+- **D2 — legacy raw qwen rows.** The forward landmine (pre-normalized rows
+  re-normalized → `normalize_qwen_record` returns `None` → row silently dropped) is
+  known. The reverse is not: any DB that already holds qwen rows stores raw wire
+  format, and once replay stops normalizing, the extractors see `message.parts`
+  records and silently yield nothing — qwen history vanishes from every derived
+  table. Fix: replace the `HostLayout.normalize` branch in `writers.py::_iter_events`
+  with a shape-keyed shim — `host == "qwen" and is_raw_qwen_record(record)` →
+  normalize, else pass through. Idempotent over mixed DBs; closes both landmines.
+- **D3 — `session_id` for codex/kimi.** The writer's `record.get("sessionId")`
+  is `None` for every codex and kimi payload (codex's id lives in line 1's
+  `session_meta.payload.id`/`session_id`; kimi's is the `session_*` directory name),
+  and `_backfill_sessions` keys on the same field, so those sessions would never be
+  seeded. Fall back to `handle.session_id`, and make `handles_from_paths` derive it
+  with the same `session_id_for` rule discovery uses (header for gemini/omp/codex,
+  `parents[2]` for kimi, stem otherwise).
+- **D4 — codex CLI discovery.** `get_project_folder(host="codex")` is `None` by
+  design, so `cli/session.py` must use `detect_sessions(Path.cwd(), "codex")` and
+  pass `handles=` to the wrappers. Consequence: codex backfill is cwd-scoped (so is
+  the Claude project-folder glob, via `encode_project_path`). Store `event.payload`
+  as-is for codex; the envelope `type` (`session_meta`/`response_item`/`event_msg`)
+  is preserved in the `event_type` column and the envelope `timestamp` in `ts`, so a
+  future codex normalizer loses nothing. Codex is ingest-only until such a
+  normalizer exists — `rebuild()` derives no rows from codex payloads.
+- **D5 — kimi-code `HostLayout` entry.** Add it here (three comments, two API.md
+  lines, and one test defer it to this issue by number). `sessions_subdir = ""`,
+  `session_glob = "session_*/agents/main/wire.jsonl"`, subagent fields left at
+  their defaults. Delete `_KIMI_WIRE_GLOB` and the kimi special case in
+  `_detect_layout_sessions`. Invert `test_kimi_host_layout_unchanged_and_backfill_glob_ingests_zero`.
+- **D6 — `raw_line` is no longer verbatim.** Post-swap `raw_line` is
+  `json.dumps(event.payload)` for every host (gemini/omp already are). No production
+  reader needs byte equality (all `json.loads` it; `recompress_raw_events` only
+  repacks). Update the schema comment (`schema.py:463`, "verbatim JSONL line"), the
+  `_backfill_raw_events` docstring, and `test_claude_host_still_uses_per_line_path`.
+- **D7 — no compatibility wrappers.** The earlier plan to keep
+  `normalize_qwen_record`/`normalize_gemini_session`/`normalize_omp_session` "as
+  thin wrappers over the `parse_*` functions" was backwards — the parsers call the
+  normalizers. Delete the three dataclass fields; leave the normalizer functions
+  and their package-root re-exports untouched. `qwen_skip_at_ingest` becomes dead
+  once `skip_at_ingest` goes: delete it, its `__init__.py` import/`__all__` entry
+  (`__init__.py:111,252`), and its three assertions
+  (`test_enh_3166_qwen_normalizer.py:184-190`). Its volume guard is subsumed by
+  `normalize_qwen_record` dropping `type: "system"` (which `ui_telemetry` is).
+- **D8 — worker `--host` validation mechanism.** `cli/backfill_worker.py` has no
+  argparse; follow its own convention: unknown host → stderr message naming
+  `REGISTERED_HOSTS` → `return 1` (not `raise SystemExit`). Validate against
+  `from little_loops.session_store import REGISTERED_HOSTS` (public since ENH-3427,
+  `__init__.py:130`). Test asserts on the return value of `main([...])`.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/session_store/lifecycle.py` — `_backfill_raw_events()` (lines 747-831): change signature to `handles: list[SessionHandle]`, replace the `layout.normalize_file`/`layout.normalize`/`skip_at_ingest` branching with a loop over `iter_events(handle)`.
-- `scripts/little_loops/session_store/writers.py` — `HostLayout` (lines 2477-2532, drift-corrected per 2026-09-10 finding; previously cited 2456-2511): drop the `normalize`, `skip_at_ingest`, `normalize_file` fields; `host_layout_for()` (lines 2548-2628): drop the corresponding kwargs from the qwen (2566), gemini (2582), omp (2603) branches; `_iter_events()` (lines 3271-3320): stop calling `layout.normalize` at line 3305 for the cursor-replay path (the qwen landmine above).
-- `scripts/little_loops/cli/logs.py` — **no longer touched by this issue (2026-09-09).** Its two `.normalize` call sites, `_has_ll_activity()` (97-131) and `_extract_ll_event_streams()` (261-329), are handled by ENH-3430: the first is deleted, the second moves to `handles: list[SessionHandle]` + `iter_events`. Verify at implementation time that `grep -n "HostLayout\|host_layout_for" scripts/little_loops/cli/logs.py` returns nothing before dropping `HostLayout.normalize`.
-- `scripts/little_loops/cli/session.py` — lines 671 and 710 (drift-corrected per 2026-09-10 finding; previously cited 672/711) (`host_layout_for(_backfill_host).sessions_subdir` glob); lines 700-704 (drift-corrected; previously cited 700-706) (drop the "Codex backfill via detect_sessions() is not wired up yet (ENH-3420)" notice); line 718 (the `backfill(...)` call site).
-- `scripts/little_loops/cli/backfill_worker.py` — line 60 (`layout.session_glob`). **This file has no argparse** (module docstring: "no argparse by design"); `--host` is read via a hand-rolled `for i, arg in enumerate(args)` loop (lines 30-41) with no validation today. "Add `choices=` validation" (Implementation Step 4 below) cannot literally add an argparse `choices=` kwarg here — see the superseded-line note on that step.
-- `scripts/little_loops/user_messages.py` — `get_sessions_folder()` (lines 471-498, drift-corrected per 2026-09-10 finding; previously cited 422-449): `.sessions_subdir` read at line 497 (previously cited 448); the function body now opens with an ENH-3427 `effective_host = _resolve_host(host, default="claude-code")` call (line 491) that did not exist at prior citation.
+
+- `scripts/little_loops/session_store/sessions.py` — `SessionEvent` gains `line_no` (D1); six parsers populate it; new `session_id_for`, `handles_from_paths` (D3); `_detect_layout_sessions` uses `session_id_for` and drops the kimi special case; delete `_KIMI_WIRE_GLOB` (D5); update the three "deferred to ENH-3422" comments (20, 300, 436).
+- `scripts/little_loops/session_store/lifecycle.py` — `_backfill_raw_events` (747-831) rewritten onto handles; `backfill_raw_events` (834), `backfill` (1053, call at 1108), `backfill_incremental` (1129, call at 1176) gain `handles=` and widen `jsonl_files` via `handles_from_paths` (D4); `since_ts` filter moves onto `handle.updated_at`; docstrings updated (D6).
+- `scripts/little_loops/session_store/writers.py` — `HostLayout` (2477-2532): delete `normalize`/`skip_at_ingest`/`normalize_file` and their docstring paragraphs (2484-2517); `host_layout_for` (2548-2628): drop the kwargs at 2563/2577 (qwen), 2590 (gemini), 2610 (omp), add the kimi-code entry (D5); `_iter_events` (3271-3320): replace the `HostLayout.normalize` block (3300-3308) with the D2 shim; docstring updated.
+- `scripts/little_loops/session_store/qwen.py` — add `is_raw_qwen_record` (D2); delete `qwen_skip_at_ingest` (D7).
+- `scripts/little_loops/session_store/__init__.py` — drop the `qwen_skip_at_ingest` import (111) and `__all__` entry (252); export `handles_from_paths`/`session_id_for` if the CLI imports them from the package root (D7/D3).
+- `scripts/little_loops/session_store/schema.py` — `raw_events` comment block (463-487) no longer says "verbatim" (D6). No schema version bump: columns are unchanged.
+- `scripts/little_loops/cli/session.py` — codex branch uses `detect_sessions` + `handles=` for both full (707-726) and `--since` (663-683) paths; delete the notice (699-704); both glob sites switch from `sessions_subdir + "*.jsonl"` to `session_glob` (D4/D5).
+- `scripts/little_loops/cli/backfill_worker.py` — hand-rolled `--host` validation after the argv loop (30-41) using `REGISTERED_HOSTS`, `return 1` on failure (D8); docstring mentions it.
+- `scripts/little_loops/user_messages.py` — `get_sessions_folder` (471-498) reads `.sessions_subdir` at 497; retained field, no change needed. Verify only.
+- `scripts/little_loops/hooks/session_start.py` — **unchanged** (argv boundary carries `--host` and a path; Option B keeps that).
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/session_store/lifecycle.py:859` — `backfill_raw_events()` calls `_backfill_raw_events(conn, filtered, host=host)`.
-- `scripts/little_loops/session_store/lifecycle.py:1108` — `backfill()` calls `_backfill_raw_events(conn, jsonl_files, host=host)`.
-- `scripts/little_loops/session_store/lifecycle.py:1129` — `backfill_incremental()`, a thin wrapper over `backfill_raw_events()` (per its own docstring) used by the `SessionStart` hook worker; not previously listed among this issue's dependents.
-- `scripts/little_loops/session_store/lifecycle.py:959-1023` (`rebuild()`) via `_raw_events_cursor()` at line 998 — the concrete call path that feeds stored `raw_events` rows into `writers.py::_iter_events`'s cursor-replay branch (lines 3268-3289), where the qwen non-idempotency landmine (line 3284) actually fires.
-- `scripts/little_loops/session_store/__init__.py:79` — sole importer of `lifecycle.py` (confirmed via code-graph `importers-of`); re-exports `HostLayout`, `host_layout_for`, `_backfill_subagent_runs` (import block ~147-168, `__all__` ~244-299).
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/session_store/__init__.py:145-199` — a **second, distinct** re-export block (not the lifecycle.py block at line 79 already listed) importing `HostLayout` (147), `host_layout_for` (168), `_backfill_subagent_runs` (154), `_backfill_assistant_messages`/`_backfill_messages` (151-152) directly from `writers.py`. No functional change needed here (the dataclass name and factory function are untouched, only their field set shrinks), but confirm no `__all__` entry names a field being retired.
-- `scripts/little_loops/session_store/sessions.py:425` — `_detect_layout_sessions()` does a local deferred `from little_loops.session_store.writers import host_layout_for` and reads `host_layout_for(host).session_glob` — a direct `host_layout_for` dependency outside the four files already named. `session_glob` is a retained path-metadata field, so no change is required, but this caller was missing from the map.
-- `scripts/little_loops/session_store/writers.py` — six `_backfill_*` functions all consume `_iter_events()`'s cursor-replay output and therefore all benefit from (and must be verified against) the qwen-normalize-removal fix at line 3284, not just the single call site the map names: `_backfill_tool_events` (3302, call at 3309), `_backfill_usage_events` (3391, call at 3415), `_backfill_messages` (3477, call at 3487), `_backfill_assistant_messages` (3529, call at 3546), `_backfill_prompt_opt` (3596, call at 3623), `_backfill_skill_events` (3669, call at 3680). Each does `json.loads(line)` and branches on `record.get("type")`, so each is a live consumer of whatever `_iter_events` yields for a qwen row today and post-fix.
-- `scripts/little_loops/session_store/lifecycle.py:834-868` (`backfill_raw_events()`), `:1050-1126` (`backfill()`), `:1129-1180` (`backfill_incremental()`) — all three PUBLIC wrappers still declare `jsonl_files: list[Path]` and pass it straight through to `_backfill_raw_events`. **Resolved (Option B, see `## Proposed Solution` → `### Decision Rationale`)**: these three wrappers keep `jsonl_files: list[Path]` and internally synthesize one `SessionHandle` per path before calling `_backfill_raw_events(handles, ...)` — no public signature change to these three wrappers or their callers.
-- Production callers that build `list[Path]` via glob and feed it into the three public wrappers above (all cross the same unresolved Path→Handle boundary): `scripts/little_loops/cli/session.py:671-684,709-727`; `scripts/little_loops/cli/backfill_worker.py:52-67`; `scripts/little_loops/hooks/session_start.py:159-179` (crosses a `subprocess.Popen` argv boundary into `backfill_worker.py`, not just a function call).
-- ~30 test call sites invoke `backfill_raw_events(db, jsonl_files=[...], ...)` directly against `list[Path]` and will need updating (or the public wrapper needs to keep accepting `list[Path]` for back-compat): `test_ll_session.py:1450`, `test_session_store_schema.py:931,961,962,972`, `test_session_store_lifecycle.py:1375,1390,1439,1461,1481,1559,1954`, `test_enh_3166_qwen_normalizer.py:315,333,367,384,509`, `test_enh_3393_gemini_normalizer.py:149,176,177,191,227,246`, `test_enh_omp_normalizer.py:160,186,187,198,220`.
-- `scripts/little_loops/session_store/writers.py::host_layout_for` (2538-2600) and `scripts/little_loops/session_store/sessions.py` (`parse_qwen_session`/`parse_gemini_session`/`parse_omp_session`, lines 751-809) both import `normalize_qwen_record`/`normalize_gemini_session`/`normalize_omp_session` directly from their submodules (`qwen.py`, `gemini.py`, `omp.py`), never via the `session_store/__init__.py` package-root re-export. Confirmed by repo-wide search: **zero production dependents** of the package-root re-export exist — only the three named normalizer test files (`test_enh_3166_qwen_normalizer.py`, `test_enh_3393_gemini_normalizer.py`, `test_enh_omp_normalizer.py`) import from the package root. This narrows what Implementation Step 5's "thin compatibility wrapper for one release" actually needs to serve — production code needs no shim at all.
-
-_Second wiring pass (`/ll:wire-issue`, graph-accelerated) added:_
-- `scripts/little_loops/session_store/lifecycle.py:708-736` (`_backfill_sessions()`), called at `lifecycle.py:1003` as the first step of `rebuild()` — a **seventh** consumer (alongside the six `writers.py::_backfill_*` functions already named above) of `_iter_events()`'s cursor-replay output; it does `json.loads(line)` and reads `record.get("sessionId")`. Per-host `rebuild()` coverage already exists (`test_enh_3166_qwen_normalizer.py:441-454`, `test_enh_3393_gemini_normalizer.py:294-305`, `test_enh_omp_normalizer.py:268-279` all assert `counts["sessions"]` and the concrete `session_id`), so no new test is needed — but this function was missing from the "six functions" enumeration and must be verified against the qwen-normalize-removal fix at `writers.py:3284` alongside the six already named.
-- `scripts/little_loops/session_store/__init__.py:111,250` — a **third**, distinct re-export block (separate from the two already listed above): `from little_loops.session_store.qwen import normalize_qwen_record, qwen_skip_at_ingest` (111) and `"qwen_skip_at_ingest"` in `__all__` (250). `qwen_skip_at_ingest` is the function bound to `HostLayout.skip_at_ingest=qwen_skip_at_ingest` (`writers.py:2542,2556`) — the exact field being retired. The function itself is untouched by this issue (only the dataclass field goes away); confirm this re-export needs no change.
-- `scripts/little_loops/session_store/sessions.py:19-20,279-282,412-414` — module docstring and two comments explicitly name "ENH-3422" as the point where `HostLayout` shrinks and a kimi `HostLayout` entry becomes safe to add ("`HostLayout` itself (ingest to `raw_events`) is untouched until ENH-3422."; "...stays deferred to ENH-3422."; "...why a kimi `HostLayout` entry is deferred to ENH-3422."). All three go stale once this issue lands and were missing from the issue's file list (`sessions.py` is otherwise cited only for the unrelated `session_glob` read at line 427/428).
+- `lifecycle.py::rebuild` (959-1023) → `_raw_events_cursor` (998) → `writers.py::_iter_events` cursor branch; seven consumers: `_backfill_sessions` (`lifecycle.py:708`), `_backfill_tool_events`, `_backfill_usage_events`, `_backfill_messages`, `_backfill_assistant_messages`, `_backfill_prompt_opt`, `_backfill_skill_events` (`writers.py`, each `json.loads(line)` then branches on `type`). All seven must be exercised against a mixed qwen DB (D2).
+- `sessions.py::_detect_layout_sessions` (425) reads `host_layout_for(host).session_glob` (447-449); after D5 it does so for kimi too.
+- `writers.py::_backfill_subagent_runs` reads `.glob`/`.parent_from`/`.sidecar_suffix` — retained, unaffected.
+- `cli/backfill_worker.py:57-60` reads `HostLayout.session_glob` — retained; after D5 it finds kimi wires in directory mode.
+- Test callers of the wrappers with `jsonl_files=` (unchanged by Option B): `test_ll_session.py:1450`; `test_session_store_schema.py:931,961,962,972`; `test_session_store_lifecycle.py:1375,1390,1439,1461,1481,1559,1954`; `test_enh_3166_qwen_normalizer.py:315,333,367,384,509`; `test_enh_3393_gemini_normalizer.py:149,176,177,191,227,246`; `test_enh_omp_normalizer.py:160,186,187,198,220`; `test_assistant_messages.py` (nine `backfill` calls + one `backfill_incremental` at 317); `test_enh_2497_agent_type.py:237`; `test_enh_2511_mcp_telemetry.py:256`; `test_workflow_sequence_analyzer.py:499`.
+- Package-root re-exports of `normalize_*` are consumed only by the three normalizer test files; no production code imports them from the root (they import from the submodules). No shim needed (D7).
 
 ### Conventions in Force
-- Back-compat aliasing for a retired name in this codebase is a bare module-level rebind with a one-line comment (`OldName = NewName`) — never a wrapper function, `functools.partial`, or `DeprecationWarning` — evidence: `git_operations.py:354-355`, `config/core.py:1132-1133`, `cli/verify_triggers.py:169-170`. This shape assumes matching signatures between old and new; `normalize`/`normalize_file` (`dict -> dict | None` / `Path -> Iterator[dict]`) and their `parse_qwen_session`/`parse_gemini_session`/`parse_omp_session` replacements (`Path -> Iterator[SessionEvent]`) do not share signatures, so the bare-rebind shape does not transfer cleanly to this retirement.
-- Where `--host` choices validation exists, it is a hand-typed argparse `choices=[...]` literal, not imported from a shared constant — evidence: `cli/session.py:211-216`. `_REGISTERED_HOSTS` (`sessions.py:268-277`) holds the same 8 values but neither list references the other.
-- `HostLayout`-backed tests build layouts exclusively through the `host_layout_for(host)` factory and drive ingest through the public `backfill_raw_events()` entry point against fixture files — never a literal `HostLayout(...)` constructor call — evidence: `test_enh_3166_qwen_normalizer.py`, `test_enh_2505_subagent_runs.py` (`layout=host_layout_for(...)` kwarg). A repo-wide search for `HostLayout(` finds it constructed in exactly one place in source: `writers.py::host_layout_for`.
-- The one existing precedent for widening a `_backfill_*` helper's input type kept both old and new branches rather than retiring the old one: `writers.py::_iter_events` accepts `list[Path] | sqlite3.Cursor` via `isinstance` branching (`writers.py:3250-3299`). No function in this codebase currently *consumes* `list[SessionHandle]` as a parameter — every existing use is a producer return type (`detect_sessions` and its private helpers, `sessions.py`) — so `_backfill_raw_events(handles: list[SessionHandle])` is a new consumption shape, not a repeat of an existing one.
+
+- Widening an input type internally rather than rippling a public signature: `writers.py::_iter_events`'s `list[Path] | sqlite3.Cursor` union; `rebuild()`. This issue follows it (Option B).
+- `SessionHandle` is produced only by discovery today; `handles_from_paths` is the first synthesizer, which is why D3 forces it to share `session_id_for` with discovery.
+- `HostLayout` is constructed in exactly one place (`writers.py::host_layout_for`); tests never call the constructor, they call the factory and then assert attributes — so retiring fields breaks attribute assertions, not constructors (see Tests).
+- Non-argparse CLI validation in this codebase disagrees on mechanism (`backfill_worker.py` returns 1; `fsm/context_seed.py::apply_context_overrides` raises `SystemExit`). D8 picks the file's own convention.
+- Back-compat for a retired name is a bare rebind (`OldName = NewName`), never a wrapper — inapplicable here because nothing is renamed; fields are deleted (D7).
+- `REGISTERED_HOSTS` (ENH-3427) is the canonical host list; `add_host_arg` (`cli_args.py:334-361`) wraps it for argparse consumers. `backfill_worker.py` would be its first non-argparse consumer.
 
 ### Tests
-- `scripts/tests/test_session_store_schema.py::test_backfill_raw_events_ingests_one_row_per_line` (line 916).
-- `scripts/tests/test_ll_session.py`, `test_enh_3166_qwen_normalizer.py`, `test_enh_3393_gemini_normalizer.py`, `test_enh_omp_normalizer.py`, `test_enh_2505_subagent_runs.py` — named in Expected Behavior as passing unmodified except for retired-field `HostLayout(...)` constructor calls; per Conventions in Force above, none of these files actually construct `HostLayout` literally today, so this constraint is not expected to bite.
-- `scripts/tests/test_hook_session_start.py:277` — asserts `"backfill_worker" in " ".join(calls[0])`; unaffected by the signature change but exercises the `--host` argv path into `backfill_worker.py`.
-- `scripts/tests/test_session_discovery.py` — already covers `detect_sessions`/`iter_events`/`SessionHandle` end-to-end (72 occurrences); the parser dispatch this issue reuses is already under test here.
 
-_Wiring pass added by `/ll:wire-issue`:_
-- **Breaking, not in the issue's known-tests list**: `scripts/tests/test_ll_session.py::TestBackfill::test_backfill_host_codex_prints_enh_3420_notice` (~lines 741-759) asserts `"ENH-3420" in capsys.readouterr().err` — a direct executable assertion on the exact notice string `cli/session.py:702` drops per this issue's own Proposed Solution. This test must be deleted or rewritten in the same change, or it fails immediately after the notice is removed.
-- **Coverage gap, priority**: no existing test constructs a `raw_events` row for `host="qwen"` whose `raw_line` is *already* Claude-shaped (the ingest shape ENH-3422 produces) and then verifies `writers.py::_iter_events`'s cursor-replay branch does NOT re-run `normalize_qwen_record` on it. `TestRebuildQwenRecords` (`test_enh_3166_qwen_normalizer.py:377-464`) only exercises today's raw-wire-format → single-normalization-at-rebuild flow. New test needed: insert a pre-normalized qwen `raw_events` row directly (model row construction on `test_session_store_lifecycle.py:1392-1400`), run `rebuild()`, and assert all six downstream tables populate correctly — `tool_events`, `usage_events`, `message_events`, `assistant_messages`, `prompt_opt_events`, `skill_events` (writers.py:3309,3415,3487,3546,3623,3680) — not just `raw_events` row count as the issue's Expected Behavior section currently specifies.
-- Of those six tables, existing qwen-rebuild coverage today is uneven: `tool_events`/`message_events`/`assistant_messages` have positive content-level assertions; `usage_events`/`skill_events` are only ever asserted as zero-count for qwen (no positive-path proof); `prompt_opt_events` (`_backfill_prompt_opt`) has no qwen assertion at all. Add positive-path coverage for the latter three alongside the double-normalization regression test above.
-- New test needed for `_backfill_raw_events(handles: list[SessionHandle], ...)` itself — no fixture builder in the codebase constructs a `list[SessionHandle]` and passes it as a function argument today (only single-`SessionHandle` args in `test_session_discovery.py::TestIterEventsDispatch:424-449`, and `detect_sessions()`'s own return values are asserted on, never re-fed as input elsewhere). Model the handle literals on `test_session_discovery.py:424-433`'s field pattern (`host`, `session_id`, `path`, `cwd`, `updated_at`, `is_agent`).
-- New test needed for `cli/backfill_worker.py`'s planned `--host` validation (Acceptance Criterion 4): confirmed via both name-based and behavior-based search that **no test anywhere exercises this file's hand-rolled argv parser with an invalid value** — not even its pre-existing "missing positional args" or "path not found" error branches have coverage today. `TestBackfillWorkerHost` (`test_enh_3166_qwen_normalizer.py:532-578`) only calls `worker_main([...])` with a *valid* `--host qwen`. The nearest same-intent (not same-mechanism) analog is `test_ll_session.py::test_backfill_host_choices_list` (41-61), which relies on argparse's own `choices=` `SystemExit` — `backfill_worker.py` has no argparse, so the new test must call `worker_main([...])` directly and assert on the hand-rolled validation's `SystemExit`/return code once Implementation Step 4 adds it.
+Existing tests that **must change**:
 
-_Second wiring pass (`/ll:wire-issue`, graph-accelerated) added:_
-- **Breaking, contradicts this issue's own Acceptance Criteria claim** (see marker below): nine `HostLayout` field-presence assertions across all three per-host normalizer test files raise `AttributeError` — not just a changed value — the moment `normalize`/`normalize_file`/`skip_at_ingest` are deleted from the dataclass. None of these are `HostLayout(...)` constructor calls (the form the issue's Conventions/AC text explicitly excludes); they are plain attribute access on `host_layout_for(...)`'s return value:
-  - `test_enh_3166_qwen_normalizer.py:218-219,227-228` (`TestHostLayoutRegistry`, already partially known via the qwen widening test, but not previously flagged as an `AttributeError` risk)
-  - `test_enh_3393_gemini_normalizer.py:128-129,132,136` (`TestHostLayoutRegistryGemini` — this class was not named anywhere in the issue before this pass)
-  - `test_enh_omp_normalizer.py:138-139,142,148-149` (`TestHostLayoutRegistryOmp` — likewise not previously named)
-- Mechanism-pinning tests that assert on `HostLayout.normalize_file`'s specific storage shape (verbatim-vs-re-serialized `raw_line`), beyond generic signature-update need: `test_enh_3393_gemini_normalizer.py:182-203` (`test_raw_line_and_parsed_json_are_normalized_form`), `test_enh_3393_gemini_normalizer.py:206-236` (`test_claude_host_still_uses_per_line_path`), `test_enh_omp_normalizer.py:192-210` (omp analog) — review these specifically for the `_backfill_raw_events` rewrite since they pin the exact `raw_line`/`parsed_json` equality behavior the new `iter_events`-based path must preserve.
+- `scripts/tests/test_ll_session.py::TestBackfill::test_backfill_host_codex_prints_enh_3420_notice` (~741-759) — asserts the string being deleted. Rewrite as: `--host codex` calls `detect_sessions` and passes `handles=` to `backfill` (patch both).
+- `scripts/tests/test_session_discovery.py:731 test_kimi_host_layout_unchanged_and_backfill_glob_ingests_zero` — invert per D5: kimi layout has the wire glob and the worker's directory mode ingests the fixture wire file.
+- `scripts/tests/test_enh_3166_qwen_normalizer.py:184-190` (`qwen_skip_at_ingest` assertions) — delete (D7); `218-219,227-228` (`TestHostLayoutRegistry` attribute assertions on `.normalize`/`.skip_at_ingest`) — delete or invert to `not hasattr`.
+- `scripts/tests/test_enh_3393_gemini_normalizer.py:128-129,132,136` and `scripts/tests/test_enh_omp_normalizer.py:138-139,142,148-149` — same attribute-assertion fix for `.normalize_file`.
+- `scripts/tests/test_enh_3393_gemini_normalizer.py:206-236 test_claude_host_still_uses_per_line_path` — pins verbatim `raw_line`; relax to JSON equality (D6). `182-203` and the omp analog (`test_enh_omp_normalizer.py:192-210`) already assert re-serialized form and should pass unchanged.
+- `scripts/tests/test_session_store_schema.py:916 test_backfill_raw_events_ingests_one_row_per_line` — asserts `line_no == 1`; passes under D1, and is the model for the new blank-line test.
+
+New tests (one per decision):
+
+- **D1** — file with a blank line and a malformed line before the third record: assert the third row's `line_no == 3`; re-ingest the same file and assert `COUNT(*)` unchanged (dedup still collides). Cover claude-code and qwen.
+- **D2** — insert one raw wire-format qwen row and one pre-normalized qwen row directly (model on `test_session_store_lifecycle.py:1392-1400`), run `rebuild()` twice, assert both rows produce derived rows and counts are identical across the two runs. Add positive-path qwen assertions for `usage_events`, `skill_events`, `prompt_opt_events` (today only zero-count or absent).
+- **D3** — `handles_from_paths` for gemini/omp/codex/kimi fixtures yields the same `session_id` as `detect_sessions` for the same file; `_backfill_raw_events` on a codex handle stores that id in `raw_events.session_id` and `_backfill_sessions` seeds it.
+- **D4** — place both `scripts/tests/fixtures/codex/` rollouts under `tmp_home/.codex/sessions/2026/09/08/` (the pattern at `test_session_discovery.py:171`), call `backfill(db, handles=detect_sessions(Path("/workspace/project"), "codex", home=tmp_home), host="codex")`, assert two sessions' rows with `host = "codex"`, `event_type` in the envelope vocabulary, `ts` non-empty. CLI-level: patch `detect_sessions` in `cli/session.py`'s namespace and assert `backfill` receives `handles=`.
+- **D5** — `host_layout_for("kimi-code").session_glob == "session_*/agents/main/wire.jsonl"`; `_detect_layout_sessions` finds the kimi fixture without `_KIMI_WIRE_GLOB`.
+- **D8** — `worker_main([db, path, "--host", "not-a-host"])` returns 1 and writes to stderr; valid host still returns 0 (extend `TestBackfillWorkerHost`, `test_enh_3166_qwen_normalizer.py:532-578`).
+- Direct `_backfill_raw_events(conn, [SessionHandle(...), ...])` unit test with literal handles (pattern: `test_session_discovery.py:424-433`).
+- Wrapper contract: `jsonl_files` and `handles` both given → `ValueError`.
+
+Existing coverage to re-run, no change expected: `test_session_discovery.py` (parser dispatch), `test_enh_2505_subagent_runs.py`, `test_hook_session_start.py:277`, `test_assistant_messages.py`, the four other wrapper callers listed above.
 
 ### Documentation
-- `docs/reference/API.md` — session discovery section (lines 9497-9524) already documents `detect_sessions`/`iter_events`/`SessionHandle`/`SessionEvent`; needs the `_backfill_raw_events` signature change reflected.
-- `docs/reference/CLI.md` — `backfill` `--host` flag row (line 3939, inside the flags table lines 3928-3943).
-- `docs/ARCHITECTURE.md` — HostLayout/iter_events/backfill_worker narrative (seam note per Scope Boundaries).
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/API.md` lines 9533, 9539, 9541 — additional lines in the *same* session-discovery narrative block, outside the cited 9497-9524/9502-9505 ranges: line 9533 notes qwen "already ships a normalizer for the `HostLayout`/`writers.py` seam"; lines 9539/9541 explicitly promise "a kimi `HostLayout` entry is deferred to ENH-3422" — this issue is what's supposed to deliver that, so these lines need updating alongside the already-cited range, not separately forgotten.
-- `docs/reference/HOST_COMPATIBILITY.md` — four footnotes not in the issue's docs list, each narrating the exact mechanism being retired/relocated: `[^kimiwire]` (~555-556, already anticipates this issue by number); `[^qwenwire]` (~564-568, documents qwen normalizing "at rebuild time inside `_iter_events`" — the call site being changed); `[^geminiwire]` (~598-601, names `HostLayout.normalize_file` as gemini's contract); `[^ompwire]` (~616-617, documents omp reusing gemini's `normalize_file` contract). All four need updating once `normalize`/`normalize_file`/`skip_at_ingest` are removed from `HostLayout`.
-
-_Second wiring pass (`/ll:wire-issue`, graph-accelerated) added:_
-- `docs/reference/API.md:9566,9581,9584` — additional lines in the session-discovery / raw_events-rebuild narrative, outside the already-cited ranges: 9566 documents `host_layout_for("codex").projects_root`; 9581/9584 document `_iter_events()`'s signature and its docstring naming `_backfill_sessions` among consumers.
-- `docs/reference/HOST_COMPATIBILITY.md:568,633` — two more lines beyond the four footnotes already cited above: 568 names `_iter_events` directly (rebuild-time qwen normalization); 633 references `host_layout_for("omp").projects_root`.
+- `docs/reference/API.md` — session-discovery block (~9497-9541): `SessionEvent.line_no`, `handles_from_paths`/`session_id_for`, `_backfill_raw_events` signature; lines ~9533/9539/9541 stop saying kimi is deferred; ~9566/9581/9584 (`projects_root`, `_iter_events` signature/consumers) updated for the D2 shim.
+- `docs/reference/CLI.md` — `ll-session backfill` flags table (~3928-3943): `--host codex` now discovers via `detect_sessions` and is cwd-scoped; ingest-only note.
+- `docs/reference/HOST_COMPATIBILITY.md` — footnotes `[^kimiwire]` (~555), `[^qwenwire]` (~564-568), `[^geminiwire]` (~598-601), `[^ompwire]` (~616-617), plus lines ~568 and ~633: normalization now happens in the `sessions.py` parsers at ingest; the replay shim exists only for pre-ENH-3422 qwen rows.
+- `docs/ARCHITECTURE.md` — one seam, two halves: discovery (`detect_sessions`) and ingest (`iter_events` → `raw_events`).
+- `scripts/tests/fixtures/codex/README.md` — note the fixtures are now also the backfill AC fixtures.
 
 ### Configuration
-- N/A
+
+- N/A.
 
 ### Behavior Parity
 
 | Artifact | Behavior | Disposition | Notes |
 |---|---|---|---|
-| `scripts/little_loops/session_store/lifecycle.py::_backfill_raw_events` | Takes `jsonl_files: list[Path]`; branches per host on `layout.normalize_file` (gemini/omp, whole-file) vs. a raw line read plus `skip_at_ingest` (qwen and everyone else) | CHANGED | Replaced by a single loop over `iter_events(handle)` per `handles: list[SessionHandle]`; qwen rows go from raw-stored to pre-normalized (`parse_qwen_session` already applies `normalize_qwen_record`) |
-| `scripts/little_loops/session_store/lifecycle.py::_backfill_raw_events` idempotent `INSERT OR IGNORE` dedup on `(source_path, line_no)` | PRESERVED | Dedup index and idempotency semantics are unchanged by the consumer swap |
-| `scripts/little_loops/cli/backfill_worker.py` `--host` argument handling | Hand-rolled `for i, arg in enumerate(args)` loop (lines 30-41); no validation against a fixed host list today | CHANGED | AC requires rejecting an unknown `--host` with `SystemExit`; cannot literally "add `choices=`" since this file has no argparse — equivalent validation must be hand-rolled to match `cli/session.py`'s behavior |
-| `scripts/little_loops/cli/backfill_worker.py` `layout.session_glob` glob (line 60) | PRESERVED | `session_glob` is a path-metadata `HostLayout` field, retained post-shrink |
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- **Dataclass field retirement has no delete-with-zero-readers precedent in this codebase**: the closest analog (`IssuesConfig.completed_dir`/`.deferred_dir`, `config/features.py:234-235`) is annotated `# DEPRECATED: use X instead` on the field declaration but keeps live readers (`config/core.py:571-572`, `cli/migrate.py:122-146`) — it documents "deprecate in place while still read," not "delete once the last reader is gone." A repo-wide search for field-retirement language (`field retired`, `no longer read`, `removed field`, `deprecated field`, `kept for backward`) found no precedent for outright deletion. Step 5's plan to delete `normalize`/`normalize_file` outright (rather than deprecate-in-place) has no existing convention either confirming or refuting it — it is uncharted, not just "non-standard."
-- **`--host` is validated four different, non-interoperating ways today**, not just the two already named above (`cli/session.py`'s `choices=` vs. `session_store/sessions.py::_REGISTERED_HOSTS`): `init/cli.py:33-34,184-185` keeps its own `_KNOWN_HOSTS` frozenset and **logs-and-continues** (`error(...); continue`) rather than exiting on an unknown host; `adapters/core.py:53-78`'s `_EMITTER_MAP` is a *6-host* subset (missing `opencode`/`pi`) that raises a custom `AdapterError`, caught by its caller (`cli/adapt.py:86-90`) and converted to `print(...); return 1` — not `SystemExit` at all. No shared `validate_host` helper exists anywhere in the codebase (searched repo-wide). AC 4's `SystemExit`-on-unknown-host requirement for `backfill_worker.py` matches only `cli/session.py`'s convention, not the other two.
-- `scripts/tests/test_session_discovery.py::test_kimi_host_layout_unchanged_and_backfill_glob_ingests_zero` (line 711) — an existing test explicitly citing ENH-3422 by number as a regression guard: asserts `host_layout_for("kimi-code")` stays the generic default and `backfill_worker.py`'s `path_arg.glob(layout.session_glob)` still matches zero files.
-- `scripts/tests/test_ll_session.py::TestArgumentParsing::test_backfill_host_choices_list` (lines 41-61) — existing coverage for `cli/session.py`'s `--host` `choices=` list, asserting `pytest.raises(SystemExit)` for `"not-a-real-host"`. No equivalent test exists for `cli/backfill_worker.py` today (confirmed: no `test_backfill_worker*.py` file exists) — AC 4's new `backfill_worker.py` validation has no existing test to extend, only this one to pattern-match.
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- **Path→SessionHandle boundary confirmed total, not partial**: repo-wide search found zero callers anywhere in `session_store/lifecycle.py`'s three public wrappers (`backfill_raw_events`, `backfill`, `backfill_incremental`), `cli/session.py`, `cli/backfill_worker.py`, or `hooks/session_start.py` that construct or pass a `SessionHandle`. `iter_events` (`sessions.py:824`) has zero callers anywhere in the ingest/backfill/rebuild path today — it is a fully separate, unused-by-backfill seam.
-- `cli/logs.py::_extract_cwd_from_project` (line 134) also reads `layout.session_glob` (line 145) — a fourth `HostLayout` consumer in that file, found during this pass's research. Note for whoever implements ENH-3430 (a concurrent edit landed on this issue mid-pass moving all of `cli/logs.py` out of ENH-3422's scope to ENH-3430): this site was not among the two `.normalize` call sites already named there (`_has_ll_activity`, `_extract_ll_event_streams`) — confirm it too has no live `HostLayout` reference once ENH-3430 lands, per this issue's own Files-to-Modify verification grep.
-- `_backfill_raw_events`'s two branches store `raw_line` asymmetrically today: Branch B (qwen and Claude-shaped hosts, per-line read, `lifecycle.py:799-830`) stores the true verbatim source line; Branch A (`normalize_file`, gemini/omp, `lifecycle.py:778-797`) stores `_pack_payload(serialized)` of the re-serialized normalized dict — there is no true verbatim line for gemini/omp even today. Relevant when comparing pre/post-change `raw_line` semantics for those two hosts.
-- **Qwen non-idempotency landmine confirmed latent, not live, today**: `_backfill_raw_events`'s current qwen branch (Branch B) never calls `layout.normalize` — only `skip_at_ingest`. So today, `writers.py::_iter_events`'s replay-time `layout.normalize` call (line 3284) is the *only* place qwen rows get normalized, and it operates on genuinely raw input, which is correct as things stand. The landmine manifests only once ingest is rewritten to store pre-normalized rows (via `parse_qwen_session`/`iter_events`) without removing that replay-time re-normalize call in the same change.
-- `backfill_incremental()` (`lifecycle.py:1129`) delegates through `backfill_raw_events(db_path, jsonl_files=jsonl_files, ...)` at line 1176, confirming it shares the same `list[Path]`-only signature as the other two public wrappers — no wrapper anywhere in the chain has ever received or produced a `SessionHandle`.
-
-_Added by `/ll:refine-issue` — 2026-09-09 — based on codebase analysis:_
-
-- Four additional test files call the public wrappers (`backfill()`/`backfill_incremental()`) but are not itemized in the ~30-site list under `### Dependent Files (Callers/Importers)`: `scripts/tests/test_assistant_messages.py` (nine `backfill(db, ..., jsonl_files=[jsonl], ...)` calls at lines 134, 165, 193, 224, 250, 268, 275, 298, plus one `backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)` at line 317), `scripts/tests/test_enh_2497_agent_type.py:237`, `scripts/tests/test_enh_2511_mcp_telemetry.py:256`, `scripts/tests/test_workflow_sequence_analyzer.py:499`. All call with no `host=` kwarg (ambient/default-host path). Under the selected Option B these need no code changes (public wrapper signatures are unchanged), but they are additional live exercisers of `_backfill_raw_events`'s default-host branch and should be re-run alongside the issue's already-known test list to confirm no regression.
-
-_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
-
-- **`--host` shared-validation seam landed after this issue's last refine pass** (ENH-3427, commit `4e32bcc2a`, 2026-09-10T01:17:55Z — after the 2026-09-09T22:58:19Z Session Log entry). The "Conventions in Force" bullet citing `cli/session.py:211-216` as a hand-typed `choices=[...]` literal is now stale: `cli/session.py:201-213` calls `add_host_arg(backfill_parser, help_text=...)` (new helper, `cli_args.py:334-361`), which sources `choices=list(REGISTERED_HOSTS)` from a newly-**public** constant (`session_store/__init__.py:130,207`, aliasing the previously-private `sessions.py:286` `_REGISTERED_HOSTS` — same 8-host tuple, no value drift, only a line-range shift from `268-277` to `286-295`). Runtime behavior of `ll-session backfill --host <bad>` is unchanged — still `SystemExit(2)` via argparse — only the `choices=` source moved from a literal to the shared constant.
-- **`session_store/lifecycle.py` confirmed untouched by this commit**: zero references to `_resolve_host`, `_cwd_spellings`, `add_host_arg`, or `REGISTERED_HOSTS` anywhere in that file. `_backfill_raw_events`/`backfill()`/`backfill_incremental()` remain exactly as this issue's Current Behavior/Program Design sections already describe; the Path→SessionHandle boundary and the selected Option B decision are unaffected by this seam.
-- **`cli/backfill_worker.py` confirmed still has zero `--host` validation** (also untouched by this commit). `add_host_arg` cannot be dropped in as-is — it requires an `argparse.ArgumentParser`, and this file has none by design ("minimal-parsing style" per its own module docstring). What changed for Implementation Step 4's hand-rolled-validation work: a canonical host list is now directly importable (`from little_loops.session_store import REGISTERED_HOSTS`) instead of needing to invent or duplicate one — this closes the specific gap this issue's own earlier Codebase Research Finding described ("No shared `validate_host` helper exists anywhere in the codebase"). No non-argparse consumer of `REGISTERED_HOSTS` exists yet anywhere in the tree — `backfill_worker.py`'s Step 4 work would be the first.
-- **Non-uniformity narrowed from 4 divergent `--host` validators to 3, not resolved**: `cli/session.py`, `cli/messages.py`, `cli/ctx_stats.py`, and all 9 of `cli/logs.py`'s subparsers now converge on `add_host_arg`. `init/cli.py`'s `_KNOWN_HOSTS` frozenset (deliberately a different, install-wiring-scoped vocabulary per its own comment) and `adapters/core.py`'s `_EMITTER_MAP` (dict `.get()` + `AdapterError`, no `choices=`/frozenset at all) remain unconverted and non-interoperating with `REGISTERED_HOSTS`; `cli/backfill_worker.py` remains the only surface with no validation whatsoever.
-- **No test unit-tests `add_host_arg` in isolation**: every existing test (`test_ll_session.py:41-61`, `test_cli_messages.py:112-115`, `test_cli_ctx_stats.py:156-166`) exercises it only indirectly through its consuming CLI's own parser-builder, each re-asserting the same "unknown host → `SystemExit`" shape per call site rather than once against a bare `argparse.ArgumentParser()`. A `backfill_worker.py` retrofit test would be following this same per-CLI-integration convention, not a helper-unit-test one.
-
-### Conventions in Force — additional findings
-- **Same-commit consumer-swap precedent**: ENH-2656 (`resolve_epic_base`/`resolve_epic_branch_name`, `worktree_utils.py:73-91,143`) routed every existing call site through a new shared resolver in one change, explicitly framed as "no behavior change," converting an existing brittle test to an import+call check rather than leaving it pointing at retired internals.
-- **A disagreeing precedent also exists**: FEAT-1467 introduced the `HostRunner`/`resolve_host()` dispatcher alone, migrating zero call sites; FEAT-1468 (a separate, dependent issue) migrated all six hard-coded call sites afterward, one at a time, each with an "Argv Divergence Reconciliation" table documenting exactly how old and new argv differ before merge. ENH-3422 is itself already structured this way relative to ENH-3420 (dispatcher landed in phase 1; this issue is the phase-2 consumer migration) — this precedent supports, rather than contradicts, the issue's existing staging.
-- A third compatibility shape beyond the two already named (bare-rebind alias; deprecate-in-place with live readers) exists: `subprocess_utils.py::run_claude_command` (line 422) kept its old name and *exact* legacy signature, silently swapping its internals to call `resolve_host()` (line 516), with no deprecation marking at all. This shape only works when old and new signatures already match — confirmed not the case for `normalize`/`normalize_file` vs. `parse_*` — so it does not resolve this issue's compatibility question.
-- A fourth compatibility shape does apply despite the signature mismatch: `frontmatter.py::DEPRECATED_FRONTMATTER_KEYS` (lines 54-75) + `issue_parser.py::_warn_deprecated_key` (lines 305-332) retire an old key by translating it to the new shape at read time and emitting a deduped runtime warning (per `(path, key)`, so repeat parses don't spam) rather than a static alias. This is the closest existing precedent in this codebase for a signature-changing compatibility wrapper — closer to what Implementation Step 5 needs than the bare-rebind pattern already cited there.
-- `cli/backfill_worker.py`'s own existing invalid-input branches (lines 42-47, 61-63) already use `print(..., file=sys.stderr); return 1` from `main()`, converted to a process exit only via the module-level `if __name__ == "__main__": sys.exit(main())` guard (line 72) — not `raise SystemExit` inline. The one other hand-rolled (non-argparse) CLI validation loop in the codebase, `fsm/context_seed.py::apply_context_overrides` (~100-130), instead raises `SystemExit(f"...")` directly inline. These are the only two non-argparse validate-and-exit loops in the codebase and they disagree on mechanism.
-- **Confirmed landmine for AC 4's test**: `sys.exit(main())` only executes under the `if __name__ == "__main__":` guard (`backfill_worker.py:71-72`) — calling `main(argv)` directly, as a unit test naturally would, returns a plain `int` and never raises `SystemExit`. If the new `--host` validation follows this file's own existing convention (`return 1`), a test asserting `pytest.raises(SystemExit)` around a direct `main(argv)` call will fail; the test must instead assert on the return value, or wrap the call as `pytest.raises(SystemExit): sys.exit(main(argv))`, or the new validation branch must call `sys.exit(...)`/`raise SystemExit(...)` explicitly, breaking this file's own two existing branches' convention. This is a concrete decision the implementer needs to make knowingly.
-- Existing `SessionHandle` test literals are built inline per test with no shared factory (`test_session_discovery.py:424-433`); `resolve_host`-consumer-swap tests instead use a shared `@pytest.fixture(autouse=True)` patching the dispatcher for the whole class (`test_subprocess_mocks.py:24-31`). These two conventions disagree on granularity (per-test literal vs. per-class fixture); neither uses a reusable builder function.
+| `lifecycle.py::_backfill_raw_events` | per-host branching on `HostLayout` callables | CHANGED | single `iter_events` loop; qwen rows now pre-normalized at rest |
+| `raw_events` dedup on `(source_path, line_no)` | real file line numbers for per-line hosts | PRESERVED | via `SessionEvent.line_no` (D1) |
+| `raw_events.raw_line` | verbatim source line for per-line hosts | CHANGED | re-serialized payload for all hosts (D6); JSON-equal |
+| `raw_events.session_id` | payload `sessionId` only | CHANGED | falls back to `handle.session_id` (D3) |
+| `writers.py::_iter_events` qwen replay normalization | unconditional via `HostLayout.normalize` | CHANGED | shape-keyed shim, idempotent (D2) |
+| gemini/omp ingest | file-level normalizer, enumeration `line_no`, re-serialized `raw_line` | PRESERVED | same normalizers behind `parse_gemini_session`/`parse_omp_session` |
+| `ll-session backfill --host codex` | notice + 0 sessions | CHANGED | discovery via `detect_sessions`, cwd-scoped (D4) |
+| `host_layout_for("kimi-code")` | generic default | CHANGED | real entry (D5) |
+| `cli/backfill_worker.py --host` | unvalidated | CHANGED | `return 1` on unknown host (D8) |
+| Public wrapper `jsonl_files=` callers | `list[Path]` | PRESERVED | widened internally (Option B) |
+| `hooks/session_start.py` worker argv | `<db> <path> [--rebuild] [--host H]` | PRESERVED | untouched |
 
 ## Implementation Steps
 
-1. Confirm ENH-3430 landed: `cli/logs.py` has no `HostLayout`/`host_layout_for` reference, `_has_ll_activity`/`_extract_cwd_from_project` are gone, and `_extract_ll_event_streams` already takes `handles`. (ENH-3420 phase 1 is `done`: `detect_sessions(cwd, h)` returns handles for every `h` in `get_project_folder`'s vocabulary.)
-2. ~~Add a direct unit test for `cli/logs.py::_extract_ll_event_streams` with a non-default `HostLayout`~~ — superseded: ENH-3430 removes the `layout` parameter and locks qwen recognition through `iter_events` in its own tests.
-3. Rewrite `_backfill_raw_events` to take handles; keep a `jsonl_files` compatibility path only if a test patches it directly.
-4. Retarget `_backfill_subagent_runs`, `_iter_events`, `cli/session.py`, `user_messages.py:497` (drift-corrected per 2026-09-10 finding; previously cited 446-448), and `cli/backfill_worker.py` (the `cli/logs.py` sites are ENH-3430's): this file has no argparse (hand-rolled `for i, arg in enumerate(args)` loop, lines 30-41), so add equivalent hand-rolled `--host` validation there instead of a `choices=` kwarg, matching `cli/session.py`'s `backfill_parser` `SystemExit` behavior.
-5. Delete `normalize`/`skip_at_ingest`/`normalize_file` from `HostLayout`; keep `normalize_qwen_record`/`normalize_gemini_session`/`normalize_omp_session` exported from `session_store/__init__.py` as thin compatibility wrappers over the ENH-3420 `parse_*` functions for one release — the codebase's bare-rebind alias pattern (`git_operations.py:354-355`, `config/core.py:1132-1133`, `cli/verify_triggers.py:169-170`) doesn't transfer here since `normalize`/`normalize_file` (`dict -> dict | None` / `Path -> Iterator[dict]`) and their `parse_*` replacements (`Path -> Iterator[SessionEvent]`) don't share a signature.
-6. Drop the `cli/session.py:702` notice; verify `ll-session backfill --host codex` against `scripts/tests/fixtures/codex/` with `home=tmp_path`.
-7. Docs: `docs/ARCHITECTURE.md` seam note (one seam, two halves), `docs/reference/API.md`, `docs/reference/CLI.md` backfill flags table.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- ~~Resolve the Path→SessionHandle boundary before implementing Step 3~~ — resolved 2026-09-09 via `/ll:decide-issue`: Option B selected (public wrappers keep `list[Path]`, synthesize `SessionHandle` internally) — see `## Proposed Solution` → `### Decision Rationale`.
-- Delete or rewrite `test_ll_session.py::TestBackfill::test_backfill_host_codex_prints_enh_3420_notice` in the same change that removes the `cli/session.py:702` notice — it currently asserts on the exact string being deleted and will fail otherwise.
-- Write a qwen double-normalization regression test: insert an already-Claude-shaped `raw_events` row with `host="qwen"`, run `rebuild()`, and assert `tool_events`/`usage_events`/`message_events`/`assistant_messages`/`prompt_opt_events`/`skill_events` all populate correctly — not just a `raw_events` row count.
-- Add positive-path qwen-rebuild assertions for `usage_events` and `skill_events` (currently zero-count-only) and at least one for `prompt_opt_events` (currently untested for qwen).
-- Add a `_backfill_raw_events(handles: list[SessionHandle], ...)` unit test constructing literal `SessionHandle`s directly (no existing fixture builder does this).
-- Add a `cli/backfill_worker.py` test passing an unrecognized `--host` value once Step 4's hand-rolled validation lands, asserting the resulting `SystemExit`/non-zero exit.
-- Update `docs/reference/HOST_COMPATIBILITY.md`'s four host-normalizer footnotes (`[^kimiwire]`, `[^qwenwire]`, `[^geminiwire]`, `[^ompwire]`) and `docs/reference/API.md` lines 9533/9539/9541, alongside the already-cited doc ranges.
-- ~~Coordinate parameter shape with ENH-3419 before implementing~~ — resolved 2026-09-09: ENH-3430 lands first (now this issue's `blocked_by`) and owns `_extract_ll_event_streams(handles: list[SessionHandle], *, cutoff, until)`; this issue does not touch `cli/logs.py`.
-- Include `_backfill_sessions()` (`lifecycle.py:708-736`) in the same verification pass as the six `writers.py::_backfill_*` functions against the qwen-normalize-removal fix at `writers.py:3284` — it is a seventh cursor-replay consumer, called first inside `rebuild()`; existing per-host tests (`test_enh_3166_qwen_normalizer.py:441-454`, `test_enh_3393_gemini_normalizer.py:294-305`, `test_enh_omp_normalizer.py:268-279`) already cover it, so this is a verification/documentation step, not new-test work.
-- Fix the nine `HostLayout` attribute-access assertions that raise `AttributeError` once `normalize`/`normalize_file`/`skip_at_ingest` are deleted: `test_enh_3166_qwen_normalizer.py:218-219,227-228`, `test_enh_3393_gemini_normalizer.py:128-129,132,136`, `test_enh_omp_normalizer.py:138-139,142,148-149` — none are `HostLayout(...)` constructor calls, so they fall outside this issue's own "pass unmodified except for constructor calls" claim (see Acceptance Criteria marker).
-- Update the three `sessions.py` comments/docstring that name "ENH-3422" by number and go stale once this issue lands: lines 19-20, 279-282, 412-414.
-- Update `docs/reference/API.md:9566,9581,9584` and `docs/reference/HOST_COMPATIBILITY.md:568,633` alongside the already-cited doc ranges.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
-
-- Step 1's precondition — ENH-3430 landed and its `cli/logs.py`-clean gate — is confirmed satisfied by this pass (see Current Behavior → Codebase Research Findings): `grep -n "HostLayout\|host_layout_for\|get_project_folder" scripts/little_loops/cli/logs.py` returns zero hits, `_has_ll_activity`/`_extract_cwd_from_project` are gone, `_extract_ll_event_streams` already takes `handles`. Step 1's own check needs no further verification at implementation time.
+1. `sessions.py`: add `SessionEvent.line_no`; populate in all six parsers; add `session_id_for` and `handles_from_paths`; route `_detect_layout_sessions` through `session_id_for`. Tests D1, D3.
+2. `qwen.py`: add `is_raw_qwen_record`. `writers.py::_iter_events`: replace the `HostLayout.normalize` block with the shape-keyed qwen shim. Test D2 (mixed-DB rebuild, run twice).
+3. `lifecycle.py`: rewrite `_backfill_raw_events` onto handles; add `handles=` to the three wrappers with `handles_from_paths` widening and the both-given `ValueError`; move the `since_ts` filter onto `handle.updated_at`. Direct-handle unit test; wrapper contract test; run the full existing wrapper-caller test list.
+4. `writers.py`: delete the three `HostLayout` fields and their `host_layout_for` kwargs; add the kimi-code entry; delete `_KIMI_WIRE_GLOB` and the kimi special case in `sessions.py`. `qwen.py`: delete `qwen_skip_at_ingest`; fix `__init__.py` and the nine attribute assertions. Invert the kimi test. Test D5.
+5. `cli/session.py`: codex branch via `detect_sessions` + `handles=` for both paths; delete the notice; both glob sites → `session_glob`. Rewrite the notice test; add the D4 fixture test.
+6. `cli/backfill_worker.py`: `--host` validation against `REGISTERED_HOSTS`, `return 1`. Test D8.
+7. Docs per `### Documentation`; update the three `sessions.py` ENH-3422 comments and the `schema.py` comment (D6).
+8. Gate: `python -m pytest scripts/tests/`, `ruff check scripts/`, `python -m mypy scripts/little_loops/`; `grep -rn "normalize_file\|skip_at_ingest\|layout\.normalize\|_KIMI_WIRE_GLOB" scripts/little_loops` returns nothing.
 
 ## Impact
 
-- **Priority**: P3 — debt; Codex data in history.db is not yet required by a goal 6/7 consumer (FEAT-3418's workspace totals read history.db but only for hosts already ingested).
+- **Priority**: P3 — debt, but D1/D2 protect existing `history.db` contents.
 - **Effort**: Medium.
-- **Risk**: Medium — `_backfill_raw_events` feeds history.db, which `ll-ctx-stats` and `ll-history` aggregate over.
-- **Breaking Change**: No (aliases kept one release).
+- **Risk**: Medium — `raw_events` feeds `ll-ctx-stats`, `ll-history`, FEAT-3418. D1 and D2 are the mitigations; do not ship without them.
+- **Breaking Change**: No public API removed; `HostLayout` loses three fields and `qwen_skip_at_ingest` is deleted (no production importers).
 
 ## Scope Boundaries
 
-- **In scope**: the `_backfill_raw_events` signature change and its callers (`cli/session.py` backfill subcommand 664-718, `cli/backfill_worker.py:57-60`, `hooks/session_start.py:162-178` argv); dropping the `backfill --host codex` notice; retargeting `_backfill_subagent_runs`, `_iter_events`; deleting `HostLayout.normalize`/`normalize_file`; the `docs/reference/CLI.md` `backfill` `--host` choices enumeration; `docs/reference/API.md:3573,9502-9505`.
-- **Out of scope**: registering hosts in `detect_sessions` (ENH-3420 phase 1); ENH-3430's CLI rewiring, including every `cli/logs.py` change (`_has_ll_activity`/`_extract_cwd_from_project` deletion, `_extract_ll_event_streams` on handles); the `transcript_path`-driven raw readers (`hooks/session_start.py:150-161`, `cli/backfill_worker.py:52-53`, `hooks/pre_compact.py:108-120`, `hooks/scripts/context-monitor.sh`).
+- **In scope**: everything under `### Files to Modify`; D1–D8; kimi-code `HostLayout` entry; the codex CLI discovery path; docs listed.
+- **Out of scope**: a codex or kimi normalizer to Claude shape (codex/kimi stay ingest-only); `cli/logs.py` (ENH-3430, done); `transcript_path`-driven raw readers (`hooks/session_start.py:150-161`, `hooks/pre_compact.py:108-120`, `hooks/scripts/context-monitor.sh`); any `raw_events` schema change or version bump; a one-shot migration of legacy qwen rows (D2's shim makes it unnecessary).
 
 ## Acceptance Criteria
 
-- `ll-session backfill --host codex` ingests both FEAT-3417 Codex fixtures into `raw_events` with `host = "codex"`; the ENH-3420 notice is gone.
-- `_backfill_raw_events` takes `list[SessionHandle]` and calls `iter_events`; no production code reads `HostLayout.normalize`/`normalize_file`.
-- `test_ll_session.py`, the three per-host normalizer tests, and `test_enh_2505_subagent_runs.py` pass unmodified except for `HostLayout(...)` constructor calls **and** direct attribute-access assertions on `.normalize`/`.normalize_file`/`.skip_at_ingest` that named the retired fields — including the nine `TestHostLayoutRegistry*` assertions in `test_enh_3166_qwen_normalizer.py:218-219,227-228`, `test_enh_3393_gemini_normalizer.py:128-129,132,136`, and `test_enh_omp_normalizer.py:138-139,142,148-149` (per Tests wiring-pass finding).
-- `cli/backfill_worker.py` rejects an unknown `--host` with `SystemExit` like `cli/session.py`'s `backfill_parser`.
+- `_backfill_raw_events` takes handles and calls `iter_events`; no production code reads `HostLayout.normalize`/`normalize_file`/`skip_at_ingest`; `qwen_skip_at_ingest` and `_KIMI_WIRE_GLOB` are gone.
+- **D1**: a file containing a blank line and a malformed line ingests with real file line numbers; re-ingesting it inserts zero new rows (claude-code and qwen).
+- **D2**: a DB holding one raw and one pre-normalized qwen row rebuilds both into the derived tables, and a second `rebuild()` yields identical counts.
+- **D3**: codex and kimi rows carry a non-null `session_id` matching what `detect_sessions` reports for the same file; `_backfill_sessions` seeds them.
+- **D4**: `ll-session backfill --host codex` ingests both `scripts/tests/fixtures/codex/` rollouts (placed under a `tmp_path` codex home) with `host = "codex"` and envelope `event_type`; the ENH-3420 notice and its test are gone.
+- **D5**: `host_layout_for("kimi-code").session_glob` is the wire glob; the kimi discovery test passes without the module-level special case.
+- **D6**: `raw_line` equals `parsed_json` (JSON-equal to the parser payload) for every host; schema comment and docstrings no longer say "verbatim".
+- **D8**: `backfill_worker.main([... , "--host", "bogus"])` returns 1 with a stderr message; the hook's argv shape is unchanged.
+- Existing wrapper callers with `jsonl_files=` pass unmodified; the three per-host normalizer test files and `test_enh_2505_subagent_runs.py` pass with only the attribute-assertion and `skip_at_ingest` deletions listed under `### Tests`.
+- Full local gate (`python -m pytest scripts/tests/`, ruff, mypy) is green.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/reference/API.md` — session discovery / `raw_events` rebuild narrative
+- `docs/reference/HOST_COMPATIBILITY.md` — per-host wire-format footnotes
+- `docs/ARCHITECTURE.md` — session-store seam
 
 ## Status
 
-**Open** | Created: 2026-09-09 | Priority: P3
-
+**Open** | Created: 2026-09-09 | Priority: P3 | Rewritten: 2026-09-10
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-09_
-
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
-**Outcome Confidence**: 37/100 → VERY LOW
-
-### Gaps to Address
-- Unresolved `blocked_by` dependency: **ENH-3419** is status `open`, not `done`/`cancelled` — this issue's `blocked_by` frontmatter names it as a hard prerequisite (it owns the `cli/logs.py` half of the seam and removes `_has_ll_activity`/`_extract_cwd_from_project`). Per BUG-3051's Dependencies Hard Override, this forces `STOP — ADDRESS GAPS` regardless of the otherwise-passing 80/100 aggregate. Wait for/prioritize ENH-3419, or remove the dependency if it no longer applies.
-
-### Outcome Risk Factors
-- Very wide, non-uniform change surface (Criterion D = 0/25, 11+ dependents): `lifecycle.py` (3 public wrappers + `_backfill_sessions`), `writers.py` (`HostLayout`, `_iter_events`, 6 `_backfill_*` functions, `host_layout_for`), `cli/session.py`, `cli/backfill_worker.py`, `user_messages.py`, `sessions.py`, 3 separate `__init__.py` re-export blocks, ~30 test call sites, and 3 doc files — each site needs different retargeting logic, not a mechanical sweep.
-- `unapplied_decision` gap from `format-check`: Proposed Solution/Program Design sections still name `backfill()`, `backfill_incremental()`, `backfill_raw_events()`, `detect_sessions()` — Option A's discriminating identifiers — unmarked alongside the Option B decision record. Caps Criterion C (Ambiguity) at 10/25; worth a pass to confirm these are the retained function names, not leftover Option A language.
-- qwen idempotency landmine carried over from ENH-3420: `writers.py::_iter_events`'s cursor-replay path must stop re-normalizing pre-normalized qwen rows in the same change as the write-path swap, or rows silently vanish on rebuild — easy to miss since it's a separate file/path from the write-side change.
+_The 2026-09-09 `/ll:confidence-check` (readiness 80, outcome 37) predates the
+2026-09-10 rewrite; its blocking gap (ENH-3419 open) is resolved (ENH-3430 is
+done) and its "unapplied decision" and "qwen landmine" risk factors are addressed
+by the amended Option B and D2. Re-run `/ll:confidence-check` before implementing._
 
 ## Session Log
+- `review (manual: consolidated rewrite; folded in D1–D8 — SessionEvent.line_no, legacy-qwen replay shim, session_id fallback + handles_from_paths/session_id_for, handles= on wrappers + detect_sessions for codex, kimi HostLayout entry, raw_line non-verbatim, no compat wrappers + delete qwen_skip_at_ingest, worker return-1 validation)` - 2026-09-10T15:30:00
 - `/ll:reconcile-issue` - 2026-09-10T14:36:37 - `aa91b0ac-cc46-43a1-808f-2a072895521c.jsonl`
 - `/ll:refine-issue` - 2026-09-10T06:29:07 - `3676ef66-ff64-449a-a773-2f0386e3eedc.jsonl`
 - `/ll:refine-issue` - 2026-09-10T04:51:50 - `706ab49f-e7ae-457a-9ac3-1d50e1081cd8.jsonl`
