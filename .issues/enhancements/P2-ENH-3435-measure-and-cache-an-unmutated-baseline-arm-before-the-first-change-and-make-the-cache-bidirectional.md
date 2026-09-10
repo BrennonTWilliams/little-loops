@@ -1,5 +1,5 @@
 ---
-id: 3435
+id: ENH-3435
 title: Measure and cache an unmutated baseline arm before the first change, and make the cache bidirectional
 type: ENH
 priority: P2

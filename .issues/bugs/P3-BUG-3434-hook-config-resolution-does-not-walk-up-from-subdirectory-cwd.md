@@ -363,6 +363,7 @@ config = _load_config(cwd)
 ```
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T20:16:01 - `c7d048dd-d2da-4a91-bc50-3b4d5d2b6e1c.jsonl`
 - `/ll:wire-issue` - 2026-09-10T19:54:14 - `7febd81a-0c8b-40ff-bcac-1caebbdf68db.jsonl`
 - `/ll:refine-issue` - 2026-09-10T19:42:20 - `5cd3d4a5-9327-4e89-b2f9-8ae0356518ce.jsonl`
 - `/ll:format-issue` - 2026-09-10T19:37:03 - `87695830-9308-4502-b17f-1f94c56ad7d0.jsonl`
