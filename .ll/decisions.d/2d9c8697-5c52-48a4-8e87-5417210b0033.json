@@ -1,0 +1,11 @@
+{
+  "id": "9cbec8b4-b492-4b0c-9a34-014f0dc447b4",
+  "type": "decision",
+  "timestamp": "2026-09-10T23:35:10Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-console duplicates plugin-root resolution 3x; engine-side skills_list wrapping tool_catalog makes picker-catalog/classifier parity structural",
+  "rule": "Captured: Add skills_list read-only MCP tool exposing plugin-rooted catalog",
+  "scope": "issue",
+  "issue": "ENH-3444"
+}
