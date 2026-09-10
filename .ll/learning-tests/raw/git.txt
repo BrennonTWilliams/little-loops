@@ -1,6 +1,16 @@
-CLAIM6 clean_status_empty: '' 0
-CLAIM1_2 status_untracked: '?? untracked.txt\n'
-CLAIM7 diff_name_only: 'a.txt\n'
-CLAIM3 rev_parse_toplevel: '/private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.eXu6lBLQ3v/repo\n'
-CLAIM4 rev_parse_inside: 'true\n' 0
-CLAIM5 worktree_list: 'worktree /private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.eXu6lBLQ3v/repo\nHEAD f3e3d9521ff705f57cd1ec03e22d3e0e39c20b5a\nbranch refs/heads/main\n\n'
+git version: git version 2.52.0
+
+[PASS] porcelain v1 emits two-char XY code + space + path with no header
+    rc=0 stdout=' M tracked.txt\n?? untracked.txt\n'
+[PASS] an untracked file shows status code ?? in porcelain output
+    untracked lines=['?? untracked.txt']
+[PASS] rev-parse --show-toplevel prints the absolute repo root
+    rc=0 stdout='/private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmpaunpwsj9' expected='/private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmpaunpwsj9'
+[PASS] worktree list --porcelain emits blank-line-separated stanzas starting with worktree <path>
+    rc=0 stanzas=['worktree /private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmpaunpwsj9\nHEAD 63e1321b6f13af84ace69e9c2da0d2725edd454b\nbranch refs/heads/master']
+[PASS] diff --quiet exits 1 when dirty and 0 when clean, empty stdout both ways
+    dirty rc=1 clean rc=0 stdout=''/''
+[PASS] ls-files --others --exclude-standard lists untracked but omits gitignored files
+    rc=0 listed=['untracked.txt']
+[PASS] symbolic-ref --short HEAD succeeds on a branch, exits nonzero on detached HEAD
+    branch rc=0 name='master'; detached rc=128 stderr='fatal: ref HEAD is not a symbolic ref'
