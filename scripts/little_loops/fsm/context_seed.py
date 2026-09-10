@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from little_loops.fsm.schema import ParameterSpec
 
 
-def seed_parameter_defaults(context: dict[str, Any], parameters: dict[str, "ParameterSpec"]) -> None:
+def seed_parameter_defaults(context: dict[str, Any], parameters: dict[str, ParameterSpec]) -> None:
     """Seed ``parameters.<name>.default`` into context for unbound optional parameters (BUG-3425).
 
     Historically only the sub-loop ``with:`` binding branch in ``executor.py``

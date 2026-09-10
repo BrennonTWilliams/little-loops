@@ -537,9 +537,7 @@ class TestParameterValidation:
         spec = ParameterSpec(type="string", default=20)
         fsm = self._fsm_with_params({"steps": spec})
         errors = _validate_parameters(fsm)
-        assert any(
-            "default" in e.message and "expected string" in e.message for e in errors
-        )
+        assert any("default" in e.message and "expected string" in e.message for e in errors)
 
     def test_default_type_match_accepted(self) -> None:
         """A default matching its declared type produces no error."""
@@ -2307,9 +2305,7 @@ class TestScopesValidation:
 
     def test_scopes_on_prompt_state_fails_validation(self) -> None:
         """AC10(b): scopes: on an action_type: prompt state is a validate-time ERROR."""
-        state = StateConfig(
-            action="/ll:test", action_type="prompt", scopes=["github"], next="done"
-        )
+        state = StateConfig(action="/ll:test", action_type="prompt", scopes=["github"], next="done")
         errors = _validate_state_action("check", state)
         assert any("scopes" in e.message and "check" in e.message for e in errors)
 
@@ -2353,9 +2349,7 @@ class TestScopesValidation:
         shell-only rejection — the `if state.scopes:` truthy guard used to
         skip this check for `[]`, letting the executor write a misleading
         audit row for a grant the state never actually consults."""
-        state = StateConfig(
-            action="/ll:test", action_type="prompt", scopes=[], next="done"
-        )
+        state = StateConfig(action="/ll:test", action_type="prompt", scopes=[], next="done")
         errors = _validate_state_action("check", state)
         assert any("scopes" in e.message and "check" in e.message for e in errors)
 

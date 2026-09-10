@@ -1010,7 +1010,11 @@ class TestComputeCacheRateFromJsonl:
         self._write_jsonl(
             session,
             [
-                {"timestamp": "t", "type": "event_msg", "payload": {"type": "token_count", "info": None}},
+                {
+                    "timestamp": "t",
+                    "type": "event_msg",
+                    "payload": {"type": "token_count", "info": None},
+                },
                 {
                     "timestamp": "t",
                     "type": "event_msg",

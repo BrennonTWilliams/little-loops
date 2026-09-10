@@ -17,7 +17,6 @@ from typing import Any
 import yaml
 
 from little_loops.fsm.evaluators import _NUMERIC_OPERATORS
-from little_loops.host_runner import CREDENTIAL_SCOPES
 from little_loops.fsm.fragments import resolve_flow, resolve_fragments, resolve_inheritance
 from little_loops.fsm.loop_paths import resolve_loop_path
 from little_loops.fsm.schema import (
@@ -72,6 +71,7 @@ from little_loops.fsm.validation.shell_safety import (
     _validate_overescaped_shell,
     _validate_unsafe_context_interpolation,
 )
+from little_loops.host_runner import CREDENTIAL_SCOPES
 
 logger = logging.getLogger(__name__)
 
