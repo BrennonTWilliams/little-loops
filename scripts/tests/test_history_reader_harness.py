@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from little_loops.history_reader import (
@@ -469,3 +470,193 @@ class TestAdmissionsByReason:
 
         result = admissions_by_reason(db, [att1, att2])
         assert result == {"timeout": 1, "network": 1}
+
+
+class TestBaselineFor:
+    """ENH-3435: baseline_for() — the unmutated-arm reader over harness_events."""
+
+    @staticmethod
+    def _seed(
+        db: Path,
+        *,
+        conditions_fp: str,
+        content_hash: str = "c0",
+        input_hash: str = "",
+        head_sha: str = "sha0",
+        passed: bool = True,
+        ts: str = "2026-09-10T00:00:00Z",
+    ) -> int:
+        cell = json.dumps(["skill", "my-skill", head_sha], separators=(",", ":"))
+        return record_attempt(
+            db,
+            cell_key=cell,
+            attempt_kind="repetition",
+            ts=ts,
+            runner="skill",
+            target="my-skill",
+            exit_code=0,
+            semantic_verdict="yes" if passed else "no",
+            semantic_passed=passed,
+            timed_out=False,
+            duration_ms=5,
+            head_sha=head_sha,
+            target_content_hash=content_hash,
+            input_hash=input_hash,
+            conditions_fp=conditions_fp,
+        )
+
+    @staticmethod
+    def _conditions(n: int, conditions_fp: str):
+        from little_loops.history_reader.harness import BaselineConditions
+
+        return BaselineConditions(
+            n=n,
+            conditions_fp=conditions_fp,
+            semantic_prompt=None,
+            semantic_model=None,
+            subject_model=None,
+            timeout_s=120,
+            host_cli="claude-code",
+        )
+
+    def test_returns_most_recent_n_matching_rows(self, tmp_path: Path) -> None:
+        from little_loops.history_reader.harness import baseline_for
+
+        db = tmp_path / "history.db"
+        ids = [
+            self._seed(db, conditions_fp="fp0", ts=f"2026-09-10T00:00:{i:02d}Z") for i in range(5)
+        ]
+
+        result = baseline_for(
+            db,
+            runner="skill",
+            target="my-skill",
+            input_hash="",
+            target_content_hash="c0",
+            conditions=self._conditions(3, "fp0"),
+        )
+        assert result is not None
+        # Most recent n of the 5 matching rows — not all of them.
+        assert result.attempt_ids == ids[2:]
+        assert result.tally.requested == 3
+        assert result.tally.graded == 3
+        assert result.tally.passed == 3
+        assert result.head_sha == "sha0"
+        assert result.source == "reused"
+
+    def test_ignores_head_sha_and_cell_key(self, tmp_path: Path) -> None:
+        """AC4: head_sha is provenance, not a match key — rows at a moved HEAD match."""
+        from little_loops.history_reader.harness import baseline_for
+
+        db = tmp_path / "history.db"
+        ids = [
+            self._seed(db, conditions_fp="fp0", head_sha=f"sha{i}", ts=f"2026-09-10T00:00:{i:02d}Z")
+            for i in range(3)
+        ]
+
+        result = baseline_for(
+            db,
+            runner="skill",
+            target="my-skill",
+            input_hash="",
+            target_content_hash="c0",
+            conditions=self._conditions(3, "fp0"),
+        )
+        assert result is not None
+        assert result.attempt_ids == ids
+
+    def test_fewer_than_n_rows_returns_none(self, tmp_path: Path) -> None:
+        from little_loops.history_reader.harness import baseline_for
+
+        db = tmp_path / "history.db"
+        for i in range(2):
+            self._seed(db, conditions_fp="fp0", ts=f"2026-09-10T00:00:{i:02d}Z")
+
+        assert (
+            baseline_for(
+                db,
+                runner="skill",
+                target="my-skill",
+                input_hash="",
+                target_content_hash="c0",
+                conditions=self._conditions(3, "fp0"),
+            )
+            is None
+        )
+
+    def test_zero_graded_rows_returns_none(self, tmp_path: Path) -> None:
+        from little_loops.history_reader.harness import baseline_for
+
+        db = tmp_path / "history.db"
+        for i in range(3):
+            self._seed(db, conditions_fp="fp0", passed=False, ts=f"2026-09-10T00:00:{i:02d}Z")
+        # passed=False rows are graded (fail), so re-seed as abstained instead:
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute(
+                "UPDATE harness_events SET semantic_passed = NULL, semantic_verdict = 'cannot_judge'"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        assert (
+            baseline_for(
+                db,
+                runner="skill",
+                target="my-skill",
+                input_hash="",
+                target_content_hash="c0",
+                conditions=self._conditions(3, "fp0"),
+            )
+            is None
+        )
+
+    def test_conditions_fp_mismatch_returns_none(self, tmp_path: Path) -> None:
+        from little_loops.history_reader.harness import baseline_for
+
+        db = tmp_path / "history.db"
+        for i in range(3):
+            self._seed(db, conditions_fp="fp0", ts=f"2026-09-10T00:00:{i:02d}Z")
+
+        assert (
+            baseline_for(
+                db,
+                runner="skill",
+                target="my-skill",
+                input_hash="",
+                target_content_hash="c0",
+                conditions=self._conditions(3, "fp-different"),
+            )
+            is None
+        )
+
+    def test_content_or_input_mismatch_returns_none(self, tmp_path: Path) -> None:
+        from little_loops.history_reader.harness import baseline_for
+
+        db = tmp_path / "history.db"
+        for _ in range(3):
+            self._seed(db, conditions_fp="fp0", content_hash="c0", input_hash="i0")
+
+        assert (
+            baseline_for(
+                db,
+                runner="skill",
+                target="my-skill",
+                input_hash="i0",
+                target_content_hash="cX",
+                conditions=self._conditions(3, "fp0"),
+            )
+            is None
+        )
+        assert (
+            baseline_for(
+                db,
+                runner="skill",
+                target="my-skill",
+                input_hash="iX",
+                target_content_hash="c0",
+                conditions=self._conditions(3, "fp0"),
+            )
+            is None
+        )

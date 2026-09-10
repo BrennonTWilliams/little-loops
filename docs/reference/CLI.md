@@ -234,6 +234,9 @@ Runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Clau
 | `--verbose` | Show full captured output even on PASS |
 | `--retry-of ID` | Mark this run as a retry of attempt `ID` (`harness_events.id`); see "Retrying a run" below (ENH-3407) |
 | `--samples N` | Run the subject N times and grade a pass-rate instead of one pass/fail (ENH-3415). Default: 3 for the stochastic `skill`/`prompt` runners (an LLM host CLI drives the subject), 1 for the deterministic `cmd`/`mcp` runners. An explicit value overrides in either direction and scales wall time / `--timeout` budget by N. Forced to 1 when `--retry-of` is given without an explicit `--samples` (a retry supersedes exactly one attempt); refused with exit 1 on the `dsl` runner (see its row below) and when combined with an explicit `--samples` > 1 alongside `--retry-of`. |
+| `--measure-baseline` | Run the effective N repetitions on the subject as it exists on disk and record them as the baseline for that content (ENH-3435). A full, condition-matched baseline is reused without re-running the subject. The exit code follows the normal banding — a 0/N baseline exits 1 and is still recorded. Refused (exit 2) on `dsl`, combined with `--compare-baseline` or `--retry-of`. |
+| `--compare-baseline` | Run N repetitions on the (mutated) subject and report a delta against the measured baseline for the incumbent content (ENH-3435). Refuses with exit 2 **before any invocation** when no condition-matched baseline exists — it never compares against a remembered number and never re-measures. `skill` resolves the incumbent from the HEAD blob of the target file (and refuses an unmutated subject); `prompt`/`cmd`/`mcp` require `--baseline-of`. Also refused (exit 2) at effective N=1. |
+| `--baseline-of ID` | Attempt id (`harness_events.id`) whose `(runner, target, input, content)` names the baseline to compare against (ENH-3435). Required for `--compare-baseline` on `prompt`/`cmd`/`mcp`; an explicit override of the HEAD resolution on `skill`. Refused (exit 2) when the attempt is missing, predates baseline support, or was measured on a different input than the current invocation. |
 
 **mcp-specific flag:**
 `--args JSON` — JSON arguments forwarded to the MCP tool (default: `{}`).
@@ -242,7 +245,7 @@ Runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Clau
 `--model MODEL` — Override the Claude model used for the prompt (e.g. `claude-haiku-4-5-20251001`). Omit to use the host session default.
 
 **dsl-specific flag:**
-`--model MODEL` — Override the Claude model for all task invocations. Run `ll-harness dsl` once per model to compare pass rates across models. `dsl` already resamples across its own task set, so it refuses an explicit `--samples` > 1 (ENH-3415) rather than resampling each task on top of that.
+`--model MODEL` — Override the Claude model for all task invocations. Run `ll-harness dsl` once per model to compare pass rates across models. `dsl` already resamples across its own task set, so it refuses an explicit `--samples` > 1 (ENH-3415) rather than resampling each task on top of that. A DSL baseline arm is a task-set-breadth question rather than a repetition-depth one, so `dsl` also refuses `--measure-baseline`/`--compare-baseline` (exit 2, ENH-3435); a follow-up issue defines the DSL baseline arm.
 
 `dsl` grades each task against its own `expected:` mapping when the task declares one (a
 structured `json`-fenced answer contract is appended to the prompt and compared key-by-key,
@@ -269,6 +272,18 @@ always present: `runner`, `exit_code`, `exit_code_check`, `semantic`, `result`, 
 | `history_admissions` | ≥1 admitted infra retry (ENH-3407) belongs to the counted population — a `{reason: count}` map, e.g. `{"timeout": 2}` (ENH-3408) |
 | `history_since` | Either history field above is present — the ISO 8601 window start |
 
+**Measured baseline (ENH-3435):** with `--measure-baseline` or `--compare-baseline` set, the
+n-sample payload additionally carries a `baseline` object: `source` (`measured`/`reused`), `n`,
+`conditions` (`semantic_prompt`/`semantic_model`/`subject_model`/`timeout_s`/`host_cli` as
+readable provenance), `conditions_fp` (the sha256 condition-match key), `head_sha`,
+`head_sha_differs`, `attempt_ids` (the rows the baseline was derived from), `notes`
+(`subject model not pinned`, `measured on a dirty tree`), `baseline_pass_rate`, and
+`baseline_ci` (Wilson 95% CI). A compare payload adds `delta` (candidate pass rate − baseline
+pass rate, `null` when the candidate arm has zero graded samples), `candidate_pass_rate`, and
+`candidate_ci` — a delta is never a banded verdict; the run's exit code still comes from the
+candidate tally's banding alone. Baseline refusals (no/partial/mismatched baseline, `n` < 2,
+flag combinations, unmutated subject) exit 2 before any subject invocation.
+
 **N-sample redundancy (ENH-3415):** when the effective sample count (`--samples`, or the
 runner's default) is > 1, the shape above does not apply. There is no top-level `exit_code`/
 `stdout`/`stderr` — a per-sample result has no single honest value to report there. Instead
@@ -290,7 +305,8 @@ classification and the operating-characteristic tradeoff of raising/lowering N.
 The `history_*` fields are **target-scoped, not criterion-scoped**: they answer "how often is
 this target abstained on / does this target pass", pooled across every `--semantic` string
 ever run against it, not "how often does this specific criterion abstain" (`semantic_prompt`,
-the column that would allow criterion attribution, is not written by any caller today). They
+the column that would allow criterion attribution, is only written on the baseline paths —
+ENH-3435 — so historical rows pre-dating those flags still pool across criteria). They
 are read before this run's own `harness_events` row is written, so they never include the
 current run, and they are omitted entirely (not zero/null) below the 3-run noise floor. Not
 read for the DSL per-task path.

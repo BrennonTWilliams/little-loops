@@ -25,11 +25,15 @@ from little_loops.history_reader._base import (
 )
 
 __all__ = [
+    "BaselineConditions",
+    "BaselineKey",
+    "BaselineResult",
     "HarnessEvent",
     "HighConfidenceAbstention",
     "admissions_by_reason",
     "authoritative_attempt",
     "authoritative_attempts",
+    "baseline_for",
     "check_high_confidence_abstention",
     "harness_event_by_id",
     "harness_eval_abstention_rate",
@@ -85,6 +89,13 @@ class HarnessEvent:
     attempt_kind: str | None = None
     continuations: int | None = None
     superseded_by: int | None = None
+    # ENH-3435 v50 baseline-condition columns (trailing-default, same pattern
+    # as the v49 run-model columns above).
+    timeout_s: int | None = None
+    host_cli: str | None = None
+    subject_model: str | None = None
+    input_hash: str | None = None
+    conditions_fp: str | None = None
 
 
 _HARNESS_EVENT_COLUMNS = (
@@ -92,7 +103,8 @@ _HARNESS_EVENT_COLUMNS = (
     "duration_ms, head_sha, branch, parent_id, semantic_prompt, semantic_confidence, "
     "semantic_reason, semantic_evidence, semantic_model, "
     "target_content_hash, target_path, dirty, "
-    "cell_key, repetition, attempt_kind, continuations, superseded_by"
+    "cell_key, repetition, attempt_kind, continuations, superseded_by, "
+    "timeout_s, host_cli, subject_model, input_hash, conditions_fp"
 )
 
 
@@ -215,6 +227,169 @@ def authoritative_attempts(db_path: Path | str, cell_key: str) -> list[HarnessEv
         seen.add(repetition)
         result.append(_row_to_dataclass(row, HarnessEvent))
     return result
+
+
+# ---------------------------------------------------------------------------
+# ENH-3435: the unmutated-arm baseline reader. A baseline *is* the set of
+# authoritative harness_events rows for one content identity under matching
+# conditions — there is no second store (issue Program Design, Option A).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BaselineKey:
+    """The baseline match key: what was measured, not when or where.
+
+    ``(runner, target, input_hash, target_content_hash)`` — deliberately
+    **without** ``head_sha`` (provenance only) and without ``cell_key`` (both
+    arms of a compare share it). ``input_hash`` is ``""`` for runners whose
+    target *is* the input (``cmd``/``prompt``); a canonical hash of
+    ``runner_args`` for ``skill`` and of the ``--args`` JSON for ``mcp``.
+    """
+
+    runner: str
+    target: str
+    input_hash: str
+    target_content_hash: str
+
+
+@dataclass(frozen=True)
+class BaselineConditions:
+    """Conditions a baseline must have been measured under (ENH-3435).
+
+    The readable fields are provenance and post-hoc query surface; exact
+    matching runs through ``conditions_fp`` alone (never NULL on
+    baseline-eligible rows, so pre-migration rows are excluded by
+    construction and no NULL-vs-NULL vacuous match exists). ``n`` is a
+    threshold, not a matched field — rows don't carry n, so reuse requires
+    at least n matching rows and uses the most recent n.
+    """
+
+    n: int
+    conditions_fp: str
+    semantic_prompt: str | None = None
+    semantic_model: str | None = None
+    subject_model: str | None = None
+    timeout_s: int | None = None
+    host_cli: str | None = None
+
+
+@dataclass
+class BaselineResult:
+    """One resolved baseline: n authoritative rows, tallied (ENH-3435).
+
+    ``source`` is read-side provenance set by the caller/reader — a stored
+    row always describes a measurement, so it is never persisted.
+    ``subject_model``/``dirty_rows`` come from the rows themselves and drive
+    the ``subject model not pinned`` / ``measured on a dirty tree`` honesty
+    notes on the reported delta.
+    """
+
+    key: BaselineKey
+    conditions: BaselineConditions
+    tally: Any  # cli.harness.SampleTally — deferred type to avoid a cycle
+    attempt_ids: list[int]
+    head_sha: str | None
+    measured_at: str
+    subject_model: str | None = None
+    dirty_rows: bool = False
+    source: str = "reused"
+
+
+def _rc_from_event(event: HarnessEvent) -> int:
+    """Reconstruct one row's `_grade()` exit code (ENH-3435).
+
+    Mirrors the run-time banding: timeout or a missing process exit code is
+    an infra error (2); a judge abstention (NULL ``semantic_passed`` with a
+    verdict) is 3; otherwise ``semantic_passed`` decides pass (0) / fail (1).
+    """
+    if event.timed_out:
+        return 2
+    if event.exit_code is None:
+        return 2
+    if event.semantic_passed is None:
+        return 3 if event.semantic_verdict is not None else 2
+    return 0 if event.semantic_passed else 1
+
+
+def baseline_for(
+    db_path: Path | str,
+    *,
+    runner: str,
+    target: str,
+    input_hash: str,
+    target_content_hash: str,
+    conditions: BaselineConditions,
+) -> BaselineResult | None:
+    """Return the baseline for one content identity under matching conditions, or None.
+
+    ENH-3435. Filters on ``(runner, target, input_hash, target_content_hash,
+    conditions_fp)`` — **not** ``cell_key`` (both arms of a compare share it)
+    and **not** ``head_sha`` (after a loop commits an accepted candidate, a
+    head-keyed lookup would miss the candidate rows just written and re-pay
+    them). Authoritative rows only. Returns None when fewer than ``n`` rows
+    match (partial) or none of them is graded (no rate can be computed); more
+    than n matching rows reuse the most recent n.
+    """
+    conn = _connect_readonly(Path(db_path))
+    if conn is None:
+        return None
+    try:
+        sql = (
+            f"SELECT {_HARNESS_EVENT_COLUMNS} FROM harness_events "
+            f"WHERE runner = ? AND target = ? AND input_hash = ? "
+            f"AND target_content_hash = ? AND conditions_fp = ? "
+            f"AND {_AUTHORITATIVE_PREDICATE} "
+            "ORDER BY id DESC LIMIT ?"
+        )
+        rows = conn.execute(
+            sql,
+            (
+                runner,
+                target,
+                input_hash,
+                target_content_hash,
+                conditions.conditions_fp,
+                conditions.n,
+            ),
+        ).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: baseline_for query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if len(rows) < conditions.n:
+        return None
+    events = [_row_to_dataclass(row, HarnessEvent) for row in reversed(rows)]
+
+    # Deferred import: little_loops.cli.harness imports this module at load
+    # time, so importing SampleTally at module scope here would be circular.
+    from little_loops.cli.harness import SampleTally
+    from little_loops.stats import wilson_ci
+
+    tally = SampleTally(requested=conditions.n)
+    for event in events:
+        tally.record(_rc_from_event(event))
+    if tally.graded == 0:
+        return None
+    if tally.passed > 0 or tally.graded > 0:
+        tally.ci_lo, tally.ci_hi = wilson_ci(tally.passed, tally.graded)
+    return BaselineResult(
+        key=BaselineKey(
+            runner=runner,
+            target=target,
+            input_hash=input_hash,
+            target_content_hash=target_content_hash,
+        ),
+        conditions=conditions,
+        tally=tally,
+        attempt_ids=[e.id for e in events if e.id is not None],
+        head_sha=events[-1].head_sha,
+        measured_at=events[-1].ts,
+        subject_model=next((e.subject_model for e in events if e.subject_model), None),
+        dirty_rows=any(e.dirty for e in events),
+        source="reused",
+    )
 
 
 def harness_eval_pass_rate(

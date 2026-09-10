@@ -2693,3 +2693,916 @@ class TestTargetHistoryRegression:
         # future refactor moved the write above the read, this would become 4.
         assert data["history_judged_runs"] == 3
         assert data["history_abstention_rate"] == 1.0
+
+
+# ---------------------------------------------------------------------------
+# ENH-3435: baseline arm (--measure-baseline / --compare-baseline / --baseline-of)
+# ---------------------------------------------------------------------------
+
+
+def _harness_rows() -> list[dict[str, Any]]:
+    """Read every harness_events row from the test-isolated history DB, id order."""
+    import sqlite3
+
+    from little_loops.session_store import DEFAULT_DB_PATH, connect, resolve_history_db
+
+    conn = connect(resolve_history_db(DEFAULT_DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        return [dict(r) for r in conn.execute("SELECT * FROM harness_events ORDER BY id")]
+    finally:
+        conn.close()
+
+
+def _make_git_stub(
+    head: str = "sha0",
+    head_content: str | None = None,
+    toplevel: str = "/repo",
+):
+    """Patch target for _git_output: answers rev-parse/show for incumbent resolution."""
+
+    def _git(*args: str) -> str | None:
+        if args == ("rev-parse", "HEAD"):
+            return head
+        if args == ("rev-parse", "--show-toplevel"):
+            return toplevel
+        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
+            return "main"
+        if args[0] == "show" and len(args) > 1 and args[1].startswith("HEAD:"):
+            return head_content
+        return None
+
+    return _git
+
+
+def _seed_baseline_row(
+    *,
+    runner: str,
+    target: str,
+    content_hash: str,
+    input_hash: str | None = None,
+    conditions_fp: str,
+    passed: bool = True,
+    head_sha: str = "sha0",
+    ts: str = "2026-09-10T00:00:00Z",
+    subject_model: str | None = None,
+    dirty: int = 0,
+) -> int:
+    """Seed one baseline-eligible harness_events row post-hoc (AC5's record_attempt path).
+
+    ``input_hash`` defaults to the runner's empty-input value: skill hashes its
+    (empty) runner_args; prompt/cmd pin "" (the target is the input).
+    """
+    from little_loops.session_store import DEFAULT_DB_PATH, record_attempt
+
+    if input_hash is None:
+        input_hash = _input_hash_of([]) if runner == "skill" else ""
+
+    cell = json.dumps([runner, target, head_sha], separators=(",", ":"))
+    return record_attempt(
+        DEFAULT_DB_PATH,
+        cell_key=cell,
+        attempt_kind="repetition",
+        ts=ts,
+        runner=runner,
+        target=target,
+        exit_code=0,
+        semantic_verdict="yes" if passed else "no",
+        semantic_passed=passed,
+        timed_out=False,
+        duration_ms=5,
+        head_sha=head_sha,
+        branch="main",
+        target_content_hash=content_hash,
+        dirty=dirty,
+        input_hash=input_hash,
+        conditions_fp=conditions_fp,
+        timeout_s=120,
+        host_cli="claude-code",
+        subject_model=subject_model,
+    )
+
+
+def _baseline_fp(args: Any) -> str:
+    from little_loops.cli.harness import _conditions_fp
+
+    return _conditions_fp(args)
+
+
+class TestBaselineFlagRefusals:
+    """AC8: flag combinations, n=1 compare, dsl refusal — all exit 2."""
+
+    def test_measure_and_compare_together_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            measure_baseline=True,
+            compare_baseline=True,
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "cannot be combined" in capsys.readouterr().err
+
+    def test_measure_with_retry_of_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            measure_baseline=True,
+            retry_of=1,
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "--retry-of" in err
+
+    def test_compare_with_retry_of_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            compare_baseline=True,
+            baseline_of=1,
+            retry_of=1,
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+
+    def test_compare_at_effective_n1_refused(self, capsys: pytest.CaptureFixture) -> None:
+        """cmd defaults to n=1: a delta between two single runs is not a measurement."""
+        args = _make_namespace(runner="cmd", target="echo hi", compare_baseline=True, baseline_of=1)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_cmd(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "n >= 2" in capsys.readouterr().err
+
+    def test_prompt_compare_without_baseline_of_refused(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        args = _make_namespace(runner="prompt", target="hello", compare_baseline=True, samples=3)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_prompt(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "--baseline-of" in capsys.readouterr().err
+
+    def test_dsl_refuses_all_three_flags(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        task_file = tmp_path / "task.yaml"
+        task_file.write_text(
+            "prompt: hi\nblanks: []\nexpected: {}\nsource_dsl: loop\ntask_type: t\n"
+        )
+        for kwargs in (
+            {"measure_baseline": True},
+            {"compare_baseline": True},
+            {"compare_baseline": True, "baseline_of": 1},
+        ):
+            args = _make_namespace(runner="dsl", path=str(task_file), samples=1, **kwargs)
+            result = cmd_dsl(args)
+            assert result == 2
+            assert "not supported on the dsl runner" in capsys.readouterr().err
+
+    def test_baseline_of_no_such_attempt_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="prompt", target="hello", compare_baseline=True, baseline_of=4242, samples=3
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_prompt(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "--baseline-of 4242" in capsys.readouterr().err
+
+
+class TestBaselineMeasure:
+    """AC1: --measure-baseline records condition-complete rows, reuses, stays loud."""
+
+    @pytest.fixture(autouse=True)
+    def _stub_git(self) -> Any:
+        with (
+            patch("little_loops.cli.harness._git_output", return_value="sha0"),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+        ):
+            yield
+
+    def _skill_args(self, **kwargs: Any) -> Any:
+        return _make_namespace(
+            runner="skill", target="check-code", runner_args=[], measure_baseline=True, **kwargs
+        )
+
+    def test_measure_writes_condition_columns(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("# incumbent\n")
+        args = self._skill_args(samples=None)  # stochastic default n=3
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls),
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_file),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        rows = _harness_rows()
+        assert len(rows) == 3
+        for row in rows:
+            assert row["attempt_kind"] == "repetition"
+            assert row["input_hash"] is not None
+            assert row["conditions_fp"] == _baseline_fp(args)
+            assert row["conditions_fp"] != ""
+            assert row["timeout_s"] == 120
+            assert row["host_cli"] is not None
+        assert "Baseline: measured" in capsys.readouterr().out
+
+    def test_measure_records_semantic_and_subject_model(self, tmp_path: Path) -> None:
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        args = _make_namespace(
+            runner="prompt",
+            target="say hi",
+            measure_baseline=True,
+            samples=None,
+            semantic="is polite",
+            model="claude-haiku-4-5",
+        )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            cmd_prompt(args)
+
+        rows = _harness_rows()
+        assert len(rows) == 3
+        for row in rows:
+            assert row["semantic_prompt"] == "is polite"
+            assert row["semantic_model"] is not None
+            assert row["subject_model"] == "claude-haiku-4-5"
+
+    def test_measure_reuses_full_baseline_with_zero_runs(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("# incumbent\n")
+        args = self._skill_args(samples=3)
+        for i in range(3):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=_hash_of("# incumbent\n"),
+                conditions_fp=_baseline_fp(args),
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run") as mock_run,
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_file),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        mock_run.assert_not_called()
+        assert len(_harness_rows()) == 3  # nothing new written
+        out = capsys.readouterr().out
+        assert "Baseline: reused" in out
+
+    def test_zero_pass_baseline_exits_1_and_records(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("# incumbent\n")
+        args = self._skill_args(samples=3, exit_code=0)
+        calls = [_make_completed(returncode=1, stdout="bad") for _ in range(3)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls),
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_file),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 1  # FAIL band — a 0/3 baseline is information, not an error
+        assert len(_harness_rows()) == 3
+
+    def test_measure_write_failure_is_loud(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("# incumbent\n")
+        args = self._skill_args(samples=3)
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="ok")),
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_file),
+            patch("little_loops.cli.harness.record_attempt", side_effect=RuntimeError("boom")),
+        ):
+            result = cmd_skill(args)
+
+        assert result != 0
+        assert "boom" in capsys.readouterr().err
+
+    def test_measure_on_deterministic_runner_runs_once(self, tmp_path: Path) -> None:
+        args = _make_namespace(runner="cmd", target="echo hi", measure_baseline=True)
+        mock_proc = _make_selector_mock_process(returncode=0)
+        sel = _make_ready_selector()
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "little_loops.runner_spec.subprocess.Popen", return_value=mock_proc
+            ) as mock_popen,
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
+            result = cmd_cmd(args)
+        assert result == 0
+        assert mock_popen.call_count == 1
+        rows = _harness_rows()
+        assert len(rows) == 1
+        assert rows[0]["input_hash"] == ""
+        assert rows[0]["target_content_hash"] == ""
+        assert rows[0]["conditions_fp"] == _baseline_fp(args)
+
+
+def _hash_of(text: str) -> str:
+    from little_loops.cli.harness import _hash_bytes
+
+    return _hash_bytes(text.encode("utf-8"))
+
+
+class TestBaselineCompare:
+    """AC2/AC7: compare gates before the run, then reports a provenance-carrying delta."""
+
+    @pytest.fixture(autouse=True)
+    def _stub_git(self, tmp_path: Path) -> Any:
+        self.skill_file = tmp_path / "SKILL.md"
+        self.skill_file.write_text("# mutated\n")  # working tree differs from HEAD
+        self.incumbent_hash = _hash_of("# incumbent\n")
+        git = _make_git_stub(head="sha0", head_content="# incumbent\n", toplevel=str(tmp_path))
+        with (
+            patch("little_loops.cli.harness._git_output", side_effect=git),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+        ):
+            yield
+
+    def _skill_args(self, **kwargs: Any) -> Any:
+        return _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            compare_baseline=True,
+            samples=3,
+            **kwargs,
+        )
+
+    def _seed_full_baseline(self, args: Any, passed: bool = True) -> list[int]:
+        ids = []
+        for i in range(3):
+            ids.append(
+                _seed_baseline_row(
+                    runner="skill",
+                    target="check-code",
+                    content_hash=self.incumbent_hash,
+                    conditions_fp=_baseline_fp(args),
+                    passed=passed,
+                    ts=f"2026-09-10T00:00:{i:02d}Z",
+                )
+            )
+        return ids
+
+    def _run_compare(self, args: Any, results: list[Any] | None = None):
+        calls = results or [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls) as mock_run,
+            patch(
+                "little_loops.cli.harness._resolve_skill_target_path",
+                return_value=self.skill_file,
+            ),
+        ):
+            result = cmd_skill(args)
+        return result, mock_run
+
+    def test_no_baseline_refused_before_any_invocation(self, capsys: pytest.CaptureFixture) -> None:
+        args = self._skill_args()
+        result, mock_run = self._run_compare(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "no measured baseline" in err
+        assert "skill" in err and "check-code" in err
+        assert self.incumbent_hash in err
+        assert _harness_rows() == []  # no candidate rows on refusal
+
+    def test_partial_baseline_refused_before_any_invocation(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        args = self._skill_args()
+        for i in range(2):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=self.incumbent_hash,
+                conditions_fp=_baseline_fp(args),
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+        result, mock_run = self._run_compare(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "no measured baseline" in capsys.readouterr().err
+
+    def test_conditions_fp_mismatch_refused_before_any_invocation(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """The fp covers grading flags beyond the readable columns (third review)."""
+        other_args = self._skill_args(exit_code=7)  # differs only in --exit-code
+        for i in range(3):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=self.incumbent_hash,
+                conditions_fp=_baseline_fp(other_args),
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+        args = self._skill_args()  # exit_code=None
+        result, mock_run = self._run_compare(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "no measured baseline" in capsys.readouterr().err
+
+    def test_unmutated_subject_refused(self, capsys: pytest.CaptureFixture) -> None:
+        self.skill_file.write_text("# incumbent\n")  # now matches HEAD content
+        args = self._skill_args()
+        result, mock_run = self._run_compare(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "unmutated" in capsys.readouterr().err
+
+    def test_delta_reported_with_provenance(self, capsys: pytest.CaptureFixture) -> None:
+        args = self._skill_args()
+        ids = self._seed_full_baseline(args, passed=False)  # baseline 0/3
+        result, mock_run = self._run_compare(args)  # candidate 3/3
+
+        assert result == 0  # candidate band governs the exit code
+        assert mock_run.call_count == 3
+        out = capsys.readouterr().out
+        assert "Baseline: reused" in out
+        assert "Delta:" in out
+        assert "+1.00" in out  # candidate 1.00 - baseline 0.00
+        assert "sha0" in out
+        assert ",".join(str(i) for i in ids) in out
+        assert "subject model not pinned" in out  # skill rows carry NULL subject_model
+
+    def test_delta_json_payload(self) -> None:
+        import io
+        import sys as _sys
+
+        args = self._skill_args(output="json")
+        ids = self._seed_full_baseline(args)
+        buf = io.StringIO()
+        old_stdout = _sys.stdout
+        _sys.stdout = buf
+        try:
+            result, _ = self._run_compare(args)
+        finally:
+            _sys.stdout = old_stdout
+
+        assert result == 0
+        payload = json.loads(buf.getvalue().strip())
+        baseline = payload["baseline"]
+        assert baseline["source"] == "reused"
+        assert baseline["n"] == 3
+        assert baseline["attempt_ids"] == ids
+        assert baseline["head_sha"] == "sha0"
+        assert baseline["head_sha_differs"] is False
+        assert baseline["delta"] == 0.0  # 3/3 vs 3/3
+        assert "subject model not pinned" in baseline["notes"]
+
+    def test_delta_null_when_candidate_ungraded(self, capsys: pytest.CaptureFixture) -> None:
+        args = self._skill_args()
+        self._seed_full_baseline(args)
+        calls = [subprocess.TimeoutExpired(cmd="claude", timeout=120) for _ in range(3)]
+        result, mock_run = self._run_compare(args, results=calls)
+
+        assert result == 2  # ERROR band on the candidate tally alone
+        out = capsys.readouterr().out
+        assert "Delta: n/a" in out
+
+
+class TestBaselineIncumbentResolution:
+    """AC3: dirty-tree incumbent disambiguation + --baseline-of on non-file runners."""
+
+    def test_dirty_tree_compare_reads_only_head_incumbent(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("# mutation-1\n")  # working tree: candidate content
+        incumbent_hash = _hash_of("# incumbent\n")
+        rejected_hash = _hash_of("# mutation-2\n")
+        candidate_hash = _hash_of("# mutation-1\n")
+        git = _make_git_stub(head="sha0", head_content="# incumbent\n", toplevel=str(tmp_path))
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            compare_baseline=True,
+            samples=3,
+        )
+        fp = _baseline_fp(args)
+        incumbent_ids = [
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=incumbent_hash,
+                conditions_fp=fp,
+                dirty=1,  # the baseline was itself measured on a dirty tree
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+            for i in range(3)
+        ]
+        # Same head_sha, different content: a rejected mutation's rows and the
+        # candidate's own repetitions must never serve as the baseline.
+        for content in (rejected_hash, candidate_hash):
+            for i in range(3):
+                _seed_baseline_row(
+                    runner="skill",
+                    target="check-code",
+                    content_hash=content,
+                    conditions_fp=fp,
+                    ts=f"2026-09-10T00:01:{i:02d}Z",
+                )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.cli.harness._git_output", side_effect=git),
+            patch("little_loops.cli.harness._git_dirty", return_value=True),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls) as mock_run,
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_file),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        assert mock_run.call_count == 3
+        out = capsys.readouterr().out
+        assert "Baseline: reused" in out
+        assert ",".join(str(i) for i in incumbent_ids) in out
+        assert "measured on a dirty tree" in out
+
+    def test_prompt_compare_with_baseline_of_consumes_post_hoc_rows(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC5: rows written post-hoc via record_attempt are the baseline, un-re-run."""
+        probe_args = _make_namespace(
+            runner="prompt", target="say hi", compare_baseline=True, samples=3
+        )
+        fp = _baseline_fp(probe_args)
+        attempt_id = _seed_baseline_row(
+            runner="prompt",
+            target="say hi",
+            content_hash=_hash_of("say hi"),
+            conditions_fp=fp,
+        )
+        for i in range(2):  # baseline_for needs n=3 rows sharing the key
+            _seed_baseline_row(
+                runner="prompt",
+                target="say hi",
+                content_hash=_hash_of("say hi"),
+                conditions_fp=fp,
+                ts=f"2026-09-10T00:00:{i + 1:02d}Z",
+            )
+        args = _make_namespace(
+            runner="prompt",
+            target="say hi",
+            compare_baseline=True,
+            baseline_of=attempt_id,
+            samples=3,
+        )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.cli.harness._git_output", return_value="sha0"),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls) as mock_run,
+        ):
+            result = cmd_prompt(args)
+
+        assert result == 0
+        assert mock_run.call_count == 3  # candidate arm ran; baseline arm did not
+        assert str(attempt_id) in capsys.readouterr().out
+
+    def test_baseline_of_input_mismatch_refused(self, capsys: pytest.CaptureFixture) -> None:
+        """--baseline-of resolves its key independently of the current invocation."""
+        probe_args = _make_namespace(
+            runner="prompt", target="say hi", compare_baseline=True, samples=3
+        )
+        attempt_id = _seed_baseline_row(
+            runner="prompt",
+            target="say hi",
+            content_hash=_hash_of("say hi"),
+            input_hash="hash-of-a-different-input",
+            conditions_fp=_baseline_fp(probe_args),
+        )
+        args = _make_namespace(
+            runner="prompt",
+            target="say hi",
+            compare_baseline=True,
+            baseline_of=attempt_id,
+            samples=3,
+        )
+        with (
+            patch("little_loops.cli.harness._git_output", return_value="sha0"),
+            patch("little_loops.cli.harness.run_action") as mock_run,
+        ):
+            result = cmd_prompt(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "different input" in capsys.readouterr().err
+
+
+class TestBaselineStoreBidirectional:
+    """AC4/AC5: candidate rows become the next baseline; head_sha never blocks reuse."""
+
+    def test_measure_after_commit_reuses_candidate_rows_across_head(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        head = ["sha1"]
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("# accepted-candidate\n")
+        candidate_hash = _hash_of("# accepted-candidate\n")
+        incumbent_hash = _hash_of("# incumbent\n")
+
+        def _git(*args: str) -> str | None:
+            stub = _make_git_stub(
+                head=head[0], head_content="# incumbent\n", toplevel=str(tmp_path)
+            )
+            return stub(*args)
+
+        compare_args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            compare_baseline=True,
+            samples=3,
+        )
+        fp = _baseline_fp(compare_args)
+        for i in range(3):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=incumbent_hash,
+                conditions_fp=fp,
+                head_sha="sha1",
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        with (
+            patch("little_loops.cli.harness._git_output", side_effect=_git),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls),
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_file),
+        ):
+            result = cmd_skill(compare_args)
+        assert result == 0
+        candidate_ids = [
+            r["id"] for r in _harness_rows() if r["target_content_hash"] == candidate_hash
+        ]
+        assert len(candidate_ids) == 3
+
+        # HEAD moves (the loop committed the accepted candidate); measure now.
+        head[0] = "sha2"
+        measure_args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            measure_baseline=True,
+            samples=3,
+        )
+        assert _baseline_fp(measure_args) == fp
+        with (
+            patch("little_loops.cli.harness._git_output", side_effect=_git),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run") as mock_run,
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_file),
+        ):
+            result = cmd_skill(measure_args)
+
+        assert result == 0
+        mock_run.assert_not_called()  # paid once: the compare rows ARE the baseline
+        out = capsys.readouterr().out
+        assert "Baseline: reused" in out
+        assert "different HEAD" in out
+
+        # AC5 read-side: the same rows via the reader, same result.
+        from little_loops.history_reader.harness import BaselineConditions, baseline_for
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        direct = baseline_for(
+            resolve_history_db(DEFAULT_DB_PATH),
+            runner="skill",
+            target="check-code",
+            input_hash=_input_hash_of([]),
+            target_content_hash=candidate_hash,
+            conditions=BaselineConditions(
+                n=3,
+                conditions_fp=fp,
+                semantic_prompt=None,
+                semantic_model=None,
+                subject_model=None,
+                timeout_s=120,
+                host_cli="claude-code",
+            ),
+        )
+        assert direct is not None
+        assert direct.attempt_ids == candidate_ids
+
+
+def _input_hash_of(runner_args: list[str]) -> str:
+    from little_loops.cli.harness import _input_hash
+
+    return _input_hash(runner_args)
+
+
+class TestBaselineDegrade:
+    """AC6: partial/mismatched baselines re-measure (measure) or refuse (compare)."""
+
+    @pytest.fixture(autouse=True)
+    def _stub_git(self, tmp_path: Path) -> Any:
+        self.skill_file = tmp_path / "SKILL.md"
+        self.skill_file.write_text("# incumbent\n")
+        git = _make_git_stub(head="sha0", head_content="# incumbent\n", toplevel=str(tmp_path))
+        with (
+            patch("little_loops.cli.harness._git_output", side_effect=git),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+            patch(
+                "little_loops.cli.harness._resolve_skill_target_path",
+                return_value=self.skill_file,
+            ),
+        ):
+            yield
+
+    def _measure(self, args: Any, calls: list[Any]):
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls) as mock_run,
+        ):
+            return cmd_skill(args), mock_run
+
+    def test_measure_remeasures_when_fewer_than_n_rows(self) -> None:
+        from little_loops.history_reader.harness import BaselineConditions, baseline_for
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        args = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], measure_baseline=True, samples=3
+        )
+        for i in range(2):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=_hash_of("# incumbent\n"),
+                conditions_fp=_baseline_fp(args),
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        result, mock_run = self._measure(args, calls)
+        assert result == 0
+        assert mock_run.call_count == 3
+
+        direct = baseline_for(
+            resolve_history_db(DEFAULT_DB_PATH),
+            runner="skill",
+            target="check-code",
+            input_hash=_input_hash_of([]),
+            target_content_hash=_hash_of("# incumbent\n"),
+            conditions=BaselineConditions(
+                n=3,
+                conditions_fp=_baseline_fp(args),
+                semantic_prompt=None,
+                semantic_model=None,
+                subject_model=None,
+                timeout_s=120,
+                host_cli="claude-code",
+            ),
+        )
+        assert direct is not None
+        all_rows = _harness_rows()
+        assert direct.attempt_ids == [r["id"] for r in all_rows[-3:]]  # the new ones, not the seeds
+
+    def test_measure_remeasures_when_conditions_mismatch(self) -> None:
+        args = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], measure_baseline=True, samples=3
+        )
+        other = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            measure_baseline=True,
+            samples=3,
+            exit_code=0,
+        )
+        assert _baseline_fp(args) != _baseline_fp(other)
+        for i in range(3):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=_hash_of("# incumbent\n"),
+                conditions_fp=_baseline_fp(other),
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        result, mock_run = self._measure(args, calls)
+        assert result == 0
+        assert mock_run.call_count == 3
+
+    def test_measure_remeasures_when_input_differs(self) -> None:
+        """A skill baseline measured on one task must not serve another (third review)."""
+        args = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], measure_baseline=True, samples=3
+        )
+        for i in range(3):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=_hash_of("# incumbent\n"),
+                input_hash=_input_hash_of(["ENH-9999"]),
+                conditions_fp=_baseline_fp(args),
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        result, mock_run = self._measure(args, calls)  # runner_args=[] -> different input
+        assert result == 0
+        assert mock_run.call_count == 3
+
+    def test_measure_reuses_most_recent_n_of_n_plus_2(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], measure_baseline=True, samples=3
+        )
+        for i in range(5):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=_hash_of("# incumbent\n"),
+                conditions_fp=_baseline_fp(args),
+                ts=f"2026-09-10T00:00:{i:02d}Z",
+            )
+        result, mock_run = self._measure(args, [])
+        assert result == 0
+        mock_run.assert_not_called()
+        assert len(_harness_rows()) == 5
+        assert "Baseline: reused" in capsys.readouterr().out
+
+
+class TestBaselineFlaglessUnchanged:
+    """AC9: without the flags, behavior (including write suppression) is unchanged."""
+
+    @pytest.fixture(autouse=True)
+    def _stub_git(self) -> Any:
+        with (
+            patch("little_loops.cli.harness._git_output", return_value="sha0"),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+        ):
+            yield
+
+    def test_flagless_write_failure_still_suppressed(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], samples=1)
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="ok")),
+            patch("little_loops.cli.harness.record_attempt", side_effect=RuntimeError("boom")),
+        ):
+            result = cmd_skill(args)
+        assert result == 0  # best-effort write suppression unchanged
+        assert "boom" not in capsys.readouterr().err
+
+    def test_conditions_fp_distinguishes_trace_flags_and_hosts(self) -> None:
+        from little_loops.cli.harness import _conditions_fp
+
+        base = _make_namespace(runner="skill", target="check-code", runner_args=[])
+        with_trace = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], trace_mode=True
+        )
+        with_hosts = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], hosts="claude-code,codex"
+        )
+        with_timeout = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], timeout=60
+        )
+        fps = {
+            _conditions_fp(base),
+            _conditions_fp(with_trace),
+            _conditions_fp(with_hosts),
+            _conditions_fp(with_timeout),
+        }
+        assert len(fps) == 4

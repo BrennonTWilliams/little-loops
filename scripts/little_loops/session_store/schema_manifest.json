@@ -100,6 +100,18 @@
       "partial": false,
       "unique": false
     },
+    "idx_harness_baseline": {
+      "columns": [
+        "runner",
+        "target",
+        "input_hash",
+        "target_content_hash",
+        "conditions_fp"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
     "idx_harness_cell_key": {
       "columns": [
         "cell_key"
@@ -1225,6 +1237,36 @@
           "notnull": false,
           "pk": false,
           "type": "INTEGER"
+        },
+        {
+          "name": "timeout_s",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "host_cli",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "subject_model",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "input_hash",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "conditions_fp",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2809,5 +2851,5 @@
       "type": "table"
     }
   },
-  "schema_version": 49
+  "schema_version": 50
 }

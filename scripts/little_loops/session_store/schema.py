@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 49
+SCHEMA_VERSION = 50
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1386,6 +1386,32 @@ _MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_harness_admissions_attempt
         ON harness_admissions(attempt_id);
+    """,
+    # v50 (ENH-3435): baseline condition columns on harness_events -- the
+    # unmutated-arm baseline store. Five nullable columns, no DEFAULT, no
+    # backfill (fix-forward: pre-migration rows keep NULL and are excluded
+    # from baseline matching by construction -- `conditions_fp` is never NULL
+    # on baseline-eligible rows, so no NULL-vs-NULL vacuous match can enter
+    # the match path). `timeout_s` / `host_cli` / `subject_model` are the
+    # readable run conditions; `input_hash` pins *what was asked* (canonical
+    # runner_args / --args hash; "" when the target itself is the input); and
+    # `conditions_fp` is the single sha256 condition-match key over every
+    # condition-relevant invocation argument (the readable columns are
+    # provenance and post-hoc query surface, not match keys -- enumerating one
+    # column per grading flag would re-pay this migration every time a grading
+    # flag lands). The composite index backs baseline_for()'s
+    # (runner, target, input_hash, target_content_hash, conditions_fp)
+    # lookup; head_sha is deliberately absent from both the index and the
+    # match key -- a meta-loop's incumbent and candidate share head_sha, and a
+    # head-keyed lookup would re-pay the candidate rows it just wrote.
+    """
+    ALTER TABLE harness_events ADD COLUMN timeout_s INTEGER;
+    ALTER TABLE harness_events ADD COLUMN host_cli TEXT;
+    ALTER TABLE harness_events ADD COLUMN subject_model TEXT;
+    ALTER TABLE harness_events ADD COLUMN input_hash TEXT;
+    ALTER TABLE harness_events ADD COLUMN conditions_fp TEXT;
+    CREATE INDEX IF NOT EXISTS idx_harness_baseline
+        ON harness_events(runner, target, input_hash, target_content_hash, conditions_fp);
     """,
 ]
 

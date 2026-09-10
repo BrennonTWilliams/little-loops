@@ -4,8 +4,9 @@ title: Measure and cache an unmutated baseline arm before the first change, and 
   the cache bidirectional
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-10'
+completed_at: '2026-09-10T23:30:54Z'
 labels: []
 decision_needed: false
 verify_verdict: VALID
@@ -65,7 +66,7 @@ Mechanics borrowed from evolutionary-search harness design, where the baseline a
 - **Conditions must actually be written.** `harness_events` has `semantic_prompt` and `semantic_model` columns, but `_record_harness_event` (`cli/harness.py:206`) passes neither, and `docs/reference/CLI.md` documents that `semantic_prompt` "is not written by any caller today". A conditions match on unpopulated columns compares NULL to NULL and passes vacuously. The writer change is part of this issue: every row written on the measure and compare paths carries `semantic_prompt = args.semantic`, `semantic_model` = the judge model `_grade` resolves (`evaluate_llm_structured`'s `DEFAULT_LLM_MODEL` today — thread it through explicitly rather than assuming), plus the new `timeout_s` and `host_cli` columns. "Model" is two conditions, not one: `semantic_model` (the judge) and `subject_model` (the prompt runner's `--model`; NULL for the other runners). Both land on the row and in the fingerprint; exact *matching* runs through `conditions_fp` (see the identity bullet above) — these readable columns are the provenance and post-hoc query surface, which is also why the vacuous NULL-match failure mode cannot recur: the fp is never NULL on baseline-eligible rows.
 - **Degrade, never lie.** "Partial" concretely means fewer than n authoritative (non-superseded) rows for the incumbent content under matching conditions, or zero graded rows among them (no rate can be computed). On `--measure-baseline`, a partial or mismatched baseline is re-measured; on `--compare-baseline` it is refused (the subject is already mutated, so re-measuring is impossible). Moreover, the compare gate runs **before the candidate arm**: the baseline-lookup refusals (no baseline / partial / fingerprint or input mismatch) are computable without running anything, and gating first matches the `--retry-of` precedent ("gated before the run", `cli/harness.py` `--retry-of` help). A refused compare performs zero subject invocations and writes no candidate rows — the earlier "candidate rows written regardless" behavior only pays off if a loop accepts despite a refusal, which is precisely the behavior the refusal exists to prevent. A stored baseline with *more* than n matching rows reuses its most recent n; n is a **threshold** on available rows, not a matched field (rows don't carry n). "Re-measure" in an append-only table means: n new rows are appended (`record_attempt` allocates repetition indices monotonically per cell, so they take indices n..2n−1 or later), and `baseline_for` selects the **most recent n** matching rows (`ORDER BY id DESC LIMIT n`), never all of them. There is no "corrupt entry" case under Option A — SQLite rows are typed and the reader is a query, not a parser. The failure mode being guarded against is a silently wrong baseline — a plausible-looking number that no longer describes the system it claims to. Resilience is explicitly unit-testable and must be tested.
 - **The delta is a pass-rate difference with both intervals, never a banded verdict.** `delta = candidate.passed/candidate.graded − baseline.passed/baseline.graded`, reported alongside both arms' Wilson intervals (`wilson_ci`, already used by `_report_samples`). At the default n=3 the delta's granularity is one third and the intervals will usually overlap; the report shows that rather than hiding it behind a PASS/FAIL band. If the candidate arm has zero graded samples (all abstained/errored), `delta` is `null` and the text report says so; the run's exit code still comes from `_band_samples` on the candidate tally alone. `--compare-baseline` refuses at effective n=1 (a delta between two booleans is not a measurement). The existing exit-code contract (0/1/2/3) is unchanged for a run that produces a verdict; the delta is additive report content.
-- **Refusals exit 2, not 1.** Exit 1 is FAIL, and the `harness_exit` fragment (`loops/lib/common.yaml`) routes it as "candidate failed" — a loop could not distinguish "no baseline measured" from a genuinely failing candidate. Exit 2 is already "the run could not produce a verdict" (timeout, internal error, `cmd_mcp` setup failures). All baseline refusals (no baseline / partial / mismatch / n=1 / `--baseline-of` missing / unmutated subject / flag combinations) use exit 2. This deliberately diverges from the `--retry-of` refusal precedent (exit 1), which predates loops consuming the exit code as a routing signal.
+- **Refusals exit 2, not 1.** Exit 1 is FAIL, and the `harness_exit` fragment (`scripts/little_loops/loops/lib/common.yaml`) routes it as "candidate failed" — a loop could not distinguish "no baseline measured" from a genuinely failing candidate. Exit 2 is already "the run could not produce a verdict" (timeout, internal error, `cmd_mcp` setup failures). All baseline refusals (no baseline / partial / mismatch / n=1 / `--baseline-of` missing / unmutated subject / flag combinations) use exit 2. This deliberately diverges from the `--retry-of` refusal precedent (exit 1), which predates loops consuming the exit code as a routing signal.
 - **Provenance on the delta.** A verdict that reports a delta names its baseline: n, the readable conditions, `head_sha` (and whether it differs from the current HEAD), whether the baseline was freshly measured or reused, and the attempt ids it was derived from. Two honesty notes ride alongside: `measured on a dirty tree` when the baseline rows carry `dirty=1` (the content hash pins the target file, not the rest of the repo a skill may read), and `subject model not pinned` when the baseline's `subject_model` is NULL (see the known limitation below).
 - **Loud writes when baseline is on.** Harness event writes are best-effort today (`contextlib.suppress` in `_record_harness_event`). With either baseline flag set, a swallowed write would mean the baseline (or the candidate rows the next baseline reuses) silently never landed, so the write failure must propagate and exit non-zero — the precedent is the `--retry-of` path, which already does this.
 
@@ -86,7 +87,7 @@ _Added by manual review — 2026-09-10 — after verifying the refine/wire findi
 - `BaselineResult.outcome: HarnessEvalOutcome` in the original Program Design typed the baseline as one sample's outcome; a baseline over n runs is a `SampleTally` (`cli/harness.py:697`). Fixed below.
 - `timeout` and the host CLI are not recorded on `harness_events` today; both are conditions the baseline must match on. Added to the conditions fingerprint below.
 
-_Second manual review — 2026-09-10 — after re-reading `_record_harness_event`, `record_attempt`, `authoritative_attempts`, `harness-optimize.yaml`, and `loops/lib/common.yaml`:_
+_Second manual review — 2026-09-10 — after re-reading `_record_harness_event`, `record_attempt`, `authoritative_attempts`, `harness-optimize.yaml`, and `scripts/little_loops/loops/lib/common.yaml`:_
 
 - **Incumbent resolution was unspecified.** The compare invocation knows only the mutated hash; nothing said which prior hash is "the" baseline when several share a `head_sha`. Resolved: HEAD content hash for `skill`, `--baseline-of` for `prompt`/`cmd`/`mcp` (prompt was wrongly listed as auto-keyed — its hash *is* its target). Design and AC1–AC3 rewritten.
 - **`semantic_prompt`/`semantic_model` are never written** by `_record_harness_event` (confirmed; CLI.md says the same). The earlier "already on the row" claim was column-present, value-absent. Writer change added to Design, AC1, and Wiring Phase.
@@ -319,12 +320,42 @@ _Re-verified by `/ll:verify-issues --auto` — 2026-09-10 (second pass, no conte
 
 Verdict at time of check: **VALID**.
 
+### Deviations
+
+_Added during implementation — 2026-09-10 (`/ll:manage-issue improve`):_
+
+- The Design's single `_compare_baseline(args, key, conditions, candidate) -> BaselineDelta | str` was implemented as **two** functions that match the third review's pre-run-gate requirement: `_compare_baseline_refusal(key, conditions)` (the store-consulting refusals, exit 2, zero invocations, computed *before* the candidate arm) and `_run_compare_arm(...)` (the post-loop delta assembly + report). The one-function signature would have forced the refusal work into the post-candidate call site, contradicting the pre-run gate the same Design mandates.
+- `_run_sample_loop`'s refactor returns a `SampleLoopResult` dataclass (`exit_code`, `label`, `tally`, `entries`, `prepatch_evidence`, `target_history`) rather than the Signatures section's `tuple[int, SampleTally, list[dict]]` — the report call moved to the callers, which also need the verdict label and the read-once prepatch/history context; a positional tuple of six would have been fragile.
+- `_baseline_key(...)` (display-only JSON serialization, Signatures) was not implemented — no report or log line renders a serialized key; the refusal message renders the runner/target/incumbent-hash fields directly, which is more readable than a JSON array blob.
+- On the baseline paths, `cmd`/`mcp` rows record `target_content_hash = ""` (not NULL) so every match column is non-NULL on baseline-eligible rows as the third review requires; the Signatures section did not address what these runners write.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
 
 
-## Session Log
+## Resolution
+
+- **Action**: improve (implement)
+- **Completed**: 2026-09-10
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/session_store/schema.py` — v50 migration: five nullable baseline-condition columns on `harness_events` (`timeout_s`, `host_cli`, `subject_model`, `input_hash`, `conditions_fp`) + `idx_harness_baseline` composite match index; `SCHEMA_VERSION` 49→50; `schema_manifest.json` regenerated.
+- `scripts/little_loops/session_store/writers.py` — `_insert_harness_event`/`record_harness_event` pass the five condition columns through (flow onward via `record_attempt`'s `**event_fields` unchanged).
+- `scripts/little_loops/history_reader/harness.py` — `HarnessEvent` +5 trailing-default fields, `_HARNESS_EVENT_COLUMNS` +5; new `BaselineKey` / `BaselineConditions` / `BaselineResult` dataclasses, `_rc_from_event` row→exit-code reconstruction, and `baseline_for(...)` (matches `(runner, target, input_hash, target_content_hash, conditions_fp)`, authoritative rows only, most-recent-n, None on partial/zero-graded).
+- `scripts/little_loops/cli/harness.py` — `--measure-baseline` / `--compare-baseline` / `--baseline-of` on the shared evaluator flags; `_conditions_fp` (sha256 over every condition-relevant arg, `enah-3435-v1` domain prefix), `_input_hash`, `_incumbent_content_hash` (HEAD blob via `git show`), `_baseline_flag_refusal` / `_resolve_baseline_of` / `_compare_baseline_refusal` (all refusals exit 2, pre-run, zero invocations), `read_baseline`, `_run_baseline_phase` (reuse-or-measure, loud writes), `_run_compare_arm` (delta + provenance), `_baseline_notes` (`subject model not pinned` / `measured on a dirty tree`); `_record_harness_event` gains `loud` + the seven condition kwargs; `_grade` passes the judge model explicitly (`DEFAULT_LLM_MODEL`); `_run_sample_loop` refactored to return `SampleLoopResult` with reporting at the call sites; all four non-DSL handlers wired; `cmd_dsl` refuses the flags (exit 2).
+- Tests — `TestSchemaV50BaselineConditions` (3), `TestBaselineFor` reader battery (6), and 30 CLI baseline tests across `TestBaselineFlagRefusals`/`TestBaselineMeasure`/`TestBaselineCompare`/`TestBaselineIncumbentResolution`/`TestBaselineStoreBidirectional`/`TestBaselineDegrade`/`TestBaselineFlaglessUnchanged`; SCHEMA_VERSION pins flipped to 50.
+- Docs — `docs/reference/CLI.md` (flag rows, dsl refusal, `baseline` JSON payload, `semantic_prompt` correction), `docs/reference/EVENT-SCHEMA.md` (baseline-arm rows + v50 columns + match semantics), `docs/guides/EVALUATION_GUIDE.md` ("Measuring a delta" section: two-invocation contract, cost, `subject model not pinned` limitation).
+
+### Verification Results
+
+- Tests: PASS — `python -m pytest scripts/tests/`: 23,925 passed / 43 skipped; the single failure (`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`) is pre-existing and unrelated (BUG-3439/3443 quotes committed in `bbf996c2e`; verified to fail identically with this change's files and the concurrent session's BUG refinements stashed).
+- Lint: PASS — `ruff check scripts/` clean; changed files `ruff format`-clean.
+- Types: PASS — `python -m mypy scripts/little_loops/`: no issues in 395 files.
+- AC1–AC9: all covered by the new tests (TDD red validated first: 38 new tests failed against unmodified code, 566 pre-existing passed).
+- `/ll:ready-issue` - 2026-09-10T22:47:16 - `cac831de-4e64-4d59-9ff5-ef42ab03c2ce.jsonl`
 - manual design review (third) - 2026-09-10T23:55:00 - folded adversarial review findings: `input_hash` in match key, `conditions_fp` column replacing per-field matching, `subject model not pinned` limitation for skill, pre-run compare gate (zero invocations on refusal), n-as-threshold semantics, `dirty` provenance note
 - `/ll:confidence-check` - 2026-09-10T21:47:23 - `fe4ada0a-affa-483c-9e19-fd1d1033676d.jsonl`
 - `/ll:verify-issues` - 2026-09-10T21:45:18 - `c32904f3-4dde-4a04-9178-94f45f7b6256.jsonl`
@@ -336,3 +367,7 @@ Verdict at time of check: **VALID**.
 - `/ll:wire-issue` - 2026-09-10T20:50:09 - `2557344f-8422-414b-93b6-7ef3ec9dd3f8.jsonl`
 - `/ll:refine-issue` - 2026-09-10T20:32:27 - `16155f03-6c19-41ff-86d3-335dcd9e206f.jsonl`
 - `/ll:format-issue` - 2026-09-10T20:19:51 - `001a54e1-1d47-4c04-9575-71e91821717e.jsonl`
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-09-10T23:30:40 - `aa53cb43-4004-41a6-881e-9392f4069b08.jsonl`

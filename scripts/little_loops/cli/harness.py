@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -22,7 +23,14 @@ import yaml
 from little_loops.cli.history import _positive_int
 from little_loops.cli.output import configure_output, print_json, status_block, use_color_enabled
 from little_loops.fsm.evaluators import EvaluationResult, evaluate_llm_structured
+from little_loops.fsm.schema import DEFAULT_LLM_MODEL as _JUDGE_MODEL
 from little_loops.fsm.verdicts import is_abstention_verdict
+from little_loops.history_reader.harness import (
+    BaselineConditions,
+    BaselineKey,
+    BaselineResult,
+    baseline_for,
+)
 from little_loops.logger import Logger
 from little_loops.runner_spec import (
     DEFAULT_STOCHASTIC_SAMPLES,
@@ -219,6 +227,14 @@ def _record_harness_event(
     target_content_hash: str | None = None,
     target_path: str | None = None,
     dirty: int | None = None,
+    loud: bool = False,
+    semantic_prompt: str | None = None,
+    semantic_model: str | None = None,
+    subject_model: str | None = None,
+    timeout_s: int | None = None,
+    host_cli: str | None = None,
+    input_hash: str | None = None,
+    conditions_fp: str | None = None,
 ) -> int | None:
     """Record one attempt against *cell_key* via :func:`record_attempt` (ENH-3407).
 
@@ -230,12 +246,18 @@ def _record_harness_event(
     all three default to None so existing callers (v38 row shape) continue to
     work unchanged.
 
-    Without ``retry_of``, this stays best-effort (``contextlib.suppress``) as
-    before — a failed write never affects the harness exit code. **With
-    ``retry_of`` set, a write failure is NOT suppressed**: it propagates so
-    the caller can surface it and exit non-zero, because an admitted retry
-    whose ``harness_admissions`` row silently failed to land would defeat the
-    audit purpose.
+    ENH-3435 adds ``loud`` plus the seven condition kwargs. The condition
+    kwargs land on the v50 ``harness_events`` columns; ``input_hash`` and
+    ``conditions_fp`` are always non-NULL on the baseline paths so a stored
+    baseline is matchable (and pre-baseline rows are excluded by
+    construction). With either baseline flag set, a swallowed write would
+    mean the baseline (or the candidate rows the next baseline reuses)
+    silently never landed, so ``loud=True`` propagates write failures the
+    same way the ``--retry-of`` path already does.
+
+    Without ``retry_of`` and without ``loud``, this stays best-effort
+    (``contextlib.suppress``) as before — a failed write never affects the
+    harness exit code.
     """
 
     def _write() -> int:
@@ -259,9 +281,16 @@ def _record_harness_event(
             target_content_hash=target_content_hash,
             target_path=target_path,
             dirty=dirty,
+            semantic_prompt=semantic_prompt,
+            semantic_model=semantic_model,
+            subject_model=subject_model,
+            timeout_s=timeout_s,
+            host_cli=host_cli,
+            input_hash=input_hash,
+            conditions_fp=conditions_fp,
         )
 
-    if retry_of is not None:
+    if retry_of is not None or loud:
         return _write()
     try:
         return _write()
@@ -565,6 +594,45 @@ Exit codes:
                 "--timeout budget scale with n. Ignored (forced to 1) when "
                 "--retry-of is given without an explicit --samples. Refused "
                 "on the dsl runner when > 1."
+            ),
+        )
+        p.add_argument(
+            "--measure-baseline",
+            dest="measure_baseline",
+            action="store_true",
+            help=(
+                "Run the effective n repetitions on the subject as it exists on "
+                "disk and record them as the baseline for that content (ENH-3435). "
+                "A full, condition-matched baseline is reused without re-running. "
+                "The exit code follows the normal banding (a 0/n baseline exits 1 "
+                "and is still recorded). Not supported on the dsl runner."
+            ),
+        )
+        p.add_argument(
+            "--compare-baseline",
+            dest="compare_baseline",
+            action="store_true",
+            help=(
+                "Run n repetitions on the (mutated) subject and report a delta "
+                "against the measured baseline for the incumbent content "
+                "(ENH-3435). Refuses with exit 2 before any invocation when no "
+                "condition-matched baseline exists -- never compares against a "
+                "remembered number, never re-measures. skill resolves the "
+                "incumbent from HEAD; prompt/cmd/mcp require --baseline-of. "
+                "Not supported on the dsl runner."
+            ),
+        )
+        p.add_argument(
+            "--baseline-of",
+            dest="baseline_of",
+            type=int,
+            default=None,
+            metavar="ID",
+            help=(
+                "Attempt id (harness_events.id) whose (runner, target, input, "
+                "content) names the baseline to compare against (ENH-3435). "
+                "Required for --compare-baseline on prompt/cmd/mcp; an explicit "
+                "override of the HEAD resolution on skill."
             ),
         )
 
@@ -882,7 +950,12 @@ def _grade(
         passed = False
 
     if args.semantic is not None:
-        eval_result = evaluate_llm_structured(output=result.stdout, prompt=args.semantic)
+        # ENH-3435: pass the judge model explicitly so the value recorded as
+        # `semantic_model` on baseline paths is the one actually used, not a
+        # re-derivation at the write site.
+        eval_result = evaluate_llm_structured(
+            output=result.stdout, prompt=args.semantic, model=_JUDGE_MODEL
+        )
         # ENH-3185 AC9: an abstention is neither a pass nor a failure — report
         # it separately rather than folding it into `passed = False`. Precedence
         # is fail > abstain > pass, so a mixed exit_code-fail + semantic-abstain
@@ -956,12 +1029,19 @@ def _report_samples(
     label: str,
     prepatch_evidence: dict | None,
     target_history: dict | None,
+    baseline: BaselineResult | None = None,
+    delta: BaselineDelta | None = None,
+    head_sha_differs: bool = False,
 ) -> None:
     """Print one aggregate report for an n>1 sample invocation (ENH-3415 D8).
 
     Called once, after the sample loop -- never per sample -- so the JSON
     payload stays a single object and the history/prepatch lines are not
-    duplicated n times.
+    duplicated n times. ENH-3435 adds the optional ``baseline`` (a measure
+    run's provenance) and ``delta`` (a compare run's delta + provenance)
+    renderings; both are additive and absent when no baseline flag was given.
+    ``head_sha_differs`` carries the different-HEAD note on measure-reuse
+    reports (a compare report derives it from ``delta`` instead).
     """
     if tally.graded > 0:
         tally.ci_lo, tally.ci_hi = wilson_ci(tally.passed, tally.graded)
@@ -984,6 +1064,36 @@ def _report_samples(
                 "results": sample_results,
             },
         }
+        if baseline is not None or delta is not None:
+            shown = delta.baseline if delta is not None else baseline
+            assert shown is not None  # guarded by the or above
+            baseline_payload: dict[str, Any] = {
+                "source": shown.source,
+                "n": shown.tally.requested,
+                "conditions": {
+                    "semantic_prompt": shown.conditions.semantic_prompt,
+                    "semantic_model": shown.conditions.semantic_model,
+                    "subject_model": shown.conditions.subject_model,
+                    "timeout_s": shown.conditions.timeout_s,
+                    "host_cli": shown.conditions.host_cli,
+                },
+                "conditions_fp": shown.conditions.conditions_fp,
+                "head_sha": shown.head_sha,
+                "head_sha_differs": bool(
+                    delta.head_sha_differs if delta is not None else head_sha_differs
+                ),
+                "attempt_ids": shown.attempt_ids,
+                "notes": _baseline_notes(shown),
+                "baseline_pass_rate": (
+                    shown.tally.passed / shown.tally.graded if shown.tally.graded else None
+                ),
+                "baseline_ci": [shown.tally.ci_lo, shown.tally.ci_hi],
+            }
+            if delta is not None:
+                baseline_payload["delta"] = delta.delta
+                baseline_payload["candidate_pass_rate"] = sample_pass_rate
+                baseline_payload["candidate_ci"] = [tally.ci_lo, tally.ci_hi]
+            payload["baseline"] = baseline_payload
         if prepatch_evidence is not None:
             payload["prepatch_evidence"] = prepatch_evidence
         if target_history is not None:
@@ -1007,6 +1117,30 @@ def _report_samples(
     if extras:
         samples_line += ", " + ", ".join(extras)
     print(samples_line)
+    if baseline is not None or delta is not None:
+        shown = delta.baseline if delta is not None else baseline
+        assert shown is not None  # guarded by the or above
+        differs = delta.head_sha_differs if delta is not None else head_sha_differs
+        line = f"Baseline: {shown.source} n={shown.tally.requested} head_sha={shown.head_sha}"
+        if differs:
+            line += " (measured at a different HEAD)"
+        if shown.attempt_ids:
+            line += "  attempts=" + ",".join(str(i) for i in shown.attempt_ids)
+        print(line)
+        for note in _baseline_notes(shown):
+            print(f"  {note}")
+    if delta is not None:
+        if delta.delta is None:
+            print("Delta: n/a (no graded candidate samples)")
+        else:
+            baseline_rate = delta.baseline.tally.passed / delta.baseline.tally.graded
+            baseline_ci = f"[{delta.baseline.tally.ci_lo:.2f}, {delta.baseline.tally.ci_hi:.2f}]"
+            candidate_ci = f"[{tally.ci_lo:.2f}, {tally.ci_hi:.2f}]"
+            print(
+                f"Delta: {delta.delta:+.2f} "
+                f"(candidate {sample_pass_rate:.2f} {candidate_ci} "
+                f"vs baseline {baseline_rate:.2f} {baseline_ci})"
+            )
     if prepatch_evidence is not None:
         print(f"Pre-patch check: {prepatch_evidence.get('verdict', 'unknown')}")
     if target_history is not None:
@@ -1033,21 +1167,386 @@ def _retry_samples_refusal(retry_of: int | None, args: argparse.Namespace) -> st
     return None
 
 
+# ---------------------------------------------------------------------------
+# ENH-3435: the measured-baseline arm. A baseline *is* the set of authoritative
+# harness_events rows for the incumbent's content under matching conditions
+# (Program Design, Option A) — there is no second store.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BaselineDelta:
+    """A compare run's delta with its baseline provenance (ENH-3435).
+
+    ``delta`` is the pass-rate difference (candidate − baseline); ``None``
+    when the candidate arm has zero graded samples. Never a banded verdict —
+    the run's exit code still comes from ``_band_samples`` on the candidate
+    tally alone.
+    """
+
+    candidate: SampleTally
+    baseline: BaselineResult
+    delta: float | None
+    source: str
+    head_sha_differs: bool
+
+
+def _resolved_host_cli() -> str | None:
+    """Return the active host CLI's name for the conditions fingerprint, or None."""
+    try:
+        from little_loops.host_runner import resolve_host
+
+        return resolve_host().name
+    except Exception:  # noqa: BLE001 — best-effort condition provenance, never raises
+        return None
+
+
+def _input_hash(value: Any) -> str:
+    """Return the content hash of one runner input (ENH-3435).
+
+    ``skill`` hashes its canonical ``runner_args`` (the task); ``mcp`` hashes
+    the canonical ``--args`` JSON. ``cmd``/``prompt`` never call this — their
+    target *is* the input, carried by ``target_content_hash`` — so their rows
+    record ``input_hash = ""``.
+    """
+    return _hash_bytes(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+
+
+def _conditions_fp(args: argparse.Namespace, judge_model: str | None = None) -> str:
+    """Return the sha256 conditions fingerprint for one invocation (ENH-3435).
+
+    Covers every condition-relevant argument: the readable conditions
+    (semantic prompt, judge model, subject model, timeout, host CLI) plus
+    ``--exit-code``, the trace flags, and ``--hosts``. Never NULL on
+    baseline-eligible rows, so pre-migration rows are excluded from baseline
+    matching by construction and no NULL-vs-NULL vacuous match can occur.
+    ``judge_model`` defaults to the model ``_grade`` will pass when
+    ``--semantic`` is set, so an fp computed here matches the row written
+    under the same args.
+    """
+    if judge_model is None:
+        judge_model = _JUDGE_MODEL if getattr(args, "semantic", None) else None
+    payload = {
+        "exit_code": getattr(args, "exit_code", None),
+        "forbid_path": getattr(args, "forbid_path", None) or None,
+        "host_cli": _resolved_host_cli(),
+        "hosts": getattr(args, "hosts", None),
+        "require_artifact": getattr(args, "require_artifact", None) or None,
+        "require_order": getattr(args, "require_order", None),
+        "semantic_model": judge_model,
+        "semantic_prompt": getattr(args, "semantic", None),
+        "subject_model": getattr(args, "model", None),
+        "timeout_s": getattr(args, "timeout", None),
+        "trace_mode": bool(getattr(args, "trace_mode", False)),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(f"enah-3435-v1|{canonical}".encode()).hexdigest()
+
+
+def _baseline_conditions(args: argparse.Namespace, n: int) -> BaselineConditions:
+    """Build the readable BaselineConditions for this invocation (ENH-3435)."""
+    return BaselineConditions(
+        n=n,
+        conditions_fp=_conditions_fp(args),
+        semantic_prompt=getattr(args, "semantic", None),
+        semantic_model=_JUDGE_MODEL if getattr(args, "semantic", None) else None,
+        subject_model=getattr(args, "model", None),
+        timeout_s=getattr(args, "timeout", None),
+        host_cli=_resolved_host_cli(),
+    )
+
+
+def _baseline_record_extras(args: argparse.Namespace, *, input_hash: str) -> dict[str, Any]:
+    """Condition kwargs for ``_record_harness_event`` on the baseline paths (ENH-3435)."""
+    return {
+        "semantic_prompt": getattr(args, "semantic", None),
+        "semantic_model": _JUDGE_MODEL if getattr(args, "semantic", None) else None,
+        "subject_model": getattr(args, "model", None),
+        "timeout_s": getattr(args, "timeout", None),
+        "host_cli": _resolved_host_cli(),
+        "input_hash": input_hash,
+        "conditions_fp": _conditions_fp(args),
+    }
+
+
+def _baseline_flag_refusal(
+    args: argparse.Namespace, n: int, *, runner: str, file_shaped: bool
+) -> str | None:
+    """Refuse invalid baseline-flag combinations before any work (ENH-3435, exit 2)."""
+    measure = getattr(args, "measure_baseline", False)
+    compare = getattr(args, "compare_baseline", False)
+    retry_of = getattr(args, "retry_of", None)
+    if measure and compare:
+        return "error: --measure-baseline and --compare-baseline cannot be combined"
+    if (measure or compare) and retry_of is not None:
+        flag = "--measure-baseline" if measure else "--compare-baseline"
+        return f"error: {flag} cannot be combined with --retry-of {retry_of}"
+    if compare:
+        if n < 2:
+            return (
+                "error: --compare-baseline: requires n >= 2 (a delta between two "
+                "single runs is not a measurement); use --samples N >= 2"
+            )
+        if not file_shaped and getattr(args, "baseline_of", None) is None:
+            return (
+                f"error: --compare-baseline: requires --baseline-of <attempt-id> on "
+                f"the {runner} runner (no HEAD-resolvable incumbent)"
+            )
+    return None
+
+
+def _incumbent_content_hash(target_path: Path | None) -> str | None:
+    """Return the HEAD-blob content hash of *target_path*, or None (ENH-3435).
+
+    For the ``skill`` runner the incumbent is the HEAD version of the target
+    file — ``harness-optimize.yaml`` commits accepted candidates and reverts
+    rejected ones, so the incumbent always equals HEAD content. Reads a blob
+    via ``git show``; never checks out or stashes anything. Returns None when
+    git is unavailable, the file is untracked, or the path is not file-shaped,
+    so the caller can produce the refusal message.
+    """
+    if target_path is None:
+        return None
+    root = _git_output("rev-parse", "--show-toplevel")
+    if root is None:
+        return None
+    try:
+        rel = os.path.relpath(target_path, root)
+    except ValueError:
+        return None
+    content = _git_output("show", f"HEAD:{rel}")
+    if content is None:
+        return None
+    return _hash_bytes(content.encode("utf-8"))
+
+
+def _resolve_baseline_of(attempt_id: int, *, current_input_hash: str) -> BaselineKey | str:
+    """Resolve ``--baseline-of`` into a BaselineKey, or a refusal message (ENH-3435)."""
+    from little_loops.history_reader import harness_event_by_id
+    from little_loops.session_store import resolve_history_db
+
+    prior = harness_event_by_id(resolve_history_db(DEFAULT_DB_PATH), attempt_id)
+    if prior is None:
+        return f"error: --baseline-of {attempt_id}: no such attempt"
+    if not prior.target_content_hash or prior.input_hash is None or prior.conditions_fp is None:
+        return (
+            f"error: --baseline-of {attempt_id}: attempt predates baseline support "
+            "(no recorded input/conditions); it cannot name a baseline"
+        )
+    if prior.input_hash != current_input_hash:
+        return (
+            f"error: --baseline-of {attempt_id}: baseline was measured on a different "
+            f"input ({prior.input_hash or '(none)'} != {current_input_hash or '(none)'}); "
+            "the candidate must run the same input the baseline measured"
+        )
+    return BaselineKey(
+        runner=prior.runner or "",
+        target=prior.target or "",
+        input_hash=prior.input_hash,
+        target_content_hash=prior.target_content_hash,
+    )
+
+
+def read_baseline(key: BaselineKey, conditions: BaselineConditions) -> BaselineResult | None:
+    """Read the stored baseline for *key* under *conditions* (ENH-3435).
+
+    Thin CLI-side wrapper over :func:`history_reader.harness.baseline_for`
+    with ``DEFAULT_DB_PATH`` resolved through ``resolve_history_db`` — the
+    same precedent as ``_retry_gate``, so the read lands on the same database
+    file the write path uses.
+    """
+    from little_loops.session_store import resolve_history_db
+
+    return baseline_for(
+        resolve_history_db(DEFAULT_DB_PATH),
+        runner=key.runner,
+        target=key.target,
+        input_hash=key.input_hash,
+        target_content_hash=key.target_content_hash,
+        conditions=conditions,
+    )
+
+
+def _baseline_notes(baseline: BaselineResult) -> list[str]:
+    """Honesty notes riding on a reported baseline/delta (ENH-3435)."""
+    notes: list[str] = []
+    if baseline.subject_model is None:
+        notes.append("subject model not pinned")
+    if baseline.dirty_rows:
+        notes.append("measured on a dirty tree")
+    return notes
+
+
+def _run_baseline_phase(
+    runner_label: str,
+    args: argparse.Namespace,
+    n: int,
+    invoke: Callable[[], tuple[RunnerResult, int]],
+    record: Callable[[RunnerResult, int, HarnessEvalOutcome], int | None],
+    key: BaselineKey,
+    conditions: BaselineConditions,
+    head_sha: str | None,
+) -> int:
+    """Measure the baseline arm: reuse a full match, else run n loud samples (ENH-3435).
+
+    Only reached with ``--measure-baseline``. A full, condition-matched
+    baseline for this content is reused without re-running the subject — the
+    "paid once" half of the bidirectional store. Otherwise n samples run with
+    loud recording (a swallowed write here would mean the baseline silently
+    never landed), and the exit code follows the normal banding: a 0/n
+    baseline is valid information, not an error.
+    """
+    existing = read_baseline(key, conditions)
+    if existing is not None:
+        label, exit_code = _band_samples(existing.tally)
+        _report_samples(
+            runner_label,
+            existing.tally,
+            [],
+            args,
+            label=label,
+            prepatch_evidence=None,
+            target_history=None,
+            baseline=existing,
+            head_sha_differs=existing.head_sha is not None and existing.head_sha != head_sha,
+        )
+        return exit_code
+    written_ids: list[int] = []
+
+    def _recording(
+        result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome
+    ) -> int | None:
+        new_id = record(result, duration_ms, outcome)
+        if new_id is not None:
+            written_ids.append(new_id)
+        return new_id
+
+    try:
+        res = _run_sample_loop(runner_label, args, n, invoke, _recording)
+    except Exception as exc:
+        print(f"error: baseline sample was not recorded: {exc}", file=sys.stderr)
+        return 1
+    fresh = BaselineResult(
+        key=key,
+        conditions=conditions,
+        tally=res.tally,
+        attempt_ids=written_ids,
+        head_sha=head_sha,
+        measured_at=_now_iso(),
+        subject_model=conditions.subject_model,
+        dirty_rows=False,
+        source="measured",
+    )
+    _report_samples(
+        runner_label,
+        res.tally,
+        res.entries,
+        args,
+        label=res.label,
+        prepatch_evidence=res.prepatch_evidence,
+        target_history=res.target_history,
+        baseline=fresh,
+    )
+    return res.exit_code
+
+
+def _compare_baseline_refusal(key: BaselineKey, conditions: BaselineConditions) -> str | None:
+    """Pre-run compare gate: refuse unless a full baseline exists (ENH-3435).
+
+    Computable without running anything — gating before the candidate arm
+    matches the ``--retry-of`` precedent, so a refused compare performs zero
+    subject invocations and writes no candidate rows.
+    """
+    baseline = read_baseline(key, conditions)
+    if baseline is None:
+        return (
+            f"error: --compare-baseline: no measured baseline for {key.runner} "
+            f"{key.target} (incumbent content {key.target_content_hash or '(none)'}) "
+            "under the current conditions; run --measure-baseline on the unmutated "
+            "subject first"
+        )
+    return None
+
+
+def _run_compare_arm(
+    runner_label: str,
+    args: argparse.Namespace,
+    n: int,
+    invoke: Callable[[], tuple[RunnerResult, int]],
+    record: Callable[[RunnerResult, int, HarnessEvalOutcome], int | None],
+    baseline: BaselineResult | None,
+    head_sha: str | None,
+) -> int:
+    """Run the candidate arm and report the delta against *baseline* (ENH-3435).
+
+    Only reached with ``--compare-baseline`` after the pre-run gate passed, so
+    *baseline* is not None in practice. Recording is loud (a swallowed write
+    here would mean the candidate rows the next baseline reuses silently
+    never landed). The exit code comes from the candidate tally's banding
+    alone; the delta is additive report content.
+    """
+    assert baseline is not None  # the pre-run gate refused when None
+    try:
+        res = _run_sample_loop(runner_label, args, n, invoke, record)
+    except Exception as exc:
+        print(f"error: baseline candidate sample was not recorded: {exc}", file=sys.stderr)
+        return 1
+    candidate_rate = res.tally.passed / res.tally.graded if res.tally.graded else None
+    baseline_rate = baseline.tally.passed / baseline.tally.graded
+    delta = BaselineDelta(
+        candidate=res.tally,
+        baseline=baseline,
+        delta=None if candidate_rate is None else candidate_rate - baseline_rate,
+        source=baseline.source,
+        head_sha_differs=baseline.head_sha is not None and baseline.head_sha != head_sha,
+    )
+    _report_samples(
+        runner_label,
+        res.tally,
+        res.entries,
+        args,
+        label=res.label,
+        prepatch_evidence=res.prepatch_evidence,
+        target_history=res.target_history,
+        delta=delta,
+    )
+    return res.exit_code
+
+
+@dataclass
+class SampleLoopResult:
+    """One completed sample loop's aggregate (ENH-3415 D8 / ENH-3435 refactor).
+
+    ENH-3435 split the report call out of the loop so the baseline paths can
+    attach delta/provenance to the same single report. The prepatch/history
+    reads still happen inside the loop, once, before the first sample.
+    """
+
+    exit_code: int
+    label: str
+    tally: SampleTally
+    entries: list[dict[str, Any]]
+    prepatch_evidence: dict | None
+    target_history: dict | None
+
+
 def _run_sample_loop(
     runner_label: str,
     args: argparse.Namespace,
     n: int,
     invoke: Callable[[], tuple[RunnerResult, int]],
-    record: Callable[[RunnerResult, int, HarnessEvalOutcome], None],
-) -> int:
+    record: Callable[[RunnerResult, int, HarnessEvalOutcome], int | None],
+) -> SampleLoopResult:
     """Run *invoke* n times, grading/tallying/recording each sample (ENH-3415).
 
     Shared by the four non-DSL ``cmd_*`` handlers. *invoke* performs one
     runner invocation and returns ``(result, duration_ms)``; *record* persists
     one sample via ``_record_harness_event()`` (D1: one ``repetition`` row per
-    sample). The loop never stops early on a pass (D9): all *n* samples run.
-    History/prepatch are read once, before the first sample, and the single
-    aggregate report is printed once, after the last (D8).
+    sample) and returns its row id (ENH-3435: the baseline phase collects
+    them). The loop never stops early on a pass (D9): all *n* samples run.
+    History/prepatch are read once, before the first sample (D8); the caller
+    prints the single aggregate report from the returned
+    :class:`SampleLoopResult`.
     """
     prepatch_evidence = _read_prepatch_evidence(getattr(args, "issue_id", None))
     target_history = _read_target_history(args.target)
@@ -1079,16 +1578,14 @@ def _run_sample_loop(
             entry["stderr"] = result.stderr
         sample_results.append(entry)
     verdict_label, exit_code = _band_samples(tally)
-    _report_samples(
-        runner_label,
-        tally,
-        sample_results,
-        args,
+    return SampleLoopResult(
+        exit_code=exit_code,
         label=verdict_label,
+        tally=tally,
+        entries=sample_results,
         prepatch_evidence=prepatch_evidence,
         target_history=target_history,
     )
-    return exit_code
 
 
 def _evaluate_and_report(
@@ -1225,14 +1722,26 @@ def cmd_skill(args: argparse.Namespace) -> int:
     if samples_refusal is not None:
         print(samples_refusal, file=sys.stderr)
         return 1
+    n = _effective_samples(args, RunnerType.SKILL)
+    # ENH-3435: baseline flag refusals gate before the retry gate so a
+    # baseline+--retry-of combo reports the baseline refusal (exit 2), and a
+    # clean baseline invocation never pays the retry-gate DB lookup.
+    baseline_refusal = _baseline_flag_refusal(args, n, runner="skill", file_shaped=True)
+    if baseline_refusal is not None:
+        print(baseline_refusal, file=sys.stderr)
+        return 2
     refusal = _retry_gate(retry_of, cell_key)
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 1
-    n = _effective_samples(args, RunnerType.SKILL)
     skill_path = _resolve_skill_target_path(args.target)
     target_path_str = str(skill_path) if skill_path is not None else None
     target_hash = _hash_file(skill_path) if skill_path is not None else None
+    measure_baseline = getattr(args, "measure_baseline", False)
+    compare_baseline = getattr(args, "compare_baseline", False)
+    input_hash = _input_hash(runner_args)
+    baseline_mode = bool(measure_baseline or compare_baseline)
+    record_extras = _baseline_record_extras(args, input_hash=input_hash) if baseline_mode else {}
 
     def _invoke() -> tuple[RunnerResult, int]:
         spec = ActionSpec(
@@ -1247,10 +1756,10 @@ def cmd_skill(args: argparse.Namespace) -> int:
         duration_ms = int((time.monotonic() - start) * 1000)
         return result, duration_ms
 
-    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> None:
+    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> int | None:
         dirty_val = _git_dirty()
         dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-        _record_harness_event(
+        return _record_harness_event(
             runner="skill",
             target=args.target,
             exit_code=result.exit_code,
@@ -1261,13 +1770,74 @@ def cmd_skill(args: argparse.Namespace) -> int:
             head_sha=head_sha,
             cell_key=cell_key,
             retry_of=retry_of,
-            target_content_hash=target_hash,
+            target_content_hash=(
+                (target_hash if target_hash is not None else "") if baseline_mode else target_hash
+            ),
             target_path=target_path_str,
             dirty=dirty_int,
+            loud=baseline_mode,
+            **record_extras,
+        )
+
+    if measure_baseline:
+        key = BaselineKey("skill", args.target, input_hash, target_hash or "")
+        return _run_baseline_phase(
+            runner_label,
+            args,
+            n,
+            _invoke,
+            _record,
+            key,
+            _baseline_conditions(args, n),
+            head_sha,
+        )
+
+    if compare_baseline:
+        resolved: BaselineKey | str
+        baseline_of = getattr(args, "baseline_of", None)
+        if baseline_of is not None:
+            resolved = _resolve_baseline_of(baseline_of, current_input_hash=input_hash)
+        else:
+            incumbent = _incumbent_content_hash(skill_path)
+            if incumbent is None:
+                print(
+                    f"error: --compare-baseline: cannot resolve incumbent content for "
+                    f"skill {args.target} (git show HEAD:<target> unavailable — "
+                    "untracked file or no git repo)",
+                    file=sys.stderr,
+                )
+                return 2
+            if incumbent == (target_hash or ""):
+                print(
+                    "error: --compare-baseline: subject is unmutated; nothing to compare",
+                    file=sys.stderr,
+                )
+                return 2
+            resolved = BaselineKey("skill", args.target, input_hash, incumbent)
+        if isinstance(resolved, str):
+            print(resolved, file=sys.stderr)
+            return 2
+        conditions = _baseline_conditions(args, n)
+        cmp_refusal = _compare_baseline_refusal(resolved, conditions)
+        if cmp_refusal is not None:
+            print(cmp_refusal, file=sys.stderr)
+            return 2
+        return _run_compare_arm(
+            runner_label, args, n, _invoke, _record, read_baseline(resolved, conditions), head_sha
         )
 
     if n > 1:
-        return _run_sample_loop(runner_label, args, n, _invoke, _record)
+        res = _run_sample_loop(runner_label, args, n, _invoke, _record)
+        _report_samples(
+            runner_label,
+            res.tally,
+            res.entries,
+            args,
+            label=res.label,
+            prepatch_evidence=res.prepatch_evidence,
+            target_history=res.target_history,
+        )
+        return res.exit_code
 
     result, duration_ms = _invoke()
     rc, outcome = _evaluate_and_report(runner_label, result, args)
@@ -1289,11 +1859,24 @@ def cmd_cmd(args: argparse.Namespace) -> int:
     if samples_refusal is not None:
         print(samples_refusal, file=sys.stderr)
         return 1
+    n = _effective_samples(args, RunnerType.CMD)
+    # ENH-3435: baseline flag refusals gate before the retry gate so a
+    # baseline+--retry-of combo reports the baseline refusal (exit 2), and a
+    # clean baseline invocation never pays the retry-gate DB lookup.
+    baseline_refusal = _baseline_flag_refusal(args, n, runner="cmd", file_shaped=False)
+    if baseline_refusal is not None:
+        print(baseline_refusal, file=sys.stderr)
+        return 2
     refusal = _retry_gate(retry_of, cell_key)
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 1
-    n = _effective_samples(args, RunnerType.CMD)
+    measure_baseline = getattr(args, "measure_baseline", False)
+    compare_baseline = getattr(args, "compare_baseline", False)
+    baseline_mode = bool(measure_baseline or compare_baseline)
+    # cmd's target is its own input/content — no separate hashes exist, so the
+    # baseline paths pin both to "" (never NULL, so rows stay matchable).
+    record_extras = _baseline_record_extras(args, input_hash="") if baseline_mode else {}
 
     def _invoke() -> tuple[RunnerResult, int]:
         spec = ActionSpec(
@@ -1307,10 +1890,10 @@ def cmd_cmd(args: argparse.Namespace) -> int:
         duration_ms = int((time.monotonic() - start) * 1000)
         return result, duration_ms
 
-    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> None:
+    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> int | None:
         dirty_val = _git_dirty()
         dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-        _record_harness_event(
+        return _record_harness_event(
             runner="cmd",
             target=args.target,
             exit_code=result.exit_code,
@@ -1321,11 +1904,46 @@ def cmd_cmd(args: argparse.Namespace) -> int:
             head_sha=head_sha,
             cell_key=cell_key,
             retry_of=retry_of,
+            target_content_hash="" if baseline_mode else None,
             dirty=dirty_int,
+            loud=baseline_mode,
+            **record_extras,
+        )
+
+    if measure_baseline:
+        key = BaselineKey("cmd", args.target, "", "")
+        return _run_baseline_phase(
+            runner_label, args, n, _invoke, _record, key, _baseline_conditions(args, n), head_sha
+        )
+
+    if compare_baseline:
+        baseline_of = getattr(args, "baseline_of", None)
+        assert baseline_of is not None  # refused above when missing
+        resolved = _resolve_baseline_of(baseline_of, current_input_hash="")
+        if isinstance(resolved, str):
+            print(resolved, file=sys.stderr)
+            return 2
+        conditions = _baseline_conditions(args, n)
+        cmp_refusal = _compare_baseline_refusal(resolved, conditions)
+        if cmp_refusal is not None:
+            print(cmp_refusal, file=sys.stderr)
+            return 2
+        return _run_compare_arm(
+            runner_label, args, n, _invoke, _record, read_baseline(resolved, conditions), head_sha
         )
 
     if n > 1:
-        return _run_sample_loop(runner_label, args, n, _invoke, _record)
+        res = _run_sample_loop(runner_label, args, n, _invoke, _record)
+        _report_samples(
+            runner_label,
+            res.tally,
+            res.entries,
+            args,
+            label=res.label,
+            prepatch_evidence=res.prepatch_evidence,
+            target_history=res.target_history,
+        )
+        return res.exit_code
 
     result, duration_ms = _invoke()
     rc, outcome = _evaluate_and_report(runner_label, result, args)
@@ -1361,11 +1979,23 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     if samples_refusal is not None:
         print(samples_refusal, file=sys.stderr)
         return 1
+    n = _effective_samples(args, RunnerType.MCP)
+    # ENH-3435: baseline flag refusals gate before the retry gate so a
+    # baseline+--retry-of combo reports the baseline refusal (exit 2), and a
+    # clean baseline invocation never pays the retry-gate DB lookup.
+    baseline_refusal = _baseline_flag_refusal(args, n, runner="mcp", file_shaped=False)
+    if baseline_refusal is not None:
+        print(baseline_refusal, file=sys.stderr)
+        return 2
     refusal = _retry_gate(retry_of, cell_key)
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 1
-    n = _effective_samples(args, RunnerType.MCP)
+    measure_baseline = getattr(args, "measure_baseline", False)
+    compare_baseline = getattr(args, "compare_baseline", False)
+    baseline_mode = bool(measure_baseline or compare_baseline)
+    input_hash = _input_hash(params)  # what was asked: the canonical --args JSON
+    record_extras = _baseline_record_extras(args, input_hash=input_hash) if baseline_mode else {}
 
     def _invoke() -> tuple[RunnerResult, int]:
         spec = ActionSpec(
@@ -1380,10 +2010,10 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         duration_ms = int((time.monotonic() - start) * 1000)
         return result, duration_ms
 
-    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> None:
+    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> int | None:
         dirty_val = _git_dirty()
         dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-        _record_harness_event(
+        return _record_harness_event(
             runner="mcp",
             target=args.target,
             exit_code=result.exit_code,
@@ -1394,11 +2024,46 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             head_sha=head_sha,
             cell_key=cell_key,
             retry_of=retry_of,
+            target_content_hash="" if baseline_mode else None,
             dirty=dirty_int,
+            loud=baseline_mode,
+            **record_extras,
+        )
+
+    if measure_baseline:
+        key = BaselineKey("mcp", args.target, input_hash, "")
+        return _run_baseline_phase(
+            runner_label, args, n, _invoke, _record, key, _baseline_conditions(args, n), head_sha
+        )
+
+    if compare_baseline:
+        baseline_of = getattr(args, "baseline_of", None)
+        assert baseline_of is not None  # refused above when missing
+        resolved = _resolve_baseline_of(baseline_of, current_input_hash=input_hash)
+        if isinstance(resolved, str):
+            print(resolved, file=sys.stderr)
+            return 2
+        conditions = _baseline_conditions(args, n)
+        cmp_refusal = _compare_baseline_refusal(resolved, conditions)
+        if cmp_refusal is not None:
+            print(cmp_refusal, file=sys.stderr)
+            return 2
+        return _run_compare_arm(
+            runner_label, args, n, _invoke, _record, read_baseline(resolved, conditions), head_sha
         )
 
     if n > 1:
-        return _run_sample_loop(runner_label, args, n, _invoke, _record)
+        res = _run_sample_loop(runner_label, args, n, _invoke, _record)
+        _report_samples(
+            runner_label,
+            res.tally,
+            res.entries,
+            args,
+            label=res.label,
+            prepatch_evidence=res.prepatch_evidence,
+            target_history=res.target_history,
+        )
+        return res.exit_code
 
     result, duration_ms = _invoke()
     rc, outcome = _evaluate_and_report(runner_label, result, args)
@@ -1441,19 +2106,33 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     if samples_refusal is not None:
         print(samples_refusal, file=sys.stderr)
         return 1
+    n = _effective_samples(args, RunnerType.PROMPT)
+    # ENH-3435: baseline flag refusals gate before the retry gate so a
+    # baseline+--retry-of combo reports the baseline refusal (exit 2), and a
+    # clean baseline invocation never pays the retry-gate DB lookup.
+    baseline_refusal = _baseline_flag_refusal(args, n, runner="prompt", file_shaped=False)
+    if baseline_refusal is not None:
+        print(baseline_refusal, file=sys.stderr)
+        return 2
     refusal = _retry_gate(retry_of, cell_key)
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 1
-    n = _effective_samples(args, RunnerType.PROMPT)
+    measure_baseline = getattr(args, "measure_baseline", False)
+    compare_baseline = getattr(args, "compare_baseline", False)
+    baseline_mode = bool(measure_baseline or compare_baseline)
+    # The prompt text is both the input and the content (a mutated prompt is a
+    # different cell with no discoverable incumbent) — input_hash stays "".
+    record_extras = _baseline_record_extras(args, input_hash="") if baseline_mode else {}
+    target_hash = _hash_bytes(args.target.encode("utf-8"))
 
     def _invoke() -> tuple[RunnerResult, int]:
         return _run_prompt_action(args.target, args)
 
-    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> None:
+    def _record(result: RunnerResult, duration_ms: int, outcome: HarnessEvalOutcome) -> int | None:
         dirty_val = _git_dirty()
         dirty_int: int | None = None if dirty_val is None else int(dirty_val)
-        _record_harness_event(
+        return _record_harness_event(
             runner="prompt",
             target=args.target,
             exit_code=result.exit_code,
@@ -1464,12 +2143,46 @@ def cmd_prompt(args: argparse.Namespace) -> int:
             head_sha=head_sha,
             cell_key=cell_key,
             retry_of=retry_of,
-            target_content_hash=_hash_bytes(args.target.encode("utf-8")),
+            target_content_hash=target_hash,
             dirty=dirty_int,
+            loud=baseline_mode,
+            **record_extras,
+        )
+
+    if measure_baseline:
+        key = BaselineKey("prompt", args.target, "", target_hash)
+        return _run_baseline_phase(
+            runner_label, args, n, _invoke, _record, key, _baseline_conditions(args, n), head_sha
+        )
+
+    if compare_baseline:
+        baseline_of = getattr(args, "baseline_of", None)
+        assert baseline_of is not None  # refused above when missing
+        resolved = _resolve_baseline_of(baseline_of, current_input_hash="")
+        if isinstance(resolved, str):
+            print(resolved, file=sys.stderr)
+            return 2
+        conditions = _baseline_conditions(args, n)
+        cmp_refusal = _compare_baseline_refusal(resolved, conditions)
+        if cmp_refusal is not None:
+            print(cmp_refusal, file=sys.stderr)
+            return 2
+        return _run_compare_arm(
+            runner_label, args, n, _invoke, _record, read_baseline(resolved, conditions), head_sha
         )
 
     if n > 1:
-        return _run_sample_loop(runner_label, args, n, _invoke, _record)
+        res = _run_sample_loop(runner_label, args, n, _invoke, _record)
+        _report_samples(
+            runner_label,
+            res.tally,
+            res.entries,
+            args,
+            label=res.label,
+            prepatch_evidence=res.prepatch_evidence,
+            target_history=res.target_history,
+        )
+        return res.exit_code
 
     result, duration_ms = _invoke()
     rc, outcome = _evaluate_and_report(runner_label, result, args)
@@ -1489,6 +2202,18 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
     """
     from little_loops.history_reader import admissions_by_reason
     from little_loops.session_store import resolve_history_db
+
+    # ENH-3435 Scope Boundaries: a DSL baseline arm is a task-set-breadth
+    # question, not a repetition-depth one (the dsl runner has no per-task n
+    # of the shape the baseline phase needs), so both flags are refused here;
+    # a follow-up issue defines the DSL baseline arm.
+    if getattr(args, "measure_baseline", False) or getattr(args, "compare_baseline", False):
+        print(
+            "error: --measure-baseline/--compare-baseline: not supported on the dsl "
+            "runner (a DSL baseline arm is a follow-up)",
+            file=sys.stderr,
+        )
+        return 2
 
     # ENH-3415 Scope Boundaries: the dsl runner already resamples across
     # tasks with its own parent/child harness_events rows; per-task

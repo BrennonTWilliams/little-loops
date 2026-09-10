@@ -368,6 +368,59 @@ one-shot run), so this invocation's own `sample_pass_rate` and the cross-invocat
 resamples across its own task set and refuses an explicit `--samples` > 1 rather than
 resampling each task on top of that.
 
+### Measuring a delta (ENH-3435)
+
+A "this change improved things" verdict is a claim against a *before*-number, and that number
+must be measured, not remembered. `ll-harness` is a one-shot CLI with no proposal phase of its
+own, so the baseline arm is a separate invocation the loop sequences around the mutation —
+measure on the clean tree, mutate, then compare:
+
+```bash
+# 1. before the first proposal: measure the unmutated incumbent (n = the candidate's n)
+ll-harness skill check-code --measure-baseline --semantic "<criterion>" --samples 3
+
+# ...the loop mutates the skill file (uncommitted is fine — the baseline is keyed
+#    on the incumbent's *content*, resolved from the HEAD blob, not on HEAD itself)...
+
+# 2. after the mutation: compare against the measured baseline
+ll-harness skill check-code --compare-baseline --semantic "<criterion>" --samples 3
+```
+
+Rules that make the delta honest:
+
+- **Baselines are keyed on content + input + conditions, never on `head_sha`.** The match key
+  is `(runner, target, input_hash, target_content_hash, conditions_fp)`; a conditions
+  fingerprint (sha256 over every condition-relevant argument — judge model, subject model,
+  timeout, host CLI, `--exit-code`, trace flags, `--hosts`) means a baseline measured under
+  different grading cannot silently serve. `head_sha` is provenance: the report flags
+  "measured at a different HEAD" rather than refusing, because the meta-loop flow commits
+  accepted candidates and a HEAD-keyed lookup would re-pay the measurement it just made.
+- **The compare gate runs before the candidate arm.** No baseline / partial baseline (< n
+  authoritative rows) / condition or input mismatch / effective n = 1 / unmutated subject all
+  refuse with **exit 2** and zero subject invocations. Exit 2 (not 1) so a loop routing on the
+  exit code can tell "no baseline measured" from "candidate genuinely failed".
+- **The store is bidirectional.** The candidate rows a `--compare-baseline` run writes become
+  the baseline for that content once the candidate is accepted — the next
+  `--measure-baseline` reuses them with zero new runs. A baseline doubles first-run spend and
+  is amortized from there.
+- **A delta is a rate difference with both Wilson intervals, never a banded verdict.** The
+  run's exit code still comes from the candidate tally's banding alone; at the default n=3
+  the intervals will usually overlap and the report shows that rather than hiding it.
+- **`prompt`/`cmd`/`mcp` need `--baseline-of <attempt-id>`** — their target *is* the content,
+  so there is no HEAD blob to resolve an incumbent from.
+
+Known limitation — **ambient subject model on the `skill` runner**: only `prompt` takes
+`--model`; a `skill` baseline's `subject_model` is NULL, so a host default-model change
+between the two arms (they can be days apart) passes every condition check. The delta
+provenance carries an explicit `subject model not pinned` note rather than a false claim of
+parity. Pin the host model (`LL_HOST_CLI`-level or config) when a loop sequences
+measure/compare across days.
+
+No loop in this repo invokes this sequence yet (`harness-optimize.yaml` scores through
+`${context.scorer}` with its own `baseline_score` state); the two-invocation sequence above is
+the documented contract a follow-up can wire as that scorer. The JSON `baseline.delta` field
+is the loop-consumable output.
+
 ### Across runs
 
 Every `ll-harness` invocation writes a row to the `harness_events` table in `.ll/history.db`

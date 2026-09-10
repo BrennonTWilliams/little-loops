@@ -1071,6 +1071,11 @@ def _insert_harness_event(
     attempt_kind: str | None = None,
     continuations: int | None = None,
     superseded_by: int | None = None,
+    timeout_s: int | None = None,
+    host_cli: str | None = None,
+    subject_model: str | None = None,
+    input_hash: str | None = None,
+    conditions_fp: str | None = None,
 ) -> int:
     """INSERT one ``harness_events`` row + FTS index entry on *conn*, no commit.
 
@@ -1079,6 +1084,11 @@ def _insert_harness_event(
     ``BEGIN IMMEDIATE`` allocation transaction without a nested
     connect/commit. The caller owns the connection and the transaction.
     Returns the inserted row's id (``cursor.lastrowid``).
+
+    ENH-3435 adds the five v50 baseline-condition kwargs (``timeout_s``,
+    ``host_cli``, ``subject_model``, ``input_hash``, ``conditions_fp``), all
+    default None; they flow through :func:`record_attempt`'s ``**event_fields``
+    unchanged.
     """
     cursor = conn.execute(
         "INSERT INTO harness_events("
@@ -1087,8 +1097,9 @@ def _insert_harness_event(
         "semantic_prompt, semantic_confidence, semantic_reason, "
         "semantic_evidence, semantic_model, "
         "target_content_hash, target_path, dirty, "
-        "cell_key, repetition, attempt_kind, continuations, superseded_by"
-        ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "cell_key, repetition, attempt_kind, continuations, superseded_by, "
+        "timeout_s, host_cli, subject_model, input_hash, conditions_fp"
+        ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             ts,
             runner,
@@ -1114,6 +1125,11 @@ def _insert_harness_event(
             attempt_kind,
             continuations,
             superseded_by,
+            timeout_s,
+            host_cli,
+            subject_model,
+            input_hash,
+            conditions_fp,
         ),
     )
     summary = f"{runner or 'harness'} {target or ''} exit={exit_code}".strip()
@@ -1156,6 +1172,11 @@ def record_harness_event(
     attempt_kind: str | None = None,
     continuations: int | None = None,
     superseded_by: int | None = None,
+    timeout_s: int | None = None,
+    host_cli: str | None = None,
+    subject_model: str | None = None,
+    input_hash: str | None = None,
+    conditions_fp: str | None = None,
 ) -> int:
     """Write one row to ``harness_events`` and index it in ``search_index``.
 
@@ -1208,6 +1229,11 @@ def record_harness_event(
             attempt_kind=attempt_kind,
             continuations=continuations,
             superseded_by=superseded_by,
+            timeout_s=timeout_s,
+            host_cli=host_cli,
+            subject_model=subject_model,
+            input_hash=input_hash,
+            conditions_fp=conditions_fp,
         )
         conn.commit()
         return new_id
