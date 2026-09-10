@@ -1,0 +1,12 @@
+{
+  "id": "a6db691e-3962-4afc-90ef-98f59d9f471e",
+  "type": "decision",
+  "timestamp": "2026-09-10T21:05:33Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses existing, recently-exercised harness_events migration/reader pattern (ENH-3407 precedent); avoids a second drift-prone store. Scored 11/12 vs Option B's 6/12 on consistency/simplicity/testability/risk.",
+  "rule": "Option A \u2014 harness_events is the baseline store",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 standalone JSON file cache under .ll/harness-baselines/<key>.json",
+  "issue": "ENH-3435"
+}

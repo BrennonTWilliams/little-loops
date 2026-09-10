@@ -8,7 +8,8 @@ discovered_date: '2026-09-10'
 labels: []
 learning_tests_required:
   - pyyaml
-decision_needed: true
+decision_needed: false
+verify_verdict: EVIDENCE_UNVERIFIED
 relates_to:
   - ENH-3397
   - ENH-3407
@@ -32,7 +33,7 @@ Cache resilience is part of the contract: a corrupt or partial cache entry must 
 _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 - The "remembered" before-number characterized above is, concretely, `_read_target_history()` (`scripts/little_loops/cli/harness.py:760`) — a rolling 30-day historical pass/abstention rate pulled from `harness_events` via `history_reader.harness.recent_harness_events`, filtered to non-superseded rows (ENH-3408), and suppressed per-rate when its denominator is below `_HISTORY_MIN_SCORED = 3` (`:757`). It is not a single prior run's number, and it is not scoped to the same conditions/n as the current invocation — it is a wider-window rate, rendered via `_format_target_history_line()` (`:826`) as a status line displayed alongside the current run's verdict, never algebraically diffed against it. `ll-harness` computes no delta today: a case-insensitive grep of `cli/harness.py` for `delta`/`baseline` returns zero hits outside the unrelated `datetime.timedelta` import.
-- ENH-3421's "frozen external reference" guard lives in the FSM `convergence` evaluator (`scripts/little_loops/fsm/evaluators.py`, ~line 1938) — a different subsystem from `ll-harness`'s cell/repetition run model in `cli/harness.py`. No shared code, cache, or `_cell_key` usage was found between the two; ENH-3421 does not currently supply an anchor into `ll-harness` runs. Treat the "two sibling guards ... both assume a baseline exists" framing above as aspirational architecture, not a description of code that exists today.
+- ENH-3421's "frozen external reference" guard lives in the FSM `convergence` evaluator (`scripts/little_loops/fsm/evaluators.py`, ~line 1928) — a different subsystem from `ll-harness`'s cell/repetition run model in `cli/harness.py`. No shared code, cache, or `_cell_key` usage was found between the two; ENH-3421 does not currently supply an anchor into `ll-harness` runs. Treat the "two sibling guards ... both assume a baseline exists" framing above as aspirational architecture, not a description of code that exists today.
 - A separate, architecturally unrelated "baseline" concept already exists: `ll-loop run <loop> --baseline` / `ll-loop promote-baseline <loop>`, an FSM meta-loop A/B score-reversion comparator (`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:438-500`, `scripts/little_loops/loops/harness-optimize.yaml`'s `baseline_score` state). It shares no code path with `ll-harness`'s cell/repetition model and should not be conflated with the baseline phase this issue proposes.
 
 ## Expected Behavior
@@ -97,7 +98,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 **Files to Modify**
 - `scripts/little_loops/cli/harness.py` — the two flags in `_build_harness_parser` (`:466`), `_baseline_key`, `read_baseline`/`write_baseline`, `_run_baseline_phase`, and the delta/provenance extension of `_report_samples` (`:950`) land here alongside the existing `_cell_key` (`:144`), `_effective_samples` (`:912`), `_run_sample_loop` (`:1036`); `_record_harness_event` (`:206`) gains a `loud: bool` (or equivalent) so the measure path propagates write failures
-- `scripts/little_loops/session_store/writers.py` (`record_attempt`, `:1282`) and `scripts/little_loops/session_store/schema.py` — **if Option A of the store decision is taken**: a schema migration adding `timeout_s`/`host_cli` condition columns (and, if needed, an `arm` marker) to `harness_events`, plus the post-hoc write path
+- `scripts/little_loops/session_store/writers.py` (`record_attempt`, `:1279`) and `scripts/little_loops/session_store/schema.py` — **if Option A of the store decision is taken**: a schema migration adding `timeout_s`/`host_cli` condition columns (and, if needed, an `arm` marker) to `harness_events`, plus the post-hoc write path
 - `scripts/little_loops/history_reader/harness.py` — **Option A**: a `baseline_for(cell_key, *, n, conditions)` reader built on `authoritative_attempts` (`:186`); **Option B**: unchanged, but the post-hoc analysis side of AC5 needs a `write_baseline` call site somewhere in this module or a sibling
 - `.gitignore` — **Option B only**: a `.ll/harness-baselines/` line, following `.ll/evidence-verdict-cache.json` (`:109`)
 
@@ -142,10 +143,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 `decision_needed: true` is set for this one choice. Both options satisfy every AC; they differ in how many sources of truth exist for a harness measurement.
 
-- **Option A (recommended) — `harness_events` is the store.** A baseline *is* the set of authoritative (non-superseded) `harness_events` rows for the incumbent's cell. `--measure-baseline` writes ordinary repetition rows (loudly); `--compare-baseline` reads them back via a new `history_reader.harness.baseline_for(...)`. Post-hoc analysis reads with the same function and writes with `record_attempt`, so AC5's bidirectionality is the existing table's read/write surface, not new plumbing. AC6's "corrupt or partial" becomes "fewer than n authoritative rows, or a conditions mismatch" — no JSON-corruption story to test, but the partial-row and mismatch cases are. Requires a schema migration adding `timeout_s` and `host_cli` columns (the other conditions — `semantic_model`, `semantic_prompt`, `target_content_hash`, `head_sha`, `dirty` — are already on the row). Cost: a migration; `history.db` is the only place the baseline lives, so an unavailable DB refuses the baseline flags outright (it already degrades `--retry-of` the same way).
-- **Option B — a JSON file cache under `.ll/harness-baselines/<key>.json`.** `read_baseline`/`write_baseline` on a `BaselineResult` file, following `.ll/evidence-verdict-cache.json` (gitignored per-file cache with invalidate-on-mismatch) and delegating writes to `file_utils.atomic_write_json` (`file_utils.py:35`). Independent of `history.db` availability, and the corruption story is literally testable with a malformed file. Cost: every baseline measurement is now stored twice (the repetition rows still land in `harness_events`), the two can drift, and the post-hoc "write the same shape back" path has to be built and kept in sync with the row shape by hand.
+**Option A**: `harness_events` is the store.
 
-The recommendation is A because ENH-3397/3407/3408 already made `harness_events` the cell-keyed record of every repetition, and a delta computed from the same rows the run wrote is the strongest form of "measured, not remembered."
+> **Selected:** Option A — reuses the existing, recently-exercised `harness_events` migration/reader pattern (ENH-3407 added the same shape of nullable condition columns) instead of standing up a second, drift-prone store.
+
+A baseline *is* the set of authoritative (non-superseded) `harness_events` rows for the incumbent's cell. `--measure-baseline` writes ordinary repetition rows (loudly); `--compare-baseline` reads them back via a new `history_reader.harness.baseline_for(...)`. Post-hoc analysis reads with the same function and writes with `record_attempt`, so AC5's bidirectionality is the existing table's read/write surface, not new plumbing. AC6's "corrupt or partial" becomes "fewer than n authoritative rows, or a conditions mismatch" — no JSON-corruption story to test, but the partial-row and mismatch cases are. Requires a schema migration adding `timeout_s` and `host_cli` columns (the other conditions — `semantic_model`, `semantic_prompt`, `target_content_hash`, `head_sha`, `dirty` — are already on the row). Cost: a migration; `history.db` is the only place the baseline lives, so an unavailable DB refuses the baseline flags outright (it already degrades `--retry-of` the same way).
+
+**Option B**: a JSON file cache under `.ll/harness-baselines/<key>.json`. `read_baseline`/`write_baseline` on a `BaselineResult` file, following `.ll/evidence-verdict-cache.json` (gitignored per-file cache with invalidate-on-mismatch) and delegating writes to `file_utils.atomic_write_json` (`file_utils.py:35`). Independent of `history.db` availability, and the corruption story is literally testable with a malformed file. Cost: every baseline measurement is now stored twice (the repetition rows still land in `harness_events`), the two can drift, and the post-hoc "write the same shape back" path has to be built and kept in sync with the row shape by hand.
+
+**Recommended**: Option A — ENH-3397/3407/3408 already made `harness_events` the cell-keyed record of every repetition, and a delta computed from the same rows the run wrote is the strongest form of "measured, not remembered."
+
+### Decision Rationale
+
+**Selected**: Option A — `harness_events` is the baseline store.
+
+Two `ll:codebase-pattern-finder` agents independently gathered evidence for each option and scored them on consistency, simplicity, testability, and risk (0–3 each, 12 max):
+
+| Dimension | Option A (`harness_events`) | Option B (JSON file cache) |
+|---|---|---|
+| Consistency | 3 | 2 |
+| Simplicity | 3 | 1 |
+| Testability | 3 | 2 |
+| Risk | 2 | 1 |
+| **Total** | **11/12** | **6/12** |
+
+**Key evidence for A**: `session_store/schema.py`'s `_MIGRATIONS` list already has a directly analogous entry — the v49/ENH-3407 migration added five nullable condition/run-model columns (`cell_key`, `repetition`, `attempt_kind`, `continuations`, `superseded_by`) to this exact `harness_events` table via the same append-only `ALTER TABLE` + `SCHEMA_VERSION` bump mechanism this issue's `timeout_s`/`host_cli` columns would use. `record_attempt`'s `**event_fields` pass-through already generalizes to new writer kwargs with no dataclass/writer-shape change, and `history_reader/harness.py` has a ready-made column-list/dataclass/`_AUTHORITATIVE_PREDICATE` scaffold a `baseline_for(cell_key, *, n, conditions)` reader slots into directly. ~15+ existing migration tests (`test_session_store_schema.py`) make the migration path well-trodden.
+
+**Key evidence against B**: the cited precedent (`.ll/evidence-verdict-cache.json`'s `VerdictCache`) does not actually use `file_utils.atomic_write_json` as the Design text assumes — it writes via raw `path.write_text`, so the atomic-write delegation would be a new pairing, not a repeat of that file's own implementation. More materially, Option B stores every baseline measurement twice (rows still land in `harness_events` regardless), which the issue's own Program Design text already flags as a drift risk, and its bespoke invalidation logic (version/algo/params/refs-signature checks) would need to be redesigned from scratch rather than reused.
+
+On a tie, Consistency (codebase fit) is the tiebreaker per the scoring rules — Option A wins there too, so the result is unambiguous.
 
 ### Types
 
@@ -175,7 +201,7 @@ The recommendation is A because ENH-3397/3407/3408 already made `harness_events`
 
 _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
-- `_cell_key(runner, target, head_sha)` (`scripts/little_loops/cli/harness.py:144`) already encodes exactly the triple the Program Design's `write_baseline`/`read_baseline` key on: per ENH-3397's run model (`cell = (target, task, subject)`, `subject = runner_label + head_sha`), `head_sha` is what already distinguishes an unmutated-incumbent run from a post-change candidate run of the same `runner`/`target`. No new key scheme needs inventing — confirmed call sites are `cmd_skill:1222`, `cmd_cmd:1286`, and `cmd_dsl`'s inline `task_cell_key = _cell_key("dsl-task", task_file.name, head_sha)` (`:1568`).
+- `_cell_key(runner: str, target: str, head_sha: str | None)` (`scripts/little_loops/cli/harness.py:144`) already encodes exactly the triple the Program Design's `write_baseline`/`read_baseline` key on: per ENH-3397's run model (`cell = (target, task, subject)`, `subject = runner_label + head_sha`), `head_sha` is what already distinguishes an unmutated-incumbent run from a post-change candidate run of the same `runner`/`target`. No new key scheme needs inventing — confirmed call sites are `cmd_skill:1222`, `cmd_cmd:1286`, and `cmd_dsl`'s inline `task_cell_key = _cell_key("dsl-task", task_file.name, head_sha)` (`:1568`).
 - `_run_sample_loop` (`cli/harness.py:1036`) is runner-agnostic — it takes `invoke()`/`record()` closures rather than hardcoding what it invokes — so it can drive an unmutated-incumbent arm without modification, which is what `_run_baseline_phase`'s proposed cache-miss path assumes.
 - Satisfying AC6 ("a corrupt or partial cache entry causes re-measurement and re-write, not use") requires exception handling broader than what `learning_tests.read_record` (the function `read_baseline` is designed to mirror) currently performs: `_read_frontmatter_yaml` (`learning_tests/__init__.py:106`) degrades to `None` only on a missing/malformed `---` delimiter block, not on a `yaml.safe_load()` failure inside a well-delimited block (unguarded, raises `yaml.YAMLError`) or a missing required key in `from_dict()` (`:77`, unguarded `data["target"]`/`data["date"]`, raises `KeyError`). `read_baseline` needs its own `try/except` around both the parse and the `from_dict`-equivalent construction — see the two-stage pattern at `fsm/persistence.py:load_state()` (`:525`) for a codebase precedent that already does this for a different cache.
 - No existing test in this codebase exercises the "corrupt entry causes re-measurement and re-write" half of AC6 — every existing corrupt-cache test (`test_fsm_persistence.py:276`, `test_state.py:260`, `test_ab_writer.py:198`) asserts only that the read returns `None`, never that a subsequent write overwrites the corrupt file. AC6's own test (writing a deliberately corrupted entry and asserting re-measurement) has no template to extend in this codebase; it is new test surface, not an adaptation of an existing one.
@@ -210,12 +236,38 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Cost**: measuring a baseline runs the subject n more times, so the first run of a loop that opts in roughly doubles its API spend; every later run on the same content and conditions reuses it. Both flags are opt-in.
 - **Breaking Change**: No.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues --auto` — 2026-09-10:_
+
+Graph: provider=`codegraph` freshness=`fresh` (used to corroborate caller scope for `_cell_key` and `read_record`, and to confirm `BaselineResult` has no existing references — see below).
+
+**Claim verification (checks 2B/2B.0, causal-claims method)** — every concrete `file:line` citation in this issue (~45 across `cli/harness.py`, `session_store/writers.py`/`schema.py`, `history_reader/harness.py`, `fsm/evaluators.py`, `.gitignore`, `learning_tests/__init__.py`, `file_utils.py`, `rate_limit_circuit.py`, `fsm/persistence.py`, `ab_writer.py`, `fsm/executor.py`, `cli/loop/summary.py`, `config-schema.json`, the cited test files, and the cited docs) was checked directly against the current codebase via `rg`/`sed` and corroborated with `ll-code callers-of`/`references` where applicable. All resolved correctly except two trivial drifts, corrected in this pass:
+- `session_store/writers.py`'s `record_attempt` was cited as `:1282` in the Integration Map (Files to Modify); its `def` is at `:1279` (the docstring's own `dirty` citation at `:1297` was already exact). Corrected to `:1279`.
+- `fsm/evaluators.py`'s convergence branch was cited as `~line 1938`; the actual `elif eval_type == "convergence":` is at `:1928`. Corrected to `~line 1928`.
+
+Load-bearing causal/identity claims were verified by reading the artifact directly, not by observing a consistent symptom: the v49/ENH-3407 migration's five added columns (`cell_key`, `repetition`, `attempt_kind`, `continuations`, `superseded_by`) were confirmed by reading the migration SQL at `schema.py:1371-1376`; `.ll/evidence-verdict-cache.json`'s `VerdictCache` was confirmed to write via raw `path.write_text` (`cli/verify_evidence.py:1258`), not `atomic_write_json`; `_cell_key`'s `(runner, target, head_sha)` triple was confirmed by reading its signature at `harness.py:144`; `.ll/learning-tests/` was confirmed git-tracked with no matching `.gitignore` rule (`git check-ignore` exits 1 on its tracked file). `timeout_s`/`host_cli` were confirmed absent from `harness_events` today (zero hits repo-wide), consistent with the Design's claim that these need a new migration. The `--retry-of` loud-write precedent cited to justify the proposed `--measure-baseline` loud-write behavior is real: `_record_harness_event` (`harness.py:206`) already has an unsuppressed `if retry_of is not None: return _write()` branch alongside its best-effort `try/except` fallback.
+
+**Decisions gate**: `ll-issues decisions list --type rule --enforcement required --active-only` returned no active required rules — clean, no conflict with the selected Option A (`harness_events` as baseline store).
+
+**Proposal-vs-code consequence check (B6)**: no exception-handler incompatibility (the loud-write precedent above is exact) or test-fixture invalidation found. Every Integration Map/Wiring Phase touchpoint has a corresponding AC except three documentation-update points (`docs/reference/CLI.md`, `docs/reference/EVENT-SCHEMA.md`, `docs/guides/EVALUATION_GUIDE.md`) — consistent with this codebase's convention of not promoting doc updates to ACs, not treated as a defect.
+
+**Evidence-quote check (B7)**: `ll-verify-evidence` returned one finding — the backtick span `` `_cell_key(runner, target, head_sha)` `` (issue line 203, attributed to `cli/harness.py`) does not appear verbatim; the actual signature carries type annotations (`runner: str, target: str, head_sha: str | None`). Manual review confirms the underlying claim (the triple `_cell_key` encodes) is accurate — this is the paraphrase-class false positive the command's own fallback-F3 note describes (~0.13–0.20 precision), not a fabricated premise. Per the command's deterministic rule, `verify_verdict` is set to `EVIDENCE_UNVERIFIED` (advisory, not routed).
+
+**Dependencies**: `relates_to: [ENH-3397, ENH-3407, ENH-3415]` (plus ENH-3421, named in body prose) all confirmed `status: done` via `ll-issues show <id> --json`. No `## Blocked By` section; §2E dependency-reference validation is N/A as noted in the task brief.
+
+**Decision consistency**: `decision_needed: false` in frontmatter is consistent with the body — the "Decision: baseline store" section is resolved (`Selected: Option A`) with rationale and a scored comparison table; no open decision remains.
+
+Verdict at time of check: **EVIDENCE_UNVERIFIED** (the two line-number drifts above were corrected in this same pass; the evidence-quote finding was reviewed but not altered — see rationale above for why no text change is warranted).
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-10T21:15:12 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`
+- `/ll:decide-issue` - 2026-09-10T21:05:51 - `85832143-3cff-4024-be6a-21db797b611c.jsonl`
 - manual design review - 2026-09-10T21:30:00 - folded review findings (two-invocation contract, content-hash key, store decision, cmd_dsl exclusion, delta definition)
 - `/ll:wire-issue` - 2026-09-10T20:50:09 - `2557344f-8422-414b-93b6-7ef3ec9dd3f8.jsonl`
 - `/ll:refine-issue` - 2026-09-10T20:32:27 - `16155f03-6c19-41ff-86d3-335dcd9e206f.jsonl`
