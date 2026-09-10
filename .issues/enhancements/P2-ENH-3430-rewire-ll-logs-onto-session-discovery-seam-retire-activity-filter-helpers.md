@@ -12,8 +12,10 @@ labels:
 - observability
 parent: ENH-3419
 blocked_by: []
-blocks: []
+blocks:
+- ENH-3433
 relates_to:
+- ENH-3433
 - ENH-3420
 - FEAT-3417
 - ENH-3428
@@ -22,6 +24,12 @@ relates_to:
 unproven_mechanism: true
 spike_completed: true
 spike_attempted: true
+confidence_score: 96
+outcome_confidence: 82
+score_complexity: 16
+score_test_coverage: 23
+score_ambiguity: 20
+score_change_surface: 23
 ---
 
 # ENH-3430: Rewire ll-logs onto the session-discovery seam; retire _has_ll_activity/_extract_cwd_from_project
@@ -95,7 +103,7 @@ also resolves a `HostLayout` from `LL_HOOK_HOST` directly (649).
   lossy-decode `cwd` fallback for synthetic fixtures lacking a `cwd` record — intentionally dropped,
   not preserved. **A Codex-shape ll-signal detector** — `_is_ll_relevant`/`_detect_ll_signal`/
   `_record_has_error` recognizing `response_item.custom_tool_call` (`input` is a JS snippet
-  embedding `cmd: "..."`) — is a follow-up issue, not this one; this issue only guarantees Codex
+  embedding `cmd: "..."`) — is **ENH-3433**, not this one; this issue only guarantees Codex
   handles are enumerated and walked without error.
 
 ## Program Design
@@ -396,8 +404,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - With no flag and no `LL_HOOK_HOST`, a workspace containing both a Claude Code and a Codex session
   enumerates handles from both hosts (the Codex handle is walked without error and contributes
   zero events — see Scope Boundaries); `--host codex`/`--host claude-code` narrows enumeration to
-  one host. A follow-up issue for a Codex-shape ll-signal detector is filed and linked in
-  `relates_to` before this issue is marked done.
+  one host. The Codex-shape ll-signal detector is ENH-3433 (blocked by this issue).
 - `ll-logs stats`/`dead-skills`/`loop-fleet`/`fleet-review --all` enumerate the union workspace
   list (test: a cwd recorded under two hosts contributes its `.ll/history.db` once).
 - Claude Code output for every existing test in `test_ll_logs.py` is unchanged; every `cli/logs.py`
@@ -457,8 +464,8 @@ reasoning survives:_
    Codex handle yields envelope types (`response_item`/`event_msg`/`session_meta`) with the
    host-native inner payload; a shell call is `response_item.custom_tool_call` whose `input` is a
    JS snippet (`tools.exec_command({ cmd: "..." })`). No Codex normalizer exists (repo-wide grep).
-   Resolution: Expected Behavior/AC narrowed to "enumerated, walked, zero events"; detector is an
-   explicit out-of-scope follow-up.
+   Resolution: Expected Behavior/AC narrowed to "enumerated, walked, zero events"; detector is
+   ENH-3433.
 2. **`list[Path]` return discarded handles → forced re-detect.** Under the union default the
    consumer-side re-detect is `detect_sessions(ws, None)`, the exact anti-pattern the Risk section
    forbids, and every file would be parsed twice. The spike's `seen` check also skips the second
@@ -469,9 +476,9 @@ reasoning survives:_
    Resolution: Tests section corrected (delete or rewrite, not re-patch).
 5. **`existing_only` semantics differ** between `discover_all_projects` (skip + debug) and
    `list_workspaces` (return non-existent). Resolution: step 2 keeps the check in the core.
-6. **ENH-3422's gate is a grep this issue must leave empty**; AC strengthened. ENH-3422 itself
-   still attributes the `cli/logs.py` work to ENH-3419 at its lines 36, 134, 252, 287 — fix those
-   citations to ENH-3430 when that issue is next touched.
+6. **ENH-3422's gate is a grep this issue must leave empty**; AC strengthened. ENH-3422's
+   ownership citations (its lines 36, 134, 224, 252-255, 271, 287) retargeted from ENH-3419 to
+   ENH-3430 in the same pass; its historical notes (34, 46, 135, 314, session log) left as-is.
 7. **Union default widens the four non-session `--all` subcommands** too; now stated in Expected
    Behavior and AC.
 
@@ -505,6 +512,7 @@ inaccurate on this one point. Both are corrected above.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-10T05:11:43 - `51fa31d9-9254-42c4-8c79-febaa46ffa25.jsonl`
 - `review (manual: pre-implementation review — Codex AC narrowed, handles-returning discovery core, sessionId fallback generalized, test 2124 note, existing_only, ENH-3422 grep gate, non-session --all widening)` - 2026-09-10
 - `/ll:verify-issues` - 2026-09-10T05:03:34 - `e36592b8-1523-4c49-b004-6d3cb2829c0d.jsonl`
 - `/ll:wire-issue` - 2026-09-10T04:58:46 - `708c4534-09ef-4d36-b24d-5c4dcb26fe1d.jsonl`
