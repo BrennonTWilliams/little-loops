@@ -67,11 +67,17 @@ also resolves a `HostLayout` from `LL_HOOK_HOST` directly (649).
 - All 11 `get_project_folder` call sites and the `--all` enumeration path route through
   `detect_sessions`/`list_workspaces` instead of `get_project_folder`/`get_sessions_folder`.
 - With no `--host` flag and no `LL_HOOK_HOST`, `ll-logs sequences`/`extract`/`scan-failures`/
-  `eval-export`/`discover` show sessions from every host that recorded activity for the target
+  `eval-export`/`discover` enumerate sessions from every host that recorded activity for the target
   workspace (e.g. both a Claude Code and a Codex session in the same cwd); `--host <name>` narrows
-  to one.
+  to one. **Enumerated ≠ contributing events**: Codex (and kimi-code) handles are detected and
+  walked, but yield zero ll events until a host-shape ll-signal detector exists (see Scope
+  Boundaries / Review Findings #1). Claude-shaped hosts (claude-code, opencode, pi) and the
+  normalizing hosts (qwen, gemini, omp) contribute events.
 - `--all` enumeration unions workspaces across hosts (deduped on resolved cwd), still applying the
-  existing ll-activity filter so output does not widen to include non-ll workspaces.
+  existing ll-activity filter so output does not widen to include non-ll workspaces. This widening
+  applies to **every** `--all` consumer, including the non-session subcommands (`stats`,
+  `dead-skills`, `loop-fleet`, `fleet-review`) that only use the workspace list to locate
+  `.ll/history.db`/`.loops/runs` — cwd-dedupe prevents double counting.
 - `_has_ll_activity` and `_extract_cwd_from_project` no longer exist; `_extract_ll_event_streams`
   takes `SessionHandle` objects instead of a bare `project_folder`.
 - Existing Claude Code and qwen behavior (session content, `agent-*` exclusion, exit codes, stdout
@@ -87,7 +93,10 @@ also resolves a `HostLayout` from `LL_HOOK_HOST` directly (649).
   `cli/backfill_worker.py` callers — owned by ENH-3422. Fixing `list_workspaces("omp")`'s lossy
   session-dir encoding — documented gap, not fixed here. Restoring `discover_all_projects`'s
   lossy-decode `cwd` fallback for synthetic fixtures lacking a `cwd` record — intentionally dropped,
-  not preserved.
+  not preserved. **A Codex-shape ll-signal detector** — `_is_ll_relevant`/`_detect_ll_signal`/
+  `_record_has_error` recognizing `response_item.custom_tool_call` (`input` is a JS snippet
+  embedding `cmd: "..."`) — is a follow-up issue, not this one; this issue only guarantees Codex
+  handles are enumerated and walked without error.
 
 ## Program Design
 
@@ -101,14 +110,17 @@ also resolves a `HostLayout` from `LL_HOOK_HOST` directly (649).
 - `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` (existing, `session_store/sessions.py`)
 - `list_workspaces(host: str, *, existing_only: bool = True, home: Path | None = None) -> list[Path]` (existing, `session_store/sessions.py`)
 - `_extract_ll_event_streams(handles: list[SessionHandle], *, cutoff: datetime | None = None, until: datetime | None = None) -> dict[str, list[InvocationEvent]]` (rewritten signature, `cli/logs.py`)
+- `_discover_workspace_handles(logger: Logger, *, host: str | None, existing_only: bool = False) -> dict[Path, list[SessionHandle]]` (new, `cli/logs.py`) — the handles-returning core; keys deduped on resolved cwd, values merged across hosts. Session consumers use this directly.
+- `discover_all_projects(logger: Logger, *, host: str | None = None, existing_only: bool = False) -> list[Path]` (existing signature kept) — becomes `sorted(_discover_workspace_handles(...).keys())`, for the five path-only consumers.
 
 ### Call Path
 
-`_cmd_sequences` -> `_collect_sequences` -> `detect_sessions` -> `iter_events` ->
-`_extract_ll_event_streams`
+`_cmd_sequences` -> `detect_sessions(cwd, host)` once -> `_collect_sequences(handles=...)` ->
+`_extract_ll_event_streams` -> `iter_events`
 
-`discover_all_projects` -> `list_workspaces` (per host) -> `iter_events` (via `_is_ll_relevant`
-filter) -> dedupe on `cwd`
+`_discover_workspace_handles` -> `list_workspaces` (per host) -> `detect_sessions(ws, host)` ->
+`iter_events` (via `_is_ll_relevant` early-exit filter) -> dedupe on resolved `cwd`, merging
+handles -> session consumers iterate the handles directly (no second `detect_sessions`)
 
 ### Codebase Research Findings
 
@@ -120,16 +132,30 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 ## Proposed Solution
 
-1. **Route the 11 call sites** through `detect_sessions(..., include_agents=False)`.
-2. **`--all` enumeration** through `list_workspaces(host, existing_only=...)`. Iterate **per host,
-   not per workspace with `host=None`**: `for h in hosts: for ws in list_workspaces(h, ...):
-   detect_sessions(ws, h, include_agents=False)` — calling `detect_sessions(ws, None)` per
-   workspace probes all 8 hosts for every workspace. Dedupe after the per-host loop, on resolved
-   cwd. The ll-activity filter **stays**: re-apply `_is_ll_relevant` per workspace via an
-   early-exit walk over `iter_events(h)`, so `discover`/`extract --all`/`scan-failures --all`
-   output does not widen. Known gap to document, not fix: `list_workspaces("omp")` always returns
-   `[]` (lossy session-dir encoding), so `--all` never enumerates omp workspaces under the union
-   default.
+1. **Route the 11 call sites** through `detect_sessions(..., include_agents=False)`. Detect
+   **once per invocation**: the `--project` guards in `_cmd_sequences` (698) and
+   `_cmd_scan_failures` (1559) currently call `get_project_folder` and then `_collect_*` calls it
+   again — replace with a single `detect_sessions` in the `_cmd_*` whose result is passed down via
+   a `handles=` kwarg (the existing `projects=` kwarg pattern). `_cmd_fleet_review` (2787) passes
+   bare paths via `projects=` today; it must pass handles from step 2 instead.
+2. **`--all` enumeration** via a new handles-returning core, `_discover_workspace_handles`,
+   through `list_workspaces(host, existing_only=False)`. Iterate **per host, not per workspace
+   with `host=None`**: `for h in hosts: for ws in list_workspaces(h, ...): detect_sessions(ws, h,
+   include_agents=False)` — calling `detect_sessions(ws, None)` per workspace probes all 8 hosts
+   for every workspace. Dedupe on resolved cwd **but merge handles across hosts under the deduped
+   key** — the spike's `seen`-check `continue`s before detecting the second host, which would drop
+   a workspace's Codex handles whenever its Claude handles were seen first; promotion must fix
+   that. Return the handles so session consumers never re-detect (a re-detect under the union
+   default is the forbidden 8-host probe, and parses every session file twice). Keep the existence
+   check + `logger.debug("Decoded path does not exist: ...")` inside the core (`list_workspaces`'s
+   `existing_only` returns non-existent paths rather than logging; `discover_all_projects`'s
+   `existing_only=False` contract is "skip + debug line", locked by
+   `test_stale_worktree_path_emits_no_warning`). The ll-activity filter **stays**: re-apply
+   `_is_ll_relevant` per workspace via an early-exit walk over `iter_events(h)`, so `discover`/
+   `extract --all`/`scan-failures --all` output does not widen. `discover_all_projects` keeps its
+   signature as `sorted(core.keys())` for the five path-only consumers. Known gap to document, not
+   fix: `list_workspaces("omp")` always returns `[]` (lossy session-dir encoding), so `--all`
+   never enumerates omp workspaces under the union default.
 3. **All 8 `discover_all_projects` callers** (`_collect_sequences` 664, `_cmd_extract` 780,
    `_cmd_dead_skills` 1075, `_collect_failure_clusters` 1364, `_cmd_stats` 1639, `_cmd_loop_fleet`
    2335, `_cmd_fleet_review` 2782, `discover` 3235) must thread
@@ -141,6 +167,15 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
    `iter_events(h)` and applying `_extract_tool_name(e.payload)` — and delete the `layout=`
    pass-through in `_collect_sequences` together with `host_layout_for(LL_HOOK_HOST)` at 649.
    Bucket on `e.payload.get("sessionId") or h.session_id` (Codex payloads carry no `sessionId`).
+   **This fallback rule applies to every `sessionId` reader in the file, not just this one**:
+   `_cmd_extract` (815), `_collect_failure_clusters` (1401), `_cmd_eval_export` (2068), and
+   `_extract_eval_invocation` (1913) — thread the handle (or its `session_id`) to each; otherwise
+   Codex/kimi records bucket under `""`. For `_cmd_extract`, the record written to
+   `logs/<slug>/<sid>.jsonl` is `event.payload`: for qwen this is the normalized record rather
+   than the on-disk line (accepted behavior change — today qwen `extract` finds zero files anyway
+   because it globs `*.jsonl` not `chats/*.jsonl`); for Codex the inner payload lacks the envelope
+   `timestamp` that `generate_index` (721) reads, but Codex yields no ll-relevant records until the
+   follow-up detector lands, so nothing is written.
 5. **Delete `_has_ll_activity` (97) and `_extract_cwd_from_project` (134)**: their only production
    callers are inside `discover_all_projects`, which step 2 rewrites. Delete them together with
    their two direct unit tests. `discover_all_projects`'s lossy-decode fallback
@@ -225,12 +260,19 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - `scripts/tests/test_ll_logs.py` — `TestSequences`/`TestArgumentParsingSequences` (797-1339),
   `TestExtract` (1547-2127), `TestScanFailures` (2924-4155), `TestEvalExport*` (4437-4841); add
-  `--host codex` variants using the committed fixtures under `scripts/tests/fixtures/codex/`. Add a
-  union-dedupe case: same cwd recorded under two hosts appears once.
+  `--host codex` variants using the committed fixtures under `scripts/tests/fixtures/codex/`.
+  Codex variants assert **enumeration without error and zero events** (the Codex fixtures contain
+  `custom_tool_call` records, not Claude-shaped `assistant` Bash tool-uses, so no detector in this
+  file fires on them). Add a union-dedupe case: same cwd recorded under two hosts appears once,
+  and the merged entry carries handles from **both** hosts (the Claude side must have ll activity,
+  since the Codex side contributes none).
   `TestDiscover::test_discover_skips_non_ll_project` (204) and its positive siblings
   (`test_discover_finds_project_via_queue_operation` 138, `..._dotted_worktree_subpath` 171) must
-  pass unmodified. Re-patch `little_loops.cli.logs.get_project_folder` sites (e.g. ~2083 in
-  `TestExtract`) to `detect_sessions`. `test_sequences_project_not_found_returns_1` (1224) and
+  pass unmodified. `test_extract_all_unresolvable_project_emits_warning` (2124, the only test
+  patching `little_loops.cli.logs.get_project_folder`) exercises a "discovered but folder
+  unresolvable" branch that **ceases to exist** once handles flow from discovery — delete it, or
+  rewrite it against a scenario that can still happen (e.g. a handle whose `path` vanished between
+  discovery and read). `test_sequences_project_not_found_returns_1` (1224) and
   `test_extract_project_not_found_returns_1` (1822) pass unmodified. Direct-call tests at 6051,
   6093 pass unmodified (read `getattr(args, "host", None)`).
 
@@ -334,9 +376,16 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
   unmodified on macOS and Linux).
    > ⚠ Superseded — TestDiscover has 18 tests, not four
 - `_extract_ll_event_streams` takes handles, buckets on `payload.get("sessionId") or
-  handle.session_id`, and `cli/logs.py` no longer calls `host_layout_for(LL_HOOK_HOST)` (line 649
-  removed); `_has_ll_activity` and `_extract_cwd_from_project` no longer exist; `ll-logs sequences`
-  output for existing Claude Code and qwen tests is unchanged.
+  handle.session_id` (as do `_cmd_extract`, `_collect_failure_clusters`, `_cmd_eval_export`, and
+  `_extract_eval_invocation`), and `cli/logs.py` no longer calls `host_layout_for(LL_HOOK_HOST)`
+  (line 649 removed); `_has_ll_activity` and `_extract_cwd_from_project` no longer exist;
+  `ll-logs sequences` output for existing Claude Code and qwen tests is unchanged.
+- `grep -n "HostLayout\|host_layout_for\|get_project_folder" scripts/little_loops/cli/logs.py`
+  returns nothing (ENH-3422's implementation gate depends on this exact grep being empty).
+- `discover_all_projects`'s `--all` path calls `detect_sessions` exactly once per
+  `(workspace, host)` pair and never with `host=None`; session consumers under `--all` consume the
+  returned handles without a second `detect_sessions` call (spy-asserted, extending the spike's
+  `test_never_calls_detect_sessions_with_host_none_per_workspace`).
 - Every one of the 8 `discover_all_projects` call sites passes the resolved host through, asserted
   by a test that `LL_HOOK_HOST=qwen ll-logs discover` lists only qwen workspaces.
 - `ll-logs scan-failures`/`sequences`/`extract`/`eval-export` with no sessions for the target still
@@ -345,7 +394,12 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
   `scan_failures` state actually reaches `FAILURES_NO_DATA` on an empty home (test-asserted).
 - `ll-logs fleet-review --all` still prints the report path as its last stdout line.
 - With no flag and no `LL_HOOK_HOST`, a workspace containing both a Claude Code and a Codex session
-  shows both in `ll-logs sequences`; `--host codex`/`--host claude-code` narrows to one.
+  enumerates handles from both hosts (the Codex handle is walked without error and contributes
+  zero events — see Scope Boundaries); `--host codex`/`--host claude-code` narrows enumeration to
+  one host. A follow-up issue for a Codex-shape ll-signal detector is filed and linked in
+  `relates_to` before this issue is marked done.
+- `ll-logs stats`/`dead-skills`/`loop-fleet`/`fleet-review --all` enumerate the union workspace
+  list (test: a cwd recorded under two hosts contributes its `.ll/history.db` once).
 - Claude Code output for every existing test in `test_ll_logs.py` is unchanged; every `cli/logs.py`
   path still excludes `agent-*` sessions.
 - `docs/reference/CLI.md` and remaining guides no longer frame `ll-logs` as Claude-Code-only.
@@ -391,6 +445,40 @@ _Added by `/ll:spike` on 2026-09-09_
 **Verification**: 6 tests pass across 3 commands (spike suite, `test_session_discovery.py` 57 passed, `test_ll_logs.py -k TestDiscover` 18 passed).
 **Promotion**: move the proven per-host-iterate/resolve-dedupe/filter-after-dedupe shape into `discover_all_projects`'s `--all` path in `scripts/little_loops/cli/logs.py` in a separate PR (issue step 2).
 
+## Review Findings
+
+_Pre-implementation review — 2026-09-10 — folded into the sections above; recorded here so the
+reasoning survives:_
+
+1. **Codex AC was unsatisfiable.** All five ll-signal consumers in `cli/logs.py` (`_is_ll_relevant`
+   52, `_detect_ll_signal` 358, `_record_has_error` 1920, `_extract_eval_invocation` 1900, and the
+   inline `_collect_failure_clusters` walk 1399-1415) key on Claude shape (`type in {user,
+   assistant, queue-operation}`, `message.content[].tool_use.name == "Bash"`). `iter_events` on a
+   Codex handle yields envelope types (`response_item`/`event_msg`/`session_meta`) with the
+   host-native inner payload; a shell call is `response_item.custom_tool_call` whose `input` is a
+   JS snippet (`tools.exec_command({ cmd: "..." })`). No Codex normalizer exists (repo-wide grep).
+   Resolution: Expected Behavior/AC narrowed to "enumerated, walked, zero events"; detector is an
+   explicit out-of-scope follow-up.
+2. **`list[Path]` return discarded handles → forced re-detect.** Under the union default the
+   consumer-side re-detect is `detect_sessions(ws, None)`, the exact anti-pattern the Risk section
+   forbids, and every file would be parsed twice. The spike's `seen` check also skips the second
+   host's `detect_sessions`, so merged workspaces carried only the first host's handles.
+   Resolution: `_discover_workspace_handles` core added to Program Design; step 2 rewritten.
+3. **`sessionId` fallback was specified for one of five readers.** Resolution: step 4 generalized.
+4. **`test_extract_all_unresolvable_project_emits_warning` tests a branch that disappears.**
+   Resolution: Tests section corrected (delete or rewrite, not re-patch).
+5. **`existing_only` semantics differ** between `discover_all_projects` (skip + debug) and
+   `list_workspaces` (return non-existent). Resolution: step 2 keeps the check in the core.
+6. **ENH-3422's gate is a grep this issue must leave empty**; AC strengthened. ENH-3422 itself
+   still attributes the `cli/logs.py` work to ENH-3419 at its lines 36, 134, 252, 287 — fix those
+   citations to ENH-3430 when that issue is next touched.
+7. **Union default widens the four non-session `--all` subcommands** too; now stated in Expected
+   Behavior and AC.
+
+Confirmed unchanged and accurate: `_resolve_host`/`add_host_arg` on all 9 subparsers, the spike
+code and its 6 passing tests, the line-drift table, `Path.home` patching in `test_ll_logs.py`
+(works unchanged with `detect_sessions(home=None)`).
+
 ## Verification Notes
 
 Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same pass, so the
@@ -417,6 +505,7 @@ inaccurate on this one point. Both are corrected above.
 
 
 ## Session Log
+- `review (manual: pre-implementation review — Codex AC narrowed, handles-returning discovery core, sessionId fallback generalized, test 2124 note, existing_only, ENH-3422 grep gate, non-session --all widening)` - 2026-09-10
 - `/ll:verify-issues` - 2026-09-10T05:03:34 - `e36592b8-1523-4c49-b004-6d3cb2829c0d.jsonl`
 - `/ll:wire-issue` - 2026-09-10T04:58:46 - `708c4534-09ef-4d36-b24d-5c4dcb26fe1d.jsonl`
 - `/ll:spike` - 2026-09-10T04:47:39 - `ccf26c86-7b45-4520-a14e-087ff209985d.jsonl`
