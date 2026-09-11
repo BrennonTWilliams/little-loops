@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.163.0] - 2026-09-11
+
+### Added
+
+- **FEAT-3445**: Workspace activity reader: cross-repo per-repo and union activity counts over a since window
+- **FEAT-3446**: `ll-history` activity subcommand: `--workspace` scope flag with JSON output
+
+### Fixed
+
+- **BUG-3434**: Hook config resolution does not walk up from subdirectory cwd
+- **BUG-3437**: SSE fan-in backoff never engages; producers at `max_clients` re-probed ~10/s forever
+- **BUG-3438**: `rn-refine` `commit_leaf` reports COMMITTED without committing and routes failure to `record_leaf_done`
+- **BUG-3439**: FSM shell actions pass the whole rendered script via argv; E2BIG on Linux above 128 KiB
+- **BUG-3440**: `ll-doctor` reports a corrupt history.db as healthy on Linux SQLite builds
+- **BUG-3442**: CI shallow checkout makes the evidence gate structurally unable to pass
+- **BUG-3443**: `test_env_var_overrides_cpu_count` asserts against host CPU count instead of patching `os.cpu_count`
+- **BUG-3447**: Superseded-directive gap matches correction phrases inside quoted literals
+- **BUG-3448**: Main suite red: priority-regex allowlist drift in `mcp_server/tools.py` and corpus baseline 569>562
+
+### Changed
+
+- **ENH-3435**: Measure and cache an unmutated baseline arm before the first change, and make the cache bidirectional
+- **ENH-3441**: `load_design_tokens` falls back to packaged profiles when `.ll/design-tokens/` mirror is absent
+- **ENH-3444**: Add `skills_list` read-only MCP tool exposing plugin-rooted catalog
+
+### Maintenance
+
+- chore(learning-tests): prove pip/python interpreter drift (6 assertions) (2681867)
+- chore(learning-tests): re-prove git learning test on git 2.52.0 (df99ce8)
+- style: fix formatting drift in test files (3d95328)
+
+[1.163.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.162.0...v1.163.0
+
 ## [1.162.0] - 2026-09-10
 
 ### Added
