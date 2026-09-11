@@ -26,7 +26,7 @@ New `ll-history activity` subcommand exposing the workspace activity reader (FEA
 
 ## Context
 
-Companion CLI surface for FEAT-3445 (create that first; this issue is blocked by it). Surfaced by the same downstream-consumer design review: the consumer's briefing/portfolio tools need one command returning per-repo AND union activity counts, machine-readable.
+Companion CLI surface for FEAT-3445, which was the hard prerequisite (this issue was blocked by it) and is now `done` (completed 2026-09-11T02:20:09Z) — the dependency has resolved. Surfaced by the same downstream-consumer design review: the consumer's briefing/portfolio tools need one command returning per-repo AND union activity counts, machine-readable.
 
 **Premise correction:** the review task claimed "there is NO JSON workspace formatter" — false. `format_agent_quality_json` (agent_quality.py:872-878) already serializes `AggregationResult` via duck-typed `to_dict()`; only text/markdown needed workspace variants. So there is no quality-side JSON gap to fix; this issue's JSON formatter is new code for the new result type only.
 
@@ -115,6 +115,16 @@ ll-history activity [--workspace[=MANIFEST]] [--since ISO_DATE] [--until ISO_DAT
 
 **Docs:** `docs/reference/CLI.md` gains the subcommand row; `ll-history --help` epilog examples updated.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- `--workspace` flag registration on `quality` (the cited structural precedent) is `history.py:314-323`, not `:315-321` — the `add_argument(...)` call opens at `314` and its closing paren/help string is at `323`.
+- `format_agent_quality_json`/`_yaml`/`_text`/`_markdown` anchors confirmed exactly as cited: `agent_quality.py:872-878` (JSON, `json.dumps(analysis.to_dict(), indent=2)`, no dispatch), `:881-889` (YAML, falls back to the JSON formatter on `ImportError`), `:636` (text), `:743` (markdown).
+- `discover_workspace_members` and its manifest-error/zero-member paths confirmed exactly as cited: `workspace.py:103-123` (`_resolve_manifest_path` precedence), `:163-165` (signature), `:214-221` (declared-but-missing → `FileNotFoundError`), `:222` (undeclared/ancestor-walk missing → returns `[]` silently, no exception), `:224-238` (malformed-manifest `ValueError`/`KeyError` paths, uncaught), `:233-237` (duplicate-`db_path` `ValueError`).
+- **JSON contract correction**: `WorkspaceTotals.to_dict()` (`workspace_activity.py:111-123`) includes an `ok_members` field and a key order (`members, instrumented_members, instrumented, ok_members, ...`) that diverges from the illustrative `totals` example above (which omits `ok_members` and orders `instrumented` before `instrumented_members`). Since the JSON formatter is a bare `json.dumps(result.to_dict(), indent=2)` with no transformation (mirroring `format_agent_quality_json`), the real, already-landed FEAT-3445 contract — not the illustrative example — is what AC1's "exact shape" must be verified against.
+- No CLI wiring or dedicated test file exists yet for this issue: `aggregate_workspace_activity`/`WorkspaceActivityResult` have zero references in `cli/history.py` or `test_cli_history.py`; their only callers are in `scripts/tests/test_feat3445_workspace_activity.py`. `**/test_feat3446*` matches no files. FEAT-3445 is now `done` (completed 2026-09-11); the `blocked_by: FEAT-3445` dependency has resolved.
+
 ## Program Design
 
 ### Types
@@ -129,6 +139,17 @@ ll-history activity [--workspace[=MANIFEST]] [--since ISO_DATE] [--until ISO_DAT
 ### Call Path
 
 `main_history` (cli/history.py:37) [new `activity` dispatch arm alongside the `quality` arm at history.py:523] -> `discover_workspace_members` (workspace.py:163; manifest errors → stderr + exit 1, zero members → single-repo fallback) -> `aggregate_workspace_activity` [FEAT-3445] -> `format_workspace_activity_json` (or sibling selected by `--format`).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- Confirmed at current HEAD: `aggregate_workspace_activity(members: list[WorkspaceMember], *, since: str | None, until: str | None = None) -> WorkspaceActivityResult` — `scripts/little_loops/issue_history/workspace_activity.py:248-250`. Docstring (`:251-257`) states it never raises: a missing db, schema-version mismatch, or `sqlite3.Error` all resolve to a status-carrying `RepoActivity`, never an exception.
+- `WorkspaceActivityResult.to_dict()` — `workspace_activity.py:135-141`: `{"since", "until", "per_repo": [activity.to_dict() for activity in self.per_repo.values()], "totals": self.totals.to_dict()}`. `per_repo` is internally `dict[str, RepoActivity]` keyed by `str(member.db_path)`, serialized to a plain array via `.values()`.
+- `RepoActivity.to_dict()` — `workspace_activity.py:79-94`, key order: `repo_path, role, label, status, ok, error, instrumented, loops_run, loops_completed, issues_completed, issues_deferred, issues_closed`.
+- `WorkspaceTotals.to_dict()` — `workspace_activity.py:111-123`, key order: `members, instrumented_members, instrumented, ok_members, loops_run, loops_completed, issues_completed, issues_deferred, issues_closed`. Its docstring reads "Keys in declaration order above (stable order: FEAT-3446 AC 1)" — this key set/order is FEAT-3445's committed contract and includes `ok_members`, a field the illustrative JSON example in this issue's own Proposed Solution omits (see Proposed Solution findings).
+- `MemberActivityStatus` enum — `workspace_activity.py:54-60`: `OK`, `DB_MISSING`, `SCHEMA_SKEW`, `UNREADABLE`.
+- Confirmed call chain gap: `main_history` (`cli/history.py:37`) has no `activity` dispatch arm today — a repo-wide search of `cli/history.py` and `test_cli_history.py` for `activity`/`WorkspaceActivityResult`/`aggregate_workspace_activity` returns zero hits. The `quality` structural precedent's dispatch arm is `if args.command == "quality":` at `history.py:523`; its `--workspace` resolution+fallback block spans `history.py:551-581` (line 551 is the `quality_analysis = None` init, 581 is where the local-db fallback branch ends). `583-590` is the shared format-dispatch block, downstream of and common to both branches — not part of workspace resolution itself.
 
 ## Integration Map
 
@@ -163,6 +184,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Configuration
 - N/A — flags only; manifest discovery reuses `ll-workspace.yaml` conventions unchanged.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- The only current callers of `aggregate_workspace_activity`/`WorkspaceActivityResult` are test call sites in `scripts/tests/test_feat3445_workspace_activity.py:129-426`; no production/CLI caller exists yet, confirming `cli/history.py` needs a net-new dispatch arm rather than modifying an existing call site.
+- `discover_workspace_members` (`scripts/little_loops/workspace.py:163-165`) signature confirmed: `discover_workspace_members(manifest_path: Path | None = None, *, start: Path | None = None) -> list[WorkspaceMember]`.
 
 ## Implementation Steps
 
@@ -242,8 +270,10 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 
 ### Gaps to Address
 - Dependencies Hard Override (BUG-3051): `blocked_by: FEAT-3445` is unresolved (FEAT-3445 status: open). This issue's reader (`aggregate_workspace_activity`, `WorkspaceActivityResult`) does not exist yet, so the CLI dispatch arm has nothing to call. Implement/merge FEAT-3445 first, then re-run this check.
+  - _Stale as of `/ll:refine-issue` 2026-09-10: FEAT-3445 is now `status: done` (completed 2026-09-11T02:20:09Z) and its reader (`aggregate_workspace_activity`, `WorkspaceActivityResult`) exists at `scripts/little_loops/issue_history/workspace_activity.py:248-312`/`:127-133`. This dependency is resolved; re-run `/ll:confidence-check` to clear this gap._
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-11T02:51:55 - `d66e9ab6-b157-4ab3-aa53-bdc98d019119.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:14:23 - `226e3334-05f8-455d-a6d0-352e3badc359.jsonl`
 - `/ll:reconcile-issue` - 2026-09-11T01:00:11 - `96fc360a-b5db-40dd-bb89-1981614713ee.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:53:16 - `74560d07-2a1c-4247-b7b2-e91055dab494.jsonl`
