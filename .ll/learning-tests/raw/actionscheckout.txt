@@ -1,0 +1,20 @@
+[C1 evidence] fetch-depth input block:
+    description: 'Number of commits to fetch. 0 indicates all history for all branches and tags.'
+    default: 1
+claim C1: PASS -- action.yml fetch-depth default = ['1']
+[fixture] head=2b33b7d4dd1b3b7a11efe7903a1777c3aedaeab0 parent=256e835f64ef4a08e632b0855562a979f56f3586
+[fixture] full clone rc=0 
+[fixture] depth-1 clone rc=0 
+[C2 evidence] depth-1 clone: rc=0 out='true'
+claim C2: PASS -- depth-1 prints 'true' (rc=0)
+[C3 evidence] full clone: rc=0 out='false'
+claim C3: PASS -- full prints 'false' (rc=0)
+[C4 evidence] depth-1 rev-list --count --all: rc=0 out='1'
+claim C4: PASS -- depth-1 count = '1'
+[C5 evidence] cat-file -e 256e835f64ef4a08e632b0855562a979f56f3586:file.txt: shallow rc=128 ("fatal: path 'file.txt' exists on disk, but not in '256e835f64ef4a08e632b0855562a979f56f3586'"); full rc=0
+claim C5: PASS -- shallow rc=128, full rc=0 — earlier artifact states unresolvable in depth-1
+[C6 evidence] fetch --unshallow rc=0; is-shallow now: rc=0 out='false'
+claim C6: PASS -- after unshallow prints 'false'
+[C7 evidence] full count='3'; unshallowed count='3'
+claim C7: PASS -- full count = '3' (unshallowed: '3')
+done
