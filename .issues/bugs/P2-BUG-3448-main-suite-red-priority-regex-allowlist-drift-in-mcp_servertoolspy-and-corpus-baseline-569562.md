@@ -14,7 +14,11 @@ captured_at: '2026-09-11T06:12:59Z'
 
 ## Summary
 
-[Description extracted from input]
+The authoritative test gate on `main` fails 3 tests in `scripts/tests/test_issue_parser.py`
+for reasons unrelated to any individual change: the priority-regex allowlist drifted out
+of sync with `scripts/little_loops/mcp_server/tools.py` (line-number drift), and the
+corpus-differential baseline constant no longer matches the grown `.issues/` corpus
+(569 > 562). Both are stale-test-constant bugs, not production regressions.
 
 ## Current Behavior
 
@@ -62,6 +66,37 @@ BUG-3443 edit stashed, proving pre-existence on `main`).
   baseline; the count is a corpus-size function, so recent issue creation (BUG-3443
   session-log appends, BUG-3447 edits) trips it.
 
+## Program Design
+
+### Types
+
+- No new production types — this is test-infra only; both fixes are test-constant
+  refreshes in `scripts/tests/test_issue_parser.py`.
+
+### Signatures
+
+- `_ALLOWLIST: dict[str, dict[int, str]]` — refreshed dict literal: the
+  `mcp_server/tools.py` entries `{795: ..., 941: ...}` replaced by `{846: ..., 1001: ...}`,
+  each with a justification string, after confirming the raw regexes at the new lines
+  can't trivially use `resolve_priority`
+- `_POST_BUG_3413_TOTAL_REPORTS: int` — `562` bumped to `569` (measured at fix time), or
+  replaced by a corpus-relative ceiling so mere issue creation no longer trips the gate
+- `_max_total_reports(corpus_md_count: int) -> int` — optional corpus-relative ceiling
+  helper, the preferred alternative to the constant bump if the differential's signal
+  is per-file rather than absolute-count based
+
+### Call Path
+
+`test_no_unallowlisted_raw_priority_regex` → `_ALLOWLIST` (refreshed) → raw-regex scan of
+`scripts/little_loops/mcp_server/tools.py`; and
+`test_total_report_count_does_not_exceed_post_bug_3413_baseline` →
+`_POST_BUG_3413_TOTAL_REPORTS` (bumped or corpus-relative) → corpus differential total
+over `.issues/`
+
 ## Status
 
 **Open** | Created: 2026-09-11 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-11T14:47:41 - `ea28103f-853d-4789-8f33-11dd1c461351.jsonl`
