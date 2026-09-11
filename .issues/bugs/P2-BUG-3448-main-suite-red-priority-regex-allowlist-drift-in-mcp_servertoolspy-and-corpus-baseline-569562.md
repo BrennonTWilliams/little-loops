@@ -148,10 +148,14 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 ### Files to Modify
 
 - `scripts/tests/test_issue_parser.py` — the only file needing edits: the `_ALLOWLIST` `"mcp_server/tools.py"` entry (`:4887-4889`) and the corpus ceiling constant(s) (`:5751-5763`)
+  > ⚠ Superseded — issue's own prose also needs edits
 
 ### Dependent Files (Callers/Importers)
 
 - None — test-infra only. `scripts/little_loops/mcp_server/tools.py` is scanned by the test, not modified; `resolve_priority` and its five production call sites are read for the discriminator, not changed.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Informational, no edits needed — suite-exit-code consumers currently red-blocked by this bug and unblocked by the fix: loop verify states (`scripts/little_loops/loops/general-task.yaml` `run_final_tests`, `fix-quality-and-tests.yaml`, `auto-refine-and-implement.yaml`, `evaluation-quality.yaml`, `oracles/code-run-gate.yaml`) and the EPIC verify gate (`scripts/little_loops/parallel/orchestrator.py` `_verify_branch`), all via `.ll/ll-config.json` `test_cmd`; `scripts/little_loops/prepatch_check.py` runs only diff-derived node IDs [Agent 2 finding]. Confirmed no external code imports or calls the `_ALLOWLIST` or baseline constants (repo-wide, 0 hits) [Agent 1 finding]
 
 ### Conventions in Force
 
@@ -166,6 +170,10 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - `scripts/tests/test_issue_parser.py:85` — `TestResolvePriority`: the resolver contract; unchanged by this fix but shares the file
 - `scripts/tests/test_enh_3444_mcp_skills_list.py` — covers the `skills_list` tool whose addition (3fe6a1dac) shifted `tools.py` lines; unchanged
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_verify_evidence.py:1027` — `TestRepoGate::test_no_new_unverifiable_evidence`: a **4th red test on `main`** (live-confirmed 2026-09-11 at HEAD; also recorded in the P3-BUG-3447 and P2-FEAT-3445 verification notes). Currently failing on 2 evidence-unverifiable spans **in this issue's own file** — [Current Behavior] at `:30` and [Root Cause] at `:64` — so fixing the 3 named tests alone does not green the suite [Agent 2+3 finding, live-verified]
+- `scripts/tests/test_feat3304_artifact_dashboard.py:648-668` — `TestAllowlistVersionLockstep::test_allowlist_and_version_change_together`: closest pattern if a retention guard for the superseded `562` constant is wanted; no existing test enforces superseded-constant retention (convention only) [Agent 3 finding]
+
 ### Documentation
 
 - None required — test-infra only. (`docs/reference/API.md:924` / `docs/reference/CLI.md:2338` describe the `priority_drift` production gate, not these tests.)
@@ -175,7 +183,14 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 1. The allowlist matches HEAD: `tools.py:846` and `:1001` entered with categorical justifications (JSON-schema priority-arg pattern, not a filename read) and `795`/`941` removed — verified by `python -m pytest scripts/tests/test_issue_parser.py -k "Allowlist"` exiting 0
 2. The corpus differential holds for the current corpus under the option selected from Proposed Solution (constant succession or corpus-relative ceiling) — verified by `python -m pytest scripts/tests/test_issue_parser.py -k "total_report_count"` exiting 0
 3. The authoritative gate is green: `python -m pytest scripts/tests/` exits 0
+   > ⚠ Superseded — 4th red test also blocks suite exit 0
 4. No production file changes accompany the fix: `git diff --stat scripts/little_loops/` is empty
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Clear the 2 evidence-unverifiable spans in this issue's own prose — [Current Behavior] `:30` and [Root Cause] `:64` — by rephrasing the quote/attribution or suppressing a reviewed counter-example, so `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` passes and the gate can reach exit 0
 
 ## Status
 
@@ -183,6 +198,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-11T15:30:55 - `1132d6e1-b9ee-4bab-bed0-a3378ccc90b6.jsonl`
 - `/ll:decide-issue` - 2026-09-11T15:17:37 - `7f075240-78da-40ae-8be8-2aed20585a34.jsonl`
 - `/ll:refine-issue` - 2026-09-11T15:04:49 - `b43da4e6-a103-422c-95e7-8acd36afebbc.jsonl`
 - `/ll:format-issue` - 2026-09-11T14:47:41 - `ea28103f-853d-4789-8f33-11dd1c461351.jsonl`
