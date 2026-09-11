@@ -13,8 +13,8 @@ learning_tests_required:
 - git
 - actions/checkout
 confidence_score: 100
-outcome_confidence: 89
-score_complexity: 21
+outcome_confidence: 90
+score_complexity: 22
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
@@ -207,6 +207,7 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T04:24:15 - `f16a24e6-6fa0-452a-b7ce-1eeea1fffebf.jsonl`
 - `/ll:verify-issues` - 2026-09-11T04:19:33 - `b3354d99-33ae-4069-82e6-d632e46bda87.jsonl`
 - `/ll:confidence-check` - 2026-09-11T04:10:37 - `15f92a63-fb8d-44e1-92df-1b973a2a54e8.jsonl`
 - `/ll:decide-issue` - 2026-09-11T03:59:41 - `2f065e0e-57e0-408e-a9b6-f6686371abe7.jsonl`
