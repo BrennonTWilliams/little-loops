@@ -25,9 +25,7 @@ def test_unit_tests_checkout_fetches_full_history() -> None:
     """The unit-tests job must check out with ``fetch-depth: 0`` (BUG-3442)."""
     workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["unit-tests"]["steps"]
-    checkouts = [
-        step for step in steps if str(step.get("uses", "")).startswith("actions/checkout")
-    ]
+    checkouts = [step for step in steps if str(step.get("uses", "")).startswith("actions/checkout")]
     assert checkouts, "unit-tests job has no actions/checkout step to pin"
     for step in checkouts:
         with_block = step.get("with") or {}

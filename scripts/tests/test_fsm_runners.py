@@ -593,7 +593,7 @@ class TestDefaultActionRunnerShellPath:
         darwin before the fix (larger per-argv limit) and fails on Linux
         only before it — the honest pin per the issue's Program Design."""
         payload = "x" * 140_000  # > 131072 B MAX_ARG_STRLEN
-        action = f'python3 -c "print(len(\'{payload}\'))"'
+        action = f"python3 -c \"print(len('{payload}'))\""
         assert len(action) > 131072
 
         runner = DefaultActionRunner()

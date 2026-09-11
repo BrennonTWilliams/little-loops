@@ -452,7 +452,7 @@ class TestRunActionDispatch:
         ``bash -c <target>``. No platform skip: passed on darwin before the
         fix, fails on Linux only before it."""
         payload = "x" * 140_000
-        target = f'python3 -c "print(len(\'{payload}\'))"'
+        target = f"python3 -c \"print(len('{payload}'))\""
         assert len(target) > 131072
 
         spec = ActionSpec(name="oversized", runner=RunnerType.CMD, target=target, timeout=30)
