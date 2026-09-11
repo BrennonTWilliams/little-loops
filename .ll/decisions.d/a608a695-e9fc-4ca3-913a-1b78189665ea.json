@@ -1,0 +1,12 @@
+{
+  "id": "8fcb0f72-e5aa-4509-8051-a441018b6f18",
+  "type": "decision",
+  "timestamp": "2026-09-11T15:17:10Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Replicates the suite's one recorded ceiling-succession event (BUG-3413) with zero new infrastructure (reuse 3/3); Option B's corpus-relative helper has zero repo precedent and its managed-baseline variant violates the test-infra-only constraint while still needing an absolute counterweight.",
+  "rule": "Option A: successively-named ceiling constant (_POST_BUG_3448_TOTAL_REPORTS, re-measured at fix time) over corpus-relative/managed baseline",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (corpus-relative ceiling / managed regenerable baseline): novel machinery, no drop-in utilities, contradicts Implementation Step 4",
+  "issue": "BUG-3448"
+}

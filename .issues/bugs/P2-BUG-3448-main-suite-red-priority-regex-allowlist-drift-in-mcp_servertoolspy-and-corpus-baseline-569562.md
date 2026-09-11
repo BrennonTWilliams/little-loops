@@ -5,7 +5,7 @@ title: 'main suite red: priority-regex allowlist drift in mcp_server/tools.py an
   corpus baseline 569>562'
 priority: P2
 status: open
-decision_needed: true
+decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T06:12:59Z'
@@ -89,6 +89,25 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 
 **Recommended**: Option A — matches the established succession convention exactly, is test-infra-only, and is the fastest path to un-reding the authoritative gate; revisit Option B as its own enhancement if the baseline trips again from corpus growth alone.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-11.
+
+**Selected**: Option A
+
+**Reasoning**: Option A replicates the suite's one recorded ceiling-succession event — BUG-3413 added `_POST_BUG_3413_TOTAL_REPORTS = 562` and retained `_PRE_FIX_TOTAL_REPORTS = 525` as dead documented history (`scripts/tests/test_issue_parser.py:5751-5763`) — reusing the sweep loop, assert shape, and failure message verbatim with zero new infrastructure (evidence-agent reuse score 3/3). Option B's corpus-relative half (`_max_total_reports(corpus_md_count)`) has zero precedent anywhere in the repo, and its managed-baseline half would need a test-side CLI-regenerated JSON data file that contradicts Implementation Step 4 (`git diff --stat scripts/little_loops/` empty) while still requiring an absolute counterweight per the `test_baseline_size_is_bounded` precedent (`scripts/tests/test_verify_evidence.py:1077-1081`) — shifting sensitivity from corpus growth to backlog growth rather than eliminating it.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+| Option B | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
+
+**Key evidence**:
+- On Option A: exact BUG-3413 precedent (new bug-named constant, old constant retained, assert swap, test named for the ceiling-setting bug). Caveat carried forward: the succession is a single recorded event — intermediate totals 490/535 were comment-recorded, not constants — and the absolute-ceiling shape remains the only corpus-gate shape that trips from corpus growth alone; revisit Option B as its own enhancement if the gate trips again from corpus growth alone.
+- On Option B: strong pattern-level precedent (two production `--update-baseline` CLIs with full test matrices) but no drop-in utilities — `regressions()` is payload-typed to `PrivateRefFinding`; `_max_total_reports` is entirely novel test machinery.
+
 ## Program Design
 
 ### Types
@@ -164,5 +183,6 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-11T15:17:37 - `7f075240-78da-40ae-8be8-2aed20585a34.jsonl`
 - `/ll:refine-issue` - 2026-09-11T15:04:49 - `b43da4e6-a103-422c-95e7-8acd36afebbc.jsonl`
 - `/ll:format-issue` - 2026-09-11T14:47:41 - `ea28103f-853d-4789-8f33-11dd1c461351.jsonl`
