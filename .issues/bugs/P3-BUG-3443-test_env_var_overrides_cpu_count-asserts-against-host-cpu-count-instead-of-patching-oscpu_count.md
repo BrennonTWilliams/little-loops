@@ -72,6 +72,27 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - Conventions in force: every test method in `TestXdistAutoNumWorkers` carries a single-sentence RST docstring with double-backtick literals stating input → contract (`test_conftest_cap.py:48,53,59,65,71,77`)
 - Scope boundary (research note, not a directive): the module docstring at `test_conftest_cap.py:6` and the hook comment at `scripts/tests/conftest.py:60-61` also predate the clamp; this issue's named scope covers only :42 and :48 — extending it is the implementer's call, not required
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-10:_
+
+- None missed — confirmed by 3-agent trace: no file imports `test_conftest_cap` (sole non-prose mention is the double-load comment at `scripts/tests/conftest.py:278`), the hook's only in-repo invocation is this test file, and tree-wide greps for `PYTEST_XDIST_AUTO_NUM_WORKERS` / `pytest_xdist_auto_num_workers` / `test_conftest_cap` return zero hits across `plugin.json`, `hooks/` (incl. adapters), `commands/`, `skills/`, `agents/`, `.github/` [Agent 1 finding]
+- Gate consumer (context, no edit): `.github/workflows/ci.yml` unit-tests job never sets the env var, so the 4-core self-hosted runner is where `assert 2 == 3` surfaces — this fix flips that job red→green with no exit-code or artifact-format change [Agent 2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-10:_
+
+- `scripts/tests/test_conftest_cap.py:40` — in-file gap: the class docstring's line-range ref `see ``scripts/tests/conftest.py:30-53``` points at the pre-cap range; the hook lives at `conftest.py:51-78`. Sits in the same docstring block as the `:42` bullet already in scope [Agent 2 finding]
+- No external docs need updating — verified: `docs/development/TROUBLESHOOTING.md:849` already reads "(clamped to ``cpus-2``)"; `docs/reference/API.md:13129` documents the untouched writer in `worktree_utils.py`; `scripts/pyproject.toml:245-252` addopts comment stays accurate post-fix [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-10:_
+
+- Nothing breaks: no test or doc asserts on the docstring strings at `:42`/`:48` being rewritten (repo-wide grep hits only the file itself, this issue, and unrelated same-phrase docstrings in `test_sync.py:110` / `test_host_runner.py:512`); no meta-test enumerates the file's test names, so a seventh method breaks nothing; `test_env_override_clamps_to_cpus_minus_two` collides with no existing name repo-wide [Agent 2/3 findings]
+- Implementation note: the fixed `test_env_var_overrides_cpu_count` needs no defensive `monkeypatch.delenv` — it sets the env var itself, matching `test_invalid_env_var_falls_back_to_cpu_half` (`:52-56`), the only sibling combining `setenv` + cpu_count patch [Agent 3 finding]
+
 ## Program Design
 
 ### Signatures
@@ -94,6 +115,12 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 3. A clamp-pinning test exists in the class asserting `env=99, cpus=4 -> 2`, with both operands injected explicitly and naming from the floors/yields/clamps family already in the file
 4. `python -m pytest scripts/tests/test_conftest_cap.py -v` passes, and the full gate `python -m pytest scripts/tests/` exits 0
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Correct the stale line-range ref at `test_conftest_cap.py:40` (`conftest.py:30-53` → `conftest.py:51-78`) while editing the adjacent `:42` class-docstring bullet
+
 ## Impact
 
 - **Priority**: P3 - Test-only defect; no product code affected, but it turns CI red on the 4-core self-hosted runner while passing locally on 14 cores, eroding trust in the gate.
@@ -107,6 +134,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-11T03:54:33 - `3c54b1f6-0a02-45d5-aeb1-ed084c2c42f8.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:51:06 - `4d1eb983-c328-4793-b35a-8ba87f2992d7.jsonl`
 - `/ll:format-issue` - 2026-09-10T22:12:19 - `895d3ceb-7c4a-44b3-826e-65829f565276.jsonl`
 - `/ll:scope-epic` - 2026-09-10T21:15:18 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`

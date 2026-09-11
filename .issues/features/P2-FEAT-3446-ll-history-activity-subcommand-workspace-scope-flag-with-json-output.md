@@ -10,9 +10,9 @@ blocked_by:
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:53:23Z'
-confidence_score: 70
-outcome_confidence: 96
-score_complexity: 21
+confidence_score: 90
+outcome_confidence: 93
+score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
