@@ -49,6 +49,12 @@ Add an environment-variable kill switch upstream of the config gate (the context
 
 Full behavior contract in Decisions §1–3; signatures in Program Design.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- Loader constraint for step 2: use the guarded raw-dict shape (`resolve_config_path` + except-guarded `json.loads` -> `dict | None`, per `hooks/user_prompt_submit.py:56-64` / `cli/history_context.py:229-239`); `BRConfig`'s base-config `json.load` (`config/core.py:307-308`) is unguarded — a malformed `ll-config.json` would raise out of `main_history()` before argparse, breaking the never-fail enter contract
+
 ## Integration Map
 
 ### Files to Modify
@@ -75,6 +81,15 @@ Full behavior contract in Decisions §1–3; signatures in Program Design.
 - `.ll/ll-config.json` → `analytics.capture.cli_commands` (now effective for ll-history via `config=` wiring)
 - New env var: `LL_ANALYTICS_CAPTURE`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- Tree-wide caller audit (pre-computed for Decisions §2): zero production call sites pass `config=` to `cli_event_context`/`skill_event_context`; matches exist only in `scripts/tests/test_session_store_writers.py:564,572-576,603-607,974-975,987-992` — the ENH-2932 gate is dead for every `ll-*` binary, not just ll-history
+- Call-site census (grep `cli_event_context(` excluding the def): 54 lines across 51 files, ~47 under `scripts/little_loops/cli/` (one call per `main_*` entry point; `docs.py` carries 4); the balance is `init/cli.py` plus re-export/reference lines in `session_store/schema.py`, `session_store/__init__.py`, `mcp_server/__init__.py`
+- Config-loader precedents that yield the raw dict `config=` wants: `_load_config(cwd) -> dict | None` (`hooks/user_prompt_submit.py:56-64`, mirrored `hooks/post_tool_use.py:41`) — `resolve_config_path` (pure lookup, `config/core.py:157-181`) + `json.loads` guarded by `except (OSError, json.JSONDecodeError): return None`; inline variants at `cli/learning_tests.py:43-51` and `cli/history_context.py:229-239`
+- Test seam: the `_pkg` indirection at `writers.py:38-47` exists so tests can `monkeypatch.setattr(session_store, "connect", ...)` — the locked-db tests at `test_session_store_writers.py:490-514` show the pattern an env-var "no connect" assertion can reuse
+
 ## Program Design
 
 ### Types
@@ -92,6 +107,16 @@ Full behavior contract in Decisions §1–3; signatures in Program Design.
 
 `main_history` -> `cli_event_context(config=<project config>)` -> `_analytics_capture_disabled()` (env check, first) -> [`resolve_history_db` -> `_pkg.connect` -> INSERT, all skipped when gate closed]
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- Zero-filesystem insertion point: the env check must run before `resolve_history_db` (`writers.py:524` cli / `:625` skill) — `resolve_history_db` (`db.py:121-132`) is read-only (upward root walk + `ll-config.json` read; honors `LL_HISTORY_DB` at `db.py:107-109`) but does touch the filesystem; file creation happens only in `ensure_db` (`schema.py:1546-1584`, `mkdir` at `:1577`) via `connect` (`schema.py:1587-1596`), already under `if gate_open:` (`writers.py:534-541`)
+- Exit path needs no new guard: both exit UPDATEs are guarded by `conn is not None and row_id is not None` (`writers.py:564`, `:673`), set only on a successful gated INSERT — there is no path today where enter is suppressed but exit writes; a body raise still re-raises after recording `exit_code=1` with the UPDATE in `finally`
+- Constraint: `_analytics_capture_disabled()` must be a non-raising pure `os.environ` read — `skill_event_context`'s gate/resolution sit outside any try (its INSERT handler catches only `sqlite3.Error`, `writers.py:650`), unlike `cli_event_context` whose whole enter prefix is inside `except Exception` (`writers.py:542`)
+- No shared Python env-falsy helper exists; closest precedents are the FSM YAML shell sets `("0","false","no","off")` (`loops/rn-implement.yaml:603,1097`) and the YAML-field parse at `cli/help.py:152` — the issue's `{"0","false","off"}` set has no Python precedent; `LL_HOST_CLI` (`host_runner.py:2292-2336`) is exact-string with no case folding
+- db_missing contract confirmed end-to-end: `_gate_member` (`workspace_quality.py:140-141`) -> `RepoActivity(status=DB_MISSING, instrumented=False)` (`workspace_activity.py:269-279`) -> `to_dict` emits `ok: false` (`:87`) -> `aggregate_workspace_activity` never raises (`:254-256`) -> exit 0 (`history.py:710`)
+
 ## Scope Boundaries
 
 - No argparse `--no-analytics` flag — the context manager opens before argparse runs (Decisions §1)
@@ -108,6 +133,12 @@ Full behavior contract in Decisions §1–3; signatures in Program Design.
 4. Rewrite the fallback comment at `history.py:684-686` to describe the new contract.
 5. Document the env var in `docs/reference/CLI.md` (ll-history section) and the analytics section of `docs/reference/API.md`.
 6. Tests (see AC).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- Test-coverage constraints: the existing gate-closed test `test_cli_event_context_gate_disabled` (`test_session_store_writers.py:599-612`) passes an explicit tmp db path and does NOT assert db non-existence — the new env-var tests should pin no-create explicitly (pattern: the `LL_HISTORY_DB` tests at `:476-488` use `monkeypatch.setenv` + `assert not env_db.exists()`); skill-side gate-closed coverage is `test_gate_disabled_still_yields_completion` (`:982-996`)
 
 ## Impact
 
@@ -153,5 +184,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-11T20:49:17 - `3e633d12-e9f0-40e1-8e84-6924e6006790.jsonl`
 - `/ll:format-issue` - 2026-09-11T20:30:31 - `29719eda-e34b-4588-9e6c-a4b50bf277cf.jsonl`
 - `/ll:capture-issue` - 2026-09-11T20:26:49 - `d2544764-cca3-4cd1-bd27-85b0d1d0f3c3.jsonl`

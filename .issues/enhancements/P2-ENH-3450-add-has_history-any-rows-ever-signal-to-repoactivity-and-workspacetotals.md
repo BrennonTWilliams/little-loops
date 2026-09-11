@@ -7,6 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T20:26:38Z'
+decision_needed: true
 ---
 
 # ENH-3450: Add has_history any-rows-ever signal to RepoActivity and WorkspaceTotals
@@ -39,6 +40,20 @@ So `instrumented` is true whenever the file exists. A downstream consumer (littl
 
 Resolved — see "Decisions (resolved, do not re-derive)" for the field/value semantics and "Implementation Steps" for the landing order. In short: a new `_has_any_history(conn)` helper (EXISTS over `issue_events` OR `loop_runs`, no scan) feeds a new `RepoActivity.has_history: bool | None` in the ok path; `db_missing` → `False`, `schema_skew`/`unreadable` → `None`; `_totals()` mirrors with `has_history_members`/`has_history`; `to_dict()` on both dataclasses plus the text/markdown formatters expose it.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+Formatter rendering decision (research finding: per-member `instrumented` is NOT rendered in text/markdown today — only `status`, the four count lines via `_activity_count_lines()` :316-328, or `error`; the sole `instrumented` rendering is the totals line `members: N (ok: X, instrumented: Y)` at :391-394 (text) and :435-438 (markdown). "Show has_history alongside instrumented counts" therefore describes a new rendering, not an extension of an existing per-member display):
+
+**Option A**: Extend the totals line only — render `has_history`/`has_history_members` in the existing `members: N (ok: X, instrumented: Y)` line; per-member output unchanged.
+
+**Option B**: Add a per-member `has_history` line alongside the count lines in `_activity_count_lines()`, plus the totals-line extension.
+
+**Recommended**: Option A — it extends the only site where `instrumented` renders today, and Option B's per-member `None` values (schema_skew/unreadable) would render as noise.
+
+Known behavior to cover in tests (not a defect): the default no-flag CLI invocation takes the single-repo fallback (cli/history.py:689-699), whose db is pre-created by `cli_event_context` with only a `cli_events` row (writers.py:536-539, table at schema.py:251) — so the fallback member reports `ok` with zero counts and `has_history: false`. This is the canonical empty-but-schema'd case motivating the issue; the CLI golden test should pin it.
+
 ## Integration Map
 
 ### Files to Modify
@@ -63,6 +78,15 @@ Resolved — see "Decisions (resolved, do not re-derive)" for the field/value se
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- `scripts/tests/test_cli_history.py` is missing from this map and MUST change: `TestHistoryActivity` pins exact key lists via `_MEMBER_KEYS`/`_TOTALS_KEYS` (:438-462), enforced as exact-list equality at :535, :547, :557, plus `instrumented` value asserts at :542/:550/:559-560/:714. Any new `to_dict()` key fails these regardless of insertion position — both constants must gain `has_history` (+ totals keys). AC "pytest passes" is unmeetable without editing this file.
+- Correction to Similar Patterns: `workspace_quality.py` contains zero references to `instrumented` (full-file read + repo-wide grep verified); its `AggregationResult` carries `skipped` instead. The claim "instrumented is load-bearing in the workspace quality reader and its tests" is mis-attributed — the actual locks are `test_feat3445_workspace_activity.py:267/:281/:298/:308` (per-status semantics) and the CLI exact-list tests above. The design conclusion (never redefine `instrumented`) still holds; AC on workspace_quality tests is trivially satisfied since quality never touches the field.
+- `scripts/little_loops/issue_history/__init__.py` re-exports (:202-210, `__all__` :293-300); the CLI imports the formatters through it (:658-664). `_has_any_history` is private — no export change needed.
+- Documentation correction: there is no dedicated "workspace_activity section" in `docs/reference/API.md` — the function is one row in the `## little_loops.issue_history` table at API.md:2390 (states "None (never 0) counts when not ok"). CLI-side, the JSON-contract paragraph is `docs/reference/CLI.md:3395-3405`, and CLI.md:3398 states "totals mirrors WorkspaceTotals.to_dict() key order" — both need the new keys.
+
 ## Implementation Steps
 
 1. Add `_has_any_history(conn) -> bool` next to `_count_member_activity` in `workspace_activity.py` using the EXISTS query.
@@ -71,6 +95,14 @@ Resolved — see "Decisions (resolved, do not re-derive)" for the field/value se
 4. Update `to_dict()` on both dataclasses and the text/markdown formatters.
 5. Update the module docstring and `docs/reference/API.md` (workspace_activity section) and `docs/reference/CLI.md` (ll-history activity output shape).
 6. Tests (see AC).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- Coverage constraint: step 6's "pytest passes" is unmeetable without extending the exact key lists in `test_cli_history.py:438-462` (`_MEMBER_KEYS`/`_TOTALS_KEYS`, enforced at :535/:547/:557) — that file is not named in this issue's test scope. `test_feat3445_workspace_activity.py:404-422` (`test_totals_to_dict_key_order`) is a second exact-list site; both must gain the new keys at whatever insertion position Decision 4 picks (this is the first post-ship key addition to the FEAT-3446 contract — no precedent constrains position, but all exact-list sites must be edited either way).
+- Verification constraint: the new helper's body must not contain `ensure_db(`, `_connect_readonly(`, or `immutable=1` — `test_feat3445_workspace_activity.py:432-450` source-inspects the module text after `def _parse_ts`.
+- Fixture shapes already exist for every AC state: schema'd-but-empty via `ensure_db(db)` (pattern: `test_history_reader_runs.py:133-136`); rows-outside-window via `record_loop_run_summary` then unbounded-vs-windowed compare (`test_feat3445_workspace_activity.py:210-225` asserts unbounded == 1, windowed == 0 — exactly the quiet-window shape); loop-only/issue-only via direct SQL mutation (precedent `_insert_running_loop_run`/`_stamp_issue_ts`, :43-71); db_missing (:260-272), schema_skew (`_skewed_member` :74-85), unreadable (:285-299); read-only guarantee via `_sha256` before/after (:110-111, :313-319). Member dbs are created under `<name>-history.db` names to dodge the autouse `_isolate_history_db` fixture (conftest.py:915-949).
 
 ## Impact
 
@@ -113,6 +145,17 @@ Resolved — see "Decisions (resolved, do not re-derive)" for the field/value se
 - `None` (not `False`) whenever the row count is unknowable (schema_skew/unreadable): asserting `False` would repeat the no-answer-≠-zero conflation this issue exists to fix.
 - `db_missing` → `False` (a real answer: nothing was ever recorded).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- All cited anchors verified against current code: `instrumented` set at workspace_activity.py:277 (gate-skip: `status is not DB_MISSING`), :291 (count-failure, hardcoded True), :304 (ok, hardcoded True); `_gate_member()` at workspace_quality.py:123-159 returns `(conn, None, None) | (None, reason, kind)` and opens one read-only URI conn per member (`sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)` + `PRAGMA query_only`) — no ATTACH on this path; `_count_member_activity` def :217 / call :284; `_totals` def :228 / call :312; CLI callers at cli/history.py:678 and :689.
+- Capability search result (searched `SELECT EXISTS` repo-wide + `has_history` repo-wide): partial precedent exists — `issue_events_ever_recorded()` (`issue_history/parsing.py:421-456`) runs `SELECT EXISTS(SELECT 1 FROM issue_events)` + `bool(row[0])`, but covers only `issue_events` and raises typed `HistoryDbUnavailable`; the new `_has_any_history` adds the `loop_runs` OR-arm and must never raise (routes via the existing per-member try). `SELECT EXISTS` appears in exactly one package file (parsing.py); `has_history`/`_has_any_history` has zero implementation hits — feature unimplemented.
+- Construction facts: every `RepoActivity`/`WorkspaceTotals` construction is keyword-based inside workspace_activity.py (:237, :272, :286, :299); no external constructor callers exist. Field placement after `instrumented` keeps non-default-before-default ordering valid on both frozen dataclasses (`has_history: bool | None = None` has a default; the two `WorkspaceTotals` fields are non-default, inserted before `ok_members`).
+- Totals aggregation gap (no precedent in module): the mirrored `any()`/`sum(... if r.x)` expressions (:239-240) operate on always-bool `instrumented`; no existing code aggregates a `bool | None` member field into non-optional totals. Decision 3 already pins the rule — count/any over `is True` only; `None` members simply do not count.
+- Source-inspection constraint: `test_feat3445_workspace_activity.py:432-450` (`TestNeverUsesMigratingOpener`) asserts the module text after `def _parse_ts` contains no `ensure_db(`, `_connect_readonly(`, or `immutable=1`. The new helper lands inside that inspected slice — it must reuse the gated `conn` passed in, never open its own.
+- Gate nuance verified: a db with only a matching `meta` table passes the gate (`_gate_passes_no_activity_tables`, test :88-107) and today lands in UNREADABLE via "count query failed" — a failing EXISTS on such a db lands in the same branch, so `has_history` reads `None`; no classification shifts.
+
 ## Scope Boundaries
 
 - **Out of scope**: changing `instrumented` semantics; windowing `has_history` (it is deliberately any-rows-ever, irrespective of `--since/--until`); counting rows (only existence); changes to `workspace_quality.py` or its tests; new CLI flags on `ll-history activity`; hermes-side consumption logic (sibling ENH-3449 covers the opt-out env var for that consumer).
@@ -133,6 +176,13 @@ Resolved — see "Decisions (resolved, do not re-derive)" for the field/value se
 - `RepoActivity.has_history: bool | None` (new dataclass field, default `None`).
 - `WorkspaceTotals.has_history_members: int`, `WorkspaceTotals.has_history: bool` (new fields).
 - JSON/YAML output from `ll-history activity` gains the three keys above. Text/markdown formatters show `has_history` alongside `instrumented` counts.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
+
+- Cross-reference: the text/markdown rendering of `has_history` is an open decision (per-member `instrumented` has no rendering today) — see Option A/B under Proposed Solution → Codebase Research Findings.
+- JSON/YAML need no formatter code change: `format_workspace_activity_json` (:340-347) is a verbatim `json.dumps(result.to_dict())` and `_yaml()` (:350-360) is `yaml.dump(..., sort_keys=False)` with a JSON fallback — new `to_dict()` keys pass through untouched. Only the text/markdown formatters hand-render fields.
 
 ## Acceptance Criteria
 
@@ -159,5 +209,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-11T20:49:41 - `dc57321a-6cbd-4b3f-bbcf-a2a2264f04d2.jsonl`
 - `/ll:format-issue` - 2026-09-11T20:31:22 - `927fc9d3-cc55-46d9-9660-1cb2e288f9d7.jsonl`
 - `/ll:capture-issue` - 2026-09-11T20:26:49 - `d2544764-cca3-4cd1-bd27-85b0d1d0f3c3.jsonl`
