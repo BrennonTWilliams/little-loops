@@ -159,6 +159,32 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - `scripts/tests/test_loop_router.py:234` — re-pointed as above.
 - `scripts/tests/test_enh3184_spawn_site_guard.py` — census must stay green without edits.
 
+## Verification Notes
+
+**Verdict: EVIDENCE_UNVERIFIED** (advisory, per BUG-3282 fallback F3 — does not route to `reconcile_issue`)
+
+`ll-verify-evidence` flagged two spans in Steps to Reproduce (line 42) —
+`` subprocess.Popen(["bash", "-c", action]) `` and `` OSError: [Errno 7]
+Argument list too long `` — as unverifiable against the artifact it
+associated them with, `scripts/tests/test_loop_router.py`. On inspection
+this reads as a checker-attribution artifact rather than fabricated
+evidence: line 42 is an illustrative description of the confirmed production
+spawn (`fsm/runners.py:348`) and the literal Linux errno text, not a
+verbatim quote the issue attributes to `test_loop_router.py` — the actual
+citation of that file (`test_loop_router.py:234`, step 1) is one line
+earlier and independently confirmed accurate.
+
+All other checks passed: `fsm/runners.py:348` (`cmd = ["bash", "-c",
+action]`) and `runner_spec.py::_run_cmd`'s mirrored shell spawn match the
+issue's claims exactly at the cited lines; `test_write_sub_loop_output_survives_oversized_stream`
+is confirmed at `test_loop_router.py:234`; parent `EPIC-3436` exists; no
+active required decision rules (`ll-issues decisions list` returned no
+entries); the Proposed Solution (temp-file spawn, Option A) traced against
+the code it touches shows no exception-handler incompatibility, the
+affected test is explicitly re-pointed rather than left stale, and the
+Integration Map's points are covered by the Implementation Steps/Tests —
+no `PROPOSAL_UNSOUND` finding.
+
 ## Impact
 
 - **Priority**: P1 - Every FSM loop's shell states fail unconditionally on Linux once any interpolated capture exceeds 128 KiB; Linux is a primary deployment target for automation hosts.
@@ -171,6 +197,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 **Open** | Created: 2026-09-10 | Priority: P1
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T01:50:21 - `f77f88c9-58d9-4ee9-80f3-b9585d4c8714.jsonl`
 - `/ll:decide-issue` - 2026-09-10T23:50:48 - `2f1f154f-c743-4a68-8aab-afcd2a716a72.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:16:55 - `4d4128b6-b8af-45c0-91e2-96dbe681ff8a.jsonl`
 - `/ll:format-issue` - 2026-09-10T22:00:28 - `bfcda7a0-6b47-49e9-8ffb-70e8847bdc09.jsonl`
