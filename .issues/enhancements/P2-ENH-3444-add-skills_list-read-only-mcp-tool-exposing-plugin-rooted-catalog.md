@@ -9,6 +9,12 @@ discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:35:03Z'
 learning_tests_required:
 - mcp
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3444: Add skills_list read-only MCP tool exposing plugin-rooted catalog
@@ -302,6 +308,44 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
   (catalog non-empty, every name classifies skill, garbage falls back cmd, dry-run writes
   nothing).
 
+## Verification Notes
+
+_Verified by `/ll:verify-issues` — 2026-09-11 — graph: provider=`codegraph` freshness=`fresh`:_
+
+- **Verdict: VALID** — all current-state claims checked against HEAD; none refuted.
+- `tool_catalog.py` claims exact: `ToolDefinition` frozen dataclass at lines 28-41 with no
+  `kind` field; `_skill_entries`/`_command_entries` use directory-name/file-stem naming;
+  `to_anthropic_tools` (lines 158-186) serializes only name/description/input_schema/
+  cache_control/defer_loading, so an additive `kind` is serializer-invisible as claimed.
+- `skill_expander.py` claims exact: `_find_plugin_root()` (lines 25-35) honors only
+  `CLAUDE_PLUGIN_ROOT`, returns it unvalidated, else three-parents-up;
+  `_resolve_content_path` (lines 38-52) tries `skills/<name>/SKILL.md` before
+  `commands/<name>.md` (skill-first, and command names classify `RunnerType.SKILL`).
+- `queue.py` claims exact: function-local `_find_plugin_root` import at line 165; LOOP
+  branch via `BRConfig(Path.cwd())` at line 183 runs before the skill branch (precedence
+  caveat as stated).
+- `mcp_server/server.py` `_resolve_skills_root()` (4-candidate `.is_dir()`-validated chain)
+  and `policy.py` `MUTATING_TOOLS` (line 55) verified; anti-anchor argument holds.
+- `tools.py` anchors exact: module docstring counts (lines 1-3), `_TOOLS` ordering comment
+  (771-772), `handle_list_tools` "fixed sixteen-tool catalog" (line 1232),
+  `structured_content` dict-only attachment (line 1333).
+- Test-will-break claims confirmed at cited lines: `test_mcp_server.py:292-301` read-only
+  set, `names[:5]` pin at ~75, `_find_plugin_root` patch seam at 826-888;
+  `test_feat_3149_mcp_mutation_tools.py:117-126` TIER1_NAMES and `[:8]`/`[8:]` slices in
+  153-176. Doc anchors (CLI.md 5357-5360/5385-5387/5401, MCP_SERVER_GUIDE.md 33/204/352/
+  588-589, API.md 10751-10758/10762-10769, config-schema.json 612+, CHANGELOG.md:189) all
+  verified.
+- Negative claims confirmed by repo-wide grep (corroborated via codegraph `callers-of`):
+  zero `skills_list`/`_tool_skills_list` occurrences in the tool surface;
+  `assemble_tool_catalog`'s only production caller is `cli/doctor.py:258`.
+- Proposal consequence check (ENH-3250) passed: anchoring `assemble_tool_catalog` at
+  `_find_plugin_root()` composes correctly (plugin_root/skills etc.), no exception-path
+  or fixture-invalidation consequence beyond the tests already listed, ACs cover the
+  named integration points.
+- One cosmetic nit, conclusion unaffected: existing test constructions at
+  `test_tool_catalog.py:210-211` pass the three fields as **keyword** args, not
+  "3 positional args" as the research finding says — either way `kind` needs a default.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -312,6 +356,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T00:11:14 - `bcda08f4-0e66-4e79-bbb6-35f872f2d3be.jsonl`
+- `/ll:verify-issues` - 2026-09-11T00:03:17 - `c2ff98c2-d636-4b9e-88bd-7e3ac0c1f8a7.jsonl`
 - `/ll:wire-issue` - 2026-09-11T00:00:07 - `7ab0ae92-3343-45f8-9d51-058b5423b861.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:49:39 - `7ee27d53-14b5-4247-8a45-3ace1bb3ba2a.jsonl`
 - `/ll:format-issue` - 2026-09-10T23:42:00 - `d0293195-1c81-4d81-ac17-fa584ee4566b.jsonl`
