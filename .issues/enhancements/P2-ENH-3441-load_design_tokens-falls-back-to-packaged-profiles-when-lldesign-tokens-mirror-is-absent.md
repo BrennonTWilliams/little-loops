@@ -114,9 +114,9 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 - **Files to Modify**: `scripts/little_loops/design_tokens.py` only — confirmed anchors: `load_design_tokens` @ :412, `_load_profile_from_root` @ :357, `_materialized_token_root` (nested) @ :438. The resolver currently has zero importlib.resources wiring of its own (verified: no `importlib` hits in the file).
 - **Packaged data needs no manifest change**: all 18 profile JSON files (`default`/`warm-paper`/`editorial-mono` × primitives/semantic/typography/spacing/themes) are already registered in `PACKAGE_DATA_ASSETS` (`scripts/little_loops/package_data.py:58-75`, ENH-3268 comment at :52-57) and gated by `scripts/tests/test_package_data_manifest.py` + `test_wheel_smoke.py`.
-- **Dependent files (callers of `load_design_tokens`, confirmed)**: `artifact_template_kit.py:38,46` (`_cached_themed_tokens`, light+dark — feeds `policy_builder.py` indirectly via `themed_css_vars`/`stamp_page_shell` import at `policy_builder.py:61`); `cli/artifact/templatize.py:1152,1269`; `cli/artifact/design_md.py:64-92`; `fsm/context_seed.py:94-101` (`design_tokens_context` / `render_as_prompt_context`, consumed by 13+ loop YAMLs); `hooks/session_start.py:315-342`. All call the unchanged signature — no caller changes (matches Program Design's "no caller changes").
+- **Dependent files (callers of `load_design_tokens`, confirmed)**: `artifact_template_kit.py:38,46` (`_cached_themed_tokens`, light+dark — feeds `policy_builder.py` indirectly via `themed_css_vars`/`stamp_page_shell` import at `policy_builder.py:61`); `cli/artifact/templatize.py:1158,1269`; `cli/artifact/design_md.py:64-92`; `fsm/context_seed.py:94-101` (`design_tokens_context` / `render_as_prompt_context`, consumed by 13+ loop YAMLs); `hooks/session_start.py:315-342`. All call the unchanged signature — no caller changes (matches Program Design's "no caller changes").
 - **Doctor/verify periphery (read-only awareness)**: `cli/doctor.py:1061,1088` (`_full_design_tokens_data`/`_full_design_tokens_check`); `cli/verify_design_tokens.py:126,181` — `_find_profiles_dir` there resolves candidates across source-repo, installed, and `.ll/design-tokens/profiles` layouts independently; its `lint_profiles_dir` gates profile content, not mirror/packaged parity.
-- **Conventions in force — accessor style**: when filesystem ops (`.is_dir()`/`.glob()`) follow, packaged assets are probed with `importlib.resources.files("little_loops").joinpath(...)` converted via `Path(str(traversable))` (`design_md.py:36-39`; `dashboard.py:54-59`, docstring cites "D20 — files() yields a Traversable"). Three accessor variants coexist in the codebase; this Variant-A shape is the one for directory probing.
+- **Conventions in force — accessor style**: when filesystem ops (`.is_dir()`/`.glob()`) follow, packaged assets are probed with `importlib.resources.files("little_loops").joinpath(...)` converted via `Path(str(traversable))` (`design_md.py:36-39`; `cli/artifact/dashboard.py:54-59`, docstring cites "D20 — files() yields a Traversable"). Three accessor variants coexist in the codebase; this Variant-A shape is the one for directory probing.
 - **Conventions in force — degradation**: every miss path in `load_design_tokens` warns to `sys.stderr` and returns `None`, never raises; probes that must not print take `quiet=True` (`design_tokens.py:171-203`, :525-528, :557-568). Note: `_resolve_export_profile_root` emits no notice when it uses the packaged copy — precedent for a silent fallback, but unspecified either way for `load_design_tokens`.
 - **Conventions in force — no shared resolver**: no shared packaged-asset Path helper exists (`dashboard.py::_packaged_path` is module-private; `package_data.check_asset_accessible` returns bool). Consolidation is out of scope per Scope Boundaries.
 - **Prior art (both done)**: BUG-3370's stopgap copies `.ll/design-tokens` into verify-gate worktrees (`worktree_utils.py:698-705`, comment self-labels "Stopgap, not the durable fix") — this fallback is the durable fix that stopgap anticipated. ENH-3275 (repo resolves to no tokens) is the original diagnosis.
@@ -137,7 +137,7 @@ _Added by `/ll:confidence-check` — 2026-09-10 — corrections and measured fin
   7. `test_design_tokens.py:371` `test_source_profile_ignores_root_design_md` — AC 3, `source=profile` + `DESIGN.md` + no mirror → asserts `None` → **must change** (packaged fallback engages). The AC's *semantic* (ignore `DESIGN.md`) is preserved; only the `is None` assertion goes
   8. `test_enh1768_profile_system.py:305` `test_completely_absent_path_returns_none` → **must change** (already named). `test_enh1768_profile_system.py:298` `test_missing_profile_returns_none` (`active="nonexistent"`) survives — the packaged lookup misses too
 - **The drift gate as specified has no CI signal.** `.ll/design-tokens/` is gitignored, so the mirror is absent on every clean checkout; a gate that "skips when absent" never runs in CI. It would only ever fire on a developer machine that happens to have a stale mirror — while packaged/mirror divergence introduced by a packaged-profile edit goes undetected in CI, and the local golden-fixture test and the CI golden-fixture test would then be validating different token sources. Fix: have the test **materialize** the mirror itself via `deploy_design_tokens` (`init/writers.py:587-622`) into a `tmp_path` and byte-compare that against the packaged profiles, so the gate runs unconditionally everywhere. Keep the ambient-mirror comparison as a second, skipping case if desired.
-- **`importlib.resources` + `Path(str(traversable))` is directory-install-safe, not zip-safe.** `_load_profile_from_root` performs real filesystem reads (`token_root / dt_cfg.primitives_file` → `_load_json`), so the traversable must be an actual directory. This matches the existing `_resolve_export_profile_root` precedent and is fine for editable installs and pip-unpacked wheels (CI installs via `pip install -e "./scripts[dev]"`, `ci.yml:83`), but it will silently resolve to `None` — not raise — if the package is ever consumed straight off a `.whl` on `sys.path`. Worth a one-line comment at the new helper, not a redesign.
+- **`importlib.resources` + `Path(str(traversable))` is directory-install-safe, not zip-safe.** `_load_profile_from_root` performs real filesystem reads (`token_root / dt_cfg.primitives_file` → `_load_json`), so the traversable must be an actual directory. This matches the existing `_resolve_export_profile_root` precedent and is fine for editable installs and pip-unpacked wheels (CI installs via `pip install -e "./scripts[dev]"`, `ci.yml:86`), but it will silently resolve to `None` — not raise — if the package is ever consumed straight off a `.whl` on `sys.path`. Worth a one-line comment at the new helper, not a redesign.
 - **Unaddressed: a non-default `design_tokens.path`.** If a project points `path` somewhere custom and that directory is absent, falling back to the packaged `default` profile substitutes content the project never asked for and is indistinguishable from the clean-checkout case, because `path`'s default is not observable either. Under packaged-**last** this only bites when there is also no `DESIGN.md`, which limits the damage; still, the stderr notice recommended above is what makes it visible.
 - **The golden-fixture test is not hermetic.** `test_policy_builder_renders_byte_identically_to_golden_fixture` (`test_enh3035_artifact_template_kit.py:62`) passes only `output=tmp_path`; the `BRConfig` it renders from is the **ambient repository root**, so the test reads whatever `.ll/design-tokens` the machine happens to have. It passes locally today (`1 passed in 1.23s`, mirror present). The packaged fallback makes it deterministic, which is the fix — but the ambient-state coupling is a latent test-hygiene defect worth noting in the EPIC even if it stays out of scope here.
 - **Repo state confirmed**: no tracked root `DESIGN.md`; `.ll/design-tokens/profiles` present locally; packaged profiles `default`/`editorial-mono`/`warm-paper` all present under `scripts/little_loops/templates/design-tokens/profiles/`.
@@ -289,7 +289,51 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 - **Minor open question (Criterion C, 18/25).** The `source == "profile"` miss path is silent today, so there is no existing warning convention to inherit; the stderr-notice wording recommended in step 5 is a judgment call, not a settled convention.
 
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-10 (auto mode)_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of what
+was wrong and fixed, not an outstanding action item).
+
+Every substantive claim verified against the codebase at HEAD:
+
+- **Anchors confirmed**: `load_design_tokens` @ `design_tokens.py:412`,
+  `_load_profile_from_root` @ :357, `_materialized_token_root` nested @ :438 with
+  the ≥1-token-file strength; `source == "profile"` miss branches are confirmed
+  completely silent (~:514-520); `auto` path is materialized-profile → root
+  `DESIGN.md` → `None`, with the `active_missing_warning` block positioned before
+  the `DESIGN.md` branch exactly as Program Design describes (packaged-last leaves
+  it untouched). `_resolve_export_profile_root` @ `cli/artifact/design_md.py:18`
+  probes importlib + `Path(str(traversable))` as claimed; `deploy_design_tokens`
+  @ `init/writers.py:587` is a bare `shutil.copytree`; `issue_template.py` bundles
+  via `Path(__file__).resolve().parent / "templates"` with the
+  `CLAUDE_PLUGIN_ROOT` override.
+- **All seven `test_design_tokens.py` line anchors confirmed exactly** (:291, :300,
+  :313, :321, :347, :366, :371) and each asserts what the issue says; the
+  ENH-1768 and ENH-3268 test anchors (`:305`, `:298`, `:376`) and the wiring
+  drift-gate shape precedent (:590-618) confirmed. Golden-fixture test exists at
+  `test_enh3035_artifact_template_kit.py:62` and passes locally (`1 passed in
+  1.28s`, ambient mirror present).
+- **Corrections applied in this pass**: `cli/artifact/templatize.py:1152` →
+  **:1158**; `ci.yml:83` → **:86**; `dashboard.py:54-59` →
+  **`cli/artifact/dashboard.py:54-59`** (path prefix added).
+- **Corroborated via code graph** (`ll-code callers-of load_design_tokens`,
+  provider=codegraph, freshness=fresh): caller set matches the Integration Map —
+  `artifact_template_kit.py:38,46`, `templatize.py:1158`, plus
+  `design_md.py:92`, `fsm/context_seed.py:100` and `hooks/session_start.py:315+`
+  confirmed by grep.
+- **Check B6 (proposal-vs-code)**: no findings — the packaged-last ordering is
+  coherent with the `active_missing_warning` block it leaves untouched, the 8-test
+  enumeration matches the pinned assertions read directly, and the ACs cover every
+  integration point in the map.
+- **Check B7 (`ll-verify-evidence`)**: clean — no unverifiable quoted spans.
+- **Decisions**: no active required rules; graceful pass. Dependencies: parent
+  `EPIC-3436` exists; no Blocked By/Blocks edges to validate.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T04:20:13 - `25b7684d-0d1e-49e4-8ff4-d0d175f721ca.jsonl`
 - manual pre-implementation review - 2026-09-10 - applied fixes 1-3 (drift-gate scope, notice dedupe, missing-theme edge)
 - `/ll:confidence-check` - 2026-09-11T03:46:23 - `3c54b1f6-0a02-45d5-aeb1-ed084c2c42f8.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:44:34 - `c5c0ddc3-456d-4110-b2d9-428ff5b6b0ce.jsonl`
