@@ -12,6 +12,12 @@ parent: EPIC-3436
 learning_tests_required:
 - pytest-xdist
 - pytest
+confidence_score: 95
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3443: test_env_var_overrides_cpu_count asserts against host CPU count instead of patching os.cpu_count
@@ -169,6 +175,7 @@ record of what was wrong and fixed, not an outstanding action item).
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T04:06:10 - `82aa9c16-7356-4996-ae53-14603c2e9a9b.jsonl`
 - `/ll:verify-issues` - 2026-09-11T04:03:47 - `e932b503-6715-465c-b1b0-8faaee5f9773.jsonl`
 - `/ll:wire-issue` - 2026-09-11T03:54:33 - `3c54b1f6-0a02-45d5-aeb1-ed084c2c42f8.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:51:06 - `4d1eb983-c328-4793-b35a-8ba87f2992d7.jsonl`
