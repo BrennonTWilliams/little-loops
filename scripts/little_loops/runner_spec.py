@@ -318,9 +318,22 @@ def _run_cmd(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult:
             gh_tmp.cleanup()
             return RunnerResult(stdout="", stderr="", exit_code=2, error=str(exc))
 
+    script_path: str | None = None
     try:
+        # BUG-3439: write the rendered script to a temp file and spawn
+        # ["bash", path] rather than ["bash", "-c", spec.target] — mirrors
+        # fsm/runners.py's shell branch (same MAX_ARG_STRLEN exposure).
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            delete=False,
+            prefix="ll-action-",
+            suffix=".sh",
+        ) as script_file:
+            script_file.write(spec.target)
+            script_path = script_file.name
         process = subprocess.Popen(
-            ["bash", "-c", spec.target],
+            ["bash", script_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -383,6 +396,11 @@ def _run_cmd(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult:
     finally:
         if gh_tmp is not None:
             gh_tmp.cleanup()
+        if script_path is not None:
+            try:
+                Path(script_path).unlink()
+            except OSError:
+                pass
 
 
 def _run_mcp(spec: ActionSpec) -> RunnerResult:

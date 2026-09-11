@@ -585,6 +585,57 @@ class TestDefaultActionRunnerShellPath:
         assert "error2" in result.stderr
         assert result.exit_code == 1
 
+    def test_oversized_script_spawns(self) -> None:
+        """BUG-3439: a rendered shell action above Linux's per-argument
+        MAX_ARG_STRLEN (131072 B) must still spawn — the script goes
+        out-of-band via a temp file (``bash <path>``), not as a single argv
+        element (``bash -c <action>``). No platform skip: this passed on
+        darwin before the fix (larger per-argv limit) and fails on Linux
+        only before it — the honest pin per the issue's Program Design."""
+        payload = "x" * 140_000  # > 131072 B MAX_ARG_STRLEN
+        action = f'python3 -c "print(len(\'{payload}\'))"'
+        assert len(action) > 131072
+
+        runner = DefaultActionRunner()
+        result = runner.run(action, timeout=30, is_slash_command=False)
+
+        assert result.exit_code == 0, result.stderr
+        assert result.output.strip() == "140000"
+
+    def test_script_tempfile_removed_after_run(self) -> None:
+        """No ``ll-action-*.sh`` temp file survives a successful run."""
+        before = set(Path(tempfile.gettempdir()).glob("ll-action-*.sh"))
+
+        runner = DefaultActionRunner()
+        result = runner.run("echo hi", timeout=10, is_slash_command=False)
+
+        assert result.exit_code == 0
+        after = set(Path(tempfile.gettempdir()).glob("ll-action-*.sh"))
+        assert after == before
+
+    def test_script_tempfile_removed_after_timeout(self) -> None:
+        """No ``ll-action-*.sh`` temp file survives the timeout path either."""
+        before = set(Path(tempfile.gettempdir()).glob("ll-action-*.sh"))
+
+        proc = _make_selector_mock_process()
+        sel = MagicMock()
+        sel.get_map.return_value = {"k": "v"}
+        sel.select.return_value = []
+        sel.close.return_value = None
+        sel.register.return_value = None
+
+        runner = DefaultActionRunner()
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc),
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.fsm.runners._kill_process_group"),
+        ):
+            result = runner.run("sleep 100", 0.05, False)
+
+        assert result.exit_code == 124
+        after = set(Path(tempfile.gettempdir()).glob("ll-action-*.sh"))
+        assert after == before
+
 
 class TestDefaultActionRunnerSlashPath:
     """Test DefaultActionRunner executing slash commands via run_claude_command."""

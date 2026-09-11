@@ -445,6 +445,64 @@ class TestRunActionDispatch:
         assert result.exit_code == 2
         mock_killpg.assert_called_once_with(proc)
 
+    def test_cmd_oversized_target_spawns(self) -> None:
+        """BUG-3439: sibling pin to test_fsm_runners.py's shell-path pin —
+        a target above Linux's per-argument MAX_ARG_STRLEN (131072 B) must
+        still spawn via _run_cmd's temp-file substitution, not
+        ``bash -c <target>``. No platform skip: passed on darwin before the
+        fix, fails on Linux only before it."""
+        payload = "x" * 140_000
+        target = f'python3 -c "print(len(\'{payload}\'))"'
+        assert len(target) > 131072
+
+        spec = ActionSpec(name="oversized", runner=RunnerType.CMD, target=target, timeout=30)
+        result = run_action(spec)
+
+        assert result.exit_code == 0, result.stderr
+        assert result.stdout.strip() == "140000"
+
+    def test_cmd_script_tempfile_removed_after_run(self) -> None:
+        """No ``ll-action-*.sh`` temp file survives a successful _run_cmd call."""
+        before = set(Path(tempfile.gettempdir()).glob("ll-action-*.sh"))
+
+        spec = ActionSpec(name="echo hi", runner=RunnerType.CMD, target="echo hi", timeout=5)
+        result = run_action(spec)
+
+        assert result.exit_code == 0
+        after = set(Path(tempfile.gettempdir()).glob("ll-action-*.sh"))
+        assert after == before
+
+    def test_cmd_script_tempfile_removed_after_timeout(self) -> None:
+        """No ``ll-action-*.sh`` temp file survives the timeout path either."""
+        before = set(Path(tempfile.gettempdir()).glob("ll-action-*.sh"))
+
+        proc = MagicMock()
+        proc.stdout = MagicMock()
+        proc.stderr = MagicMock()
+        proc.returncode = None
+        proc.pid = 12345
+        proc.wait.return_value = None
+        proc.kill.return_value = None
+
+        sel = MagicMock()
+        sel.get_map.return_value = {"pipe": "data"}
+        sel.select.return_value = []
+        sel.close.return_value = None
+        sel.register.return_value = None
+
+        spec = ActionSpec(name="hang", runner=RunnerType.CMD, target="sleep 9999", timeout=0)
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.runner_spec._kill_process_group"),
+        ):
+            result = run_action(spec)
+
+        assert result.timed_out is True
+        after = set(Path(tempfile.gettempdir()).glob("ll-action-*.sh"))
+        assert after == before
+
 
 class TestScopeRunnerGuard:
     """ENH-3403: scopes declared on SKILL/PROMPT/MCP must fail loud, unspawned."""

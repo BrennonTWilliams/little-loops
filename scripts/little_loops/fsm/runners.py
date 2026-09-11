@@ -344,8 +344,24 @@ class DefaultActionRunner:
                     exit_code=1,
                     duration_ms=_now_ms() - start,
                 )
+        script_path: str | None = None
         try:
-            cmd = ["bash", "-c", action]
+            # BUG-3439: write the rendered script to a temp file and spawn
+            # ["bash", path] rather than ["bash", "-c", action] — a large
+            # interpolated capture as a single argv element hits Linux's
+            # per-argument MAX_ARG_STRLEN (131072 B), raising OSError Errno 7
+            # (Argument list too long) at exec time. Mirror: runner_spec.py's
+            # _run_cmd.
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                delete=False,
+                prefix="ll-action-",
+                suffix=".sh",
+            ) as script_file:
+                script_file.write(action)
+                script_path = script_file.name
+            cmd = ["bash", script_path]
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -462,6 +478,11 @@ class DefaultActionRunner:
         finally:
             if gh_tmp is not None:
                 gh_tmp.cleanup()
+            if script_path is not None:
+                try:
+                    Path(script_path).unlink()
+                except OSError:
+                    pass
 
 
 @dataclass

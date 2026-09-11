@@ -237,14 +237,16 @@ class TestLoopRouterStates:
         """BUG-3334 AC14: a large, quote-dense sub_loop_output must not crash
         the write step with an uncaught E2BIG/OSError. The write action is
         rendered through the real interpolate() (so :shell's shlex.quote()
-        expansion is actually exercised) and executed via subprocess, mirroring
-        TestFinalizePresentResult's substitute-then-execute-then-assert shape.
-        executor.py's _run_action_or_route already converts any exception from
-        a shell state's subprocess call into a graceful on_error route when
-        on_error is set (as it is here), so this pins that no *lower-level*
-        crash escapes the subprocess call itself for a large, quote-heavy
-        payload sized well under the real OS ARG_MAX."""
+        expansion is actually exercised) and executed via
+        DefaultActionRunner.run() — the real production runner — rather than
+        a standalone `bash -c` spawn, so this pins BUG-3439's fix (the
+        rendered script goes out-of-band via a temp file, not argv). Before
+        that fix, a rendered script this size exceeds Linux's per-argument
+        MAX_ARG_STRLEN (131072 B) and raises OSError Errno 7 (Argument list
+        too long) at spawn on Linux; darwin's larger per-argv limit let the
+        old `bash -c` spawn mask this on macOS."""
         from little_loops.fsm.interpolation import InterpolationContext, interpolate
+        from little_loops.fsm.runners import DefaultActionRunner
 
         run_dir = tmp_path / "run"
         run_dir.mkdir()
@@ -258,10 +260,8 @@ class TestLoopRouterStates:
             state_name="write_sub_loop_output",
         )
         rendered = interpolate(action, ctx)
-        result = subprocess.run(
-            ["bash", "-c", rendered], capture_output=True, text=True, timeout=30
-        )
-        assert result.returncode == 0, result.stderr
+        result = DefaultActionRunner().run(rendered, timeout=30, is_slash_command=False)
+        assert result.exit_code == 0, result.stderr
         written = (run_dir / "sub-loop-events.jsonl").read_text()
         assert written == big_stream
 
