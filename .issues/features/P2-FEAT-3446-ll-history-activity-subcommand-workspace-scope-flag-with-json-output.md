@@ -5,10 +5,17 @@ title: 'll-history activity subcommand: --workspace scope flag with JSON output'
 priority: P2
 status: open
 verify_verdict: VALID
-blocked_by: [FEAT-3445]
+blocked_by:
+- FEAT-3445
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:53:23Z'
+confidence_score: 70
+outcome_confidence: 96
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-3446: ll-history activity subcommand: --workspace scope flag with JSON output
@@ -226,7 +233,18 @@ Decisions log: no active required rules found. Evidence-quote check
 **Open** | Created: 2026-09-10 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-10_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 96/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- Dependencies Hard Override (BUG-3051): `blocked_by: FEAT-3445` is unresolved (FEAT-3445 status: open). This issue's reader (`aggregate_workspace_activity`, `WorkspaceActivityResult`) does not exist yet, so the CLI dispatch arm has nothing to call. Implement/merge FEAT-3445 first, then re-run this check.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T01:14:23 - `226e3334-05f8-455d-a6d0-352e3badc359.jsonl`
 - `/ll:reconcile-issue` - 2026-09-11T01:00:11 - `96fc360a-b5db-40dd-bb89-1981614713ee.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:53:16 - `74560d07-2a1c-4247-b7b2-e91055dab494.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:47:45 - `e2289526-f05e-4914-b7bb-dee1a954062a.jsonl`
