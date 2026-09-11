@@ -4,7 +4,7 @@ type: FEAT
 title: 'll-history activity subcommand: --workspace scope flag with JSON output'
 priority: P2
 status: open
-verify_verdict: PROPOSAL_UNSOUND
+verify_verdict: VALID
 blocked_by: [FEAT-3445]
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
@@ -186,7 +186,7 @@ A downstream sync runs `ll-history activity --workspace --since 2026-08-10T14:00
 3. `--since`/`--until` accept full ISO-8601 timestamps (date or datetime) as inclusive bounds; invalid input exits non-zero with a clear argparse usage error (parser-level `type=` validation, not a raw traceback).
 4. All four `--format` values render; scope flag never changes which formatters are available.
 5. Exit 0 with `totals: null` when no member is `ok`.
-6. `docs/reference/CLI.md` and the `--help` epilog document the subcommand.
+6. `docs/reference/CLI.md` and the `--help` epilog document the subcommand; `docs/guides/HISTORY_SESSION_GUIDE.md`'s `quality`/`rework` windowing-convention comparison (lines ~452-502) is updated to include `activity`.
 7. Tests cover: multi-member workspace fixture, db_missing member, single-repo fallback, JSON shape golden test.
 
 ## Related Key Documentation
@@ -213,10 +213,10 @@ Criterion covers it — AC6 covers only `docs/reference/CLI.md` and the
 `--help` epilog. A point named in the Integration Map/Wiring Phase with no
 corresponding AC is a gap an implementer can silently skip.
 
-Remaining: add an AC (or fold into AC6) requiring the
-`HISTORY_SESSION_GUIDE.md` comparison update, or downgrade that line from
-"must be included" to informational in the Wiring Phase if it's not meant to
-gate completion.
+~~Remaining: add an AC (or fold into AC6) requiring the
+`HISTORY_SESSION_GUIDE.md` comparison update~~ — closed in a follow-up pass
+(2026-09-11): AC6 extended to require the `HISTORY_SESSION_GUIDE.md`
+windowing-convention comparison update. No outstanding action items remain.
 
 Decisions log: no active required rules found. Evidence-quote check
 (`ll-verify-evidence --json`): clean, 0 findings.
@@ -227,6 +227,7 @@ Decisions log: no active required rules found. Evidence-quote check
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-11T01:00:11 - `96fc360a-b5db-40dd-bb89-1981614713ee.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:53:16 - `74560d07-2a1c-4247-b7b2-e91055dab494.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:47:45 - `e2289526-f05e-4914-b7bb-dee1a954062a.jsonl`
 - `/ll:wire-issue` - 2026-09-11T00:38:37 - `2e842a0e-c20b-4811-ac47-806369f06e2c.jsonl`

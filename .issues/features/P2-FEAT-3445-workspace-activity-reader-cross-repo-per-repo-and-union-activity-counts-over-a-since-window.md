@@ -5,7 +5,7 @@ title: 'Workspace activity reader: cross-repo per-repo and union activity counts
   a since window'
 priority: P2
 status: open
-verify_verdict: NON_VALID
+verify_verdict: VALID
 blocks:
 - FEAT-3446
 discovered_by: ll-issues-create
@@ -258,12 +258,11 @@ hoist risk is already correctly self-flagged in the Wiring Phase, including the
 right failure mode (`ValueError` from a literal `text.index()` source-inspection
 miss if the gate helper is hoisted out of `workspace_quality.py`).
 
-Remaining: two Integration Map points have no corresponding Acceptance
-Criterion — the `issue_history/__init__.py` three-point public-export
-registration, and the `docs/reference/API.md` / `docs/ARCHITECTURE.md`
-documentation updates. Neither is individually severe enough to override the
-citation-based NEEDS_UPDATE verdict above, but an implementer following only
-the ACs could skip both.
+~~Remaining: two Integration Map points had no corresponding Acceptance
+Criterion~~ — closed in a follow-up pass (2026-09-11): AC10 (`__init__.py`
+three-point export registration) and AC11 (API.md/ARCHITECTURE.md doc
+updates) added. All findings from this issue's verification are now
+resolved; no outstanding action items remain.
 
 ## Status
 
@@ -271,6 +270,7 @@ the ACs could skip both.
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-11T01:00:10 - `96fc360a-b5db-40dd-bb89-1981614713ee.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:53:16 - `74560d07-2a1c-4247-b7b2-e91055dab494.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:47:45 - `e2289526-f05e-4914-b7bb-dee1a954062a.jsonl`
 - `/ll:wire-issue` - 2026-09-11T00:38:37 - `2e842a0e-c20b-4811-ac47-806369f06e2c.jsonl`
