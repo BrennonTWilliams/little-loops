@@ -3,10 +3,11 @@ id: ENH-3449
 type: ENH
 title: Analytics opt-out env var so ll-history activity is side-effect-free
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T20:26:37Z'
+completed_at: '2026-09-11T23:21:46Z'
 confidence_score: 100
 outcome_confidence: 68
 score_complexity: 18
@@ -219,21 +220,21 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `LL_ANALYTICS_CAPTURE=0 ll-history activity --format json` in a tmp project with no history.db: exit 0, local member `status: db_missing`, and the test asserts `.ll/history.db` does not exist after the run.
-- [ ] Same command without the env var still inserts a `cli_events` row (existing behavior preserved).
-- [ ] Unit tests for `cli_event_context` and `skill_event_context`: env var set → no connect, no row written; row-written tests `delenv` the var so they don't depend on the developer's shell.
-- [ ] Case-insensitivity: `LL_ANALYTICS_CAPTURE=OFF` (or `False`) suppresses the row the same as `0`.
-- [ ] `analytics.capture.cli_commands` excluding `ll-history` in `.ll/ll-config.json` suppresses the row for `ll-history`.
-- [ ] `analytics.enabled: false` with no `capture` key (the `ll-init` opt-out shape, `init/core.py:365`) suppresses the `cli_events` row for `ll-history` (review 2026-09-11).
-- [ ] A config missing the `analytics` key entirely keeps capture on (legacy permissive default preserved).
-- [ ] Fallback comment at `history.py:684-686` updated.
-- [ ] `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, and `docs/reference/HOST_COMPATIBILITY.md` document `LL_ANALYTICS_CAPTURE`.
-- [ ] `docs/reference/CONFIGURATION.md` (:616, :1721) and `docs/ARCHITECTURE.md` (:679, :767) document `LL_ANALYTICS_CAPTURE` and drop the now-stale v46 "gate is dead" claim.
-- [ ] Stale-invariant docstrings updated: `issue_events_ever_recorded` (`issue_history/parsing.py:421-433`), `_record_research_triage` (`cli/issues/research_triage.py:89-98`), and the `session_store/__init__.py` package docstring (:44-45).
-- [ ] `LL_ANALYTICS_CAPTURE` added to `_CMD_RUN_ENV_VARS` in `scripts/tests/conftest.py`, so the autouse scrub keeps row-written and "enter failed" tests deterministic against an ambient export.
-- [ ] The `skill_event_context` env-set unit test asserts the db file is not created, not merely that no row was written (review 2026-09-11).
-- [ ] Decision 2 caller audit produced: Session Log lists the production `cli_event_context`/`skill_event_context` callers omitting `config=` (includes `ll-session`, `cli/session.py:422`), with any trivial fixes called out.
-- [ ] `python -m pytest scripts/tests/` passes.
+- [x] `LL_ANALYTICS_CAPTURE=0 ll-history activity --format json` in a tmp project with no history.db: exit 0, local member `status: db_missing`, and the test asserts `.ll/history.db` does not exist after the run.
+- [x] Same command without the env var still inserts a `cli_events` row (existing behavior preserved).
+- [x] Unit tests for `cli_event_context` and `skill_event_context`: env var set → no connect, no row written; row-written tests `delenv` the var so they don't depend on the developer's shell.
+- [x] Case-insensitivity: `LL_ANALYTICS_CAPTURE=OFF` (or `False`) suppresses the row the same as `0`.
+- [x] `analytics.capture.cli_commands` excluding `ll-history` in `.ll/ll-config.json` suppresses the row for `ll-history`.
+- [x] `analytics.enabled: false` with no `capture` key (the `ll-init` opt-out shape, `init/core.py:365`) suppresses the `cli_events` row for `ll-history` (review 2026-09-11).
+- [x] A config missing the `analytics` key entirely keeps capture on (legacy permissive default preserved).
+- [x] Fallback comment at `history.py:684-686` updated.
+- [x] `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, and `docs/reference/HOST_COMPATIBILITY.md` document `LL_ANALYTICS_CAPTURE`.
+- [x] `docs/reference/CONFIGURATION.md` (:616, :1721) and `docs/ARCHITECTURE.md` (:679, :767) document `LL_ANALYTICS_CAPTURE` and drop the now-stale v46 "gate is dead" claim.
+- [x] Stale-invariant docstrings updated: `issue_events_ever_recorded` (`issue_history/parsing.py:421-433`), `_record_research_triage` (`cli/issues/research_triage.py:89-98`), and the `session_store/__init__.py` package docstring (:44-45).
+- [x] `LL_ANALYTICS_CAPTURE` added to `_CMD_RUN_ENV_VARS` in `scripts/tests/conftest.py`, so the autouse scrub keeps row-written and "enter failed" tests deterministic against an ambient export.
+- [x] The `skill_event_context` env-set unit test asserts the db file is not created, not merely that no row was written (review 2026-09-11).
+- [x] Decision 2 caller audit produced: Session Log lists the production `cli_event_context`/`skill_event_context` callers omitting `config=` (includes `ll-session`, `cli/session.py:422`), with any trivial fixes called out.
+- [x] `python -m pytest scripts/tests/` passes.
 
 ## Related
 
@@ -249,7 +250,33 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-11 | Priority: P2
 
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store/writers.py`: added `_analytics_capture_disabled()`; `LL_ANALYTICS_CAPTURE` short-circuit before `resolve_history_db` in `cli_event_context` + `skill_event_context`; config gate now also suppresses on `analytics.enabled` present-and-false (missing-`enabled` stays permissive); both docstrings extended.
+- `scripts/little_loops/cli/history.py`: `_load_capture_config()` guarded loader (cwd-anchored); `main_history()` passes `config=`; fallback comment rewritten for the capture-suppressed `db_missing` contract.
+- `scripts/little_loops/cli/session.py`: same trivial fix for `main_session()` (Decision 2's named candidate).
+- `scripts/tests/conftest.py`: `LL_ANALYTICS_CAPTURE` added to `_CMD_RUN_ENV_VARS`.
+- `scripts/tests/test_session_store_writers.py` + `scripts/tests/test_cli_history.py`: 14 new tests (env kill switch incl. case-insensitivity + no-connect/no-file, one-way semantics, `analytics.enabled` matrix, missing-`analytics` permissive, end-to-end `main_history` db_missing/row-written/config-gate/opt-out).
+- `scripts/tests/test_issue_parser.py`: corpus baseline lifted 569→573 (`_ENH_3449_TOTAL_REPORTS`, same succession pattern as BUG-3448 — growth from this issue's own refinement commits, no detector regression); two allowlist line pins shifted for the writers.py/parsing.py line drift.
+- Docstrings: `issue_events_ever_recorded`, `_record_research_triage`, `session_store/__init__.py` package docstring.
+- Docs: `CLI.md`, `API.md`, `HISTORY_SESSION_GUIDE.md`, `HOST_COMPATIBILITY.md`, `CONFIGURATION.md`, `ARCHITECTURE.md`.
+
+### Verification Results
+- Tests: PASS (24031 passed, 43 skipped — full `python -m pytest scripts/tests/`)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/` — no issues in 396 files)
+- Integration: PASS
+
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T23:21:46 - `16bc1fcf-8646-45e6-84e6-3babe19741d4.jsonl`
+- Decision 2 caller audit (2026-09-11, `/ll:manage-issue`): 53 production `cli_event_context(` call sites existed pre-fix across 48 files, none passing `config=`. Trivial fix applied here: `ll-session` (`cli/session.py:422`) — the named top candidate — now loads and passes `config=` alongside `ll-history`. Remaining 51 sites still omit `config=` (audit-only per Scope Boundaries): ll-history-context, ll-auto, ll-parallel, ll-sprint, ll-issues, ll-advise, ll-artifact, ll-code, ll-compact-session, ll-config, ll-create-extension, ll-deps, ll-doctor, ll-verify-docs, ll-verify-skill-budget, ll-verify-skills, ll-check-links (docs.py ×4), ll-gitignore, ll-help, ll-harness, ll-ctx-stats, ll-learning-tests, ll-logs, ll-loop, ll-messages, ll-migrate, ll-migrate-labels, ll-migrate-relationships, ll-migrate-status, ll-queue, ll-generate-schemas, ll-sync, ll-adapt, ll-adapt-agents-for-codex, ll-adapt-skills-for-codex, ll-generate-skill-descriptions, ll-verify-cli-allowlist, ll-verify-decisions, ll-verify-des-audit, ll-verify-design-tokens, ll-verify-evidence, ll-verify-host-map, ll-verify-kinds, ll-verify-package-data, ll-verify-private-refs, ll-verify-skill-prose, ll-verify-triggers, ll-init (`init/cli.py:1203`). `skill_event_context` sole production caller: `ll-action` `cmd_invoke` (`cli/action.py:230`), also still config-less. All are per-invocation suppressible via `LL_ANALYTICS_CAPTURE` regardless.
+- `/ll:manage-issue` implementation - 2026-09-11 - Red/Green TDD: 14 new failing tests validated red, then green after implementation; full suite 24031 passed / 43 skipped. Also lifted the `_unapplied_decision` corpus ceiling 569→573 in `test_issue_parser.py` (growth from this issue's own refinement commits, pre-existing on clean main; BUG-3448 succession pattern).
 - `/ll:confidence-check` - 2026-09-11T22:20:04 - `391be972-a549-42fe-8083-3e332695b908.jsonl`
 - `/ll:confidence-check` - 2026-09-11T22:03:50 - `cf2556c4-72e8-4260-8e11-5d8008bb6e43.jsonl`
 - pre-implementation review fold-in - 2026-09-11 (second pass) - corrected Program Design §Signatures param names (`source`/`argv` → `binary`/`args`), pinned the gate-placement constraint (`analytics.enabled` check inside the existing `writers.py:523-533` try block so a non-dict `analytics` degrades via the existing `except Exception`), pinned the `analytics`-present-but-`enabled`-absent permissive case (Decisions §2 + API/Interface), added the Decision 2 caller-audit AC and named `ll-session` (`cli/session.py:422`) as the top trivial-fix candidate

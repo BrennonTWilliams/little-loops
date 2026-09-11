@@ -413,13 +413,40 @@ def _run_extract_decisions(since: str | None = None) -> None:
         print("ll-issues not found; skipping extract-from-completed", file=sys.stderr)
 
 
+def _load_capture_config(cwd: Path) -> dict | None:
+    """Load the project's ll-config.json as a raw dict for analytics gating (ENH-3449).
+
+    Guarded loader (``resolve_config_path`` + except-guarded ``json.loads``,
+    matching ``cli/history.py``): a missing or malformed config returns
+    ``None`` — permissive — so a broken ll-config.json can never fail
+    ll-session's never-fail enter contract.
+    """
+    import json
+
+    from little_loops.config.core import resolve_config_path
+
+    config_path = resolve_config_path(cwd)
+    if config_path is None:
+        return None
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def main_session() -> int:
     """Entry point for ll-session command.
 
     Returns:
         0 on success, 1 when no subcommand is given or on error.
     """
-    with cli_event_context(DEFAULT_DB_PATH, "ll-session", sys.argv[1:]):
+    # Loaded before the with-block: the context manager opens before argparse
+    # runs, so parsed args cannot participate (see cli/history.py, ENH-3449).
+    capture_config = _load_capture_config(Path.cwd())
+    with cli_event_context(
+        DEFAULT_DB_PATH, "ll-session", sys.argv[1:], config=capture_config
+    ):
         configure_output()
         logger = Logger(use_color=use_color_enabled())
 

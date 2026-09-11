@@ -613,7 +613,7 @@ enabled; these keys control how skills and CLI tools *read* that data.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `history.db_path` | `string\|null` | `null` | Override the default `.ll/history.db` location; relative paths resolve against the project root. The `LL_HISTORY_DB` env var takes precedence over this (ENH-2623). |
+| `history.db_path` | `string\|null` | `null` | Override the default `.ll/history.db` location; relative paths resolve against the project root. The `LL_HISTORY_DB` env var takes precedence over this (ENH-2623). Independent kill switch: `LL_ANALYTICS_CAPTURE=0` suppresses `ll-*` analytics capture entirely — the db is never resolved (so neither this key nor `LL_HISTORY_DB` is consulted) and no file is created (ENH-3449). |
 | `history.workspace_manifest_path` | `string\|null` | `null` | Path to an `ll-workspace.yaml` manifest declaring workspace membership for cross-repo `.ll/history.db` aggregation (FEAT-3409). Relative paths resolve against the project root; `~` is expanded (a deliberate divergence from `history.db_path`, which does not expand `~`). Overrides the nearest-ancestor-walk default `discover_workspace_members()` otherwise uses. A declared-but-missing manifest — this key set to a nonexistent path — raises `FileNotFoundError` rather than degrading to an empty member list; only an *undeclared* (ancestor-walk) miss degrades. A member repo's own `history.db_path` is not consulted by workspace discovery — a member with a custom one must repeat it in the manifest. |
 | `history.velocity_window` | `integer` | `10` | Number of recent issues to use when computing velocity (ENH-1905). |
 | `history.effort_fields` | `list[str]` | `["session_count", "cycle_time_days"]` | Fields extracted from history.db for effort reporting (ENH-1905). |
@@ -1718,7 +1718,7 @@ Records FSM loop events into the per-project session store (`.ll/history.db`) fo
 |-----|------|---------|-------------|
 | `events.sqlite.path` | `string` | `".ll/history.db"` | Filesystem path for the SQLite session database. |
 
-**Env-var override**: `LL_HISTORY_DB` takes precedence if set (e.g. for test isolation).
+**Env-var override**: `LL_HISTORY_DB` takes precedence if set (e.g. for test isolation). Separately, `LL_ANALYTICS_CAPTURE=0` (kill switch, ENH-3449) suppresses the per-invocation `cli_events`/`skill_events` analytics rows before the db is ever resolved — no file is created, and `LL_HISTORY_DB` is not consulted.
 
 The session store is a SQLite database with an FTS5 full-text index. `SQLiteTransport` writes events as they are emitted; `ll-session search`/`recent`/`backfill` query and seed it. As of ENH-1691, `ll-auto` writes issue lifecycle events live via `AutoManager`'s internal transport — no additional config is required. As of ENH-2783, `ll-parallel` and `ll-sprint` do the same: their CLI entry points (`cli/parallel.py`, `cli/sprint/run.py`) attach a `SQLiteTransport` to the orchestrator's `EventBus` unconditionally (skipping the attach only if `events.transports` already lists `"sqlite"`, to avoid a duplicate write), so issue-close events from worker completion, sequential merge, and the frontmatter-only lifecycle-completion path are all live-written regardless of `events.transports` config. Use `ll-session backfill` to import historical data captured before ENH-1691. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread for each interactive session, so new data is indexed without manual intervention.
 

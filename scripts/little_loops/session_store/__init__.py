@@ -41,8 +41,10 @@ Public API:
     record_correction(db,...):   write one row to ``user_corrections`` + search_index
     record_issue_event(db,...):  write one row to ``issue_events`` + search_index (BUG-2770)
     record_skill_event(db,...):  write one row to ``skill_events`` + search_index
-    cli_event_context(db,...):   context manager: INSERT on enter, UPDATE exit_code+duration on exit
-    skill_event_context(db,...): skill-host analogue of cli_event_context (ENH-2460)
+    cli_event_context(db,...):   context manager: INSERT on enter, UPDATE exit_code+duration on exit;
+                                 suppressible via LL_ANALYTICS_CAPTURE / the analytics config gate (ENH-3449)
+    skill_event_context(db,...): skill-host analogue of cli_event_context (ENH-2460), same
+                                 LL_ANALYTICS_CAPTURE / config suppression (ENH-3449)
     record_commit_event(db,...): write one row to ``commit_events`` + search_index (ENH-2458)
     record_test_run_event(db,...): write one row to ``test_run_events`` + search_index (ENH-2459)
     record_orchestration_run(db,...): UPSERT one per-issue batch outcome (ENH-2492)

@@ -54,6 +54,29 @@ def _positive_int(raw: str) -> int:
     return value
 
 
+def _load_capture_config(cwd: Path) -> dict | None:
+    """Load the project's ll-config.json as a raw dict for analytics gating (ENH-3449).
+
+    Guarded loader (``resolve_config_path`` + except-guarded ``json.loads``,
+    per ``hooks/user_prompt_submit.py``): a missing or malformed config returns
+    ``None`` — permissive — so a broken ll-config.json can never fail
+    ll-history's never-fail enter contract. ``BRConfig``'s base-config
+    ``json.load`` is unguarded and unsuitable here.
+    """
+    import json
+
+    from little_loops.config.core import resolve_config_path
+
+    config_path = resolve_config_path(cwd)
+    if config_path is None:
+        return None
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def main_history() -> int:
     """Entry point for ll-history command.
 
@@ -62,7 +85,13 @@ def main_history() -> int:
     Returns:
         Exit code (0 = success)
     """
-    with cli_event_context(DEFAULT_DB_PATH, "ll-history", sys.argv[1:]):
+    # Loaded before the with-block: the context manager opens before argparse
+    # runs, so args.config (derived at history.py:440+) cannot participate.
+    # Distinct name — the with-body rebinds `config = BRConfig(...)` later.
+    capture_config = _load_capture_config(Path.cwd())
+    with cli_event_context(
+        DEFAULT_DB_PATH, "ll-history", sys.argv[1:], config=capture_config
+    ):
         from little_loops.issue_history import (
             HistoryDbUnavailable,
             analyze_agent_quality,
@@ -681,9 +710,12 @@ Examples:
 
             if activity_result is None:
                 # No flag, or zero discovered members: report this repo alone.
-                # `cli_event_context` has already created the local history.db
-                # (its cli_events insert), so the fallback member reads as `ok`
-                # with zero counts while analytics capture is enabled.
+                # With capture on, `cli_event_context` has already created the
+                # local history.db (its cli_events insert), so the fallback
+                # member reads as `ok` with zero counts. With capture
+                # suppressed (LL_ANALYTICS_CAPTURE kill switch or the
+                # analytics.enabled/cli_commands config gate), no db is
+                # pre-created and the member reports `db_missing` instead.
                 from little_loops.workspace import WorkspaceMember
 
                 activity_result = aggregate_workspace_activity(

@@ -52,7 +52,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 ## What Is history.db?
 
-`.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
+`.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI). To run an `ll-*` CLI without writing its per-invocation analytics row — or authoring the db at all — set `LL_ANALYTICS_CAPTURE=0` (kill switch: no resolution, no file, no `cli_events` row; wins over `LL_HISTORY_DB`; per-invocation use, not a shell-profile export — ENH-3449).
 
 The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 45, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
 
@@ -679,7 +679,7 @@ All keys live under `history.*` and `analytics.*` in `.ll/ll-config.json`.
 | `analytics.capture.file_events` | `true` | Record file reads/writes |
 | `analytics.capture.corrections` | `true` | Record user correction messages |
 | `analytics.capture.skills` | `["*"]` | Glob patterns for skill names to record to `skill_events` |
-| `analytics.capture.cli_commands` | `["*"]` | Glob patterns for CLI command names to record to `cli_events` |
+| `analytics.capture.cli_commands` | `["*"]` | Glob patterns for CLI command names to record to `cli_events`. Honored by `ll-history` and `ll-session` since ENH-3449 (they pass their project config to `cli_event_context`); most other `ll-*` binaries still capture unconditionally. A present-and-false `analytics.enabled` (the `ll-init` opt-out shape) suppresses the row the same way, and the `LL_ANALYTICS_CAPTURE=0` env var is a per-invocation override of both |
 | `analytics.capture.hooks` | `true` | Record per-fire hook execution telemetry to `hook_events` (ENH-2506) |
 | `analytics.capture.usage_events` | `true` | Record per-invocation LLM token counts and cost to `usage_events` (ENH-2461/ENH-2724) |
 | `analytics.capture.correction_patterns` | `[]` | Additional regex patterns for correction detection |

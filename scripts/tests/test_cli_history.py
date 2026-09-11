@@ -587,11 +587,14 @@ class TestHistoryActivity:
         assert bare == explicit
 
     def test_absent_flag_single_repo_result(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """AC 2: no flag = single-repo result with the pinned fallback member shape."""
         (tmp_path / ".ll").mkdir()
         (tmp_path / ".issues").mkdir()
+        # Anchor db resolution at the tmp project regardless of the developer's
+        # shell (ENH-3449 test hygiene).
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
 
         with patch.object(sys, "argv", ["ll-history", "activity", "--format", "json"]):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
@@ -609,6 +612,101 @@ class TestHistoryActivity:
         assert member["repo_path"] == str(tmp_path)
         assert member["issues_completed"] == 0
         assert payload["totals"]["ok_members"] == 1
+
+    def test_activity_env_kill_switch_db_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3449: LL_ANALYTICS_CAPTURE=0 makes activity side-effect-free.
+
+        Read-only polling contract: exit 0, local member db_missing/ok:false/
+        instrumented:false, and no .ll/history.db authored by the run.
+        """
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        monkeypatch.setenv("LL_ANALYTICS_CAPTURE", "0")
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--format", "json"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out)
+        member = payload["per_repo"][0]
+        assert member["status"] == "db_missing"
+        assert member["ok"] is False
+        assert member["instrumented"] is False
+        assert not (tmp_path / ".ll" / "history.db").exists()
+
+    def test_activity_without_env_var_writes_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3449: without the kill switch the cli_events row is still written."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--format", "json"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+                # Row check inside the cwd patch: recent() re-resolves the
+                # default-shaped path, and an unpatched cwd would trip the
+                # conftest production-db guard.
+                from little_loops.session_store import recent
+
+                rows = recent(tmp_path / ".ll" / "history.db", kind="cli")
+        capsys.readouterr()
+
+        assert result == 0
+        assert len(rows) == 1
+        assert rows[0]["binary"] == "ll-history"
+
+    def test_activity_config_gate_suppresses_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3449: analytics.capture.cli_commands excluding ll-history suppresses the row."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"analytics": {"capture": {"cli_commands": ["ll-session"]}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--format", "json"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+        capsys.readouterr()
+
+        assert result == 0
+        assert not (tmp_path / ".ll" / "history.db").exists(), (
+            "config gate must suppress the cli_events insert entirely"
+        )
+
+    def test_activity_analytics_enabled_false_suppresses_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3449: analytics.enabled=false (ll-init opt-out shape) suppresses the row."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"analytics": {"enabled": False}}),
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--format", "json"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+        capsys.readouterr()
+
+        assert result == 0
+        assert not (tmp_path / ".ll" / "history.db").exists(), (
+            "analytics.enabled=false must suppress the cli_events insert entirely"
+        )
 
     def test_bare_flag_zero_members_matches_no_flag_output(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

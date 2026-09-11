@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import sqlite3
 import subprocess
@@ -480,6 +481,18 @@ def record_issue_event(
         conn.close()
 
 
+def _analytics_capture_disabled() -> bool:
+    """True when ``LL_ANALYTICS_CAPTURE`` is set to a falsy value (ENH-3449).
+
+    Falsy set is exactly ``{"0", "false", "off"}`` (case-insensitive after
+    ``strip()``); set-but-empty counts as unset — capture stays on. One-way
+    kill switch: no truthy value force-enables capture past a config-gate
+    exclusion. Must stay a non-raising pure ``os.environ`` read —
+    :func:`skill_event_context` calls it in an unguarded prefix.
+    """
+    return os.environ.get("LL_ANALYTICS_CAPTURE", "").strip().lower() in {"0", "false", "off"}
+
+
 @contextmanager
 def cli_event_context(
     db_path: Path | str = DEFAULT_DB_PATH,
@@ -512,6 +525,16 @@ def cli_event_context(
     provided, ``binary`` must match one of the configured glob patterns or the
     row write is suppressed (the wrapped body still runs). Missing ``capture``
     key or missing ``config`` defaults to permissive (no behavior change).
+    ``analytics.enabled`` present-and-false — the ``ll-init`` opt-out shape —
+    also suppresses the row; a missing ``analytics`` key, or a present
+    ``analytics`` dict with no ``enabled`` key, stays permissive (ENH-3449).
+
+    Kill switch (ENH-3449): ``LL_ANALYTICS_CAPTURE`` set to ``0``/``false``/
+    ``off`` (case-insensitive after strip; empty string counts as unset)
+    suppresses the row *before* ``resolve_history_db`` runs — nothing touches
+    the filesystem and ``LL_HISTORY_DB`` is never consulted, so the kill
+    switch wins over it. One-way: no truthy value force-enables capture past
+    a config-gate exclusion.
     """
     if args is None:
         args = []
@@ -521,16 +544,30 @@ def cli_event_context(
     ts = _now()
     gate_open = True
     try:
-        effective_path = resolve_history_db(db_path)
-        if config is not None:
-            from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
+        if _analytics_capture_disabled():
+            # Kill switch: skip resolution entirely — no filesystem access, no
+            # cli_events row, LL_HISTORY_DB never consulted.
+            gate_open = False
+            effective_path = Path(db_path)
+        else:
+            effective_path = resolve_history_db(db_path)
+            if config is not None:
+                from little_loops.config.features import (
+                    AnalyticsCaptureConfig,
+                    feature_enabled_for,
+                )
 
-            capture = AnalyticsCaptureConfig.from_dict(
-                config.get("analytics", {}).get("capture", {})
-            )
-            gate_open = feature_enabled_for(
-                {"cli_commands": capture.cli_commands}, "cli_commands", binary
-            )
+                analytics_cfg = config.get("analytics", {})
+                if analytics_cfg.get("enabled") is False:
+                    # ll-init's opt-out shape ({"analytics": {"enabled": false}},
+                    # no capture key) suppresses capture; a missing `enabled`
+                    # key stays permissive (legacy/ENH-2932 default).
+                    gate_open = False
+                else:
+                    capture = AnalyticsCaptureConfig.from_dict(analytics_cfg.get("capture", {}))
+                    gate_open = feature_enabled_for(
+                        {"cli_commands": capture.cli_commands}, "cli_commands", binary
+                    )
         if gate_open:
             conn = _pkg.connect(effective_path)
             cursor = conn.execute(
@@ -617,19 +654,44 @@ def skill_event_context(
     ``skill_name`` must match one of the configured glob patterns or the row write
     is suppressed (the wrapped body still runs, yielding a default
     ``SkillEventCompletion()``). Missing ``capture`` key or missing ``config``
-    defaults to permissive (no behavior change).
+    defaults to permissive (no behavior change). ``analytics.enabled``
+    present-and-false — the ``ll-init`` opt-out shape — also suppresses the
+    row; a missing ``enabled`` key stays permissive (ENH-3449).
+
+    Kill switch (ENH-3449): ``LL_ANALYTICS_CAPTURE`` set to ``0``/``false``/
+    ``off`` (case-insensitive after strip; empty string counts as unset)
+    suppresses the row *before* ``resolve_history_db`` runs — nothing touches
+    the filesystem and ``LL_HISTORY_DB`` is never consulted, so the kill
+    switch wins over it. This covers ``ll-action`` (the sole production
+    caller) and any future skill-host CLI; hooks-layer ``skill_events``
+    (``user_prompt_submit`` → :func:`record_skill_event`) is NOT covered — it
+    stays ``analytics.enabled``-gated, which remains the project-level off
+    switch for hook writes.
     """
     args = args[:200]
     conn: sqlite3.Connection | None = None
     row_id: int | None = None
-    effective_path = resolve_history_db(db_path)
-    ts = _now()
     gate_open = True
-    if config is not None:
-        from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
+    if _analytics_capture_disabled():
+        # Kill switch: skip resolution entirely — no filesystem access, no
+        # skill_events row, LL_HISTORY_DB never consulted.
+        effective_path = Path(db_path)
+        gate_open = False
+    else:
+        effective_path = resolve_history_db(db_path)
+        if config is not None:
+            from little_loops.config.features import (
+                AnalyticsCaptureConfig,
+                feature_enabled_for,
+            )
 
-        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
-        gate_open = feature_enabled_for({"skills": capture.skills}, "skills", skill_name)
+            analytics_cfg = config.get("analytics", {})
+            if analytics_cfg.get("enabled") is False:
+                gate_open = False
+            else:
+                capture = AnalyticsCaptureConfig.from_dict(analytics_cfg.get("capture", {}))
+                gate_open = feature_enabled_for({"skills": capture.skills}, "skills", skill_name)
+    ts = _now()
     if gate_open:
         try:
             conn = _pkg.connect(effective_path)

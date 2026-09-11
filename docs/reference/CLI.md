@@ -3171,6 +3171,12 @@ Display summary statistics and analysis for completed issues.
 
 When present in issue frontmatter, `captured_at` and `completed_at` are preferred over the legacy `discovered_date` field and Resolution body regex / git-log fallbacks; the JSON serialization of `CompletedIssue` includes both fields at sub-day ISO 8601 resolution.
 
+**Environment:**
+
+| Env var | Description |
+|---------|-------------|
+| `LL_ANALYTICS_CAPTURE` | Kill switch for the per-invocation `cli_events` analytics row (ENH-3449). `0`/`false`/`off` (case-insensitive; empty string = unset) suppresses the row *before* the database is resolved — nothing touches the filesystem, so `ll-history activity` on a repo with no `.ll/history.db` reports the local member as `db_missing` and leaves no db behind. The kill switch wins over `LL_HISTORY_DB` (nothing is resolved). One-way only: no truthy value force-enables capture past a config-gate exclusion. Set it per invocation (what polling consumers want), not in a shell profile — a global export disables `cli_events` capture for every `ll-*` CLI in every project (and `ll-action`'s `skill_events`); hooks-layer `skill_events` is unaffected and stays governed by `analytics.enabled`. The project's `.ll/ll-config.json` also gates this binary: `analytics.enabled: false` or a `analytics.capture.cli_commands` glob list excluding `ll-history` suppresses the row the same way. |
+
 **Global flags:**
 
 | Flag | Short | Description |

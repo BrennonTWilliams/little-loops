@@ -91,8 +91,9 @@ def _record_research_triage(
     Runs on both the ``--json`` and text output paths. Gated explicitly on
     ``config.analytics_capture.cli_commands`` rather than relying on
     ``cli_event_context``'s own gate — that gate only applies when a caller
-    passes ``config``, and no ``ll-*`` entry point does, making it dead code
-    today (ENH-2932 regression, out of scope here). ``write_research_triage``
+    passes ``config``, which ``ll-issues`` still does not (``ll-history`` and
+    ``ll-session`` do since ENH-3449, but their binaries differ from this
+    command's). ``write_research_triage``
     is itself fail-soft (never raises), so this never alters
     :func:`cmd_research_triage`'s exit-0 contract.
     """

@@ -611,6 +611,113 @@ class TestCliEventContext:
         rows = recent(db, kind="cli")
         assert len(rows) == 0, "cli_event_context must skip the row write when gated off"
 
+    def test_cli_event_context_env_kill_switch_no_connect_no_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """LL_ANALYTICS_CAPTURE=0: neither resolve_history_db nor connect may run (ENH-3449).
+
+        The kill switch must short-circuit before ``resolve_history_db`` so nothing
+        touches the filesystem (no history.db creation, no cli_events row) — which
+        is also why it wins over LL_HISTORY_DB: nothing is ever resolved. Both
+        seams raise AssertionError; the enter prefix's ``except Exception`` would
+        swallow such a raise into a warning, so the caplog absence assertion is
+        the proof neither seam fired.
+        """
+        import little_loops.session_store as ss
+        import little_loops.session_store.writers as writers_mod
+        from little_loops.session_store import DEFAULT_DB_PATH
+
+        (tmp_path / ".ll").mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("LL_ANALYTICS_CAPTURE", "0")
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+
+        def _must_not_resolve(*_a: object, **_k: object) -> Path:
+            raise AssertionError("resolve_history_db must not run when LL_ANALYTICS_CAPTURE is set")
+
+        def _must_not_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+            raise AssertionError("connect must not run when LL_ANALYTICS_CAPTURE is set")
+
+        monkeypatch.setattr(writers_mod, "resolve_history_db", _must_not_resolve)
+        monkeypatch.setattr(ss, "connect", _must_not_connect)
+
+        ran = False
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            with cli_event_context(DEFAULT_DB_PATH, binary="ll-test-kill", args=[]):
+                ran = True
+        assert ran, "wrapped body must still run under the kill switch"
+        assert "cli_event_context: enter failed" not in caplog.text
+        assert not (tmp_path / ".ll" / "history.db").exists()
+
+    @pytest.mark.parametrize("value", ["0", "false", "off", "OFF", "False", "  off "])
+    def test_cli_event_context_env_kill_switch_case_insensitive(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+    ) -> None:
+        """Every falsy LL_ANALYTICS_CAPTURE spelling suppresses the row (ENH-3449)."""
+        db = tmp_path / "session.db"
+        monkeypatch.setenv("LL_ANALYTICS_CAPTURE", value)
+        ran = False
+        with cli_event_context(db, binary="ll-test-case", args=[]):
+            ran = True
+        assert ran
+        assert not db.exists(), f"LL_ANALYTICS_CAPTURE={value!r} must leave no db behind"
+
+    def test_cli_event_context_env_truthy_value_is_not_force_enable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One-way kill switch: a truthy env value must not bypass a config exclusion (ENH-3449)."""
+        db = tmp_path / "session.db"
+        monkeypatch.setenv("LL_ANALYTICS_CAPTURE", "1")
+        with cli_event_context(
+            db,
+            binary="ll-issues",
+            args=[],
+            config={"analytics": {"capture": {"cli_commands": ["not-this-binary"]}}},
+        ):
+            pass
+        assert not db.exists(), "truthy LL_ANALYTICS_CAPTURE must not force-enable past the config gate"
+
+    def test_cli_event_context_analytics_enabled_false_suppresses(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """analytics.enabled present-and-false (ll-init opt-out shape) suppresses the row (ENH-3449)."""
+        db = tmp_path / "session.db"
+        monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
+        ran = False
+        with cli_event_context(db, binary="ll-history", args=[], config={"analytics": {"enabled": False}}):
+            ran = True
+        assert ran
+        assert not db.exists(), "analytics.enabled=false must suppress capture even with no capture key"
+
+    def test_cli_event_context_analytics_enabled_true_still_globs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """analytics.enabled=true defers to the cli_commands glob gate as before (ENH-3449)."""
+        db = tmp_path / "session.db"
+        monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
+        with cli_event_context(
+            db,
+            binary="ll-issues",
+            args=[],
+            config={"analytics": {"enabled": True, "capture": {"cli_commands": ["not-this-binary"]}}},
+        ):
+            pass
+        assert not db.exists()
+
+    def test_cli_event_context_config_missing_analytics_key_writes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A config missing the analytics key entirely stays permissive (legacy default)."""
+        db = tmp_path / "session.db"
+        monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
+        with cli_event_context(db, binary="ll-test-permissive", args=[], config={"project": {"x": 1}}):
+            pass
+        rows = recent(db, kind="cli")
+        assert len(rows) == 1, "missing analytics key must keep capture on"
+
 
 class TestMineCorrectionsFromMessages:
     """Unit tests for mine_corrections_from_messages() (ENH-1904)."""
@@ -994,6 +1101,36 @@ class TestSkillEventContext:
             assert isinstance(completion, SkillEventCompletion)
         rows = recent(db, kind="skill")
         assert len(rows) == 0, "skill_event_context must skip the row write when gated off"
+
+    def test_env_kill_switch_no_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """LL_ANALYTICS_CAPTURE=0: no db file created, completion still yielded (ENH-3449).
+
+        Pins file non-existence, not just "no row" — the db would be authored by
+        connect() if the kill switch failed to short-circuit.
+        """
+        from little_loops.session_store import SkillEventCompletion, skill_event_context
+
+        db = tmp_path / "session.db"
+        monkeypatch.setenv("LL_ANALYTICS_CAPTURE", "0")
+        with skill_event_context(db, "sess-env", "check-code", "") as completion:
+            assert isinstance(completion, SkillEventCompletion)
+        assert not db.exists(), "kill switch must leave no db file behind"
+
+    def test_analytics_enabled_false_suppresses(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """analytics.enabled present-and-false suppresses the skill_events row too (ENH-3449)."""
+        from little_loops.session_store import SkillEventCompletion, skill_event_context
+
+        db = tmp_path / "session.db"
+        monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
+        with skill_event_context(
+            db, "sess-optout", "check-code", "", config={"analytics": {"enabled": False}}
+        ) as completion:
+            assert isinstance(completion, SkillEventCompletion)
+        assert not db.exists(), "analytics.enabled=false must suppress skill capture"
 
 
 class TestInferIssueId:

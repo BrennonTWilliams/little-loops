@@ -424,7 +424,12 @@ def issue_events_ever_recorded(db_path: Path) -> bool:
     ENH-3237: ``ll-history`` writes a ``cli_events`` row on *every* invocation
     (``cli_event_context``), so ``db_path.exists()`` alone is true after the
     very first ``ll-history`` call ever made — including a project that has
-    never backfilled or live-written any issue lifecycle data. Gating the
+    never backfilled or live-written any issue lifecycle data. (Conditional
+    since ENH-3449: the row is skipped when analytics capture is suppressed —
+    ``LL_ANALYTICS_CAPTURE`` kill switch, ``analytics.enabled: false``, or a
+    ``cli_commands`` glob exclusion — in which case the db may not exist at
+    all and this function's own ``db_path.exists()`` guard answers first.)
+    Gating the
     ``summary`` DB-vs-files fallback on file existence alone would then
     silently report "0 completed issues" for a project with real `done`
     issue files simply because the DB happens to have been touched. This
