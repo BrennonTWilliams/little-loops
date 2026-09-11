@@ -632,7 +632,8 @@ loops_dir=<tmp_path>)` (constructed in a fixture, `.close()`d in teardown,
   bridge's retry interval for that path backs off, the producer's
   `get_stats()["client_rejections"]` grows sub-linearly across several
   `rescan_s` intervals, and the path recovers once the slot is released
-  (§ Fan-in → Backoff).
+  (§ Fan-in → Backoff). Flap window revised by BUG-3437 (reader lifetime vs
+  `_FANIN_IMMEDIATE_EOF_S`, not `rescan_s`).
 - `GET /{token}` (no trailing slash) returns `301` with
   `Location: /{token}/`; the page string builds its SSE URL from
   `location.pathname`, not a bare `./events` (§ Page → Trailing slash).

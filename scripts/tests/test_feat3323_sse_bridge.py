@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import math
 import shutil
 import socket
 import sqlite3
@@ -321,29 +323,40 @@ class TestSseBridgeFanIn:
             bridge.close()
 
     def test_producer_at_max_clients_backs_off_sub_linearly(
-        self, short_tmp_path: Path, tmp_path: Path
+        self, short_tmp_path: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """A producer at max_clients rejects the bridge's probe; rejections grow sub-linearly."""
+        """A producer at max_clients rejects the bridge's probe; rejections grow sub-linearly
+        and the "closed the connection immediately" warning fires exactly once for the path."""
+        rescan_s = 0.05
+        span = 2.0
         producer = UnixSocketTransport(short_tmp_path / "events.sock", max_clients=1)
         holder = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         holder.connect(str(producer._path))
         _wait_until(lambda: _client_count(producer) == 1)
 
-        bridge = SseBridge(
-            _make_config(rescan_s=0.05), port=0, base=short_tmp_path, loops_dir=tmp_path
-        )
         try:
-            time.sleep(0.5)
-            first_window_rejections = producer.get_stats()["client_rejections"]
-            time.sleep(1.0)
-            second_window_rejections = (
-                producer.get_stats()["client_rejections"] - first_window_rejections
-            )
-            # Sub-linear: without backoff a 0.05s rescan over ~1s would retry ~20x;
-            # backoff should keep the second window well under that.
-            assert second_window_rejections < 10
+            with caplog.at_level(logging.WARNING, logger="little_loops.transport"):
+                bridge = SseBridge(
+                    _make_config(rescan_s=rescan_s), port=0, base=short_tmp_path, loops_dir=tmp_path
+                )
+                try:
+                    deadline = time.monotonic() + span
+                    while time.monotonic() < deadline:
+                        time.sleep(0.05)
+                    rejections = producer.get_stats()["client_rejections"]
+                finally:
+                    bridge.close()
+
+            flap_warnings = [
+                r for r in caplog.records if "closed the connection immediately" in r.message
+            ]
+            assert len(flap_warnings) == 1
+
+            # Sub-linear: without backoff a 0.05s rescan over a 2s span would retry
+            # ~40x; with doubling backoff the count is bounded logarithmically.
+            bound = math.ceil(math.log2(span / rescan_s)) + 3
+            assert rejections <= bound
         finally:
-            bridge.close()
             holder.close()
             producer.close()
 

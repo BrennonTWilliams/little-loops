@@ -89,6 +89,7 @@ _SSE_BRIDGE_CLOSE_TIMEOUT = 10.0
 _SSE_BRIDGE_THREAD_JOIN_TIMEOUT = 2.0
 _PRODUCER_READ_POLL_TIMEOUT = 0.5
 _FANIN_CONNECT_TIMEOUT = 0.2
+_FANIN_IMMEDIATE_EOF_S = 0.5
 _FANIN_MAX_BACKOFF_S = 60.0
 
 
@@ -962,6 +963,7 @@ class _ProducerReader:
         self.sock = sock
         self.thread: threading.Thread | None = None
         self.connected_at = time.monotonic()
+        self.died_at: float | None = None
         self.forwarded_any = False
 
 
@@ -983,6 +985,7 @@ def _read_producer_socket(
     *,
     on_forward: Callable[[], None] | None = None,
     on_drop: Callable[[], None] | None = None,
+    on_exit: Callable[[], None] | None = None,
 ) -> None:
     """Reader thread body for one connected producer socket (§ Fan-in).
 
@@ -995,40 +998,46 @@ def _read_producer_socket(
     same seed set — and the bridge rebuilds its own seed per SSE client
     instead (`_sse_bridge_seed_frames`). A line that fails to parse as JSON
     is skipped with a warning. Returns (thread exit) on EOF or any socket
-    error; the caller detects this via `reader.thread.is_alive()` on its next
-    rescan.
+    error; `on_exit` (if given) fires on every exit path so the caller can
+    record the reader's real death time for the flap classifier (§ Fan-in →
+    Backoff), and the caller separately detects thread death via
+    `reader.thread.is_alive()` on its next rescan.
     """
-    sock.settimeout(_PRODUCER_READ_POLL_TIMEOUT)
-    buffer = b""
-    while not stop.is_set():
-        try:
-            chunk = sock.recv(4096)
-        except TimeoutError:
-            continue
-        except OSError:
-            return
-        if not chunk:
-            return
-        buffer += chunk
-        while b"\n" in buffer:
-            line, _, buffer = buffer.partition(b"\n")
-            if not line:
-                continue
+    try:
+        sock.settimeout(_PRODUCER_READ_POLL_TIMEOUT)
+        buffer = b""
+        while not stop.is_set():
             try:
-                parsed = json.loads(line)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                logger.warning("SseBridge: skipping non-JSON line from a producer socket")
+                chunk = sock.recv(4096)
+            except TimeoutError:
                 continue
-            if isinstance(parsed, dict) and parsed.get("event") == "state_change":
-                continue
-            try:
-                out.put_nowait(line + b"\n")
-            except Full:
-                if on_drop is not None:
-                    on_drop()
-                continue
-            if on_forward is not None:
-                on_forward()
+            except OSError:
+                return
+            if not chunk:
+                return
+            buffer += chunk
+            while b"\n" in buffer:
+                line, _, buffer = buffer.partition(b"\n")
+                if not line:
+                    continue
+                try:
+                    parsed = json.loads(line)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    logger.warning("SseBridge: skipping non-JSON line from a producer socket")
+                    continue
+                if isinstance(parsed, dict) and parsed.get("event") == "state_change":
+                    continue
+                try:
+                    out.put_nowait(line + b"\n")
+                except Full:
+                    if on_drop is not None:
+                        on_drop()
+                    continue
+                if on_forward is not None:
+                    on_forward()
+    finally:
+        if on_exit is not None:
+            on_exit()
 
 
 def _candidate_producer_paths(socket_path: Path) -> list[Path]:
@@ -1077,11 +1086,11 @@ def _fan_in_producer_sockets(
     (that would consume one of the producer's `max_clients` slots and
     re-trigger its `on_connect` seed). A stale file (`ECONNREFUSED` /
     `ENOTSOCK`) is skipped and never unlinked — reclaiming a dead socket file
-    is the producer's job. A reader that dies within one `rescan_s` of
-    connecting without forwarding a single line marks its path "flapping"
-    (§ Fan-in → Backoff): the retry interval doubles each consecutive flap,
-    capped at 60s, logs once per path, and resets on the first forwarded
-    line.
+    is the producer's job. A reader whose lifetime (real connect time to real
+    thread-exit time) is under `_FANIN_IMMEDIATE_EOF_S` without forwarding a
+    single line marks its path "flapping" (§ Fan-in → Backoff): the retry
+    interval doubles each consecutive flap, capped at 60s, logs once per
+    path, and resets on the first forwarded line.
     """
     readers = readers if readers is not None else {}
     path_state: dict[Path, _FanInPathState] = {}
@@ -1101,8 +1110,9 @@ def _fan_in_producer_sockets(
             except OSError:
                 pass
             state = path_state.setdefault(path, _FanInPathState(rescan_s))
-            elapsed = now - reader.connected_at
-            if not reader.forwarded_any and elapsed < rescan_s:
+            died_at = reader.died_at if reader.died_at is not None else now
+            lifetime = died_at - reader.connected_at
+            if not reader.forwarded_any and lifetime < _FANIN_IMMEDIATE_EOF_S:
                 state.interval = min(state.interval * 2, _FANIN_MAX_BACKOFF_S)
                 if not state.warned:
                     logger.warning(
@@ -1139,7 +1149,6 @@ def _fan_in_producer_sockets(
             probe.settimeout(None)
 
             reader = _ProducerReader(path, probe)
-            reader.connected_at = now
             readers[path] = reader
 
             def _on_forward(reader: _ProducerReader = reader, path: Path = path) -> None:
@@ -1150,10 +1159,13 @@ def _fan_in_producer_sockets(
                         fwd_state.interval = rescan_s
                         fwd_state.warned = False
 
+            def _on_exit(reader: _ProducerReader = reader) -> None:
+                reader.died_at = time.monotonic()
+
             reader.thread = threading.Thread(
                 target=_read_producer_socket,
                 args=(probe, out, stop),
-                kwargs={"on_forward": _on_forward, "on_drop": on_drop},
+                kwargs={"on_forward": _on_forward, "on_drop": on_drop, "on_exit": _on_exit},
                 name="sse-bridge-producer-reader",
                 daemon=True,
             )

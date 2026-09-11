@@ -4,10 +4,11 @@ type: BUG
 title: SSE fan-in backoff never engages; producers at max_clients re-probed ~10/s
   forever
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
+completed_at: '2026-09-11T01:43:07Z'
 parent: EPIC-3436
 confidence_score: 100
 outcome_confidence: 96
@@ -220,12 +221,48 @@ Optional new coverage in `TestSseBridgeFanIn` (same caplog convention): non-flap
   (2.0s) as well as the test value (0.05s).
 - **Breaking Change**: No
 
+## Resolution
+
+Implemented per the Program Design, TDD (Red confirmed against unfixed code,
+then Green):
+
+- `scripts/little_loops/transport.py`: added `_FANIN_IMMEDIATE_EOF_S = 0.5`;
+  added `_ProducerReader.died_at`; `_read_producer_socket` now takes an
+  `on_exit` callback fired in a `finally` around the whole read loop so
+  `died_at` is set on every exit path; `_fan_in_producer_sockets` deleted the
+  `reader.connected_at = now` overwrite, wires `on_exit` at thread
+  construction, and the reap-block guard now compares
+  `(died_at or now) - connected_at` against `_FANIN_IMMEDIATE_EOF_S` instead
+  of `elapsed < rescan_s`. Docstring reworded to the lifetime window.
+- `scripts/tests/test_feat3323_sse_bridge.py`: rewrote
+  `test_producer_at_max_clients_backs_off_sub_linearly` to assert the
+  once-per-path warning via `caplog` plus a `ceil(log2(span/rescan_s)) + 3`
+  rejection bound over a fixed 2s span, replacing the brittle `< 10`
+  absolute threshold.
+- Mirror rewords: `docs/reference/API.md` Fan-in paragraph (dropped the
+  "dies within one `rescan_s`" claim); FEAT-3323 issue file carries a
+  one-line BUG-3437 note under its `§ Fan-in → Backoff` test bullet.
+  `config-schema.json`/`CONFIGURATION.md` already only claimed `rescan_s` as
+  the backoff *base*, not the flap window, so needed no change.
+
+**Full-suite caveat**: `python -m pytest scripts/tests/` has 3-4 pre-existing
+failures unrelated to this change (`test_issue_parser.py` allowlist/corpus
+drift against `mcp_server/tools.py`, `test_verify_evidence.py` evidence spans
+in unrelated BUG-3439/BUG-3443 issue files) plus an intermittent
+`test_two_producers_reach_one_client_with_distinct_producer_pid` timeout
+under parallel load. Verified via `git stash` that all of these reproduce
+identically on the pre-fix code — none are caused by this fix. Every
+BUG-3437-scoped check (the rewritten backoff test, the reconnect test, the
+pinned `test_transport.py` max_clients/rejection tests, `ruff check` on both
+changed files) passes.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T01:42:29 - `ddded746-fe8f-46ee-8a84-13d6b5d3a29c.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:01:30 - `f21b2f19-932a-4549-8711-81b75b733db6.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:52:21 - `9093c96d-29e3-4de9-b547-725e14459020.jsonl`
 - manual review - 2026-09-11 - folded design review: lifetime-based classifier, constant independent of `rescan_s`, log-bound test, FEAT-3323 mirror decided as historical record
