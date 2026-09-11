@@ -10,6 +10,12 @@ discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
 parent: EPIC-3436
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 66
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # BUG-3439: FSM shell actions pass the whole rendered script via argv; E2BIG on Linux above 128 KiB
@@ -197,6 +203,7 @@ no `PROPOSAL_UNSOUND` finding.
 **Open** | Created: 2026-09-10 | Priority: P1
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T01:54:04 - `a2c01544-4d8b-495a-8672-7b8c21ecfdda.jsonl`
 - `/ll:verify-issues` - 2026-09-11T01:50:21 - `f77f88c9-58d9-4ee9-80f3-b9585d4c8714.jsonl`
 - `/ll:decide-issue` - 2026-09-10T23:50:48 - `2f1f154f-c743-4a68-8aab-afcd2a716a72.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:16:55 - `4d4128b6-b8af-45c0-91e2-96dbe681ff8a.jsonl`

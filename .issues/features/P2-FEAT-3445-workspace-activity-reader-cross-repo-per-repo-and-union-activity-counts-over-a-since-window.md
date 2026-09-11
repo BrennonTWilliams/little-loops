@@ -12,10 +12,10 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:53:04Z'
 confidence_score: 90
-outcome_confidence: 86
+outcome_confidence: 93
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -35,7 +35,7 @@ No cross-repo activity read exists. Workspace aggregation is quality-only: `aggr
 
 ## Expected Behavior
 
-`aggregate_workspace_activity(members, since=...)` returns one structured `RepoActivity` per member — counts, `instrumented` flag, machine-readable status — plus Python-side workspace totals over `ok` members, using read-only connections and no ATTACH/union machinery. Consumers (a downstream briefing/portfolio plugin, then `ll-history activity` via FEAT-3446) make one call instead of N subprocess spawns + N direct sqlite connections.
+`aggregate_workspace_activity(members, since=...)` returns one structured `RepoActivity` per member — counts, `instrumented` flag, machine-readable status — plus Python-side workspace totals (always present; count fields `None` when no member is `ok`) over `ok` members, using read-only connections and no ATTACH/union machinery. Consumers (a downstream briefing/portfolio plugin, then `ll-history activity` via FEAT-3446) make one call instead of N subprocess spawns + N direct sqlite connections.
 
 ## Motivation
 
@@ -68,7 +68,7 @@ aggregate_workspace_activity(
 **Malformed / naive / NULL timestamps (must handle, not ignore):** the counted columns are not uniformly well-formed. `loop_runs.started_at` is nullable (schema.py:577). Backfill writes `issue_events.ts = str(completed_at or captured_at or discovered_date or "")` (writers.py:3165), so `ts` can be the **empty string** or a **date-only** value such as `2026-09-10` (frontmatter `discovered_date`). A naive Python-side `datetime.fromisoformat(x.replace("Z", "+00:00"))` raises `ValueError` on `""` and yields a *naive* datetime on date-only input, and comparing naive with aware raises `TypeError`. FEAT-3446 also accepts date-only `--since`, so the bound itself can be naive. Rules:
 - NULL, empty, or unparseable timestamps are **excluded** from windowed counts (either bound set) and **included** in unbounded counts (`since is None and until is None`) — an unbounded count is a row count, a windowed count requires a comparable timestamp.
 - Naive timestamps (no offset), on either the row or the bound, are treated as **UTC**.
-- SQLite `datetime()` tolerates all of these silently (`datetime('')` → NULL, date-only → midnight), which is a concrete argument for the SQL-side option below despite its lack of in-repo precedent; if Python-side is chosen, the parse must be wrapped and the tz attached explicitly.
+- The parse is wrapped (`ValueError` → `None` → excluded) and `tzinfo=UTC` is attached explicitly when missing, on both row values and the bounds.
 
 **Transition values (grounded):** the `issue_events` predicates rest on values all write paths actually produce — `_ISSUE_TRANSITION_MAP` (writers.py:2774-2786) maps `issue.completed`/`issue.closed` → `'done'` and `issue.deferred` → `'deferred'`; backfill writes frontmatter `status` verbatim over the six valid statuses (writers.py:3161); `record_issue_event`'s transition is the caller-supplied new status (cli/issues/set_status.py:167-177). No CHECK constraint exists on the column, and `transition = 'deferred'` has no existing reader in `issue_history/` (readers query only `'done'` — agent_quality.py:240, parsing.py:466/:500) — a novel read, but over values with three grounded writers.
 
@@ -77,7 +77,7 @@ aggregate_workspace_activity(
 - `loop_runs.ended_at` — `Z`-suffix, second precision (`_now()` writers.py:128-130, defaulted at writers.py:1780).
 - `issue_events.ts` — **writer-dependent, not uniformly `Z`**: `record_issue_event` (cli/issues/set_status.py:167-177 path) writes `Z` (writers.py:447); EventBus `SQLiteTransport.send` rows from `issue_lifecycle` producers write `+00:00`-with-microseconds (`ts = str(event.get("ts") or _now())` writers.py:2820; producers emit `_iso_now()` issue_lifecycle.py:35-37, :1200-1210, :1301-1312); backfill rows carry frontmatter dates verbatim (writers.py:3165).
 
-Because `since` is datetime-granular, **raw lexicographic comparison is not acceptable**: `2026-09-10T22:48:17.151663+00:00` string-compares as *before* `2026-09-10T22:48:17Z` while temporally being *after* it. Existing `ts >= ?` sites (issue_history/evolution.py:115, history_reader/events.py:245) survive only because their `ts` columns happen to be uniformly `Z`-formatted — neither counted column here is. Two acceptable implementations (AC 5's "or equivalent" is the binding contract): SQLite `datetime()` on both sides (normalizes `Z` and `+00:00`, truncates sub-second precision → ≤1s boundary tolerance — accepted and documented), **or** the repo's established mixed-format convention, Python-side `datetime.fromisoformat(x.replace("Z", "+00:00"))` (session_store/lifecycle.py:1178/:1338, workflow_sequence/analysis.py:230, fsm/persistence.py:271), fetching rows and filtering in Python as `count_loop_runs_in_window` does. Note: SQL-side `datetime()` has **zero precedent in-repo** (all `datetime(` hits are Python) — Python-side is the convention; format-dependent misordering is a failure under either.
+Because `since` is datetime-granular, **raw lexicographic comparison is not acceptable**: `2026-09-10T22:48:17.151663+00:00` string-compares as *before* `2026-09-10T22:48:17Z` while temporally being *after* it. Existing `ts >= ?` sites (issue_history/evolution.py:115, history_reader/events.py:245) survive only because their `ts` columns happen to be uniformly `Z`-formatted — neither counted column here is. **Implementation (decision, resolved): Python-side fetch-and-filter.** SQL narrows the row set (`WHERE transition = ?`, `WHERE ended_at IS NOT NULL`) and selects only the timestamp column; a single private helper (`_parse_ts(value: str | None) -> datetime | None`) applies the NULL/empty/unparseable/naive rules above via `datetime.fromisoformat(x.replace("Z", "+00:00"))` — the repo's established mixed-format convention (session_store/lifecycle.py:1178/:1338, workflow_sequence/analysis.py:230, fsm/persistence.py:271) — and the window check runs in Python, as `count_loop_runs_in_window` does. Do **not** use SQLite `datetime()` (zero precedent in-repo; would introduce a ≤1s truncation caveat and silently coerce malformed values the rules above want handled explicitly). Unbounded counts (`since is None and until is None`) skip the fetch and use `SELECT COUNT(*)` with the same SQL predicates. Format-dependent misordering (AC 5) is a test-visible failure.
 
 **Counting semantics (decision, resolved):** an issue counts **once per repo it appears in** — workspace totals are the sum of per-repo counts. Do NOT dedupe on bare `issue_id` across repos: every little-loops repo numbers issues from 1, so same-ID issues in different repos are usually *different* logical issues colliding (this is FEAT-3418's own rationale for the `#r{i}` discriminator). If a future consumer truly has mirrored issues needing cross-repo merge, that requires a workspace-canonical id, not bare `issue_id` — explicitly out of scope.
 
@@ -87,6 +87,8 @@ Because `since` is datetime-granular, **raw lexicographic comparison is not acce
 
 **Known limitations (document, do not solve):**
 - FSM signals (stalls, cycles, rate-limits) are webhook-only and not stored in history.db; a history.db read cannot cover them.
+- `_ISSUE_TRANSITION_MAP` (writers.py:2774-2781) maps `issue.closed` → `'done'` but `issue.skipped` → `'cancelled'`, and backfill writes `cancelled` verbatim. So live-closed issues count as `issues_completed`, while live-skipped and backfilled-`cancelled` issues count nowhere. This is the concrete reason `issues_closed` is a reserved-`null` key rather than a count.
+- No filter on `issue_events.discovered_by`: backfilled rows count the same as live `record_issue_event` / EventBus rows.
 - Backfilled `done` issues with no `completed_at` frontmatter get `ts = captured_at` (writers.py:3165 fallback chain), so they count as completed at capture time, not completion time. Live `record_issue_event` rows are unaffected.
 - `per_repo` is keyed by `str(member.db_path)` (not `repo_path`): `discover_workspace_members` rejects duplicate `db_path` (workspace.py:202) but not duplicate `repo_path`, so keying by repo would silently collapse two entries sharing a repo with different db paths. `RepoActivity.repo_path` remains the serialized identity field.
 
@@ -123,14 +125,13 @@ See `## API/Interface` for the full contract: `MemberActivityStatus` (**plain `E
 - Frozen-value-object convention — `WorkspaceMember` (workspace.py:31-44) freezes with an explicit producer/consumer-boundary rationale citing `host_runner.HostInvocation`; `RepoActivity`/`WorkspaceActivityResult` follow it. Note the split: analysis containers inside `agent_quality.py` (`QualityMetric`/`QualityWindow`/`RetryWindow`/`QualityAnalysis`) stay mutable — frozen is for boundary-crossing values only.
 
 ### Tests
-- NEW `scripts/tests/test_feat3445_workspace_activity.py` (sibling naming; plain `test_workspace.py` also exists in-tree for FEAT-3409, but the two aggregation siblings use the `test_featNNNN_` form) — mixed timestamp formats, NULL `ended_at`, NULL `started_at`, empty-string and date-only `issue_events.ts` (backfill shapes), naive `since`, `until` alone / `since`+`until` together, missing/skewed/unreadable members, count-SQL `sqlite3.Error` → `unreadable`, zero-ok workspace, unbounded window, `WorkspaceTotals.to_dict()` key order. Follow the sibling suites' conventions:
+- NEW `scripts/tests/test_feat3445_workspace_activity.py` (sibling naming; plain `test_workspace.py` also exists in-tree for FEAT-3409, but the two aggregation siblings use the `test_featNNNN_` form) — mixed timestamp formats, NULL `ended_at`, NULL `started_at`, empty-string and date-only `issue_events.ts` (backfill shapes), naive `since`, `until` alone / `since`+`until` together, missing/skewed/unreadable members, count-SQL `sqlite3.Error` → `unreadable`, zero-ok workspace, unbounded window, `WorkspaceTotals.to_dict()` key order, all-`schema_skew` workspace (totals present, `instrumented: True`, counts `None`), `unreadable` `reason` wording. Follow the sibling suites' conventions:
   - **Fixtures**: build `WorkspaceMember` objects over `tmp_path` dirs; healthy dbs via the real write API (`record_issue_event`, test_feat3410.py:28-43); skewed members via hand-rolled `meta` table (`_skewed_member`, :65-76); garbage via `write_text("not a database")` (:176). Name test dbs `<name>-history.db`, NOT default-shaped `.ll/history.db`, to dodge the autouse `_isolate_history_db` fixture (conftest.py:915-949) that routes default-shaped paths through one shared `LL_HISTORY_DB` env var.
   - **Untouched-source**: sha256 the member db before/after every skip case (test_feat3410.py:79-80/:122-129; test_feat3418.py:396-413).
   - **Source-inspection**: mirror `test_never_uses_migrating_opener` (test_feat3410.py:215-231) — assert `"ensure_db(" not in code`, `"_connect_readonly(" not in code`, `"mode=ro" in code` over the new module's source.
   - **Timestamp control**: the write API's `_now()` controls `ts`, so window tests overwrite it post-write via direct UPDATE (`_stamp_ts`/`_close`/`_reopen`, test_feat3418.py:69-88); for `+00:00`-micros `started_at` rows, set them the way executor does (or UPDATE directly) so both formats are exercised.
   - One `class TestX:` per AC group, docstring citing the AC.
 - `scripts/tests/test_feat3410_workspace_quality.py` + `test_feat3418_workspace_quality.py` — must pass unmodified after the gate-helper extraction.
-  > ⚠ Superseded — breaks if gate helper is hoisted elsewhere
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_feat3410_workspace_quality.py:215-231` (`test_never_uses_migrating_opener`) — source-inspects `workspace_quality.py`'s own file text for the literal string `def _open_member_readonly`; if the gate extraction hoists `_open_member_readonly` out of `workspace_quality.py` into a separate module, `text.index(...)` raises `ValueError` (substring not found) and this test breaks. If the helper stays resident in `workspace_quality.py` (one of the two placements this issue's own placement note allows), no change is needed — but the implementer must verify which placement was chosen and update the test's source-inspection target if hoisted. [Agent 1 + Agent 2 finding, confirmed]
@@ -145,9 +146,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Extract the member gate from `workspace_quality.aggregate_history_dbs()` into a shared helper; re-run the quality test suite unchanged.
-   > ⚠ Superseded — breaks if gate helper is hoisted elsewhere
-2. Create `workspace_activity.py` with the enums/dataclasses above. Module docstring follows the sibling convention: one-line purpose + FEAT number first (`"""Cross-repo activity counts over a declared workspace (FEAT-3445)."""`), narrate the mechanism with "modeled on" cross-references and explicit anti-references (never `_connect_readonly()` — it migrates), restate resolved decisions from this issue verbatim, close with accepted limitations (FSM-signals, ≤1s `datetime()` tolerance if SQL-side normalization is chosen).
+1. Extract the member gate from `workspace_quality.aggregate_history_dbs()` into a shared private helper **kept resident in `workspace_quality.py`** (decision, resolved — no test change needed; see Wiring Phase); re-run the quality test suite unchanged.
+2. Create `workspace_activity.py` with the enums/dataclasses above. Module docstring follows the sibling convention: one-line purpose + FEAT number first (`"""Cross-repo activity counts over a declared workspace (FEAT-3445)."""`), narrate the mechanism with "modeled on" cross-references and explicit anti-references (never `_connect_readonly()` — it migrates), restate resolved decisions from this issue verbatim, close with accepted limitations (FSM-signals, cancelled-vs-done, backfill `ts` fallback).
 3. Implement per-member count SQL + Python-side totals.
 4. Unit tests: mixed timestamp formats, NULL `ended_at`, missing/skewed/unreadable members, zero-ok workspace, unbounded `since`.
 5. Register public exports in `issue_history/__init__.py` (docstring, import, `__all__`).
@@ -173,11 +173,15 @@ class MemberActivityStatus(Enum):                # plain Enum, string values —
     SCHEMA_SKEW = "schema_skew"    # version mismatch -> instrumented: True, counts unreadable
     UNREADABLE = "unreadable"      # sqlite3.Error on open, version read, OR the count SQL -> instrumented: True
                                    # (the count phase sits inside the same try as the gate; reason populated)
+                                   # reason wording: open/version-read failures reuse quality's exact
+                                   # f"could not read read-only: {exc}"; count-phase failures use
+                                   # f"count query failed: {exc}" so tests can distinguish the two phases
 
 @dataclass(frozen=True)            # frozen: crosses the producer/consumer boundary (WorkspaceMember convention)
 class RepoActivity:
     repo_path: str                               # absolute, resolved
     role: str
+    label: str                                   # _label(member), computed at construction
     status: MemberActivityStatus
     instrumented: bool
     reason: str | None = None                    # serialized as `error`
@@ -193,10 +197,11 @@ class WorkspaceTotals:
     members: int                                 # len(per_repo)
     instrumented_members: int                    # count of members with instrumented == True
     instrumented: bool                           # OR over members' instrumented
-    loops_run: int                               # each: sum over status == OK members only
-    loops_completed: int
-    issues_completed: int
-    issues_deferred: int
+    ok_members: int                              # count of status == OK members
+    loops_run: int | None                        # each: sum over status == OK members only;
+    loops_completed: int | None                  #   None (never 0) iff ok_members == 0
+    issues_completed: int | None
+    issues_deferred: int | None
     issues_closed: None = None                   # reserved: always None (same rule as RepoActivity)
     def to_dict(self) -> dict[str, Any]: ...     # keys in the declaration order above (stable order: FEAT-3446 AC 1)
 
@@ -205,14 +210,14 @@ class WorkspaceActivityResult:
     since: str | None
     until: str | None
     per_repo: dict[str, RepoActivity]            # keyed by str(member.db_path) — see Known limitations
-    totals: WorkspaceTotals | None               # None iff no ok members
+    totals: WorkspaceTotals                      # always present (decision, resolved — see below)
     def to_dict(self) -> dict[str, Any]: ...     # {"since", "until", "per_repo": [RepoActivity.to_dict()...], "totals"}
 ```
 
-`WorkspaceTotals` sums each count over `ok` members only; schema-skewed/unreadable members are excluded from totals (matching quality's gate) but still count toward `members` / `instrumented_members` — stated so an implementer doesn't have to re-derive it.
+`WorkspaceTotals` sums each count over `ok` members only; schema-skewed/unreadable members are excluded from the count sums (matching quality's gate) but still count toward `members` / `instrumented_members`. **`totals` is always present (decision, resolved):** a workspace whose members are all `schema_skew` is instrumented yet has zero `ok` members, so `members` / `instrumented_members` / `instrumented` / `ok_members` must survive; only the four count fields become `None` when `ok_members == 0`. This also gives FEAT-3446 a stable JSON shape.
 
 **Canonical serialization rules (consumer contract):**
-- Each serialized member object carries `repo_path`, `role`, `label` (`"{repo_path.name} ({role})"`, display only), `status`, `ok` (`status == "ok"`), `error` (`reason`), and `instrumented`. `ok`/`error` are the canonical consumer-facing fields; `status` rides along as the finer-grained discriminator.
+- Each serialized member object carries `repo_path`, `role`, `label` (`"{Path(repo_path).name} ({role})"`, display only — `RepoActivity.repo_path` is a `str`; compute it once at construction via quality's `_label(member)` and store it, don't recompute in `to_dict()`), `status`, `ok` (`status == "ok"`), `error` (`reason`), and `instrumented`. `ok`/`error` are the canonical consumer-facing fields; `status` rides along as the finer-grained discriminator.
 - Metrics unavailable from history.db serialize as `null`, **never `0`**. Two named cases: `issues_closed` is emitted as an explicit always-`null` reserved key (history.db collapses issue closed→completed into transition `'done'`, so the split cannot be made today — null keeps "unavailable" distinguishable from "measured zero" if the schema ever records it distinctly), and the three FSM signals (stalls / cycles / rate-limits — webhook-only) are deliberately absent from the output; consumers must model them as unavailable, not zero.
 
 ## Use Case
@@ -223,9 +228,9 @@ A downstream briefing/portfolio sync calls `aggregate_workspace_activity(members
 
 1. `aggregate_workspace_activity(members, since=...)` returns one `RepoActivity` per member carrying `repo_path`/`role`; non-ok members carry `None` counts, never `0`, plus `ok: False` and a populated `error`.
 2. `instrumented` is False only for `db_missing`; True for `schema_skew`/`unreadable` (both report `reason`). A `sqlite3.Error` raised by the count SQL after the gate passes maps to `unreadable`, not an exception.
-3. Totals equal the sum of `ok` members' counts; zero `ok` members yields `totals=None`, no exception.
+3. `totals` is always present; its count fields equal the sum of `ok` members' counts and are `None` (never `0`) when `ok_members == 0`; `members`/`instrumented_members`/`instrumented`/`ok_members` are populated regardless. No exception.
 4. Running loops (NULL `ended_at`) never count as completed; loops started before `since` but ended after do. `until` is an inclusive upper bound applied to the same column as `since` for each metric; `since`/`until` are independently optional.
-5. Timestamp comparison is format-safe at datetime granularity across `+00:00`-micros and `Z` forms (via `datetime()` normalization or equivalent); raw lexicographic comparison of unnormalized strings is a test-visible failure. NULL, empty-string, and date-only timestamps (all real backfill/schema outputs) never raise: they are excluded from windowed counts and included in unbounded counts; naive values on either side are treated as UTC.
+5. Timestamp comparison is format-safe at datetime granularity across `+00:00`-micros and `Z` forms (Python-side `_parse_ts` fetch-and-filter, per Proposed Solution); raw lexicographic comparison of unnormalized strings is a test-visible failure. NULL, empty-string, and date-only timestamps (all real backfill/schema outputs) never raise: they are excluded from windowed counts and included in unbounded counts; naive values on either side are treated as UTC.
 6. Member databases are opened read-only (`file:...?mode=ro`, `PRAGMA query_only`), never migrated — same contract as workspace_quality.
 7. The shared member-gate helper is used by both `aggregate_history_dbs()` and the new reader; quality's behavior is byte-identical after extraction (existing tests pass unmodified).
 8. The module docstring documents the FSM-signals limitation verbatim.
@@ -300,6 +305,8 @@ resolved; no outstanding action items remain.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T01:55:52 - `c8678e03-b9b5-468d-a83f-076102f8e125.jsonl`
+- `/ll:verify-issues` - 2026-09-11T01:52:45 - `e6b2283d-2f88-428b-aef9-912b5592580e.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:30:47 - `9be5076d-2998-4a46-a8a5-490fcdb1ba9a.jsonl`
 - `/ll:verify-issues` - 2026-09-11T01:26:20 - `445bd444-f9c5-4d60-bf47-1c94e4dd13b9.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:14:23 - `226e3334-05f8-455d-a6d0-352e3badc359.jsonl`
