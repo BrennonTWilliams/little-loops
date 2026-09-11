@@ -111,6 +111,11 @@ See `## API/Interface` for the full contract: `MemberActivityStatus` (**plain `E
   - **Timestamp control**: the write API's `_now()` controls `ts`, so window tests overwrite it post-write via direct UPDATE (`_stamp_ts`/`_close`/`_reopen`, test_feat3418.py:69-88); for `+00:00`-micros `started_at` rows, set them the way executor does (or UPDATE directly) so both formats are exercised.
   - One `class TestX:` per AC group, docstring citing the AC.
 - `scripts/tests/test_feat3410_workspace_quality.py` + `test_feat3418_workspace_quality.py` — must pass unmodified after the gate-helper extraction.
+  > ⚠ Superseded — breaks if gate helper is hoisted elsewhere
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_feat3410_workspace_quality.py:215-231` (`test_never_uses_migrating_opener`) — source-inspects `workspace_quality.py`'s own file text for the literal string `def _open_member_readonly`; if the gate extraction hoists `_open_member_readonly` out of `workspace_quality.py` into a separate module, `text.index(...)` raises `ValueError` (substring not found) and this test breaks. If the helper stays resident in `workspace_quality.py` (one of the two placements this issue's own placement note allows), no change is needed — but the implementer must verify which placement was chosen and update the test's source-inspection target if hoisted. [Agent 1 + Agent 2 finding, confirmed]
+- `scripts/tests/test_feat3418_workspace_quality.py:24-32` — imports private ATTACH/union symbols directly (`_UNION_RELATIONS`, `_discriminate_issues`, `_discriminator`, `_open_union`, `aggregate_history_dbs`) from `workspace_quality`. These belong to the union machinery, explicitly out of scope for the gate extraction — do not relocate or rename them; only the per-member gate helper moves. [Agent 1 + Agent 2 finding, confirmed]
 
 ### Documentation
 - `docs/reference/API.md` — issue_history submodules do **not** get their own `##` sections: fold into the existing `## little_loops.issue_history` section as function-table rows (the `aggregate_history_dbs` row at API.md:2389 is the pattern), with `WorkspaceActivityResult`/`RepoActivity` appearing via formatter/result rows as `AggregationResult` does (:2402). Note the gate extraction under `workspace_quality`'s row.
@@ -122,10 +127,18 @@ See `## API/Interface` for the full contract: `MemberActivityStatus` (**plain `E
 ## Implementation Steps
 
 1. Extract the member gate from `workspace_quality.aggregate_history_dbs()` into a shared helper; re-run the quality test suite unchanged.
+   > ⚠ Superseded — breaks if gate helper is hoisted elsewhere
 2. Create `workspace_activity.py` with the enums/dataclasses above. Module docstring follows the sibling convention: one-line purpose + FEAT number first (`"""Cross-repo activity counts over a declared workspace (FEAT-3445)."""`), narrate the mechanism with "modeled on" cross-references and explicit anti-references (never `_connect_readonly()` — it migrates), restate resolved decisions from this issue verbatim, close with accepted limitations (FSM-signals, ≤1s `datetime()` tolerance if SQL-side normalization is chosen).
 3. Implement per-member count SQL + Python-side totals.
 4. Unit tests: mixed timestamp formats, NULL `ended_at`, missing/skewed/unreadable members, zero-ok workspace, unbounded `since`.
 5. Register public exports in `issue_history/__init__.py` (docstring, import, `__all__`).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- If the shared gate helper is hoisted into a new module (not kept resident in `workspace_quality.py`), update `test_never_uses_migrating_opener` (`test_feat3410_workspace_quality.py:215-231`) to source-inspect the new module instead; if kept in `workspace_quality.py`, no test change is needed.
+- Do not relocate or rename `_UNION_RELATIONS`, `_discriminate_issues`, `_discriminator`, or `_open_union` in `workspace_quality.py` — `test_feat3418_workspace_quality.py:24-32` imports them directly by dotted path.
 
 ## Impact
 
@@ -198,5 +211,6 @@ A downstream briefing/portfolio sync calls `aggregate_workspace_activity(members
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-11T00:38:37 - `2e842a0e-c20b-4811-ac47-806369f06e2c.jsonl`
 - `/ll:format-issue` - 2026-09-10T23:59:04 - `977177b4-c924-4eb0-8524-717b55725bed.jsonl`
 - `/ll:capture-issue` - 2026-09-10T23:53:43 - `98b64441-1d76-4822-ab69-c295348ddfd6.jsonl`

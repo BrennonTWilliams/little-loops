@@ -140,9 +140,18 @@ ll-history activity [--workspace[=MANIFEST]] [--since ISO_DATE] [--until ISO_DAT
 - `scripts/tests/test_cli_history.py` — CLI integration tests: multi-member workspace fixture, db_missing member, single-repo fallback, invalid `--since` error path, exit 0 with `totals: null`. Fixture shape: write a real `ll-workspace.yaml` via `yaml.dump({"members": ...})` and call `discover_workspace_members` (test_workspace.py:16-28), or build members directly over `tmp_path` (test_feat3410.py:28-43); use non-default db names (`<name>-history.db`) to dodge the autouse `_isolate_history_db` fixture (conftest.py:915-949).
 - Golden-shape JSON test (AC 1/7): exact key order + `null`-count contract.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- Model the `--workspace[=MANIFEST]` / zero-member fallback tests on `TestHistoryQualityWorkspaceFlag` (`test_cli_history.py:319-427`), specifically its `_member_db` fixture (`:322-348` — full-schema db via `ensure_db()` + direct `schema_version` UPDATE) and `test_workspace_bare_flag_no_manifest_matches_no_flag_output` (exact single-repo-fallback-parity assertion FEAT-3446 needs). [Agent 3 finding, confirmed]
+- Model `--since`/`--until` argparse `type=` rejection tests on `test_quality_sensitivity_negative_rejected` / `test_quality_baseline_windows_zero_rejected` (`test_cli_history.py:306-316`) — existing precedent for a parser-level `type=` callable rejecting bad input via `SystemExit`. [Agent 3 finding, confirmed]
+- Model the golden-shape JSON test on `TestAggregationResultFormatters::test_json_round_trips_structure` (`test_feat3410_workspace_quality.py:253-260`) and `test_quality_json_format_routes_to_json_formatter` (`test_cli_history.py:239-254`). [Agent 3 finding, confirmed]
+
 ### Documentation
 - `docs/reference/CLI.md` — `ll-history activity` subcommand row.
 - `ll-history --help` epilog — example invocation.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/HISTORY_SESSION_GUIDE.md:452-502` — documents `ll-history quality`/`rework` side by side and states the two "share one ... windowing convention" (cross-referencing `CLI.md#ll-history-quality`); add `ll-history activity` to this comparison so the guide doesn't go stale. [Agent 2 finding, confirmed]
+- `skills/analyze-history/SKILL.md` (optional) — enumerates `ll-history` subcommands (`summary`, `analyze`, `export`, `rework`) but already omits `quality` and is not test-enforced; adding `activity` is optional, not required for correctness. [Agent 2 finding, confirmed]
 
 ### Configuration
 - N/A — flags only; manifest discovery reuses `ll-workspace.yaml` conventions unchanged.
@@ -153,6 +162,12 @@ ll-history activity [--workspace[=MANIFEST]] [--since ISO_DATE] [--until ISO_DAT
 2. Add formatter functions; JSON first (it's the contract), then text/markdown.
 3. Golden-shape JSON test; CLI integration tests per AC 2/3/5.
 4. Update `docs/reference/CLI.md` + epilog examples.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/guides/HISTORY_SESSION_GUIDE.md` — add `ll-history activity` to the `quality`/`rework` windowing-convention comparison (lines ~452-502).
 
 ## Impact
 
@@ -186,5 +201,6 @@ A downstream sync runs `ll-history activity --workspace --since 2026-08-10T14:00
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-11T00:38:37 - `2e842a0e-c20b-4811-ac47-806369f06e2c.jsonl`
 - `/ll:format-issue` - 2026-09-10T23:59:04 - `977177b4-c924-4eb0-8524-717b55725bed.jsonl`
 - `/ll:capture-issue` - 2026-09-10T23:53:44 - `98b64441-1d76-4822-ab69-c295348ddfd6.jsonl`
