@@ -90,6 +90,7 @@ Decided by `/ll:decide-issue` on 2026-09-11.
 
 ### Tests
 - `scripts/tests/test_feat3445_workspace_activity.py` — extend with empty-db / rows-outside-window / loop-only / issue-only / db_missing / schema_skew / unreadable cases per AC.
+- `scripts/tests/test_cli_history.py` — REQUIRED (not optional): `_MEMBER_KEYS`/`_TOTALS_KEYS` (:438-462) are exact-list equality asserts (:535/:547/:557), so they must gain the new keys or the suite stays red; also pin the canonical single-repo-fallback empty-db golden per AC.
 
 ### Documentation
 - `docs/reference/API.md` (workspace_activity section)
@@ -114,7 +115,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 2. Call it in the ok path (inside the existing `try`, so `sqlite3.Error` routes to `UNREADABLE`); set `has_history=False` in the `DB_MISSING` case and `None` for `SCHEMA_SKEW`/`UNREADABLE`.
 3. Extend `_totals()` with `has_history_members` and `has_history`.
 4. Update `to_dict()` on both dataclasses and the text/markdown formatters.
-5. Update the module docstring and `docs/reference/API.md` (workspace_activity section) and `docs/reference/CLI.md` (ll-history activity output shape).
+5. Update the module docstring and the `workspace_activity` row in the `## little_loops.issue_history` table in `docs/reference/API.md` (there is no dedicated section — API.md:2390) and `docs/reference/CLI.md` (ll-history activity output shape, :3395-3405).
 6. Tests (see AC).
 
 ### Codebase Research Findings
@@ -180,7 +181,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 ## Scope Boundaries
 
 - **Out of scope**: changing `instrumented` semantics; windowing `has_history` (it is deliberately any-rows-ever, irrespective of `--since/--until`); counting rows (only existence); changes to `workspace_quality.py` or its tests; new CLI flags on `ll-history activity`; hermes-side consumption logic (sibling ENH-3449 covers the opt-out env var for that consumer).
-- **In scope**: the three new fields, the helper, serializer/formatter exposure, docs, and tests in `test_feat3445_workspace_activity.py`.
+- **In scope**: the three new fields, the helper, serializer/formatter exposure, docs, and tests in `test_feat3445_workspace_activity.py` plus the mandatory exact-list updates (and fallback golden) in `test_cli_history.py`.
 
 ## Decisions (resolved, do not re-derive)
 
@@ -212,6 +213,9 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - [ ] Db with one `loop_runs` row and no `issue_events` (and vice versa): `has_history: true`.
 - [ ] `db_missing`: `has_history: false`. `schema_skew` and `unreadable`: `has_history: null` in JSON.
 - [ ] `WorkspaceTotals` JSON contains `has_history_members` and `has_history` with the any/count semantics above.
+- [ ] All-unknown workspace (every member `schema_skew`/`unreadable`): totals `has_history_members: 0`, `has_history: false` despite every member being `null` — pinned as decided behavior (count/any over `is True`), not accidental.
+- [ ] Exact-list test sites updated: `_MEMBER_KEYS`/`_TOTALS_KEYS` in `test_cli_history.py` and `test_totals_to_dict_key_order` in `test_feat3445_workspace_activity.py` gain the new keys per Decision 4.
+- [ ] CLI golden: single-repo fallback member (db pre-created with only a `cli_events` row) reports `ok`, zero counts, `has_history: false` — the canonical empty-but-schema'd case.
 - [ ] Existing `instrumented` semantics and all workspace_quality tests unchanged.
 - [ ] Docs updated; `python -m pytest scripts/tests/` passes.
 
