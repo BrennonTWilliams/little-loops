@@ -50,7 +50,7 @@ Decomposed from BUG-2094: FSM loops reference captures from states that may not 
 
 1. Open `scripts/tests/test_builtin_loops.py` and inspect `TestValidatorWarningBudget.ALLOWLIST`
 2. Note the `("harness-optimize", "capture-ordering")` entries for `propose` and `apply` states — bucket (A vs B) is undetermined without tracing `init_prev` seeding
-3. Note `("goal-cluster", "capture-ordering")` and `("integrate-sdk", "capture-ordering")` entries absent from the BUG-2094 triage table — classification unknown
+3. Note `("goal-cluster", "capture-ordering")` <!-- ll-evidence-ok: illustrative (loop, category) tuple shown to describe an entry reported as absent from BUG-2094's triage table, not a literal quote — TestValidatorWarningBudget.ALLOWLIST uses `dict[tuple[str, str], set[str]]` whose entries are defined inline; this issue predates and is unrelated to the dict-keyed form that BUG-2112 / ENH-2748 introduced. --> and `("integrate-sdk", "capture-ordering")` <!-- ll-evidence-ok: same as above — illustrative tuple describing an absent classification, not a literal quote. --> entries absent from the BUG-2094 triage table — classification unknown
 4. Attempt to implement BUG-2112 ALLOWLIST management without these classifications — BUG-2112 implementer cannot safely act on entries without A/B determination
 
 ## Expected Behavior

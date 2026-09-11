@@ -29,7 +29,7 @@ Decomposed from FEAT-769: Add OpenCode Plugin Compatibility
 ## Current Behavior
 
 The Python layer hardcodes `.claude/` paths in four places:
-- `scripts/little_loops/config/core.py:74-75` — `CONFIG_DIR = ".claude"` constant
+- `scripts/little_loops/config/core.py:74-75` — `CONFIG_DIR = ".claude"` constant <!-- ll-evidence-ok: this issue is `status: done` and `Superseded by FEAT-1116`; the "Current Behavior" snapshot was captured on 2026-04-05. The migration to `.ll` (and renaming of all four hardcoded `.claude/` paths) has since landed across the listed files. The drift reflects the resolution this issue was tracking, not a quote regression; the superseded status means the implementation details are intentionally frozen at capture time. -->
 - `scripts/little_loops/config/features.py:193,206` — `state_file: str = ".claude/ll-sync-state.json"` default
 - `scripts/little_loops/user_messages.py:338` — `Path.home() / ".claude" / "projects"` for log discovery
 - `scripts/little_loops/user_messages.py:703` — `Path.cwd() / ".claude"` default output dir

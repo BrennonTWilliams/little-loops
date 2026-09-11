@@ -587,20 +587,30 @@ class TestDefaultActionRunnerShellPath:
 
     def test_oversized_script_spawns(self) -> None:
         """BUG-3439: a rendered shell action above Linux's per-argument
-        MAX_ARG_STRLEN (131072 B) must still spawn — the script goes
+        MAX_ARG_STRLEN (131072 B) must still spawn — the script body goes
         out-of-band via a temp file (``bash <path>``), not as a single argv
-        element (``bash -c <action>``). No platform skip: this passed on
-        darwin before the fix (larger per-argv limit) and fails on Linux
-        only before it — the honest pin per the issue's Program Design."""
-        payload = "x" * 140_000  # > 131072 B MAX_ARG_STRLEN
-        action = f"python3 -c \"print(len('{payload}'))\""
-        assert len(action) > 131072
+        element (``bash -c <action>``).
+
+        Linux's MAX_ARG_STRLEN is enforced at every ``execve``, so the
+        script body must not itself contain any single argv element above
+        131072 B — the runner's temp-file substitution solves the *outer*
+        bash spawn, not the inner commands. We pad the body with ~135 KB
+        of pure-comment lines (each well under the per-arg limit) and
+        terminate with a tiny ``echo``. This passes on both darwin and
+        Linux because no individual command in the body trips the kernel
+        limit; the test only exercises the outer runner→bash boundary
+        that the fix targets. (Sibling pin: ``test_runner_spec.py``'s
+        ``test_cmd_oversized_target_spawns``.)"""
+        # Each line: "# " + 132 x's + "\n" = 135 B. 1000 lines ≈ 135 KB.
+        padding = ("# " + "x" * 132 + "\n") * 1000
+        action = padding + "echo done\n"
+        assert len(action) > 131_072  # confirms the runner-level exercise
 
         runner = DefaultActionRunner()
         result = runner.run(action, timeout=30, is_slash_command=False)
 
         assert result.exit_code == 0, result.stderr
-        assert result.output.strip() == "140000"
+        assert result.output.strip() == "done"
 
     def test_script_tempfile_removed_after_run(self) -> None:
         """No ``ll-action-*.sh`` temp file survives a successful run."""
