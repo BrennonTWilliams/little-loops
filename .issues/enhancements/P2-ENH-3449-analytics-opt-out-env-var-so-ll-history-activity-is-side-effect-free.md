@@ -61,9 +61,21 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - `scripts/little_loops/session_store/writers.py` — add `_analytics_capture_disabled()`, gate short-circuit in `cli_event_context` (:484) and `skill_event_context` (:601)
 - `scripts/little_loops/cli/history.py` — load project config in `main_history()` (:65), pass `config=`; update the fallback comment at :684-686 (comment-only edit)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/conftest.py` — add `LL_ANALYTICS_CAPTURE` to `_CMD_RUN_ENV_VARS` (:1100-1109); the autouse `_restore_cmd_run_env_vars` scrub is what keeps row-written and "enter failed" tests deterministic against an ambient export [Agent 3 finding]
+- `scripts/little_loops/issue_history/parsing.py` — docstring-only edit: `issue_events_ever_recorded` (:421-433) asserts ll-history writes a `cli_events` row on *every* invocation; becomes conditional under the env var [Agent 2 finding]
+- `scripts/little_loops/cli/issues/research_triage.py` — docstring-only edit: `_record_research_triage` (:89-98) claims "no `ll-*` entry point does [pass `config`], making it dead code today"; stale for ll-history once step 3 lands [Agent 1/2 finding]
+
 ### Dependent Files (Callers/Importers)
 - All ~46 `cli_event_context(...)` call sites in `scripts/little_loops/cli/*.py` (grep: config.py, docs.py, action.py, code.py, logs.py, messages.py, ctx_stats.py, ...) — behavior unchanged unless env var set
 - `skill_event_context` callers (hooks-layer skill analytics)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/cli.py:1203` — `main_init` wraps in `cli_event_context(DEFAULT_DB_PATH, "ll-init", sys.argv[1:])`; the one production caller outside the `scripts/little_loops/cli/` umbrella [Agent 1 finding]
+- Census correction: 51 real production call sites across 48 files (47 under `cli/`, one per `main_*` plus `docs.py` ×4, plus `init/cli.py`) — not ~46, not 54-lines/51-files; the 4 extra grep hits are the def line, a schema comment, and two docstring re-exports [Agent 1 finding]
+- `scripts/little_loops/cli/action.py:230` — `cmd_invoke` (`ll-action`) is the **sole** production `skill_event_context` caller. Correction to the bullet above: the hooks layer never calls `skill_event_context`; hooks-layer skill capture goes through `record_skill_event` (`writers.py:268`, called at `hooks/user_prompt_submit.py:134`). The env gate as planned does **not** suppress hooks-layer `skill_events` — Decision 4's sentence "a global export also disables hooks-layer skill_events capture in every project" holds only for the `ll-action` half. Implementer must either extend the env check into `record_skill_event` or scope that doc sentence to `ll-action` [Agents 1+2 finding]
+- Yield contract verified safe: `cli_event_context` yields `None` (no caller binds it, verified across all 51 sites); `skill_event_context`'s gate-closed path already yields a default `SkillEventCompletion` (pinned by `test_gate_disabled_still_yields_completion`) [Agent 2 finding]
+- Only `cli_events` SQL reader is `queries.py::recent()` (→ `ll-session recent --kind cli`) — sees fewer rows when capture is off; nothing errors. `skill_events` readers (`history_reader/context.py`, `issue_history/evolution.py` bypass-detection, `doctor_trim.py`, `logs.py` corrections attribution) only affected for `ll-action` runs [Agent 2 finding]
 
 ### Similar Patterns
 - `analytics.capture.cli_commands` glob gate already inside `cli_event_context` (ENH-2932) — the env check slots ahead of it
@@ -74,6 +86,13 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - `scripts/tests/test_cli_history.py` — `LL_ANALYTICS_CAPTURE=0 ll-history activity` on db-less repo: exit 0, `db_missing` member, no `.ll/history.db` created
 - Test hygiene (review 2026-09-11): tests asserting a row IS written must `monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)`; the db-less test must `delenv("LL_HISTORY_DB", raising=False)` so db resolution anchors at the tmp project regardless of the developer's shell. Follow the existing in-process pattern (`patch.object(sys, "argv", ...)` + `patch("pathlib.Path.cwd", return_value=tmp_path)`, e.g. `test_cli_history.py` `test_absent_flag_single_repo_result`). The AC4 config-gate test's tmp project must live under the OS tmp dir, not under this repo — the upward `resolve_config_path` walk would find this repo's `cli_commands: ["*"]` and leak it into the test.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_history.py::test_absent_flag_single_repo_result` (:589-610) — asserts `member["status"] == "ok"` on the strength of the pre-creation comment (:604-605) this issue rewrites; needs the env var scrubbed to stay deterministic, plus an env-set counterpart asserting `db_missing` [Agent 3 finding]
+- `scripts/tests/test_cli_queue.py` (:397-402 in-process, :404-437 subprocess variant) — assert `"cli_event_context: enter failed for"` in logs; break under an ambient export (connect never called, warning never fires). The conftest scrub covers both variants — the subprocess inherits the scrubbed environ [Agent 3 finding]
+- Row-written tests needing the var scrubbed (conftest scrub suffices): `test_session_store_writers.py` :476, :582; `test_ll_session.py::test_recent_cli_kind` (:670-679) and the skill_events write (:1265-1268) [Agent 3 finding]
+- `scripts/tests/test_ll_issues_research_triage.py::test_gate_suppresses_write` (:159-175, `triage_project` fixture :28-50 + `_invoke` :20-25) — the only existing end-to-end config-gate-through-a-real-CLI test; the template for the main_history `config=` AC [Agent 3 finding]
+- Advisory: cwd-uncontrolled in-process `main_history()` runs (`test_issue_history_cli.py` ~27 sites incl. :58, :94; `test_doc_synthesis.py` :388, :419, :451, :482) — after `config=` wiring they silently depend on this repo's permissive `cli_commands: ["*"]`. `test_issue_history_cli.py:565-571`'s docstring rationale ("DB created on every invocation", ENH-3237) goes stale as an unconditional claim [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` — ll-history section: document `LL_ANALYTICS_CAPTURE`
 - `docs/reference/API.md` — analytics/session-store writers section
@@ -81,9 +100,18 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - `docs/reference/HOST_COMPATIBILITY.md` — env-var table (:729, where `LL_HISTORY_DB` lives)
 - `cli_event_context` / `skill_event_context` docstrings in `session_store/writers.py` — describe the env-var short-circuit (API.md mirrors these docstrings)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — :616 (`history.db_path` row stating `LL_HISTORY_DB` precedence) and :1721 ("**Env-var override**" note): the config-doc places env vars are stated outside the known list [Agent 2 finding]
+- `docs/ARCHITECTURE.md` — v46 version-history row (:679) carries "`cli_event_context`'s own gate is dead — no caller passes it `config`", which becomes false for ll-history once the `config=` wiring lands; writers-table row (:767, `cli_event_context()` entry) is the natural place to describe the second env var [Agent 2 finding]
+- In-code docstrings asserting the every-invocation invariant (become conditional): `issue_events_ever_recorded` (`issue_history/parsing.py:421-433`), `_record_research_triage` (`cli/issues/research_triage.py:89-98`), `session_store/__init__.py` package docstring (:44-45). Advisory: `observability/schema.py` `SkillEventVariant` (:703) / `CliEventVariant` (:747) "(every CLI entry point)" phrasing [Agent 2 finding]
+- Advisory only (no edit required): `docs/reference/WORKTREES.md` (:19, :30, :38) documents the `LL_HISTORY_DB` export-to-descendants mechanism a user-exported `LL_ANALYTICS_CAPTURE` would mirror (Decision 4's warning); `docs/development/TROUBLESHOOTING.md:1039` documents the adjacent `analytics.enabled`/`analytics.capture.hooks` gating pair [Agent 2 finding]
+
 ### Configuration
 - `.ll/ll-config.json` → `analytics.capture.cli_commands` (now effective for ll-history via `config=` wiring)
 - New env var: `LL_ANALYTICS_CAPTURE`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Verified: `analytics.capture.*` is already fully defined in `scripts/little_loops/config-schema.json` (:2042-2085, `cli_commands` at :2052, `additionalProperties: false`) — no schema change needed; the env var is env-only [Agent 1/2 finding]
 
 ### Codebase Research Findings
 
@@ -139,6 +167,17 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 5. Document the env var in `docs/reference/CLI.md` (ll-history section), `docs/reference/API.md` (analytics section), `docs/guides/HISTORY_SESSION_GUIDE.md`, and the `docs/reference/HOST_COMPATIBILITY.md` env-var table; update both context-manager docstrings in `writers.py`. Cover: kill-switch only (no force-enable), empty string = unset, per-invocation usage over shell-profile export.
 6. Tests (see AC).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add `LL_ANALYTICS_CAPTURE` to `_CMD_RUN_ENV_VARS` in `scripts/tests/conftest.py` (:1100-1109) — the autouse scrub keeps every row-written / "enter failed" test deterministic against an ambient export (the documented `LL_AUTOMATION` leak failure mode)
+- Update `scripts/tests/test_cli_history.py::test_absent_flag_single_repo_result` (:589-610) — its `status == "ok"` assertion and :604-605 comment encode exactly the behavior this issue changes; scrub the env var and add the env-set `db_missing` counterpart
+- Update stale-invariant docstrings: `issue_events_ever_recorded` (`scripts/little_loops/issue_history/parsing.py:421-433`) and `_record_research_triage` (`scripts/little_loops/cli/issues/research_triage.py:89-98`)
+- Update `docs/reference/CONFIGURATION.md` (:616, :1721) and `docs/ARCHITECTURE.md` (v46 row :679, writers table :767) with `LL_ANALYTICS_CAPTURE`
+- Resolve the Decision 4 hooks-layer discrepancy: either extend the env check to `record_skill_event` (`scripts/little_loops/session_store/writers.py:268`, called from `hooks/user_prompt_submit.py:134`) so the documented global-export warning becomes true, or scope that doc sentence to `ll-action` — the plan as written does not suppress hooks-layer `skill_events`
+- Model the main_history config-gate test on `test_ll_issues_research_triage.py::test_gate_suppresses_write` (:159-175)
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
@@ -191,6 +230,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-11T21:13:49 - `a7854cf9-ea11-4533-87cc-72769e97d00c.jsonl`
 - `/ll:refine-issue` - 2026-09-11T20:49:17 - `3e633d12-e9f0-40e1-8e84-6924e6006790.jsonl`
 - `/ll:format-issue` - 2026-09-11T20:30:31 - `29719eda-e34b-4588-9e6c-a4b50bf277cf.jsonl`
 - `/ll:capture-issue` - 2026-09-11T20:26:49 - `d2544764-cca3-4cd1-bd27-85b0d1d0f3c3.jsonl`
