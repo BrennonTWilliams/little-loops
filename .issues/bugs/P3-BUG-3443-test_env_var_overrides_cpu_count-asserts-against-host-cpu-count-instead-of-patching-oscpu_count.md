@@ -4,10 +4,11 @@ type: BUG
 title: test_env_var_overrides_cpu_count asserts against host CPU count instead of
   patching os.cpu_count
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
+completed_at: '2026-09-11T06:12:05Z'
 parent: EPIC-3436
 learning_tests_required:
 - pytest-xdist
@@ -170,12 +171,29 @@ record of what was wrong and fixed, not an outstanding action item).
 - **Dependencies**: parent EPIC-3436 exists (open); referenced issues BUG-2788 and BUG-2501 exist
   (BUG-2788 is done). No `## Blocked By` section, so no backlink/cycle checks apply.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/tests/test_conftest_cap.py`: `test_env_var_overrides_cpu_count` now wraps its assertion in `patch("os.cpu_count", return_value=14)` (env=3, cpus=14 → 3 on any host); docstring states the clamped contract instead of "returns N verbatim"
+- `scripts/tests/test_conftest_cap.py`: class docstring bullet corrected — override honored but clamped to `cpus - 2` — and stale line-range ref fixed (`conftest.py:30-53` → `conftest.py:51-78`)
+- `scripts/tests/test_conftest_cap.py`: new `test_env_override_clamps_to_cpus_minus_two` pins the clamp (env=99, cpus=4 → 2)
+
+### Verification Results
+- Tests: PASS — `scripts/tests/test_conftest_cap.py` 49 passed (48 prior + 1 new); full suite `python -m pytest scripts/tests/`: 24003 passed, 3 failed — all 3 pre-exist on HEAD without this change (verified by stashing the edit and re-running: priority-regex allowlist drift in `scripts/little_loops/mcp_server/tools.py` + .issues corpus baseline 569 > 562; unrelated to BUG-3443, captured as BUG-3448)
+- Lint: PASS — `ruff check scripts/tests/test_conftest_cap.py`
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T06:11:37 - `94c28595-292c-431b-ad44-128d76e64071.jsonl`
+- `/ll:ready-issue` - 2026-09-11T06:00:42 - `b1d01b0d-fba0-46bb-8c5e-fede20cd1849.jsonl`
 - `/ll:confidence-check` - 2026-09-11T04:06:10 - `82aa9c16-7356-4996-ae53-14603c2e9a9b.jsonl`
 - `/ll:verify-issues` - 2026-09-11T04:03:47 - `e932b503-6715-465c-b1b0-8faaee5f9773.jsonl`
 - `/ll:wire-issue` - 2026-09-11T03:54:33 - `3c54b1f6-0a02-45d5-aeb1-ed084c2c42f8.jsonl`

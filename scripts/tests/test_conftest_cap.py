@@ -37,17 +37,25 @@ _spec.loader.exec_module(conftest)
 class TestXdistAutoNumWorkers:
     """``pytest_xdist_auto_num_workers`` returns the worker count to spawn.
 
-    Behavior under test (see ``scripts/tests/conftest.py:30-53``):
+    Behavior under test (see ``scripts/tests/conftest.py:51-78``):
 
-    - ``PYTEST_XDIST_AUTO_NUM_WORKERS=<N>`` env var wins, parsed as int.
+    - ``PYTEST_XDIST_AUTO_NUM_WORKERS=<N>`` env var wins, but is clamped to
+      ``cpus - 2`` (floor 1) so an inherited override cannot oversubscribe.
     - Invalid env var falls back to ``max(2, cpus // 2)``.
     - ``cpus // 2`` has a floor of 2 (so even 1-CPU hosts spawn 2 workers).
     """
 
     def test_env_var_overrides_cpu_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """``PYTEST_XDIST_AUTO_NUM_WORKERS=<N>`` returns N verbatim."""
+        """``PYTEST_XDIST_AUTO_NUM_WORKERS=<N>`` returns N while under the ``cpus - 2`` clamp."""
         monkeypatch.setenv("PYTEST_XDIST_AUTO_NUM_WORKERS", "3")
-        assert conftest.pytest_xdist_auto_num_workers(MagicMock()) == 3
+        with patch("os.cpu_count", return_value=14):
+            assert conftest.pytest_xdist_auto_num_workers(MagicMock()) == 3
+
+    def test_env_override_clamps_to_cpus_minus_two(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Env var above ``cpus - 2`` is clamped: env=99, cpus=4 → 2."""
+        monkeypatch.setenv("PYTEST_XDIST_AUTO_NUM_WORKERS", "99")
+        with patch("os.cpu_count", return_value=4):
+            assert conftest.pytest_xdist_auto_num_workers(MagicMock()) == 2
 
     def test_invalid_env_var_falls_back_to_cpu_half(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Non-integer env var is ignored; ``cpus // 2`` wins."""
