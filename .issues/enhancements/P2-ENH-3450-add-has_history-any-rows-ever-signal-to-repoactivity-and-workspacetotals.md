@@ -7,7 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T20:26:38Z'
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-3450: Add has_history any-rows-ever signal to RepoActivity and WorkspaceTotals
@@ -48,11 +48,32 @@ Formatter rendering decision (research finding: per-member `instrumented` is NOT
 
 **Option A**: Extend the totals line only — render `has_history`/`has_history_members` in the existing `members: N (ok: X, instrumented: Y)` line; per-member output unchanged.
 
+> **Selected:** Option A — extends the only render site of its structural twin `instrumented`; two inline f-string edits, no new rendering shape, zero pinned formatter output.
+
 **Option B**: Add a per-member `has_history` line alongside the count lines in `_activity_count_lines()`, plus the totals-line extension.
 
 **Recommended**: Option A — it extends the only site where `instrumented` renders today, and Option B's per-member `None` values (schema_skew/unreadable) would render as noise.
 
 Known behavior to cover in tests (not a defect): the default no-flag CLI invocation takes the single-repo fallback (cli/history.py:689-699), whose db is pre-created by `cli_event_context` with only a `cli_events` row (writers.py:536-539, table at schema.py:251) — so the fallback member reports `ok` with zero counts and `has_history: false`. This is the canonical empty-but-schema'd case motivating the issue; the CLI golden test should pin it.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-11.
+
+**Selected**: Option A
+
+**Reasoning**: `has_history`/`has_history_members` explicitly mirrors the `instrumented`/`instrumented_members` pair (Decision 3), and that pair renders exclusively in the totals line (`workspace_activity.py:392` text, `:436` markdown — the only `instrumented` render sites repo-wide). Option A is a two-site inline f-string extension with zero pinned text/markdown formatter tests to break; Option B would introduce the first per-member boolean `key: value` line in any formatter in the codebase, require new parameterization of `_activity_count_lines()` to avoid double-rendering in totals (the shared helper serves both the per-member and totals sections: :377/:397 text, :422/:440 markdown), and its per-member output could only ever show the OK-branch True/False subset of the JSON signal (`db_missing → False` never displays — db_missing members render via the error branch).
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option B | 1/3 | 1/3 | 2/3 | 2/3 | 6/12 |
+
+**Key evidence**:
+- Winner (totals-line extension): extends the exact two inline sites where `instrumented` renders today (`workspace_activity.py:391-394`, `:435-438`); no test anywhere pins activity text/markdown output (only loose substring asserts at `test_cli_history.py:663-690`); JSON/YAML untouched by construction (`to_dict()` passthrough at `:340-360`). Reuse score 3.
+- Runner-up (per-member variant): `_activity_count_lines()` takes exactly four `int | None` args and is called from both per-member and totals sections — a `has_history` line added there double-renders in totals without new suppression parameterization (no precedent in this helper); no formatter in the codebase renders a per-item boolean as its own line (all None-field precedents — `rework.py:456-460`, `formatting.py:146` — are numeric/date). Reuse score 2. Counterpoint found: None-noise is structurally mitigated (the helper only runs in the OK branch), but per-member rendering still shows a strict subset of the JSON signal.
 
 ## Integration Map
 
@@ -209,6 +230,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-11T20:58:18 - `4edab3cd-c7fc-4d55-b641-0b1df5125d0f.jsonl`
 - `/ll:refine-issue` - 2026-09-11T20:49:41 - `dc57321a-6cbd-4b3f-bbcf-a2a2264f04d2.jsonl`
 - `/ll:format-issue` - 2026-09-11T20:31:22 - `927fc9d3-cc55-46d9-9660-1cb2e288f9d7.jsonl`
 - `/ll:capture-issue` - 2026-09-11T20:26:49 - `d2544764-cca3-4cd1-bd27-85b0d1d0f3c3.jsonl`

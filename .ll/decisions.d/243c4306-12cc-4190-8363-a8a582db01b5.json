@@ -1,0 +1,12 @@
+{
+  "id": "8365cb9b-4ff6-463a-9759-9fe7ec49ee43",
+  "type": "decision",
+  "timestamp": "2026-09-11T20:57:52Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "has_history/has_history_members mirrors the instrumented/instrumented_members pair, which renders exclusively in the totals line (workspace_activity.py:392/:436). Per-member rendering would be the first per-item boolean line in any formatter, needs suppression parameterization of the shared _activity_count_lines() helper to avoid totals double-render, and could only ever show the OK-branch True/False subset of the JSON signal.",
+  "rule": "has_history renders totals-line-only in ll-history activity text/markdown formatters",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (per-member has_history line in _activity_count_lines() plus totals extension): no boolean-line rendering precedent, double-render collision in totals, strict subset of JSON signal",
+  "issue": "ENH-3450"
+}
