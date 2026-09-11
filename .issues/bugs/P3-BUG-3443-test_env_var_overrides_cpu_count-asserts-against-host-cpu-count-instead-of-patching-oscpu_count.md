@@ -33,7 +33,7 @@ conftest.pytest_xdist_auto_num_workers clamps the PYTEST_XDIST_AUTO_NUM_WORKERS 
 
 ## Steps to Reproduce
 
-1. On a machine with ≤ 5 logical cores (or simulate: the clamp makes host CPU count observable), run `python -m pytest "scripts/tests/test_conftest_cap.py::TestXdistAutoNumWorkers::test_env_var_overrides_cpu_count"`.
+1. On a machine with fewer than 5 logical cores (or simulate: the clamp makes host CPU count observable), run `python -m pytest "scripts/tests/test_conftest_cap.py::TestXdistAutoNumWorkers::test_env_var_overrides_cpu_count"`.
 2. Observe: `AssertionError: assert 2 == 3` — the hook returned `min(3, 4 - 2) == 2` from the real 4-core host.
 3. On a 14-core host the same command passes (`min(3, 12) == 3`), hiding the defect locally.
 
@@ -47,7 +47,7 @@ conftest.pytest_xdist_auto_num_workers clamps the PYTEST_XDIST_AUTO_NUM_WORKERS 
 
 _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
-- Confirmed: the hook reads `cpus = os.cpu_count() or 4` at `scripts/tests/conftest.py:63` and clamps at :71 (`return max(1, min(int(env), cpus - 2))`); the test at `scripts/tests/test_conftest_cap.py:47-50` calls the hook with env=3 and no cpu_count patch, so on hosts with ≤5 logical cores the clamp yields 2 and `assert 2 == 3` fails
+- Confirmed: the hook reads `cpus = os.cpu_count() or 4` at `scripts/tests/conftest.py:63` and clamps at :71 (`return max(1, min(int(env), cpus - 2))`); the test at `scripts/tests/test_conftest_cap.py:47-50` calls the hook with env=3 and no cpu_count patch, so on hosts with fewer than 5 logical cores the clamp yields fewer than 3 (exactly 2 on a 4-core host) and `assert 2 == 3` fails
 - The five siblings (`test_conftest_cap.py:52-81`) all wrap the assertion in `with patch("os.cpu_count", return_value=N)`; the unpatched test predates the clamp introduced under BUG-2788
 
 ## Integration Map
@@ -62,7 +62,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - Importers of the test file: none — pytest collection is its only entry point (repo-wide grep found no CI config, docs, or other test importing `test_conftest_cap`)
 - Production writer of the env var (context, not modified): `verify_epic_branch_before_merge` setdefaults `PYTEST_XDIST_AUTO_NUM_WORKERS` to `str(max(2, (os.cpu_count() or 4) // 4))` for child verify-gate runs (`scripts/little_loops/worktree_utils.py:738`); that computed value has no test coverage
 - Tests: the five siblings at `test_conftest_cap.py:52-81` already pin cpu_count; no shared env/cpu fixture exists in `scripts/tests/helpers.py` or `scripts/tests/conftest.py` to reuse — the new test needs no new machinery
-- Configuration: `scripts/pyproject.toml:245-251` (addopts comment) documents the cap and the override; `.github/workflows/ci.yml` never sets `PYTEST_XDIST_AUTO_NUM_WORKERS` (repo-wide `.github/` grep: no hits), so the failure surfaces on any runner with ≤5 logical cores
+- Configuration: `scripts/pyproject.toml:245-251` (addopts comment) documents the cap and the override; `.github/workflows/ci.yml` never sets `PYTEST_XDIST_AUTO_NUM_WORKERS` (repo-wide `.github/` grep: no hits), so the failure surfaces on any runner with fewer than 5 logical cores
 - Documentation: `docs/development/TROUBLESHOOTING.md:849` already describes the knob as clamped to `cpus-2` — post-clamp text, no update needed
 - Prior art: the clamp was introduced by BUG-2788 (`max(1, min(N, cpus-2))`); the test file was created under BUG-2501
 - Conventions in force: cpu_count patching uses ONLY the string-target `unittest.mock.patch` context manager — `with patch("os.cpu_count", return_value=N)` (`test_conftest_cap.py:55,61,67,73,79`); `monkeypatch.setattr(os, "cpu_count", ...)` and decorator-form `@patch("os.cpu_count")` have zero occurrences tree-wide
@@ -128,12 +128,48 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Low - Test-only change; the hook itself (`pytest_xdist_auto_num_workers`) is untouched.
 - **Breaking Change**: No
 
+## Verification Notes
+
+`/ll:verify-issues --auto` — 2026-09-11: Verdict at time of check: **NEEDS_UPDATE** (corrections
+below applied in the same pass, so the issue as it now reads is up to date — this section is a
+record of what was wrong and fixed, not an outstanding action item).
+
+- **Off-by-one failure threshold, corrected in this pass**: the issue claimed the test fails on
+  hosts with "≤ 5 logical cores" (Steps to Reproduce, Codebase Research Findings, Integration Map).
+  The clamp `max(1, min(int(env), cpus - 2))` with env=3 yields 3 on a 5-core host
+  (`min(3, 5-2) == 3` passes); failure requires `cpus < 5` (yields 2 on 4 cores, 1 at ≤ 2 cores).
+  All three occurrences now read "fewer than 5 logical cores".
+- **Every other claim verified against HEAD**: all cited line numbers hold
+  (`test_conftest_cap.py:30-34,37-81,40,42,47-50,48,52-81` with patches at :55,61,67,73,79 and
+  delenv at :60,66,72,78; `conftest.py:51-78` hook with `cpus` read at :63, env read at :64, clamp
+  at :71, fallback at :78; `worktree_utils.py:738` setdefault; `pyproject.toml:245-251` addopts
+  comment; `TROUBLESHOOTING.md:849` clamp text; `API.md:13129` writer doc; double-load comment at
+  `conftest.py:278`). `test_env_var_overrides_cpu_count` run directly: **passes on this 14-core
+  host** (1 passed), matching the predicted host-dependence. Causal claims corroborated by direct
+  git probe: test file born 2026-07-06 (949ef80aa, BUG-2501), clamp introduced 2026-07-24
+  (920aade3f, the BUG-2788 four-phase landing) — after the test, as claimed.
+- **Evidence check (`ll-verify-evidence`) — 2 detector findings, both false positives on manual
+  trace**: (1) `AssertionError: assert 2 == 3` at :37 is a *predicted* failure output in Steps to
+  Reproduce, never claimed as a quote from the named artifact; (2) the clamp span
+  `max(1, min(int(env), cpus - 2))` at :44 exists **verbatim at `scripts/tests/conftest.py:71`** —
+  the issue's own prose attributes it to `pytest_xdist_auto_num_workers` in conftest.py, which is
+  correct; the detector's artifact inference (test_conftest_cap.py) was wrong. No fabricated
+  evidence found; EVIDENCE_UNVERIFIED not assigned (documented detector precision on this
+  paraphrase class: ~0.13–0.20, below the 0.30 bar — see BUG-3282 fallback F3).
+- **Graph-assisted checks**: provider=`codegraph`, freshness=`fresh` — `references
+  test_conftest_cap` returned empty; grep corroborated (sole mention is the double-load comment at
+  `scripts/tests/conftest.py:278`), matching the issue's "no importers" claim.
+- **Decisions gate**: ran clean — zero active required rules, nothing to violate.
+- **Dependencies**: parent EPIC-3436 exists (open); referenced issues BUG-2788 and BUG-2501 exist
+  (BUG-2788 is done). No `## Blocked By` section, so no backlink/cycle checks apply.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T04:03:47 - `e932b503-6715-465c-b1b0-8faaee5f9773.jsonl`
 - `/ll:wire-issue` - 2026-09-11T03:54:33 - `3c54b1f6-0a02-45d5-aeb1-ed084c2c42f8.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:51:06 - `4d1eb983-c328-4793-b35a-8ba87f2992d7.jsonl`
 - `/ll:format-issue` - 2026-09-10T22:12:19 - `895d3ceb-7c4a-44b3-826e-65829f565276.jsonl`
