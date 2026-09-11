@@ -72,6 +72,11 @@ BUG-3443 edit stashed, proving pre-existence on `main`).
 - The `.issues/` corpus grew past the hard-coded `_POST_BUG_3413_TOTAL_REPORTS = 562`
   baseline; the count is a corpus-size function, so recent issue creation (BUG-3443
   session-log appends, BUG-3447 edits) trips it.
+- [Review 2026-09-11] A second file drifted after capture: subsequent
+  `issue_parser.py` commits (most recently 1fb35f5a9) shifted the four allowlisted
+  raw-regex lines there by +40, so the same failing allowlist pair now also reports
+  `issue_parser.py` stale entries and unallowlisted replacements. Same failure mode,
+  same refresh treatment.
 
 ### Codebase Research Findings
 
@@ -80,6 +85,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - Exact anchors: the stale allowlist entry is the `"mcp_server/tools.py": {795: ..., 941: ...}` dict at `scripts/tests/test_issue_parser.py:4887-4889`; the failing baseline constant `_POST_BUG_3413_TOTAL_REPORTS = 562` sits at `:5763` with its succession comment at `:5751-5762`; the baseline sweep `rglob("*.md")` over all of `.issues/` at `:5792` includes done/cancelled files, so mere issue creation grows the total.
 - This is the third recorded position for the same two conceptual allowlist entries: 588/683 (BUG-3286 survivor table) → 795/941 (allowlist) → 846/1001 (current). Both current hits are JSON-schema fields `"pattern": "^P[0-5]$"` for the `priority` arguments of the MCP tools registered as `issues_query` and `issue_capture` (implemented by `_tool_issues_query` at `scripts/little_loops/mcp_server/tools.py:81` and `_tool_issue_capture` at `:258`) — added/shifted by `3fe6a1dac feat(mcp): add skills_list`, same category both prior generations were allowlisted under.
 - The allowlist's own maintenance comment (`test_issue_parser.py:4819-4823`) anticipates this exact failure mode: "Re-derive line numbers by re-running the scan below if this test fails after an unrelated edit shifts lines."
+- [Review 2026-09-11] Live re-run of the two failing allowlist tests reports a second drifted file beyond the two above: stale `issue_parser.py` entries at 1916/4060/4064/4085 with their replacements at 1956/4100/4104/4125 — a uniform +40 shift of the same four allowlisted regexes (`_DEP_ID_RE`, the filename-shape comment, `_parse_type_and_id`'s directory-fallback extraction, `_generate_id_from_filename`'s prefix strip). Categories are unchanged, so these are in-place line-number refreshes keeping the existing justification strings; no new convert-vs-allowlist discrimination needed beyond confirming the regexes themselves are unmodified at the new positions.
 
 ## Proposed Solution
 
@@ -126,7 +132,10 @@ Decided by `/ll:decide-issue` on 2026-09-11.
 - `_ALLOWLIST: dict[str, dict[int, str]]` — refreshed dict literal: the
   `mcp_server/tools.py` entries `{795: ..., 941: ...}` replaced by `{846: ..., 1001: ...}`,
   each with a justification string, after confirming the raw regexes at the new lines
-  can't trivially use `resolve_priority`
+  can't trivially use `resolve_priority`; plus the `issue_parser.py` entries
+  `{1916, 4060, 4064, 4085}` replaced by `{1956, 4100, 4104, 4125}` keeping their
+  existing justification strings (uniform +40 line shift, categories unchanged —
+  see Review finding in Root Cause research)
 - `_POST_BUG_3413_TOTAL_REPORTS: int` — `562` bumped to `569` (measured at fix time), or
   replaced by a corpus-relative ceiling so mere issue creation no longer trips the gate
 - `_max_total_reports(corpus_md_count: int) -> int` — optional corpus-relative ceiling
@@ -153,7 +162,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 
 ### Files to Modify
 
-- `scripts/tests/test_issue_parser.py` — the only file needing edits: the `_ALLOWLIST` `"mcp_server/tools.py"` entry (`:4887-4889`) and the corpus ceiling constant(s) (`:5751-5763`)
+- `scripts/tests/test_issue_parser.py` — the only file needing edits: the `_ALLOWLIST` `"mcp_server/tools.py"` entry (`:4887-4889`), the `_ALLOWLIST` `"issue_parser.py"` block (`:4867-4881`, four line-number refreshes — see Review findings), and the corpus ceiling constant(s) (`:5751-5763`)
   > ⚠ Superseded — issue's own prose also needs edits
 
 ### Dependent Files (Callers/Importers)
@@ -186,7 +195,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. The allowlist matches HEAD: `tools.py:846` and `:1001` entered with categorical justifications (JSON-schema priority-arg pattern, not a filename read) and `795`/`941` removed — verified by `python -m pytest scripts/tests/test_issue_parser.py -k "Allowlist"` exiting 0
+1. The allowlist matches HEAD: `tools.py:846` and `:1001` entered with categorical justifications (JSON-schema priority-arg pattern, not a filename read), `795`/`941` removed; `issue_parser.py` entries `1916/4060/4064/4085` refreshed to `1956/4100/4104/4125` with existing justifications kept — verified by `python -m pytest scripts/tests/test_issue_parser.py -k "Allowlist"` exiting 0
 2. The corpus differential holds for the current corpus under the option selected from Proposed Solution (constant succession or corpus-relative ceiling) — verified by `python -m pytest scripts/tests/test_issue_parser.py -k "total_report_count"` exiting 0
 3. The authoritative gate is green: `python -m pytest scripts/tests/` exits 0
    > ⚠ Superseded — 4th red test also blocks suite exit 0
@@ -196,7 +205,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Clear the 2 evidence-unverifiable spans in this issue's own prose — [Current Behavior] `:30` and [Root Cause] `:64` — by rephrasing the quote/attribution or suppressing a reviewed counter-example, so `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` passes and the gate can reach exit 0
+- Clear the 2 evidence-unverifiable spans in this issue's own prose — in [Current Behavior], the verbatim allowlist-failure message attributed to `test_issue_parser.py`, and in [Root Cause], the commit subject attributed to the `tools.py` path — by rephrasing the quote/attribution or suppressing a reviewed counter-example, so `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` passes and the gate can reach exit 0. Identify the spans by content, not by the line numbers recorded above: they move with any edit to this file (the wiring pass recorded them at 30/64; the review re-run found them at 36/70).
 
 ## Status
 
@@ -204,6 +213,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- Review (pre-implementation, Claude Code session) - 2026-09-11 - `session_01Ufn7Lt5Vb6e8PjyCZg5eUs`
 - `/ll:confidence-check` - 2026-09-11T15:33:50 - `8cdcde34-85c0-4f2c-9a74-cdf6cbe6dedb.jsonl`
 - `/ll:wire-issue` - 2026-09-11T15:30:55 - `1132d6e1-b9ee-4bab-bed0-a3378ccc90b6.jsonl`
 - `/ll:decide-issue` - 2026-09-11T15:17:37 - `7f075240-78da-40ae-8be8-2aed20585a34.jsonl`
