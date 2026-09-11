@@ -1,0 +1,24 @@
+pip on PATH:    /Users/brennon/.local/bin/pip  # ll-private-ok: learning test raw output contains user paths as evidence
+pip shebang:    /Users/brennon/.pyenv/versions/3.11.11/bin/python3.11  # ll-private-ok: learning test raw output contains user paths as evidence
+python on PATH: /Users/brennon/miniforge3/bin/python  # ll-private-ok: learning test raw output contains user paths as evidence
+
+[1] pip --version: pip 25.1.1 from /Users/brennon/.local/lib/python3.11/site-packages/pip (python 3.11)  # ll-private-ok: learning test raw output contains user paths as evidence
+    parsed site='/Users/brennon/.local/lib/python3.11/site-packages/pip' python_tag='3.11' -> True  # ll-private-ok: learning test raw output contains user paths as evidence
+[2] realpath(shebang)=/Users/brennon/.pyenv/versions/3.11.11/bin/python3.11  # ll-private-ok: learning test raw output contains user paths as evidence
+    realpath(python)=/Users/brennon/miniforge3/bin/python3.12 drift=True  # ll-private-ok: learning test raw output contains user paths as evidence
+[3] python -m pip --version: pip 25.1.1 from /Users/brennon/miniforge3/lib/python3.12/site-packages/pip (python 3.12)  # ll-private-ok: learning test raw output contains user paths as evidence
+    invoking python=3.12.10 prefix=/Users/brennon/miniforge3 -> True  # ll-private-ok: learning test raw output contains user paths as evidence
+[4] bare pip Location:      /Users/brennon/.pyenv/versions/3.11.11/lib/python3.11/site-packages  # ll-private-ok: learning test raw output contains user paths as evidence
+    python -m pip Location: /Users/brennon/miniforge3/lib/python3.12/site-packages -> True  # ll-private-ok: learning test raw output contains user paths as evidence
+[5] python imports little_loops from: /Users/brennon/AIProjects/brenentech/little-loops/scripts/little_loops/__init__.py  # ll-private-ok: learning test raw output contains user paths as evidence
+    bare pip site root: /Users/brennon/.local/lib/python3.11/site-packages/pip -> outside=True  # ll-private-ok: learning test raw output contains user paths as evidence
+[6] bare pip sees 341 pkgs; python -m pip sees 772 pkgs
+    only-in-bare=['CairoSVG', 'PyPDF2', 'SpeechRecognition', 'aistudio-sdk', 'altgraph'] only-in-python-m=['Authlib', 'Automat', 'Brotli', 'ConfigArgParse', 'DeepFilterLib'] -> True  # ll-private-ok: learning test raw output contains user paths as evidence
+
+=== SUMMARY ===
+CLAIM 1: PASS
+CLAIM 2: PASS
+CLAIM 3: PASS
+CLAIM 4: PASS
+CLAIM 5: PASS
+CLAIM 6: PASS
