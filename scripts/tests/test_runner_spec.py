@@ -446,27 +446,22 @@ class TestRunActionDispatch:
         mock_killpg.assert_called_once_with(proc)
 
     def test_cmd_oversized_target_spawns(self) -> None:
-        """BUG-3439: sibling pin to ``test_fsm_runners.py``'s shell-path
-        pin — a ``ActionSpec.target`` above Linux's per-argument
-        MAX_ARG_STRLEN (131072 B) must still spawn via ``_run_cmd``'s
-        temp-file substitution, not ``bash -c <target>``.
-
-        Linux's MAX_ARG_STRLEN applies at every ``execve``, so the target
-        body must not itself contain any single argv element above
-        131072 B — the runner's temp-file substitution solves the *outer*
-        bash spawn only. We pad the target with ~135 KB of pure-comment
-        lines (each well under the per-arg limit) and terminate with a
-        tiny ``echo``. See ``test_fsm_runners.py``'s pin for the full
-        rationale."""
-        padding = ("# " + "x" * 132 + "\n") * 1000
-        target = padding + "echo done\n"
-        assert len(target) > 131_072
+        """BUG-3439: sibling pin to test_fsm_runners.py's shell-path pin —
+        a target above Linux's per-argument MAX_ARG_STRLEN (131072 B) must
+        still spawn via _run_cmd's temp-file substitution, not
+        ``bash -c <target>``. No platform skip: passed on darwin before the
+        fix, fails on Linux only before it. Oversize lives in a bash variable
+        assignment so no child exec re-trips MAX_ARG_STRLEN on a single argv
+        element (see the shell-path pin for the full rationale)."""
+        payload = "x" * 140_000
+        target = f"payload='{payload}'; echo ${{#payload}}"
+        assert len(target) > 131072
 
         spec = ActionSpec(name="oversized", runner=RunnerType.CMD, target=target, timeout=30)
         result = run_action(spec)
 
         assert result.exit_code == 0, result.stderr
-        assert result.stdout.strip() == "done"
+        assert result.stdout.strip() == "140000"
 
     def test_cmd_script_tempfile_removed_after_run(self) -> None:
         """No ``ll-action-*.sh`` temp file survives a successful _run_cmd call."""

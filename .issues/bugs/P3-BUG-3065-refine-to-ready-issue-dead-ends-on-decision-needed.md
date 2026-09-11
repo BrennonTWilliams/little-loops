@@ -101,7 +101,7 @@ ENH-3075 unifies the name.
 ## Steps to Reproduce
 
 1. Pick an issue whose `/ll:refine-issue --auto` pass deposits competing options and sets
-   `decision_needed: true` (observed on BUG-3063). <!-- ll-evidence-ok: YAML frontmatter snippet captured against BUG-3063 at issue discovery time (2026-08-05); BUG-3063 has since been resolved/closed and removed from `.issues/bugs/`, so the evidence gate cannot resolve the attribution. The snippet remains historically accurate as the symptom this bug tracks. -->
+   `decision_needed: true` (observed on BUG-3063). <!-- ll-evidence-ok: snippet captured against BUG-3063 at discovery (2026-08-05); BUG-3063 was completed with decision_needed: false before this issue was written, so the attributed frontmatter state never matched the captured snippet. -->
 2. `ll-loop run refine-to-ready-issue BUG-3063`
 3. Observe the run reports `Loop completed: done` — a success terminal.
 4. `ll-issues show 3063` — `History:` lists only `/ll:refine-issue, /ll:capture-issue`; no wire, no
