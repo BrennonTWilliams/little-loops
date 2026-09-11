@@ -10,13 +10,20 @@ discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
 parent: EPIC-3436
 decision_needed: false
+verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3438: rn-refine commit_leaf reports COMMITTED without committing and routes failure to record_leaf_done
 
 ## Summary
 
-commit_leaf (rn-refine.yaml ~602-616) has no set -e and ends in `|| true`, so a failed `git commit` (no identity, pre-commit reject, index lock) still echoes COMMITTED, exits 0, and writes the pre-leaf HEAD to leaf-baseline-commit.txt. Worse, its on_error already routes to record_leaf_done, which marks the leaf `verified`, so `set -euo pipefail` alone is insufficient: the error path must go to record_failure (or a new record_leaf_commit_failed state). Audit sibling actions for the same `echo SUCCESS; ... || true` shape. Test: give the ephemeral repo an explicit git identity (hermetic) and add a failing-commit case asserting non-zero exit and no COMMITTED marker (B2).
+commit_leaf (rn-refine.yaml ~602-616) has no `set -e` and ends in `|| true`, so a failed `git commit` (no identity, pre-commit reject, index lock) still echoes COMMITTED, exits 0, and writes the pre-leaf HEAD to leaf-baseline-commit.txt. Worse, its on_error already routes to record_leaf_done, which marks the leaf `verified`, so bare `set -e` alone is insufficient: the error path must go to a new `record_leaf_commit_failed` state that **reverts the dirty tree** (a plain `record_failure` reroute would leave the staged changes to be misattributed to the next leaf's commit), records `<nid> COMMIT_FAILED`, and writes no `leaf_impl_` marker so resume re-enqueues the leaf. Audit sibling actions (`reset_leaf_repair`, `snapshot_leaf_diff`) for the same `echo SUCCESS; ... || true` shape. Test: give the ephemeral repo a repo-local git identity (hermetic) and add a failing-commit case (`user.useConfigOnly=true`, no identity) asserting non-zero exit, no COMMITTED marker, and a reverted tree.
 
 ## Current Behavior
 
@@ -33,13 +40,13 @@ Additionally, `commit_leaf`'s `on_error: record_leaf_done` routes infra failures
 
 - A failed `git commit` makes `commit_leaf` exit non-zero and emit **no** `COMMITTED` marker (an explicit `COMMIT_FAILED` diagnostic is acceptable/desirable).
 - `leaf-baseline-commit.txt` is advanced **only** after a successful commit (or `NO_CHANGES`), so retry/verify scoping stays correct.
-- `commit_leaf`'s error path routes to `record_failure` (leaf lands in `failed_nodes.txt`, `[FAILED] <nid>`) — or a new `record_leaf_commit_failed` state with equivalent semantics — never to `record_leaf_done`.
-- Sibling states with the same swallow shape (`capture_baseline`'s `|| : > file` producing an empty baseline; `verify_leaf`'s `|| true` producing an empty touched-files list) are audited and either fixed or filed as follow-ups.
+- `commit_leaf`'s error path routes to a new `record_leaf_commit_failed` state — never to `record_leaf_done`, and not to `record_failure` either (it does not revert). The new state: hard-resets the tree to `leaf-baseline-commit.txt` (so the chain's "each prior leaf either committed or reverted" invariant holds and the next leaf's `git add -A` cannot misattribute this leaf's changes), appends `<nid> COMMIT_FAILED` to `failed_nodes.txt`, echoes `[COMMIT_FAILED] <nid>`, writes **no** `leaf_impl_<nid>.txt` marker (so `check_resume`/`resume_reconcile` re-enqueue the leaf on resume — a commit failure is usually transient/environmental and the work should be retried), and ends `next: dequeue_next`.
+- Sibling states with the same swallow shape (`reset_leaf_repair`'s `|| : > file` producing an empty baseline; `snapshot_leaf_diff`'s `|| true` producing an empty touched-files list, which its comment frames as deliberate) are audited and either fixed or filed as follow-ups.
 
 ## Steps to Reproduce
 
 1. Create an ephemeral repo: `git init` + one committed file (the baseline), then modify/add a file so `git add -A` stages a change.
-2. Make the commit deterministically fail: hide the git identity (`GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null`, no repo-local `user.name`/`user.email`) → `git commit` exits 128 with "Please tell me who you are". (A pre-commit hook exiting 1 works equally.)
+2. Make the commit deterministically fail: `git config user.useConfigOnly true` in the ephemeral repo with no repo-local `user.name`/`user.email` → `git commit` exits 128 with "fatal: no email was given and auto-detection is disabled" (verified 2026-09-10). Hiding the global config alone (`GIT_CONFIG_GLOBAL=/dev/null`) is **not** deterministic — git auto-derives an identity from gecos+hostname and only fails when it judges that bogus. A pre-commit hook is fragile if the machine sets a global `core.hooksPath`.
 3. Run the rendered `commit_leaf` action (the `_render`/`_bash` pattern from `scripts/tests/test_rn_refine.py::TestFinalizeSafety`) with `captured.run_dir.output` pointing at a run dir and `captured.input.output` = a node id.
 4. Observe: exit code 0; stdout contains `COMMITTED <nid>`; `leaf-baseline-commit.txt` holds the pre-leaf HEAD; downstream `record_leaf_done` writes `leaf_impl_<nid>.txt` = `verified` with the changes still uncommitted.
 
@@ -222,6 +229,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T01:36:32 - `baec27a2-e9d2-4434-851e-afe0bfd070d4.jsonl`
+- `/ll:verify-issues` - 2026-09-11T01:30:05 - `d72bd4c5-bd63-412a-b4aa-6f32a387ff10.jsonl`
 - `/ll:wire-issue` - 2026-09-11T00:20:41 - `8f2b9975-276a-4a01-bf0b-f0ce8216df48.jsonl`
 - `/ll:decide-issue` - 2026-09-10T23:42:12 - `d0293195-1c81-4d81-ac17-fa584ee4566b.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:03:56 - `c5f928c1-0152-48c5-b6b1-4132651d57a3.jsonl`

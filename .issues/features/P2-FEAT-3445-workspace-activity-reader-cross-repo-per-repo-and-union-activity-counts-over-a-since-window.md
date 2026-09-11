@@ -300,6 +300,8 @@ resolved; no outstanding action items remain.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T01:30:47 - `9be5076d-2998-4a46-a8a5-490fcdb1ba9a.jsonl`
+- `/ll:verify-issues` - 2026-09-11T01:26:20 - `445bd444-f9c5-4d60-bf47-1c94e4dd13b9.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:14:23 - `226e3334-05f8-455d-a6d0-352e3badc359.jsonl`
 - `/ll:reconcile-issue` - 2026-09-11T01:00:10 - `96fc360a-b5db-40dd-bb89-1981614713ee.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:53:16 - `74560d07-2a1c-4247-b7b2-e91055dab494.jsonl`
