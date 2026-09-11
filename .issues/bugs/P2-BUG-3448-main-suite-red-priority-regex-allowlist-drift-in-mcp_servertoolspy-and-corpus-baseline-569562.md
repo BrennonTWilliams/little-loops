@@ -9,6 +9,12 @@ decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T06:12:59Z'
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3448: main suite red: priority-regex allowlist drift in mcp_server/tools.py and corpus baseline 569>562
@@ -198,6 +204,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T15:33:50 - `8cdcde34-85c0-4f2c-9a74-cdf6cbe6dedb.jsonl`
 - `/ll:wire-issue` - 2026-09-11T15:30:55 - `1132d6e1-b9ee-4bab-bed0-a3378ccc90b6.jsonl`
 - `/ll:decide-issue` - 2026-09-11T15:17:37 - `7f075240-78da-40ae-8be8-2aed20585a34.jsonl`
 - `/ll:refine-issue` - 2026-09-11T15:04:49 - `b43da4e6-a103-422c-95e7-8acd36afebbc.jsonl`
