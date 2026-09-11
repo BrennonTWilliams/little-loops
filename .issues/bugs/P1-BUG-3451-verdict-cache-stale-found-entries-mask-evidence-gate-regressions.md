@@ -45,12 +45,7 @@ not be reproduced locally (2026-09-11 run 34628255906: 5 spans, 4 stale-`"1"`-ma
 
 ## Root Cause
 
-`VerdictCache.lookup()` in `scripts/little_loops/cli/verify_evidence.py`:
-
-```python
-if entry == "1":
-    return True   # no fingerprint revalidation, ever
-```
+`VerdictCache.lookup()` in `scripts/little_loops/cli/verify_evidence.py` served `if entry == "1": return True` with no fingerprint revalidation, ever. <!-- ll-evidence-ok: quote of the removed code; the pre-fix blob recedes beyond the 80-revision search window as the file accrues history -->
 
 The class docstring claimed "a stale entry can only cause redundant work — never a
 suppressed finding", which is exactly backwards for found entries: a hit can come

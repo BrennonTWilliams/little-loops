@@ -1,0 +1,14 @@
+{
+  "id": "6ce54468-e4ff-4c76-bdce-3e5854964cfc",
+  "type": "rule",
+  "timestamp": "2026-09-11T23:35:44Z",
+  "category": "testing",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The oversized-spawn pins embedded the 140KB payload as one argv element via `python3 -c \"<payload>\"`; the temp-file fix worked but python3's own execve still failed, because the per-argument limit applies recursively at every exec, not just the first.",
+  "rule": "Keep every child argv element under 128KB \u2014 Linux MAX_ARG_STRLEN caps each argument at every execve",
+  "enforcement": "advisory",
+  "issue": "BUG-3452"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "6d7155f8-242d-4ae7-9092-5b42415ba01b",
+  "type": "rule",
+  "timestamp": "2026-09-11T23:35:44Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The gitignored verdict cache served stale found-verdicts unconditionally, so the evidence gate passed locally while CI's cold checkout failed \u2014 an unconditional cache turns verification into a no-op once warm.",
+  "rule": "Caches of verification verdicts must revalidate found entries before serving them",
+  "enforcement": "advisory",
+  "issue": "BUG-3452"
+}

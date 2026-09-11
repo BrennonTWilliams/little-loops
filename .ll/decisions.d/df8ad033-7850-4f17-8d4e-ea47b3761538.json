@@ -1,0 +1,14 @@
+{
+  "id": "59f172c3-b855-4dc8-b114-599ee300b6bb",
+  "type": "rule",
+  "timestamp": "2026-09-11T23:35:44Z",
+  "category": "testing",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The 5th stale span verified only via `git log --all` reaching a local `refs/ll/abandoned/*` blob that is unreachable from CI's origin-only refs; any gate reading local-only refs diverges from every cold checkout by construction.",
+  "rule": "Verification gates must not depend on machine-local state \u2014 gitignored caches or non-origin git refs",
+  "enforcement": "advisory",
+  "issue": "BUG-3452"
+}

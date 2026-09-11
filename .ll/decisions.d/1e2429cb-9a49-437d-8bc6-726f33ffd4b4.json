@@ -1,0 +1,14 @@
+{
+  "id": "f0b7f2e6-5792-4fd6-b9ba-c061526f57a6",
+  "type": "rule",
+  "timestamp": "2026-09-11T23:35:44Z",
+  "category": "testing",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "All three failures passed on the warm dev tree; checking out 6351ac65 in a worktree and moving the verdict cache aside reproduced 4/5 stale spans, isolating local-state divergence as the cause of unreproducibility.",
+  "rule": "Reproduce CI-only failures in a clean worktree at the CI commit with gitignored caches moved aside",
+  "enforcement": "advisory",
+  "issue": "BUG-3452"
+}
