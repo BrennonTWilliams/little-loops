@@ -120,6 +120,45 @@ def _open_member_readonly(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _gate_member(
+    member: WorkspaceMember,
+) -> tuple[sqlite3.Connection, None, None] | tuple[None, str, str]:
+    """Open *member*'s history.db read-only and validate its schema version.
+
+    Shared by `aggregate_history_dbs()` (FEAT-3410) and
+    `workspace_activity.aggregate_workspace_activity()` (FEAT-3445): a missing
+    ``db_path``, a schema-version mismatch, or a ``sqlite3.Error`` on
+    open/read are the same skip conditions for both callers.
+
+    Returns ``(conn, None, None)`` on success -- the caller owns closing
+    *conn*. Returns ``(None, reason, kind)`` on any skip condition, closing
+    any connection it opened itself first; *kind* is one of ``"db_missing"``,
+    ``"schema_skew"``, ``"unreadable"`` -- the same string values as
+    `workspace_activity.MemberActivityStatus` without this module depending
+    on that sibling's enum.
+    """
+    if not member.db_path.exists():
+        return None, f"history.db not found at {member.db_path}", "db_missing"
+
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _open_member_readonly(member.db_path)
+        version = read_schema_version(conn)
+    except sqlite3.Error as exc:
+        if conn is not None:
+            conn.close()
+        return None, f"could not read read-only: {exc}", "unreadable"
+
+    if version is None:
+        conn.close()
+        return None, "schema_version missing (no meta row)", "schema_skew"
+    if version != str(SCHEMA_VERSION):
+        conn.close()
+        return None, f"schema_version {version} != installed {SCHEMA_VERSION}", "schema_skew"
+
+    return conn, None, None
+
+
 def _discriminator(index: int) -> str:
     return f"#r{index}"
 
@@ -216,28 +255,13 @@ def aggregate_history_dbs(
 
     for member in members:
         label = _label(member)
-        if not member.db_path.exists():
-            skipped.append((label, f"history.db not found at {member.db_path}"))
+        conn, reason, _kind = _gate_member(member)
+        if reason is not None:
+            skipped.append((label, reason))
             continue
-
-        conn: sqlite3.Connection | None = None
-        try:
-            conn = _open_member_readonly(member.db_path)
-            version = read_schema_version(conn)
-        except sqlite3.Error as exc:
-            if conn is not None:
-                conn.close()
-            skipped.append((label, f"could not read read-only: {exc}"))
-            continue
+        assert conn is not None
 
         try:
-            if version is None:
-                skipped.append((label, "schema_version missing (no meta row)"))
-                continue
-            if version != str(SCHEMA_VERSION):
-                skipped.append((label, f"schema_version {version} != installed {SCHEMA_VERSION}"))
-                continue
-
             issues = find_issues(BRConfig(member.repo_path), status_filter=_ALL_STATUSES)
             per_repo[label] = analyze_agent_quality(
                 issues,

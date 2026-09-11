@@ -711,7 +711,7 @@ See [API Reference — Extension API](reference/API.md#extension-api) for full p
 
 ## History DB: Producer→Consumer Flow
 
-`.ll/history.db` is the per-project event history store — a SQLite database populated by hook writers and queryable in milliseconds without re-parsing JSONL or markdown. It provides agent context (user corrections, related file edits, prior issue work) to skills like `refine-issue`, `ready-issue`, and `confidence-check` without the overhead of full-log scanning. A multi-repo workspace can declare its topology in an `ll-workspace.yaml` manifest, discovered via `little_loops.workspace.discover_workspace_members()` (FEAT-3409), so a consumer can aggregate several projects' `.ll/history.db` stores instead of reading just one.
+`.ll/history.db` is the per-project event history store — a SQLite database populated by hook writers and queryable in milliseconds without re-parsing JSONL or markdown. It provides agent context (user corrections, related file edits, prior issue work) to skills like `refine-issue`, `ready-issue`, and `confidence-check` without the overhead of full-log scanning. A multi-repo workspace can declare its topology in an `ll-workspace.yaml` manifest, discovered via `little_loops.workspace.discover_workspace_members()` (FEAT-3409), so a consumer can aggregate several projects' `.ll/history.db` stores instead of reading just one — `aggregate_history_dbs()` for quality analysis (FEAT-3410) and its sibling `aggregate_workspace_activity()` for per-repo/workspace-total loop and issue-lifecycle activity counts over a `since`/`until` window (FEAT-3445).
 
 ### Write Path
 

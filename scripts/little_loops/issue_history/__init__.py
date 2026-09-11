@@ -56,6 +56,11 @@ Public exports:
     load_window_compositions: Load per-window model/host/ll_version compositions (FEAT-3405)
     aggregate_history_dbs: Per-workspace-member quality breakdown over several
         repos' `history.db` files, read-only (FEAT-3410)
+    aggregate_workspace_activity: Per-workspace-member and workspace-total
+        loop/issue activity counts over a `since`/`until` window, read-only
+        (FEAT-3445)
+    WorkspaceActivityResult, RepoActivity, MemberActivityStatus: Result types
+        for `aggregate_workspace_activity` (FEAT-3445)
 
     # Formatting
     format_summary_text: Format summary as text
@@ -194,6 +199,12 @@ from little_loops.issue_history.rework import (
     quality_adjusted_throughput,
 )
 from little_loops.issue_history.summary import calculate_summary
+from little_loops.issue_history.workspace_activity import (
+    MemberActivityStatus,
+    RepoActivity,
+    WorkspaceActivityResult,
+    aggregate_workspace_activity,
+)
 from little_loops.issue_history.workspace_quality import AggregationResult, aggregate_history_dbs
 
 __all__ = [
@@ -275,6 +286,10 @@ __all__ = [
     "load_window_compositions",
     "AggregationResult",
     "aggregate_history_dbs",
+    "WorkspaceActivityResult",
+    "RepoActivity",
+    "MemberActivityStatus",
+    "aggregate_workspace_activity",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",

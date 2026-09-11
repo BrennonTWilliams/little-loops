@@ -4,13 +4,14 @@ type: FEAT
 title: 'Workspace activity reader: cross-repo per-repo and union activity counts over
   a since window'
 priority: P2
-status: open
+status: done
 verify_verdict: VALID
 blocks:
 - FEAT-3446
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:53:04Z'
+completed_at: '2026-09-11T02:20:09Z'
 confidence_score: 90
 outcome_confidence: 93
 score_complexity: 18
@@ -299,12 +300,58 @@ three-point export registration) and AC11 (API.md/ARCHITECTURE.md doc
 updates) added. All findings from this issue's verification are now
 resolved; no outstanding action items remain.
 
+## Resolution
+
+Implemented as specified:
+
+- Extracted the shared per-member gate (`_gate_member()`) from
+  `aggregate_history_dbs()` into `workspace_quality.py` (kept resident there,
+  per the resolved placement decision — `test_never_uses_migrating_opener`
+  needed no change). Returns `(conn, None, None)` on success or
+  `(None, reason, kind)` on skip, `kind` matching
+  `MemberActivityStatus`'s values without a cross-module enum dependency.
+  `aggregate_history_dbs()` now calls the helper; behavior is byte-identical
+  (`test_feat3410_workspace_quality.py` / `test_feat3418_workspace_quality.py`
+  pass unmodified).
+- New `scripts/little_loops/issue_history/workspace_activity.py`:
+  `MemberActivityStatus`, `RepoActivity`, `WorkspaceTotals`,
+  `WorkspaceActivityResult`, and `aggregate_workspace_activity()`. Python-side
+  fetch-and-filter timestamp comparison (`_parse_ts`/`_in_window`) per the
+  resolved decision — no SQLite `datetime()`, no ATTACH/union. Unbounded
+  windows use `SELECT COUNT(*)`; bounded windows fetch and filter in Python.
+- Registered `aggregate_workspace_activity`, `WorkspaceActivityResult`,
+  `RepoActivity`, `MemberActivityStatus` in `issue_history/__init__.py`
+  (docstring, import, `__all__` — three-point registration).
+- `docs/reference/API.md` gained a function-table row for
+  `aggregate_workspace_activity`; `docs/ARCHITECTURE.md`'s "History DB:
+  Producer→Consumer Flow" section gained the one-sentence sibling mention.
+- New `scripts/tests/test_feat3445_workspace_activity.py` (50 tests): running
+  vs. completed loop counting, since/until independence and inclusivity,
+  mixed-timestamp-format safety, NULL/empty/date-only timestamp handling,
+  naive-bound-as-UTC, all four `MemberActivityStatus` branches (including a
+  count-phase `sqlite3.Error` -> `unreadable`), totals (including the
+  all-non-ok zero-ok-members case and the empty-workspace case), canonical
+  serialization (`ok`/`error`/`issues_closed` always null), and a
+  source-inspection proving no migrating opener.
+
+Verification: `python -m pytest scripts/tests/` — 23,952 passed, 43 skipped,
+5 failed. All 5 failures are pre-existing and unrelated to this change,
+confirmed by isolated re-run: `test_feat3323_sse_bridge.py`'s fan-in test is a
+socket-timing flake (passes alone); the other four
+(`test_issue_parser.py::TestPriorityRegexCompletenessAllowlist` x2,
+`test_issue_parser.py::TestBug3295ContainmentCorpusDifferential`,
+`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`)
+are repo-wide `.issues/` corpus / `mcp_server/tools.py` drift gates untouched
+by this issue's files. `ruff check scripts/` and `python -m mypy` on the
+touched modules are both clean.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T02:19:50 - `413fd87f-60ac-4371-a3de-9c2fb3fec6c9.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:55:52 - `c8678e03-b9b5-468d-a83f-076102f8e125.jsonl`
 - `/ll:verify-issues` - 2026-09-11T01:52:45 - `e6b2283d-2f88-428b-aef9-912b5592580e.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:30:47 - `9be5076d-2998-4a46-a8a5-490fcdb1ba9a.jsonl`
