@@ -250,6 +250,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T22:20:04 - `391be972-a549-42fe-8083-3e332695b908.jsonl`
 - `/ll:confidence-check` - 2026-09-11T22:03:50 - `cf2556c4-72e8-4260-8e11-5d8008bb6e43.jsonl`
 - pre-implementation review fold-in - 2026-09-11 (second pass) - corrected Program Design §Signatures param names (`source`/`argv` → `binary`/`args`), pinned the gate-placement constraint (`analytics.enabled` check inside the existing `writers.py:523-533` try block so a non-dict `analytics` degrades via the existing `except Exception`), pinned the `analytics`-present-but-`enabled`-absent permissive case (Decisions §2 + API/Interface), added the Decision 2 caller-audit AC and named `ll-session` (`cli/session.py:422`) as the top trivial-fix candidate
 - pre-implementation review fold-in - 2026-09-11 - resolved Decision 2 gate semantics (`analytics.enabled` present-and-false suppresses; missing `analytics` key stays permissive), resolved Decision 4 hooks-layer scoping (env var does not reach `record_skill_event`), added config-gate/conftest/docstring ACs, LL_HISTORY_DB precedence note
