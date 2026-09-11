@@ -12,11 +12,11 @@ decision_needed: false
 learning_tests_required:
 - git
 - actions/checkout
-confidence_score: 90
-outcome_confidence: 86
-score_complexity: 25
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 21
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -63,7 +63,7 @@ So the fix converts a structural 155-item mystery into a genuine 4-item corpus r
 - **File**: `.github/workflows/ci.yml` (unit-tests job checkout, line 67) interacting with `scripts/little_loops/cli/verify_evidence.py`
 - **Anchor**: `HistoryIndex.ensure_full()` (`verify_evidence.py:733-745`), exercised by `TestRepoGate::test_no_new_unverifiable_evidence` (`scripts/tests/test_verify_evidence.py:951`)
 - **Cause**: The `unit-tests` job's bare `actions/checkout@v4` defaults to `fetch-depth: 1` (shallow). `ensure_full()` builds the `path -> blob OIDs` map from a single `git log --all --raw -z` pass (`verify_evidence.py:745`), which sees only the tip commit — every span quoted from an earlier artifact state resolves to nothing. The gate test compares findings against the checked-in ID-keyed baseline (`.ll/evidence-baseline.json`, `BASELINE_PATH` at `verify_evidence.py:83`) and fails on any excess; on a shallow clone the excess is structural, so the gate is always-red regardless of corpus state. Nothing in the test distinguishes "corpus regression" from "checkout lacks history". No code or CI script in the repo runs `git rev-parse --is-shallow-repository` today, and no workflow sets `fetch-depth`.
-- **Secondary cause (independent of checkout depth)**: the corpus genuinely carries 4 unverifiable spans beyond baseline as of 2026-09-10 — 2 from `.issues/bugs/P1-BUG-3439-…md:50` attributed to `scripts/tests/test_loop_router.py` (`subprocess.Popen(["bash", "-c", action])` and `OSError: [Errno 7] Argument list too long`), and 2 from `.issues/bugs/P3-BUG-3443-…md:37,44` attributed to `scripts/tests/test_conftest_cap.py` (`AssertionError: assert 2 == 3` and `max(1, min(int(env), cpus - 2))`). These reproduce on a full-history clone and are not caused by, nor fixed by, `fetch-depth`.
+- **Secondary cause (independent of checkout depth)**: the corpus genuinely carries 4 unverifiable spans beyond baseline as of 2026-09-10 — 2 from `.issues/bugs/P1-BUG-3439-…md:50` attributed to `scripts/tests/test_loop_router.py` (`subprocess.Popen(["bash", "-c", action])` and `OSError: [Errno 7] Argument list too long`), and 2 from `.issues/bugs/P3-BUG-3443-…md:43,50` (line refs refreshed 2026-09-10 after commit `a06961726` shifted them from `:37,44`) attributed to `scripts/tests/test_conftest_cap.py` (`AssertionError: assert 2 == 3` and `max(1, min(int(env), cpus - 2))`). These reproduce on a full-history clone and are not caused by, nor fixed by, `fetch-depth`.
 
 ## Proposed Solution
 
@@ -152,9 +152,15 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 1. **Prerequisite — clear the 4 live corpus findings, or the gate stays red.** `TestRepoGate::test_no_new_unverifiable_evidence` fails on `main` today on a full-history clone (verified: `1 failed, 2 passed`). The 4 spans are attributed to BUG-3439 (`test_loop_router.py`) and BUG-3443 (`test_conftest_cap.py`). Fix the quotes/attributions, or suppress a reviewed counter-example with `<!-- ll-evidence-ok: reason -->`. Do **not** reach for `--update-baseline`: the baseline is at **297 of its 400-span cap** (`test_baseline_size_is_bounded`), so re-seeding absorbs only ~100 more spans and the test's own docstring warns that a growing baseline means the checker got worse. Sequence this step with or immediately after the `fetch-depth` change — landing `fetch-depth: 0` alone produces a CI run that is still red, with a different number, and invites someone to re-seed the baseline to force it green
+
+   **Per-span disposition (2026-09-10 pre-implementation review, measured).** Re-running `ll-verify-evidence --all --json` today still reports 4 findings, but BUG-3443's line refs drifted (`:37,44` → `:43,50` after commit `a06961726`, plus uncommitted working-tree edits on that file) — **re-run the gate at implementation time; do not trust pinned counts or line refs.** `git log --all -S` confirms none of the 4 spans ever existed verbatim in its attributed file's history. Disposition, one per span:
+   - `P3-BUG-3443-…md:50` — `max(1, min(int(env), cpus - 2))`: **misattribution, not a bad quote.** The span is real and lives at `scripts/tests/conftest.py:71`; the issue points it at `test_conftest_cap.py`. Correct the attribution in BUG-3443's Root Cause and the span verifies — no suppression needed.
+   - `P3-BUG-3443-…md:43` — `AssertionError: assert 2 == 3`: hypothetical output for a <5-core host; never existed verbatim. Suppress with `<!-- ll-evidence-ok: ... -->` or reword.
+   - `P1-BUG-3439-…md:50` — `subprocess.Popen(["bash", "-c", action])` and `OSError: [Errno 7] Argument list too long`: paraphrases of pre-fix behavior (real code is `["bash", "-c", script]`, `test_loop_router.py:348`). BUG-3439 is closed as already-fixed (`db45ec9f6`), but the gate has **no status filter** — `verify_evidence.py` scans all of `.issues/` regardless of open/closed — so closure retires nothing. `<!-- ll-evidence-ok: ... -->` is the right mechanism; rewriting the prose to verbatim-quotable form would degrade the issue text.
+
 2. The `unit-tests` checkout at `.github/workflows/ci.yml:67` carries `with: fetch-depth: 0` with an adjacent comment naming BUG-3442 and the failure mode it prevents (always-red evidence gate), per the workflow's ID+failure-mode comment convention (`ci.yml:73-80`)
 3. `TestRepoGate::test_no_new_unverifiable_evidence` (`scripts/tests/test_verify_evidence.py:951`) checks `git rev-parse --is-shallow-repository` before invoking the gate subprocess (`:956-957`) and **`pytest.fail`s** with a one-line diagnostic naming the missing `fetch-depth` and the `git fetch --unshallow` remedy (Option B, decided). It must not `pytest.skip`, and must not silently pass
-4. **The learning-test gap is closed before implementing.** `learning_tests_required` lists `actions/checkout`, which has **no record** in the Learning Test Registry (`ll-learning-tests check actions/checkout` → exit 1, missing) — a hard STOP under the confidence-check rules. `git` is `proven` with 7 passing assertions, but **none of them covers a claim this fix rests on**: there is no assertion about `git rev-parse --is-shallow-repository`'s output format, nor about how `git log --all --raw` behaves under a shallow clone. Run `/ll:explore-api actions/checkout` and extend the `git` record with those two claims
+4. **Learning-test prerequisite — CLOSED 2026-09-11** (commit `d3bea3f8f`). The `actions/checkout` record now exists in the Learning Test Registry (`ll-learning-tests check actions/checkout` → `proven`, 7/7 assertions, 0 failing) and covers exactly the claims this fix rests on: `fetch-depth` defaults to 1 in `actions/checkout@v4`'s `action.yml`; `git rev-parse --is-shallow-repository` prints `true` in a depth-1 clone / `false` in a full clone; `git rev-list --count --all` prints 1 at depth 1 (so `git log --all --raw` sees only the tip); a `<parent-commit>:<file>` blob is unresolvable at depth 1; `git fetch --unshallow` flips the predicate. No further learning-test work before implementing
 5. After the fix, the pinned-blob flagship tests (`_read_blob`, `test_verify_evidence.py:78-88`; `BUG_3278_SHA` at `:49`) stop skipping on CI and start executing there for the first time — verify they pass on a full-history clone before merging, since a newly-live test is a new way for the job to go red
 6. **Verification requires an actual CI run — local green proves nothing here.** This is a CI-only defect: the local clone is already full (`git rev-parse --is-shallow-repository` → `false`), so the `fetch-depth` change is a no-op locally and the precondition never fires. Steps: (a) `python -m pytest scripts/tests/test_verify_evidence.py -v` passes locally, which requires step 1 first; (b) inside a `git clone --depth 1` copy, the precondition fails loudly with the one-line diagnostic rather than dumping ~155 findings; (c) push and confirm in the `unit-tests` job log that the checkout fetches full history and that the gate's excess is 0
 7. Budget check on CI cost, measured locally: `git log --all --raw -z --no-abbrev --no-renames --format=` emits **64.7 MB in 0.91 s** over 8407 commits, and the whole gate (`ll-verify-evidence --all --json -C .`) completes in **4.46 s** against `GATE_TIMEOUT = 120`. `.git` is 116 MB, so `fetch-depth: 0` adds a tolerable one-time clone cost. `DEFAULT_MAX_REVISIONS = 80` still caps the per-path revision walk, so full history does not make the index unbounded. Re-confirm the gate stays well under 120 s on a cold CI runner with no page cache
@@ -163,7 +169,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 ## Impact
 
 - **Priority**: P2 - The gate is structurally always-red on CI, so it provides zero regression signal there (the very thing it exists for), and no product behavior is wrong. **Correction:** the earlier claim that "local full checkouts are unaffected" is false — the gate fails locally on `main` too, from 4 genuine corpus findings. Locals are unaffected by the *shallow-checkout* cause, not by the red gate.
-- **Effort**: Small for this issue - Two-line workflow change (`fetch-depth: 0`) plus a small `git rev-parse --is-shallow-repository` precondition in one test. **But it does not deliver a green gate on its own**: step 1 (clearing the 4 live findings across two sibling issue files) is additional work that must land alongside it, plus an `/ll:explore-api actions/checkout` learning-test record.
+- **Effort**: Small for this issue - Two-line workflow change (`fetch-depth: 0`) plus a small `git rev-parse --is-shallow-repository` precondition in one test. **But it does not deliver a green gate on its own**: step 1 (clearing the 4 live findings across two sibling issue files) is additional work that must land alongside it. (Learning-test record: done — commit `d3bea3f8f`.)
 - **Risk**: Low for the workflow change - No product-code behavior change; `fetch-depth: 0` adds a one-time ~116 MB clone (`.git` size measured) and the gate itself runs in 4.46 s against a 120 s timeout. Two real risks: (a) the precondition must **fail**, not skip, or a future `fetch-depth` regression goes quiet again — decided as Option B; (b) `fetch-depth: 0` newly activates the pinned-SHA `_read_blob` flagship tests on CI for the first time, which is a fresh way for the job to go red and must be checked before merging. Residual: CI's ref set (`refs/remotes/origin/*` for all branches and tags) is not byte-identical to a local clone's, so a small finding-count difference between local and CI remains possible — another reason step 6(c) requires reading an actual CI job log rather than trusting a local run.
 - **Breaking Change**: No
 
@@ -188,6 +194,7 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T04:10:37 - `15f92a63-fb8d-44e1-92df-1b973a2a54e8.jsonl`
 - `/ll:decide-issue` - 2026-09-11T03:59:41 - `2f065e0e-57e0-408e-a9b6-f6686371abe7.jsonl`
 - `/ll:confidence-check` - 2026-09-11T03:46:23 - `513f555f-2dcc-4cef-a40a-121044c26dea.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:35:28 - `f7f133b9-d4c3-4ee0-8f6a-731e118bc458.jsonl`
