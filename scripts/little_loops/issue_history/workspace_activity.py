@@ -25,6 +25,18 @@ empty-string, and unparseable timestamps are excluded from windowed counts
 and included in unbounded counts -- an unbounded count is a row count; a
 windowed one requires a comparable timestamp.
 
+`RepoActivity.has_history` (ENH-3450) answers "were any rows ever recorded"
+-- ``True`` when ``issue_events`` OR ``loop_runs`` holds at least one row,
+irrespective of the ``since``/``until`` window -- so an empty-but-schema'd db
+(``False``) is distinguishable from a quiet window (``True`` with zero
+counts). ``db_missing`` reports ``False`` (a real answer: nothing was ever
+recorded); ``schema_skew``/``unreadable`` report ``None`` -- asserting ``False``
+there would repeat the no-answer-!=-zero conflation the field exists to fix.
+Self-analytics tables (``cli_events``/``skill_events``) are deliberately
+excluded: ll's own instrumentation churn is not the workspace development
+activity this signal answers about. Unlike ``instrumented`` (file exists),
+``has_history`` never depends on the window.
+
 Known limitations (accepted, not solved here):
 - FSM signals (stalls, cycles, rate-limits) are webhook-only and never land
   in history.db, so no read here can cover them.
@@ -70,6 +82,7 @@ class RepoActivity:
     label: str
     status: MemberActivityStatus
     instrumented: bool
+    has_history: bool | None = None
     reason: str | None = None
     loops_run: int | None = None
     loops_completed: int | None = None
@@ -87,6 +100,7 @@ class RepoActivity:
             "ok": self.status is MemberActivityStatus.OK,
             "error": self.reason,
             "instrumented": self.instrumented,
+            "has_history": self.has_history,
             "loops_run": self.loops_run,
             "loops_completed": self.loops_completed,
             "issues_completed": self.issues_completed,
@@ -102,6 +116,8 @@ class WorkspaceTotals:
     members: int
     instrumented_members: int
     instrumented: bool
+    has_history_members: int
+    has_history: bool
     ok_members: int
     loops_run: int | None
     loops_completed: int | None
@@ -115,6 +131,8 @@ class WorkspaceTotals:
             "members": self.members,
             "instrumented_members": self.instrumented_members,
             "instrumented": self.instrumented,
+            "has_history_members": self.has_history_members,
+            "has_history": self.has_history,
             "ok_members": self.ok_members,
             "loops_run": self.loops_run,
             "loops_completed": self.loops_completed,
@@ -225,6 +243,19 @@ def _count_member_activity(
     )
 
 
+def _has_any_history(conn: sqlite3.Connection) -> bool:
+    """Any-rows-ever signal (ENH-3450): EXISTS over both activity tables.
+
+    Deliberately windowless and deliberately excluding ``cli_events``/
+    ``skill_events`` -- see module docstring. Index-probe per table, no scan;
+    a ``sqlite3.Error`` propagates to the caller's existing UNREADABLE routing.
+    """
+    row = conn.execute(
+        "SELECT EXISTS(SELECT 1 FROM issue_events) OR EXISTS(SELECT 1 FROM loop_runs)"
+    ).fetchone()
+    return bool(row[0])
+
+
 def _totals(per_repo: dict[str, RepoActivity]) -> WorkspaceTotals:
     ok_rows = [r for r in per_repo.values() if r.status is MemberActivityStatus.OK]
     ok_members = len(ok_rows)
@@ -238,6 +269,11 @@ def _totals(per_repo: dict[str, RepoActivity]) -> WorkspaceTotals:
         members=len(per_repo),
         instrumented_members=sum(1 for r in per_repo.values() if r.instrumented),
         instrumented=any(r.instrumented for r in per_repo.values()),
+        # `is True` only: members whose has_history is unknown (None) neither
+        # count nor make the any() true -- an all-unknown workspace totals
+        # to 0/false, never a false "no rows ever" claim (ENH-3450 Decision 2).
+        has_history_members=sum(1 for r in per_repo.values() if r.has_history is True),
+        has_history=any(r.has_history is True for r in per_repo.values()),
         ok_members=ok_members,
         loops_run=_sum("loops_run"),
         loops_completed=_sum("loops_completed"),
@@ -275,6 +311,7 @@ def aggregate_workspace_activity(
                 label=label,
                 status=status,
                 instrumented=status is not MemberActivityStatus.DB_MISSING,
+                has_history=False if status is MemberActivityStatus.DB_MISSING else None,
                 reason=reason,
             )
             continue
@@ -282,6 +319,7 @@ def aggregate_workspace_activity(
         assert conn is not None
         try:
             counts = _count_member_activity(conn, since_dt, until_dt)
+            has_history = _has_any_history(conn)
         except sqlite3.Error as exc:
             per_repo[db_key] = RepoActivity(
                 repo_path=repo_path,
@@ -289,6 +327,7 @@ def aggregate_workspace_activity(
                 label=label,
                 status=MemberActivityStatus.UNREADABLE,
                 instrumented=True,
+                has_history=None,
                 reason=f"count query failed: {exc}",
             )
             continue
@@ -302,6 +341,7 @@ def aggregate_workspace_activity(
             label=label,
             status=MemberActivityStatus.OK,
             instrumented=True,
+            has_history=has_history,
             loops_run=loops_run,
             loops_completed=loops_completed,
             issues_completed=issues_completed,
@@ -390,7 +430,8 @@ def format_workspace_activity_text(result: WorkspaceActivityResult) -> str:
     lines.append("-" * 16)
     lines.append(
         f"members: {totals.members} (ok: {totals.ok_members}, "
-        f"instrumented: {totals.instrumented_members})"
+        f"instrumented: {totals.instrumented_members}, "
+        f"has_history: {totals.has_history_members})"
     )
     if totals.ok_members:
         lines.extend(
@@ -434,7 +475,8 @@ def format_workspace_activity_markdown(result: WorkspaceActivityResult) -> str:
     lines.extend(["## Workspace totals", ""])
     lines.append(
         f"- members: {totals.members} (ok: {totals.ok_members}, "
-        f"instrumented: {totals.instrumented_members})"
+        f"instrumented: {totals.instrumented_members}, "
+        f"has_history: {totals.has_history_members})"
     )
     if totals.ok_members:
         for line in _activity_count_lines(

@@ -5,8 +5,9 @@ issues_deferred), the running-loop (NULL ended_at) exclusion, since/until
 windowing, mixed-timestamp-format safety, NULL/empty/date-only timestamp
 handling, member status classification (db_missing/schema_skew/unreadable),
 a count-phase sqlite3.Error mapping to unreadable, workspace totals
-(including the all-non-ok zero-counts case), canonical serialization, and a
-source-inspection proving the module never uses a migrating opener.
+(including the all-non-ok zero-counts case), the any-rows-ever `has_history`
+signal (ENH-3450), canonical serialization, text/markdown formatter output,
+and a source-inspection proving the module never uses a migrating opener.
 """
 
 from __future__ import annotations
@@ -19,9 +20,12 @@ from little_loops.issue_history.workspace_activity import (
     MemberActivityStatus,
     RepoActivity,
     WorkspaceActivityResult,
+    WorkspaceTotals,
     aggregate_workspace_activity,
+    format_workspace_activity_markdown,
+    format_workspace_activity_text,
 )
-from little_loops.session_store.schema import SCHEMA_VERSION
+from little_loops.session_store.schema import SCHEMA_VERSION, ensure_db
 from little_loops.session_store.writers import record_issue_event, record_loop_run_summary
 from little_loops.workspace import WorkspaceMember
 
@@ -265,6 +269,7 @@ class TestMemberStatus:
 
         assert activity.status is MemberActivityStatus.DB_MISSING
         assert activity.instrumented is False
+        assert activity.has_history is False
         assert activity.loops_run is None
         assert activity.loops_completed is None
         assert activity.issues_completed is None
@@ -279,6 +284,7 @@ class TestMemberStatus:
 
         assert activity.status is MemberActivityStatus.SCHEMA_SKEW
         assert activity.instrumented is True
+        assert activity.has_history is None
         assert activity.loops_run is None
         assert activity.reason is not None
 
@@ -296,6 +302,7 @@ class TestMemberStatus:
 
         assert activity.status is MemberActivityStatus.UNREADABLE
         assert activity.instrumented is True
+        assert activity.has_history is None
         assert activity.loops_run is None
 
     def test_count_sql_error_maps_to_unreadable(self, tmp_path: Path) -> None:
@@ -306,6 +313,7 @@ class TestMemberStatus:
 
         assert activity.status is MemberActivityStatus.UNREADABLE
         assert activity.instrumented is True
+        assert activity.has_history is None
         assert activity.loops_run is None
         assert activity.reason is not None
         assert "count query failed" in activity.reason
@@ -364,6 +372,117 @@ class TestTotals:
         assert result.totals.loops_run is None
 
 
+class TestHasHistory:
+    """ENH-3450: `has_history` answers "were any rows ever recorded", irrespective
+    of the window — so an empty-but-schema'd db (`False`) is distinguishable from
+    a quiet window (`True` with zero counts)."""
+
+    def test_empty_schemad_db_has_history_false(self, tmp_path: Path) -> None:
+        member = _member(tmp_path, "repo_a", "primary")
+        ensure_db(member.db_path)
+
+        result = aggregate_workspace_activity([member], since=None, until=None)
+        activity = result.per_repo[str(member.db_path)]
+
+        assert activity.status is MemberActivityStatus.OK
+        assert activity.instrumented is True
+        assert activity.has_history is False
+        assert activity.loops_run == 0
+        assert activity.issues_completed == 0
+
+    def test_rows_outside_window_has_history_true_counts_zero(self, tmp_path: Path) -> None:
+        member = _member(tmp_path, "repo_a", "primary")
+        record_loop_run_summary(
+            member.db_path,
+            run_id="run-old",
+            loop_name="l",
+            started_at="2020-01-01T00:00:00Z",
+            ended_at="2020-01-02T00:00:00Z",
+            final_state="done",
+        )
+
+        windowed = aggregate_workspace_activity([member], since="2026-01-01T00:00:00Z")
+        unbounded = aggregate_workspace_activity([member], since=None, until=None)
+
+        quiet = windowed.per_repo[str(member.db_path)]
+        assert quiet.status is MemberActivityStatus.OK
+        assert quiet.instrumented is True
+        assert quiet.has_history is True
+        assert quiet.loops_run == 0
+        assert unbounded.per_repo[str(member.db_path)].loops_run == 1
+
+    def test_loop_only_db_has_history_true(self, tmp_path: Path) -> None:
+        member = _member(tmp_path, "repo_a", "primary")
+        record_loop_run_summary(
+            member.db_path,
+            run_id="run-a",
+            loop_name="l",
+            started_at="2026-01-01T00:00:00Z",
+            ended_at="2026-01-01T01:00:00Z",
+            final_state="done",
+        )
+
+        result = aggregate_workspace_activity([member], since=None, until=None)
+        assert result.per_repo[str(member.db_path)].has_history is True
+
+    def test_issue_only_db_has_history_true(self, tmp_path: Path) -> None:
+        member = _member(tmp_path, "repo_a", "primary")
+        record_issue_event(member.db_path, "BUG-1", "done")
+
+        result = aggregate_workspace_activity([member], since=None, until=None)
+        assert result.per_repo[str(member.db_path)].has_history is True
+
+    def test_cli_events_only_db_has_history_false(self, tmp_path: Path) -> None:
+        """Decision 5: ll's own analytics churn (`cli_events`) is not workspace
+        history — a db carrying only that row still reports `has_history: False`."""
+        member = _member(tmp_path, "repo_a", "primary")
+        ensure_db(member.db_path)
+        conn = sqlite3.connect(str(member.db_path))
+        try:
+            conn.execute(
+                "INSERT INTO cli_events(ts, binary, args) VALUES (?, ?, ?)",
+                ("2026-01-01T00:00:00Z", "ll-history", "[]"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = aggregate_workspace_activity([member], since=None, until=None)
+
+        assert result.per_repo[str(member.db_path)].has_history is False
+
+    def test_all_unknown_workspace_totals_has_history_false(self, tmp_path: Path) -> None:
+        """Every member `null` -> totals 0/false (count/any over `is True` only)."""
+        skewed = _skewed_member(tmp_path, "stale", "primary", schema_version="1")
+        garbage = tmp_path / "garbage"
+        (garbage / ".issues").mkdir(parents=True)
+        (garbage / ".ll").mkdir()
+        (garbage / ".ll" / "history.db").write_text("not a database")
+        unreadable = WorkspaceMember(
+            repo_path=garbage, role="sibling", db_path=garbage / ".ll" / "history.db"
+        )
+
+        result = aggregate_workspace_activity([skewed, unreadable], since=None, until=None)
+
+        assert all(
+            r.has_history is None for r in result.per_repo.values()
+        )
+        assert result.totals.has_history_members == 0
+        assert result.totals.has_history is False
+
+    def test_totals_mirror_instrumented_pair(self, tmp_path: Path) -> None:
+        """`has_history_members`/`has_history` mirror `instrumented_members`/
+        `instrumented` aggregation over all members (not just ok rows)."""
+        ok_member = _member(tmp_path, "repo_a", "primary")
+        record_issue_event(ok_member.db_path, "BUG-1", "done")
+        missing_member = _member(tmp_path, "repo_b", "consumer")
+
+        result = aggregate_workspace_activity([ok_member, missing_member], since=None, until=None)
+
+        assert result.totals.has_history_members == 1
+        assert result.totals.has_history is True
+
+
 class TestSerialization:
     """AC 9: canonical serialization — ok/error fields, issues_closed always null."""
 
@@ -410,6 +529,8 @@ class TestSerialization:
             "members",
             "instrumented_members",
             "instrumented",
+            "has_history_members",
+            "has_history",
             "ok_members",
             "loops_run",
             "loops_completed",
@@ -427,6 +548,61 @@ class TestSerialization:
         assert isinstance(result, WorkspaceActivityResult)
         activity = next(iter(result.per_repo.values()))
         assert isinstance(activity, RepoActivity)
+
+
+class TestActivityFormatters:
+    """ENH-3450 Option A: the totals line renders the `has_history` count
+    alongside the `instrumented` count — text and markdown, exact shape."""
+
+    @staticmethod
+    def _sample_result() -> WorkspaceActivityResult:
+        ok_row = RepoActivity(
+            repo_path="/repos/a",
+            role="source",
+            label="a (source)",
+            status=MemberActivityStatus.OK,
+            instrumented=True,
+            has_history=True,
+            loops_run=5,
+            loops_completed=3,
+            issues_completed=2,
+            issues_deferred=0,
+        )
+        missing_row = RepoActivity(
+            repo_path="/repos/b",
+            role="consumer",
+            label="b (consumer)",
+            status=MemberActivityStatus.DB_MISSING,
+            instrumented=False,
+            has_history=False,
+            reason="history.db not found",
+        )
+        totals = WorkspaceTotals(
+            members=2,
+            instrumented_members=1,
+            instrumented=True,
+            has_history_members=1,
+            has_history=True,
+            ok_members=1,
+            loops_run=5,
+            loops_completed=3,
+            issues_completed=2,
+            issues_deferred=0,
+        )
+        return WorkspaceActivityResult(
+            since=None,
+            until=None,
+            per_repo={"/repos/a/.ll/history.db": ok_row, "/repos/b/.ll/history.db": missing_row},
+            totals=totals,
+        )
+
+    def test_text_totals_line_renders_has_history_count(self) -> None:
+        out = format_workspace_activity_text(self._sample_result())
+        assert "members: 2 (ok: 1, instrumented: 1, has_history: 1)" in out
+
+    def test_markdown_totals_line_renders_has_history_count(self) -> None:
+        out = format_workspace_activity_markdown(self._sample_result())
+        assert "- members: 2 (ok: 1, instrumented: 1, has_history: 1)" in out
 
 
 class TestNeverUsesMigratingOpener:

@@ -3,10 +3,11 @@ id: ENH-3450
 type: ENH
 title: Add has_history any-rows-ever signal to RepoActivity and WorkspaceTotals
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T20:26:38Z'
+completed_at: '2026-09-11T23:40:52Z'
 decision_needed: false
 learning_tests_required:
 - sqlite3
@@ -80,7 +81,7 @@ Decided by `/ll:decide-issue` on 2026-09-11.
 | Option B | 1/3 | 1/3 | 2/3 | 2/3 | 6/12 |
 
 **Key evidence**:
-- Winner (totals-line extension): extends the exact two inline sites where `instrumented` renders today (`workspace_activity.py:391-394`, `:435-438`); no test anywhere pins activity text/markdown output (only loose substring asserts at `test_cli_history.py:663-690`); JSON/YAML untouched by construction (`to_dict()` passthrough at `:340-360`). Reuse score 3.
+- Winner (totals-line extension): extends the exact two inline sites where `instrumented` renders today (`workspace_activity.py:391-394`, `:435-438`); no test anywhere pins activity text/markdown output (only loose substring asserts at `test_cli_history.py:761-788`); JSON/YAML untouched by construction (`to_dict()` passthrough at `:340-360`). Reuse score 3.
 - Runner-up (per-member variant): `_activity_count_lines()` takes exactly four `int | None` args and is called from both per-member and totals sections — a `has_history` line added there double-renders in totals without new suppression parameterization (no precedent in this helper); no formatter in the codebase renders a per-item boolean as its own line (all None-field precedents — `rework.py:456-460`, `formatting.py:146` — are numeric/date). Reuse score 2. Counterpoint found: None-noise is structurally mitigated (the helper only runs in the OK branch), but per-member rendering still shows a strict subset of the JSON signal.
 
 ## Integration Map
@@ -104,8 +105,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli_history.py` — REQUIRED (not optional): `_MEMBER_KEYS`/`_TOTALS_KEYS` (:438-462) are exact-list equality asserts (:535/:547/:557), so they must gain the new keys or the suite stays red; also pin the canonical single-repo-fallback empty-db golden per AC.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- New formatter tests (genuine gap): zero tests in the repo call `format_workspace_activity_*` directly (grep-verified; formatters are exercised only via loose substring asserts in `test_all_four_formats_render_with_scope_flag`, test_cli_history.py:663-690). The Option A totals-line edit needs direct-construction tests — build `WorkspaceActivityResult` inline, assert the extended totals line renders — following the `TestAggregationResultFormatters` pattern (`scripts/tests/test_feat3410_workspace_quality.py:234-262`). Home: `test_feat3445_workspace_activity.py`. [Agent 3 finding, grep-confirmed]
-- `test_no_ok_member_totals_all_null` (`scripts/tests/test_cli_history.py` ~:705-717) — existing all-unknown-workspace test that already asserts `instrumented is False` + `None` counts (:713-717); the natural home for the AC "all-unknown workspace → `has_history_members: 0`, `has_history: false`" pin. [Agent 3 finding, grep-confirmed]
+- New formatter tests (genuine gap): zero tests in the repo call `format_workspace_activity_*` directly (grep-verified; formatters are exercised only via loose substring asserts in `test_all_four_formats_render_with_scope_flag`, test_cli_history.py:761-788). The Option A totals-line edit needs direct-construction tests — build `WorkspaceActivityResult` inline, assert the extended totals line renders — following the `TestAggregationResultFormatters` pattern (`scripts/tests/test_feat3410_workspace_quality.py:234-262`). Home: `test_feat3445_workspace_activity.py`. [Agent 3 finding, grep-confirmed]
+- `test_no_ok_member_totals_all_null` (`scripts/tests/test_cli_history.py` ~:790-815) — existing all-unknown-workspace test that already asserts `instrumented is False` + `None` counts (:809-813); the natural home for the AC "all-unknown workspace → `has_history_members: 0`, `has_history: false`" pin. [Agent 3 finding, grep-confirmed]
 
 ### Documentation
 - `docs/reference/API.md` (workspace_activity section)
@@ -124,7 +125,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 
-- `scripts/tests/test_cli_history.py` is missing from this map and MUST change: `TestHistoryActivity` pins exact key lists via `_MEMBER_KEYS`/`_TOTALS_KEYS` (:438-462), enforced as exact-list equality at :535, :547, :557, plus `instrumented` value asserts at :542/:550/:559-560/:714. Any new `to_dict()` key fails these regardless of insertion position — both constants must gain `has_history` (+ totals keys). AC "pytest passes" is unmeetable without editing this file.
+- `scripts/tests/test_cli_history.py` is missing from this map and MUST change: `TestHistoryActivity` pins exact key lists via `_MEMBER_KEYS`/`_TOTALS_KEYS` (:438-462), enforced as exact-list equality at :535, :547, :557, plus `instrumented` value asserts at :542/:550/:559-560/:809. Any new `to_dict()` key fails these regardless of insertion position — both constants must gain `has_history` (+ totals keys). AC "pytest passes" is unmeetable without editing this file.
 - Correction to Similar Patterns: `workspace_quality.py` contains zero references to `instrumented` (full-file read + repo-wide grep verified); its `AggregationResult` carries `skipped` instead. The claim "instrumented is load-bearing in the workspace quality reader and its tests" is mis-attributed — the actual locks are `test_feat3445_workspace_activity.py:267/:281/:298/:308` (per-status semantics) and the CLI exact-list tests above. The design conclusion (never redefine `instrumented`) still holds; AC on workspace_quality tests is trivially satisfied since quality never touches the field.
 - `scripts/little_loops/issue_history/__init__.py` re-exports (:202-210, `__all__` :293-300); the CLI imports the formatters through it (:658-664). `_has_any_history` is private — no export change needed.
 - Documentation correction: there is no dedicated "workspace_activity section" in `docs/reference/API.md` — the function is one row in the `## little_loops.issue_history` table at API.md:2390 (states "None (never 0) counts when not ok"). CLI-side, the JSON-contract paragraph is `docs/reference/CLI.md:3395-3405`, and CLI.md:3398 states "totals mirrors WorkspaceTotals.to_dict() key order" — both need the new keys.
@@ -151,7 +152,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Add formatter totals-line tests (text + markdown) to `scripts/tests/test_feat3445_workspace_activity.py` — direct-construction pattern from `TestAggregationResultFormatters` (`scripts/tests/test_feat3410_workspace_quality.py:234-262`); zero tests call `format_workspace_activity_*` today, so the Option A totals-line edit lands untested without this
-- Extend `test_no_ok_member_totals_all_null` in `scripts/tests/test_cli_history.py` (~:705-717) with `has_history_members == 0` / `has_history is False` asserts — pins the all-unknown-workspace AC as decided behavior
+- Extend `test_no_ok_member_totals_all_null` in `scripts/tests/test_cli_history.py` (~:790-815) with `has_history_members == 0` / `has_history is False` asserts — pins the all-unknown-workspace AC as decided behavior
 - Update the two key-enumeration sentences in `docs/reference/CLI.md:3397-3399` (member-key list and totals key-order list) — `has_history` is neither an already-enumerated key nor a "count field", so both sentences change, not just the paragraph around them
 - Update the trailing semantics sentence in the same paragraph (`with \`instrumented\` as the OR over members and counts summed over \`ok\` members only`) to also state the new totals rule: `has_history` is the OR over members where the member field `is True` (so an all-`null` workspace totals to `false`/`0`, per the all-unknown AC)
 
@@ -239,17 +240,30 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] Empty schema'd db (tables, zero rows): `instrumented: true`, `has_history: false`, counts zero.
-- [ ] Db with rows all outside the window: `instrumented: true`, `has_history: true`, counts zero.
-- [ ] Db with one `loop_runs` row and no `issue_events` (and vice versa): `has_history: true`.
-- [ ] `db_missing`: `has_history: false`. `schema_skew` and `unreadable`: `has_history: null` in JSON.
-- [ ] `WorkspaceTotals` JSON contains `has_history_members` and `has_history` with the any/count semantics above.
-- [ ] All-unknown workspace (every member `schema_skew`/`unreadable`): totals `has_history_members: 0`, `has_history: false` despite every member being `null` — pinned as decided behavior (count/any over `is True`), not accidental.
-- [ ] Exact-list test sites updated: `_MEMBER_KEYS`/`_TOTALS_KEYS` in `test_cli_history.py` and `test_totals_to_dict_key_order` in `test_feat3445_workspace_activity.py` gain the new keys per Decision 4.
-- [ ] Option A rendering pinned by test: direct-construction formatter tests (text + markdown) assert the totals line renders the `has_history` **count** in the exact Decision 4 shape — `members: {N} (ok: {X}, instrumented: {Y}, has_history: {Z})`.
-- [ ] CLI golden: single-repo fallback member (db pre-created with only a `cli_events` row) reports `ok`, zero counts, `has_history: false` — the canonical empty-but-schema'd case.
-- [ ] Existing `instrumented` semantics and all workspace_quality tests unchanged.
-- [ ] Docs updated; `python -m pytest scripts/tests/` passes.
+- [x] Empty schema'd db (tables, zero rows): `instrumented: true`, `has_history: false`, counts zero.
+- [x] Db with rows all outside the window: `instrumented: true`, `has_history: true`, counts zero.
+- [x] Db with one `loop_runs` row and no `issue_events` (and vice versa): `has_history: true`.
+- [x] `db_missing`: `has_history: false`. `schema_skew` and `unreadable`: `has_history: null` in JSON.
+- [x] `WorkspaceTotals` JSON contains `has_history_members` and `has_history` with the any/count semantics above.
+- [x] All-unknown workspace (every member `schema_skew`/`unreadable`): totals `has_history_members: 0`, `has_history: false` despite every member being `null` — pinned as decided behavior (count/any over `is True`), not accidental.
+- [x] Exact-list test sites updated: `_MEMBER_KEYS`/`_TOTALS_KEYS` in `test_cli_history.py` and `test_totals_to_dict_key_order` in `test_feat3445_workspace_activity.py` gain the new keys per Decision 4.
+- [x] Option A rendering pinned by test: direct-construction formatter tests (text + markdown) assert the totals line renders the `has_history` **count** in the exact Decision 4 shape — `members: {N} (ok: {X}, instrumented: {Y}, has_history: {Z})`.
+- [x] CLI golden: single-repo fallback member (db pre-created with only a `cli_events` row) reports `ok`, zero counts, `has_history: false` — the canonical empty-but-schema'd case.
+- [x] Existing `instrumented` semantics and all workspace_quality tests unchanged.
+- [x] Docs updated; `python -m pytest scripts/tests/` passes.
+
+## Resolution
+
+**Completed (2026-09-11).** Implemented exactly per the resolved decisions (Option A totals-line rendering, Decision 4 key placement, Decision 5 analytics exclusion):
+
+- `_has_any_history(conn)` helper in `workspace_activity.py` — windowless `SELECT EXISTS(...) OR EXISTS(...)` over `issue_events`/`loop_runs`; reuses the gated read-only conn (source-inspection constraint held).
+- `RepoActivity.has_history: bool | None` — ok: computed inside the existing count `try` (EXISTS failures route to UNREADABLE via the existing `sqlite3.Error` branch); `db_missing`: `False`; `schema_skew`/`unreadable`: `None`.
+- `WorkspaceTotals.has_history_members`/`has_history` — count/any over `is True` only; `to_dict()` keys immediately after `instrumented` on both dataclasses (FEAT-3446 stable order preserved for existing keys).
+- Text/markdown totals lines render the `has_history` count in the Decision 4 shape; JSON/YAML pass through `to_dict()` untouched.
+- Tests (TDD: 17 red → green): new `TestHasHistory` (9 tests incl. cli_events-only and all-unknown-workspace pins) + `TestActivityFormatters` (direct-construction text/markdown) in `test_feat3445_workspace_activity.py`; `_MEMBER_KEYS`/`_TOTALS_KEYS` extended, golden + fallback + all-null pins extended in `test_cli_history.py`.
+- Docs: module docstring, `docs/reference/API.md:2390` row, `docs/reference/CLI.md` JSON-contract paragraph (key sentences + totals semantics).
+
+Verification: `python -m pytest scripts/tests/` → 24041 passed, 43 skipped; `ruff check` clean; `python -m mypy scripts/little_loops/` clean. `instrumented` semantics and all workspace_quality tests unchanged. No deviations from `## Program Design`.
 
 ## Related
 
@@ -263,10 +277,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-09-11 | Priority: P2
+**Done** | Created: 2026-09-11 | Completed: 2026-09-11 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T23:40:52 - `b03dbb9c-75b3-4e1f-9ead-63f407d63df9.jsonl`
+- `/ll:ready-issue` - 2026-09-11T23:26:07 - `70c8bc55-0aaa-4686-a1f3-4fda8200e193.jsonl`
 - `/ll:confidence-check` - 2026-09-11T22:19:33 - `369e3711-4556-4e3c-876a-604507ba84d4.jsonl`
 - `/ll:confidence-check` - 2026-09-11T22:06:20 - `04b0bc6a-df8f-4f3b-a7b5-400723a6e9f5.jsonl`
 - `/ll:wire-issue` - 2026-09-11T21:19:57 - `ab7c07a0-32fd-4cb6-93e8-64bf011c8239.jsonl`

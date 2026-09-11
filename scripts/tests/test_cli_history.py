@@ -443,6 +443,7 @@ class TestHistoryActivity:
         "ok",
         "error",
         "instrumented",
+        "has_history",
         "loops_run",
         "loops_completed",
         "issues_completed",
@@ -453,6 +454,8 @@ class TestHistoryActivity:
         "members",
         "instrumented_members",
         "instrumented",
+        "has_history_members",
+        "has_history",
         "ok_members",
         "loops_run",
         "loops_completed",
@@ -540,6 +543,7 @@ class TestHistoryActivity:
         assert healthy["ok"] is True
         assert healthy["error"] is None
         assert healthy["instrumented"] is True
+        assert healthy["has_history"] is True
         assert healthy["issues_completed"] == 1
         assert healthy["issues_deferred"] == 0
         assert healthy["issues_closed"] is None
@@ -548,6 +552,7 @@ class TestHistoryActivity:
         assert missing_db["status"] == "db_missing"
         assert missing_db["ok"] is False
         assert missing_db["instrumented"] is False
+        assert missing_db["has_history"] is False
         assert missing_db["error"] is not None
         assert "not found" in missing_db["error"]
         for field in ("loops_run", "loops_completed", "issues_completed", "issues_deferred"):
@@ -558,6 +563,8 @@ class TestHistoryActivity:
         assert payload["totals"]["members"] == 2
         assert payload["totals"]["instrumented_members"] == 1
         assert payload["totals"]["instrumented"] is True
+        assert payload["totals"]["has_history_members"] == 1
+        assert payload["totals"]["has_history"] is True
         assert payload["totals"]["ok_members"] == 1
         assert payload["totals"]["issues_completed"] == 1
         assert payload["totals"]["issues_closed"] is None
@@ -611,6 +618,11 @@ class TestHistoryActivity:
         assert member["label"] == f"{tmp_path.name} (source)"
         assert member["repo_path"] == str(tmp_path)
         assert member["issues_completed"] == 0
+        # ENH-3450 golden: the fallback db carries only a cli_events row —
+        # schema'd but empty, so has_history is False (Decision 5: analytics
+        # churn is not workspace history).
+        assert member["has_history"] is False
+        assert payload["totals"]["has_history"] is False
         assert payload["totals"]["ok_members"] == 1
 
     def test_activity_env_kill_switch_db_missing(
@@ -810,6 +822,9 @@ class TestHistoryActivity:
         assert payload["totals"]["members"] == 1
         assert payload["totals"]["ok_members"] == 0
         assert payload["totals"]["instrumented"] is False
+        # ENH-3450: count/any over `is True` only — no True member -> 0/false.
+        assert payload["totals"]["has_history_members"] == 0
+        assert payload["totals"]["has_history"] is False
         for field in ("loops_run", "loops_completed", "issues_completed", "issues_deferred"):
             assert payload["totals"][field] is None
         assert payload["totals"]["issues_closed"] is None

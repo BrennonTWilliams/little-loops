@@ -3400,10 +3400,17 @@ ll-history activity --workspace --since 2026-08-10T14:00:00Z --format json
 
 **JSON contract:** `since`/`until` echo the raw CLI strings verbatim; `per_repo` is an
 array of member objects in manifest declaration order, each carrying
-`repo_path`/`role`/`label`/`status`/`ok`/`error`/`instrumented` + the five count fields;
-`totals` mirrors `WorkspaceTotals.to_dict()` key order
-(`members, instrumented_members, instrumented, ok_members, ...`), with `instrumented`
-as the OR over members and counts summed over `ok` members only. Metrics unavailable
+`repo_path`/`role`/`label`/`status`/`ok`/`error`/`instrumented`/`has_history` + the five
+count fields; `totals` mirrors `WorkspaceTotals.to_dict()` key order
+(`members, instrumented_members, instrumented, has_history_members, has_history, ok_members, ...`),
+with `instrumented` as the OR over members, counts summed over `ok` members only, and
+`has_history` as the OR over members whose member-level `has_history` is `true`
+(count/any over `is True` only, so an all-unknown workspace totals to `0`/`false`).
+`has_history` (ENH-3450) answers "were any rows ever recorded in `issue_events` or
+`loop_runs`, irrespective of the window" — `false` for an empty-but-schema'd db and
+for `db_missing`, `null` for `schema_skew`/`unreadable` (row count unknowable), and
+`true` with zero counts for a quiet window. It deliberately ignores `cli_events`/
+`skill_events` rows (ll's own analytics churn is not workspace history). Metrics unavailable
 from `history.db` serialize as `null`, never `0`: `issues_closed` is a reserved
 always-`null` key (closed issues are recorded as `done` transitions, so the split
 cannot be made), and non-ok members carry `null` counts. FSM signals
