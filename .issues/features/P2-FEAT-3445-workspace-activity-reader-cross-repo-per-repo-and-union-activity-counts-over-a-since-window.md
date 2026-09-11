@@ -209,9 +209,9 @@ A downstream briefing/portfolio sync calls `aggregate_workspace_activity(members
 
 ## Verification Notes
 
-Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
-pass, so the issue as it now reads is up to date — this section is a record of
-what was wrong and fixed, not an outstanding action item)
+Verdict at time of check: **NEEDS_UPDATE** (citation corrections below applied
+in the same pass — this section is a record of what was wrong and fixed for
+those, not an outstanding action item; one item is not fixed, see Remaining)
 
 Checked 32+ file:line citations against HEAD. Corrected:
 - Motivation section's `record_issue_event` transition citation named
@@ -248,6 +248,19 @@ Decisions log: no active required rules found (`ll-issues decisions list
 --type rule --enforcement required --active-only` returned empty).
 
 Evidence-quote check (`ll-verify-evidence --json`): clean, 0 findings.
+
+Proposal-vs-code consequence check (ENH-3250): no exception-handler or
+test-fixture-invalidation defects found — the `test_never_uses_migrating_opener`
+hoist risk is already correctly self-flagged in the Wiring Phase, including the
+right failure mode (`ValueError` from a literal `text.index()` source-inspection
+miss if the gate helper is hoisted out of `workspace_quality.py`).
+
+Remaining: two Integration Map points have no corresponding Acceptance
+Criterion — the `issue_history/__init__.py` three-point public-export
+registration, and the `docs/reference/API.md` / `docs/ARCHITECTURE.md`
+documentation updates. Neither is individually severe enough to override the
+citation-based NEEDS_UPDATE verdict above, but an implementer following only
+the ACs could skip both.
 
 ## Status
 

@@ -195,6 +195,31 @@ A downstream sync runs `ll-history activity --workspace --since 2026-08-10T14:00
 | architecture | docs/reference/API.md | Module reference for the reader/formatter placement this CLI exposes |
 | guidelines | .claude/CLAUDE.md | Testing & CI policy — new CLI tests belong in `python -m pytest scripts/tests/` |
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND**
+
+All 23 code/test/doc file:line citations checked against HEAD were accurate
+(history.py, workspace.py, agent_quality.py formatter placements and
+dispatch, `test_cli_history.py` fixtures/tests, `test_feat3410_workspace_quality.py`
+golden-shape test). No claim about current state is false.
+
+The defect is in AC coverage of the proposal's own Integration Map: the
+Wiring Phase explicitly requires updating
+`docs/guides/HISTORY_SESSION_GUIDE.md:452-502` to add `ll-history activity`
+to the `quality`/`rework` windowing-convention comparison, but no Acceptance
+Criterion covers it — AC6 covers only `docs/reference/CLI.md` and the
+`--help` epilog. A point named in the Integration Map/Wiring Phase with no
+corresponding AC is a gap an implementer can silently skip.
+
+Remaining: add an AC (or fold into AC6) requiring the
+`HISTORY_SESSION_GUIDE.md` comparison update, or downgrade that line from
+"must be included" to informational in the Wiring Phase if it's not meant to
+gate completion.
+
+Decisions log: no active required rules found. Evidence-quote check
+(`ll-verify-evidence --json`): clean, 0 findings.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
