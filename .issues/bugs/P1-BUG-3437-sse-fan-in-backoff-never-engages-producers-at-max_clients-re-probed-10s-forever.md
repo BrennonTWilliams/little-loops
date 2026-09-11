@@ -9,6 +9,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
 parent: EPIC-3436
+confidence_score: 100
+outcome_confidence: 96
+score_complexity: 23
+score_test_coverage: 25
+score_ambiguity: 24
+score_change_surface: 24
 ---
 
 # BUG-3437: SSE fan-in backoff never engages; producers at max_clients re-probed ~10/s forever
@@ -220,6 +226,7 @@ Optional new coverage in `TestSseBridgeFanIn` (same caplog convention): non-flap
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T01:01:30 - `f21b2f19-932a-4549-8711-81b75b733db6.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:52:21 - `9093c96d-29e3-4de9-b547-725e14459020.jsonl`
 - manual review - 2026-09-11 - folded design review: lifetime-based classifier, constant independent of `rescan_s`, log-bound test, FEAT-3323 mirror decided as historical record
 - `/ll:wire-issue` - 2026-09-11T00:08:42 - `38e69540-569a-4d83-90fc-f4d237d70095.jsonl`
