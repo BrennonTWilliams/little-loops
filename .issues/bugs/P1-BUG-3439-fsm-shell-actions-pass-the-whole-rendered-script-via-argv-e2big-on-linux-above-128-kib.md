@@ -4,7 +4,7 @@ type: BUG
 title: FSM shell actions pass the whole rendered script via argv; E2BIG on Linux above
   128 KiB
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
@@ -16,6 +16,8 @@ score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 10
+completed_at: '2026-09-11T02:49:07Z'
+closed_reason: already_fixed
 ---
 
 # BUG-3439: FSM shell actions pass the whole rendered script via argv; E2BIG on Linux above 128 KiB
@@ -200,9 +202,15 @@ no `PROPOSAL_UNSOUND` finding.
 
 ## Status
 
-**Open** | Created: 2026-09-10 | Priority: P1
+**Closed - Already Fixed** | Created: 2026-09-10 | Priority: P1
+
+## Resolution
+
+- **Reason**: already_fixed
+- **Evidence**: Commit `e4ea5d401` ("fix(fsm): handle oversized shell actions via temp file instead of -c argument", 2026-09-10 21:45:29) already implements this issue's Option A exactly: `DefaultActionRunner.run`'s shell branch (`fsm/runners.py:344-360`) and `runner_spec._run_cmd` (`runner_spec.py:321-329`) both write the rendered script to a `NamedTemporaryFile(prefix="ll-action-", suffix=".sh")` and spawn `["bash", script_path]`, with `os.unlink` in the existing `finally`. No `["bash", "-c", ...]` argv spawn remains at either site. The issue's own required regression tests are present and pass: `TestDefaultActionRunnerShellPath::test_oversized_script_spawns` (test_fsm_runners.py:588), `TestRunActionDispatch::test_cmd_oversized_target_spawns` (test_runner_spec.py:448), and the re-pointed `test_write_sub_loop_output_survives_oversized_stream` (test_loop_router.py) — all 39 tests across `test_fsm_runners.py`, `test_runner_spec.py`, and `test_loop_router.py` pass.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-11T02:48:38 - `1bc329f7-d78a-4be3-a47a-8b7a470fa715.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:54:04 - `a2c01544-4d8b-495a-8672-7b8c21ecfdda.jsonl`
 - `/ll:verify-issues` - 2026-09-11T01:50:21 - `f77f88c9-58d9-4ee9-80f3-b9585d4c8714.jsonl`
 - `/ll:decide-issue` - 2026-09-10T23:50:48 - `2f1f154f-c743-4a68-8aab-afcd2a716a72.jsonl`
