@@ -36,6 +36,12 @@ _STATUS_SYMBOLS: dict[str, str] = {
     "unsupported": "✗",
 }
 
+# Every SQLite database file starts with this 16-byte magic on page 1. Reading it
+# is O(1) in file size and platform-independent, unlike statement probes whose
+# behavior varies by build — a lazy-header build answers `SELECT 1` without ever
+# touching page 1 (BUG-3440).
+_SQLITE_HEADER_MAGIC: bytes = b"SQLite format 3\x00"
+
 
 @dataclass(frozen=True)
 class FindingDetail:
@@ -435,16 +441,43 @@ def _decisions_store_check() -> list[CheckResult]:
     ]
 
 
+def _is_sqlite_file(db_path: Path) -> bool:
+    """Cheap header-magic probe: is `db_path` a SQLite database file?
+
+    Pure file I/O (O(1) in file size, no SQLite involvement), so the verdict does
+    not depend on the host build's lazy-header behavior (BUG-3440). Short reads,
+    empty files, and unreadable paths (directory, permissions) compare `False`
+    rather than raising — "not a confirmed SQLite file" is the safe verdict for
+    the never-raise `_*_data()` convention.
+    """
+    try:
+        with open(db_path, "rb") as header_fh:
+            header = header_fh.read(16)
+    except OSError:
+        return False
+    return header == _SQLITE_HEADER_MAGIC
+
+
 def _history_db_data() -> dict:
     """Presence/readability probe for `.ll/history.db`.
 
     Must not create the DB: `session_store.connect()`/`ensure_db()` both
     create-on-demand, so a genuinely absent DB is probed via `Path.exists()`
-    first and never passed through either function.
+    first and never passed through either function. Readability is decided by
+    the `_is_sqlite_file()` header check *before* connecting — a constant-
+    expression statement probe alone is build-dependent (BUG-3440) — with the
+    read-only connect + statement probe retained as the secondary check for a
+    valid-header-but-damaged file.
     """
     db_path = Path.cwd() / DEFAULT_DB_PATH
     if not db_path.exists():
         return {"status": "unsupported", "severity": "informational", "note": "not yet created"}
+    if not _is_sqlite_file(db_path):
+        return {
+            "status": "unsupported",
+            "severity": "error",
+            "note": "unreadable: not a SQLite database (bad header magic)",
+        }
 
     import sqlite3
 

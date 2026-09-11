@@ -3,10 +3,11 @@ id: BUG-3440
 type: BUG
 title: ll-doctor reports a corrupt history.db as healthy on Linux SQLite builds
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
+completed_at: '2026-09-11T05:17:10Z'
 parent: EPIC-3436
 confidence_score: 100
 outcome_confidence: 89
@@ -100,7 +101,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - The garbage-file regression test already exists: `TestHistoryDb::test_present_but_corrupt_reports_error` (`scripts/tests/test_cli_doctor_install_checks.py:193-203`) writes a 55-byte garbage file and asserts `unsupported`/`error` — it is the test failing on Linux CI, not a test to add. The net-new test work is only the agreement assertion against `_schema_drift_data()`; no existing test cross-checks the two checks
 - Neither proposed mechanism has precedent in this codebase: no source invokes `PRAGMA quick_check`/`integrity_check`, and no constant or comparison for the `b"SQLite format 3\x00"` header magic exists repo-wide — both variants are net-new code
 - The underlying mechanism is confirmed by precedent: a `mode=ro` connect succeeds on a non-database file and the error surfaces at the first executed statement (PRAGMA or SELECT alike) — documented and handled in `session_store/sessions.py` `_query_threads_db` (docstring ~:116-119), `issue_history/workspace_quality.py` `_open_member_readonly` (~:108-115), and `cli/doctor_trim.py` (catches `sqlite3.OperationalError` on first query, ~:282). A statement-level probe is the established family pattern; `SELECT 1` is the lone constant-expression probe that defeats it
-- Whichever probe lands, the corrected verdict flows unchanged: `unsupported`/`error` → `_history_db_check()` → `_exit_code_for()` (exit 1 iff `severity == "error" and status == "unsupported"`, `doctor.py:125-127`); both statuses already exist in `CheckResult`'s Literal (`doctor.py:71`) and `_STATUS_SYMBOLS` (`doctor.py:36`)
+- Whichever probe lands, the corrected verdict flows unchanged: `unsupported`/`error` → `_history_db_check()` → `_exit_code_for()` (exit 1 iff `severity == "error" and status == "unsupported"`, `doctor.py:125-127`); both statuses already exist in `CheckResult`'s Literal (`doctor.py:71`) and `_STATUS_SYMBOLS` (`doctor.py:33`)
 
 _Added by `/ll:confidence-check` — 2026-09-10 — measured empirically, not inferred:_
 
@@ -163,15 +164,32 @@ _Verdict at time of check: **VALID** (no corrections required — `/ll:verify-is
 
 Every claim about current state checked out against the working tree:
 
-- **Anchors all exact**: `_history_db_data()` at `doctor.py:438` with the `SELECT 1` probe at :454; `_exit_code_for()` :125-128; `_history_db_check()` :473; call sites :464/:475/:1306-1307/:1436; `_print_history_db_section()` call :1423; `CheckResult` Literal :71 and `_STATUS_SYMBOLS` :36; `cli/__init__.py:66`; `session_store/db.py:15`; test anchors `:164/:176/:193-203` and `test_cli_doctor.py:67/:718`; `docs/reference/CLI.md:398` ll-doctor section. Convention citations (`sessions.py` ~:116-119, `workspace_quality.py` ~:108-115, `doctor_trim.py` ~:282) all match
+- **Anchors all exact**: `_history_db_data()` at `doctor.py:438` with the `SELECT 1` probe at :454; `_exit_code_for()` :125-128; `_history_db_check()` :473; call sites :464/:475/:1306-1307/:1436; `_print_history_db_section()` call :1423; `CheckResult` Literal :71 and `_STATUS_SYMBOLS` :33; `cli/__init__.py:66`; `session_store/db.py:15`; test anchors `:164/:176/:193-203` and `test_cli_doctor.py:67/:718`; `docs/reference/CLI.md:398` ll-doctor section. Convention citations (`sessions.py` ~:116-119, `workspace_quality.py` ~:108-115, `doctor_trim.py` ~:282) all match
 - **CI evidence re-verified directly** (`gh run view 34519368279 --log-failed`): unit-tests job 2026-09-10T19:31:17Z, `TestHistoryDb::test_present_but_corrupt_reports_error` failed with exactly `assert 'full' == 'unsupported'`, and `TestSseBridgeFanIn::test_producer_at_max_clients_backs_off_sub_linearly` + the verify-evidence span gate (`TestRepoGate::test_no_new_unverifiable_evidence`) failed alongside it as the issue states. Completeness nit: the run carried **two further** unrelated failures the issue doesn't enumerate (`test_rn_refine.py::TestStepwiseChainPlumbing::test_commit_leaf_commits_pending_changes`, `test_conftest_cap.py::TestXdistAutoNumWorkers::test_env_var_overrides_cpu_count`) — neither touches this check, so the diagnosis is unaffected
 - **Negative claims hold**: no `SQLite format 3` magic constant anywhere in `scripts/` (zero matches); no `quick_check`/`integrity_check` in `little_loops` source (only vendored omp-adapter `node_modules` hits, which are third-party dist, not source); no `ll-doctor` invocation in `hooks/`, `loops/`, or `.github/workflows/`
 - **Proposal consequence check (ENH-3250)**: `_is_sqlite_file()`'s `OSError → False` covers `IsADirectoryError`/`PermissionError` (both OSError subclasses); existing fixtures (garbage → header-mismatch path, real DB → header-then-connect, absent → `Path.exists()` guard) are unaffected; the 0-byte flip has no test pinning today's verdict; statuses already exist in `CheckResult`'s Literal. No findings
 - **Checks that did not run or were clean**: decisions log queried with no active required rules (clean, not skipped); `ll-verify-evidence` returned `"ok": true` with 0 findings; `ll-code` graph (provider=`codegraph`, freshness=`fresh`) corroborated `main_doctor`'s caller surface as tests + CLI dispatch only
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/doctor.py`: added `_SQLITE_HEADER_MAGIC` constant and `_is_sqlite_file()` (16-byte header-magic probe, `OSError → False`); gated `_history_db_data()` pre-connect so a non-SQLite file returns `unsupported`/`error` ("unreadable: not a SQLite database (bad header magic)") without depending on host SQLite build behavior; the read-only connect + statement probe stays behind it as the secondary check for valid-header-but-damaged files
+- `scripts/tests/test_cli_doctor_install_checks.py`: added `TestIsSqliteFile` (garbage → False, real DB → True, sub-16-byte → False without raising, 0-byte → False, directory → False via OSError path) and `TestHistoryDb` tests for the EPIC-3436 A3 agreement with `_schema_drift_data()` on garbage files, the 0-byte verdict flip (`full` → `unsupported`/`error`), and the directory never-raise path
+
+### Verification Results
+- Tests: PASS — targeted `test_cli_doctor_install_checks.py` + `test_cli_doctor.py` 87/87; full suite 23,980 passed / 43 skipped with 4 failures that are pre-existing on `main` and unrelated (identical with this change stashed: `test_issue_parser.py` priority-regex allowlist ×2 + corpus-differential baseline ×1, and the `test_verify_evidence.py` span gate — BUG-3442's territory)
+- Lint: PASS — `ruff check scripts/`
+- Types: PASS — `mypy scripts/little_loops/cli/doctor.py` clean; repo-wide mypy baseline noise unchanged by this diff
+- Run: PASS — `ll-doctor` against this repo's real 7.90 GB `.ll/history.db`: 5.8 s wall (pre-fix baseline 4.88 s; machine-noise delta, header read adds 2×~22 µs), History DB `✓`, exit 0
+- Integration: PASS — verdict vocabulary, `_exit_code_for()` exit-code axis, and `--json` output shape unchanged
+
 ## Status
 
-**Open** | Created: 2026-09-10 | Priority: P2
+**Done** | Created: 2026-09-10 | Completed: 2026-09-11 | Priority: P2
 
 
 ## Confidence Check Notes
@@ -189,6 +207,8 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T05:16:48 - `2e9acaa6-3479-4768-a983-fb4ec05af514.jsonl`
+- `/ll:ready-issue` - 2026-09-11T04:59:46 - `88b0fa66-b311-4b3c-9081-7750bb38ce44.jsonl`
 - `/ll:confidence-check` - 2026-09-11T04:28:33 - `7b9b563e-bcc3-4403-a402-4a3f96435198.jsonl`
 - `/ll:verify-issues` - 2026-09-11T04:23:49 - `38ddaff7-ee20-4c63-80ff-084ef6a48cc9.jsonl`
 - Pre-implementation review (direct session) - 2026-09-10 - CI evidence attached (run 34519368279); OSError never-raise gap, 0-byte verdict flip, and agreement-test scoping folded in

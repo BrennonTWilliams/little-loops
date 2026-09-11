@@ -202,6 +202,109 @@ class TestHistoryDb:
         assert data["status"] == "unsupported"
         assert data["severity"] == "error"
 
+    def test_garbage_file_agrees_with_schema_drift_verdict(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """EPIC-3436 A3: history_db and schema_drift must not diverge on a garbage file.
+
+        Scoped to garbage files only — on a 0-byte file the two checks disagree by
+        design (schema_drift says `uninitialized`/informational).
+        """
+        from little_loops.cli.doctor import _schema_drift_data
+
+        monkeypatch.chdir(tmp_path)
+        db_dir = tmp_path / ".ll"
+        db_dir.mkdir()
+        (db_dir / "history.db").write_bytes(
+            b"not a sqlite file at all, just garbage bytes 1234567890"
+        )
+
+        history = _history_db_data()
+        drift = _schema_drift_data()
+
+        assert history["status"] == drift["status"] == "unsupported"
+        assert history["severity"] == drift["severity"] == "error"
+
+    def test_zero_byte_file_reports_unsupported_error(self, tmp_path: Path, monkeypatch) -> None:
+        """A truncated create must not read as healthy (BUG-3440 behavior flip)."""
+        monkeypatch.chdir(tmp_path)
+        db_dir = tmp_path / ".ll"
+        db_dir.mkdir()
+        (db_dir / "history.db").write_bytes(b"")
+
+        data = _history_db_data()
+
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "error"
+
+    def test_directory_as_db_reports_unsupported_error(self, tmp_path: Path, monkeypatch) -> None:
+        """A directory at the DB path must land in the unreadable dict, never raise.
+
+        Guards `_is_sqlite_file()`'s OSError handling — a naive pre-connect header
+        read without it would leak `IsADirectoryError` out of the probe.
+        """
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ll" / "history.db").mkdir(parents=True)
+
+        data = _history_db_data()
+
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "error"
+
+
+class TestIsSqliteFile:
+    """Tests for `_is_sqlite_file()` (BUG-3440).
+
+    The only platform-independent coverage in this set: pure file I/O, no reliance
+    on which exceptions the host SQLite build happens to raise.
+    """
+
+    def test_garbage_file_is_false(self, tmp_path: Path) -> None:
+        from little_loops.cli.doctor import _is_sqlite_file
+
+        db_path = tmp_path / "garbage.db"
+        db_path.write_bytes(b"not a sqlite file at all, just garbage bytes 1234567890")
+
+        assert _is_sqlite_file(db_path) is False
+
+    def test_real_database_is_true(self, tmp_path: Path) -> None:
+        import sqlite3
+
+        from little_loops.cli.doctor import _is_sqlite_file
+
+        db_path = tmp_path / "real.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE t (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+        assert _is_sqlite_file(db_path) is True
+
+    def test_short_file_is_false_without_raising(self, tmp_path: Path) -> None:
+        """A sub-16-byte file (even a magic prefix) must compare False, not raise."""
+        from little_loops.cli.doctor import _is_sqlite_file
+
+        db_path = tmp_path / "short.db"
+        db_path.write_bytes(b"SQLite forma")
+
+        assert _is_sqlite_file(db_path) is False
+
+    def test_zero_byte_file_is_false(self, tmp_path: Path) -> None:
+        from little_loops.cli.doctor import _is_sqlite_file
+
+        db_path = tmp_path / "empty.db"
+        db_path.write_bytes(b"")
+
+        assert _is_sqlite_file(db_path) is False
+
+    def test_directory_is_false_via_oserror_path(self, tmp_path: Path) -> None:
+        from little_loops.cli.doctor import _is_sqlite_file
+
+        db_path = tmp_path / "dir.db"
+        db_path.mkdir()
+
+        assert _is_sqlite_file(db_path) is False
+
 
 def _bootstrap_at(db: Path, version: int) -> None:
     """Bootstrap a database at an exact historical schema *version*.
