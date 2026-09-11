@@ -109,6 +109,16 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - **Documentation**: `docs/ARCHITECTURE.md:630` describes the fan-in pipeline at behavior level with no window mention — verify after the fix, likely no edit needed
 - **Configuration**: no `events.bridge` override exists in `.ll/ll-config.json` (this project runs on code defaults); `rescan_s` default originates in `BridgeEventsConfig` (features.py:1318)
 
+### Wiring Findings
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-10 — 3-agent tracing (caller/importer, side-effect, test-gap); every mapped path grep-confirmed:_
+
+- **Dependent Files (Callers/Importers) — verified, no edit needed**: `scripts/little_loops/__init__.py:68-76` re-exports only unchanged transport symbols (`SseBridge`/`serve_sse_bridge` are not package-level exports); `scripts/little_loops/events.py:23` and `scripts/little_loops/cli/loop/lifecycle.py:720` import `Transport`/`wire_transports` only; `scripts/little_loops/cli/artifact/__init__.py` (:21-23 docstring, :50 import, :189 subparser registration, :212-213 dispatch) describes the fan-in at behavior level with no backoff/window text; `scripts/little_loops/config/core.py:990-993` `to_dict()` serializes `rescan_s` as a value only; `scripts/little_loops/templates/dashboard.llat/manifest.yaml:44` references the serve path without backoff semantics
+- **Mirror site beyond the three named above**: `.issues/features/P3-FEAT-3323-live-event-stream-substrate-localhost-sse-bridge-over-the-eventbus.md` — the `§ Fan-in → Backoff` source that the transport.py docstring markers (:958, :969, :1082) cite — describes the flap window as `rescan_s`-relative in five places (Backoff design bullet :239-253, Tests bullet :631-635, config-key table :726, Implementation Step 4 :748-751, Resolved Decisions :935-937); decide living-mirror reword vs historical record (issue files carry Session Logs and dated decisions, so historical-record is defensible)
+- **Tests (update/re-verify)**: `scripts/tests/test_feat3323_sse_bridge.py:302` — `test_producer_eof_then_reconnect_on_next_rescan`: its first producer never forwards a line, so post-fix its EOF death classifies as a flap — the doubling branch engages (0.05→0.1) and `state.warned` latches; still expected to pass inside its 3.0s `_wait_until` budget, but must be re-run and its name/docstring ("reconnect_on_next_rescan") checked for semantic drift
+- **Tests (new, optional coverage)**: no test anywhere asserts the warning, the non-flap death reset (`state.interval = rescan_s`, transport.py:1115), or the `_on_forward` reset (:1145-1151) — candidates in `TestSseBridgeFanIn` following the `caplog.at_level(logging.WARNING, logger="little_loops.transport")` + substring-filter convention of `test_transport.py:562-582`; filter on "closed the connection immediately", not "max_clients" — the producer-side rejection warning shares that substring on the same logger
+- **Verified no-edit**: `docs/reference/CLI.md:5014-5090` (ll-artifact serve section covers fan-in/max_clients/seeding/exit codes, no backoff semantics), `docs/reference/EVENT-SCHEMA.md:1699-1704` (`client_rejections` contract, no rate claim), `serve.py` CLI help text, `BridgeEventsConfig` docstring (features.py:1299-1330), `.ll/ll-config.json` (no `events.bridge` override — re-verified); no consumer of `client_rejections` exists in `hooks/`, `skills/`, `commands/`, `agents/`, or loop YAMLs beyond `cli/loop/runner.py:541`; informational — `.issues/enhancements/P1-ENH-3416-...md:270` cites `transport.py:1106` as a backoff example (currently dead code; becomes accurate post-fix)
+
 ## Program Design
 
 ### Signatures
@@ -138,6 +148,14 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - No regression in producer-side rejection behavior: `python -m pytest scripts/tests/test_transport.py -k "max_clients or rejection" -v` passes unchanged; full gate `python -m pytest scripts/tests/` exits 0
 - Timing-robustness constraints for the rewritten test (suite conventions, evidence: `_wait_until` docstring test_transport.py:94; raised-budget comments test_feat3323_sse_bridge.py:210-231): `_wait_until` is for setup conditions only (holder-socket occupancy), never for measurement windows; window boundaries use `time.monotonic()` deadlines; budgets carry load-justifying comments (CI unit runner is 4-CPU vs 14 local; B1 forensics measured a flat 9-10 rejections/s over 6 one-second windows, thoughts/ci-unit-test-failures-2026-09-10.md §B1); real time + `_make_config` knobs are the transport-test idiom — no test in the suite patches a transport.py module constant (constant-patching is the fsm.executor convention, test_fsm_executor.py:7836); the test stays unmarked (no `integration`/`slow` mark) so it runs in the CI unit gate
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Re-verify `scripts/tests/test_feat3323_sse_bridge.py:302` (`test_producer_eof_then_reconnect_on_next_rescan`) after the guard change — its never-forwarding reader now classifies as a flap (doubling engages, `state.warned` latches); re-run it and touch up name/docstring if the "reconnect_on_next_rescan" semantics drift
+- Decide FEAT-3323 design-doc mirror treatment — `.issues/features/P3-FEAT-3323-live-event-stream-substrate-localhost-sse-bridge-over-the-eventbus.md` (§ Fan-in → Backoff :239-253 plus :631-635, :726, :748-751, :935-937) still documents the flap window as `rescan_s`-relative; reword to the `_FANIN_IMMEDIATE_EOF_S` window or record the file as a historical design record
+- Optional coverage in `TestSseBridgeFanIn` (follows the caplog convention of `test_transport.py:562-582`): warning-fires-once-per-path latch; non-flap death reset; `_on_forward` reset
+
 ## Impact
 
 - **Priority**: P1 - red on the local unit suite and CI
@@ -160,6 +178,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-11T00:08:42 - `38e69540-569a-4d83-90fc-f4d237d70095.jsonl`
 - `/ll:refine-issue` - 2026-09-10T22:52:59 - `748bc362-b07a-4742-bc35-52128c70dda1.jsonl`
 - `/ll:format-issue` - 2026-09-10T21:53:10 - `c062bf88-70c8-43b9-ac0c-360218fcb6ff.jsonl`
 - `/ll:scope-epic` - 2026-09-10T21:15:16 - `682b3e5f-a0d1-46f6-bdbe-cb9b462b89a8.jsonl`
