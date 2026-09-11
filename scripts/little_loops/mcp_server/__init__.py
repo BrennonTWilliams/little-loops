@@ -1,4 +1,4 @@
-"""ll-mcp: MCP server (stdio, and streamable HTTP per FEAT-3143) exposing eight coarse
+"""ll-mcp: MCP server (stdio, and streamable HTTP per FEAT-3143) exposing nine coarse
 read-only tools, seven guarded mutation tools (FEAT-3149), and a `tasks/get` +
 `tasks/cancel` poll surface for `ll-loop` runs (FEAT-3145) over the little_loops library.
 

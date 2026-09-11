@@ -39,6 +39,8 @@ class ToolDefinition:
     description: str
     input_schema: dict[str, Any]
     cache_control: dict[str, str] | None = None
+    kind: str = ""
+    args_hint: str | None = None
 
 
 def _read_text_or_empty(path: Path) -> str:
@@ -104,6 +106,8 @@ def _skill_entries(skills_dir: Path) -> list[ToolDefinition]:
                 name=skill_md.parent.name,
                 description=description,
                 input_schema=_make_input_schema(args_hint),
+                kind="skill",
+                args_hint=args_hint,
             )
         )
     return entries
@@ -121,6 +125,8 @@ def _command_entries(commands_dir: Path) -> list[ToolDefinition]:
                 name=cmd_md.stem,
                 description=description,
                 input_schema=_make_input_schema(args_hint),
+                kind="command",
+                args_hint=args_hint,
             )
         )
     return entries
@@ -137,6 +143,7 @@ def _agent_entries(agents_dir: Path) -> list[ToolDefinition]:
                 name=agent_md.stem,
                 description=description,
                 input_schema=_agent_input_schema(),
+                kind="agent",
             )
         )
     return entries

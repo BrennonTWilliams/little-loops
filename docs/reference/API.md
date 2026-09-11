@@ -101,7 +101,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, `ll-loop`, the FSM executor's pre-patch check hook (ENH-2997), and `work_verification`'s non-FSM pre-patch check adapter (ENH-2998). See [WORKTREES.md](WORKTREES.md) for the file-copy contract. |
 | `little_loops.prepatch_check` | Pre-patch check core (ENH-3142) — `run_prepatch_check()`, `collect_candidates()`, and the `PrePatchCandidate` / `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses. Deterministic, no LLM/FSM/CLI/database access; runs candidate tests from a step diff against the pre-patch worktree ENH-3141's `setup_prepatch_worktree()` produces to flag evidence that passes without the change it claims to demonstrate. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
-| `little_loops.mcp_server` | `ll-mcp` MCP server (2026-07-28 spec, FEAT-3135) — `main_mcp` entry point plus the eight read-only tools (`issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`, `queue_list`, `queue_get`, `loop_list`), the `ll://` resource surface (FEAT-3136): issue files, `.ll/ll-goals.md`, and `docs/` served under `ll://issues/<ID>`, `ll://goals`, `ll://docs/<relative-path>`, one interactive `ui://issues/view` MCP Apps resource (ENH-3306, `mimeType: "text/html;profile=mcp-app"`, linked from `issue_get` via `_meta.ui.resourceUri`), and the prompts-from-skills surface (FEAT-3137): every discovered `SKILL.md` advertised as an MCP prompt (name/description/args from frontmatter), all resolved against discovery-time enumerations. Serves over stdio by default; `ll-mcp --http` or `LL_MCP_TRANSPORT=http` switches to streamable HTTP on loopback (FEAT-3143), same server, same tool/resource/prompt surfaces. |
+| `little_loops.mcp_server` | `ll-mcp` MCP server (2026-07-28 spec, FEAT-3135) — `main_mcp` entry point plus the nine read-only tools (`issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`, `queue_list`, `queue_get`, `loop_list`, `skills_list`), the `ll://` resource surface (FEAT-3136): issue files, `.ll/ll-goals.md`, and `docs/` served under `ll://issues/<ID>`, `ll://goals`, `ll://docs/<relative-path>`, one interactive `ui://issues/view` MCP Apps resource (ENH-3306, `mimeType: "text/html;profile=mcp-app"`, linked from `issue_get` via `_meta.ui.resourceUri`), and the prompts-from-skills surface (FEAT-3137): every discovered `SKILL.md` advertised as an MCP prompt (name/description/args from frontmatter), all resolved against discovery-time enumerations. Serves over stdio by default; `ll-mcp --http` or `LL_MCP_TRANSPORT=http` switches to streamable HTTP on loopback (FEAT-3143), same server, same tool/resource/prompt surfaces. |
 | `little_loops.advisor` | Capability-rank comparison (`MODEL_RANKS`, `rank_model`, `check_floor`, FEAT-3108) and the accountable, signal-cited consult path (`consult`, `AdvisorVerdict`, FEAT-3120). |
 
 ---
@@ -10755,9 +10755,11 @@ class ToolDefinition:
     description: str
     input_schema: dict[str, Any]
     cache_control: dict[str, str] | None = None
+    kind: str = ""
+    args_hint: str | None = None
 ```
 
-Frozen, following the same crosses-a-boundary convention as `host_runner.CapabilityEntry`. `cache_control` is always `None` coming out of `assemble_tool_catalog` — no code today populates it (see FEAT-2681); callers may set it before serializing.
+Frozen, following the same crosses-a-boundary convention as `host_runner.CapabilityEntry`. `cache_control` is always `None` coming out of `assemble_tool_catalog` — no code today populates it (see FEAT-2681); callers may set it before serializing. `kind` and `args_hint` (ENH-3444) are additive and serializer-invisible — `to_anthropic_tools` ignores both, so the assembled Anthropic `tools` array is byte-unchanged; they exist for `mcp_server.tools._tool_skills_list` to build its `{name, kind, description, args?}` rows without reverse-engineering `input_schema`.
 
 **Fields:**
 
@@ -10767,6 +10769,8 @@ Frozen, following the same crosses-a-boundary convention as `host_runner.Capabil
 | `description` | `str` | *(required)* | Frontmatter `description`, quote-stripped. |
 | `input_schema` | `dict[str, Any]` | *(required)* | Envelope-free Anthropic `input_schema` body — see below. |
 | `cache_control` | `dict[str, str] \| None` | `None` | Unset by `assemble_tool_catalog`; present in serialized output only when set. |
+| `kind` | `str` | `""` | `"skill"` \| `"command"` \| `"agent"`, set per entry builder. |
+| `args_hint` | `str \| None` | `None` | Raw frontmatter `args`/`argument-hint` string (already baked into `input_schema` by `_make_input_schema`); carried separately so `skills_list` can surface it without decoding the schema. |
 
 ### assemble_tool_catalog
 

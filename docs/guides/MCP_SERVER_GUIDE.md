@@ -30,7 +30,7 @@ a little-loops project over the Model Context Protocol. It advertises three surf
 
 | Surface | What it gives a client |
 |---------|------------------------|
-| **Tools (read)** | `issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`, `queue_list`, `queue_get`, `loop_list` |
+| **Tools (read)** | `issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`, `queue_list`, `queue_get`, `loop_list`, `skills_list` |
 | **Tools (write)** | `issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log`, `queue_add`, `queue_remove`, `queue_requeue` — dry-run by default, see [below](#the-mutation-surface-and-its-guards) |
 | **Resources** | Issue files, `.ll/ll-goals.md`, and `docs/**/*.md` under an `ll://` scheme; one interactive `ui://issues/view` MCP Apps resource (ENH-3306) |
 | **Prompts** | Every discovered `SKILL.md`, listed as an invocable MCP prompt |
@@ -201,7 +201,7 @@ mcp-call ll-mcp/capabilities '{}'
 Its exit code tells you which layer failed: `0` success, `1` tool error, `124` timeout,
 `127` server or tool not found, `2` config/usage error.
 
-### The eight read tools, end to end
+### The nine read tools, end to end
 
 ```bash
 # Open issues, filtered and sorted by priority
@@ -365,8 +365,23 @@ mcp-call ll-mcp/loop_list '{}'
 ]
 ```
 
+```bash
+# The install's skills and commands, anchored at the plugin root
+mcp-call ll-mcp/skills_list '{}'
+```
+
+```json
+[
+  {"name": "manage-issue", "kind": "skill", "description": "Implement an issue end-to-end.", "args": "ISSUE_ID"},
+  {"name": "commit", "kind": "command", "description": "Create a git commit."}
+]
+```
+
 `queue_list`/`queue_get` mirror `ll-queue list`/`ll-queue status`; `loop_list` mirrors
-`ll-loop list` — each returns the same JSON shape as its `--json` CLI form.
+`ll-loop list` — each returns the same JSON shape as its `--json` CLI form. `skills_list`
+(ENH-3444) has no CLI equivalent — it anchors at the plugin root the engine itself
+resolves rather than `--project-root`, so every returned name classifies identically
+under `queue_add`; `args` is omitted when a skill/command has no frontmatter hint.
 
 ---
 
@@ -585,7 +600,7 @@ cannot reach a mutating handler while hiding its identity from the guard.
 
 ### Distinguishing the two groups from a client
 
-The seven mutating tools carry a `readOnlyHint: false` annotation in `tools/list`; the eight
+The seven mutating tools carry a `readOnlyHint: false` annotation in `tools/list`; the nine
 read-only tools carry no annotations at all. A host can key presentation — a confirmation
 prompt, a different icon — off that.
 

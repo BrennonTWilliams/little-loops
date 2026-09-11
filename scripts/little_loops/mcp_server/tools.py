@@ -1,6 +1,6 @@
-"""ll-mcp's tool surface: eight coarse read-only tools (FEAT-3135, plus `queue_list`/
-`queue_get`/`loop_list`) plus seven guarded mutation tools (FEAT-3149, plus `queue_add`/
-`queue_remove`/`queue_requeue`).
+"""ll-mcp's tool surface: nine coarse read-only tools (FEAT-3135, plus `queue_list`/
+`queue_get`/`loop_list`/`skills_list`) plus seven guarded mutation tools (FEAT-3149, plus
+`queue_add`/`queue_remove`/`queue_requeue`).
 
 Each tool wraps an existing `little_loops` library function or helper directly — no CLI
 subprocess invocation, and no second implementation of behavior the CLI already has. Any
@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import os
 import sqlite3
 from collections.abc import Callable
@@ -46,6 +47,8 @@ from mcp.server.context import ServerRequestContext
 from mcp.shared.exceptions import MCPError
 
 from little_loops.mcp_server.policy import MUTATING_TOOLS, POLICY_DENIED_CODE, check_tool_call
+
+_log = logging.getLogger(__name__)
 
 
 def _project_root(explicit: Path | None = None) -> Path:
@@ -556,6 +559,53 @@ def _tool_loop_list(arguments: dict[str, Any], *, project_root: Path) -> Any:
     return [entry.to_json_item() for entry in catalog.entries]
 
 
+def _tool_skills_list(_arguments: dict[str, Any], *, project_root: Path) -> Any:
+    """Enumerate the install's skills and commands (ENH-3444).
+
+    Anchored at `skill_expander._find_plugin_root()` — deliberately NOT `project_root`,
+    unlike every other tier-1 tool — because `_classify_action` (queue.py) resolves skill
+    names through that same plugin-root call, never through `project_root`. Anchoring here
+    at `project_root` would list names that classify differently than `queue_add` sees them,
+    reintroducing the divergence this tool exists to kill. One install answers identically
+    for any `--project-root`.
+
+    Wraps `tool_catalog.assemble_tool_catalog` (the single enumeration FEAT-2672/2673 also
+    consume) rather than re-walking `skills/`/`commands/` by hand. Agents are excluded:
+    they're outside `_resolve_content_path`'s lookup domain, so listing them would break
+    the classification-parity guarantee. Skill/command name collisions dedupe skill-wins,
+    matching `_resolve_content_path`'s skill-first preference — `assemble_tool_catalog`
+    already emits skills before commands, so first-seen-wins achieves this without an
+    explicit kind check.
+    """
+    from little_loops.skill_expander import _find_plugin_root
+    from little_loops.tool_catalog import assemble_tool_catalog
+
+    plugin_root = _find_plugin_root()
+    _log.debug("skills_list resolved plugin root: %s", plugin_root)
+
+    rows: dict[str, dict[str, Any]] = {}
+    for entry in assemble_tool_catalog(plugin_root):
+        if entry.kind not in ("skill", "command"):
+            continue
+        if entry.name in rows:
+            continue
+        row: dict[str, Any] = {
+            "name": entry.name,
+            "kind": entry.kind,
+            "description": entry.description,
+        }
+        if entry.args_hint:
+            row["args"] = entry.args_hint
+        rows[entry.name] = row
+
+    # `(kind, name)` ordering falls out of insertion order rather than an explicit sort:
+    # `assemble_tool_catalog` already emits skills (each sorted by name) before commands
+    # (each sorted by name), and dicts preserve insertion order. A literal
+    # `sorted(key=(kind, name))` would reorder commands before skills ("command" <
+    # "skill" lexicographically), which is wrong.
+    return list(rows.values())
+
+
 def _tool_queue_add(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
     """Classify and persist a new `ll-queue` entry (`ll-queue add`).
 
@@ -753,6 +803,7 @@ _TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
     "queue_list": _tool_queue_list,
     "queue_get": _tool_queue_get,
     "loop_list": _tool_loop_list,
+    "skills_list": _tool_skills_list,
     # Tier 2 (FEAT-3149) — these take an extra required `apply` keyword, which is why the
     # value type is `Callable[..., Any]` rather than `Callable[[dict], Any]`. The split is
     # by `policy.MUTATING_TOOLS`, not by a second registry, so there is exactly one list
@@ -908,8 +959,17 @@ _TOOLS: list[types.Tool] = [
             "additionalProperties": False,
         },
     ),
+    types.Tool(
+        name="skills_list",
+        description=(
+            "List every skill and command in the install (ENH-3444), anchored at the "
+            "plugin root the engine itself resolves — not `--project-root` — so a listed "
+            "name always classifies the same way `queue_add` would. Agents are excluded."
+        ),
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+    ),
     # --- Tier 2: mutating tools (FEAT-3149) ---------------------------------------------
-    # `annotations` is set ONLY on these four. The five tier-1 entries above deliberately
+    # `annotations` is set ONLY on these four. The nine tier-1 entries above deliberately
     # keep `annotations=None`: annotating them would change tier-1's `tools/list` output
     # shape, which this issue's anti-goals forbid. A host distinguishes the two groups by
     # `readOnlyHint == false` being present, which is exactly AC 1's requirement.
@@ -1229,9 +1289,9 @@ async def handle_list_tools(
     _ctx: ServerRequestContext[Any],
     _params: types.PaginatedRequestParams | None,
 ) -> types.ListToolsResult:
-    """`tools/list` handler: returns the fixed sixteen-tool catalog in source order.
+    """`tools/list` handler: returns the fixed seventeen-tool catalog in source order.
 
-    The eight tier-1 read-only tools come first, then the seven tier-2 mutating tools,
+    The nine tier-1 read-only tools come first, then the seven tier-2 mutating tools,
     then FEAT-3151's tier-3 start tool; only the tier-2 seven carry `annotations`, which is
     how a host tells the mutating group apart from the rest.
 

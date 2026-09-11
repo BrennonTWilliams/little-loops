@@ -5355,9 +5355,9 @@ ll-adapt-agents-for-codex --force --apply  # Regenerate all files (including up-
 ### ll-mcp
 
 MCP server (2026-07-28 spec) — stdio by default, streamable HTTP with `--http` — exposing
-sixteen coarse tools over the `little_loops` library. Eight read: `issues_query`,
+seventeen coarse tools over the `little_loops` library. Nine read: `issues_query`,
 `issue_get`, `history_search`, `deps_check`, `capabilities`, `queue_list`, `queue_get`,
-`loop_list` (FEAT-3352).
+`loop_list` (FEAT-3352), `skills_list` (ENH-3444).
 Seven write, dry-run by default: `issue_capture`, `issue_set_status`, `issue_link`,
 `issue_append_log` (FEAT-3149), `queue_add`, `queue_remove`, `queue_requeue` (FEAT-3343).
 One starts a run: `loop_start` (FEAT-3151, see below). Started by an MCP-capable host (Claude
@@ -5383,7 +5383,7 @@ from the SEP-2243 `Mcp-Method`/`Mcp-Name` headers, before the JSON-RPC body is p
 a JSON-RPC error (`-32001`) and HTTP 403; the `tools/call` handler itself also enforces the
 same policy on both transports (FEAT-3168), so the decision is uniform even when the ASGI
 layer is bypassed or the call arrives over stdio. Reads on the same server are unaffected. The seven
-carry a `readOnlyHint: false` annotation in `tools/list`; the eight read-only tools carry no
+carry a `readOnlyHint: false` annotation in `tools/list`; the nine read-only tools carry no
 annotations, which is how a host tells the groups apart.
 
 `ll-queue`'s three mutating tools (`queue_add`, `queue_remove`, `queue_requeue`, FEAT-3343)
@@ -5414,6 +5414,7 @@ real one.
 | `capabilities` | — | — | — | No parameters; reports the resolved AI-host CLI's capability surface |
 | `queue_list` | — | — | — | No parameters; lists all persisted `ll-queue` entries |
 | `queue_get` | `id` | string | **yes** | Entry id (full uuid or 8+-char prefix) |
+| `skills_list` | — | — | — | No parameters; lists skills/commands anchored at the plugin root, not `--project-root` |
 | `issue_capture` | `type` | `BUG`\|`FEAT`\|`ENH`\|`EPIC` | **yes** | Issue type |
 | | `title` | string | **yes** | Issue title |
 | | `priority` | `P[0-5]` | no (default `P2`) | Priority level |
@@ -5450,7 +5451,7 @@ real one.
 | `loop_start` | `loop` | string | **yes** | Loop name to run |
 | | `context` | string[] | no | `KEY=VALUE` context overrides, mirrors `ll-loop run --context` |
 
-`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. `queue_list` returns a list of entries, byte-identical to `ll-queue list --json` (each entry's `to_dict()` shape), or a tool-level error naming the queue database if it can't be read (e.g. `sqlite3.OperationalError`). `queue_get` returns a single entry's `to_dict()` shape, or a tool-level error if `id` doesn't resolve or the queue database can't be read. Each mutating tool returns
+`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. `queue_list` returns a list of entries, byte-identical to `ll-queue list --json` (each entry's `to_dict()` shape), or a tool-level error naming the queue database if it can't be read (e.g. `sqlite3.OperationalError`). `queue_get` returns a single entry's `to_dict()` shape, or a tool-level error if `id` doesn't resolve or the queue database can't be read. `skills_list` returns a list of `{name, kind, description, args?}` dicts (`args` omitted when no frontmatter hint exists), ordered skills-then-commands each sorted by name; an unresolvable plugin root returns `[]`. Each mutating tool returns
 `{applied, tool, target, changes}`; `issue_capture`'s `target` is `{type, priority, slug,
 directory}` plus a `rendered_body` on a dry-run and `{issue_id, path}` on apply. `queue_add`
 returns `{entry: {name, runner, target, args, timeout, priority}}` on a dry-run (the classified

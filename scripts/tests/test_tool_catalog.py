@@ -70,6 +70,7 @@ class TestAssembleToolCatalogSkills:
         assert isinstance(entry, ToolDefinition)
         assert entry.name == "my-skill"
         assert entry.description == "My skill desc"
+        assert entry.kind == "skill"
 
     def test_skill_without_args_gets_empty_properties_schema(self, tmp_path: Path) -> None:
         _make_skill(tmp_path, "my-skill")
@@ -128,6 +129,7 @@ class TestAssembleToolCatalogCommands:
         assert len(entries) == 1
         assert entries[0].name == "my-command"
         assert entries[0].description == "My command desc"
+        assert entries[0].kind == "command"
 
     def test_missing_commands_dir_yields_no_entries(self, tmp_path: Path) -> None:
         (tmp_path / "skills").mkdir()
@@ -142,6 +144,7 @@ class TestAssembleToolCatalogAgents:
         assert len(entries) == 1
         assert entries[0].name == "my-agent"
         assert entries[0].description == "Use when user asks for stuff."
+        assert entries[0].kind == "agent"
 
     def test_agent_gets_fixed_description_prompt_schema(self, tmp_path: Path) -> None:
         _make_agent(tmp_path, "my-agent", tools=["Read", "Glob"])
@@ -191,6 +194,25 @@ class TestToAnthropicTools:
             }
         ]
         assert "cache_control" not in tools[0]
+
+    def test_kind_and_args_hint_are_serializer_invisible(self) -> None:
+        entry = ToolDefinition(
+            name="my-tool",
+            description="Does a thing.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            kind="skill",
+            args_hint="ID [--force]",
+        )
+        tools = to_anthropic_tools([entry])
+        assert tools == [
+            {
+                "name": "my-tool",
+                "description": "Does a thing.",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            }
+        ]
+        assert "kind" not in tools[0]
+        assert "args_hint" not in tools[0]
 
     def test_includes_cache_control_when_set(self) -> None:
         entry = ToolDefinition(

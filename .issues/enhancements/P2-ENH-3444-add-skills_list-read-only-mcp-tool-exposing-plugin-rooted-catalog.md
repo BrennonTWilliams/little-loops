@@ -3,10 +3,11 @@ id: ENH-3444
 type: ENH
 title: Add skills_list read-only MCP tool exposing plugin-rooted catalog
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:35:03Z'
+completed_at: '2026-09-11T01:23:00Z'
 learning_tests_required:
 - mcp
 confidence_score: 100
@@ -391,12 +392,50 @@ _Verified by `/ll:verify-issues` — 2026-09-11 — graph: provider=`codegraph` 
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented by `/ll:manage-issue` — 2026-09-11:
+
+- `tool_catalog.ToolDefinition` gained `kind: str = ""` and `args_hint: str | None = None`;
+  `_skill_entries`/`_command_entries`/`_agent_entries` set them per builder. Additive and
+  serializer-invisible (`to_anthropic_tools` ignores both, pinned by a new test).
+- `mcp_server/tools.py` gained `_tool_skills_list`, registered as tier-1 `skills_list` in
+  `_TOOL_HANDLERS` and `_TOOLS` (position 9, beside `loop_list`). Anchors at
+  `skill_expander._find_plugin_root()`, not `project_root`; excludes agents; dedupes
+  name collisions skill-wins via dict insertion order (not an explicit sort — a literal
+  `sorted(key=(kind, name))` would incorrectly put "command" before "skill"
+  lexicographically, which the Proposed Solution's "no re-sort needed" claim rules out).
+  Logs the resolved plugin root at debug level.
+- Updated the stale tier-1 counts this change touches: module/package docstrings,
+  `handle_list_tools` docstring, the `_TOOLS` tier-2 comment, `docs/reference/API.md`
+  (module row + `ToolDefinition` fields table), `docs/reference/CLI.md` (roster
+  sentence, annotations sentence, tool-parameters table, return-shape sentence),
+  `docs/guides/MCP_SERVER_GUIDE.md` (overview table, "read tools" heading + walkthrough,
+  annotations sentence).
+- Updated the two tests the wiring pass flagged as WILL BREAK
+  (`test_mcp_server.py`'s `read_only` set, `test_feat_3149_mcp_mutation_tools.py`'s
+  `TIER1_NAMES` + `[:8]`/`[8:]` → `[:9]`/`[9:]` slices) and extended
+  `test_tool_catalog.py` with `kind` assertions plus a
+  `kind`/`args_hint`-serializer-invisible case.
+- New `scripts/tests/test_enh_3444_mcp_skills_list.py`: no-`apply` shape, kind/description
+  per row, agents excluded, `args` present iff a hint exists, `(kind, name)` ordering,
+  skill-wins dedupe on a name collision, `[]` on an unresolvable plugin root, identical
+  output across `--project-root` values, and classification parity against `_classify_action`
+  (every listed name resolves `RunnerType.SKILL`, matching `queue_add`'s view).
+- `CHANGELOG.md` deferred to release prep per convention (not touched here).
+- `python -m pytest scripts/tests/` — 23932 passed, 43 skipped, 4 pre-existing failures
+  unrelated to this change (confirmed on `main` before this work: `test_issue_parser.py`
+  priority-regex-allowlist tests and `test_verify_evidence.py::TestRepoGate` tied to
+  BUG-3439/BUG-3443 evidence spans, none of which this issue's files touch).
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T01:22:01 - `d57cfd93-2451-4aa7-aa75-4c73e9ca3b51.jsonl`
+- `/ll:ready-issue` - 2026-09-11T01:07:00 - `901eb257-04a9-4c48-90a0-050c5a3aabdb.jsonl`
 - `/ll:confidence-check` - 2026-09-11T00:41:10 - `ec1ed584-4b1f-463d-8cf0-4b21573e9eeb.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:37:59 - `20b69acd-df8f-4639-a911-4c4d70df244e.jsonl`
 - `/ll:confidence-check` - 2026-09-11T00:11:14 - `bcda08f4-0e66-4e79-bbb6-35f872f2d3be.jsonl`
