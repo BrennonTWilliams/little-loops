@@ -5,6 +5,8 @@ title: 'Workspace activity reader: cross-repo per-repo and union activity counts
   a since window'
 priority: P2
 status: open
+blocks:
+- FEAT-3446
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:53:04Z'
@@ -54,14 +56,14 @@ aggregate_workspace_activity(members: list[WorkspaceMember], *, since: str | Non
 
 `since` accepts a full ISO-8601 **timestamp** (datetime granularity, e.g. `2026-08-10T14:00:00Z`) as an inclusive (`>=`) lower bound — the consumer's windows are rolling (now−7d) and not date-aligned, so date-only granularity is insufficient. `since is None` = unbounded (all history).
 
-**Transition values (grounded):** the `issue_events` predicates rest on values all write paths actually produce — `_ISSUE_TRANSITION_MAP` (writers.py:2774-2786) maps `issue.completed`/`issue.closed` → `'done'` and `issue.deferred` → `'deferred'`; backfill writes frontmatter `status` verbatim over the six valid statuses (writers.py:3161); `record_issue_event`'s transition is the caller-supplied new status (set_status.py:167-170). No CHECK constraint exists on the column, and `transition = 'deferred'` has no existing reader in `issue_history/` (readers query only `'done'` — agent_quality.py:240, parsing.py:466/:500) — a novel read, but over values with three grounded writers.
+**Transition values (grounded):** the `issue_events` predicates rest on values all write paths actually produce — `_ISSUE_TRANSITION_MAP` (writers.py:2774-2786) maps `issue.completed`/`issue.closed` → `'done'` and `issue.deferred` → `'deferred'`; backfill writes frontmatter `status` verbatim over the six valid statuses (writers.py:3161); `record_issue_event`'s transition is the caller-supplied new status (cli/issues/set_status.py:167-177). No CHECK constraint exists on the column, and `transition = 'deferred'` has no existing reader in `issue_history/` (readers query only `'done'` — agent_quality.py:240, parsing.py:466/:500) — a novel read, but over values with three grounded writers.
 
 **Timestamp caveat (must handle, not ignore):** formats are mixed per writer (confirmed against source):
 - `loop_runs.started_at` — `+00:00` with microseconds (`_iso_now()` executor.py:167-169, set at executor.py:621, passed by `_finish()` executor.py:4295-4307).
 - `loop_runs.ended_at` — `Z`-suffix, second precision (`_now()` writers.py:128-130, defaulted at writers.py:1780).
-- `issue_events.ts` — **writer-dependent, not uniformly `Z`**: `record_issue_event` (set_status.py:167-177 path) writes `Z` (writers.py:447); EventBus `SQLiteTransport.send` rows from `issue_lifecycle` producers write `+00:00`-with-microseconds (`ts = str(event.get("ts") or _now())` writers.py:2820; producers emit `_iso_now()` issue_lifecycle.py:35-37, :1200-1210, :1301-1312); backfill rows carry frontmatter dates verbatim (writers.py:3165).
+- `issue_events.ts` — **writer-dependent, not uniformly `Z`**: `record_issue_event` (cli/issues/set_status.py:167-177 path) writes `Z` (writers.py:447); EventBus `SQLiteTransport.send` rows from `issue_lifecycle` producers write `+00:00`-with-microseconds (`ts = str(event.get("ts") or _now())` writers.py:2820; producers emit `_iso_now()` issue_lifecycle.py:35-37, :1200-1210, :1301-1312); backfill rows carry frontmatter dates verbatim (writers.py:3165).
 
-Because `since` is datetime-granular, **raw lexicographic comparison is not acceptable**: `2026-09-10T22:48:17.151663+00:00` string-compares as *before* `2026-09-10T22:48:17Z` while temporally being *after* it. Existing `ts >= ?` sites (evolution.py:115, history_reader/events.py:245) survive only because their `ts` columns happen to be uniformly `Z`-formatted — neither counted column here is. Two acceptable implementations (AC 5's "or equivalent" is the binding contract): SQLite `datetime()` on both sides (normalizes `Z` and `+00:00`, truncates sub-second precision → ≤1s boundary tolerance — accepted and documented), **or** the repo's established mixed-format convention, Python-side `datetime.fromisoformat(x.replace("Z", "+00:00"))` (session_store/lifecycle.py:1178/:1338, workflow_sequence/analysis.py:230, fsm/persistence.py:271), fetching rows and filtering in Python as `count_loop_runs_in_window` does. Note: SQL-side `datetime()` has **zero precedent in-repo** (all `datetime(` hits are Python) — Python-side is the convention; format-dependent misordering is a failure under either.
+Because `since` is datetime-granular, **raw lexicographic comparison is not acceptable**: `2026-09-10T22:48:17.151663+00:00` string-compares as *before* `2026-09-10T22:48:17Z` while temporally being *after* it. Existing `ts >= ?` sites (issue_history/evolution.py:115, history_reader/events.py:245) survive only because their `ts` columns happen to be uniformly `Z`-formatted — neither counted column here is. Two acceptable implementations (AC 5's "or equivalent" is the binding contract): SQLite `datetime()` on both sides (normalizes `Z` and `+00:00`, truncates sub-second precision → ≤1s boundary tolerance — accepted and documented), **or** the repo's established mixed-format convention, Python-side `datetime.fromisoformat(x.replace("Z", "+00:00"))` (session_store/lifecycle.py:1178/:1338, workflow_sequence/analysis.py:230, fsm/persistence.py:271), fetching rows and filtering in Python as `count_loop_runs_in_window` does. Note: SQL-side `datetime()` has **zero precedent in-repo** (all `datetime(` hits are Python) — Python-side is the convention; format-dependent misordering is a failure under either.
 
 **Counting semantics (decision, resolved):** an issue counts **once per repo it appears in** — workspace totals are the sum of per-repo counts. Do NOT dedupe on bare `issue_id` across repos: every little-loops repo numbers issues from 1, so same-ID issues in different repos are usually *different* logical issues colliding (this is FEAT-3418's own rationale for the `#r{i}` discriminator). If a future consumer truly has mirrored issues needing cross-repo merge, that requires a workspace-canonical id, not bare `issue_id` — explicitly out of scope.
 
@@ -75,7 +77,7 @@ Because `since` is datetime-granular, **raw lexicographic comparison is not acce
 
 ### Types
 
-See `## API/Interface` for the full contract: `MemberActivityStatus` (**plain `Enum` with string values, not `(str, Enum)`/`StrEnum`** — zero `(str, Enum)` definitions exist in `scripts/little_loops/`; the stated convention lives in issue_lifecycle.py:124-125, whose five enums are the precedents; values `ok`/`db_missing`/`schema_skew`/`unreadable` with an inline `#` comment per member), `RepoActivity` (frozen dataclass; counts `None` iff status != OK; `to_dict()`), `WorkspaceActivityResult` (`per_repo` + `totals: WorkspaceTotals | None`, `to_dict()`). Every serializable result container gets a `to_dict() -> dict[str, Any]` that recursively delegates (the `agent_quality.py` quartet + `AggregationResult` pattern), so `WorkspaceActivityResult.to_dict()` builds each array element via `RepoActivity.to_dict()`.
+See `## API/Interface` for the full contract: `MemberActivityStatus` (**plain `Enum` with string values, not `(str, Enum)`/`StrEnum`** — zero `(str, Enum)` definitions exist in `scripts/little_loops/` (repo-wide grep, confirmed); the plain-`Enum` convention is established by issue_lifecycle.py's five enums, whose `CompletionResult` docstring at :124-125 argues against `StrEnum` specifically (not the `(str, Enum)` tuple form) — the `(str, Enum)` avoidance rests on the grep, not that docstring; values `ok`/`db_missing`/`schema_skew`/`unreadable` with an inline `#` comment per member), `RepoActivity` (frozen dataclass; counts `None` iff status != OK; `to_dict()`), `WorkspaceActivityResult` (`per_repo` + `totals: WorkspaceTotals | None`, `to_dict()`). Every serializable result container gets a `to_dict() -> dict[str, Any]` that recursively delegates (the `agent_quality.py` quartet + `AggregationResult` pattern), so `WorkspaceActivityResult.to_dict()` builds each array element via `RepoActivity.to_dict()`.
 
 ### Signatures
 
@@ -98,9 +100,9 @@ See `## API/Interface` for the full contract: `MemberActivityStatus` (**plain `E
 
 ### Similar Patterns
 - `aggregate_history_dbs()` (workspace_quality.py:196) — the sibling aggregation whose member gating, read-only opens, and skip-and-report semantics this reader upgrades into structured statuses.
-- Raw `ts >= ?` window queries (evolution.py:115, history_reader/events.py:245) — get away with string compare only because `ts` is uniformly `Z`-formatted; this module must normalize instead (mixed `+00:00`-micros/`Z` formats).
+- Raw `ts >= ?` window queries (issue_history/evolution.py:115, history_reader/events.py:245) — get away with string compare only because `ts` is uniformly `Z`-formatted; this module must normalize instead (mixed `+00:00`-micros/`Z` formats).
 - `count_loop_runs_in_window` (issue_history/parsing.py:552-599) — the existing both-format-tolerant precedent: fetches `started_at, ended_at` rows and filters in Python via `_parse_iso_datetime` (parsing.py:91-102 — strips trailing `Z`, drops tzinfo; API.md documents its naive-local split from lifecycle's UTC-aware convention). Date-granularity only, so insufficient here, but the fetch-and-filter shape is the fallback implementation.
-- `_snapshot_select` (session_store/queries.py:219-245) — SQL-side window precedent: `COALESCE(ended_at, started_at) >= ?` on loop_runs (D13 comment at :236-237 documents the in-flight/crashed-run NULL semantics — it keeps such rows in the window rather than excluding them; this reader's `loops_completed` predicate instead requires `ended_at IS NOT NULL` by design).
+- `_snapshot_select` (session_store/queries.py:219-245) — SQL-side window precedent: `COALESCE(ended_at, started_at) >= ?` on loop_runs (D13 comment at :234-236 documents the in-flight/crashed-run NULL semantics — it keeps such rows in the window rather than excluding them; this reader's `loops_completed` predicate instead requires `ended_at IS NOT NULL` by design).
 - Frozen-value-object convention — `WorkspaceMember` (workspace.py:31-44) freezes with an explicit producer/consumer-boundary rationale citing `host_runner.HostInvocation`; `RepoActivity`/`WorkspaceActivityResult` follow it. Note the split: analysis containers inside `agent_quality.py` (`QualityMetric`/`QualityWindow`/`RetryWindow`/`QualityAnalysis`) stay mutable — frozen is for boundary-crossing values only.
 
 ### Tests
@@ -205,12 +207,55 @@ A downstream briefing/portfolio sync calls `aggregate_workspace_activity(members
 | architecture | docs/ARCHITECTURE.md | System design; where the workspace aggregation layer sits |
 | architecture | docs/reference/API.md | Python module reference — new public module + `workspace_quality` gate extraction land here |
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+Checked 32+ file:line citations against HEAD. Corrected:
+- Motivation section's `record_issue_event` transition citation named
+  `set_status.py:167-170`; the file actually lives at
+  `scripts/little_loops/cli/issues/set_status.py` (line range :167-177 there
+  matches the claimed content). Fixed (both occurrences).
+- Program Design's `MemberActivityStatus` rationale cited
+  `issue_lifecycle.py:124-125` as precedent against both `(str, Enum)` and
+  `StrEnum`; that docstring (`CompletionResult`) only argues against
+  `StrEnum` specifically. The broader "zero `(str, Enum)` definitions exist"
+  claim is independently true (repo-wide grep, confirmed) but wasn't resting
+  on the right citation. Reworded to attribute each claim to its actual
+  source.
+- Similar Patterns' `_snapshot_select` D13-comment citation said `:236-237`;
+  the comment is at `:234-236` (session_store/queries.py). Fixed.
+- Two `evolution.py:115` citations (Proposed Solution and Similar Patterns)
+  omitted the module's actual parent package — the file is
+  `scripts/little_loops/issue_history/evolution.py`, not
+  `scripts/little_loops/evolution.py`. Fixed (both occurrences).
+
+Also added a `blocks: [FEAT-3446]` frontmatter backlink — FEAT-3446 declares
+`blocked_by: [FEAT-3445]` but this file had no reverse reference
+(MISSING_BACKLINK).
+
+Everything else checked clean: the SQL/timestamp-format claims (mixed
+`+00:00`-micros vs `Z` across `loop_runs`/`issue_events` writers), the
+dedup/uniqueness claims (`loop_runs.run_id UNIQUE`, `idx_issue_events_dedup`
+partial-unique scope), the member-gate extraction source
+(`workspace_quality.py:108-120`/`:217-252`), and the `WorkspaceMember`/
+`discover_workspace_members` citations in `workspace.py` all matched current
+code.
+
+Decisions log: no active required rules found (`ll-issues decisions list
+--type rule --enforcement required --active-only` returned empty).
+
+Evidence-quote check (`ll-verify-evidence --json`): clean, 0 findings.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T00:47:45 - `e2289526-f05e-4914-b7bb-dee1a954062a.jsonl`
 - `/ll:wire-issue` - 2026-09-11T00:38:37 - `2e842a0e-c20b-4811-ac47-806369f06e2c.jsonl`
 - `/ll:format-issue` - 2026-09-10T23:59:04 - `977177b4-c924-4eb0-8524-717b55725bed.jsonl`
 - `/ll:capture-issue` - 2026-09-10T23:53:43 - `98b64441-1d76-4822-ab69-c295348ddfd6.jsonl`
