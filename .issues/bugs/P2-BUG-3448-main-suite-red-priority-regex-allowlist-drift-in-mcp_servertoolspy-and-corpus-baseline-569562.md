@@ -4,11 +4,12 @@ type: BUG
 title: 'main suite red: priority-regex allowlist drift in mcp_server/tools.py and
   corpus baseline 569>562'
 priority: P2
-status: open
+status: done
 decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T06:12:59Z'
+completed_at: '2026-09-11T16:03:23Z'
 confidence_score: 100
 outcome_confidence: 100
 score_complexity: 25
@@ -33,9 +34,9 @@ corpus-differential baseline constant no longer matches the grown `.issues/` cor
 without unrelated working-tree changes) fails 3 tests in `scripts/tests/test_issue_parser.py`:
 
 - `TestPriorityRegexCompletenessAllowlist::test_no_unallowlisted_raw_priority_regex` —
-  `new raw priority regex not in the allowlist: {'mcp_server/tools.py': [846, 1001]}`
+  fails with an unallowlisted-regex assertion naming mcp_server/tools.py lines 846 and 1001
 - `TestPriorityRegexCompletenessAllowlist::test_allowlist_entries_still_exist` —
-  `stale allowlist entries: ['mcp_server/tools.py:795', 'mcp_server/tools.py:941']`
+  fails with a stale-entries assertion naming mcp_server/tools.py lines 795 and 941
 - `TestBug3295ContainmentCorpusDifferential::test_total_report_count_does_not_exceed_post_bug_3413_baseline` —
   `corpus report total 569 exceeds post-BUG-3413 baseline 562`
 
@@ -66,9 +67,9 @@ BUG-3443 edit stashed, proving pre-existence on `main`).
 
 ## Root Cause
 
-- `scripts/little_loops/mcp_server/tools.py` moved/grew (most recently 3fe6a1dac
-  `feat(mcp): add skills_list`) without updating the raw-priority-regex allowlist in
-  `test_issue_parser.py` — line drift made entries 795/941 stale and exposed 846/1001.
+- `scripts/little_loops/mcp_server/tools.py` moved/grew (most recently commit 3fe6a1dac,
+  subject "feat(mcp): add skills_list") without updating the raw-priority-regex allowlist
+  in `test_issue_parser.py` — line drift made entries 795/941 stale and exposed 846/1001.
 - The `.issues/` corpus grew past the hard-coded `_POST_BUG_3413_TOTAL_REPORTS = 562`
   baseline; the count is a corpus-size function, so recent issue creation (BUG-3443
   session-log appends, BUG-3447 edits) trips it.
@@ -207,12 +208,38 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Clear the 2 evidence-unverifiable spans in this issue's own prose — in [Current Behavior], the verbatim allowlist-failure message attributed to `test_issue_parser.py`, and in [Root Cause], the commit subject attributed to the `tools.py` path — by rephrasing the quote/attribution or suppressing a reviewed counter-example, so `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` passes and the gate can reach exit 0. Identify the spans by content, not by the line numbers recorded above: they move with any edit to this file (the wiring pass recorded them at 30/64; the review re-run found them at 36/70).
 
+## Resolution
+
+Fixed by refreshing the two stale test-infra guards in
+`scripts/tests/test_issue_parser.py`:
+
+- `TestPriorityRegexCompletenessAllowlist._ALLOWLIST` — `mcp_server/tools.py` entries
+  moved `795→846`, `941→1001`; `issue_parser.py` entries moved `1916→1956`,
+  `4060→4100`, `4064→4104`, `4085→4125` (uniform +40 shift). Existing justification
+  strings kept; both new hits confirmed to be JSON-schema priority-arg patterns, not
+  filename reads, matching the BUG-3286 discriminator.
+- `TestBug3295ContainmentCorpusDifferential` — added `_POST_BUG_3448_TOTAL_REPORTS =
+  569` (Option A: new bug-named succession constant, `_POST_BUG_3413_TOTAL_REPORTS =
+  562` retained as documented history) and renamed the guarding test to
+  `test_total_report_count_does_not_exceed_post_bug_3448_baseline`.
+- Rephrased two evidence-unverifiable spans in this issue's own [Current Behavior]
+  and [Root Cause] prose (a formatted pytest-assertion quote and a commit-subject
+  quote, neither literal content of the cited artifacts) per the wiring-phase
+  touchpoint, clearing `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`.
+
+No production files changed (`git diff --stat scripts/little_loops/` empty).
+`python -m pytest scripts/tests/` exits 0 (24014 passed, 43 skipped) — verified
+twice; one interleaved `test_feat3323_sse_bridge.py` socket-timeout failure on the
+first parallel run was confirmed unrelated flakiness (passes standalone, absent on
+rerun).
+
 ## Status
 
-**Open** | Created: 2026-09-11 | Priority: P2
+**Done** | Created: 2026-09-11 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T16:02:47 - `d573c7b9-294b-46ef-a7c1-6188c566541b.jsonl`
 - `/ll:confidence-check` - 2026-09-11T15:46:58 - `2255a597-1b98-4526-8e20-5b338e540607.jsonl`
 - Review (pre-implementation, Claude Code session) - 2026-09-11 - `session_01Ufn7Lt5Vb6e8PjyCZg5eUs`
 - `/ll:confidence-check` - 2026-09-11T15:33:50 - `8cdcde34-85c0-4f2c-9a74-cdf6cbe6dedb.jsonl`
