@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T20:26:37Z'
+confidence_score: 100
+outcome_confidence: 68
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 0
 ---
 
 # ENH-3449: Analytics opt-out env var so ll-history activity is side-effect-free
@@ -28,7 +34,7 @@ captured_at: '2026-09-11T20:26:37Z'
 - `LL_ANALYTICS_CAPTURE` set to a falsy value (`0`/`false`/`off`, case-insensitive) makes `cli_event_context` and `skill_event_context` skip `resolve_history_db`/`connect` entirely — no file creation, no `cli_events` row — while the wrapped body still runs.
 - With the env var set, `ll-history activity --format json` on a repo with no `.ll/history.db` exits 0, reports the local member as `status: db_missing`, `ok: false`, `instrumented: false`, and leaves no `.ll/history.db` behind. JSON output shape otherwise unchanged.
 - Unset or any other value: behavior byte-identical to today (row still inserted).
-- With `config=` wired in `main_history()`, the `analytics.capture.cli_commands` gate in `.ll/ll-config.json` actually applies to `ll-history`.
+- With `config=` wired in `main_history()`, the `analytics.capture.cli_commands` gate in `.ll/ll-config.json` actually applies to `ll-history`, and an explicit `analytics.enabled: false` also suppresses the row — `ll-init`'s opt-out path writes `{"analytics": {"enabled": false}}` with no `capture` key (`init/core.py:358-365`), and a permissive-missing-capture default alone would keep writing rows in exactly the projects that opted out (review 2026-09-11). A config missing the `analytics` key entirely stays permissive (legacy/ENH-2932 compat).
 
 ## Motivation
 
@@ -45,7 +51,7 @@ captured_at: '2026-09-11T20:26:37Z'
 Add an environment-variable kill switch upstream of the config gate (the context manager opens before argparse runs, so a CLI flag cannot suppress the enter-INSERT):
 
 1. **`LL_ANALYTICS_CAPTURE` short-circuit** — a module-private helper `_analytics_capture_disabled() -> bool` in `session_store/writers.py` reads `os.environ`; falsy values (`0`/`false`/`off`, case-insensitive) set `gate_open=False` in `cli_event_context` and `skill_event_context` *before* `resolve_history_db`/`connect`, so nothing touches the filesystem. Fixes all ~46 `cli_event_context` call sites at once and is per-invocation, which is what a polling consumer needs.
-2. **Wire `config=` into `main_history()`** using the same project-config loader other CLIs use, so the `analytics.capture.cli_commands` gate (ENH-2932) applies. Audit other `cli/*.py` callers omitting `config`; fix in this issue only if trivial.
+2. **Wire `config=` into `main_history()`** using the same project-config loader other CLIs use, so the `analytics.capture.cli_commands` gate (ENH-2932) applies. **Gate semantics (review 2026-09-11):** when `config` is provided, the row is suppressed if `analytics.enabled` is present and `false` (the `ll-init` opt-out shape, `init/core.py:365`) **or** if `cli_commands` excludes the binary; a config missing the `analytics` key entirely stays permissive. Do NOT gate on bare `feature_enabled(config, "analytics.enabled")` — it returns `False` for a missing key (`config/features.py:39-60`), which would silently flip capture off for legacy minimal configs. Audit other `cli/*.py` callers omitting `config`; fix in this issue only if trivial.
 
 Full behavior contract in Decisions §1–3; signatures in Program Design.
 
@@ -82,8 +88,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Env-var overrides like `LL_HOST_CLI` in `resolve_host()` (`scripts/little_loops/host_runner.py`)
 
 ### Tests
-- `scripts/tests/test_session_store_writers.py` — unit tests: env var set → no connect, no row; unset → row written
+- `scripts/tests/test_session_store_writers.py` — unit tests: env var set → no connect, no row; unset → row written. The skill-side env-set test must assert the db **file is not created**, not just "no row" — the existing `test_cli_event_context_gate_disabled` (`:599-612`) passes an explicit tmp path and never pins non-existence (review 2026-09-11)
 - `scripts/tests/test_cli_history.py` — `LL_ANALYTICS_CAPTURE=0 ll-history activity` on db-less repo: exit 0, `db_missing` member, no `.ll/history.db` created
+- `analytics.enabled` gate tests (review 2026-09-11): present-and-false `analytics.enabled` (no `capture` key — the `ll-init` opt-out shape) suppresses the row for `ll-history` even though `cli_commands` is absent; config missing the `analytics` key entirely keeps capture on
 - Test hygiene (review 2026-09-11): tests asserting a row IS written must `monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)`; the db-less test must `delenv("LL_HISTORY_DB", raising=False)` so db resolution anchors at the tmp project regardless of the developer's shell. Follow the existing in-process pattern (`patch.object(sys, "argv", ...)` + `patch("pathlib.Path.cwd", return_value=tmp_path)`, e.g. `test_cli_history.py` `test_absent_flag_single_repo_result`). The AC4 config-gate test's tmp project must live under the OS tmp dir, not under this repo — the upward `resolve_config_path` walk would find this repo's `cli_commands: ["*"]` and leak it into the test.
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -99,6 +106,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — env-var mention alongside `LL_HISTORY_DB` (:55) and the config table (:660)
 - `docs/reference/HOST_COMPATIBILITY.md` — env-var table (:729, where `LL_HISTORY_DB` lives)
 - `cli_event_context` / `skill_event_context` docstrings in `session_store/writers.py` — describe the env-var short-circuit (API.md mirrors these docstrings)
+- Precedence note (review 2026-09-11): docs must state that with `LL_ANALYTICS_CAPTURE=0` set, `resolve_history_db` is never called, so the kill switch wins over `LL_HISTORY_DB` — nothing is resolved and no file is created regardless of `LL_HISTORY_DB`
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` — :616 (`history.db_path` row stating `LL_HISTORY_DB` precedence) and :1721 ("**Env-var override**" note): the config-doc places env vars are stated outside the known list [Agent 2 finding]
@@ -120,6 +128,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - Tree-wide caller audit (pre-computed for Decisions §2): zero production call sites pass `config=` to `cli_event_context`/`skill_event_context`; matches exist only in `scripts/tests/test_session_store_writers.py:564,572-576,603-607,974-975,987-992` — the ENH-2932 gate is dead for every `ll-*` binary, not just ll-history
 - Call-site census (grep `cli_event_context(` excluding the def): 54 lines across 51 files, ~47 under `scripts/little_loops/cli/` (one call per `main_*` entry point; `docs.py` carries 4); the balance is `init/cli.py` plus re-export/reference lines in `session_store/schema.py`, `session_store/__init__.py`, `mcp_server/__init__.py`
 - Config-loader precedents that yield the raw dict `config=` wants: `_load_config(cwd) -> dict | None` (`hooks/user_prompt_submit.py:56-64`, mirrored `hooks/post_tool_use.py:41`) — `resolve_config_path` (pure lookup, `config/core.py:157-181`) + `json.loads` guarded by `except (OSError, json.JSONDecodeError): return None`; inline variants at `cli/learning_tests.py:43-51` and `cli/history_context.py:229-239`
+- `analytics.enabled` interaction (review 2026-09-11): `ll-init`'s opt-out path writes `config["analytics"] = {"enabled": False}` with **no** `capture` key (`init/core.py:358-365`), so once `config=` is wired the proposed permissive-missing-capture default would keep writing `cli_events` rows in explicitly opted-out projects. The gate must additionally suppress on present-and-false `analytics.enabled`. `feature_enabled(config, "analytics.enabled")` cannot be used bare — it returns `False` for a missing key (`config/features.py:39-60`), flipping capture off for legacy configs missing the `analytics` block. Hooks-layer precedent: `user_prompt_submit.py:104` gates all its writers behind `analytics_active = config is not None and feature_enabled(config, "analytics.enabled")` and passes `config=config` to `record_skill_event` (:134) — hooks-layer capture already has a config-based off switch, so the env var does not need to reach `record_skill_event` (see Decision 4).
 - Test seam: the `_pkg` indirection at `writers.py:38-47` exists so tests can `monkeypatch.setattr(session_store, "connect", ...)` — the locked-db tests at `test_session_store_writers.py:490-514` show the pattern an env-var "no connect" assertion can reuse
 
 ## Program Design
@@ -131,13 +140,13 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 ### Signatures
 
 - `_analytics_capture_disabled() -> bool` — module-private, `session_store/writers.py`; true iff `os.environ.get("LL_ANALYTICS_CAPTURE", "").strip().lower()` ∈ `{"0", "false", "off"}`
-- `cli_event_context(db_path=DEFAULT_DB_PATH, source=..., argv=None, config=None)` — signature unchanged; gate logic gains the env-var short-circuit before `resolve_history_db`/`connect`
+- `cli_event_context(db_path=DEFAULT_DB_PATH, source=..., argv=None, config=None)` — signature unchanged; gate logic gains the env-var short-circuit before `resolve_history_db`/`connect`; when `config` is provided the gate becomes (`analytics.enabled` not explicitly false) AND (`cli_commands` glob match), with a missing `analytics` key staying permissive (review 2026-09-11)
 - `skill_event_context(...)` — same env-var short-circuit
 - `main_history()` — gains project-config load and `config=` pass-through to `cli_event_context`
 
 ### Call Path
 
-`main_history` -> `cli_event_context(config=<project config>)` -> `_analytics_capture_disabled()` (env check, first) -> [`resolve_history_db` -> `_pkg.connect` -> INSERT, all skipped when gate closed]
+`main_history` -> `cli_event_context(config=<project config>)` -> `_analytics_capture_disabled()` (env check, first) -> [config gate: `analytics.enabled` present-and-false OR `cli_commands` exclusion → closed] -> [`resolve_history_db` -> `_pkg.connect` -> INSERT, all skipped when gate closed]
 
 ### Codebase Research Findings
 
@@ -175,7 +184,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/tests/test_cli_history.py::test_absent_flag_single_repo_result` (:589-610) — its `status == "ok"` assertion and :604-605 comment encode exactly the behavior this issue changes; scrub the env var and add the env-set `db_missing` counterpart
 - Update stale-invariant docstrings: `issue_events_ever_recorded` (`scripts/little_loops/issue_history/parsing.py:421-433`) and `_record_research_triage` (`scripts/little_loops/cli/issues/research_triage.py:89-98`)
 - Update `docs/reference/CONFIGURATION.md` (:616, :1721) and `docs/ARCHITECTURE.md` (v46 row :679, writers table :767) with `LL_ANALYTICS_CAPTURE`
-- Resolve the Decision 4 hooks-layer discrepancy: either extend the env check to `record_skill_event` (`scripts/little_loops/session_store/writers.py:268`, called from `hooks/user_prompt_submit.py:134`) so the documented global-export warning becomes true, or scope that doc sentence to `ll-action` — the plan as written does not suppress hooks-layer `skill_events`
+- ~~Resolve the Decision 4 hooks-layer discrepancy~~ **Resolved (review 2026-09-11):** scope the env var to `ll-*` CLI capture only; do NOT extend it into `record_skill_event` (`writers.py:268`). Hooks-layer `skill_events` is already config-gated via `analytics.enabled` (`user_prompt_submit.py:104`, `config=` passed at `:134`) — that flag stays the project-level off switch for hook writes. Decision 4's doc sentence is amended accordingly; docs scope the global-export warning to `ll-*` CLIs (including `ll-action`).
 - Model the main_history config-gate test on `test_ll_issues_research_triage.py::test_gate_suppresses_write` (:159-175)
 
 ### Codebase Research Findings
@@ -194,13 +203,15 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 ## Decisions (resolved, do not re-derive)
 
 1. **Seam is an environment variable, not an argparse flag.** The context manager opens before argparse runs, so a `--no-analytics` flag cannot suppress the enter-INSERT. `LL_ANALYTICS_CAPTURE` is read inside `cli_event_context` and `skill_event_context`: value `0`, `false`, or `off` (case-insensitive) sets `gate_open=False` before `resolve_history_db`/`connect`, so nothing touches the filesystem; the wrapped body still runs. This fixes all ~46 `cli_event_context` call sites at once and is per-invocation, which is what a polling consumer needs. Unset or any other value: unchanged behavior.
-2. **Wire `config=` into `ll-history`'s `cli_event_context` call** using the same project-config loader other CLIs use, so the `analytics.capture.cli_commands` gate actually applies. Audit other `cli/*.py` callers that omit `config` and list them in the Session Log; fix in this issue only if trivial.
+2. **Wire `config=` into `ll-history`'s `cli_event_context` call** using the same project-config loader other CLIs use, so the `analytics.capture.cli_commands` gate actually applies. **Gate semantics (review 2026-09-11):** when `config` is provided, suppress when `analytics.enabled` is present and `false` (the `ll-init` opt-out shape, `init/core.py:365`) **or** when `cli_commands` excludes the binary; a config missing the `analytics` key entirely stays permissive (legacy/ENH-2932 default). Do NOT gate on bare `feature_enabled(config, "analytics.enabled")` — it returns `False` for a missing key (`config/features.py:39-60`), which would flip capture off for legacy minimal configs. Audit other `cli/*.py` callers that omit `config` and list them in the Session Log; fix in this issue only if trivial.
 3. **Behavior contract.** With `LL_ANALYTICS_CAPTURE=0`, `ll-history activity` on a repo with no `.ll/history.db` exits 0, reports the local member as `status: db_missing`, `ok: false`, `instrumented: false`, and leaves no `.ll/history.db` behind. JSON output shape is otherwise unchanged.
-4. **Kill-switch semantics** (review 2026-09-11). The falsy set is exactly `{"0", "false", "off"}` (case-insensitive after `strip()`); set-but-empty (`LL_ANALYTICS_CAPTURE=""`) counts as unset — capture stays on. One-way kill switch only: no truthy value force-enables capture past a config-gate exclusion ("any other value" = today's behavior). The minimal set is deliberate — the only sibling precedent (FSM shell sets `("0","false","no","off")` in `rn-implement.yaml`) governs shell exports, not env parsing, and the polling consumer sets the var programmatically. Docs must state: set per-invocation (polling consumers), not in a shell profile — a global export also disables hooks-layer `skill_events` capture in every project.
+4. **Kill-switch semantics** (review 2026-09-11). The falsy set is exactly `{"0", "false", "off"}` (case-insensitive after `strip()`); set-but-empty (`LL_ANALYTICS_CAPTURE=""`) counts as unset — capture stays on. One-way kill switch: no truthy value force-enables capture past a config-gate exclusion ("any other value" = today's behavior). The minimal set is deliberate — the only sibling precedent (FSM shell sets `("0","false","no","off")` in `rn-implement.yaml`) governs shell exports, not env parsing, and the polling consumer sets the daemon-side environment per invocation. Docs must state: set per-invocation (polling consumers), not in a shell profile — a global export disables `skill_events` capture for `ll-action` and `cli_events` capture for every `ll-*` CLI in every project; **hooks-layer `skill_events` (`user_prompt_submit` → `record_skill_event`) is NOT affected** — it is already config-gated via `analytics.enabled` (`user_prompt_submit.py:104`) and stays so; that flag remains the project-level off switch for hook writes (review 2026-09-11).
 
 ## API/Interface
 
 - New env var `LL_ANALYTICS_CAPTURE` (falsy values: `0`/`false`/`off`, case-insensitive; set-but-empty = unset) honored by `cli_event_context` and `skill_event_context`. Kill-switch only: no truthy value force-enables capture past a config-gate exclusion.
+- When `config` is provided, the `cli_event_context`/`skill_event_context` gate suppresses when `analytics.enabled` is present-and-false or the glob list excludes the binary; a config missing the `analytics` key stays permissive (review 2026-09-11).
+- Precedence: with the kill switch set, `resolve_history_db` is never called, so `LL_ANALYTICS_CAPTURE=0` wins over `LL_HISTORY_DB`.
 - `main_history()` passes `config=<loaded project config>` to `cli_event_context`.
 - No new CLI flags. No JSON output-shape change.
 
@@ -211,8 +222,14 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - [ ] Unit tests for `cli_event_context` and `skill_event_context`: env var set → no connect, no row written; row-written tests `delenv` the var so they don't depend on the developer's shell.
 - [ ] Case-insensitivity: `LL_ANALYTICS_CAPTURE=OFF` (or `False`) suppresses the row the same as `0`.
 - [ ] `analytics.capture.cli_commands` excluding `ll-history` in `.ll/ll-config.json` suppresses the row for `ll-history`.
+- [ ] `analytics.enabled: false` with no `capture` key (the `ll-init` opt-out shape, `init/core.py:365`) suppresses the `cli_events` row for `ll-history` (review 2026-09-11).
+- [ ] A config missing the `analytics` key entirely keeps capture on (legacy permissive default preserved).
 - [ ] Fallback comment at `history.py:684-686` updated.
 - [ ] `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, and `docs/reference/HOST_COMPATIBILITY.md` document `LL_ANALYTICS_CAPTURE`.
+- [ ] `docs/reference/CONFIGURATION.md` (:616, :1721) and `docs/ARCHITECTURE.md` (:679, :767) document `LL_ANALYTICS_CAPTURE` and drop the now-stale v46 "gate is dead" claim.
+- [ ] Stale-invariant docstrings updated: `issue_events_ever_recorded` (`issue_history/parsing.py:421-433`), `_record_research_triage` (`cli/issues/research_triage.py:89-98`), and the `session_store/__init__.py` package docstring (:44-45).
+- [ ] `LL_ANALYTICS_CAPTURE` added to `_CMD_RUN_ENV_VARS` in `scripts/tests/conftest.py`, so the autouse scrub keeps row-written and "enter failed" tests deterministic against an ambient export.
+- [ ] The `skill_event_context` env-set unit test asserts the db file is not created, not merely that no row was written (review 2026-09-11).
 - [ ] `python -m pytest scripts/tests/` passes.
 
 ## Related
@@ -230,6 +247,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T22:03:50 - `cf2556c4-72e8-4260-8e11-5d8008bb6e43.jsonl`
+- pre-implementation review fold-in - 2026-09-11 - resolved Decision 2 gate semantics (`analytics.enabled` present-and-false suppresses; missing `analytics` key stays permissive), resolved Decision 4 hooks-layer scoping (env var does not reach `record_skill_event`), added config-gate/conftest/docstring ACs, LL_HISTORY_DB precedence note
 - `/ll:wire-issue` - 2026-09-11T21:13:49 - `a7854cf9-ea11-4533-87cc-72769e97d00c.jsonl`
 - `/ll:refine-issue` - 2026-09-11T20:49:17 - `3e633d12-e9f0-40e1-8e84-6924e6006790.jsonl`
 - `/ll:format-issue` - 2026-09-11T20:30:31 - `29719eda-e34b-4588-9e6c-a4b50bf277cf.jsonl`
