@@ -1,0 +1,11 @@
+{
+  "id": "620ed93e-ec47-486d-8e30-fbeefb48a942",
+  "type": "decision",
+  "timestamp": "2026-09-11T20:26:49Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Read-only ll-history activity consumer gaps (little-loops-hermes)",
+  "rule": "Captured: ENH-3450",
+  "scope": "issue",
+  "issue": "ENH-3450"
+}
