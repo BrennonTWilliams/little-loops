@@ -22,11 +22,11 @@ Identified from a design review of a little-loops-hermes task. 1.162.0 shipped c
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+No cross-repo activity read exists. Workspace aggregation is quality-only: `aggregate_history_dbs()` (workspace_quality.py:196) takes quality-shaped kwargs (`min_sample`, `sensitivity`, `baseline_windows`, `latest_only`) and runs issue analysis per member; its `skipped: list[tuple[str, str]]` string pairs cannot distinguish "no history" (uninstrumented) from "history present but unreadable". A consumer wanting activity counts shells out per project (`ll-loop list --running --json`, `ll-issues list --json`) and opens each project's `.ll/history.db` with its own sqlite3, every sync.
 
 ## Expected Behavior
 
-[What should happen instead]
+`aggregate_workspace_activity(members, since=...)` returns one structured `RepoActivity` per member — counts, `instrumented` flag, machine-readable status — plus Python-side workspace totals over `ok` members, using read-only connections and no ATTACH/union machinery. Consumers (hermes `ll_briefing`/`ll_portfolio`, then `ll-history activity` via FEAT-3446) make one call instead of N subprocess spawns + N direct sqlite connections.
 
 ## Motivation
 
@@ -64,25 +64,44 @@ aggregate_workspace_activity(members: list[WorkspaceMember], *, since: str | Non
 
 **Known limitation (document, do not solve):** FSM signals (stalls, cycles, rate-limits) are webhook-only and not stored in history.db; a history.db read cannot cover them.
 
+## Program Design
+
+### Types
+
+See `## API/Interface` for the full contract: `MemberActivityStatus` (str-Enum: `ok`/`db_missing`/`schema_skew`/`unreadable`), `RepoActivity` (frozen dataclass; counts `None` iff status != OK), `WorkspaceActivityResult` (`per_repo` + `totals: WorkspaceTotals | None`, `to_dict()`).
+
+### Signatures
+
+- `aggregate_workspace_activity(members: list[WorkspaceMember], *, since: str | None) -> WorkspaceActivityResult` — the only public entry; module sibling to `aggregate_history_dbs()` in `scripts/little_loops/issue_history/workspace_activity.py` (new file).
+
+### Call Path
+
+`discover_workspace_members` (workspace.py:163; manifest → members) -> `aggregate_workspace_activity` [new] -> per member: `_open_member_readonly` + `read_schema_version` (session_store/queries.py:203) gate -> count SQL -> Python-side totals. The member gate itself is extracted from `aggregate_history_dbs` (workspace_quality.py:196) into a shared private helper both callers use.
+
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/issue_history/workspace_quality.py` — extract the per-member gate (missing db → read-only open → `read_schema_version` check → skip-and-report) into a shared private helper; quality behavior byte-identical (AC 7).
+- `scripts/little_loops/issue_history/workspace_activity.py` — NEW module: types, reader, `to_dict()`.
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/workspace.py` — supplies `WorkspaceMember` / `discover_workspace_members()` (read-only dependency, no change).
+- `scripts/little_loops/cli/history.py` — future caller via FEAT-3446 (`ll-history activity`); not wired in this issue.
 
 ### Similar Patterns
-- TBD - search for consistency
+- `aggregate_history_dbs()` (workspace_quality.py:196) — the sibling aggregation whose member gating, read-only opens, and skip-and-report semantics this reader upgrades into structured statuses.
+- Raw `ts >= ?` window queries (evolution.py:115, history_reader/events.py:245) — get away with string compare only because `ts` is uniformly `Z`-formatted; this module must use `datetime()` normalization instead (mixed `+00:00`-micros/`Z` formats).
 
 ### Tests
-- TBD - identify test files to update
+- NEW `scripts/tests/test_workspace_activity.py` — mixed timestamp formats, NULL `ended_at`, missing/skewed/unreadable members, zero-ok workspace, unbounded `since`.
+- `scripts/tests/test_feat3410_workspace_quality.py` + `test_feat3418_workspace_quality.py` — must pass unmodified after the gate-helper extraction.
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/API.md` — new public module entry; note the gate extraction under `workspace_quality`.
+- `docs/ARCHITECTURE.md` — workspace aggregation layer gains the activity sibling.
 
 ### Configuration
-- N/A or list config files
+- N/A — reads only `WorkspaceMember` inputs + per-member history.db; no new config keys.
 
 ## Implementation Steps
 
@@ -125,6 +144,10 @@ class WorkspaceActivityResult:
 
 `WorkspaceTotals` sums each count over `ok` members only, plus `members: int` and `instrumented_members: int`. Schema-skewed/unreadable members are excluded from totals (matching quality's gate) — stated so an implementer doesn't have to re-derive it.
 
+## Use Case
+
+Hermes' `ll_briefing` / `ll_portfolio` sync calls `aggregate_workspace_activity(members, since=last_sync)` once per sync instead of N subprocess spawns + N direct sqlite connections, and branches on `instrumented`/status to report "not instrumented" vs "history present but unreadable" per repo — the distinction the current string-pair skip record cannot express.
+
 ## Acceptance Criteria
 
 1. `aggregate_workspace_activity(members, since=...)` returns one `RepoActivity` per member; non-ok members carry `None` counts, never `0`.
@@ -149,4 +172,5 @@ class WorkspaceActivityResult:
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-10T23:59:04 - `977177b4-c924-4eb0-8524-717b55725bed.jsonl`
 - `/ll:capture-issue` - 2026-09-10T23:53:43 - `98b64441-1d76-4822-ab69-c295348ddfd6.jsonl`
