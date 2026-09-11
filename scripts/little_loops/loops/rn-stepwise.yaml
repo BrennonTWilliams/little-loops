@@ -13,8 +13,9 @@ description: |
   a lower default max_nodes — implementation dominates runtime, so 40
   implemented-and-verified leaves in one run is unrealistic) and delegates the
   entire walk to rn-refine.yaml via a `loop:` state. See rn-refine.yaml's
-  record_leaf/implement_leaf/verify_leaf/record_deviation/record_leaf_done
-  chain for the actual per-leaf implement/verify/commit-or-revert mechanics.
+  record_leaf/implement_leaf/verify_leaf/record_deviation/commit_leaf/
+  record_leaf_commit_failed/record_leaf_done chain for the actual per-leaf
+  implement/verify/commit-or-revert mechanics.
 
   Run as: ll-loop run rn-stepwise "path/to/plan.md"
 initial: run

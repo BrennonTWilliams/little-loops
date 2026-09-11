@@ -645,7 +645,7 @@ decompose/refine/synth tree-walk logic. It sets `${context.stepwise}=1` (plus
 a lower `max_nodes: 12` default vs. `rn-refine`'s planning-only default of 40
 — implementation dominates runtime) and delegates the entire walk to
 `rn-refine.yaml` via a `loop:` state. See `rn-refine.yaml`'s
-`record_leaf`/`implement_leaf`/`verify_leaf`/`record_deviation`/`record_leaf_done`
+`record_leaf`/`implement_leaf`/`verify_leaf`/`record_deviation`/`commit_leaf`/`record_leaf_commit_failed`/`record_leaf_done`
 chain for the actual per-leaf implement/verify/commit-or-revert mechanics.
 
 ```bash

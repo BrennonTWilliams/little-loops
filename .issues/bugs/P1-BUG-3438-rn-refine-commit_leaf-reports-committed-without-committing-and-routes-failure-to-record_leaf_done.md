@@ -4,10 +4,11 @@ type: BUG
 title: rn-refine commit_leaf reports COMMITTED without committing and routes failure
   to record_leaf_done
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
+completed_at: '2026-09-11T02:35:25Z'
 parent: EPIC-3436
 decision_needed: false
 verify_verdict: VALID
@@ -246,12 +247,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Low - Narrows a swallow-all path; the `NO_CHANGES` passthrough and success path are preserved verbatim. A transient commit failure (index.lock) now discards that leaf's uncommitted work via the revert; resume re-enqueues the leaf, which is the intended trade.
 - **Breaking Change**: No
 
+## Resolution
+
+Implemented per the Proposed Solution / Program Design exactly as specified (Option B, bare `set -e`):
+
+- `commit_leaf` (`scripts/little_loops/loops/rn-refine.yaml`): added `set -e`, dropped the `2>/dev/null || true` swallow on the `leaf-baseline-commit.txt` write, and rerouted `on_error` from `record_leaf_done` to a new `record_leaf_commit_failed` state.
+- Added `record_leaf_commit_failed`: hard-resets to `leaf-baseline-commit.txt`, recreates `$RUN_DIR`, appends `<nid> COMMIT_FAILED` to `failed_nodes.txt`, echoes `[COMMIT_FAILED] <nid>`, writes no `leaf_impl_` marker, `next: dequeue_next`.
+- `docs/reference/loops.md` and `rn-stepwise.yaml`'s description updated to include the new state in the leaf-chain enumeration.
+- Sibling audit: `snapshot_leaf_diff` left as-is (deliberate never-fail, per its own comment); `reset_leaf_repair`'s empty-baseline-on-unborn-HEAD case is out of scope for this fix (informational only, no follow-up filed).
+- Tests (`scripts/tests/test_rn_refine.py`): made `test_commit_leaf_commits_pending_changes` hermetic (repo-local `git config` instead of ambient global identity); added `test_commit_leaf_no_changes_passthrough` (previously zero coverage); added `TestCommitLeafSafety` with an identity-failure case (`user.useConfigOnly=true` + `GIT_CONFIG_GLOBAL=/dev/null`/`GIT_CONFIG_SYSTEM=/dev/null` via `monkeypatch`, asserting non-zero exit, no `COMMITTED`, unchanged baseline) and a `record_leaf_commit_failed` render-and-run (reverted tree, `COMMIT_FAILED` recorded, no `leaf_impl_` marker); added routing assertions (`on_error == "record_leaf_commit_failed"`, `!= "record_leaf_done"`, `!= "record_failure"`) and extended `test_chain_states_exist`.
+- Verified: `ll-loop validate rn-refine` passes; `python -m pytest scripts/tests/test_rn_refine.py scripts/tests/test_builtin_loops.py scripts/tests/test_builtin_loop_interpolation.py scripts/tests/test_fsm_flow.py scripts/tests/test_fsm_schema.py` (2679 passed); full suite `python -m pytest scripts/tests/` shows only 5 pre-existing, unrelated failures (issue-tracker prose-drift/priority-regex/evidence-gate noise for FEAT-3445/3446), confirmed present on `main` before this change via `git stash`.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T02:34:39 - `f624ac92-20ff-4dd4-acff-530e99f2520f.jsonl`
+- `/ll:ready-issue` - 2026-09-11T02:22:20 - `7fcd3a41-7787-463b-927b-fcdc1bb2aeee.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:52:47 - `7624b74c-be01-4508-b2ca-c9852de2fedb.jsonl`
 - `/ll:verify-issues` - 2026-09-11T01:50:21 - `f77f88c9-58d9-4ee9-80f3-b9585d4c8714.jsonl`
 - `/ll:confidence-check` - 2026-09-11T01:36:32 - `baec27a2-e9d2-4434-851e-afe0bfd070d4.jsonl`

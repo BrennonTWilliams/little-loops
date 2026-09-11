@@ -603,9 +603,14 @@ states:
     # Per-leaf tree hygiene: commit on verified success (one commit per leaf).
     # No separate targets tracking needed — the whole working-tree diff since
     # leaf-baseline-commit.txt IS this leaf's change (leaf-touched-files
-    # already captured it for verify_leaf's scoping).
+    # already captured it for verify_leaf's scoping). set -e (corpus form,
+    # BUG-3438 Decision Rationale) plus a dedicated on_error target — the
+    # baseline write is no longer swallowed by `|| true`, and a failed
+    # `git commit` must never route to record_leaf_done, which would mark an
+    # uncommitted leaf verified.
     action_type: shell
     action: |
+      set -e
       RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       git add -A
       if git diff --cached --quiet; then
@@ -614,9 +619,28 @@ states:
         git commit -m "rn-stepwise: implement leaf ${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
         echo "COMMITTED ${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       fi
-      git rev-parse HEAD > "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || true
+      git rev-parse HEAD > "$RUN_DIR/leaf-baseline-commit.txt"
     next: record_leaf_done
-    on_error: record_leaf_done
+    on_error: record_leaf_commit_failed
+
+  record_leaf_commit_failed:
+    # BUG-3438: distinct from revert_leaf_failed — a commit failure (identity,
+    # hook reject, index.lock) is environmental, not an implementation failure.
+    # Revert so the next leaf cannot absorb this leaf's staged changes; write NO
+    # leaf_impl marker so check_resume/resume_reconcile re-enqueue the leaf.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      NID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      BASELINE=$(cat "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || echo "")
+      if [ -n "$BASELINE" ]; then
+        git reset --hard "$BASELINE"
+      fi
+      mkdir -p "$RUN_DIR"   # reset can prune a tracked run dir (see revert_leaf_failed)
+      echo "$${NID} COMMIT_FAILED" >> "$RUN_DIR/failed_nodes.txt"
+      echo "[COMMIT_FAILED] $${NID}"
+    next: dequeue_next
+    on_error: dequeue_next
 
   record_leaf_done:
     # ENH-2862: separate per-leaf implementation marker — NOT

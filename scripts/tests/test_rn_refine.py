@@ -19,6 +19,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import pytest
+
 import little_loops.rn_synth_queue as rn_synth_queue
 from little_loops.fsm.interpolation import InterpolationContext, interpolate
 from little_loops.fsm.validation import load_and_validate
@@ -1625,6 +1627,7 @@ class TestStepwiseChainStructure:
             "record_deviation",
             "rewrite_final_from_deviation",
             "commit_leaf",
+            "record_leaf_commit_failed",
             "record_leaf_done",
         ):
             assert name in fsm.states, f"missing stepwise chain state: {name}"
@@ -1667,6 +1670,17 @@ class TestStepwiseChainStructure:
         fsm = _load_rn_refine()
         assert fsm.states["commit_leaf"].next == "record_leaf_done"
         assert fsm.states["record_leaf_done"].next == "dequeue_next"
+
+    def test_commit_leaf_errors_route_to_record_leaf_commit_failed(self) -> None:
+        """BUG-3438: a failed git commit must never route to record_leaf_done
+        (which marks the leaf verified) nor to record_failure (which never
+        reverts, letting the next leaf's `git add -A` absorb this leaf's
+        staged changes)."""
+        fsm = _load_rn_refine()
+        assert fsm.states["commit_leaf"].on_error == "record_leaf_commit_failed"
+        assert fsm.states["commit_leaf"].on_error != "record_leaf_done"
+        assert fsm.states["commit_leaf"].on_error != "record_failure"
+        assert fsm.states["record_leaf_commit_failed"].next == "dequeue_next"
 
     def test_record_leaf_done_writes_leaf_impl_marker_not_node_outcome(self) -> None:
         """record_leaf_done must write a SEPARATE leaf_impl_<id>.txt marker,
@@ -1817,19 +1831,14 @@ class TestStepwiseChainPlumbing:
         rd = tmp_path / "run"
         rd.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+        # commit_leaf's rendered action owns the bare `git commit` line, so the
+        # test cannot inject per-command -c flags for it; a repo-local config
+        # gives it a hermetic identity without depending on the machine's
+        # global git config (BUG-3438).
+        subprocess.run(["git", "config", "user.email", "a@b.c"], cwd=tmp_path)
+        subprocess.run(["git", "config", "user.name", "a"], cwd=tmp_path)
         subprocess.run(
-            [
-                "git",
-                "-c",
-                "user.email=a@b.c",
-                "-c",
-                "user.name=a",
-                "commit",
-                "--allow-empty",
-                "-q",
-                "-m",
-                "baseline",
-            ],
+            ["git", "commit", "--allow-empty", "-q", "-m", "baseline"],
             cwd=tmp_path,
         )
         (tmp_path / "implemented.txt").write_text("done")
@@ -1845,6 +1854,34 @@ class TestStepwiseChainPlumbing:
         ).stdout
         assert "n5" in log
         assert (rd / "leaf-baseline-commit.txt").read_text().strip() != ""
+
+    def test_commit_leaf_no_changes_passthrough(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+        subprocess.run(["git", "config", "user.email", "a@b.c"], cwd=tmp_path)
+        subprocess.run(["git", "config", "user.name", "a"], cwd=tmp_path)
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-q", "-m", "baseline"],
+            cwd=tmp_path,
+        )
+        baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout.strip()
+        # No working-tree changes staged for this leaf.
+        action = _load_rn_refine().states["commit_leaf"].action
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n5"}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "NO_CHANGES n5" in result.stdout
+        assert "COMMITTED" not in result.stdout
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout.strip()
+        assert head == baseline
+        assert (rd / "leaf-baseline-commit.txt").read_text().strip() == baseline
 
     def test_record_leaf_done_marks_verified_by_default(self, tmp_path: Path) -> None:
         rd = tmp_path / "run"
@@ -1868,6 +1905,107 @@ class TestStepwiseChainPlumbing:
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0, result.stderr
         assert (rd / "leaf_impl_n6.txt").read_text() == "deviated"
+
+
+class TestCommitLeafSafety:
+    """BUG-3438: a failed git commit must exit non-zero, emit no COMMITTED
+    marker, leave leaf-baseline-commit.txt untouched, and route to a state
+    that reverts the dirty tree without writing a leaf_impl_ marker."""
+
+    def test_commit_leaf_fails_loudly_when_identity_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=a@b.c",
+                "-c",
+                "user.name=a",
+                "init",
+                "-q",
+            ],
+            cwd=tmp_path,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=a@b.c",
+                "-c",
+                "user.name=a",
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "baseline",
+            ],
+            cwd=tmp_path,
+        )
+        baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout.strip()
+        (rd / "leaf-baseline-commit.txt").write_text(baseline)
+        # Deterministic commit failure (Steps to Reproduce): forbid git's
+        # gecos/hostname identity auto-derivation, and block global/system
+        # config from supplying a fallback identity, with no repo-local
+        # identity configured. `_bash()` inherits monkeypatched os.environ
+        # since it passes no env= override.
+        subprocess.run(["git", "config", "user.useConfigOnly", "true"], cwd=tmp_path)
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+        monkeypatch.setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+        (tmp_path / "implemented.txt").write_text("done")
+        action = _load_rn_refine().states["commit_leaf"].action
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n7"}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode != 0
+        assert "COMMITTED" not in result.stdout
+        assert (rd / "leaf-baseline-commit.txt").read_text().strip() == baseline
+
+    def test_record_leaf_commit_failed_reverts_and_records_no_impl_marker(
+        self, tmp_path: Path
+    ) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=a@b.c",
+                "-c",
+                "user.name=a",
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "baseline",
+            ],
+            cwd=tmp_path,
+        )
+        baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout.strip()
+        (rd / "leaf-baseline-commit.txt").write_text(baseline)
+        (tmp_path / "dirty.txt").write_text("staged but never committed")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path)
+        action = _load_rn_refine().states["record_leaf_commit_failed"].action
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n7"}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout.strip()
+        assert head == baseline
+        assert not (tmp_path / "dirty.txt").exists(), "revert must discard the staged change"
+        assert "n7 COMMIT_FAILED" in (rd / "failed_nodes.txt").read_text()
+        assert not (rd / "leaf_impl_n7.txt").exists()
 
 
 class TestStepwiseResumeSemantics:
