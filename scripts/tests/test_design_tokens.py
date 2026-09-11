@@ -235,7 +235,7 @@ class TestLoadDesignTokensFallbacks:
         config = BRConfig(tmp_path)
         assert load_design_tokens(config) is None
 
-    def test_missing_path_returns_none(self, tmp_path: Path) -> None:
+    def test_missing_path_falls_back_to_packaged(self, tmp_path: Path) -> None:
         from little_loops.config.core import BRConfig
 
         (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
@@ -243,7 +243,21 @@ class TestLoadDesignTokensFallbacks:
             json.dumps({"design_tokens": {"enabled": True}})
         )
         config = BRConfig(tmp_path)
-        # default path .ll/design-tokens does not exist
+        # default path .ll/design-tokens does not exist: ENH-3441 packaged
+        # built-in fallback resolves instead of None
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.source == "profile"
+        assert result.resolved
+
+    def test_missing_path_unknown_active_returns_none(self, tmp_path: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"design_tokens": {"enabled": True, "active": "nonexistent"}})
+        )
+        config = BRConfig(tmp_path)
         assert load_design_tokens(config) is None
 
     def test_missing_primitives_file_uses_empty_dict(self, tmp_path: Path) -> None:
@@ -363,16 +377,34 @@ class TestLoadDesignTokensDesignMdFormat:
         assert result.source == "profile"
         assert result.resolved == {}
 
-    def test_auto_neither_present_returns_none(self, tmp_path: Path) -> None:
-        """AC 2d: no fallback to a token-empty DesignTokens when nothing exists."""
+    def test_auto_neither_present_falls_back_to_packaged(self, tmp_path: Path) -> None:
+        """AC 2d as of ENH-3441: no mirror and no root DESIGN.md -> the
+        packaged built-in matching `active` is the last resort (was: None)."""
         config = _make_config(tmp_path, {"source": "auto"})
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.source == "profile"
+        assert result.resolved
+
+    def test_auto_unknown_active_nothing_present_returns_none(self, tmp_path: Path) -> None:
+        """ENH-3441: genuinely absent everywhere (unknown profile name, no
+        mirror, no DESIGN.md) still degrades to None."""
+        config = _make_config(tmp_path, {"source": "auto", "active": "nonexistent"})
         assert load_design_tokens(config) is None
 
     def test_source_profile_ignores_root_design_md(self, tmp_path: Path) -> None:
-        """AC 3."""
+        """AC 3 as of ENH-3441: `source: profile` never consults DESIGN.md —
+        with no mirror it falls back to the packaged built-in, whose tokens
+        (not the DESIGN.md's) are returned."""
         _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
         config = _make_config(tmp_path, {"source": "profile"})
-        assert load_design_tokens(config) is None
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.source == "profile"
+        assert result.source_path.name == "default"
+        # The DESIGN.md's own values/prose must not leak in (AC 3 semantic).
+        assert result.guidance == ""
+        assert result.resolved.get("color.action.primary") != "#855300"
 
     def test_source_design_md_with_no_file_returns_none(self, tmp_path: Path, capsys) -> None:
         """AC 3."""

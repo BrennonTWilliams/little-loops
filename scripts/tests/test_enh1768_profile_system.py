@@ -293,22 +293,39 @@ class TestLegacyFlatLayoutFallback:
 
 
 class TestMissingProfileFallback:
-    """Missing active profile must NOT crash; degrades to None."""
+    """Missing active profile must NOT crash; packaged built-in is the last
+    resort (ENH-3441), and only genuinely-absent-everywhere degrades to None."""
 
     def test_missing_profile_returns_none(self, tmp_path: Path) -> None:
-        # profiles/ exists but the active profile dir doesn't
+        # profiles/ exists but the active profile dir doesn't, and the
+        # packaged built-ins don't carry that name either
         _write_profile(tmp_path, "default")
         config = _make_config(tmp_path, {"active": "nonexistent"})
         result = load_design_tokens(config)
         assert result is None
 
-    def test_completely_absent_path_returns_none(self, tmp_path: Path) -> None:
-        # Config enabled, but no design-tokens dir at all
+    def test_completely_absent_path_falls_back_to_packaged(self, tmp_path: Path) -> None:
+        # Config enabled, but no design-tokens dir at all: ENH-3441 packaged
+        # built-in fallback resolves instead of None
         from little_loops.config.core import BRConfig
 
         (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
         (tmp_path / ".ll" / "ll-config.json").write_text(
             json.dumps({"design_tokens": {"enabled": True}})
+        )
+        config = BRConfig(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.source == "profile"
+        assert result.resolved
+
+    def test_completely_absent_path_unknown_active_returns_none(self, tmp_path: Path) -> None:
+        # Absent dir AND an active name no packaged built-in carries
+        from little_loops.config.core import BRConfig
+
+        (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"design_tokens": {"enabled": True, "active": "nonexistent"}})
         )
         config = BRConfig(tmp_path)
         assert load_design_tokens(config) is None

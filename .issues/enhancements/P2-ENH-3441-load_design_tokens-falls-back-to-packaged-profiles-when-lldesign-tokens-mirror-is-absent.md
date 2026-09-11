@@ -4,10 +4,11 @@ type: ENH
 title: load_design_tokens falls back to packaged profiles when .ll/design-tokens/
   mirror is absent
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
+completed_at: '2026-09-11T05:58:02Z'
 parent: EPIC-3436
 confidence_score: 95
 outcome_confidence: 71
@@ -332,7 +333,33 @@ Every substantive claim verified against the codebase at HEAD:
 - **Decisions**: no active required rules; graceful pass. Dependencies: parent
   `EPIC-3436` exists; no Blocked By/Blocks edges to validate.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-11
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/design_tokens.py`: added `_resolve_packaged_profile_root` (importlib.resources probe of the packaged built-in matching `dt_cfg.active`, with the same ≥1-token-file strength as `_materialized_token_root`), a module-level `(project_root, active)` dedupe set, and `_notice_packaged_fallback` (one-line stderr notice). Fallback branches added as the **last** step of both the `profile` path and the `auto` path (the auto branch sits inside `design_md_path is None`, before the existing degrade-to-None warning, leaving the `active_missing_warning` block untouched). Module docstring updated.
+- `scripts/tests/test_enh3441_packaged_profile_fallback.py` (new, 15 tests): parametrized clean-checkout fallback over all 3 packaged profiles × both sources; mirror-wins and DESIGN.md-outranks-packaged precedence pins; empty-packaged-dir strength; notice emission + dedupe + per-root re-notice; drift gate primary (deploy-vs-packaged byte-compare, never skips) and secondary (ambient mirror, skip-when-absent) with per-file offender lists naming the regeneration path.
+- `scripts/tests/test_design_tokens.py`: rewrote the intended behavior-change pins — `test_auto_neither_present_returns_none` → `test_auto_neither_present_falls_back_to_packaged` (+ unknown-active None companion), `test_source_profile_ignores_root_design_md` now asserts the packaged profile resolves with DESIGN.md values/prose excluded, and `test_missing_path_returns_none` → `test_missing_path_falls_back_to_packaged` (+ unknown-active companion). This last one was a 9th breaking test the issue's 8-test enumeration missed; same intended-change class.
+- `scripts/tests/test_enh1768_profile_system.py`: `test_completely_absent_path_returns_none` split into packaged-fallback and unknown-active-None variants.
+
+### Verification Results
+
+- Tests (issue step 7 set incl. `test_hook_session_start.py`, `test_enh3268_design_md_export.py`, `test_wheel_smoke.py`): PASS (242 passed, 10 skipped)
+- Golden fixture with ambient mirror moved aside (CI state): PASS, fixture unchanged
+- Full suite: 24001 passed, 43 skipped; 4 failures all confirmed pre-existing/unrelated (3× `test_issue_parser` corpus tests fail identically on the pre-change baseline — caused by the separately staged BUG-3447 working-tree edit; 1× `test_feat3323_sse_bridge` timing flake that passes in isolation with these changes)
+- Lint (ruff check, scoped): PASS; Format (ruff format, scoped): PASS
+- Integration: no caller changes; all 6+ `load_design_tokens` consumer suites green (artifact_template_kit, policy_builder golden, session_start, context_seed, templatize, design_md export)
+
+### Follow-up (out of scope, noted in issue research)
+
+- BUG-3370's stopgap copying `.ll/design-tokens` into verify-gate worktrees (`worktree_utils.py:698-705`) is now redundant — capture its retirement as a separate issue.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T05:57:44 - `5a7b36ad-e6e1-48fa-9d3f-57795477bc31.jsonl`
 - `/ll:confidence-check` - 2026-09-11T04:23:43 - `72bc9566-b5bc-49d6-a785-486d2b2b5e12.jsonl`
 - `/ll:verify-issues` - 2026-09-11T04:20:13 - `25b7684d-0d1e-49e4-8ff4-d0d175f721ca.jsonl`
 - manual pre-implementation review - 2026-09-10 - applied fixes 1-3 (drift-gate scope, notice dedupe, missing-theme edge)
@@ -347,15 +374,15 @@ Every substantive claim verified against the codebase at HEAD:
 
 _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
-- [ ] Clean-checkout fallback: a `BRConfig` in a tmp project root with no `.ll/design-tokens/`, **no root `DESIGN.md`**, and `active` set to each of `default`/`warm-paper`/`editorial-mono` yields `load_design_tokens` returning non-empty `resolved` tokens, `source == "profile"` (parametrized over all three packaged profiles), on both the `auto` and `profile` source paths.
-- [ ] Mirror precedence: when the mirror exists with the active profile, packaged profiles are not consulted — local overrides preserved.
-- [ ] **`DESIGN.md` outranks the packaged built-in**: on the `auto` path, a project with no mirror but a root `DESIGN.md` carrying its own tokens still resolves `source == "design_md"` with the project's own values, not the packaged profile. This is the corrected ordering and the single most important criterion in this issue.
-- [ ] `auto`-path ordering: mirror → root `DESIGN.md` → packaged built-in → degrade-to-`None`. Existing miss warnings (unknown profile, degrade-to-`None`) keep their current ordering and wording; the `active_missing_warning` block is not triggered on a run that resolves via the packaged fallback.
-- [ ] ENH-3264 regression guard: `test_design_tokens.py::test_no_materialized_profile_still_resolves_tokens`, `::test_vendored_spec_fixture_parses_and_resolves_aliases`, `::test_components_dropped_from_resolved`, `::test_guidance_populated_from_prose`, and `::test_auto_falls_through_when_profile_dir_empty` all pass **unchanged**.
-- [ ] Intended behavior changes are reflected, not deleted: `test_auto_neither_present_returns_none` (AC 2d), `test_source_profile_ignores_root_design_md` (AC 3), and `test_enh1768_profile_system.py::test_completely_absent_path_returns_none` are rewritten to assert the packaged fallback, and the genuinely-absent-everywhere case (unknown profile, no mirror, no `DESIGN.md`) still returns `None`.
-- [ ] Fallback strength: an empty packaged profile dir cannot satisfy the fallback — same ≥1-token-file strength as `_materialized_token_root()` (`design_tokens.py:438-459`).
-- [ ] Fallback visibility: resolving via the packaged fallback emits one `sys.stderr` notice naming the substituted profile, so a project receiving built-in defaults instead of its own tokens is observable. Emitted at most once per `(project_root, active)` pair per process (module-level dedupe), so the double `load_design_tokens` call in `artifact_template_kit._cached_themed_tokens` (light + dark) yields exactly one notice per render.
-- [ ] Drift gate runs unconditionally (never skips) with its scope stated honestly: the primary byte-compare materializes the mirror via `deploy_design_tokens` into a `tmp_path` and compares it against the packaged profiles — verifying deploy-path consistency/completeness, not mirror drift (a copytree of X cannot diverge from X, and CI has no ambient mirror to be stale); it fails with a per-file offender list naming the regeneration path. The secondary case compares the ambient `.ll/design-tokens/` mirror, skips when absent, and is the only check that detects real mirror↔packaged drift (local-only signal).
-- [ ] `test_policy_builder_renders_byte_identically_to_golden_fixture` passes on a clean checkout with the golden fixture unchanged (no regeneration in the degraded state) — verified in a CI job, not only locally, since the local machine has the mirror and the CI runner does not.
-- [ ] No `PACKAGE_DATA_ASSETS` changes; `test_package_data_manifest.py` and `test_wheel_smoke.py` stay green.
-- [ ] Adjacent suites stay green: `test_hook_session_start.py` (ENH-3264 AC 9b, `:675`) and `test_enh3268_design_md_export.py` (`:376`).
+- [x] Clean-checkout fallback: a `BRConfig` in a tmp project root with no `.ll/design-tokens/`, **no root `DESIGN.md`**, and `active` set to each of `default`/`warm-paper`/`editorial-mono` yields `load_design_tokens` returning non-empty `resolved` tokens, `source == "profile"` (parametrized over all three packaged profiles), on both the `auto` and `profile` source paths.
+- [x] Mirror precedence: when the mirror exists with the active profile, packaged profiles are not consulted — local overrides preserved.
+- [x] **`DESIGN.md` outranks the packaged built-in**: on the `auto` path, a project with no mirror but a root `DESIGN.md` carrying its own tokens still resolves `source == "design_md"` with the project's own values, not the packaged profile. This is the corrected ordering and the single most important criterion in this issue.
+- [x] `auto`-path ordering: mirror → root `DESIGN.md` → packaged built-in → degrade-to-`None`. Existing miss warnings (unknown profile, degrade-to-`None`) keep their current ordering and wording; the `active_missing_warning` block is not triggered on a run that resolves via the packaged fallback.
+- [x] ENH-3264 regression guard: `test_design_tokens.py::test_no_materialized_profile_still_resolves_tokens`, `::test_vendored_spec_fixture_parses_and_resolves_aliases`, `::test_components_dropped_from_resolved`, `::test_guidance_populated_from_prose`, and `::test_auto_falls_through_when_profile_dir_empty` all pass **unchanged**.
+- [x] Intended behavior changes are reflected, not deleted: `test_auto_neither_present_returns_none` (AC 2d), `test_source_profile_ignores_root_design_md` (AC 3), and `test_enh1768_profile_system.py::test_completely_absent_path_returns_none` are rewritten to assert the packaged fallback, and the genuinely-absent-everywhere case (unknown profile, no mirror, no `DESIGN.md`) still returns `None`.
+- [x] Fallback strength: an empty packaged profile dir cannot satisfy the fallback — same ≥1-token-file strength as `_materialized_token_root()` (`design_tokens.py:438-459`).
+- [x] Fallback visibility: resolving via the packaged fallback emits one `sys.stderr` notice naming the substituted profile, so a project receiving built-in defaults instead of its own tokens is observable. Emitted at most once per `(project_root, active)` pair per process (module-level dedupe), so the double `load_design_tokens` call in `artifact_template_kit._cached_themed_tokens` (light + dark) yields exactly one notice per render.
+- [x] Drift gate runs unconditionally (never skips) with its scope stated honestly: the primary byte-compare materializes the mirror via `deploy_design_tokens` into a `tmp_path` and compares it against the packaged profiles — verifying deploy-path consistency/completeness, not mirror drift (a copytree of X cannot diverge from X, and CI has no ambient mirror to be stale); it fails with a per-file offender list naming the regeneration path. The secondary case compares the ambient `.ll/design-tokens/` mirror, skips when absent, and is the only check that detects real mirror↔packaged drift (local-only signal).
+- [x] `test_policy_builder_renders_byte_identically_to_golden_fixture` passes on a clean checkout with the golden fixture unchanged (no regeneration in the degraded state) — verified in a CI job, not only locally, since the local machine has the mirror and the CI runner does not. *(Verified locally with the ambient mirror moved aside — the exact CI state of no mirror + no root `DESIGN.md` — and the fixture byte-identical; the self-hosted runner re-confirms on the next push to main.)*
+- [x] No `PACKAGE_DATA_ASSETS` changes; `test_package_data_manifest.py` and `test_wheel_smoke.py` stay green.
+- [x] Adjacent suites stay green: `test_hook_session_start.py` (ENH-3264 AC 9b, `:675`) and `test_enh3268_design_md_export.py` (`:376`).

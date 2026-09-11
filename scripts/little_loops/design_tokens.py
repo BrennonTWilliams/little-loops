@@ -9,10 +9,16 @@ ENH-1768 introduced profiles: token files live under
 `<path>/<profiles_dir or "profiles">/<active>/` and the loader transparently
 falls back to the legacy flat `<path>/` layout when no profile directory
 exists, so pre-ENH-1768 projects keep working.
+
+ENH-3441 added a last-resort packaged-profile fallback: when neither a
+materialized project mirror nor (on the `auto` path) a root DESIGN.md exists,
+the packaged built-in profile matching `active` resolves instead of None, so
+clean checkouts (CI, fresh ll-init, new contributors) render token-aware.
 """
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 import sys
 from dataclasses import dataclass
@@ -409,6 +415,65 @@ def load_profile_tokens_from_root(
     return _load_profile_from_root(config.design_tokens, token_root, theme)
 
 
+# ENH-3441: one fallback notice per (project_root, active) per process.
+# `artifact_template_kit._cached_themed_tokens` calls load_design_tokens twice
+# per render (light + dark themes) and the notice is about the fallback source,
+# not the theme — without the dedupe the policy-builder render that motivated
+# the fallback prints it twice.
+_packaged_fallback_notice_seen: set[tuple[str, str]] = set()
+
+
+def _notice_packaged_fallback(config: BRConfig, dt_cfg: Any) -> None:
+    """Announce a packaged-profile substitution once per (root, active).
+
+    A silent swap of built-in defaults for a project's own tokens is exactly
+    the class of degradation ENH-3441 exists to make observable. Deliberately
+    louder than `_resolve_export_profile_root`, which substitutes silently —
+    `design-md export --profile <name>` is an explicit user request, while
+    `load_design_tokens` is not.
+    """
+    key = (str(config.project_root), dt_cfg.active)
+    if key in _packaged_fallback_notice_seen:
+        return
+    _packaged_fallback_notice_seen.add(key)
+    base_path = config.project_root / dt_cfg.path
+    sys.stderr.write(
+        "[little-loops] Notice: design tokens resolved from the packaged "
+        f"built-in profile '{dt_cfg.active}' — no usable project tokens at "
+        f"'{base_path}'.\n"
+    )
+
+
+def _resolve_packaged_profile_root(dt_cfg: Any) -> Path | None:
+    """Resolve the packaged built-in profile named by *dt_cfg.active* (ENH-3441).
+
+    Probes `little_loops/templates/design-tokens/profiles/<active>/` via
+    `importlib.resources` — the same accessor pattern as
+    `cli/artifact/design_md.py::_resolve_export_profile_root` — and returns
+    the profile root only when it would yield >=1 token file, mirroring the
+    strength of `_materialized_token_root` so an empty directory cannot
+    satisfy the fallback either. Directory-install-safe (editable installs
+    and pip-unpacked wheels) but not zip-safe: `_load_profile_from_root`
+    performs real filesystem reads, so a package consumed straight off a
+    `.whl` on `sys.path` silently resolves to None here rather than raising.
+    """
+    packaged = importlib.resources.files("little_loops").joinpath(
+        "templates", "design-tokens", "profiles", dt_cfg.active
+    )
+    packaged_path = Path(str(packaged))
+    if not packaged_path.is_dir():
+        return None
+    candidates = (
+        dt_cfg.primitives_file,
+        dt_cfg.semantic_file,
+        "typography.json",
+        "spacing.json",
+    )
+    if not any((packaged_path / c).exists() for c in candidates):
+        return None
+    return packaged_path
+
+
 def load_design_tokens(
     config: BRConfig,
     theme: str | None = None,
@@ -512,9 +577,17 @@ def load_design_tokens(
         )
 
     if source == "profile":
-        if not base_path.exists():
-            return None
-        token_root = _resolve_token_root(dt_cfg, base_path)
+        token_root: Path | None = None
+        if base_path.exists():
+            token_root = _resolve_token_root(dt_cfg, base_path)
+        if token_root is None:
+            # Last resort (ENH-3441): the mirror is absent or its active
+            # profile is missing. This path has no DESIGN.md fallback by
+            # design (ENH-3264 AC 3), so the packaged built-in matching
+            # `active` is the only step before degrading to None.
+            token_root = _resolve_packaged_profile_root(dt_cfg)
+            if token_root is not None:
+                _notice_packaged_fallback(config, dt_cfg)
         if token_root is None:
             return None
         return _load_profile(token_root)
@@ -554,6 +627,18 @@ def load_design_tokens(
 
     design_md_path = _find_design_md(config.project_root)
     if design_md_path is None:
+        packaged_root = _resolve_packaged_profile_root(dt_cfg)
+        if packaged_root is not None:
+            # Last resort (ENH-3441): neither a materialized mirror nor a
+            # root DESIGN.md exists (clean checkout, fresh ll-init, CI). The
+            # packaged built-in keeps rendering token-aware instead of
+            # silently tokenless; the project's own sources always outrank
+            # it above. Kept after the DESIGN.md branch so it can never
+            # replace a project's own design language with generic
+            # built-ins, and kept clear of the active_missing_warning block
+            # so that warning never fires on a resolution that succeeds.
+            _notice_packaged_fallback(config, dt_cfg)
+            return _load_profile(packaged_root)
         if active_missing_warning is not None and active_root is not None:
             # Explicit profile requested and missing, and no DESIGN.md to
             # fall back to either: preserve today's exact degrade-to-None
