@@ -1187,9 +1187,10 @@ def check_format_gaps(
                     )
 
     findings_bodies = _heading_bodies(content, "Codebase Research Findings")
+    stripped_findings_bodies = [_strip_non_prose_spans(body).lower() for body in findings_bodies]
     has_correction = any(
-        phrase in body.lower()
-        for body in findings_bodies
+        phrase in body
+        for body in stripped_findings_bodies
         for phrase in _SUPERSEDED_CORRECTION_PHRASES
     )
     if has_correction:
@@ -1454,6 +1455,45 @@ def _empty_provenance_stubs(content: str) -> list[str]:
         f"line {content.count(chr(10), 0, m.start()) + 1}"
         for m in _empty_provenance_stub_matches(content)
     ]
+
+
+# BUG-3447: spans a quoted warning/error/test-name string, not an authored
+# assertion, must not feed the unmarked_superseded_directive phrase scan.
+# Precompiled once at module load so an --all sweep doesn't recompile these
+# per issue. Single-quoted runs are deliberately excluded: a paired-`'`
+# pattern would pair one apostrophe (contraction, possessive) with the next
+# one anywhere later in the line and swallow genuine prose between them.
+_SUPERSEDED_QUOTE_SPAN_RE = re.compile(r'"([^"\n]+)"|“([^”\n]+)”')
+_SUPERSEDED_BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
+
+
+def _strip_non_prose_spans(text: str) -> str:
+    """Mask fenced code, inline code spans, and double-quoted runs in *text*.
+
+    Each masked span is replaced with a single space rather than removed
+    outright, so words on either side of a mask never fuse into a phrase
+    that was never contiguous in the original prose (``the flag "is"
+    wrong`` must not collapse into ``is wrong``). Fails open on malformed
+    markup (unbalanced backticks or an unterminated fence): whatever spans
+    are recognized are stripped, the rest of *text* is returned unchanged.
+    """
+    spans = sorted(
+        fence_spans(text)
+        + [m.span() for m in _SUPERSEDED_BACKTICK_SPAN_RE.finditer(text)]
+        + [m.span() for m in _SUPERSEDED_QUOTE_SPAN_RE.finditer(text)]
+    )
+    if not spans:
+        return text
+    pieces: list[str] = []
+    cursor = 0
+    for start, end in spans:
+        if start < cursor:
+            continue
+        pieces.append(text[cursor:start])
+        pieces.append(" ")
+        cursor = end
+    pieces.append(text[cursor:])
+    return "".join(pieces)
 
 
 # ENH-2995: closed detection list for the unmarked_superseded_directive gap

@@ -3,10 +3,11 @@ id: BUG-3447
 type: BUG
 title: superseded-directive gap matches correction phrases inside quoted literals
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T03:57:18Z'
+completed_at: '2026-09-11T15:14:15Z'
 confidence_score: 95
 outcome_confidence: 89
 score_complexity: 21
@@ -215,6 +216,31 @@ Note that the obvious fix does not apply: the neighbouring `_TESTABLE_PATTERNS` 
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented as designed in Program Design, no deviations. Added
+`_strip_non_prose_spans()` beside `_SUPERSEDED_CORRECTION_PHRASES` in
+`issue_parser.py`, composing the existing `text_utils.fence_spans` primitive
+with a new inline-backtick regex and a new double/curly-quote regex; each
+matched span is replaced with a single space. `check_format_gaps`'s
+`has_correction` scan now runs against the stripped, lowercased findings
+bodies instead of the raw text. Added four test cases to
+`TestUnmarkedSupersededDirective` (quoted literal, backtick span, fenced
+block — each no-flag — plus a same-file prose-correction-still-flags case)
+and updated `docs/reference/API.md`/`docs/reference/CLI.md` with the
+exclusion note. `_SUPERSEDED_CORRECTION_PHRASES`, `_SUPERSEDED_MARKER_PREFIX`,
+`superseded_marker_count`, and all downstream consumers (`autodev.yaml`,
+`rn-remediate.yaml`, `check_design.py`) are unchanged.
+
+Verified: original repro now yields `True / False / False` (was
+`True / True / True`); `ll-issues format-check --all` reports zero
+`unmarked_superseded_directive` entries both before and after the change (no
+regression either direction on the live corpus); full suite
+(`python -m pytest scripts/tests/`) is green except four pre-existing
+failures on `main` unrelated to this change (`TestPriorityRegexCompletenessAllowlist`
+×2, `TestBug3295ContainmentCorpusDifferential`, `test_no_new_unverifiable_evidence`
+— all tracked by BUG-3448, confirmed identical on `main` via `git stash`).
+
 ## Status
 
 **Open** | Created: 2026-09-11 | Priority: P3
@@ -266,6 +292,8 @@ findings, so no corrections were applied; this section is a record of what was v
   decisions check ran clean. Verdict unchanged: **VALID**.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T15:14:04 - `dd0ef725-1078-4447-9446-71e60de68b98.jsonl`
+- `/ll:ready-issue` - 2026-09-11T15:04:45 - `47ab9ece-7858-40d6-9a17-be282f8a7b6a.jsonl`
 - `/ll:confidence-check` - 2026-09-11T14:57:30 - `82be8173-4732-4b92-b0f1-103080961e6c.jsonl`
 - `/ll:verify-issues` - 2026-09-11T14:54:05 - `85f63897-cda3-4d0d-988b-7360d7c6afbe.jsonl`
 - `/ll:confidence-check` - 2026-09-11T05:36:04 - `41114809-db81-4f83-950b-bb3150388af6.jsonl`

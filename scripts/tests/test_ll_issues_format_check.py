@@ -1467,6 +1467,117 @@ class TestUnmarkedSupersededDirective:
         assert result == 1
         assert payload["unmarked_superseded_directive"] == ["P3-BUG-9604-test-bug.md"]
 
+    def test_quoted_correction_phrase_not_flagged(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A correction phrase quoted as an artifact (ASCII or curly double
+        quotes) — a warning string the author is *quoting*, not asserting —
+        must not trip the gap (BUG-3447)."""
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            '- The loader warns "does not exist" and returns None.\n'
+            "- The loader also warns “is stale” after a retry.\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9605", steps_block)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9605", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "unmarked_superseded_directive" not in out
+
+    def test_backtick_correction_phrase_not_flagged(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A correction phrase inside an inline backtick span must not trip
+        the gap (BUG-3447)."""
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            "- The loader raises `does not exist` as its exception name.\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9606", steps_block)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9606", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "unmarked_superseded_directive" not in out
+
+    def test_fenced_correction_phrase_not_flagged(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A correction phrase inside a fenced code block must not trip the
+        gap (BUG-3447)."""
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            "- The loader logs:\n\n"
+            "```\n"
+            "does not exist\n"
+            "```\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9607", steps_block)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9607", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "unmarked_superseded_directive" not in out
+
+    def test_prose_correction_still_flagged_alongside_quoted_and_code_spans(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A genuine prose correction still flags even when the same findings
+        block also quotes the phrase and fences it — proving the strip is
+        scoped to non-prose spans, not a blanket disable (BUG-3447)."""
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            '- The loader warns "does not exist" and returns None.\n'
+            "- The loader raises `does not exist` as its exception name.\n"
+            "```\n"
+            "does not exist\n"
+            "```\n"
+            "- Step 1 is wrong — the target behavior was removed.\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9608", steps_block)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9608", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "unmarked_superseded_directive: P3-BUG-9608-test-bug.md" in out
+
 
 class TestSupersededMarkerCountKey(TestUnmarkedSupersededDirective):
     """ENH-2992: the single-issue ``--format json`` payload also carries

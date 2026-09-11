@@ -2446,6 +2446,10 @@ non-exhaustive LLM guidance) while none of the three directive sections
 carries a `⚠ Superseded` marker. Report-only keyword-inference heuristic
 (like `testable`) — it flags that a correction and a marker are both
 absent/present, not that the correction actually refutes a specific line.
+A phrase occurring inside a fenced code block, an inline backtick span, or a
+double-quoted run (ASCII `"` or curly `“`/`”`) is excluded from the scan
+(BUG-3447): quoting a warning string, error message, or test name is not an
+authored correction. Single-quoted runs are not excluded.
 
 Also reports `duplicate_findings_block` (ENH-2993): one entry per H2 —
 formatted `"<H2 heading> (N)"` — carrying more than one
