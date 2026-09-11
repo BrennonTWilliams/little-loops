@@ -4,6 +4,7 @@ type: FEAT
 title: 'll-history activity subcommand: --workspace scope flag with JSON output'
 priority: P2
 status: open
+verify_verdict: PROPOSAL_UNSOUND
 blocked_by: [FEAT-3445]
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
@@ -226,6 +227,7 @@ Decisions log: no active required rules found. Evidence-quote check
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T00:53:16 - `74560d07-2a1c-4247-b7b2-e91055dab494.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:47:45 - `e2289526-f05e-4914-b7bb-dee1a954062a.jsonl`
 - `/ll:wire-issue` - 2026-09-11T00:38:37 - `2e842a0e-c20b-4811-ac47-806369f06e2c.jsonl`
 - `/ll:format-issue` - 2026-09-10T23:59:04 - `977177b4-c924-4eb0-8524-717b55725bed.jsonl`

@@ -220,6 +220,7 @@ Optional new coverage in `TestSseBridgeFanIn` (same caplog convention): non-flap
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T00:52:21 - `9093c96d-29e3-4de9-b547-725e14459020.jsonl`
 - manual review - 2026-09-11 - folded design review: lifetime-based classifier, constant independent of `rescan_s`, log-bound test, FEAT-3323 mirror decided as historical record
 - `/ll:wire-issue` - 2026-09-11T00:08:42 - `38e69540-569a-4d83-90fc-f4d237d70095.jsonl`
 - `/ll:refine-issue` - 2026-09-10T22:52:59 - `748bc362-b07a-4742-bc35-52128c70dda1.jsonl`

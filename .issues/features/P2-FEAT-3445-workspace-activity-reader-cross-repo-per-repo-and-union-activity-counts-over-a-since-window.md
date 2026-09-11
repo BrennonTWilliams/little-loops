@@ -5,6 +5,7 @@ title: 'Workspace activity reader: cross-repo per-repo and union activity counts
   a since window'
 priority: P2
 status: open
+verify_verdict: NON_VALID
 blocks:
 - FEAT-3446
 discovered_by: ll-issues-create
@@ -199,6 +200,8 @@ A downstream briefing/portfolio sync calls `aggregate_workspace_activity(members
 7. The shared member-gate helper is used by both `aggregate_history_dbs()` and the new reader; quality's behavior is byte-identical after extraction (existing tests pass unmodified).
 8. The module docstring documents the FSM-signals limitation verbatim.
 9. Serialized output follows the canonical rules above: member objects carry `repo_path`/`role`/`ok`/`error`/`instrumented`; `issues_closed` is always `null`; unavailable metrics are `null` or absent, never `0`; `totals.instrumented` is the OR over members.
+10. `aggregate_workspace_activity`, `WorkspaceActivityResult`, `RepoActivity`, and `MemberActivityStatus` are all registered in `issue_history/__init__.py` (docstring "Public exports" list, import, and `__all__`) — mirroring `aggregate_history_dbs`'s three-point registration, not just the function.
+11. `docs/reference/API.md` gains function-table rows for the new module (per the Documentation section) and `docs/ARCHITECTURE.md`'s "History DB: Producer→Consumer Flow" section gets the one-sentence addition describing the workspace-manifest read.
 
 ## Related Key Documentation
 
@@ -268,6 +271,7 @@ the ACs could skip both.
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T00:53:16 - `74560d07-2a1c-4247-b7b2-e91055dab494.jsonl`
 - `/ll:verify-issues` - 2026-09-11T00:47:45 - `e2289526-f05e-4914-b7bb-dee1a954062a.jsonl`
 - `/ll:wire-issue` - 2026-09-11T00:38:37 - `2e842a0e-c20b-4811-ac47-806369f06e2c.jsonl`
 - `/ll:format-issue` - 2026-09-10T23:59:04 - `977177b4-c924-4eb0-8524-717b55725bed.jsonl`
