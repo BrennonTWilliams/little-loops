@@ -88,22 +88,37 @@ extraction. The tool is therefore a thin exposure, not a new design:
    One install answers identically for any `--project-root` (correct for multi-project hosts).
 2. Add a `kind` field (`skill` | `command`) to entries — `assemble_tool_catalog` currently
    drops it; consumers need it to render skill vs command sections.
+   Add `args_hint: str | None` alongside it: the raw frontmatter `args`/`argument-hint`
+   string is currently folded into `input_schema.properties.args.description` by
+   `_make_input_schema` and discarded, so the handler cannot produce the promised `args`
+   field without reverse-engineering the schema shape. Carry the raw hint on the
+   dataclass instead. Output rule: the `args` key is **omitted** (not `null`) when the
+   hint is absent. 79 of the install's skills/commands carry a hint, so this is most of
+   the catalog.
 3. Exclude `agents/*.md` — agents are outside `_resolve_content_path`'s lookup domain;
    listing them would break the parity invariant.
 4. Read-only Tier 1: no `apply` parameter, absent from `policy.MUTATING_TOOLS`, following
    `queue_list`/`loop_list` conventions (plain JSON list of `{name, kind, description, args?}`).
 5. Tolerance: missing/unresolvable root returns an empty list, never an error; broken or
-   absent frontmatter still lists (presence is membership); output sorted for determinism.
+   absent frontmatter still lists (presence is membership). Sort order is **`(kind, name)`**
+   — skills first, then commands, each sorted by name. This is exactly the order
+   `assemble_tool_catalog` already produces (it extends skills, then commands, each from a
+   `sorted()` glob), so no re-sort is needed, but the order is now part of the contract.
+   Log the resolved plugin root at `debug` level so an empty result is diagnosable
+   ("no skills" vs "wrong root").
 6. Dedupe name collisions across `skills/<name>/` and `commands/<name>.md` with skill-wins,
-   matching `_resolve_content_path`'s skill-first preference.
+   matching `_resolve_content_path`'s skill-first preference. First-seen-wins equals
+   skill-wins **only because** `assemble_tool_catalog` emits skills before commands — pin
+   that with a test rather than relying on it silently, or dedupe by explicit kind
+   preference. No collision exists in the install today.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/mcp_server/tools.py` — new `_tool_skills_list` handler;
   register in `_TOOL_HANDLERS` and `_TOOLS` (read-only Tier 1 slot beside `loop_list`)
-- `scripts/little_loops/tool_catalog.py` — add `kind` to `ToolDefinition`; set it in
-  `_skill_entries` / `_command_entries` / `_agent_entries`
+- `scripts/little_loops/tool_catalog.py` — add `kind` and `args_hint` to `ToolDefinition`;
+  set both in `_skill_entries` / `_command_entries` (`args_hint=None` for `_agent_entries`)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/mcp_server/__init__.py` — package docstring tool counts
@@ -209,7 +224,13 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
    `_TOOLS` as read-only Tier 1.
 3. New test module: classification parity (`_classify_action` on every returned name),
    `[]` on unresolvable root, identical output across `--project-root` values, `kind`
-   present, agents absent.
+   present, `args` present iff a hint exists, `(kind, name)` ordering, skill-wins dedupe
+   on a tmp root with a deliberate collision, agents absent.
+   **The parity test must `monkeypatch.chdir(tmp_path)`**: `_classify_action` checks
+   `BRConfig(Path.cwd()).loops.loops_dir` for a loop of the same name *before* the skill
+   branch, so a `.loops/<name>.yaml` in whatever directory pytest runs from would flip a
+   listed name to `RunnerType.LOOP` and fail the test. No collision exists today; the
+   chdir keeps it from regressing.
 4. Update the `docs/reference/API.md` tool roster; run `python -m pytest scripts/tests/`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -271,6 +292,11 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 - `ToolDefinition.kind: str` — `"skill" | "command" | "agent"`, default `""` so existing
   frozen-dataclass constructions are unchanged
+- `ToolDefinition.args_hint: str | None` — raw frontmatter `args`/`argument-hint` string,
+  default `None`; the source of the handler's `args` output field. `to_anthropic_tools`
+  ignores it (the hint is already baked into `input_schema` by `_make_input_schema`)
+- Handler row: `{"name": str, "kind": "skill" | "command", "description": str, "args": str}`
+  with `args` omitted when `args_hint` is `None`; rows ordered by `(kind, name)`
 
 ### Signatures
 
@@ -290,6 +316,10 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
       (classification parity) — encoded as a unit test asserting
       `_classify_action(entry name)` returns `RunnerType.SKILL` in the same process
 - [ ] Entries carry `kind` (`skill` | `command`); agents are not listed
+- [ ] Entries carry `args` (the raw frontmatter hint) when one exists and omit the key
+      otherwise; `to_anthropic_tools` output is byte-unchanged
+- [ ] Rows are ordered by `(kind, name)`; a `skills/<n>/` + `commands/<n>.md` collision on a
+      tmp root yields one `kind: skill` row
 - [ ] Names are the lookup names (skills = directory name, commands = file stem)
 - [ ] Unresolvable plugin root (e.g. pip-install layout without `skills/`) returns `[]`,
       not an error
@@ -301,10 +331,21 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - On pip-install deployments the three-parents-up fallback resolves into site-packages,
   which has no `skills/` — the tool returns empty by design. Engine and consumer then agree
   on when skills exist instead of the consumer papering over disagreement with an env pin.
+  **Caveat**: the wheel *does* ship a skills copy inside the package (`hatch_build.py`,
+  BUG-3177) for the prompts surface, so on a pypi install `prompts/list` shows skills while
+  `skills_list` returns `[]` and `queue_add` classifies every skill name as `cmd`. Parity
+  holds, but the picker is empty. The `CLAUDE_PLUGIN_ROOT` pin is therefore
+  **load-bearing** for pypi installs, not belt-and-braces — it stays unless
+  `_find_plugin_root()` grows a wheel-copy fallback (out of scope here; would need to keep
+  `_classify_action` in lockstep).
+- Optional design alternative, not adopted: a dict payload `{plugin_root, entries}` would
+  make `[]` diagnosable and would also gain `structured_content` (lists never do, see
+  tools.py:1325-1334). Rejected to keep the `loop_list`/`queue_list` plain-list convention;
+  the debug-level log of the resolved root (Proposed Solution step 5) covers diagnosis.
 - Consumer migration (ll-console): swap `skills_client`'s read side to
   `mcp_client.call_tool("skills_list")` behind the unchanged `GET /api/skills` shape;
   retire the install.sh probe and `LL_LOOPS_ROOT` first; keep the `CLAUDE_PLUGIN_ROOT` pin
-  as belt-and-braces until parity is proven in the wild; add a contract-check round-trip
+  (required on pypi installs per the caveat above); add a contract-check round-trip
   (catalog non-empty, every name classifies skill, garbage falls back cmd, dry-run writes
   nothing).
 
