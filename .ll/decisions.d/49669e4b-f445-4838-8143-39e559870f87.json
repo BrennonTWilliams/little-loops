@@ -1,0 +1,12 @@
+{
+  "id": "6be938ce-6a4a-4d56-b2f6-885e8254132b",
+  "type": "decision",
+  "timestamp": "2026-09-11T03:59:13Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "A skip silently disarms the evidence gate on every shallow checkout \u2014 precisely the CI state BUG-3442 describes; fail-not-skip precedent covers absence of a thing the gate exists to protect.",
+  "rule": "Option B: pytest.fail fast with one-line shallow-clone diagnostic (never pytest.skip)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: pytest.skip on shallow clone \u2014 would have made this bug invisible",
+  "issue": "BUG-3442"
+}
