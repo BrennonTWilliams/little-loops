@@ -9,7 +9,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
 parent: EPIC-3436
-confidence_score: 90
+confidence_score: 95
 outcome_confidence: 71
 score_complexity: 18
 score_test_coverage: 25
@@ -333,6 +333,7 @@ Every substantive claim verified against the codebase at HEAD:
   `EPIC-3436` exists; no Blocked By/Blocks edges to validate.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T04:23:43 - `72bc9566-b5bc-49d6-a785-486d2b2b5e12.jsonl`
 - `/ll:verify-issues` - 2026-09-11T04:20:13 - `25b7684d-0d1e-49e4-8ff4-d0d175f721ca.jsonl`
 - manual pre-implementation review - 2026-09-10 - applied fixes 1-3 (drift-gate scope, notice dedupe, missing-theme edge)
 - `/ll:confidence-check` - 2026-09-11T03:46:23 - `3c54b1f6-0a02-45d5-aeb1-ed084c2c42f8.jsonl`
