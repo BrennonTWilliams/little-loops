@@ -1,0 +1,14 @@
+{
+  "id": "7c8d2d13-8fd9-405a-b18c-087bbdb733a7",
+  "type": "rule",
+  "timestamp": "2026-09-11T23:27:13Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The fix bumped _CACHE_VERSION 1\u21922 so old no-fingerprint caches were dropped rather than misread; without this, a format change silently coexists with stale entries.",
+  "rule": "Bump persisted cache format versions when entry semantics change so stale caches are discarded on load",
+  "enforcement": "advisory",
+  "issue": "BUG-3451"
+}

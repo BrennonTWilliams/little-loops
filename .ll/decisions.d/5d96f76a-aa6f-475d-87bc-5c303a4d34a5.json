@@ -1,0 +1,14 @@
+{
+  "id": "bb04fda0-4011-465c-ab45-e4d06d120c24",
+  "type": "rule",
+  "timestamp": "2026-09-11T23:27:13Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "VerdictCache.lookup() served bare \"1\" entries unconditionally; after source edits, warm local caches kept passing while CI's cold checkout failed the evidence gate \u2014 a cache that suppresses findings must prove its verdict still matches current inputs.",
+  "rule": "Found/success cache entries must carry input fingerprints and revalidate on every lookup",
+  "enforcement": "advisory",
+  "issue": "BUG-3451"
+}

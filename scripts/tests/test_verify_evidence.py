@@ -754,6 +754,26 @@ class TestVerdictCache:
             m._blob_text = lambda oid: pytest.fail("cache miss: blob was re-read")  # type: ignore[assignment]
             assert m.matches(rel, ["ordinary content only."]) == {"ordinary content only.": True}
 
+    def test_found_verdict_invalidated_by_working_tree_edit(self, repo: Path) -> None:
+        """The CI-failure shape (2026-09-11): a hit recorded from the working
+        tree must not survive the text being edited out. Under the old
+        bare-"1" entries, stale found verdicts suppressed real findings on
+        every warm-cache machine while CI's cold checkout failed. The span
+        stays uncommitted so blob history cannot legitimately re-verify it."""
+        _, rel = self._seed(repo)
+        span = "uncommitted working-tree-only phrase."
+        _write(repo, rel, f"## Section\n\n{span}\n")  # uncommitted, on top of the seed commit
+        cache = load_verdict_cache(repo, max_revisions=80)
+        with ArtifactMatcher(repo, max_revisions=80, verdict_cache=cache) as m:
+            assert m.matches(rel, [span]) == {span: True}
+        write_verdict_cache(repo, cache)
+
+        # The artifact loses the text: the cached hit must not survive.
+        _write(repo, rel, "## Section\n\nthe phrase is gone now.\n")
+        reloaded = load_verdict_cache(repo, max_revisions=80)
+        with ArtifactMatcher(repo, max_revisions=80, verdict_cache=reloaded) as m:
+            assert m.matches(rel, [span]) == {span: False}
+
     def test_not_found_verdict_invalidated_by_working_tree_edit(self, repo: Path) -> None:
         _, rel = self._seed(repo)
         span = "a phrase that is not there yet"

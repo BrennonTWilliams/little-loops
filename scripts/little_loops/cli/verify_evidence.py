@@ -1054,8 +1054,8 @@ class ArtifactMatcher:
         found: dict[str, bool] = {}
         cache = self.verdict_cache
 
-        # Cache first, so a fully-memoized artifact costs no I/O at all. The
-        # not-found form is revalidated against working-tree and revision-set
+        # Cache first, so a fully-memoized artifact costs no I/O at all. Both
+        # verdict forms are revalidated against working-tree and revision-set
         # fingerprints, so a stale entry can only cause redundant work — never
         # a suppressed finding.
         if cache is not None:
@@ -1121,7 +1121,7 @@ def _span_hash(normalized_span: str) -> str:
 # ---------------------------------------------------------------------------
 
 VERDICT_CACHE_PATH = Path(".ll") / "evidence-verdict-cache.json"
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2
 _CACHE_ALGO = "blob-v1"
 
 
@@ -1149,14 +1149,16 @@ class VerdictCache:
     this file only decides how much work a run repeats. Deleting it changes
     wall time and nothing else, which is why it is gitignored.
 
-    Two verdict forms, because they age differently:
-
-    * ``"1"`` (found) **never expires.** Git history only grows, so a span
-      found in some revision is found in that revision forever. The artifacts
-      most expensive to search are exactly the ones whose hits never expire.
-    * ``"0:<blob_fp>:<wt_sha>"`` (not found) is valid only while both the
-      searched revision set and the working-tree content are unchanged — a
-      miss legitimately becomes a hit when the artifact gains the text.
+    Two verdict forms, ``"<v>:<blob_fp>:<wt_sha>"`` with ``v`` ∈ {0, 1},
+    both aging the same way — valid only while the working-tree content is
+    unchanged and, once refs have moved, while the artifact's searched
+    revision set is unchanged. Found verdicts are *not* immortal: a hit can
+    come from the working tree (which edits freely) or from a blob reachable
+    only via a ref that a later prune deletes, so ``git history only grows''
+    does not save them. Trusting bare ``"1"`` entries is what let a stale
+    cache mask real gate regressions locally while CI's cold checkout failed
+    (2026-09-11: five unverifiable spans, verdicts recorded before their
+    sources were refactored).
 
     An algorithm change discards everything, hits included: a narrower matcher
     could legitimately un-find a span, so monotonicity does not survive it.
@@ -1181,20 +1183,18 @@ class VerdictCache:
         entry = self.verdicts.get(artifact, {}).get(span_hash)
         if entry is None:
             return None
-        if entry == "1":
-            return True
         parts = entry.split(":")
         if len(parts) != 3:
             return None
-        _, cached_blob_fp, cached_wt = parts
+        verdict, cached_blob_fp, cached_wt = parts
         if cached_wt != wt_sha:
             return None
         if not self.refs_unchanged and cached_blob_fp != blob_fp:
             return None
-        return False
+        return verdict == "1"
 
     def record(self, artifact: str, span_hash: str, found: bool, blob_fp: str, wt_sha: str) -> None:
-        value = "1" if found else f"0:{blob_fp}:{wt_sha}"
+        value = f"{int(found)}:{blob_fp}:{wt_sha}"
         if self.verdicts.setdefault(artifact, {}).get(span_hash) == value:
             return
         self.verdicts[artifact][span_hash] = value

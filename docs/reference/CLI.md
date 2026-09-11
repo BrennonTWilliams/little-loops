@@ -4664,7 +4664,7 @@ Certify that an issue's quoted **evidence** — a span attributed to another art
 
 `--max-revisions` (default 80) caps how far back each artifact is searched. Renames are not followed; a rename's add-commit blob is the complete file, so only text overwritten *before* a rename is out of reach.
 
-**Verdict cache.** `.ll/evidence-verdict-cache.json` (gitignored) memoizes span-presence verdicts, taking a warm full scan to ~3s. It is a cache, **not policy** — safe to delete at any time, and it can never change a finding set. A found verdict never expires (git history only grows); a not-found verdict is revalidated against the artifact's working-tree hash and searched revision set. Do not confuse it with `.ll/evidence-baseline.json`, which is tracked, curated, and decides what the gate forgives.
+**Verdict cache.** `.ll/evidence-verdict-cache.json` (gitignored) memoizes span-presence verdicts, taking a warm full scan to ~3s. It is a cache, **not policy** — safe to delete at any time, and it can never change a finding set. Every verdict — found or not — is revalidated against the artifact's working-tree hash and, once refs have moved, its searched revision set (a found verdict can go stale when the working tree loses the text or a reachable ref is pruned; BUG-3451). Do not confuse it with `.ll/evidence-baseline.json`, which is tracked, curated, and decides what the gate forgives.
 
 **Modes**, mirroring `ll-verify-private-refs`:
 

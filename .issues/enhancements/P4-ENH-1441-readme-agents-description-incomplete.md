@@ -28,7 +28,7 @@ A new reader scanning "What's Included" gets an inaccurate picture of agent cove
 
 ## Current Behavior
 
-`README.md:164` reads: `**9 specialized agents** — codebase analysis, pattern finding, consistency checking, loop diagnosis, web research`. Three agent capability areas are omitted from the headline description: plugin configuration auditing (`plugin-config-auditor`), prompt optimization (`prompt-optimizer`), and workflow pattern analysis (`workflow-pattern-analyzer`). A reader scanning "What's Included" gets an incomplete picture of agent coverage.
+`README.md:164` reads: `**9 specialized agents** — codebase analysis, pattern finding, consistency checking, loop diagnosis, web research`. <!-- ll-evidence-ok: README blurb as written at filing (2026); updated when the agent roster grew --> Three agent capability areas are omitted from the headline description: plugin configuration auditing (`plugin-config-auditor`), prompt optimization (`prompt-optimizer`), and workflow pattern analysis (`workflow-pattern-analyzer`). A reader scanning "What's Included" gets an incomplete picture of agent coverage.
 
 ## Expected Behavior
 

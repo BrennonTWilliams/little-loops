@@ -1,0 +1,14 @@
+{
+  "id": "6113293c-7b11-44bf-a9b2-36643374ce1b",
+  "type": "rule",
+  "timestamp": "2026-09-11T23:27:13Z",
+  "category": "testing",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The gitignored .ll/evidence-verdict-cache.json produced CI failures unreproducible locally for the life of the cache file; any untracked memo influencing gate outcomes creates this divergence.",
+  "rule": "Verification gates must not let gitignored local state alter outcomes vs a cold CI checkout",
+  "enforcement": "advisory",
+  "issue": "BUG-3451"
+}
