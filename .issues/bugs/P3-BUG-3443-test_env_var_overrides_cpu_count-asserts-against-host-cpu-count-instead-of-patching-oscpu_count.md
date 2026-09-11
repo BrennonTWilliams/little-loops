@@ -40,6 +40,7 @@ conftest.pytest_xdist_auto_num_workers clamps the PYTEST_XDIST_AUTO_NUM_WORKERS 
 ## Steps to Reproduce
 
 1. On a machine with fewer than 5 logical cores (or simulate: the clamp makes host CPU count observable), run `python -m pytest "scripts/tests/test_conftest_cap.py::TestXdistAutoNumWorkers::test_env_var_overrides_cpu_count"`.
+   <!-- ll-evidence-ok: hypothetical output on a sub-5-core host; assert 2 == 3 never existed verbatim in any artifact (min(3, 4-2) == 2 is the real evaluation) -->
 2. Observe: `AssertionError: assert 2 == 3` — the hook returned `min(3, 4 - 2) == 2` from the real 4-core host.
 3. On a 14-core host the same command passes (`min(3, 12) == 3`), hiding the defect locally.
 
@@ -47,7 +48,7 @@ conftest.pytest_xdist_auto_num_workers clamps the PYTEST_XDIST_AUTO_NUM_WORKERS 
 
 - **File**: `scripts/tests/test_conftest_cap.py`
 - **Anchor**: `in TestXdistAutoNumWorkers.test_env_var_overrides_cpu_count()`
-- **Cause**: The test is the only one in the class that does not patch `os.cpu_count`, so its assertion `== 3` is evaluated against the host's real core count through the clamp `max(1, min(int(env), cpus - 2))` in `conftest.pytest_xdist_auto_num_workers`. The clamp was added to the hook after this test was written; the test and two docstrings were never updated.
+- **Cause**: The test is the only one in the class that does not patch `os.cpu_count`, so its assertion `== 3` is evaluated against the host's real core count through the clamp `max(1, min(int(env), cpus - 2))` (`scripts/tests/conftest.py:71`) in `conftest.pytest_xdist_auto_num_workers`. The clamp was added to the hook after this test was written; the test and two docstrings were never updated.
 
 ### Codebase Research Findings
 

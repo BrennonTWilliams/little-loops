@@ -65,6 +65,14 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        # BUG-3442: fetch-depth: 0 (full history) is required —
+        # ll-verify-evidence builds its path -> blob-OID index from one
+        # `git log --all --raw` pass, and the default depth-1 checkout
+        # collapses it to the tip commit, making the evidence gate
+        # structurally always-red (~155 unverifiable-span findings) with
+        # zero regression signal.
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:

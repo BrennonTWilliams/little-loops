@@ -3,10 +3,11 @@ id: BUG-3442
 type: BUG
 title: CI shallow checkout makes the evidence gate structurally unable to pass
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T21:15:03Z'
+completed_at: '2026-09-11T05:39:06Z'
 parent: EPIC-3436
 decision_needed: false
 learning_tests_required:
@@ -186,9 +187,32 @@ Verdict at time of check: **VALID** (no corrections required — every claim re-
 - **Proposal trace**: both integration points covered by Implementation Steps 2–3; the new shallow-repo subprocess lands beside the `gate_cli` fixture (which only does `shutil.which`) so no fixture/mock invalidation; the `_read_blob` activation risk is already flagged in step 5. No `PROPOSAL_UNSOUND` findings.
 - **Decisions check**: no active required rules. Dependencies: parent EPIC-3436 exists; no `Blocked By`/`Blocks` edges on this issue.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-11
+- **Status**: Completed
+
+### Changes Made
+
+- .github/workflows/ci.yml — unit-tests checkout now sets fetch-depth 0 (full history) with a BUG-3442 ID+failure-mode comment; conformance job untouched (never runs TestRepoGate)
+- scripts/tests/test_verify_evidence.py — new _fail_if_shallow_checkout helper: git rev-parse --is-shallow-repository precondition that pytest.fails (Option B, decided) with a one-line diagnostic naming the CI remedy (fetch-depth 0) and local remedy (git fetch --unshallow); wired into test_no_new_unverifiable_evidence after the existing .git skip; new TestShallowCheckoutPrecondition covers both branches against real depth-1 (file:// clone) and full-history repos
+- scripts/tests/test_ci_checkout_policy.py — new pin test: the unit-tests job's actions/checkout steps must carry fetch-depth 0 (red before the workflow change, green after)
+- Step 1 prerequisite (clear the 4 live corpus findings) — P1-BUG-3439:50: one ll-evidence-ok comment suppressing both paraphrased spans (pre-fix spawn + errno text; never existed verbatim; BUG-3439 closed already-fixed and the gate has no status filter); P3-BUG-3443:43: ll-evidence-ok suppression of the hypothetical sub-5-core-host output; P3-BUG-3443:50: clamp span re-attributed via a following parenthetical to scripts/tests/conftest.py:71 where the text actually lives (misattribution, not a bad quote). Baseline untouched (297/400 spans — no re-seed)
+
+### Verification Results
+
+- Gate: PASS — ll-verify-evidence --all --json exits 0 with 0 findings (was 4 on full history / ~155 structural on depth 1)
+- Tests: PASS — new tests red-first (3 FAILED pre-implementation), then 6/6 green incl. TestRepoGate (previously always-failing on main); full suite 23984 passed / 43 skipped / 3 failed — all 3 failures proven pre-existing on clean HEAD (test_issue_parser.py priority-regex allowlist + BUG-3295 differential, 569 = 569 with and without this change; mcp_server/tools.py line drift, untouched by this fix)
+- Lint: PASS — ruff check scripts/ clean
+- Types: PASS — mypy scripts/little_loops/ clean (no source change)
+- Shallow-clone control: PASS — depth-1 clone of the repo fails with exactly the one-line shallow diagnostic instead of a findings dump
+- Run: SKIP — no run_cmd configured
+- Integration: PASS — no CLI surface change (docs/reference/CLI.md and test_wiring_cli_registry.py unaffected, per plan); follow-up outside this issue: confirm on the next real unit-tests CI run that the checkout fetches full history and the gate's excess is 0 (issue step 6c — requires a push; this workflow commits but does not push)
+
 ## Status
 
-**Open** | Created: 2026-09-10 | Priority: P2
+**Done** | Created: 2026-09-10 | Priority: P2 | Completed: 2026-09-11
 
 
 ## Confidence Check Notes
@@ -207,6 +231,7 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T05:38:50 - `41114809-db81-4f83-950b-bb3150388af6.jsonl`
 - `/ll:confidence-check` - 2026-09-11T04:24:15 - `f16a24e6-6fa0-452a-b7ce-1eeea1fffebf.jsonl`
 - `/ll:verify-issues` - 2026-09-11T04:19:33 - `b3354d99-33ae-4069-82e6-d632e46bda87.jsonl`
 - `/ll:confidence-check` - 2026-09-11T04:10:37 - `15f92a63-fb8d-44e1-92df-1b973a2a54e8.jsonl`

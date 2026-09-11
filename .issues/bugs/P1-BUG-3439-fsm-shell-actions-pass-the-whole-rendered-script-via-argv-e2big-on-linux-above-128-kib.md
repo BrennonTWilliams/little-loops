@@ -47,6 +47,7 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 1. Render any shell action whose interpolated body exceeds 131072 B — e.g. loop-router's `write_sub_loop_output` with a `sub_loop_output` capture of ~216000 B raw (shlex.quote expansion renders it to 264085 B, as in `test_write_sub_loop_output_survives_oversized_stream`, scripts/tests/test_loop_router.py:234).
 2. Run the loop on Linux (macOS's per-argv limit is far larger, so the same action passes on darwin — the existing test is not platform-honest about this).
+   <!-- ll-evidence-ok: paraphrased pre-fix spawn (real code is bash -c script at test_loop_router.py:348) and the literal Linux errno text; never existed verbatim anywhere — BUG-3439 closed as already-fixed (db45ec9f6) and the gate has no status filter -->
 3. `subprocess.Popen(["bash", "-c", action])` raises `OSError: [Errno 7] Argument list too long` at exec time.
 
 ## Expected Behavior

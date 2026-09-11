@@ -95,6 +95,33 @@ def _init_repo(root: Path) -> None:
     _git(root, "config", "user.name", "test")
 
 
+def _fail_if_shallow_checkout(repo_root: Path) -> None:
+    """Fail fast when the checkout lacks the history the gate depends on (BUG-3442).
+
+    A depth-1 clone (the ``actions/checkout`` default) has a ``.git``, so the
+    plain not-a-git-checkout skip never fires — yet ``HistoryIndex``'s single
+    ``git log --all --raw`` pass sees only the tip commit, so every span older
+    than tip reports unverifiable (~155 structural findings) and the gate is
+    always-red. Fails rather than skips: a skip would silently disarm the gate
+    in exactly the state this guards against; the diagnostic names both
+    remedies in one line instead of a 150-item findings dump.
+    """
+    result = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip("not a git checkout; nothing to enumerate")
+    if result.stdout.strip() == "true":
+        pytest.fail(
+            "shallow checkout: the history-dependent evidence gate cannot run "
+            "(CI: actions/checkout needs `fetch-depth: 0` — BUG-3442; local: "
+            "`git fetch --unshallow`)"
+        )
+
+
 def _mkissues(root: Path) -> None:
     for kind in ("bugs", "features", "enhancements", "epics"):
         (root / ".issues" / kind).mkdir(parents=True, exist_ok=True)
@@ -922,6 +949,55 @@ class TestCli:
 # ---------------------------------------------------------------------------
 
 
+class TestShallowCheckoutPrecondition:
+    """BUG-3442: the repo gate must fail fast on a shallow checkout.
+
+    A depth-1 clone has a `.git`, so the plain not-a-git-checkout skip never
+    fires — but `HistoryIndex.ensure_full()`'s single `git log --all --raw`
+    pass sees only the tip commit, so every span older than tip reports
+    unverifiable (~155 structural findings on CI) and the gate is always-red
+    with zero signal. The precondition must `pytest.fail` (not skip): a skip
+    would silently disarm the gate in exactly the state this guards against.
+    """
+
+    @staticmethod
+    def _two_commit_repo(root: Path) -> None:
+        _init_repo(root)
+        _write(root, "a.txt", "one\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-qm", "init")
+        _write(root, "a.txt", "two\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-qm", "second")
+
+    def test_shallow_checkout_fails_fast_with_remedy(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        self._two_commit_repo(src)
+        shallow = tmp_path / "shallow"
+        # file:// is required: a local-path clone hardlinks and ignores --depth.
+        _git(
+            tmp_path,
+            "clone",
+            "-q",
+            "--depth",
+            "1",
+            f"file://{src}",
+            str(shallow),
+        )
+        with pytest.raises(pytest.fail.Exception) as excinfo:
+            _fail_if_shallow_checkout(shallow)
+        message = str(excinfo.value)
+        assert "fetch-depth" in message, "diagnostic must name the CI remedy"
+        assert "--unshallow" in message, "diagnostic must name the local remedy"
+
+    def test_full_history_checkout_passes(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        self._two_commit_repo(src)
+        _fail_if_shallow_checkout(src)  # must not raise
+
+
 class TestRepoGate:
     """The CI gate: this repo's `.issues/` corpus must gain no new
     evidence-unverifiable spans beyond the tracked baseline.
@@ -951,6 +1027,7 @@ class TestRepoGate:
     def test_no_new_unverifiable_evidence(self, gate_cli: str) -> None:
         if not (REPO_ROOT / ".git").exists():
             pytest.skip("not a git checkout; nothing to enumerate")
+        _fail_if_shallow_checkout(REPO_ROOT)
 
         try:
             result = subprocess.run(
