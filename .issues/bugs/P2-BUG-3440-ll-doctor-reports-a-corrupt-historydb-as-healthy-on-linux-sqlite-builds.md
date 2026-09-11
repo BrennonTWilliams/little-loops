@@ -157,6 +157,18 @@ Constraints (unchanged): must not create the DB — keep the `Path.exists()` gua
   - **Risk of the rejected `quick_check` variant was NOT low.** The prior text of this issue claimed `PRAGMA quick_check` "is cheap on a quick fetchone"; measured on this project's real 7.88 GB `.ll/history.db` it takes **32.12 s per call**, and `_history_db_data()` runs **twice per `ll-doctor` invocation** — ~64 s added to a 4.88 s command (~14× slower). `fetchone()` does not bound the scan. It is also silent on valid-header corruption (returns a row of findings rather than raising), so it would not fully fix the titled bug without an added `== 'ok'` comparison that in turn widens scope. Test fixtures use `tmp_path` DBs of a few KB and would never have caught this.
 - **Breaking Change**: No
 
+## Verification Notes
+
+_Verdict at time of check: **VALID** (no corrections required — `/ll:verify-issues BUG-3440 --auto`, 2026-09-10)._
+
+Every claim about current state checked out against the working tree:
+
+- **Anchors all exact**: `_history_db_data()` at `doctor.py:438` with the `SELECT 1` probe at :454; `_exit_code_for()` :125-128; `_history_db_check()` :473; call sites :464/:475/:1306-1307/:1436; `_print_history_db_section()` call :1423; `CheckResult` Literal :71 and `_STATUS_SYMBOLS` :36; `cli/__init__.py:66`; `session_store/db.py:15`; test anchors `:164/:176/:193-203` and `test_cli_doctor.py:67/:718`; `docs/reference/CLI.md:398` ll-doctor section. Convention citations (`sessions.py` ~:116-119, `workspace_quality.py` ~:108-115, `doctor_trim.py` ~:282) all match
+- **CI evidence re-verified directly** (`gh run view 34519368279 --log-failed`): unit-tests job 2026-09-10T19:31:17Z, `TestHistoryDb::test_present_but_corrupt_reports_error` failed with exactly `assert 'full' == 'unsupported'`, and `TestSseBridgeFanIn::test_producer_at_max_clients_backs_off_sub_linearly` + the verify-evidence span gate (`TestRepoGate::test_no_new_unverifiable_evidence`) failed alongside it as the issue states. Completeness nit: the run carried **two further** unrelated failures the issue doesn't enumerate (`test_rn_refine.py::TestStepwiseChainPlumbing::test_commit_leaf_commits_pending_changes`, `test_conftest_cap.py::TestXdistAutoNumWorkers::test_env_var_overrides_cpu_count`) — neither touches this check, so the diagnosis is unaffected
+- **Negative claims hold**: no `SQLite format 3` magic constant anywhere in `scripts/` (zero matches); no `quick_check`/`integrity_check` in `little_loops` source (only vendored omp-adapter `node_modules` hits, which are third-party dist, not source); no `ll-doctor` invocation in `hooks/`, `loops/`, or `.github/workflows/`
+- **Proposal consequence check (ENH-3250)**: `_is_sqlite_file()`'s `OSError → False` covers `IsADirectoryError`/`PermissionError` (both OSError subclasses); existing fixtures (garbage → header-mismatch path, real DB → header-then-connect, absent → `Path.exists()` guard) are unaffected; the 0-byte flip has no test pinning today's verdict; statuses already exist in `CheckResult`'s Literal. No findings
+- **Checks that did not run or were clean**: decisions log queried with no active required rules (clean, not skipped); `ll-verify-evidence` returned `"ok": true` with 0 findings; `ll-code` graph (provider=`codegraph`, freshness=`fresh`) corroborated `main_doctor`'s caller surface as tests + CLI dispatch only
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
@@ -177,6 +189,7 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T04:23:49 - `38ddaff7-ee20-4c63-80ff-084ef6a48cc9.jsonl`
 - Pre-implementation review (direct session) - 2026-09-10 - CI evidence attached (run 34519368279); OSError never-raise gap, 0-byte verdict flip, and agreement-test scoping folded in
 - `/ll:confidence-check` - 2026-09-11T03:46:23 - `3c54b1f6-0a02-45d5-aeb1-ed084c2c42f8.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:26:08 - `02118696-855f-4cc5-9fdd-f4b3209b4230.jsonl`
