@@ -8,7 +8,14 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-11'
 captured_at: '2026-09-11T20:26:38Z'
 decision_needed: false
-learning_tests_required: [sqlite3]
+learning_tests_required:
+- sqlite3
+confidence_score: 90
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # ENH-3450: Add has_history any-rows-ever signal to RepoActivity and WorkspaceTotals
@@ -146,6 +153,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add formatter totals-line tests (text + markdown) to `scripts/tests/test_feat3445_workspace_activity.py` — direct-construction pattern from `TestAggregationResultFormatters` (`scripts/tests/test_feat3410_workspace_quality.py:234-262`); zero tests call `format_workspace_activity_*` today, so the Option A totals-line edit lands untested without this
 - Extend `test_no_ok_member_totals_all_null` in `scripts/tests/test_cli_history.py` (~:705-717) with `has_history_members == 0` / `has_history is False` asserts — pins the all-unknown-workspace AC as decided behavior
 - Update the two key-enumeration sentences in `docs/reference/CLI.md:3397-3399` (member-key list and totals key-order list) — `has_history` is neither an already-enumerated key nor a "count field", so both sentences change, not just the paragraph around them
+- Update the trailing semantics sentence in the same paragraph (`with \`instrumented\` as the OR over members and counts summed over \`ok\` members only`) to also state the new totals rule: `has_history` is the OR over members where the member field `is True` (so an all-`null` workspace totals to `false`/`0`, per the all-unknown AC)
 
 ## Impact
 
@@ -213,6 +221,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
    - `schema_skew` / `unreadable`: `None` (JSON `null`). `False` would assert "no rows", which is the same no-answer-≠-zero conflation. If the EXISTS query itself raises `sqlite3.Error`, it falls into the existing `UNREADABLE` branch → `None`.
 3. **Totals mirror the `instrumented` pattern:** `WorkspaceTotals.has_history_members: int` (count of members with `has_history is True`) and `WorkspaceTotals.has_history: bool` (any).
 4. **JSON key placement:** `has_history` appended immediately after `instrumented` in `RepoActivity.to_dict()`; `has_history_members` and `has_history` immediately after `instrumented` in `WorkspaceTotals.to_dict()`. Existing key order otherwise unchanged (FEAT-3446 AC 1 stable-order contract preserved for existing keys).
+   **Text/markdown totals-line rendering (pinned, review 2026-09-11):** the Option A extension renders the **count**, mirroring the existing line — `members: {N} (ok: {X}, instrumented: {Y}, has_history: {Z})` where `{Z}` is `totals.has_history_members`, not the `has_history` bool (the existing line renders `instrumented: {totals.instrumented_members}`, also a count). Same shape in text and markdown. The new formatter tests and the CLI.md prose must both use this exact shape.
 5. **Self-analytics tables don't count as history** (review 2026-09-11): `has_history` deliberately ignores `cli_events` and `skill_events` rows — the EXISTS covers only `issue_events` OR `loop_runs`. The CLI golden pins exactly this (the single-repo fallback db carries a `cli_events` row yet reports `has_history: false`): those tables are ll's own instrumentation churn, not the workspace development activity the signal exists to answer about.
 
 ## API/Interface
@@ -237,6 +246,7 @@ _Added by `/ll:refine-issue` — 2026-09-11 — based on codebase analysis:_
 - [ ] `WorkspaceTotals` JSON contains `has_history_members` and `has_history` with the any/count semantics above.
 - [ ] All-unknown workspace (every member `schema_skew`/`unreadable`): totals `has_history_members: 0`, `has_history: false` despite every member being `null` — pinned as decided behavior (count/any over `is True`), not accidental.
 - [ ] Exact-list test sites updated: `_MEMBER_KEYS`/`_TOTALS_KEYS` in `test_cli_history.py` and `test_totals_to_dict_key_order` in `test_feat3445_workspace_activity.py` gain the new keys per Decision 4.
+- [ ] Option A rendering pinned by test: direct-construction formatter tests (text + markdown) assert the totals line renders the `has_history` **count** in the exact Decision 4 shape — `members: {N} (ok: {X}, instrumented: {Y}, has_history: {Z})`.
 - [ ] CLI golden: single-repo fallback member (db pre-created with only a `cli_events` row) reports `ok`, zero counts, `has_history: false` — the canonical empty-but-schema'd case.
 - [ ] Existing `instrumented` semantics and all workspace_quality tests unchanged.
 - [ ] Docs updated; `python -m pytest scripts/tests/` passes.
@@ -257,6 +267,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-11T22:06:20 - `04b0bc6a-df8f-4f3b-a7b5-400723a6e9f5.jsonl`
 - `/ll:wire-issue` - 2026-09-11T21:19:57 - `ab7c07a0-32fd-4cb6-93e8-64bf011c8239.jsonl`
 - `/ll:decide-issue` - 2026-09-11T20:58:18 - `4edab3cd-c7fc-4d55-b641-0b1df5125d0f.jsonl`
 - `/ll:refine-issue` - 2026-09-11T20:49:41 - `dc57321a-6cbd-4b3f-bbcf-a2a2264f04d2.jsonl`
