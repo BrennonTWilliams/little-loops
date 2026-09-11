@@ -1,0 +1,11 @@
+{
+  "id": "652bd606-76e6-4fbc-a634-3583c118e5ba",
+  "type": "decision",
+  "timestamp": "2026-09-11T00:07:40Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Consumer windows are rolling now-7d and arbitrary datetimes, not date-aligned; loop_runs.started_at uses +00:00-micros format while ended_at/ts use Z, so raw lexicographic comparison misorders boundary timestamps.",
+  "rule": "ll-history activity --since/--until take full ISO-8601 timestamps with normalized (datetime()) comparison, deliberately diverging from summary's date-only flags",
+  "scope": "issue",
+  "issue": "FEAT-3446"
+}

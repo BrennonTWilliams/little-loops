@@ -1,0 +1,11 @@
+{
+  "id": "ad871de4-6807-48f9-9e12-90980ea6a194",
+  "type": "decision",
+  "timestamp": "2026-09-11T00:07:40Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Downstream consumers distinguish unavailable from measured zero; history.db collapses issue closed->completed into transition 'done' so the split cannot be made, and FSM signals are webhook-only.",
+  "rule": "Activity metrics unavailable from history.db serialize as null or absent, never 0 (issues_closed reserved-null; FSM signals absent)",
+  "scope": "issue",
+  "issue": "FEAT-3445"
+}

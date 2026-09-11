@@ -18,7 +18,7 @@ New `ll-history activity` subcommand exposing the workspace activity reader (FEA
 
 ## Context
 
-Companion CLI surface for FEAT-3445 (create that first; this issue is blocked by it). Surfaced by the same little-loops-hermes design review: the `ll_briefing` / `ll_portfolio` consumer needs one command returning per-repo AND union activity counts, machine-readable.
+Companion CLI surface for FEAT-3445 (create that first; this issue is blocked by it). Surfaced by the same downstream-consumer design review: the consumer's briefing/portfolio tools need one command returning per-repo AND union activity counts, machine-readable.
 
 **Premise correction:** the review task claimed "there is NO JSON workspace formatter" — false. `format_agent_quality_json` (agent_quality.py:872-878) already serializes `AggregationResult` via duck-typed `to_dict()`; only text/markdown needed workspace variants. So there is no quality-side JSON gap to fix; this issue's JSON formatter is new code for the new result type only.
 
@@ -43,51 +43,67 @@ ll-history activity [--workspace[=MANIFEST]] [--since ISO_DATE] [--until ISO_DAT
 ```
 
 **Flag semantics:**
-- `--workspace` — `nargs="?"` exactly like quality's (history.py:315-321): bare flag discovers `ll-workspace.yaml` from the project root outward; a value is an explicit manifest path. Manifest resolution errors print to stderr and exit 1 (mirror history.py:556-560).
-- **Zero members → single-repo fallback (decision, resolved: yes):** when `--workspace` discovers no members, report the current repo as a one-member result, mirroring quality's fallback (history.py:562-573). Consistency beats failing empty.
-- `--since`/`--until` — ISO dates via `date.fromisoformat`, same convention as `summary`; both optional, default unbounded. `--until` is included for symmetry with `summary` even though the immediate consumer only needs `--since`.
+- `--workspace` — `nargs="?"` with `default=None, const=""` exactly like quality's (registered history.py:314-323, consumed at :555): absent → `None` (single-repo); bare → `""` (falsy → discovery from `project_root`); value → explicit manifest path. Manifest resolution precedence: explicit arg → `history.workspace_manifest_path` config key → nearest-ancestor `ll-workspace.yaml` walk (`_resolve_manifest_path`, workspace.py:103-123). **Error surface (decision, resolved: mirror quality's exactly):** declared-but-missing manifest → `FileNotFoundError` (workspace.py:214-221) caught, printed to stderr, exit 1 (history.py:558-560). Malformed manifests (`yaml.YAMLError`/`KeyError`/`ValueError`, workspace.py:224-236) and duplicate resolved db_paths (ValueError, workspace.py:233-237) raise uncaught in quality today — leave that shared behavior unchanged rather than diverging.
+- **Zero members → single-repo fallback (decision, resolved: yes):** when `--workspace` discovers no members, report the current repo as a one-member result. Consistency beats failing empty. Implementation shape mirrors quality's structure (history.py:551-581): quality initializes `quality_analysis = None`, aggregates `if members:`, and its fallback does **not** synthesize a one-member workspace — it calls the single-repo analyzer directly against the env/config-resolved local db (`resolve_history_db(project_root / DEFAULT_DB_PATH)`). Activity does the same over the FEAT-3445 reader: build the fallback result from the local db (synthesize a one-member member list for `project_root`, or equivalently a single-db read path) so the emitted shape is identical whether zero or one member was in play.
+- `--since`/`--until` — **full ISO-8601 timestamps** (date or datetime, e.g. `2026-08-10T14:00:00Z`), validated with `datetime.fromisoformat` (Python 3.11+ accepts `Z`); inclusive (`>=` / `<=`) bounds; both optional, default unbounded. **Deliberate divergence from `summary`'s date-only `--since`/`--until`:** the consumer's windows are rolling (now−7d) and arbitrary datetimes, not date-aligned, so date granularity is insufficient. **Validation placement (deliberate improvement, not a mirror):** `summary` parses post-dispatch with no try/except (history.py:385-389) — invalid input raises `ValueError` through the arm and exits 1 with a raw traceback (`cli_event_context` records exit code 1 on the cli_events row and re-raises, writers.py:556-558). Activity validates at the parser via a `type=` callable (the `--sensitivity`/`_non_negative_float` pattern at history.py:21-26/:292-299), so AC 3's "clear error" is an argparse usage message, not a traceback. Timestamps are compared via the reader's normalized comparison (FEAT-3445), never raw lexicographic string compare.
 - `--format` — `choices=["text", "json", "markdown", "yaml"]`, default `text`.
 
 **JSON output shape** (exact contract):
 
 ```json
 {
-  "since": "2026-09-03",
+  "since": "2026-08-10T14:00:00Z",
   "until": null,
-  "per_repo": {
-    "little-loops (source)": {
+  "per_repo": [
+    {
+      "repo_path": "/abs/path/to/little-loops",
+      "role": "source",
+      "label": "little-loops (source)",
       "status": "ok",
+      "ok": true,
       "instrumented": true,
-      "reason": null,
+      "error": null,
       "loops_run": 12,
       "loops_completed": 10,
       "issues_completed": 4,
-      "issues_deferred": 1
+      "issues_deferred": 1,
+      "issues_closed": null
     },
-    "other-repo (consumer)": {
+    {
+      "repo_path": "/abs/path/to/other-repo",
+      "role": "consumer",
+      "label": "other-repo (consumer)",
       "status": "db_missing",
+      "ok": false,
       "instrumented": false,
-      "reason": "history.db not found at ...",
+      "error": "history.db not found at ...",
       "loops_run": null,
       "loops_completed": null,
       "issues_completed": null,
-      "issues_deferred": null
+      "issues_deferred": null,
+      "issues_closed": null
     }
-  },
+  ],
   "totals": {
     "members": 2,
+    "instrumented": true,
     "instrumented_members": 1,
     "loops_run": 12,
     "loops_completed": 10,
     "issues_completed": 4,
-    "issues_deferred": 1
+    "issues_deferred": 1,
+    "issues_closed": null
   }
 }
 ```
 
-Non-ok members serialize `null` counts (never `0`) so absence stays distinguishable from zero. `per_repo` keys use quality's `"{repo_path.name} ({role})"` label.
+**Canonical shape decisions (consumer contract, folded from the downstream review):**
+- `per_repo` is an **array** of member objects, each carrying `repo_path`/`role`/`label` explicitly. This diverges from quality's label-keyed dict deliberately: machine consumers need stable identity fields, not display-label keys to parse.
+- `ok`/`error` are the canonical consumer-facing fields; `status` rides along as the finer-grained discriminator (`ok == (status == "ok")`, `error` is the reason string).
+- Metrics unavailable from history.db serialize as `null`, **never `0`**: `issues_closed` is an explicit always-`null` reserved key (history.db collapses issue closed→completed into transition `'done'`, so the split cannot be made), and the three FSM signals (stalls / cycles / rate-limits, webhook-only) are deliberately absent — consumers must model them as unavailable, not measured zero.
+- `totals.instrumented` is the OR over members; counts sum over `ok` members only.
 
-**Formatters:** `format_workspace_activity_json` / `_yaml` / `_text` / `_markdown` live beside the result type or in the CLI module following the quality formatter placement; JSON/YAML go through `to_dict()` duck-typing exactly as quality's do.
+**Formatters (placement resolved: `issue_history/workspace_activity.py`, beside the result type — quality's formatters live in `agent_quality.py` beside `QualityAnalysis`):** `format_workspace_activity_json` / `_yaml` / `_text` / `_markdown`. Mirror the quality quartet's mechanics (agent_quality.py): JSON is `json.dumps(result.to_dict(), indent=2)` with no dispatch at all (:872-878 — the `to_dict()` duck-type alone is the contract); YAML is `yaml.dump(result.to_dict(), ...)` and **falls back to the JSON formatter on `ImportError`** — JSON is valid YAML, so output stays parseable (:881-889); text/markdown render per-member sections + totals. Quality's `hasattr(analysis, "per_repo")` dispatch (:646/:749) exists solely to dodge a runtime import cycle (workspace_quality imports agent_quality) — no cycle applies here, and the predicate must NOT be copied anyway: both result types carry `per_repo`, but quality's is a label-keyed dict of `QualityAnalysis` while activity's is a repo_path-keyed dict of `RepoActivity`. Write dedicated formatters; do not reuse or extend quality's.
 
 **Docs:** `docs/reference/CLI.md` gains the subcommand row; `ll-history --help` epilog examples updated.
 
@@ -114,14 +130,14 @@ Non-ok members serialize `null` counts (never `0`) so absence stays distinguisha
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_history/workspace_activity.py` [FEAT-3445] — the reader + result types this subcommand exposes.
-- hermes `ll_briefing` / `ll_portfolio` — external consumer of the JSON contract (out of repo).
+- A downstream briefing/portfolio plugin — external consumer of the JSON contract (out of repo).
 
 ### Similar Patterns
 - `quality` subcommand (parser at history.py:272, dispatch at history.py:523, workspace resolution + fallback at history.py:552-573) — the scope-flag convention, manifest-error path, and zero-member fallback to mirror.
 - `format_agent_quality_text/markdown/json/yaml` (agent_quality.py:636/743/872/881) — the four-formatter duck-typing pattern.
 
 ### Tests
-- `scripts/tests/test_cli_history.py` — CLI integration tests: multi-member workspace fixture, db_missing member, single-repo fallback, invalid `--since` error path, exit 0 with `totals: null`.
+- `scripts/tests/test_cli_history.py` — CLI integration tests: multi-member workspace fixture, db_missing member, single-repo fallback, invalid `--since` error path, exit 0 with `totals: null`. Fixture shape: write a real `ll-workspace.yaml` via `yaml.dump({"members": ...})` and call `discover_workspace_members` (test_workspace.py:16-28), or build members directly over `tmp_path` (test_feat3410.py:28-43); use non-default db names (`<name>-history.db`) to dodge the autouse `_isolate_history_db` fixture (conftest.py:915-949).
 - Golden-shape JSON test (AC 1/7): exact key order + `null`-count contract.
 
 ### Documentation
@@ -145,13 +161,13 @@ Non-ok members serialize `null` counts (never `0`) so absence stays distinguisha
 
 ## Use Case
 
-Hermes sync runs `ll-history activity --workspace --since 2026-09-03 --format json` once per sync instead of N subprocess spawns + N direct sqlite connections; the JSON contract above is consumed verbatim by `ll_briefing` / `ll_portfolio`.
+A downstream sync runs `ll-history activity --workspace --since 2026-08-10T14:00:00Z --format json` once per sync instead of N subprocess spawns + N direct sqlite connections; the JSON contract above is consumed verbatim by the consumer's briefing/portfolio tools, whose rolling windows need datetime-granularity bounds and null-unavailable metrics.
 
 ## Acceptance Criteria
 
-1. `ll-history activity --workspace --since <ISO> --format json` emits the exact shape above (stable key order, `null` counts for non-ok members).
+1. `ll-history activity --workspace --since <ISO-8601 timestamp> --format json` emits the exact shape above (stable key order, `per_repo` as an array of member objects with `repo_path`/`role`/`ok`/`error`/`instrumented`, `issues_closed: null`, `totals.instrumented` as the OR over members, `null` counts for non-ok members).
 2. Bare `--workspace`, `--workspace <path>`, and absent flag (single-repo result) all work; a declared-but-missing manifest exits 1 with the path on stderr.
-3. `--since`/`--until` accept ISO dates; invalid input exits non-zero with a clear error (match `summary`'s error path).
+3. `--since`/`--until` accept full ISO-8601 timestamps (date or datetime) as inclusive bounds; invalid input exits non-zero with a clear argparse usage error (parser-level `type=` validation, not a raw traceback).
 4. All four `--format` values render; scope flag never changes which formatters are available.
 5. Exit 0 with `totals: null` when no member is `ok`.
 6. `docs/reference/CLI.md` and the `--help` epilog document the subcommand.
