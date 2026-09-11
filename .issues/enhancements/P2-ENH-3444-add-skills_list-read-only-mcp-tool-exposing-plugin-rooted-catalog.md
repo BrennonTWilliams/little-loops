@@ -99,6 +99,12 @@ extraction. The tool is therefore a thin exposure, not a new design:
 - `scripts/little_loops/tool_catalog.py` — add `kind` to `ToolDefinition`; set it in
   `_skill_entries` / `_command_entries` / `_agent_entries`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/mcp_server/__init__.py` — package docstring tool counts
+  ("eight coarse read-only tools, seven guarded mutation tools") are a third count
+  site beyond tools.py:1-3 and tools.py:1232; must be re-counted when the roster
+  grows [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `tool_catalog.to_anthropic_tools` consumers — `host_runner.build_anthropic_request`
   (FEAT-2673) and FEAT-2672 deferred loading. `kind` is an additive optional field the
@@ -119,12 +125,61 @@ extraction. The tool is therefore a thin exposure, not a new design:
 - `scripts/tests/test_enh_3444_mcp_skills_list.py` (new) — patterns:
   `test_feat_3352_mcp_loop_list.py`, `test_feat_queue_mcp_tools.py`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_mcp_server.py` — WILL BREAK: `test_no_unguarded_mutating_tool_is_advertised`
+  (lines 277-320) hard-codes the 8-name `read_only` tier-1 set (lines 292-301); any advertised tool
+  outside it must be in `MUTATING_TOOLS` or `TASK_STARTING_TOOLS` — add `"skills_list"` to the set
+  (the identical edit FEAT-3352/FEAT-3234 made for `loop_list`/`queue_*`) [Agent 2+3 finding]
+- `scripts/tests/test_feat_3149_mcp_mutation_tools.py` — WILL BREAK:
+  `test_ac1_tier1_tools_keep_their_shape_and_ordering` (lines 153-176) asserts
+  `names[:8] == TIER1_NAMES` then `names[8:]` (minus TASK_STARTING_TOOLS) equals
+  `sorted(MUTATING_NAMES)` — `skills_list` at position 9 lands in the tier-2 slice and fails the
+  comparison; extend `TIER1_NAMES` (lines 117-126) and bump both slices to `[:9]`/`[9:]` (the
+  `tools[:8]` annotations-None loop at lines 171-174 also implies `skills_list` must be registered
+  with `annotations=None`) [Agent 2+3 finding]
+- `scripts/tests/test_tool_catalog.py` — extend, not just preserve: add `kind` assertions to the
+  three assembly test classes (`TestAssembleToolCatalogSkills`/`...Commands`/`...Agents`) and a
+  serializer-ignores-`kind` case extending
+  `TestToAnthropicTools::test_serializes_required_keys_only_when_no_cache_control` (lines 179-193);
+  no entry is ever constructed *with* `kind` set today, so "populated `kind` stays
+  serializer-invisible" is un-pinned [Agent 3 finding]
+- `scripts/tests/test_cli_doctor_install_checks.py:86-107` — convention reference, no edit: patches
+  the module attribute `little_loops.tool_catalog.assemble_tool_catalog` because `cli/doctor.py`
+  imports it function-locally; if `_tool_skills_list` follows the house function-local-import
+  style, its tests must patch the module attribute, not an import site in `mcp_server.tools`
+  [Agent 1+3 finding]
+- Placement constraint: `test_mcp_server.py:58-86` pins `names[:5]` (five read tools first) — the
+  planned Tier-1 slot beside `loop_list` (position 9) satisfies it; keep `skills_list` at index ≥ 5
+
 ### Documentation
 - `docs/reference/API.md` — the `little_loops.mcp_server` module row enumerates the
   read-only tool roster; add `skills_list`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` (second, distinct edit) — `## little_loops.tool_catalog` →
+  `### ToolDefinition` constructor signature block (lines 10751-10758) and Fields table
+  (lines 10762-10769) must gain a `kind` row (`str`, default `""`, set per entry builder)
+  [Agent 2 finding]
+- `docs/reference/CLI.md` — `### ll-mcp` section roster sentence and counts ("sixteen coarse
+  tools … Eight read: …", lines 5357-5360) and the "eight read-only tools carry no annotations"
+  sentence (lines 5385-5387); the tool-parameters table (line 5401 onward) needs a row only if
+  `skills_list` grows parameters (the planned signature takes `_arguments` ignored — likely no
+  row, but the counts change) [Agent 2 finding]
+- `docs/guides/MCP_SERVER_GUIDE.md` — three spots: the `| **Tools (read)** |` overview table row
+  (line 33), the `### The eight read tools, end to end` heading (line 204; per-tool walkthrough
+  section where FEAT-3352 added its `loop_list` walkthrough at line 352), and the "eight read-only
+  tools carry no annotations at all" sentence (lines 588-589) [Agent 1+2 finding]
+- `CHANGELOG.md` — release-prep coupling only (FEAT-3352 precedent at line 189); add the entry at
+  release prep under a concrete `## [X.Y.Z] - DATE` section, never `[Unreleased]` [Agent 2 finding]
+
 ### Configuration
 - N/A — no config knob; tool presence is registry-level
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Confirmed N/A: no schema or config validates the MCP tool roster or `ToolDefinition` shape —
+  `config-schema.json`'s `mcp` block (lines 612-660) covers `transport_policy`/`http` only;
+  `deferred_tools.threshold` is index-based over the same catalog and `kind` adds no entries and
+  reorders nothing, so thresholds are unaffected [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -150,6 +205,27 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
    `[]` on unresolvable root, identical output across `--project-root` values, `kind`
    present, agents absent.
 4. Update the `docs/reference/API.md` tool roster; run `python -m pytest scripts/tests/`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_mcp_server.py` — add `"skills_list"` to the `read_only` tier-1 set in
+  `test_no_unguarded_mutating_tool_is_advertised` (lines 292-301) or the guard fails on registration
+- Update `scripts/tests/test_feat_3149_mcp_mutation_tools.py` — extend `TIER1_NAMES` (lines 117-126)
+  and bump the slice arithmetic `names[:8]`/`names[8:]`/`tools[:8]` to 9 in
+  `test_ac1_tier1_tools_keep_their_shape_and_ordering` (lines 153-176)
+- Extend `scripts/tests/test_tool_catalog.py` — `kind` assertions in the three assembly classes;
+  serializer-ignores-`kind` case in `TestToAnthropicTools`
+- Update `scripts/little_loops/mcp_server/__init__.py` — re-count the package-docstring tool
+  counts alongside tools.py:1-3 and tools.py:1232
+- Update `docs/reference/CLI.md` — `### ll-mcp` roster sentence/counts (lines 5357-5360) and
+  read-only annotations sentence (lines 5385-5387)
+- Update `docs/guides/MCP_SERVER_GUIDE.md` — read-tools table row (line 33), "eight read tools"
+  heading + per-tool walkthrough (lines 204, 352), annotations sentence (lines 588-589)
+- Update `docs/reference/API.md` — `ToolDefinition` Fields table gains the `kind` row
+  (lines 10751-10769), distinct from the roster-row edit in Step 4
+- `CHANGELOG.md` — entry at release prep, under a concrete version section (not `[Unreleased]`)
 
 ### Codebase Research Findings
 
@@ -236,6 +312,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-11T00:00:07 - `7ab0ae92-3343-45f8-9d51-058b5423b861.jsonl`
 - `/ll:refine-issue` - 2026-09-10T23:49:39 - `7ee27d53-14b5-4247-8a45-3ace1bb3ba2a.jsonl`
 - `/ll:format-issue` - 2026-09-10T23:42:00 - `d0293195-1c81-4d81-ac17-fa584ee4566b.jsonl`
 - `/ll:capture-issue` - 2026-09-10T23:35:10 - `e38fd574-1060-4376-8bc3-e25c31d15dce.jsonl`
