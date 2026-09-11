@@ -173,6 +173,19 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - **Risk**: Low for the workflow change - No product-code behavior change; `fetch-depth: 0` adds a one-time ~116 MB clone (`.git` size measured) and the gate itself runs in 4.46 s against a 120 s timeout. Two real risks: (a) the precondition must **fail**, not skip, or a future `fetch-depth` regression goes quiet again — decided as Option B; (b) `fetch-depth: 0` newly activates the pinned-SHA `_read_blob` flagship tests on CI for the first time, which is a fresh way for the job to go red and must be checked before merging. Residual: CI's ref set (`refs/remotes/origin/*` for all branches and tags) is not byte-identical to a local clone's, so a small finding-count difference between local and CI remains possible — another reason step 6(c) requires reading an actual CI job log rather than trusting a local run.
 - **Breaking Change**: No
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-09-11_
+
+Verdict at time of check: **VALID** (no corrections required — every claim re-verified against the working tree on 2026-09-11; this section records what was checked, not an outstanding action item).
+
+- **CI anchors confirmed**: unit-tests checkout is bare `- uses: actions/checkout@v4` at `ci.yml:67` (no `with:` block); conformance checkout bare at `:152`; BUG-3208 comment convention at `:73`; selector `-m "not integration and not conformance"` at `:120`. Grep across `.github/` + `scripts/`: zero matches for `fetch-depth` or `is-shallow-repository`.
+- **Gate state re-measured**: `ll-verify-evidence --all --json` exits 1 with exactly the **4 findings** this issue records (BUG-3439:50 ×2 → `test_loop_router.py`; BUG-3443:43,50 → `test_conftest_cap.py`); per-file scan of this issue is clean. Baseline: 297 spans / 228 files against the 400 cap (`total <= 400` assert confirmed). `TestRepoGate::test_no_new_unverifiable_evidence` fails on `main` locally with full history.
+- **Span dispositions confirmed**: `max(1, min(int(env), cpus - 2))` lives at `conftest.py:71` (misattribution, as claimed); real loop-router code is `["bash", "-c", script]` at `test_loop_router.py:348` (paraphrase, as claimed); BUG-3443 line refs read `:43,50` (post-`a06961726` drift, as claimed). `scan_all` has no status filter — BUG-3439 is `done` yet its spans still report, as claimed.
+- **Prerequisites re-confirmed**: BUG-3439 closed already-fixed via `db45ec9f6`; `a06961726` is the BUG-3443 line-ref-shifting commit; learning tests `actions/checkout` and `git` both `proven`, 0 failing claims (`d3bea3f8f`).
+- **Proposal trace**: both integration points covered by Implementation Steps 2–3; the new shallow-repo subprocess lands beside the `gate_cli` fixture (which only does `shutil.which`) so no fixture/mock invalidation; the `_read_blob` activation risk is already flagged in step 5. No `PROPOSAL_UNSOUND` findings.
+- **Decisions check**: no active required rules. Dependencies: parent EPIC-3436 exists; no `Blocked By`/`Blocks` edges on this issue.
+
 ## Status
 
 **Open** | Created: 2026-09-10 | Priority: P2
@@ -194,6 +207,7 @@ _Added by `/ll:confidence-check` on 2026-09-10_
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-11T04:19:33 - `b3354d99-33ae-4069-82e6-d632e46bda87.jsonl`
 - `/ll:confidence-check` - 2026-09-11T04:10:37 - `15f92a63-fb8d-44e1-92df-1b973a2a54e8.jsonl`
 - `/ll:decide-issue` - 2026-09-11T03:59:41 - `2f065e0e-57e0-408e-a9b6-f6686371abe7.jsonl`
 - `/ll:confidence-check` - 2026-09-11T03:46:23 - `513f555f-2dcc-4cef-a40a-121044c26dea.jsonl`
