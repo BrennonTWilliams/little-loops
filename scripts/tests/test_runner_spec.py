@@ -450,9 +450,11 @@ class TestRunActionDispatch:
         a target above Linux's per-argument MAX_ARG_STRLEN (131072 B) must
         still spawn via _run_cmd's temp-file substitution, not
         ``bash -c <target>``. No platform skip: passed on darwin before the
-        fix, fails on Linux only before it."""
+        fix, fails on Linux only before it. Oversize lives in a bash variable
+        assignment so no child exec re-trips MAX_ARG_STRLEN on a single argv
+        element (see the shell-path pin for the full rationale)."""
         payload = "x" * 140_000
-        target = f"python3 -c \"print(len('{payload}'))\""
+        target = f"payload='{payload}'; echo ${{#payload}}"
         assert len(target) > 131072
 
         spec = ActionSpec(name="oversized", runner=RunnerType.CMD, target=target, timeout=30)

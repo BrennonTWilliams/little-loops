@@ -591,9 +591,14 @@ class TestDefaultActionRunnerShellPath:
         out-of-band via a temp file (``bash <path>``), not as a single argv
         element (``bash -c <action>``). No platform skip: this passed on
         darwin before the fix (larger per-argv limit) and fails on Linux
-        only before it — the honest pin per the issue's Program Design."""
+        only before it — the honest pin per the issue's Program Design.
+
+        The oversize lives in a bash *variable assignment* so no child
+        exec inherits a >128KB single argv element (an earlier draft used
+        ``python3 -c "<payload>"``, which trips MAX_ARG_STRLEN again at
+        python3's own execve on Linux — failing with the fix present)."""
         payload = "x" * 140_000  # > 131072 B MAX_ARG_STRLEN
-        action = f"python3 -c \"print(len('{payload}'))\""
+        action = f"payload='{payload}'; echo ${{#payload}}"
         assert len(action) > 131072
 
         runner = DefaultActionRunner()
