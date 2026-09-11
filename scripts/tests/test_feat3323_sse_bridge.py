@@ -226,12 +226,19 @@ class TestSseBridgeFanIn:
 
                 seen_pids = set()
                 for _ in range(2):
-                    # timeout=15.0 (default is 5.0): each event crosses five
-                    # thread hops (producer client_loop -> bridge reader ->
-                    # relay -> SSE write loop -> this socket) before this test
-                    # ever sees a byte; under heavy parallel-suite CPU
-                    # contention the default budget is occasionally too tight.
-                    text, leftover = _read_sse_frame(sock, leftover, timeout=15.0)
+                    # timeout=30.0 (default is 5.0; was 15.0 until it still
+                    # flaked at -n logical full-suite width — see BUG history
+                    # below): each event crosses five thread hops (producer
+                    # client_loop -> bridge reader -> relay -> SSE write loop
+                    # -> this socket) before this test ever sees a byte, and
+                    # each is a real Python thread competing for the GIL
+                    # against every other xdist worker's tests on the same
+                    # cores. _read_sse_frame's socket.settimeout() applies
+                    # per-recv(), not cumulatively, so widening this only
+                    # costs time when the relay is genuinely starved (this
+                    # test still finishes in ~3s standalone) — it never slows
+                    # a healthy run.
+                    text, leftover = _read_sse_frame(sock, leftover, timeout=30.0)
                     seen_pids.add(json.loads(text)["producer_pid"])
                 assert seen_pids == {1111, 2222}
             finally:
