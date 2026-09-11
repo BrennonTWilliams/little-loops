@@ -3,13 +3,14 @@ id: FEAT-3446
 type: FEAT
 title: 'll-history activity subcommand: --workspace scope flag with JSON output'
 priority: P2
-status: open
+status: done
 verify_verdict: VALID
 blocked_by:
 - FEAT-3445
 discovered_by: ll-issues-create
 discovered_date: '2026-09-10'
 captured_at: '2026-09-10T23:53:23Z'
+completed_at: '2026-09-11T04:56:06Z'
 confidence_score: 90
 outcome_confidence: 93
 score_complexity: 18
@@ -283,9 +284,31 @@ pass: `test_feat3410.py` → `test_feat3410_workspace_quality.py` (line range
 date). Evidence-quote check: clean, 0 findings. Decisions log: no active
 required rules.
 
+## Resolution
+
+---
+
+- **Action**: implement
+- **Completed**: 2026-09-10
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history/workspace_activity.py`: four new formatters (`format_workspace_activity_json`/`_yaml`/`_text`/`_markdown`) beside the result type, mirroring the agent_quality quartet's mechanics (verbatim `to_dict()` dump for JSON/YAML with ImportError fallback; per-member sections + totals for text/markdown; no `hasattr` dispatch).
+- `scripts/little_loops/issue_history/__init__.py`: re-exported the four formatters (import block + `__all__`).
+- `scripts/little_loops/cli/history.py`: `_iso_timestamp` parser-level `type=` callable (validates ISO-8601, returns the raw string); `activity` subparser (`--format`, `--workspace[=PATH]`, `--since`/`--until TIMESTAMP`, no `-S` alias); dispatch arm mirroring quality's structure with the pinned single-repo fallback member (`role="source"`, `resolve_history_db`-resolved local db); epilog examples.
+- `scripts/tests/test_cli_history.py`: `TestHistoryActivity` — 9 tests (golden JSON shape, bare/explicit/absent scope variants, zero-member fallback parity, declared-but-missing manifest exit 1 + stderr, invalid `--since`/`--until` SystemExit, all four formats, all-null totals).
+- `docs/reference/CLI.md`: `ll-history activity` subsection (flag table + JSON contract) + all-subcommands example.
+- `docs/guides/HISTORY_SESSION_GUIDE.md`: `activity` added to the quality/rework comparison with the explicit does-NOT-share-windowing-convention caveat (AC 6).
+
+### Verification Results
+- Tests: PASS — `TestHistoryActivity` 9/9; full suite 23972 passed, 43 skipped, with 4 pre-existing failures reproduced identically at clean HEAD (test_issue_parser priority-regex allowlist, BUG-3439/3443 evidence quotes in test_verify_evidence) — unrelated to this change.
+- Lint: PASS — `ruff check scripts/` clean.
+- Types: PASS — `mypy scripts/little_loops/` no issues.
+- Integration: PASS — smoke-tested against a real two-member workspace fixture; JSON output byte-matches the issue's contract (key order, `ok_members`, null-unavailable counts, manifest-order `per_repo` array).
+
 ## Status
 
-**Open** | Created: 2026-09-10 | Priority: P2
+**Done** | Created: 2026-09-10 | Completed: 2026-09-11 | Priority: P2
 
 
 ## Confidence Check Notes
@@ -300,6 +323,8 @@ _Added by `/ll:confidence-check` on 2026-09-10_
   - _Stale as of `/ll:refine-issue` 2026-09-10: FEAT-3445 is now `status: done` (completed 2026-09-11T02:20:09Z) and its reader (`aggregate_workspace_activity`, `WorkspaceActivityResult`) exists at `scripts/little_loops/issue_history/workspace_activity.py:248-312`/`:127-133`. This dependency is resolved; re-run `/ll:confidence-check` to clear this gap._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-11T04:55:48 - `613f688d-5c16-4731-ae31-d9e2c369747c.jsonl`
+- `/ll:ready-issue` - 2026-09-11T04:32:35 - `0667d84c-ad15-42ea-9124-afb4af9bd8e3.jsonl`
 - `/ll:confidence-check` - 2026-09-11T04:00:45 - `2647bc9d-a76b-4b62-b689-27cd746d4229.jsonl`
 - `/ll:verify-issues` - 2026-09-11T03:57:41 - `3bfa767e-086c-4d89-88f3-e03049677079.jsonl`
 - `/ll:confidence-check` - 2026-09-11T03:30:24 - `26036582-ea49-4a94-afdd-ed1d196dcb3d.jsonl`

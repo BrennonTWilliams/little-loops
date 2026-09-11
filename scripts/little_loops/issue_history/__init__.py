@@ -204,6 +204,10 @@ from little_loops.issue_history.workspace_activity import (
     RepoActivity,
     WorkspaceActivityResult,
     aggregate_workspace_activity,
+    format_workspace_activity_json,
+    format_workspace_activity_markdown,
+    format_workspace_activity_text,
+    format_workspace_activity_yaml,
 )
 from little_loops.issue_history.workspace_quality import AggregationResult, aggregate_history_dbs
 
@@ -290,6 +294,10 @@ __all__ = [
     "RepoActivity",
     "MemberActivityStatus",
     "aggregate_workspace_activity",
+    "format_workspace_activity_text",
+    "format_workspace_activity_json",
+    "format_workspace_activity_markdown",
+    "format_workspace_activity_yaml",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",

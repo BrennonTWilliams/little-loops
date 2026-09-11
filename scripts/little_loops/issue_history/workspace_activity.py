@@ -41,6 +41,7 @@ Known limitations (accepted, not solved here):
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -310,3 +311,139 @@ def aggregate_workspace_activity(
     return WorkspaceActivityResult(
         since=since, until=until, per_repo=per_repo, totals=_totals(per_repo)
     )
+
+
+def _activity_count_lines(
+    loops_run: int | None,
+    loops_completed: int | None,
+    issues_completed: int | None,
+    issues_deferred: int | None,
+) -> list[str]:
+    """Shared count rows for the text/markdown formatters (FEAT-3446)."""
+    return [
+        f"loops run: {loops_run}",
+        f"loops completed: {loops_completed}",
+        f"issues completed: {issues_completed}",
+        f"issues deferred: {issues_deferred}",
+    ]
+
+
+def _activity_window_line(result: WorkspaceActivityResult) -> str:
+    bits = []
+    if result.since is not None:
+        bits.append(f"since {result.since}")
+    if result.until is not None:
+        bits.append(f"until {result.until}")
+    return f"Window: {', '.join(bits) if bits else 'unbounded'}"
+
+
+def format_workspace_activity_json(result: WorkspaceActivityResult) -> str:
+    """Serialize via the duck-typed `to_dict()` contract, no transformation.
+
+    Mirrors `format_agent_quality_json()`: `WorkspaceActivityResult.to_dict()`
+    is the canonical consumer shape (stable key order, `null`-for-unavailable
+    counts), so JSON output is a verbatim dump of it.
+    """
+    return json.dumps(result.to_dict(), indent=2)
+
+
+def format_workspace_activity_yaml(result: WorkspaceActivityResult) -> str:
+    """YAML rendering of the same `to_dict()` contract.
+
+    Falls back to the JSON formatter when PyYAML is absent -- JSON is valid
+    YAML, so output stays parseable either way.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return format_workspace_activity_json(result)
+    return yaml.dump(result.to_dict(), default_flow_style=False, sort_keys=False)
+
+
+def format_workspace_activity_text(result: WorkspaceActivityResult) -> str:
+    """Human-readable report: one section per member, then workspace totals."""
+    lines = [
+        "Workspace Activity Report",
+        "=" * 25,
+        _activity_window_line(result),
+        "",
+    ]
+    for activity in result.per_repo.values():
+        lines.append(activity.label)
+        lines.append("-" * len(activity.label))
+        lines.append(f"status: {activity.status.value}")
+        if activity.status is MemberActivityStatus.OK:
+            lines.extend(
+                _activity_count_lines(
+                    activity.loops_run,
+                    activity.loops_completed,
+                    activity.issues_completed,
+                    activity.issues_deferred,
+                )
+            )
+        else:
+            lines.append(f"error: {activity.reason}")
+        lines.append("")
+
+    totals = result.totals
+    lines.append("Workspace totals")
+    lines.append("-" * 16)
+    lines.append(
+        f"members: {totals.members} (ok: {totals.ok_members}, "
+        f"instrumented: {totals.instrumented_members})"
+    )
+    if totals.ok_members:
+        lines.extend(
+            _activity_count_lines(
+                totals.loops_run,
+                totals.loops_completed,
+                totals.issues_completed,
+                totals.issues_deferred,
+            )
+        )
+    else:
+        lines.append("counts: unavailable (no ok members)")
+    return "\n".join(lines)
+
+
+def format_workspace_activity_markdown(result: WorkspaceActivityResult) -> str:
+    """Markdown variant of the workspace activity report."""
+    lines = [
+        "# Workspace Activity Report",
+        "",
+        _activity_window_line(result),
+        "",
+    ]
+    for activity in result.per_repo.values():
+        lines.append(f"## {activity.label}")
+        lines.append("")
+        lines.append(f"- status: `{activity.status.value}`")
+        if activity.status is MemberActivityStatus.OK:
+            for line in _activity_count_lines(
+                activity.loops_run,
+                activity.loops_completed,
+                activity.issues_completed,
+                activity.issues_deferred,
+            ):
+                lines.append(f"- {line}")
+        else:
+            lines.append(f"- error: {activity.reason}")
+        lines.append("")
+
+    totals = result.totals
+    lines.extend(["## Workspace totals", ""])
+    lines.append(
+        f"- members: {totals.members} (ok: {totals.ok_members}, "
+        f"instrumented: {totals.instrumented_members})"
+    )
+    if totals.ok_members:
+        for line in _activity_count_lines(
+            totals.loops_run,
+            totals.loops_completed,
+            totals.issues_completed,
+            totals.issues_deferred,
+        ):
+            lines.append(f"- {line}")
+    else:
+        lines.append("- counts: unavailable (no ok members)")
+    return "\n".join(lines)

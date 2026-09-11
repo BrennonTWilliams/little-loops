@@ -465,12 +465,21 @@ workspace-wide *totals* number (FEAT-3418) computed over the union of every gate
 tables — see `docs/reference/CLI.md`'s "Cross-repo workspace aggregation" subsection for the
 full behavior, including the cross-repo id-collision handling and the attach-limit fallback.
 
+`ll-history activity` (FEAT-3446) is the third report in this family: per-repo and union
+loop/issue activity counts over the same `--workspace` scope-flag convention, with
+`--format json` as the machine-readable contract for downstream tooling. Note that it does
+**not** share `rework`/`quality`'s `(calendar month, orchestrator)` windowing convention — its
+bounds are `summary`-style inclusive ISO-8601 timestamps (`--since`/`--until`, e.g.
+`2026-08-10T14:00:00Z`, naive treated as UTC), which is what rolling consumer windows need.
+
 ## Quality Metric Definitions
 
 `ll-history rework` (FEAT-2867) and `ll-history quality` (FEAT-3183) share one
 `(calendar month, orchestrator)` windowing convention and one min-sample/insufficient-history
 gate, extracted into `issue_history/_utils.py` so the two reports read side by side and cannot
-silently diverge. This section states each metric's definition once; the CLI flag tables live in
+silently diverge. (`ll-history activity`, FEAT-3446, is related but deliberately outside this
+convention — its window is `summary`-style inclusive ISO timestamps, not calendar months.)
+This section states each metric's definition once; the CLI flag tables live in
 `docs/reference/CLI.md` and are not restated here.
 
 | Metric | Command | Formula | Notes |

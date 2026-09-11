@@ -428,6 +428,296 @@ class TestHistoryQualityWorkspaceFlag:
 
 
 # ---------------------------------------------------------------------------
+# activity subcommand (FEAT-3446)
+# ---------------------------------------------------------------------------
+
+
+class TestHistoryActivity:
+    """`ll-history activity` (FEAT-3446): workspace activity counts + JSON contract."""
+
+    _MEMBER_KEYS = [
+        "repo_path",
+        "role",
+        "label",
+        "status",
+        "ok",
+        "error",
+        "instrumented",
+        "loops_run",
+        "loops_completed",
+        "issues_completed",
+        "issues_deferred",
+        "issues_closed",
+    ]
+    _TOTALS_KEYS = [
+        "members",
+        "instrumented_members",
+        "instrumented",
+        "ok_members",
+        "loops_run",
+        "loops_completed",
+        "issues_completed",
+        "issues_deferred",
+        "issues_closed",
+    ]
+
+    @staticmethod
+    def _healthy_member(tmp_path: Path, name: str, role: str) -> None:
+        """Create a member repo with a real current-schema db via the write API.
+
+        Deliberately named ``<name>-history.db`` (non-default-shaped): the
+        autouse ``_isolate_history_db`` fixture routes default-shaped
+        ``.ll/history.db`` opens through one shared ``LL_HISTORY_DB`` env var,
+        which would collapse every member onto the same file. The manifest
+        entry carries an explicit ``db_path`` to match.
+        """
+        from little_loops.session_store.writers import record_issue_event
+
+        repo_path = tmp_path / name
+        (repo_path / ".issues").mkdir(parents=True, exist_ok=True)
+        (repo_path / ".ll").mkdir(exist_ok=True)
+        db_path = repo_path / ".ll" / f"{name}-history.db"
+        record_issue_event(db_path, f"{name}-BUG-1", "done")
+
+    @staticmethod
+    def _write_manifest(tmp_path: Path, members: list[dict]) -> Path:
+        manifest = tmp_path / "ll-workspace.yaml"
+        lines = ["members:"]
+        for entry in members:
+            lines.append(f"  - repo: {entry['repo']}")
+            lines.append(f"    role: {entry['role']}")
+            if "db_path" in entry:
+                lines.append(f"    db_path: {entry['db_path']}")
+        manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return manifest
+
+    def test_workspace_json_golden_shape(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AC 1: exact JSON contract — key order, null-unavailable counts, OR totals."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        self._healthy_member(tmp_path, "member_a", "source")
+        (tmp_path / "member_b" / ".issues").mkdir(parents=True, exist_ok=True)
+        manifest = self._write_manifest(
+            tmp_path,
+            [
+                {"repo": "member_a", "role": "source", "db_path": ".ll/member_a-history.db"},
+                {"repo": "member_b", "role": "consumer", "db_path": ".ll/member_b-history.db"},
+            ],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "activity",
+                "--workspace",
+                str(manifest),
+                "--since",
+                "2020-01-01T00:00:00Z",
+                "--format",
+                "json",
+            ],
+        ):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert list(payload.keys()) == ["since", "until", "per_repo", "totals"]
+        assert payload["since"] == "2020-01-01T00:00:00Z"
+        assert payload["until"] is None
+        assert len(payload["per_repo"]) == 2
+
+        healthy, missing_db = payload["per_repo"]
+        assert list(healthy.keys()) == self._MEMBER_KEYS
+        assert healthy["role"] == "source"
+        assert healthy["label"] == "member_a (source)"
+        assert healthy["repo_path"].endswith("member_a")
+        assert healthy["status"] == "ok"
+        assert healthy["ok"] is True
+        assert healthy["error"] is None
+        assert healthy["instrumented"] is True
+        assert healthy["issues_completed"] == 1
+        assert healthy["issues_deferred"] == 0
+        assert healthy["issues_closed"] is None
+
+        assert list(missing_db.keys()) == self._MEMBER_KEYS
+        assert missing_db["status"] == "db_missing"
+        assert missing_db["ok"] is False
+        assert missing_db["instrumented"] is False
+        assert missing_db["error"] is not None
+        assert "not found" in missing_db["error"]
+        for field in ("loops_run", "loops_completed", "issues_completed", "issues_deferred"):
+            assert missing_db[field] is None
+        assert missing_db["issues_closed"] is None
+
+        assert list(payload["totals"].keys()) == self._TOTALS_KEYS
+        assert payload["totals"]["members"] == 2
+        assert payload["totals"]["instrumented_members"] == 1
+        assert payload["totals"]["instrumented"] is True
+        assert payload["totals"]["ok_members"] == 1
+        assert payload["totals"]["issues_completed"] == 1
+        assert payload["totals"]["issues_closed"] is None
+
+    def test_bare_flag_matches_explicit_manifest_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AC 2: bare --workspace discovers the same manifest an explicit path names."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        self._healthy_member(tmp_path, "member_a", "source")
+        manifest = self._write_manifest(
+            tmp_path,
+            [{"repo": "member_a", "role": "source", "db_path": ".ll/member_a-history.db"}],
+        )
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--workspace"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                assert main_history() == 0
+        bare = capsys.readouterr().out
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--workspace", str(manifest)]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                assert main_history() == 0
+        explicit = capsys.readouterr().out
+
+        assert bare == explicit
+
+    def test_absent_flag_single_repo_result(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AC 2: no flag = single-repo result with the pinned fallback member shape."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--format", "json"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert len(payload["per_repo"]) == 1
+        member = payload["per_repo"][0]
+        # cli_event_context pre-creates the local db via its cli_events insert,
+        # so the fallback member is `ok` with zero counts while capture is on.
+        assert member["status"] == "ok"
+        assert member["role"] == "source"
+        assert member["label"] == f"{tmp_path.name} (source)"
+        assert member["repo_path"] == str(tmp_path)
+        assert member["issues_completed"] == 0
+        assert payload["totals"]["ok_members"] == 1
+
+    def test_bare_flag_zero_members_matches_no_flag_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AC 2: zero discovered members -> single-repo fallback, identical output."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--format", "json"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                assert main_history() == 0
+        no_flag_output = capsys.readouterr().out
+
+        with patch.object(
+            sys, "argv", ["ll-history", "activity", "--workspace", "--format", "json"]
+        ):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                assert main_history() == 0
+        bare_flag_output = capsys.readouterr().out
+
+        assert bare_flag_output == no_flag_output
+
+    def test_missing_declared_manifest_exits_nonzero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AC 2: declared-but-missing manifest -> exit 1 with the path on stderr."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        missing = tmp_path / "does-not-exist.yaml"
+
+        with patch.object(sys, "argv", ["ll-history", "activity", "--workspace", str(missing)]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result != 0
+        assert str(missing) in capsys.readouterr().err
+
+    def test_invalid_since_rejected(self) -> None:
+        """AC 3: invalid --since is a parser-level usage error, not a traceback."""
+        with patch.object(sys, "argv", ["ll-history", "activity", "--since", "not-a-date"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_history()
+        assert exc_info.value.code != 0
+
+    def test_invalid_until_rejected(self) -> None:
+        """AC 3: invalid --until is a parser-level usage error, not a traceback."""
+        with patch.object(sys, "argv", ["ll-history", "activity", "--until", "2026-13-45"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_history()
+        assert exc_info.value.code != 0
+
+    def test_all_four_formats_render_with_scope_flag(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AC 4: all four --format values render; the scope flag never gates them."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        self._healthy_member(tmp_path, "member_a", "source")
+        self._write_manifest(
+            tmp_path,
+            [{"repo": "member_a", "role": "source", "db_path": ".ll/member_a-history.db"}],
+        )
+
+        for fmt, expect_parseable in [
+            ("json", True),
+            ("yaml", False),
+            ("markdown", False),
+            ("text", False),
+        ]:
+            with patch.object(
+                sys, "argv", ["ll-history", "activity", "--workspace", "--format", fmt]
+            ):
+                with patch("pathlib.Path.cwd", return_value=tmp_path):
+                    assert main_history() == 0
+            out = capsys.readouterr().out
+            assert out.strip(), f"empty output for --format {fmt}"
+            assert "member_a (source)" in out
+            if expect_parseable:
+                assert json.loads(out)["totals"]["members"] == 1
+
+    def test_no_ok_member_totals_all_null(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AC 5: no ok member -> exit 0, full totals object with null counts."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".issues").mkdir()
+        (tmp_path / "member_b" / ".issues").mkdir(parents=True, exist_ok=True)
+        self._write_manifest(
+            tmp_path,
+            [{"repo": "member_b", "role": "consumer", "db_path": ".ll/member_b-history.db"}],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-history", "activity", "--workspace", "--format", "json"]
+        ):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["totals"]["members"] == 1
+        assert payload["totals"]["ok_members"] == 0
+        assert payload["totals"]["instrumented"] is False
+        for field in ("loops_run", "loops_completed", "issues_completed", "issues_deferred"):
+            assert payload["totals"][field] is None
+        assert payload["totals"]["issues_closed"] is None
+
+
+# ---------------------------------------------------------------------------
 # sessions subcommand — json output
 # ---------------------------------------------------------------------------
 

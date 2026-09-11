@@ -3366,6 +3366,40 @@ analyzed across a schema mismatch:
 - `--min-sample`/`--sensitivity`/`--baseline-windows`/`--all-windows` all
   forward unchanged to every member's analysis, including the totals pass.
 
+#### `ll-history activity`
+
+Per-repo and union loop/issue activity counts over a time window (FEAT-3446), exposing
+FEAT-3445's workspace activity reader as a CLI surface. One invocation returns each
+member's `loops_run`/`loops_completed`/`issues_completed`/`issues_deferred` counts plus
+workspace-wide totals, instead of shelling out per project.
+
+```bash
+ll-history activity                        # This repo's counts, text report
+ll-history activity --format json          # JSON output (the machine contract)
+ll-history activity --since 2026-08-10T14:00:00Z --until 2026-08-17T14:00:00Z
+ll-history activity --workspace            # Aggregate every member of ll-workspace.yaml
+ll-history activity --workspace --since 2026-08-10T14:00:00Z --format json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--workspace[=PATH]` | Scope flag (same convention as `ll-history quality`'s, FEAT-3410): bare flag discovers `ll-workspace.yaml` outward; `PATH` names an explicit manifest; absent = this repo alone. Zero discovered members falls back to a single-repo result. Changes *what* is collected, never which formatters run. A declared-but-missing manifest exits 1 with the path on stderr. |
+| `--since TIMESTAMP` | Inclusive lower bound — full ISO-8601 date or datetime (e.g. `2026-08-10T14:00:00Z`); naive timestamps are treated as UTC. Unlike `summary`'s date-only `--since`, datetime granularity is supported. |
+| `--until TIMESTAMP` | Inclusive upper bound, same format as `--since`. |
+| `-f, --format` | `text` (default), `json`, `markdown`, `yaml`. |
+
+**JSON contract:** `since`/`until` echo the raw CLI strings verbatim; `per_repo` is an
+array of member objects in manifest declaration order, each carrying
+`repo_path`/`role`/`label`/`status`/`ok`/`error`/`instrumented` + the five count fields;
+`totals` mirrors `WorkspaceTotals.to_dict()` key order
+(`members, instrumented_members, instrumented, ok_members, ...`), with `instrumented`
+as the OR over members and counts summed over `ok` members only. Metrics unavailable
+from `history.db` serialize as `null`, never `0`: `issues_closed` is a reserved
+always-`null` key (closed issues are recorded as `done` transitions, so the split
+cannot be made), and non-ok members carry `null` counts. FSM signals
+(stalls/cycles/rate-limits) are webhook-only and never land in `history.db`, so
+`activity` cannot report them — model them as unavailable, not measured zero.
+
 #### `ll-history audit-issue-collisions`
 
 Read-only report (BUG-3006) of every `issue_num` held by more than one `issue_id` in
@@ -3410,6 +3444,7 @@ ll-history export "session log"            # Export excerpts for topic
 ll-history export "sprint CLI" --output docs/arch/sprint.md
 ll-history rework                          # Reopen/follow-up/touch-back/revert rates
 ll-history quality                         # Fix-rate/correction/cost/tokens/retry trends
+ll-history activity --workspace --format json  # Per-repo + union activity counts
 ll-history sessions ENH-1710              # Sessions that touched ENH-1710
 ll-history sessions ENH-1710 --json       # JSON output
 ```

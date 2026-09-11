@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resol
 
 if TYPE_CHECKING:
     from little_loops.issue_history.agent_quality import QualityAnalysis
+    from little_loops.issue_history.workspace_activity import WorkspaceActivityResult
     from little_loops.issue_history.workspace_quality import AggregationResult
 
 
@@ -24,6 +26,24 @@ def _non_negative_float(raw: str) -> float:
     if value < 0:
         raise argparse.ArgumentTypeError(f"must be >= 0, got {value}")
     return value
+
+
+def _iso_timestamp(raw: str) -> str:
+    """argparse `type=` callable for `activity --since/--until`: ISO-8601 validation.
+
+    Returns the raw string, not the parsed datetime (deliberate divergence from
+    `_non_negative_float`'s convert-and-return): the workspace-activity reader
+    re-parses bounds via `_parse_ts()` (which expects a str) and
+    `WorkspaceActivityResult.to_dict()` echoes `since`/`until` verbatim into
+    `json.dumps`, where a datetime would not serialize.
+    """
+    try:
+        datetime.fromisoformat(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"must be an ISO-8601 date or datetime (e.g. 2026-08-10T14:00:00Z), got {raw!r}"
+        ) from None
+    return raw
 
 
 def _positive_int(raw: str) -> int:
@@ -87,6 +107,8 @@ Examples:
   %(prog)s rework --format json # Rework analysis as JSON
   %(prog)s quality              # Fix-rate/correction/cost/tokens/retry trends
   %(prog)s quality --format json # Agent quality analysis as JSON
+  %(prog)s activity              # Per-repo + union loop/issue activity counts
+  %(prog)s activity --workspace --since 2026-08-10T14:00:00Z --format json
   %(prog)s audit-issue-collisions  # (issue_num, transition) dedup collisions
 """,
         )
@@ -320,6 +342,47 @@ Examples:
             help="Aggregate across a declared workspace (FEAT-3410): bare flag "
             "discovers ll-workspace.yaml from the current repo outward, or pass an "
             "explicit manifest PATH. Absent (default): today's single-repo report.",
+        )
+
+        # activity subcommand (FEAT-3446)
+        activity_parser = subparsers.add_parser(
+            "activity",
+            help="Per-repo and union loop/issue activity counts over a time window",
+        )
+        activity_parser.add_argument(
+            "-f",
+            "--format",
+            type=str,
+            choices=["text", "json", "markdown", "yaml"],
+            default="text",
+            help="Output format (default: text)",
+        )
+        activity_parser.add_argument(
+            "--workspace",
+            nargs="?",
+            default=None,
+            const="",
+            metavar="PATH",
+            help="Collect activity across a declared workspace: bare flag "
+            "discovers ll-workspace.yaml from the current repo outward, or pass "
+            "an explicit manifest PATH. Absent (default): this repo alone. The "
+            "scope flag changes what is collected, never which formatters run.",
+        )
+        activity_parser.add_argument(
+            "--since",
+            type=_iso_timestamp,
+            default=None,
+            metavar="TIMESTAMP",
+            help="Only count activity on or after TIMESTAMP (ISO-8601 date or "
+            "datetime, e.g. 2026-08-10T14:00:00Z; naive = UTC; inclusive bound)",
+        )
+        activity_parser.add_argument(
+            "--until",
+            type=_iso_timestamp,
+            default=None,
+            metavar="TIMESTAMP",
+            help="Only count activity on or before TIMESTAMP (ISO-8601 date or "
+            "datetime; naive = UTC; inclusive bound)",
         )
 
         # sessions subcommand (ENH-1711)
@@ -588,6 +651,61 @@ Examples:
                 print(format_agent_quality_markdown(quality_analysis))
             else:
                 print(format_agent_quality_text(quality_analysis))
+
+            return 0
+
+        if args.command == "activity":
+            from little_loops.issue_history import (
+                aggregate_workspace_activity,
+                format_workspace_activity_json,
+                format_workspace_activity_markdown,
+                format_workspace_activity_text,
+                format_workspace_activity_yaml,
+            )
+
+            activity_result: WorkspaceActivityResult | None = None
+            if args.workspace is not None:
+                from little_loops.workspace import discover_workspace_members
+
+                manifest_path = Path(args.workspace) if args.workspace else None
+                try:
+                    members = discover_workspace_members(manifest_path, start=project_root)
+                except FileNotFoundError as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 1
+
+                if members:
+                    activity_result = aggregate_workspace_activity(
+                        members, since=args.since, until=args.until
+                    )
+
+            if activity_result is None:
+                # No flag, or zero discovered members: report this repo alone.
+                # `cli_event_context` has already created the local history.db
+                # (its cli_events insert), so the fallback member reads as `ok`
+                # with zero counts while analytics capture is enabled.
+                from little_loops.workspace import WorkspaceMember
+
+                activity_result = aggregate_workspace_activity(
+                    [
+                        WorkspaceMember(
+                            repo_path=project_root,
+                            role="source",
+                            db_path=resolve_history_db(project_root / DEFAULT_DB_PATH),
+                        )
+                    ],
+                    since=args.since,
+                    until=args.until,
+                )
+
+            if args.format == "json":
+                print(format_workspace_activity_json(activity_result))
+            elif args.format == "yaml":
+                print(format_workspace_activity_yaml(activity_result))
+            elif args.format == "markdown":
+                print(format_workspace_activity_markdown(activity_result))
+            else:
+                print(format_workspace_activity_text(activity_result))
 
             return 0
 
