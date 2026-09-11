@@ -74,8 +74,30 @@ git rev-parse HEAD > "$RUN_DIR/leaf-baseline-commit.txt"
 ```
 
 - Drop the `|| true` (and `2>/dev/null`) on the baseline write so a rev-parse failure surfaces too.
-- Reroute `on_error: record_leaf_done` → `on_error: record_failure`. Prefer reusing `record_failure` over a new state unless a distinct `COMMIT_FAILED` marker is needed for diagnosability — if added, `record_leaf_commit_failed` should append to `failed_nodes.txt` and echo `[COMMIT_FAILED] <nid>`, mirroring `record_failure`'s `next: dequeue_next`.
-- Audit sibling swallow shapes in the same YAML: `capture_baseline` (~line 428, `|| : > "$RUN_DIR/leaf-baseline-commit.txt"` yields an empty baseline that downstream `git diff --name-only ""` mishandles) and `verify_leaf` (~line 475, `|| true` yields an empty touched-files list). Fix or file follow-ups.
+- Reroute `on_error: record_leaf_done` → `on_error: record_leaf_commit_failed` and add that state. **Do not** reuse `record_failure`: it never reverts, so the staged-but-uncommitted changes would survive into the next leaf's `git add -A` — consequence #4 in Current Behavior would remain unfixed. Reusing `revert_leaf_failed` is also wrong: its chain writes `leaf_impl_<nid>.txt = IMPLEMENT_FAILED` (`record_leaf_failed`, `:546`), which `check_resume` (`:171`) treats as "done" and never re-enqueues, and mislabels a commit failure as an implementation failure. New state shape (mirrors `revert_leaf_failed` + `record_failure`):
+
+```yaml
+  record_leaf_commit_failed:
+    # BUG-3438: distinct from revert_leaf_failed — a commit failure (identity,
+    # hook reject, index.lock) is environmental, not an implementation failure.
+    # Revert so the next leaf cannot absorb this leaf's staged changes; write NO
+    # leaf_impl marker so check_resume/resume_reconcile re-enqueue the leaf.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      NID="${captured.input.output}"
+      BASELINE=$(cat "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || echo "")
+      if [ -n "$BASELINE" ]; then
+        git reset --hard "$BASELINE"
+      fi
+      mkdir -p "$RUN_DIR"   # reset can prune a tracked run dir (see revert_leaf_failed)
+      echo "$${NID} COMMIT_FAILED" >> "$RUN_DIR/failed_nodes.txt"
+      echo "[COMMIT_FAILED] $${NID}"
+    next: dequeue_next
+    on_error: dequeue_next
+```
+  (`mr11-ok(...)` markers on the two `${captured.*}` lines omitted above for brevity — they are required.)
+- Audit sibling swallow shapes in the same YAML: `reset_leaf_repair` (`:428`, `|| : > "$RUN_DIR/leaf-baseline-commit.txt"` yields an empty baseline that downstream `git diff --name-only ""` mishandles; only reachable on an unborn HEAD) and `snapshot_leaf_diff` (`:475`, `|| true` yields an empty touched-files list; its comment at `:463-468` says never-fail is deliberate). Expected outcome: leave `snapshot_leaf_diff` as-is (documented intent), file a low-priority follow-up for the unborn-HEAD baseline case rather than fixing it here.
 - FSM interpolation note: `${captured.*}` refs are FSM-interpolated; any bash runtime `$VAR`/`${NID}` must stay `$${...}`-escaped (existing `record_leaf_done` already follows this).
 
 ### Codebase Research Findings
@@ -116,7 +138,7 @@ Decided by `/ll:decide-issue` on 2026-09-10.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/rn-refine.yaml` — `commit_leaf` action body + `on_error` edge; possible sibling touch-ups (`capture_baseline`, `verify_leaf`).
+- `scripts/little_loops/loops/rn-refine.yaml` — `commit_leaf` action body + `on_error` edge; new `record_leaf_commit_failed` state; possible sibling touch-ups (`reset_leaf_repair`, `snapshot_leaf_diff`).
 
 ### Dependent Files (Callers/Importers)
 - FSM executor consumes the YAML (`scripts/little_loops/fsm/executor.py`); `ll-loop validate` (`scripts/little_loops/fsm/validation/`) re-validates on change — keep the `ll-lint: mr11-ok(...)` comments intact.
@@ -126,7 +148,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/rn-stepwise.yaml` — the only runtime composer (`loop: rn-refine` at :37); its description (:11-16) repeats the leaf-chain state enumeration — update only if `record_leaf_commit_failed` is added [Agent 1 finding, grep-confirmed]
 - `scripts/little_loops/fsm/validation/shell_safety.py` — the MR-11 adjacency contract behind the "keep mr11-ok intact" note above: every `${captured.*}` line needs its marker adjacent (same-line trailing or stacked-preceding, `_find_adjacent_marker` :261 / `_scan_state_for_mr11` :286); restructuring the action body must move markers with their refs [Agent 2 finding, grep-confirmed]
 - Informational (no change required): `scripts/little_loops/loops/oracles/plan-node-refine.yaml`, `oracles/integrate-node.yaml`, `oracles/plan-research-iteration.yaml`, and `scripts/little_loops/rn_synth_queue.py` reference rn-refine at comment/docstring level only; `scripts/little_loops/loops/README.md` (:62, :192) documents artifacts only — no edit needed [Agent 1 finding, grep-confirmed]
-- Resume-path coupling inside the changed YAML: a leaf routed to `record_failure` gets no `leaf_impl_<nid>.txt`, so `check_resume`/`resume_reconcile` classify it INCOMPLETE and re-enqueue it on resume — new intended behavior from the reroute [Agent 2 finding]
+- Resume-path coupling inside the changed YAML: `record_leaf_commit_failed` deliberately writes no `leaf_impl_<nid>.txt`, so `check_resume`/`resume_reconcile` classify the leaf INCOMPLETE and re-enqueue it on resume — intended behavior from the reroute [Agent 2 finding, adjusted for the dedicated state]
 
 _Inferred, unconfirmed (held out of the confirmed lists by the evidence gate):_ `scripts/tests/test_fsm_validation.py`, `scripts/little_loops/cli/loop/info.py` — no direct grep hit for rn-refine or the traced symbols; plausible future MR-rule positive-control homes only.
 
@@ -134,14 +156,15 @@ _Inferred, unconfirmed (held out of the confirmed lists by the evidence gate):_ 
 - `record_deviation` / `record_leaf_done` / `record_failure` states for marker-file conventions; `TestFinalizeSafety` in the test file for the render-and-run action-testing pattern.
 
 ### Tests
-- `scripts/tests/test_rn_refine.py` — new test class (e.g. `TestCommitLeafSafety`) using `_render`/`_bash`: hermetic identity-failure case (assert non-zero exit, no `COMMITTED`, baseline not advanced), happy path with an explicit repo-local git identity (`git config user.email/user.name` so it doesn't depend on the machine's global identity), and routing assertions (`fsm.states["commit_leaf"].on_error == "record_failure"`).
+- `scripts/tests/test_rn_refine.py` — new test class (e.g. `TestCommitLeafSafety`) using `_render`/`_bash`: identity-failure case via `git config user.useConfigOnly true` with no identity (assert non-zero exit, no `COMMITTED`, `leaf-baseline-commit.txt` unchanged), happy path with a repo-local git identity, `NO_CHANGES` passthrough (currently zero coverage), a render-and-run of `record_leaf_commit_failed` (tree reverted, `COMMIT_FAILED` in `failed_nodes.txt`, no `leaf_impl_` file), and routing assertions (`on_error == "record_leaf_commit_failed"` and `!= "record_leaf_done"`, `record_leaf_commit_failed.next == "dequeue_next"`).
+- **Hermetic-identity resolution**: the fixture rule elsewhere in the file ("per-command `-c user.email=…`, never `git config`") cannot apply here — the `git commit` line is owned by the rendered YAML action, so the test cannot inject `-c` flags. Repo-local `git config user.email/user.name` after `git init` is the hermetic form for this test class and is fine; it stays inside the tmp repo. `_bash()` needs no `env=` kwarg.
 - `scripts/tests/test_builtin_loops.py` references rn-refine — confirm no assumptions about the old routing.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_rn_refine.py` — the existing happy-path pin `test_commit_leaf_commits_pending_changes` (:1816-1847) currently depends on the machine's ambient global git identity (the rendered action's bare `git commit` runs without one); make it hermetic with repo-local `git config` (BUG-3251 fixture pattern, `scripts/tests/test_recursive_finalize.py:14-19`) [Agent 3 finding, grep-confirmed]
-- `scripts/tests/test_rn_refine.py` — `NO_CHANGES` passthrough has zero coverage repo-wide; `_bash()` (:36) takes no `env=` — failure injection uses the `env = dict(os.environ)` + direct `subprocess.run` form (:169-173) with `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null`, or a rejecting pre-commit hook (fixture precedent `scripts/tests/test_issue_lifecycle.py:684-686`) [Agent 3 finding, grep-confirmed]
-- `scripts/tests/test_rn_refine.py` — routing-assertion precedent is `test_implement_leaf_errors_do_not_reuse_record_leaf_dequeue_habit` (:1632-1640): assert `on_error == "record_failure"` AND `!= "record_leaf_done"`; nothing pins `commit_leaf.on_error` today, so the reroute breaks zero existing assertions [Agent 3 finding, grep-confirmed]
-- `scripts/tests/test_rn_refine.py` — pin the reroute's resume semantics: commit-failed leaf carries no `leaf_impl_` marker → `check_resume`/`resume_reconcile` re-enqueue it (retryable-on-resume is intended) [Agent 2 finding]
+- `scripts/tests/test_rn_refine.py` — `NO_CHANGES` passthrough has zero coverage repo-wide [Agent 3 finding, grep-confirmed]. Failure injection: superseded — use `git config user.useConfigOnly true` in the fixture (deterministic, no env plumbing); `GIT_CONFIG_GLOBAL=/dev/null` and pre-commit hooks are non-deterministic across machines (see Steps to Reproduce).
+- `scripts/tests/test_rn_refine.py` — routing-assertion precedent is `test_implement_leaf_errors_do_not_reuse_record_leaf_dequeue_habit` (:1632-1640): assert `on_error == "record_leaf_commit_failed"` AND `!= "record_leaf_done"` AND `!= "record_failure"`; nothing pins `commit_leaf.on_error` today, so the reroute breaks zero existing assertions [Agent 3 finding, grep-confirmed]
+- `scripts/tests/test_rn_refine.py` — pin the reroute's resume semantics: `record_leaf_commit_failed` writes no `leaf_impl_` marker → `check_resume`/`resume_reconcile` re-enqueue the leaf (retryable-on-resume is intended); assert the action text contains no `leaf_impl_` [Agent 2 finding]
 - `scripts/tests/test_builtin_loops.py` — `MR11_MARKER_ALLOWLIST` tuples key on (file, var, first issue-ID in the marker reason; rn-refine entries :20745-20756): keeping the existing ENH-3358 reasons collapses into existing tuples; citing BUG-3438 in any marker adds a tuple that must land in lockstep [Agent 2 finding, grep-confirmed]
 - `scripts/tests/test_builtin_loops.py` — `TestValidatorWarningBudget` (:16928+) has zero rn-refine entries: an orphaned `mr11-ok` marker (ref removed during restructuring) or a new unsafe interpolation fails the warning budget outright [Agent 2 finding, grep-confirmed]
 
@@ -149,7 +172,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - N/A (loop-internal behavior; `docs/` doesn't document commit_leaf semantics).
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/loops.md` (:637-649, rn-stepwise section) — enumerates the leaf chain (`record_leaf`/`implement_leaf`/`verify_leaf`/`record_deviation`/`record_leaf_done`); `commit_leaf` is not named, so the `on_error` reroute alone needs no edit — update only if `record_leaf_commit_failed` is added [Agent 2 finding, grep-confirmed]
+- `docs/reference/loops.md` (:637-649, rn-stepwise section) — enumerates the leaf chain (`record_leaf`/`implement_leaf`/`verify_leaf`/`record_deviation`/`record_leaf_done`); add `record_leaf_commit_failed` to that enumeration and to the `rn-stepwise.yaml` description (:11-16) [Agent 2 finding, grep-confirmed]
 
 ### Configuration
 - N/A.
@@ -176,32 +199,32 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 ### Types
 
-- No new Python types. Marker-file contract unchanged: `leaf_impl_<nid>.txt` ∈ {`verified`, `deviated`} written only by `record_leaf_done`; `leaf-baseline-commit.txt` holds the HEAD after the most recent successful leaf commit.
+- No new Python types. Marker-file contract: `leaf_impl_<nid>.txt` ∈ {`verified`, `deviated`} (written by `record_leaf_done`) ∪ {`IMPLEMENT_FAILED`} (written by `record_leaf_failed`, `:546`); absent = not implemented / re-enqueue on resume. A commit-failed leaf has **no** marker. `leaf-baseline-commit.txt` holds the HEAD after the most recent successful leaf commit. `failed_nodes.txt` gains the class token `COMMIT_FAILED`.
 
 ### Signatures
 
-- `commit_leaf(exit_code: int) -> next_state: str` — exit 0 routes to `record_leaf_done` (unchanged); nonzero routes to `record_failure` (changed from `record_leaf_done`)
-- `record_leaf_commit_failed(node_id: str) -> None` — optional new state: appends `"<nid> COMMIT_FAILED"` to `failed_nodes.txt`, echoes `[COMMIT_FAILED] <nid>`; `next: dequeue_next`
+- `commit_leaf(exit_code: int) -> next_state: str` — exit 0 routes to `record_leaf_done` (unchanged); nonzero routes to `record_leaf_commit_failed` (changed from `record_leaf_done`)
+- `record_leaf_commit_failed(node_id: str) -> None` — new state: `git reset --hard` to `leaf-baseline-commit.txt`, `mkdir -p $RUN_DIR`, append `"<nid> COMMIT_FAILED"` to `failed_nodes.txt`, echo `[COMMIT_FAILED] <nid>`, no `leaf_impl_` write; `next: dequeue_next`, `on_error: dequeue_next`
 
 ### Call Path
 
 `check_leaf_deviation.on_no` → `commit_leaf` → (success) `record_leaf_done` → `dequeue_next`
-`commit_leaf` → (failure) `record_failure` → `dequeue_next`
+`commit_leaf` → (failure) `record_leaf_commit_failed` → `dequeue_next`
 
 ## Implementation Steps
 
-1. Rewrite `commit_leaf` action with bare `set -e` (corpus form, per Decision Rationale) and unconditional baseline write on the success path only.
-2. Reroute `commit_leaf.on_error` to `record_failure` (or add `record_leaf_commit_failed`).
-3. Audit/fix sibling swallow shapes (`capture_baseline`, `verify_leaf`) or file follow-up issues.
-   > ⚠ Superseded — `capture_baseline` does not exist; see § Codebase Research Findings under Implementation Steps
-4. Add `TestCommitLeafSafety` cases: identity-failure, happy path with explicit identity, routing assertions.
-5. Verify: `python -m pytest scripts/tests/test_rn_refine.py scripts/tests/test_builtin_loops.py` and `ll-loop validate rn-refine`.
+1. Rewrite `commit_leaf` action with bare `set -e` (corpus form, per Decision Rationale); drop `2>/dev/null || true` on the baseline write. Keep every `mr11-ok(...)` marker on the same line as its `${captured.*}` ref.
+2. Add `record_leaf_commit_failed` (shape in Proposed Solution) and reroute `commit_leaf.on_error` to it.
+3. Add the new state to `test_chain_states_exist`'s tuple (`test_rn_refine.py:1614-1630`), `docs/reference/loops.md:637-649`, and the `rn-stepwise.yaml` description (`:11-16`). Add `MR11_MARKER_ALLOWLIST` tuples in `test_builtin_loops.py` if the new markers cite BUG-3438 (or reuse the ENH-3358 reason text to collapse into existing tuples).
+4. Sibling audit: leave `snapshot_leaf_diff` alone (deliberate never-fail); file a P4 follow-up for `reset_leaf_repair`'s empty-baseline-on-unborn-HEAD case.
+5. Make `test_commit_leaf_commits_pending_changes` hermetic (repo-local `git config user.email/user.name`) and add `TestCommitLeafSafety`: identity-failure via `user.useConfigOnly`, `NO_CHANGES` passthrough, `record_leaf_commit_failed` render-and-run, routing + no-`leaf_impl_` assertions.
+6. Verify: `python -m pytest scripts/tests/test_rn_refine.py scripts/tests/test_builtin_loops.py scripts/tests/test_builtin_loop_interpolation.py scripts/tests/test_fsm_flow.py scripts/tests/test_fsm_schema.py` and `ll-loop validate rn-refine`.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
-- Step 3's sibling names are wrong: no `capture_baseline` state exists — the empty-baseline `|| : >` write is in `reset_leaf_repair` (`scripts/little_loops/loops/rn-refine.yaml:417-431`), and the `verify_leaf`-attributed `|| true` is in `snapshot_leaf_diff` (`:475`, deliberately never-fail per its comment at `:463-468`). File audits/follow-ups against those state names.
+- Sibling state names (now corrected in the steps above): the empty-baseline `|| : >` write is in `reset_leaf_repair` (`scripts/little_loops/loops/rn-refine.yaml:417-431`), and the `|| true` is in `snapshot_leaf_diff` (`:475`, deliberately never-fail per its comment at `:463-468`).
 - An `on_error` change needs its own routing assertion — the existing pin (`test_commit_leaf_then_record_leaf_done_then_dequeue_next`, `scripts/tests/test_rn_refine.py:1666-1669`) asserts `commit_leaf.next == "record_leaf_done"` only; per-edge negative-assertion style precedent at `:1632-1640`.
 - The rewritten action must keep its MR-11 markers valid or `TestMr11MarkerSet` (`scripts/tests/test_builtin_loops.py:20792-20821`) fails in lockstep with the `MR11_MARKER_ALLOWLIST`.
 - The success path is pinned by `test_commit_leaf_commits_pending_changes` (`test_rn_refine.py:1816-1847`): `COMMITTED` stdout, commit-log subject, non-empty `leaf-baseline-commit.txt` must all survive the rewrite.
@@ -214,13 +237,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Make `test_commit_leaf_commits_pending_changes` hermetic (repo-local `git config user.email/user.name` after `git init`)
 - Pin the reroute's resume semantics with a test: commit-failed leaves carry no `leaf_impl_` marker → `check_resume`/`resume_reconcile` re-enqueue them
 - Broaden the step-5 verify command with the corpus gates that re-scan rn-refine on any edit: `scripts/tests/test_builtin_loop_interpolation.py`, `scripts/tests/test_fsm_flow.py`, `scripts/tests/test_fsm_schema.py`
-- If `record_leaf_commit_failed` is chosen: declare the state with `next: dequeue_next`, add it to `test_chain_states_exist`'s tuple (:1614-1630, membership-only — additive-safe), and update the chain enumerations in `docs/reference/loops.md:637-649` and the `rn-stepwise.yaml` description (:11-16)
+- `record_leaf_commit_failed` is chosen (see Proposed Solution): declare it with `next: dequeue_next`, add it to `test_chain_states_exist`'s tuple (:1614-1630, membership-only — additive-safe), and update the chain enumerations in `docs/reference/loops.md:637-649` and the `rn-stepwise.yaml` description (:11-16)
 
 ## Impact
 
 - **Priority**: P1 - Silent data-integrity failure in the stepwise implement loop: failed commits masquerade as verified leaves and misattribute changes to subsequent leaf commits.
-- **Effort**: Small - One action rewrite, one routing edge, one focused test class; established render/run test pattern to follow.
-- **Risk**: Low - Narrows a swallow-all path; the `NO_CHANGES` passthrough and success path are preserved verbatim.
+- **Effort**: Small - One action rewrite, one new recorder state, one routing edge, one focused test class; established render/run test pattern to follow.
+- **Risk**: Low - Narrows a swallow-all path; the `NO_CHANGES` passthrough and success path are preserved verbatim. A transient commit failure (index.lock) now discards that leaf's uncommitted work via the revert; resume re-enqueues the leaf, which is the intended trade.
 - **Breaking Change**: No
 
 ## Status

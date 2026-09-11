@@ -16,7 +16,7 @@ decision_needed: false
 
 ## Summary
 
-DefaultActionRunner spawns every shell action as ["bash", "-c", action] (fsm/runners.py:348), so any :shell-interpolated capture exceeding Linux MAX_ARG_STRLEN (131072 B) raises OSError Errno 7 in every loop, not just loop-router. Reproduced by test_write_sub_loop_output_survives_oversized_stream (rendered 264085 B). Fix at the runner: feed the script on stdin (bash -s) or via a temp file, mirror in the executor _run_subprocess shell path, keep the loop-router test as the regression pin and make its docstring platform-honest (A4 / BUG-3334 AC14).
+DefaultActionRunner spawns every shell action as ["bash", "-c", action] (fsm/runners.py:348), so any :shell-interpolated capture exceeding Linux MAX_ARG_STRLEN (131072 B) raises OSError Errno 7 in every loop, not just loop-router. Reproduced by test_write_sub_loop_output_survives_oversized_stream (rendered 264085 B). Fix at the runner: write the rendered script to a temp file (`NamedTemporaryFile(delete=False, prefix="ll-action-", suffix=".sh")`, unlinked in the existing `finally`) and spawn `["bash", path]`; mirror in `runner_spec._run_cmd`. Add a runner-level regression test (>131072 B script through `DefaultActionRunner.run` and `_run_cmd`) — the existing loop-router test spawns its own `bash -c` and cannot pin this fix; re-point it through the runner (A4 / BUG-3334 AC14).
 
 ## Current Behavior
 
@@ -52,7 +52,15 @@ Two viable mechanics (Summary offers both):
 1. **Temp file (recommended)** — write the rendered action to a `tempfile.mkstemp(suffix=".sh")` file in the existing try/finally scope, spawn `["bash", str(path)]`, unlink in `finally`. Deadlock-free regardless of size; no pipe-buffer interaction with the selector loop.
 2. **stdin (`bash -s`)** — spawn `["bash", "-s"]` and feed `action` via `process.stdin` from a writer thread. Avoids temp files, but a naive inline `stdin.write(action)` deadlocks once the script exceeds the 64 KiB pipe buffer (bash must buffer the whole command line before executing), so it requires the thread.
 
-Either way, mirror the substitution in `_run_cmd` (runner_spec.py:323). Keep `test_write_sub_loop_output_survives_oversized_stream` as the regression pin and reword its docstring: it currently claims the payload is "sized well under the real OS ARG_MAX", which is true for total ARG_MAX but false for Linux's per-argument `MAX_ARG_STRLEN` — the very limit this bug hits (A4 / BUG-3334 AC14).
+Either way, mirror the substitution in `_run_cmd` (runner_spec.py:323). `test_write_sub_loop_output_survives_oversized_stream` currently executes its own `subprocess.run(["bash", "-c", rendered])` (test_loop_router.py:262), so it does not exercise the runner and would still E2BIG on Linux after the fix. Re-point its execution through `DefaultActionRunner().run(rendered, timeout=30)` so it becomes a true end-to-end pin, and reword its docstring: "sized well under the real OS ARG_MAX" is true for total ARG_MAX but false for Linux's per-argument `MAX_ARG_STRLEN` — the very limit this bug hits (A4 / BUG-3334 AC14).
+
+Implementation details for the temp-file path (both sites):
+- Create the file **inside** the existing `try:` (runners.py:347 / runner_spec.py:321) so the unlink shares the `finally` with `gh_tmp.cleanup()` and runs on success, timeout, and spawn-error paths alike. Wrap the unlink in `except OSError: pass` (route_table.py precedent).
+- Write with `mode="w", encoding="utf-8"`; flush/close before spawning. Bash reads script files incrementally, so unlinking only after `wait()` is required (already guaranteed by the finally placement).
+- Do **not** add `stdin=subprocess.DEVNULL` — the child inherits the parent's stdin today and nothing in this issue asks to change that.
+- No shared constant: inline the prefix/suffix at both sites (fsm/runners.py has no module constants; a cross-module constant has no natural home).
+- Add the mirror comment at both sites citing BUG-3439, per the runners.py↔runner_spec.py convention (ENH-3234/3235, BUG-3400 precedent).
+- Note for the future, not this fix: env strings share the same `MAX_ARG_STRLEN` cap, so any capture-via-env path would hit the identical wall.
 
 ### Codebase Research Findings
 
@@ -113,13 +121,14 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 
 ### Types
 
-- `_SHELL_SCRIPT_SUFFIX = ".sh"` (module constant, shared by both spawn sites if extracted; otherwise inline)
+- No new types or constants. Prefix/suffix (`"ll-action-"`, `".sh"`) inline at both sites.
 
 ### Signatures
 
-- `DefaultActionRunner.run(self, action: str, ...) -> ActionResult` — shell branch: `cmd = ["bash", str(script_path)]` where `script_path: Path` comes from `tempfile.mkstemp(suffix=".sh")`; write action, spawn with `stdin=subprocess.DEVNULL`, `os.unlink(script_path)` in the existing `finally`
-- `_run_cmd(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult` (runner_spec.py) — same temp-file substitution for `spec.target`
-- Optional direct pin: `test_shell_action_survives_oversized_rendered_script` in scripts/tests/ — drives `DefaultActionRunner.run` with a >131072 B rendered action, asserting `exit_code == 0` and written output equality (the loop-router test pins the end-to-end path; this pins the runner in isolation)
+- `DefaultActionRunner.run(self, action: str, ...) -> ActionResult` — signature unchanged. Shell branch: `tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False, prefix="ll-action-", suffix=".sh")` written with `action`, closed, then `cmd = ["bash", script_path]`; `os.unlink(script_path)` in the existing `finally` (wrapped `except OSError: pass`). stdin handling unchanged (inherited).
+- `_run_cmd(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult` (runner_spec.py) — signature unchanged; same temp-file substitution for `spec.target`.
+- **Required** runner pins (the loop-router test is not a runner pin as written): `TestDefaultActionRunnerShellPath.test_oversized_script_spawns` in `scripts/tests/test_fsm_runners.py` and a sibling in `scripts/tests/test_runner_spec.py` — drive the real spawn with a script whose rendered length is > 131072 B (e.g. a `printf`/heredoc carrying a 140 KiB literal written to a tmp file), assert `exit_code == 0` and written-output equality. Follow the direct-drive shape of `TestDefaultActionRunnerStderrDrain.test_large_stderr_does_not_deadlock` (test_fsm_executor.py:5968-5986). No platform skip: the test passes on darwin before and after the fix and fails on Linux only before it, which is the honest pin.
+- Cleanup pin: after `run()` returns (success and timeout paths), no `ll-action-*.sh` remains in `tempfile.gettempdir()` (shape: `test_host_runner.py:2275-2309`).
 
 ### Call Path
 
@@ -134,11 +143,27 @@ _Added by `/ll:refine-issue` — 2026-09-10 — based on codebase analysis:_
 - Constant-placement constraint: fsm/runners.py has NO module-level constants today (only `_now_ms()` at :39); runner_spec.py holds both private (`_STOCHASTIC_RUNNERS` :79, `_DISPATCH` :424) and public (`DEFAULT_STOCHASTIC_RUNNERS` :87, exported via `__all__`) constants. A shared `_SHELL_SCRIPT_SUFFIX` spanning both modules has no natural home — it would be runners.py's first module constant, live in runner_spec.py, or stay inline at both sites. Module-private constants use leading-underscore UPPER_SNAKE (`_GUILLOTINE_TAIL_CHARS`, subprocess_utils.py:110-116).
 - Existing runner tests mock Popen+selector via the `_make_selector_mock_process` / `_make_ready_selector` helpers (test_fsm_runners.py:25-104) and assert kwargs only — a spawn-mechanics change keeps those helpers valid; the optional direct pin already has a shape to follow in `TestDefaultActionRunnerStderrDrain.test_large_stderr_does_not_deadlock` (test_fsm_executor.py:5968-5986).
 
+## Implementation Steps
+
+1. `scripts/little_loops/fsm/runners.py` shell branch (:347-357): inside the existing `try:`, write `action` to a `NamedTemporaryFile(delete=False, prefix="ll-action-", suffix=".sh", mode="w", encoding="utf-8")`, close it, spawn `["bash", path]` with all other Popen kwargs unchanged; unlink in the existing `finally` next to `gh_tmp.cleanup()`. Add a BUG-3439 comment naming `_run_cmd` as the mirror.
+2. `scripts/little_loops/runner_spec.py::_run_cmd` (:321-329): identical substitution for `spec.target`; preserve the no-`cwd=` asymmetry. Mirror comment naming `fsm/runners.py`.
+3. Confirm `scripts/tests/test_enh3184_spawn_site_guard.py` census is unchanged (`fsm/runners.py (1, 0)`, `runner_spec.py (3, 0)`) — in-place substitution adds no spawn site.
+4. Tests: add the two required oversized-script runner pins and the temp-file cleanup pin (Program Design § Signatures). Re-point `test_write_sub_loop_output_survives_oversized_stream` (test_loop_router.py:234-266) to execute via `DefaultActionRunner().run(...)` and reword its docstring to name `MAX_ARG_STRLEN` (131072 B per argv string on Linux) as the limit.
+5. Docs: update the three `bash -c` descriptions in `docs/reference/API.md` (:10293, :10501, :10505) to "temp-file script spawn (`bash <path>`)".
+6. Verify: `python -m pytest scripts/tests/test_fsm_runners.py scripts/tests/test_runner_spec.py scripts/tests/test_loop_router.py scripts/tests/test_fsm_executor.py scripts/tests/test_enh3184_spawn_site_guard.py scripts/tests/test_host_runner.py`, then the full suite.
+
+### Tests
+
+- `scripts/tests/test_fsm_runners.py` — `TestDefaultActionRunnerShellPath` (:227) currently asserts Popen kwargs only via `_make_selector_mock_process`; those mocks stay valid. New oversized-script + cleanup pins use a real spawn.
+- `scripts/tests/test_runner_spec.py` — sibling oversized-script pin for `_run_cmd`; existing `assert_not_called` fail-before-spawn tests (:289, :370) are unaffected because the temp file is created after the scope/gh checks.
+- `scripts/tests/test_loop_router.py:234` — re-pointed as above.
+- `scripts/tests/test_enh3184_spawn_site_guard.py` — census must stay green without edits.
+
 ## Impact
 
 - **Priority**: P1 - Every FSM loop's shell states fail unconditionally on Linux once any interpolated capture exceeds 128 KiB; Linux is a primary deployment target for automation hosts.
-- **Effort**: Small - Two spawn-site substitutions plus a docstring rewrite; no interpolation, routing, or selector-loop changes.
-- **Risk**: Low - Spawn mechanics only; script text, env_allow, cwd, and process-group semantics are unchanged. `$0` inside the script changes from `bash` to the temp path — acceptable for loop scripts, which don't reference `$0`.
+- **Effort**: Small - Two spawn-site substitutions, three runner-level tests, one test re-point, three doc lines; no interpolation, routing, or selector-loop changes.
+- **Risk**: Low - Spawn mechanics only; script text, env_allow, cwd, stdin, and process-group semantics are unchanged. `$0`/`BASH_SOURCE` inside the script change from `bash` to the temp path — acceptable for loop scripts, which don't reference them. One temp file per shell action is negligible overhead.
 - **Breaking Change**: No
 
 ## Status
