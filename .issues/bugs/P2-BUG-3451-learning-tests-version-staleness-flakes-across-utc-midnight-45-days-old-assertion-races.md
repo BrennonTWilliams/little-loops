@@ -2,7 +2,7 @@
 id: BUG-3451
 type: BUG
 title: "learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days flip to '46 days old' when pytest execution spans UTC midnight"
-priority: P3
+priority: P2
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-12'
