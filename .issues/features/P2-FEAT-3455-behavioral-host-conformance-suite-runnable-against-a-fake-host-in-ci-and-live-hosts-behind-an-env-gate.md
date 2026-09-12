@@ -5,248 +5,241 @@ title: Behavioral host-conformance suite runnable against a fake host in CI and 
 type: FEAT
 priority: P2
 status: open
+testable: true
 discovered_date: '2026-09-11'
 labels:
 - multi-host
 - verification
-verify_verdict: VALID
-confidence_score: 93
-outcome_confidence: 74
-score_complexity: 13
-score_test_coverage: 21
-score_ambiguity: 19
-score_change_surface: 21
+depends_on:
+- FEAT-3454
+relates_to:
+- ENH-3459
+- ENH-3460
 ---
 
 ## Summary
 
-Every registered host runner is currently defended by a type check. `scripts/tests/conformance/test_host_conformance.py` parametrizes over `_HOST_RUNNER_REGISTRY` and asserts, per host per golden path, that a `HostInvocation` is constructable — its own docstring concedes it never executes the prompt against a live host. Nothing verifies that a runner which constructs a valid invocation actually produces the behavior the multi-host layer promises callers.
+Every registered host runner is currently defended by a type check.
+`scripts/tests/conformance/test_host_conformance.py` parametrizes over
+`_HOST_RUNNER_REGISTRY` and asserts, per host per golden path, that a
+`HostInvocation` is constructable — its docstring concedes it never executes the
+prompt. Nothing verifies that a runner which constructs a valid invocation actually
+produces the behavior the multi-host layer promises callers.
 
-Replace the constructability check with one parameterized behavioral suite that takes a target and asserts observable outcomes: the event sequence a turn emits, its terminal event, abort handling, and the shape of a failure. The same file runs against the fake host on every CI run and against real host binaries behind an explicit env gate, so the contract is enforced continuously and validated against reality on demand.
+Add a behavioral tier alongside the constructability check: one parameterized test
+that actually runs the invocation through `run_claude_command` and asserts observable
+outcomes. The fake host (FEAT-3454) runs it on every suite invocation; real host
+binaries run the same invariants behind an explicit env gate.
 
 ## Why
 
-The multi-host layer's premise is that a caller does not know which host is running; this is the enforcement half of that promise. The payoff is concrete: adding another adapter becomes a day of work against a known contract instead of a rewrite.
+The multi-host layer's premise is that a caller does not know which host is running;
+this is the enforcement half of that promise. Adding another adapter becomes a day of
+work against a known contract instead of a rewrite.
+
+## Design Decision: two tiers, not one suite
+
+A live host does not honor directives, so a scripted-exact expected sequence exists
+only for the fake. The suite therefore has two tiers:
+
+**Tier 1 — invariants (every target).** Hold for any host, scripted or live:
+- If `capabilities.streaming`, the first parsed event is `system/init`.
+- Exactly one terminal event (`result` or `turn.completed`) and it is the last
+  JSON event on stdout.
+- After the terminal event the consumer stops reading (`result_seen` break at
+  `subprocess_utils.py:730-735`), the process exits within
+  `post_stream_close_grace_seconds`, and `on_result_seen(True)` fires.
+- A failure is reported through a stable shape: `CompletedProcess.returncode != 0`
+  or `result.is_error`, with `stderr` non-empty. Same keys, same primitive types,
+  regardless of host.
+- Abort mid-turn: `request_shutdown()` (`subprocess_utils.py:323-335`) during a turn
+  yields `TimeoutExpired(output="interrupted")` and the process group is gone.
+
+**Tier 2 — scripted-exact (fake only).** The prompt's directive block encodes the
+expected sequence, and the test asserts the consumer saw exactly that: ordered event
+kinds, tool-call callbacks, usage callbacks, `stdout_lines`, exit code. Covers
+ordering, `result error=`, exit-nonzero-before-terminal, failed start, idle timeout,
+`hang` + grace kill. This tier is the replacement for "live-only or untested".
+
+**Keep `test_golden_path_invocation`.** Real hosts skip the behavioral tier unless
+the env gate is set, so removing the constructability test would delete the only
+per-runner check the Thinky conformance job runs today. Both coexist.
+
+**No fake-for-real substitution.** The fake is one registry entry like any other;
+the parametrize picks it up automatically. Real hosts skip Tier 1 with a reason
+unless `LL_HOST_CONFORMANCE_LIVE=1`. Substituting the fake for each real host would
+produce eight identical runs with no host identity.
+
+## Design Decision: capability assertions are argv facts, not event facts
+
+`HostCapabilities` flags (`permission_skip`, `agent_select`, `tool_allowlist`,
+`structured_output`, `workspace_sandboxed`, `streaming`) describe what the runner
+puts in argv, not event kinds. Only `streaming` has an observable stream consequence.
+So the "capability profile is a promise" rule is enforced as:
+
+- **Negative (unconditional):** when a flag is `False`, the corresponding argv
+  marker must be absent from `invocation.args` (`tool_allowlist=False` ⇒ no
+  allowlist flag; `structured_output=False` ⇒ `_structured_output_args` returns
+  `[]`; `agent_select=False` ⇒ `agent=` is ignored or warns `CapabilityNotSupported`).
+  Under-declaring is a bug on equal footing with over-declaring.
+- **Positive (gated):** when a flag is `True`, the argv marker is present. Early-
+  return when the flag is `False`.
+- **`streaming`:** `True` ⇒ Tier 1 init-first assertion applies; `False` ⇒ assert
+  no `system/init` event was parsed.
+
+The fake's per-test capability override (FEAT-3454) makes both directions testable
+without a real host.
 
 ## Current Behavior
 
-`scripts/tests/conformance/test_host_conformance.py` parametrizes over `_HOST_RUNNER_REGISTRY` and asserts, per host per golden path, that `resolve_host() + build_streaming()` returns a constructable `HostInvocation`. The test's own docstring concedes the conformance suite "does not execute the prompt against a live host." A runner that constructs a syntactically valid `HostInvocation` but produces the wrong event sequence (extra events, terminal mid-stream, missing abort handling, malformed failure shape) passes this gate. The contract the multi-host layer promises callers is unenforced.
+`test_golden_path_invocation` (`test_host_conformance.py:64-112`) skips on binary
+missing or `HostNotConfigured`, then asserts `invocation.binary` and
+`invocation.args` are non-empty. A runner that constructs a syntactically valid
+invocation but emits a terminal mid-stream, leaks events after it, or mis-shapes a
+failure passes this gate.
 
 ## Expected Behavior
 
-Replace the constructability check with a single, parameterized behavioral suite `test_golden_path_behavior(host, golden_path)` that runs against a target and asserts observable outcomes:
-
-- The event sequence a turn emits, in order.
-- Exactly one terminal event, and it is the last event on the stream.
-- Abort mid-turn terminates the stream with the declared abort terminal; the runner does not silently drain remaining tokens.
-- The shape of a failure event is stable across hosts (same keys, same primitive types).
-
-The fake host runs the suite in the default CI gate (every `python -m pytest scripts/tests/` invocation). Live host binaries run the same suite behind an explicit env var (e.g. `LL_HOST_CONFORMANCE_LIVE=1`) with a per-target timeout, so the suite is enforced continuously and validated against reality on demand.
-
-Capability-gated cases early-return when the capability is undeclared, so one suite covers a matrix of host abilities without forking per host. The capability profile is a promise, not a hint: where `describe_capabilities()` declares a capability absent, the suite asserts the corresponding event never appears — a negative assertion, not a skip. A host that under-declares is a bug on equal footing with one that over-declares.
+- `test_golden_path_behavior(host, golden_path)` runs Tier 1 for every registered
+  host: unconditionally for `fake`, behind `LL_HOST_CONFORMANCE_LIVE=1` for the rest.
+- `test_scripted_*` cases run Tier 2 against the fake only, on every
+  `python -m pytest scripts/tests/` invocation.
+- Live runs use a per-target timeout via `run_claude_command(timeout=…)` (the
+  production site, `subprocess_utils.py:424`), tighter than the suite's
+  `--timeout=120` watchdog. Live runs spend real model tokens and require host
+  auth; the docs say so.
+- Assertion failures print runner name, golden path, expected kinds, actual kinds,
+  and the index of first divergence (shape: `test_streaming_cache_parity.py:182-186`).
 
 ## Use Case
 
-A maintainer ports a new CLI host to `HostRunner`. They wire `detect()`, `build_streaming()`, `build_blocking_json()`, `build_version_check()`, and `build_detached()`, then run `LL_HOST_CONFORMANCE_LIVE=1 pytest -m conformance scripts/tests/conformance/test_host_conformance.py -k <runner>` against their binary. Any deviation from the contract — wrong terminal event, missing abort handling, malformed failure payload — fails loudly with a diff against the expected event sequence. The maintainer knows the day the suite goes green, the host satisfies the multi-host promise. No manual smoke run, no "looks right," no latent regression caught only after a loop run hangs.
+A maintainer ports a new CLI host. They wire the five `build_*` methods, then run
+`LL_HOST_CONFORMANCE_LIVE=1 pytest -m conformance --conformance-host <name>
+scripts/tests/conformance/`. A terminal that is not last, an init that never
+arrives, or a failure with no stderr fails loudly with the event-kind diff. The day
+it goes green, the host satisfies the multi-host promise.
 
 ## Acceptance Criteria
 
-- `test_host_conformance.py` contains a single parameterized test `test_golden_path_behavior` (or equivalent) that asserts observable outcomes — event sequence, terminal-event-last, abort termination, failure shape — and replaces the current `test_golden_path_invocation` constructability check.
-- The suite is runnable against the fake host (FEAT-3454) by default on every `python -m pytest scripts/tests/` invocation and exits 0 when the fake satisfies the contract.
-- The suite is runnable against live host binaries behind `LL_HOST_CONFORMANCE_LIVE=1` (or equivalent env var) with a per-target timeout, and exits non-zero when a live runner deviates from the contract.
-- For every capability marked absent in a runner's `describe_capabilities()` output, the corresponding event-emission case asserts the event never appears (negative assertion), not a skip.
-- A diffed failure report shows expected vs actual event sequence, runner name, golden path, and the assertion that fired.
-- The conformance gate is wired through the existing `pytest -m conformance` marker contract; existing live-host skip conditions (binary missing, stub raises `HostNotConfigured`) still apply.
+- `test_golden_path_invocation` is retained unchanged in behavior.
+- `test_golden_path_behavior(host, golden_path)` exists, parametrized over
+  `_HOST_RUNNER_REGISTRY` × `_GOLDEN_PATHS`, drives `run_claude_command` unpatched,
+  and asserts every Tier 1 invariant. For `host == "fake"` it runs unconditionally;
+  for other hosts it skips with reason unless `LL_HOST_CONFORMANCE_LIVE=1`, and the
+  existing skips (binary missing, `HostNotConfigured`) still apply.
+- Tier 2 scripted cases exist for: ordered happy path, `result error=`, exit-nonzero
+  before terminal, failed start (`stderr` + `exit 1`, no `init`), idle timeout, abort
+  via `request_shutdown()`, `hang` + grace kill. Each asserts the exact consumer
+  observation and runs in the default suite.
+- Capability assertions per the argv-facts rule above: negative direction fires
+  unconditionally; positive direction gated. Tested in both directions via the fake's
+  capability override.
+- The live-spawn guard (`scripts/tests/conftest.py:_match_host_binary` `:237-255`)
+  gains a carve-out that lets a real host spawn proceed only when
+  `LL_HOST_CONFORMANCE_LIVE=1` **and** the running test carries the `conformance`
+  marker; four-shape regression tests in
+  `test_conftest_cap.py::TestNoLiveHostCLIGuard` cover it (env set + marker ⇒ None;
+  env unset ⇒ tuple; `--version` carve-out preserved; non-host basename unaffected).
+- Failure diagnostics include runner name, golden path, expected vs actual kinds,
+  first-divergence index.
+- `docs/development/CONFORMANCE.md` rewritten for the two tiers, the env gate and
+  its cost, the timeout policy, and the capability rule.
+- `python -m pytest scripts/tests/` exits 0 with no env vars set; `-m "not
+  conformance"` deselects the behavioral tier; `ll-verify-host-map` stays clean.
 
 ## Integration Map
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
-
-- `scripts/little_loops/host_runner.py` — owns `HostRunner` Protocol, `_HOST_RUNNER_REGISTRY`, `resolve_host()`, `HostInvocation` (frozen), `HostCapabilities`, `CapabilityReport`, `describe_capabilities()`. The fake target (FEAT-3454) registers itself into this registry under a fixed name (e.g. `"fake"`); `resolve_host(env={"LL_HOST_CLI": "fake"})` resolves to it (consistent with `test_host_conformance.py:101`).
-- `scripts/tests/conformance/test_host_conformance.py` — the file being rewritten. Existing `test_golden_path_invocation` (`:64-71`) is the constructability check; replaces with `test_golden_path_behavior` over `(host, golden_path)`. SKIP rules at `:96-109` (binary missing, `HostNotConfigured` on `build_streaming`) carry over verbatim.
-- `scripts/tests/conformance/conftest.py` — already defines `--conformance-host` option (`:10-15`) and `isolated_env` fixture (`:21-26`). May need a complementary `_live_conformance` fixture that activates when `LL_HOST_CONFORMANCE_LIVE=1`.
-- `scripts/tests/conformance/__init__.py` — empty package init; no change needed.
-- `scripts/tests/conftest.py` — owns the live-host-spawn guard (`_install_no_live_host_cli` `:353-397`, `_fail_on_live_host_cli` `:400-427`) and `_CMD_RUN_ENV_VARS` scrub (`:1100-1119`). The new suite must respect this guard; tests that want a real host binary set `LL_HOST_CONFORMANCE_LIVE=1` and rely on the env-gate opt-in (not bypass the fixture).
-- `scripts/tests/test_host_runner.py` — reference for per-runner capability assertions (`:2029-2055`), `TestAutomationProfileEnvAcrossRunners` (`:64-74`) for the explicit-class-list parametrize shape, and the negative-assertion pattern `pytest.raises(HostNotConfigured)` (`:294-303`).
-- `pytest.ini:24` and `scripts/pyproject.toml:280-285` — both register the `conformance` marker (`conformance: marks tests as host conformance tests (deselect with '-m "not conformance"')`); both must agree; `--strict-markers` (`:15`, `pyproject.toml:269`) fails collection otherwise.
-- `.github/workflows/ci.yml` — `conformance` job runs `-m conformance`; the new test runs in default CI via this gate without workflow change. Live-host-binary path is local-only behind `LL_HOST_CONFORMANCE_LIVE=1` (no CI job added — keep CI runner hermetic).
-- `docs/development/CONFORMANCE.md` — authoritative conformance doc; documents the current constructability-check baseline. Must be rewritten/extended to cover behavioral assertions, `LL_HOST_CONFORMANCE_LIVE`, per-target timeout, and the negative-capability assertion contract.
-- `docs/reference/HOST_COMPATIBILITY.md` — "Conformance harness" row already references `docs/development/CONFORMANCE.md`; needs no direct edit if CONFORMANCE.md is updated.
-- `docs/development/TESTING.md` — already mentions the `conformance` marker and conformance/ subdirectory layout; needs no direct edit.
-- `scripts/little_loops/cli/verify_host_map.py` — `ll-verify-host-map` is the closest existing analogue (cross-host capability-floor gate); reuses `describe_capabilities()` parity check. Not modified by this issue; informational reference.
-
-_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
-
-- Anchor drift to verify against current file state: `scripts/tests/spike/host_compose/executor_shim.py:215` cited for `__all__` is outside the file's actual range — the file is 180 lines and `__all__` is at `:174-180`. `scripts/tests/conformance/test_host_conformance.py:104-105` cited for `HostInvocation.binary`/`HostInvocation.args` asserts is off by ~7 lines — the actual asserts are at `:111-112`. The replaced function spans `:64-112`, not `:64-71` (parametrize block ends at `:70`). These line numbers have drifted since the prior refine-issue pass; verify against the current file before relying on them.
+### Files to Modify
+- `scripts/tests/conformance/test_host_conformance.py` — add `test_golden_path_behavior`, Tier 2 `test_scripted_*` cases, helpers (`_run_and_capture`, `assert_terminal_is_last`, `assert_event_kinds`, `assert_capability_argv`).
+- `scripts/tests/conformance/conftest.py` — `live_conformance` fixture reading `LL_HOST_CONFORMANCE_LIVE` at fixture time (so `monkeypatch.setenv` in a test body wins; `conftest.py:1095-1096` precedent); `isolated_env` stays.
+- `scripts/tests/conftest.py:_match_host_binary` — env+marker carve-out. The marker check needs the current item; use the same `_current_test_id()` plumbing the collector uses (`:258-270`) or a contextvar set by the `live_conformance` fixture. Prefer the fixture-set flag: it is explicit and needs no item lookup.
+- `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` (`:281-300`) — four-shape carve-out tests; `_reset_collector` autouse (`:222-228`) still clears `_host_cli_hits`/`_reported_upto`.
+- `docs/development/CONFORMANCE.md` — rewrite (currently constructability-only; "Reading the Results" table and baseline board need the new rows).
+- `docs/development/TESTING.md:121` (tree line) and `:1048` (markers table) — describe the behavioral tier and env gate.
+- `docs/kimi/automation.md:71-82` — optional one-sentence note; the `4 passed` invocation stays valid.
 
 ### Dependent Files (Callers/Importers)
+- `scripts/little_loops/subprocess_utils.py:422-771` — `run_claude_command`, the consumer under test. Callback surface used by the helpers: `on_model_detected`, `on_session_id_detected`, `on_tool_call`, `on_usage_detailed`, `on_result_seen`, `stream_callback`, `on_process_start/end`. Not modified.
+- `scripts/little_loops/host_runner.py` — `_HOST_RUNNER_REGISTRY`, `resolve_host_named`, `HostCapabilities`, `CapabilityReport`, `_structured_output_args`. Not modified.
+- `scripts/little_loops/fake_host.py` + `FakeHostRunner` (FEAT-3454) — the CI target; directive vocabulary is defined there and consumed here.
+- `.github/workflows/ci.yml` — the GitHub-hosted `unit-tests` job runs `-m "not integration and not conformance"`, so the behavioral tier reaches CI only via the Thinky `conformance` job (`:149-207`), which does not set `LL_HOST_CONFORMANCE_LIVE`. Fake-only cases run there; real hosts skip. No workflow change.
+- `scripts/tests/test_conftest_cap.py` — loads `conftest.py` via `importlib`; must keep passing after the guard edit.
 
-_Wiring pass added by `/ll:wire-issue`:_
+### Out of scope (owned elsewhere)
+- Second divergent fake, composition tests, `TestRegressionGuard` promotion — ENH-3459.
+- Drift-gate sync for the second registry entry — ENH-3460. The first entry's drift sync is FEAT-3454's.
+- Any change to the runner Protocol or the consumer.
 
-- `scripts/tests/test_conftest_cap.py` — regression guard that loads `conftest.py` via `importlib.util.spec_from_file_location`; verifies cap+nice hooks survive conftest.py edits. Must continue passing after the new `_live_conformance` fixture lands. [Agent 1 finding]
-- `scripts/tests/spike/host_compose/test_host_compose.py` — `test_spike_fakes_register_in_host_runner_registry` (lines 299-324) explicitly notes FEAT-3455's conformance parametrize picks up new registry entries; `TestCompositionThroughExecutor::test_compose_threads_both_fakes_through_same_executor` (lines 130-142) is the load-bearing precedent for the composition test FEAT-3455's rewrite must promote (per ENH-3456 §Promotion). [Agent 1 + Agent 3 finding]
-- `scripts/tests/spike/host_compose/fakes.py` — `VerboseFakeRunner`, `MinimalFakeRunner` structurally satisfy `HostRunner` (`__all__` at line 215); the conformance suite asserts behavioral parity against these fakes under the `LL_HOST_CONFORMANCE_LIVE` env-gated path. [Agent 1 finding]
-- `scripts/tests/spike/host_compose/executor_shim.py` — `compose_through_executor`, `execute_invocation`, `ALLOWED_INVOCATION_ATTRS` (lines 29-31, 59-75) are the in-process shim precedent; the audit-mode `__getattr__` enforcement shape is the closest existing precedent for FEAT-3455's optional audit-mode hook. [Agent 1 finding]
-- `scripts/tests/test_wiring_guides_and_meta.py:381-392` — `test_host_tier_table_matches_runner_registry` drift-tests the `docs/reference/HOST_COMPATIBILITY.md` "Orchestration runner" column against `_HOST_RUNNER_REGISTRY`. If FEAT-3454's fake registers in the registry without a matching doc row, this test fails. Owned by FEAT-3454's design but flagged here because FEAT-3455's conformance parametrize depends on the registry being well-formed. [Agent 2 finding — FEAT-3454 dependency]
-- `scripts/tests/test_host_runner.py:TestHostBinaryNames` (lines 2348-2371) — drift-tests `HOST_BINARY_NAMES` against `describe_capabilities().binary` per registered runner. FEAT-3454's fake's `binary` value must not collide with real-host basenames or this test fails. Owned by FEAT-3454's design. [Agent 2 finding — FEAT-3454 dependency]
-- `scripts/little_loops/cli/verify_host_map.py:_check_runtime_contradiction` (lines 100-128) — cross-validates `HOST_CAPABILITIES` against `_HOST_RUNNER_REGISTRY`; adding the fake to the registry triggers a new shared-hosts check on every `ll-verify-host-map` invocation. Owned by FEAT-3454. [Agent 2 finding — FEAT-3454 dependency]
-- `scripts/little_loops/cli/verify_host_map.py:_check_emitter_agreement` (lines 131-188) — same-dataclass self-consistency rule per `HostCapabilityEntry` (e.g. `subagents == "native"` with `agents=False` is flagged; `agents=True` with `subagents == "none"` and no `agent_output_format` is flagged; `commands=True` with no `command_output_format` is flagged for every host at lines 186-188). FEAT-3454's fake-host `HostCapabilityEntry` must satisfy all three rules or `ll-verify-host-map` will reject the new entry. **NEW finding not in refine-issue Implementation Steps.** [Agent 2 finding — FEAT-3454 dependency]
+### Conventions in Force
+- Parametrize over registry keys with descriptive `ids=` (`test_host_conformance.py:64-71`; `test_host_runner.py:64-74`).
+- SKIP-not-FAIL with a concrete `reason=` for environmental gates; FAIL only for observable-behavior deviations (`test_host_conformance.py:96-109`).
+- Capability assertions test both directions (`test_host_runner.py:2047-2055`).
+- Negative assertions use `not in` with a repr diagnostic (`test_fsm_signal_integration.py:211`).
+- Per-target timeout at the production `subprocess` site, suite watchdog `--timeout=120 --timeout-method=thread` (`pyproject.toml:266-267`).
+- `conformance` marker registered identically in `pytest.ini:24` and `scripts/pyproject.toml:280-285`; `--strict-markers` on both.
+- Guard carve-out precedent: the `--version` case in `_match_host_binary`; test precedent `test_conftest_cap.py:292-300`.
+- `clear_shutdown()` at test start and in teardown whenever a test calls `request_shutdown()` — the event is module-global.
 
 ### Tests
-
-_Wiring pass added by `/ll:wire-issue`:_
-
-- `scripts/tests/conformance/test_host_conformance.py::test_golden_path_behavior(host, golden_path)` — new parameterized behavioral test replacing `test_golden_path_invocation`. Drives the runner through one prompt end-to-end and asserts the observable event stream. Follows parametrize-over-registry-key shape (`:64-71`) and SKIP-on-binary-missing/`HostNotConfigured` (`:96-109`). [Agent 3 finding — already in Implementation Step 1]
-- Four assertion helpers in `scripts/tests/conformance/test_host_conformance.py` — `assert_event_sequence_equals`, `assert_terminal_is_last`, `assert_capability_not_emitted`, `_golden_path_behavior` orchestrator per §Program Design. [Agent 3 finding — already in Implementation Step 4]
-- `_live_conformance` fixture in `scripts/tests/conformance/conftest.py` — env-gated on `LL_HOST_CONFORMANCE_LIVE=1`; modeled on `conftest.py:31-33` (`LL_FUZZ` profile switch) and `test_cross_host_baseline.py:353-367` (env-var-keyed fake_which). [Agent 3 finding — already in Implementation Step 2]
-- Composition test promotion from `scripts/tests/spike/host_compose/test_host_compose.py::TestCompositionThroughExecutor::test_compose_threads_both_fakes_through_same_executor` (lines 130-142) — ENH-3456 §Promotion calls for this to land in FEAT-3455's conformance rewrite as the two-divergent-fake composition test the issue Design section calls for. The spike proves the mechanism; FEAT-3455 is where it lives. **NEW finding not in refine-issue Implementation Steps.** [Agent 3 finding]
-- `_BadConcreteRunner`-style regression guard from the spike's `TestRegressionGuard::test_bad_concrete_class_runner_breaks_composition` (lines 245-263) — promotable as a structural-shape guard for the conformance suite. [Agent 3 finding]
-- `_match_host_binary` carve-out regression tests in `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` (lines 281-300 are the existing carve-out shape: match-returns-tuple / non-match-returns-None / `--version`-carve-out-returns-None / does-NOT-carve-out-other-flags). When `_match_host_binary` gains the `LL_HOST_CONFORMANCE_LIVE=1` carve-out, mirror the same four-shape pattern for the new opt-in: (a) match-returns-None when env-var set + conformance marker collected, (b) match-returns-tuple when env-var unset (current behavior, regression-pin), (c) match-returns-None for `--version` regardless of env-var (existing carve-out preserved), (d) negative control: a non-`HOST_BINARY_NAMES` basename is not affected by the new carve-out. The `_reset_collector` autouse fixture at lines 222-228 must continue to clear `conftest._host_cli_hits` and `conftest._reported_upto` around these new tests. **NEW finding not in refine-issue Implementation Steps.** [Agent 3 finding]
-
-### Documentation
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/development/TESTING.md:121` — directory-structure tree line `├── test_host_conformance.py  # Four golden-path tests × all registered hosts` describes the constructability-check baseline. Needs wording update to "Behavioral conformance suite × all registered hosts (fake by default, live behind `LL_HOST_CONFORMANCE_LIVE=1`)" per the Implementation Step 8 contract. The "Four golden-path tests × all registered hosts" description is misleading post-rewrite (the new suite is a single `test_golden_path_behavior` × 4 paths × N hosts, not 4 distinct tests). **NEW finding not in refine-issue Implementation Steps.** [Agent 2 finding]
-- `docs/development/TESTING.md:1048` — markers table row `| @pytest.mark.conformance | Host conformance test (see conformance/) |` describes the marker in conformance-mark terms only. Needs wording update to capture the behavioral contract and env-gate: e.g. "Host conformance test — behavioral assertions against event-stream + terminal + capability profile (see CONFORMANCE.md for `LL_HOST_CONFORMANCE_LIVE` env gate)." **NEW finding not in refine-issue Implementation Steps.** [Agent 2 finding]
-- `docs/kimi/automation.md:71-82` — `## Conformance` section's `pytest -m conformance --conformance-host kimi-code scripts/tests/conformance/  # 4 passed` invocation shape stays valid (kimi-code still passes its golden paths), but the section's framing ("the golden paths pass") implies a constructability-only check. Worth a sentence noting the suite now exercises event sequences per runner; the count remains 4-passed under the fake, but the assertion strength changes. Low priority — could ship in a follow-up doc-polish pass. [Agent 2 finding]
-
-### Behavior Parity
-
-_Wiring pass added by `/ll:wire-issue`:_
-
-`test_golden_path_invocation` is being replaced by `test_golden_path_behavior`. The new test must subsume every observable behavior of the old one before adding new behaviors:
-
-| Capability | `test_golden_path_invocation` (replaced) | `test_golden_path_behavior` (replacement) |
-|---|---|---|
-| Parametrize over `_HOST_RUNNER_REGISTRY` keys | `@pytest.mark.parametrize("host", list(_HOST_RUNNER_REGISTRY.keys()))` (`:65`) | Same parametrize shape — `test_golden_path_behavior(host, golden_path)` carries over verbatim [Issue §Implementation Step 1] |
-| Parametrize over golden paths | `@pytest.mark.parametrize("golden_path,prompt", _GOLDEN_PATHS, ids=...)` (`:66-70`) | Same parametrize — 4 paths × N hosts [Issue §Implementation Step 1] |
-| Honor `--conformance-host` filter | `request.config.getoption("--conformance-host", default=None)` (`:76-77`) → `pytest.skip(...)` | Same filter honored — carries over verbatim |
-| SKIP-not-FAIL on binary missing | `shutil.which(binary) is None` → `pytest.skip(f"{host!r} binary ({binary!r}) not found on PATH")` (`:80-82`) | Same SKIP — carries over verbatim [Issue §Implementation Step 3] |
-| SKIP-not-FAIL on stub runner | `except HostNotConfigured as exc: pytest.skip(f"{host!r} is a stub runner: {exc}")` (`:92-94`) | Same SKIP — carries over verbatim [Issue §Implementation Step 3] |
-| `HostInvocation.binary` non-empty | `assert invocation.binary, f"[{host}/{golden_path}] HostInvocation.binary must not be empty"` (`:104`) | Now an implicit consequence of the event-stream run (`run_golden_path` returns at least one terminal event); no longer a direct assert |
-| `HostInvocation.args` non-empty | `assert invocation.args, f"[{host}/{golden_path}] HostInvocation.args must not be empty"` (`:105`) | Same — implicit consequence of the event-stream run |
-| Observable event sequence | **Not asserted** | `assert_event_sequence_equals(events, expected)` — ordered-kind list, fails with diff-style diagnostic [Issue §Implementation Step 4, 7] |
-| Exactly one terminal event, last in stream | **Not asserted** | `assert_terminal_is_last(events)` [Issue §Implementation Step 4] |
-| Abort mid-turn terminates stream | **Not asserted** | Capability-gated early-return when `status != full`; otherwise asserts the declared abort terminal is reached and no further events follow [Issue §Implementation Step 4] |
-| Failure shape stability | **Not asserted** | `BehavioralFailure` shape (`kind`, `message`, `exit_code`, `recoverable`) is asserted host-stable across targets [Issue §Implementation Step 4] |
-| Negative-capability assertion (event absent) | **Not asserted** | `assert_capability_not_emitted(events, absent_capability)` — fires unconditionally when `describe_capabilities()` declares a capability absent; under-declaration is a bug [Issue §Implementation Step 6] |
-| Diff-style failure report | `f"[{host}/{golden_path}] HostInvocation.binary must not be empty"` (single-line) | Runner name + golden path + expected event kinds + actual event kinds + first-divergence index — modeled on `test_streaming_cache_parity.py:182-186` [Issue §Implementation Step 7] |
-| Env gate for live binary path | **Not present** | `LL_HOST_CONFORMANCE_LIVE=1` substitutes the live target for the fake; per-target timeout enforced at production site [Issue §Implementation Step 2, 5] |
-
-Conventions in force (rule + cited evidence; not templates to reproduce):
-- Parametrize over registry keys for multi-host assertions — evidence: `test_host_conformance.py:64-71`, `test_host_runner.py:64-74`, `:347-359`. Stacking a second `@pytest.mark.parametrize` produces cartesian product with descriptive `ids=`.
-- Module-level `pytestmark = pytest.mark.skipif(...)` for env/bin gates, computed at import time — evidence: `test_claude_code_adapter.py:22-24`, `test_omp_adapter.py:28-30`, `conftest.py:88-99`.
-- Capability-driven assertions assert both `full` (positive) AND `unsupported` (negative) — evidence: `test_host_runner.py:2047-2055`. A host that under-declares is as much a bug as one that over-declares.
-- Negative assertions use `not in <stream>` with diagnostic string — evidence: `test_fsm_signal_integration.py:211`, `test_next_issues.py:880`, `test_git_operations.py:319-320`.
-- SKIP-not-FAIL for binary missing and stub runners — evidence: `test_host_conformance.py:96-109`. Concrete `reason=` string, not bare `pytest.skip()`.
-- Failure-message diagnostic in every assertion — evidence: `test_streaming_cache_parity.py:182-186`, `conftest.py:258-270`. Use `repr`-style f-strings (`argv={argv!r}`).
-- Per-target timeout at the production `subprocess.run(timeout=N)` site, not at the test site — evidence: `host_runner.py:245-253`. Suite-wide watchdog is `--timeout=120 --timeout-method=thread` (`pyproject.toml:266-267`, `pytest.ini:17`).
-- Event streams over JSONL (one event per line, `\n`-terminated) — evidence: `test_subprocess_mocks.py:178-214`, `test_streaming_cache_parity.py:59-67`. Terminal event is `{"type": "result", ...}` for Claude and `{"type": "turn.completed", ...}` for Codex.
-- `isolated_env` fixture scrubs `LL_HOST_CLI` and `LL_HOOK_HOST` — duplicated in `conftest/conftest.py:21-26` and `test_host_runner.py:56-61` (FEAT-2259 noted the duplication as either promote or redefine).
+- `test_golden_path_behavior[<path>-<host>]` — Tier 1.
+- `test_scripted_ordering`, `test_scripted_result_error`, `test_scripted_exit_before_terminal`, `test_scripted_failed_start`, `test_scripted_idle_timeout`, `test_scripted_abort_request_shutdown`, `test_scripted_hang_grace_kill` — Tier 2, fake only.
+- `test_capability_argv_negative[<flag>]` / `test_capability_argv_positive[<flag>]` — fake with override, both directions.
+- `TestNoLiveHostCLIGuard` four-shape carve-out tests.
 
 ## Program Design
 
 ### Types
-
-- `ConformanceTarget`: `(runner: HostRunner, name: str, binary: str | None)` — what a single parameter slot supplies
-- `BehavioralEvent` (in test file): `{kind: Literal["stdout"|"stderr"|"tool"|"result"|"abort"|"error"|"terminal"], data: Any, ts: float}` — observable event envelope; shape is host-stable
-- `BehavioralFailure`: `{kind: str, message: str, exit_code: int | None, recoverable: bool}` — host-stable failure shape
-- `TerminalEvent`: `BehavioralEvent` whose `kind in {"result", "abort", "error"}` and is the stream's last event
+- `Observed`: `(kinds: list[str], init: dict | None, tool_calls: list[ToolCall], usage: TokenUsage | None, result_seen: bool, completed: CompletedProcess | None, error: BaseException | None)` — everything the consumer surfaced, collected via callbacks.
+- `TerminalKind = Literal["result", "turn.completed"]`.
 
 ### Signatures
-
-- `conformance_target(runner: HostRunner) -> ConformanceTarget` — wires runner + binary name into a parameter slot
-- `run_golden_path(target: ConformanceTarget, prompt: str, *, timeout_s: float) -> list[BehavioralEvent]` — single target, one prompt, observable event stream to terminal
-- `assert_event_sequence_equals(events: list[BehavioralEvent], expected: list[str]) -> None` — ordered-kind assertion, fails with a diff
-- `assert_terminal_is_last(events: list[BehavioralEvent]) -> None` — exactly one terminal event; it is the last element
-- `assert_capability_not_emitted(events: list[BehavioralEvent], absent_capability: str) -> None` — negative assertion: event kind tied to the capability must not appear
-- `_golden_path_behavior(target: ConformanceTarget, prompt: str, capabilities: CapabilityReport) -> None` — orchestrator: gate capability-conditional cases off `capabilities`, sequence+terminal+abort+failure assertions run unconditionally
+- `_run_and_capture(host: str, prompt: str, *, timeout: int, automation: AutomationContext | None = None, tmp_path: Path) -> Observed` — sets `LL_HOST_CLI=host`, wires every callback, calls `run_claude_command` unpatched, catches `TimeoutExpired` into `Observed.error`.
+- `assert_terminal_is_last(obs: Observed, *, host: str, golden_path: str) -> None`.
+- `assert_event_kinds(obs: Observed, expected: list[str], *, host: str, golden_path: str) -> None` — diff with first-divergence index.
+- `assert_capability_argv(invocation: HostInvocation, flag: str) -> None` — negative when `False`, positive when `True`.
+- `live_conformance` fixture → `bool`; also sets the guard's opt-in flag for the test's duration.
 
 ### Call Path
-
-`pytest collection` -> `_HOST_RUNNER_REGISTRY` resolved into `ConformanceTarget` list -> if `LL_HOST_CONFORMANCE_LIVE` unset, fake target substituted -> `test_golden_path_behavior(target, golden_path)` -> `run_golden_path` -> `resolve_host(name).describe_capabilities()` -> `_golden_path_behavior(target, prompt, caps)`
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
-
-- New decision rule: the capability profile is a *promise*, not a hint. Where `describe_capabilities()` declares a capability absent, the suite asserts the corresponding event kind never appears via `<kind> not in [e.kind for e in events]`. A host that under-declares (`status == unsupported` yet emits the event) is a bug on equal footing with one that over-declares. This is the negative-assertion contract; capability-conditional POSITIVE assertions early-return on `status != full` instead.
-- Existing classification rule (carried over from `test_host_runner.py:2029-2055`): capability status is `Literal["full", "partial", "unsupported"]`; positive assertions gate on `full`, partial/unsupported take the capability-absent path.
-- Existing SKIP-vs-FAIL rule (carried over from `test_host_conformance.py:96-109`): binary missing on PATH and `HostNotConfigured` on `build_streaming` are SKIP (not FAIL); only observable-behavior deviations are FAIL.
-- New env-gate rule (FEAT-3455): `LL_HOST_CONFORMANCE_LIVE=1` enables the live-host-binary path. When unset, the suite substitutes the fake target (`FakeHostRunner` from FEAT-3454). The env var is read at fixture resolution, not at module import, so `monkeypatch.setenv()` in a test body still wins (per `conftest.py:1095-1096` precedent).
-- Per-target timeout (carried over from `host_runner.py:245-253` + suite-wide `pyproject.toml:266`): production-site `subprocess.run(timeout=N)` is the tighter bound; `--timeout=120` watchdog is the upper bound. Per-target value must be ≤ 120s.
+`pytest` → parametrize over `_HOST_RUNNER_REGISTRY` → `live_conformance` decides skip for non-fake → `_run_and_capture` → `resolve_host()` (via `LL_HOST_CLI`) → `build_streaming` → `subprocess.Popen` (guard: fake basename carved out always; real basename carved out only under live flag) → `ll-fake-host` or real CLI → consumer callbacks → `Observed` → assertions.
 
 ## Implementation Steps
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
-
-1. Replace `test_golden_path_invocation` in `scripts/tests/conformance/test_host_conformance.py` with `test_golden_path_behavior(target, golden_path)` parameterized over `(host, golden_path)`. The new test must drive the runner through one prompt end-to-end and assert the observable event stream — not the `HostInvocation` shape. Existing parametrize shape carries over from `test_host_conformance.py:64-71`.
-2. Wire `ConformanceTarget` resolution so `LL_HOST_CONFORMANCE_LIVE` unset substitutes the fake target (`FakeHostRunner` from FEAT-3454) and set leaves the registry as-is. Resolution lives in `conftest.py:_live_conformance` (or equivalent) — modeled on `conftest.py:31-33` (`LL_FUZZ` profile switch) and `test_cross_host_baseline.py:353-367` (env-var-keyed fake_which).
-3. Keep the existing SKIP conditions verbatim: `shutil.which(binary) is None` and `HostNotConfigured` on `build_streaming` (from `test_host_conformance.py:96-109`). Module-level `pytestmark = pytest.mark.conformance` plus per-test `pytest.skip(...)` for runtime gates.
-4. Implement four assertion helpers — `assert_event_sequence_equals`, `assert_terminal_is_last`, `assert_capability_not_emitted`, `_golden_path_behavior` (orchestrator) — per the signatures in §Program Design. Capability-conditional assertions early-return on `describe_capabilities()`; the negative assertion (`not in events`) fires unconditionally. Diagnostic strings on every `assert` (modeled on `test_streaming_cache_parity.py:182-186`).
-5. Per-target timeout via `subprocess.run(timeout=N)` at the production site (e.g. in `_resolve_runner` wrapper that invokes the binary). Suite-wide `--timeout=120` (`pyproject.toml:266`) is the upper bound; the per-target value should be tighter (modeled on `host_runner.py:245-253` `timeout=10`).
-6. Negative-capability assertion contract: when `describe_capabilities()` declares a capability absent, the suite asserts the corresponding event kind never appears via `<kind> not in [e.kind for e in events], f"<host> {<host>!r} capability {<cap>!r} declared absent — <kind> event must not appear; events={events!r}"`. Modeled on `test_fsm_signal_integration.py:211` and `test_next_issues.py:880`.
-7. Diff-style failure report: when `assert_event_sequence_equals` fails, the message includes runner name, golden path, expected event kinds, actual event kinds, and the index of the first divergence. Modeled on `test_streaming_cache_parity.py:182-186` (`expected=... actual=... diff_pct=...`).
-8. Extend `docs/development/CONFORMANCE.md` to cover: the four assertion helpers, the `LL_HOST_CONFORMANCE_LIVE` env gate, the per-target timeout policy, the negative-capability assertion contract, and the diff-style failure report. The current doc only describes the constructability-check baseline.
-9. Verify CI: `python -m pytest scripts/tests/` exits 0 (the new suite runs against the fake by default) and `python -m pytest scripts/tests/ -m "not conformance"` continues to skip the new test. Live-binary path (`LL_HOST_CONFORMANCE_LIVE=1`) is verified locally; no CI job is added (keep CI runner hermetic).
-10. Verify the live-host-spawn guard (`conftest.py:_install_no_live_host_cli` `:353-397`) is respected — the test must mock the spawn or use the fake; an un-mocked real-binary spawn still fails the suite at fixture teardown.
-
-_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
-
-- Constraint from the live-host-spawn guard (not currently addressed in any Implementation Step): `scripts/tests/conftest.py:_install_no_live_host_cli` (`:353-397`) plus `_fail_on_live_host_cli` (`:400-427`) is global — every host-CLI spawn in any test fails the suite at fixture teardown unless (a) `os.path.basename(argv[0])` is in `HOST_BINARY_NAMES` AND (b) `argv[1:] != ["--version"]` (carve-out at `_match_host_binary` `:237-255`). No documented env-var opt-in path exists for spawning a real binary; the documented answer is "mock the spawn, don't gate it" (`conftest.py:262-269`). Implementing the `LL_HOST_CONFORMANCE_LIVE=1` env-gate therefore requires a new carve-out in `_match_host_binary` that allows the spawn to proceed when both the env var is set AND the test is collected under the `conformance` marker. Without this carve-out, every live-binary spawn will fail the suite at teardown — the implementer must coordinate with the guard, not bypass it.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Promote `scripts/tests/spike/host_compose/test_host_compose.py::TestCompositionThroughExecutor::test_compose_threads_both_fakes_through_same_executor` (lines 130-142) into `scripts/tests/conformance/test_host_conformance.py` per ENH-3456 §Promotion. The spike proves the two-divergent-fakes-through-one-executor-path mechanism; FEAT-3455's conformance rewrite is where the composition assertion lands as the behavioral mirror of the registry-only check.
-- Promote the regression-guard pattern from `scripts/tests/spike/host_compose/test_host_compose.py::TestRegressionGuard::test_bad_concrete_class_runner_breaks_composition` (lines 245-263) into the conformance suite as a structural-shape guard for fake-host runtime substitution.
-- Verify `scripts/tests/test_conftest_cap.py` continues to pass after the new `_live_conformance` fixture lands in `scripts/tests/conformance/conftest.py` — the regression guard loads `conftest.py` via `importlib.util.spec_from_file_location` and depends on its top-level surface remaining stable.
-- Coordinate with FEAT-3454: when the fake registers in `_HOST_RUNNER_REGISTRY` under any key, verify (a) `scripts/tests/test_host_runner.py:TestHostBinaryNames` (lines 2348-2371) still passes — fake's `describe_capabilities().binary` must not collide with real-host basenames; (b) `scripts/tests/test_wiring_guides_and_meta.py::test_host_tier_table_matches_runner_registry` (lines 381-392) still passes — `docs/reference/HOST_COMPATIBILITY.md` "Orchestration runner" column must gain a matching row or the registry must exclude the fake from this drift check.
-- Extend `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` with four-shape carve-out regression tests for the new `LL_HOST_CONFORMANCE_LIVE=1` carve-out in `_match_host_binary` — match-returns-None when env-var set + conformance marker, match-returns-tuple when env-var unset (current behavior pinned), `--version` carve-out preserved regardless of env-var, negative control for non-`HOST_BINARY_NAMES` basename. Follow the existing `_match_host_binary_carve_out_version_check_list/tuple` + `_does_not_carve_out_other_flags` pattern at lines 292-300. Without these, a future refactor that breaks the new carve-out will not be caught by the regression guard.
-- Coordinate with FEAT-3454 on `scripts/little_loops/cli/verify_host_map.py::_check_emitter_agreement` (lines 131-188) — the fake-host's `HostCapabilityEntry` must satisfy all three self-consistency rules: `subagents == "native"` requires `agents=True`, `agents=True` with `subagents == "none"` requires `agent_output_format` to be set, and `commands=True` requires `command_output_format` (lines 186-188). Without this, `ll-verify-host-map` rejects the new fake entry at registration time.
-- Update `docs/development/TESTING.md:121` directory-structure tree line to reflect the behavioral-suite rewrite (replace "Four golden-path tests × all registered hosts" with the fake-by-default + live-behind-env-gate description).
-- Update `docs/development/TESTING.md:1048` markers table row to describe the `@pytest.mark.conformance` marker in behavioral-assertion terms with `LL_HOST_CONFORMANCE_LIVE` env-gate pointer.
+1. Land FEAT-3454 (fake executable, runner, its guard carve-out, first-entry drift sync).
+2. `live_conformance` fixture + guard opt-in flag + four-shape regression tests.
+3. `_run_and_capture` and `Observed`; prove it against the fake's happy path.
+4. `test_golden_path_behavior` with Tier 1 invariants; verify fake passes, real hosts skip without the env var, and one real host passes locally with it.
+5. Tier 2 scripted cases, one per AC row; each uses a directive block and asserts the exact observation.
+6. Capability argv assertions, both directions, via the fake override.
+7. Docs: `CONFORMANCE.md` rewrite, `TESTING.md` two lines, optional kimi note.
+8. Verify: default suite green with no env vars; `-m "not conformance"` deselects; `ll-verify-host-map` clean; mypy/ruff clean.
 
 ## Impact
 
-- **Priority**: P2 — defensive infrastructure for a capability that already exists (constructability check); gates a rewrite risk that is latent, not active.
-- **Effort**: Medium — rewrites one test function into a parameterized suite; depends on the fake host (FEAT-3454); integrates with the existing `pytest -m conformance` marker, the `LL_HOST_CONFORMANCE_LIVE` env gate is new but trivial.
-- **Risk**: Low — additive on the existing suite, no runner contract change, no public API change. The negative-capability assertion can produce failure-shaped-by-design cases that previously passed silently; treat first green as the new baseline.
-- **Breaking Change**: No.
+- **Priority (P2)**: defensive infrastructure for a latent rewrite risk; the first behavioral coverage of the real spawn path in the default suite.
+- **Effort**: medium — one test module rewrite, one fixture, one guard carve-out, one doc rewrite. Depends on FEAT-3454.
+- **Risk**: low — additive; the constructability test stays; no runner or consumer change. Tier 1 against a real host may surface a genuine contract deviation on first run — that is the point, treat it as a bug not a baseline.
+- **Breaking Change**: no.
 
 ## Status
 
 **Open** | Created: 2026-09-11 | Priority: P2
 
-## Design
-
-One suite, parameterized by target — the shape that lets the fake and a real host run the identical file:
-
-- A single conformance function over a target. The fake host runs it in the default CI suite; real host binaries run the same suite behind an explicit env var, with a timeout.
-- Assert observable outcomes, not invocation shapes: the event sequence a turn emits; exactly one terminal event, and it is last; abort mid-turn still terminates the stream; the shape of a failure.
-- Capability-gated cases early-return when the capability is undeclared, so one suite covers a matrix of host abilities without forking per host.
-- The capability profile is a promise, not a hint: where a capability is declared false, assert the corresponding event never appears — a negative assertion, not a skip. A host that under-declares is as much a bug as one that over-declares.
-
 ## Dependencies
 
-- Depends on the fake host with a directives language (FEAT-3454) for a CI-runnable target; the suite is the reason that fake exists.
-- Pairs with coverage: this suite is about whether the covered cases actually run. Whether an uncovered case went unnoticed is the complementary concern, tracked separately.
-
+- **Depends on FEAT-3454** for the CI target and the directive vocabulary.
+- **Blocks ENH-3459** (composition suite builds on the behavioral tier).
 
 ## Related Key Documentation
 
 | Document | Relevance |
 |----------|-----------|
-| `docs/reference/API.md#little_loopshost_runner` | `HostRunner` + `CapabilityReport` are the abstract surface the suite asserts against; per-target conformance is the consumer of `describe_capabilities()` |
-| `docs/ARCHITECTURE.md` (host abstraction + testing layers) | Describes the host seam this suite covers and the `pytest -m conformance` marker integration |
-| `.claude/CLAUDE.md` § Host CLI Abstraction | `resolve_host()` resolves a `HostRunner` whose behavior the suite parametrizes over `_HOST_RUNNER_REGISTRY` |
+| `docs/development/CONFORMANCE.md` | The harness doc this issue rewrites |
+| `docs/reference/API.md#little_loopshost_runner` | `HostRunner` + `CapabilityReport` surface asserted against |
+| `docs/development/TESTING.md` § live-spawn guard | The guard the env gate must cooperate with |
+| `.claude/CLAUDE.md` § Host CLI Abstraction, § Testing & CI Policy | `resolve_host()` seam; no paid CI, gates live in the local suite |
 
 ## Session Log
+- Manual review rewrite - 2026-09-12 - folded two-tier split (invariants vs scripted-exact), keep constructability test, capability-as-argv rule, guard env+marker carve-out, corrected `_check_emitter_agreement` claim, moved spike promotion to ENH-3459
 - `/ll:confidence-check` - 2026-09-12T07:08:51 - `cd97a6a9-4e4b-4de2-8681-0b936dccac65.jsonl`
 - `/ll:wire-issue` - 2026-09-12T07:05:00 - `6acb6589-d0ad-4f08-a678-5d9b934fde54.jsonl`
 - `/ll:refine-issue` - 2026-09-12T06:50:19 - `3c577ef9-4e12-4545-bd70-260fee13d04b.jsonl`
