@@ -76,11 +76,37 @@ host events is `run_claude_command`, which does `subprocess.Popen([invocation.bi
 - **The live-spawn guard needs a carve-out for `ll-fake-host`.** The guard
   (`scripts/tests/conftest.py:_match_host_binary` `:237-255`) fails any spawn whose
   `argv[0]` basename is in `HOST_BINARY_NAMES`; the fake's basename joins that set
-  by construction. Add `ll-fake-host` to the carve-out (alongside the existing
-  `--version` carve-out) — it is model-free and costs nothing, which is the guard's
-  whole rationale. Extend `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard`
+  by construction. Add the carve-out (alongside the existing `--version` carve-out)
+  — it is model-free and costs nothing, which is the guard's whole rationale.
+  **Derive it, don't hard-code it**: the carve-out reads
+  `host_runner.TEST_ONLY_BINARIES` (below), not the literal `"ll-fake-host"`, so the
+  second test-only runner (ENH-3459) rides the same rule with no conftest edit.
+  Extend `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard`
   (`:281-300`) with the four-shape pattern: fake basename returns None; real basename
   still returns a tuple; `--version` carve-out preserved; non-host basename unaffected.
+- **One constant names every test-only registry entry.** Add to `host_runner.py`,
+  next to `_HOST_RUNNER_REGISTRY`:
+
+  ```python
+  # Registry keys that exist for the test suite, not for users. Every drift
+  # gate that counts or enumerates "real" hosts subtracts this set; the
+  # live-spawn guard carves out its binaries. Grows by one key per fake
+  # (ENH-3459 adds the second); nothing else about the gates changes.
+  TEST_ONLY_HOSTS: frozenset[str] = frozenset({"fake"})
+  TEST_ONLY_BINARIES: frozenset[str] = frozenset(
+      _HOST_RUNNER_REGISTRY[k]().describe_capabilities().binary for k in TEST_ONLY_HOSTS
+  )
+  ```
+
+  Consumers: the guard carve-out (above); the binary-count test (Wiring); a new
+  `assert TEST_ONLY_HOSTS.isdisjoint(k for k, _ in _PROBE_ORDER)` test next to the
+  OpenCode not-probed test (`test_host_runner.py:1073-1078`); `HOST_COMPATIBILITY.md`
+  prose that enumerates real runners. The tier-table gate
+  (`test_wiring_guides_and_meta.py:381-392`) keeps asserting strict equality against
+  the registry — the doc gets a row per fake, flagged test-only, because that table
+  is where a maintainer looks. Export both names from `__all__` and mirror in
+  `scripts/little_loops/__init__.py`. This is the ENH-3460 collapse: with the
+  constant in place, the second entry's drift sync is one key plus doc rows.
 
 ## Directives Language
 
@@ -168,22 +194,40 @@ in under ten seconds, no model, in the default suite.
   expected `CompletedProcess` for: ordered happy path; `result error=`; exit-nonzero
   before terminal; `stderr`+`exit 1` failed start; idle timeout via `sleep`;
   `request_shutdown()` during `sleep`; `hang` + grace-period kill.
-- The live-spawn guard carve-out for `ll-fake-host` exists and is regression-tested
-  in `test_conftest_cap.py::TestNoLiveHostCLIGuard`.
+- The live-spawn guard carve-out is derived from `TEST_ONLY_BINARIES` (no
+  `"ll-fake-host"` literal in conftest) and is regression-tested in
+  `test_conftest_cap.py::TestNoLiveHostCLIGuard`.
+- `TEST_ONLY_HOSTS == {"fake"}` and `TEST_ONLY_BINARIES == {"ll-fake-host"}` are
+  exported from `host_runner` and `little_loops`; `TEST_ONLY_HOSTS` is disjoint from
+  `_PROBE_ORDER` keys (tested); `HOST_BINARY_NAMES - TEST_ONLY_BINARIES` equals the
+  eight real basenames (tested, count-free test name).
 - Per-test capability override propagates to `invocation.capabilities` on all five
   `build_*` methods.
 - Behavioral tests live under the unit suite (no `conformance` marker required for
   the fake-only tests; FEAT-3455 owns the conformance-suite integration).
 - All drift gates tripped by the ninth registry entry are updated (see Wiring).
 
+## Behavior Parity
+
+- `_remediation_hint()` (`host_runner.py:2283-2289`): today a static string naming
+  eight hosts and seven binaries. After: the same sentence shape, host list derived
+  from `sorted(set(_HOST_RUNNER_REGISTRY) - TEST_ONLY_HOSTS)` and binary list from
+  `sorted(HOST_BINARY_NAMES - TEST_ONLY_BINARIES)`. For the eight real hosts the
+  rendered text is byte-identical to today's (pin with a test); fakes never appear.
+- Live-spawn guard: every existing real-host match and the `--version` carve-out
+  behave exactly as before; the only new behavior is a `None` (allow) for
+  `TEST_ONLY_BINARIES` basenames.
+- `test_has_all_eight_known_binaries` → count-free split; the eight-real-basename
+  assertion is preserved verbatim as the left-hand side of the subtraction.
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/fake_host.py` (new) — `parse_directives(prompt) -> DirectivesScript`, `main()` entry point.
-- `scripts/little_loops/host_runner.py` — add `FakeHostRunner`; registry entry; `_remediation_hint()` (`:2283-2289`) replaces the static eight-host literal with `sorted(_HOST_RUNNER_REGISTRY)` (ENH-3460 tracks the same drift for the second fake; do it once here).
+- `scripts/little_loops/host_runner.py` — add `FakeHostRunner`; registry entry; `TEST_ONLY_HOSTS` / `TEST_ONLY_BINARIES` constants (Design Decision above); `_remediation_hint()` (`:2283-2289`) replaces the static eight-host literal with `sorted(set(_HOST_RUNNER_REGISTRY) - TEST_ONLY_HOSTS)` — users should not be told to set `LL_HOST_CLI=fake` (ENH-3460 needs nothing here for the second fake).
 - `scripts/pyproject.toml` `[project.scripts]` (`:74+`) — `ll-fake-host = "little_loops.fake_host:main"`.
-- `scripts/tests/conftest.py:_match_host_binary` (`:237-255`) — carve-out for basename `ll-fake-host`.
-- `scripts/little_loops/__init__.py` — re-export `FakeHostRunner` alongside `HostInvocation` (`:33, :38, :100`).
+- `scripts/tests/conftest.py:_match_host_binary` (`:237-255`) — carve-out `if binary in TEST_ONLY_BINARIES: return None`, imported from `host_runner` next to the existing `HOST_BINARY_NAMES` import.
+- `scripts/little_loops/__init__.py` — re-export `FakeHostRunner`, `TEST_ONLY_HOSTS`, `TEST_ONLY_BINARIES` alongside `HostInvocation` (`:33, :38, :100`).
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/subprocess_utils.py:422-771` — `run_claude_command`; the consumer every directive targets. Not modified.
@@ -192,11 +236,12 @@ in under ten seconds, no model, in the default suite.
 - `scripts/little_loops/init/cli.py:102-104, :270-274` — validates `LL_HOST_CLI` against the registry; `fake` becomes accepted. Acceptable; not user-facing in docs.
 
 ### Drift gates tripped by the ninth registry entry (Wiring)
-- `scripts/tests/test_host_runner.py:2359-2371` `test_has_all_eight_known_binaries` — rename to nine, add `"ll-fake-host"`. The registry-derived companion at `:2348-2357` is invariant.
-- `scripts/tests/test_wiring_guides_and_meta.py:381-392` `test_host_tier_table_matches_runner_registry` — add a `fake` row to `docs/reference/HOST_COMPATIBILITY.md` `## Host tiers` (`:16-31`) marked as a test fixture, or add a documented exclusion in the test. Prefer the doc row: it is where a maintainer looks.
+- `scripts/tests/test_host_runner.py:2359-2371` `test_has_all_eight_known_binaries` — rename to the count-free `test_real_binaries_are_the_eight_known_hosts` asserting `HOST_BINARY_NAMES - TEST_ONLY_BINARIES == {…eight…}`, plus a sibling `test_test_only_binaries_are_registered` asserting `TEST_ONLY_BINARIES <= HOST_BINARY_NAMES`. Number-in-name tests break on every fake; the subtraction does not. The registry-derived companion at `:2348-2357` is invariant.
+- `scripts/tests/test_host_runner.py:1073-1078` (OpenCode not-probed precedent) — add `test_test_only_hosts_are_never_probed`: `TEST_ONLY_HOSTS.isdisjoint(k for k, _ in _PROBE_ORDER)`.
+- `scripts/tests/test_wiring_guides_and_meta.py:381-392` `test_host_tier_table_matches_runner_registry` — add a `fake` row to `docs/reference/HOST_COMPATIBILITY.md` `## Host tiers` (`:16-31`) marked as a test fixture. The gate keeps strict equality; the doc row is where a maintainer looks. (Rejected: a test-side exclusion — it would hide the fake from the one table that lists every `LL_HOST_CLI` value the registry accepts.)
 - `scripts/tests/conformance/test_host_conformance.py:_HOST_BINARY` (`:52-61`) — add `"fake": "ll-fake-host"` so the PATH probe skips cleanly when the console script is missing (non-editable installs).
 - `scripts/tests/test_host_runner.py` cross-runner parametrize sites (`:85, :92, :285, :300, :363, :1949, :2216-2244`) — registry-derived sites auto-extend; explicit-list sites need the `("fake", FakeHostRunner)` row only where the fake's behavior is meant to match (automation env: yes; argv-shape checks: no).
-- `docs/reference/HOST_COMPATIBILITY.md:462-472, :491-507` — "eight concrete runners" prose and `[^orch]` footnote: state that `FakeHostRunner` is a ninth, test-only entry.
+- `docs/reference/HOST_COMPATIBILITY.md:462-472, :491-507` — "eight concrete runners" prose and `[^orch]` footnote: keep "eight" for the real runners and add one sentence that registry keys in `TEST_ONLY_HOSTS` are test fixtures outside the tier semantics. Do not enumerate fakes by name here (ENH-3459 adds a second; the sentence must not need editing).
 - `docs/ARCHITECTURE.md:857-875` — Host Runner Layer table footnote.
 - `docs/development/TESTING.md:1075-1088` — live-spawn guard docs: document the `ll-fake-host` carve-out and why it is safe.
 - `docs/reference/API.md` `## little_loops.host_runner` — "Concrete runners" table row; new `## little_loops.fake_host` section with the directive table.
@@ -239,10 +284,10 @@ in under ten seconds, no model, in the default suite.
 
 1. `fake_host.py`: `Directive`, `DirectivesScript`, `parse_directives`, `emit`, `main`; parser tests first (TDD).
 2. Console script entry in `scripts/pyproject.toml`; reinstall editable; smoke test.
-3. `FakeHostRunner` in `host_runner.py` with capability override and `_apply_automation_env`; registry entry; `_remediation_hint()` derived from the registry.
-4. Live-spawn guard carve-out + four-shape regression tests.
+3. `FakeHostRunner` in `host_runner.py` with capability override and `_apply_automation_env`; registry entry; `TEST_ONLY_HOSTS` / `TEST_ONLY_BINARIES` constants + `__all__` / package re-export; `_remediation_hint()` derived from the registry minus `TEST_ONLY_HOSTS`.
+4. Live-spawn guard carve-out derived from `TEST_ONLY_BINARIES` + four-shape regression tests; not-probed disjointness test.
 5. Drive `run_claude_command` unpatched against the fake for the seven AC scenarios.
-6. Drift-gate sync: binary-count test, tier table row, `_HOST_BINARY`, cross-runner parametrize rows, docs.
+6. Drift-gate sync: count-free binary tests, tier table row, `_HOST_BINARY`, cross-runner parametrize rows, docs (prose refers to `TEST_ONLY_HOSTS`, never enumerates fakes).
 7. `ll-verify-host-map`, `python -m pytest scripts/tests/`, mypy, ruff all clean.
 
 ## Impact
