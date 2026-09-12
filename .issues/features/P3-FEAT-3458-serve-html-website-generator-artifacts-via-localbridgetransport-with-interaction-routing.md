@@ -8,7 +8,7 @@ discovered_by: capture-issue
 confidence_score: 85
 outcome_confidence: 80
 unproven_mechanism: true
-decision_needed: false
+decision_needed: true
 reconcile_attempted: true
 blocked_by:
 - EPIC-3299
@@ -133,6 +133,32 @@ serve:
 ```
 
 The state reads `${context.bridge_port}` and `${token}` from `BRConfig.events.bridge`; tests can pin both via `context`.
+
+### Server trigger naming — `--serve` collision with ENH-3351
+
+`ll-loop run --serve` already ships today (ENH-3351, `status: done`,
+`cli/loop/__init__.py:296-310`, `cli/loop/run.py:588-657`) with the
+**opposite** lifecycle from what this issue needs: it binds
+`LocalBridgeTransport` *before* the executor starts and shuts the server down
+"when the loop reaches a terminal state." This issue's server needs to start
+*after* `done` and block on Ctrl-C. Reusing the `--serve` name for both would
+either silently overload it with incompatible semantics or ship an
+undiscovered naming/lifecycle conflict (flagged in Verification Notes below).
+Two ways to resolve it:
+
+**Option SERVE-A**: Give the post-completion server a distinct flag/hook
+name (e.g. `--serve-after` on `ll-loop run`, or a config field read by the
+new `cli/loop/run.py` post-run hook), leaving the existing `--serve`
+run-duration bridge (ENH-3351) completely untouched. `cli/loop/run.py` and
+`cli/loop/__init__.py` gain a second, independent flag registration
+alongside the existing one at `run.py:588-657` / `__init__.py:296-310`.
+
+**Option SERVE-B**: Fold post-completion artifact-serving into the existing
+`--serve` bridge instead of introducing a second lifecycle — extend
+ENH-3351's bridge so that, when a flag/config opts in, it survives past the
+terminal state (instead of shutting down at `done`) and blocks on Ctrl-C for
+interactive post-run use. No new flag name; the existing `--serve` semantics
+change for the `html-website-generator` loop only.
 
 ### Codebase Research Findings
 
@@ -411,6 +437,7 @@ Implementation Steps sections to match (both destructive rewrites — left for
 
 ## Session Log
 
+- `/ll:decide-issue` - 2026-09-12T17:51:04 - `147795d7-8818-4172-bf05-d3558fb89722.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-12T17:49:25 - `24bcbb37-7da0-4a87-b50e-2d2e5174a4e2.jsonl`
 - `/ll:reconcile-issue` - 2026-09-12T17:48:58 - `53449bfc-4a43-46cf-93a9-b9b522f17bce.jsonl`
 - `/ll:decide-issue` - 2026-09-12T17:42:10 - `71fadad1-1c93-41b3-b03e-d94f4739e170.jsonl`
