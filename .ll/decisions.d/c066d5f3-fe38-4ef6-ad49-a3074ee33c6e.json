@@ -1,0 +1,11 @@
+{
+  "id": "33d84023-51f7-4b5d-9360-8e3be1c02e17",
+  "type": "decision",
+  "timestamp": "2026-09-12T18:38:17Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "EPICs are coordination containers, not directly-implementable units; sequence's dependency ordering should default to concrete BUG/FEAT/ENH.",
+  "rule": "Captured: ll-issues sequence should exclude EPIC issue IDs",
+  "scope": "issue",
+  "issue": "ENH-3461"
+}
