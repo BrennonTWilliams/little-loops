@@ -1,6 +1,7 @@
 ---
 id: FEAT-3455
-title: Behavioral host-conformance suite runnable against a fake host in CI and live hosts behind an env gate
+title: Behavioral host-conformance suite runnable against a fake host in CI and live
+  hosts behind an env gate
 type: FEAT
 priority: P2
 status: open
@@ -8,6 +9,13 @@ discovered_date: '2026-09-11'
 labels:
 - multi-host
 - verification
+verify_verdict: VALID
+confidence_score: 93
+outcome_confidence: 74
+score_complexity: 13
+score_test_coverage: 21
+score_ambiguity: 19
+score_change_surface: 21
 ---
 
 ## Summary
@@ -69,6 +77,10 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 - `docs/development/TESTING.md` — already mentions the `conformance` marker and conformance/ subdirectory layout; needs no direct edit.
 - `scripts/little_loops/cli/verify_host_map.py` — `ll-verify-host-map` is the closest existing analogue (cross-host capability-floor gate); reuses `describe_capabilities()` parity check. Not modified by this issue; informational reference.
 
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- Anchor drift to verify against current file state: `scripts/tests/spike/host_compose/executor_shim.py:215` cited for `__all__` is outside the file's actual range — the file is 180 lines and `__all__` is at `:174-180`. `scripts/tests/conformance/test_host_conformance.py:104-105` cited for `HostInvocation.binary`/`HostInvocation.args` asserts is off by ~7 lines — the actual asserts are at `:111-112`. The replaced function spans `:64-112`, not `:64-71` (parametrize block ends at `:70`). These line numbers have drifted since the prior refine-issue pass; verify against the current file before relying on them.
+
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -80,6 +92,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_wiring_guides_and_meta.py:381-392` — `test_host_tier_table_matches_runner_registry` drift-tests the `docs/reference/HOST_COMPATIBILITY.md` "Orchestration runner" column against `_HOST_RUNNER_REGISTRY`. If FEAT-3454's fake registers in the registry without a matching doc row, this test fails. Owned by FEAT-3454's design but flagged here because FEAT-3455's conformance parametrize depends on the registry being well-formed. [Agent 2 finding — FEAT-3454 dependency]
 - `scripts/tests/test_host_runner.py:TestHostBinaryNames` (lines 2348-2371) — drift-tests `HOST_BINARY_NAMES` against `describe_capabilities().binary` per registered runner. FEAT-3454's fake's `binary` value must not collide with real-host basenames or this test fails. Owned by FEAT-3454's design. [Agent 2 finding — FEAT-3454 dependency]
 - `scripts/little_loops/cli/verify_host_map.py:_check_runtime_contradiction` (lines 100-128) — cross-validates `HOST_CAPABILITIES` against `_HOST_RUNNER_REGISTRY`; adding the fake to the registry triggers a new shared-hosts check on every `ll-verify-host-map` invocation. Owned by FEAT-3454. [Agent 2 finding — FEAT-3454 dependency]
+- `scripts/little_loops/cli/verify_host_map.py:_check_emitter_agreement` (lines 131-188) — same-dataclass self-consistency rule per `HostCapabilityEntry` (e.g. `subagents == "native"` with `agents=False` is flagged; `agents=True` with `subagents == "none"` and no `agent_output_format` is flagged; `commands=True` with no `command_output_format` is flagged for every host at lines 186-188). FEAT-3454's fake-host `HostCapabilityEntry` must satisfy all three rules or `ll-verify-host-map` will reject the new entry. **NEW finding not in refine-issue Implementation Steps.** [Agent 2 finding — FEAT-3454 dependency]
 
 ### Tests
 
@@ -90,6 +103,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `_live_conformance` fixture in `scripts/tests/conformance/conftest.py` — env-gated on `LL_HOST_CONFORMANCE_LIVE=1`; modeled on `conftest.py:31-33` (`LL_FUZZ` profile switch) and `test_cross_host_baseline.py:353-367` (env-var-keyed fake_which). [Agent 3 finding — already in Implementation Step 2]
 - Composition test promotion from `scripts/tests/spike/host_compose/test_host_compose.py::TestCompositionThroughExecutor::test_compose_threads_both_fakes_through_same_executor` (lines 130-142) — ENH-3456 §Promotion calls for this to land in FEAT-3455's conformance rewrite as the two-divergent-fake composition test the issue Design section calls for. The spike proves the mechanism; FEAT-3455 is where it lives. **NEW finding not in refine-issue Implementation Steps.** [Agent 3 finding]
 - `_BadConcreteRunner`-style regression guard from the spike's `TestRegressionGuard::test_bad_concrete_class_runner_breaks_composition` (lines 245-263) — promotable as a structural-shape guard for the conformance suite. [Agent 3 finding]
+- `_match_host_binary` carve-out regression tests in `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` (lines 281-300 are the existing carve-out shape: match-returns-tuple / non-match-returns-None / `--version`-carve-out-returns-None / does-NOT-carve-out-other-flags). When `_match_host_binary` gains the `LL_HOST_CONFORMANCE_LIVE=1` carve-out, mirror the same four-shape pattern for the new opt-in: (a) match-returns-None when env-var set + conformance marker collected, (b) match-returns-tuple when env-var unset (current behavior, regression-pin), (c) match-returns-None for `--version` regardless of env-var (existing carve-out preserved), (d) negative control: a non-`HOST_BINARY_NAMES` basename is not affected by the new carve-out. The `_reset_collector` autouse fixture at lines 222-228 must continue to clear `conftest._host_cli_hits` and `conftest._reported_upto` around these new tests. **NEW finding not in refine-issue Implementation Steps.** [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/TESTING.md:121` — directory-structure tree line `├── test_host_conformance.py  # Four golden-path tests × all registered hosts` describes the constructability-check baseline. Needs wording update to "Behavioral conformance suite × all registered hosts (fake by default, live behind `LL_HOST_CONFORMANCE_LIVE=1`)" per the Implementation Step 8 contract. The "Four golden-path tests × all registered hosts" description is misleading post-rewrite (the new suite is a single `test_golden_path_behavior` × 4 paths × N hosts, not 4 distinct tests). **NEW finding not in refine-issue Implementation Steps.** [Agent 2 finding]
+- `docs/development/TESTING.md:1048` — markers table row `| @pytest.mark.conformance | Host conformance test (see conformance/) |` describes the marker in conformance-mark terms only. Needs wording update to capture the behavioral contract and env-gate: e.g. "Host conformance test — behavioral assertions against event-stream + terminal + capability profile (see CONFORMANCE.md for `LL_HOST_CONFORMANCE_LIVE` env gate)." **NEW finding not in refine-issue Implementation Steps.** [Agent 2 finding]
+- `docs/kimi/automation.md:71-82` — `## Conformance` section's `pytest -m conformance --conformance-host kimi-code scripts/tests/conformance/  # 4 passed` invocation shape stays valid (kimi-code still passes its golden paths), but the section's framing ("the golden paths pass") implies a constructability-only check. Worth a sentence noting the suite now exercises event sequences per runner; the count remains 4-passed under the fake, but the assertion strength changes. Low priority — could ship in a follow-up doc-polish pass. [Agent 2 finding]
 
 ### Behavior Parity
 
@@ -174,6 +195,10 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 9. Verify CI: `python -m pytest scripts/tests/` exits 0 (the new suite runs against the fake by default) and `python -m pytest scripts/tests/ -m "not conformance"` continues to skip the new test. Live-binary path (`LL_HOST_CONFORMANCE_LIVE=1`) is verified locally; no CI job is added (keep CI runner hermetic).
 10. Verify the live-host-spawn guard (`conftest.py:_install_no_live_host_cli` `:353-397`) is respected — the test must mock the spawn or use the fake; an un-mocked real-binary spawn still fails the suite at fixture teardown.
 
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- Constraint from the live-host-spawn guard (not currently addressed in any Implementation Step): `scripts/tests/conftest.py:_install_no_live_host_cli` (`:353-397`) plus `_fail_on_live_host_cli` (`:400-427`) is global — every host-CLI spawn in any test fails the suite at fixture teardown unless (a) `os.path.basename(argv[0])` is in `HOST_BINARY_NAMES` AND (b) `argv[1:] != ["--version"]` (carve-out at `_match_host_binary` `:237-255`). No documented env-var opt-in path exists for spawning a real binary; the documented answer is "mock the spawn, don't gate it" (`conftest.py:262-269`). Implementing the `LL_HOST_CONFORMANCE_LIVE=1` env-gate therefore requires a new carve-out in `_match_host_binary` that allows the spawn to proceed when both the env var is set AND the test is collected under the `conformance` marker. Without this carve-out, every live-binary spawn will fail the suite at teardown — the implementer must coordinate with the guard, not bypass it.
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
@@ -182,6 +207,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Promote the regression-guard pattern from `scripts/tests/spike/host_compose/test_host_compose.py::TestRegressionGuard::test_bad_concrete_class_runner_breaks_composition` (lines 245-263) into the conformance suite as a structural-shape guard for fake-host runtime substitution.
 - Verify `scripts/tests/test_conftest_cap.py` continues to pass after the new `_live_conformance` fixture lands in `scripts/tests/conformance/conftest.py` — the regression guard loads `conftest.py` via `importlib.util.spec_from_file_location` and depends on its top-level surface remaining stable.
 - Coordinate with FEAT-3454: when the fake registers in `_HOST_RUNNER_REGISTRY` under any key, verify (a) `scripts/tests/test_host_runner.py:TestHostBinaryNames` (lines 2348-2371) still passes — fake's `describe_capabilities().binary` must not collide with real-host basenames; (b) `scripts/tests/test_wiring_guides_and_meta.py::test_host_tier_table_matches_runner_registry` (lines 381-392) still passes — `docs/reference/HOST_COMPATIBILITY.md` "Orchestration runner" column must gain a matching row or the registry must exclude the fake from this drift check.
+- Extend `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` with four-shape carve-out regression tests for the new `LL_HOST_CONFORMANCE_LIVE=1` carve-out in `_match_host_binary` — match-returns-None when env-var set + conformance marker, match-returns-tuple when env-var unset (current behavior pinned), `--version` carve-out preserved regardless of env-var, negative control for non-`HOST_BINARY_NAMES` basename. Follow the existing `_match_host_binary_carve_out_version_check_list/tuple` + `_does_not_carve_out_other_flags` pattern at lines 292-300. Without these, a future refactor that breaks the new carve-out will not be caught by the regression guard.
+- Coordinate with FEAT-3454 on `scripts/little_loops/cli/verify_host_map.py::_check_emitter_agreement` (lines 131-188) — the fake-host's `HostCapabilityEntry` must satisfy all three self-consistency rules: `subagents == "native"` requires `agents=True`, `agents=True` with `subagents == "none"` requires `agent_output_format` to be set, and `commands=True` requires `command_output_format` (lines 186-188). Without this, `ll-verify-host-map` rejects the new fake entry at registration time.
+- Update `docs/development/TESTING.md:121` directory-structure tree line to reflect the behavioral-suite rewrite (replace "Four golden-path tests × all registered hosts" with the fake-by-default + live-behind-env-gate description).
+- Update `docs/development/TESTING.md:1048` markers table row to describe the `@pytest.mark.conformance` marker in behavioral-assertion terms with `LL_HOST_CONFORMANCE_LIVE` env-gate pointer.
 
 ## Impact
 
@@ -218,6 +247,9 @@ One suite, parameterized by target — the shape that lets the fake and a real h
 | `.claude/CLAUDE.md` § Host CLI Abstraction | `resolve_host()` resolves a `HostRunner` whose behavior the suite parametrizes over `_HOST_RUNNER_REGISTRY` |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T07:08:51 - `cd97a6a9-4e4b-4de2-8681-0b936dccac65.jsonl`
+- `/ll:wire-issue` - 2026-09-12T07:05:00 - `6acb6589-d0ad-4f08-a678-5d9b934fde54.jsonl`
+- `/ll:refine-issue` - 2026-09-12T06:50:19 - `3c577ef9-4e12-4545-bd70-260fee13d04b.jsonl`
 - `/ll:wire-issue` - 2026-09-12T04:48:54 - `f8f5f90a-7e37-48e9-8cab-bcbd9492818f.jsonl`
 - `/ll:refine-issue` - 2026-09-12T04:00:52 - `e6d1e59e-6622-4d79-806e-0adbe063751c.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:50:16 - `b5367032-da18-428d-be91-16777a0b7408.jsonl`

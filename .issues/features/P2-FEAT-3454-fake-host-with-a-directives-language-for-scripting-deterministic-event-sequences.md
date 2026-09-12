@@ -9,6 +9,13 @@ discovered_date: '2026-09-11'
 labels:
 - testing
 - multi-host
+verify_verdict: VALID
+confidence_score: 90
+outcome_confidence: 72
+score_complexity: 14
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 ## Summary
@@ -60,6 +67,9 @@ A loop-run author needs to assert that orchestration paths do the right thing un
 - `scripts/tests/test_host_runner.py` — add a `TestFakeHostRunner` class following the per-runner pattern (e.g. `TestCodexRunner` at `:707-1056`, `TestOpenCodeRunner` at `:1058-1106`); add a `("fake", FakeHostRunner)` row to the cross-runner parametrize at `:2216-2244`
 - `scripts/tests/conformance/test_host_conformance.py` — `test_golden_path_invocation` at `:64-113` auto-extends via `@pytest.mark.parametrize("host", list(_HOST_RUNNER_REGISTRY.keys()))`; the fake entry will run unconditionally (no PATH check, no `HostNotConfigured` skip — see the skip predicates in the test body)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/host_runner.py:2283-2289` — `_remediation_hint()` returns a static string listing eight host names; adding `"fake"` to the registry does NOT auto-update this string (unlike the dynamic message at `:2326` which uses `sorted(_HOST_RUNNER_REGISTRY)`). Replace the literal eight-host enumeration with `sorted(_HOST_RUNNER_REGISTRY)` to keep the hint drift-free. ENH-3460 already tracks this drift as a first-class follow-up [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/subprocess_utils.py:422-689` — `run_claude_command()` calls `runner = resolve_host()` (`:516`), `invocation = runner.build_streaming(...)` (`:517`), then parses stream-json events (`system`/`init`, `assistant`, `result`, `error_max_structured_output_retries`) at `:628-689`; terminal-event detection at the `result` branch (`:665`). This is the corresponding real-consumer site for the scripted events the fake emits.
 - `scripts/little_loops/fsm/runners.py:23, :128, :488` — `DefaultActionRunner.run` and `SimulationActionRunner` import `AutomationContext, gh_scope_extra, project_child_env, resolve_automation, resolve_scopes` from `host_runner`
@@ -87,14 +97,34 @@ A loop-run author needs to assert that orchestration paths do the right thing un
   - `scripts/tests/test_fsm_executor.py:48-152` — `MockActionRunner` with `results: list[tuple[str, dict]]` and `use_indexed_order: bool`. **Closest precedent for "scriptable test double that emits a deterministic sequence of returns"** — the FEAT-3454 fake is the same shape inverted: the prompt string encodes the sequence, the runner emits it via `build_*` calls.
 - New behavior-level conformance tests: extend `scripts/tests/conformance/test_host_conformance.py` for ordering / abort-mid-turn / recovery-after-failed-start. Sibling coverage is scoped in FEAT-3455 — that issue depends on this one and the conformance tests added here become the target it consumes.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_host_runner.py:2359-2371` (`TestHostBinaryNames.test_has_all_eight_known_binaries`) — hardcodes the eight-binary set `{claude, codex, opencode, pi, gemini, omp, kimi, qwen}`. Rename to `test_has_all_nine_known_binaries` and add the fake's chosen `binary` basename (e.g. `"fake-host"`); the companion registry-derived test at `:2348-2357` is invariant and stays [Agent 3 finding]
+- `scripts/tests/test_wiring_guides_and_meta.py:381-392` (`test_host_tier_table_matches_runner_registry`) — derives `set(_HOST_RUNNER_REGISTRY)` and asserts equality against the `## Host tiers` table in `docs/reference/HOST_COMPATIBILITY.md:16-31`. Adding `"fake"` without a doc row fails the assertion with `"Missing from doc: ['fake']"`. Add a row for the fake OR add a documented exclusion in `HOST_COMPATIBILITY.md` [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/API.md:10252+` — `## little_loops.host_runner` documents every existing runner; a "Concrete runners" table row at `:10362` is the natural slot for `FakeHostRunner`
 - `docs/reference/HOST_COMPATIBILITY.md` — authoritative parity matrix checked by `ll-verify-host-map`; would need either an "is a test fixture, not a real host" caveat or an exclude rule to keep `ll-verify-host-map` clean
 - `docs/development/CONFORMANCE.md` — conformance docs may want a note on how the fake entry participates
 - `.claude/CLAUDE.md` § Host CLI Abstraction references `resolve_host()` and `HostInvocation` as the canonical abstraction; this addition does not change the abstraction, but the fake's role (testing) is worth a sentence if the section grows
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/HOST_COMPATIBILITY.md:462-472` — Orchestration CLI section prose reads "satisfied by eight concrete runners"; `[^orch]` footnote at `:491-507` enumerates the eight runner classes. Either update to include `FakeHostRunner` (test fixture) or carve it out [Agent 2 finding]
+- `docs/ARCHITECTURE.md:857-875` — "Host Runner Layer" table enumerates eight production runners; the fake's role as a test-only entry would benefit from a one-sentence note in the table caption or a footnote pointing to FEAT-3454 [Agent 2 finding]
+- `docs/development/TESTING.md:1075-1088` — Live-spawn guard docs (`_install_no_live_host_cli` / `_fail_on_live_host_cli` at `scripts/tests/conftest.py:353-427`); the fake's basename becomes a member of `HOST_BINARY_NAMES` but is structurally inert because the conformance layer never execs the returned `HostInvocation`. A sentence explaining the carve-out rationale keeps the docs honest if the guard ever fires for the fake [Agent 2 finding]
+
 ### Configuration
 - N/A — no config keys affect host-runner registration today. `LL_HOST_CLI` is env-only; `_HOST_RUNNER_REGISTRY` is module-level. The fake is reachable by `LL_HOST_CLI=fake` after registration without any config changes.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- **`_apply_automation_env()` helper must be called from `FakeHostRunner.build_streaming`** — every runner's `build_streaming` invokes `_apply_automation_env(env, automation)` (definition at `scripts/little_loops/host_runner.py:2203-2220`; call sites on all 8 real runners at `:578, :886, :1295, :1487, :1683, :1883`). The helper neutralizes `LL_AUTOMATION` / `LL_AUTOMATION_PROFILE` to `""` (present-but-falsy) on the non-automation path because env merging treats absent-key as "inherit", not "clear". A new runner that skips this helper silently leaks inherited automation into the returned env.
+- **`scripts/tests/conformance/test_host_conformance.py:_HOST_BINARY` (`:52-61`) must be extended or the fake must be exempt** — the suite's binary-availability probe (`shutil.which(binary) is None` at `:100-101`) keys off this dict, not `HOST_BINARY_NAMES`. Today it enumerates the eight real runners; without a `"fake"` row the dict `.get(host)` returns `None` and the skip predicate falls through (so the fake's tests run unconditionally — desired) — but the `name → binary` map becomes the second drift gate the implementation must keep current alongside `test_host_runner.py:2359-2371`.
+- **`CapabilityNotSupported` (`scripts/little_loops/host_runner.py:277-285`) — UserWarning subclass, the canonical signal when a capability-gated caller asks for a feature the active host lacks** — relevant to the fake's per-test capability profile: declaring some flags `False` lets the conformance suite assert the right `CapabilityNotSupported` is raised by consumers like `_structured_output_args` (`:2365-2383`). Subclasses `UserWarning` so test code can capture via `pytest.warns` and production code can route through `warnings.simplefilter("error", CapabilityNotSupported)`.
+- **`scripts/tests/spike/host_compose/executor_shim.py:ALLOWED_INVOCATION_ATTRS` (`:29-31`) — auditor-wrapped `HostInvocation` precedent** — the spike defines `ALLOWED_INVOCATION_ATTRS = frozenset({"binary", "args", "env", "capabilities"})` and `ALLOWED_RUNNER_PROTOCOL_ATTRS = frozenset({name, detect, build_streaming, build_blocking_json, build_version_check, build_detached, describe_capabilities})` to mechanically assert "executor touches only the abstract interface." Reusable as a behavioral test: a conformance case can wrap the returned `HostInvocation` in an audit shim that fails if the executor reads any attribute outside the protocol surface.
+- **Cross-runner parametrize has five sites, not one** — `scripts/tests/test_host_runner.py:85, 92, 285, 300, 363, 1949` each parametrize over runner classes with `@pytest.mark.parametrize("runner_cls", [...])`; the registry-derived list at `:2216-2244` is the most visible site but not the only one. Adding the fake to the registry auto-extends every site — verify all five when wiring.
+- **`hooks/__init__.py:_dispatch_table` built-in-shadow rule is the only extension-API precedent** — no public extension API exists for runners; `hooks/__init__.py:189-190` documents the same built-in-wins precedence the host runner registry follows at `host_runner.py:1992-1994`. The fake must be a built-in; downstream projects cannot register an override without patching `_HOST_RUNNER_REGISTRY` directly.
 
 ## Program Design
 
@@ -122,6 +152,17 @@ A loop-run author needs to assert that orchestration paths do the right thing un
 5. Add behavior-level conformance tests for ordering / abort-mid-turn / recovery-after-failed-start; keep them inside the unit suite with no env gate.
 6. Update `scripts/tests/conformance/test_host_conformance.py` so behavioral (not just constructable) coverage is the default for the fake entry.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/host_runner.py:_remediation_hint()` (`:2283-2289`) — replace the static eight-host literal with `sorted(_HOST_RUNNER_REGISTRY)` so the hint stays drift-free as runners come and go (cross-references ENH-3460)
+- Update `scripts/tests/test_host_runner.py:2359-2371` — rename `test_has_all_eight_known_binaries` to `test_has_all_nine_known_binaries` and add the fake's chosen `binary` basename to the asserted set
+- Update `scripts/tests/test_wiring_guides_and_meta.py:381-392` — add a `fake` row to `docs/reference/HOST_COMPATIBILITY.md` `## Host tiers` table (`:16-31`), OR document the fake as a test fixture excluded from the table
+- Update `docs/reference/HOST_COMPATIBILITY.md:462-472, :491-507` — Orchestration CLI section prose + `[^orch]` footnote; update "eight concrete runners" to include or explicitly exclude `FakeHostRunner`
+- Update `docs/ARCHITECTURE.md:857-875` — Host Runner Layer table; add a one-sentence footnote noting `FakeHostRunner` is a test fixture registered for the conformance suite
+- Update `docs/development/TESTING.md:1075-1088` — Live-spawn guard docs; add a sentence on the fake's basename carve-out rationale (conformance layer never execs the returned `HostInvocation`)
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
@@ -146,10 +187,20 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 - **`MockActionRunner`'s two precedence modes** (`scripts/tests/test_fsm_executor.py:48-152`): `use_indexed_order=True` walks `results: list[tuple[str, dict]]` by call count (`:108-119`); `use_indexed_order=False` (default) pattern-matches each result against action text (`:122-132`). For FEAT-3454 the **indexed-order mode is the natural fit** — each directive in the prompt is consumed in order, no pattern matching needed. `set_result()` / `always_return()` (`test_fsm_executor.py:144-146`) are the API shapes to mirror for `parse_directives` if the directive count varies at runtime (e.g. a script with `loop 3: action_output …` block)
 - **`scripts/tests/conformance/conftest.py:10-27`** defines the `--conformance-host` option + `isolated_env` fixture that gate the conformance suite locally. The fake's conformance tests should sit inside `scripts/tests/conformance/test_host_conformance.py` and inherit both — the registry-driven parametrize at `test_host_conformance.py:65` (`list(_HOST_RUNNER_REGISTRY.keys())`) auto-extends when `"fake"` is registered, so no manual list update needed; a `--conformance-host=fake` filter selects only the fake's tests in isolation
 - **`scripts/tests/conftest.py:400-427` — `_fail_on_live_host_cli`** function-scoped enforcement runs alongside the session-scoped `_install_no_live_host_cli` at `:353-397`. The fake's conformance tests must NOT trigger this — `LL_HOST_CLI=fake` is the only env var they should set, and the fake's `detect()` must return `False` so it never auto-resolves in a test that does NOT pin `LL_HOST_CLI` (otherwise an un-set env would fall through to the registry and pick `"fake"` where a real host was expected)
+   > ⚠ Superseded — `detect()` is unused by `resolve_host`; `_PROBE_ORDER` absence gates it
 - **`test_satisfies_host_runner_protocol` is the canonical one-liner shape** — 8 precedent sites at `scripts/tests/test_host_runner.py:679, 1024, 1105, 1163, 1303, 1484, 1676, 1862`. `TestFakeHostRunner` must end with this assertion as `assert isinstance(FakeHostRunner(), HostRunner)` (or equivalent via `runner_cls()`)
 - **`hooks/__init__.py:_dispatch_table` carries the same "Built-ins shadow extensions on collision" precedence rule as `_HOST_RUNNER_REGISTRY`** (`:189-190`). The rule is consistent across both registries — registering `FakeHostRunner` as a built-in means a downstream extension that also names `"fake"` is silently shadowed, the same way `hooks/__init__.py` shadows extension-provided intents. Documenting this in the integration wiring prevents future "why isn't my override taking effect" confusion
 - **SKIP-not-FAIL convention with `f"[{host}/{golden_path}] ..."` diagnostic strings** is the established posture for conformance tests (`scripts/tests/conformance/test_host_conformance.py:96-109` skips on `shutil.which(binary) is None` and `HostNotConfigured`). The fake is structurally exempt from both predicates (no real binary, doesn't raise `HostNotConfigured`), so its conformance tests run unconditionally — but should follow the same `f"[{host}/{golden_path}] ..."` diagnostic format on every assertion, mirroring `scripts/tests/test_streaming_cache_parity.py:182-186`
 - **`cli/verify_host_map.py:_check_runtime_contradiction` is the exact function name** for the registry-vs-`HOST_CAPABILITIES` cross-validation (refs at `cli/verify_host_map.py:109, :116, :119`). To keep `ll-verify-host-map` clean without documenting the fake in `HOST_COMPATIBILITY.md`, add an explicit `"fake"` exclusion inside `_check_runtime_contradiction` — the fake's role as a test fixture is the carve-out, not its capability profile. (Mirror: `HOST_COMPATIBILITY.md`'s parity matrix has no precedent for test-fixture rows, so a documented caveat is a second-route alternative.)
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- **`detect()` is unused on the auto-detect path; auto-resolution is gated by `_PROBE_ORDER` membership alone** — `resolve_host()` at `scripts/little_loops/host_runner.py:2316-2336` does `shutil.which(binary)` directly on each `_PROBE_ORDER` entry; it never calls `runner.detect()`. The Protocol's `detect()` is required for the type surface (validated via `isinstance(runner, HostRunner)`) but its return value is moot for resolution. A registered-but-`_PROBE_ORDER`-absent fake cannot auto-resolve regardless of what `detect()` returns. (Refs: `host_runner.py:1033-1106` OpenCodeRunner docstring, `test_host_runner.py:1067-1078` `test_opencode_runner_gated_from_auto_probe`.)
+- **Wire event types vs FSM event constants are distinct surfaces** — the stream-JSON consumer at `scripts/little_loops/subprocess_utils.py:628-697` dispatches on `event.get("type") ∈ {"system", "init", "assistant", "result", "turn.completed"}` (and `subtype == "error_max_structured_output_retries"` at `:2518-2532`/`evaluators.py:1279, :1540`). FSM-level constants like `HOST_PRESSURE_ABORT_EVENT` / `HOST_BUDGET_EXCEEDED_EVENT` at `fsm/host_guard.py:33-38` and `fsm/executor.py:51-56, :117-142` flow through the FSM envelope (`envelope(...)`), not the host CLI stdout. The directives grammar's keyword set must be a subset of wire event type strings, NOT FSM constants — emitting `HOST_PRESSURE_ABORT_EVENT` to stdout would never match the consumer's dispatch and would silently fall through the `else: continue` at `subprocess_utils.py:718-719`.
+- **`HOST_BINARY_NAMES` is registry-derived; registering the fake adds its basename to the live-spawn guard's match set** — `host_runner.py:2028-2030` derives `HOST_BINARY_NAMES = frozenset(cls().describe_capabilities().binary for cls in _HOST_RUNNER_REGISTRY.values())`, and `scripts/tests/conftest.py:163-172, :237-256, :353-397` patches `subprocess.run`/`Popen` to fail any spawn whose `argv[0]` basename is in that set (with a `["--version"]` carve-out). Consequence: the fake's conformance tests must never actually exec the returned `HostInvocation` — only invoke `.build_*` and inspect the returned `HostInvocation` directly. The spike's deliberate-basename precedent at `scripts/tests/spike/host_compose/fakes.py:33-38` (`"fake-verbose-divergent"` / `"fake-minimal-divergent"`, with comment naming this guard explicitly) is the model — pick a basename that is recognizable as fake but does not collide with any real CLI.
+- **Terminal-event discipline has a precedent at the consumer side, none at the producer side** — `scripts/tests/test_subprocess_utils.py:2589-2611` defines `_NeverEOFStdout(lines: list[str])` whose `read_past_result` flag + `"LEAKED"` sentinel prove the reader failed to stop on terminal `result`; `TestRunClaudeCommandResultBreak` at `:2613-2720` asserts `fake_stdout.read_past_result is False` and `"LEAKED" not in result.stdout`. Consumer side: `subprocess_utils.py:730-735` does `if result_seen: break` after draining the current batch (comment at `:691-695` names the pipe-EOF-orphan rationale). No producer-side fake asserts "exactly one terminal, last" — the FEAT-3454 fake would be the first. The producer-side guarantee is best enforced by emitting a single `result` envelope and refusing to emit anything after it (mirror the consumer's `read_past_result` test by giving the fake a `read_past_terminal` debug flag a behavioral test can flip).
+- **No prior precedent exists for `FakeHostRunner`, directives-in-prompt, `__init__(capabilities=...)` on a HostRunner, or producer-side terminal-event discipline** — tree-wide searches for `class FakeHostRunner`, `directives language` / `DSL in prompt string`, `__init__(self, capabilities=...)` on a HostRunner, and `terminal event discipline` all returned zero hits. The fake defines new ground; closest analogs are spike-local fakes (`scripts/tests/spike/host_compose/fakes.py`, NOT registered in `_HOST_RUNNER_REGISTRY`) and `MockActionRunner` (`scripts/tests/test_fsm_executor.py:48-152`, which targets a different protocol — ActionRunner, not HostRunner). The conformance tests added here will be the first behavioral coverage of orchestration event-ordering/abort/recovery paths without a live host.
+- **Per-instance `HostCapabilities` override has no existing `__init__(capabilities=...)` precedent on a HostRunner; the precedent is per-invocation via `HostInvocation(capabilities=...)`** — every real runner declares `capabilities = HostCapabilities(...)` as a class attribute (`host_runner.py:506, :1046, :1122`), and capability-driven branches read `invocation.capabilities.<flag>` (`_structured_output_args` at `host_runner.py:2365-2383`). Test precedent at `scripts/tests/test_fsm_evaluators.py:1062-1089` wires `MagicMock().build_blocking_json.return_value = HostInvocation(capabilities=HostCapabilities(structured_output=False))`. For a registered fake whose per-test profile must flow through every `build_*` call, the canonical shape is: store the override on the instance, and pass it as `HostInvocation(..., capabilities=self._capabilities_override or type(self).capabilities)` inside each `build_*` — this matches `host_compose/fakes.py:88-95, :108-111, :171, :184` where each `build_*` sets `capabilities=HostCapabilities(...)` inside the `HostInvocation(...)` ctor. `class FakeHostRunner(capabilities: HostCapabilities | None = None)` is acceptable but is a new shape — there is no real runner with it.
 
 ## Impact
 
@@ -172,6 +223,11 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 | `.claude/CLAUDE.md` § Host CLI Abstraction | `resolve_host()` is the only entry point for new host call sites; the fake registers here so `resolve_host("fake")` works |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T06:43:59 - `535817ba-f87e-4270-be40-3b5e78ddef13.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-09-12T06:37:39 - `fd455bb5-43a5-4cb2-ab0e-353cbf4886b2.jsonl`
+- `/ll:verify-issues` - 2026-09-12T06:34:45 - `062d49e4-2eda-402d-b2d9-86b1a4b53aa4.jsonl`
+- `/ll:wire-issue` - 2026-09-12T06:29:51 - `f67590da-6478-467b-b9ac-c3f6855d5bad.jsonl`
+- `/ll:refine-issue` - 2026-09-12T06:14:52 - `d07828f4-6645-496e-92fa-00556a005640.jsonl`
 - `/ll:refine-issue` - 2026-09-12T04:47:19 - `63ed2222-46d0-4175-b050-49b2a402d5c5.jsonl`
 - `/ll:refine-issue` - 2026-09-12T04:06:04 - `b7b7f9e7-8f55-4db9-84ab-f495556f1242.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:49:49 - `8c6cc97d-774e-45fd-be34-14d7ed48d65c.jsonl`
