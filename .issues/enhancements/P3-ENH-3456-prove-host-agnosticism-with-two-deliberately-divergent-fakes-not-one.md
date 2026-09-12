@@ -151,6 +151,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 | `.claude/CLAUDE.md` § Host CLI Abstraction | Enforces the host-agnostic property at the call-site level via `resolve_host()` — the divergent-fakes composition test guards the same invariant at the registry level |
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-12T04:44:10 - `3967c497-38bc-427e-bf31-231e65faeadf.jsonl`
 - `/ll:spike` - 2026-09-12T04:42:54 - `2fe9d3e8-5ada-4b6e-ae89-95fe8d84fff1.jsonl`
 - `/ll:refine-issue` - 2026-09-12T03:58:11 - `e3bfc610-fb65-4e08-98ec-8d101d5a459d.jsonl`
 

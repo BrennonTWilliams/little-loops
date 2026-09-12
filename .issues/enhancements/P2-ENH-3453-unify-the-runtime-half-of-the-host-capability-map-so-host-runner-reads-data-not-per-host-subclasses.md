@@ -8,7 +8,7 @@ discovered_date: '2026-09-11'
 labels:
 - multi-host
 - ll-hosts
-decision_needed: true
+decision_needed: false
 ---
 
 ## Summary
@@ -50,15 +50,37 @@ The pattern-finder surfaced two live decisions the implementer must resolve know
 
 **Option B** (preserve current shape-disjoint dataclasses; add a small mapping helper that derives `HostCapabilities` from `HostCapabilityEntry`, analogous to `_select_frontmatter_fields` at `adapters/core.py:119-182`): ENH-2873's chosen discipline is preserved; build-time and runtime halves stay individually readable. Trade-off: the mapping helper is a third place to update when a flag is added; `_check_runtime_contradiction` must enumerate shared fields explicitly.
 
-**Recommended**: Option A — the build-time half already broke Option B's discipline the moment it shipped the `verify_host_map.py` runtime check (which exists *only* to mechanically catch the two views drifting), so the discipline no longer earns its keep. One source of truth removes the check's premise. Opencode/pi gap (currently runtime-only in `_HOST_RUNNER_REGISTRY`) is the principal implementer action: add entries to `HOST_CAPABILITIES` for both so `set(HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY)` is achievable (per `test_keys_match_emitter_map` shape, `tests/test_verify_host_map.py:17-21`).
+> **Selected:** Option B — ENH-2873 explicitly chose Option B 11/12 vs Option A 4/12 on 2026-07-28, codified at `adapters/capabilities.py:14-29` ("Option B, decided 2026-07-28"). Option A's "single source of truth" claim is partial — the `CapabilityReport` 3-valued `Literal["full","partial","unsupported"]` surface with prose `note` strings (consumed by `cli/doctor.py`, `cli/action.py`, `mcp_server/tools.py`) cannot be absorbed into `HostCapabilityEntry`, so even under Option A two views of capability data remain. The mapping-helper pattern has direct working precedents in this codebase (`_select_frontmatter_fields` at `adapters/core.py:119-182`; `CheckResult` at `cli/doctor.py:61-79`). Opencode/pi gap (currently runtime-only in `_HOST_RUNNER_REGISTRY`) is the principal implementer action under either option: add entries to `HOST_CAPABILITIES` for both so `set(HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY)` is achievable (per `test_keys_match_emitter_map` shape, `tests/test_verify_host_map.py:17-21`).
 
 The companion public-surface decision is folded in:
 
 **Option 1** (keep `describe_capabilities()` as a thin `return load_runtime_capabilities(self.name)` wrapper on the base `HostRunner`, mirroring the `AutomationContext` `resolve_automation` deprecation-shim shape at `host_runner.py:2223-2280`): zero consumer-side churn; preserves the public surface verbatim.
 
+> **Selected:** Option 1 — preserves every external caller via the in-place wrapper; Option 2 is the right cleanup once consumers have been migrated in a follow-up.
+
 **Option 2** (delete `describe_capabilities()`; thread `load_runtime_capabilities(host_id)` through every consumer): cleaner; matches ENH-2883's full emitter collapse precedent. Touches ~30 consumer sites catalogued under `## Integration Map → Dependent Files`.
 
 **Recommended**: Option 1 for v1 (the public surface is exported through `scripts/little_loops/__init__.py:33` and `scripts/little_loops/cli/__init__.py:66`; an in-place wrapper preserves every external caller). Option 2 is the right cleanup once the runtime map is the only source of truth and consumers have been migrated in a follow-up.
+
+### Decision Rationale
+
+**Decision point:** Option A vs Option B (data model — extend `HostCapabilityEntry` to absorb `HostCapabilities` vs preserve disjoint dataclasses with a mapping helper)
+
+**Selected:** Option B
+
+**Reasoning:** ENH-2873 explicitly chose Option B 11/12 vs Option A 4/12 on 2026-07-28, codified at `adapters/capabilities.py:14-29` ("Option B, decided 2026-07-28"). Option A reverses that decision without delivering the unification that would justify the reversal — the `CapabilityReport` 3-valued `Literal["full","partial","unsupported"]` surface with prose `note` strings (consumed by `cli/doctor.py`, `cli/action.py`, `mcp_server/tools.py`) has no shape-compatible home on `HostCapabilityEntry`, so even under Option A two views of capability data remain. The mapping-helper pattern has direct working precedents in this codebase (`_select_frontmatter_fields` at `adapters/core.py:119-182`; `CheckResult` at `cli/doctor.py:61-79`).
+
+**Scoring summary:**
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 1/3 | 3/3 |
+| Simplicity | 2/3 | 1/3 |
+| Testability | 2/3 | 3/3 |
+| Risk | 2/3 | 2/3 |
+| **Total** | **7/12** | **9/12** |
+
+**Trade-off accepted:** Option B costs ~7 places per new flag (entry field + helper rule + per-runner class literal + per-runner `describe_capabilities()` + per-host tests + drift check); Option A's ~3 places per flag buys a partial unification that does not reach the `CapabilityReport` consumers.
 
 ## Integration Map
 
@@ -69,7 +91,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 ### Files to Modify
 - `scripts/little_loops/host_runner.py` — add `load_runtime_capabilities(host_id)` (the single data-driven lookup); collapse the 9 `describe_capabilities()` overrides at lines 490, 662, 962, 1094, 1170, 1354, 1535, 1741, 1943 (ClaudeCodeRunner, CodexRunner, OpenCodeRunner, PiRunner, KimiRunner, QwenRunner, GeminiRunner, OmpRunner). Lines 1995-2004 hold `_HOST_RUNNER_REGISTRY`; the `name` class attribute on each runner is already the cross-reference key to `HOST_CAPABILITIES`.
 - `scripts/little_loops/adapters/capabilities.py` — `HOST_CAPABILITIES` (line 68) is the source-of-truth map; `HostCapabilityEntry` (line 49) is the candidate shape to extend with the runtime flag fields (Option A) or to mirror via a mapping helper (Option B).
-- `scripts/little_loops/cli/verify_host_map.py` — extend `_check_runtime_contradiction` (lines 100-128) so the runtime drift guardrail becomes meaningful (today `shared_fields` is empty by Option-B design, making the check a no-op).
+- `scripts/little_loops/cli/verify_host_map.py` — extend `_check_runtime_contradiction` (lines 100-128) so the runtime drift guardrail becomes meaningful (today `shared_fields` is empty by disjoint-dataclass design, making the check a no-op).
 
 ### Dependent Files (Callers/Importers) — `describe_capabilities()` consumers
 - `scripts/little_loops/cli/action.py:15` — `ll-action capabilities`
@@ -115,7 +137,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 | `scripts/little_loops/host_runner.py:490,662,962,1094,1170,1354,1535,1741,1943` (per-subclass `describe_capabilities()`) | Returns `HostCapabilities(...)` instance per runner with class-specific flag flips | CHANGED | Replaced by single data-driven lookup; thin wrapper or deleted per `## Proposed Solution` |
 | `_HOST_RUNNER_REGISTRY[host].capabilities` (class-level `HostCapabilities` instance on each runner, e.g. `ClaudeCodeRunner` at `host_runner.py:506-516`) | Class-level default for the per-host capability flags | CHANGED | Either removed in favor of map lookup or kept as a fallback for hosts not in `HOST_CAPABILITIES` |
 | `scripts/little_loops/adapters/capabilities.py:68` (`HOST_CAPABILITIES`) | Build-time per-host capability map, consumed by adapter emitters | PRESERVED | Source of truth for both build-time and runtime halves after this issue lands |
-| `scripts/little_loops/cli/verify_host_map.py:100-128` (`_check_runtime_contradiction`) | Drift check that compares `HOST_CAPABILITIES[host]` to `_HOST_RUNNER_REGISTRY[host].capabilities` | CHANGED | Becomes the runtime drift guardrail (currently a no-op because `shared_fields` is empty by Option-B design) |
+| `scripts/little_loops/cli/verify_host_map.py:100-128` (`_check_runtime_contradiction`) | Drift check that compares `HOST_CAPABILITIES[host]` to `_HOST_RUNNER_REGISTRY[host].capabilities` | CHANGED | Becomes the runtime drift guardrail (currently a no-op because `shared_fields` is empty by disjoint-dataclass design) |
 
 ## Program Design
 
@@ -181,5 +203,6 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 | `.claude/CLAUDE.md` § Host CLI Abstraction | Mandates `resolve_host()` as the only entry point for new host call sites; the data-driven lookup extends that factory |
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-12T04:45:13 - `4d557e48-0501-409c-ace4-f84bc66f4547.jsonl`
 - `/ll:refine-issue` - 2026-09-12T04:00:17 - `b183c7f4-04a5-40c0-a07a-17f902d66b2e.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:48:54 - `d9feb271-85a4-4dac-ac6d-ad5d11e623a8.jsonl`

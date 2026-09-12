@@ -1,0 +1,12 @@
+{
+  "id": "0f96b70c-59c8-4321-b7b8-2a56a9453a09",
+  "type": "decision",
+  "timestamp": "2026-09-12T04:45:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-2873 explicitly chose Option B 11/12 vs Option A 4/12 on 2026-07-28; Option A's 'single source of truth' is partial because CapabilityReport 3-valued status + prose notes cannot be absorbed into HostCapabilityEntry; mapping-helper pattern has direct precedents (_select_frontmatter_fields, CheckResult).",
+  "rule": "Option B (preserve disjoint HostCapabilityEntry/HostCapabilities dataclasses; mapping helper derives HostCapabilities from HostCapabilityEntry)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (extend HostCapabilityEntry to absorb HostCapabilities flags \u2014 reverses ENH-2873's explicit decision without unifying the CapabilityReport surface)",
+  "issue": "ENH-3453"
+}
