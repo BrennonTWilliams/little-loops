@@ -13,6 +13,12 @@ relates_to:
 - FEAT-3455
 - ENH-3459
 - ENH-3460
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 16
+score_test_coverage: 24
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 ## Summary
@@ -470,6 +476,7 @@ was wrong and fixed, not an outstanding action item).
   is net-new, unimplemented work.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T18:34:13 - `4c64a9f3-3fe1-44fa-8a00-bbded475e3ef.jsonl`
 - Manual review (ENH-3459 cross-check) - 2026-09-12 - `main()` prompt location changed from bare `argv[-1]` to fence-locates-prompt with `argv[-1]` fallback, because `_structured_output_args` appends `--json-schema <json>` after the prompt; "five `build_*`" corrected to four
 - Manual pre-implementation review - 2026-09-12 - PATH prepend + fail-not-skip (CI conformance job never had `.venv/bin` on PATH); `hang` re-modeled (grace kill needs `result` + `hang`); `@@fake`/`@@end` fence decided (`@`-prefix collides with file mentions); `result structured=` for `run_blocking_json`; flush-per-line; stderr-interleaving caveat; `request_shutdown` from `stream_callback`; prompt-last contract; capability override is direct-construction-only; seven-scenario matrix moved to FEAT-3455 (was duplicated)
 - `/ll:verify-issues` - 2026-09-12T17:14:12 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`

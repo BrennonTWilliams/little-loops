@@ -1,6 +1,7 @@
 ---
 id: ENH-3459
-title: Second divergent fake host + composition test suite (TestCompositionThroughExecutor, TestExecutorTouchesOnlyAbstractInterface, TestRegressionGuard)
+title: Second divergent fake host + composition test suite (TestCompositionThroughExecutor,
+  TestExecutorTouchesOnlyAbstractInterface, TestRegressionGuard)
 type: ENH
 priority: P3
 status: open
@@ -16,6 +17,12 @@ blocked_by:
 relates_to:
 - ENH-3453
 - ENH-3460
+confidence_score: 80
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 ## Summary
@@ -454,7 +461,19 @@ of what was wrong and fixed, not an outstanding action item).
   the grep-verified line citations above (no negative/"never called" claims in
   this issue to check via `callers-of`/`references`).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-12_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- `blocked_by: FEAT-3454` is still `open` — `FakeHostRunner`, `ll-fake-host`, `TEST_ONLY_HOSTS`/`TEST_ONLY_BINARIES` don't exist yet.
+- `blocked_by: FEAT-3455` is still `open` — `_run_and_capture`, `Observed`, `assert_event_kinds`, `live_conformance` don't exist yet.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T18:35:45 - `39734cb1-4330-4618-b589-c95b4733611a.jsonl`
 - Manual review - 2026-09-12 (second pass) - fixed the `run_blocking_json` composition case (`--json-schema` lands after the prompt, so `argv[-1]` is the schema — FEAT-3454 `main()` amended to locate the prompt by fence); AST checks widened to every `HostInvocation`/`HostRunner`-taking function in both modules, `getattr` reads, `name` literals and `in`-collections, registry-derived concrete-runner names; `__protocol_attrs__` fallback pinned to `typing._get_protocol_attrs`; `conformance` marker per class so the AST gates run in the unit job; "five `build_*`" → four; dropped `**kw` from `build_detached`; ENH-3453 landing-order constraint recorded
 - `/ll:verify-issues` - 2026-09-12T17:05:34 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:issue-size-review` - 2026-09-12T06:09:06 - `a6c3ba7b-8baf-4ae7-b742-fb9d4cbad25c.jsonl`

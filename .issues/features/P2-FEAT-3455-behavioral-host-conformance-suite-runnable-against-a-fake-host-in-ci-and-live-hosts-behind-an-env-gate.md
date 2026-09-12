@@ -15,6 +15,12 @@ depends_on:
 relates_to:
 - ENH-3459
 - ENH-3460
+confidence_score: 70
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 ## Summary
@@ -345,7 +351,19 @@ what was wrong and fixed, not an outstanding action item)
 - Graph tools: `ll-code` (provider=codegraph, freshness=fresh) available but
   not needed — all checks resolved via direct file/line inspection.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-12_
+
+**Readiness Score**: 70/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 89/100 → HIGH CONFIDENCE
+
+### Concerns
+- Criterion 5 scored 0: the hard dependency `FEAT-3454` is `depends_on` (soft), not `blocked_by`, so it doesn't trigger the Dependencies Hard Override — but `format-check`'s `soft_dep_hard_edge: [FEAT-3454]` confirms it functions as a hard edge in practice, and `scripts/little_loops/fake_host.py` genuinely does not exist yet. This issue cannot be started until FEAT-3454 lands; consider whether `depends_on` should be `blocked_by`.
+- Criterion 4 capped at 10/20 by `missing_behavior_parity: [docs/development/CONFORMANCE.md]` — the issue rewrites this doc but has no `### Behavior Parity` subsection describing what the rewrite replaces.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T18:35:12 - `a9b86d47-3a71-4e77-ab37-f0478a56bd37.jsonl`
 - Manual pre-implementation review - 2026-09-12 - Tier 1 rewritten around a per-host `_STREAM_SHAPE` table (Codex has no `system/init` and `turn.completed` never sets `result_seen`, so "streaming ⇒ init first" and "consumer stops after terminal" were false for a real host); failure/abort invariants moved out of the live tier; callback-derived observation model made explicit; `streaming` stream-assertion dropped (fake executable never sees capabilities; override is direct-construction-only); `hang` split into wall-clock vs `result`+`hang` grace kill; Tier 2 made the sole owner of the scenario matrix (was duplicated in FEAT-3454); guard opt-in moved to a root-conftest hook + module global; CI PATH gap noted
 - `/ll:verify-issues` - 2026-09-12T17:10:03 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:06:35 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`

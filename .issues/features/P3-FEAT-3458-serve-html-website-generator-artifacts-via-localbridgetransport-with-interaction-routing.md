@@ -5,14 +5,19 @@ type: FEAT
 status: open
 discovered_date: 2026-09-11
 discovered_by: capture-issue
-confidence_score: 85
-outcome_confidence: 80
+confidence_score: 70
+outcome_confidence: 64
 unproven_mechanism: true
 decision_needed: false
 reconcile_attempted: true
 blocked_by:
 - EPIC-3299
 - EPIC-3212
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
+spike_needed: true
 ---
 
 # FEAT-3458: Serve `html-website-generator` Artifacts via `LocalBridgeTransport` with Interaction Routing
@@ -459,10 +464,29 @@ resolve the FSM-A/FSM-B decision and reconcile the Proposed Solution/
 Implementation Steps sections to match (both destructive rewrites — left for
 `/ll:reconcile-issue` or `/ll:decide-issue`, not applied here).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-12_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (hard override)
+**Outcome Confidence**: 64/100 (capped) → LOW
+
+### Concerns
+- Readiness sums to 70 (would be PROCEED WITH CAUTION on aggregate alone), but the Dependencies Hard Override (BUG-3051) forces STOP regardless of the sum.
+- `unproven_mechanism: true` remains set from an earlier finding about FSM-A's blocking Ctrl-C wait — that specific concern is moot now that FSM-B (no FSM state) was selected, but a genuinely new unproven mechanism has since emerged: no per-request-id SSE correlation pattern or `_make_inbound_dispatch_handler`-shaped worker exists anywhere in the repo today (Program Design's own Codebase Research Findings confirm this is greenfield). The flag is still substantively justified, just for a different reason than originally recorded.
+
+### Gaps to Address
+- **Unresolved dependencies (hard override)**: `blocked_by` lists EPIC-3299 (status: Open) and EPIC-3212 (status: Open) — neither is `done`/`cancelled`. Wait for/prioritize these epics, or remove the dependency from `blocked_by` if it no longer applies.
+- **CLAIM_GAP (advisory, caps Criterion 4 at 10)**: `format-check` reports `stale_cli_flag: "ll-artifact serve-run (no such subcommand)"` — expected for a not-yet-built CLI surface that this issue itself proposes to add, not a spec defect; no action needed beyond awareness.
+
+### Outcome Risk Factors
+- Greenfield per-request-id SSE dispatch mechanism (no existing precedent for correlating broadcast SSE events by request id, or for a subprocess-backed inbound-queue worker) — the Outcome Confidence Cap (ENH-3350) applies because `unproven_mechanism` is set and no spike has been attempted (`spike_attempted`/`spike_completed` both unset). Consider `/ll:spike` on the dispatch-handler + per-request SSE tagging shape before implementation to de-risk Criterion A/C further.
+
 ---
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-09-12T18:36:19 - `ee8721cf-6b02-4322-9968-721a9a834aac.jsonl`
 - `/ll:reconcile-issue` - 2026-09-12T18:06:49 - `7988af27-7da4-40c3-9701-313c7f94ad7f.jsonl`
 - `/ll:decide-issue` - 2026-09-12T18:00:59 - `5a21ce53-2a21-4819-a885-1e8204f7adec.jsonl`
 - `/ll:decide-issue` - 2026-09-12T17:51:04 - `147795d7-8818-4172-bf05-d3558fb89722.jsonl`

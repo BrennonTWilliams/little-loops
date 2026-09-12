@@ -1,6 +1,7 @@
 ---
 id: ENH-3460
-title: Doc sync for the second test-only host runner (ARCHITECTURE, API, CONFORMANCE, TESTING)
+title: Doc sync for the second test-only host runner (ARCHITECTURE, API, CONFORMANCE,
+  TESTING)
 type: ENH
 priority: P3
 status: open
@@ -16,6 +17,12 @@ blocked_by:
 relates_to:
 - ENH-3453
 - ENH-3456
+confidence_score: 85
+outcome_confidence: 77
+score_complexity: 22
+score_test_coverage: 10
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 ## Summary
@@ -238,7 +245,21 @@ needed anywhere else; evidence (`ll-verify-evidence --json`) and decisions
 (`ll-issues decisions list --type rule --enforcement required --active-only`)
 both remain clean. Verdict unchanged: **VALID**.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-12_
+
+**Readiness Score**: 85/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 77/100 → Good
+
+### Gaps to Address
+- Dependencies Hard Override (BUG-3051): `blocked_by` lists ENH-3459, currently
+  `open` (not `done`/`cancelled`). This issue's own text says to "start only
+  from a green `main`" after ENH-3459 merges — the block is real, not stale.
+  Remedy: wait for ENH-3459 to land, then re-run this check.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T18:35:39 - `ee8721cf-6b02-4322-9968-721a9a834aac.jsonl`
 - Manual review - 2026-09-12 (second pass) - added the stale six-flag `HostCapabilities` row fix in ARCHITECTURE, a test-only-host policy for the CONFORMANCE baseline board and "Adding a New Host" step 3, and the marker-placement detail for the Composition suite section; ENH-3453 landing-order hedge resolved upstream (ENH-3453 step 4 now subtracts `TEST_ONLY_HOSTS`)
 - `/ll:verify-issues` - 2026-09-12T17:09:11 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:04:12 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
