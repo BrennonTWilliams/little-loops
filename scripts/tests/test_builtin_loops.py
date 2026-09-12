@@ -5087,6 +5087,74 @@ class TestAutoRefineAndImplementLoop:
             f"silent-swallow regression: {result.stderr!r}"
         )
 
+    def test_finalize_does_not_count_cancelled_as_closed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3449: a cancelled leaf must NOT count as closed. `ll-issues list
+        --status done` includes cancelled in its result set (search.py:156),
+        which made the previous shellout include them too — but a cancelled
+        issue is a *deliberate non-closure* (rate-limit abort, refine failure,
+        user cancellation) and counting it as closed would inflate the closure
+        metric and could flip verdict to success on a run that closed nothing.
+
+        The BUG-3449 fix replaced the shellout with an in-process walk that
+        matches `status: done` only — same as the epic-branch
+        `git grep -lE "^status: *done"` arm. This test pins that filter so a
+        future refactor cannot silently re-introduce the over-reach by
+        matching `cancelled` (or any other terminal state) again.
+
+        Bypasses `_run_finalize` because the helper hard-codes `status: done`
+        in its fixture writer (line 4730) — to test the cancelled-not-closed
+        contract we need a custom fixture with `status: cancelled`, which the
+        helper doesn't expose.
+        """
+        import subprocess
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        # FEAT-1: done in place (counts as closed).
+        # FEAT-2: cancelled in place (must NOT count as closed).
+        # Both have valid frontmatter so the regex matches the status line —
+        # the test then asserts the cancelled match is filtered out.
+        done_dir = run_dir / ".issues" / "features"
+        done_dir.mkdir(parents=True)
+        (done_dir / "P3-FEAT-1-x.md").write_text(
+            "---\nid: FEAT-1\nstatus: done\n---\n"
+        )
+        (done_dir / "P3-FEAT-2-x.md").write_text(
+            "---\nid: FEAT-2\nstatus: cancelled\n---\n"
+        )
+        # Mirror the layout _run_finalize produces for the rest of the fixtures.
+        p = "auto-refine-and-implement"
+        (run_dir / f"{p}-completed-baseline.txt").write_text("")
+        (run_dir / f"{p}-done-baseline.txt").write_text("")
+        (run_dir / f"{p}-completed-now.txt").write_text("")  # no completed/ entries
+        completed_dir = run_dir / ".issues" / "completed"
+        completed_dir.mkdir(exist_ok=True)
+        (run_dir / "autodev-passed.txt").write_text("FEAT-1\nFEAT-2\n")
+        (run_dir / "autodev-skipped.txt").write_text("")
+        (run_dir / "autodev-gate-blocked.txt").write_text("")
+        (run_dir / "autodev-decision-unresolved.txt").write_text("")
+        (run_dir / f"{p}-errored.txt").write_text("")
+        action = _unescape_ll_python(data["states"]["finalize"].get("action", ""))
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${captured.issue_set.output}", "")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, timeout=60
+        )
+        assert result.returncode in (0, 1), (
+            f"unexpected returncode {result.returncode} stderr={result.stderr!r}"
+        )
+        summary = json.loads((run_dir / "summary.json").read_text())
+        assert summary["closed"] == 1, (
+            f"only FEAT-1 (done) must count as closed; "
+            f"FEAT-2 (cancelled) is a deliberate non-closure: {summary}"
+        )
+        assert summary["not_closed"] == 1, (
+            f"FEAT-2 (cancelled) must fall through to not_closed, "
+            f"not be hidden by closure-count inflation: {summary}"
+        )
+
     def test_finalize_summary_has_closure_keys(self, data: dict, tmp_path: Path) -> None:
         """summary.json must report the full accounting keys (ENH-2385)."""
         run_dir = tmp_path / "run"
