@@ -124,43 +124,52 @@ states:
       # done-baseline ground truth silently wrong.
       #
       # Walking the working tree directly removes the binary-on-PATH
-      # dependency, catches configured category dirs plus the legacy
-      # completed/ and deferred/ dirs (BUG-2733) that `ll-issues list`
-      # surfaces via legacy_issue_dirs(), and matches terminal-state
-      # semantics: status: done OR status: cancelled.
+      # dependency and matches the dependency-free approach the epic-branch
+      # path uses (which is also done-only via `git grep -lE "^status: *done"`).
+      # Both snapshot arms must agree on done-only to avoid arm-divergence —
+      # a cancelled issue is a deliberate non-closure and must NOT inflate the
+      # closure count.
+      #
+      # Empty-result tolerance: a missing .issues/ at init is the normal
+      # fresh-repo state (the original silent code produced an empty baseline
+      # there too), so we just produce an empty snapshot. Loud-failure is
+      # reserved for walk *exceptions* (read errors), and routed to on_error
+      # via the bash PY_RC guard below.
       done_ids: set[str] = set()
       issues_root = Path(".issues")
-      if not issues_root.is_dir():
-          sys.stderr.write(
-              "BUG-3449: .issues directory not found at init time; "
-              "cannot snapshot done-baseline\n"
-          )
-          sys.exit(2)
-      for md in sorted(issues_root.rglob("*.md")):
-          try:
-              text = md.read_text()
-          except OSError as exc:
-              sys.stderr.write(f"BUG-3449: cannot read {md}: {exc}\n")
-              sys.exit(2)
-          m_status = re.search(r"^status:\s*(\S+)\s*$", text, re.MULTILINE)
-          if not m_status or m_status.group(1) not in ("done", "cancelled"):
-              continue
-          # ID from frontmatter `id:` first, filename fallback.
-          m_id = re.search(r"^id:\s*((?:BUG|FEAT|ENH|EPIC)-\d+)", text, re.MULTILINE)
-          if not m_id:
-              m_id = re.search(r"((?:BUG|FEAT|ENH|EPIC)-\d+)", md.name)
-          if m_id:
-              done_ids.add(m_id.group(1))
+      if issues_root.is_dir():
+          for md in sorted(issues_root.rglob("*.md")):
+              try:
+                  text = md.read_text()
+              except OSError as exc:
+                  sys.stderr.write(f"BUG-3449: cannot read {md}: {exc}\n")
+                  sys.exit(2)
+              # Anchor the match to the YAML frontmatter block so body /
+              # code-fence `status:` lines don't false-match. The split
+              # caps at 2 so we get at most three pieces: prefix, frontmatter,
+              # body; we match against [1] (the frontmatter slice).
+              parts = text.split("---", 2)
+              if len(parts) < 3:
+                  continue
+              m_status = re.search(r"^status:\s*(\S+)\s*$", parts[1], re.MULTILINE)
+              if not m_status or m_status.group(1) != "done":
+                  continue
+              # ID from frontmatter `id:` first, filename fallback.
+              m_id = re.search(r"^id:\s*((?:BUG|FEAT|ENH|EPIC)-\d+)", parts[1], re.MULTILINE)
+              if not m_id:
+                  m_id = re.search(r"((?:BUG|FEAT|ENH|EPIC)-\d+)", md.name)
+              if m_id:
+                  done_ids.add(m_id.group(1))
       for issue_id in sorted(done_ids):
           print(issue_id)
       PYEOF
-      # BUG-3449: the in-process walk above exits non-zero on a missing or
-      # unreadable .issues. Surface that as a setup-time failure rather than
-      # silently producing an empty done-baseline — the FSM's on_error routes
-      # the run to finalize_incomplete, and the diagnostic lands on stderr.
+      # BUG-3449: the walk above exits non-zero only on a read error (OSError).
+      # A missing .issues/ at init is intentionally tolerated as the fresh-repo
+      # state — empty baseline, no error. The PY_RC guard still routes real
+      # walk exceptions to on_error so they don't silently corrupt the baseline.
       PY_RC=$?
       if [ "$PY_RC" -ne 0 ]; then
-        echo "BUG-3449: done-baseline snapshot failed (exit=$PY_RC)" >&2
+        echo "BUG-3449: done-baseline walk raised (exit=$PY_RC)" >&2
         exit "$PY_RC"
       fi
     action_type: shell
@@ -946,8 +955,17 @@ states:
           # Walking the working tree directly removes the binary-on-PATH
           # dependency, catches configured category dirs plus the legacy
           # completed/ and deferred/ dirs (BUG-2733) that `ll-issues list`
-          # surfaces via legacy_issue_dirs(), and matches terminal-state
-          # semantics: status: done OR status: cancelled.
+          # surfaces via legacy_issue_dirs(), and matches the epic-branch
+          # arm's `git grep -lE "^status: *done"` filter exactly — both
+          # snapshot arms must agree on done-only to avoid arm-divergence.
+          # A cancelled issue is a deliberate non-closure and must NOT
+          # inflate the closure count.
+          #
+          # Empty-result tolerance: zero `status: done` matches is a
+          # legitimate outcome — the run's done-now is empty because no
+          # leaves closed. The verdict machinery (`closed=0` → `no-op`
+          # if nothing attempted, `phantom` if work was attempted) handles
+          # this correctly. Only walk *exceptions* are loud-failed.
           issues_root = Path(".issues")
           if not issues_root.is_dir():
               sys.stderr.write(
@@ -961,12 +979,22 @@ states:
               except OSError as exc:
                   sys.stderr.write(f"BUG-3449: cannot read {md}: {exc}\n")
                   sys.exit(2)
-              m_status = re.search(r"^status:\s*(\S+)\s*$", text, re.MULTILINE)
-              if not m_status or m_status.group(1) not in ("done", "cancelled"):
+              # Anchor the match to the YAML frontmatter block so body /
+              # code-fence `status:` lines don't false-match. The split
+              # caps at 2 so we get at most three pieces: prefix,
+              # frontmatter, body; we match against [1] (the frontmatter
+              # slice). Files without a closing `---` are skipped — the
+              # epic-branch `git grep -lE "^status: *done"` requires
+              # frontmatter too, so this is arm-parity.
+              parts = text.split("---", 2)
+              if len(parts) < 3:
+                  continue
+              m_status = re.search(r"^status:\s*(\S+)\s*$", parts[1], re.MULTILINE)
+              if not m_status or m_status.group(1) != "done":
                   continue
               # ID from frontmatter `id:` first, filename fallback.
               m_id = re.search(
-                  r"^id:\s*((?:BUG|FEAT|ENH|EPIC)-\d+)", text, re.MULTILINE
+                  r"^id:\s*((?:BUG|FEAT|ENH|EPIC)-\d+)", parts[1], re.MULTILINE
               )
               if not m_id:
                   m_id = re.search(r"((?:BUG|FEAT|ENH|EPIC)-\d+)", md.name)
