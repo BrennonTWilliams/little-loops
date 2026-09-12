@@ -1,6 +1,7 @@
 ---
 id: ENH-3453
-title: Unify the runtime half of the host capability map so host_runner reads data, not per-host subclasses
+title: Unify the runtime half of the host capability map so host_runner reads data,
+  not per-host subclasses
 type: ENH
 priority: P2
 status: open
@@ -9,6 +10,13 @@ labels:
 - multi-host
 - ll-hosts
 decision_needed: false
+verify_verdict: VALID
+confidence_score: 91
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 ## Summary
@@ -86,7 +94,61 @@ The companion public-surface decision is folded in:
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+### Stale-path follow-up (post-2026-09-11 host_compose spike updates)
+
+The `scripts/tests/spike/host_compose/test_host_compose.py` references in this issue (110-119, 204, 235-239, 255, 359-372) were re-verified against the file changed 2026-09-11T23:43:47-05:00. Confirmed anchors:
+- `test_host_compose.py:255` — `bad.describe_capabilities()` (regression guard) — drift-resolved; issue's prior listing omitted this line.
+- `test_host_compose.py:358-372` — `test_host_capabilities_field_count` enumerates exactly six flags. The field count remains six under the Option B selection here; Option A would break it.
+
+### Additional per-runner anchors (verified, not previously listed)
+
+Per-runner class-level `capabilities=` literals — issue lists `host_runner.py:506-516` (ClaudeCodeRunner only); the other seven runner class literals also exist at:
+- `host_runner.py:757` — `ClaudeCodeRunner` second literal / `CodexRunner`
+- `host_runner.py:1046` — `CodexRunner` / `OpenCodeRunner`
+- `host_runner.py:1122` — `OpenCodeRunner` / `PiRunner`
+- `host_runner.py:1211` — `PiRunner` / `GeminiRunner`
+- `host_runner.py:1428` — `GeminiRunner` / `OmpRunner`
+- `host_runner.py:1621` — `OmpRunner` / `KimiRunner`
+- `host_runner.py:1827` — `KimiRunner` / `QwenRunner`
+
+`scripts/little_loops/host_runner.py:490` — confirmed as the `HostRunner` Protocol stub `describe_capabilities()` (not a per-runner override); all other lines 662, 962, 1094, 1170, 1354, 1535, 1741, 1943 are per-runner overrides.
+
+### Additional test files (not previously enumerated)
+
+- `scripts/tests/test_verify_host_map.py:70-72` — `TestCheckRuntimeContradiction::test_current_tree_has_no_contradiction`. Existing assertion that `_check_runtime_contradiction` returns empty on `main`; must still pass after Implementation Step #4.
+- `scripts/tests/test_text_utils.py:500-504` — imports `HOST_CAPABILITIES` to derive per-host `config_dir` prefixes (separate from capability flags). Passes unchanged — only flag data shape is affected.
+- `scripts/tests/test_adapters.py:1304` — patches `little_loops.adapters.capabilities.HOST_CAPABILITIES`. Passes unchanged under Option 1.
+- `scripts/tests/test_wiring_skills_and_commands.py:455, 460` — imports `HOST_CAPABILITIES` for capability-driven parametrization. Passes unchanged.
+- `scripts/tests/spike/host_compose/__init__.py` — package docstring only (ENH-3456 spike root); no `describe_capabilities` content. Spike-file scope expands to four files: `__init__.py`, `fakes.py`, `executor_shim.py`, `test_host_compose.py`.
+
+### Additional doc citations (drift-resolved)
+
+- `docs/reference/API.md:10558` — `HostCapabilities.structured_output` (additional reference; issue lists 10347, 10360, 10367, 10395, 10420, 10452).
+- `docs/reference/API.md:12915` — `workspace_sandboxed` reference (issue omits).
+- `docs/reference/HOST_COMPATIBILITY.md:267, 349, 405` — companion runtime/`HostCapabilities` cross-references (issue lists 337, 378).
+- `docs/reference/HOST_COMPATIBILITY.md:393` — Option B "distinct surface from" docstring cite (issue omits).
+- `docs/reference/CLI.md:4797` — additional `host_runner.HostCapabilities` cross-check shape citation (issue lists 51, 1009).
+- `docs/development/CONFORMANCE.md` — methodology doc only; no `describe_capabilities`/`HostCapabilities` citations. No re-anchor needed.
+
+### Additional source-of-truth files (not previously listed)
+
+- `scripts/little_loops/__init__.py:33-42` — public export block re-exports `CapabilityEntry`, `CapabilityReport`, `HostInvocation`, `HostRunner`, `apply_host_cli_from_config`. `load_runtime_capabilities` enters here if exported; otherwise stays module-private.
+- `scripts/little_loops/cli/__init__.py:66` — re-exports `main_doctor`. Passes unchanged.
+- `scripts/little_loops/text_utils.py:291, 293` — `HOST_CAPABILITIES` derivation site (`config_dir` prefixes). Build-time data only; passes unchanged.
+- `scripts/little_loops/cli/doctor.py:1431` — `report = runner.describe_capabilities()` (issue lists 31 import + 102, 105, 1311 but not this call site).
+- `scripts/little_loops/cli/action.py:342` — `runner.describe_capabilities()` (issue lists 15 import only).
+- `scripts/little_loops/mcp_server/tools.py:222` — `resolve_host().describe_capabilities()` (issue lists 214; line drifted to 222).
+- `scripts/little_loops/mcp_server/tools.py:224` — same caller, second line.
+- `scripts/little_loops/init/cli.py:108` — `runner_cls().describe_capabilities().binary` (matches issue's Dependent File entry).
+- `scripts/little_loops/adapters/{codex,gemini,kimi,qwen,omp}.py:11-46` — each imports `HOST_CAPABILITIES`; the build-time side unchanged by this issue.
+- `scripts/tests/spike/host_compose/executor_shim.py:44` — `describe_capabilities` literal in `ALLOWED_RUNNER_PROTOCOL_ATTRS` (issue lists 12, 24 only); `runner.describe_capabilities()` reference in `execute_invocation` docstring at line 94.
+
+### Decision-log cross-references (rationale anchors)
+
+- `.issues/enhancements/P2-ENH-2873-introduce-a-declarative-host-capability-map-for-adapter-hosts.md:64` — declares Option B as the chosen discipline for the build-time half; the cross-reference rule is at lines 117-119. The Option B selection here preserves the precedent's rationale.
+- `.issues/enhancements/P2-ENH-2874-generate-degraded-mode-agent-fallbacks-for-hosts-without-subagent-support-with-mandatory-disclosure.md:144` — documents `_check_runtime_contradiction` as the runtime/registry diff-check (relevant to Implementation Step #4 extension).
+- `.ll/decisions.yaml:1555` — references `_HOST_RUNNER_REGISTRY` as the precedent that gates the file fork.
+- `.ll/decisions.d/ea9c6f4e-9b01-493c-a3c7-73f230acadce.json:12` — references `HOST_CAPABILITIES`/`describe_capabilities` cross-validation in the spike-decision rationale body.
 
 ### Files to Modify
 - `scripts/little_loops/host_runner.py` — add `load_runtime_capabilities(host_id)` (the single data-driven lookup); collapse the 9 `describe_capabilities()` overrides at lines 490, 662, 962, 1094, 1170, 1354, 1535, 1741, 1943 (ClaudeCodeRunner, CodexRunner, OpenCodeRunner, PiRunner, KimiRunner, QwenRunner, GeminiRunner, OmpRunner). Lines 1995-2004 hold `_HOST_RUNNER_REGISTRY`; the `name` class attribute on each runner is already the cross-reference key to `HOST_CAPABILITIES`.
@@ -106,6 +168,11 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/decisions.py:797,802` — second load-bearing consumer of `invocation.capabilities.structured_output` for the decisions verification path (`getattr(invocation.capabilities, "structured_output", False)`). Matches the same consumer pattern as `host_runner.py:2365-2383` (`_structured_output_args`) at `host_runner.py:2376`. The plan's "single-flag consumer at call boundary" convention (Integration Map → Conventions in Force) covers both sites, but this site is the previously unlisted second occurrence.
+- `scripts/little_loops/adapters/core.py:22, 131, 573` — imports `HOST_CAPABILITIES`; reads via `HOST_CAPABILITIES.get(getattr(emitter, "name", ""))` at line 573 (build-time-side `EmitterRegistry` resolution). The build-time half is unchanged by this issue, but the import graph means a refactor that touches `HOST_CAPABILITIES` (e.g., extending `HostCapabilityEntry` with runtime flags under Option A) crosses this import boundary.
+- `scripts/little_loops/cli/adapt.py:12, 126` — `HOST_CAPABILITIES.get(args.host)` for `ll-adapt` host selection. Same build-time invariant; under Option A the surface would shift and this site would be re-evaluated.
+- `scripts/little_loops/mcp_server/tools.py:225-235` — `_tool_capabilities()` JSON response shape construction (`host`, `binary`, `version`, `capabilities` list of `{name, status, note}`, `project_root`). The MCP `capabilities` tool consumer sees the same shape; only the `CapabilityReport` source changes. Under Option 1 the response is invariant; under Option 2 the call site (line 224) routes through `load_runtime_capabilities(host_id)` and the response shape is preserved verbatim.
+- `scripts/little_loops/init/cli.py:102-104, 138, 270, 355` — `_HOST_RUNNER_REGISTRY` import sites (alongside `HostNotConfigured`, `resolve_host`); the registry is unchanged by this issue but these import sites are part of the surface touched if a follow-up renames or moves the registry.
+- `scripts/little_loops/adapters/capabilities.py:14-29, 36` — Option B rationale docstring ("this map is a distinct **build-time** surface — 'what does `ll-adapt` write for this host' — cross-referenced by docstring only, with no inheritance from `host_runner.HostCapabilities`") must remain accurate under Option B (the issue's selection); under Option A the paragraph requires rewriting. `__all__ = ["HostCapabilityEntry", "HOST_CAPABILITIES", "SubagentSupport"]` at line 36 is unchanged under Option B; under Option A a new `RuntimeCapabilityEntry` would extend this list.
 
 ### Conventions in Force
 - **Frozen dataclass + module-level dict map**: every per-host capability/role shape uses `@dataclass(frozen=True)` with defaulted fields and a module-level dict keyed by host_id (`adapters/capabilities.py:48-68`, `host_runner.py:288-313`, `host_runner.py:366-391`, `host_runner.py:344-364` for `AutomationContext`).
@@ -132,6 +199,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/spike/host_compose/executor_shim.py:12, 24` — references `HostCapabilities` in `invocation.capabilities` field. Passes unchanged under Option 1.
 - `scripts/tests/spike/host_compose/test_host_compose.py:110-119, 204, 235-239, 255, 359-372` — spike asserts on `describe_capabilities().binary`, `HOST_BINARY_NAMES` (line 118-119, 235, 255), `audited.capabilities == invocation.capabilities` (line 204), and `HostCapabilities.__dataclass_fields__` field count (line 359-362: `TestHostCapabilitiesShape::test_host_capabilities_field_count` enumerates exactly six flags). The field-count assertion will break if Option B extends `HostCapabilityEntry` to absorb the runtime flags — it must remain a count of six. Passes unchanged under the Option 1 / Option B selection in this issue.
 - `scripts/tests/spike/host_compose/test_host_compose.py` also includes `_BadConcreteRunner.describe_capabilities()` at lines 235-239 (the regression-guard that overrides the wrapper to mutate the report) — under Option 1 the override stays valid; under Option 2 it must be rewritten.
+- `scripts/tests/test_host_runner.py:1028-1032` (`TestCodexRunner.test_capabilities_flags`), `1297-1301` (`TestGeminiRunner.test_capabilities_flags`), `1476-1482` (`TestKimiRunner.test_capabilities_flags`), `1667-1674` (`TestQwenRunner.test_capabilities_flags`), `1855-1860` (`TestOmpRunner.test_capabilities_flags`) — five additional per-runner `test_capabilities_flags` tests reading `Runner().capabilities.<flag>` (class-level literal attribute, not `invocation.capabilities`). Under Option 1 these pass via the wrapper; under Option 2 the class attribute must be kept as a shim or each test rewritten to call `load_runtime_capabilities(runner_name)`.
+- `scripts/tests/test_host_runner.py:118, 126, 136, 172, 182, 192` — `TestProjectChildEnv*` `capabilities=HostCapabilities()` kwarg literals. Pass unchanged under Option 1; invariant under Option 2 (the dataclass shape is preserved).
+- `scripts/tests/test_host_runner.py:1400` (KimiRunner), `1571, 1613` (QwenRunner) — consumer-side reads of `invocation.capabilities.workspace_sandboxed` and `invocation.capabilities.structured_output`. Pass unchanged under both options (the consumer-side read surface is the issue's public-surface compatibility guarantee per Implementation Step #6).
+- `scripts/tests/test_host_runner.py:1884` — `assert isinstance(invocation.capabilities, HostCapabilities)` default-invocation test. Passes unchanged — `HostCapabilities` shape preserved.
+- `scripts/tests/test_verify_host_map.py:29-32` (`test_gemini_agents_true_matches_degraded_emission`), `39-45` (`test_omp_agents_true_matches_native_emission`), `54-67` (`TestCheckDocParity` — `patch.dict` on `HOST_CAPABILITIES`), `75-129` (`TestCheckEmitterAgreement` — three disagreement tests with `bad_map` injection), `132-155` (`TestRun::test_clean_state_returns_zero` + `TestMainVerifyHostMap` entry-point smoke test) — full suite breakdown beyond the known `test_keys_match_emitter_map` (line 17-21) and `test_current_tree_has_no_contradiction` (line 70-72). The `TestCheckEmitterAgreement` pattern (`patch("little_loops.cli.verify_host_map.HOST_CAPABILITIES", bad_map)` → assert error string in helper output) is the direct template for the `_check_runtime_contradiction` field-disagreement test Implementation Step #4 needs to add.
+- `scripts/tests/test_adapters.py:1271-1320` — `TestFixtureHostRegistration::test_fixture_host_emits_skills_commands_and_agents`. Uses `patch.dict("little_loops.adapters.capabilities.HOST_CAPABILITIES", {"fixturehost": fixture_entry}, clear=False)` to inject a synthetic `HostCapabilityEntry`. This is the direct precedent template for Implementation Step #5's new runtime-side fixture-host test (analogous test that injects a synthetic entry and asserts `load_runtime_capabilities("fixturehost")` returns the expected `HostCapabilities`).
+- `scripts/tests/test_adapters.py:1533-1536` (`TestResolveEmitterKimi::test_kimi_emitter_name_matches_runner_key`), `2185-2188` (`TestResolveEmitterQwen::test_qwen_emitter_name_matches_runner_key`) — `_HOST_RUNNER_REGISTRY` membership assertions. Pass unchanged (registry is invariant).
+- `scripts/tests/test_cli_doctor.py:41-45` — `_make_runner(report)` helper uses `runner.describe_capabilities.return_value = report` mock setup. Every downstream test in the file (lines 84, 136, 165, 204, 230, 249, 270, 290, 311, 365, 430, 484, 511, 537, 566, 599, 625, 646, 672, 698, 724, 778, 800, 822) inherits this mock pattern; passes unchanged under Option 1. The mock targets the runner instance method, so Option 2's deletion of `describe_capabilities()` on real runners does not affect these tests.
+- `scripts/tests/test_cli_doctor_full.py:320-324, 342-346` — `CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])` construction in two distinct test bodies. Passes unchanged (`CapabilityReport` shape preserved).
+- `scripts/tests/test_cli_doctor_install_checks.py:720, 744` — `HostNotConfigured` import (unrelated to capability surface; invariant).
+- `scripts/tests/test_wiring_reference_docs.py:170, 171, 173` — doc cross-validation table entries `(docs/reference/API.md, "CapabilityReport", "FEAT-1462")`, `(..., "CapabilityEntry", ...)`, `(..., "describe_capabilities", ...)`. Under Option 1 all three strings remain in API.md (the wrapper preserves the public surface). Under Option 2, the `describe_capabilities` string would need to be replaced with `load_runtime_capabilities` and the table entry updated; the test would fail otherwise.
+- `scripts/tests/spike/host_compose/test_host_compose.py:127-158, 144-158` — `TestCompositionThroughExecutor::test_executor_returns_capabilities_from_host_invocation` exercises `compose_through_executor()` reading `results["verbose"]["capabilities"]` and `results["minimal"]["capabilities"]` as dicts (`verbose_caps["streaming"]`). End-to-end through the executor across two divergent fakes — proves the executor reads capability flags round-trip. Under Option 1 the data flow is preserved; under Option 2 the executor would call `load_runtime_capabilities(runner.name)`.
+- `scripts/tests/spike/host_compose/test_host_compose.py:300-322` — `TestSpikeIsolation::test_spike_fakes_register_in_host_runner_registry` asserts fake runners register in `_HOST_RUNNER_REGISTRY`. Invariant under both options.
+- `scripts/tests/spike/host_compose/executor_shim.py:134-139` — `compose_through_executor()` builds a `"capabilities"` dict from six per-flag attribute reads on `target.capabilities` (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`, `structured_output`, `workspace_sandboxed`). Under Option 1 these pass unchanged; under Option 2 the dict shape is invariant but the source moves to `load_runtime_capabilities(target.name)`.
 
 ### Documentation
 - `docs/reference/HOST_COMPATIBILITY.md:337,378` — explicit citations of `describe_capabilities()` outputs (e.g. `permission_skip`).
@@ -147,6 +228,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/qwen/automation.md:62` — documents Qwen's `structured_output=True` flag and the evaluators' `--json-schema` append behavior. Same shape after ENH-3453.
 - `docs/kimi/automation.md:94` — documents Kimi's `structured_output=False` and the prompt-and-parse fallback. Same shape after ENH-3453.
 - `.ll/spikes/spike-FEAT-3456.md:67-78, 149` — spike plan cites specific line numbers in `host_runner.py` (288-313 for `HostCapabilities`, 316-341 for `HostInvocation`, 366-376 / 379-391 for `CapabilityEntry` / `CapabilityReport`, 394 for the `HostRunner` Protocol) as the spike's read-only production references. If the collapse moves line numbers (Option 1 inserts the `load_runtime_capabilities` definition near `host_runner.py:288-313`), these citations drift and the spike plan needs re-anchoring.
+- `docs/codex/README.md:40` — behavioral prose "`agent_select` is now `partial` instead of `unsupported`" in the `--agent` section, citing `describe_capabilities()` and `ll-doctor` exit-code behavior. Not in the listed doc set; the prose is invariant under Option 1 (the data value doesn't move), and the reference is stable under both options.
+- `docs/kimi/getting-started.md:102` — first-run verification prose lists `streaming / permission skip / agent selection` as the flags `ll-doctor` should print for kimi-code. Invariant under both options.
+- `docs/qwen/getting-started.md:110` — first-run verification prose lists `streaming / permission skip / json_schema / structured_output` as the flags `ll-doctor` should print for qwen. Invariant under both options.
+- `docs/reference/API.md:10258` — `### HostInvocation` import-block example references `HostCapabilities`. Not previously enumerated; the `HostCapabilities` symbol is preserved as a public re-export so the import block stays accurate.
+- `docs/reference/API.md:10282` — `HostInvocation.capabilities: HostCapabilities = field(default_factory=HostCapabilities)` field declaration. The dataclass field declaration is preserved verbatim; the import block and field type are stable under both options.
+- `docs/reference/API.md:10389` — `CapabilityEntry.name` description includes the example identifiers `"streaming"` / `"permission_skip"`. Invariant under both options.
+- `scripts/little_loops/adapters/capabilities.py:14-29` — module docstring explicitly preserves the Option B rationale ("this map is a distinct **build-time** surface — 'what does `ll-adapt` write for this host' — cross-referenced by docstring only, with no inheritance from `host_runner.HostCapabilities`"). Under Option B (issue's selection) this paragraph stays accurate; under Option A it requires rewriting. This is the load-bearing docstring that anchors the build-time/runtime split — Implementation Steps must explicitly preserve it under the chosen option.
 
 ### Configuration
 - `scripts/little_loops/config/orchestration.py` — names the configured host (the value `host_id` is resolved through `resolve_host()`).
@@ -209,6 +297,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Re-anchor `docs/codex/usage.md:137, 180, 182` and `docs/qwen/automation.md:62` and `docs/kimi/automation.md:94` if Implementation Steps shift line numbers — these cite `describe_capabilities` outputs and `HostCapabilities.structured_output` behavior; the data-flow description is unchanged but specific citations may drift.
 - Confirm `docs/ARCHITECTURE.md:1330-1336` (the "distinct from `host_runner.HostCapabilities` (Option B, decided 2026-07-28)" paragraph) stays accurate — Option B selection in this issue keeps it; Option A would require rewriting it.
 - Re-anchor `.ll/spikes/spike-FEAT-3456.md:67-78, 149` — spike plan cites specific line numbers in `host_runner.py` (288-313, 316-341, 366-376, 379-391, 394). If `load_runtime_capabilities` is inserted near `host_runner.py:288-313` (Option 1), line citations drift. The spike plan must be updated to the post-collapse references.
+- Add new test cases to `scripts/tests/test_verify_host_map.py` for Implementation Step #4 (`_check_runtime_contradiction` extension). Three categories needed, mirroring the existing `TestCheckEmitterAgreement` pattern at lines 75-129: (a) field-disagreement test — patch a `HOST_CAPABILITIES[host]` field shared with `HostCapabilities` (e.g., `streaming`, `permission_skip`, `agent_select`, `tool_allowlist`, `structured_output`, `workspace_sandboxed`) to a value that disagrees with `_HOST_RUNNER_REGISTRY[host].capabilities`, assert the helper returns the named-disagreement error string (`f"host '{host}' field '{field_name}' disagrees: ..."` at `verify_host_map.py:124-127`); (b) `shared_fields` non-emptiness regression test — assert `set(f.name for f in fields(HostCapabilityEntry)) & set(f.name for f in fields(HostCapabilities))` is non-empty after Implementation Step #2; (c) `shared_hosts` exhaustion test — assert `len(set(HOST_CAPABILITIES) & set(_HOST_RUNNER_REGISTRY)) == len(_HOST_RUNNER_REGISTRY)` after `opencode` and `pi` entries are added.
+- Add new test to `scripts/tests/test_verify_host_map.py` for Implementation Step #5 (runtime-registry key parity), mirroring `TestHostCapabilities::test_keys_match_emitter_map` at lines 17-21: assert `set(HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY)` after the `opencode`/`pi` entries land.
+- Add per-host equivalence test for `load_runtime_capabilities(host_id)`: for every host in `_HOST_RUNNER_REGISTRY`, assert `load_runtime_capabilities(host_name)` returns the same `HostCapabilities` as today's `RunnerClass().describe_capabilities()`. Mirror the precedent shape `scripts/tests/spike/omp_agent_output_frontmatter_passthrough/test_output_passthrough.py:21-80` (input fixture → helper call → assert equivalence). This is Implementation Step #1's verification test.
+- Verify `scripts/tests/test_host_runner.py:1028-1032, 1297-1301, 1476-1482, 1667-1674, 1855-1860` — five `Test*.test_capabilities_flags` sites reading class-level `Runner().capabilities.<flag>` literals. Under Option 1 these pass via the wrapper; under Option 2 either the class attribute is preserved as a shim or each test is rewritten to `load_runtime_capabilities(runner.name)`. Implementation must select one path explicitly.
+- Verify `scripts/tests/test_wiring_reference_docs.py:170, 171, 173` — strings `"CapabilityReport"`, `"CapabilityEntry"`, `"describe_capabilities"` are wired to `docs/reference/API.md` under `FEAT-1462`. Under Option 1 all three remain load-bearing strings (the public surface is preserved). Under Option 2 the `"describe_capabilities"` string must be replaced with `"load_runtime_capabilities"` in API.md and the cross-validation table updated; missing this update breaks the wiring-reference-docs test.
+- Verify `scripts/little_loops/mcp_server/tools.py:225-235` — `_tool_capabilities()` JSON response shape (`host`, `binary`, `version`, `capabilities` list of `{name, status, note}`, `project_root`). The MCP consumer sees the same dict under both options; only the `CapabilityReport` source changes. Under Option 2 line 224 routes through `load_runtime_capabilities(host_id)` and the response shape is preserved verbatim.
+- Verify `scripts/tests/test_adapters.py:1271-1320` — `TestFixtureHostRegistration::test_fixture_host_emits_skills_commands_and_agents` is the direct precedent template for Implementation Step #5's runtime-side fixture-host test. The build-time test injects a synthetic `HostCapabilityEntry` via `patch.dict("little_loops.adapters.capabilities.HOST_CAPABILITIES", {"fixturehost": fixture_entry}, clear=False)`. The runtime equivalent injects the same entry and asserts `load_runtime_capabilities("fixturehost")` returns the expected `HostCapabilities` derived from it.
+- Verify `scripts/tests/spike/host_compose/test_host_compose.py:127-158, 144-158` — `TestCompositionThroughExecutor::test_executor_returns_capabilities_from_host_invocation` exercises the executor's end-to-end read of `invocation.capabilities` across two divergent fakes. Under Option 1 the data flow is preserved via the wrapper; under Option 2 the executor routes through `load_runtime_capabilities(runner.name)`. The test must continue to pass under the chosen option.
+- Verify `scripts/tests/spike/host_compose/executor_shim.py:134-139` — `compose_through_executor()` builds the `"capabilities"` dict from six per-flag attribute reads on `target.capabilities`. Under Option 2 the source moves to `load_runtime_capabilities(target.name)`; the dict shape is invariant under both options.
+- Verify `scripts/little_loops/adapters/capabilities.py:14-29, 36` — Option B rationale docstring and `__all__` list. Under Option B (issue's selection) both stay accurate; under Option A the docstring paragraph requires rewriting (the load-bearing change the issue's `## Scope Boundaries` flags but does not enumerate) and `__all__` is extended only if a new `RuntimeCapabilityEntry` is added.
+- Verify `docs/codex/README.md:40`, `docs/kimi/getting-started.md:102`, `docs/qwen/getting-started.md:110`, and `docs/reference/API.md:10258, 10282, 10389` — prose and example-identifier citations of `describe_capabilities`/`HostCapabilities` outputs. Invariant under both options; the prose and field types are preserved.
+- Verify `scripts/tests/test_cli_doctor.py:41-45` — `_make_runner(report)` helper using `runner.describe_capabilities.return_value = report` mock pattern. Mock targets the runner instance method, so Option 2's deletion of `describe_capabilities()` on real runners does not affect these tests.
 
 ## Impact
 
@@ -238,6 +338,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.claude/CLAUDE.md` § Host CLI Abstraction | Mandates `resolve_host()` as the only entry point for new host call sites; the data-driven lookup extends that factory |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T05:27:45 - `a7d5ab8d-b8bf-4135-accb-3507f8725874.jsonl`
+- `/ll:wire-issue` - 2026-09-12T05:23:40 - `4b886059-62a6-4459-bb5d-6dea0195e090.jsonl`
+- `/ll:refine-issue` - 2026-09-12T05:05:00 - `aec83a29-efa0-4682-927d-beee25b9d4d8.jsonl`
 - `/ll:wire-issue` - 2026-09-12T04:57:31 - `c5717503-aeae-42d0-b23a-777fa1078d80.jsonl`
 - `/ll:decide-issue` - 2026-09-12T04:45:13 - `4d557e48-0501-409c-ace4-f84bc66f4547.jsonl`
 - `/ll:refine-issue` - 2026-09-12T04:00:17 - `b183c7f4-04a5-40c0-a07a-17f902d66b2e.jsonl`
