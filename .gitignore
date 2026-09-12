@@ -57,6 +57,7 @@ temp/
 
 # Claude Code
 .claude/settings.local.json
+.claude/user-messages-*.jsonl
 .ll/ll.local.md
 .ll/loop-suggestions/
 .claude/skills/

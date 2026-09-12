@@ -153,14 +153,16 @@ in-process shim that never touches the production executor.
   `structured_output=True`).
 - **Prompt-location contract with `ll-fake-host`.** `_structured_output_args`
   (`host_runner.py:2376`) appends `["--json-schema", <json>]` *after* the runner's
-  args, so under `structured_output=True` the prompt is no longer `argv[-1]`. This
-  issue depends on FEAT-3454's `main()` locating the prompt as *the argv element
-  containing the `@@fake` fence* (falling back to `argv[-1]` when no element does)
-  — see FEAT-3454 Program Design, amended 2026-09-12. Without that rule the
+  args, so under `structured_output=True` the prompt is no longer `argv[-1]`. The
+  `run_blocking_json` composition case below requires `main()` to locate the
+  prompt as *the argv element containing the `@@fake` fence* (falling back to
+  `argv[-1]` when no element does) — see FEAT-3454 Program Design, amended
+  2026-09-12, and the Program Design § re-verification finding below confirming
+  `fake_host.py:main()` already implements this rule. Without it the
   `run_blocking_json` composition case below feeds the schema JSON to the fake as
   its prompt, both fakes emit the default script, and the case raises
   `BlockingJsonError` identically on both — a vacuous "equal" that never reaches
-  the parsed-dict assertion. Re-check `main()` against this rule before step 3.
+  the parsed-dict assertion.
 - `describe_capabilities()` → `CapabilityReport(host="fake-minimal", binary="ll-fake-host",
   version="0.0.0-fake-minimal", …)` with all six entries `"unsupported"`.
 
@@ -257,6 +259,52 @@ unit suite, not in review" depends on.
 
 ### Call Path
 `resolve_host_named("fake-minimal")` → `FakeMinimalHostRunner.build_streaming(prompt=script)` → `HostInvocation(binary="ll-fake-host", args=[script], env={})` → `run_claude_command` → `subprocess.Popen` (guard carve-out via `TEST_ONLY_BINARIES`) → `ll-fake-host main()` → `parse_directives` → `emit` → consumer callbacks → `_run_and_capture` → `Observed` → compared against the `fake` run of the same script.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- **Anchor re-verification after FEAT-3454 landed** (2026-09-12): FEAT-3454 merged
+  since this issue's last pass, shifting several cited line numbers. Verified against
+  current `host_runner.py`:
+  - `_structured_output_args`: was cited `:2365-2383` → now `:2530-2548` (def line
+    2530, body ends at `return args` line 2548). Body content unchanged — still
+    exactly two pinned binary-literal branches, `"claude"` and `"qwen"`, matching
+    Decision 5's `_ALLOWED_BINARY_LITERAL_SITES` claim.
+  - `OpenCodeRunner`: was cited `:1033`/`:1033-1042` → class now spans `:1317-1379`.
+  - `HOST_BINARY_NAMES`: was cited `:2028-2030` → now defined `:2186-2188`.
+  - `_install_no_live_host_cli`: was cited `conftest.py:353-397` → decorator/def now
+    at `conftest.py:376-377`; body ends `conftest.py:420`.
+  - `HostRunner` Protocol: was cited `:394-407` → `@runtime_checkable` at `:397`,
+    `class HostRunner(Protocol):` at `:398`; body (through `describe_capabilities`)
+    ends `:495`.
+  - `_ALLOWED_CALLERS` (test_advisor.py): the dict literal itself is `:694-696`
+    (issue's `:694-724` range includes the surrounding `TestConsultExclusivity`
+    class body that uses it, not the literal) — minor, not a drift.
+  - `test_host_tier_table_matches_runner_registry` (`test_wiring_guides_and_meta.py`):
+    confirmed exact at `:381-392`, no drift.
+  - `HostInvocation` dataclass fields confirmed exactly six, matching
+    `_ALLOWED_INVOCATION_ATTRS` with no extra/missing member: `binary`, `args`,
+    `env`, `capabilities`, `cleanup_paths`, `env_allow` (`host_runner.py:319-344`).
+  - `_HOST_RUNNER_REGISTRY` confirmed at exactly 9 keys (8 real + `fake`),
+    matching Current Behavior's "eight real runners plus one fake" framing.
+- **`_structured_output_args` has a caller outside `run_blocking_json`**: also
+  called from `scripts/little_loops/fsm/evaluators.py:1219` and `:1474` (imported
+  there at `:46-52`). `TestExecutorTouchesOnlyAbstractInterface`'s scope already
+  covers this per its own stated unit-of-checking ("every `FunctionDef` in
+  `host_runner.py`/`subprocess_utils.py`"), but `fsm/evaluators.py` is a third
+  module that also imports and calls it — outside the two modules the AST check
+  walks. Not a defect in the design (the checker's stated scope is deliberately
+  the executor chain, not every caller), but worth flagging: a future
+  binary-literal branch added inside `fsm/evaluators.py` itself, rather than
+  inside `_structured_output_args`, would not be caught by this issue's checker.
+- **Prompt-location contract (blocking pre-check for step 1) — CONFIRMED SATISFIED**:
+  `scripts/little_loops/fake_host.py:main()` (line 293) already implements the
+  fence-locates-prompt rule this issue's `run_blocking_json` composition case
+  depends on — docstring at `fake_host.py:296-299` states verbatim "The prompt is
+  the argv element containing the `@@fake` fence, falling back to `argv[-1]` only
+  when no element does". No fix-first action needed before step 1; the Design
+  section's "re-check `main()` against this rule before step 3" caveat is cleared.
 
 ## Behavior Parity
 
@@ -357,6 +405,28 @@ concrete-runners row, `CONFORMANCE.md` section describing the composition suite,
 - Frozen dataclasses: `HostCapabilities`, `HostInvocation`, `CapabilityReport`,
   `CapabilityEntry`, `AutomationContext`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- `TestConsultExclusivity` (`test_advisor.py:694-724`) confirmed as the one in-tree
+  precedent for AST-walk-plus-pinned-allow-list enforcement (a `dict[str, int]`
+  keyed by module path, checked via whole-module `ast.walk` over `ast.Call` nodes) —
+  matches this issue's Decision 5 framing exactly.
+- No in-repo precedent exists yet for deriving an allow-list from a `Protocol` via
+  `typing._get_protocol_attrs`/`__protocol_attrs__`, nor for
+  `{cls.__name__ for cls in <registry>.values()}`-style registry-derived name sets
+  (confirmed by repo-wide search: both patterns appear only inside this issue's own
+  proposed text). This issue introduces both as new conventions rather than
+  following an existing one — consistent with its own "never a hand-pinned
+  fallback" requirement, just noting there is no prior art to check the derivation
+  against if it needs debugging.
+- `TestFakeHostRunner` (`test_host_runner.py:1110-1182`) is the exact test-class
+  shape precedent for the issue's planned `TestFakeMinimalHostRunner`: naming
+  `Test<RunnerClassName>`, one `test_satisfies_host_runner_protocol` per runner
+  class, and `build_*` variants parametrized with lambdas rather than four
+  near-duplicate test methods.
+
 ## Tests
 
 - `scripts/tests/conformance/test_host_composition.py` (new) — four classes above.
@@ -392,6 +462,27 @@ concrete-runners row, `CONFORMANCE.md` section describing the composition suite,
 
 Open. Blocked until FEAT-3454 and FEAT-3455 merge; re-anchor helper names and line
 references against the landed files before starting step 1.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- **FEAT-3454 has landed** (confirmed 2026-09-12): `FakeHostRunner`, `TEST_ONLY_HOSTS`,
+  `TEST_ONLY_BINARIES`, the `fake` registry entry, `ll-fake-host` console script, and
+  the `docs/reference/HOST_COMPATIBILITY.md` `fake` tier row all exist on `main` today.
+  **FEAT-3455 is still `open`** — its helpers (`_run_and_capture`, `Observed`,
+  `assert_event_kinds`, `live_conformance`) are absent from the repo (confirmed via
+  repo-wide search), as is `scripts/tests/conformance/test_host_composition.py`
+  itself. This issue remains hard-blocked on FEAT-3455 only.
+- `FakeMinimalHostRunner` / `fake-minimal` do not exist anywhere yet outside this
+  issue's own text and the still-present spike package
+  (`scripts/tests/spike/host_compose/` — `__init__.py`, `fakes.py`,
+  `executor_shim.py`, `test_host_compose.py` — all four files confirmed still present,
+  undeleted). `.ll/spikes/spike-FEAT-3456.md` also confirmed still present.
+- `scripts/tests/conformance/test_host_conformance.py` already defines
+  `_HOST_BINARY: dict[str, str]` with a `"fake": "ll-fake-host"` entry (FEAT-3454),
+  confirming the exact precedent shape Implementation Step 3's
+  `_HOST_BINARY["fake-minimal"] = "ll-fake-host"` addition follows.
 
 ## Related Issues (Dependencies)
 
@@ -473,6 +564,7 @@ _Added by `/ll:confidence-check` on 2026-09-12_
 - `blocked_by: FEAT-3455` is still `open` — `_run_and_capture`, `Observed`, `assert_event_kinds`, `live_conformance` don't exist yet.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-12T21:47:26 - `185e59ee-6aae-4358-8b55-3ef95d63b372.jsonl`
 - `/ll:confidence-check` - 2026-09-12T18:35:45 - `39734cb1-4330-4618-b589-c95b4733611a.jsonl`
 - Manual review - 2026-09-12 (second pass) - fixed the `run_blocking_json` composition case (`--json-schema` lands after the prompt, so `argv[-1]` is the schema — FEAT-3454 `main()` amended to locate the prompt by fence); AST checks widened to every `HostInvocation`/`HostRunner`-taking function in both modules, `getattr` reads, `name` literals and `in`-collections, registry-derived concrete-runner names; `__protocol_attrs__` fallback pinned to `typing._get_protocol_attrs`; `conformance` marker per class so the AST gates run in the unit job; "five `build_*`" → four; dropped `**kw` from `build_detached`; ENH-3453 landing-order constraint recorded
 - `/ll:verify-issues` - 2026-09-12T17:05:34 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`

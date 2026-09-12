@@ -148,6 +148,16 @@ can never reach `run_claude_command`. The capability tests build
 `FakeHostRunner(capabilities=…).build_streaming(...)` and assert on `invocation.args`;
 they do not spawn.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- Stale anchor: `resolve_host()` calls `runner_cls()` with no arguments at `host_runner.py:2488` and `:2499`, not `:2323, :2334` as cited above (FakeHostRunner's registration pushed line numbers down since this issue was last refined).
+- Confirmed mechanism defect: `FakeHostRunner.build_streaming()` (`host_runner.py:2082-2104`) always returns `args=[prompt]` — it never threads `agent`, `tools`, or `workspace_root` into argv regardless of the `capabilities` override passed to its constructor. This means the positive-direction argv-facts check ("when a flag is True, the argv marker is present") cannot be observed through `FakeHostRunner(capabilities=...).build_streaming(...)` for `permission_skip`, `agent_select`, `tool_allowlist`, or `workspace_sandboxed` — those flags' argv-injection logic lives only inside each *real* runner's own `build_streaming` (e.g. `ClaudeCodeRunner` lines 926-1013, `CodexRunner` lines 1180-1253), which `FakeHostRunner` does not share or delegate to.
+- `structured_output` is the one flag with an independent, spawn-free test path: `_structured_output_args(invocation, schema)` (`host_runner.py:2530`) is a standalone module-level function that reads `invocation.capabilities.structured_output` directly and returns `[]` when `False` — it does not depend on `build_streaming()`'s own `args` list, so it can be exercised on any manually-constructed `HostInvocation` (fake or otherwise) without spawning.
+- `streaming` has no argv consumption anywhere (confirmed) — consistent with the issue's own note that it round-trips into `invocation.capabilities` only.
+- Net effect: "assert on `invocation.args`" only works for a flag whose real-runner injection logic is itself reproduced somewhere reachable without a real host. As written, no such path exists for `permission_skip`/`agent_select`/`tool_allowlist`/`workspace_sandboxed` via the fake. The route to satisfy the Acceptance Criteria's "positive direction gated" requirement for those four flags is an implementation decision (e.g., test each real runner's own `build_streaming` directly for the positive case, as `test_host_runner.py` already does per-runner at `:761-786`/`:823-882` — see Integration Map findings below).
+
 ## Current Behavior
 
 `test_golden_path_invocation` (`test_host_conformance.py:64-112`) skips on binary
@@ -155,6 +165,12 @@ missing or `HostNotConfigured`, then asserts `invocation.binary` and
 `invocation.args` are non-empty. A runner that constructs a syntactically valid
 invocation but emits a terminal mid-stream, leaks events after it, or mis-shapes a
 failure passes this gate.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- FEAT-3454 (this issue's stated dependency) is now **done**. The fake host executable exists at `scripts/little_loops/fake_host.py`. Its runner, `FakeHostRunner` (defined in `host_runner.py`, line 2053), is registered as the `"fake"` entry (`host_runner.py`, line 2157), alongside `TEST_ONLY_HOSTS`/`TEST_ONLY_BINARIES` (`host_runner.py`, lines 2142/2193), the `_match_host_binary` fake-binary carve-out (`conftest.py`, lines 255-278), and the `pytest_sessionstart` PATH prepend (`conftest.py`, lines 103-117) — all exist in the codebase today. This issue's premise that "the fake host runs it on every suite invocation" is now buildable against real, landed infrastructure rather than a planned dependency — the prior verification note's "FEAT-3454 genuinely still open and unimplemented" is stale. The Tier 1/Tier 2 machinery this issue itself proposes (the root-conftest hook pair, its module global, `LL_HOST_CONFORMANCE_LIVE`) is separate, still-unbuilt work — see Integration Map.
 
 ## Expected Behavior
 
@@ -201,7 +217,9 @@ it goes green, the host satisfies the multi-host promise.
   unconditionally; positive direction gated. Tested in both directions via the fake's
   capability override on directly-constructed invocations; no stream-level
   capability assertion exists.
+  > ⚠ Superseded — mechanism broken for 5/6 flags; see Codebase Research Findings
 - The live-spawn guard (`scripts/tests/conftest.py:_match_host_binary` `:237-255`)
+  > ⚠ Superseded — actual span is conftest.py:255-278
   gains a carve-out that lets a real host spawn proceed only when
   `LL_HOST_CONFORMANCE_LIVE=1` **and** the running test carries the `conformance`
   marker. The opt-in is a **module-level flag in the root conftest**, set by a
@@ -223,6 +241,7 @@ it goes green, the host satisfies the multi-host promise.
 - `scripts/tests/conformance/conftest.py` — `live_conformance` fixture reading `LL_HOST_CONFORMANCE_LIVE` at fixture time (so `monkeypatch.setenv` in a test body wins; `conftest.py:1095-1096` precedent) and deciding the skip for non-fake hosts; `isolated_env` stays.
 - `scripts/tests/conftest.py` — `_live_spawn_allowed: bool` module global; `pytest_runtest_setup` sets it when `item.get_closest_marker("conformance")` and `LL_HOST_CONFORMANCE_LIVE=1`, `pytest_runtest_teardown` clears it; `_match_host_binary` returns `None` when it is set. A module global rather than a contextvar because FSM-level runs spawn from worker threads, where a contextvar set in the test thread does not propagate; a hook in the root conftest rather than a fixture in `conformance/conftest.py` because the sub-conftest has no clean way to import the root conftest module to set its state (`test_conftest_cap.py` loads it via `importlib` precisely because it is not importable by name).
 - `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` (`:281-300`) — four-shape carve-out tests; `_reset_collector` autouse (`:232-238`) still clears `_host_cli_hits`/`_reported_upto`.
+  > ⚠ Superseded — class now at test_conftest_cap.py:223-321
 - `docs/development/CONFORMANCE.md` — rewrite (currently constructability-only; "Reading the Results" table and baseline board need the new rows).
 - `docs/development/TESTING.md:121` (tree line) and `:1048` (markers table) — describe the behavioral tier and env gate.
 - `docs/kimi/automation.md:71-82` — optional one-sentence note; the `4 passed` invocation stays valid.
@@ -230,7 +249,7 @@ it goes green, the host satisfies the multi-host promise.
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/subprocess_utils.py:422-771` — `run_claude_command`, the consumer under test. Callback surface used by the helpers: `on_model_detected`, `on_session_id_detected`, `on_tool_call`, `on_usage_detailed`, `on_result_seen`, `stream_callback`, `on_process_start/end`. Not modified.
 - `scripts/little_loops/host_runner.py` — `_HOST_RUNNER_REGISTRY`, `resolve_host_named`, `HostCapabilities`, `CapabilityReport`, `_structured_output_args`. Not modified.
-- `scripts/little_loops/fake_host.py` + `FakeHostRunner` (FEAT-3454) — the CI target; directive vocabulary is defined there and consumed here.
+- `scripts/little_loops/fake_host.py` (directive vocabulary/parser/executable) and `FakeHostRunner` (defined in `scripts/little_loops/host_runner.py`, line 2053) (FEAT-3454) — the CI target; directive vocabulary is defined in `fake_host.py` and consumed here.
 - `.github/workflows/ci.yml` — the `unit-tests` job runs `-m "not integration and not conformance"`, so the behavioral tier reaches CI only via the Thinky `conformance` job (`:149-207`), which does not set `LL_HOST_CONFORMANCE_LIVE`. Fake-only cases run there; real hosts skip. **That job never puts `.venv/bin` on PATH** (only the unit job does, `:110`) — without FEAT-3454's `pytest_sessionstart` PATH prepend every test in this issue would skip there. No workflow change; the prepend is the fix.
 - `scripts/tests/test_conftest_cap.py` — loads `conftest.py` via `importlib`; must keep passing after the guard edit.
 
@@ -258,6 +277,31 @@ it goes green, the host satisfies the multi-host promise.
 - `test_capability_argv_negative[<flag>]` / `test_capability_argv_positive[<flag>]` — fake with override, both directions.
 - `TestNoLiveHostCLIGuard` four-shape carve-out tests.
 
+### Behavior Parity
+
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `docs/development/CONFORMANCE.md` "Reading the Results" table (`:26-38`) | Documents 4 outcomes for `test_golden_path_invocation` only: `PASSED`/`SKIPPED` (binary absent)/`SKIPPED` (stub)/`FAILED` | PRESERVED, extended | Existing 4 outcomes still describe the constructability test unchanged; the rewrite adds a parallel row set for `test_golden_path_behavior` (Tier 1) and the `test_scripted_*` cases (Tier 2), which have their own skip/fail semantics (env-gated skip for non-fake hosts; scripted cases never skip). |
+| `docs/development/CONFORMANCE.md` "Running the Harness" commands (`:13-24`) | `pytest -m conformance`, `--conformance-host`, `-m "not conformance"` | PRESERVED unchanged | These invocations are unaffected by adding a behavioral tier — the same marker and CLI option select both tiers together. |
+| `docs/development/CONFORMANCE.md` "Baseline Pass/Fail Board" (`:40-52`) | Snapshot table of 4 hosts (`claude-code`, `codex`, `opencode`, `pi`) as of 2026-06-26 | CHANGED | Already stale independent of this issue — `_HOST_RUNNER_REGISTRY` now has 9 entries (adds `fake`, `gemini`, `omp`, `kimi-code`, `qwen`); the rewrite should refresh this board and, if it keeps the single-table shape, add a column set for the new behavioral-tier results. |
+| `docs/development/CONFORMANCE.md` "Adding a New Host" (`:54-59`) | 3-step guide: implement `HostRunner`, register it, update the baseline board | PRESERVED, extended | Still accurate for Tier 1 (auto-picked-up via the registry parametrize); step 3 should note a new real host stays skipped on Tier 1 until `LL_HOST_CONFORMANCE_LIVE=1` is set for it. |
+| `docs/development/CONFORMANCE.md` "Closing Superseded Issues" (`:61-68`) | FEAT-1721/FEAT-2192 closure criteria reference `test_golden_path_invocation` only | PRESERVED unchanged | This issue keeps `test_golden_path_invocation` unchanged in behavior (Acceptance Criteria), so these closure criteria are unaffected. |
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- Stale anchors corrected (all confirmed against current code, post-FEAT-3454):
+  - `test_host_conformance.py`: `test_golden_path_invocation` is defined at line 72 (not part of a "64-112" span) and its body runs to line 114, the file's actual last line (114 lines total, not 112). The `@pytest.mark.conformance`/`@pytest.mark.parametrize` decorator stack cited as `:64-71` actually spans lines 65-71 (line 64 is blank).
+  - `scripts/pyproject.toml`: the watchdog timeout args are at lines 267-268 (`"--timeout=120"`, `"--timeout-method=thread"`), not `:266-267`.
+  - `.github/workflows/ci.yml`: the `conformance:` job spans lines 149-211 (including its final "Snapshot .ll/history.db" step), not `:149-207`.
+  - `scripts/tests/conftest.py`: the "monkeypatch.setenv in a test body wins" precedent is the comment at line 1119 ("Tests that *want* the gate monkeypatch.setenv() it in the test body, which still wins over this."), not `:1095-1096` (that range is inside an unrelated fixture's docstring about `Path.home`).
+  - `scripts/tests/test_conftest_cap.py`: confirmed via direct grep — `class TestNoLiveHostCLIGuard` at line 223, `_reset_collector` at line 235 (issue's existing `:232-238` citation is close enough, off by ~3 lines, not corrected further).
+- `fake_host.py` directive vocabulary is larger than described: `_KNOWN_KINDS` (`fake_host.py:33-46`) is `{init, text, tool, result, turn_completed, raw, stderr, sleep, exit, hang}` — this issue's Tier 2 table and Design Decision prose only enumerate 8 of these 10 (omitting `turn_completed` and `raw`). `turn_completed` lets the fake emit a Codex-shaped terminal event if a future test ever needs to script that shape; `raw` emits a stream-JSON line indistinguishable from `text` per this issue's own Observation Model note.
+- Convention correction: `test_host_runner.py` does **not** contain `@pytest.mark.parametrize("host", list(_HOST_RUNNER_REGISTRY.keys()))` anywhere — that sweep-style parametrize exists only in `test_host_conformance.py:66`. `test_host_runner.py` instead repeats individual `assert "<host>" in hr._HOST_RUNNER_REGISTRY` / `assert hr._HOST_RUNNER_REGISTRY["<host>"] is <RunnerCls>` pairs per host (e.g. `:718-719` for codex, `:1120-1121` for fake), and its one registry-adjacent parametrize is over a hand-picked runner-class list (`:2021-2024`), not the full registry.
+- Convention correction: the "capability flags tested in both directions" precedent is not at `test_host_runner.py:2047-2055` (that range is `TestCapabilityWarning`, a generic warning-mechanics check unrelated to any specific flag). The real both-directions precedent is the paired negative/positive tests per flag, e.g. `test_build_streaming_emits_warning_for_agent_when_toml_absent` (`:761-767`, negative) / `test_build_streaming_injects_persona_when_toml_present` (`:769-786`, positive) for `agent_select`, and the tools/`structured_output` equivalents at `:823-827` / `:872-882`.
+- No existing precedent anywhere in the repo for a module-level bool toggled by `pytest_runtest_setup`/`pytest_runtest_teardown` (repo-wide grep: zero hits outside this issue's own prose). The closest existing shape in `scripts/tests/conftest.py` is the lock-guarded module-level collector `_host_cli_hits`/`_host_cli_lock`/`_reported_upto` (used by the live-spawn-guard's autouse-fixture-based enforcement, not a runtest hook pair) — the same "module global, not contextvar, because FSM worker threads don't share test-thread contextvars" reasoning already applies there.
+
 ## Program Design
 
 ### Types
@@ -278,6 +322,8 @@ it goes green, the host satisfies the multi-host promise.
 ## Implementation Steps
 
 1. Land FEAT-3454 (fake executable, runner, its guard carve-out, PATH prepend, first-entry drift sync).
+   > ⚠ Superseded — already done; FEAT-3454 landed
+
 2. Root-conftest `_live_spawn_allowed` flag + setup/teardown hooks + `live_conformance` fixture + four-shape regression tests.
 3. `_run_and_capture` and `Observed`; prove it against the fake's default emission.
 4. `_STREAM_SHAPE` + coverage gate; `test_golden_path_behavior` with Tier 1 invariants; verify fake passes, real hosts skip without the env var, and one `result`-terminal host plus Codex pass locally with it (Codex is the row that proves the per-host shape table earns its keep).
@@ -289,7 +335,7 @@ it goes green, the host satisfies the multi-host promise.
 ## Impact
 
 - **Priority (P2)**: defensive infrastructure for a latent rewrite risk; the first behavioral coverage of the real spawn path in the default suite.
-- **Effort**: medium — one test module rewrite, one fixture, one guard carve-out, one doc rewrite. Depends on FEAT-3454.
+- **Effort**: medium — one test module rewrite, one fixture, one guard carve-out, one doc rewrite. Built on FEAT-3454, now `done`.
 - **Risk**: low — additive; the constructability test stays; no runner or consumer change. Tier 1 against a real host may surface a genuine contract deviation on first run — that is the point, treat it as a bug not a baseline.
 - **Breaking Change**: no.
 
@@ -299,7 +345,7 @@ it goes green, the host satisfies the multi-host promise.
 
 ## Dependencies
 
-- **Depends on FEAT-3454** for the CI target and the directive vocabulary.
+- FEAT-3454 supplied the CI target and the directive vocabulary this issue builds on; its status is now `done`, so this issue is unblocked (see Current Behavior).
 - **Blocks ENH-3459** (composition suite builds on the behavioral tier).
 
 ## Related Key Documentation
@@ -336,9 +382,12 @@ what was wrong and fixed, not an outstanding action item)
   `run_claude_command` span (`subprocess_utils.py` 422-771, confirmed as the
   file's last line) and the CI conformance job (confirmed it does not set
   `LL_HOST_CONFORMANCE_LIVE`).
-- `FEAT-3454` (the stated dependency) is genuinely still open and unimplemented
-  — `scripts/little_loops/fake_host.py` does not exist yet — so the "depends
-  on FEAT-3454" framing and the "no fake exists yet" premise both hold.
+- `FEAT-3454` (the stated dependency) was open and unimplemented at the time of
+  this verification pass. It has since landed (confirmed 2026-09-12, this
+  refine pass). `scripts/little_loops/fake_host.py` now exists.
+  `FakeHostRunner` (in `host_runner.py`) is now registered in
+  `_HOST_RUNNER_REGISTRY`. The "no fake exists yet" premise no longer holds —
+  see Current Behavior for what changed.
 - Dependency refs: `depends_on: FEAT-3454` and `relates_to: [ENH-3459,
   ENH-3460]` all resolve to existing, open issues; `ENH-3459`'s
   `blocked_by` correctly lists `FEAT-3455` back. Note: this project's issue
@@ -363,6 +412,7 @@ _Added by `/ll:confidence-check` on 2026-09-12_
 - Criterion 4 capped at 10/20 by `missing_behavior_parity: [docs/development/CONFORMANCE.md]` — the issue rewrites this doc but has no `### Behavior Parity` subsection describing what the rewrite replaces.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-12T21:53:24 - `d550be67-8e77-4467-ae5a-f361c5b766bf.jsonl`
 - `/ll:confidence-check` - 2026-09-12T18:35:12 - `a9b86d47-3a71-4e77-ab37-f0478a56bd37.jsonl`
 - Manual pre-implementation review - 2026-09-12 - Tier 1 rewritten around a per-host `_STREAM_SHAPE` table (Codex has no `system/init` and `turn.completed` never sets `result_seen`, so "streaming ⇒ init first" and "consumer stops after terminal" were false for a real host); failure/abort invariants moved out of the live tier; callback-derived observation model made explicit; `streaming` stream-assertion dropped (fake executable never sees capabilities; override is direct-construction-only); `hang` split into wall-clock vs `result`+`hang` grace kill; Tier 2 made the sole owner of the scenario matrix (was duplicated in FEAT-3454); guard opt-in moved to a root-conftest hook + module global; CI PATH gap noted
 - `/ll:verify-issues` - 2026-09-12T17:10:03 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
