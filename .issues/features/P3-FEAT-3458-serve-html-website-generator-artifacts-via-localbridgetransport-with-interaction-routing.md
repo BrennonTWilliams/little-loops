@@ -463,6 +463,7 @@ Implementation Steps sections to match (both destructive rewrites — left for
 
 ## Session Log
 
+- `/ll:reconcile-issue` - 2026-09-12T18:06:49 - `7988af27-7da4-40c3-9701-313c7f94ad7f.jsonl`
 - `/ll:decide-issue` - 2026-09-12T18:00:59 - `5a21ce53-2a21-4819-a885-1e8204f7adec.jsonl`
 - `/ll:decide-issue` - 2026-09-12T17:51:04 - `147795d7-8818-4172-bf05-d3558fb89722.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-12T17:49:25 - `24bcbb37-7da0-4a87-b50e-2d2e5174a4e2.jsonl`

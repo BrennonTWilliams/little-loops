@@ -74,15 +74,28 @@ What is left is prose no test reads.
 
 - `docs/ARCHITECTURE.md:857-875` — Host Runner Layer table: add a `fake-minimal` row
   beside FEAT-3454's `fake` row, both under the existing test-fixture footnote. Keep
-  the eight production rows untouched.
+  the eight production rows untouched. **While in this table**, fix the stale
+  `HostCapabilities` row (`:861`): it lists four flags (`streaming`,
+  `permission_skip`, `agent_select`, `tool_allowlist`) but the dataclass has six
+  (`host_runner.py:289-313` adds `structured_output`, ENH-2627, and
+  `workspace_sandboxed`, FEAT-2878). The composition suite's "all six flags
+  `False`" wording only makes sense if the doc lists six.
 - `docs/reference/API.md` `## little_loops.host_runner` — "Concrete runners" table:
   `FakeMinimalHostRunner` row (`name`, `binary`, one-line divergence note); mention
   in the `TEST_ONLY_HOSTS` entry FEAT-3454 adds.
 - `docs/development/CONFORMANCE.md:9, 57` — new short section "Composition suite":
   what `test_host_composition.py` proves (same `Observed` from two divergent fakes
   through the unpatched executor; AST-pinned interface surface;
-  `_structured_output_args` as the one named carve-out), how to run it, and that it
-  skips when `ll-fake-host` is not on PATH.
+  `_structured_output_args` as the one named carve-out), how to run it, and that
+  the Popen-driving classes skip when `ll-fake-host` is not on PATH while the AST
+  classes are unmarked and run in the plain unit suite (ENH-3459 Design § marker
+  placement).
+- `docs/development/CONFORMANCE.md:40-52` — "Baseline Pass/Fail Board" has no
+  policy for test-only hosts. Add one sentence under the board: registry keys in
+  `TEST_ONLY_HOSTS` are deliberately **not** columns (they always PASS by
+  construction and carry no host-support signal); the next board refresh must not
+  add them. Extend step 3 of "Adding a New Host" (`:59`) with "test-only hosts are
+  excluded from the board", so a future refresh doesn't invent a column.
 - `docs/development/TESTING.md:1075-1088` — one sentence: both test-only runners
   share `ll-fake-host`, so the guard carve-out is a single basename.
 - Verify `docs/reference/HOST_COMPATIBILITY.md:462-472, :491-507` needs **no** change
@@ -96,9 +109,10 @@ Out (owned by ENH-3459): every gated change listed in the Summary.
 
 1. Confirm ENH-3459 is merged and `python -m pytest scripts/tests/` is green on
    `main` — this child must start from green, not fix red.
-2. ARCHITECTURE table row.
+2. ARCHITECTURE table row + six-flag fix on the `HostCapabilities` row.
 3. API concrete-runners row + `TEST_ONLY_HOSTS` mention.
-4. CONFORMANCE "Composition suite" section.
+4. CONFORMANCE "Composition suite" section + baseline-board test-only-host policy
+   sentence + "Adding a New Host" step 3 clause.
 5. TESTING one-liner.
 6. `grep -n "fake" docs/reference/HOST_COMPATIBILITY.md` — assert no per-fake
    enumeration crept in; if it did, generalise the sentence.
@@ -148,9 +162,9 @@ green.
 
 ## Files to Modify
 
-- `docs/ARCHITECTURE.md:857-875`
+- `docs/ARCHITECTURE.md:857-875` (incl. the `HostCapabilities` row at `:861`)
 - `docs/reference/API.md` (`## little_loops.host_runner`)
-- `docs/development/CONFORMANCE.md:9, 57`
+- `docs/development/CONFORMANCE.md:9, 40-52, 57-59`
 - `docs/development/TESTING.md:1075-1088`
 
 ## Related Issues (Dependencies)
@@ -225,6 +239,7 @@ needed anywhere else; evidence (`ll-verify-evidence --json`) and decisions
 both remain clean. Verdict unchanged: **VALID**.
 
 ## Session Log
+- Manual review - 2026-09-12 (second pass) - added the stale six-flag `HostCapabilities` row fix in ARCHITECTURE, a test-only-host policy for the CONFORMANCE baseline board and "Adding a New Host" step 3, and the marker-placement detail for the Composition suite section; ENH-3453 landing-order hedge resolved upstream (ENH-3453 step 4 now subtracts `TEST_ONLY_HOSTS`)
 - `/ll:verify-issues` - 2026-09-12T17:09:11 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:04:12 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:issue-size-review` - 2026-09-12T06:09:09 - `a6c3ba7b-8baf-4ae7-b742-fb9d4cbad25c.jsonl`

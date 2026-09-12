@@ -1,0 +1,12 @@
+{
+  "id": "0608984b-d694-4a48-8a5b-deb0c39eb680",
+  "type": "decision",
+  "timestamp": "2026-09-12T18:00:31Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the codebase's existing independent-flag idiom (--background/--serve/--queue on the same subparser); zero shared teardown state with the existing --serve bridge, which closes fully inside run.py's own try/finally before any post-run hook could fire.",
+  "rule": "Option SERVE-A: distinct --serve-after flag/hook for post-completion serving",
+  "scope": "issue",
+  "alternatives_rejected": "Option SERVE-B (overload existing --serve to survive past terminal state): contradicts --serve's own documented byte-identical-without-it contract, no precedent for per-loop conditional flag reinterpretation, no existing test coverage of the behavior it would change.",
+  "issue": "FEAT-3458"
+}

@@ -209,8 +209,13 @@ branch needs it.
 - `build_streaming` accepts the full Protocol kwarg set explicitly (not `**_`), calls
   `_apply_automation_env` (`host_runner.py:2203-2220`) like every real runner, and
   forwards `prompt` verbatim so the directives reach the executable. **The prompt is
-  the last element of `args` on every `build_*` method** — `main()` reads
-  `argv[-1]`, so no flag may follow it.
+  the last element of `args` on every `build_*` method**, and `main()` locates it
+  as *the argv element containing the `@@fake` fence*, falling back to `argv[-1]`
+  only when no element does. Bare `argv[-1]` is not enough: `_structured_output_args`
+  (`host_runner.py:2376`) appends `["--json-schema", <json>]` *after* the runner's
+  args under `structured_output=True`, so through the real `run_blocking_json`
+  path `argv[-1]` is the schema, not the prompt (ENH-3459's composition case
+  exercises exactly that path; amended 2026-09-12).
 - `build_blocking_json` returns the same shape of invocation; the executable has no
   blocking mode. `run_blocking_json` (`host_runner.py:2434-2578`) parses the last
   non-blank stdout line as the envelope and reads `structured_output`, then
@@ -349,8 +354,8 @@ in under ten seconds, no model, in the default suite.
 ### Signatures
 - `parse_directives(prompt: str) -> DirectivesScript` — raises `ValueError(f"line {n}: …")`; returns `DEFAULT_SCRIPT` when no `@@fake` fence is present.
 - `emit(script: DirectivesScript, *, stdout, stderr) -> int` — writes events with `flush=True` per line, sleeps, blocks on `hang`, returns exit code. Separated from `main()` so tests can drive it in-process with `io.StringIO`.
-- `main(argv: list[str] | None = None) -> int` — prompt is `argv[-1]`; ignores every other flag so any argv shape the runner emits is accepted, provided the runner keeps the prompt last.
-- `FakeHostRunner(capabilities: HostCapabilities | None = None)`; `name = "fake"`; five `build_*` methods; `describe_capabilities()`.
+- `main(argv: list[str] | None = None) -> int` — prompt is the argv element containing the `@@fake` fence, else `argv[-1]`; ignores every other element so any argv shape the runner emits is accepted, including flags the executor appends after the prompt (`--json-schema <json>`).
+- `FakeHostRunner(capabilities: HostCapabilities | None = None)`; `name = "fake"`; four `build_*` methods (`build_streaming`, `build_blocking_json`, `build_version_check`, `build_detached` — the full Protocol set); `describe_capabilities()`.
 
 ### Call Path
 `resolve_host_named("fake")` → `FakeHostRunner.build_streaming(prompt=…)` → `HostInvocation(binary="ll-fake-host", args=["-p", prompt, …])` → `run_claude_command` spawns it via `subprocess.Popen` (`subprocess_utils.py:526`) → `ll-fake-host` `main()` → `parse_directives` → `emit` → consumer loop `:628-735` → `CompletedProcess`.
@@ -465,6 +470,7 @@ was wrong and fixed, not an outstanding action item).
   is net-new, unimplemented work.
 
 ## Session Log
+- Manual review (ENH-3459 cross-check) - 2026-09-12 - `main()` prompt location changed from bare `argv[-1]` to fence-locates-prompt with `argv[-1]` fallback, because `_structured_output_args` appends `--json-schema <json>` after the prompt; "five `build_*`" corrected to four
 - Manual pre-implementation review - 2026-09-12 - PATH prepend + fail-not-skip (CI conformance job never had `.venv/bin` on PATH); `hang` re-modeled (grace kill needs `result` + `hang`); `@@fake`/`@@end` fence decided (`@`-prefix collides with file mentions); `result structured=` for `run_blocking_json`; flush-per-line; stderr-interleaving caveat; `request_shutdown` from `stream_callback`; prompt-last contract; capability override is direct-construction-only; seven-scenario matrix moved to FEAT-3455 (was duplicated)
 - `/ll:verify-issues` - 2026-09-12T17:14:12 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:12:07 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
