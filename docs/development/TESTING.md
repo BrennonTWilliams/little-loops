@@ -119,7 +119,8 @@ scripts/tests/
 ├── conformance/                # Host conformance tests (parametrized over registered hosts)
 │   ├── __init__.py
 │   ├── conftest.py            # isolated_env fixture + --conformance-host option
-│   └── test_host_conformance.py  # Four golden-path tests × all registered hosts
+│   └── test_host_conformance.py  # Constructability (4 golden paths) + Tier 1/Tier 2
+│                                  # behavioral tiers × all registered hosts (FEAT-3455)
 ├── test_*.py                   # Unit tests (50+ modules)
 ├── test_*_integration.py       # Integration tests
 ├── test_*_properties.py        # Property-based tests (Hypothesis)
@@ -1045,7 +1046,7 @@ Verify the line is exactly in `exclude_lines` configuration.
 |--------|---------|
 | `@pytest.mark.integration` | Integration test |
 | `@pytest.mark.slow` | Slow-running test |
-| `@pytest.mark.conformance` | Host conformance test (see `conformance/`) |
+| `@pytest.mark.conformance` | Host conformance test (see `conformance/`); constructability and Tier 1/Tier 2 behavioral cases (FEAT-3455). Tier 1 is env-gated for non-fake hosts via `LL_HOST_CONFORMANCE_LIVE=1` — see `docs/development/CONFORMANCE.md` |
 | `@pytest.mark.no_parallel` | Must not run on xdist workers (subprocess signal-handling, timing-sensitive); `pytest_collection_modifyitems` in `scripts/tests/conftest.py` skips on workers — runs on the controller or in a serial `-n 0` invocation |
 
 ### Key Fixtures
@@ -1089,6 +1090,15 @@ exempt — it costs nothing and is not a guard trip. So is any binary in
 `host_runner.TEST_ONLY_BINARIES` (e.g. `ll-fake-host`, FEAT-3454) — spawning
 a test-only fixture executable is the point of the tests that use it, not a
 live-host call to guard against.
+
+The third carve-out is opt-in: the `live_conformance` fixture (FEAT-3455,
+`scripts/tests/conftest.py`) sets a module-level `_live_spawn_allowed` flag
+for the duration of a test that requests it, letting a real host CLI spawn
+through — but only while both `LL_HOST_CONFORMANCE_LIVE=1` is set AND the
+requesting test carries the `conformance` marker. Every other test, marked
+or not, stays guarded exactly as before. See
+`docs/development/CONFORMANCE.md`'s Tier 1 section for the behavioral tests
+this exists for.
 
 The same `conftest.py` fixture stack also collapses the rate-limit backoff
 ladder (`_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER` / `_MAX_WAIT_SECONDS`) to zero

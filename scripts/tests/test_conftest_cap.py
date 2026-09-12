@@ -472,6 +472,96 @@ class TestNoLiveHostCLIGuard:
             with pytest.raises(StopIteration):
                 next(gen)
 
+    # -- live_conformance carve-out (FEAT-3455) --------------------------
+
+    @pytest.fixture(autouse=True)
+    def _reset_live_spawn_flag(self) -> None:
+        conftest._live_spawn_allowed = False
+        yield
+        conftest._live_spawn_allowed = False
+
+    def test_match_host_binary_flag_set_allows_real_host(self) -> None:
+        """Four-shape carve-out, shape 1: flag set -> None (spawn allowed)."""
+        conftest._live_spawn_allowed = True
+        assert conftest._match_host_binary((["claude", "-p", "hi"],), {}) is None
+
+    def test_match_host_binary_flag_clear_blocks_real_host(self) -> None:
+        """Four-shape carve-out, shape 2: flag clear -> tuple (spawn blocked)."""
+        conftest._live_spawn_allowed = False
+        assert conftest._match_host_binary((["claude", "-p", "hi"],), {}) == (
+            "claude",
+            ["claude", "-p", "hi"],
+        )
+
+    def test_match_host_binary_version_carve_out_preserved_with_flag_set(self) -> None:
+        """Four-shape carve-out, shape 3: --version stays carved out either way."""
+        conftest._live_spawn_allowed = True
+        assert conftest._match_host_binary((["claude", "--version"],), {}) is None
+
+    def test_match_host_binary_non_host_basename_unaffected_by_flag(self) -> None:
+        """Four-shape carve-out, shape 4: a non-host binary is never flagged."""
+        conftest._live_spawn_allowed = True
+        assert conftest._match_host_binary((["ls", "-la"],), {}) is None
+
+    def test_live_conformance_allowed_requires_both_env_and_marker(self) -> None:
+        marker = MagicMock(spec=[])
+        assert conftest._live_conformance_allowed(marker) is False
+
+    def test_live_conformance_predicate_true_env_set_and_marker_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CONFORMANCE_LIVE", "1")
+        marker = MagicMock(spec=[])
+        assert conftest._live_conformance_allowed(marker) is True
+
+    def test_live_conformance_predicate_false_when_env_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LL_HOST_CONFORMANCE_LIVE", raising=False)
+        marker = MagicMock(spec=[])
+        assert conftest._live_conformance_allowed(marker) is False
+
+    def test_live_conformance_predicate_false_when_marker_absent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CONFORMANCE_LIVE", "1")
+        assert conftest._live_conformance_allowed(None) is False
+
+    def test_live_conformance_fixture_sets_and_clears_flag(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The fixture itself (not just the predicate) toggles the module global."""
+        monkeypatch.setenv("LL_HOST_CONFORMANCE_LIVE", "1")
+        request = MagicMock()
+        request.node.get_closest_marker.return_value = MagicMock(spec=[])
+
+        gen = conftest.live_conformance.__wrapped__(request)
+        allowed = next(gen)
+        try:
+            assert allowed is True
+            assert conftest._live_spawn_allowed is True
+        finally:
+            with pytest.raises(StopIteration):
+                next(gen)
+        assert conftest._live_spawn_allowed is False
+
+    def test_live_conformance_fixture_leaves_flag_clear_when_not_allowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LL_HOST_CONFORMANCE_LIVE", raising=False)
+        request = MagicMock()
+        request.node.get_closest_marker.return_value = None
+
+        gen = conftest.live_conformance.__wrapped__(request)
+        allowed = next(gen)
+        try:
+            assert allowed is False
+            assert conftest._live_spawn_allowed is False
+        finally:
+            with pytest.raises(StopIteration):
+                next(gen)
+        assert conftest._live_spawn_allowed is False
+
 
 class TestGuardRealSocketTransport:
     """Real-socket-under-``.ll`` guard (BUG-3401).

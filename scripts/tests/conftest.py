@@ -196,6 +196,15 @@ _host_cli_hits: list[tuple[str, str]] = []
 # attributes an out-of-window hit to the next test to finish.
 _reported_upto = 0
 
+# FEAT-3455: opt-in carve-out for a real host CLI spawn inside a
+# `conformance`-marked, live-gated test. A module global (not a contextvar)
+# because FSM-level runs spawn from worker threads, where a contextvar set in
+# the test thread does not propagate — same reasoning as _host_cli_hits/
+# _host_cli_lock above. Set/cleared only by the `live_conformance` fixture;
+# every other test leaves it False, so `_match_host_binary` keeps flagging
+# real host spawns for them exactly as before this issue.
+_live_spawn_allowed = False
+
 
 def _current_test_id() -> str:
     """Best-effort test id for the collector tuple, from PYTEST_CURRENT_TEST.
@@ -257,19 +266,24 @@ def _match_host_binary(
 ) -> tuple[str, list[str]] | None:
     """Return (basename, argv) if this call targets a host CLI binary, else None.
 
-    Applies two carve-outs: ``--version`` (all six wired
+    Applies three carve-outs: ``--version`` (all six wired
     ``build_version_check()`` implementations emit exactly ``args=["<binary>",
     "--version"]``, which is free — no spend — but would otherwise trip a
-    naive argv[0]-basename check) and ``TEST_ONLY_BINARIES`` (FEAT-3454's
+    naive argv[0]-basename check), ``TEST_ONLY_BINARIES`` (FEAT-3454's
     ``ll-fake-host`` and any sibling test-only executable — spawning these
     is the whole point of the tests that use them, not a live-host call to
-    guard against).
+    guard against), and ``_live_spawn_allowed`` (FEAT-3455 — set only by the
+    ``live_conformance`` fixture, letting a real host spawn through for the
+    one test that explicitly opted in via ``LL_HOST_CONFORMANCE_LIVE=1`` plus
+    the ``conformance`` marker).
     """
     argv = _extract_argv(args, kwargs)
     if not argv:
         return None
     binary = os.path.basename(argv[0])
     if binary in TEST_ONLY_BINARIES:
+        return None
+    if _live_spawn_allowed:
         return None
     if binary not in HOST_BINARY_NAMES:
         return None
@@ -448,6 +462,49 @@ def _fail_on_live_host_cli() -> Generator[None, None, None]:
     msg = _drain_new_hits()
     if msg:
         pytest.fail(msg)
+
+
+def _live_conformance_allowed(marker: pytest.Mark | None) -> bool:
+    """Pure predicate for ``live_conformance`` (FEAT-3455): env var AND marker.
+
+    Split out from the fixture body (mirrors ``_drain_new_hits``'s "pure
+    helper, not inline in the fixture, so it's unit-testable" precedent) —
+    ``test_conftest_cap.py`` cannot assert a fixture's generator behavior
+    directly, but it can call this predicate with every combination of env
+    var and marker presence/absence.
+    """
+    return bool(os.environ.get("LL_HOST_CONFORMANCE_LIVE")) and marker is not None
+
+
+@pytest.fixture
+def live_conformance(request: pytest.FixtureRequest) -> Generator[bool, None, None]:
+    """Opt-in gate (FEAT-3455) for a real host-CLI spawn inside a live conformance test.
+
+    Requires both ``LL_HOST_CONFORMANCE_LIVE=1`` and the ``conformance``
+    marker on the requesting test node. Env is read here, at fixture-setup
+    time, rather than cached at module-import time, so a test-level
+    ``monkeypatch.setenv("LL_HOST_CONFORMANCE_LIVE", ...)`` still takes
+    effect (same "read fresh, don't cache" posture as the
+    ``_CMD_RUN_ENV_VARS`` precedent comment at line ~1119 below).
+
+    When both hold, sets the module-level ``_live_spawn_allowed`` flag for
+    the duration of the test and yields ``True`` — the only way
+    ``_match_host_binary`` lets a real host CLI spawn through the FEAT-3329
+    guard. Otherwise leaves the flag untouched (already ``False``) and
+    yields ``False``; the caller is expected to skip the live portion of its
+    test in that case. Not autouse: only a test that explicitly requests
+    this fixture can ever unguard a spawn — ``test_golden_path_invocation``
+    and every other ``conformance``-marked test stay guarded by default.
+    """
+    global _live_spawn_allowed
+    marker = request.node.get_closest_marker("conformance")
+    allowed = _live_conformance_allowed(marker)
+    if allowed:
+        _live_spawn_allowed = True
+    try:
+        yield allowed
+    finally:
+        _live_spawn_allowed = False
 
 
 @pytest.fixture(scope="session", autouse=True)

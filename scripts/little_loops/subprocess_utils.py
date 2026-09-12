@@ -556,6 +556,144 @@ def run_claude_command(
     stderr_lines: list[str] = []
     detected_model: str = "unknown"
     tool_call_count = 0
+    result_seen = False
+
+    def _process_line(line: str, is_stderr: bool) -> None:
+        """Dispatch one decoded, newline-stripped stream-json line.
+
+        Shared by both read paths below (raw-fd drain and the readline()
+        fallback) so the event-parsing contract stays in exactly one place.
+        Mutates ``result_seen``/``detected_model``/``tool_call_count`` via
+        closure (the enclosing function's locals) and appends to the
+        ``stdout_lines``/``stderr_lines`` lists in place.
+        """
+        nonlocal detected_model, tool_call_count, result_seen
+        line = line.rstrip("\n")
+
+        if not is_stderr:
+            try:
+                event = json.loads(line)
+                etype = event.get("type")
+                if etype == "system" and event.get("subtype") == "init":
+                    if "model" in event:
+                        detected_model = event["model"]
+                        if on_model_detected:
+                            on_model_detected(event["model"])
+                    if event.get("session_id") and on_session_id_detected:
+                        on_session_id_detected(str(event["session_id"]))
+                    return  # don't add to stdout_lines
+                elif etype == "assistant":
+                    msg = event.get("message", {})
+                    text_parts = [
+                        block["text"]
+                        for block in msg.get("content", [])
+                        if block.get("type") == "text"
+                    ]
+                    text = "\n\n".join(text_parts)
+                    if on_tool_call:
+                        for block in msg.get("content", []):
+                            if block.get("type") != "tool_use":
+                                continue
+                            call = ToolCall(
+                                index=tool_call_count,
+                                name=block.get("name", ""),
+                                input=block.get("input", {}),
+                            )
+                            tool_call_count += 1
+                            on_tool_call(call)
+                    if not text:
+                        return
+                    for sub_line in text.splitlines() or [""]:
+                        stdout_lines.append(sub_line)
+                        if stream_callback:
+                            stream_callback(sub_line, is_stderr)
+                    return
+                elif etype == "result":
+                    usage = event.get("usage", {})
+                    if on_usage and usage:
+                        on_usage(
+                            usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0),
+                            usage.get("output_tokens", 0),
+                        )
+                    if on_usage_detailed and usage:
+                        on_usage_detailed(
+                            TokenUsage(
+                                input_tokens=usage.get("input_tokens", 0),
+                                output_tokens=usage.get("output_tokens", 0),
+                                cache_read_tokens=usage.get("cache_read_input_tokens", 0),
+                                cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+                                model=event.get("model", detected_model),
+                            )
+                        )
+                    if event.get("is_error"):
+                        error_text = event.get("error") or event.get("result", "")
+                        if error_text:
+                            stderr_lines.append(f"[result] {error_text}")
+                    # Turn is done. The caller stops draining and breaks the
+                    # read loop instead of blocking on a pipe EOF that
+                    # inherited background-task FDs may never deliver.
+                    result_seen = True
+                    return  # skip other event types (tool_use, etc.)
+                elif etype == "turn.completed":
+                    # Codex `exec --json` terminal event (FEAT-2123). Field
+                    # names differ from Claude's "result" usage block; see
+                    # exec_events.rs::Usage in openai/codex (no cache-read
+                    # split, no model field — Codex reports a single
+                    # cached_input_tokens count and never echoes the model).
+                    usage = event.get("usage", {})
+                    if on_usage_detailed and usage:
+                        on_usage_detailed(
+                            TokenUsage(
+                                input_tokens=usage.get("input_tokens", 0),
+                                output_tokens=usage.get("output_tokens", 0),
+                                cache_read_tokens=usage.get("cached_input_tokens", 0),
+                                cache_creation_tokens=usage.get("cache_write_input_tokens", 0),
+                                model=detected_model,
+                            )
+                        )
+                    return  # skip other event types (item.*, etc.)
+                else:
+                    return  # skip other event types (tool_use, etc.)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                pass  # non-JSON line: pass through as raw text
+
+        if is_stderr:
+            stderr_lines.append(line)
+        else:
+            stdout_lines.append(line)
+
+        if stream_callback:
+            stream_callback(line, is_stderr)
+
+    # Raw, non-blocking fd for each stream when the underlying object
+    # supports it (a real subprocess pipe) — None for a fileno()-less fake
+    # (e.g. io.StringIO in tests), which falls back to the plain readline()
+    # path below unchanged. Needed to safely drain more than one
+    # already-available line per stream: TextIOWrapper.readline() reads
+    # ahead via read1() (one syscall's worth, e.g. up to 8KB), so when a
+    # writer flushes several short JSON lines back-to-back before going
+    # quiet, a single syscall can pull more than one line into
+    # TextIOWrapper's own internal buffer — invisible to `selectors`, which
+    # only observes OS-level pipe readiness. Without draining that buffer
+    # here, a line already sitting there (e.g. the terminal `result` event)
+    # can go unread forever once the writer stops producing new bytes.
+    # `os.set_blocking(fd, False)` is required to make the drain provably
+    # safe: readline() on a NON-blocking pipe can return "" for "no data
+    # right now" (indistinguishable from real EOF) instead of raising, so
+    # the drain instead reads raw bytes via `os.read()` and splits lines
+    # itself, where the OS gives an unambiguous BlockingIOError vs b"".
+    def _raw_fd_for(stream: object) -> int | None:
+        try:
+            fd = stream.fileno()  # type: ignore[attr-defined]
+            os.set_blocking(fd, False)
+        except (AttributeError, OSError, ValueError):
+            return None
+        return fd
+
+    stdout_raw_fd = _raw_fd_for(process.stdout) if process.stdout else None
+    stderr_raw_fd = _raw_fd_for(process.stderr) if process.stderr else None
+    stdout_leftover = ""
+    stderr_leftover = ""
 
     # Use selectors for non-blocking read from both streams
     with selectors.DefaultSelector() as sel:
@@ -566,6 +704,38 @@ def run_claude_command(
 
         start_time = time.time()
         last_output_time = start_time
+
+        def _drain_raw(fd: int, leftover: str, is_stderr: bool) -> tuple[str, bool]:
+            """Drain every complete line already available on *fd*.
+
+            Returns the updated leftover (undecoded/incomplete trailing text)
+            and whether the fd hit true EOF (peer closed) this call.
+            """
+            nonlocal last_output_time
+            eof = False
+            while True:
+                newline_idx = leftover.find("\n")
+                if newline_idx == -1:
+                    try:
+                        chunk = os.read(fd, 65536)
+                    except BlockingIOError:
+                        break
+                    if not chunk:
+                        eof = True
+                        if leftover:
+                            last_output_time = time.time()
+                            _process_line(leftover, is_stderr)
+                            leftover = ""
+                        break
+                    last_output_time = time.time()
+                    leftover += chunk.decode("utf-8", errors="replace")
+                    continue
+                line, leftover = leftover[: newline_idx + 1], leftover[newline_idx + 1 :]
+                _process_line(line, is_stderr)
+                if result_seen:
+                    break
+            return leftover, eof
+
         # End-of-turn detection: the stream-json "result" event is the canonical
         # signal that the headless `claude -p` session is done. We break on it
         # instead of waiting for pipe EOF, because background Workflow/Task child
@@ -573,7 +743,6 @@ def run_claude_command(
         # EOF when the *last* writer closes it — so EOF may never arrive even
         # though the turn finished, hanging the reader until the wall-clock
         # timeout fires on a successful run.
-        result_seen = False
 
         try:
             while sel.get_map():
@@ -615,118 +784,33 @@ def run_claude_command(
 
                 ready = sel.select(timeout=1.0)
                 for key, _ in ready:
-                    line = key.fileobj.readline()  # type: ignore[union-attr]
-                    if not line:
-                        sel.unregister(key.fileobj)
-                        continue
-
-                    last_output_time = time.time()
-                    line = line.rstrip("\n")
                     is_stderr = key.fileobj is process.stderr
+                    raw_fd = stderr_raw_fd if is_stderr else stdout_raw_fd
 
-                    if not is_stderr:
-                        try:
-                            event = json.loads(line)
-                            etype = event.get("type")
-                            if etype == "system" and event.get("subtype") == "init":
-                                if "model" in event:
-                                    detected_model = event["model"]
-                                    if on_model_detected:
-                                        on_model_detected(event["model"])
-                                if event.get("session_id") and on_session_id_detected:
-                                    on_session_id_detected(str(event["session_id"]))
-                                continue  # don't add to stdout_lines
-                            elif etype == "assistant":
-                                msg = event.get("message", {})
-                                text_parts = [
-                                    block["text"]
-                                    for block in msg.get("content", [])
-                                    if block.get("type") == "text"
-                                ]
-                                text = "\n\n".join(text_parts)
-                                if on_tool_call:
-                                    for block in msg.get("content", []):
-                                        if block.get("type") != "tool_use":
-                                            continue
-                                        call = ToolCall(
-                                            index=tool_call_count,
-                                            name=block.get("name", ""),
-                                            input=block.get("input", {}),
-                                        )
-                                        tool_call_count += 1
-                                        on_tool_call(call)
-                                if not text:
-                                    continue
-                                for sub_line in text.splitlines() or [""]:
-                                    stdout_lines.append(sub_line)
-                                    if stream_callback:
-                                        stream_callback(sub_line, is_stderr)
-                                continue
-                            elif etype == "result":
-                                usage = event.get("usage", {})
-                                if on_usage and usage:
-                                    on_usage(
-                                        usage.get("input_tokens", 0)
-                                        + usage.get("cache_read_input_tokens", 0),
-                                        usage.get("output_tokens", 0),
-                                    )
-                                if on_usage_detailed and usage:
-                                    on_usage_detailed(
-                                        TokenUsage(
-                                            input_tokens=usage.get("input_tokens", 0),
-                                            output_tokens=usage.get("output_tokens", 0),
-                                            cache_read_tokens=usage.get(
-                                                "cache_read_input_tokens", 0
-                                            ),
-                                            cache_creation_tokens=usage.get(
-                                                "cache_creation_input_tokens", 0
-                                            ),
-                                            model=event.get("model", detected_model),
-                                        )
-                                    )
-                                if event.get("is_error"):
-                                    error_text = event.get("error") or event.get("result", "")
-                                    if error_text:
-                                        stderr_lines.append(f"[result] {error_text}")
-                                # Turn is done. Finish draining the current ready
-                                # batch (so trailing buffered lines aren't lost),
-                                # then break the loop below instead of blocking on
-                                # a pipe EOF that inherited background-task FDs may
-                                # never deliver.
-                                result_seen = True
-                                continue  # skip other event types (tool_use, etc.)
-                            elif etype == "turn.completed":
-                                # Codex `exec --json` terminal event (FEAT-2123). Field
-                                # names differ from Claude's "result" usage block; see
-                                # exec_events.rs::Usage in openai/codex (no cache-read
-                                # split, no model field — Codex reports a single
-                                # cached_input_tokens count and never echoes the model).
-                                usage = event.get("usage", {})
-                                if on_usage_detailed and usage:
-                                    on_usage_detailed(
-                                        TokenUsage(
-                                            input_tokens=usage.get("input_tokens", 0),
-                                            output_tokens=usage.get("output_tokens", 0),
-                                            cache_read_tokens=usage.get("cached_input_tokens", 0),
-                                            cache_creation_tokens=usage.get(
-                                                "cache_write_input_tokens", 0
-                                            ),
-                                            model=detected_model,
-                                        )
-                                    )
-                                continue  # skip other event types (item.*, etc.)
-                            else:
-                                continue  # skip other event types (tool_use, etc.)
-                        except (json.JSONDecodeError, KeyError, TypeError):
-                            pass  # non-JSON line: pass through as raw text
-
-                    if is_stderr:
-                        stderr_lines.append(line)
+                    if raw_fd is None:
+                        # Fallback for a fileno()-less fake stream (e.g.
+                        # io.StringIO in tests): identical to the original
+                        # single-readline-per-ready-event behavior.
+                        line = key.fileobj.readline()  # type: ignore[union-attr]
+                        if not line:
+                            sel.unregister(key.fileobj)
+                            continue
+                        last_output_time = time.time()
+                        _process_line(line, is_stderr)
                     else:
-                        stdout_lines.append(line)
+                        # Drain every already-available line on this fd
+                        # before returning to select() — see the comment
+                        # above _drain_raw's definition for why a single
+                        # readline() per ready-event isn't sufficient.
+                        if is_stderr:
+                            stderr_leftover, eof = _drain_raw(raw_fd, stderr_leftover, is_stderr)
+                        else:
+                            stdout_leftover, eof = _drain_raw(raw_fd, stdout_leftover, is_stderr)
+                        if eof:
+                            sel.unregister(key.fileobj)
 
-                    if stream_callback:
-                        stream_callback(line, is_stderr)
+                    if result_seen:
+                        break
 
                 # The "result" event ended the turn and the current ready batch
                 # has now been fully drained; stop reading rather than blocking

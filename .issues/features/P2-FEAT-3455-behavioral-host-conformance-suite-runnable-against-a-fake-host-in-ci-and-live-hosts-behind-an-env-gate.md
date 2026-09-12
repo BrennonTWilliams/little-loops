@@ -4,9 +4,10 @@ title: Behavioral host-conformance suite runnable against a fake host in CI and 
   hosts behind an env gate
 type: FEAT
 priority: P2
-status: open
+status: done
 testable: true
 discovered_date: '2026-09-11'
+completed_at: '2026-09-12T23:28:44Z'
 labels:
 - multi-host
 - verification
@@ -367,6 +368,38 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+- **2026-09-12** — The Integration Map's "Dependent Files" section listed
+  `subprocess_utils.py:422-771` as "Not modified," and "Out of scope"
+  explicitly excluded "Any change to the runner Protocol or the consumer."
+  Implementing the `idle timeout`, `abort via request_shutdown()`, and
+  `result` + `hang` grace-kill Tier 2 scripted tests surfaced a real,
+  reproducible defect in `run_claude_command`'s read loop (confirmed via a
+  standalone repro outside pytest, down to raw `os.read()` on the pipe fd):
+  `TextIOWrapper.readline()` reads ahead via one `read1()` syscall (up to
+  8KB), so when a writer flushes two-plus short stream-json lines
+  back-to-back before pausing (exactly what these three scripted scenarios
+  do), a single syscall can pull all of them into Python's own internal
+  buffer while returning only the first line — invisible to `selectors`,
+  which only sees OS-level pipe readiness. Without draining, the buffered
+  `result`/`text` event was never read once the writer stopped producing
+  new bytes, so all three scenarios hung until the suite's `--timeout=120`
+  watchdog instead of their own configured (1s) timeout. Fixed by draining
+  every already-available line per ready fd via a raw non-blocking
+  `os.read()` loop before returning to `select()` (not non-blocking
+  `readline()` — verified separately that it returns `""` for "no data
+  yet," indistinguishable from true EOF), falling back to the original
+  single-`readline()` path when the stream has no `fileno()` (`io.StringIO`,
+  used throughout `test_subprocess_utils.py`'s existing mocks — verified
+  zero behavior change there, 134/134 tests plus the full `scripts/tests/`
+  suite unchanged). Judged in-scope despite the stated exclusion because a
+  failing Tier 2 test directly violates this issue's own harder constraint
+  ("`python -m pytest scripts/tests/` exits 0 with no env vars set"); the
+  "no consumer change" boundary predated discovery of this defect. See
+  `thoughts/shared/plans/2026-09-12-FEAT-3455-management.md` for the full
+  writeup.
+
 ### Types
 - `Observed`: `(kinds: list[str], model: str | None, session_id: str | None, tool_calls: list[ToolCall], usage: list[TokenUsage], result_seen: bool | None, process: Popen | None, completed: CompletedProcess | None, error: BaseException | None)` — everything the consumer surfaced, collected via callbacks; `kinds` is the callback-derived sequence defined in the Observation model above (`init` appended by `on_model_detected` only); `usage` is a list so "terminal fired exactly once" is `len(usage) == 1`; `result_seen` stays `None` when `run_claude_command` raised (the callback only fires on normal return); `process` is the handle from `on_process_start`, kept for the process-group assertion.
 - `_LIVE_PROMPT: str = "Reply with exactly: OK"` — the only prompt Tier 1 sends.
@@ -402,6 +435,37 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 - **Effort**: medium — one test module rewrite, one fixture, one guard carve-out, one doc rewrite. Built on FEAT-3454, now `done`.
 - **Risk**: low — additive; the constructability test stays; no runner or consumer change. Tier 1 against a real host may surface a genuine contract deviation on first run — that is the point, treat it as a bug not a baseline.
 - **Breaking Change**: no.
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-12
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/tests/conformance/test_host_conformance.py`: `_STREAM_SHAPE` + `test_stream_shape_covers_registry` coverage gate; `_LIVE_PROMPT`; `Observed` dataclass; `_run_and_capture`; `assert_terminal_once`/`assert_stderr_clean`/`assert_group_gone`/`assert_event_kinds`/`assert_capability_argv` helpers; `test_golden_path_behavior[<host>]` (Tier 1); eight `test_scripted_*` cases (Tier 2, fake only: ordering, result error, exit-before-terminal, failed start, idle timeout, abort via `request_shutdown()`, wall-clock hang, result-then-hang grace kill); capability-argv tests for `permission_skip`/`agent_select`/`tool_allowlist`/`workspace_sandboxed` against each real runner's own `build_streaming` (`TestCapabilityArgv*` classes) plus `structured_output`/`streaming` against directly-constructed fake invocations; module-level `pytestmark = pytest.mark.conformance` so `-m conformance`/`-m "not conformance"` select/deselect the whole file uniformly.
+- `scripts/tests/conftest.py`: `_live_spawn_allowed` module global; `_match_host_binary` carve-out gated on it; `live_conformance` fixture (root conftest, function-scoped, not autouse) plus its pure `_live_conformance_allowed(marker)` predicate.
+- `scripts/tests/test_conftest_cap.py`: `TestNoLiveHostCLIGuard` four-shape carve-out tests for the new flag, plus `live_conformance` predicate/fixture tests (env-unset, marker-absent, both-set, fixture set/clear round-trip).
+- `scripts/little_loops/subprocess_utils.py`: `run_claude_command`'s read loop now drains every already-available line per ready fd via a raw non-blocking `os.read()` loop (`_drain_raw`) before returning to `select()`, falling back to the original single-`readline()` path when the stream has no `fileno()` (test mocks). Event-dispatch logic extracted into a `_process_line` closure, otherwise unchanged. See Deviations below.
+- `docs/development/CONFORMANCE.md`: full rewrite for the two-tier design, capability-argv rule, running/reading-results tables, refreshed baseline board (9 registry entries).
+- `docs/development/TESTING.md`: tree line, markers table row, and a new paragraph on the `live_conformance` carve-out under "Live Host-CLI Spawn Guard".
+
+### Deviations from the issue text
+
+- `subprocess_utils.py` was explicitly listed as "Not modified" / out of scope for consumer changes, but implementing the Tier 2 idle-timeout/abort/grace-kill tests surfaced a real, reproducible read-loop defect (buffered-ahead lines invisible to `selectors` once the writer pauses without exiting) that made those three scenarios hang until the suite's wall-clock watchdog. Fixed rather than left broken, since a failing Tier 2 test directly violates this issue's own "`pytest scripts/tests/` exits 0" criterion. Full writeup in `thoughts/shared/plans/2026-09-12-FEAT-3455-management.md` and the dated entry under `## Program Design > ### Deviations` above.
+- Capability-argv tests for the four real-runner-only flags were delegated to a background agent (large audit-and-fill task); it added `assert_capability_argv` and 24 tests before the coordinating session's own Tier 1/Tier 2/guard edits landed in the same file — both sections composed without collision.
+
+### Verification Results
+
+- `python -m pytest scripts/tests/`: 24,200 passed, 51 skipped, 0 failed (full suite, no env vars set).
+- `python -m pytest scripts/tests/test_subprocess_utils.py`: 134/134 passed (zero regression from the read-loop change).
+- `python -m pytest scripts/tests/conformance/`: 62 passed, 20 skipped (real hosts skip without `LL_HOST_CONFORMANCE_LIVE=1`; opencode/pi stubs skip).
+- `-m "not conformance"` deselects all 82 tests in the conformance module; `-m conformance` selects all 62 runnable ones; `--conformance-host codex` still runs Tier 2 + capability tests (41 passed) while skipping other hosts.
+- `python -m mypy scripts/little_loops/`: no issues (397 files).
+- `ruff check` / `ruff format --check` on all changed files: clean.
+- `ll-verify-host-map`: `OK: adapter host-capability map agrees with all cross-checks.`
+- Live Tier 1 against a real host (`LL_HOST_CONFORMANCE_LIVE=1 --conformance-host codex`) was not run — it spends real tokens/requires auth; left as a manual follow-up per the issue's own cost note.
 
 ## Status
 
@@ -475,6 +539,7 @@ _Added by `/ll:confidence-check` on 2026-09-12_
 - Both concerns raised at check time are resolved: FEAT-3454 has since landed (`fake_host.py` exists, the `depends_on` edge is satisfied), and the `### Behavior Parity` subsection for `docs/development/CONFORMANCE.md` now exists under Integration Map. Scores above predate these fixes.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-12T23:28:14 - `0aea6545-8c1d-4ed7-9e9d-9baad3879e50.jsonl`
 - `/ll:confidence-check` - 2026-09-12T22:27:14 - `9009dbec-e05e-453a-bf75-bcc2887eee82.jsonl`
 - Manual pre-implementation review - 2026-09-12 - live Tier 1 `stderr == ""` relaxed to "no `[result] ` line" (real CLIs emit stderr noise on clean runs); Tier 1 now sends one fixed `_LIVE_PROMPT` and parametrizes over hosts only (golden-path prompts would run agentic slash commands live); fake-based capability tests scoped to `structured_output`/`streaming` (the other four are vacuous both directions on the fake, moved to real runners); `init` appended once per init event and `result_seen is None` on `TimeoutExpired` rows; guard opt-in changed from a `pytest_runtest_setup/teardown` hook pair to a root-conftest `live_conformance` fixture; `--conformance-host` behavior for fake-only tests defined; relationship to `test_fake_host.py` e2e test stated; stale confidence-check concerns marked resolved
 - `/ll:reconcile-issue` - 2026-09-12T22:09:09 - `e83bf6dd-aa82-446e-80c6-b70827d0d396.jsonl`
