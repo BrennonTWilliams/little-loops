@@ -132,7 +132,7 @@ passing test that asserts nothing.
 | `tool <name> [json-input]` | `assistant` event with a `tool_use` block | `:651-660` (`on_tool_call`) |
 | `result [error=<msg>] [in=<n> out=<n> cache=<n>]` | `{"type":"result","is_error":bool,"usage":{…}}` | `:665-697` (`on_usage*`, `result_seen`) |
 | `turn_completed [in=<n> out=<n> cached=<n>]` | `{"type":"turn.completed","usage":{…}}` (Codex terminal) | `:698-714` |
-| `raw <str>` | non-JSON stdout line | `:716-719` passthrough |
+| `raw <str>` | non-JSON stdout line | `:720-726` (`except (json.JSONDecodeError, KeyError, TypeError): pass` fallthrough to the plain-append path) |
 | `stderr <str>` | line on stderr | `stderr_lines` |
 | `sleep <seconds>` | wall-clock pause before the next directive | idle-timeout (`:603`), `request_shutdown` poll (`sel.select(timeout=1.0)`) |
 | `exit <code>` | flush and exit with code; must be last if present | `process.returncode` (`:766`), rate-limit detection (needs nonzero exit + 429 text) |
@@ -309,7 +309,90 @@ in under ten seconds, no model, in the default suite.
 | `docs/development/CONFORMANCE.md` | Conformance harness the fake becomes a target for (FEAT-3455) |
 | `.claude/CLAUDE.md` § Host CLI Abstraction | `resolve_host()` is the only entry point; the fake registers there |
 
+## Verification Notes
+
+Verdict at time of check: **VALID** (correction below applied in the same pass,
+so the issue as it now reads is up to date — this section is a record of what
+was wrong and fixed, not an outstanding action item).
+
+- **Checked**: every `file:line` citation in Current Behavior, Design Decision,
+  Directives Language, Expected Behavior, Behavior Parity, and Integration Map
+  against the working tree. All resolved to the claimed function/class/constant,
+  most exactly and the rest within 1-2 lines of harmless drift (illustrative,
+  not load-bearing): `run_claude_command` (`subprocess_utils.py:422`, cited
+  `422-771`), `Popen` call (`:534`, cited `526-536`), `request_shutdown`
+  (`:323`, cited `323-335`), the idle-timeout check (`:603`, exact),
+  `event.get("type")` dispatch and its per-branch sub-citations (`:630` for the
+  dispatch itself; `init` at `:631-638` vs. cited `636-643`; `assistant`/`text`
+  at `:639-664` vs. cited `644-664`; `tool_use` at `:647-657` vs. cited
+  `651-660`; `result` at `:665-697`, exact; `turn.completed` at `:698-717` vs.
+  cited `698-714`), `_match_host_binary` (`conftest.py:237-255`, exact, and its
+  four-shape carve-out tests at `:281-300`, exact), `_remediation_hint`
+  (`host_runner.py:2283`, cited `2283-2289`), `_apply_automation_env`
+  (`host_runner.py:2203`, exact), `HOST_BINARY_NAMES` (`host_runner.py:2028`,
+  exact), `_structured_output_args` (`host_runner.py:2365`, exact),
+  `HostRunner`/`HostCapabilities`/`HostInvocation` (`:395`/`:289`/`:317`, cited
+  `394-492`/`288-313`), `OpenCodeRunner` and its not-probed precedent
+  (`host_runner.py:1033`, `test_host_runner.py:1073-1078`, exact),
+  `test_has_all_eight_known_binaries` and its registry-derived sibling
+  (`test_host_runner.py:2348-2371`, exact), `test_host_tier_table_matches_runner_registry`
+  (`test_wiring_guides_and_meta.py:381-392`, exact, `[BUG-3186]` message
+  confirmed), `CapturingRunner` (`test_runner_spec.py:44-58`), `parse_env_file`
+  silent-skip precedent (`env_file.py:38-62`), `parse_rules` /
+  `ValueError`-with-lineno convention (`fsm/policy_rules.py:98`, docstring
+  `Raises:` block at `125-127`), `_NeverEOFStdout` /
+  `TestRunClaudeCommandResultBreak` (`test_subprocess_utils.py:2589-2720`,
+  exact), and `[project.scripts]` (`scripts/pyproject.toml:74`, exact).
+  Graph-corroborated via `ll-code callers-of run_claude_command`:
+  `fsm/runners.py:249 DefaultActionRunner::run` is an exact hit, confirming the
+  Dependent Files claim without relying on grep alone.
+- **Fixed**: the `raw <str>` directive's "Consumer branch exercised" cell cited
+  `:716-719`. That span is actually the tail of the `turn.completed` branch
+  plus the `else: continue` catch-all for a recognized-but-unhandled JSON
+  `"type"` — which *drops* the line, the opposite of "passthrough." The real
+  non-JSON passthrough is the `except (json.JSONDecodeError, KeyError,
+  TypeError): pass` fallthrough into the plain-append code at `:720-726`.
+  Corrected the table cell in place to cite `:720-726` with the mechanism
+  named explicitly.
+- **Proposal-vs-code check**: this issue uses `## Design Decision` /
+  `## Expected Behavior` / `## Integration Map` / `## Program Design` in place
+  of a `## Proposed Solution` section, so the trace was applied to those
+  sections instead. The "fake must be a real executable" design decision is
+  externally corroborated, not just self-consistent: the in-process spike this
+  issue's cluster grew out of (`scripts/tests/spike/host_compose/
+  {fakes.py,executor_shim.py,test_host_compose.py}`) still exists on disk,
+  unpromoted, exactly as ENH-3459 (a `relates_to` sibling) describes — ENH-3459's
+  "Decisions" §1 explicitly states the spike's `executor_shim.py`/
+  `_wrap_invocation` in-process proxy is "retired, not promoted" precisely
+  because it never touches the real `subprocess.Popen` path, and instead reuses
+  FEAT-3454's real-executable `ll-fake-host` design. No inconsistency between
+  this issue's design and either the spike's current shape or the sibling issue
+  that supersedes it. No `PROPOSAL_UNSOUND` finding.
+  `fake_host.py`, `FakeHostRunner`, `TEST_ONLY_HOSTS`, `TEST_ONLY_BINARIES`, and
+  the `ll-fake-host` console-script entry were confirmed absent from the tree —
+  correct, since this issue proposes creating them and is `status: open`.
+- **Evidence-quote check**: `ll-verify-evidence` on this file returned
+  `{"ok": true, "count": 0, "findings": []}` — clean, no `EVIDENCE_UNVERIFIED`.
+- **Decisions log**: `ll-issues decisions list --type rule --enforcement
+  required --active-only` returned no entries — clean pass, no
+  `DECISIONS_VIOLATION` possible.
+- **Dependency references**: this issue declares no `blocked_by`/`depends_on`
+  of its own; its `relates_to: [FEAT-3455, ENH-3459, ENH-3460]` all resolve to
+  real, open issues via `ll-issues list --json --status all`, with a coherent,
+  acyclic ordering elsewhere in the cluster: `FEAT-3455.depends_on: FEAT-3454`;
+  `ENH-3459.blocked_by: [FEAT-3454, FEAT-3455]`; `ENH-3460.blocked_by:
+  [ENH-3459]`. The cluster's common ancestor, ENH-3456, is `done` (decomposed
+  into ENH-3459 / ENH-3460, not into FEAT-3454) — no broken refs, no cycles.
+- **Graph tools**: `ll-code --json status` reports provider=`codegraph`,
+  available=true, freshness=`fresh`; used for the `callers-of` corroboration
+  above. No "never called" claims in this issue to check further.
+- **Regression check**: skipped — no completed issue matches this feature; it
+  is net-new, unimplemented work.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-12T17:14:12 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
+- `/ll:verify-issues` - 2026-09-12T17:12:07 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
+- `/ll:verify-issues` - 2026-09-12T17:03:59 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - Manual review rewrite - 2026-09-12 - folded execution-seam decision (real executable), wire-only vocabulary, abort semantics, guard carve-out; dropped stale FSM-constant guidance and `FakeHostCapabilities`
 - `/ll:confidence-check` - 2026-09-12T06:43:59 - `535817ba-f87e-4270-be40-3b5e78ddef13.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-12T06:37:39 - `fd455bb5-43a5-4cb2-ab0e-353cbf4886b2.jsonl`

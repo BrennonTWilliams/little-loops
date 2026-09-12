@@ -169,6 +169,63 @@ green.
   (now mostly absorbed by FEAT-3454).
 - `.claude/CLAUDE.md` § Host CLI Abstraction.
 
+## Verification Notes
+
+Verdict: **VALID**. Checked against current codebase state
+(2026-09-12, graph provider=`codegraph` freshness=`fresh`):
+
+- `docs/ARCHITECTURE.md`, `docs/reference/API.md`, `docs/development/CONFORMANCE.md`,
+  and `docs/development/TESTING.md` currently contain zero mentions of `fake` /
+  `FakeMinimalHostRunner` — consistent with the "Current Behavior" claim that these
+  docs describe a pre-FEAT-3454/ENH-3459 world.
+- Cited signatures match exactly: `_documented_hosts(project_root: Path, column:
+  int) -> set[str]` (`scripts/tests/test_wiring_guides_and_meta.py:374`) and
+  `_check_doc_parity(doc_path: Path) -> list[str]`
+  (`scripts/little_loops/cli/verify_host_map.py:87`), including the Call Path claim
+  that `ll-verify-host-map` routes `_check_doc_parity` at
+  `docs/reference/HOST_COMPATIBILITY.md`.
+- `TEST_ONLY_HOSTS`, `FakeHostRunner`/`FakeMinimalHostRunner`, and
+  `TEST_ONLY_BINARIES` do not yet exist in `host_runner.py` — confirms this issue is
+  correctly gated behind FEAT-3454/ENH-3459 landing first.
+- `HOST_COMPATIBILITY.md:462-472,491-507` currently has no per-fake enumeration, as
+  expected.
+- Dependency refs check out: `blocked_by: ENH-3459` (open, exists) is backlinked in
+  ENH-3459's Related Issues prose ("ENH-3460 (open, P3) — un-gated doc prose after
+  this lands") rather than a `## Blocks` heading — consistent with this pair's
+  frontmatter-driven convention, not a broken link. `relates_to: ENH-3453` (open),
+  `ENH-3456` (done, parent) both resolve. No cycle.
+- `ll-verify-evidence --json`: clean (`count: 0`, no attributed quotes to check).
+- No active required decision rules to check against (empty registry).
+- No `## Proposed Solution` section present, so the B6 consequence check does not
+  apply to this Scope-Boundaries/Implementation-Steps issue.
+
+**Addendum (second `/ll:verify-issues --auto` pass, same day) — cross-issue scope
+check against ENH-3453:** sibling ENH-3453 (open, P2, `relates_to` this issue)
+proposes rewriting `_check_runtime_contradiction`
+(`scripts/little_loops/cli/verify_host_map.py:100-128`) from today's
+intersection-based check (`set(HOST_CAPABILITIES) & set(_HOST_RUNNER_REGISTRY)`,
+verified present at line 116) to a **strict key-parity** check —
+`set(RUNTIME_HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY)` — per ENH-3453's
+own `## Files to Modify` and Implementation Step #4. ENH-3453 describes no
+`TEST_ONLY_HOSTS` carve-out for that new equality check anywhere in its text. If
+ENH-3453 lands *after* FEAT-3454/ENH-3459 register `fake`/`fake-minimal` in
+`_HOST_RUNNER_REGISTRY`, the rewritten check would fail on those two test-only
+hosts unless ENH-3453 (or FEAT-3454) adds an exclusion — which would flip the
+"no edit" claim in this issue's `## Why this is small` (`verify_host_map`
+bullet) from true to false, though `verify_host_map.py` is not itself in this
+issue's `## Files to Modify`, so it doesn't change ENH-3460's own scope or
+verdict. Not a defect in this issue — this issue already hedges the ENH-3453
+landing-order risk in `## Related Issues` (API table shape) — but the same
+hedge should extend to `verify_host_map.py`, and ENH-3453's or FEAT-3454's
+implementer should account for a `TEST_ONLY_HOSTS` exclusion in the rewritten
+check. Flagged per the verification pass's explicit ask to note (not invent a
+link for) this class of conflict. No line-number or path corrections were
+needed anywhere else; evidence (`ll-verify-evidence --json`) and decisions
+(`ll-issues decisions list --type rule --enforcement required --active-only`)
+both remain clean. Verdict unchanged: **VALID**.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-12T17:09:11 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
+- `/ll:verify-issues` - 2026-09-12T17:04:12 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:issue-size-review` - 2026-09-12T06:09:09 - `a6c3ba7b-8baf-4ae7-b742-fb9d4cbad25c.jsonl`
 - Manual review rewrite - 2026-09-12 - collapsed to un-gated doc prose; gated items (registry, `TEST_ONLY_HOSTS`, tier row, `_HOST_BINARY`) moved to ENH-3459; count-based rename, `_remediation_hint`, `verify_host_map`, `test_adapters`, `__all__` items removed as absorbed by FEAT-3454 or not applicable

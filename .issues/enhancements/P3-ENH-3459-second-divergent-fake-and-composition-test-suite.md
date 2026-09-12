@@ -32,7 +32,7 @@ registry entry; ENH-3460 carries only the un-gated doc prose that follows.
 
 ## Parent Issue
 
-Decomposed from [ENH-3456](../P3-ENH-3456-prove-host-agnosticism-with-two-deliberately-divergent-fakes-not-one.md):
+Decomposed from [ENH-3456](P3-ENH-3456-prove-host-agnosticism-with-two-deliberately-divergent-fakes-not-one.md):
 "Prove host-agnosticism with two deliberately divergent fakes, not one"
 
 A single fake proves the code runs; it cannot prove the code is agnostic, because
@@ -343,6 +343,49 @@ references against the landed files before starting step 1.
 - `.ll/spikes/spike-FEAT-3456.md` — spike plan; mechanism proven in-process, ported
   here to the real executor.
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (the correction below applied in the
+same pass, so the issue as it now reads is up to date — this section is a record
+of what was wrong and fixed, not an outstanding action item).
+
+- All file/line citations checked against current code match exactly:
+  `_structured_output_args` (`host_runner.py:2365`), `HOST_BINARY_NAMES`
+  (`host_runner.py:2028`), `HostRunner` Protocol (`host_runner.py:394-407`),
+  `OpenCodeRunner` (`host_runner.py:1033`), `_install_no_live_host_cli`
+  (`conftest.py:354`), `_ALLOWED_CALLERS` (`test_advisor.py:694`),
+  `test_host_tier_table_matches_runner_registry`
+  (`test_wiring_guides_and_meta.py:381`). `.ll/spikes/spike-FEAT-3456.md` and
+  `scripts/tests/spike/host_compose/` both exist as described.
+- Confirmed `FakeHostRunner`, `TEST_ONLY_HOSTS`, `TEST_ONLY_BINARIES` do not yet
+  exist in `host_runner.py` — consistent with FEAT-3454/FEAT-3455 still being
+  `open`, and with this issue's own `blocked_by` + re-anchor-before-starting
+  caveat. No premature-implementation drift found.
+- Fixed: the "Parent Issue" link to ENH-3456 used `../P3-ENH-3456-...md`, which
+  resolves outside `.issues/enhancements/` to a nonexistent path; ENH-3456 in
+  fact lives in the same directory as this file. Corrected to a same-directory
+  relative link.
+- Checked `blocked_by: [FEAT-3454, FEAT-3455]` for a reciprocal backlink:
+  neither target declares a `blocks:` field or `## Blocks` heading naming
+  ENH-3459. Initially flagged as MISSING_BACKLINK, but this repo's current
+  frontmatter-based dependency model treats a one-directional `blocked_by`
+  declaration as valid on its own — `dependency_graph.py` auto-derives the
+  reverse edge in memory for graph traversal/readiness checks
+  (`scripts/little_loops/dependency_graph.py:121-133`), and `ll-issues link`
+  only writes the reciprocal edge when `--reciprocal` is explicitly passed.
+  The `## Blocked By` / `## Blocks` markdown-heading convention the
+  verify-issues check describes is a legacy template pattern (still present
+  on older issues, e.g. `FEAT-1462`) that this issue and its blockers don't
+  use. Not a defect.
+- `ll-verify-evidence` reported no unverifiable evidence spans (B7: clean).
+- No `## Proposed Solution` section present (this issue uses `## Design` /
+  `## Program Design` / `## Implementation Steps` instead), so the B6
+  proposal-vs-code consequence check does not apply.
+- Graph: provider=`codegraph` freshness=`fresh`; not used beyond corroborating
+  the grep-verified line citations above (no negative/"never called" claims in
+  this issue to check via `callers-of`/`references`).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-12T17:05:34 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:issue-size-review` - 2026-09-12T06:09:06 - `a6c3ba7b-8baf-4ae7-b742-fb9d4cbad25c.jsonl`
 - Manual review rewrite - 2026-09-12 - resolved six decisions (real-executable second fake sharing `ll-fake-host`, explicit kwargs, class in `host_runner.py`, AST-based interface check with pinned carve-out, port-not-move, gated doc row owned here); took the gated drift items back from ENH-3460

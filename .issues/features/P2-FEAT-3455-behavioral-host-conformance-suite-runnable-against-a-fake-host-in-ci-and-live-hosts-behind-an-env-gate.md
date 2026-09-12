@@ -153,7 +153,7 @@ it goes green, the host satisfies the multi-host promise.
 - `scripts/tests/conformance/test_host_conformance.py` — add `test_golden_path_behavior`, Tier 2 `test_scripted_*` cases, helpers (`_run_and_capture`, `assert_terminal_is_last`, `assert_event_kinds`, `assert_capability_argv`).
 - `scripts/tests/conformance/conftest.py` — `live_conformance` fixture reading `LL_HOST_CONFORMANCE_LIVE` at fixture time (so `monkeypatch.setenv` in a test body wins; `conftest.py:1095-1096` precedent); `isolated_env` stays.
 - `scripts/tests/conftest.py:_match_host_binary` — env+marker carve-out. The marker check needs the current item; use the same `_current_test_id()` plumbing the collector uses (`:258-270`) or a contextvar set by the `live_conformance` fixture. Prefer the fixture-set flag: it is explicit and needs no item lookup.
-- `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` (`:281-300`) — four-shape carve-out tests; `_reset_collector` autouse (`:222-228`) still clears `_host_cli_hits`/`_reported_upto`.
+- `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` (`:281-300`) — four-shape carve-out tests; `_reset_collector` autouse (`:232-238`) still clears `_host_cli_hits`/`_reported_upto`.
 - `docs/development/CONFORMANCE.md` — rewrite (currently constructability-only; "Reading the Results" table and baseline board need the new rows).
 - `docs/development/TESTING.md:121` (tree line) and `:1048` (markers table) — describe the behavioral tier and env gate.
 - `docs/kimi/automation.md:71-82` — optional one-sentence note; the `4 passed` invocation stays valid.
@@ -174,8 +174,8 @@ it goes green, the host satisfies the multi-host promise.
 - Parametrize over registry keys with descriptive `ids=` (`test_host_conformance.py:64-71`; `test_host_runner.py:64-74`).
 - SKIP-not-FAIL with a concrete `reason=` for environmental gates; FAIL only for observable-behavior deviations (`test_host_conformance.py:96-109`).
 - Capability assertions test both directions (`test_host_runner.py:2047-2055`).
-- Negative assertions use `not in` with a repr diagnostic (`test_fsm_signal_integration.py:211`).
-- Per-target timeout at the production `subprocess` site, suite watchdog `--timeout=120 --timeout-method=thread` (`pyproject.toml:266-267`).
+- Negative assertions use `not in` with a repr diagnostic (`test_autodev_decision_gate.py:653`).
+- Per-target timeout at the production `subprocess` site, suite watchdog `--timeout=120 --timeout-method=thread` (`scripts/pyproject.toml:266-267`).
 - `conformance` marker registered identically in `pytest.ini:24` and `scripts/pyproject.toml:280-285`; `--strict-markers` on both.
 - Guard carve-out precedent: the `--version` case in `_match_host_binary`; test precedent `test_conftest_cap.py:292-300`.
 - `clear_shutdown()` at test start and in teardown whenever a test calls `request_shutdown()` — the event is module-global.
@@ -238,7 +238,49 @@ it goes green, the host satisfies the multi-host promise.
 | `docs/development/TESTING.md` § live-spawn guard | The guard the env gate must cooperate with |
 | `.claude/CLAUDE.md` § Host CLI Abstraction, § Testing & CI Policy | `resolve_host()` seam; no paid CI, gates live in the local suite |
 
+## Verification Notes
+
+Verdict at time of check: **OUTDATED** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+- Three stale anchor citations corrected in the Integration Map / Conventions
+  in Force: `_reset_collector` autouse fixture is at
+  `test_conftest_cap.py:232-238`, not `:222-228` (the fixture body sits inside
+  the `TestNoLiveHostCLIGuard` class docstring block, ~10 lines below the
+  cited range); the watchdog-timeout citation was missing its directory —
+  `scripts/pyproject.toml:266-267`, not bare `pyproject.toml` (no root
+  `pyproject.toml` exists in this repo); and the "negative assertions use
+  `not in` with a repr diagnostic" precedent cited `test_fsm_signal_integration.py:211`,
+  a file that contains no `not in` assertion anywhere — retargeted to the
+  actual matching pattern at `test_autodev_decision_gate.py:653`
+  (`assert "reconcile_current" not in visited, f"visited={visited!r}"`).
+- Every other file/line citation checked (30+ across `subprocess_utils.py`,
+  `host_runner.py`, `test_host_conformance.py`, `test_host_runner.py`,
+  `conftest.py` ×2, `test_conftest_cap.py`, `test_streaming_cache_parity.py`,
+  `pytest.ini`, `.github/workflows/ci.yml`, `docs/development/TESTING.md`,
+  `docs/kimi/automation.md`) matches current code exactly, including the
+  `run_claude_command` span (`subprocess_utils.py` 422-771, confirmed as the
+  file's last line) and the CI conformance job (confirmed it does not set
+  `LL_HOST_CONFORMANCE_LIVE`).
+- `FEAT-3454` (the stated dependency) is genuinely still open and unimplemented
+  — `scripts/little_loops/fake_host.py` does not exist yet — so the "depends
+  on FEAT-3454" framing and the "no fake exists yet" premise both hold.
+- Dependency refs: `depends_on: FEAT-3454` and `relates_to: [ENH-3459,
+  ENH-3460]` all resolve to existing, open issues; `ENH-3459`'s
+  `blocked_by` correctly lists `FEAT-3455` back. Note: this project's issue
+  schema has no `blocks`/`## Blocks` backlink field on the blocker side
+  (`dependency_mapper` only validates `blocked_by`/`depends_on`/`relates_to`
+  targets exist, not a mirrored "blocks" list) — so `FEAT-3454` not declaring
+  "blocks FEAT-3455" is expected, not a MISSING_BACKLINK defect.
+- Evidence-quote check (`ll-verify-evidence --json`): clean, 0 findings.
+- No completed issue matches this one closely enough for regression analysis.
+- Graph tools: `ll-code` (provider=codegraph, freshness=fresh) available but
+  not needed — all checks resolved via direct file/line inspection.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-12T17:10:03 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
+- `/ll:verify-issues` - 2026-09-12T17:06:35 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - Manual review rewrite - 2026-09-12 - folded two-tier split (invariants vs scripted-exact), keep constructability test, capability-as-argv rule, guard env+marker carve-out, corrected `_check_emitter_agreement` claim, moved spike promotion to ENH-3459
 - `/ll:confidence-check` - 2026-09-12T07:08:51 - `cd97a6a9-4e4b-4de2-8681-0b936dccac65.jsonl`
 - `/ll:wire-issue` - 2026-09-12T07:05:00 - `6acb6589-d0ad-4f08-a678-5d9b934fde54.jsonl`

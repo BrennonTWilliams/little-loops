@@ -11,7 +11,7 @@ unproven_mechanism: true
 decision_needed: true
 ---
 
-# FEAT-3456: Serve `html-website-generator` Artifacts via `LocalBridgeTransport` with Interaction Routing
+# FEAT-3458: Serve `html-website-generator` Artifacts via `LocalBridgeTransport` with Interaction Routing
 
 ## Summary
 
@@ -231,7 +231,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
-- `LocalBridgeTransport.set_page_html` is at **transport.py:809-818**, NOT transport.py:721 as the existing Program Design block states. Line 721 corresponds to the `POST /{token}/interaction` route registration, which is a different symbol. The corrected anchor must be used when citing the helper.
+- `LocalBridgeTransport.set_page_html` is at **transport.py:809-818**, NOT transport.py:721 as the existing Program Design block states. Line 721 is `class LocalBridgeTransport:` itself (corrected by `/ll:verify-issues` — a prior refine pass mischaracterized line 721 as the `POST /{token}/interaction` route registration, which is actually `_handle_interaction` at transport.py:692). The Summary's original `transport.py:721` citation for the class was already correct; only the Program Design "Signatures" block's citation of `set_page_html` at 721 needed the 809-818 fix. The corrected anchor must be used when citing the helper.
 - The `bridge_run(state: FsmState, ctx: FsmContext) -> FsmTransition` signature in the existing Program Design block is fabricated — no such function exists in the FSM. The loop YAML's `serve` state body is just an `action: |...` string executed by `action_type: shell`; the FSM does not have a `bridge_run` callable.
 - Shell-action in FSM is bounded by a 3600s wall-clock fallback (`executor.py:2563` via `_wall_fallback = 0 if (action_mode == "prompt" and _idle_timeout) else 3600`, applied at `executor.py:2588`). Every `action_type: shell` action is killed by `_kill_process_group(process)` (runners.py:451) when the budget expires. **A `serve` state that calls `ll-artifact serve-run` and expects to block forever on Ctrl-C will be terminated by the FSM shell-action timeout — the proposed mechanism has no precedent in any loop YAML in `scripts/little_loops/loops/`.**
   > ⚠ Unproven mechanism — FSM shell action blocks on Ctrl-C; no precedent in loops/
@@ -244,7 +244,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 **`dashboard.llat` precedent** (`cli/artifact/serve.py:138-163`) — `_make_page_html_factory` builds `ServeContext(events_url, interaction_url=None, history_url)`. Setting `interaction_url=None` is what disables the dashboard's POST route today. For `serve-run` we want it non-null.
 
-**Subprocess lifecycle** — `transport.py:_CLOSE_TOTAL_TIMEOUT = 10.0` (line 69) bounds the bridge's own shutdown. Interaction subprocesses need their own bounded termination (e.g. `proc.terminate(); proc.wait(timeout=5)` then `proc.kill()`); follow the existing BUG-3324 socket-reclaim TOCTOU pattern of "check the worker's actual state before unlinking" rather than blindly terminating.
+**Subprocess lifecycle** — `transport.py:_LOCAL_BRIDGE_CLOSE_TIMEOUT = 10.0` (line 79) bounds `LocalBridgeTransport`'s own shutdown (corrected by `/ll:verify-issues` — `_CLOSE_TOTAL_TIMEOUT` at line 69 is a different constant used by `UnixSocketTransport.close()`, transport.py:385, not by `LocalBridgeTransport`). Interaction subprocesses need their own bounded termination (e.g. `proc.terminate(); proc.wait(timeout=5)` then `proc.kill()`); follow the existing BUG-3324 socket-reclaim TOCTOU pattern of "check the worker's actual state before unlinking" rather than blindly terminating.
 
 **No `serve-run` exists yet** — verified via `grep -rn "serve_run\|serve-run" scripts/` returning empty. Greenfield addition; no migration concerns.
 
@@ -295,10 +295,99 @@ ll-loop run html-website-generator "Message Stream triage console"
 
 `feat`, `artifacts`, `transport`, `local-bridge`, `serve`, `html-website-generator`, `interaction`, `level-3`
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (corrections below applied in
+the same pass, so the issue as it now reads is up to date on citations — this
+section is a record of what was wrong/missing and fixed, plus one outstanding
+design conflict that is not fixed here).
+
+**Citations — exhaustively spot-checked against HEAD, all confirmed exact
+except one (fixed inline):** `LocalBridgeTransport` class def at
+transport.py:721, `_handle_interaction` 692-716 (no `request_id` stamping,
+confirmed), `__init__` signature 772-778, `daemon_threads = True` at 795,
+`set_page_html` 809-818, `send()` 820-830 (broadcast, confirmed — no
+per-client targeting), `close()` 832-877 bounded by `_LOCAL_BRIDGE_CLOSE_TIMEOUT`
+at line 79, `events.py:136` `transport.send(event)` call site, executor.py
+`_wall_fallback = 3600` at line 2563 applied at line 2588, `action_type ==
+"shell"` dispatch at line 3361, runners.py `_kill_process_group` at line 451,
+`cli/artifact/serve.py` `make_history_route` 51-135 / `cmd_serve` 166-203
+(confirmed: uses `SseBridge`, not `LocalBridgeTransport`), `cli/artifact/
+dashboard.py` `ServeContext` 132-153, `template.html.j2` `serve_interaction_enabled`
+at 374/381, `config/features.py` `BridgeEventsConfig` 1299-1330, `config/
+core.py` `self._events = EventsConfig.from_dict(...)` at 354 and the `events`
+property at 478, and `html-website-generator.yaml` `terminal: true` at 294/302
+(both action-less) plus `run_gen_eval.with.generate_prompt` (confirmed: there
+is no `generate` state). `ll-verify-evidence --json` reports clean (0
+findings). `ll-issues decisions list --type rule --enforcement required
+--active-only` returns no entries (no `DECISIONS_VIOLATION` possible). No
+`## Blocked By`/`## Blocks` section exists, so no dependency-graph checks
+apply. Codegraph (`ll-code --json status`) is available/fresh and was used
+for corroboration only. Doesn't match any completed issue's scope closely
+enough to be a regression candidate.
+
+**Fixed**: the "Subprocess lifecycle" Codebase Research Finding cited
+`transport.py:_CLOSE_TOTAL_TIMEOUT = 10.0` (line 69) as bounding
+`LocalBridgeTransport`'s shutdown — that constant actually bounds
+`UnixSocketTransport.close()` (used at transport.py:385); the correct
+constant is `_LOCAL_BRIDGE_CLOSE_TIMEOUT = 10.0` at line 79, corrected in
+place. Separately, the Program Design research block's aside "Line 721
+corresponds to the `POST /{token}/interaction` route registration" was
+itself wrong — line 721 is `class LocalBridgeTransport:`; the interaction
+route handler is `_handle_interaction` at transport.py:692. The underlying
+correction in that same block (`set_page_html` lives at 809-818, not 721)
+was and remains correct; only the incorrect gloss about what line 721 *is*
+has been fixed.
+
+**PROPOSAL_UNSOUND finding (not fixed — needs a design decision, not a text
+edit)**: `--serve` is not an available flag name. `ll-loop run --serve`
+already exists and ships today (ENH-3351, `status: done`, `cli/loop/
+__init__.py:296-310`, `cli/loop/run.py:588-657`, documented at
+`docs/reference/CLI.md:810-811`): it binds `LocalBridgeTransport` with an
+inbound queue *before* the executor starts, serves a live FSM
+dashboard/history page for the run's duration, and — per its own docs —
+"Server lifetime == run lifetime: it shuts down ... when the loop reaches a
+terminal state." That is the **opposite** lifecycle of what this issue wants
+(server starts serving *after* `done` and blocks on Ctrl-C). The AC
+("`ll-loop run html-website-generator "..."` adds a `serve` state ... or a
+`--serve` flag on the generator") and the Behavior Parity table ("only
+entered when `--serve` is passed") both reuse the `--serve` name without
+noting this collision, and the Integration Map's "Files to Modify" never
+lists `cli/loop/run.py` or `cli/loop/__init__.py` even though that's exactly
+where the existing flag is wired. As written, implementing this proposal
+either silently overloads an already-documented flag with incompatible
+semantics, or ships with an undiscovered naming conflict. This needs a
+`/ll:decide-issue`-or-`/ll:reconcile-issue` pass: pick a distinct flag/state
+name (or fold post-completion artifact-serving into the existing `--serve`
+bridge as a `done`-state addendum instead of a new lifecycle), and add
+`cli/loop/run.py`/`cli/loop/__init__.py` to the Integration Map. This is
+additional to (not a replacement for) the already-flagged FSM-A/FSM-B
+3600s-timeout fork, which remains an open, correctly-annotated
+`decision_needed: true` item.
+
+**Also fixed**: the H1 title read "FEAT-3456" while frontmatter `id`/filename
+both say `FEAT-3458`; corrected to `FEAT-3458` (no other issue in this repo
+carries FEAT-3456 in a way that suggests this was an intentional cross-ref).
+
+**Missing precedent** (contributes to but doesn't cause the above): ENH-3351
+also demonstrates the "Similar Patterns" section is incomplete — it cites
+`cli/artifact/serve.py`/`dashboard.py`/`transport.py:692` but omits the
+closest and most directly relevant precedent for wiring
+`LocalBridgeTransport` + an inbound queue into a CLI-driven loop run
+(`cli/loop/run.py:592-657`).
+
+**Remaining**: resolve the `--serve` naming/lifecycle collision against
+ENH-3351 and update the AC/Behavior Parity/Integration Map accordingly;
+resolve the FSM-A/FSM-B decision and reconcile the Proposed Solution/
+Implementation Steps sections to match (both destructive rewrites — left for
+`/ll:reconcile-issue` or `/ll:decide-issue`, not applied here).
+
 ---
 
 ## Session Log
 
+- `/ll:verify-issues` - 2026-09-12T17:13:32 - `5fc78720-4226-4a87-b83b-58bd16519b14.jsonl`
+- `/ll:verify-issues` - 2026-09-12T17:05:55 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:refine-issue` - 2026-09-12T04:05:20 - `a44d1787-2431-457b-ab50-9c782f796d04.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:53:55 - `b93d4f64-d30d-48d3-a313-aef11620bf9b.jsonl`
 _(none yet — newly captured)_
