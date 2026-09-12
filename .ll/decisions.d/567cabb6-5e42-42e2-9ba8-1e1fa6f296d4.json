@@ -1,0 +1,12 @@
+{
+  "id": "e518fe91-a51a-456c-9168-fb27242fc41f",
+  "type": "decision",
+  "timestamp": "2026-09-12T17:41:47Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No loop YAML pairs terminal:true with a blocking action_type:shell; executor's 3600s wall-clock fallback SIGKILLs shell actions on timeout, incompatible with FSM-A's indefinite Ctrl-C-wait design. FSM-B reuses the existing run.py:627 signal-handler hook and run_background() detached-Popen pattern.",
+  "rule": "Option FSM-B: run ll-artifact serve-run outside the FSM (post-loop hook or manual command), not as a terminal shell state",
+  "scope": "issue",
+  "alternatives_rejected": "Option FSM-A: append a serve state to the loop YAML (action_type: shell, terminal: true) that blocks on Ctrl-C inside the FSM",
+  "issue": "FEAT-3458"
+}

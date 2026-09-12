@@ -8,7 +8,7 @@ discovered_by: capture-issue
 confidence_score: 85
 outcome_confidence: 80
 unproven_mechanism: true
-decision_needed: true
+decision_needed: false
 ---
 
 # FEAT-3458: Serve `html-website-generator` Artifacts via `LocalBridgeTransport` with Interaction Routing
@@ -140,7 +140,27 @@ The research finding that the FSM's shell-action executor is bounded by a 3600s 
 
 **Option FSM-B**: Run `ll-artifact serve-run` outside the FSM — either via a post-loop hook added to `ll-loop run` (alongside `register_loop_signal_handlers` at run.py:627), or as a separate manual `ll-artifact serve-run <run-dir>` command that the user runs after the loop completes. The FSM terminates cleanly at `done`; the server is a separate process that the harness spawns after `_execute_state` returns.
 
+> **Selected:** Option FSM-B — no FSM YAML combines `terminal: true` with a blocking `action_type: shell` action, and the executor's 3600s wall-clock fallback SIGKILLs the whole process group on any shell overrun (`executor.py:2563,2588`; `runners.py:450-451`), so an indefinite Ctrl-C-wait server under FSM-A would be force-killed by default. FSM-B reuses the established `run.py:627` signal-handler hook and the `run_background()` detached-`Popen` pattern (`cli/loop/runner.py:291-298`), keeping the change out of FSM/executor internals.
+
 **Recommended**: Option FSM-B — the FSM's shell-action executor has a 3600s wall-clock fallback with no daemon-action precedent in any existing loop YAML (every `terminal: true` state in html-website-generator.yaml at lines 294/302 is action-less). Running the server outside the FSM avoids modifying the executor's timeout machinery and reuses the existing signal-handler path at run.py:627.
+
+### Decision Rationale
+
+**Selected**: Option FSM-B (run `ll-artifact serve-run` outside the FSM, via a post-`run_foreground` hook in `cli/loop/run.py` or as a standalone manual command)
+
+**Reasoning**: Two parallel `ll:codebase-pattern-finder` evidence passes confirmed the issue's own recommendation. No loop YAML in `scripts/little_loops/loops/` (104 files scanned) pairs `terminal: true` with a blocking `action_type: shell` action; the two existing long-lived-service patterns (`rn-build.yaml:1010-1032`, `oracles/code-run-gate.yaml:380-401`) both explicitly `kill` the backgrounded service via `trap cleanup EXIT` before the shell action returns — neither leaves a server running past its own bounded action. The executor's `_wall_fallback = 3600` (executor.py:2563, applied 2588) applies to shell actions regardless of idle-timeout settings and forcibly `SIGKILL`s the process group (`_kill_process_group`, runners.py:451) on timeout, which is fundamentally incompatible with FSM-A's "block until Ctrl-C" design. FSM-B, by contrast, has a concrete in-repo template: `run.py:627`'s signal-handler registration is already exercised on every `ll-loop run` invocation, and `run_background()` (`cli/loop/runner.py:291-298`) already demonstrates "finish primary work, hand off to a detached `subprocess.Popen(..., start_new_session=True)`" in the same package. FSM-B's remaining risk — no code path currently fires after `run_foreground()` returns in `run.py`, and the new hook must stay clearly distinct from the existing run-duration `--serve` bridge (`run.py:588-657`, ENH-3351) to avoid lifecycle confusion — is scoped and addressable, not a structural blocker like FSM-A's timeout conflict.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|:-----------:|:----------:|:------------:|:----:|:-----:|
+| FSM-A  | 0 | 1 | 1 | 0 | 2/12 |
+| FSM-B  | 2 | 2 | 2 | 2 | 8/12 |
+
+**Key evidence**:
+- No precedent for `terminal: true` + blocking `action_type: shell` in any of 104 scanned loop YAMLs (FSM-A evidence pass).
+- `executor.py:2563,2588` + `runners.py:450-451` — shell actions are SIGKILLed on the 3600s wall-clock fallback regardless of idle-timeout opt-in, directly conflicting with FSM-A's indefinite-block design.
+- `rn-build.yaml:1010-1032` / `oracles/code-run-gate.yaml:380-401` — the only existing backgrounded-service patterns explicitly kill the service before the shell action exits, never leave it running (evidence against FSM-A).
+- `run.py:627` signal-handler hook + `run_background()` detached-`Popen` pattern (`cli/loop/runner.py:291-298`) — concrete, working precedent for FSM-B's "primary task ends, hand off to a new long-lived process" shape.
+- Open risk for FSM-B: the existing `--serve` run-duration bridge (`run.py:588-657`, ENH-3351) is torn down in the same `finally` block that would need to host the new post-terminal hook — sequencing must be explicit to avoid conflating the two lifecycles (still requires resolving the `--serve` naming/lifecycle collision flagged in Verification Notes below, which is a separate, still-open decision point not covered by this scoring pass).
 
 ## Integration Map
 
@@ -386,6 +406,7 @@ Implementation Steps sections to match (both destructive rewrites — left for
 
 ## Session Log
 
+- `/ll:decide-issue` - 2026-09-12T17:42:10 - `71fadad1-1c93-41b3-b03e-d94f4739e170.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:13:32 - `5fc78720-4226-4a87-b83b-58bd16519b14.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:05:55 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:refine-issue` - 2026-09-12T04:05:20 - `a44d1787-2431-457b-ab50-9c782f796d04.jsonl`
