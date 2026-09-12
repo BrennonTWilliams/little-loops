@@ -287,7 +287,16 @@ real executor and `host_runner.py` classes replace them.
   otherwise turn `main` red for every local-editable project.
 - Composition tests use `_run_and_capture` (real Popen), never a patched executor.
 - Composition tests skip with reason when `shutil.which("ll-fake-host") is None`
-  (non-editable installs), matching FEAT-3455.
+  (non-editable installs), matching FEAT-3455. The AST classes never skip and are
+  never `conformance`-marked (see Design § marker placement).
+- **ENH-3453 landing order.** ENH-3453 rewrites `_check_runtime_contradiction`
+  (`cli/verify_host_map.py:100-128`) to strict key parity
+  `set(RUNTIME_HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY)`. Test-only hosts
+  have no runtime-map entry, so whichever of ENH-3453 / this issue lands second
+  must subtract `TEST_ONLY_HOSTS` from the registry side (ENH-3453 step 4 now says
+  so). If ENH-3453 is already on `main` when step 1 starts, add the subtraction
+  here and a `fake-minimal`-excluded test in `test_verify_host_map.py`; otherwise
+  `ll-verify-host-map` in step 6 goes red.
 
 ## Scope Boundaries
 
@@ -310,15 +319,20 @@ concrete-runners row, `CONFORMANCE.md` section describing the composition suite,
 1. `FakeMinimalHostRunner` in `host_runner.py`; registry entry; `TEST_ONLY_HOSTS |=
    {"fake-minimal"}`; `__all__` + package re-export. Unit tests first (TDD):
    Protocol check, argv is exactly `[prompt]`, env empty under `automation=`,
-   default capabilities all `False`, override propagates to all five `build_*`.
+   default capabilities all `False`, override propagates to all four `build_*`.
+   Confirm FEAT-3454's `main()` landed with the fence-locates-prompt rule (Design
+   § prompt-location contract); if it landed as bare `argv[-1]`, fix it there first.
 2. `HOST_COMPATIBILITY.md` tier-table row (test-only). Run
    `python -m pytest scripts/tests/test_wiring_guides_and_meta.py scripts/tests/test_host_runner.py scripts/tests/test_conftest_cap.py` — must be green before step 3.
 3. `test_host_composition.py::TestFakesAreDivergent` and
    `TestCompositionThroughExecutor` against FEAT-3455's helpers; `_HOST_BINARY` entry.
-4. AST checkers as module-level functions (`_invocation_attr_reads(src) -> set[str]`,
-   `_runner_attr_reads(src)`, `_binary_literal_compares(src) -> list[(func, literal)]`,
-   `_isinstance_targets(src)`); `TestExecutorTouchesOnlyAbstractInterface` over the
-   real sources; `TestRegressionGuard` over synthetic snippets.
+4. AST checkers as module-level functions (`_checked_functions`,
+   `_invocation_attr_reads(fn, param) -> set[str]` incl. `getattr` form,
+   `_runner_attr_reads(fn, param)`, `_host_literal_compares(fn) -> list[(func, literal)]`
+   covering `binary`/`name` and `in`-collections, `_isinstance_targets(fn)`);
+   `TestExecutorTouchesOnlyAbstractInterface` over every `HostInvocation`/`HostRunner`-taking
+   function in both module sources (unmarked); `TestRegressionGuard` over synthetic
+   snippets (unmarked).
 5. Delete the spike package; append the promotion footer to the spike plan.
 6. `python -m pytest scripts/tests/` (no `LiveHostCLISpawn` hits), `python -m pytest
    scripts/tests/conformance/ -v`, `ll-verify-host-map`, mypy, ruff.
@@ -381,7 +395,12 @@ references against the landed files before starting step 1.
 - ENH-3460 (open, P3) — un-gated doc prose after this lands.
 - ENH-3453 (open, P2) — declarative capability map; parallel, not a dependency. If
   it lands first, the class-level `capabilities` default here should come from the
-  same source as the real runners'.
+  same source as the real runners', and its strict-parity
+  `_check_runtime_contradiction` must already subtract `TEST_ONLY_HOSTS` (see Key
+  constraints).
+- FEAT-3454 (open, P2) — also owns the `main()` prompt-location rule this issue's
+  `run_blocking_json` composition case depends on (fence-locates-prompt, fallback
+  `argv[-1]`).
 
 ## Reference Documentation
 
@@ -436,6 +455,7 @@ of what was wrong and fixed, not an outstanding action item).
   this issue to check via `callers-of`/`references`).
 
 ## Session Log
+- Manual review - 2026-09-12 (second pass) - fixed the `run_blocking_json` composition case (`--json-schema` lands after the prompt, so `argv[-1]` is the schema — FEAT-3454 `main()` amended to locate the prompt by fence); AST checks widened to every `HostInvocation`/`HostRunner`-taking function in both modules, `getattr` reads, `name` literals and `in`-collections, registry-derived concrete-runner names; `__protocol_attrs__` fallback pinned to `typing._get_protocol_attrs`; `conformance` marker per class so the AST gates run in the unit job; "five `build_*`" → four; dropped `**kw` from `build_detached`; ENH-3453 landing-order constraint recorded
 - `/ll:verify-issues` - 2026-09-12T17:05:34 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:issue-size-review` - 2026-09-12T06:09:06 - `a6c3ba7b-8baf-4ae7-b742-fb9d4cbad25c.jsonl`
 - Manual review rewrite - 2026-09-12 - resolved six decisions (real-executable second fake sharing `ll-fake-host`, explicit kwargs, class in `host_runner.py`, AST-based interface check with pinned carve-out, port-not-move, gated doc row owned here); took the gated drift items back from ENH-3460

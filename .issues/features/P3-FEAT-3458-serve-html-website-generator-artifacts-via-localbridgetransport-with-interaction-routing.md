@@ -68,7 +68,7 @@ Discovery of `interaction_url` is server-injected: `LocalBridgeTransport` wraps 
 - [ ] Server-side HTML injection wraps the artifact in a small bootstrap script that sets `window.LL_INTERACTION_URL` / `window.LL_EVENTS_URL` from the bound transport.
 - [ ] Interaction handlers dispatch to the corresponding `ll-*` CLI as a foreground subprocess; stdout/stderr stream back to the requesting client as SSE events tagged with the request id.
 - [ ] The page renders a collapsible log panel per dispatched action with live-streaming output and a final exit-code status.
-- [ ] `ll-loop run html-website-generator "..."` triggers `ll-artifact serve-run` via a post-run hook in `cli/loop/run.py` after the FSM reaches `done` (not an FSM `serve` state — see Decision Rationale/Option FSM-B) and prints the bound URL; exact flag/hook name is an open decision distinct from the existing `--serve` run-duration bridge (ENH-3351, `run.py:588-657`) — see Verification Notes.
+- [ ] `ll-loop run html-website-generator "..." --serve-after` triggers `ll-artifact serve-run` via a post-run hook in `cli/loop/run.py` after the FSM reaches `done` (not an FSM `serve` state — Option FSM-B) and prints the bound URL; `--serve-after` is a new, independent flag registered alongside the existing `--serve` run-duration bridge (ENH-3351, `run.py:588-657`) — Option SERVE-A selected.
 - [ ] The clipboard-copy code path remains in the artifact as a fallback for users who open `index.html` directly without serving — graceful degradation.
 - [ ] Tests cover: dispatch table correctness, SSE event tagging per request id, server-injected `window.LL_*` globals present in served HTML but absent in raw `file://` HTML, server-side subprocess cancellation on client disconnect.
 
@@ -225,8 +225,8 @@ SERVE-B, by contrast, would change an already-shipped, documented flag's contrac
 - `scripts/little_loops/cli/artifact/serve.py` — Add `serve-run` subcommand parser + `cmd_serve_run` (binding `LocalBridgeTransport` for an arbitrary `index.html`, registering interaction handlers).
 - `scripts/little_loops/cli/artifact/__init__.py` — Register `serve_run` parser in the subparsers group.
 - `scripts/little_loops/loops/html-website-generator.yaml` — Update `run_gen_eval.with.generate_prompt` to use `fetch` + `EventSource` with clipboard fallback. No FSM state added (Option FSM-B selected — a `serve` state would be SIGKILLed by the 3600s shell-action wall-clock fallback).
-- `scripts/little_loops/cli/loop/run.py` — Add a post-run hook after `run_foreground()` returns (near the existing signal-handler registration at `run.py:627`) that launches `ll-artifact serve-run "${run_dir}"` as a detached process for `html-website-generator` runs, following the `run_background()` pattern (`cli/loop/runner.py:291-298`). Naming must avoid colliding with the existing `--serve` run-duration bridge (ENH-3351, `run.py:588-657`) — see Verification Notes.
-- `scripts/little_loops/cli/loop/__init__.py` — Wire the new hook's CLI flag alongside the existing `--serve` flag registration (lines 296-310).
+- `scripts/little_loops/cli/loop/run.py` — Add a post-run hook, gated on the new `--serve-after` flag (`getattr(args, "serve_after", False)`), after `run_foreground()` returns (near the existing signal-handler registration at `run.py:627`), that launches `ll-artifact serve-run "${run_dir}"` as a detached process for `html-website-generator` runs, following the `run_background()` pattern (`cli/loop/runner.py:291-298`). Distinct from the existing `--serve` run-duration bridge (ENH-3351, `run.py:588-657`), whose teardown (`run.py:674-676`) is out of scope by the time this hook fires — Option SERVE-A selected.
+- `scripts/little_loops/cli/loop/__init__.py` — Register the new `--serve-after` flag as an independent `add_argument` alongside the existing `--background`/`--serve`/`--queue` registrations (lines 296-310) — Option SERVE-A selected; no changes to the existing `--serve` flag.
 - `scripts/little_loops/transport.py` — Possibly expose a thin helper `_make_inbound_dispatch_handler(actions: dict[str, Callable[[dict], None]])` to standardize the dispatch pattern (used by `LocalBridgeTransport`, `serve.py`, and any future transport-consuming page). Verify it doesn't already exist.
 
 ### Dependent Files (Callers/Importers)
@@ -264,8 +264,8 @@ SERVE-B, by contrast, would change an already-shipped, documented flag's contrac
 |-------------------|--------|-------|
 | `html-website-generator.yaml` `generate` state produces `index.html` in `${output_dir}` | Preserved | No change to generation prompt's output contract |
 | `generate` state's prompt asks for `copy-to-clipboard` action buttons | Changed | Prompt now requires `fetch` + `EventSource` with graceful clipboard fallback when `window.LL_INTERACTION_URL` is undefined (i.e. raw `file://` open) |
-| Loop FSM terminates after `done` state | Preserved | `--no-serve` (default) leaves FSM at `done`; behavior identical to today |
-| Loop auto-serves and blocks on Ctrl-C | New | New `serve` state appended after `done`; only entered when `--serve` is passed |
+| Loop FSM terminates after `done` state | Preserved | FSM always terminates at `done`; no `serve` state is added (Option FSM-B) — serving happens outside the FSM |
+| Loop auto-serves via post-run hook | New | `cli/loop/run.py` post-run hook launches `ll-artifact serve-run` as a detached process when `--serve-after` is passed (default off); behavior without the flag is identical to today (Option FSM-B + SERVE-A) |
 | Clipboard fallback for `file://` users | Preserved | Existing copy-to-clipboard code path remains in the artifact; the prompt explicitly requires it as graceful-degradation fallback |
 
 ### Codebase Research Findings
@@ -332,7 +332,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 1. Add `serve_run` subcommand + `cmd_serve_run` to `cli/artifact/serve.py`; register parser in `cli/artifact/__init__.py`.
 2. Add `_make_inbound_dispatch_handler(actions)` helper in `transport.py` (if it doesn't already exist) — extracts the `subprocess.Popen` + `transport.send` pattern into a reusable shape.
 3. Update `run_gen_eval.with.generate_prompt` in `scripts/little_loops/loops/html-website-generator.yaml` to use `fetch` + `EventSource` with graceful `file://` fallback (corrected state path — `generate` is not a state name).
-4. Add a post-run hook in `cli/loop/run.py`, after `run_foreground()` returns and near the existing signal-handler registration at `run.py:627`, that launches `ll-artifact serve-run "${run_dir}"` as a detached process, following the `run_background()` pattern (`cli/loop/runner.py:291-298`) — not an FSM `serve` state (Option FSM-B selected: a `serve` state would be SIGKILLed by the executor's 3600s shell-action wall-clock fallback). Exact flag/hook name is an open decision distinct from the existing `--serve` run-duration bridge (ENH-3351) — see Verification Notes.
+4. Add a new `--serve-after` flag to `cli/loop/__init__.py` (independent `add_argument`, alongside the existing `--serve`/`--background`/`--queue` registrations at lines 296-310), and a post-run hook in `cli/loop/run.py`, after `run_foreground()` returns and near the existing signal-handler registration at `run.py:627`, gated on `getattr(args, "serve_after", False)`, that launches `ll-artifact serve-run "${run_dir}"` as a detached process, following the `run_background()` pattern (`cli/loop/runner.py:291-298`) — not an FSM `serve` state (Option FSM-B selected: a `serve` state would be SIGKILLed by the executor's 3600s shell-action wall-clock fallback). `--serve-after` is distinct from the existing `--serve` run-duration bridge (ENH-3351), whose teardown (`run.py:674-676`) is out of scope by the time this hook fires — Option SERVE-A selected.
 5. Write `scripts/tests/test_artifact_serve_run.py` covering the test surface above.
 6. Update docs per Documentation section.
 
