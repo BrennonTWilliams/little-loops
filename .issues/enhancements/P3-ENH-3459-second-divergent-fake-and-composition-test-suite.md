@@ -560,10 +560,10 @@ _Added by `/ll:confidence-check` on 2026-09-12_
 **Outcome Confidence**: 82/100 → HIGH CONFIDENCE
 
 ### Gaps to Address
-- `blocked_by: FEAT-3454` is still `open` — `FakeHostRunner`, `ll-fake-host`, `TEST_ONLY_HOSTS`/`TEST_ONLY_BINARIES` don't exist yet.
-- `blocked_by: FEAT-3455` is still `open` — `_run_and_capture`, `Observed`, `assert_event_kinds`, `live_conformance` don't exist yet.
+- `blocked_by: FEAT-3455` is still `open` — `_run_and_capture`, `Observed`, `assert_event_kinds`, `live_conformance` don't exist yet. (FEAT-3454 has since landed — `FakeHostRunner`, `ll-fake-host`, `TEST_ONLY_HOSTS`/`TEST_ONLY_BINARIES` now exist on `main`.)
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T22:28:34 - `f4eb5fe2-ff23-41c6-a2f4-1f15f754e390.jsonl`
 - `/ll:refine-issue` - 2026-09-12T21:47:26 - `185e59ee-6aae-4358-8b55-3ef95d63b372.jsonl`
 - `/ll:confidence-check` - 2026-09-12T18:35:45 - `39734cb1-4330-4618-b589-c95b4733611a.jsonl`
 - Manual review - 2026-09-12 (second pass) - fixed the `run_blocking_json` composition case (`--json-schema` lands after the prompt, so `argv[-1]` is the schema — FEAT-3454 `main()` amended to locate the prompt by fence); AST checks widened to every `HostInvocation`/`HostRunner`-taking function in both modules, `getattr` reads, `name` literals and `in`-collections, registry-derived concrete-runner names; `__protocol_attrs__` fallback pinned to `typing._get_protocol_attrs`; `conformance` marker per class so the AST gates run in the unit job; "five `build_*`" → four; dropped `**kw` from `build_detached`; ENH-3453 landing-order constraint recorded
