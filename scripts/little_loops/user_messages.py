@@ -730,6 +730,9 @@ def extract_user_messages(
     :func:`_extract_codex_user_messages`); ``kimi-code`` yields nothing (no
     normalizer to Claude shape yet).
 
+    The ``ll-messages`` CLI surface calls this by default (user-only output);
+    see ``extract_commands`` and ``--include-cli`` for the merged stream (ENH-3457).
+
     Args:
         handles: Session handles to read, e.g. from ``detect_sessions``
         limit: Maximum number of messages to return
@@ -899,6 +902,10 @@ def extract_commands(
     Claude-shaped hosts only (``claude-code``, ``opencode``, ``pi``, ``qwen``,
     ``gemini``, ``omp``) — ``codex`` and ``kimi-code`` handles yield no records
     (Codex's ``custom_tool_call`` equivalent is a follow-up, out of scope here).
+
+    The ``ll-messages`` CLI surface only calls this when ``--include-cli``,
+    ``--commands-only``, or an explicit ``--tools`` is passed; user-only is the
+    default (ENH-3457).
 
     Args:
         handles: Session handles to read, e.g. from ``detect_sessions``

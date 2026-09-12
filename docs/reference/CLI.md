@@ -3511,7 +3511,7 @@ The Python API (`analyze_workflows()`) accepts an optional `db_path` argument th
 **Examples:**
 ```bash
 # Use conventional path (no --input needed if ll-messages wrote to the default location)
-ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
+ll-messages --include-cli --output .ll/workflow-analysis/step1-patterns.jsonl
 ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 
 # Explicit input
@@ -3534,7 +3534,7 @@ Run Step 3 automation proposals from workflow analysis output. Invokes the `work
 **Examples:**
 ```bash
 # Full pipeline — Steps 1, 2, 3 non-interactively
-ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
+ll-messages --include-cli --output .ll/workflow-analysis/step1-patterns.jsonl
 ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 ll-workflows propose \
   --patterns .ll/workflow-analysis/step1-patterns.yaml \
@@ -3662,7 +3662,7 @@ ll-help --format json            # Structured output for tooling
 
 ### ll-messages
 
-Extract user messages from session logs of any registered host (Claude Code, Codex, and more) via the session-discovery seam; narrow to one host with `--host`.
+Extract user messages from session logs of any registered host (Claude Code, Codex, and more) via the session-discovery seam; narrow to one host with `--host`. Defaults to user messages only (ENH-3457); pass `--include-cli` to merge in assistant CLI commands.
 
 **Flags:**
 
@@ -3676,9 +3676,10 @@ Extract user messages from session logs of any registered host (Claude Code, Cod
 | `--stdout` | | Print to stdout instead of writing to file |
 | `--verbose` | `-v` | Print verbose progress information |
 | `--include-response-context` | | Include metadata from assistant responses |
-| `--skip-cli` | | Exclude CLI commands from output |
+| `--include-cli` | | Merge assistant CLI commands into the output (the pre-ENH-3457 default); mutually exclusive with `--skip-cli` |
+| `--skip-cli` | | Deprecated no-op; user-only is now the default. Prints a deprecation line to stderr |
 | `--commands-only` | | Extract only CLI commands, no user messages |
-| `--tools` | | Comma-separated tools to extract commands from (default: `Bash`) |
+| `--tools` | | Comma-separated tools to extract commands from (default: `Bash`); passing this implies `--include-cli` |
 | `--skill` | | Filter to sessions where this skill was invoked (e.g. `capture-issue`) |
 | `--examples-format` | | Output `(input, output)` training pairs instead of raw messages (requires `--skill`); mutually exclusive with `--sft-format` |
 | `--sft-format` | | Output conversation turns in SFT training format as JSON-lines (`chatml`, `alpaca`, `sharegpt`); mutually exclusive with `--examples-format` |
@@ -3693,7 +3694,7 @@ ll-messages --since 2026-01-01            # Messages since date
 ll-messages -o output.jsonl               # Custom output path
 ll-messages --stdout                      # Print to terminal
 ll-messages --include-response-context    # Include response metadata
-ll-messages --skip-cli                    # Exclude CLI commands
+ll-messages --include-cli                 # Merge in assistant CLI commands
 ll-messages --commands-only               # Extract only CLI commands
 ll-messages --skill capture-issue         # Filter to sessions where /ll:capture-issue was invoked
 ll-messages --skill capture-issue --examples-format --since 2026-01-01 -o examples.jsonl
@@ -4794,7 +4795,7 @@ Note: `ll-doctor --full` does **not** wrap this verifier — run it directly (or
 
 ### ll-verify-host-map
 
-Assert that the adapter host-capability map agrees with [HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md), `host_runner.HostCapabilities`, and the emitters' actual behavior (ENH-2873). Includes the ENH-2874 cross-check that a host declaring `subagents='none'` alongside `agents=True` has a working degraded-mode `agent_output_format`.
+Assert that the adapter host-capability map agrees with [HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md), `host_runner.RUNTIME_HOST_CAPABILITIES` (the runtime capability map, ENH-3453), and the emitters' actual behavior (ENH-2873). The runtime check covers key parity against `host_runner._HOST_RUNNER_REGISTRY`, flag/entry identity, and flag/report-row consistency. Includes the ENH-2874 cross-check that a host declaring `subagents='none'` alongside `agents=True` has a working degraded-mode `agent_output_format`.
 
 **Flags:** none (beyond `-h`/`--help`).
 

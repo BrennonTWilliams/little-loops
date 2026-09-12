@@ -2201,9 +2201,11 @@ class TestMessagesArgumentParsingWithCommands:
         parser.add_argument("--stdout", action="store_true")
         parser.add_argument("-v", "--verbose", action="store_true")
         parser.add_argument("--include-response-context", action="store_true")
-        parser.add_argument("--skip-cli", action="store_true")
+        cli_group = parser.add_mutually_exclusive_group()
+        cli_group.add_argument("--skip-cli", action="store_true")
+        cli_group.add_argument("--include-cli", action="store_true")
         parser.add_argument("--commands-only", action="store_true")
-        parser.add_argument("--tools", type=str, default="Bash")
+        parser.add_argument("--tools", type=str, default=None)
         parser.add_argument("--skill", type=str)
         format_group = parser.add_mutually_exclusive_group()
         format_group.add_argument("--examples-format", action="store_true")
@@ -2212,14 +2214,29 @@ class TestMessagesArgumentParsingWithCommands:
         return parser.parse_args(args)
 
     def test_skip_cli_default(self) -> None:
-        """--skip-cli defaults to False (commands included by default)."""
+        """--skip-cli defaults to False (deprecated no-op; user-only is now the default)."""
         args = self._parse_messages_args([])
         assert args.skip_cli is False
 
     def test_skip_cli_flag(self) -> None:
-        """--skip-cli flag excludes CLI commands."""
+        """--skip-cli still parses (deprecated no-op)."""
         args = self._parse_messages_args(["--skip-cli"])
         assert args.skip_cli is True
+
+    def test_include_cli_default(self) -> None:
+        """--include-cli defaults to False (user-only is the default)."""
+        args = self._parse_messages_args([])
+        assert args.include_cli is False
+
+    def test_include_cli_flag(self) -> None:
+        """--include-cli flag opts into the merged {user + commands} stream."""
+        args = self._parse_messages_args(["--include-cli"])
+        assert args.include_cli is True
+
+    def test_skip_cli_and_include_cli_is_parse_error(self) -> None:
+        """--skip-cli and --include-cli are mutually exclusive."""
+        with pytest.raises(SystemExit):
+            self._parse_messages_args(["--skip-cli", "--include-cli"])
 
     def test_commands_only_default(self) -> None:
         """--commands-only defaults to False."""
@@ -2232,9 +2249,9 @@ class TestMessagesArgumentParsingWithCommands:
         assert args.commands_only is True
 
     def test_tools_default(self) -> None:
-        """--tools defaults to Bash."""
+        """--tools defaults to None (not passed; resolves to Bash at use)."""
         args = self._parse_messages_args([])
-        assert args.tools == "Bash"
+        assert args.tools is None
 
     def test_tools_custom(self) -> None:
         """--tools accepts custom value."""

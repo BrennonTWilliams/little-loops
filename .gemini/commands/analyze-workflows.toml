@@ -63,7 +63,7 @@ ERROR: Input file detection failed
 Reason: [No user-messages files found in .claude/ | File not found: {path}]
 
 To fix:
-1. Extract messages first: ll-messages
+1. Extract messages first: ll-messages --include-cli
 2. Then run: /ll:analyze-workflows
 ```
 
@@ -362,7 +362,7 @@ Full report: .ll/workflow-analysis/summary-{timestamp}.md
 
 | Step | Error Check | Recovery Action |
 |------|-------------|-----------------|
-| Input detection | File not found | Suggest running ll-messages extract first |
+| Input detection | File not found | Suggest running ll-messages --include-cli extract first |
 | Step 1 (Agent) | Agent error or output missing | Preserve partial outputs, suggest manual run |
 | Step 2 (CLI) | Non-zero exit code | Preserve partial outputs, show stderr |
 | Step 3 (Skill) | Skill error or output missing | Preserve partial outputs, suggest manual run |

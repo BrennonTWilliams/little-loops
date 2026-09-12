@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-12'
 captured_at: '2026-09-12T18:38:08Z'
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3461: ll-issues sequence should exclude EPIC issue IDs
@@ -83,6 +89,23 @@ else:
   epics exist): add a case with an open EPIC plus open BUG/FEAT/ENH issues,
   asserting the EPIC is absent from default `sequence` output (both
   human-readable and `--json`) and present under `--type EPIC`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser.py:1636-1640` — a `callsite_shapes` table
+  entry (`"sequence:28"`) mirrors `cmd_sequence`'s current `find_issues()`
+  call-site shape as part of a cross-callsite consistency check; this fix
+  only changes the downstream `display` filter, not the `find_issues()` call
+  itself, so no edit is expected here — verify it still passes, don't skip
+  the check [Agent 1 finding]
+- Follow the `TestNextIssueEpicExclusion` / `TestNextIssuesEpicExclusion`
+  convention (`scripts/tests/test_next_issue.py:1056-1122`,
+  `scripts/tests/test_next_issues.py:879-965`, both citing BUG-2638) for the
+  new sequence test case: a highest-priority/highest-confidence EPIC
+  deliberately ranked first (to prove active filtering, not just absence by
+  construction), paired with a surviving child issue, plus a JSON assertion
+  in the `ids = [row["id"] for row in data]; assert "EPIC-xxx" not in ids`
+  style used by `test_epic_excluded_from_json_and_include_blocked`
+  (`test_next_issues.py:925-965`) [Agent 3 finding]
 
 ### Documentation
 - N/A — no CLI flag or documented contract changes; `docs/reference/CLI.md`'s
@@ -163,6 +186,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T19:17:22 - `6d577656-0598-43c3-917d-9dbaf7adf2b8.jsonl`
+- `/ll:wire-issue` - 2026-09-12T19:08:49 - `6d577656-0598-43c3-917d-9dbaf7adf2b8.jsonl`
 - `/ll:refine-issue` - 2026-09-12T18:51:58 - `cc741d48-cdac-4b5c-92b2-ee728ea0acac.jsonl`
 - `/ll:format-issue` - 2026-09-12T18:43:43 - `3edf35b2-2e6f-4e1e-b1ac-43a234fbc175.jsonl`
 - `/ll:capture-issue` - 2026-09-12T18:38:17 - `4cb9b3dd-b2a1-4370-87e3-0787c2fe0ed2.jsonl`

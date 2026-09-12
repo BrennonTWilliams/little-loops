@@ -78,26 +78,26 @@ Each step's output is the next step's input. Partial results are always preserve
 
 ## Prerequisites: Extracting Messages (`ll-messages`)
 
-Before running the analysis pipeline, you need a JSONL file of your user messages. `ll-messages` extracts these from your session logs, unioning every registered host by default (narrow with `--host`).
+Before running the analysis pipeline, you need a JSONL file of your user messages. `ll-messages` extracts these from your session logs, unioning every registered host by default (narrow with `--host`). It defaults to user messages only (ENH-3457); pass `--include-cli` so the pipeline's `cli_command` category is populated with assistant CLI commands.
 
 ```bash
-# Last 100 messages (default)
-ll-messages
+# Last 100 messages (default), including CLI commands for the analysis pipeline
+ll-messages --include-cli
 
 # Last 200 messages
-ll-messages -n 200
+ll-messages --include-cli -n 200
 
 # Messages since a specific date
-ll-messages --since 2026-01-01
+ll-messages --include-cli --since 2026-01-01
 
 # Write to a custom file
-ll-messages -o my-messages.jsonl
+ll-messages --include-cli -o my-messages.jsonl
 
 # Print to terminal instead of a file (for quick inspection)
-ll-messages --stdout
+ll-messages --include-cli --stdout
 
 # Include metadata: tools used, files modified
-ll-messages --include-response-context
+ll-messages --include-cli --include-response-context
 ```
 
 The output is a JSONL file (one JSON object per line) at `.claude/user-messages-{timestamp}.jsonl`. Each line has at minimum a `content` field with the message text and a `timestamp` field.
@@ -114,9 +114,10 @@ Key flags reference:
 | `--stdout` | | Print to terminal instead of file |
 | `--verbose` | `-v` | Show progress information |
 | `--include-response-context` | | Include tools used and files modified per message |
-| `--skip-cli` | | Exclude CLI commands from output (included by default) |
+| `--include-cli` | | Merge assistant CLI commands into the output (the pre-ENH-3457 default); mutually exclusive with `--skip-cli` |
+| `--skip-cli` | | Deprecated no-op; user-only is now the default |
 | `--commands-only` | | Extract only CLI commands, no prose messages |
-| `--tools LIST` | | Comma-separated tools to extract commands from (default: `Bash`) |
+| `--tools LIST` | | Comma-separated tools to extract commands from (default: `Bash`); implies `--include-cli` |
 | `--skill NAME` | | Filter to sessions where this skill was invoked |
 | `--examples-format` | | Output (input, output) training pairs instead of raw messages (mutually exclusive with `--sft-format`) |
 | `--sft-format FORMAT` | | Output SFT training format: `chatml`, `alpaca`, or `sharegpt` (mutually exclusive with `--examples-format`) |
@@ -371,7 +372,7 @@ Start with `immediate` — these are the highest-return actions that require the
 Full pipeline from extract to proposals:
 
 ```bash
-ll-messages -n 200                    # Extract recent messages
+ll-messages --include-cli -n 200      # Extract recent messages
 /ll:analyze-workflows                 # Run full pipeline (auto-detects file)
 # Review: .ll/workflow-analysis/summary-*.md
 ```
@@ -381,7 +382,7 @@ ll-messages -n 200                    # Extract recent messages
 Run only Step 1 to get a fast category breakdown without the full pipeline: in Claude Code, ask Claude to 'use the workflow-pattern-analyzer agent' with your messages file.
 
 ```bash
-ll-messages                           # Extract messages to .ll/user-messages-{ts}.jsonl
+ll-messages --include-cli              # Extract messages to .ll/user-messages-{ts}.jsonl
 # Then in Claude: spawn workflow-pattern-analyzer with the JSONL file path
 # Review: .ll/workflow-analysis/step1-patterns.yaml
 ```
@@ -404,19 +405,19 @@ Useful after manually editing `step2-workflows.yaml` to correct a detected workf
 Use `--since` to analyze just the last sprint or time window:
 
 ```bash
-ll-messages --since 2026-02-01 -n 500   # Since Feb 1, up to 500 messages
+ll-messages --include-cli --since 2026-02-01 -n 500   # Since Feb 1, up to 500 messages
 /ll:analyze-workflows                    # Run pipeline on auto-detected file
 ```
 
 Combine with `-n` to limit volume while keeping the date filter as the primary boundary.
 
-### Filter messages by type (`--skip-cli` / `--commands-only`)
+### Filter messages by type (`--include-cli` / `--commands-only`)
 
 Use these flags to narrow the message set before running the pipeline:
 
 ```bash
-# Exclude CLI commands — analyze only prose messages (questions, descriptions, requests)
-ll-messages --skip-cli
+# Prose only (the default since ENH-3457) — analyze only prose messages (questions, descriptions, requests)
+ll-messages
 /ll:analyze-workflows
 
 # Extract only CLI commands — useful for identifying repeated shell workflows
@@ -424,7 +425,7 @@ ll-messages --commands-only
 /ll:analyze-workflows
 ```
 
-`--skip-cli` is useful when your history is dominated by CLI invocations and you want to focus on conversational patterns. `--commands-only` is useful when you want to discover command-line workflow automation opportunities specifically.
+The default is prose-only, useful when you want to focus on conversational patterns. `--commands-only` is useful when you want to discover command-line workflow automation opportunities specifically. Pass `--include-cli` to merge both into one stream (required for the pipeline's `cli_command` category — see Prerequisites above).
 
 ### Sequences-driven loop suggestions (`ll-logs sequences`)
 

@@ -3,11 +3,12 @@ id: ENH-3457
 type: ENH
 title: ll-messages defaults to user messages only
 priority: P2
-status: open
+status: done
 verify_verdict: VALID
 discovered_by: ll-issues-create
 discovered_date: '2026-09-12'
 captured_at: '2026-09-12T03:43:46Z'
+completed_at: '2026-09-12T19:55:28Z'
 confidence_score: 96
 outcome_confidence: 86
 score_complexity: 22
@@ -293,12 +294,40 @@ Checked:
 
 Found and fixed (Proposal-vs-code consequence check, B6 — Integration Map completeness): the issue's Documentation section covered the `ll-messages` example blocks in `docs/reference/CLI.md` and `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` but missed the "Key flags reference" tables in both files (`docs/reference/CLI.md:3679-3680` and `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:117-118`), each of which has a `--skip-cli` row reading "Exclude CLI commands from output (included by default)" and no `--include-cli` row. Implementing the proposal as originally written would have left both tables describing the old default. Added both citations to the `### Documentation (additions)` section above.
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-12
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/messages.py`: added `--include-cli` (mutually exclusive with the now-deprecated no-op `--skip-cli`); `--tools` default changed `"Bash"` → `None` (resolved at use, non-`None` implies inclusion); rewrote the branch guard to `if args.include_cli or args.commands_only or args.tools is not None:`; `--skip-cli` prints a one-line deprecation notice to stderr; updated epilog example and docstring.
+- `scripts/little_loops/user_messages.py`: docstring updates on `extract_user_messages` / `extract_commands` noting the new CLI default.
+- `scripts/little_loops/workflow_sequence/__init__.py`: `ll-workflows` epilog pipeline example and the "input file" hint now use `ll-messages --include-cli`.
+- `commands/analyze-workflows.md` (+ host mirrors `.gemini/commands/analyze-workflows.toml`, `.kimi-code/skills/ll-analyze-workflows/SKILL.md`, `.qwen/commands/ll/analyze-workflows.md` regenerated via `ll-adapt --apply`): error-remediation text now suggests `ll-messages --include-cli`.
+- `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md`: updated flag tables, examples, and pipeline invocations for the new default and the `cli_command`-classification dependency on `--include-cli`.
+- `scripts/tests/test_cli_messages.py`: renamed `TestMessagesSkipCli` → `TestMessagesIncludeCli` with inverted/new assertions (default excludes commands, `--include-cli` includes them, `--skip-cli` no-op + stderr-only deprecation line, `--skip-cli --include-cli` parse error, explicit `--tools` implies inclusion).
+- `scripts/tests/test_user_messages.py`: replica parser updated for parity (`--include-cli`, `--tools` default `None`, exclusive-group error).
+- `scripts/tests/test_cli.py`: added `extract_commands` non-call regression assertions to `test_main_messages_default_args` and `test_empty_messages_returns_zero`.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 24076 passed, 43 skipped)
+- Lint: PASS (`ruff check`)
+- Types: PASS (`mypy`)
+- Manual smoke test: `ll-messages -n 3 --stdout` emits user-prompt records only (no `"type": "command"` records)
+
+---
+
 ## Status
 
-**Open** | Created: 2026-09-12 | Priority: P2
+**Done** | Created: 2026-09-12 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-12T19:54:53 - `257e255f-25a8-466f-aedc-42b01a5eff94.jsonl`
+- `/ll:ready-issue` - 2026-09-12T19:28:33 - `212258c1-032f-4cd2-9f54-520cd192dbf3.jsonl`
 - `/ll:confidence-check` - 2026-09-12T18:33:10 - `c9ed7962-4af1-4ac8-9300-ba2fb48ece28.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:21:05 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:confidence-check` - 2026-09-12T05:45:02 - `09c7a8e4-700a-4350-bc8d-28c537752571.jsonl`

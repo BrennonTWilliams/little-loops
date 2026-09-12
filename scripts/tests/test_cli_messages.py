@@ -4,7 +4,8 @@ Complements test_cli.py (TestMainMessagesIntegration, TestMainMessagesAdditional
 and test_user_messages.py (arg parsing). Focuses on flag-interaction behavior through
 main_messages() that is NOT already tested:
 - --commands-only skips extract_user_messages
-- --skip-cli skips extract_commands
+- default (no flags) skips extract_commands (ENH-3457: user-only default);
+  --include-cli restores the merged stream; --skip-cli is a deprecated no-op
 - --stdout prints to stdout instead of file
 - --exclude-agents propagation to both extractors
 
@@ -165,16 +166,47 @@ class TestMessagesCommandsOnly:
 
 
 # ---------------------------------------------------------------------------
-# --skip-cli flag
+# --include-cli flag (ENH-3457: user-only is now the default)
 # ---------------------------------------------------------------------------
 
 
-class TestMessagesSkipCli:
-    """--skip-cli skips extract_commands; user messages still extracted."""
+class TestMessagesIncludeCli:
+    """User-only is the default; --include-cli opts into the merged stream.
+    --skip-cli is a deprecated no-op (still parses, still user-only, warns on
+    stderr only). --skip-cli --include-cli is a parse error. Explicit --tools
+    implies --include-cli (otherwise it would be silently inert)."""
 
-    def test_skip_cli_does_not_call_extract_commands(self) -> None:
+    def test_default_does_not_call_extract_commands(self) -> None:
         with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[_make_message()]):
+                with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
+                    with patch(
+                        "little_loops.cli.messages._save_combined",
+                        return_value=Path("/out.jsonl"),
+                    ):
+                        with patch.object(sys, "argv", ["ll-messages"]):
+                            result = main_messages()
+        assert result == 0
+        mock_cmds.assert_not_called()
+
+    def test_include_cli_calls_extract_commands(self) -> None:
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
+            with patch(_EXTRACT_MESSAGES_PATH, return_value=[_make_message()]):
+                with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
+                    mock_cmds.return_value = [_make_command()]
+                    with patch(
+                        "little_loops.cli.messages._save_combined",
+                        return_value=Path("/out.jsonl"),
+                    ):
+                        with patch.object(sys, "argv", ["ll-messages", "--include-cli"]):
+                            result = main_messages()
+        assert result == 0
+        mock_cmds.assert_called_once()
+
+    def test_skip_cli_is_a_no_op_still_user_only(self) -> None:
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
+            with patch(_EXTRACT_MESSAGES_PATH) as mock_msgs:
+                mock_msgs.return_value = [_make_message()]
                 with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
                     with patch(
                         "little_loops.cli.messages._save_combined",
@@ -183,20 +215,59 @@ class TestMessagesSkipCli:
                         with patch.object(sys, "argv", ["ll-messages", "--skip-cli"]):
                             result = main_messages()
         assert result == 0
+        mock_msgs.assert_called_once()
         mock_cmds.assert_not_called()
 
-    def test_skip_cli_still_extracts_messages(self) -> None:
+    def test_skip_cli_deprecation_warning_lands_on_stderr_only(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
-            with patch(_EXTRACT_MESSAGES_PATH) as mock_msgs:
-                mock_msgs.return_value = [_make_message()]
-                with patch(
-                    "little_loops.cli.messages._save_combined",
-                    return_value=Path("/out.jsonl"),
-                ):
-                    with patch.object(sys, "argv", ["ll-messages", "--skip-cli"]):
-                        result = main_messages()
+            with patch(_EXTRACT_MESSAGES_PATH, return_value=[_make_message()]):
+                with patch(_EXTRACT_COMMANDS_PATH):
+                    with patch(
+                        "little_loops.cli.messages._save_combined",
+                        return_value=Path("/out.jsonl"),
+                    ):
+                        with patch.object(sys, "argv", ["ll-messages", "--skip-cli"]):
+                            result = main_messages()
         assert result == 0
-        mock_msgs.assert_called_once()
+        captured = capsys.readouterr()
+        assert "deprecated" in captured.err.lower()
+        assert "deprecated" not in captured.out.lower()
+
+    def test_skip_cli_and_include_cli_is_parse_error(self) -> None:
+        with patch.object(sys, "argv", ["ll-messages", "--skip-cli", "--include-cli"]):
+            with pytest.raises(SystemExit):
+                main_messages()
+
+    def test_explicit_tools_implies_include_cli(self) -> None:
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
+            with patch(_EXTRACT_MESSAGES_PATH, return_value=[_make_message()]):
+                with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
+                    mock_cmds.return_value = [_make_command()]
+                    with patch(
+                        "little_loops.cli.messages._save_combined",
+                        return_value=Path("/out.jsonl"),
+                    ):
+                        with patch.object(sys, "argv", ["ll-messages", "--tools", "Read"]):
+                            result = main_messages()
+        assert result == 0
+        mock_cmds.assert_called_once()
+        assert mock_cmds.call_args.kwargs.get("tools") == ["Read"]
+
+    def test_commands_only_default_tools_is_bash(self) -> None:
+        with patch(_DETECT_SESSIONS_PATH, return_value=_make_handles()):
+            with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
+                with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
+                    mock_cmds.return_value = [_make_command()]
+                    with patch(
+                        "little_loops.cli.messages._save_combined",
+                        return_value=Path("/out.jsonl"),
+                    ):
+                        with patch.object(sys, "argv", ["ll-messages", "--commands-only"]):
+                            result = main_messages()
+        assert result == 0
+        assert mock_cmds.call_args.kwargs.get("tools") == ["Bash"]
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +328,9 @@ class TestMessagesExcludeAgentsIntegration:
             with patch(_EXTRACT_MESSAGES_PATH, return_value=[]):
                 with patch(_EXTRACT_COMMANDS_PATH) as mock_cmds:
                     mock_cmds.return_value = []
-                    with patch.object(sys, "argv", ["ll-messages", "--exclude-agents"]):
+                    with patch.object(
+                        sys, "argv", ["ll-messages", "--exclude-agents", "--include-cli"]
+                    ):
                         result = main_messages()
         assert result == 0
         call_kwargs = mock_cmds.call_args.kwargs

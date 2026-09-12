@@ -16,6 +16,9 @@ def main_messages() -> int:
 
     Extract user messages from session logs of any registered host.
 
+    Defaults to user messages only; pass --include-cli to merge in assistant
+    bash commands (ENH-3457).
+
     Returns:
         Exit code (0 = success)
     """
@@ -44,7 +47,7 @@ Examples:
   %(prog)s -o output.jsonl              # Custom output path
   %(prog)s --stdout                     # Print to terminal
   %(prog)s --include-response-context   # Include response metadata
-  %(prog)s --skip-cli                   # Exclude CLI commands from output
+  %(prog)s --include-cli                # Merge in assistant CLI commands
   %(prog)s --commands-only              # Extract only CLI commands
   %(prog)s --skill capture-issue        # Filter to sessions where skill was invoked
   %(prog)s --skill capture-issue --examples-format  # Output (input, output) training pairs
@@ -56,7 +59,7 @@ Examples:
   %(prog)s --sft-format chatml --reader jsonl --stdout
 
 Pipeline with ll-workflows (use the conventional path so ll-workflows finds it automatically):
-  %(prog)s --output .ll/workflow-analysis/step1-patterns.jsonl
+  %(prog)s --include-cli --output .ll/workflow-analysis/step1-patterns.jsonl
   ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 """,
         )
@@ -106,10 +109,17 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
             action="store_true",
             help="Include metadata from assistant responses (tools used, files modified)",
         )
-        parser.add_argument(
+        cli_group = parser.add_mutually_exclusive_group()
+        cli_group.add_argument(
             "--skip-cli",
             action="store_true",
-            help="Exclude CLI commands from output (included by default)",
+            help="Deprecated no-op; user-only is now the default. "
+            "Use --include-cli to merge in assistant commands.",
+        )
+        cli_group.add_argument(
+            "--include-cli",
+            action="store_true",
+            help="Merge assistant CLI commands into the output (the old default)",
         )
         parser.add_argument(
             "--commands-only",
@@ -119,8 +129,9 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
         parser.add_argument(
             "--tools",
             type=str,
-            default="Bash",
-            help="Comma-separated list of tools to extract commands from (default: Bash)",
+            default=None,
+            help="Comma-separated list of tools to extract commands from "
+            "(default: Bash; implies --include-cli)",
         )
         parser.add_argument(
             "--skill",
@@ -190,8 +201,15 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
         if since:
             logger.info(f"Since: {since}")
 
+        if args.skip_cli:
+            print(
+                "ll-messages: --skip-cli is deprecated and now a no-op; "
+                "user-only output is the default. Drop the flag.",
+                file=sys.stderr,
+            )
+
         # Parse tools list
-        tools_list = [t.strip() for t in args.tools.split(",")]
+        tools_list = [t.strip() for t in (args.tools or "Bash").split(",")]
 
         # Extract data based on flags
         messages: list[UserMessage] = []
@@ -206,7 +224,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
                 include_response_context=args.include_response_context or args.examples_format,
             )
 
-        if not args.skip_cli or args.commands_only:
+        if args.include_cli or args.commands_only or args.tools is not None:
             commands = extract_commands(
                 handles=handles,
                 limit=None,  # Apply limit after merging

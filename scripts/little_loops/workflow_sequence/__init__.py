@@ -89,7 +89,7 @@ Examples:
                    --workflows .ll/workflow-analysis/step2-workflows.yaml
 
 Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
-  ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
+  ll-messages --include-cli --output .ll/workflow-analysis/step1-patterns.jsonl
   %(prog)s analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
   %(prog)s propose --patterns .ll/workflow-analysis/step1-patterns.yaml \\
                    --workflows .ll/workflow-analysis/step2-workflows.yaml
@@ -208,7 +208,9 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
         if not args.input.exists():
             logger.error(f"Input file not found: {args.input}")
             if args.input == _DEFAULT_INPUT_PATH:
-                logger.info("  Run 'll-messages' first to generate the input file.")
+                logger.info(
+                    "  Run 'll-messages --include-cli' first to generate the input file."
+                )
             return 1
 
         if not args.patterns.exists():

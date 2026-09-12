@@ -126,6 +126,14 @@ Out (owned by ENH-3459): every gated change listed in the Summary.
 7. `python -m pytest scripts/tests/test_wiring_guides_and_meta.py` (doc-shape gates
    that might read these files), `ll-verify-host-map`, `ll-verify-private-refs`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/API.md:10301-10323` — fix the `### HostCapabilities`
+  subsection's code sample and Fields table from 5 flags to 6 (add
+  `workspace_sandboxed`), alongside the `ARCHITECTURE.md:861` row fix in step 2.
+
 ## Program Design
 
 Doc-only. The one structural rule: prose points at `TEST_ONLY_HOSTS` rather than
@@ -173,6 +181,16 @@ green.
 - `docs/reference/API.md` (`## little_loops.host_runner`)
 - `docs/development/CONFORMANCE.md:9, 40-52, 57-59`
 - `docs/development/TESTING.md:1075-1088`
+
+### Wiring Pass Additions
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:10301-10323` — the `### HostCapabilities` subsection (code
+  sample at `:10305-10313` and Fields table at `:10317-10323`) has its own,
+  independently stale 5-flag copy (missing `workspace_sandboxed`, FEAT-2878),
+  distinct from the "Concrete runners" table this issue's Scope Boundaries
+  already cover. Needs the same 4→6-flag fix as the `ARCHITECTURE.md:861` row.
+  Confirmed against `host_runner.py:289-313`'s live dataclass (6 fields).
 
 ## Related Issues (Dependencies)
 
@@ -259,6 +277,8 @@ _Added by `/ll:confidence-check` on 2026-09-12_
   Remedy: wait for ENH-3459 to land, then re-run this check.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T19:15:41 - `a9b5dd23-49e2-45b3-8453-1a3ee79e418e.jsonl`
+- `/ll:wire-issue` - 2026-09-12T19:10:29 - `b7362393-74e4-4369-b0c9-daf665a39486.jsonl`
 - `/ll:confidence-check` - 2026-09-12T18:35:39 - `ee8721cf-6b02-4322-9968-721a9a834aac.jsonl`
 - Manual review - 2026-09-12 (second pass) - added the stale six-flag `HostCapabilities` row fix in ARCHITECTURE, a test-only-host policy for the CONFORMANCE baseline board and "Adding a New Host" step 3, and the marker-placement detail for the Composition suite section; ENH-3453 landing-order hedge resolved upstream (ENH-3453 step 4 now subtracts `TEST_ONLY_HOSTS`)
 - `/ll:verify-issues` - 2026-09-12T17:09:11 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`

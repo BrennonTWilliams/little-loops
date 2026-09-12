@@ -693,14 +693,17 @@ class TestMainMessagesIntegration:
                 with patch("little_loops.cli.messages._save_combined") as mock_save:
                     mock_save.return_value = Path("/output/user-messages-123.jsonl")
 
-                    with patch.object(sys, "argv", ["ll-messages"]):
-                        from little_loops.cli import main_messages
+                    with patch("little_loops.user_messages.extract_commands") as mock_cmds:
+                        with patch.object(sys, "argv", ["ll-messages"]):
+                            from little_loops.cli import main_messages
 
-                        result = main_messages()
+                            result = main_messages()
 
             assert result == 0
             mock_extract.assert_called_once()
             mock_save.assert_called_once()
+            # ENH-3457: user-only is the default; extract_commands is not called.
+            mock_cmds.assert_not_called()
 
     def test_main_messages_with_limit(self) -> None:
         """main_messages respects the --limit argument."""
@@ -1919,12 +1922,15 @@ class TestMainMessagesAdditionalCoverage:
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []  # Empty list
 
-                with patch.object(sys, "argv", ["ll-messages"]):
-                    from little_loops.cli import main_messages
+                with patch("little_loops.user_messages.extract_commands") as mock_cmds:
+                    with patch.object(sys, "argv", ["ll-messages"]):
+                        from little_loops.cli import main_messages
 
-                    result = main_messages()
+                        result = main_messages()
 
             assert result == 0  # Early return at line 402
+            # ENH-3457: user-only is the default; extract_commands is not called.
+            mock_cmds.assert_not_called()
 
     def test_verbose_logging_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
         """main_messages creates Logger with verbose=True when --verbose set."""

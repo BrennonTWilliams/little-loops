@@ -4889,7 +4889,7 @@ ll-history export "dependency resolution" --scoring bm25 --format structured
 def main_messages() -> int
 ```
 
-Entry point for `ll-messages` command. Extract user messages from Claude Code logs.
+Entry point for `ll-messages` command. Extract user messages from Claude Code logs. Defaults to user messages only (ENH-3457); pass `--include-cli` to merge in assistant CLI commands.
 
 **Returns:** Exit code
 
@@ -4902,6 +4902,10 @@ Entry point for `ll-messages` command. Extract user messages from Claude Code lo
 - `--stdout` - Print to stdout instead of file
 - `-v, --verbose` - Verbose progress output
 - `--skill` - Filter to sessions where this skill was invoked
+- `--include-cli` - Merge assistant CLI commands into the output (the pre-ENH-3457 default); mutually exclusive with `--skip-cli`
+- `--skip-cli` - Deprecated no-op; user-only is now the default
+- `--commands-only` - Extract only CLI commands, no user messages
+- `--tools` - Comma-separated tools to extract commands from (default: `Bash`); passing this implies `--include-cli`
 - `--examples-format` - Output (input, output) training pairs (requires `--skill`); mutually exclusive with `--sft-format`
 - `--sft-format` - Output conversation turns in SFT training format (`chatml`/`alpaca`/`sharegpt`); mutually exclusive with `--examples-format`
 - `--context-window` - Number of context turn-pairs per window in `--examples-format` or `--sft-format` (default: 3)
@@ -10423,6 +10427,37 @@ def describe_capabilities(self) -> CapabilityReport: ...
 Used by `ll-doctor` (and `ll-doctor --json`) to generate human-readable and JSON diagnostic output. Each runner reports only the capabilities it can probe; stubs (`OpenCodeRunner`, `PiRunner`) return `"unsupported"` for all entries.
 
 `ll-doctor --json`'s payload is not a 1:1 serialization of this dataclass — it's a superset. Alongside `host`/`binary`/`version`/`capabilities`, it adds `analytics_capture` and `issues` keys sourced from `BRConfig` (`cfg.analytics_capture`, `cfg.issues`), the same config state the text output prints under the "Analytics Capture" and "Issues" sections (ENH-2762). It also adds install-surface keys covering little-loops' own project state (FEAT-2793/FEAT-2794): `entry_points` (list of `{name, status, note}`), `skills_commands` (`{status, note, total}`), `decisions_store` (`{status, note}`), `history_db` (`{status, note}`), `loop_validity` (`{status, note, total, invalid}`), `schema_drift` (`{status, note}`, ENH-3242), and `advisor` (list of `{name, status, note, severity, floor_status}`, one row for `advisor_host` reachability and one for `advisor_floor` capability, `floor_status` the raw `FloorResult.status` on the floor row and `null` on the host row; FEAT-3122). When `--full` is passed, a `full` key (dict keyed by verifier name → `{status, note}`) aggregates the `ll-verify-*` / `ll-check-links` checker family (FEAT-2795).
+
+### RuntimeHostEntry / RUNTIME_HOST_CAPABILITIES / load_runtime_capabilities / render_capability_report
+
+The runtime half of the declarative host capability map (ENH-3453) — sibling to `little_loops.adapters.capabilities.HOST_CAPABILITIES` (the build-time half). Every runner's `capabilities` class attribute and `describe_capabilities()` body are sourced from this map; adding a host or correcting a capability flag or report note is a data change in `host_runner.py`, not a new subclass method.
+
+```python
+@dataclass(frozen=True)
+class RuntimeHostEntry:
+    host: str
+    binary: str
+    flags: HostCapabilities
+    report_rows: tuple[CapabilityEntry, ...] = ()
+
+RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry]
+
+def load_runtime_capabilities(host_id: str) -> RuntimeHostEntry: ...
+def render_capability_report(entry: RuntimeHostEntry) -> CapabilityReport: ...
+```
+
+**Fields (`RuntimeHostEntry`):**
+
+| Field | Type | Description |
+|---|---|---|
+| `host` | `str` | Registry key (e.g., `"claude-code"`, `"codex"`); matches `entry.host`. |
+| `binary` | `str` | Binary basename (e.g., `"claude"`). |
+| `flags` | `HostCapabilities` | The same object assigned to the runner class's `capabilities` attribute. |
+| `report_rows` | `tuple[CapabilityEntry, ...]` | Verbatim capability rows rendered into `describe_capabilities()`'s `CapabilityReport`. |
+
+`load_runtime_capabilities(host_id)` raises `KeyError` naming the missing host — not `HostNotConfigured`, which already means "binary not wired" (`opencode`/`pi`) to every caller that catches it. A missing map entry is an invariant violation caught by `ll-verify-host-map`, not a runtime config state.
+
+`RUNTIME_HOST_CAPABILITIES` is keyed like `host_runner._HOST_RUNNER_REGISTRY` (a strict superset of `HOST_CAPABILITIES`'s keys, since it also covers `opencode`/`pi`). Both symbols are public in `host_runner` but are **not** re-exported from `little_loops.__init__` — consumers keep going through `describe_capabilities()`.
 
 ### apply_host_cli_from_config
 
