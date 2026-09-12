@@ -104,6 +104,9 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 - `scripts/little_loops/init/cli.py:108` — `runner_cls().describe_capabilities().binary`
 - `scripts/little_loops/host_runner.py:2028-2030` — `HOST_BINARY_NAMES = frozenset(cls().describe_capabilities().binary for cls in _HOST_RUNNER_REGISTRY.values())` (the only consumer that instantiates a runner just to read capabilities; after this issue lands it can drop the `cls()` call entirely)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/decisions.py:797,802` — second load-bearing consumer of `invocation.capabilities.structured_output` for the decisions verification path (`getattr(invocation.capabilities, "structured_output", False)`). Matches the same consumer pattern as `host_runner.py:2365-2383` (`_structured_output_args`) at `host_runner.py:2376`. The plan's "single-flag consumer at call boundary" convention (Integration Map → Conventions in Force) covers both sites, but this site is the previously unlisted second occurrence.
+
 ### Conventions in Force
 - **Frozen dataclass + module-level dict map**: every per-host capability/role shape uses `@dataclass(frozen=True)` with defaulted fields and a module-level dict keyed by host_id (`adapters/capabilities.py:48-68`, `host_runner.py:288-313`, `host_runner.py:366-391`, `host_runner.py:344-364` for `AutomationContext`).
 - **Registry maps host_id → runner class**: `_HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]]` (`host_runner.py:1995-2004`) and `_EMITTER_MAP: dict[str, AdapterSpec]` (`adapters/core.py:53-60`); both keyed by the runner/adapter class's `name` attribute.
@@ -121,12 +124,29 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 - `scripts/tests/test_cli_doctor.py:103, 181, 190` — uses `ClaudeCodeRunner.describe_capabilities()` and `CodexRunner.describe_capabilities()` directly.
 - `scripts/tests/conformance/test_host_conformance.py:35` — host conformance suite (FEAT-3455 enforcement target).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/conftest.py:19, 251` — imports `HOST_BINARY_NAMES` and uses it as the live-spawn guard (`if binary not in HOST_BINARY_NAMES: return None`). The symbol stays; the derivation source moves. Passes unchanged under Option 1.
+- `scripts/tests/test_fsm_evaluators.py:1066, 1071` — instantiates `HostCapabilities(structured_output=False)` for the `--json-schema` consumer-side flag test (`test_json_schema_omitted_when_host_lacks_structured_output`). Public `HostCapabilities` shape preserved → passes unchanged.
+- `scripts/tests/test_wiring_guides_and_meta.py:382-389` — `TestHostTierTable` reads `_HOST_RUNNER_REGISTRY` to cross-validate `docs/reference/HOST_COMPATIBILITY.md`'s "Orchestration runner" column against the canonical Python set. Implementation Step #5 adds `opencode` and `pi` to `HOST_CAPABILITIES`; the runtime registry itself doesn't change, but a follow-up may need to re-check this assertion to confirm the docs table tracks the runtime registry after the opencode/pi entries are added to `HOST_CAPABILITIES`.
+- `scripts/tests/spike/host_compose/fakes.py:23-30, 88, 108, 125, 171, 184, 199, 235` — FEAT-3456 spike fakes (`VerboseFakeRunner`, `MinimalFakeRunner`, `BadConcreteRunner`) implement `describe_capabilities()` overrides to satisfy the `HostRunner` Protocol structurally. Pass unchanged under Option 1 (in-place wrapper). Under Option 2 (full deletion) every override becomes a class-level data fixture keyed on `load_runtime_capabilities(fake_name)` — which fails for unregistered fake names, so Option 2 needs to keep the override surface or thread fake-name entries into `HOST_CAPABILITIES` for the spike.
+- `scripts/tests/spike/host_compose/executor_shim.py:12, 24` — references `HostCapabilities` in `invocation.capabilities` field. Passes unchanged under Option 1.
+- `scripts/tests/spike/host_compose/test_host_compose.py:110-119, 204, 235-239, 255, 359-372` — spike asserts on `describe_capabilities().binary`, `HOST_BINARY_NAMES` (line 118-119, 235, 255), `audited.capabilities == invocation.capabilities` (line 204), and `HostCapabilities.__dataclass_fields__` field count (line 359-362: `TestHostCapabilitiesShape::test_host_capabilities_field_count` enumerates exactly six flags). The field-count assertion will break if Option B extends `HostCapabilityEntry` to absorb the runtime flags — it must remain a count of six. Passes unchanged under the Option 1 / Option B selection in this issue.
+- `scripts/tests/spike/host_compose/test_host_compose.py` also includes `_BadConcreteRunner.describe_capabilities()` at lines 235-239 (the regression-guard that overrides the wrapper to mutate the report) — under Option 1 the override stays valid; under Option 2 it must be rewritten.
+
 ### Documentation
 - `docs/reference/HOST_COMPATIBILITY.md:337,378` — explicit citations of `describe_capabilities()` outputs (e.g. `permission_skip`).
 - `docs/reference/API.md:10347,10360,10367,10395,10420` — full `HostCapabilities` / `CapabilityReport` / `describe_capabilities()` reference.
-- `docs/reference/CLI.md` — `ll-action capabilities`, `ll-doctor` capability reporting.
+- `docs/reference/API.md:10452` — additional `CapabilityEntry` reference line (per the wired caller trace).
+- `docs/reference/CLI.md:51` — `cmd_capabilities` text discusses "Returns the full `CapabilityReport` for the configured host"; line 1009 references `host_runner.HostCapabilities` in the `ll-verify-host-map` section; line 5411 / 5466 cover MCP `capabilities` tool description.
 - `docs/ARCHITECTURE.md:859,873` — `HostRunner` protocol table (lists `describe_capabilities()` as a contract member); `CapabilityReport` / `CapabilityEntry`.
+- `docs/ARCHITECTURE.md:1330-1336` — the canonical doc paragraph "this is distinct from `host_runner.HostCapabilities` (Option B, decided 2026-07-28)" — the Option B selection in this issue keeps this paragraph accurate; under Option A it would need to be rewritten.
 - `docs/development/CONFORMANCE.md` — conformance methodology doc that `test_host_conformance.py` implements.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/codex/usage.md:137, 180, 182` — describes Codex-specific structured-output behavior referencing `describe_capabilities` status (`partial` `permission_skip`) and `HostCapabilities.structured_output` for the inline `--json-schema` gating logic. Data flow description (per-host `structured_output` bool) is unchanged after ENH-3453; only the source of the value moves from method to map.
+- `docs/qwen/automation.md:62` — documents Qwen's `structured_output=True` flag and the evaluators' `--json-schema` append behavior. Same shape after ENH-3453.
+- `docs/kimi/automation.md:94` — documents Kimi's `structured_output=False` and the prompt-and-parse fallback. Same shape after ENH-3453.
+- `.ll/spikes/spike-FEAT-3456.md:67-78, 149` — spike plan cites specific line numbers in `host_runner.py` (288-313 for `HostCapabilities`, 316-341 for `HostInvocation`, 366-376 / 379-391 for `CapabilityEntry` / `CapabilityReport`, 394 for the `HostRunner` Protocol) as the spike's read-only production references. If the collapse moves line numbers (Option 1 inserts the `load_runtime_capabilities` definition near `host_runner.py:288-313`), these citations drift and the spike plan needs re-anchoring.
 
 ### Configuration
 - `scripts/little_loops/config/orchestration.py` — names the configured host (the value `host_id` is resolved through `resolve_host()`).
@@ -175,6 +195,21 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 7. The `CapabilityEntry.status: Literal["full", "partial", "unsupported"]` closed set is preserved end-to-end. The collapse must define how a 2-valued `HostCapabilities` bool maps to a 3-valued `CapabilityEntry.status` (today's `"partial"` rows are hand-typed, e.g. Codex `agent_select` partial at `host_runner.py:974-981`). Either a richer flag shape (`"partial" | "full" | "unsupported"` per flag) or a per-flag companion dict on `HostCapabilityEntry` is needed — see `## Proposed Solution` decision point.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation. Plain bullets — they are not part of the parent step sequence._
+
+- Verify `scripts/little_loops/cli/issues/decisions.py:797,802` — second load-bearing `invocation.capabilities.structured_output` consumer for the decisions verification path. Under Option 1 it is invariant (`getattr(invocation.capabilities, "structured_output", False)` reads the same field); under Option 2 the call must thread `load_runtime_capabilities(host_id)` (the caller already has the runner via `resolve_host().build_blocking_json(...)`).
+- Confirm `scripts/tests/conftest.py:19, 251` `HOST_BINARY_NAMES` import stays valid — the symbol's derivation source moves but its name and type are unchanged.
+- Verify `scripts/tests/test_fsm_evaluators.py:1066, 1071` `HostCapabilities(structured_output=False)` instantiation — the public `HostCapabilities` shape is preserved end-to-end, so the test stays valid.
+- Re-anchor `scripts/tests/test_wiring_guides_and_meta.py:382-389` if Implementation Step #5 (opencode/pi → `HOST_CAPABILITIES`) is exercised — the runtime registry itself is unchanged but the docs cross-validation may need to confirm the new entries.
+- Verify `scripts/tests/spike/host_compose/fakes.py:23-30, 88, 108, 125, 171, 184, 199, 235` — all `describe_capabilities()` overrides stay valid under Option 1. Under Option 2 the overrides would need to be replaced with class-level data fixtures keyed on `load_runtime_capabilities(fake_name)` — which fails for unregistered fake names; a follow-up under Option 2 must either preserve the override surface or thread fake-name entries into `HOST_CAPABILITIES` for the spike.
+- Verify `scripts/tests/spike/host_compose/executor_shim.py:12, 24` — references `HostCapabilities` in `invocation.capabilities`; invariant under Option 1.
+- Verify `scripts/tests/spike/host_compose/test_host_compose.py:110-119, 204, 235-239, 255, 359-372` — asserts on `describe_capabilities().binary`, `HOST_BINARY_NAMES`, `audited.capabilities == invocation.capabilities`, and `HostCapabilities.__dataclass_fields__` field count (six flags). The field-count assertion will break if Option B is mis-implemented to extend `HostCapabilityEntry` with runtime flags — it must remain a count of six (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`, `structured_output`, `workspace_sandboxed`).
+- Re-anchor `docs/codex/usage.md:137, 180, 182` and `docs/qwen/automation.md:62` and `docs/kimi/automation.md:94` if Implementation Steps shift line numbers — these cite `describe_capabilities` outputs and `HostCapabilities.structured_output` behavior; the data-flow description is unchanged but specific citations may drift.
+- Confirm `docs/ARCHITECTURE.md:1330-1336` (the "distinct from `host_runner.HostCapabilities` (Option B, decided 2026-07-28)" paragraph) stays accurate — Option B selection in this issue keeps it; Option A would require rewriting it.
+- Re-anchor `.ll/spikes/spike-FEAT-3456.md:67-78, 149` — spike plan cites specific line numbers in `host_runner.py` (288-313, 316-341, 366-376, 379-391, 394). If `load_runtime_capabilities` is inserted near `host_runner.py:288-313` (Option 1), line citations drift. The spike plan must be updated to the post-collapse references.
+
 ## Impact
 
 - **Priority**: P2 — host seam moves fastest in the codebase, but the runtime half is bounded: one new lookup function and per-subclass `describe_capabilities` removal.
@@ -203,6 +238,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 | `.claude/CLAUDE.md` § Host CLI Abstraction | Mandates `resolve_host()` as the only entry point for new host call sites; the data-driven lookup extends that factory |
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-12T04:57:31 - `c5717503-aeae-42d0-b23a-777fa1078d80.jsonl`
 - `/ll:decide-issue` - 2026-09-12T04:45:13 - `4d557e48-0501-409c-ace4-f84bc66f4547.jsonl`
 - `/ll:refine-issue` - 2026-09-12T04:00:17 - `b183c7f4-04a5-40c0-a07a-17f902d66b2e.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:48:54 - `d9feb271-85a4-4dac-ac6d-ad5d11e623a8.jsonl`
