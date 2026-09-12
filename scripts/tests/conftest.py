@@ -6,6 +6,7 @@ import itertools
 import json
 import os
 import subprocess
+import sysconfig
 import tempfile
 import threading
 import warnings
@@ -16,7 +17,7 @@ from typing import Any
 import pytest
 from hypothesis import settings as _hypothesis_settings
 
-from little_loops.host_runner import HOST_BINARY_NAMES
+from little_loops.host_runner import HOST_BINARY_NAMES, TEST_ONLY_BINARIES
 from little_loops.issue_parser import reset_deprecated_key_warnings
 
 # =============================================================================
@@ -97,6 +98,23 @@ def pytest_configure(config: pytest.Config) -> None:
         os.nice(10)
     except OSError:
         pass
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Put console scripts on PATH so ``ll-fake-host`` resolves (FEAT-3454).
+
+    Editable install (``pip install -e "./scripts[dev]"``) alone doesn't
+    guarantee the console-script dir is on PATH: CI's ``conformance`` job
+    runs ``.venv/bin/python -m pytest`` without activating the venv. A
+    missing ``ll-fake-host`` must fail the tests that need it, not skip —
+    see ``test_fake_host.py`` — so the fix is to make it resolvable, not to
+    gate on its absence. Idempotent (no-op if already first); under xdist
+    each worker process runs its own ``pytest_sessionstart``.
+    """
+    scripts_dir = sysconfig.get_path("scripts")
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if path_entries[:1] != [scripts_dir]:
+        os.environ["PATH"] = os.pathsep.join([scripts_dir, *path_entries])
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -239,15 +257,20 @@ def _match_host_binary(
 ) -> tuple[str, list[str]] | None:
     """Return (basename, argv) if this call targets a host CLI binary, else None.
 
-    Applies the ``--version`` carve-out: all six wired
+    Applies two carve-outs: ``--version`` (all six wired
     ``build_version_check()`` implementations emit exactly ``args=["<binary>",
-    "--version"]``, which is free (no spend) but would otherwise trip a naive
-    argv[0]-basename check.
+    "--version"]``, which is free — no spend — but would otherwise trip a
+    naive argv[0]-basename check) and ``TEST_ONLY_BINARIES`` (FEAT-3454's
+    ``ll-fake-host`` and any sibling test-only executable — spawning these
+    is the whole point of the tests that use them, not a live-host call to
+    guard against).
     """
     argv = _extract_argv(args, kwargs)
     if not argv:
         return None
     binary = os.path.basename(argv[0])
+    if binary in TEST_ONLY_BINARIES:
+        return None
     if binary not in HOST_BINARY_NAMES:
         return None
     if list(argv[1:]) == ["--version"]:

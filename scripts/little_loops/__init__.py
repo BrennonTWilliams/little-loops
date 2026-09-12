@@ -31,10 +31,13 @@ from little_loops.fsm.communication_adapter import (
 from little_loops.git_operations import check_git_status
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.host_runner import (
+    TEST_ONLY_BINARIES,
+    TEST_ONLY_HOSTS,
     AutomationContext,
     CapabilityEntry,
     CapabilityNotSupported,
     CapabilityReport,
+    FakeHostRunner,
     HostInvocation,
     HostNotConfigured,
     HostRunner,
@@ -97,9 +100,12 @@ __all__ = [
     "CapabilityEntry",
     "CapabilityNotSupported",
     "CapabilityReport",
+    "FakeHostRunner",
     "HostInvocation",
     "HostNotConfigured",
     "HostRunner",
+    "TEST_ONLY_BINARIES",
+    "TEST_ONLY_HOSTS",
     "apply_host_cli_from_config",
     # extensions
     "ActionProviderExtension",

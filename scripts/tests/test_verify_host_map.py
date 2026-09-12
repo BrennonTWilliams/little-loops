@@ -16,6 +16,7 @@ from little_loops.cli.verify_host_map import (
 from little_loops.host_runner import (
     _HOST_RUNNER_REGISTRY,
     RUNTIME_HOST_CAPABILITIES,
+    TEST_ONLY_HOSTS,
     CapabilityEntry,
     HostCapabilities,
     RuntimeHostEntry,
@@ -82,8 +83,10 @@ class TestCheckRuntimeContradiction:
     def test_runtime_registry_key_parity(self) -> None:
         # Mirrors TestHostCapabilities::test_keys_match_emitter_map above —
         # the runtime map is a strict superset covering every registry host
-        # (opencode/pi included), unlike the build-time map.
-        assert set(RUNTIME_HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY)
+        # (opencode/pi included), unlike the build-time map. TEST_ONLY_HOSTS
+        # (FEAT-3454) are exempt: they source capabilities from their own
+        # constructor, not this map.
+        assert set(RUNTIME_HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY) - TEST_ONLY_HOSTS
 
     def test_flags_missing_runtime_entry(self) -> None:
         bad_map = dict(RUNTIME_HOST_CAPABILITIES)

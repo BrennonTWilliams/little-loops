@@ -5682,6 +5682,20 @@ ll-learning-tests --help
 
 ---
 
+### ll-fake-host
+
+**Test-only.** Not a user-facing tool — the console script `FakeHostRunner` (`LL_HOST_CLI=fake`) invokes to drive `run_claude_command`'s real spawn/exit-code/timeout path deterministically, with no live host CLI and no model (FEAT-3454). Parses a "directives script" fenced by `@@fake`/`@@end` inside its prompt argument and emits the scripted stream-JSON on stdout/stderr, exiting with the scripted code. With no fence in the prompt, emits a default `init`/`text`/`result` sequence and exits 0. See `## little_loops.fake_host` in `docs/reference/API.md` for the full directives grammar.
+
+```bash
+ll-fake-host "any plain prompt"          # default emission, exit 0
+ll-fake-host "@@fake
+text hello
+result
+@@end"                                    # scripted emission
+```
+
+---
+
 ## See Also
 
 - [COMMANDS.md](COMMANDS.md) — `/ll:` slash commands reference

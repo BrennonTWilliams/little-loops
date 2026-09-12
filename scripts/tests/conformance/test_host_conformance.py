@@ -58,6 +58,7 @@ _HOST_BINARY: dict[str, str] = {
     "omp": "omp",
     "kimi-code": "kimi",
     "qwen": "qwen",
+    "fake": "ll-fake-host",
 }
 
 

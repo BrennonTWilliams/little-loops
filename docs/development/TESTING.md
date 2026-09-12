@@ -1085,7 +1085,10 @@ plain `import subprocess`) or the helper one level up
 (`run_blocking_json`/`run_claude_command`/`resolve_host`), the way
 `test_host_runner.py::TestRunBlockingJson` and `test_subprocess_utils.py`
 already do. A `build_version_check()` invocation (`<binary> --version`) is
-exempt — it costs nothing and is not a guard trip.
+exempt — it costs nothing and is not a guard trip. So is any binary in
+`host_runner.TEST_ONLY_BINARIES` (e.g. `ll-fake-host`, FEAT-3454) — spawning
+a test-only fixture executable is the point of the tests that use it, not a
+live-host call to guard against.
 
 The same `conftest.py` fixture stack also collapses the rate-limit backoff
 ladder (`_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER` / `_MAX_WAIT_SECONDS`) to zero

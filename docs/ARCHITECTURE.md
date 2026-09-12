@@ -867,6 +867,7 @@ FSM handoff.
 | `QwenRunner` | Production runner for Qwen Code's `qwen` CLI; auto-detected when `qwen` is on PATH (FEAT-3155 flag translation, ENH-3156 wiring; the second host with `structured_output=True` via inline `--json-schema`; `thoughts/research/qwen-code-surface.md`) |
 | `OpenCodeRunner` | Stub for the `opencode` CLI (FEAT-1472 stub state) |
 | `PiRunner` | Frozen stub for the vanilla pi-mono `pi` CLI (cancelled — ARCHITECTURE-050; superseded by `OmpRunner`) |
+| `FakeHostRunner` | Test-only runner for the `ll-fake-host` console script — a real executable driven through the untouched `subprocess.Popen` spawn path so a scripted "directives" prompt exercises event ordering, abort, idle-timeout, and failed-start paths with no live host CLI and no model (FEAT-3454). Registered in `_HOST_RUNNER_REGISTRY` under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`; never appears in user-facing host lists. |
 | `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
 | `HostNotConfigured` | Raised when no runner can be resolved — error includes `LL_HOST_CLI` remediation hint |
 | `CapabilityNotSupported` | `UserWarning` subclass emitted when a caller requests a capability the active host lacks |
@@ -1337,8 +1338,10 @@ are checked against.
 
 `host_runner.RUNTIME_HOST_CAPABILITIES` (ENH-3453) is the runtime half of the
 same declarative discipline — one `RuntimeHostEntry` per host in
-`host_runner._HOST_RUNNER_REGISTRY` (all eight runners, a strict superset of
-`capabilities.py`'s host set), read via `load_runtime_capabilities()` and
+`host_runner._HOST_RUNNER_REGISTRY` (the eight real runners, a strict
+superset of `capabilities.py`'s host set — `TEST_ONLY_HOSTS` entries like
+`fake`, FEAT-3454, source capabilities from their own constructor instead
+and are exempt), read via `load_runtime_capabilities()` and
 rendered as a `CapabilityReport` via `render_capability_report()`. Every
 runner's `capabilities` class attribute and `describe_capabilities()` body
 are sourced from this map rather than a per-subclass literal/method — adding

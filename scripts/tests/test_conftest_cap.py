@@ -20,6 +20,7 @@ it is loaded by pytest as a ``conftest`` plugin. Load it explicitly via
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -299,6 +300,26 @@ class TestNoLiveHostCLIGuard:
     def test_match_host_binary_does_not_carve_out_other_flags(self) -> None:
         assert conftest._match_host_binary((["claude", "-p", "hi"],), {}) is not None
 
+    # -- _match_host_binary: TEST_ONLY_BINARIES carve-out (FEAT-3454) -------
+
+    def test_match_host_binary_carves_out_fake_basename(self) -> None:
+        """A test-only binary (ll-fake-host) is never flagged as a live-host spawn."""
+        assert conftest._match_host_binary((["ll-fake-host", "some prompt"],), {}) is None
+
+    def test_match_host_binary_still_matches_real_basename(self) -> None:
+        """The fake carve-out doesn't widen to swallow real host binaries."""
+        assert conftest._match_host_binary((["codex", "exec", "hi"],), {}) == (
+            "codex",
+            ["codex", "exec", "hi"],
+        )
+
+    def test_match_host_binary_version_carve_out_preserved(self) -> None:
+        """Adding the fake carve-out doesn't disturb the pre-existing --version one."""
+        assert conftest._match_host_binary((["claude", "--version"],), {}) is None
+
+    def test_match_host_binary_non_host_basename_unaffected(self) -> None:
+        assert conftest._match_host_binary((["ls", "-la"],), {}) is None
+
     # -- _record_and_build_error / _drain_new_hits: collector + cursor ------
 
     def test_record_and_build_error_records_hit_and_builds_exception(self) -> None:
@@ -532,3 +553,23 @@ class TestRateLimitLadderCollapsed:
 
         assert fsm_executor._DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER == [0]
         assert fsm_executor._DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS == 0
+
+
+class TestSessionStartPathPrepend:
+    """``pytest_sessionstart`` puts the console-scripts dir first on PATH (FEAT-3454).
+
+    Asserted against the live session (already up by the time this test
+    runs) rather than by re-invoking the hook: the hook mutates process-wide
+    ``os.environ["PATH"]``, so its effect is directly observable.
+    """
+
+    def test_scripts_dir_is_first_on_path(self) -> None:
+        import sysconfig
+
+        scripts_dir = sysconfig.get_path("scripts")
+        assert os.environ["PATH"].split(os.pathsep)[0] == scripts_dir
+
+    def test_ll_fake_host_resolves_on_path(self) -> None:
+        import shutil
+
+        assert shutil.which("ll-fake-host") is not None

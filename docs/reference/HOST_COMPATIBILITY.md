@@ -29,6 +29,7 @@ docs links here rather than restating one of them (BUG-3186).
 | `pi` | ✓ | ✓ | ✗ | Recognized, adapter pending [^pi-epic] |
 | `gemini` | ✓ | ✓ | ✓ | Adapter-wired |
 | `omp` | ✓ | ✓ | ✗ | Recognized, adapter pending — EPIC-2258 (omp host adapter) is done and a real adapter exists at `hooks/adapters/omp/`, but like `opencode` it has no `ll-init --hosts` auto-installer (manual install only, FEAT-2261 Decision Rationale), so the Hook adapter column stays ✗ per `test_host_tier_table_matches_adapter_installers` |
+| `fake` | ✓ | ✗ | ✗ | Test fixture — not a real host, see `TEST_ONLY_HOSTS` (FEAT-3454) |
 
 
 What each column is derived from — these are the sources of truth, and
@@ -469,7 +470,10 @@ satisfied by eight concrete runners — `ClaudeCodeRunner` (production),
 `OpenCodeRunner` (stub), and
 `PiRunner` (frozen stub) — so adding a new
 host is a matter of fleshing out the corresponding runner rather than
-touching call sites.
+touching call sites. The registry also holds `host_runner.TEST_ONLY_HOSTS`
+entries (e.g. the `ll-fake-host` test fixture, FEAT-3454) — these satisfy the
+same `HostRunner` Protocol for suite-internal use but are not real hosts and
+are never enumerated in this matrix.
 
 | Tool                          | Claude Code | OpenCode      | Codex CLI    | Gemini CLI   | omp          | Kimi Code    | Qwen Code    |
 | ----------------------------- | ----------- | ------------- | ------------ | ------------ | ------------ | ------------ | ------------ |

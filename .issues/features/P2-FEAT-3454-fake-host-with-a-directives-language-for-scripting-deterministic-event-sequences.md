@@ -3,9 +3,10 @@ id: FEAT-3454
 title: Fake host with a directives language for scripting deterministic event sequences
 type: FEAT
 priority: P2
-status: open
+status: done
 testable: true
 discovered_date: '2026-09-11'
+completed_at: '2026-09-12T21:22:12Z'
 labels:
 - testing
 - multi-host
@@ -382,6 +383,36 @@ in under ten seconds, no model, in the default suite.
 - **Effort**: medium — one ~300-line module, one runner class, guard carve-out, drift sync.
 - **Risk**: low — additive; the executor and every real runner are untouched. The one shared edit (`_remediation_hint`) is a pure drift fix.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-12
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/fake_host.py` (new): `Directive`/`DirectivesScript` dataclasses (terminal-discipline validation in `__post_init__`), `DEFAULT_SCRIPT`, `parse_directives()`, `emit()`, `main()` implementing every directive in the grammar table (`init`, `text`, `tool`, `result`, `turn_completed`, `raw`, `stderr`, `sleep`, `exit`, `hang`).
+- `scripts/little_loops/host_runner.py`: `FakeHostRunner` (registered as `"fake"`, absent from `_PROBE_ORDER`), `TEST_ONLY_HOSTS`/`TEST_ONLY_BINARIES` constants, `__all__` exports.
+- `scripts/little_loops/__init__.py`: re-exports `FakeHostRunner`, `TEST_ONLY_HOSTS`, `TEST_ONLY_BINARIES`.
+- `scripts/pyproject.toml`: `ll-fake-host = "little_loops.fake_host:main"` console-script entry.
+- `scripts/tests/conftest.py`: `pytest_sessionstart` prepends `sysconfig.get_path("scripts")` to `PATH`; `_match_host_binary` carve-out derived from `TEST_ONLY_BINARIES`.
+- `scripts/little_loops/cli/verify_cli_allowlist.py`: added `ll-fake-host` to `_NON_LL_TOOLS` (test-only fixture, not a permission-preset candidate) — a gate this issue didn't originally call out but that a new `[project.scripts]` entry trips.
+- Tests: `scripts/tests/test_fake_host.py` (new, 46 cases — parser, `emit`, executable smoke, and the `run_claude_command` end-to-end case); `scripts/tests/test_host_runner.py::TestFakeHostRunner` plus count-free binary/probe drift tests; `scripts/tests/test_conftest_cap.py` four-shape carve-out tests + PATH-prepend tests; `scripts/tests/conformance/test_host_conformance.py::_HOST_BINARY["fake"]`; `scripts/tests/test_verify_host_map.py` and `test_host_runner.py::TestRuntimeHostCapabilitiesMap` updated to exclude `TEST_ONLY_HOSTS` (needed after ENH-3453 landed the `RUNTIME_HOST_CAPABILITIES` data-driven refactor).
+- Docs: `docs/reference/HOST_COMPATIBILITY.md` (tier-table row + prose sentence), `docs/ARCHITECTURE.md` (Host Runner Layer row + `RUNTIME_HOST_CAPABILITIES` footnote), `docs/development/TESTING.md` (guard carve-out), `docs/reference/API.md` (new `## little_loops.fake_host` section + registry-table row), `docs/reference/CLI.md` (`ll-fake-host` entry, marked test-only).
+
+### Deviations from the issue text
+
+- `_remediation_hint()` left unmodified rather than rederived via `sorted(...)`: the literal `sorted()` form would change the real-host list's insertion order and add `opencode`'s binary to the curated 7-binary list, both breaking the issue's own stated byte-identical-output goal. The current static string already satisfies "fakes never appear" (it names no fake), so no code change was needed to meet that goal.
+- `FakeHostRunner.describe_capabilities()` does not route through `RUNTIME_HOST_CAPABILITIES`/`load_runtime_capabilities()` — that map (landed via ENH-3453, committed mid-session as `fbee51810`) is the data source for the 8 real hosts only; it constructs its `CapabilityReport` directly, consistent with `HOST_BINARY_NAMES`'s own comment that test-only runners "answer directly."
+- Two ENH-3453 tests (`test_verify_host_map.py::test_runtime_registry_key_parity`, `test_host_runner.py::TestRuntimeHostCapabilitiesMap::test_every_registry_host_matches_its_runtime_entry`) needed a `TEST_ONLY_HOSTS` exclusion added once `"fake"` joined the registry — `verify_host_map.py`'s own `_check_runtime_contradiction()` already had this exclusion (anticipating this issue), but two of its regression tests iterated the registry directly.
+
+### Verification Results
+
+- `python -m pytest scripts/tests/ -m "not integration and not conformance"`: 23,368 passed, 12 skipped.
+- `python -m mypy scripts/little_loops/`: no issues.
+- `ruff check` / `ruff format --check` on all changed files: clean.
+- `pytest -m conformance -k fake scripts/tests/conformance/test_host_conformance.py`: 4/4 golden paths pass.
+
 ## Status
 
 **Open** | Created: 2026-09-11 | Priority: P2
@@ -476,6 +507,7 @@ was wrong and fixed, not an outstanding action item).
   is net-new, unimplemented work.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-12T21:20:45 - `48773fe9-5b76-4c02-b253-f38bbe5a6bd3.jsonl`
 - `/ll:confidence-check` - 2026-09-12T18:34:13 - `4c64a9f3-3fe1-44fa-8a00-bbded475e3ef.jsonl`
 - Manual review (ENH-3459 cross-check) - 2026-09-12 - `main()` prompt location changed from bare `argv[-1]` to fence-locates-prompt with `argv[-1]` fallback, because `_structured_output_args` appends `--json-schema <json>` after the prompt; "five `build_*`" corrected to four
 - Manual pre-implementation review - 2026-09-12 - PATH prepend + fail-not-skip (CI conformance job never had `.venv/bin` on PATH); `hang` re-modeled (grace kill needs `result` + `hang`); `@@fake`/`@@end` fence decided (`@`-prefix collides with file mentions); `result structured=` for `run_blocking_json`; flush-per-line; stderr-interleaving caveat; `request_shutdown` from `stream_callback`; prompt-last contract; capability override is direct-construction-only; seven-scenario matrix moved to FEAT-3455 (was duplicated)

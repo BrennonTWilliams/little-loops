@@ -54,6 +54,7 @@ __all__ = [
     "CapabilityReport",
     "ClaudeCodeRunner",
     "CodexRunner",
+    "FakeHostRunner",
     "GeminiRunner",
     "HostCapabilities",
     "HostInvocation",
@@ -64,6 +65,8 @@ __all__ = [
     "OpenCodeRunner",
     "PiRunner",
     "QwenRunner",
+    "TEST_ONLY_BINARIES",
+    "TEST_ONLY_HOSTS",
     "apply_host_cli_from_config",
     "build_anthropic_request",
     "build_batch_request",
@@ -2047,6 +2050,98 @@ class QwenRunner:
         return render_capability_report(load_runtime_capabilities(self.name))
 
 
+class FakeHostRunner:
+    """``HostRunner`` for the test-only ``ll-fake-host`` executable (FEAT-3454).
+
+    A normal runner: every ``build_*`` returns a real ``HostInvocation`` for
+    ``ll-fake-host``, a real console-script executable that parses the
+    directives embedded in ``prompt`` and emits scripted stream-JSON (see
+    ``little_loops.fake_host``). Driven through the untouched
+    ``subprocess.Popen`` path in ``run_claude_command``, so it exercises the
+    real spawn/exit-code/timeout machinery with no live host and no model.
+
+    Unlike the eight real runners, capabilities are not sourced from
+    ``RUNTIME_HOST_CAPABILITIES`` — that map is ENH-3453's data source for
+    real hosts only. A test overrides ``capabilities`` directly via the
+    constructor; the default profile is ``streaming=True`` with everything
+    else ``False``. Registered but absent from ``_PROBE_ORDER`` (OpenCodeRunner
+    precedent) — never auto-detected, only reachable via ``LL_HOST_CLI=fake``
+    or direct construction.
+    """
+
+    name = "fake"
+
+    def __init__(self, capabilities: HostCapabilities | None = None) -> None:
+        self.capabilities = (
+            capabilities if capabilities is not None else HostCapabilities(streaming=True)
+        )
+
+    def detect(self) -> bool:
+        return shutil.which("ll-fake-host") is not None
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+        model: str | None = None,
+        automation: AutomationContext | None = None,
+        automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
+        workspace_root: Path | None = None,
+    ) -> HostInvocation:
+        automation = resolve_automation(automation, automation_profile, disable_background_tasks)
+        env: dict[str, str] = {}
+        _apply_automation_env(env, automation)
+        return HostInvocation(
+            binary="ll-fake-host",
+            args=[prompt],
+            env=env,
+            capabilities=self.capabilities,
+        )
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict | None = None,
+    ) -> HostInvocation:
+        _ = json_schema
+        return HostInvocation(
+            binary="ll-fake-host",
+            args=[prompt],
+            capabilities=self.capabilities,
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        return HostInvocation(
+            binary="ll-fake-host",
+            args=["--version"],
+            capabilities=self.capabilities,
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        return HostInvocation(
+            binary="ll-fake-host",
+            args=[prompt],
+            capabilities=self.capabilities,
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(host=self.name, binary="ll-fake-host", version="", capabilities=[])
+
+
+# Registry keys that exist for the test suite, not for users. Every drift
+# gate that counts or enumerates "real" hosts subtracts this set; the
+# live-spawn guard carves out its binaries. Grows by one key per fake
+# (ENH-3459 adds the second); nothing else about the gates changes.
+TEST_ONLY_HOSTS: frozenset[str] = frozenset({"fake"})
+
+
 # Built-in host runners keyed by their ``name`` attribute. Extensions may
 # register additional runners but built-ins always win on collision —
 # mirrors ``hooks/__init__.py:_dispatch_table`` (built-ins shadow extensions).
@@ -2059,6 +2154,7 @@ _HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]] = {
     "omp": OmpRunner,
     "kimi-code": KimiRunner,
     "qwen": QwenRunner,
+    "fake": FakeHostRunner,
 }
 
 # Order of probing when no explicit host is configured. Matches the binary
@@ -2089,6 +2185,13 @@ _PROBE_ORDER: list[tuple[str, str]] = [
 # asserts this stays in sync with the registry.
 HOST_BINARY_NAMES: frozenset[str] = frozenset(
     cls().describe_capabilities().binary for cls in _HOST_RUNNER_REGISTRY.values()
+)
+
+# Every registry key's basename, for test-only hosts (FEAT-3454). The
+# live-spawn guard (conftest.py) carves these out of HOST_BINARY_NAMES so
+# spawning the fake never trips the "don't call a live host CLI" check.
+TEST_ONLY_BINARIES: frozenset[str] = frozenset(
+    _HOST_RUNNER_REGISTRY[k]().describe_capabilities().binary for k in TEST_ONLY_HOSTS
 )
 
 

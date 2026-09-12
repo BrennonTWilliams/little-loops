@@ -10373,6 +10373,7 @@ class HostRunner(Protocol):
 | `OmpRunner` | `omp` CLI | ✓ production | oh-my-pi (Bun `@oh-my-pi/pi-coding-agent`). `-p <prompt>` print mode; `--mode json` emits a JSONL event stream (no single-blob mode — `build_blocking_json` uses `--mode json --no-session` and callers consume the final event, same contract as Codex). `--continue` for resume, `--model <pattern>`, native `--tools <comma-list>` allowlist. `agent` emits `CapabilityNotSupported` (subagents spawn in-session). Permission skip is implicit — print mode never prompts. See `thoughts/research/omp-headless-flags.md` (FEAT-1850). |
 | `OpenCodeRunner` | `opencode` CLI | stub | Registered so `LL_HOST_CLI=opencode` resolves to a useful error rather than the generic "unknown host". All `build_*` methods raise `HostNotConfigured`. See FEAT-1472. |
 | `PiRunner` | `pi` CLI | frozen stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Vanilla Pi support is cancelled (ARCHITECTURE-050); superseded by `OmpRunner` (EPIC-2258). |
+| `FakeHostRunner` | `ll-fake-host` (test fixture) | test-only | Registered under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`. Every `build_*` returns a real `HostInvocation` for the `ll-fake-host` console script (`little_loops.fake_host`), which parses a directives script embedded in the prompt and emits scripted stream-JSON — see `## little_loops.fake_host` below. Capabilities are constructor-supplied (`streaming=True` default), not sourced from `RUNTIME_HOST_CAPABILITIES`. FEAT-3454. |
 
 ### CapabilityEntry
 
@@ -10694,6 +10695,26 @@ class CapabilityNotSupported(UserWarning): ...
 ```
 
 Subclasses `UserWarning` (not `Warning`) so test code can capture it via `pytest.warns` and production code can route it through `warnings.simplefilter("error", CapabilityNotSupported)` for strict contexts. Mirrors the precedent set by `config.core` which emits `DeprecationWarning` via `warnings.warn(..., stacklevel=2)`.
+
+---
+
+## little_loops.fake_host
+
+Directives-script parser and executable for `ll-fake-host` (FEAT-3454), the test-only console script `FakeHostRunner` drives through the real `subprocess.Popen` spawn path in `run_claude_command`. Lets a test script an exact sequence of wire events, failures, and timings deterministically, with no live host CLI and no model.
+
+**Types:**
+
+- `Directive` (frozen dataclass) — `kind: str`, `args: dict[str, Any]`, `lineno: int`. One parsed directive line.
+- `DirectivesScript` (frozen dataclass) — `directives: list[Directive]`, `terminal_index: int | None`, `exit_code: int = 0`. Construction validates terminal discipline: at most one of `result`/`turn_completed`; nothing but `exit`/`hang` may follow it; `exit`/`hang` (if present) must be last. Raises `ValueError` naming the offending line on violation.
+- `DEFAULT_SCRIPT` — the no-fence emission: `init` (with a model and session id), one `text`, `result` (with usage) — every event carrying the fields that fire a consumer callback.
+
+**Functions:**
+
+- `parse_directives(prompt: str) -> DirectivesScript` — parses the `@@fake`/`@@end` script block out of *prompt* (a real prompt may precede the fence). Returns `DEFAULT_SCRIPT` when no fence is present. One directive per line; blank lines and `#` comments are skipped. Raises `ValueError(f"line {n}: ...")` on any malformed directive or terminal-discipline violation.
+- `emit(script: DirectivesScript, *, stdout, stderr) -> int` — writes the scripted stream-JSON to *stdout*/*stderr*, flushing every line, sleeping and blocking (`hang`) where scripted. Returns the exit code. Separated from `main()` so tests can drive it in-process with `io.StringIO`.
+- `main(argv=None) -> int` — the `ll-fake-host` console-script entry point. The prompt is the argv element containing the `@@fake` fence, falling back to `argv[-1]` only when no element does (the executor may append flags like `--json-schema <json>` after the prompt under `structured_output=True`).
+
+**Directives grammar** (vocabulary = the wire events `run_claude_command` dispatches on, nothing else): `init [model=<m>] [session=<id>]`, `text <str>` (`\n` unescaped to a real newline), `tool <name> [json-input]`, `result [error=<msg>] [in=<n> out=<n> cache=<n>] [structured=<json>]`, `turn_completed [in=<n> out=<n> cached=<n>]`, `raw <str>` (non-JSON passthrough), `stderr <str>`, `sleep <seconds>`, `exit <code>` (must be last if present), `hang` (blocks via `signal.pause()` until killed; must be last if present — `result` then `hang` models a host that reported its turn and then lingered, exercising the post-stream-close grace-kill path).
 
 ---
 

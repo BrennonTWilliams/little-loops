@@ -72,6 +72,7 @@ Repository = "https://github.com/BrennonTWilliams/little-loops"
 "Bug Tracker" = "https://github.com/BrennonTWilliams/little-loops/issues"
 
 [project.scripts]
+ll-fake-host = "little_loops.fake_host:main"
 ll-action = "little_loops.cli:main_action"
 ll-advise = "little_loops.cli:main_advise"
 ll-artifact = "little_loops.cli:main_artifact"

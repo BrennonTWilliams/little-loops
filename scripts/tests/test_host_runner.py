@@ -33,6 +33,7 @@ from little_loops.host_runner import (
     CapabilityReport,
     ClaudeCodeRunner,
     CodexRunner,
+    FakeHostRunner,
     GeminiRunner,
     HostCapabilities,
     HostInvocation,
@@ -1104,6 +1105,81 @@ class TestOpenCodeRunner:
 
     def test_satisfies_host_runner_protocol(self) -> None:
         assert isinstance(OpenCodeRunner(), HostRunner)
+
+
+class TestFakeHostRunner:
+    """FakeHostRunner is a normal runner for the test-only ll-fake-host executable.
+
+    Per FEAT-3454: registered, resolvable via env, absent from _PROBE_ORDER
+    (OpenCodeRunner precedent) since it must never be auto-detected.
+    """
+
+    def test_fake_runner_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "fake" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["fake"] is FakeHostRunner
+
+    def test_fake_runner_gated_from_auto_probe(self) -> None:
+        from little_loops import host_runner as hr
+
+        probe_hosts = {name for name, _binary in hr._PROBE_ORDER}
+        assert "fake" not in probe_hosts
+
+    def test_resolve_host_picks_fake_via_env(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOST_CLI": "fake"})
+        assert isinstance(runner, FakeHostRunner)
+        assert runner.name == "fake"
+
+    def test_satisfies_host_runner_protocol(self) -> None:
+        assert isinstance(FakeHostRunner(), HostRunner)
+
+    def test_default_capabilities_profile_is_streaming_only(self) -> None:
+        runner = FakeHostRunner()
+        assert runner.capabilities == HostCapabilities(streaming=True)
+
+    def test_describe_capabilities(self) -> None:
+        report = FakeHostRunner().describe_capabilities()
+        assert report.host == "fake"
+        assert report.binary == "ll-fake-host"
+
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda r: r.build_streaming(prompt="hi"),
+            lambda r: r.build_blocking_json(prompt="hi"),
+            lambda r: r.build_detached(prompt="hi"),
+        ],
+    )
+    def test_prompt_is_last_arg(self, build) -> None:
+        invocation = build(FakeHostRunner())
+        assert invocation.args[-1] == "hi"
+        assert invocation.binary == "ll-fake-host"
+
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda r: r.build_streaming(prompt="hi"),
+            lambda r: r.build_blocking_json(prompt="hi"),
+            lambda r: r.build_version_check(),
+            lambda r: r.build_detached(prompt="hi"),
+        ],
+    )
+    def test_capability_override_propagates_to_invocation(self, build) -> None:
+        caps = HostCapabilities(structured_output=True)
+        invocation = build(FakeHostRunner(capabilities=caps))
+        assert invocation.capabilities is caps
+
+    def test_build_streaming_applies_automation_env(self) -> None:
+        runner = FakeHostRunner()
+        invocation = runner.build_streaming(
+            prompt="hi", automation=AutomationContext(profile="ll-auto")
+        )
+        assert invocation.env["LL_AUTOMATION"] == "1"
+        assert invocation.env["LL_AUTOMATION_PROFILE"] == "ll-auto"
+
+    def test_detect_checks_for_binary_on_path(self) -> None:
+        assert FakeHostRunner().detect() is True
 
 
 class TestPiRunner:
@@ -2349,9 +2425,13 @@ class TestRuntimeHostCapabilitiesMap:
     """
 
     def test_every_registry_host_matches_its_runtime_entry(self) -> None:
+        """Excludes TEST_ONLY_HOSTS (FEAT-3454): a fake sources capabilities
+        from its own constructor, not the real-host runtime map."""
         from little_loops import host_runner as hr
 
         for name, cls in hr._HOST_RUNNER_REGISTRY.items():
+            if name in hr.TEST_ONLY_HOSTS:
+                continue
             entry = hr.load_runtime_capabilities(name)
             assert entry.flags is cls.capabilities, name
             assert hr.render_capability_report(entry) == cls().describe_capabilities(), name
@@ -2419,10 +2499,15 @@ class TestHostBinaryNames:
         }
         assert hr.HOST_BINARY_NAMES == expected
 
-    def test_has_all_eight_known_binaries(self) -> None:
-        from little_loops.host_runner import HOST_BINARY_NAMES
+    def test_real_binaries_are_the_eight_known_hosts(self) -> None:
+        """FEAT-3454: count-free — subtracting TEST_ONLY_BINARIES survives a new fake.
 
-        assert HOST_BINARY_NAMES == {
+        A number-in-name test (the old ``test_has_all_eight_known_binaries``)
+        breaks on every fake registered; the subtraction does not.
+        """
+        from little_loops.host_runner import HOST_BINARY_NAMES, TEST_ONLY_BINARIES
+
+        assert HOST_BINARY_NAMES - TEST_ONLY_BINARIES == {
             "claude",
             "codex",
             "opencode",
@@ -2432,6 +2517,17 @@ class TestHostBinaryNames:
             "kimi",
             "qwen",
         }
+
+    def test_test_only_binaries_are_registered(self) -> None:
+        from little_loops.host_runner import HOST_BINARY_NAMES, TEST_ONLY_BINARIES
+
+        assert TEST_ONLY_BINARIES <= HOST_BINARY_NAMES
+
+    def test_test_only_hosts_are_never_probed(self) -> None:
+        """FEAT-3454, OpenCode not-probed precedent (test_opencode_runner_gated_from_auto_probe)."""
+        from little_loops.host_runner import _PROBE_ORDER, TEST_ONLY_HOSTS
+
+        assert TEST_ONLY_HOSTS.isdisjoint(name for name, _binary in _PROBE_ORDER)
 
 
 class TestAC8BaselineCoverage:

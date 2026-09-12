@@ -23,9 +23,11 @@ from pathlib import Path
 from little_loops.init.writers import _LL_PERMISSIONS
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
-# Non-ll- entry points (mcp-call is not part of the ll- CLI surface the
-# presets document) — excluded from the parity check.
-_NON_LL_TOOLS = frozenset({"mcp-call"})
+# Entry points excluded from the parity check: mcp-call is not part of the
+# ll- CLI surface the presets document; ll-fake-host (FEAT-3454) is a
+# test-only fixture executable never invoked by a skill/hook/user needing a
+# Bash permission grant, so it has no business in a permission preset.
+_NON_LL_TOOLS = frozenset({"mcp-call", "ll-fake-host"})
 
 _TOOL_TOKEN_RE = re.compile(r"\bll-[a-z0-9-]+\b")
 
