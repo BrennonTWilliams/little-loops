@@ -336,6 +336,7 @@ _Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)*
 - `.claude/CLAUDE.md` — documents the `ll-session` CLI (`search --fts`, `recent --kind`, `backfill`, `rebuild`, `compact`) that surfaces each new event kind this epic's children add.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-12T17:49:48 - `24bcbb37-7da0-4a87-b50e-2d2e5174a4e2.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-08T02:29:09 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:44:28 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:55 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
@@ -359,3 +360,9 @@ _Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)*
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): EPIC-3041's `FEAT-3040` ("Advisor consult telemetry in `history.db`") adds a new consult write path into `history.db` but is not tracked in this epic's `relates_to`/Children. This epic is the designated rollup for new `history.db` signal classes and explicitly names "schema sprawl from uncoordinated children" as its cumulative risk — before adding a competing table, confirm whether FEAT-3040's write path should be folded under this epic's children or is deliberately kept separate.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): EPIC-3023's child `ENH-2990` ("measure the live/production skip rate of ENH-2971's staleness-check predicate") shipped a new schema v46 `research_triage_events` table in `.ll/history.db` but is not tracked in this epic's `relates_to`/Children. This epic is the designated rollup for new `history.db` signal classes and explicitly names "schema sprawl from uncoordinated children" as its cumulative risk — the table should be added to this epic's Children list for future schema-sprawl audits.

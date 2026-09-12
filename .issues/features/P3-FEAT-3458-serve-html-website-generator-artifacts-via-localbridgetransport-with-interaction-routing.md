@@ -9,6 +9,10 @@ confidence_score: 85
 outcome_confidence: 80
 unproven_mechanism: true
 decision_needed: false
+reconcile_attempted: true
+blocked_by:
+- EPIC-3299
+- EPIC-3212
 ---
 
 # FEAT-3458: Serve `html-website-generator` Artifacts via `LocalBridgeTransport` with Interaction Routing
@@ -64,7 +68,7 @@ Discovery of `interaction_url` is server-injected: `LocalBridgeTransport` wraps 
 - [ ] Server-side HTML injection wraps the artifact in a small bootstrap script that sets `window.LL_INTERACTION_URL` / `window.LL_EVENTS_URL` from the bound transport.
 - [ ] Interaction handlers dispatch to the corresponding `ll-*` CLI as a foreground subprocess; stdout/stderr stream back to the requesting client as SSE events tagged with the request id.
 - [ ] The page renders a collapsible log panel per dispatched action with live-streaming output and a final exit-code status.
-- [ ] `ll-loop run html-website-generator "..."` adds a `serve` state (or a `--serve` flag on the generator) that auto-starts the server and embeds the URL in the `done` state's output.
+- [ ] `ll-loop run html-website-generator "..."` triggers `ll-artifact serve-run` via a post-run hook in `cli/loop/run.py` after the FSM reaches `done` (not an FSM `serve` state — see Decision Rationale/Option FSM-B) and prints the bound URL; exact flag/hook name is an open decision distinct from the existing `--serve` run-duration bridge (ENH-3351, `run.py:588-657`) — see Verification Notes.
 - [ ] The clipboard-copy code path remains in the artifact as a fallback for users who open `index.html` directly without serving — graceful degradation.
 - [ ] Tests cover: dispatch table correctness, SSE event tagging per request id, server-injected `window.LL_*` globals present in served HTML but absent in raw `file://` HTML, server-side subprocess cancellation on client disconnect.
 
@@ -168,20 +172,23 @@ The research finding that the FSM's shell-action executor is bounded by a 3600s 
 
 - `scripts/little_loops/cli/artifact/serve.py` — Add `serve-run` subcommand parser + `cmd_serve_run` (binding `LocalBridgeTransport` for an arbitrary `index.html`, registering interaction handlers).
 - `scripts/little_loops/cli/artifact/__init__.py` — Register `serve_run` parser in the subparsers group.
-- `scripts/little_loops/loops/html-website-generator.yaml` — Update `generate` state's prompt to use `fetch` + `EventSource`; append `serve` state to FSM.
+- `scripts/little_loops/loops/html-website-generator.yaml` — Update `run_gen_eval.with.generate_prompt` to use `fetch` + `EventSource` with clipboard fallback. No FSM state added (Option FSM-B selected — a `serve` state would be SIGKILLed by the 3600s shell-action wall-clock fallback).
+- `scripts/little_loops/cli/loop/run.py` — Add a post-run hook after `run_foreground()` returns (near the existing signal-handler registration at `run.py:627`) that launches `ll-artifact serve-run "${run_dir}"` as a detached process for `html-website-generator` runs, following the `run_background()` pattern (`cli/loop/runner.py:291-298`). Naming must avoid colliding with the existing `--serve` run-duration bridge (ENH-3351, `run.py:588-657`) — see Verification Notes.
+- `scripts/little_loops/cli/loop/__init__.py` — Wire the new hook's CLI flag alongside the existing `--serve` flag registration (lines 296-310).
 - `scripts/little_loops/transport.py` — Possibly expose a thin helper `_make_inbound_dispatch_handler(actions: dict[str, Callable[[dict], None]])` to standardize the dispatch pattern (used by `LocalBridgeTransport`, `serve.py`, and any future transport-consuming page). Verify it doesn't already exist.
 
 ### Dependent Files (Callers/Importers)
 
 - `ll-artifact` CLI surface (`scripts/little_loops/cli/artifact/__init__.py`) — new subcommand.
 - `scripts/little_loops/transport.py` `LocalBridgeTransport` — already supports inbound queue + interaction POST route (lines 692-716); no changes expected.
-- `scripts/little_loops/fsm/executor.py` — `action_type: shell` is already handled (executor.py:3361); the new `serve` state reuses this path with no FSM changes expected.
+- `scripts/little_loops/fsm/executor.py` — Unchanged: Option FSM-B keeps the server outside the FSM entirely, so no `serve` state is added and `action_type: shell` dispatch (executor.py:3361) is not exercised by this feature.
 
 ### Similar Patterns
 
 - `cli/artifact/serve.py` `make_history_route` (lines 51-135) — read-only `GET /history` JSON handler. Different: GET, no subprocess, no streaming. Same shape though.
 - `cli/artifact/dashboard.py` `ServeContext(events_url, interaction_url, history_url)` — the three-URL triple that the new `serve-run` should mirror.
 - `transport.py:692` `_handle_interaction` — exact existing pattern: read body, parse JSON, put on inbound queue. `serve-run` will spin a worker thread that consumes from the same queue.
+- `run.py:627` signal-handler registration + `run_background()` detached-`Popen` pattern (`cli/loop/runner.py:291-298`) — the precedent Option FSM-B's post-run hook follows: finish primary work, then hand off to a new long-lived process.
 
 ### Tests
 
@@ -191,7 +198,7 @@ The research finding that the FSM's shell-action executor is bounded by a 3600s 
   - `test_sse_event_tagging` — interaction dispatch emits `action_output` events with matching `request_id`; multiple concurrent requests don't cross-stream.
   - `test_subprocess_cleanup_on_disconnect` — kill client mid-run; subprocess terminates within bounded timeout; no orphan processes.
   - `test_fallback_when_serving_off` — opening the raw `index.html` in a JSDOM-like environment; `window.LL_INTERACTION_URL === undefined`; button handler falls back to clipboard.
-- `scripts/tests/test_builtin_loops.py` — extend `TestHtmlWebsiteGeneratorLoop` to assert the new `serve` state exists after `done` (or whatever the final shape is).
+- `scripts/tests/test_builtin_loops.py` / `cli/loop` tests — extend or add coverage asserting the post-run hook invokes `ll-artifact serve-run` after the FSM reaches `done`; not an FSM-state assertion, since no `serve` state exists under Option FSM-B.
 
 ### Documentation
 
@@ -272,10 +279,8 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 1. Add `serve_run` subcommand + `cmd_serve_run` to `cli/artifact/serve.py`; register parser in `cli/artifact/__init__.py`.
 2. Add `_make_inbound_dispatch_handler(actions)` helper in `transport.py` (if it doesn't already exist) — extracts the `subprocess.Popen` + `transport.send` pattern into a reusable shape.
-3. Update `scripts/little_loops/loops/html-website-generator.yaml` `generate` state's prompt to use `fetch` + `EventSource` with graceful `file://` fallback.
-   > ⚠ Superseded — generate is not a state; prompt lives in run_gen_eval.with.generate_prompt
-4. Append `serve` state to the loop FSM; bind `context.bridge_port` from `BRConfig.events.bridge.port`.
-   > ⚠ Superseded — bridge_port not in context (cli/loop/run.py injects run_dir only); shell actions timeout at 3600s
+3. Update `run_gen_eval.with.generate_prompt` in `scripts/little_loops/loops/html-website-generator.yaml` to use `fetch` + `EventSource` with graceful `file://` fallback (corrected state path — `generate` is not a state name).
+4. Add a post-run hook in `cli/loop/run.py`, after `run_foreground()` returns and near the existing signal-handler registration at `run.py:627`, that launches `ll-artifact serve-run "${run_dir}"` as a detached process, following the `run_background()` pattern (`cli/loop/runner.py:291-298`) — not an FSM `serve` state (Option FSM-B selected: a `serve` state would be SIGKILLed by the executor's 3600s shell-action wall-clock fallback). Exact flag/hook name is an open decision distinct from the existing `--serve` run-duration bridge (ENH-3351) — see Verification Notes.
 5. Write `scripts/tests/test_artifact_serve_run.py` covering the test surface above.
 6. Update docs per Documentation section.
 
@@ -406,6 +411,8 @@ Implementation Steps sections to match (both destructive rewrites — left for
 
 ## Session Log
 
+- `/ll:audit-issue-conflicts` - 2026-09-12T17:49:25 - `24bcbb37-7da0-4a87-b50e-2d2e5174a4e2.jsonl`
+- `/ll:reconcile-issue` - 2026-09-12T17:48:58 - `53449bfc-4a43-46cf-93a9-b9b522f17bce.jsonl`
 - `/ll:decide-issue` - 2026-09-12T17:42:10 - `71fadad1-1c93-41b3-b03e-d94f4739e170.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:13:32 - `5fc78720-4226-4a87-b83b-58bd16519b14.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:05:55 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
