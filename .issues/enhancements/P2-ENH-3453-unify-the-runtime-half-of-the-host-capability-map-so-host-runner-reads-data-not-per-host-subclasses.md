@@ -375,6 +375,7 @@ No other citations sampled (Files to Modify, Program Design signatures, Behavior
 | `.claude/CLAUDE.md` § Host CLI Abstraction | Mandates `resolve_host()` as the only entry point for new host call sites; the data-driven lookup extends that factory |
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-12T19:01:00 - `d3cf5f01-aa94-47ca-b321-b4f687a7d9fe.jsonl`
 - Manual pre-implementation review - 2026-09-12 - (1) `HOST_BINARY_NAMES` stays registry-derived: map-only derivation conflicted with FEAT-3454's `TEST_ONLY_BINARIES <= HOST_BINARY_NAMES` and the registry-derived test at `test_host_runner.py:2348`; (2) equivalence test reworded to compare wrapper output against the runner directly — the earlier wording cited the Step #0 snapshot as a fixture, contradicting Step #0's "do not check in"; (3) flag/row rule made symmetric (`"unsupported"`-with-`True` now also flagged; verified zero violations across all 8 runners); (4) three stale "see describe_capabilities" comments at `host_runner.py:1323,1435,1510` added to Files to Modify; (5) decided `load_runtime_capabilities` raises `KeyError` not `HostNotConfigured`, and the new symbols are not re-exported from the package `__init__`.
 - `/ll:confidence-check` - 2026-09-12T18:34:36 - `1d379f0c-a48d-4266-b21d-c8d14ac3f0e7.jsonl`
 - Manual review (ENH-3459/ENH-3460 cross-check) - 2026-09-12 - step 4 rule (a) key parity now subtracts `TEST_ONLY_HOSTS` so the FEAT-3454/ENH-3459 fakes don't trip `ll-verify-host-map` regardless of landing order
