@@ -5046,6 +5046,47 @@ class TestAutoRefineAndImplementLoop:
             f"FEAT-1 closed pre-baseline must not count as not_closed: {summary}"
         )
 
+    def test_finalize_fails_loud_when_issues_dir_missing(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3449: when .issues/ is missing at finalize time, the in-process
+        done-now walk must exit non-zero with a BUG-3449 diagnostic on stderr —
+        never silently produce an empty done-now set and render verdict=phantom
+        with closed=0, which is exactly the latent bug the silent `ll-issues`
+        swallow used to mask. The FSM's on_error routes a non-zero exit to
+        finalize_incomplete; this test pins the BUG-3449 exit contract.
+
+        Deliberately bypasses `_run_finalize` because the helper crashes on a
+        missing summary.json — this test asserts the fail-loud path that
+        produces no summary.json at all.
+        """
+        import subprocess
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        # Deliberately do NOT create .issues/ in run_dir — the walk should
+        # fail loud rather than silently produce an empty done-now set.
+        action = _unescape_ll_python(data["states"]["finalize"].get("action", ""))
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${captured.issue_set.output}", "")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, timeout=60
+        )
+        assert result.returncode != 0, (
+            f"BUG-3449: finalize must exit non-zero when .issues/ is missing, "
+            f"got rc={result.returncode} stderr={result.stderr!r}"
+        )
+        assert "BUG-3449" in result.stderr, (
+            f"BUG-3449: missing diagnostic on stderr (got {result.stderr!r})"
+        )
+        # The fail-loud path bails BEFORE writing summary.json. A summary.json
+        # would mean the bash script silently absorbed the python3 exit and
+        # kept going — which is exactly the silent-swallow regression.
+        assert not (run_dir / "summary.json").exists(), (
+            f"BUG-3449: summary.json written despite missing .issues/ — "
+            f"silent-swallow regression: {result.stderr!r}"
+        )
+
     def test_finalize_summary_has_closure_keys(self, data: dict, tmp_path: Path) -> None:
         """summary.json must report the full accounting keys (ENH-2385)."""
         run_dir = tmp_path / "run"
@@ -5241,6 +5282,10 @@ class TestAutoRefineAndImplementLoop:
         (run_dir / "auto-refine-and-implement-done-baseline.txt").write_text("")
         (run_dir / "autodev-passed.txt").write_text("")
         (run_dir / "autodev-skipped.txt").write_text("")
+        # BUG-3449: the in-process done-now walk now requires .issues/ to
+        # exist; an empty dir is enough for the walk to succeed and let
+        # the merge_conflict warning reach stderr (the behavior under test).
+        (run_dir / ".issues").mkdir()
         result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         assert "WARNING" in result.stderr and "merge conflict" in result.stderr.lower(), (
             f"expected a prominent merge_conflict warning on stderr, got: {result.stderr!r}"
