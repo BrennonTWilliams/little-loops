@@ -110,6 +110,8 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
     display = [i for i in ordered if i.status in _OPEN_STATUSES]
     if type_prefix:
         display = [i for i in display if i.issue_id.split("-", 1)[0] == type_prefix]
+    else:
+        display = [i for i in display if i.issue_id.split("-", 1)[0] != "EPIC"]
 
     if not display:
         if type_prefix:

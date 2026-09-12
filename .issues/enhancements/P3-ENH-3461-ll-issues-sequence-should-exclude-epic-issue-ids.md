@@ -3,10 +3,11 @@ id: ENH-3461
 type: ENH
 title: ll-issues sequence should exclude EPIC issue IDs
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-12'
 captured_at: '2026-09-12T18:38:08Z'
+completed_at: '2026-09-12T21:32:03Z'
 confidence_score: 100
 outcome_confidence: 100
 score_complexity: 25
@@ -186,6 +187,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-12T21:31:42 - `eac40fef-b607-438b-bff6-67566b84f34a.jsonl`
+- `/ll:ready-issue` - 2026-09-12T21:24:18 - `b44b9bd9-4763-4d6e-8f4e-ed8dabe39256.jsonl`
 - `/ll:confidence-check` - 2026-09-12T19:17:22 - `6d577656-0598-43c3-917d-9dbaf7adf2b8.jsonl`
 - `/ll:wire-issue` - 2026-09-12T19:08:49 - `6d577656-0598-43c3-917d-9dbaf7adf2b8.jsonl`
 - `/ll:refine-issue` - 2026-09-12T18:51:58 - `cc741d48-cdac-4b5c-92b2-ee728ea0acac.jsonl`

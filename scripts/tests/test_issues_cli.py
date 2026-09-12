@@ -1638,6 +1638,92 @@ class TestIssuesCLISequence:
         captured = capsys.readouterr()
         assert "No active issues" in captured.out
 
+    def test_sequence_excludes_epic_by_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """An open EPIC (even highest-priority) is absent from default sequence output.
+
+        ENH-3461: EPICs are coordination containers, not implementable units.
+        P0 priority on the EPIC proves active filtering, not just absence by
+        construction (mirrors TestNextIssuesEpicExclusion, BUG-2638).
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        (issues_dir / "epics" / "P0-EPIC-900-umbrella.md").write_text(
+            "---\nstatus: open\n---\n# EPIC-900: Umbrella\n\n## Summary\nTop-level grouping."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "EPIC-900" not in captured.out
+        assert "BUG-001" in captured.out
+
+    def test_sequence_json_excludes_epic_by_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json default output also drops EPIC ids (ENH-3461)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        (issues_dir / "epics" / "P0-EPIC-900-umbrella.md").write_text(
+            "---\nstatus: open\n---\n# EPIC-900: Umbrella\n\n## Summary\nTop-level grouping."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        ids = [row["id"] for row in data]
+        assert "EPIC-900" not in ids
+        assert "BUG-001" in ids
+
+    def test_sequence_type_filter_epic_opts_back_in(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--type EPIC still returns an open EPIC despite the default-mode exclusion (ENH-3461)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        (issues_dir / "epics" / "P0-EPIC-900-umbrella.md").write_text(
+            "---\nstatus: open\n---\n# EPIC-900: Umbrella\n\n## Summary\nTop-level grouping."
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "sequence", "--type", "EPIC", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "EPIC-900" in captured.out
+        assert "BUG-001" not in captured.out
+
     def test_sequence_json_type_filter_included(
         self,
         temp_project_dir: Path,
