@@ -1,13 +1,21 @@
 """ll-verify-host-map: assert the adapter host-capability map agrees with its cross-checks (ENH-2873).
 
-Three checks, all against ``little_loops.adapters.capabilities.HOST_CAPABILITIES``:
+Three checks:
 
-1. Every map key has a row in ``docs/reference/HOST_COMPATIBILITY.md``'s
-   adapter-host section, and vice versa (a documented adapter host with no
-   map entry).
-2. Hosts present in both the adapter map and `host_runner`'s
-   ``HostCapabilities`` do not contradict each other on any field name the
-   two dataclasses share.
+1. Every ``little_loops.adapters.capabilities.HOST_CAPABILITIES`` (build-time)
+   key has a row in ``docs/reference/HOST_COMPATIBILITY.md``'s adapter-host
+   section, and vice versa (a documented adapter host with no map entry).
+2. ``host_runner.RUNTIME_HOST_CAPABILITIES`` (the runtime half, ENH-3453) does
+   not drift from ``host_runner._HOST_RUNNER_REGISTRY``: every built-in
+   registry host (excluding any ``host_runner.TEST_ONLY_HOSTS``, which are
+   exempt from the runtime map) has exactly one runtime entry, that entry's
+   ``host`` matches its key and its ``flags`` is identically the runner
+   class's ``capabilities`` attribute, and no report row named after one of
+   the six ``HostCapabilities`` flags is ``"full"`` while that flag is
+   ``False``, nor ``"unsupported"`` while that flag is ``True`` (``"partial"``
+   is legal in either direction). The build-time and runtime maps are
+   disjoint by field name by design (see the Option B docstring in
+   ``capabilities.py``), so this is not a field-agreement comparison.
 3. Each entry's own ``agents``/``subagents``/``agent_output_format`` fields
    are mutually consistent (ENH-2883: since ``core.py``'s traversal
    functions dispatch from the map itself, there is no independent emitter
@@ -36,7 +44,13 @@ import dataclasses
 import sys
 from pathlib import Path
 
-from little_loops.adapters.capabilities import HOST_CAPABILITIES, HostCapabilityEntry
+from little_loops import host_runner as _host_runner_module
+from little_loops.adapters.capabilities import HOST_CAPABILITIES
+from little_loops.host_runner import (
+    _HOST_RUNNER_REGISTRY,
+    RUNTIME_HOST_CAPABILITIES,
+    HostCapabilities,
+)
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 _HOST_COMPAT_MD = "docs/reference/HOST_COMPATIBILITY.md"
@@ -98,33 +112,68 @@ def _check_doc_parity(doc_path: Path) -> list[str]:
 
 
 def _check_runtime_contradiction() -> list[str]:
-    """Return error strings where a shared host's map/runtime fields disagree.
+    """Return error strings where the runtime capability map drifts (ENH-3453).
 
-    Compares field names common to both `HostCapabilityEntry` and
-    `host_runner.HostCapabilities` (deliberately none today — see the Option
-    B docstring in `capabilities.py`) for hosts registered on both sides.
-    A future field-name collision between the build-time and runtime
-    surfaces is exactly the drift this check exists to catch.
+    Three rules against ``host_runner.RUNTIME_HOST_CAPABILITIES`` and
+    ``host_runner._HOST_RUNNER_REGISTRY``:
+
+    (a) key parity — every built-in registry host has exactly one runtime
+        entry, excluding any host named in ``host_runner.TEST_ONLY_HOSTS``
+        (test-only hosts register in the registry but are exempt from the
+        runtime map). Extension-registered runners (none exist today; the
+        registry is structural, not closed) are also exempt — an extension
+        runner keeps its own ``describe_capabilities()``/``capabilities``
+        literal and is not held to key parity.
+    (b) identity — each entry's ``host`` matches its registry key, and its
+        ``flags`` is *identically* (``is``) the runner class's
+        ``capabilities`` attribute — not merely equal, since the whole point
+        of the collapse is that both read from the same object.
+    (c) flag/row consistency, both directions — no report row named after one
+        of the six ``HostCapabilities`` flags is ``"full"`` while that flag is
+        ``False``, nor ``"unsupported"`` while that flag is ``True``.
+        ``"partial"`` is legal in either direction.
     """
-    from little_loops.host_runner import _HOST_RUNNER_REGISTRY, HostCapabilities
+    test_only_hosts: frozenset[str] = getattr(_host_runner_module, "TEST_ONLY_HOSTS", frozenset())
 
-    entry_fields = {f.name for f in dataclasses.fields(HostCapabilityEntry)}
-    runtime_fields = {f.name for f in dataclasses.fields(HostCapabilities)}
-    shared_fields = entry_fields & runtime_fields
+    errors: list[str] = []
 
-    errors = []
-    shared_hosts = set(HOST_CAPABILITIES) & set(_HOST_RUNNER_REGISTRY)
-    for host in sorted(shared_hosts):
-        entry = HOST_CAPABILITIES[host]
-        runtime_caps = getattr(_HOST_RUNNER_REGISTRY[host], "capabilities", HostCapabilities())
-        for field_name in sorted(shared_fields):
-            entry_val = getattr(entry, field_name)
-            runtime_val = getattr(runtime_caps, field_name)
-            if entry_val != runtime_val:
+    registry_hosts = set(_HOST_RUNNER_REGISTRY) - test_only_hosts
+    runtime_hosts = set(RUNTIME_HOST_CAPABILITIES)
+
+    for host in sorted(registry_hosts - runtime_hosts):
+        errors.append(f"missing runtime entry for '{host}'")
+    for host in sorted(runtime_hosts - registry_hosts):
+        errors.append(f"runtime entry '{host}' has no registered runner")
+
+    flag_names = {f.name for f in dataclasses.fields(HostCapabilities)}
+
+    for host in sorted(registry_hosts & runtime_hosts):
+        entry = RUNTIME_HOST_CAPABILITIES[host]
+        runner_cls = _HOST_RUNNER_REGISTRY[host]
+
+        if entry.host != host:
+            errors.append(f"runtime entry keyed '{host}' declares host={entry.host!r}")
+
+        runner_flags = getattr(runner_cls, "capabilities", HostCapabilities())
+        if entry.flags is not runner_flags:
+            errors.append(
+                f"host '{host}' runtime entry's flags is not the same object as "
+                f"{runner_cls.__name__}.capabilities"
+            )
+
+        for row in entry.report_rows:
+            if row.name not in flag_names:
+                continue
+            flag_value = getattr(entry.flags, row.name)
+            if row.status == "full" and not flag_value:
                 errors.append(
-                    f"host '{host}' field '{field_name}' disagrees: "
-                    f"map={entry_val!r} runtime={runtime_val!r}"
+                    f"host '{host}' report row '{row.name}' is 'full' but the flag is False"
                 )
+            elif row.status == "unsupported" and flag_value:
+                errors.append(
+                    f"host '{host}' report row '{row.name}' is 'unsupported' but the flag is True"
+                )
+
     return errors
 
 
@@ -221,8 +270,9 @@ def main_verify_host_map() -> int:
             prog="ll-verify-host-map",
             description=(
                 "Assert the adapter host-capability map agrees with "
-                "HOST_COMPATIBILITY.md, host_runner.HostCapabilities, and the "
-                "emitters' actual behavior — including that a host declaring "
+                "HOST_COMPATIBILITY.md, host_runner.RUNTIME_HOST_CAPABILITIES "
+                "(the runtime capability map, ENH-3453), and the emitters' "
+                "actual behavior — including that a host declaring "
                 "subagents='none' with agents=True has a working degraded-mode "
                 "agent_output_format (ENH-2874). Exits 1 on drift (ENH-2873)."
             ),

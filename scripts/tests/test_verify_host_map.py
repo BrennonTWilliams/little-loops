@@ -1,5 +1,6 @@
-"""Tests for ll-verify-host-map (ENH-2873)."""
+"""Tests for ll-verify-host-map (ENH-2873, runtime half ENH-3453)."""
 
+import dataclasses
 from unittest.mock import patch
 
 from little_loops.adapters.capabilities import HOST_CAPABILITIES, HostCapabilityEntry
@@ -11,6 +12,13 @@ from little_loops.cli.verify_host_map import (
     _host_compat_md_path,
     _run,
     main_verify_host_map,
+)
+from little_loops.host_runner import (
+    _HOST_RUNNER_REGISTRY,
+    RUNTIME_HOST_CAPABILITIES,
+    CapabilityEntry,
+    HostCapabilities,
+    RuntimeHostEntry,
 )
 
 
@@ -70,6 +78,105 @@ class TestCheckDocParity:
 class TestCheckRuntimeContradiction:
     def test_current_tree_has_no_contradiction(self) -> None:
         assert _check_runtime_contradiction() == []
+
+    def test_runtime_registry_key_parity(self) -> None:
+        # Mirrors TestHostCapabilities::test_keys_match_emitter_map above —
+        # the runtime map is a strict superset covering every registry host
+        # (opencode/pi included), unlike the build-time map.
+        assert set(RUNTIME_HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY)
+
+    def test_flags_missing_runtime_entry(self) -> None:
+        bad_map = dict(RUNTIME_HOST_CAPABILITIES)
+        del bad_map["gemini"]
+        with patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", bad_map):
+            errors = _check_runtime_contradiction()
+        assert any("missing runtime entry for 'gemini'" in e for e in errors)
+
+    def test_flags_flags_identity_mismatch(self) -> None:
+        bad_map = dict(RUNTIME_HOST_CAPABILITIES)
+        real = bad_map["gemini"]
+        bad_map["gemini"] = dataclasses.replace(real, flags=HostCapabilities())
+        with patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", bad_map):
+            errors = _check_runtime_contradiction()
+        assert any("gemini" in e and "not the same object" in e for e in errors)
+
+    def test_flags_full_row_with_false_flag(self) -> None:
+        # gemini.agent_select is False; its real row is "unsupported" —
+        # flip the row to "full" to trip the "full while False" rule.
+        bad_map = dict(RUNTIME_HOST_CAPABILITIES)
+        real = bad_map["gemini"]
+        assert real.flags.agent_select is False
+        new_rows = tuple(
+            CapabilityEntry("agent_select", "full") if row.name == "agent_select" else row
+            for row in real.report_rows
+        )
+        bad_map["gemini"] = dataclasses.replace(real, report_rows=new_rows)
+        with patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", bad_map):
+            errors = _check_runtime_contradiction()
+        assert any("gemini" in e and "agent_select" in e and "full" in e for e in errors)
+
+    def test_flags_unsupported_row_with_true_flag(self) -> None:
+        # gemini.streaming is True; its real row is "full" — flip the row to
+        # "unsupported" to trip the "unsupported while True" rule.
+        bad_map = dict(RUNTIME_HOST_CAPABILITIES)
+        real = bad_map["gemini"]
+        assert real.flags.streaming is True
+        new_rows = tuple(
+            CapabilityEntry("streaming", "unsupported") if row.name == "streaming" else row
+            for row in real.report_rows
+        )
+        bad_map["gemini"] = dataclasses.replace(real, report_rows=new_rows)
+        with patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", bad_map):
+            errors = _check_runtime_contradiction()
+        assert any("gemini" in e and "streaming" in e and "unsupported" in e for e in errors)
+
+    def test_flags_test_only_hosts_exempt(self) -> None:
+        # A test-only host registered in _HOST_RUNNER_REGISTRY with no runtime
+        # entry must not trip key parity — host_runner.TEST_ONLY_HOSTS names
+        # the exemption set (absent today; injected here to simulate landing).
+        import little_loops.host_runner as host_runner_module
+
+        class _FakeRunner:
+            name = "fake"
+            capabilities = HostCapabilities()
+
+        bad_registry = dict(_HOST_RUNNER_REGISTRY)
+        bad_registry["fake"] = _FakeRunner
+        with (
+            patch("little_loops.cli.verify_host_map._HOST_RUNNER_REGISTRY", bad_registry),
+            patch.object(host_runner_module, "TEST_ONLY_HOSTS", frozenset({"fake"}), create=True),
+        ):
+            errors = _check_runtime_contradiction()
+        assert not any("fake" in e for e in errors)
+
+    def test_injected_fixture_host_entry_agrees(self) -> None:
+        # Direct precedent: test_adapters.py:1271-1320's
+        # TestFixtureHostRegistration injects a synthetic HostCapabilityEntry
+        # into HOST_CAPABILITIES via patch.dict. This is the runtime-side
+        # equivalent — a synthetic RuntimeHostEntry plus its matching runner
+        # registered in _HOST_RUNNER_REGISTRY should agree cleanly.
+        fixture_flags = HostCapabilities(streaming=True)
+
+        class _FixtureRunner:
+            name = "fixturehost"
+            capabilities = fixture_flags
+
+        fixture_entry = RuntimeHostEntry(
+            host="fixturehost",
+            binary="fixturehost",
+            flags=fixture_flags,
+            report_rows=(CapabilityEntry("streaming", "full"),),
+        )
+        bad_registry = dict(_HOST_RUNNER_REGISTRY)
+        bad_registry["fixturehost"] = _FixtureRunner
+        bad_map = dict(RUNTIME_HOST_CAPABILITIES)
+        bad_map["fixturehost"] = fixture_entry
+        with (
+            patch("little_loops.cli.verify_host_map._HOST_RUNNER_REGISTRY", bad_registry),
+            patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", bad_map),
+        ):
+            errors = _check_runtime_contradiction()
+        assert not any("fixturehost" in e for e in errors)
 
 
 class TestCheckEmitterAgreement:

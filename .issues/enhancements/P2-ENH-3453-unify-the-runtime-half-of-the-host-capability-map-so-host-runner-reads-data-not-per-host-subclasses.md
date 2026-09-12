@@ -4,8 +4,9 @@ title: Unify the runtime half of the host capability map so host_runner reads da
   not per-host subclasses
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-11'
+completed_at: '2026-09-12T20:10:40Z'
 labels:
 - multi-host
 - ll-hosts
@@ -361,6 +362,56 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 No other citations sampled (Files to Modify, Program Design signatures, Behavior Parity table, a representative cross-section of Dependent Files/Tests/Documentation, and the `adapters/capabilities.py`/`cli/verify_host_map.py`/`cli/issues/decisions.py`/`adapters/core.py`/`cli/adapt.py` wiring-phase call sites) showed drift. Graph tool used: `ll-code --json status` (provider=codegraph, freshness=fresh) and `ll-code --json callers-of describe_capabilities`, which corroborated (not originated) the `test_host_runner.py:1019,1488,1680`, `test_cli_doctor.py:181,190`, `cli/doctor.py:1431`, and `mcp_server/tools.py:224` citations; all graph findings were cross-checked with a direct `Read`/`grep`.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-12
+- **Status**: Done
+- **Implementation**: Option B as specified — added `RuntimeHostEntry` (frozen
+  dataclass: `host`, `binary`, `flags`, `report_rows`), the
+  `RUNTIME_HOST_CAPABILITIES` dict, `load_runtime_capabilities(host_id)`
+  (raises `KeyError`), and `render_capability_report(entry)` in
+  `host_runner.py` between the `HostRunner` Protocol and `ClaudeCodeRunner`.
+  All 8 per-runner `capabilities = HostCapabilities(...)` literals now read
+  `RUNTIME_HOST_CAPABILITIES["<name>"].flags`; all 8 `describe_capabilities()`
+  bodies collapse to `return render_capability_report(load_runtime_capabilities(self.name))`
+  (no shared mixin, per the Program Design decision). The three stale
+  "see describe_capabilities" comments (gemini `build_blocking_json`, omp's
+  `capabilities` literal, omp's `build_blocking_json`) were re-pointed at the
+  runtime map. `HOST_BINARY_NAMES` kept its registry-derived expression
+  unchanged; only its comment was reworded. `_check_runtime_contradiction` in
+  `cli/verify_host_map.py` was rewritten to check key parity (against
+  `_HOST_RUNNER_REGISTRY`, exempting `getattr(host_runner, "TEST_ONLY_HOSTS",
+  frozenset())`), `flags`-identity, and two-directional flag/row consistency,
+  replacing the permanent no-op field-agreement loop. `adapters/capabilities.py`
+  is unchanged except for a docstring pointer to the new runtime sibling — no
+  new fields, no `opencode`/`pi` keys, `test_keys_match_emitter_map` still
+  passes.
+- **Verification**: a one-off pre/post equivalence check (not committed as a
+  fixture) confirmed `render_capability_report(load_runtime_capabilities(name))
+  == RunnerClass().describe_capabilities()` and `load_runtime_capabilities(name).flags
+  is RunnerClass.capabilities` for all 8 registered runners — the transcription
+  of all ~45 report rows and 8 flag sets is byte-for-byte identical to the
+  pre-collapse hand-written bodies. `python -m pytest scripts/tests/` (full
+  suite): 24076 passed, 43 skipped, 0 failed. `ruff check` / `ruff format
+  --check` / `python -m mypy` clean on every touched file. `ll-verify-host-map`
+  exits 0.
+- **Deviations from Program Design**: none — implementation matches the
+  documented Types/Signatures/Call Path exactly.
+
+### Files Changed
+- `scripts/little_loops/host_runner.py` — runtime map + 8-runner collapse
+- `scripts/little_loops/cli/verify_host_map.py` — rewritten `_check_runtime_contradiction` + docstrings
+- `scripts/little_loops/adapters/capabilities.py` — docstring pointer only
+- `scripts/tests/test_host_runner.py` — `TestRuntimeHostCapabilitiesMap` (equivalence, KeyError, render shape, fixture-host injection)
+- `scripts/tests/test_verify_host_map.py` — rewritten `TestCheckRuntimeContradiction` (key parity, identity, flag/row consistency ×2, test-only-host exemption, fixture-host injection)
+- `docs/ARCHITECTURE.md`, `docs/reference/API.md`, `docs/reference/CLI.md` — runtime-map documentation
+
+### Verification Results
+- `python -m pytest scripts/tests/`: 24076 passed, 43 skipped, 0 failed
+- `ruff check` / `ruff format --check` / `mypy`: clean
+- `ll-verify-host-map`: OK
+
 ## Status
 
 **Open** | Created: 2026-09-11 | Priority: P2
@@ -375,6 +426,8 @@ No other citations sampled (Files to Modify, Program Design signatures, Behavior
 | `.claude/CLAUDE.md` § Host CLI Abstraction | Mandates `resolve_host()` as the only entry point for new host call sites; the data-driven lookup extends that factory |
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-12T20:09:28 - `6d577656-0598-43c3-917d-9dbaf7adf2b8.jsonl`
+- `/ll:ready-issue` - 2026-09-12T19:03:48 - `708b479d-e36e-4951-8835-c38d40310243.jsonl`
 - `/ll:verify-issues` - 2026-09-12T19:01:00 - `d3cf5f01-aa94-47ca-b321-b4f687a7d9fe.jsonl`
 - Manual pre-implementation review - 2026-09-12 - (1) `HOST_BINARY_NAMES` stays registry-derived: map-only derivation conflicted with FEAT-3454's `TEST_ONLY_BINARIES <= HOST_BINARY_NAMES` and the registry-derived test at `test_host_runner.py:2348`; (2) equivalence test reworded to compare wrapper output against the runner directly — the earlier wording cited the Step #0 snapshot as a fixture, contradicting Step #0's "do not check in"; (3) flag/row rule made symmetric (`"unsupported"`-with-`True` now also flagged; verified zero violations across all 8 runners); (4) three stale "see describe_capabilities" comments at `host_runner.py:1323,1435,1510` added to Files to Modify; (5) decided `load_runtime_capabilities` raises `KeyError` not `HostNotConfigured`, and the new symbols are not re-exported from the package `__init__`.
 - `/ll:confidence-check` - 2026-09-12T18:34:36 - `1d379f0c-a48d-4266-b21d-c8d14ac3f0e7.jsonl`

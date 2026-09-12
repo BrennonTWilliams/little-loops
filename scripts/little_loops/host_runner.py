@@ -492,6 +492,418 @@ class HostRunner(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class RuntimeHostEntry:
+    """One host's runtime capability surface: flags, binary, and report rows.
+
+    Sibling to :class:`little_loops.adapters.capabilities.HostCapabilityEntry`
+    (the build-time map) — cross-referenced by docstring only, no shared
+    field names (ENH-3453). Held in :data:`RUNTIME_HOST_CAPABILITIES`, keyed
+    like ``_HOST_RUNNER_REGISTRY``.
+    """
+
+    host: str
+    binary: str
+    flags: HostCapabilities
+    report_rows: tuple[CapabilityEntry, ...] = ()
+
+
+# ENH-3453: the runtime half of the declarative host capability map —
+# sibling to little_loops.adapters.capabilities.HOST_CAPABILITIES (the
+# build-time half). Every runner's class-level `capabilities` attribute and
+# `describe_capabilities()` body are sourced from this dict; edits to a
+# host's runtime capability surface are data changes here, not new subclass
+# code. Report rows carry their original rationale comments (BUG-2759,
+# ENH-2627, ENH-1529, ENH-1530, ENH-2714, ...) verbatim.
+RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
+    "claude-code": RuntimeHostEntry(
+        host="claude-code",
+        binary="claude",
+        flags=HostCapabilities(
+            streaming=True,
+            permission_skip=True,
+            agent_select=True,
+            tool_allowlist=True,
+            structured_output=True,  # ENH-2627: claude CLI honors inline --json-schema
+            # FEAT-2878: --permission-mode + --add-dir (below) confines tool
+            # access to workspace_root when requested, instead of the blanket
+            # --dangerously-skip-permissions bypass used on the default path.
+            workspace_sandboxed=True,
+        ),
+        report_rows=(
+            CapabilityEntry("streaming", "full"),
+            CapabilityEntry("permission_skip", "full"),
+            CapabilityEntry("agent_select", "full"),
+            CapabilityEntry("tool_allowlist", "full"),
+            # BUG-2759: corrected to agree with structured_output — the inline
+            # --json-schema flag IS honored (Anthropic backend). Note still
+            # documents that build_blocking_json()'s separate json_schema
+            # parameter is silently dropped (no Codex-style file-bridge).
+            CapabilityEntry(
+                "json_schema",
+                "full",
+                "claude CLI honors an inline --json-schema flag for streaming "
+                "invocations; build_blocking_json()'s json_schema parameter is "
+                "still silently dropped (no inline-flag path there)",
+            ),
+            # ENH-2627: separate from json_schema — describes the inline
+            # --json-schema flag the FSM evaluators append (honored by the
+            # Anthropic backend), gating HostCapabilities.structured_output.
+            CapabilityEntry(
+                "structured_output",
+                "full",
+                "claude CLI honors an inline --json-schema flag; FSM evaluators "
+                "append it for schema-constrained verdicts",
+            ),
+            # ENH-2714: the claude CLI exposes no flag that skips CLAUDE.md, so
+            # this capability is genuinely unsupported. It was previously marked
+            # "full" on the grounds that claude-code honors the LL_AUTOMATION
+            # env signal — but that signal only gates OUR hooks' static-prefix
+            # output (~1K tokens), which is a different and much smaller thing
+            # than suppressing CLAUDE.md itself (~7.7K tokens in this repo).
+            # Reporting "full" made `ll-doctor` claim a capability the host does
+            # not have and made every `suppress_claude_md: true` state look
+            # optimized when it was not. Measured A/B (arm A vs arm B,
+            # /ll:confidence-check): first-turn cache_creation 41,099 vs 39,467
+            # — a ~1.6K delta consistent with hook output alone, not CLAUDE.md.
+            CapabilityEntry(
+                "claude_md_suppression",
+                "unsupported",
+                "the claude CLI has no flag to skip CLAUDE.md; it always loads. "
+                "The LL_AUTOMATION/LL_AUTOMATION_PROFILE env signal IS honored, "
+                "but it only suppresses automation-aware hook output "
+                "(SessionStart digest, history-context) — not CLAUDE.md",
+            ),
+        ),
+    ),
+    "codex": RuntimeHostEntry(
+        host="codex",
+        binary="codex",
+        flags=HostCapabilities(
+            streaming=True,
+            permission_skip=True,
+            agent_select=False,
+            tool_allowlist=False,
+        ),
+        report_rows=(
+            CapabilityEntry("streaming", "full"),
+            CapabilityEntry("permission_skip", "full"),
+            # agent_select=False bool stays False (no native --agent CLI flag),
+            # but status is "partial" because build_streaming injects persona via
+            # .codex/agents/<name>.toml `developer_instructions` when present.
+            # Fallback path (TOML absent) emits CapabilityNotSupported + stderr notice.
+            CapabilityEntry(
+                "agent_select",
+                "partial",
+                "codex has no native --agent CLI flag; build_streaming injects "
+                "`developer_instructions` from .codex/agents/<name>.toml into the "
+                "prompt as a persona prefix when the file exists. Falls back to "
+                "CapabilityNotSupported + stderr warning when the TOML is absent.",
+            ),
+            # tool_allowlist=False; partial constraint available via sandbox_mode=
+            # parameter on build_streaming / build_blocking_json / build_detached
+            # (ENH-1529). The --tools allowlist parameter is still unsupported.
+            CapabilityEntry(
+                "tool_allowlist",
+                "partial",
+                "codex uses sandbox modes for tool access; --tools parameter is "
+                "unsupported, but sandbox_mode= parameter on build methods offers "
+                "constrained execution (off, read-only, workspace-write, "
+                "danger-full-access)",
+            ),
+            # json_schema: partial — --output-schema requires a file path; ENH-1530 bridges
+            # via temp file written in build_blocking_json, path returned in cleanup_paths
+            CapabilityEntry(
+                "json_schema",
+                "partial",
+                "codex --output-schema requires a file path; schema is written to a "
+                "temp file and path returned in HostInvocation.cleanup_paths for caller cleanup",
+            ),
+            # ENH-2627: codex supports schema via --output-schema (temp file),
+            # NOT the inline --json-schema flag the FSM evaluators append, so
+            # structured_output is False and the flag is gated off for codex.
+            CapabilityEntry(
+                "structured_output",
+                "unsupported",
+                "codex uses --output-schema (temp file), not the inline --json-schema "
+                "flag FSM evaluators append; evaluators fall back to prompt-and-parse",
+            ),
+            # ENH-2714: defer-until-confirmed, same posture as tool_allowlist.
+            CapabilityEntry(
+                "claude_md_suppression",
+                "unsupported",
+                "codex CLAUDE.md/AGENTS.md suppression support not confirmed; "
+                "defer-until-confirmed, mirrors tool_allowlist posture",
+            ),
+            # FEAT-2123: codex exec --json's terminal "turn.completed" event
+            # carries a usage block; run_claude_command() parses it into
+            # TokenUsage via on_usage_detailed, same contract as the claude
+            # "result" event. No model field on the wire (defaults to "unknown").
+            CapabilityEntry(
+                "token_reporting",
+                "full",
+                "codex exec --json's turn.completed event carries a usage block "
+                "(input_tokens/output_tokens/cached_input_tokens/"
+                "cache_write_input_tokens); parsed into TokenUsage by "
+                "run_claude_command()'s shared event-type branch",
+            ),
+        ),
+    ),
+    "opencode": RuntimeHostEntry(
+        host="opencode",
+        binary="opencode",
+        flags=HostCapabilities(),
+        report_rows=(
+            CapabilityEntry(
+                "host",
+                "unsupported",
+                "binary not configured (HostNotConfigured) — opencode orchestration not yet wired",
+            ),
+        ),
+    ),
+    "pi": RuntimeHostEntry(
+        host="pi",
+        binary="pi",
+        flags=HostCapabilities(),
+        report_rows=(
+            CapabilityEntry(
+                "host",
+                "unsupported",
+                "binary not configured (HostNotConfigured) — see FEAT-992",
+            ),
+        ),
+    ),
+    "gemini": RuntimeHostEntry(
+        host="gemini",
+        binary="gemini",
+        flags=HostCapabilities(
+            streaming=True,
+            permission_skip=True,
+            agent_select=False,
+            tool_allowlist=False,
+        ),
+        report_rows=(
+            CapabilityEntry("streaming", "full", "--output-format stream-json"),
+            CapabilityEntry("permission_skip", "full", "--approval-mode yolo"),
+            CapabilityEntry(
+                "agent_select",
+                "unsupported",
+                "gemini has no --agent flag; skills activate implicitly. "
+                "The 'agent' parameter is dropped with CapabilityNotSupported.",
+            ),
+            CapabilityEntry(
+                "tool_allowlist",
+                "unsupported",
+                "gemini's Policy Engine requires a TOML file path (--policy), "
+                "not a flag-based tool list. The 'tools' parameter is dropped "
+                "with CapabilityNotSupported.",
+            ),
+            CapabilityEntry(
+                "json_schema",
+                "unsupported",
+                "gemini CLI does not accept an inline schema flag; parameter is silently dropped",
+            ),
+            # ENH-2627: no inline --json-schema support; evaluators gate the flag off.
+            CapabilityEntry(
+                "structured_output",
+                "unsupported",
+                "gemini CLI has no inline --json-schema flag; FSM evaluators fall "
+                "back to prompt-and-parse",
+            ),
+            # ENH-2714: defer-until-confirmed, same posture as tool_allowlist.
+            CapabilityEntry(
+                "claude_md_suppression",
+                "unsupported",
+                "gemini CLAUDE.md/GEMINI.md suppression support not confirmed; "
+                "defer-until-confirmed, mirrors tool_allowlist posture",
+            ),
+        ),
+    ),
+    "omp": RuntimeHostEntry(
+        host="omp",
+        binary="omp",
+        flags=HostCapabilities(
+            streaming=True,
+            permission_skip=True,
+            agent_select=False,
+            tool_allowlist=True,
+            # FEAT-2797: explicit, not inherited from the dataclass default —
+            # no CLI schema/response-format flag exists (--mode is
+            # text|json|rpc|acp|rpc-ui); see the omp entry's report_rows below.
+            structured_output=False,
+        ),
+        report_rows=(
+            CapabilityEntry(
+                "streaming",
+                "full",
+                "--mode json emits a JSONL event stream in print mode",
+            ),
+            CapabilityEntry(
+                "permission_skip",
+                "full",
+                "implicit — print mode has no interactive approval prompts; "
+                "no bypass flag exists or is needed",
+            ),
+            CapabilityEntry(
+                "agent_select",
+                "unsupported",
+                "omp has no --agent flag; subagents are spawned in-session "
+                "by the model. The 'agent' parameter is dropped with "
+                "CapabilityNotSupported.",
+            ),
+            CapabilityEntry("tool_allowlist", "full", "--tools <comma-separated list>"),
+            CapabilityEntry(
+                "json_schema",
+                "unsupported",
+                "omp has no structured-output schema flag; parameter is silently dropped",
+            ),
+            # ENH-2627: no inline --json-schema support; evaluators gate the flag off.
+            CapabilityEntry(
+                "structured_output",
+                "unsupported",
+                "omp has no inline --json-schema flag; FSM evaluators fall back to "
+                "prompt-and-parse",
+            ),
+            # ENH-2714: defer-until-confirmed, same posture as tool_allowlist=True
+            # for omp — narrowing exists but CLAUDE.md-equivalent suppression is
+            # unconfirmed.
+            CapabilityEntry(
+                "claude_md_suppression",
+                "unsupported",
+                "omp CLAUDE.md-equivalent suppression support not confirmed; defer-until-confirmed",
+            ),
+        ),
+    ),
+    "kimi-code": RuntimeHostEntry(
+        host="kimi-code",
+        binary="kimi",
+        flags=HostCapabilities(
+            streaming=True,
+            permission_skip=True,
+            agent_select=True,
+            tool_allowlist=False,
+        ),
+        report_rows=(
+            CapabilityEntry("streaming", "full", "--output-format stream-json"),
+            CapabilityEntry(
+                "permission_skip",
+                "full",
+                "implicit in -p print mode (auto permission policy); "
+                "--yolo/--auto/--plan are rejected with -p",
+            ),
+            CapabilityEntry(
+                "agent_select",
+                "partial",
+                "--agent <name> honored, but rejected in combination with "
+                "--continue/--session; dropped with CapabilityNotSupported "
+                "on resume",
+            ),
+            CapabilityEntry(
+                "tool_allowlist",
+                "unsupported",
+                "kimi has no --tools flag; tool policy lives in agent files "
+                "or the global [tools] config table. The 'tools' parameter "
+                "is dropped with CapabilityNotSupported.",
+            ),
+            CapabilityEntry(
+                "json_schema",
+                "unsupported",
+                "kimi has no structured-output schema flag; parameter is "
+                "dropped with CapabilityNotSupported",
+            ),
+            CapabilityEntry(
+                "structured_output",
+                "unsupported",
+                "kimi has no single-blob JSON mode and no inline schema flag; "
+                "FSM evaluators fall back to prompt-and-parse",
+            ),
+            CapabilityEntry(
+                "workspace_sandboxed",
+                "unsupported",
+                "--add-dir is additive, not a jail; workspace_root widens "
+                "rather than confines access",
+            ),
+        ),
+    ),
+    "qwen": RuntimeHostEntry(
+        host="qwen",
+        binary="qwen",
+        flags=HostCapabilities(
+            streaming=True,
+            permission_skip=True,
+            agent_select=False,
+            tool_allowlist=False,
+            structured_output=True,  # EPIC-3154: inline --json-schema honored (FEAT-3155)
+        ),
+        report_rows=(
+            CapabilityEntry("streaming", "full", "--output-format stream-json"),
+            CapabilityEntry(
+                "permission_skip",
+                "full",
+                "--yolo / --approval-mode yolo (hidden flags, live-verified "
+                "by the FEAT-3155 spike)",
+            ),
+            CapabilityEntry(
+                "agent_select",
+                "unsupported",
+                "qwen has no --agent CLI flag (documented upstream as planned); "
+                "parameter is dropped with CapabilityNotSupported",
+            ),
+            CapabilityEntry(
+                "tool_allowlist",
+                "unsupported",
+                "--exclude-tools is a denylist, not allowlist semantics; "
+                "parameter is dropped with CapabilityNotSupported",
+            ),
+            CapabilityEntry(
+                "json_schema",
+                "full",
+                "qwen honors the inline --json-schema flag (Ajv-validated "
+                "synthetic structured_output tool); session persistence is "
+                "opted out via --chat-recording false",
+            ),
+            CapabilityEntry(
+                "structured_output",
+                "full",
+                "second host after Claude Code to honor inline --json-schema; "
+                "FSM evaluators append it and parse the validated JSON string "
+                "from the final envelope's result field",
+            ),
+            CapabilityEntry(
+                "workspace_sandboxed",
+                "unsupported",
+                "--include-directories is additive, not a jail; workspace_root "
+                "widens rather than confines access",
+            ),
+        ),
+    ),
+}
+
+
+def load_runtime_capabilities(host_id: str) -> RuntimeHostEntry:
+    """Return the runtime capability entry for ``host_id``.
+
+    Raises ``KeyError`` naming the missing host: a missing entry is an
+    invariant violation owned by ``ll-verify-host-map``'s drift check, not a
+    runtime config state — unlike :class:`HostNotConfigured`, which already
+    means "binary not wired" (opencode/pi) to every caller that catches it.
+    """
+    try:
+        return RUNTIME_HOST_CAPABILITIES[host_id]
+    except KeyError:
+        raise KeyError(f"no runtime capability entry for host {host_id!r}") from None
+
+
+def render_capability_report(entry: RuntimeHostEntry) -> CapabilityReport:
+    """Render a :class:`RuntimeHostEntry` as the public :class:`CapabilityReport`."""
+    return CapabilityReport(
+        host=entry.host,
+        binary=entry.binary,
+        version="",
+        capabilities=list(entry.report_rows),
+    )
+
+
 class ClaudeCodeRunner:
     """``HostRunner`` for the ``claude`` CLI (Claude Code).
 
@@ -503,17 +915,7 @@ class ClaudeCodeRunner:
 
     name = "claude-code"
 
-    capabilities = HostCapabilities(
-        streaming=True,
-        permission_skip=True,
-        agent_select=True,
-        tool_allowlist=True,
-        structured_output=True,  # ENH-2627: claude CLI honors inline --json-schema
-        # FEAT-2878: --permission-mode + --add-dir (below) confines tool
-        # access to workspace_root when requested, instead of the blanket
-        # --dangerously-skip-permissions bypass used on the default path.
-        workspace_sandboxed=True,
-    )
+    capabilities = RUNTIME_HOST_CAPABILITIES["claude-code"].flags
 
     def detect(self) -> bool:
         return shutil.which("claude") is not None
@@ -660,56 +1062,7 @@ class ClaudeCodeRunner:
         )
 
     def describe_capabilities(self) -> CapabilityReport:
-        return CapabilityReport(
-            host=self.name,
-            binary="claude",
-            version="",
-            capabilities=[
-                CapabilityEntry("streaming", "full"),
-                CapabilityEntry("permission_skip", "full"),
-                CapabilityEntry("agent_select", "full"),
-                CapabilityEntry("tool_allowlist", "full"),
-                # BUG-2759: corrected to agree with structured_output — the inline
-                # --json-schema flag IS honored (Anthropic backend). Note still
-                # documents that build_blocking_json()'s separate json_schema
-                # parameter is silently dropped (no Codex-style file-bridge).
-                CapabilityEntry(
-                    "json_schema",
-                    "full",
-                    "claude CLI honors an inline --json-schema flag for streaming "
-                    "invocations; build_blocking_json()'s json_schema parameter is "
-                    "still silently dropped (no inline-flag path there)",
-                ),
-                # ENH-2627: separate from json_schema — describes the inline
-                # --json-schema flag the FSM evaluators append (honored by the
-                # Anthropic backend), gating HostCapabilities.structured_output.
-                CapabilityEntry(
-                    "structured_output",
-                    "full",
-                    "claude CLI honors an inline --json-schema flag; FSM evaluators "
-                    "append it for schema-constrained verdicts",
-                ),
-                # ENH-2714: the claude CLI exposes no flag that skips CLAUDE.md, so
-                # this capability is genuinely unsupported. It was previously marked
-                # "full" on the grounds that claude-code honors the LL_AUTOMATION
-                # env signal — but that signal only gates OUR hooks' static-prefix
-                # output (~1K tokens), which is a different and much smaller thing
-                # than suppressing CLAUDE.md itself (~7.7K tokens in this repo).
-                # Reporting "full" made `ll-doctor` claim a capability the host does
-                # not have and made every `suppress_claude_md: true` state look
-                # optimized when it was not. Measured A/B (arm A vs arm B,
-                # /ll:confidence-check): first-turn cache_creation 41,099 vs 39,467
-                # — a ~1.6K delta consistent with hook output alone, not CLAUDE.md.
-                CapabilityEntry(
-                    "claude_md_suppression",
-                    "unsupported",
-                    "the claude CLI has no flag to skip CLAUDE.md; it always loads. "
-                    "The LL_AUTOMATION/LL_AUTOMATION_PROFILE env signal IS honored, "
-                    "but it only suppresses automation-aware hook output "
-                    "(SessionStart digest, history-context) — not CLAUDE.md",
-                ),
-            ],
-        )
+        return render_capability_report(load_runtime_capabilities(self.name))
 
 
 class CodexRunner:
@@ -754,12 +1107,7 @@ class CodexRunner:
 
     name = "codex"
 
-    capabilities = HostCapabilities(
-        streaming=True,
-        permission_skip=True,
-        agent_select=False,
-        tool_allowlist=False,
-    )
+    capabilities = RUNTIME_HOST_CAPABILITIES["codex"].flags
 
     def detect(self) -> bool:
         return shutil.which("codex") is not None
@@ -960,74 +1308,7 @@ class CodexRunner:
         )
 
     def describe_capabilities(self) -> CapabilityReport:
-        return CapabilityReport(
-            host=self.name,
-            binary="codex",
-            version="",
-            capabilities=[
-                CapabilityEntry("streaming", "full"),
-                CapabilityEntry("permission_skip", "full"),
-                # agent_select=False bool stays False (no native --agent CLI flag),
-                # but status is "partial" because build_streaming injects persona via
-                # .codex/agents/<name>.toml `developer_instructions` when present.
-                # Fallback path (TOML absent) emits CapabilityNotSupported + stderr notice.
-                CapabilityEntry(
-                    "agent_select",
-                    "partial",
-                    "codex has no native --agent CLI flag; build_streaming injects "
-                    "`developer_instructions` from .codex/agents/<name>.toml into the "
-                    "prompt as a persona prefix when the file exists. Falls back to "
-                    "CapabilityNotSupported + stderr warning when the TOML is absent.",
-                ),
-                # tool_allowlist=False; partial constraint available via sandbox_mode=
-                # parameter on build_streaming / build_blocking_json / build_detached
-                # (ENH-1529). The --tools allowlist parameter is still unsupported.
-                CapabilityEntry(
-                    "tool_allowlist",
-                    "partial",
-                    "codex uses sandbox modes for tool access; --tools parameter is "
-                    "unsupported, but sandbox_mode= parameter on build methods offers "
-                    "constrained execution (off, read-only, workspace-write, "
-                    "danger-full-access)",
-                ),
-                # json_schema: partial — --output-schema requires a file path; ENH-1530 bridges
-                # via temp file written in build_blocking_json, path returned in cleanup_paths
-                CapabilityEntry(
-                    "json_schema",
-                    "partial",
-                    "codex --output-schema requires a file path; schema is written to a "
-                    "temp file and path returned in HostInvocation.cleanup_paths for caller cleanup",
-                ),
-                # ENH-2627: codex supports schema via --output-schema (temp file),
-                # NOT the inline --json-schema flag the FSM evaluators append, so
-                # structured_output is False and the flag is gated off for codex.
-                CapabilityEntry(
-                    "structured_output",
-                    "unsupported",
-                    "codex uses --output-schema (temp file), not the inline --json-schema "
-                    "flag FSM evaluators append; evaluators fall back to prompt-and-parse",
-                ),
-                # ENH-2714: defer-until-confirmed, same posture as tool_allowlist.
-                CapabilityEntry(
-                    "claude_md_suppression",
-                    "unsupported",
-                    "codex CLAUDE.md/AGENTS.md suppression support not confirmed; "
-                    "defer-until-confirmed, mirrors tool_allowlist posture",
-                ),
-                # FEAT-2123: codex exec --json's terminal "turn.completed" event
-                # carries a usage block; run_claude_command() parses it into
-                # TokenUsage via on_usage_detailed, same contract as the claude
-                # "result" event. No model field on the wire (defaults to "unknown").
-                CapabilityEntry(
-                    "token_reporting",
-                    "full",
-                    "codex exec --json's turn.completed event carries a usage block "
-                    "(input_tokens/output_tokens/cached_input_tokens/"
-                    "cache_write_input_tokens); parsed into TokenUsage by "
-                    "run_claude_command()'s shared event-type branch",
-                ),
-            ],
-        )
+        return render_capability_report(load_runtime_capabilities(self.name))
 
 
 class OpenCodeRunner:
@@ -1043,7 +1324,7 @@ class OpenCodeRunner:
 
     name = "opencode"
 
-    capabilities = HostCapabilities()
+    capabilities = RUNTIME_HOST_CAPABILITIES["opencode"].flags
 
     def detect(self) -> bool:
         return shutil.which("opencode") is not None
@@ -1092,18 +1373,7 @@ class OpenCodeRunner:
         )
 
     def describe_capabilities(self) -> CapabilityReport:
-        return CapabilityReport(
-            host=self.name,
-            binary="opencode",
-            version="",
-            capabilities=[
-                CapabilityEntry(
-                    "host",
-                    "unsupported",
-                    "binary not configured (HostNotConfigured) — opencode orchestration not yet wired",
-                )
-            ],
-        )
+        return render_capability_report(load_runtime_capabilities(self.name))
 
 
 class PiRunner:
@@ -1119,7 +1389,7 @@ class PiRunner:
 
     name = "pi"
 
-    capabilities = HostCapabilities()
+    capabilities = RUNTIME_HOST_CAPABILITIES["pi"].flags
 
     def detect(self) -> bool:
         return shutil.which("pi") is not None
@@ -1168,18 +1438,7 @@ class PiRunner:
         )
 
     def describe_capabilities(self) -> CapabilityReport:
-        return CapabilityReport(
-            host=self.name,
-            binary="pi",
-            version="",
-            capabilities=[
-                CapabilityEntry(
-                    "host",
-                    "unsupported",
-                    "binary not configured (HostNotConfigured) — see FEAT-992",
-                )
-            ],
-        )
+        return render_capability_report(load_runtime_capabilities(self.name))
 
 
 class GeminiRunner:
@@ -1208,12 +1467,7 @@ class GeminiRunner:
 
     name = "gemini"
 
-    capabilities = HostCapabilities(
-        streaming=True,
-        permission_skip=True,
-        agent_select=False,
-        tool_allowlist=False,
-    )
+    capabilities = RUNTIME_HOST_CAPABILITIES["gemini"].flags
 
     def detect(self) -> bool:
         return shutil.which("gemini") is not None
@@ -1320,7 +1574,8 @@ class GeminiRunner:
         if model:
             args += ["--model", model]
         # Like the claude CLI, gemini has no inline schema flag; the parameter
-        # is silently dropped (see describe_capabilities for the note).
+        # is silently dropped (see the gemini entry in RUNTIME_HOST_CAPABILITIES
+        # for the note).
         _ = json_schema
         return HostInvocation(
             binary="gemini",
@@ -1352,48 +1607,7 @@ class GeminiRunner:
         )
 
     def describe_capabilities(self) -> CapabilityReport:
-        return CapabilityReport(
-            host=self.name,
-            binary="gemini",
-            version="",
-            capabilities=[
-                CapabilityEntry("streaming", "full", "--output-format stream-json"),
-                CapabilityEntry("permission_skip", "full", "--approval-mode yolo"),
-                CapabilityEntry(
-                    "agent_select",
-                    "unsupported",
-                    "gemini has no --agent flag; skills activate implicitly. "
-                    "The 'agent' parameter is dropped with CapabilityNotSupported.",
-                ),
-                CapabilityEntry(
-                    "tool_allowlist",
-                    "unsupported",
-                    "gemini's Policy Engine requires a TOML file path (--policy), "
-                    "not a flag-based tool list. The 'tools' parameter is dropped "
-                    "with CapabilityNotSupported.",
-                ),
-                CapabilityEntry(
-                    "json_schema",
-                    "unsupported",
-                    "gemini CLI does not accept an inline schema flag; parameter "
-                    "is silently dropped",
-                ),
-                # ENH-2627: no inline --json-schema support; evaluators gate the flag off.
-                CapabilityEntry(
-                    "structured_output",
-                    "unsupported",
-                    "gemini CLI has no inline --json-schema flag; FSM evaluators fall "
-                    "back to prompt-and-parse",
-                ),
-                # ENH-2714: defer-until-confirmed, same posture as tool_allowlist.
-                CapabilityEntry(
-                    "claude_md_suppression",
-                    "unsupported",
-                    "gemini CLAUDE.md/GEMINI.md suppression support not confirmed; "
-                    "defer-until-confirmed, mirrors tool_allowlist posture",
-                ),
-            ],
-        )
+        return render_capability_report(load_runtime_capabilities(self.name))
 
 
 class OmpRunner:
@@ -1425,16 +1639,7 @@ class OmpRunner:
 
     name = "omp"
 
-    capabilities = HostCapabilities(
-        streaming=True,
-        permission_skip=True,
-        agent_select=False,
-        tool_allowlist=True,
-        # FEAT-2797: explicit, not inherited from the dataclass default —
-        # no CLI schema/response-format flag exists (--mode is
-        # text|json|rpc|acp|rpc-ui); see describe_capabilities() below.
-        structured_output=False,
-    )
+    capabilities = RUNTIME_HOST_CAPABILITIES["omp"].flags
 
     def detect(self) -> bool:
         return shutil.which("omp") is not None
@@ -1507,7 +1712,7 @@ class OmpRunner:
         if model:
             args += ["--model", model]
         # omp has no structured-output schema flag; the parameter is silently
-        # dropped (see describe_capabilities for the note).
+        # dropped (see the omp entry in RUNTIME_HOST_CAPABILITIES for the note).
         _ = json_schema
         return HostInvocation(
             binary="omp",
@@ -1533,53 +1738,7 @@ class OmpRunner:
         )
 
     def describe_capabilities(self) -> CapabilityReport:
-        return CapabilityReport(
-            host=self.name,
-            binary="omp",
-            version="",
-            capabilities=[
-                CapabilityEntry(
-                    "streaming",
-                    "full",
-                    "--mode json emits a JSONL event stream in print mode",
-                ),
-                CapabilityEntry(
-                    "permission_skip",
-                    "full",
-                    "implicit — print mode has no interactive approval prompts; "
-                    "no bypass flag exists or is needed",
-                ),
-                CapabilityEntry(
-                    "agent_select",
-                    "unsupported",
-                    "omp has no --agent flag; subagents are spawned in-session "
-                    "by the model. The 'agent' parameter is dropped with "
-                    "CapabilityNotSupported.",
-                ),
-                CapabilityEntry("tool_allowlist", "full", "--tools <comma-separated list>"),
-                CapabilityEntry(
-                    "json_schema",
-                    "unsupported",
-                    "omp has no structured-output schema flag; parameter is silently dropped",
-                ),
-                # ENH-2627: no inline --json-schema support; evaluators gate the flag off.
-                CapabilityEntry(
-                    "structured_output",
-                    "unsupported",
-                    "omp has no inline --json-schema flag; FSM evaluators fall back to "
-                    "prompt-and-parse",
-                ),
-                # ENH-2714: defer-until-confirmed, same posture as tool_allowlist=True
-                # for omp — narrowing exists but CLAUDE.md-equivalent suppression is
-                # unconfirmed.
-                CapabilityEntry(
-                    "claude_md_suppression",
-                    "unsupported",
-                    "omp CLAUDE.md-equivalent suppression support not confirmed; "
-                    "defer-until-confirmed",
-                ),
-            ],
-        )
+        return render_capability_report(load_runtime_capabilities(self.name))
 
 
 class KimiRunner:
@@ -1618,12 +1777,7 @@ class KimiRunner:
 
     name = "kimi-code"
 
-    capabilities = HostCapabilities(
-        streaming=True,
-        permission_skip=True,
-        agent_select=True,
-        tool_allowlist=False,
-    )
+    capabilities = RUNTIME_HOST_CAPABILITIES["kimi-code"].flags
 
     def detect(self) -> bool:
         return shutil.which("kimi") is not None
@@ -1739,52 +1893,7 @@ class KimiRunner:
         )
 
     def describe_capabilities(self) -> CapabilityReport:
-        return CapabilityReport(
-            host=self.name,
-            binary="kimi",
-            version="",
-            capabilities=[
-                CapabilityEntry("streaming", "full", "--output-format stream-json"),
-                CapabilityEntry(
-                    "permission_skip",
-                    "full",
-                    "implicit in -p print mode (auto permission policy); "
-                    "--yolo/--auto/--plan are rejected with -p",
-                ),
-                CapabilityEntry(
-                    "agent_select",
-                    "partial",
-                    "--agent <name> honored, but rejected in combination with "
-                    "--continue/--session; dropped with CapabilityNotSupported "
-                    "on resume",
-                ),
-                CapabilityEntry(
-                    "tool_allowlist",
-                    "unsupported",
-                    "kimi has no --tools flag; tool policy lives in agent files "
-                    "or the global [tools] config table. The 'tools' parameter "
-                    "is dropped with CapabilityNotSupported.",
-                ),
-                CapabilityEntry(
-                    "json_schema",
-                    "unsupported",
-                    "kimi has no structured-output schema flag; parameter is "
-                    "dropped with CapabilityNotSupported",
-                ),
-                CapabilityEntry(
-                    "structured_output",
-                    "unsupported",
-                    "kimi has no single-blob JSON mode and no inline schema flag; "
-                    "FSM evaluators fall back to prompt-and-parse",
-                ),
-                CapabilityEntry(
-                    "workspace_sandboxed",
-                    "unsupported",
-                    "--add-dir is additive, not a jail; workspace_root widens "
-                    "rather than confines access",
-                ),
-            ],
-        )
+        return render_capability_report(load_runtime_capabilities(self.name))
 
 
 class QwenRunner:
@@ -1824,13 +1933,7 @@ class QwenRunner:
 
     name = "qwen"
 
-    capabilities = HostCapabilities(
-        streaming=True,
-        permission_skip=True,
-        agent_select=False,
-        tool_allowlist=False,
-        structured_output=True,  # EPIC-3154: inline --json-schema honored (FEAT-3155)
-    )
+    capabilities = RUNTIME_HOST_CAPABILITIES["qwen"].flags
 
     def detect(self) -> bool:
         return shutil.which("qwen") is not None
@@ -1941,52 +2044,7 @@ class QwenRunner:
         )
 
     def describe_capabilities(self) -> CapabilityReport:
-        return CapabilityReport(
-            host=self.name,
-            binary="qwen",
-            version="",
-            capabilities=[
-                CapabilityEntry("streaming", "full", "--output-format stream-json"),
-                CapabilityEntry(
-                    "permission_skip",
-                    "full",
-                    "--yolo / --approval-mode yolo (hidden flags, live-verified "
-                    "by the FEAT-3155 spike)",
-                ),
-                CapabilityEntry(
-                    "agent_select",
-                    "unsupported",
-                    "qwen has no --agent CLI flag (documented upstream as planned); "
-                    "parameter is dropped with CapabilityNotSupported",
-                ),
-                CapabilityEntry(
-                    "tool_allowlist",
-                    "unsupported",
-                    "--exclude-tools is a denylist, not allowlist semantics; "
-                    "parameter is dropped with CapabilityNotSupported",
-                ),
-                CapabilityEntry(
-                    "json_schema",
-                    "full",
-                    "qwen honors the inline --json-schema flag (Ajv-validated "
-                    "synthetic structured_output tool); session persistence is "
-                    "opted out via --chat-recording false",
-                ),
-                CapabilityEntry(
-                    "structured_output",
-                    "full",
-                    "second host after Claude Code to honor inline --json-schema; "
-                    "FSM evaluators append it and parse the validated JSON string "
-                    "from the final envelope's result field",
-                ),
-                CapabilityEntry(
-                    "workspace_sandboxed",
-                    "unsupported",
-                    "--include-directories is additive, not a jail; workspace_root "
-                    "widens rather than confines access",
-                ),
-            ],
-        )
+        return render_capability_report(load_runtime_capabilities(self.name))
 
 
 # Built-in host runners keyed by their ``name`` attribute. Extensions may
@@ -2019,12 +2077,16 @@ _PROBE_ORDER: list[tuple[str, str]] = [
 ]
 
 # All host CLI binary basenames, derived from every registered runner's
-# describe_capabilities().binary (FEAT-3329). This is the single source of
-# truth for "is argv[0] a host CLI" checks (e.g. the conftest.py live-spawn
-# guard) — deliberately not _PROBE_ORDER (missing "opencode") nor
-# build_version_check().binary (raises HostNotConfigured for opencode/pi).
-# A drift test (test_host_runner.py) asserts this stays in sync with the
-# registry.
+# describe_capabilities().binary (FEAT-3329) — real runners now resolve that
+# call through RUNTIME_HOST_CAPABILITIES (ENH-3453) while test-only runners
+# (if any are registered) answer directly, so their binaries stay included.
+# This is the single source of truth for "is argv[0] a host CLI" checks (e.g.
+# the conftest.py live-spawn guard) — deliberately not _PROBE_ORDER (missing
+# "opencode") nor build_version_check().binary (raises HostNotConfigured for
+# opencode/pi), and deliberately not rederived from
+# RUNTIME_HOST_CAPABILITIES.values() directly (would drop test-only hosts
+# that are exempt from the runtime map). A drift test (test_host_runner.py)
+# asserts this stays in sync with the registry.
 HOST_BINARY_NAMES: frozenset[str] = frozenset(
     cls().describe_capabilities().binary for cls in _HOST_RUNNER_REGISTRY.values()
 )

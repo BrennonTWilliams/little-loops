@@ -1335,6 +1335,19 @@ CLI do when it's running" (`claude-code`/`opencode`/`pi`) — while
 See `docs/reference/HOST_COMPATIBILITY.md` for the parity matrix both sides
 are checked against.
 
+`host_runner.RUNTIME_HOST_CAPABILITIES` (ENH-3453) is the runtime half of the
+same declarative discipline — one `RuntimeHostEntry` per host in
+`host_runner._HOST_RUNNER_REGISTRY` (all eight runners, a strict superset of
+`capabilities.py`'s host set), read via `load_runtime_capabilities()` and
+rendered as a `CapabilityReport` via `render_capability_report()`. Every
+runner's `capabilities` class attribute and `describe_capabilities()` body
+are sourced from this map rather than a per-subclass literal/method — adding
+a host or correcting a capability flag is now a data change in
+`host_runner.py`, not a new subclass method. `ll-verify-host-map` enforces
+key parity between this map and the registry, plus flag/row consistency
+(a report row cannot claim `"full"` for a flag that's `False`, or
+`"unsupported"` for a flag that's `True`).
+
 ### Context Monitor and Session Continuation
 
 When context window limits approach, the system can automatically preserve work and spawn fresh sessions.

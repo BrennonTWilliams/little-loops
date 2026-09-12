@@ -26,6 +26,15 @@ Precedent: ``cli/doctor.py``'s ``CheckResult`` mirrors
 it. See `host_runner.HostCapabilities` for the runtime-side surface and
 ``docs/reference/HOST_COMPATIBILITY.md`` for the authoritative parity matrix
 both sides are checked against.
+
+**Runtime-side sibling (ENH-3453):** `host_runner.RUNTIME_HOST_CAPABILITIES`
+is the runtime half of this same declarative discipline — one
+`host_runner.RuntimeHostEntry` per host in `host_runner._HOST_RUNNER_REGISTRY`
+(a strict superset of this module's keys, since it also covers
+``opencode``/``pi``), read via `host_runner.load_runtime_capabilities()`.
+Cross-referenced by docstring only, same posture as this module's relationship
+to `host_runner.HostCapabilities` above — no shared field names, no
+inheritance.
 """
 
 from __future__ import annotations

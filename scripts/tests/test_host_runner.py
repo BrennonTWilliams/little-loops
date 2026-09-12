@@ -2340,6 +2340,69 @@ class TestRunBlockingJson:
                 runner.build_blocking_json(prompt="hi")
 
 
+class TestRuntimeHostCapabilitiesMap:
+    """ENH-3453: the runtime capability map is the source of truth for both
+    the `capabilities` class attribute and `describe_capabilities()` on every
+    real runner — this is tautological on the day it lands, but fails if
+    anyone later reintroduces a hand-written `describe_capabilities()` body
+    or a class-level `HostCapabilities(...)` literal on a real runner.
+    """
+
+    def test_every_registry_host_matches_its_runtime_entry(self) -> None:
+        from little_loops import host_runner as hr
+
+        for name, cls in hr._HOST_RUNNER_REGISTRY.items():
+            entry = hr.load_runtime_capabilities(name)
+            assert entry.flags is cls.capabilities, name
+            assert hr.render_capability_report(entry) == cls().describe_capabilities(), name
+
+    def test_load_runtime_capabilities_raises_key_error_for_unknown_host(self) -> None:
+        from little_loops.host_runner import load_runtime_capabilities
+
+        with pytest.raises(KeyError, match="nonexistent-host"):
+            load_runtime_capabilities("nonexistent-host")
+
+    def test_render_capability_report_builds_expected_shape(self) -> None:
+        from little_loops.host_runner import (
+            CapabilityReport,
+            RuntimeHostEntry,
+            render_capability_report,
+        )
+
+        entry = RuntimeHostEntry(
+            host="fixturehost",
+            binary="fixturebin",
+            flags=HostCapabilities(streaming=True),
+            report_rows=(CapabilityEntry("streaming", "full"),),
+        )
+        assert render_capability_report(entry) == CapabilityReport(
+            host="fixturehost",
+            binary="fixturebin",
+            version="",
+            capabilities=[CapabilityEntry("streaming", "full")],
+        )
+
+    def test_injected_fixture_host_entry_round_trips(self) -> None:
+        # Direct precedent: test_adapters.py:1271-1320's
+        # TestFixtureHostRegistration injects a synthetic HostCapabilityEntry
+        # into HOST_CAPABILITIES via patch.dict. This is the runtime-side
+        # equivalent for RUNTIME_HOST_CAPABILITIES.
+        from little_loops.host_runner import RuntimeHostEntry, load_runtime_capabilities
+
+        fixture_entry = RuntimeHostEntry(
+            host="fixturehost",
+            binary="fixturebin",
+            flags=HostCapabilities(streaming=True),
+            report_rows=(CapabilityEntry("streaming", "full"),),
+        )
+        with patch.dict(
+            "little_loops.host_runner.RUNTIME_HOST_CAPABILITIES",
+            {"fixturehost": fixture_entry},
+            clear=False,
+        ):
+            assert load_runtime_capabilities("fixturehost") is fixture_entry
+
+
 class TestHostBinaryNames:
     """HOST_BINARY_NAMES (FEAT-3329): the conftest.py live-spawn guard's
     single source of truth for "is argv[0] a host CLI" basename checks.
