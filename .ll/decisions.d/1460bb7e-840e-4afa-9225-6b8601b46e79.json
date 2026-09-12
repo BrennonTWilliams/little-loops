@@ -1,0 +1,11 @@
+{
+  "id": "1d89507e-9221-4790-af4c-d3f81341972b",
+  "type": "decision",
+  "timestamp": "2026-09-12T03:43:54Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "User invoked /ll:capture-issue 2 (default flip) after ll-messages -n 100 --stdout | pbcopy surfaced assistant bash commands mixed with user prompts. Proposed: make --skip-cli the default and add --include-cli to opt back in.",
+  "rule": "Captured: ll-messages defaults to user messages only",
+  "scope": "issue",
+  "issue": "ENH-3457"
+}
