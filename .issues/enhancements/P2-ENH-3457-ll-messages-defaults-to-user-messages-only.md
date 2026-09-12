@@ -59,7 +59,7 @@ Make user-only the default and introduce a new `--include-cli` flag as the expli
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/__init__.py:77, :138` — re-exports `main_messages` and lists in `__all__`; signature unchanged, no edit required [Agent 1 finding].
 - `scripts/little_loops/init/writers.py:157, :223, :283` — `ll-init` writes `Bash(ll-messages:*)` allowlist + tool-catalog descriptions ("Extract user messages from Claude Code logs") into settings.json/CLAUDE.md/AGENTS.md/GEMINI.md; descriptions already match new default [Agent 1 finding].
-- `scripts/little_loops/workflow_sequence/__init__.py:92, :171, :211` — docstring/help/logger references to `ll-messages`; describes the default extraction path, consistent with new default [Agent 1 finding].
+- `scripts/little_loops/workflow_sequence/__init__.py:92, :171, :211` — docstring/help/logger references to `ll-messages`. **Corrected 2026-09-12 review:** an earlier wire pass marked these "consistent with new default", but `:92` (the `Pipeline:` epilog line `ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl`) and `:211` (the error hint `"Run 'll-messages' first to generate the input file."`) are the `ll-workflows` entry points to the **same** `/ll:analyze-workflows` pipeline that this issue elsewhere says needs `--include-cli` for `cli_command` classification. Both must become `ll-messages --include-cli ...`. `:171` (argparse help "from ll-messages or workflow-pattern-analyzer") is name-only and unaffected. **Must edit.**
 - `scripts/little_loops/sft_formatter.py:1` — module docstring `"""SFT training format converters for ll-messages --sft-format output."""`; unaffected by flag flip [Agent 1 finding].
 
 ### Similar Patterns
@@ -96,12 +96,14 @@ _Wiring pass added by `/ll:wire-issue`:_
   - **Line 109-113**: keep `--skip-cli` as `store_true` / default `False` (do NOT flip the default — a `store_true` flag with default `True` can never be unset, and the new guard does not read it). Update its `help=` text from `"Exclude CLI commands from output (included by default)"` to a deprecation note ("Deprecated no-op; user-only is the default. Use --include-cli to merge in assistant commands.").
   - **Line 114-118**: leave `--commands-only` as-is.
   - **Add** `--include-cli` argparse entry (action=`store_true`, default `False`, help mentioning the merged-stream opt-in) in a `parser.add_mutually_exclusive_group()` together with `--skip-cli`, so `--skip-cli --include-cli` is a parse error.
+  - **Line 120-124 (`--tools`)** — _added 2026-09-12 review:_ after the flip, `ll-messages --tools Read,Edit` with neither `--include-cli` nor `--commands-only` would silently extract nothing from those tools (the only branch that reads `tools_list` is the command-extraction branch). An explicitly passed `--tools` is unambiguous intent to extract commands, so it **implies `--include-cli`**: change `default="Bash"` to `default=None`, resolve `tools_list` from `(args.tools or "Bash")`, and extend the guard to `if args.include_cli or args.commands_only or args.tools is not None:`. Update the `--tools` help to say "(implies --include-cli)". `--tools` stays outside the exclusive group; `--skip-cli --tools X` therefore extracts commands, which is consistent with `--skip-cli` being a no-op.
+  - **Line 109-113 (`--skip-cli`) — deprecation signal**, _added 2026-09-12 review:_ there is no deprecated-flag convention in `scripts/little_loops/cli/` today (verified by grep: no `argparse.SUPPRESS`, no deprecation warnings on any flag), so this issue establishes one. A silent no-op means scripts still passing `--skip-cli` never learn. When `args.skip_cli` is true, print exactly one line to **stderr** (never stdout — `--stdout` JSONL must stay clean for `| pbcopy`): `ll-messages: --skip-cli is deprecated and now a no-op; user-only output is the default. Drop the flag.` Keep the flag visible in `--help` (do not `SUPPRESS`) so the help text explains the migration.
   - **Line 200**: leave `if not args.commands_only:` as-is — it gates `extract_user_messages`, not commands.
-  - **Line 209**: invert the guard `if not args.skip_cli or args.commands_only:` to `if args.include_cli or args.commands_only:` (literal substitution; no other call site).
+  - **Line 209**: invert the guard `if not args.skip_cli or args.commands_only:` to `if args.include_cli or args.commands_only or args.tools is not None:` (see the `--tools` bullet; no other call site).
   - **Lines 14-21** (`main_messages` docstring): note "defaults to user messages only; pass `--include-cli` to merge in assistant bash commands."
 - `scripts/little_loops/user_messages.py` — docstring updates at `:723-743` (`extract_user_messages`) and `:896-911` (`extract_commands`) noting that the CLI surface flag defaults to user-only.
 - `scripts/tests/test_cli_messages.py:118` — `TestMessagesCommandsOnly` (no change to behavior tests, but the class name/header comment about "excludes user" still holds).
-- `scripts/tests/test_cli_messages.py:172` — `TestMessagesSkipCli` class needs to be renamed/repurposed as `TestMessagesIncludeCli`, because what it currently asserts ("`extract_commands` is NOT called") becomes the **default** after the flip. The new test must assert the inverse — that `--include-cli` is the flag that triggers `extract_commands`. Keep one case asserting `--skip-cli` still parses and still yields user-only (deprecated no-op), and add a case asserting `--skip-cli --include-cli` exits with an argparse error (mutually exclusive group). **This file is the real contract surface** — it drives `main_messages()` through the production parser.
+- `scripts/tests/test_cli_messages.py:172` — `TestMessagesSkipCli` class needs to be renamed/repurposed as `TestMessagesIncludeCli`, because what it currently asserts ("`extract_commands` is NOT called") becomes the **default** after the flip. The new test must assert the inverse — that `--include-cli` is the flag that triggers `extract_commands`. Keep one case asserting `--skip-cli` still parses and still yields user-only (deprecated no-op) **and that the deprecation line lands on stderr, not stdout** (use `capsys`), and add a case asserting `--skip-cli --include-cli` exits with an argparse error (mutually exclusive group). Add two `--tools` cases: `--tools Read` alone calls `extract_commands` with `tools=["Read"]` (implied include), and the bare default still passes `tools=["Bash"]` when `--commands-only` is given. **This file is the real contract surface** — it drives `main_messages()` through the production parser.
 - `scripts/tests/test_user_messages.py:2195-2232` — `_parse_messages_args` is a **hand-copied replica** of the production parser, not the CLI itself; tests here only check the replica. Update it for parity (add `--include-cli`, keep `--skip-cli` default `False`) and add `test_include_cli_default` / `test_include_cli_flag`, but do not treat this class as proof the CLI behaves correctly.
 - `scripts/tests/test_user_messages.py:2248` — composite parser test on the replica; `args.skip_cli is True` after passing `--skip-cli` remains valid (flag still parses); add parallel coverage for `--include-cli`.
 - `scripts/tests/test_cli.py:696` — `test_main_messages_default_args` does not currently lock in the merged-stream default (only mocks `extract_user_messages`); it remains correct after the flip. Add a regression assertion that `extract_commands` is **not** called under the default argv, mirroring the new `TestMessagesIncludeCli` shape.
@@ -116,7 +118,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `skills/ll-loop-suggester/SKILL.md:31` and `:49` — bare `ll-messages --include-response-context -n 200 --stdout` invocations. Affected: today's output includes commands; after flip, user-only. The skill's purpose (loop suggestion from user prompts) is unchanged; leave as-is.
 - `commands/loop-suggester.md` and the host mirrors `.qwen/commands/ll/loop-suggester.md:17/35`, `.kimi-code/skills/ll-loop-suggester/SKILL.md:31/49`, `.gemini/commands/loop-suggester.toml:16/34` — same `ll-messages --include-response-context -n 200 --stdout` invocation; same flip-affected behavior. These are mirrors of the same skill; updating the source skill updates all (and any skill edit trips the mirror gate — regenerate with `ll-adapt --host <gemini|kimi-code|qwen> --apply`).
 - `docs/generalized-fsm-loop.md:2153` and `:2163` — `ll-messages --include-response-context -n 200 -o messages.jsonl` (skill description); affected.
-- **`/ll:analyze-workflows` pipeline — REAL behavior change.** `agents/workflow-pattern-analyzer.md:76-95` classifies records with `"type": "command"` as the `cli_command` category ("raw CLI/shell command execution"). The pipeline's documented input is a bare `ll-messages` run (`docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:85-100`), so after the flip that category goes empty silently. Fix in this issue: change the guide's pipeline invocations to `ll-messages --include-cli` (lines `:10`, `:85`, `:88`, `:91`, `:94`, `:97`, `:100`, `:228-229`, `:374`, `:384`, `:407`) and add a one-line note under the Prerequisites block that `--include-cli` is required for `cli_command` classification. `commands/analyze-workflows.md` should get the same flag in any `ll-messages` invocation it documents.
+- **`/ll:analyze-workflows` pipeline — REAL behavior change.** `agents/workflow-pattern-analyzer.md:76-95` classifies records with `"type": "command"` as the `cli_command` category ("raw CLI/shell command execution"). The pipeline's documented input is a bare `ll-messages` run (`docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:85-100`), so after the flip that category goes empty silently. Fix in this issue: change the guide's pipeline invocations to `ll-messages --include-cli` (lines `:10`, `:85`, `:88`, `:91`, `:94`, `:97`, `:100`, `:228-229`, `:374`, `:384`, `:407`) and add a one-line note under the Prerequisites block that `--include-cli` is required for `cli_command` classification. `commands/analyze-workflows.md:79` (the "On error" remediation text `1. Extract messages first: ll-messages`) and `:378` (the error-handling table row "Suggest running ll-messages extract first") get the same flag, as do the `ll-workflows` epilog/hint at `scripts/little_loops/workflow_sequence/__init__.py:92, :211` (see Dependent Files above).
 - `docs/guides/EXAMPLES_MINING_GUIDE.md:113`, `:142`, `:146`, `:355`, `:405`, `:421`, `:443`, `:461`, `:467`, `:574`, `:588` — references to `ll-messages --skill ... --examples-format ... --stdout`; affected (corpus shrinks to user-only).
 - `scripts/little_loops/init/writers.py:157` — `"Bash(ll-messages:*)"` allowed-tools entry; not an invocation.
 - `agents/`, `hooks/` — no `ll-messages` invocations found.
@@ -152,6 +154,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 | `ll-messages --include-cli` | (does not exist) | `{user + commands}` merged stream | **CHANGED** — new mirror flag restoring pre-flip default |
 | `ll-messages --skip-cli --include-cli` | (n/a) | argparse error (mutually exclusive group) | **CHANGED** — new, deliberate |
 | `ll-messages --commands-only` | `{commands}` only | `{commands}` only | **PRESERVED** — unchanged |
+| `ll-messages --tools Read,Edit` (no other flag) | `{user + commands(Read,Edit)}` | `{user + commands(Read,Edit)}` — explicit `--tools` implies `--include-cli` | **PRESERVED** — deliberate; without the implication the flag would become silently inert |
+| `ll-messages --skip-cli` stderr | silent | one deprecation line on stderr; stdout unchanged | **CHANGED** — new, deliberate |
 | `ll-messages --skip-cli --commands-only` | `{commands}` only (OR short-circuit at line 209) | `{commands}` only (`or args.commands_only` still short-circuits the guard) | **PRESERVED** — verified by guard semantics |
 | `ll-messages --skill X --examples-format` (examples-miner) | examples from `messages` only | identical output; skips the unused `extract_commands` pass | **PRESERVED** |
 | bare `ll-messages` feeding `/ll:analyze-workflows` | `cli_command` category populated | `cli_command` category empty unless `--include-cli` | **CHANGED** — guide/command docs updated to pass `--include-cli` |
@@ -163,11 +167,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Add `--include-cli` (default `False`) in `main_messages`, mutually exclusive with the now-deprecated no-op `--skip-cli` (default stays `False`); rewrite the CLI-commands branch guard as `if args.include_cli or args.commands_only:`.
-2. Update argparse `help=` strings (deprecation note on `--skip-cli`) and epilog examples so the documented happy path reflects the new default.
+1. Add `--include-cli` (default `False`) in `main_messages`, mutually exclusive with the now-deprecated no-op `--skip-cli` (default stays `False`); change `--tools` to `default=None` (resolved to `"Bash"` at use) so an explicit `--tools` implies inclusion; rewrite the CLI-commands branch guard as `if args.include_cli or args.commands_only or args.tools is not None:`. When `--skip-cli` is passed, print one deprecation line to stderr.
+2. Update argparse `help=` strings (deprecation note on `--skip-cli`, "(implies --include-cli)" on `--tools`) and epilog examples so the documented happy path reflects the new default.
 3. Update docstrings on `extract_user_messages` and `extract_commands` in `scripts/little_loops/user_messages.py`.
-4. Update `docs/reference/CLI.md` and `docs/reference/API.md` to flag the default flip; switch the `/ll:analyze-workflows` pipeline invocations in `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` and `commands/analyze-workflows.md` to `ll-messages --include-cli` (the pattern analyzer's `cli_command` category depends on command records).
-5. Adjust any test asserting default output includes CLI commands; add regression tests in `scripts/tests/test_cli_messages.py` asserting the default emits user messages only, `--include-cli` restores the merged stream, `--skip-cli` still parses as a no-op, and `--skip-cli --include-cli` is a parse error. Update the replica parser in `scripts/tests/test_user_messages.py` for parity.
+4. Update `docs/reference/CLI.md` and `docs/reference/API.md` to flag the default flip; switch the `/ll:analyze-workflows` pipeline invocations in `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md`, `commands/analyze-workflows.md:79,378`, and the `ll-workflows` epilog/hint at `scripts/little_loops/workflow_sequence/__init__.py:92,211` to `ll-messages --include-cli` (the pattern analyzer's `cli_command` category depends on command records).
+5. Adjust any test asserting default output includes CLI commands; add regression tests in `scripts/tests/test_cli_messages.py` asserting the default emits user messages only, `--include-cli` restores the merged stream, `--skip-cli` still parses as a no-op and warns on stderr only, `--skip-cli --include-cli` is a parse error, and explicit `--tools` implies inclusion. Update the replica parser in `scripts/tests/test_user_messages.py` for parity.
 6. Verify with `python -m pytest scripts/tests/` and a manual `ll-messages -n 5 --stdout | pbcopy` smoke test confirming only user prompts land on the clipboard.
 
 ### Codebase Research Findings
@@ -193,7 +197,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 ### Types
 
-- `Args` (argparse namespace in `main_messages`): `skip_cli: bool` (default `False`, deprecated no-op, mutually exclusive with `include_cli`), `include_cli: bool` (default `False`, new), `commands_only: bool` (unchanged).
+- `Args` (argparse namespace in `main_messages`): `skip_cli: bool` (default `False`, deprecated no-op, mutually exclusive with `include_cli`), `include_cli: bool` (default `False`, new), `commands_only: bool` (unchanged), `tools: str | None` (default changes from `"Bash"` to `None`; `None` means "not passed" and resolves to `"Bash"` at use; non-`None` implies `include_cli`).
 
 ### Signatures
 
@@ -204,7 +208,7 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 ### Call Path
 
-`main_messages()` → `argparse.parse_args()` (defaults: `skip_cli=False`, `include_cli=False`, `commands_only=False`) → `if not args.commands_only:` branch → `extract_user_messages(...)` → `if args.include_cli or args.commands_only:` branch → `extract_commands(...)` → `_save_combined(...)` JSONL emit.
+`main_messages()` → `argparse.parse_args()` (defaults: `skip_cli=False`, `include_cli=False`, `commands_only=False`, `tools=None`) → `if not args.commands_only:` branch → `extract_user_messages(...)` → `if args.include_cli or args.commands_only or args.tools is not None:` branch → `extract_commands(...)` → `_save_combined(...)` JSONL emit.
 
 ### Codebase Research Findings
 
@@ -222,12 +226,15 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 argparse.parse_args(argv)  # scripts/little_loops/cli/messages.py:109-118 (post-flip)
   ├─ args.skip_cli      = (False by default; True if --skip-cli passed — deprecated, never read)
   ├─ args.include_cli   = (False by default; True if --include-cli passed; exclusive with --skip-cli)
-  └─ args.commands_only = (False by default; True if --commands-only passed)
+  ├─ args.commands_only = (False by default; True if --commands-only passed)
+  └─ args.tools         = (None by default; str if --tools passed — non-None implies include)
 
+if args.skip_cli: print(deprecation line, file=sys.stderr)
+tools_list = (args.tools or "Bash").split(",")
 if not args.commands_only:                                        # line 200
     messages = extract_user_messages(...)                         # line 201
-if args.include_cli or args.commands_only:                        # line 209 (post-flip; was `if not args.skip_cli or args.commands_only:`)
-    commands = extract_commands(...)                              # line 210
+if args.include_cli or args.commands_only or args.tools is not None:  # line 209 (post-flip; was `if not args.skip_cli or args.commands_only:`)
+    commands = extract_commands(..., tools=tools_list)            # line 210
 
 # Merge + sort + output (UNCHANGED, lines 277-297)
 combined = messages + commands; combined.sort(key=timestamp, reverse=True)
@@ -240,7 +247,8 @@ else: output_path = _save_combined(combined, args.output)
 
 - **User-only is the default; `--include-cli` is the explicit opt-in for the merged stream.** The new guard at line 209 reads `if args.include_cli or args.commands_only:` — expressed positively to match the `--include-*` opt-in shape used elsewhere on this CLI (e.g. `--include-response-context` at line 104-108). `args.skip_cli` is no longer read anywhere.
 - **`--commands-only` retains its semantics:** `extract_user_messages` is gated off (line 200 unchanged), `extract_commands` runs. The literal `or args.commands_only:` clause on line 209 short-circuits the include-cli check, so `--commands-only` works regardless of `--include-cli`.
-- **`--skip-cli` is a deprecated no-op**, retained on the CLI surface for backward compatibility (its `store_true` / default `False` shape is unchanged — do not flip the default, which would make the flag unsettable). It sits in a mutually exclusive group with `--include-cli`. Help text: "Deprecated no-op; user-only is the default. Use --include-cli to merge in assistant commands."
+- **`--skip-cli` is a deprecated no-op**, retained on the CLI surface for backward compatibility (its `store_true` / default `False` shape is unchanged — do not flip the default, which would make the flag unsettable). It sits in a mutually exclusive group with `--include-cli`. Help text: "Deprecated no-op; user-only is the default. Use --include-cli to merge in assistant commands." Passing it prints one deprecation line to stderr (stdout stays clean JSONL).
+- **Explicit `--tools` implies `--include-cli`.** `--tools` only affects command extraction, so passing it without `--include-cli`/`--commands-only` would otherwise do nothing. The argparse default moves from `"Bash"` to `None` (`tools_list` resolves from `args.tools or "Bash"`) so "explicitly passed" is detectable, and the guard adds `or args.tools is not None`.
 
 ## Scope Boundaries
 

@@ -135,19 +135,42 @@ in-process shim that never touches the production executor.
   `__init__(capabilities: HostCapabilities | None = None)` mirrors FEAT-3454.
 - `detect() -> False`; not in `_PROBE_ORDER` (covered by FEAT-3454's
   `test_test_only_hosts_are_never_probed` once `"fake-minimal"` is in `TEST_ONLY_HOSTS`).
-- Five `build_*` methods, full keyword-only Protocol signature, each returning
+- Four `build_*` methods (`build_streaming`, `build_blocking_json`,
+  `build_version_check`, `build_detached` — the full Protocol set; `detect` and
+  `describe_capabilities` are the other two members), full keyword-only Protocol
+  signature, each returning
   `HostInvocation(binary="ll-fake-host", args=[prompt], env={}, capabilities=self.capabilities)`
   (`build_version_check` → `args=["--version"]`; `build_detached` → `[prompt]`;
   `build_blocking_json(prompt, model, json_schema)` → `[prompt]`, schema ignored —
   `_structured_output_args` appends `--json-schema` itself when the override sets
   `structured_output=True`).
+- **Prompt-location contract with `ll-fake-host`.** `_structured_output_args`
+  (`host_runner.py:2376`) appends `["--json-schema", <json>]` *after* the runner's
+  args, so under `structured_output=True` the prompt is no longer `argv[-1]`. This
+  issue depends on FEAT-3454's `main()` locating the prompt as *the argv element
+  containing the `@@fake` fence* (falling back to `argv[-1]` when no element does)
+  — see FEAT-3454 Program Design, amended 2026-09-12. Without that rule the
+  `run_blocking_json` composition case below feeds the schema JSON to the fake as
+  its prompt, both fakes emit the default script, and the case raises
+  `BlockingJsonError` identically on both — a vacuous "equal" that never reaches
+  the parsed-dict assertion. Re-check `main()` against this rule before step 3.
 - `describe_capabilities()` → `CapabilityReport(host="fake-minimal", binary="ll-fake-host",
   version="0.0.0-fake-minimal", …)` with all six entries `"unsupported"`.
 
-### `scripts/tests/conformance/test_host_composition.py` (new, `conformance` marker)
+### `scripts/tests/conformance/test_host_composition.py` (new; marker per class, not per module)
 
 Imports FEAT-3455's `_run_and_capture`, `Observed`, `assert_event_kinds` from
 `test_host_conformance.py`; `_FAKES = ("fake", "fake-minimal")`.
+
+**Marker placement.** Only the two classes that spawn `ll-fake-host`
+(`TestFakesAreDivergent` does not; `TestCompositionThroughExecutor` does) carry
+`@pytest.mark.conformance` and the `shutil.which("ll-fake-host")` skip. The AST
+classes (`TestExecutorTouchesOnlyAbstractInterface`, `TestRegressionGuard`) need no
+subprocess and stay **unmarked** so they run in the default unit job
+(`.github/workflows/ci.yml:128` deselects `-m "not integration and not conformance"`;
+`pytest.mark.conformance` is applied per test in `test_host_conformance.py:64`, not
+by the directory's `conftest.py`). This is what the Impact section's "fails in the
+unit suite, not in review" depends on.
 
 - `TestFakesAreDivergent` — pins the divergence so a future edit cannot quietly make
   the fakes agree: argv of `build_streaming` differs (one contains `"-p"`, the other
@@ -159,22 +182,44 @@ Imports FEAT-3455's `_run_and_capture`, `Observed`, `assert_event_kinds` from
   assert `Observed.kinds`, `result_seen`, `completed.returncode` are **equal across
   fakes**. One case runs `run_blocking_json` on both with `capabilities=
   HostCapabilities(structured_output=True)` and asserts the same parsed dict.
-- `TestExecutorTouchesOnlyAbstractInterface` — AST over
-  `inspect.getsource(run_claude_command)` and `inspect.getsource(run_blocking_json)`:
-  - attribute reads on the name bound to the invocation ⊆
+- `TestExecutorTouchesOnlyAbstractInterface` — AST over the **module sources** of
+  `host_runner.py` and `subprocess_utils.py` (not just
+  `inspect.getsource(run_claude_command)` / `run_blocking_json`: the invocation
+  reads actually happen in the helpers they call — `project_child_env` reads `env`
+  and `env_allow`, `_structured_output_args` reads `args`/`capabilities`/`binary`).
+  The unit of checking is *every `FunctionDef` in those two modules with a
+  parameter annotated `HostInvocation` or `HostRunner`* (name-based fallback:
+  `invocation` / `runner`), so the executor chain is covered end to end and
+  `run_claude_command` / `run_blocking_json` are asserted to be among the checked
+  functions:
+  - attribute reads on the invocation param ⊆
     `_ALLOWED_INVOCATION_ATTRS = {"binary", "args", "env", "capabilities", "cleanup_paths", "env_allow"}`
-    (the spike's set was missing the last two — parent finding, `host_runner.py:2500-2501`);
-  - attribute reads on the name bound to the runner ⊆ `HostRunner` Protocol members
+    (the spike's set was missing the last two — parent finding, `host_runner.py:2500-2501`).
+    **A read is either an `ast.Attribute` whose value is the param, or a
+    `getattr(<param>, "<str const>", ...)` call.** The `Attribute`-only form is
+    near-tautological (a frozen dataclass raises on an unknown attribute at runtime
+    anyway); `getattr` with a default is the one form that escapes silently, and
+    `_structured_output_args` already uses it (`host_runner.py:2378`,
+    `getattr(invocation, "binary", "")`), so the checker must see it;
+  - attribute reads on the runner param ⊆ `HostRunner` Protocol members
     (promotes the spike's declared-but-unenforced `ALLOWED_RUNNER_PROTOCOL_ATTRS`);
-  - no `isinstance(_, <ConcreteRunner>)` in either function;
-  - across `host_runner.py` and `subprocess_utils.py` module sources, every
-    `Compare` whose left side is an attribute/name `binary` against a `str` constant
-    sits inside a function in `_ALLOWED_BINARY_LITERAL_SITES = {"_structured_output_args": {"claude", "qwen"}}`
+    same `getattr` rule;
+  - no `isinstance(_, <ConcreteRunner>)` in any checked function, where the
+    concrete-runner name set is **derived** as
+    `{cls.__name__ for cls in _HOST_RUNNER_REGISTRY.values()}`, not hand-listed;
+  - across both module sources, every `Compare` whose left side is an
+    attribute/name `binary` **or `name`** (the `HostRunner.name` Protocol member is
+    the other host-identity string — `runner.name == "claude-code"` would pass the
+    Protocol-member check above) against a `str` constant, **or whose operator is
+    `In`/`NotIn` against a tuple/set/list of `str` constants**, sits inside a function in
+    `_ALLOWED_BINARY_LITERAL_SITES = {"_structured_output_args": {"claude", "qwen"}}`
     and uses only the pinned literals.
 - `TestRegressionGuard` — the same checker functions run over synthetic source
-  snippets and must report: `invocation.session_id` read; `isinstance(runner,
+  snippets and must report: `invocation.session_id` read;
+  `getattr(invocation, "session_id", None)` read; `isinstance(runner,
   FakeHostRunner)`; `if invocation.binary == "ll-fake-host":` in a function not in
-  the allow-list; a pinned function using an unpinned literal. Each failure message
+  the allow-list; `if runner.name in ("claude-code", "qwen"):` outside the
+  allow-list; a pinned function using an unpinned literal. Each failure message
   names function + attribute/literal.
 
 ## Program Design
@@ -184,19 +229,24 @@ Imports FEAT-3455's `_run_and_capture`, `Observed`, `assert_event_kinds` from
   `capabilities: HostCapabilities` (instance, defaults to `HostCapabilities()`).
 - Test-module allow-lists (`test_host_composition.py`):
   `_ALLOWED_INVOCATION_ATTRS: frozenset[str]`, `_ALLOWED_RUNNER_ATTRS: frozenset[str]`
-  (derived from `HostRunner.__protocol_attrs__` where available, else pinned),
-  `_ALLOWED_BINARY_LITERAL_SITES: dict[str, frozenset[str]]`.
+  (derived from `HostRunner.__protocol_attrs__` on Python ≥ 3.12 — verified present
+  on the 3.12.10 interpreter that runs this suite — else from
+  `typing._get_protocol_attrs(HostRunner)` on 3.11, the project floor; **never a
+  hand-pinned fallback**, which would drift silently when the Protocol grows),
+  `_ALLOWED_BINARY_LITERAL_SITES: dict[str, frozenset[str]]`,
+  `_CONCRETE_RUNNER_NAMES: frozenset[str]` (derived from `_HOST_RUNNER_REGISTRY`).
 
 ### Signatures
 - `FakeMinimalHostRunner.__init__(self, capabilities: HostCapabilities | None = None) -> None`
 - `build_streaming(self, *, prompt: str, working_dir: Path | None = None, resume: bool = False, agent: str | None = None, tools: list[str] | None = None, model: str | None = None, automation: AutomationContext | None = None, automation_profile: str | None = None, disable_background_tasks: bool = False, workspace_root: Path | None = None) -> HostInvocation` — every kwarg except `prompt` ignored.
 - `build_blocking_json(self, *, prompt: str, model: str | None = None, json_schema: dict[str, Any] | None = None) -> HostInvocation`
-- `build_version_check(self) -> HostInvocation`; `build_detached(self, *, prompt: str, **kw) -> HostInvocation` — match FEAT-3454's `FakeHostRunner` signatures exactly.
+- `build_version_check(self) -> HostInvocation`; `build_detached(self, *, prompt: str) -> HostInvocation` — exactly the Protocol signature (`host_runner.py:486`); no `**kw` (decision 3: explicit kwargs, never a catch-all). Match FEAT-3454's `FakeHostRunner` signatures exactly.
 - `describe_capabilities(self) -> CapabilityReport`
-- `_invocation_attr_reads(src: str, param: str = "invocation") -> set[str]` — attribute names read on `param` (AST `Attribute` whose value is `Name(param)`).
-- `_runner_attr_reads(src: str, param: str = "runner") -> set[str]`
-- `_binary_literal_compares(src: str) -> list[tuple[str, str]]` — `(enclosing_function, literal)` for each `Compare` with `.binary`/`binary` on the left and a `str` `Constant` on the right.
-- `_isinstance_targets(src: str) -> set[str]` — second-arg names of every `isinstance` call.
+- `_checked_functions(module_src: str, annotation: str, fallback_param: str) -> list[tuple[str, str]]` — `(function_name, param_name)` for every `FunctionDef` in the module whose parameter is annotated `annotation` (or, lacking an annotation, is named `fallback_param`).
+- `_invocation_attr_reads(fn: ast.FunctionDef, param: str) -> set[str]` — attribute names read on `param`: AST `Attribute` whose value is `Name(param)`, **plus** `Call(func=Name("getattr"), args=[Name(param), Constant(str), ...])`.
+- `_runner_attr_reads(fn: ast.FunctionDef, param: str) -> set[str]` — same rule.
+- `_host_literal_compares(fn: ast.FunctionDef) -> list[tuple[str, str]]` — `(enclosing_function, literal)` for each `Compare` with `.binary`/`binary`/`.name`/`name` on the left and a `str` `Constant` on the right, or with `In`/`NotIn` against a tuple/set/list of `str` constants (one tuple per literal).
+- `_isinstance_targets(fn: ast.FunctionDef) -> set[str]` — second-arg names of every `isinstance` call.
 
 ### Call Path
 `resolve_host_named("fake-minimal")` → `FakeMinimalHostRunner.build_streaming(prompt=script)` → `HostInvocation(binary="ll-fake-host", args=[script], env={})` → `run_claude_command` → `subprocess.Popen` (guard carve-out via `TEST_ONLY_BINARIES`) → `ll-fake-host main()` → `parse_directives` → `emit` → consumer callbacks → `_run_and_capture` → `Observed` → compared against the `fake` run of the same script.

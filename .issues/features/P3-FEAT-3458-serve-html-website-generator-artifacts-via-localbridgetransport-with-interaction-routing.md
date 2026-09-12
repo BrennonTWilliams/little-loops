@@ -8,7 +8,7 @@ discovered_by: capture-issue
 confidence_score: 85
 outcome_confidence: 80
 unproven_mechanism: true
-decision_needed: true
+decision_needed: false
 reconcile_attempted: true
 blocked_by:
 - EPIC-3299
@@ -153,12 +153,16 @@ run-duration bridge (ENH-3351) completely untouched. `cli/loop/run.py` and
 `cli/loop/__init__.py` gain a second, independent flag registration
 alongside the existing one at `run.py:588-657` / `__init__.py:296-310`.
 
+> **Selected:** Option SERVE-A — a new `--serve-after` flag matches this codebase's existing idiom (independent `add_argument` + independent `getattr`-gated branch, already used for `--background`/`--serve`/`--queue` on the same subparser) and needs no changes to the existing `--serve` bridge, whose teardown is already fully self-contained inside `run.py`'s own `try/finally` (`run.py:674-676`) and out of scope by the time a post-run hook fires.
+
 **Option SERVE-B**: Fold post-completion artifact-serving into the existing
 `--serve` bridge instead of introducing a second lifecycle — extend
 ENH-3351's bridge so that, when a flag/config opts in, it survives past the
 terminal state (instead of shutting down at `done`) and blocks on Ctrl-C for
 interactive post-run use. No new flag name; the existing `--serve` semantics
 change for the `html-website-generator` loop only.
+
+**Decision point:** the following research resolves a *separate* choice — how `serve-run` integrates with the loop's FSM (Option FSM-A vs Option FSM-B) — distinct from the flag-naming/lifecycle choice decided above.
 
 ### Codebase Research Findings
 
@@ -191,6 +195,28 @@ The research finding that the FSM's shell-action executor is bounded by a 3600s 
 - `rn-build.yaml:1010-1032` / `oracles/code-run-gate.yaml:380-401` — the only existing backgrounded-service patterns explicitly kill the service before the shell action exits, never leave it running (evidence against FSM-A).
 - `run.py:627` signal-handler hook + `run_background()` detached-`Popen` pattern (`cli/loop/runner.py:291-298`) — concrete, working precedent for FSM-B's "primary task ends, hand off to a new long-lived process" shape.
 - Open risk for FSM-B: the existing `--serve` run-duration bridge (`run.py:588-657`, ENH-3351) is torn down in the same `finally` block that would need to host the new post-terminal hook — sequencing must be explicit to avoid conflating the two lifecycles (still requires resolving the `--serve` naming/lifecycle collision flagged in Verification Notes below, which is a separate, still-open decision point not covered by this scoring pass).
+
+### Decision Rationale
+
+**Decision point:** Option SERVE-A vs Option SERVE-B (the `--serve` naming/lifecycle collision with ENH-3351)
+
+**Selected**: Option SERVE-A — a distinct new flag/hook (e.g. `--serve-after`), leaving the existing `--serve` run-duration bridge (ENH-3351) completely untouched.
+
+**Reasoning**: Two parallel `ll:codebase-pattern-finder` evidence passes confirm SERVE-A matches this codebase's established idiom, while SERVE-B does not. `cli/loop/__init__.py:283-345` already registers several independently-lifecycled flags on the same subparser with no shared state — `--background`, `--serve`/`--port`, `--queue`, `--no-lock` — each read via its own `getattr(args, "<name>", False)` branch (e.g. `runner.py:347` for `--background`, `run.py:593` for `--serve`). SERVE-A's shape (a new `--serve-after` flag + independent branch, reusing the existing `run_background()` detached-process pattern at `runner.py:138-298`) is a direct match for this idiom, at an estimated ~25-35 LoC. The existing `--serve` bridge is torn down entirely inside `run.py`'s own `try/finally` (`run.py:674-676`, `executor.close_transports()`) before `cmd_run` returns — `bridge`/`executor` are local variables out of scope by the time any post-run hook would fire, so SERVE-A carries zero shared-state or teardown-ordering risk against the existing bridge.
+
+SERVE-B, by contrast, would change an already-shipped, documented flag's contract: `--serve`'s own help text (`__init__.py:298-303`) states behavior is "byte-identical to today" without it — a per-loop conditional override of that contract has no precedent anywhere in `scripts/little_loops/cli/` (searched broadly across `.yaml` loop files and `config-schema.json`, no hits). It would also require inserting a *new* blocking Ctrl-C wait between `run_foreground()` returning and the existing `finally` teardown (`run.py:674-676`) — not merely skipping teardown, but adding a new blocking primitive scoped to one loop name — at an estimated ~40-70 LoC. No existing test pins `--serve`'s current shutdown-at-terminal-state behavior at the integration level, so SERVE-B's contract change would ship with no regression safety net.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|:-----------:|:----------:|:------------:|:----:|:-----:|
+| SERVE-A | 3 | 3 | 3 | 3 | 12/12 |
+| SERVE-B | 1 | 1 | 1 | 1 | 4/12 |
+
+**Key evidence**:
+- `cli/loop/__init__.py:283-345` + `runner.py:347` / `run.py:593` — independent flag + independent `getattr` branch is this subparser's established idiom for `--background`/`--serve`/`--queue`/`--no-lock` (evidence for SERVE-A).
+- `runner.py:138-298` `run_background()` — directly reusable detached-process pattern for SERVE-A's post-run hook; no reimplementation needed.
+- `run.py:674-676` (`finally: executor.close_transports()`) — the existing `--serve` bridge's teardown is fully self-contained inside `cmd_run`'s own scope, closed before return; a post-run hook after that point cannot see or interact with it (evidence for SERVE-A's zero-interaction-risk claim).
+- `__init__.py:298-303` — `--serve`'s own documented invariant ("byte-identical to today" without it) is directly contradicted by SERVE-B's per-loop conditional override, with no existing precedent for that shape elsewhere in the CLI (evidence against SERVE-B).
+- No test in `scripts/tests/` (`test_feat3323_sse_bridge.py`, `test_transport.py:1052`) exercises `ll-loop run --serve`'s CLI-level shutdown-at-terminal-state behavior — SERVE-B's contract change would be unverified by any existing regression test (evidence against SERVE-B).
 
 ## Integration Map
 
@@ -437,6 +463,7 @@ Implementation Steps sections to match (both destructive rewrites — left for
 
 ## Session Log
 
+- `/ll:decide-issue` - 2026-09-12T18:00:59 - `5a21ce53-2a21-4819-a885-1e8204f7adec.jsonl`
 - `/ll:decide-issue` - 2026-09-12T17:51:04 - `147795d7-8818-4172-bf05-d3558fb89722.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-12T17:49:25 - `24bcbb37-7da0-4a87-b50e-2d2e5174a4e2.jsonl`
 - `/ll:reconcile-issue` - 2026-09-12T17:48:58 - `53449bfc-4a43-46cf-93a9-b9b522f17bce.jsonl`

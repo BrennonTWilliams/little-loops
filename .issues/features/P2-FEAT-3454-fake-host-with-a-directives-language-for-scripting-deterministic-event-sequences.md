@@ -69,7 +69,25 @@ host events is `run_claude_command`, which does `subprocess.Popen([invocation.bi
   directives out of its prompt argument and writes the scripted stream-JSON to
   stdout, stderr text to stderr, sleeps where told, and exits with the scripted code.
   Editable install (`pip install -e "./scripts[dev]"`, which both the dev setup and
-  CI perform) puts it on PATH.
+  CI perform) installs it into the running interpreter's scripts dir.
+- **Put the scripts dir on PATH at session start; a missing fake is a FAIL, not a
+  skip.** Editable install alone does not make `ll-fake-host` resolvable: the CI
+  jobs run `.venv/bin/python -m pytest` without activating the venv, and only the
+  `unit-tests` job appends `.venv/bin` to `GITHUB_PATH` (`.github/workflows/ci.yml:110`);
+  the Thinky `conformance` job (`:149-207`) does not, and on this machine
+  `ll-verify-host-map` resolves to the miniforge bin while `ll-fake-host` is not on
+  PATH at all. A `shutil.which`-gated skip would therefore silently drop every
+  behavioral test in the one CI job meant to run them — the exact
+  passing-test-that-asserts-nothing failure this issue exists to remove. Add a
+  `pytest_sessionstart` hook to `scripts/tests/conftest.py` that prepends
+  `sysconfig.get_path("scripts")` (the dir console scripts land in for the running
+  interpreter — `.venv/bin` in CI, the miniforge bin here) to `os.environ["PATH"]`.
+  After that, `shutil.which("ll-fake-host") is None` means a broken editable
+  install; the tests fail with "run `pip install -e ./scripts[dev]`". The
+  CLAUDE.md skip-gracefully rule is for *external* toolchains; the fake is our own
+  package. `subprocess.Popen` resolves a bare `binary` via the PATH in the `env=`
+  it is given, and `project_child_env()` inherits from `os.environ`
+  (`host_runner.py:2109-2122`), so the prepend reaches the spawn.
 - **Never use `sys.executable` (or any interpreter) as `binary`.** Its basename
   would join `HOST_BINARY_NAMES` (`host_runner.py:2028-2030`) and the live-spawn
   guard would then fail every Python subprocess in the suite.
@@ -118,9 +136,11 @@ anything else (including non-JSON lines) as raw stdout. FSM envelope constants
 are **not** wire events; they are produced by the FSM after the stream is consumed
 and must not appear in the grammar.
 
-One directive per line; blank lines and `#` comments skipped; the script block is
-delimited so a real prompt can precede it (e.g. lines between `@@fake` and `@@end`,
-or every line starting with `@`). Malformed directives **raise `ValueError` with the
+One directive per line; blank lines and `#` comments skipped. The script block is
+the lines between a `@@fake` line and a `@@end` line, so a real prompt can precede
+it; everything outside the fence is ignored. (Rejected: "every line starting with
+`@`" — prompts routinely contain `@path/to/file` mentions, which would parse as
+malformed directives.) Malformed directives **raise `ValueError` with the
 line number** at parse time (mirrors `fsm/policy_rules.py:125-127`), not silent
 skip — directive scripts are test-owned, and a silently dropped directive is a
 passing test that asserts nothing.
@@ -128,25 +148,47 @@ passing test that asserts nothing.
 | Directive | Emits / does | Consumer branch exercised |
 |---|---|---|
 | `init [model=<m>] [session=<id>]` | `{"type":"system","subtype":"init","model":…,"session_id":…}` | `:636-643` (`on_model_detected`, `on_session_id_detected`) |
-| `text <str>` | `{"type":"assistant","message":{"content":[{"type":"text","text":…}]}}` | `:644-664` (`stdout_lines`, `stream_callback`) |
+| `text <str>` | `{"type":"assistant","message":{"content":[{"type":"text","text":…}]}}`; `\n` in `<str>` is unescaped to a newline (the consumer splits text on lines at `:660`, so one directive can yield several `stdout_lines`) | `:644-664` (`stdout_lines`, `stream_callback`) |
 | `tool <name> [json-input]` | `assistant` event with a `tool_use` block | `:651-660` (`on_tool_call`) |
-| `result [error=<msg>] [in=<n> out=<n> cache=<n>]` | `{"type":"result","is_error":bool,"usage":{…}}` | `:665-697` (`on_usage*`, `result_seen`) |
-| `turn_completed [in=<n> out=<n> cached=<n>]` | `{"type":"turn.completed","usage":{…}}` (Codex terminal) | `:698-714` |
-| `raw <str>` | non-JSON stdout line | `:720-726` (`except (json.JSONDecodeError, KeyError, TypeError): pass` fallthrough to the plain-append path) |
+| `result [error=<msg>] [in=<n> out=<n> cache=<n>] [structured=<json>]` | `{"type":"result","subtype":"success","is_error":bool,"result":<msg or "ok">,"usage":{…}}`; `error=` sets the `error` key and `is_error:true`; `structured=` adds a `structured_output` dict — the field `run_blocking_json` reads (`host_runner.py:2530-2565`) | `:665-697` (`on_usage*`, `result_seen`) |
+| `turn_completed [in=<n> out=<n> cached=<n>]` | `{"type":"turn.completed","usage":{…}}` (Codex terminal) | `:698-717` — note this branch does **not** set `result_seen`; the consumer drains to EOF, so the script must `exit` |
+| `raw <str>` | stdout line written verbatim; means **non-JSON**. Valid JSON with an unrecognized `type` hits `else: continue` (`:718-719`) and is dropped, not passed through | `:720-726` (`except (json.JSONDecodeError, KeyError, TypeError): pass` fallthrough to the plain-append path) |
 | `stderr <str>` | line on stderr | `stderr_lines` |
 | `sleep <seconds>` | wall-clock pause before the next directive | idle-timeout (`:603`), `request_shutdown` poll (`sel.select(timeout=1.0)`) |
 | `exit <code>` | flush and exit with code; must be last if present | `process.returncode` (`:766`), rate-limit detection (needs nonzero exit + 429 text) |
-| `hang` | never emit a terminal; block until killed | `_kill_process_group` after `post_stream_close_grace_seconds` |
+| `hang` | stop emitting and block (`signal.pause()` loop) until killed; must be last if present | with no terminal before it: wall-clock timeout (`:592`) or idle timeout (`:603`). **After** a terminal: the post-stream-close grace kill (`:743-751`) — see discipline below |
 
 **Terminal-event discipline is enforced in the executable, not the runner:** at
-most one of `result`/`turn_completed`; nothing but `exit` may follow it. A script
-that violates this fails at parse time. A script with no terminal directive models a
-host that crashed or hung (paired with `exit <nonzero>` or `hang`).
+most one of `result`/`turn_completed`; nothing but `exit` or `hang` may follow it.
+A script that violates this fails at parse time. A script with no terminal directive
+models a host that crashed or hung (paired with `exit <nonzero>` or `hang`).
+
+**`hang` after a terminal is how the grace-kill path is reached.** The
+`post_stream_close_grace_seconds` wait (`subprocess_utils.py:743-751`) is entered
+only after `result_seen` breaks the loop (`:734`) or the pipes hit EOF; a bare
+`hang` never gets there — it sits in `sel.select` until the wall-clock or idle
+timeout fires. `result` then `hang` models a host that reported its turn and then
+lingered with the pipes open (the BUG-2718 background-task shape), which is what the
+grace kill exists for. Tests pass a small `post_stream_close_grace_seconds` (the
+default is 300).
+
+**Flush after every line.** `emit` writes each stdout/stderr line with
+`flush=True`. With a pipe on stdout, Python block-buffers by default: `text` before
+`sleep` would never reach the consumer until exit, the idle-timeout scenario would
+observe no output before the kill, and SIGKILL on `hang` would discard everything
+still buffered.
+
+**stdout and stderr are separate pipes.** The consumer's `sel.select` sees them in
+arrival order, which is not deterministic across two pipes. Tests assert `stderr`
+*content*, never its position relative to stdout lines.
 
 **Abort semantics.** There is no abort event on the wire. "Abort mid-turn" is one
 of: (a) the test calls `request_shutdown()` (`subprocess_utils.py:323-335`) while the
 fake is inside a `sleep`, and asserts `TimeoutExpired(output="interrupted")` plus
-process-group kill; (b) `exit <nonzero>` before any terminal (host died);
+process-group kill — fire it from the `stream_callback` on the first `text` line, not
+from a timer thread: the loop checks `_shutdown_event` at the top of every iteration
+(`:581`), so a callback-triggered shutdown is deterministic and needs no sleeps in
+the test; (b) `exit <nonzero>` before any terminal (host died);
 (c) `result error=…` (host reported failure, terminal still last).
 "Recovery after failed start" is `stderr <msg>` + `exit 1` with no `init`.
 
@@ -166,9 +208,29 @@ branch needs it.
   `False`. No new capability type — `HostCapabilities` is already a frozen dataclass.
 - `build_streaming` accepts the full Protocol kwarg set explicitly (not `**_`), calls
   `_apply_automation_env` (`host_runner.py:2203-2220`) like every real runner, and
-  forwards `prompt` verbatim so the directives reach the executable.
-- `build_blocking_json` returns an invocation whose executable prints the scripted
-  JSON blob (a `text` directive's payload) so `run_blocking_json` is also testable.
+  forwards `prompt` verbatim so the directives reach the executable. **The prompt is
+  the last element of `args` on every `build_*` method** — `main()` reads
+  `argv[-1]`, so no flag may follow it.
+- `build_blocking_json` returns the same shape of invocation; the executable has no
+  blocking mode. `run_blocking_json` (`host_runner.py:2434-2578`) parses the last
+  non-blank stdout line as the envelope and reads `structured_output`, then
+  `result`, so a script ending in `result structured={"verdict":"pass"}` (or
+  `result` alone, whose default `"result":"ok"` string falls to the `json.loads` /
+  tag-fallback path) exercises it end-to-end. The no-script default emission
+  (`init`, `text`, `result`) also parses, so a plain prompt through
+  `run_blocking_json` does not raise. `structured_output=False` is the default
+  profile, so `_structured_output_args` appends nothing; a test that overrides
+  `structured_output=True` asserts the `--json-schema` flag lands in argv (argv
+  fact only — the executable ignores it).
+- **Capability overrides reach `build_*` only through direct construction.**
+  `resolve_host()` instantiates `runner_cls()` with no arguments
+  (`host_runner.py:2323, :2334`), so `run_claude_command` (which calls
+  `resolve_host()` itself, `subprocess_utils.py:516`) always gets the default
+  profile. The executable never sees capabilities either — what it emits is decided
+  by the script alone. Consequence: capability flags are testable as **argv facts**
+  on a directly-built invocation, never as stream facts through the executor. No
+  env-var side channel for capabilities (rejected: it would be a second way to
+  configure the fake, and nothing in the executor reads a flag).
 - `describe_capabilities()` returns `CapabilityReport(host="fake", binary="ll-fake-host", …)`.
 - Deterministic, model-free, runs in the default suite with no env gate.
 
@@ -187,13 +249,21 @@ in under ten seconds, no model, in the default suite.
   `_PROBE_ORDER`, and `isinstance(FakeHostRunner(), HostRunner)` holds.
 - `ll-fake-host` is a console script in `scripts/pyproject.toml`; running it with a
   prompt containing a script block emits exactly the scripted stream-JSON and exit
-  code; a prompt with no script block emits `init`, one `text`, `result`, exit 0.
+  code; a prompt with no script block emits `init` (with `model` and `session_id`),
+  one `text`, `result` (with `usage` and a `result` string), exit 0 — every default
+  event carries the fields that fire a consumer callback.
+- `scripts/tests/conftest.py` prepends `sysconfig.get_path("scripts")` to PATH at
+  session start; no test skips on a missing `ll-fake-host` — the smoke test fails
+  with an install-hint message instead.
 - Every directive in the table above is implemented; the parser rejects unknown
-  directives and terminal-discipline violations with `ValueError` naming the line.
-- `run_claude_command` (unpatched, real Popen) driven against the fake produces the
-  expected `CompletedProcess` for: ordered happy path; `result error=`; exit-nonzero
-  before terminal; `stderr`+`exit 1` failed start; idle timeout via `sleep`;
-  `request_shutdown()` during `sleep`; `hang` + grace-period kill.
+  directives and terminal-discipline violations with `ValueError` naming the line;
+  `hang` is accepted after a terminal; every emitted line is flushed.
+- `run_claude_command` (unpatched, real Popen) driven against the fake's default
+  emission produces the expected `CompletedProcess` (exit 0, `stdout` = the text
+  line, `on_model_detected` / `on_session_id_detected` / `on_usage_detailed` /
+  `on_result_seen(True)` all fired). This single end-to-end case proves the seam;
+  **the failure, timeout, abort and grace-kill scenarios are owned by FEAT-3455's
+  Tier 2**, not duplicated here.
 - The live-spawn guard carve-out is derived from `TEST_ONLY_BINARIES` (no
   `"ll-fake-host"` literal in conftest) and is regression-tested in
   `test_conftest_cap.py::TestNoLiveHostCLIGuard`.
@@ -202,9 +272,11 @@ in under ten seconds, no model, in the default suite.
   `_PROBE_ORDER` keys (tested); `HOST_BINARY_NAMES - TEST_ONLY_BINARIES` equals the
   eight real basenames (tested, count-free test name).
 - Per-test capability override propagates to `invocation.capabilities` on all five
-  `build_*` methods.
-- Behavioral tests live under the unit suite (no `conformance` marker required for
-  the fake-only tests; FEAT-3455 owns the conformance-suite integration).
+  `build_*` methods (direct construction only; see Expected Behavior).
+- The prompt is `args[-1]` on all five `build_*` methods (tested).
+- Parser, executable smoke, and the single end-to-end case live under the unit
+  suite with no `conformance` marker; FEAT-3455 owns the scenario matrix and the
+  conformance-suite integration.
 - All drift gates tripped by the ninth registry entry are updated (see Wiring).
 
 ## Behavior Parity
@@ -227,6 +299,7 @@ in under ten seconds, no model, in the default suite.
 - `scripts/little_loops/host_runner.py` — add `FakeHostRunner`; registry entry; `TEST_ONLY_HOSTS` / `TEST_ONLY_BINARIES` constants (Design Decision above); `_remediation_hint()` (`:2283-2289`) replaces the static eight-host literal with `sorted(set(_HOST_RUNNER_REGISTRY) - TEST_ONLY_HOSTS)` — users should not be told to set `LL_HOST_CLI=fake` (ENH-3460 needs nothing here for the second fake).
 - `scripts/pyproject.toml` `[project.scripts]` (`:74+`) — `ll-fake-host = "little_loops.fake_host:main"`.
 - `scripts/tests/conftest.py:_match_host_binary` (`:237-255`) — carve-out `if binary in TEST_ONLY_BINARIES: return None`, imported from `host_runner` next to the existing `HOST_BINARY_NAMES` import.
+- `scripts/tests/conftest.py` — `pytest_sessionstart` hook prepending `sysconfig.get_path("scripts")` to `os.environ["PATH"]` (idempotent; no-op if already first). Under xdist each worker runs its own sessionstart, so the prepend lands in every worker process.
 - `scripts/little_loops/__init__.py` — re-export `FakeHostRunner`, `TEST_ONLY_HOSTS`, `TEST_ONLY_BINARIES` alongside `HostInvocation` (`:33, :38, :100`).
 
 ### Dependent Files (Callers/Importers)
@@ -239,7 +312,7 @@ in under ten seconds, no model, in the default suite.
 - `scripts/tests/test_host_runner.py:2359-2371` `test_has_all_eight_known_binaries` — rename to the count-free `test_real_binaries_are_the_eight_known_hosts` asserting `HOST_BINARY_NAMES - TEST_ONLY_BINARIES == {…eight…}`, plus a sibling `test_test_only_binaries_are_registered` asserting `TEST_ONLY_BINARIES <= HOST_BINARY_NAMES`. Number-in-name tests break on every fake; the subtraction does not. The registry-derived companion at `:2348-2357` is invariant.
 - `scripts/tests/test_host_runner.py:1073-1078` (OpenCode not-probed precedent) — add `test_test_only_hosts_are_never_probed`: `TEST_ONLY_HOSTS.isdisjoint(k for k, _ in _PROBE_ORDER)`.
 - `scripts/tests/test_wiring_guides_and_meta.py:381-392` `test_host_tier_table_matches_runner_registry` — add a `fake` row to `docs/reference/HOST_COMPATIBILITY.md` `## Host tiers` (`:16-31`) marked as a test fixture. The gate keeps strict equality; the doc row is where a maintainer looks. (Rejected: a test-side exclusion — it would hide the fake from the one table that lists every `LL_HOST_CLI` value the registry accepts.)
-- `scripts/tests/conformance/test_host_conformance.py:_HOST_BINARY` (`:52-61`) — add `"fake": "ll-fake-host"` so the PATH probe skips cleanly when the console script is missing (non-editable installs).
+- `scripts/tests/conformance/test_host_conformance.py:_HOST_BINARY` (`:52-61`) — add `"fake": "ll-fake-host"` so the constructability test's PATH probe has an entry for it; with the session-start PATH prepend the probe finds it and the test runs rather than skipping.
 - `scripts/tests/test_host_runner.py` cross-runner parametrize sites (`:85, :92, :285, :300, :363, :1949, :2216-2244`) — registry-derived sites auto-extend; explicit-list sites need the `("fake", FakeHostRunner)` row only where the fake's behavior is meant to match (automation env: yes; argv-shape checks: no).
 - `docs/reference/HOST_COMPATIBILITY.md:462-472, :491-507` — "eight concrete runners" prose and `[^orch]` footnote: keep "eight" for the real runners and add one sentence that registry keys in `TEST_ONLY_HOSTS` are test fixtures outside the tier semantics. Do not enumerate fakes by name here (ENH-3459 adds a second; the sentence must not need editing).
 - `docs/ARCHITECTURE.md:857-875` — Host Runner Layer table footnote.
@@ -257,7 +330,8 @@ in under ten seconds, no model, in the default suite.
 - Scripted-stream precedent on the consumer side: `test_subprocess_utils.py:2589-2720` (`_NeverEOFStdout`, `TestRunClaudeCommandResultBreak`); reuse its assertions (`read_past_result`, `"LEAKED"` sentinel) as the shape for the fake's terminal-discipline tests.
 
 ### Tests
-- `scripts/tests/test_fake_host.py` (new) — parser unit tests (each directive, comments, delimiter, `ValueError` cases, terminal discipline), executable smoke via `subprocess.run(["ll-fake-host", prompt])` (skip with reason if `shutil.which("ll-fake-host")` is None), and the seven `run_claude_command` scenarios in the AC.
+- `scripts/tests/test_fake_host.py` (new) — parser unit tests (each directive, comments, `@@fake`/`@@end` fence, `\n` unescape in `text`, `structured=` on `result`, `ValueError` cases, terminal discipline incl. `hang`-after-terminal accepted and `text`-after-terminal rejected), `emit` in-process tests with `io.StringIO` asserting a flush per line, executable smoke via `subprocess.run(["ll-fake-host", prompt])` (fails with an install hint if `shutil.which("ll-fake-host")` is None), and the single `run_claude_command` end-to-end case in the AC. The seven-scenario matrix is FEAT-3455's.
+- `scripts/tests/test_conftest_cap.py` — the session-start PATH prepend is covered by asserting `sysconfig.get_path("scripts")` is the first PATH entry once the session is up.
 - `scripts/tests/test_host_runner.py::TestFakeHostRunner` — per-runner class following `TestOpenCodeRunner` (`:1058-1106`): argv shape, `_apply_automation_env` called, capability override on all five `build_*`, Protocol check, not in `_PROBE_ORDER`.
 - `scripts/tests/test_conftest_cap.py::TestNoLiveHostCLIGuard` — four-shape carve-out tests.
 - `scripts/tests/conformance/test_host_conformance.py` — the existing constructability test auto-extends to `fake`; the behavioral tier is FEAT-3455's.
@@ -269,12 +343,13 @@ in under ten seconds, no model, in the default suite.
 
 ### Types
 - `Directive`: `(kind: str, args: dict[str, str], lineno: int)`.
-- `DirectivesScript`: `(directives: list[Directive], terminal_index: int | None, exit_code: int)`; construction validates terminal discipline.
+- `DirectivesScript`: `(directives: list[Directive], terminal_index: int | None, exit_code: int)`; construction validates terminal discipline (at most one terminal; only `exit`/`hang` after it; `exit`/`hang` last).
+- `DEFAULT_SCRIPT`: the no-fence emission — `init model=fake-model session=fake-session`, `text ok`, `result in=1 out=1` — every event carrying its callback-triggering fields.
 
 ### Signatures
-- `parse_directives(prompt: str) -> DirectivesScript` — raises `ValueError(f"line {n}: …")`.
-- `emit(script: DirectivesScript, *, stdout, stderr) -> int` — writes events, sleeps, returns exit code. Separated from `main()` so tests can drive it in-process with `io.StringIO`.
-- `main(argv: list[str] | None = None) -> int` — prompt is the last positional arg; ignores every other flag so any argv shape the runner emits is accepted.
+- `parse_directives(prompt: str) -> DirectivesScript` — raises `ValueError(f"line {n}: …")`; returns `DEFAULT_SCRIPT` when no `@@fake` fence is present.
+- `emit(script: DirectivesScript, *, stdout, stderr) -> int` — writes events with `flush=True` per line, sleeps, blocks on `hang`, returns exit code. Separated from `main()` so tests can drive it in-process with `io.StringIO`.
+- `main(argv: list[str] | None = None) -> int` — prompt is `argv[-1]`; ignores every other flag so any argv shape the runner emits is accepted, provided the runner keeps the prompt last.
 - `FakeHostRunner(capabilities: HostCapabilities | None = None)`; `name = "fake"`; five `build_*` methods; `describe_capabilities()`.
 
 ### Call Path
@@ -285,8 +360,8 @@ in under ten seconds, no model, in the default suite.
 1. `fake_host.py`: `Directive`, `DirectivesScript`, `parse_directives`, `emit`, `main`; parser tests first (TDD).
 2. Console script entry in `scripts/pyproject.toml`; reinstall editable; smoke test.
 3. `FakeHostRunner` in `host_runner.py` with capability override and `_apply_automation_env`; registry entry; `TEST_ONLY_HOSTS` / `TEST_ONLY_BINARIES` constants + `__all__` / package re-export; `_remediation_hint()` derived from the registry minus `TEST_ONLY_HOSTS`.
-4. Live-spawn guard carve-out derived from `TEST_ONLY_BINARIES` + four-shape regression tests; not-probed disjointness test.
-5. Drive `run_claude_command` unpatched against the fake for the seven AC scenarios.
+4. Live-spawn guard carve-out derived from `TEST_ONLY_BINARIES` + four-shape regression tests; not-probed disjointness test; `pytest_sessionstart` PATH prepend.
+5. Drive `run_claude_command` unpatched against the fake's default emission (the one end-to-end case); confirm `run_blocking_json` parses a `result structured=…` script.
 6. Drift-gate sync: count-free binary tests, tier table row, `_HOST_BINARY`, cross-runner parametrize rows, docs (prose refers to `TEST_ONLY_HOSTS`, never enumerates fakes).
 7. `ll-verify-host-map`, `python -m pytest scripts/tests/`, mypy, ruff all clean.
 
@@ -390,6 +465,7 @@ was wrong and fixed, not an outstanding action item).
   is net-new, unimplemented work.
 
 ## Session Log
+- Manual pre-implementation review - 2026-09-12 - PATH prepend + fail-not-skip (CI conformance job never had `.venv/bin` on PATH); `hang` re-modeled (grace kill needs `result` + `hang`); `@@fake`/`@@end` fence decided (`@`-prefix collides with file mentions); `result structured=` for `run_blocking_json`; flush-per-line; stderr-interleaving caveat; `request_shutdown` from `stream_callback`; prompt-last contract; capability override is direct-construction-only; seven-scenario matrix moved to FEAT-3455 (was duplicated)
 - `/ll:verify-issues` - 2026-09-12T17:14:12 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:12:07 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:verify-issues` - 2026-09-12T17:03:59 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
