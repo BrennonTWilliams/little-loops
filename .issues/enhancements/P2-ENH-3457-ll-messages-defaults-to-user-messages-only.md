@@ -135,11 +135,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation (additions)
 
 - `docs/reference/CLI.md:3663` — `### ll-messages` section heading (existing).
+- `docs/reference/CLI.md:3679-3680` — **missed by prior passes (found by `/ll:verify-issues`):** the "Key flags reference" table row `| `--skip-cli` | | Exclude CLI commands from output |` becomes stale after the flip (nothing is "included by default" to exclude anymore) and there is no `--include-cli` row. Add an `--include-cli` row and reword the `--skip-cli` row to note it is a deprecated no-op.
 - `docs/reference/CLI.md:3690-3705` — example block (update: replace `--skip-cli` example with `--include-cli`; add `ll-messages --include-cli` example; update the description above the block to state "defaults to user messages only").
 - `docs/reference/API.md:4892` — `main_messages` entry-point quote (sourced from `scripts/little_loops/cli/messages.py:14-21`); docstring update propagates here.
 - `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:413` — section heading `"Filter messages by type (--skip-cli / --commands-only)"`; reword to reflect new default (e.g. "Filter messages by type (--include-cli / --commands-only)").
 - `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:419` and `:423` — flag examples; the `--skip-cli` line becomes the default and should be reworded; add `--include-cli` line.
 - `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:85-100` — `## Prerequisites: Extracting Messages (ll-messages)` block; bare `ll-messages` example now emits user-only (matches the narrative); no prose change strictly required, but consider adding a one-line note.
+- `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:117-118` — **missed by prior passes (found by `/ll:verify-issues`):** same "Key flags reference" table gap as `docs/reference/CLI.md:3679-3680` — the `--skip-cli` row ("Exclude CLI commands from output (included by default)") goes stale after the flip and there is no `--include-cli` row. Add one and reword the `--skip-cli` row.
 
 ### Behavior Parity
 
@@ -269,12 +271,27 @@ This is a breaking change for anyone scripting against the current default. Miti
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+Checked:
+- All spot-checked `file:line` citations verified exact against current code/docs: `scripts/little_loops/cli/messages.py` (epilog line 47, `--skip-cli`/`--commands-only` args at 109-118, guards at 200/209), `scripts/little_loops/user_messages.py` (`extract_user_messages` at 717-743, `extract_commands` at 889-911, `_CODEX_EXCLUDED_USER_TEXT_PREFIXES` at 697), `scripts/tests/test_cli_messages.py` (`TestMessagesCommandsOnly` at 118, `TestMessagesSkipCli` at 172, including its two test bodies), `agents/workflow-pattern-analyzer.md:76-95`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:413/419/423`, `docs/reference/CLI.md:3663`, `docs/reference/API.md:4892`, `scripts/little_loops/workflow_sequence/__init__.py:92/171/211`.
+- `ll-verify-evidence --json`: clean, 0 findings.
+- `ll-issues decisions list --type rule --enforcement required --active-only`: no entries — no `DECISIONS_VIOLATION` possible.
+- No `## Blocked By` / `## Blocks` sections exist on this issue — dependency check N/A.
+- Regression check: N/A — net-new enhancement, no completed issue matches this scope.
+- Graph tools (`ll-code --json status`: provider=codegraph, freshness=fresh) were not needed — all citations resolved directly via Read/Grep.
+
+Found and fixed (Proposal-vs-code consequence check, B6 — Integration Map completeness): the issue's Documentation section covered the `ll-messages` example blocks in `docs/reference/CLI.md` and `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` but missed the "Key flags reference" tables in both files (`docs/reference/CLI.md:3679-3680` and `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:117-118`), each of which has a `--skip-cli` row reading "Exclude CLI commands from output (included by default)" and no `--include-cli` row. Implementing the proposal as originally written would have left both tables describing the old default. Added both citations to the `### Documentation (additions)` section above.
+
 ## Status
 
 **Open** | Created: 2026-09-12 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-12T17:21:05 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:confidence-check` - 2026-09-12T05:45:02 - `09c7a8e4-700a-4350-bc8d-28c537752571.jsonl`
 - `/ll:wire-issue` - 2026-09-12T05:40:55 - `3d61b218-f593-4f08-a0e1-ad219e9f3ed8.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-12T05:32:50 - `8cba1b7b-b038-42bd-b3ac-4fa2936a6614.jsonl`
