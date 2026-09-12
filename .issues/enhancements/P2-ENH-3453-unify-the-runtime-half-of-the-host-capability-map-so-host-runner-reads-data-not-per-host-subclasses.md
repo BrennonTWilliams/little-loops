@@ -172,6 +172,14 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 **Open** | Created: 2026-09-11 | Priority: P2
 
 
+## Related Key Documentation
+
+| Document | Relevance |
+|----------|-----------|
+| `docs/reference/API.md#little_loopshost_runner` | `HostCapabilities` dataclass + `HostRunner.describe_capabilities()` are the surfaces this issue collapses onto a data-driven lookup |
+| `docs/ARCHITECTURE.md` (host abstraction) | Describes `_HOST_RUNNER_REGISTRY`, `resolve_host()`, and the build-time/runtime capability-map split this issue unifies |
+| `.claude/CLAUDE.md` § Host CLI Abstraction | Mandates `resolve_host()` as the only entry point for new host call sites; the data-driven lookup extends that factory |
+
 ## Session Log
 - `/ll:refine-issue` - 2026-09-12T04:00:17 - `b183c7f4-04a5-40c0-a07a-17f902d66b2e.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:48:54 - `d9feb271-85a4-4dac-ac6d-ad5d11e623a8.jsonl`

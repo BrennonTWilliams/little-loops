@@ -155,6 +155,14 @@ One suite, parameterized by target — the shape that lets the fake and a real h
 - Pairs with coverage: this suite is about whether the covered cases actually run. Whether an uncovered case went unnoticed is the complementary concern, tracked separately.
 
 
+## Related Key Documentation
+
+| Document | Relevance |
+|----------|-----------|
+| `docs/reference/API.md#little_loopshost_runner` | `HostRunner` + `CapabilityReport` are the abstract surface the suite asserts against; per-target conformance is the consumer of `describe_capabilities()` |
+| `docs/ARCHITECTURE.md` (host abstraction + testing layers) | Describes the host seam this suite covers and the `pytest -m conformance` marker integration |
+| `.claude/CLAUDE.md` § Host CLI Abstraction | `resolve_host()` resolves a `HostRunner` whose behavior the suite parametrizes over `_HOST_RUNNER_REGISTRY` |
+
 ## Session Log
 - `/ll:refine-issue` - 2026-09-12T04:00:52 - `e6d1e59e-6622-4d79-806e-0adbe063751c.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:50:16 - `b5367032-da18-428d-be91-16777a0b7408.jsonl`

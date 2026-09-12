@@ -7,6 +7,8 @@ status: open
 discovered_date: '2026-09-11'
 labels: []
 unproven_mechanism: true
+spike_attempted: true
+spike_completed: true
 blocked_by:
   - FEAT-3454
   - FEAT-3455
@@ -140,5 +142,31 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 8. The composition test must produce divergent `HostCapabilities` profiles between the two fakes — different flag combinations on the six-field dataclass at `host_runner.py:288-313`. Same-shapes fakes do not satisfy the issue's premise. Verification: `assert FakeARunner().capabilities != FakeBRunner().capabilities`
 
 
+## Related Key Documentation
+
+| Document | Relevance |
+|----------|-----------|
+| `docs/reference/API.md#little_loopshost_runner` | `HostRunner` is a `@runtime_checkable` Protocol — the composition test asserts satisfaction structurally, not against concrete class names |
+| `docs/ARCHITECTURE.md` (host abstraction) | Captures the host-agnostic invariant: downstream code touches only the abstract interface, never concrete host class names |
+| `.claude/CLAUDE.md` § Host CLI Abstraction | Enforces the host-agnostic property at the call-site level via `resolve_host()` — the divergent-fakes composition test guards the same invariant at the registry level |
+
 ## Session Log
+- `/ll:spike` - 2026-09-12T04:42:54 - `2fe9d3e8-5ada-4b6e-ae89-95fe8d84fff1.jsonl`
 - `/ll:refine-issue` - 2026-09-12T03:58:11 - `e3bfc610-fb65-4e08-98ec-8d101d5a459d.jsonl`
+
+## Spike Results
+
+_Added by `/ll:spike` on 2026-09-11_
+
+**Retired risks**
+
+| Risk (from Outcome Risk Factors) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| (a) Zero precedent — composing two divergent fakes through one executor path to prove interface-only access | `TestCompositionThroughExecutor::test_compose_threads_both_fakes_through_same_executor` + `TestExecutorTouchesOnlyAbstractInterface::*` | ✓ pass |
+| (b) No existing test — asserts the host layer is genuinely shape-independent | `TestFakesAreDivergent::test_fakes_have_divergent_capabilities` + `test_fakes_have_divergent_action_vocabulary` | ✓ pass |
+| Load-bearing regression guard — concrete-class drift caught by composition assertion | `TestRegressionGuard::test_bad_concrete_class_runner_breaks_composition` | ✓ pass |
+| Isolation guard — spike does not depend on production executor | `TestSpikeIsolation::test_spike_does_not_import_subprocess_utils_run_claude_command` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/host_compose/`
+**Verification**: 16 spike tests pass + 281 host_runner unit tests pass + 20 conformance tests pass across 3 commands.
+**Promotion**: move to `scripts/little_loops/spike/host_compose/` in a separate PR; the composition assertion is wired into FEAT-3455's conformance rewrite as the two-divergent-fake composition test the issue Design section calls for.

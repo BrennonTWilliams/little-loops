@@ -148,6 +148,14 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 **Open** | Created: 2026-09-11 | Priority: P2
 
 
+## Related Key Documentation
+
+| Document | Relevance |
+|----------|-----------|
+| `docs/reference/API.md#little_loopshost_runner` | `HostRunner` protocol surface the fake must satisfy: `detect`, `build_streaming`, `build_blocking_json`, `build_version_check`, `build_detached`, `describe_capabilities` |
+| `docs/ARCHITECTURE.md` (host abstraction) | Defines `_HOST_RUNNER_REGISTRY` membership and the test-double seam the fake registers into |
+| `.claude/CLAUDE.md` § Host CLI Abstraction | `resolve_host()` is the only entry point for new host call sites; the fake registers here so `resolve_host("fake")` works |
+
 ## Session Log
 - `/ll:refine-issue` - 2026-09-12T04:06:04 - `b7b7f9e7-8f55-4db9-84ab-f495556f1242.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:49:49 - `8c6cc97d-774e-45fd-be34-14d7ed48d65c.jsonl`
