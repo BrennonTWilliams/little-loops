@@ -4,9 +4,16 @@ type: ENH
 title: ll-messages defaults to user messages only
 priority: P2
 status: open
+verify_verdict: VALID
 discovered_by: ll-issues-create
 discovered_date: '2026-09-12'
 captured_at: '2026-09-12T03:43:46Z'
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 19
 ---
 
 # ENH-3457: ll-messages defaults to user messages only
@@ -49,22 +56,38 @@ Flip the default of `--skip-cli` from `False` to `True` and introduce a new `--i
 - Any project-local script or test that invokes `main_messages()` and asserts on the default output stream — search with `grep -rn "main_messages\|ll-messages" scripts/`.
 - Any consumer that shells out to `ll-messages` without flags and relies on the merged stream — N/A inside this repo but documented as a breaking change.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py:77, :138` — re-exports `main_messages` and lists in `__all__`; signature unchanged, no edit required [Agent 1 finding].
+- `scripts/little_loops/init/writers.py:157, :223, :283` — `ll-init` writes `Bash(ll-messages:*)` allowlist + tool-catalog descriptions ("Extract user messages from Claude Code logs") into settings.json/CLAUDE.md/AGENTS.md/GEMINI.md; descriptions already match new default [Agent 1 finding].
+- `scripts/little_loops/workflow_sequence/__init__.py:92, :171, :211` — docstring/help/logger references to `ll-messages`; describes the default extraction path, consistent with new default [Agent 1 finding].
+- `scripts/little_loops/sft_formatter.py:1` — module docstring `"""SFT training format converters for ll-messages --sft-format output."""`; unaffected by flag flip [Agent 1 finding].
+
 ### Similar Patterns
 - No existing CLI in `scripts/little_loops/cli/` flips a default flag with an `--include-*` mirror; the `--commands-only` / `--skip-cli` pair is the closest analog (mutually exclusive modes selected by flag).
 
 ### Tests
 - `scripts/tests/` — adjust any test that asserts the default output includes CLI commands. Likely candidates under `scripts/tests/test_messages*.py` or `scripts/tests/cli/test_messages*.py` (verify via `grep -rln "skip_cli\|include_cli\|commands_only" scripts/tests/`).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_messages_save.py:11` — `from little_loops.cli.messages import _save_combined`; confirmed invariant to the flag flip (pure unit test of the helper, no argparse coupling) [Agent 3 finding].
+- `scripts/tests/test_init_core.py:1838, :1997` — `for tool in ("ll-auto", "ll-loop", "ll-issues", "ll-logs", "ll-messages"):` asserts `ll-messages` string appears in CLAUDE.md/GEMINI.md install lines; tool name unchanged, unaffected [Agent 1 finding].
+
 ### Documentation
 - `docs/reference/CLI.md` — `ll-messages` reference section.
 - `docs/reference/API.md` — cross-references on `extract_user_messages` / `extract_commands`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md:3212, :3578` — `ll_messages` fragment table row quotes `ll-messages --stdout` verbatim; narrative ("Extract user messages from session logs") already consistent with new default [Agent 2 finding].
+- `docs/reference/loops.md:427, :476, :491` — sft-corpus state graph + artifacts table + CLI tool callout referencing `ll-messages --sft-format` and `--reader db`; unaffected (the `--sft-format` branch at `messages.py:252-275` calls `extract_conversation_turns` and never reads `commands`) [Agent 2 finding].
+- `docs/reference/COMMANDS.md:738-741` — `loop-suggester` Arguments block: "Path to ll-messages JSONL file (runs extraction if omitted)"; the run-on-omission now emits user-only, consistent with the new default [Agent 2 finding].
+- `docs/reference/CLI.md:3513-3537` — workflow-sequence analyzer section referencing `ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl`; path-default behavior consistent with new default [Agent 2 finding].
+- `docs/reference/API.md:8968, :12050` — module-level doc paragraphs referencing `ll-messages --sft-format`; unaffected [Agent 2 finding].
+- `docs/development/USER_GUIDE_AUDIT_REPORT.md:51, :117, :129, :171, :207` — historical audit-report rows enumerating `ll-messages` flag coverage against `--help` output; flag-parity check must be re-run after flip. Advisory only — these are historical audit snapshots, not live docs [Agent 2 finding].
 
 ### Configuration
 - N/A
 
 ### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 ### Files to Modify (additions)
 
@@ -182,8 +205,6 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
-
 ### Signatures (concrete anchors from analyzer)
 
 - `main_messages() -> int` — `scripts/little_loops/cli/messages.py:14`. Entry point. Three args change: `skip_cli` default flips from `False` to `True`; new `include_cli` (default `False`); `commands_only` unchanged.
@@ -254,6 +275,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-12T05:45:02 - `09c7a8e4-700a-4350-bc8d-28c537752571.jsonl`
+- `/ll:wire-issue` - 2026-09-12T05:40:55 - `3d61b218-f593-4f08-a0e1-ad219e9f3ed8.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-12T05:32:50 - `8cba1b7b-b038-42bd-b3ac-4fa2936a6614.jsonl`
 - `/ll:format-issue` - 2026-09-12T03:46:55 - `d4cc78b3-7b01-4dfe-9c49-d8730730c0cd.jsonl`
 - `/ll:capture-issue` - 2026-09-12T03:43:54 - `9c967725-d34b-4768-bd95-ced00b928d94.jsonl`
