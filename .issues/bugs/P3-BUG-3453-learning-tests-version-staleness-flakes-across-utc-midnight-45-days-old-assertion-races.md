@@ -1,5 +1,5 @@
 ---
-id: BUG-3451
+id: BUG-3453
 type: BUG
 title: "learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days flip to '46 days old' when pytest execution spans UTC midnight"
 priority: P3
@@ -14,7 +14,7 @@ labels:
 - learning-tests
 ---
 
-# BUG-3451: learning-tests version staleness flakes across UTC midnight (45-days-old assertion races)
+# BUG-3453: learning-tests version staleness flakes across UTC midnight (45-days-old assertion races)
 
 ## Summary
 
@@ -89,7 +89,7 @@ Either shape is <30 lines. Both keep `gate.py` semantically identical for produc
 - `test_age_stale_names_the_age` passes regardless of pytest session start time.
 - `test_age_stale_still_names_days` passes regardless of pytest session start time.
 - `gate.py` continues to use live `datetime.date.today()` in production paths (no behavioral change for non-test callers).
-- CI dispatch crossing UTC midnight no longer surfaces BUG-3451.
+- CI dispatch crossing UTC midnight no longer surfaces BUG-3453.
 - No new test flake introduced for the non-staleness tests in this file (the 40 other tests must remain green).
 
 ## Workarounds
@@ -98,6 +98,6 @@ Until the fix lands, CI dispatch can avoid the race by not crossing `00:00:00Z`.
 
 ## Notes
 
-BUG-3451 is unrelated to PR #24 (CI-red + BUG-3439) and PR #26 (BUG-3449 finalize done-in-place). It is also unrelated to BUG-3450 (PATH-scrubbed `ll-issues` shellout — same root defect as BUG-3449, collapsed). Filing as a separate card so the fix has its own workstream and review trail.
+BUG-3453 is unrelated to PR #24 (CI-red + BUG-3439) and PR #26 (BUG-3449 finalize done-in-place). It is also unrelated to BUG-3450 (PATH-scrubbed `ll-issues` shellout — same root defect as BUG-3449, collapsed). Filing as a separate card so the fix has its own workstream and review trail.
 
 Discovery: CI dispatch `34660035171` failed at `2026-09-12T00:00:08Z` (one minute after UTC midnight), which is the empirical confirmation that the race is real and timing-bound.
