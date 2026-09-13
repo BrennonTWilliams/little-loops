@@ -55,6 +55,7 @@ __all__ = [
     "ClaudeCodeRunner",
     "CodexRunner",
     "FakeHostRunner",
+    "FakeMinimalHostRunner",
     "GeminiRunner",
     "HostCapabilities",
     "HostInvocation",
@@ -2135,11 +2136,86 @@ class FakeHostRunner:
         return CapabilityReport(host=self.name, binary="ll-fake-host", version="", capabilities=[])
 
 
+class FakeMinimalHostRunner:
+    """Second test-only ``HostRunner`` (ENH-3459), deliberately divergent from ``FakeHostRunner``.
+
+    Shares ``FakeHostRunner``'s binary (``ll-fake-host``) but disagrees on
+    every other shape: argv is a subcommand-style ``["run", prompt]`` (not
+    bare ``[prompt]``), ``env`` is always empty (no
+    ``_apply_automation_env``), and the default capability profile is all
+    six flags ``False`` (``FakeHostRunner``'s default is
+    ``streaming=True``). The composition test suite
+    (``test_host_composition.py``) drives both fakes through the unpatched
+    production executor against the same directive script and asserts
+    identical observations — proving the executor reads only the abstract
+    ``HostRunner``/``HostInvocation`` surface, not either fake's shape.
+    """
+
+    name = "fake-minimal"
+
+    def __init__(self, capabilities: HostCapabilities | None = None) -> None:
+        self.capabilities = capabilities if capabilities is not None else HostCapabilities()
+
+    def detect(self) -> bool:
+        return False
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+        model: str | None = None,
+        automation: AutomationContext | None = None,
+        automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
+        workspace_root: Path | None = None,
+    ) -> HostInvocation:
+        return HostInvocation(
+            binary="ll-fake-host",
+            args=["run", prompt],
+            capabilities=self.capabilities,
+        )
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict | None = None,
+    ) -> HostInvocation:
+        _ = json_schema
+        return HostInvocation(
+            binary="ll-fake-host",
+            args=["run", prompt],
+            capabilities=self.capabilities,
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        return HostInvocation(
+            binary="ll-fake-host",
+            args=["--version"],
+            capabilities=self.capabilities,
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        return HostInvocation(
+            binary="ll-fake-host",
+            args=["run", prompt],
+            capabilities=self.capabilities,
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(host=self.name, binary="ll-fake-host", version="", capabilities=[])
+
+
 # Registry keys that exist for the test suite, not for users. Every drift
 # gate that counts or enumerates "real" hosts subtracts this set; the
 # live-spawn guard carves out its binaries. Grows by one key per fake
 # (ENH-3459 adds the second); nothing else about the gates changes.
-TEST_ONLY_HOSTS: frozenset[str] = frozenset({"fake"})
+TEST_ONLY_HOSTS: frozenset[str] = frozenset({"fake", "fake-minimal"})
 
 
 # Built-in host runners keyed by their ``name`` attribute. Extensions may
@@ -2155,6 +2231,7 @@ _HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]] = {
     "kimi-code": KimiRunner,
     "qwen": QwenRunner,
     "fake": FakeHostRunner,
+    "fake-minimal": FakeMinimalHostRunner,
 }
 
 # Order of probing when no explicit host is configured. Matches the binary

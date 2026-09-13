@@ -4,8 +4,9 @@ title: Second divergent fake host + composition test suite (TestCompositionThrou
   TestExecutorTouchesOnlyAbstractInterface, TestRegressionGuard)
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-09-12'
+completed_at: '2026-09-13T01:11:23Z'
 labels: []
 parent: ENH-3456
 unproven_mechanism: true
@@ -44,7 +45,7 @@ A single fake proves the code runs; it cannot prove the code is agnostic, becaus
 that one fake's shapes may be silently baked into the surface under test. The
 assertion only becomes real with a second fake whose shapes disagree with the first.
 
-## Why now
+## Motivation
 
 Timing-sensitive. Cheap while FEAT-3454's fake is fresh and FEAT-3455's helpers are
 new; progressively more expensive once code accretes around a single fake's
@@ -655,6 +656,8 @@ _Added by `/ll:confidence-check` on 2026-09-12_
   `test_golden_path_behavior` gates) are fixed in the body above.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-13T01:11:00 - `98edf002-d8d6-491f-996f-a0111b8d69a4.jsonl`
+- `/ll:ready-issue` - 2026-09-13T00:43:32 - `b0627200-87e8-4d42-ad64-b55366e43354.jsonl`
 - `/ll:confidence-check` - 2026-09-13T00:34:22 - `ec90e32a-d7ad-440e-ac66-e1be170b3088.jsonl`
 - Manual review - 2026-09-12 (third pass, post FEAT-3454/3455 landing) - argv divergence redefined as `[prompt]` vs `["run", prompt]` (landed `FakeHostRunner` already emits bare `[prompt]`); AST checker unit extended to local `resolve_host*()` / `.build_*()` bindings so `run_claude_command` is covered (prototype showed a params-only checker finds zero functions in `subprocess_utils.py`) and annotation matching walks unions; `_STREAM_SHAPE` row + `TEST_ONLY_HOSTS`-keyed `test_golden_path_behavior` skip added to scope; `describe_capabilities` mirrors landed shape; spike-plan footer must supersede its `## Promotion` section; body anchors re-verified; stale blocked/verification/confidence notes pruned; `blocked_by` cleared
 - `/ll:refine-issue` - 2026-09-12T23:38:59 - `5aa15495-6226-4aaa-8c88-253c64012dde.jsonl`
@@ -665,3 +668,30 @@ _Added by `/ll:confidence-check` on 2026-09-12_
 - `/ll:verify-issues` - 2026-09-12T17:05:34 - `1e2ab216-51bc-448b-8f81-d875cf66efd8.jsonl`
 - `/ll:issue-size-review` - 2026-09-12T06:09:06 - `a6c3ba7b-8baf-4ae7-b742-fb9d4cbad25c.jsonl`
 - Manual review rewrite - 2026-09-12 - resolved six decisions (real-executable second fake sharing `ll-fake-host`, explicit kwargs, class in `host_runner.py`, AST-based interface check with pinned carve-out, port-not-move, gated doc row owned here); took the gated drift items back from ENH-3460
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/host_runner.py`: added `FakeMinimalHostRunner` (registered as `"fake-minimal"`, added to `TEST_ONLY_HOSTS` and `_HOST_RUNNER_REGISTRY`, exported from `__all__`)
+- `scripts/little_loops/__init__.py`: re-exported `FakeMinimalHostRunner`
+- `scripts/tests/test_host_runner.py`: added `TestFakeMinimalHostRunner` (Protocol satisfaction, argv/env/capability divergence, registry/probe-gating checks)
+- `scripts/tests/conformance/test_host_composition.py` (new): `TestFakesAreDivergent`, `TestCompositionThroughExecutor` (real `run_claude_command`/`run_blocking_json` via `_run_and_capture`, three directive-script cases plus structured-output), `TestExecutorTouchesOnlyAbstractInterface` and `TestRegressionGuard` (AST checker over `host_runner.py`/`subprocess_utils.py` sources, pinned `_structured_output_args` binary-literal carve-out)
+- `scripts/tests/conformance/test_host_conformance.py`: `_HOST_BINARY`/`_STREAM_SHAPE` rows for `fake-minimal`; `test_golden_path_behavior` now keyed on `TEST_ONLY_HOSTS` instead of the `"fake"` literal
+- `scripts/tests/test_verify_host_map.py`: fixed `test_flags_test_only_hosts_exempt` — the live registry now always carries `fake-minimal`, and its substring assertion (`"fake" in e`) coincidentally matched `"fake-minimal"`; patched `TEST_ONLY_HOSTS` to cover all real test-only hosts and asserted by exact name
+- `docs/reference/HOST_COMPATIBILITY.md`: added `fake-minimal` tier-table row
+- `.ll/spikes/spike-FEAT-3456.md`: added "Promoted by ENH-3459" footer superseding the stale `## Promotion` section
+- Deleted `scripts/tests/spike/host_compose/` (four files: `__init__.py`, `executor_shim.py`, `fakes.py`, `test_host_compose.py`)
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 24225 passed, 51 skipped)
+- Lint: PASS (`ruff check scripts/`)
+- Format: PASS (`ruff format`)
+- Types: PASS (`python -m mypy scripts/little_loops/` — 397 source files)
+- `ll-verify-host-map`: PASS
+- Integration: PASS (no `## Program Design` deviations — implementation matches the pinned signatures/call path exactly)

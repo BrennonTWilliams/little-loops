@@ -34,6 +34,7 @@ from little_loops.host_runner import (
     ClaudeCodeRunner,
     CodexRunner,
     FakeHostRunner,
+    FakeMinimalHostRunner,
     GeminiRunner,
     HostCapabilities,
     HostInvocation,
@@ -1180,6 +1181,82 @@ class TestFakeHostRunner:
 
     def test_detect_checks_for_binary_on_path(self) -> None:
         assert FakeHostRunner().detect() is True
+
+
+class TestFakeMinimalHostRunner:
+    """FakeMinimalHostRunner is the second test-only host (ENH-3459).
+
+    Deliberately divergent from FakeHostRunner: subcommand-style argv
+    (``["run", prompt]``), always-empty env, and all-False default
+    capabilities. Shares ``ll-fake-host`` as its binary and is likewise
+    absent from ``_PROBE_ORDER``.
+    """
+
+    def test_fake_minimal_runner_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "fake-minimal" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["fake-minimal"] is FakeMinimalHostRunner
+
+    def test_fake_minimal_runner_gated_from_auto_probe(self) -> None:
+        from little_loops import host_runner as hr
+
+        probe_hosts = {name for name, _binary in hr._PROBE_ORDER}
+        assert "fake-minimal" not in probe_hosts
+
+    def test_resolve_host_picks_fake_minimal_via_env(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOST_CLI": "fake-minimal"})
+        assert isinstance(runner, FakeMinimalHostRunner)
+        assert runner.name == "fake-minimal"
+
+    def test_satisfies_host_runner_protocol(self) -> None:
+        assert isinstance(FakeMinimalHostRunner(), HostRunner)
+
+    def test_default_capabilities_profile_is_all_false(self) -> None:
+        runner = FakeMinimalHostRunner()
+        assert runner.capabilities == HostCapabilities()
+
+    def test_describe_capabilities(self) -> None:
+        report = FakeMinimalHostRunner().describe_capabilities()
+        assert report.host == "fake-minimal"
+        assert report.binary == "ll-fake-host"
+
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda r: r.build_streaming(prompt="hi"),
+            lambda r: r.build_blocking_json(prompt="hi"),
+            lambda r: r.build_detached(prompt="hi"),
+        ],
+    )
+    def test_argv_is_subcommand_style(self, build) -> None:
+        invocation = build(FakeMinimalHostRunner())
+        assert invocation.args == ["run", "hi"]
+        assert invocation.binary == "ll-fake-host"
+
+    def test_env_is_always_empty_under_automation(self) -> None:
+        runner = FakeMinimalHostRunner()
+        invocation = runner.build_streaming(
+            prompt="hi", automation=AutomationContext(profile="ll-auto")
+        )
+        assert invocation.env == {}
+
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda r: r.build_streaming(prompt="hi"),
+            lambda r: r.build_blocking_json(prompt="hi"),
+            lambda r: r.build_version_check(),
+            lambda r: r.build_detached(prompt="hi"),
+        ],
+    )
+    def test_capability_override_propagates_to_invocation(self, build) -> None:
+        caps = HostCapabilities(structured_output=True)
+        invocation = build(FakeMinimalHostRunner(capabilities=caps))
+        assert invocation.capabilities is caps
+
+    def test_detect_never_claims_path_presence(self) -> None:
+        assert FakeMinimalHostRunner().detect() is False
 
 
 class TestPiRunner:

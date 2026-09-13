@@ -30,6 +30,7 @@ docs links here rather than restating one of them (BUG-3186).
 | `gemini` | ✓ | ✓ | ✓ | Adapter-wired |
 | `omp` | ✓ | ✓ | ✗ | Recognized, adapter pending — EPIC-2258 (omp host adapter) is done and a real adapter exists at `hooks/adapters/omp/`, but like `opencode` it has no `ll-init --hosts` auto-installer (manual install only, FEAT-2261 Decision Rationale), so the Hook adapter column stays ✗ per `test_host_tier_table_matches_adapter_installers` |
 | `fake` | ✓ | ✗ | ✗ | Test fixture — not a real host, see `TEST_ONLY_HOSTS` (FEAT-3454) |
+| `fake-minimal` | ✓ | ✗ | ✗ | Test fixture — not a real host, see `TEST_ONLY_HOSTS` (ENH-3459); shares `fake`'s binary, deliberately divergent argv/env/capabilities |
 
 
 What each column is derived from — these are the sources of truth, and

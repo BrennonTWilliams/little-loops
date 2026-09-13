@@ -185,3 +185,35 @@ On acceptance, promote the proven mechanism from
 in a separate PR (mirrors the ENH-2565 spike-promotion pattern). The
 promoted library is then wired into FEAT-3455's conformance rewrite as the
 two-divergent-fake composition assertion the issue Design section calls for.
+
+**Superseded by the "Promoted by ENH-3459" footer below** — the path this
+section names (`scripts/little_loops/spike/host_compose/`) was never used;
+ENH-3459's review rejected it (no such package exists, hatch would ship a
+test-only module in the wheel, and a registry literal importing from a
+module that imports `host_runner` is a circular import).
+
+## Promoted by ENH-3459
+
+The mechanism proved here — two deliberately divergent `HostRunner` fakes
+driven through one executor path, asserted to touch only the abstract
+interface — is ported, not moved, to production:
+
+- `FakeMinimalHostRunner` (the spike's `MinimalFakeRunner`, real-executable
+  per FEAT-3454's "the fake must be a real executable" decision) lives in
+  `scripts/little_loops/host_runner.py`, registered as `"fake-minimal"` in
+  `TEST_ONLY_HOSTS`/`_HOST_RUNNER_REGISTRY`.
+- The composition assertions (the spike's `TestCompositionThroughExecutor`,
+  `TestFakesAreDivergent`) are rewritten against the real, unpatched
+  `run_claude_command`/`run_blocking_json` executor — not the spike's
+  in-process `executor_shim.py` — in
+  `scripts/tests/conformance/test_host_composition.py`.
+- "Touches only the abstract interface" (the spike's runtime
+  attribute-proxy audit) is reimplemented as an AST walk over the real
+  `host_runner.py`/`subprocess_utils.py` sources
+  (`TestExecutorTouchesOnlyAbstractInterface`, `TestRegressionGuard`) — no
+  runtime proxy exists anywhere else in this repo, and a proxy in front of a
+  frozen dataclass on a real `Popen` path proved fragile.
+- `scripts/tests/spike/host_compose/` (this spike's four files) is deleted;
+  `TestSpikeIsolation` and the distinct-binary-name assertions are dropped
+  (both assert the opposite of ENH-3459's real-executable-sharing-a-binary
+  decision).

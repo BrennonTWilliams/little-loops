@@ -134,23 +134,25 @@ class TestCheckRuntimeContradiction:
         assert any("gemini" in e and "streaming" in e and "unsupported" in e for e in errors)
 
     def test_flags_test_only_hosts_exempt(self) -> None:
-        # A test-only host registered in _HOST_RUNNER_REGISTRY with no runtime
-        # entry must not trip key parity — host_runner.TEST_ONLY_HOSTS names
-        # the exemption set (absent today; injected here to simulate landing).
+        # Every test-only host registered in _HOST_RUNNER_REGISTRY (with no
+        # runtime entry) must not trip key parity — host_runner.TEST_ONLY_HOSTS
+        # names the exemption set. bad_registry copies the live registry, which
+        # already carries every real TEST_ONLY_HOSTS member (fake, fake-minimal
+        # as of ENH-3459), so the patched TEST_ONLY_HOSTS below must cover all
+        # of them or the un-exempted ones trip a genuine (not injected) parity
+        # error — asserted against exact host names, not a "fake" substring,
+        # since "fake-minimal" also contains "fake".
         import little_loops.host_runner as host_runner_module
 
-        class _FakeRunner:
-            name = "fake"
-            capabilities = HostCapabilities()
-
         bad_registry = dict(_HOST_RUNNER_REGISTRY)
-        bad_registry["fake"] = _FakeRunner
         with (
             patch("little_loops.cli.verify_host_map._HOST_RUNNER_REGISTRY", bad_registry),
-            patch.object(host_runner_module, "TEST_ONLY_HOSTS", frozenset({"fake"}), create=True),
+            patch.object(
+                host_runner_module, "TEST_ONLY_HOSTS", frozenset(TEST_ONLY_HOSTS), create=True
+            ),
         ):
             errors = _check_runtime_contradiction()
-        assert not any("fake" in e for e in errors)
+        assert not any(host in e for e in errors for host in TEST_ONLY_HOSTS)
 
     def test_injected_fixture_host_entry_agrees(self) -> None:
         # Direct precedent: test_adapters.py:1271-1320's

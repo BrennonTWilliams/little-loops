@@ -58,6 +58,7 @@ import pytest
 
 from little_loops.host_runner import (
     _HOST_RUNNER_REGISTRY,
+    TEST_ONLY_HOSTS,
     AutomationContext,
     CapabilityNotSupported,
     ClaudeCodeRunner,
@@ -111,6 +112,7 @@ _HOST_BINARY: dict[str, str] = {
     "kimi-code": "kimi",
     "qwen": "qwen",
     "fake": "ll-fake-host",
+    "fake-minimal": "ll-fake-host",
 }
 
 # Tier 1's single fixed prompt (FEAT-3455). Golden-path prompts instruct the
@@ -142,6 +144,7 @@ _STREAM_SHAPE: dict[str, tuple[bool, TerminalKind]] = {
     "kimi-code": (True, "result"),
     "qwen": (True, "result"),
     "fake": (True, "result"),
+    "fake-minimal": (True, "result"),
 }
 
 
@@ -377,8 +380,9 @@ def test_golden_path_behavior(
 ) -> None:
     """Tier 1 (FEAT-3455): every registered host satisfies the same behavioral invariants.
 
-    Runs unconditionally for the fake host (~150ms, FEAT-3454's default
-    emission). For every other host this only runs live, behind
+    Runs unconditionally for test-only hosts (``TEST_ONLY_HOSTS`` —
+    ``fake``, ``fake-minimal``; ~150ms, FEAT-3454's default emission). For
+    every other host this only runs live, behind
     ``LL_HOST_CONFORMANCE_LIVE=1`` (via the ``live_conformance`` fixture) —
     it spends real tokens and requires host auth.
     """
@@ -386,7 +390,7 @@ def test_golden_path_behavior(
     if host_filter is not None and host != host_filter:
         pytest.skip(f"--host filter {host_filter!r} excludes {host!r}")
 
-    if host != "fake":
+    if host not in TEST_ONLY_HOSTS:
         if not live_conformance:
             pytest.skip("live host behavioral tier requires LL_HOST_CONFORMANCE_LIVE=1")
         binary = _HOST_BINARY.get(host)
