@@ -464,9 +464,7 @@ class TestHasHistory:
 
         result = aggregate_workspace_activity([skewed, unreadable], since=None, until=None)
 
-        assert all(
-            r.has_history is None for r in result.per_repo.values()
-        )
+        assert all(r.has_history is None for r in result.per_repo.values())
         assert result.totals.has_history_members == 0
         assert result.totals.has_history is False
 

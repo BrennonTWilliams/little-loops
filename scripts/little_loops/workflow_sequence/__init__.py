@@ -208,9 +208,7 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
         if not args.input.exists():
             logger.error(f"Input file not found: {args.input}")
             if args.input == _DEFAULT_INPUT_PATH:
-                logger.info(
-                    "  Run 'll-messages --include-cli' first to generate the input file."
-                )
+                logger.info("  Run 'll-messages --include-cli' first to generate the input file.")
             return 1
 
         if not args.patterns.exists():

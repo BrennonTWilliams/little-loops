@@ -678,7 +678,9 @@ class TestCliEventContext:
             config={"analytics": {"capture": {"cli_commands": ["not-this-binary"]}}},
         ):
             pass
-        assert not db.exists(), "truthy LL_ANALYTICS_CAPTURE must not force-enable past the config gate"
+        assert not db.exists(), (
+            "truthy LL_ANALYTICS_CAPTURE must not force-enable past the config gate"
+        )
 
     def test_cli_event_context_analytics_enabled_false_suppresses(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -687,10 +689,14 @@ class TestCliEventContext:
         db = tmp_path / "session.db"
         monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
         ran = False
-        with cli_event_context(db, binary="ll-history", args=[], config={"analytics": {"enabled": False}}):
+        with cli_event_context(
+            db, binary="ll-history", args=[], config={"analytics": {"enabled": False}}
+        ):
             ran = True
         assert ran
-        assert not db.exists(), "analytics.enabled=false must suppress capture even with no capture key"
+        assert not db.exists(), (
+            "analytics.enabled=false must suppress capture even with no capture key"
+        )
 
     def test_cli_event_context_analytics_enabled_true_still_globs(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -702,7 +708,9 @@ class TestCliEventContext:
             db,
             binary="ll-issues",
             args=[],
-            config={"analytics": {"enabled": True, "capture": {"cli_commands": ["not-this-binary"]}}},
+            config={
+                "analytics": {"enabled": True, "capture": {"cli_commands": ["not-this-binary"]}}
+            },
         ):
             pass
         assert not db.exists()
@@ -713,7 +721,9 @@ class TestCliEventContext:
         """A config missing the analytics key entirely stays permissive (legacy default)."""
         db = tmp_path / "session.db"
         monkeypatch.delenv("LL_ANALYTICS_CAPTURE", raising=False)
-        with cli_event_context(db, binary="ll-test-permissive", args=[], config={"project": {"x": 1}}):
+        with cli_event_context(
+            db, binary="ll-test-permissive", args=[], config={"project": {"x": 1}}
+        ):
             pass
         rows = recent(db, kind="cli")
         assert len(rows) == 1, "missing analytics key must keep capture on"
@@ -1102,9 +1112,7 @@ class TestSkillEventContext:
         rows = recent(db, kind="skill")
         assert len(rows) == 0, "skill_event_context must skip the row write when gated off"
 
-    def test_env_kill_switch_no_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_env_kill_switch_no_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """LL_ANALYTICS_CAPTURE=0: no db file created, completion still yielded (ENH-3449).
 
         Pins file non-existence, not just "no row" — the db would be authored by

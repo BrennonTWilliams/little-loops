@@ -1601,6 +1601,10 @@ Suggest a dependency-ordered implementation sequence.
 | `--json` / `-j` | Output sequence as JSON array |
 | `--config` | Path to project root |
 
+With no `--type` given, `EPIC-*` issues are excluded from the default output
+(they're coordination containers, not implementable units); pass `--type
+EPIC` to sequence EPICs explicitly (ENH-3461).
+
 For an issue with an empty structured `blocked_by` set, a prose dependency
 claim (e.g. "Depends on FEAT-109" in the body) that references a non-terminal
 issue is surfaced as an annotation rather than silently reported as

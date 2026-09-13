@@ -444,9 +444,7 @@ def main_session() -> int:
     # Loaded before the with-block: the context manager opens before argparse
     # runs, so parsed args cannot participate (see cli/history.py, ENH-3449).
     capture_config = _load_capture_config(Path.cwd())
-    with cli_event_context(
-        DEFAULT_DB_PATH, "ll-session", sys.argv[1:], config=capture_config
-    ):
+    with cli_event_context(DEFAULT_DB_PATH, "ll-session", sys.argv[1:], config=capture_config):
         configure_output()
         logger = Logger(use_color=use_color_enabled())
 

@@ -89,9 +89,7 @@ def main_history() -> int:
     # runs, so args.config (derived at history.py:440+) cannot participate.
     # Distinct name — the with-body rebinds `config = BRConfig(...)` later.
     capture_config = _load_capture_config(Path.cwd())
-    with cli_event_context(
-        DEFAULT_DB_PATH, "ll-history", sys.argv[1:], config=capture_config
-    ):
+    with cli_event_context(DEFAULT_DB_PATH, "ll-history", sys.argv[1:], config=capture_config):
         from little_loops.issue_history import (
             HistoryDbUnavailable,
             analyze_agent_quality,
