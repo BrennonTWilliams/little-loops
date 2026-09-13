@@ -290,6 +290,14 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 - No per-request-id SSE pattern exists anywhere in `scripts/little_loops/`. The closest existing pattern is `fsm/runners.py:DefaultActionRunner.run` (runners.py:128-477) which streams shell stdout into the FSM's event bus via `_on_line` → `self._emit("action_output", {"line": line})` at executor.py:2473-2474 — but this is a bus broadcast, not an SSE-targeted per-request stream. A new dispatch shape is required.
 - Shell-action executor runtime (`fsm/runners.py:355-373`, `executor.py:2471-2474, 2656`) emits per-line `action_output` events and a final `action_complete` event — the same `{event, line|exit_code, ...}` shape the proposed `action_output`/`action_complete` SSE events mirror. The artifact's EventSource handler can re-use the existing observer envelope or be a thinner direct SSE channel.
 
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- `cli/loop/lifecycle.py` `cmd_resume()` (background return at line 611, foreground return at line 759) builds its own `PersistentExecutor` and calls `register_loop_signal_handlers` independently of `cmd_run`, with no flag propagation from the original `ll-loop run` invocation. A `--serve-after` flag scoped only to the `run` subparser will not fire the post-run hook when a `html-website-generator` run is resumed via `ll-loop resume` — this needs an explicit in-scope/out-of-scope call for v1, since neither the AC nor Implementation Steps currently mention `lifecycle.py`.
+- `mcp_server/tools.py` `_tool_loop_start()` (lines 744-785) builds a minimal `SimpleNamespace(context=[...])` and calls `run_background()` directly, bypassing `cmd_run`'s argparse parser entirely. A `--serve-after`/`getattr(args, ...)` flag will silently read its default when a loop is started via the MCP `loop_start` tool — a known no-op path for this feature, not a bug, but worth stating explicitly if MCP-started runs are expected to auto-serve.
+- `cli/loop/runner.py` `run_background()`'s detached-child re-exec (lines 198-283) forwards only a hardcoded allowlist of flags (`--max-steps`, `--model`, `--effort`, `--context`, `--baseline`, etc.); `--serve` is not in this list today. `--serve-after` will need its own entry added there for `ll-loop run --background --serve-after ...` to reach the re-exec'd child — otherwise combining `--background` with `--serve-after` silently drops the flag, mirroring `--serve`'s existing gap.
+- `docs/reference/CLI.md:810-811` (the existing `--serve` flag documentation cited in this issue's Verification Notes) is confirmed byte-identical to the last refine pass — the file's 2026-09-12T16:22:44 edit that triggered this pass's staleness flag touched other sections, not this citation.
+- `BUG-3387` (status: done) fixed an event-name-spoofing vulnerability in the same `_handle_interaction`/`_drain_inbound` inbound-queue code path (`transport.py`) that `serve-run`'s dispatch handler extends — relevant precedent to check against when threading `request_id` through the inbound body (`InboundEvent` TypedDict in `## Program Design`).
+
 ## Program Design
 
 ### Types
@@ -340,6 +348,12 @@ _Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
 4. Add a new `--serve-after` flag to `cli/loop/__init__.py` (independent `add_argument`, alongside the existing `--serve`/`--background`/`--queue` registrations at lines 296-310), and a post-run hook in `cli/loop/run.py`, after `run_foreground()` returns and near the existing signal-handler registration at `run.py:627`, gated on `getattr(args, "serve_after", False)`, that launches `ll-artifact serve-run "${run_dir}"` as a detached process, following the `run_background()` pattern (`cli/loop/runner.py:291-298`) — not an FSM `serve` state (Option FSM-B selected: a `serve` state would be SIGKILLed by the executor's 3600s shell-action wall-clock fallback). `--serve-after` is distinct from the existing `--serve` run-duration bridge (ENH-3351), whose teardown (`run.py:674-676`) is out of scope by the time this hook fires — Option SERVE-A selected.
 5. Write `scripts/tests/test_artifact_serve_run.py` covering the test surface above.
 6. Update docs per Documentation section.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-12 — based on codebase analysis:_
+
+- `cli/loop/run.py:659-673`'s `return run_foreground(...)` is a bare return statement with no code between it and the enclosing `finally:` (line 674, which calls `executor.close_transports()`). A post-run `--serve-after` hook requires rewriting this into `result = run_foreground(...)` followed by the hook call and an explicit `return result` — it cannot be inserted as a literal sequential addition after the current `return` line. `cli/loop/lifecycle.py`'s `cmd_resume()` foreground return (line 759) has the identical bare-return-then-`finally` shape, relevant only if resume-time serving is later brought into scope.
 
 ## API/Interface
 
@@ -486,6 +500,7 @@ _Added by `/ll:confidence-check` on 2026-09-12_
 
 ## Session Log
 
+- `/ll:refine-issue` - 2026-09-12T22:38:59 - `8009026c-e515-4371-a3ee-956947177456.jsonl`
 - `/ll:confidence-check` - 2026-09-12T18:36:19 - `ee8721cf-6b02-4322-9968-721a9a834aac.jsonl`
 - `/ll:reconcile-issue` - 2026-09-12T18:06:49 - `7988af27-7da4-40c3-9701-313c7f94ad7f.jsonl`
 - `/ll:decide-issue` - 2026-09-12T18:00:59 - `5a21ce53-2a21-4819-a885-1e8204f7adec.jsonl`
