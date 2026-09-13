@@ -1,0 +1,12 @@
+{
+  "id": "497d5930-b32e-4b2c-be9e-2dd77b52bfbe",
+  "type": "decision",
+  "timestamp": "2026-09-13T17:23:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the deterministic rule-table -> finding-list -> exit-code shape already implemented 3x in this codebase (verify_private_refs.py, verify_evidence.py, verify_skill_prose.py); fully in-process, unit-testable, zero new runtime dependency; aligns with CLAUDE.md's dependency-minimization policy. gitleaks has zero Python call sites and is documented as contributor-only tooling, not a product feature.",
+  "rule": "Extend pii.py's in-process regex approach with a credential-pattern set (Option B), rather than shelling out to the gitleaks binary (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: shell out to the pinned gitleaks binary as a subprocess",
+  "issue": "ENH-3466"
+}
