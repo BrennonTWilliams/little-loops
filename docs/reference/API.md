@@ -10314,6 +10314,7 @@ class HostCapabilities:
     agent_select: bool = False
     tool_allowlist: bool = False
     structured_output: bool = False
+    workspace_sandboxed: bool = False
 ```
 
 **Fields:**
@@ -10325,6 +10326,7 @@ class HostCapabilities:
 | `agent_select` | `bool` | `False` | Host accepts a per-invocation agent / persona selector. |
 | `tool_allowlist` | `bool` | `False` | Host accepts an explicit tool allowlist on invocation. |
 | `structured_output` | `bool` | `False` | Host's CLI honors the inline `--json-schema` flag the FSM evaluators append (Anthropic `claude` CLI). When `False`, evaluators skip the flag and rely on prompt-and-parse (BUG-2626 tag fallback). Gated at the evaluator call sites (ENH-2627). |
+| `workspace_sandboxed` | `bool` | `False` | Host's `build_streaming()` `workspace_root` parameter actually confines tool/filesystem access to that directory (a real jail) rather than merely accepting and ignoring it (FEAT-2878). Defaulted `False` at all six per-host construction sites. |
 
 ### HostRunner
 
@@ -10374,6 +10376,7 @@ class HostRunner(Protocol):
 | `OpenCodeRunner` | `opencode` CLI | stub | Registered so `LL_HOST_CLI=opencode` resolves to a useful error rather than the generic "unknown host". All `build_*` methods raise `HostNotConfigured`. See FEAT-1472. |
 | `PiRunner` | `pi` CLI | frozen stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Vanilla Pi support is cancelled (ARCHITECTURE-050); superseded by `OmpRunner` (EPIC-2258). |
 | `FakeHostRunner` | `ll-fake-host` (test fixture) | test-only | Registered under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`. Every `build_*` returns a real `HostInvocation` for the `ll-fake-host` console script (`little_loops.fake_host`), which parses a directives script embedded in the prompt and emits scripted stream-JSON — see `## little_loops.fake_host` below. Capabilities are constructor-supplied (`streaming=True` default), not sourced from `RUNTIME_HOST_CAPABILITIES`. FEAT-3454. |
+| `FakeMinimalHostRunner` | `ll-fake-host` (test fixture, shared binary) | test-only | Registered under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`. Deliberately divergent from `FakeHostRunner`: subcommand-style `["run", prompt]` argv (not bare `[prompt]`), always-empty `env`, and an all-six-flags-`False` default `HostCapabilities` (`FakeHostRunner`'s default is `streaming=True`). `scripts/tests/conformance/test_host_composition.py` drives both fakes through the unpatched production executor and asserts identical observations. ENH-3459. |
 
 ### CapabilityEntry
 

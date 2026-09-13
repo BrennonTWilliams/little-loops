@@ -858,7 +858,7 @@ FSM handoff.
 |-----------|---------|
 | `HostRunner` (Protocol) | Contract every runner satisfies — `detect()`, `build_streaming()`, `build_blocking_json()`, `build_version_check()`, `build_detached()` factories returning `HostInvocation`; `describe_capabilities()` returning `CapabilityReport` |
 | `HostInvocation` (frozen dataclass) | Value object holding `binary`, `args`, `env`, `capabilities`, `cleanup_paths`, and `env_allow` — passed to `subprocess.Popen`/`run`; callers must unlink `cleanup_paths` after the subprocess completes |
-| `HostCapabilities` (frozen dataclass) | Capability flags (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`) describing what a host supports |
+| `HostCapabilities` (frozen dataclass) | Capability flags (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`, `structured_output`, `workspace_sandboxed`) describing what a host supports |
 | `ClaudeCodeRunner` | Production runner for the `claude` CLI |
 | `CodexRunner` | Production runner for the `codex` CLI; auto-detected when `codex` is on PATH |
 | `GeminiRunner` | Production runner for the `gemini` CLI (Gemini CLI); auto-detected when `gemini` is on PATH (ENH-2185) |
@@ -868,6 +868,7 @@ FSM handoff.
 | `OpenCodeRunner` | Stub for the `opencode` CLI (FEAT-1472 stub state) |
 | `PiRunner` | Frozen stub for the vanilla pi-mono `pi` CLI (cancelled — ARCHITECTURE-050; superseded by `OmpRunner`) |
 | `FakeHostRunner` | Test-only runner for the `ll-fake-host` console script — a real executable driven through the untouched `subprocess.Popen` spawn path so a scripted "directives" prompt exercises event ordering, abort, idle-timeout, and failed-start paths with no live host CLI and no model (FEAT-3454). Registered in `_HOST_RUNNER_REGISTRY` under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`; never appears in user-facing host lists. |
+| `FakeMinimalHostRunner` | Second test-only runner, deliberately divergent from `FakeHostRunner` (subcommand-style `["run", prompt]` argv, always-empty `env`, all-six-flags-`False` default capabilities) — proves the executor reads only the abstract `HostRunner`/`HostInvocation` surface rather than either fake's shape (ENH-3459). Registered in `_HOST_RUNNER_REGISTRY` under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`; never appears in user-facing host lists. |
 | `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
 | `HostNotConfigured` | Raised when no runner can be resolved — error includes `LL_HOST_CLI` remediation hint |
 | `CapabilityNotSupported` | `UserWarning` subclass emitted when a caller requests a capability the active host lacks |

@@ -14,7 +14,10 @@ registered in `_HOST_RUNNER_REGISTRY` (`scripts/little_loops/host_runner.py`)
    ordering, terminal discipline, exit codes, timeout/abort behavior, and
    process-group cleanup. FEAT-3455.
 
-Both live in `scripts/tests/conformance/test_host_conformance.py`.
+Both live in `scripts/tests/conformance/test_host_conformance.py`. A third,
+separate suite — the composition suite (`test_host_composition.py`) — proves
+the executor is host-agnostic rather than shaped around one fake; see
+"Composition suite" below.
 
 ## Tier 1: behavioral invariants (every host, happy path)
 
@@ -70,6 +73,28 @@ On the three `TimeoutExpired` rows (idle timeout, abort, wall-clock hang),
 callback only fires on the normal-return path, never when
 `run_claude_command()` raises.
 
+## Composition suite
+
+`scripts/tests/conformance/test_host_composition.py` (ENH-3459) drives `fake`
+and `fake-minimal` — two `HostRunner` implementations sharing the
+`ll-fake-host` binary but deliberately disagreeing on argv shape, `env`
+population, and default `HostCapabilities` — through the **unpatched
+production executor** (`run_claude_command`, `run_blocking_json`) against the
+same directive script, and asserts the executor produces the same
+`Observed` result for both. A single fake proves the code runs; a second,
+deliberately divergent fake proves the executor is host-agnostic rather than
+shaped around one fake's assumptions.
+
+`TestExecutorTouchesOnlyAbstractInterface` and `TestRegressionGuard` pin that
+mechanically via an AST walk over the `host_runner.py` and
+`subprocess_utils.py` sources: the executor chain reads only the abstract
+`HostRunner`/`HostInvocation` surface, with `_structured_output_args`'s
+pinned `{"claude", "qwen"}` binary-literal branches as the one named
+exception. `TestCompositionThroughExecutor` (the Popen-driving class) skips
+when `ll-fake-host` is not on PATH (non-editable install); the AST-only
+classes carry no such marker and run unconditionally in the plain unit
+suite.
+
 ## Capability assertions: argv facts, not event facts
 
 `HostCapabilities` flags (`permission_skip`, `agent_select`,
@@ -109,6 +134,10 @@ pytest -m "not conformance" scripts/tests/
 # credentials configured — spends real tokens
 LL_HOST_CONFORMANCE_LIVE=1 pytest -m conformance --conformance-host codex \
     scripts/tests/conformance/
+
+# Composition suite: fake vs. fake-minimal through the unpatched executor,
+# plus the AST-pinned interface-surface checks
+pytest scripts/tests/conformance/test_host_composition.py
 ```
 
 ## Reading the Results
@@ -141,22 +170,25 @@ table in `docs/reference/HOST_COMPATIBILITY.md`: PASS → ✓, SKIP(stub) →
 
 ## Baseline Pass/Fail Board
 
-Snapshot as of 2026-09-12 (constructability tier; `_HOST_RUNNER_REGISTRY` now
-has 9 entries — the original 4-host board below predates `gemini`, `omp`,
-`kimi-code`, `qwen`, and the test-only `fake` entry):
+Registry keys in `TEST_ONLY_HOSTS` (`fake`, `fake-minimal`) are deliberately
+**not** columns on this board — they always PASS by construction
+(`ll-fake-host` is always on PATH via the session-start PATH prepend,
+FEAT-3454) and carry no host-support signal. The next board refresh must not
+add a column for either.
 
-| Golden Path | claude-code | codex | opencode | pi | gemini | omp | kimi-code | qwen | fake |
-|-------------|:-----------:|:-----:|:--------:|:--:|:------:|:---:|:---------:|:----:|:----:|
-| `ll-auto`   | PASS        | PASS  | SKIP     | SKIP | PASS | PASS | PASS | PASS | PASS |
-| `ll-sprint` | PASS        | PASS  | SKIP     | SKIP | PASS | PASS | PASS | PASS | PASS |
-| `ll-loop`   | PASS        | PASS  | SKIP     | SKIP | PASS | PASS | PASS | PASS | PASS |
-| `ll-action` | PASS        | PASS  | SKIP     | SKIP | PASS | PASS | PASS | PASS | PASS |
+Snapshot as of 2026-09-12 (constructability tier; `_HOST_RUNNER_REGISTRY` now
+has 10 entries — the original 4-host board below predates `gemini`, `omp`,
+`kimi-code`, `qwen`, and the two `TEST_ONLY_HOSTS` entries):
+
+| Golden Path | claude-code | codex | opencode | pi | gemini | omp | kimi-code | qwen |
+|-------------|:-----------:|:-----:|:--------:|:--:|:------:|:---:|:---------:|:----:|
+| `ll-auto`   | PASS        | PASS  | SKIP     | SKIP | PASS | PASS | PASS | PASS |
+| `ll-sprint` | PASS        | PASS  | SKIP     | SKIP | PASS | PASS | PASS | PASS |
+| `ll-loop`   | PASS        | PASS  | SKIP     | SKIP | PASS | PASS | PASS | PASS |
+| `ll-action` | PASS        | PASS  | SKIP     | SKIP | PASS | PASS | PASS | PASS |
 
 SKIP = stub runner (`HostNotConfigured`) — see
-`docs/reference/HOST_COMPATIBILITY.md` footnote `[^orch]`. `fake` runs
-unconditionally (`ll-fake-host` is always on PATH via the session-start PATH
-prepend, FEAT-3454) and is excluded from user-facing host-count gates
-(`TEST_ONLY_HOSTS`).
+`docs/reference/HOST_COMPATIBILITY.md` footnote `[^orch]`.
 
 Tier 1 behavioral results depend on `LL_HOST_CONFORMANCE_LIVE=1` plus
 per-host auth/binary availability — no fixed snapshot; run it locally per
@@ -172,7 +204,9 @@ the "Running the Harness" section above to check a given host.
    whether the host emits an init event and what its terminal event kind is.
 3. The new host's Tier 1 test stays skipped until `LL_HOST_CONFORMANCE_LIVE=1`
    is set for a run that includes it (real binary + auth required).
-4. Update the baseline board above once the host passes constructability.
+4. Update the baseline board above once the host passes constructability —
+   unless the new host is a `TEST_ONLY_HOSTS` entry, which is excluded from
+   the board by policy (see above) and gets no column.
 
 ## Closing Superseded Issues
 

@@ -4,9 +4,10 @@ title: Doc sync for the second test-only host runner (ARCHITECTURE, API, CONFORM
   TESTING)
 type: ENH
 priority: P3
-status: open
+status: done
 testable: false
 discovered_date: '2026-09-12'
+completed_at: '2026-09-13T02:10:10Z'
 labels: []
 parent: ENH-3456
 unproven_mechanism: false
@@ -300,7 +301,43 @@ _Added by `/ll:confidence-check` on 2026-09-12_
   from a green `main`" after ENH-3459 merges — the block is real, not stale.
   Remedy: wait for ENH-3459 to land, then re-run this check.
 
+## Resolution
+
+Implemented by `/ll:manage-issue` on 2026-09-13. All four docs now mention
+`fake-minimal` / `FakeMinimalHostRunner` in the place a maintainer would
+look:
+
+- `docs/ARCHITECTURE.md` — added the `FakeMinimalHostRunner` row (stating the
+  same three registration facts as the `FakeHostRunner` row) and fixed the
+  `HostCapabilities` row to list all six flags.
+- `docs/reference/API.md` — added the `FakeMinimalHostRunner` row to the
+  "Concrete runners" table (same four-column shape as the `FakeHostRunner`
+  row) and fixed the `### HostCapabilities` code sample + Fields table from
+  five flags to six (`workspace_sandboxed`, FEAT-2878).
+- `docs/development/CONFORMANCE.md` — added a "Composition suite" section
+  describing what `test_host_composition.py` proves, how to run it, and the
+  marker-placement split (Popen-driving class skips without `ll-fake-host`
+  on PATH; AST-only classes are unmarked); added a pointer to it from the
+  intro. Resolved the pre-existing contradiction flagged in this issue's own
+  Verification Notes: the Baseline Pass/Fail Board already had a `fake`
+  column, which conflicted with the "test-only hosts are not columns" policy
+  this issue adds — removed that column (rather than adding a
+  `fake-minimal` one) so the board and the new policy sentence agree, and
+  extended the "Adding a New Host" board-update step with the exclusion
+  clause.
+- `docs/development/TESTING.md` — added the one-sentence clarification that
+  both test-only runners share the single `ll-fake-host` basename.
+- Verified `docs/reference/HOST_COMPATIBILITY.md` needs no change — it
+  already carries a fake-agnostic `fake-minimal` row with no per-fake
+  enumeration in prose, confirming this issue's Scope Boundaries item 6.
+
+No test changes (issue is `testable: false`). `python -m pytest
+scripts/tests/` — 24225 passed, 51 skipped. `ll-verify-host-map` and
+`ll-verify-private-refs` both clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-13T02:09:18 - `b009a032-2da5-4819-9716-f015355d91fc.jsonl`
+- `/ll:ready-issue` - 2026-09-13T01:58:57 - `a71725c4-5134-4513-bd7e-4fa09ed562c2.jsonl`
 - `/ll:confidence-check` - 2026-09-13T01:49:01 - `9579ccd3-8d37-421b-9ba6-d5dbaa3dd892.jsonl`
 - `/ll:refine-issue` - 2026-09-13T01:40:57 - `4f8bb04f-ab88-453a-add4-e282a70e08d5.jsonl`
 - `/ll:confidence-check` - 2026-09-12T19:15:41 - `a9b5dd23-49e2-45b3-8453-1a3ee79e418e.jsonl`

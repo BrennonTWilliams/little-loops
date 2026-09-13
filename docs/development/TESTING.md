@@ -1089,7 +1089,9 @@ already do. A `build_version_check()` invocation (`<binary> --version`) is
 exempt — it costs nothing and is not a guard trip. So is any binary in
 `host_runner.TEST_ONLY_BINARIES` (e.g. `ll-fake-host`, FEAT-3454) — spawning
 a test-only fixture executable is the point of the tests that use it, not a
-live-host call to guard against.
+live-host call to guard against. Both test-only runners (`FakeHostRunner` and
+`FakeMinimalHostRunner`, ENH-3459) share the same `ll-fake-host` binary, so
+this carve-out is a single basename, not one per registry key.
 
 The third carve-out is opt-in: the `live_conformance` fixture (FEAT-3455,
 `scripts/tests/conftest.py`) sets a module-level `_live_spawn_allowed` flag
