@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.164.0] - 2026-09-13
+
+### Added
+
+- **FEAT-3454**: Fake host with a directives language for scripting deterministic event sequences
+- **FEAT-3455**: Behavioral host-conformance suite runnable against a fake host in CI and live hosts behind an env gate
+
+### Fixed
+
+- **BUG-3437**: SSE fan-in backoff never engages; producers at `max_clients` re-probed ~10/s forever
+- **BUG-3438**: `rn-refine` `commit_leaf` reports COMMITTED without committing and routes failure to `record_leaf_done`
+- **BUG-3439**: FSM shell actions pass the whole rendered script via argv; E2BIG on Linux above 128 KiB
+- **BUG-3440**: `ll-doctor` reports a corrupt history.db as healthy on Linux SQLite builds
+- **BUG-3442**: CI shallow checkout makes the evidence gate structurally unable to pass
+- **BUG-3443**: `test_env_var_overrides_cpu_count` asserts against host CPU count instead of patching `os.cpu_count`
+- **BUG-3447**: Superseded-directive gap matches correction phrases inside quoted literals
+- **BUG-3448**: Main suite red: priority-regex allowlist drift in `mcp_server/tools.py` and corpus baseline 569>562
+- **BUG-3451**: `VerdictCache` found-entries never revalidate — stale local cache masks evidence-gate regressions that CI then fails
+- **BUG-3452**: CI run 34628255906 triage — oversized-test payloads, stale evidence spans, verdict-cache masking
+
+### Changed
+
+- **ENH-3441**: `load_design_tokens` falls back to packaged profiles when `.ll/design-tokens/` mirror is absent
+- **ENH-3444**: Add `skills_list` read-only MCP tool exposing plugin-rooted catalog
+- **ENH-3449**: Analytics opt-out env var so `ll-history activity` is side-effect-free
+- **ENH-3450**: Add `has_history` any-rows-ever signal to `RepoActivity` and `WorkspaceTotals`
+- **ENH-3453**: Unify the runtime half of the host capability map so `host_runner` reads data, not per-host subclasses
+- **ENH-3456**: Prove host-agnosticism with two deliberately divergent fakes, not one
+- **ENH-3457**: `ll-messages` defaults to user messages only
+- **ENH-3459**: Second divergent fake host + composition test suite
+- **ENH-3460**: Doc sync for the second test-only host runner (ARCHITECTURE, API, CONFORMANCE, TESTING)
+- **ENH-3461**: `ll-issues sequence` excludes EPIC issue IDs
+
+### Maintenance
+
+- style: apply ruff formatting to 5 source files (c73982d1a)
+- test: add host conformance test results and remove raw outputs (fca20620c)
+- test: keep oversized-action payloads under per-arg MAX_ARG_STRLEN at child exec (6dce98d0c)
+
+[1.164.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.163.0...v1.164.0
+
 ## [1.163.0] - 2026-09-11
 
 ### Added
