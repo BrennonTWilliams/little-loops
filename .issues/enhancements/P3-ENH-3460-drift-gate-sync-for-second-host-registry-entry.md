@@ -17,12 +17,12 @@ blocked_by:
 relates_to:
 - ENH-3453
 - ENH-3456
-confidence_score: 85
-outcome_confidence: 77
+confidence_score: 95
+outcome_confidence: 75
 score_complexity: 22
 score_test_coverage: 10
-score_ambiguity: 23
-score_change_surface: 22
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 ## Summary
@@ -112,6 +112,17 @@ What is left is prose no test reads.
 
 Out (owned by ENH-3459): every gated change listed in the Summary.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
+
+- `docs/ARCHITECTURE.md:870`'s existing `FakeHostRunner` row states three facts explicitly for the row's Purpose text: registered in `_HOST_RUNNER_REGISTRY` under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`, and "never appears in user-facing host lists." The new `fake-minimal` row should state the same three facts for `FakeMinimalHostRunner`, not a shorter summary.
+- `docs/reference/API.md`'s "Concrete runners" table (`:10366-10376`) uses four columns — `Runner` / `Host` / `Status` / `Notes` — with `Status` set to the literal `test-only` and `Host` formatted as `` `<binary>` (test fixture) `` for the existing `FakeHostRunner` row (`:10376`). The `FakeMinimalHostRunner` row should follow this exact column shape rather than a two-column summary.
+- `docs/development/CONFORMANCE.md`'s existing suite sections (Tier 1 `:19-49`, Tier 2 `:51-66`) and the shared `## Running the Harness` section (`:96-112`) establish the shape for a new suite write-up: a `##` heading, one paragraph naming the test function(s)/file and what they assert, and invocation commands placed under the *shared* "Running the Harness" section — not a duplicated per-section bash block. Match this shape for "Composition suite" rather than inventing a standalone run-block.
+- Contradiction to resolve before writing the Baseline Pass/Fail Board sentence: the board (`CONFORMANCE.md:142-159`) already has a `fake` column (added when FEAT-3454 landed), with a footnote pointing at `TEST_ONLY_HOSTS`. The planned "test-only hosts are deliberately not columns" sentence describes a policy the codebase does not currently follow, not one it already follows — either the existing `fake` column needs to be reconciled/removed, or the sentence must be phrased as a going-forward rule that also addresses the current column, or it will read as false the moment it is added.
+- `host_runner.py` locations backing this issue's premise, confirmed present: `class FakeMinimalHostRunner` (`:2139`), `name = "fake-minimal"` (`:2154`), `TEST_ONLY_HOSTS: frozenset[str] = frozenset({"fake", "fake-minimal"})` (`:2218`), `"fake-minimal": FakeMinimalHostRunner` registry entry (`:2234`).
+- `docs/reference/HOST_COMPATIBILITY.md:32-33` already carries the `fake-minimal` row with fake-agnostic prose ("shares `fake`'s binary, deliberately divergent argv/env/capabilities") — confirms the scope item "verify HOST_COMPATIBILITY.md needs no change" holds; no per-fake enumeration found elsewhere in the file.
+
 ## Implementation Steps
 
 1. Confirm ENH-3459 is merged and `python -m pytest scripts/tests/` is green on
@@ -158,7 +169,13 @@ naming fakes, so a third fake needs no doc edit beyond its own table rows.
 
 ## Status
 
-Open. Blocked on ENH-3459; start only from a green `main`.
+Open. ENH-3459 is `Completed` and merged (`ff02e40c9`) — no longer blocked; start from current `main`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
+
+- ENH-3459's status is `Completed` (not `open`); its commit `ff02e40c9` ("feat(host-runner): add second divergent fake host + composition test suite") is present at `main` HEAD. `host_runner.py` already defines `FakeMinimalHostRunner`, `TEST_ONLY_HOSTS = frozenset({"fake", "fake-minimal"})`, and the registry entry. `blocked_by` resolves against ENH-3459's live status, not a frontmatter cache, so this issue is no longer blocked — the Confidence Check Notes above (Dependencies Hard Override) predate this and should be re-run.
 
 ## Conventions in Force
 
@@ -169,6 +186,13 @@ Open. Blocked on ENH-3459; start only from a green `main`.
   test-only entries; prose points at the constant instead of listing fakes.
 - Tier semantics in `HOST_COMPATIBILITY.md:491-507` exclude test-time shapes from the
   "Orchestration runner" tier.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
+
+- Test-only doc rows state registration facts explicitly (registered under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`, excluded from user-facing lists) rather than a generic "test-only" label — evidence: `docs/ARCHITECTURE.md:870`, `docs/reference/API.md:10376`.
+- Carve-out prose names the constant plus one example binary, never every basename sharing it — evidence: `docs/development/TESTING.md:1082-1092` (`host_runner.TEST_ONLY_BINARIES`, one example `ll-fake-host`).
 
 ## Tests
 
@@ -194,8 +218,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Related Issues (Dependencies)
 
-- ENH-3459 (open, P3) — registry entry, `TEST_ONLY_HOSTS` entry, tier-table row,
-  composition suite. Hard block; start only from a green `main`.
+- ENH-3459 (done, P3) — registry entry, `TEST_ONLY_HOSTS` entry, tier-table row,
+  composition suite. Merged (`ff02e40c9`); no longer a block.
 - FEAT-3454 (open, P2) — owns the constants and the fake-agnostic doc wording this
   child relies on.
 - ENH-3456 (done) — parent decomposition.
@@ -277,6 +301,8 @@ _Added by `/ll:confidence-check` on 2026-09-12_
   Remedy: wait for ENH-3459 to land, then re-run this check.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-13T01:49:01 - `9579ccd3-8d37-421b-9ba6-d5dbaa3dd892.jsonl`
+- `/ll:refine-issue` - 2026-09-13T01:40:57 - `4f8bb04f-ab88-453a-add4-e282a70e08d5.jsonl`
 - `/ll:confidence-check` - 2026-09-12T19:15:41 - `a9b5dd23-49e2-45b3-8453-1a3ee79e418e.jsonl`
 - `/ll:wire-issue` - 2026-09-12T19:10:29 - `b7362393-74e4-4369-b0c9-daf665a39486.jsonl`
 - `/ll:confidence-check` - 2026-09-12T18:35:39 - `ee8721cf-6b02-4322-9968-721a9a834aac.jsonl`
