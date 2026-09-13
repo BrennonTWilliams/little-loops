@@ -2,7 +2,8 @@
 id: FEAT-3458
 priority: P3
 type: FEAT
-status: open
+status: deferred
+deferred_reason: premise_invalid
 discovered_date: 2026-09-11
 discovered_by: capture-issue
 confidence_score: 70
@@ -10,9 +11,7 @@ outcome_confidence: 64
 unproven_mechanism: true
 decision_needed: false
 reconcile_attempted: true
-blocked_by:
-- EPIC-3299
-- EPIC-3212
+blocked_by: []
 score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
@@ -391,6 +390,38 @@ ll-loop run html-website-generator "Message Stream triage console"
 
 `feat`, `artifacts`, `transport`, `local-bridge`, `serve`, `html-website-generator`, `interaction`, `level-3`
 
+## Deferral Review
+
+_Added 2026-09-12 — manual review._
+
+**Deferred: the core premise is broken.** The v1 dispatch table maps the artifact's
+action buttons to `ll-analyze-workflows`, `ll-workflow-automation-proposer`, and
+`ll-analyze-history`. None of these exist as `ll-*` entry points in
+`scripts/pyproject.toml`. The buttons invoke `/ll:analyze-workflows` (a command) and
+`/ll:analyze-history` / `/ll:workflow-automation-proposer` (skills), which require an
+LLM session. `subprocess.Popen(['ll-<cmd>'])` cannot run them. Serving them would mean
+driving a headless host session (`resolve_host().build_streaming(...)`) from a browser
+button — a materially larger design with cost, auth, and hook implications that this
+issue never scopes. Twelve refine/verify/decide passes verified line citations but never
+checked that the dispatch targets are real.
+
+**Also corrected in this pass:**
+- `blocked_by` cleared — EPIC-3299 and EPIC-3212 never reference this issue, and
+  EPIC-3212 (credential scoping) has no relationship to it.
+- Program Design's `serve` state / `bridge_run` signature and Impact's "adds a state" /
+  `--no-serve` text are stale relative to the selected FSM-B + SERVE-A decisions; left
+  as-is since the section needs a full rewrite if the issue is revived.
+
+**What remains sound:** the FSM-B (no blocking FSM state, 3600s wall-clock kill) and
+SERVE-A (`--serve-after`, distinct from ENH-3351's `--serve`) decisions, and the
+transport findings (SSE is broadcast, no `request_id` stamping).
+
+**To revive:** (1) decide whether buttons drive a headless host session or are limited
+to real CLIs (`ll-messages`, `ll-workflows`, `ll-history`); (2) rewrite Summary,
+dispatch table, and Program Design around that; (3) consider splitting the generic
+"serve a run's `index.html` via `LocalBridgeTransport`" half into a small child of
+EPIC-3299, where it belongs.
+
 ## Verification Notes
 
 Verdict at time of check: **PROPOSAL_UNSOUND** (corrections below applied in
@@ -518,4 +549,4 @@ _(none yet — newly captured)_
 
 ## Status
 
-**Open** | Created: 2026-09-11 | Priority: P3
+**Deferred** | Created: 2026-09-11 | Priority: P3
