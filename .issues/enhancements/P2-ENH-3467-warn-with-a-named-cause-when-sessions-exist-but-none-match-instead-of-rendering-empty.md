@@ -102,7 +102,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_ the return-shape decision is now closed (no change to `detect_sessions()` — see Program Design → Decisions), so the conditional doc updates collapse to:
-- `docs/reference/API.md:9580-9583` — `detect_sessions()`'s `-> list[SessionHandle]` signature is unchanged; add an entry for the new `explain_no_sessions()` helper and `NoSessionsCause` enum next to it.
+- `docs/reference/API.md:9676-9680` — `detect_sessions()`'s `-> list[SessionHandle]` signature is unchanged; add an entry for the new `explain_no_sessions()` helper and `NoSessionsCause` enum next to it.
 - `docs/reference/CLI.md` — `ll-logs` / `ll-messages` / `ll-session backfill` stderr behavior on zero matches: document the two-line contract (literal `No sessions found for: <cwd>` line, then the cause line).
 - `docs/reference/HOST_COMPATIBILITY.md:546,564-567`, `docs/ARCHITECTURE.md` § "Session-Discovery Seam" (~line 1506), `docs/codex/usage.md:95-100` — no update required; the discovery seam's contract is not changed.
 
@@ -264,7 +264,47 @@ _Added by `/ll:confidence-check` on 2026-09-14 — predates the review that clos
 - Change surface: if the return-shape decision is taken, it cascades to 11+ mock/assertion sites (`test_cli_ctx_stats.py`, `test_cli_messages.py`, `test_cli.py`, the `enh3430_workspace_union` spike tests) — a broad blast radius specific to that path.
 - Test coverage: adjacent discovery/munging logic is tested, but none of the three target call sites has coverage for the exact new zero-handles/named-cause behavior yet — new tests are unwritten.
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+- **Evidence-quote check (BUG-3282, B7)**: `ll-verify-evidence` flagged one span —
+  `classify_failure() -> tuple[FailureType, str]` (line 55, attributed to
+  `scripts/little_loops/issue_lifecycle.py`) — as not found verbatim. Direct read
+  confirms `classify_failure()` (`issue_lifecycle.py:159-161`) really does return
+  `tuple[FailureType, str]`; the flagged text is a paraphrased signature
+  description, not a claimed verbatim quote. Benign false positive, not
+  `EVIDENCE_UNVERIFIED`.
+- **Decisions log**: query returned no active required rules — no
+  `DECISIONS_VIOLATION`.
+- **Proposal-vs-code consequence check (ENH-3250, B6)**: Program Design D1-D7 is
+  resolved and prescriptive. No exception-handler incompatibility (the D6 early
+  `return 1` in `main_session()`'s Codex branches sits outside any enclosing
+  `try`/`except`) and no test-fixture invalidation (the new zero-handles branch
+  only activates on an empty `codex_handles`, a case the existing
+  `test_backfill_host_codex_discovers_via_detect_sessions` doesn't exercise, and
+  the issue's own Implementation Steps already schedule the new test for it). No
+  `PROPOSAL_UNSOUND` finding.
+- **Causal/identity claim**: "`_extract_cwd_from_project`... was deleted in
+  ENH-3430" — confirmed by direct read (docstring at
+  `session_store/sessions.py:566`) and a repo-wide grep turning up no function
+  definition by that name. Confirmed, not just consistent-with.
+- **File:line citations**: spot-checked 20+ citations across `cli/logs.py`,
+  `cli/messages.py`, `cli/session.py`, `session_store/sessions.py`,
+  `user_messages.py`, `logger.py`, `issue_discovery/matching.py`,
+  `hooks/session_start.py`, `.loops/ll-logs-telemetry-digest.yaml`, and the test
+  suite — all matched exactly (including the precise `137/281`, `139/280`,
+  `77/138` re-export line pairs in the Wiring Phase section). One drift found and
+  fixed: `docs/reference/API.md:9580-9583` had moved to `9676-9680` (that old
+  range now holds unrelated `cache_marking_oracle` documentation) — corrected
+  above in the Integration Map → Documentation section.
+- Confirmed `NoSessionsCause`/`explain_no_sessions()` do not already exist
+  anywhere in the codebase — the issue is not stale/already-resolved.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-14T20:22:41 - `0a15cdac-84ed-4f86-8df8-f76772ae2a8b.jsonl`
 - review (manual, pre-implementation) - 2026-09-14 - closed the open return-shape/taxonomy/visibility decisions as Program Design D1-D7; fixed stale loop-YAML citation; scoped in `_cmd_eval_export`, scoped out `--all`/`ctx_stats`; size Very Large → Medium; cleared stale `verify_verdict`
 - `/ll:confidence-check` - 2026-09-14T18:51:10 - `773a7d89-19ad-4a67-9526-f3658a21a035.jsonl`
 - `/ll:reconcile-issue` - 2026-09-14T18:44:38 - `14a77021-cd98-4426-bab7-79ff2ffc015d.jsonl`
