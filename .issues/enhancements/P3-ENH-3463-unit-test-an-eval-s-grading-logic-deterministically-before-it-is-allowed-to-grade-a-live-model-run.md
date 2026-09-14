@@ -37,6 +37,35 @@ Distinct from the adjacent verdict work: n-run redundancy (ENH-3415, shipped) go
 
 A grader with a deliberately inverted comparison is caught by its unit tests before any live run is dispatched.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+Confirmed file paths and call sites for the two remaining test-coverage gaps and the missing dispatch gate.
+
+### Files to Modify
+- `scripts/tests/test_fsm_evaluators.py` — add the two missing cases: an `evaluate_output_json` fail-case and boundary-case (`TestOutputJsonEvaluator`, currently `test_fsm_evaluators.py:284-354`, only asserts `"yes"`/`"error"`), and an `evaluate_llm_structured` `confidence == min_confidence` exact-boundary case (`TestLLMStructuredEvaluator`, currently `test_fsm_evaluators.py:976-1798`, boundary tests only use a clearly-low confidence)
+- `scripts/little_loops/cli/harness.py` — `_grade()` (`:1224`) is the sole call site through which a live-model probe reaches `evaluate_llm_structured()`; any presence/pass gate on grader tests has to sit here or at the `evaluate()` dispatcher both it and FSM execution route through
+- `scripts/little_loops/fsm/evaluators.py` — `evaluate()` dispatcher (`:1839`), a linear `if/elif` chain on `config.type` with no registry — a gate that must apply to every grader type touches this chain once per branch unless wrapped at the call boundary instead
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/harness.py:1913` (`_run_sample_loop`), `:1965` (`_evaluate_and_report`) — the two call sites that reach `_grade()` for a live sample
+- `scripts/little_loops/fsm/evaluators.py:2058` — `evaluate()`'s own `evaluate_llm_structured` branch, a second call path into the same grader outside `_grade()`
+- `scripts/little_loops/fsm/executor.py:41`, `scripts/little_loops/fsm/__init__.py:87`, `scripts/little_loops/fsm/types.py:12`, `scripts/little_loops/fsm/validation/structural_rules.py:19` — importers of `fsm/evaluators.py`; a gate added inside `evaluate()` is reachable from every FSM loop run, not only `ll-harness`
+
+### Conventions in Force
+- Graders that would otherwise dispatch a live model call are tested by patching `subprocess.run` at the module level (`little_loops.fsm.evaluators.subprocess.run`) via a `mock_cli`/`_make_cli_response` fixture returning a canned CLI JSON envelope — evidence: `TestLLMStructuredEvaluator.mock_cli` (`test_fsm_evaluators.py:997-1005`), `TestBlindComparator` (`:2314`), `TestContractEvaluator` (`:2622`)
+- Pure (non-LLM) graders get one `Test<EvaluatorName>Evaluator` class per function, methods named for the case (`_passes`/`_fails`, operator names), asserting both `result.verdict` and specific `result.details` keys — evidence: `TestExitCodeEvaluator` (`test_fsm_evaluators.py:55-98`, parametrized over exit-code→verdict tuples), `TestOutputNumericEvaluator` (`:98-227`, one `test_<op>_passes`/`test_<op>_fails` pair per operator)
+- A state-scoped policy resolved as state-override-then-loop-default, validated by a schema/lint rule so an unrecognized value is caught before a run, is the shape any new grader-test gate would most closely follow — evidence: `_effective_tamper_guard_policy`/`_check_tamper_guard` (`fsm/executor.py:1601-1693`), `_effective_prepatch_check_policy`/`_check_prepatch_check` (`fsm/executor.py:1716-2107`)
+- A `block`/`warn` policy gate distinct from grading, applied to require fresh proof before a dependency is trusted, is a second existing precedent for a presence-of-proof gate — evidence: `learning_tests/gate.py` (`is_record_stale`, `run_learning_gate_for_issue`), `release_gate.py` (`run_release_gate`)
+
+### Tests
+- `scripts/tests/test_fsm_evaluators.py` — direct tests for 9 of the 10 named graders (all but `evaluate_harbor_scorer`)
+- `scripts/tests/test_benchmark_fragment.py` — `TestEvaluateHarborScorerVerdicts` (`:28-74`), the tenth grader's direct tests, in a separate file from the rest
+- `scripts/tests/test_cli_harness.py` — `TestGradeEvidenceChannels` (`:3682`) calls `_grade()` directly against synthetic `RunnerResult` fixtures with the LLM grader mocked at `little_loops.cli.harness.evaluate_llm_structured`; no existing test in this class exercises a deliberately-inverted grader or a test-presence/pass gate
+
 ## Program Design
 
 ### Types
@@ -53,6 +82,26 @@ A grader with a deliberately inverted comparison is caught by its unit tests bef
 ### Call Path
 
 `_grade()` (`harness.py:1224`) -> `evaluate_llm_structured()` / other `evaluate_*` graders (`fsm/evaluators.py`) -> new deterministic unit-test suite exercising each `evaluate_*` function directly against fixed synthetic `(output, criteria)` fixtures, independent of `_grade()` and any live subject.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- All ten graders named in this issue's own Signatures list already have direct, zero-API-call unit tests exercising a clear pass and clear fail (mocked via a `mock_cli` fixture patching `subprocess.run` for the LLM-calling graders, per `test_fsm_evaluators.py:997-1005`; pure-function calls for the rest): `evaluate_exit_code` (`TestExitCodeEvaluator`, `test_fsm_evaluators.py:55`), `evaluate_output_numeric` (`TestOutputNumericEvaluator`, `:98`), `evaluate_output_json` (`TestOutputJsonEvaluator`, `:284`), `evaluate_output_contains` (`TestOutputContainsEvaluator`, `:358`), `evaluate_classify` (`TestClassifyEvaluator`, `:546`), `evaluate_llm_structured` (`TestLLMStructuredEvaluator`, `:976`), `evaluate_mcp_result` (`TestMcpResultEvaluator`, `:2194`), `evaluate_blind_comparator` (`TestBlindComparator`, `:2286`), `evaluate_contract` (`TestContractEvaluator`, `:2603`), and `evaluate_harbor_scorer` (`TestEvaluateHarborScorerVerdicts`, a separate file `test_benchmark_fragment.py:28`, not `test_fsm_evaluators.py`). This runs counter to this section's own "none currently have deterministic unit tests" line above.
+- Two specific coverage gaps remain, confirmed by direct grep of the relevant test class: `evaluate_output_json` (`evaluators.py:324`) has no call site in `test_fsm_evaluators.py` asserting a `verdict == "no"` (fail) outcome or a value placed exactly at an `lt`/`gt`/`le`/`ge` threshold boundary — every existing call there asserts `"yes"` or `"error"` only. `evaluate_llm_structured` (`evaluators.py:1067`) has confidence-threshold tests only at a clearly-low confidence (`0.4` vs. `min_confidence=0.7`, `test_fsm_evaluators.py:1121,1131`), never at `confidence == min_confidence` exactly.
+- No mechanism anywhere in `scripts/little_loops/` blocks a live-model probe from calling a grader whose tests are absent or failing — `_grade()` (`cli/harness.py:1224`) and the `evaluate()` dispatcher (`fsm/evaluators.py:1839`, a plain `if/elif` chain on `config.type`) invoke every grader unconditionally; a repo-wide search for gating terminology (`requires_test`, `grader_test`, `test_required`, a `--require-grader-tests`-style flag) returned zero hits. The closest existing conventions for "a check must pass before an action proceeds" are the FSM executor's state-scoped `tamper_guard`/`prepatch_check` policies (`fsm/executor.py:1601-2107`, `little_loops/prepatch_check.py`) and the learning-tests `release_gate` (`block`/`warn` policy, `learning_tests/gate.py`, `release_gate.py`) — neither is wired to an individual grader function's own test suite today.
+- `_grade()` has no distinct handling for a grader that errors internally: an `EvaluationResult(verdict="error", ...)` (e.g. from `evaluators.py:1123`'s `BlockingJsonError` catch) is not in `is_abstention_verdict()`'s recognized set (`fsm/verdicts.py:25`, which only recognizes `cannot_judge`), so it falls through `_grade()`'s `elif eval_result.verdict != "yes": passed = False` (`harness.py:1311-1312`) and is indistinguishable from a legitimate semantic "no" in `_grade()`'s return value.
+
+## Implementation Steps
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+1. `evaluate_output_json` (`fsm/evaluators.py:324`) has a test-covered fail case and a test-covered boundary case in `TestOutputJsonEvaluator` (`test_fsm_evaluators.py:284`) — today only `"yes"`/`"error"` outcomes are asserted there.
+2. `evaluate_llm_structured` (`fsm/evaluators.py:1067`) has a test asserting the exact-boundary case `confidence == min_confidence` in `TestLLMStructuredEvaluator` (`test_fsm_evaluators.py:976`) — today the nearby cases only use a clearly-low confidence (`0.4` vs. `min_confidence=0.7`).
+3. A grader with a deliberately inverted comparison is caught before any live run is dispatched: a check exists that a probe's configured grader has passing unit tests, wired into the path `_run_sample_loop()`/`_evaluate_and_report()` -> `_grade()` (`cli/harness.py:1224`) or into the `evaluate()` dispatcher (`fsm/evaluators.py:1839`) both share, and its refusal/warn behavior is itself test-covered.
+4. `python -m pytest scripts/tests/test_fsm_evaluators.py scripts/tests/test_benchmark_fragment.py scripts/tests/test_cli_harness.py -v` passes.
 
 ## Impact
 
@@ -71,5 +120,6 @@ A grader with a deliberately inverted comparison is caught by its unit tests bef
 **Open** | Created: 2026-09-13 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-14T20:30:28 - `32822b8f-688a-416a-8c16-7d6cacd02e0d.jsonl`
 - `/ll:format-issue` - 2026-09-14T20:15:11 - `94434fad-8258-433c-9701-ead707bb03a6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-13T21:28:47 - `23df08cc-836b-4f77-a1e2-bfb5aedb0f55.jsonl`

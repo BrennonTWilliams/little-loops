@@ -109,7 +109,7 @@ _Wiring pass added by `/ll:wire-issue`:_ the return-shape decision is now closed
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_ll_session.py:751-777` (`test_backfill_host_codex_discovers_via_detect_sessions`) — only covers a non-empty `codex_handles` result; add a new test (e.g. `test_backfill_host_codex_zero_handles_warns`) for the empty-handles case once `session.py`'s codex branches gain a zero-handles check.
+- `scripts/tests/test_ll_session.py:751-777` (`test_backfill_host_codex_discovers_via_detect_sessions`) — only covers a non-empty `codex_handles` result; add the two D6 tests (`--since` returns 1, full mode warns and continues) for the empty-handles case. `test_backfill_runs` (`:307`) runs the full non-codex path without patching `get_project_folder` and asserts exit 0 — it is the regression guard for the full-mode warn-and-continue rule.
 - `scripts/tests/test_cli_messages.py` — no existing test covers `main_messages()`'s zero-handles path (the "sharper," currently-silenced-by-default instance the issue's own research calls out); new test needed.
 - `scripts/tests/test_ll_logs.py:1294-1309` (`test_sequences_project_not_found_returns_1`) and `:1892-1907` (`test_extract_project_not_found_returns_1`) — assert only `result == 1` today, with no assertion on message content or visibility; extend once the named-cause distinction lands.
 - `scripts/tests/test_cli_ctx_stats.py` (14 sites, e.g. lines 693, 697, 734, 758, 800, 840, 855, 880, 906, 989, 1005, 1035, 1066) and `scripts/tests/test_cli_messages.py` / `scripts/tests/test_cli.py` (`TestMainMessagesIntegration`, e.g. lines 676, 710, 730, 749) — all mock `detect_sessions()` as returning a bare `list[SessionHandle]`. **Must keep passing unchanged** — this is the reason the return shape is not being changed. Tests that mock `detect_sessions()` to return `[]` in `test_cli_messages.py`/`test_cli.py` will now also exercise `explain_no_sessions()` against the real `Path.home()`; patch it (or pass `home=tmp_path`) in those tests so they stay hermetic.
@@ -179,40 +179,57 @@ _Resolved 2026-09-14 in review; these replace the former open Decision Rules._
 
 ```python
 class NoSessionsCause(str, Enum):
-    NONE_RECORDED = "none_recorded"        # host has no session store, or it is empty
-    SUBDIRECTORY = "subdirectory"          # a parent of cwd has sessions
-    MOVED_OR_RENAMED = "moved_or_renamed"  # a workspace shares cwd's last path segment
-    ENCODING_MISMATCH = "encoding_mismatch" # a workspace's recorded cwd == cwd, dir name differs
-    UNKNOWN = "unknown"                    # workspaces exist, none resemble cwd
+    NONE_RECORDED = "none_recorded"          # host has no session store, or it is empty
+    PROJECT_DIR_EMPTY = "project_dir_empty"  # cwd's own dir exists; no usable session files
+    ENCODING_MISMATCH = "encoding_mismatch"  # a workspace's recorded cwd == cwd, dir name differs
+    SUBDIRECTORY = "subdirectory"            # a parent of cwd has sessions
+    MOVED_OR_RENAMED = "moved_or_renamed"    # a workspace shares cwd's last path segment
+    UNKNOWN = "unknown"                      # workspaces exist, none resemble cwd
 
 def explain_no_sessions(
-    cwd: Path, host: str | None = None, *, home: Path | None = None
+    cwd: Path,
+    host: str | None = None,
+    *,
+    include_agents: bool = False,
+    home: Path | None = None,
 ) -> tuple[NoSessionsCause, str]: ...
 ```
 
-The `str` reason is the human-readable second line (see D3). This keeps every existing `detect_sessions()` mock (11+ sites) valid and leaves the discovery seam's documented contract untouched; the cost of the extra scan is paid only on the failure path.
+The `str` reason is the human-readable second line (see D3). Enum members are declared in precedence order (most specific first, `UNKNOWN` last, `NONE_RECORDED` first because it short-circuits) — D5 relies on that ordering. `include_agents` mirrors the `detect_sessions()` call the site just made, so `PROJECT_DIR_EMPTY` can say whether the directory is truly empty or merely agent-only. This keeps every existing `detect_sessions()` mock (11+ sites) valid and leaves the discovery seam's documented contract untouched; the cost of the extra scan is paid only on the failure path.
 
-**D2 — Cause taxonomy and precedence (Claude Code).** Claude Code discovery is a pure encoded-directory existence probe, so there is no "session rejected" step; the causes are derived from directory names under `<home>/.claude/projects/`, checked in this order, first match wins:
+**D2 — Cause taxonomy and precedence (Claude Code).** Claude Code discovery is a pure encoded-directory existence probe, so there is no "session rejected" step; the causes are derived from directory names under `<home>/.claude/projects/`, checked in this order, first match wins. Let `own = {encode_project_path(s) for s in _cwd_spellings(cwd)}` — the directory names that *would* have matched.
 1. `NONE_RECORDED` — `projects/` is missing or contains no directories.
-2. `ENCODING_MISMATCH` — some directory's `_first_record_cwd()` equals any `_cwd_spellings(cwd)` entry, but the directory name is not `encode_project_path()` of that spelling. This is the only check that reads file contents (one `_first_record_cwd()` per directory), and it is the visualizer-precedent case from Why it matters. Checked before the name-based causes because an exact recorded-cwd match is stronger evidence than a name resemblance.
-3. `SUBDIRECTORY` — an existing directory name is a strict prefix of `encode_project_path(spelling)` for some spelling of cwd (an ancestor of cwd has sessions). Name comparison only.
-4. `MOVED_OR_RENAMED` — an existing directory name ends with `"-" + encode_project_path(cwd.name)` (same last path segment, different location). Name comparison only.
-5. `UNKNOWN` — directories exist but none satisfy 2-4.
+2. `PROJECT_DIR_EMPTY` — a directory named in `own` exists (this is exactly the case `_detect_claude_sessions()` line 269's glob came back empty, the second row of the data-availability table above). Reason distinguishes two sub-cases: no `*.jsonl` at all, versus only `agent-*.jsonl` when `include_agents=False` ("only agent transcripts exist for this workspace; pass `--include-agents` / drop `--exclude-agents`"). Without this rule the own directory falls through to rule 5 (it necessarily ends with `"-" + encode_project_path(cwd.name)`) and is misreported as moved.
+3. `ENCODING_MISMATCH` — some directory *not in `own`* has `_first_record_cwd()` equal to any `_cwd_spellings(cwd)` entry. This is the only check that reads file contents (one `_first_record_cwd()` per directory), and it is the visualizer-precedent case from Why it matters. Checked before the name-based causes because an exact recorded-cwd match is stronger evidence than a name resemblance.
+4. `SUBDIRECTORY` — some directory `d` not in `own` satisfies `e.startswith(d + "-")` for some `e` in `own` (an ancestor of cwd has sessions). The trailing `"-"` is the segment boundary: `-Users-b-proj` is a strict prefix of `-Users-b-project-x` but not an ancestor of it. Name comparison only.
+5. `MOVED_OR_RENAMED` — some directory not in `own` ends with `"-" + encode_project_path(cwd.name)` (same last path segment, different location). Name comparison only; because `.`/`_` also encode to `-`, `not-little-loops` matches a cwd named `little-loops`, so the reason text says the workspace "looks like" a moved copy rather than asserting it.
+6. `UNKNOWN` — directories exist but none satisfy 2-5.
 
-Codex (`_detect_codex_sessions()` really does filter records by cwd): `NONE_RECORDED` when `list_workspaces("codex", existing_only=False)` is empty; otherwise apply rules 3-4 against the recovered workspace paths as plain `Path` ancestor / `.name` comparisons; `ENCODING_MISMATCH` does not apply (no encoding step). Layout hosts (`_LAYOUT_HOSTS`) use the Claude Code rules against their own `projects` root; gemini/kimi-code/omp return `NONE_RECORDED` or `UNKNOWN` only.
+Codex (`_detect_codex_sessions()` really does filter records by cwd): `NONE_RECORDED` when `list_workspaces("codex", existing_only=False)` is empty; otherwise apply rules 4-5 against the recovered workspace paths as plain `Path` ancestor / `.name` comparisons; `PROJECT_DIR_EMPTY` and `ENCODING_MISMATCH` do not apply (no per-project directory, no encoding step). Layout hosts (`_LAYOUT_HOSTS`) use the Claude Code rules against their own `projects` root; gemini/kimi-code/omp return `NONE_RECORDED` or `UNKNOWN` only.
+
+**Cost note for rule 3.** On the primary dev machine `~/.claude/projects` holds ~870 directories, so one zero-match costs up to ~870 `_first_record_cwd()` file opens (first record only, so typically one line each). It runs only on the failure path, but `.loops/ll-logs-telemetry-digest.yaml` reaches that path routinely across projects, so: (a) the helper must skip unreadable/empty directories without raising, (b) add one `test_session_discovery.py` test with a few hundred synthetic empty directories asserting the helper returns in well under a second, and (c) Impact records the cost. No cap is added unless that test shows a problem.
 
 **D3 — stderr contract.** Every zero-match site prints exactly two lines to stderr, in this order:
 ```
 No sessions found for: <cwd>
 <reason>
 ```
-Line 1 is byte-identical to today's message so `.loops/ll-logs-telemetry-digest.yaml:68` keeps routing every zero-match state to `FAILURES_NO_DATA` (a cause-bearing miss is still "no data" from the loop's perspective, not an error). Line 2 is the `str` from `explain_no_sessions()`, e.g. `Sessions exist for parent workspace /a/b (ll-logs was run from a subdirectory); run from there or pass --project /a/b.` For `NONE_RECORDED` line 2 is `No sessions recorded for any workspace under ~/.claude/projects.` Every non-`NONE_RECORDED` reason ends with `Run 'll-logs discover' to list workspaces with recorded sessions.`
+Line 1 is byte-identical to today's message so `.loops/ll-logs-telemetry-digest.yaml:68` keeps routing every zero-match state to `FAILURES_NO_DATA` (a cause-bearing miss is still "no data" from the loop's perspective, not an error). Line 2 is the `str` from `explain_no_sessions()`. The helper lives in `session_store`, which does not know which CLI called it, so reasons are **flag-free**: they name the path and say what to do in terms of directories, never `--project`/`--cwd` (those differ per CLI — `ll-logs` has `--project`, `ll-messages` has `--cwd`, `ll-session backfill` has neither). Examples:
+- `SUBDIRECTORY`: `Sessions exist for parent workspace /a/b; this was run from a subdirectory of it. Run from /a/b instead.`
+- `MOVED_OR_RENAMED`: `Workspace /x/y/little-loops looks like a moved or renamed copy of this directory (same name, different location).`
+- `ENCODING_MISMATCH`: `Directory <name> records sessions for this exact cwd but is not the expected encoding <expected>; the host's path encoding may have changed.`
+- `PROJECT_DIR_EMPTY`: `A session directory exists for this workspace but contains no session files.` / `... contains only agent transcripts (excluded by the agent filter).`
+- `NONE_RECORDED`: `No sessions recorded for any workspace on any registered host.` when `host=None`; `No sessions recorded for any workspace under <host's projects root>.` for an explicit host.
+Every non-`NONE_RECORDED` reason ends with `Run 'll-logs discover' to list workspaces with recorded sessions.` A CLI site may append a third line naming its own flag (e.g. `_detect_project_handles()` may add `or pass --project /a/b`); that third line is optional and site-owned, and never precedes line 1.
 
 **D4 — Visibility without `--verbose`.** `Logger` has no ungated tier (every method checks `self.verbose`, `logger.py:76-113`). Do not add one. Emit the two lines with `print(..., file=sys.stderr)` at each site — the precedent already in `_cmd_eval_export()` (`logs.py:1943`). In `_detect_project_handles()` and `main_messages()` this replaces the existing `logger.error(...)` call. `ll-session backfill` constructs `Logger(use_color=use_color_enabled())` (verbose default `True`), so it could use `logger.warning()`, but use the same `print` for consistency across the four sites.
 
-**D5 — Union semantics.** With `host=None`, `explain_no_sessions()` evaluates each host in `_REGISTERED_HOSTS` and returns the first non-`NONE_RECORDED` cause in that tuple's order; it returns `NONE_RECORDED` only when every host is `NONE_RECORDED`. With an explicit host it evaluates that host only.
+**D5 — Union semantics.** With `host=None`, `explain_no_sessions()` evaluates every host in `_REGISTERED_HOSTS`, then returns the **most specific** cause across them — highest precedence per the `NoSessionsCause` declaration order, with `UNKNOWN` ranking below every named cause and `NONE_RECORDED` returned only when every host is `NONE_RECORDED`. First-host-wins is explicitly rejected: `claude-code` is first in the tuple, so its `UNKNOWN` would mask a Codex `SUBDIRECTORY`. Ties (same cause on two hosts) resolve in `_REGISTERED_HOSTS` order. With an explicit host it evaluates that host only.
 
-**D6 — Path C behavior.** In `main_session()`'s two Codex branches, an empty `codex_handles` prints the D3 two-line message and returns 1 before calling `backfill_incremental()`/`backfill()`, so `Backfilled 0 rows` is never logged as a success for a cwd with no discoverable sessions. The non-codex `get_project_folder() is None` branches (lines 704-708, 759-766) print the same two lines (replacing `"No session project folder found; cannot discover JSONL files."` at 706-708, and adding a check to the silent fallthrough at 759-766) and return 1.
+**D6 — Path C behavior.** `backfill()` (`session_store/lifecycle.py:1099-1114`) still ingests issues, loops, commits, and learning tests when it receives no JSONL sources — the no-project-folder path at `session.py:759-766` is a deliberate partial backfill, not a silent fallthrough, and `test_backfill_runs` (`test_ll_session.py:307`) asserts exit 0 on it without patching the project folder. So the four branches split by mode:
+- **Incremental (`--since`) branches, `session.py:694` (codex) and `:704` (non-codex):** `backfill_incremental()` is JSONL-only, so an empty `codex_handles` / `None` project folder prints the D3 two-line message and returns 1 before the call (the non-codex branch already returns 1; its `"No session project folder found; cannot discover JSONL files."` at 706-708 is replaced by the two lines).
+- **Full branches, `session.py:747` (codex) and `:759` (non-codex):** print the D3 two-line message, then **continue** into `backfill()` so issue/loop/commit/learning-test ingestion still runs, and exit 0 as today. The success line is unchanged; the stderr warning is what distinguishes "0 raw_events because nothing was discoverable" from "0 because nothing was new".
+`ll-session backfill`'s exit code is therefore unchanged in every case that exits 0 today.
 
 **D7 — No escape hatch.** The message is two stderr lines on an already-failing path; no `--quiet` or dismissal flag is added.
 
@@ -222,9 +239,9 @@ Line 1 is byte-identical to today's message so `.loops/ll-logs-telemetry-digest.
 
 _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
-1. Add `NoSessionsCause` and `explain_no_sessions()` to `scripts/little_loops/session_store/sessions.py` per Program Design D1/D2/D5, re-exported from `scripts/little_loops/session_store/__init__.py`; covered by per-cause scenario tests in `scripts/tests/test_session_discovery.py` against a `tmp_path` home (each of the five causes, plus the `host=None` union rule and the Codex path).
+1. Add `NoSessionsCause` and `explain_no_sessions()` to `scripts/little_loops/session_store/sessions.py` per Program Design D1/D2/D5, re-exported from `scripts/little_loops/session_store/__init__.py`; covered by per-cause scenario tests in `scripts/tests/test_session_discovery.py` against a `tmp_path` home (each of the six causes including both `PROJECT_DIR_EMPTY` sub-cases, the rule-4 segment-boundary negative case, the D5 most-specific-wins union rule with a claude-code `UNKNOWN` vs codex `SUBDIRECTORY` fixture, the Codex path, and the D2 cost-note timing test with a few hundred synthetic directories).
 2. `_detect_project_handles()` (`cli/logs.py:581-583`), `_cmd_eval_export()` (`cli/logs.py:1942-1944`), and `main_messages()` (`cli/messages.py:190-192`) call the helper on an empty result and print the D3 two-line stderr message via `print(..., file=sys.stderr)` (D4); covered by extending `test_sequences_project_not_found_returns_1` / `test_extract_project_not_found_returns_1` (`test_ll_logs.py:1294`, `:1892`) and a new zero-handles test in `test_cli_messages.py` to assert both lines with `capsys`, the latter with `verbose` unset.
-3. `main_session()`'s four backfill branches (`cli/session.py:694`, `:704`, `:747`, `:759`) gain the D6 check; covered by a new `test_backfill_host_codex_zero_handles_warns` in `scripts/tests/test_ll_session.py` (existing shape: `test_backfill_host_codex_discovers_via_detect_sessions`, line 751) asserting return code 1, the two stderr lines, and that `backfill_incremental()`/`backfill()` were not called.
+3. `main_session()`'s four backfill branches (`cli/session.py:694`, `:704`, `:747`, `:759`) gain the D6 check — return 1 on the two `--since` branches, warn-and-continue on the two full branches; covered by two new tests in `scripts/tests/test_ll_session.py` (existing shape: `test_backfill_host_codex_discovers_via_detect_sessions`, line 751): `test_backfill_since_codex_zero_handles_returns_1` asserting return code 1, the two stderr lines, and that `backfill_incremental()` was not called; and `test_backfill_full_codex_zero_handles_warns_and_continues` asserting return code 0, the two stderr lines, and that `backfill()` was still called with `handles=[]`. `test_backfill_runs` (line 307) must keep passing unchanged.
 4. Line 1 of the message stays byte-identical to `No sessions found for: <cwd>`; `scripts/tests/test_bug_3216_telemetry_digest_invocations.py:177-189` passes unchanged.
 5. Existing `detect_sessions()` mocks in `test_cli_ctx_stats.py`, `test_cli_messages.py`, `test_cli.py` pass unchanged; any zero-handles test that now reaches `explain_no_sessions()` patches it or passes `home=tmp_path` to stay hermetic.
 6. Document the helper in `docs/reference/API.md` next to `detect_sessions()` and the two-line stderr contract in `docs/reference/CLI.md`.
@@ -234,8 +251,8 @@ _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/little_loops/cli/session.py:694,704,747,759` per Program Design D6 — print the two-line message and return 1 before any backfill call when `detect_sessions()`/`get_project_folder()` return empty/None.
-- Add test `scripts/tests/test_ll_session.py::test_backfill_host_codex_zero_handles_warns` covering the empty-`codex_handles` path — no existing test exercises it.
+- Update `scripts/little_loops/cli/session.py:694,704,747,759` per Program Design D6 — print the two-line message when `detect_sessions()`/`get_project_folder()` return empty/None; return 1 on the `--since` branches (694, 704) only, continue into `backfill()` on the full branches (747, 759).
+- Add tests `scripts/tests/test_ll_session.py::test_backfill_since_codex_zero_handles_returns_1` and `::test_backfill_full_codex_zero_handles_warns_and_continues` covering the empty-`codex_handles` path in each mode — no existing test exercises either.
 - Add a zero-handles test to `scripts/tests/test_cli_messages.py` for `main_messages()` — the currently-silenced-by-default instance the issue's own research calls "the sharper instance." Run it without `--verbose` to prove D4.
 - Extend `scripts/tests/test_ll_logs.py::test_sequences_project_not_found_returns_1` and `::test_extract_project_not_found_returns_1` to assert on both stderr lines, not just the return code.
 - Add `NoSessionsCause` / `explain_no_sessions` to the `session_store/__init__.py` export list (line ~137/281 region, next to `detect_sessions`).
@@ -244,25 +261,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P2 - a diagnostic gap, not a functional regression; the failure mode it masks (silent data loss presenting as "no data") is what makes it worth fixing ahead of lower-priority backlog
 - **Effort**: Medium - one new helper plus enum in `session_store/sessions.py`, and small local edits at four CLI sites (`logs.py` ×2, `messages.py`, `session.py`); no return-shape change, so no mock churn. Was `Very Large` while the return-shape decision was open; closed as D1.
-- **Risk**: Low - additive diagnostic surface with no behavior change to the success path; the one hard constraint is preserving line 1 of the stderr message for the `"No sessions found for:"` grep in `.loops/ll-logs-telemetry-digest.yaml:68` (D3)
-- **Breaking Change**: No - `detect_sessions()`'s return shape is unchanged by decision D1; the only observable change is one extra stderr line on an already-failing path, and `ll-session backfill` now exits 1 instead of 0 when it finds nothing to backfill
+- **Risk**: Low - additive diagnostic surface with no behavior change to the success path; the one hard constraint is preserving line 1 of the stderr message for the `"No sessions found for:"` grep in `.loops/ll-logs-telemetry-digest.yaml:68` (D3). Cost: the `ENCODING_MISMATCH` rule opens one file per directory under the host's projects root (~870 on the primary dev machine) on every zero-match; bounded by the D2 cost-note timing test.
+- **Breaking Change**: No - `detect_sessions()`'s return shape is unchanged by decision D1; the only observable change is one extra stderr line on an already-failing path. `ll-session backfill` exit codes are unchanged (D6): full-mode backfill with no discoverable sessions still exits 0 after ingesting issues/loops/commits.
 
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P2
-
-## Confidence Check Notes
-
-_Added by `/ll:confidence-check` on 2026-09-14 — predates the review that closed Program Design D1-D7; the risk factors below describing open decisions and a possible return-shape cascade no longer apply. Re-run to refresh._
-
-**Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 48/100 → LOW
-
-### Outcome Risk Factors
-- Breadth/depth: touches 5+ distinct sites across `logs.py` (three sub-paths), `sessions.py`, `user_messages.py`, `session.py`, and `messages.py`, with moderate cross-module coupling; the still-open return-shape decision (tuple/enum vs. boolean) would push several sites from local edits toward deeper, contract-changing ones if adopted.
-- Ambiguity: four design questions are explicitly left to implementer judgment — cause taxonomy, precedence among causes, match-closeness threshold, and escape-hatch/dismissal — expect iteration to settle these before the change lands.
-- Change surface: if the return-shape decision is taken, it cascades to 11+ mock/assertion sites (`test_cli_ctx_stats.py`, `test_cli_messages.py`, `test_cli.py`, the `enh3430_workspace_union` spike tests) — a broad blast radius specific to that path.
-- Test coverage: adjacent discovery/munging logic is tested, but none of the three target call sites has coverage for the exact new zero-handles/named-cause behavior yet — new tests are unwritten.
 
 ## Verification Notes
 
@@ -304,6 +308,7 @@ what was wrong and fixed, not an outstanding action item)
   anywhere in the codebase — the issue is not stale/already-resolved.
 
 ## Session Log
+- review (manual, pre-implementation) - 2026-09-14 - D6 rewritten (full-mode backfill warns and continues; `--since` returns 1) after confirming `backfill()` ingests non-JSONL sources and `test_backfill_runs` asserts exit 0; added `PROJECT_DIR_EMPTY` cause + `include_agents` param; segment-boundary fix for `SUBDIRECTORY`; D5 most-specific-wins union; flag-free reason strings; ENCODING_MISMATCH cost note; removed stale Confidence Check Notes
 - `/ll:confidence-check` - 2026-09-14T20:26:43 - `cd2a749d-5503-4906-a5fa-bb6f41d833a5.jsonl`
 - `/ll:verify-issues` - 2026-09-14T20:22:41 - `0a15cdac-84ed-4f86-8df8-f76772ae2a8b.jsonl`
 - review (manual, pre-implementation) - 2026-09-14 - closed the open return-shape/taxonomy/visibility decisions as Program Design D1-D7; fixed stale loop-YAML citation; scoped in `_cmd_eval_export`, scoped out `--all`/`ctx_stats`; size Very Large → Medium; cleared stale `verify_verdict`
