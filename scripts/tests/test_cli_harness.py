@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -12,7 +14,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.cli.harness import (
+    ChannelRecord,
+    _check_side_effects,
+    _grade,
     _parse_harness_args,
+    _run_sample_loop,
+    _snapshot_side_effects,
     cmd_cmd,
     cmd_dsl,
     cmd_mcp,
@@ -20,7 +27,9 @@ from little_loops.cli.harness import (
     cmd_skill,
     main_harness,
 )
+from little_loops.fsm.evaluators import EvaluationResult
 from little_loops.host_runner import HostInvocation
+from little_loops.runner_spec import RunnerResult
 
 # ---------------------------------------------------------------------------
 # Shared helpers (mirroring test_action.py patterns)
@@ -1476,6 +1485,34 @@ class TestCmdDsl:
         assert result == 1
         out = capsys.readouterr().out
         assert "pass-rate" in out
+        assert "0/1" in out
+
+    def test_cmd_dsl_require_artifact_enforced_per_task(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3462 D1/D9/AC9: --require-artifact threads through the per-task Namespace."""
+        monkeypatch.chdir(tmp_path)
+        task_file = self._make_task_yaml_no_expected(tmp_path)
+        args = _make_namespace(
+            runner="dsl",
+            path=str(task_file),
+            semantic="task succeeded",
+            require_artifact=["out.txt"],
+        )
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=_llm_verdict("yes")),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        # The judge said "yes", but out.txt was never written by the (mocked)
+        # run -- --require-artifact must still fail the task.
+        assert result == 1
+        out = capsys.readouterr().out
         assert "0/1" in out
 
     def test_cmd_dsl_directory_scans_yaml_files(
@@ -3606,3 +3643,421 @@ class TestBaselineFlaglessUnchanged:
             _conditions_fp(with_timeout),
         }
         assert len(fps) == 4
+
+
+# ---------------------------------------------------------------------------
+# ENH-3462: widened evidence surface -- channels, --evidence, --require-artifact,
+# --forbid-path, --expect-no-git-changes.
+# ---------------------------------------------------------------------------
+
+
+def _init_git_repo(path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True)
+    (path / "tracked.txt").write_text("v1")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=path, check=True)
+
+
+class TestChannelRecordToDict:
+    """AC6: `--json` shape is {name, examined, chars, note} -- no `content` key."""
+
+    def test_examined_with_content_reports_chars(self) -> None:
+        ch = ChannelRecord(name="stderr", examined=True, content="")
+        assert ch.to_dict() == {"name": "stderr", "examined": True, "chars": 0, "note": None}
+        assert "content" not in ch.to_dict()
+
+    def test_examined_nonempty_content_chars_is_len(self) -> None:
+        ch = ChannelRecord(name="stdout", examined=True, content="hello")
+        assert ch.to_dict()["chars"] == 5
+
+    def test_unexamined_chars_is_none(self) -> None:
+        ch = ChannelRecord(name="git", examined=False, content=None)
+        d = ch.to_dict()
+        assert d["examined"] is False
+        assert d["chars"] is None
+
+
+class TestGradeEvidenceChannels:
+    """AC1, AC2, AC6, AC7, AC10, AC14: `_grade()`'s stdout/stderr channel handling."""
+
+    def test_ac2_default_declaration_grades_raw_stdout_unchanged(self) -> None:
+        """No new flags -> byte-identical judge input, no max_output_chars kwarg."""
+        args = _make_namespace(semantic="looks good", target="cmd x")
+        result = RunnerResult(stdout="hello world", stderr="a warning", exit_code=0)
+        with patch(
+            "little_loops.cli.harness.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="yes", details={}),
+        ) as mock_eval:
+            rc, outcome = _grade("cmd x", result, args)
+        assert rc == 0
+        mock_eval.assert_called_once()
+        _, kwargs = mock_eval.call_args
+        assert kwargs["output"] == "hello world"
+        assert "max_output_chars" not in kwargs
+        stdout_ch = next(c for c in outcome.channels if c.name == "stdout")
+        stderr_ch = next(c for c in outcome.channels if c.name == "stderr")
+        assert stdout_ch.examined is True
+        assert stdout_ch.content == "hello world"
+        assert stderr_ch.examined is False
+        assert stderr_ch.content is None
+
+    def test_ac1_evidence_stderr_sends_tagged_stdout_and_stderr(self) -> None:
+        args = _make_namespace(semantic="crit", target="cmd x", evidence=["stderr"])
+        result = RunnerResult(stdout="out-body", stderr="err-body", exit_code=0)
+        with patch(
+            "little_loops.cli.harness.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="yes", details={}),
+        ) as mock_eval:
+            _grade("cmd x", result, args)
+        _, kwargs = mock_eval.call_args
+        composed = kwargs["output"]
+        assert "<stdout>" in composed and "out-body" in composed
+        assert "<stderr>" in composed and "err-body" in composed
+        assert kwargs["max_output_chars"] is None
+
+    def test_ac7_stderr_without_evidence_flag_does_not_affect_verdict(self) -> None:
+        args = _make_namespace(exit_code=0, target="cmd x")
+        result = RunnerResult(stdout="ok", stderr="a warning nobody declared", exit_code=0)
+        rc, outcome = _grade("cmd x", result, args)
+        assert rc == 0
+        stderr_ch = next(c for c in outcome.channels if c.name == "stderr")
+        assert stderr_ch.examined is False
+
+    def test_ac10_each_channel_truncated_independently_before_composition(self) -> None:
+        long_stdout = "o" * 6000
+        long_stderr = "e" * 6000
+        args = _make_namespace(semantic="crit", target="cmd x", evidence=["stderr"])
+        result = RunnerResult(stdout=long_stdout, stderr=long_stderr, exit_code=0)
+        with patch(
+            "little_loops.cli.harness.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="yes", details={}),
+        ) as mock_eval:
+            _grade("cmd x", result, args)
+        _, kwargs = mock_eval.call_args
+        composed = kwargs["output"]
+        assert "<stdout>" in composed and "<stderr>" in composed
+        stdout_body = composed.split("<stdout>\n")[1].split("\n</stdout>")[0]
+        stderr_body = composed.split("<stderr>\n")[1].split("\n</stderr>")[0]
+        assert len(stdout_body) <= 4000
+        assert len(stderr_body) <= 4000
+        assert kwargs["max_output_chars"] is None
+
+    def test_ac14_namespace_missing_new_attrs_no_attribute_error(self) -> None:
+        """D10: a Namespace predating the new flags behaves as the default declaration."""
+        import argparse
+
+        ns = argparse.Namespace(
+            exit_code=None,
+            semantic=None,
+            timeout=120,
+            output="text",
+            verbose=False,
+            model=None,
+            samples=1,
+            target="cmd x",
+        )
+        result = RunnerResult(stdout="hi", stderr="quiet warning", exit_code=0)
+        rc, outcome = _grade("cmd x", result, ns)  # must not raise AttributeError
+        assert rc == 0
+        by_name = {c.name: c for c in outcome.channels}
+        assert by_name["stdout"].examined is True
+        assert by_name["stderr"].examined is False
+        assert by_name["git"].examined is False
+        assert len(outcome.channels) == 3  # no artifact channels -- none declared
+
+
+class TestRequireArtifactSideEffect:
+    """AC3: --require-artifact enforcement."""
+
+    def test_missing_after_run_fails(self, tmp_path: Path) -> None:
+        args = _make_namespace(require_artifact=["out.txt"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "out.txt")
+        assert ch.passed is False
+        assert ch.examined is True
+        assert ch.content is None
+        assert ch.note == "missing"
+
+    def test_pre_existing_untouched_fails(self, tmp_path: Path) -> None:
+        (tmp_path / "out.txt").write_text("same")
+        args = _make_namespace(require_artifact=["out.txt"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "out.txt")
+        assert ch.passed is False
+        assert ch.note == "pre-existing, unchanged"
+
+    def test_created_by_run_passes_and_content_is_judge_evidence(self, tmp_path: Path) -> None:
+        args = _make_namespace(require_artifact=["out.txt"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        (tmp_path / "out.txt").write_text("fresh content")
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "out.txt")
+        assert ch.passed is True
+        assert ch.note is None
+        assert ch.content == "fresh content"
+
+    def test_rewritten_with_identical_bytes_passes_when_mtime_advances(
+        self, tmp_path: Path
+    ) -> None:
+        p = tmp_path / "out.txt"
+        p.write_text("same")
+        args = _make_namespace(require_artifact=["out.txt"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        p.write_text("same")  # byte-identical rewrite
+        future = time.time() + 10
+        os.utime(p, (future, future))  # force a distinguishable mtime deterministically
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "out.txt")
+        assert ch.passed is True
+
+    def test_unreadable_directory_in_place_of_file_fails(self, tmp_path: Path) -> None:
+        (tmp_path / "out.txt").mkdir()
+        args = _make_namespace(require_artifact=["out.txt"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "out.txt")
+        assert ch.passed is False
+        assert ch.note == "missing"  # a directory is not a regular file
+
+
+class TestForbidPathSideEffect:
+    """AC4: --forbid-path enforcement."""
+
+    def test_created_during_run_fails(self, tmp_path: Path) -> None:
+        args = _make_namespace(forbid_path=["bad.txt"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        (tmp_path / "bad.txt").write_text("oops")
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "bad.txt")
+        assert ch.passed is False
+        assert ch.note == "created"
+
+    def test_pre_existing_byte_identical_passes(self, tmp_path: Path) -> None:
+        p = tmp_path / "keep.txt"
+        p.write_text("stable")
+        args = _make_namespace(forbid_path=["keep.txt"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "keep.txt")
+        assert ch.passed is True
+
+    def test_pre_existing_modified_fails(self, tmp_path: Path) -> None:
+        p = tmp_path / "keep.txt"
+        p.write_text("stable")
+        args = _make_namespace(forbid_path=["keep.txt"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        p.write_text("changed")
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "keep.txt")
+        assert ch.passed is False
+        assert ch.note == "modified"
+
+    def test_pre_existing_directory_passes_existence_only(self, tmp_path: Path) -> None:
+        (tmp_path / "dir").mkdir()
+        args = _make_namespace(forbid_path=["dir"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "dir")
+        assert ch.passed is True
+
+    def test_newly_created_directory_fails(self, tmp_path: Path) -> None:
+        args = _make_namespace(forbid_path=["dir"])
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        (tmp_path / "dir").mkdir()
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "dir")
+        assert ch.passed is False
+        assert ch.note == "created"
+
+
+class TestExpectNoGitChanges:
+    """AC5: --expect-no-git-changes enforcement (real git subprocess)."""
+
+    def test_dirty_before_unchanged_by_run_passes(self, tmp_path: Path) -> None:
+        _init_git_repo(tmp_path)
+        (tmp_path / "tracked.txt").write_text("dirty")
+        args = _make_namespace(expect_no_git_changes=True)
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "git")
+        assert ch.passed is True
+        assert ch.examined is True
+
+    def test_new_untracked_path_fails(self, tmp_path: Path) -> None:
+        _init_git_repo(tmp_path)
+        args = _make_namespace(expect_no_git_changes=True)
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        (tmp_path / "new.txt").write_text("new")
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "git")
+        assert ch.passed is False
+        assert "new.txt" in (ch.note or "")
+
+    def test_new_modified_tracked_path_fails(self, tmp_path: Path) -> None:
+        _init_git_repo(tmp_path)
+        args = _make_namespace(expect_no_git_changes=True)
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        (tmp_path / "tracked.txt").write_text("modified by run")
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "git")
+        assert ch.passed is False
+        assert "tracked.txt" in (ch.note or "")
+
+    def test_further_modified_pre_dirty_tracked_file_fails(self, tmp_path: Path) -> None:
+        _init_git_repo(tmp_path)
+        (tmp_path / "tracked.txt").write_text("dirty-v1")
+        args = _make_namespace(expect_no_git_changes=True)
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        (tmp_path / "tracked.txt").write_text("dirty-v2")
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "git")
+        assert ch.passed is False
+        assert "tracked.txt" in (ch.note or "")
+
+    def test_undeclared_git_channel_is_unexamined(self, tmp_path: Path) -> None:
+        _init_git_repo(tmp_path)
+        args = _make_namespace()
+        snapshot = _snapshot_side_effects(args, tmp_path)
+        channels = _check_side_effects(snapshot, args, tmp_path)
+        ch = next(c for c in channels if c.name == "git")
+        assert ch.examined is False
+        assert ch.passed is None
+
+
+class TestSampleLoopSideEffects:
+    """AC8: --samples N re-snapshots side effects before each sample."""
+
+    def test_per_sample_resnapshot_with_require_artifact(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        artifact = tmp_path / "art.txt"
+        args = _make_namespace(require_artifact=["art.txt"], target="cmd x")
+        calls = {"i": 0}
+
+        def invoke() -> tuple[RunnerResult, int]:
+            calls["i"] += 1
+            i = calls["i"]
+            if i == 1:
+                artifact.write_text("v1")
+            elif i == 2:
+                pass  # does not rewrite -- must fail as pre-existing-unchanged
+            else:
+                artifact.write_text("v1")  # byte-identical rewrite
+                future = time.time() + (i * 10)
+                os.utime(artifact, (future, future))
+            return RunnerResult(stdout="ok", stderr="", exit_code=0), 1
+
+        outcomes: list[Any] = []
+
+        def record(result: RunnerResult, duration_ms: int, outcome: Any) -> None:
+            outcomes.append(outcome)
+            return None
+
+        with patch("little_loops.cli.harness._read_target_history", return_value=None):
+            res = _run_sample_loop("cmd x", args, 3, invoke, record)
+
+        assert res.tally.passed == 2  # samples 1 and 3
+        assert res.tally.failed == 1  # sample 2
+        assert all("channels" in e for e in res.entries)
+        notes = [
+            next(c["note"] for c in e["channels"] if c["name"] == "art.txt") for e in res.entries
+        ]
+        assert notes == [None, "pre-existing, unchanged", None]
+
+
+class TestChannelsReportAndJson:
+    """AC6: --json payload carries `channels` (no `content` key); text report prints them."""
+
+    def test_json_payload_includes_channels_without_content_key(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        args = _make_namespace(runner="cmd", target="true", output="json")
+        mock_proc = _make_selector_mock_process(returncode=0)
+        sel = _make_ready_selector()
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.cli.harness._read_target_history", return_value=None),
+        ):
+            result = cmd_cmd(args)
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert "channels" in payload
+        names = {c["name"] for c in payload["channels"]}
+        assert {"stdout", "stderr", "git"} <= names
+        for ch in payload["channels"]:
+            assert "content" not in ch
+
+    def test_text_report_prints_channels_block(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(runner="cmd", target="true")
+        mock_proc = _make_selector_mock_process(returncode=0)
+        sel = _make_ready_selector()
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.cli.harness._read_target_history", return_value=None),
+        ):
+            result = cmd_cmd(args)
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Channels:" in out
+        assert "stdout: examined" in out
+
+
+class TestSubparsersAcceptEvidenceFlags:
+    """AC11: --require-artifact/--forbid-path/--evidence/--expect-no-git-changes on all five."""
+
+    @pytest.mark.parametrize("runner_argv", [["skill", "x"], ["cmd", "x"], ["mcp", "x:y"]])
+    def test_flags_parse_on_each_subparser(self, runner_argv: list[str]) -> None:
+        args = _parse_harness_args(
+            [
+                *runner_argv,
+                "--evidence",
+                "stderr",
+                "--require-artifact",
+                "a.txt",
+                "--forbid-path",
+                "b.txt",
+                "--expect-no-git-changes",
+            ]
+        )
+        assert args.evidence == ["stderr"]
+        assert args.require_artifact == ["a.txt"]
+        assert args.forbid_path == ["b.txt"]
+        assert args.expect_no_git_changes is True
+
+    def test_flags_parse_on_prompt_subparser(self) -> None:
+        args = _parse_harness_args(
+            ["prompt", "hi", "--evidence", "stderr", "--require-artifact", "a.txt"]
+        )
+        assert args.evidence == ["stderr"]
+        assert args.require_artifact == ["a.txt"]
+
+    def test_flags_parse_on_dsl_subparser(self, tmp_path: Path) -> None:
+        args = _parse_harness_args(
+            [
+                "dsl",
+                str(tmp_path),
+                "--evidence",
+                "stderr",
+                "--forbid-path",
+                "b.txt",
+                "--expect-no-git-changes",
+            ]
+        )
+        assert args.evidence == ["stderr"]
+        assert args.forbid_path == ["b.txt"]
+        assert args.expect_no_git_changes is True
+
+    def test_trace_mode_and_require_order_remain_skill_only(self) -> None:
+        # prompt_p never had --trace-mode/--require-order (skill-only, D7 scope).
+        with pytest.raises(SystemExit):
+            _parse_harness_args(["prompt", "hi", "--trace-mode"])
+        args = _parse_harness_args(["skill", "x", "--trace-mode", "--require-order", "A,B"])
+        assert args.trace_mode is True
+        assert args.require_order == "A,B"

@@ -1882,6 +1882,13 @@ def _build_eval_fixture(inv: _EvalInvocation, outcome: str) -> dict:
         # a fixture that does set it round-trips instead of silently
         # dropping the flag on replay.
         "samples": None,
+        # ENH-3462: no session-log signal exists for any of these either
+        # (same rationale as `samples` above) -- always None/[] on export,
+        # carried through so a fixture that does set them round-trips.
+        "evidence": None,
+        "require_artifact": None,
+        "forbid_path": None,
+        "expect_no_git_changes": None,
         "input_context": input_context,
         "issue_id": issue_id,
         "skill_name": skill_name,
@@ -1907,6 +1914,14 @@ def _fixture_to_harness_argv(fixture: dict) -> list[str]:
         argv.extend(["--timeout", str(timeout)])
     if fixture.get("samples") is not None:
         argv.extend(["--samples", str(fixture["samples"])])
+    for evidence_channel in fixture.get("evidence") or []:
+        argv.extend(["--evidence", str(evidence_channel)])
+    for path in fixture.get("require_artifact") or []:
+        argv.extend(["--require-artifact", str(path)])
+    for path in fixture.get("forbid_path") or []:
+        argv.extend(["--forbid-path", str(path)])
+    if fixture.get("expect_no_git_changes"):
+        argv.append("--expect-no-git-changes")
     return argv
 
 

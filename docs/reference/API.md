@@ -6255,10 +6255,19 @@ def evaluate_llm_structured(
     uncertain_suffix: bool = False,
     model: str = DEFAULT_LLM_MODEL,  # Default from schema.py
     max_tokens: int = 256,
-    timeout: int = 30,
+    timeout: int = 1800,
+    *,
+    max_output_chars: int | None = 4000,
 ) -> EvaluationResult
 ```
 Evaluate action output using an LLM with structured output. Dispatches through `host_runner.resolve_host().build_blocking_json()` and calls the resolved CLI as a subprocess (no Anthropic Python SDK dependency); requires a supported host CLI on PATH (e.g. `claude`).
+
+`max_output_chars` (ENH-3462, keyword-only, additive) bounds the keep-last truncation applied
+to `output` before it reaches the judge prompt; default `4000` is unchanged from before this
+flag existed, so every caller besides `ll-harness`'s `_grade()` is byte-identical. A caller may
+pass a pre-composed multi-channel string (stdout + stderr + declared artifacts, each already
+truncated to its own budget) and set `max_output_chars=None` so this function's own truncation
+doesn't re-truncate the already-bounded composed string and silently drop earlier channels.
 
 #### Dispatcher
 

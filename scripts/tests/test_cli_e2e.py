@@ -486,3 +486,45 @@ class TestLlHarnessE2E(E2ETestFixture):
             f"ll-harness cmd 'echo hello' --exit-code 0 should exit 0; "
             f"got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
+
+    @pytest.mark.integration
+    def test_widened_evidence_surface(self, e2e_project_dir: Path) -> None:
+        """ENH-3462 AC12: a real subprocess writing a file, stderr, and a git
+        change is graded on all three widened channels, not just stdout."""
+        cmd = 'echo "on stdout" && echo "on stderr" 1>&2 && echo "artifact body" > out.txt'
+        result = subprocess.run(
+            [
+                "ll-harness",
+                "cmd",
+                cmd,
+                "--exit-code",
+                "0",
+                "--evidence",
+                "stderr",
+                "--require-artifact",
+                "out.txt",
+                "--expect-no-git-changes",
+                "--output",
+                "json",
+            ],
+            cwd=e2e_project_dir,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        payload = json.loads(result.stdout)
+        channels = {c["name"]: c for c in payload["channels"]}
+        assert channels["stdout"]["examined"] is True
+        assert channels["stderr"]["examined"] is True
+        assert channels["stderr"]["chars"] and channels["stderr"]["chars"] > 0
+        assert channels["out.txt"]["examined"] is True
+        assert channels["out.txt"]["note"] is None
+        # out.txt is a new untracked path -- --expect-no-git-changes must fail
+        # the run even though --exit-code/--require-artifact/stderr all pass.
+        assert channels["git"]["examined"] is True
+        assert channels["git"]["note"] is not None
+        assert "out.txt" in channels["git"]["note"]
+        assert result.returncode == 1, (
+            f"expected exit 1 (git side effect fails the run); "
+            f"got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )

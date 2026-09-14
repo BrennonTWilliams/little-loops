@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import hashlib
 import json
 import os
@@ -12,7 +13,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
@@ -25,6 +26,7 @@ from little_loops.cli.output import configure_output, print_json, status_block, 
 from little_loops.fsm.evaluators import EvaluationResult, evaluate_llm_structured
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL as _JUDGE_MODEL
 from little_loops.fsm.verdicts import is_abstention_verdict
+from little_loops.git_operations import porcelain_paths
 from little_loops.history_reader.harness import (
     BaselineConditions,
     BaselineKey,
@@ -635,6 +637,54 @@ Exit codes:
                 "override of the HEAD resolution on skill."
             ),
         )
+        p.add_argument(
+            "--evidence",
+            action="append",
+            default=[],
+            choices=["stderr"],
+            metavar="{stderr}",
+            help=(
+                "Additional channel(s) to send to the --semantic judge, beyond "
+                "stdout (always examined); repeatable (ENH-3462). E.g. "
+                "--evidence stderr."
+            ),
+        )
+        p.add_argument(
+            "--require-artifact",
+            action="append",
+            default=[],
+            metavar="PATH",
+            help=(
+                "Path (relative to the process cwd) that must have been written "
+                "by the run; repeatable (ENH-3462, moved from trace-mode-only). "
+                "Enforced: missing, unreadable, or pre-existing-and-untouched "
+                "fails the run (exit 1). When present and touched, its content "
+                "is sent to the --semantic judge."
+            ),
+        )
+        p.add_argument(
+            "--forbid-path",
+            action="append",
+            default=[],
+            metavar="PATH",
+            help=(
+                "Path (relative to the process cwd) that must NOT be created or "
+                "content-modified by the run; repeatable (ENH-3462, moved from "
+                "trace-mode-only). A pre-existing directory passes "
+                "(existence-only check); a newly created one fails."
+            ),
+        )
+        p.add_argument(
+            "--expect-no-git-changes",
+            dest="expect_no_git_changes",
+            action="store_true",
+            help=(
+                "Fail if the run introduces any new git change (tracked or "
+                "untracked) relative to its state before the run, or further "
+                "modifies an already-dirty tracked file (ENH-3462). Does not "
+                "require the tree to be clean beforehand."
+            ),
+        )
 
     def _add_trace_flags(p: argparse.ArgumentParser) -> None:
         """FEAT-2878: trace-assertion mode flags, layered onto SKILL/PROMPT.
@@ -655,20 +705,6 @@ Exit codes:
             default=None,
             metavar="TOOL,TOOL,...",
             help="Comma-separated tool names that must appear in this relative order",
-        )
-        p.add_argument(
-            "--require-artifact",
-            action="append",
-            default=[],
-            metavar="PATH",
-            help="Path (relative to the workspace) that must have been written; repeatable",
-        )
-        p.add_argument(
-            "--forbid-path",
-            action="append",
-            default=[],
-            metavar="PATH",
-            help="Path (relative to the workspace) that must NOT have been written; repeatable",
         )
         p.add_argument(
             "--keep-workspace",
@@ -793,6 +829,37 @@ class SampleTally:
 
 
 @dataclass
+class ChannelRecord:
+    """One evidence channel's read/pass status on a `HarnessEvalOutcome` (ENH-3462).
+
+    `examined=False, content=None` means the channel was never declared/read;
+    `examined=True, content=""` means it was read and found empty — the two
+    are distinguishable so an unread channel isn't mistaken for an
+    examined-and-empty one. `passed` is `None` when the channel carries no
+    pass/fail verdict of its own (stdout/stderr, or an undeclared side
+    effect); `True`/`False` for a declared side effect (`--require-artifact`,
+    `--forbid-path`, `--expect-no-git-changes`) — `_grade()` folds any
+    `False` into the overall verdict. `passed` is internal fold state, not
+    part of the D2 JSON shape.
+    """
+
+    name: str
+    examined: bool
+    content: str | None
+    note: str | None = None
+    passed: bool | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Render the `--json`/report shape: `{name, examined, chars, note}` (no `content`)."""
+        return {
+            "name": self.name,
+            "examined": self.examined,
+            "chars": None if self.content is None else len(self.content),
+            "note": self.note,
+        }
+
+
+@dataclass
 class HarnessEvalOutcome:
     """Evaluation outcome carried alongside `_evaluate_and_report()`'s exit code."""
 
@@ -802,6 +869,7 @@ class HarnessEvalOutcome:
     abstained: bool = False
     sample_pass_rate: float | None = None
     samples: SampleTally | None = None
+    channels: list[ChannelRecord] = field(default_factory=list)
 
 
 def _read_prepatch_evidence(issue_id: str | None) -> dict | None:
@@ -913,12 +981,253 @@ def _format_target_history_line(history: dict) -> str:
     return f"Target history since {since_date}: " + ", ".join(parts)
 
 
+def _truncate_keep_last(text: str, limit: int = 4000) -> str:
+    """Return the last *limit* chars of *text*, matching `evaluate_llm_structured()`'s budget."""
+    return text[-limit:] if len(text) > limit else text
+
+
+@dataclass
+class _PathSnapshot:
+    """One declared path's pre-run state (ENH-3462 D5)."""
+
+    exists: bool
+    sha256: str | None
+    mtime_ns: int | None
+    is_dir: bool
+
+
+@dataclass
+class SideEffectSnapshot:
+    """Pre-run state for every declared side effect, taken before one invocation (ENH-3462 D5)."""
+
+    require_artifact: dict[str, _PathSnapshot]
+    forbid_path: dict[str, _PathSnapshot]
+    pre_porcelain: frozenset[str]
+    pre_dirty_hashes: dict[str, str]
+    git_declared: bool
+
+
+def _git_status_porcelain_z(cwd: Path) -> str | None:
+    """Return raw `git status --porcelain -z` output for *cwd*, or None on failure.
+
+    Deliberately does NOT reuse `_git_dirty()`'s subprocess call: that call
+    passes `--untracked-files=no`, which would miss a run that adds an
+    untracked path (AC5) — this criterion needs the default `normal` mode.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "-z"],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=5,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, never raises
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def _snapshot_path(p: Path) -> _PathSnapshot:
+    """Snapshot one path's existence/content/mtime for later touched-detection (ENH-3462 D5)."""
+    if not p.exists():
+        return _PathSnapshot(exists=False, sha256=None, mtime_ns=None, is_dir=False)
+    if p.is_dir():
+        return _PathSnapshot(exists=True, sha256=None, mtime_ns=None, is_dir=True)
+    try:
+        data = p.read_bytes()
+        stat = p.stat()
+    except OSError:
+        return _PathSnapshot(exists=True, sha256=None, mtime_ns=None, is_dir=False)
+    return _PathSnapshot(
+        exists=True,
+        sha256=hashlib.sha256(data).hexdigest(),
+        mtime_ns=stat.st_mtime_ns,
+        is_dir=False,
+    )
+
+
+def _snapshot_side_effects(args: argparse.Namespace, cwd: Path) -> SideEffectSnapshot:
+    """Pre-run snapshot for every declared `--require-artifact`/`--forbid-path`/git check.
+
+    All reads via `getattr(args, name, default)` (D10): the shared
+    `_make_namespace()` test fixture and `cmd_dsl`'s aggregate `args` predate
+    these flags, so a bare `args.evidence` would raise across ~100 tests.
+    """
+    require_artifact = getattr(args, "require_artifact", None) or []
+    forbid_path = getattr(args, "forbid_path", None) or []
+    expect_no_git_changes = getattr(args, "expect_no_git_changes", False)
+    ra_snap = {path_str: _snapshot_path(cwd / path_str) for path_str in require_artifact}
+    fp_snap = {path_str: _snapshot_path(cwd / path_str) for path_str in forbid_path}
+    pre_porcelain: frozenset[str] = frozenset()
+    pre_dirty_hashes: dict[str, str] = {}
+    if expect_no_git_changes:
+        raw = _git_status_porcelain_z(cwd)
+        pre_porcelain = frozenset(porcelain_paths(raw)) if raw is not None else frozenset()
+        for path_str in pre_porcelain:
+            p = cwd / path_str
+            if p.is_file():
+                try:
+                    pre_dirty_hashes[path_str] = hashlib.sha256(p.read_bytes()).hexdigest()
+                except OSError:
+                    pass
+    return SideEffectSnapshot(
+        require_artifact=ra_snap,
+        forbid_path=fp_snap,
+        pre_porcelain=pre_porcelain,
+        pre_dirty_hashes=pre_dirty_hashes,
+        git_declared=bool(expect_no_git_changes),
+    )
+
+
+def _check_require_artifact(path_str: str, pre: _PathSnapshot, cwd: Path) -> ChannelRecord:
+    """Post-run check for one `--require-artifact` path (ENH-3462 AC3)."""
+    p = cwd / path_str
+    if not p.exists() or not p.is_file():
+        return ChannelRecord(
+            name=path_str, examined=True, content=None, note="missing", passed=False
+        )
+    try:
+        data = p.read_bytes()
+        post_mtime = p.stat().st_mtime_ns
+    except OSError as exc:
+        return ChannelRecord(
+            name=path_str, examined=True, content=None, note=f"unreadable: {exc}", passed=False
+        )
+    post_sha = hashlib.sha256(data).hexdigest()
+    # Touched = created, content changed, or rewritten with identical bytes
+    # (mtime still advances) -- sha256 alone would false-fail a deterministic
+    # rewrite under --samples N (AC8).
+    touched = (not pre.exists) or (post_sha != pre.sha256) or (post_mtime != pre.mtime_ns)
+    text = data.decode("utf-8", errors="replace")
+    if not touched:
+        return ChannelRecord(
+            name=path_str, examined=True, content=text, note="pre-existing, unchanged", passed=False
+        )
+    return ChannelRecord(name=path_str, examined=True, content=text, note=None, passed=True)
+
+
+def _check_forbid_path(path_str: str, pre: _PathSnapshot, cwd: Path) -> ChannelRecord:
+    """Post-run check for one `--forbid-path` path (ENH-3462 AC4)."""
+    p = cwd / path_str
+    if not p.exists():
+        return ChannelRecord(name=path_str, examined=True, content=None, note=None, passed=True)
+    if p.is_dir():
+        if pre.exists and pre.is_dir:
+            return ChannelRecord(name=path_str, examined=True, content=None, note=None, passed=True)
+        return ChannelRecord(
+            name=path_str, examined=True, content=None, note="created", passed=False
+        )
+    try:
+        data = p.read_bytes()
+    except OSError as exc:
+        return ChannelRecord(
+            name=path_str, examined=True, content=None, note=f"unreadable: {exc}", passed=False
+        )
+    if not pre.exists or pre.is_dir:
+        return ChannelRecord(
+            name=path_str, examined=True, content=None, note="created", passed=False
+        )
+    post_sha = hashlib.sha256(data).hexdigest()
+    if post_sha == pre.sha256:
+        return ChannelRecord(name=path_str, examined=True, content=None, note=None, passed=True)
+    return ChannelRecord(name=path_str, examined=True, content=None, note="modified", passed=False)
+
+
+def _check_git_side_effect(snapshot: SideEffectSnapshot, cwd: Path) -> ChannelRecord:
+    """Post-run check for `--expect-no-git-changes` (ENH-3462 AC5)."""
+    if not snapshot.git_declared:
+        return ChannelRecord(name="git", examined=False, content=None)
+    raw = _git_status_porcelain_z(cwd)
+    post_paths = frozenset(porcelain_paths(raw)) if raw is not None else frozenset()
+    new_paths = post_paths - snapshot.pre_porcelain
+    modified: list[str] = []
+    for path_str in snapshot.pre_porcelain & post_paths:
+        pre_hash = snapshot.pre_dirty_hashes.get(path_str)
+        if pre_hash is None:
+            continue
+        try:
+            post_hash = hashlib.sha256((cwd / path_str).read_bytes()).hexdigest()
+        except OSError:
+            continue
+        if post_hash != pre_hash:
+            modified.append(path_str)
+    offending = sorted(new_paths) + sorted(modified)
+    if offending:
+        return ChannelRecord(
+            name="git",
+            examined=True,
+            content=None,
+            note="changed: " + ", ".join(offending),
+            passed=False,
+        )
+    return ChannelRecord(name="git", examined=True, content=None, note=None, passed=True)
+
+
+def _check_side_effects(
+    snapshot: SideEffectSnapshot, args: argparse.Namespace, cwd: Path
+) -> list[ChannelRecord]:
+    """Post-run check for every declared side effect (ENH-3462 D5)."""
+    channels: list[ChannelRecord] = []
+    for path_str, pre in snapshot.require_artifact.items():
+        channels.append(_check_require_artifact(path_str, pre, cwd))
+    for path_str, pre in snapshot.forbid_path.items():
+        channels.append(_check_forbid_path(path_str, pre, cwd))
+    channels.append(_check_git_side_effect(snapshot, cwd))
+    return channels
+
+
+def _invoke_with_side_effects(
+    invoke: Callable[[], tuple[RunnerResult, int]], args: argparse.Namespace
+) -> tuple[RunnerResult, int, list[ChannelRecord]]:
+    """Snapshot, invoke, then check declared side effects around one run (ENH-3462 D5).
+
+    Wraps the four single-run call sites and `cmd_dsl`'s per-task action. The
+    `invoke: Callable[[], tuple[RunnerResult, int]]` contract shared with
+    `_run_baseline_phase()` is unchanged -- `_run_sample_loop()` does its own
+    inline snapshot/check instead of going through this wrapper.
+    """
+    cwd = Path.cwd()
+    snapshot = _snapshot_side_effects(args, cwd)
+    result, duration_ms = invoke()
+    side_effects = _check_side_effects(snapshot, args, cwd)
+    return result, duration_ms, side_effects
+
+
+def _compose_judge_evidence(
+    result: RunnerResult, args: argparse.Namespace, side_effects: list[ChannelRecord] | None
+) -> str:
+    """Tag-wrap and concatenate declared channels for the judge (ENH-3462 D3).
+
+    Only called when the declaration is non-default (`--evidence`/
+    `--require-artifact` given) -- the default path passes raw `result.stdout`
+    unchanged (AC2). Each channel gets its own keep-last 4000-char budget
+    before composition, matching `evaluate_contract()`'s per-file precedent.
+    """
+    evidence = getattr(args, "evidence", None) or []
+    require_artifact = getattr(args, "require_artifact", None) or []
+    parts = [f"<stdout>\n{_truncate_keep_last(result.stdout)}\n</stdout>"]
+    if "stderr" in evidence:
+        parts.append(f"<stderr>\n{_truncate_keep_last(result.stderr)}\n</stderr>")
+    if side_effects:
+        by_name = {c.name: c for c in side_effects}
+        for path_str in require_artifact:
+            ch = by_name.get(path_str)
+            if ch is not None and ch.content is not None:
+                parts.append(
+                    f'<artifact path="{path_str}">\n{_truncate_keep_last(ch.content)}\n</artifact>'
+                )
+    return "\n\n".join(parts)
+
+
 def _grade(
     runner_label: str,
     result: RunnerResult,
     args: argparse.Namespace,
     *,
     expected_grade: ExpectedGrade | None = None,
+    side_effects: list[ChannelRecord] | None = None,
 ) -> tuple[int, HarnessEvalOutcome]:
     """Grade *result* against criteria. No stdout or DB writes (ENH-3415).
 
@@ -926,6 +1235,13 @@ def _grade(
     sample without also printing/persisting per-sample. Still performs the
     `--semantic` judge call (`evaluate_llm_structured()`) when set -- that is
     not a side effect this function's contract excludes, just not a pure one.
+
+    ENH-3462: *side_effects* carries the declared-side-effect `ChannelRecord`s
+    computed around the invocation (`_invoke_with_side_effects()` /
+    `_run_sample_loop()`'s inline snapshot/check); `None` when no such check
+    ran (e.g. a direct `_grade()` call in a test, or a Namespace predating
+    the new flags -- AC14), in which case only stdout/stderr are recorded and
+    the `git` channel is synthesized as unexamined.
     """
     if result.timed_out or result.error is not None:
         return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
@@ -949,13 +1265,43 @@ def _grade(
     ):
         passed = False
 
+    evidence = getattr(args, "evidence", None) or []
+    channels: list[ChannelRecord] = [
+        ChannelRecord(name="stdout", examined=True, content=result.stdout),
+        ChannelRecord(
+            name="stderr",
+            examined="stderr" in evidence,
+            content=result.stderr if "stderr" in evidence else None,
+        ),
+    ]
+    if side_effects is not None:
+        channels.extend(side_effects)
+    else:
+        channels.append(ChannelRecord(name="git", examined=False, content=None))
+
+    # ENH-3462 D5: every side effect that fails sets passed=False (exit 1),
+    # same precedence as --exit-code; they never abstain.
+    if any(c.passed is False for c in channels):
+        passed = False
+
+    require_artifact = getattr(args, "require_artifact", None) or []
     if args.semantic is not None:
         # ENH-3435: pass the judge model explicitly so the value recorded as
         # `semantic_model` on baseline paths is the one actually used, not a
         # re-derivation at the write site.
-        eval_result = evaluate_llm_structured(
-            output=result.stdout, prompt=args.semantic, model=_JUDGE_MODEL
-        )
+        if evidence or require_artifact:
+            # ENH-3462 D3: non-default declaration -- pre-compose the
+            # multi-channel string and disable the evaluator's own
+            # truncation, which would otherwise re-truncate the whole
+            # composed string and silently drop earlier channels' tags.
+            composed = _compose_judge_evidence(result, args, side_effects)
+            eval_result = evaluate_llm_structured(
+                output=composed, prompt=args.semantic, model=_JUDGE_MODEL, max_output_chars=None
+            )
+        else:
+            eval_result = evaluate_llm_structured(
+                output=result.stdout, prompt=args.semantic, model=_JUDGE_MODEL
+            )
         # ENH-3185 AC9: an abstention is neither a pass nor a failure — report
         # it separately rather than folding it into `passed = False`. Precedence
         # is fail > abstain > pass, so a mixed exit_code-fail + semantic-abstain
@@ -970,6 +1316,7 @@ def _grade(
         verdict=eval_result.verdict if eval_result is not None else None,
         eval_result=eval_result,
         abstained=abstained,
+        channels=channels,
     )
     # ENH-3185 AC9: 0=pass, 1=fail (unchanged), 2=harness/infra error (already
     # taken above, never reused here), 3=inconclusive (no failure, >=1 abstention).
@@ -1227,7 +1574,9 @@ def _conditions_fp(args: argparse.Namespace, judge_model: str | None = None) -> 
     if judge_model is None:
         judge_model = _JUDGE_MODEL if getattr(args, "semantic", None) else None
     payload = {
+        "evidence": getattr(args, "evidence", None) or None,
         "exit_code": getattr(args, "exit_code", None),
+        "expect_no_git_changes": getattr(args, "expect_no_git_changes", False) or None,
         "forbid_path": getattr(args, "forbid_path", None) or None,
         "host_cli": _resolved_host_cli(),
         "hosts": getattr(args, "hosts", None),
@@ -1552,9 +1901,16 @@ def _run_sample_loop(
     target_history = _read_target_history(args.target)
     tally = SampleTally(requested=n)
     sample_results: list[dict[str, Any]] = []
+    cwd = Path.cwd()
     for i in range(n):
+        # ENH-3462 D5/D8: snapshot/check inline around each sample so the
+        # shared `invoke: Callable[[], tuple[RunnerResult, int]]` contract
+        # (also used by `_run_baseline_phase()`) stays unchanged, while each
+        # of the n samples gets its own re-snapshotted side-effect check.
+        snapshot = _snapshot_side_effects(args, cwd)
         result, duration_ms = invoke()
-        rc, outcome = _grade(runner_label, result, args)
+        side_effects = _check_side_effects(snapshot, args, cwd)
+        rc, outcome = _grade(runner_label, result, args, side_effects=side_effects)
         tally.record(rc)
         record(result, duration_ms, outcome)
         label = {2: "ERROR", 3: "ABSTAIN", 0: "PASS"}.get(rc, "FAIL")
@@ -1572,6 +1928,7 @@ def _run_sample_loop(
             "semantic": outcome.verdict if outcome.verdict is not None else "[not checked]",
             "result": label,
             "error": error,
+            "channels": [c.to_dict() for c in outcome.channels],
         }
         if args.verbose or label != "PASS":
             entry["stdout"] = result.stdout
@@ -1595,6 +1952,7 @@ def _evaluate_and_report(
     *,
     expected_grade: ExpectedGrade | None = None,
     skip_history: bool = False,
+    side_effects: list[ChannelRecord] | None = None,
 ) -> tuple[int, HarnessEvalOutcome]:
     """Evaluate result against criteria and print the report. Returns (exit_code, outcome)."""
     if result.timed_out:
@@ -1604,7 +1962,9 @@ def _evaluate_and_report(
         _report(runner_label, result, args, error_msg=result.error)
         return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
 
-    exit_code, outcome = _grade(runner_label, result, args, expected_grade=expected_grade)
+    exit_code, outcome = _grade(
+        runner_label, result, args, expected_grade=expected_grade, side_effects=side_effects
+    )
     passed = outcome.passed
     abstained = outcome.abstained
     eval_result = outcome.eval_result
@@ -1649,6 +2009,8 @@ def _evaluate_and_report(
             )
             expected_display = f"mismatch ({mismatches})"
 
+    channels_payload = [c.to_dict() for c in outcome.channels]
+
     if args.output == "json":
         payload = {
             "runner": runner_label,
@@ -1658,6 +2020,7 @@ def _evaluate_and_report(
             "result": overall,
             "stdout": result.stdout,
             "stderr": result.stderr,
+            "channels": channels_payload,
         }
         if expected_display is not None:
             payload["expected"] = expected_display
@@ -1680,6 +2043,20 @@ def _evaluate_and_report(
             print(f"Pre-patch check: {prepatch_evidence.get('verdict', 'unknown')}")
         if target_history is not None:
             print(_format_target_history_line(target_history))
+        if channels_payload:
+            print("Channels:")
+            for ch in channels_payload:
+                state = "examined" if ch["examined"] else "not examined"
+                if ch["chars"] is not None:
+                    detail = f"{ch['chars']} chars"
+                elif ch["note"]:
+                    detail = ch["note"]
+                else:
+                    detail = "missing"
+                line = f"  {ch['name']}: {state} | {detail}"
+                if ch["note"] and ch["chars"] is not None:
+                    line += f" ({ch['note']})"
+                print(line)
         if show_output and result.stdout:
             print("---")
             sys.stdout.write(result.stdout)
@@ -1839,8 +2216,8 @@ def cmd_skill(args: argparse.Namespace) -> int:
         )
         return res.exit_code
 
-    result, duration_ms = _invoke()
-    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    result, duration_ms, side_effects = _invoke_with_side_effects(_invoke, args)
+    rc, outcome = _evaluate_and_report(runner_label, result, args, side_effects=side_effects)
     try:
         _record(result, duration_ms, outcome)
     except Exception as exc:
@@ -1945,8 +2322,8 @@ def cmd_cmd(args: argparse.Namespace) -> int:
         )
         return res.exit_code
 
-    result, duration_ms = _invoke()
-    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    result, duration_ms, side_effects = _invoke_with_side_effects(_invoke, args)
+    rc, outcome = _evaluate_and_report(runner_label, result, args, side_effects=side_effects)
     try:
         _record(result, duration_ms, outcome)
     except Exception as exc:
@@ -2065,8 +2442,8 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         )
         return res.exit_code
 
-    result, duration_ms = _invoke()
-    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    result, duration_ms, side_effects = _invoke_with_side_effects(_invoke, args)
+    rc, outcome = _evaluate_and_report(runner_label, result, args, side_effects=side_effects)
     try:
         _record(result, duration_ms, outcome)
     except Exception as exc:
@@ -2184,8 +2561,8 @@ def cmd_prompt(args: argparse.Namespace) -> int:
         )
         return res.exit_code
 
-    result, duration_ms = _invoke()
-    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    result, duration_ms, side_effects = _invoke_with_side_effects(_invoke, args)
+    rc, outcome = _evaluate_and_report(runner_label, result, args, side_effects=side_effects)
     try:
         _record(result, duration_ms, outcome)
     except Exception as exc:
@@ -2334,8 +2711,16 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
             verbose=args.verbose,
             model=args.model,
             issue_id=None,
+            # ENH-3462 D1/D9: copy the declared-evidence flags per task so
+            # they aren't silently inert on the dsl runner (AC11).
+            evidence=getattr(args, "evidence", None) or [],
+            require_artifact=getattr(args, "require_artifact", None) or [],
+            forbid_path=getattr(args, "forbid_path", None) or [],
+            expect_no_git_changes=getattr(args, "expect_no_git_changes", False),
         )
-        result, duration_ms = _run_prompt_action(prompt_text, task_args)
+        result, duration_ms, side_effects = _invoke_with_side_effects(
+            functools.partial(_run_prompt_action, prompt_text, task_args), task_args
+        )
 
         expected_grade: ExpectedGrade | None
         if has_expected:
@@ -2352,7 +2737,12 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
         label_text = prompt_text[:40] + ("..." if len(prompt_text) > 40 else "")
         runner_label = f"prompt {label_text}"
         rc, outcome = _evaluate_and_report(
-            runner_label, result, task_args, expected_grade=expected_grade, skip_history=True
+            runner_label,
+            result,
+            task_args,
+            expected_grade=expected_grade,
+            skip_history=True,
+            side_effects=side_effects,
         )
 
         if expected_grade is not None and expected_grade.status is GradeStatus.UNGRADED:

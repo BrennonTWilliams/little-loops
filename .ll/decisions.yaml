@@ -203,7 +203,13 @@
     <target> [runner_args...] [--exit-code N] [--semantic TEXT] [--timeout S]`. FIELDS
     — runner (required; one of skill|cmd|mcp|prompt), target (required str), runner_args
     (optional list[str], default []), exit_code (optional int, null=unchecked), semantic
-    (optional str, null=unchecked), timeout (int seconds, default 120); PROVENANCE
+    (optional str, null=unchecked), timeout (int seconds, default 120), evidence (optional
+    list[str], subset of {stderr}, default null on export), require_artifact (optional
+    list[str] of declared paths, default null on export), forbid_path (optional list[str]
+    of declared paths, default null on export), expect_no_git_changes (optional bool,
+    default null on export) -- the last four carry no session-log signal (ENH-3462, same
+    as samples above) and are always null/[] on export, but round-trip through
+    _fixture_to_harness_argv() when a fixture sets them; PROVENANCE
     — session_id (required), timestamp (required ISO8601), input_context (optional,
     redacted user-message text), issue_id (optional, regex [A-Z]+-\d+ from input_context),
     skill_name (optional; == target when runner==skill), outcome (required enum),

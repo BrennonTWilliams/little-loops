@@ -237,6 +237,10 @@ Runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Clau
 | `--measure-baseline` | Run the effective N repetitions on the subject as it exists on disk and record them as the baseline for that content (ENH-3435). A full, condition-matched baseline is reused without re-running the subject. The exit code follows the normal banding — a 0/N baseline exits 1 and is still recorded. Refused (exit 2) on `dsl`, combined with `--compare-baseline` or `--retry-of`. |
 | `--compare-baseline` | Run N repetitions on the (mutated) subject and report a delta against the measured baseline for the incumbent content (ENH-3435). Refuses with exit 2 **before any invocation** when no condition-matched baseline exists — it never compares against a remembered number and never re-measures. `skill` resolves the incumbent from the HEAD blob of the target file (and refuses an unmutated subject); `prompt`/`cmd`/`mcp` require `--baseline-of`. Also refused (exit 2) at effective N=1. |
 | `--baseline-of ID` | Attempt id (`harness_events.id`) whose `(runner, target, input, content)` names the baseline to compare against (ENH-3435). Required for `--compare-baseline` on `prompt`/`cmd`/`mcp`; an explicit override of the HEAD resolution on `skill`. Refused (exit 2) when the attempt is missing, predates baseline support, or was measured on a different input than the current invocation. |
+| `--evidence {stderr}` | Additional channel(s) to send to the `--semantic` judge, beyond stdout (always examined); repeatable (ENH-3462). See "Widened evidence surface" below. |
+| `--require-artifact PATH` | Path (relative to the process cwd) that must have been written by the run; repeatable (ENH-3462, moved here from trace-mode-only in FEAT-2878). Enforced: missing, unreadable, or pre-existing-and-untouched fails the run. |
+| `--forbid-path PATH` | Path (relative to the process cwd) that must NOT be created or content-modified by the run; repeatable (ENH-3462, moved here from trace-mode-only). A pre-existing directory passes (existence-only); a newly created one fails. |
+| `--expect-no-git-changes` | Fail if the run introduces any new git change (tracked or untracked) vs. its state before the run, or further modifies an already-dirty tracked file (ENH-3462). Does not require the tree to be clean beforehand. |
 
 **mcp-specific flag:**
 `--args JSON` — JSON arguments forwarded to the MCP tool (default: `{}`).
@@ -261,7 +265,8 @@ between clear pass and clear fail — ENH-3415; see "N-sample redundancy" below)
 
 **`--output json` payload fields (`skill`/`cmd`/`mcp`/`prompt` runners, effective n = 1):**
 always present: `runner`, `exit_code`, `exit_code_check`, `semantic`, `result`, `stdout`,
-`stderr`. Additive, present only when applicable:
+`stderr`, `channels` (ENH-3462, see "Widened evidence surface" below). Additive, present
+only when applicable:
 
 | Field | Present when |
 |-------|--------------|
@@ -344,10 +349,11 @@ Opt-in via `--trace-mode`. Instead of checking captured stdout, the skill runs a
 |------|-------------|
 | `--trace-mode` | Run against a scoped temporary workspace and assert on the tool-call trace instead of stdout |
 | `--require-order TOOL,TOOL,...` | Comma-separated tool names that must appear in this relative order |
-| `--require-artifact PATH` | Path (relative to the workspace) that must have been written; repeatable |
-| `--forbid-path PATH` | Path (relative to the workspace) that must NOT have been written; repeatable |
 | `--keep-workspace` | Do not delete the scoped temporary workspace after the run |
 | `--hosts HOST,HOST,...` | Opt-in multi-host divergence: run against multiple hosts (default: the single resolved host). Hosts that are unconfigured or unavailable are skipped with a reported reason |
+
+`--require-artifact`/`--forbid-path` are general-purpose evaluator flags (see above), not
+trace-mode-specific — they still combine with `--trace-mode` when useful:
 
 ```bash
 ll-harness skill refine-issue P2-ENH-1229 --trace-mode \
@@ -355,6 +361,41 @@ ll-harness skill refine-issue P2-ENH-1229 --trace-mode \
   --require-artifact ".issues/enhancements/P2-ENH-1229-*.md" \
   --forbid-path ".git/index.lock"
 ll-harness skill check-code --trace-mode --hosts claude-code,codex
+```
+
+**Widened evidence surface (ENH-3462):** `_grade()`'s verdict is no longer formed over
+stdout alone. `--evidence stderr` adds stderr as a channel the `--semantic` judge reads
+(stdout is always examined and cannot be undeclared — `--evidence` is additive);
+`--require-artifact`/`--forbid-path` are enforced (not just fingerprinted) and a
+present-and-touched artifact's content is sent to the judge too; `--expect-no-git-changes`
+fails the run if it introduces any new git change (tracked or untracked) versus its state
+before the run, or further modifies an already-dirty tracked file — it does not require a
+clean tree beforehand. Every side effect that fails sets `passed=False` (exit 1), the same
+precedence as `--exit-code`; they never abstain.
+
+Every `--output json`/report carries a `channels` list — one entry per channel
+(`stdout`, `stderr`, each declared `--require-artifact`/`--forbid-path` path, and `git`) —
+each `{name, examined, chars, note}` (no raw `content`; `chars` is `null` when the channel
+was never examined, `0` when examined and empty, else the character count). A channel not
+declared is `examined: false`, distinguishable from a declared-but-empty one
+(`examined: true, chars: 0`) — an unread channel is never silently reported as absent
+evidence. The text report prints the same information as a `Channels:` block.
+
+With no `--evidence`/`--require-artifact` declared, the judge input is byte-identical to
+before this feature (raw stdout, the evaluator's own 4000-char truncation) — this is the
+default, unwidened path. Once either is declared, each channel gets its own independent
+keep-last 4000-char truncation budget before being tag-wrapped (`<stdout>`, `<stderr>`,
+`<artifact path="...">`) and composed into one string for the judge.
+
+Declared paths and the git snapshot resolve against the **harness process's cwd**. The `cmd`
+runner inherits that cwd, so relative paths line up automatically; for `skill`/`prompt`/
+`mcp`/`dsl` the host CLI decides where it actually writes, so run `ll-harness` from the
+target project root for relative `--require-artifact`/`--forbid-path` paths to match.
+
+```bash
+ll-harness cmd "make build" --evidence stderr \
+  --require-artifact dist/app.bin --expect-no-git-changes \
+  --semantic "build succeeded and produced the binary"
 ```
 
 **Retrying a run (`--retry-of ID`, ENH-3407):**

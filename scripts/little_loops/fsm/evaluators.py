@@ -1073,6 +1073,8 @@ def evaluate_llm_structured(
     model: str = DEFAULT_LLM_MODEL,
     max_tokens: int = 256,
     timeout: int = 1800,
+    *,
+    max_output_chars: int | None = 4000,
 ) -> EvaluationResult:
     """Evaluate action output using LLM with structured output via Claude CLI.
 
@@ -1080,7 +1082,10 @@ def evaluate_llm_structured(
     Requires the ``claude`` CLI to be installed and authenticated.
 
     Args:
-        output: Action stdout to evaluate
+        output: Action stdout to evaluate. A caller may instead pass a
+            pre-composed multi-channel string (ENH-3462 D3) -- in that case
+            pass ``max_output_chars=None`` so this function's own truncation
+            doesn't re-truncate the already-bounded composed string.
         prompt: Custom evaluation prompt (defaults to basic success check)
         schema: Custom JSON schema for structured response
         min_confidence: Minimum confidence threshold (0-1)
@@ -1089,6 +1094,10 @@ def evaluate_llm_structured(
         max_tokens: Maximum tokens for response (passed to --max-turns is not
             applicable; kept for signature compat)
         timeout: Timeout in seconds
+        max_output_chars: Keep-last truncation budget for *output* (default
+            4000, unchanged from before ENH-3462). ``None`` disables
+            truncation -- every caller besides ``ll-harness``'s ``_grade()``
+            keeps the default, so behavior is byte-identical for them.
 
     Returns:
         EvaluationResult with verdict from LLM and confidence/reason in details
@@ -1096,8 +1105,11 @@ def evaluate_llm_structured(
     effective_schema = schema or DEFAULT_LLM_SCHEMA
     effective_prompt = (prompt or DEFAULT_LLM_PROMPT) + "\n\n" + CHECK_SEMANTIC_EVIDENCE_CONTRACT
 
-    # Truncate output to avoid context limits (keep last 4000 chars)
-    truncated = output[-4000:] if len(output) > 4000 else output
+    # Truncate output to avoid context limits (keep last max_output_chars chars)
+    if max_output_chars is None:
+        truncated = output
+    else:
+        truncated = output[-max_output_chars:] if len(output) > max_output_chars else output
 
     user_prompt = f"{effective_prompt}\n\n<action_output>\n{truncated}\n</action_output>"
 

@@ -4,8 +4,9 @@ title: "Widen the ll-harness evidence surface beyond stdout \u2014 stderr, writt
   \ files, and named side effects"
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-09-13'
+completed_at: '2026-09-14T19:57:13Z'
 labels:
 - evals
 - reliability
@@ -266,19 +267,19 @@ _Touchpoints from the wiring passes, filtered by the Decisions block. Items stru
 
 ## Acceptance Criteria
 
-- [ ] AC1 — `ll-harness cmd ... --semantic "..." --evidence stderr` sends stderr to the judge: the prompt passed to `evaluate_llm_structured` contains both a `<stdout>` block and a `<stderr>` block (stdout is always declared; `--evidence` is additive).
-- [ ] AC2 — With no new flags, `_grade()`'s judge input and verdict are byte-identical to today for the same `RunnerResult` (regression test pins `evaluate_llm_structured` is called with `output=result.stdout`, untagged, and without `max_output_chars`).
-- [ ] AC3 — `--require-artifact PATH`: missing after the run → exit 1, `outcome.passed is False`, channel `PATH` recorded `examined=True, content=None, note="missing"`; present before the run and untouched (same sha256 **and** same `st_mtime_ns`) → exit 1, `note="pre-existing, unchanged"`; created, content-modified, **or rewritten with identical bytes (mtime advanced)** by the run → pass. With the path present-and-touched and `--semantic` set, the judge prompt contains `<artifact path="PATH">` with the file's content.
-- [ ] AC4 — `--forbid-path PATH`: created during the run → exit 1; pre-existing and byte-identical after → pass; pre-existing and modified → exit 1; a pre-existing directory → pass (existence-only).
-- [ ] AC5 — `--expect-no-git-changes`: a repo dirty before the run and unchanged by it passes; a run that adds one untracked or modified path fails with that path named in the channel note (the untracked case is asserted explicitly, since `_git_dirty()`'s `--untracked-files=no` call would miss it); a run that further modifies an already-dirty tracked file fails with that path named.
-- [ ] AC6 — Every `HarnessEvalOutcome` carries `channels` covering `stdout`, `stderr`, every declared path, and `git`; undeclared entries are `examined=False, content=None`; an examined-but-empty stderr is `examined=True, content=""`. The `--json` payload includes `"channels"` as a list of `{name, examined, chars, note}` objects with **no `content` key** (stdout/stderr bodies remain only at their existing top-level keys), and the human report prints a `Channels:` block.
-- [ ] AC7 — `--exit-code 0` with non-empty stderr and no `--evidence stderr` passes (D6).
-- [ ] AC8 — `--samples 3` re-snapshots side effects before each sample; each sample dict carries its own `channels`; with `--require-artifact`, a sample that does not itself rewrite the artifact fails (`pre-existing, unchanged`), while a sample that rewrites it with byte-identical content passes. `_run_sample_loop()`'s and `_run_baseline_phase()`'s `invoke` parameter type is unchanged (`Callable[[], tuple[RunnerResult, int]]`).
-- [ ] AC14 — Grading a `RunnerResult` with a Namespace lacking every new attribute (the existing `_make_namespace()` shape) behaves exactly as the default declaration: no `AttributeError`, `channels` lists stdout examined and everything else unexamined, and no side-effect check runs (D10).
-- [ ] AC9 — Two runs differing only in `--evidence`/`--expect-no-git-changes` produce different `conditions_fp` values; `ll-logs` eval-fixture export/import round-trips all four declaration flags.
-- [ ] AC10 — Each channel is truncated to 4000 chars (keep-last) independently before composition; a test with 6000-char stdout and 6000-char stderr asserts both tags are present and each body ≤ 4000, and that `evaluate_llm_structured` was called with `max_output_chars=None`.
-- [ ] AC11 — `--require-artifact`/`--forbid-path`/`--evidence`/`--expect-no-git-changes` are accepted by all five subparsers (`skill`, `cmd`, `mcp`, `prompt`, `dsl`), and the dsl runner enforces them per task; `--trace-mode`/`--require-order` remain skill-only (they were never on `prompt_p`).
-- [ ] AC12 — One subprocess-level e2e test in `TestLlHarnessE2E` covers a real command that writes a declared file, emits stderr, and dirties git.
+- [x] AC1 — `ll-harness cmd ... --semantic "..." --evidence stderr` sends stderr to the judge: the prompt passed to `evaluate_llm_structured` contains both a `<stdout>` block and a `<stderr>` block (stdout is always declared; `--evidence` is additive).
+- [x] AC2 — With no new flags, `_grade()`'s judge input and verdict are byte-identical to today for the same `RunnerResult` (regression test pins `evaluate_llm_structured` is called with `output=result.stdout`, untagged, and without `max_output_chars`).
+- [x] AC3 — `--require-artifact PATH`: missing after the run → exit 1, `outcome.passed is False`, channel `PATH` recorded `examined=True, content=None, note="missing"`; present before the run and untouched (same sha256 **and** same `st_mtime_ns`) → exit 1, `note="pre-existing, unchanged"`; created, content-modified, **or rewritten with identical bytes (mtime advanced)** by the run → pass. With the path present-and-touched and `--semantic` set, the judge prompt contains `<artifact path="PATH">` with the file's content.
+- [x] AC4 — `--forbid-path PATH`: created during the run → exit 1; pre-existing and byte-identical after → pass; pre-existing and modified → exit 1; a pre-existing directory → pass (existence-only).
+- [x] AC5 — `--expect-no-git-changes`: a repo dirty before the run and unchanged by it passes; a run that adds one untracked or modified path fails with that path named in the channel note (the untracked case is asserted explicitly, since `_git_dirty()`'s `--untracked-files=no` call would miss it); a run that further modifies an already-dirty tracked file fails with that path named.
+- [x] AC6 — Every `HarnessEvalOutcome` carries `channels` covering `stdout`, `stderr`, every declared path, and `git`; undeclared entries are `examined=False, content=None`; an examined-but-empty stderr is `examined=True, content=""`. The `--json` payload includes `"channels"` as a list of `{name, examined, chars, note}` objects with **no `content` key** (stdout/stderr bodies remain only at their existing top-level keys), and the human report prints a `Channels:` block.
+- [x] AC7 — `--exit-code 0` with non-empty stderr and no `--evidence stderr` passes (D6).
+- [x] AC8 — `--samples 3` re-snapshots side effects before each sample; each sample dict carries its own `channels`; with `--require-artifact`, a sample that does not itself rewrite the artifact fails (`pre-existing, unchanged`), while a sample that rewrites it with byte-identical content passes. `_run_sample_loop()`'s and `_run_baseline_phase()`'s `invoke` parameter type is unchanged (`Callable[[], tuple[RunnerResult, int]]`).
+- [x] AC14 — Grading a `RunnerResult` with a Namespace lacking every new attribute (the existing `_make_namespace()` shape) behaves exactly as the default declaration: no `AttributeError`, `channels` lists stdout examined and everything else unexamined, and no side-effect check runs (D10).
+- [x] AC9 — Two runs differing only in `--evidence`/`--expect-no-git-changes` produce different `conditions_fp` values; `ll-logs` eval-fixture export/import round-trips all four declaration flags.
+- [x] AC10 — Each channel is truncated to 4000 chars (keep-last) independently before composition; a test with 6000-char stdout and 6000-char stderr asserts both tags are present and each body ≤ 4000, and that `evaluate_llm_structured` was called with `max_output_chars=None`.
+- [x] AC11 — `--require-artifact`/`--forbid-path`/`--evidence`/`--expect-no-git-changes` are accepted by all five subparsers (`skill`, `cmd`, `mcp`, `prompt`, `dsl`), and the dsl runner enforces them per task; `--trace-mode`/`--require-order` remain skill-only (they were never on `prompt_p`).
+- [x] AC12 — One subprocess-level e2e test in `TestLlHarnessE2E` covers a real command that writes a declared file, emits stderr, and dirties git.
 - [x] AC13 — A child issue for `harness_events` persistence exists under EPIC-3475 and is linked from this issue's Session Log before this issue is marked done. (ENH-3476, `blocked_by: ENH-3462`, confirmed 2026-09-14.)
 
 ## Tests
@@ -372,7 +373,63 @@ Corrected in the prior pass (2026-09-14T18:46:52):
   Scope Boundaries in this pass. This is now the only touch to
   `evaluate_llm_structured()`'s signature anywhere in this issue's scope.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-14
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/harness.py`: `ChannelRecord`/`HarnessEvalOutcome.channels`; `--evidence`,
+  `--expect-no-git-changes` flags added and `--require-artifact`/`--forbid-path` moved into
+  `_add_evaluator_flags()` (all five subparsers, AC11); `_snapshot_side_effects()`/
+  `_check_side_effects()`/`_check_require_artifact()`/`_check_forbid_path()`/
+  `_check_git_side_effect()`/`_invoke_with_side_effects()`/`_compose_judge_evidence()`/
+  `_truncate_keep_last()`/`_git_status_porcelain_z()` (D5); `_grade()` folds side-effect
+  pass/fail and composes multi-channel judge evidence (D3, D6); `_run_sample_loop()`
+  snapshots/checks inline per sample (D8); `_evaluate_and_report()` prints a `Channels:`
+  block and adds `channels` to the `--json` payload (AC6); `cmd_skill`/`cmd_cmd`/`cmd_mcp`/
+  `cmd_prompt` wrap their single-run `_invoke()` with `_invoke_with_side_effects()`;
+  `cmd_dsl` copies the four flags onto its per-task `Namespace` and wraps
+  `_run_prompt_action()` per task (D1/D9); `_conditions_fp()` includes `evidence`/
+  `expect_no_git_changes` (AC9).
+- `scripts/little_loops/fsm/evaluators.py`: `evaluate_llm_structured()` gains an additive,
+  keyword-only `max_output_chars: int | None = 4000` param (D3); default unchanged for every
+  other caller.
+- `scripts/little_loops/cli/logs.py`: `_build_eval_fixture()`/`_fixture_to_harness_argv()`
+  round-trip the four new declaration flags (AC9).
+- `.ll/decisions.yaml`: amended ARCHITECTURE-017's field list for the four new fixture fields.
+- `scripts/little_loops/init/writers.py`: updated the generated-`CLAUDE.md` `ll-harness`
+  one-liner.
+- `docs/reference/CLI.md`: new "Widened evidence surface" section, flag table rows, JSON
+  payload field, trace-mode table pruned of the moved flags.
+- `docs/reference/API.md`: `evaluate_llm_structured()` signature updated (also fixed
+  pre-existing `timeout` staleness noted by `/ll:refine-issue`).
+- Tests: `scripts/tests/test_cli_harness.py` (13 new test classes covering AC1–AC14),
+  `scripts/tests/test_cli_e2e.py` (`TestLlHarnessE2E::test_widened_evidence_surface`, AC12),
+  `scripts/tests/test_ll_logs.py` (fixture round-trip, AC9).
+
+### Deviations from Program Design
+None — implementation matches the Program Design section's types/signatures/call path as
+resolved by Decisions D1–D10.
+
+### Verification Results
+- Tests: PASS (`scripts/tests/test_cli_harness.py` 214, `test_cli_e2e.py` harness 2,
+  `test_ll_logs.py` 430, `test_fsm_evaluators.py`, `test_runner_spec.py`,
+  `test_fsm_executor.py`, `test_cli_queue_run.py` — all green; full suite
+  `python -m pytest scripts/tests/` 24311 passed, 2 pre-existing failures unrelated to
+  this issue — confirmed via `git stash` that both fail identically without this change
+  (stale `.issues/` corpus content: `P2-ENH-3467`'s evidence quote and a corpus dep-id
+  check, neither touched by this issue))
+- Lint: PASS (`ruff check` on all changed files)
+- Format: PASS (`ruff format` applied to changed files only, not repo-wide)
+- Types: PASS (`mypy` on `cli/harness.py`, `fsm/evaluators.py`, `cli/logs.py`)
+- Integration: PASS (real-subprocess e2e test exercises a command writing a file, emitting
+  stderr, and dirtying git in one run)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-14T19:56:45 - `8a115732-a1ca-4800-98f2-a414e00e6f0a.jsonl`
+- `/ll:ready-issue` - 2026-09-14T19:27:40 - `deab4269-9b7b-4039-950e-e9e6e9e545a3.jsonl`
 - `/ll:confidence-check` - 2026-09-14T19:24:45 - `9423ac09-f097-44bf-831f-9f2ba243b4f9.jsonl`
 - `/ll:verify-issues` - 2026-09-14T19:19:41 - `708ccabe-e639-4624-a706-2da95f048b50.jsonl`
 - review pass (manual) - 2026-09-14 - second pre-implementation review: D5 git snapshot must not reuse `_git_dirty()` (its `--untracked-files=no` contradicts AC5); `--require-artifact` touched-check adds `st_mtime_ns` (sha256 alone false-fails byte-identical rewrites under `--samples`); `invoke` callable contract kept 2-tuple (`_run_sample_loop`/`_run_baseline_phase` untouched, snapshot/check inline in the loop); D2 `to_dict()` emits `chars` not `content`; new D10 `getattr` rule + AC14; cwd/run-from-project-root note; `evaluate_llm_structured` docstring update; two Program Design bullets marked superseded by D1/D2

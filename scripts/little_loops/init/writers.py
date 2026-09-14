@@ -212,7 +212,8 @@ _LL_COMMANDS: tuple[tuple[str, str], ...] = (
     ),
     (
         "ll-harness",
-        "One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria",
+        "One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code, semantic, "
+        "and declared-evidence criteria (stderr, written artifacts, forbidden paths, git cleanliness)",
     ),
     ("ll-help", "List every command/skill catalog entry, generated from frontmatter"),
     ("ll-auto", "Process all backlog issues sequentially in priority order"),
