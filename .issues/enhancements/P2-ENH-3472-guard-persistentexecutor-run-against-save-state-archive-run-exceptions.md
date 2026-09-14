@@ -56,6 +56,29 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 ### Call Path
 `PersistentExecutor.run()` → `run_foreground()` (`cli/loop/runner.py:476`, `try/finally` only, no `except`, `:467-489`) → `cmd_run()` (`cli/loop/run.py:659-673`, `try/finally` only) → `main_loop()` dispatch (`cli/loop/__init__.py:1088`, zero try/except) → `ll-loop` console-script boundary (`pyproject.toml:84`). Nothing intercepts a `save_state()`/`archive_run()` exception anywhere in this chain today — it surfaces as a raw traceback with default nonzero exit.
 
+## Integration Map
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/parallel/worker_pool.py` (:111-126) — the proof-first-task gate check classifies `FAILURE_TERMINAL_EXIT_CODE` (2) vs. any other nonzero exit differently. Today, a `save_state`/`archive_run` crash coinciding with `failure_terminal=True` never reaches `runner.py`'s exit-code decision and surfaces as Python's default exit 1, logged as a generic "exited 1" warning instead of the expected "gate: blocked" info line; once guarded, the correct exit code 2 is reached [Agent 2 finding]
+- `scripts/little_loops/learning_tests/gate.py` (:328-370) — the `ready-to-implement-gate` branch buckets non-0/non-2 exits as `"infra_failed"`, and the `proof-first-task` fallback branch (:365-370) falls through to an unconditional `return "passed"` for any exit code other than `FAILURE_TERMINAL_EXIT_CODE`. **Today this means a persistence crash coinciding with a `failure_terminal=True` result is silently misclassified as `"passed"`**; guarding the else branch fixes this misclassification as a side effect [Agent 2 finding]
+- `scripts/little_loops/cli/queue.py` (:402, :432) — `RunnerResult.error = "terminal failure" if returncode == FAILURE_TERMINAL_EXIT_CODE else None`; today's crash yields `error=None` (indistinguishable from success at this field), corrected to `"terminal failure"` once guarded [Agent 2 finding]
+
+No code change is required in these three files — they already handle exit code 2 correctly. Listed here because their *observed classification* of an existing edge case changes as a side effect of this fix; worth a one-line callout in the PR description.
+
+### Tests
+
+- `scripts/tests/test_fsm_persistence.py::test_run_archives_to_history_on_completion` (:1509) — a second happy-path structural template for the same code path, complementary to the already-cited `test_run_saves_final_state` (:915); the former exercises the `archive_run()` half of the guarded pair, the latter the `save_state()` half [Agent 3 finding]
+- `scripts/tests/test_ll_loop_execution.py` (:1030, :1061) — existing end-to-end tests that construct a real `PersistentExecutor` and call `.run()` (unlike `test_cli_loop_lifecycle.py`/`test_cli_loop_background.py`, which fully mock the class); confirm these still pass unchanged since this fix is behavior-preserving on the success path [Agent 1 finding]
+
+### Confirmed Not Affected (no action needed)
+
+- No documentation anywhere describes the current crash-on-persistence-failure behavior, so no doc file goes stale from this fix [Agent 2 finding]
+- No test asserts the current (pre-fix) propagation behavior, so nothing needs inverting or removing [Agent 3 finding]
+- Other unguarded `else`-branch-shaped call sites exist in `fsm/persistence.py` (`archive_run_only()` :1161-1210, `_reconcile_stale_running()` :279-305, `save_state()` at :709) but are explicitly out of this issue's Scope Boundaries — reported for awareness only, not proposed as scope additions [Agent 2 finding]
+
 ## Implementation Steps
 
 1. Guard `PersistentExecutor.run()`'s `save_state()`/`archive_run()` calls (`fsm/persistence.py:1279-1281`) following the `except Exception  # noqa: BLE001` precedent above — log the failure and return the already-computed `ExecutionResult` rather than letting the exception propagate.
@@ -91,6 +114,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-14T20:29:41 - `8cf1df9b-8fca-46d9-b751-f28d170c6572.jsonl`
 - `/ll:refine-issue` - 2026-09-14T19:32:05 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
 - `/ll:format-issue` - 2026-09-14T19:18:27 - `e03a4d3e-6e32-492e-b751-6c3a912f41aa.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T19:16:25 - `bd6d1308-41a1-42e0-b1ba-67bcf198d91f.jsonl`

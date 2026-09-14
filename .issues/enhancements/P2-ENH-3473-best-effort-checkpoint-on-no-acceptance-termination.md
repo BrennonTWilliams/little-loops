@@ -78,6 +78,30 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - `skills/audit-loop-run/SKILL.md` (~line 293) — Step 6b verdict table's `partial` row is keyed on `terminated_by == "max_steps"` AND a `max_steps_summary` event (ENH-2575 precedent this issue's checkpoint models itself on). Add an analogous new row for the `best_effort` outcome, or it gets no verdict classification.
 - `scripts/little_loops/generate_schemas.py` (:615-634) and `docs/reference/EVENT-SCHEMA.md` / `docs/guides/LOOPS_GUIDE.md` `### terminated_by exit reasons` table — add the new value's row once ENH-3471 lands the enumeration-update mechanics; this child only needs to add its own row/value to what ENH-3471 leaves in place.
 
+### Wiring Pass Additions (`/ll:wire-issue`)
+
+_The new checkpoint file lands in the gitignored, ephemeral `run_dir`; every durable-artifact consumer below works off a closed, hand-maintained filename/glob list that does not yet know about `iter_<N>_best_effort.json`. Without these additions the checkpoint is written but never durably archived, never credential-scanned, never hashed into the evidence bundle, and gets miscounted as an unexplained mutation:_
+
+- `scripts/little_loops/fsm/persistence.py::StatePersistence.archive_run()` (:585-644) — add an `iter_*_best_effort.json`-shaped glob to the existing `("probe-*.json", "prepatch_evidence_*.json")` copy-list, or the checkpoint is never copied out of `run_dir` into `.loops/.history/` and is lost when `run_dir` is discarded [Agent 2 finding]
+- `scripts/little_loops/cli/loop/evidence.py::_scan_for_credentials()` (~198-249) — add the new file to the fixed `("state.json", "events.jsonl", "summary.json")` tuple / `probe-*.json` glob so it gets credential-scanned like other checkpoint artifacts (ENH-3470) [Agent 2 finding]
+- `scripts/little_loops/cli/loop/evidence.py` sha256 hashing tuple (~312-318, a second, independently-maintained copy of the same `("state.json", "events.jsonl", "summary.json")` tuple) — add the new file so it's included in the deterministic verification-evidence bundle (FEAT-3182) [Agent 2 finding]
+- `scripts/little_loops/cli/loop/audit.py::_AUX_EXCLUDED_NAMES` / `_scan_aux_mutations()` (~23-30, ~144-174) — needs a **prefix/pattern check** (`name.startswith("iter_") and name.endswith("_best_effort.json")`), not a membership addition, since the filename is parameterized by iteration number; otherwise every best-effort checkpoint inflates `aux_mutation_count` [Agent 2 finding]
+- `scripts/little_loops/cli/logs.py` — `_FLAG_OUTCOMES` (~line 1184), `is_flagged()` (~1187-1206), `_LoopFleetAggregate`/`_aggregate_fleet_runs()` (~1122-1160), and the fleet-review "Delta vs baseline" table (~2564-2566) all consume `_derive_loop_outcome()`'s bucket vocabulary; once that function gains its new branch (already in this issue's Wiring list above), decide whether the new bucket joins `_FLAG_OUTCOMES` [Agent 1 finding]
+- `scripts/little_loops/fleet_improve.py` (imports `is_flagged` at :42; consumes `top_outcome`/`outcomes` at :243, :332-333, :344, :443-444, :552) — sidecar consumer applying the identical flagging rule; verify against once the outcome vocabulary changes [Agent 1 finding]
+- `docs/runbooks/FLEET_LOOP_REVIEW.md` (~90-97) — outcome vocabulary prose (`converged | failed | error | max-steps | stalled | interrupted | signal`) needs the new bucket documented [Agent 1 finding]
+- `docs/guides/LOOPS_GUIDE.md` `### Safety Limits` table (~line 127, `on_max_steps` row: "unset | Silent budget exhaustion...") — becomes stale once the executor writes a best-effort checkpoint on a qualifying no-acceptance termination even when `on_max_steps` is unset; this is a different section of the same file than the `terminated_by` table already listed above [Agent 2 finding]
+
+### Tests (added by `/ll:wire-issue`)
+
+- Extend `scripts/tests/test_cli_loop_lifecycle.py::TestCmdResumeExitCodes` — model the new outcome's exit-code + persisted-status pair on the `test_workdir_vanished_returns_exit_code_1` (:1466) / `test_workdir_vanished_maps_to_failed_persisted_status` (:1478) two-test shape, the most recent prior addition to both `EXIT_CODES` and `map_final_status`'s fallback [Agent 3 finding]
+- Extend `scripts/tests/test_history_reader_usage.py::TestWasteAttribution` with a new dedicated test method (the file's own `_seed_run`-helper-plus-single-assertion-block convention, not `@pytest.mark.parametrize`) — same predicate ENH-3471 also adds a row to; see this issue's own Scope Boundary note above about sequencing against whatever shape ENH-3471 lands [Agent 3 finding]
+
+### Confirmed Not Affected (no action needed)
+
+- `PersistentExecutor.archive_run_only()` (:1161-1210) — its one caller (`cli/loop/signals.py:60`) hardcodes `terminated_by="interrupted_force"` and can never observe a no-acceptance value; it also has no `ExecutionResult` to pass to `write_best_effort_checkpoint()` (it builds `LoopState` directly from live executor fields). Confirmed genuinely out of scope, not merely deferred [Agent 2 finding]
+- `skills/audit-loop-run/SKILL.md`'s verdict table has no automated test anywhere (`test_audit_loop_run_skill.py`'s checks are pure string-containment on the prose); adding a `best_effort` row is documentation-only, no test infra to extend [Agent 3 finding]
+- `map_final_status()`'s closed 5-value contract has no exhaustiveness/enum-membership assertion anywhere in the suite; adding a 6th bucket won't trip any existing test [Agent 3 finding]
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
@@ -122,6 +146,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `_WASTED_RUN_PREDICATE` (usage.py:310-316) edit shares the same `IN (...)` membership list as ENH-3471's edit to the same predicate. Already sequenced via `depends_on: [ENH-3471]`, but implement this issue's edit as an additive diff against whatever shape ENH-3471 actually lands (not against the pre-3471 line numbers cited above), since both issues touch the same list.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-14T20:29:41 - `8cf1df9b-8fca-46d9-b751-f28d170c6572.jsonl`
 - `/ll:refine-issue` - 2026-09-14T19:32:06 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
 - `/ll:format-issue` - 2026-09-14T19:19:10 - `b113a2f7-29c0-4877-96df-0ecdfe92bfb9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-13T21:28:46 - `23df08cc-836b-4f77-a1e2-bfb5aedb0f55.jsonl`

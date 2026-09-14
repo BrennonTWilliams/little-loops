@@ -61,6 +61,40 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 ### Call Path
 `FSMExecutor.run()` (attempt-batch exception via `_run_action_or_route()` re-raise, or decision-step exception via `_evaluate()`/`_route()`/`_resolve_route()`) → outer `except Exception as exc: return self._finish("error", ...)` (`:1027-1041`) → `_finish()` → `record_loop_run_summary()` (writes `loop_runs` row).
 
+## Integration Map
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+### Documentation
+
+- `docs/reference/API.md` (~lines 8818-8822) — `waste_attribution()` prose enumerates the `terminated_by` infra/step-cap vocabulary including `error`; update alongside the Step 3 `_WASTED_RUN_PREDICATE` code change so the doc doesn't go stale [Agent 2 finding]
+- `docs/reference/API.md` (~line 6367) — `ExecutionResult` usage example prints `result.terminated_by` and lists `"error"` among the sample values [Agent 2 finding]
+- `docs/reference/API.md` (~line 6377) — `ExecutionResult` dataclass field comment enumerates the same vocabulary [Agent 2 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (~lines 365-366, ~613) — two `# ll-lint: mr11-ok(...)` suppression comments narrate `terminated_by` as "terminal/error/timeout/max_steps/..."; update the prose so it doesn't misdescribe the funnel once decision-step exceptions get their own value [Agent 2 finding]
+- `scripts/little_loops/loops/autodev.yaml` (~line 699) — comment describing "a child that dies with terminated_by == 'error' after a 429" as the generic exception-funnel outcome; update to reflect the new named value(s) [Agent 2 finding]
+
+### Skill Mirror Sync
+
+- `.qwen/skills/create-loop/reference.md`, `.kimi-code/skills/create-loop/reference.md`, `.gemini/skills/create-loop/reference.md` (each ~lines 784-785) — verbatim mirrors of `skills/create-loop/reference.md`'s sub-loop routing prose (Implementation Step 8's target). Editing only the canonical file desyncs these three and trips the mirror-drift gate (`test_verify_host_map.py`); resync with `ll-adapt --host <gemini|kimi-code|qwen> --apply` after the canonical edit [Agent 1 finding]
+
+### Tests
+
+- `scripts/tests/test_builtin_loops.py` — no existing test exercises `refine-to-ready-issue.yaml:1043-1046`'s `*:error|*:timeout|*:max_steps` alternation (the actual arm Implementation Step 4 modifies); the only related test, `test_write_failure_evidence_attributes_sub_loop_failure` (:2200-2220), exercises the sibling `True:*` alternation instead. Add a case setting `failure_terminal` to something other than `"True"` alongside the new named `terminated_by` value to cover the arm this issue's Step 4 actually changes [Agent 3 finding]
+
+### Confirmed Not Affected (no action needed)
+
+- `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` — checks `if "error" in event: return "error"` *before* inspecting `terminated_by`; since `_finish()` still sets `error=str(exc)` for the new named values, this bucket (and its `test_ll_logs.py` assertions, and `docs/runbooks/FLEET_LOOP_REVIEW.md`'s vocabulary listing) fires unchanged. No edit required [Agent 2 finding, confirmed]
+- No `Literal`/JSON-Schema `enum` anywhere constrains `terminated_by`'s values (`loop_complete.json` is untyped `"type": "string"`, `session_store/schema.py`'s column is plain `TEXT`) — purely additive vocabulary change, no validator to update [Agent 2 finding]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/API.md` — waste_attribution prose (~8818-8822), ExecutionResult usage example (~6367), and field comment (~6377) to enumerate the new abort-reason value(s)
+- Update `scripts/little_loops/loops/auto-refine-and-implement.yaml` (~365-366, ~613) and `scripts/little_loops/loops/autodev.yaml` (~699) — stale comment prose describing the old "error"-only funnel
+- After editing `skills/create-loop/reference.md` (Step 8), run `ll-adapt --host qwen --apply`, `ll-adapt --host kimi-code --apply`, `ll-adapt --host gemini --apply` to resync the three mirror copies
+- Add a `test_builtin_loops.py` case exercising `refine-to-ready-issue.yaml:1043-1046`'s `*:error|*:timeout|*:max_steps` alternation directly (not just the sibling `True:*` arm already covered)
+
 ## Implementation Steps
 
 1. Thread a named abort reason through `FSMExecutor._finish()` distinguishing an attempt-batch failure from a decision-step failure, replacing (or supplementing — see Open design choice above) the generic `"error"` value for these two paths. Verified by a new test in `test_fsm_executor.py` asserting the new value(s) surface in `result.terminated_by`.
@@ -96,6 +130,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - Two established testing conventions exist for exception-to-reason mapping and neither supersedes the other: (a) one dedicated test method per raise-site scenario with full `FSMLoop`/`StateConfig` construction (the shape `test_fsm_executor.py`'s existing `terminated_by=="error"` assertions already use, e.g. `test_no_valid_route_terminates_with_error` at :2027, `test_exception_during_execution_returns_error_result` at :3532); (b) a single `@pytest.mark.parametrize("exc,expected_reason", [...])` method mapping exception instances to expected reason strings (`test_advisor.py::test_maps_each_exception_to_skipped_reason`, :475-503; `test_issue_lifecycle.py`'s `classify_failure()` parametrization, :963-1050). The new tests for this issue's abort-reason split should follow convention (a), matching the file's own existing `terminated_by` assertion shape.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-14T20:29:41 - `8cf1df9b-8fca-46d9-b751-f28d170c6572.jsonl`
 - `/ll:refine-issue` - 2026-09-14T19:32:05 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
 - `/ll:format-issue` - 2026-09-14T19:18:19 - `e03a4d3e-6e32-492e-b751-6c3a912f41aa.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T19:16:24 - `bd6d1308-41a1-42e0-b1ba-67bcf198d91f.jsonl`
