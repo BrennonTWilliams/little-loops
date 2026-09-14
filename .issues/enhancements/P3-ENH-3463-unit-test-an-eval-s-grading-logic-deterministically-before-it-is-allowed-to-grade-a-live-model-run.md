@@ -44,8 +44,12 @@ Distinct from the adjacent verdict work: n-run redundancy (ENH-3415, shipped) go
 The source pattern's "deterministic tier verifies the live tier" is a **CI-tier** discipline, not a per-probe runtime check. Per this repo's CI policy (`.claude/CLAUDE.md` § Testing & CI Policy: pure-Python gates are ordinary pytest tests), the gate is a single new test module — `scripts/tests/test_grader_coverage.py` — that:
 
 1. Enumerates every `evaluate_*` function defined in `scripts/little_loops/fsm/evaluators.py` (17 today; see the inventory below).
-2. Asserts each **in-scope grader** has, somewhere under `scripts/tests/`, a test that exercises a clear pass (`verdict == "yes"`), a clear fail (`verdict == "no"`), and a threshold boundary. Case kinds are declared with a `@pytest.mark.grader_case(<fn>, <kind>)` marker (registered in `conftest.py`), and the meta-test collects markers rather than parsing names.
+2. Asserts each **in-scope grader** has, somewhere under `scripts/tests/`, a tagged test for every case kind its inventory row requires. Case kinds are declared with a `@pytest.mark.grader_case(<fn>, <kind>)` marker (registered in `scripts/pyproject.toml` `[tool.pytest.ini_options] markers`, alongside `integration`/`slow`/`conformance`/`no_parallel`), and the meta-test reads markers rather than parsing test names.
 3. Fails with a message naming the grader and the missing case kind.
+
+**Marker discovery is an AST scan, not session collection.** The meta-test walks `scripts/tests/*.py` with `ast` and extracts `pytest.mark.grader_case(...)` decorator arguments. It must *not* read `session.items` or use a `pytest_collection_modifyitems` hook: any subset run — `pytest scripts/tests/test_grader_coverage.py` alone, `-k`, `--lf`, or mutmut's per-mutant `-x -q -n0` selections — would then lack the tagged tests and fail the gate spuriously. The AST route is subset-proof and lets the meta-test's own negative tests feed a synthetic source string instead of mutating the real suite.
+
+**Case-kind semantics.** `pass` and `fail` mean the grader's affirmative and negative routing outcomes, not literally `verdict == "yes"` / `"no"`: `evaluate_classify` returns the route token as its verdict, `evaluate_mcp_result` returns `tool_error`/`timeout`-style verdicts, and `evaluate_blind_comparator` returns a `dict` rather than an `EvaluationResult`. `boundary` is only meaningful where a numeric threshold exists, so the in-scope table declares required kinds per grader rather than demanding all three everywhere.
 
 "Before any live run is dispatched" is satisfied because `python -m pytest scripts/tests/` is the merge gate for `main`, and every `local-editable` project on this machine runs `main` directly.
 
@@ -53,18 +57,35 @@ The source pattern's "deterministic tier verifies the live tier" is a **CI-tier*
 
 ### Grader inventory (`fsm/evaluators.py`)
 
-**In scope** (grade a subject's output and return a pass/fail verdict): `evaluate_exit_code` (`:176`), `evaluate_output_numeric` (`:205`), `evaluate_output_json` (`:324`), `evaluate_output_contains` (`:381`), `evaluate_classify` (`:523`), `evaluate_mcp_result` (`:968`), `evaluate_harbor_scorer` (`:1028`), `evaluate_llm_structured` (`:1067`), `evaluate_blind_comparator` (`:1184`), `evaluate_contract` (`:1361`), `evaluate_comparator` (`:1636`).
+**In scope** (grade a subject's output and return a routing verdict), with the case kinds each row requires:
+
+| Grader | Line | Required kinds | Boundary means |
+|---|---|---|---|
+| `evaluate_output_numeric` | `:205` | pass, fail, boundary | value exactly at the `lt`/`gt`/`le`/`ge` threshold |
+| `evaluate_output_json` | `:324` | pass, fail, boundary | extracted value exactly at the threshold |
+| `evaluate_llm_structured` | `:1067` | pass, fail, boundary | `confidence == min_confidence` |
+| `evaluate_exit_code` | `:176` | pass, fail | — |
+| `evaluate_output_contains` | `:381` | pass, fail | — |
+| `evaluate_classify` | `:523` | pass, fail | — |
+| `evaluate_mcp_result` | `:968` | pass, fail | — |
+| `evaluate_harbor_scorer` | `:1028` | pass, fail | — |
+| `evaluate_blind_comparator` | `:1184` | pass, fail | — |
+| `evaluate_contract` | `:1361` | pass, fail | — |
+| `evaluate_comparator` | `:1636` | pass, fail | — |
+
+The meta-test holds this table as its in-scope mapping (`{name: frozenset(kinds)}`), so adding a threshold to a grader later means adding `boundary` to its row.
 
 **Exempt** (loop-control or advisory, not subject grading; verdicts are stall/continue signals rather than pass/fail): `evaluate_convergence` (`:438`), `evaluate_diff_stall` (`:577`), `evaluate_score_stall` (`:673`), `evaluate_open_question_stall` (`:756`), `evaluate_action_stall` (`:837`), `evaluate_advisor_consult` (`:1743`). The meta-test carries this exemption list explicitly so adding a new `evaluate_*` function without classifying it fails the test.
 
 ## Acceptance
 
 1. `scripts/tests/test_grader_coverage.py` exists and passes on `main`.
-2. Removing (or commenting out) any one pass, fail, or boundary test for an in-scope grader makes the meta-test fail, naming the grader and the missing case kind.
-3. Adding a new `evaluate_*` function to `fsm/evaluators.py` without adding it to either the in-scope or exempt list makes the meta-test fail.
+2. Removing (or commenting out) every tagged test of a given kind for an in-scope grader makes the meta-test fail, naming the grader and the missing case kind. (A single removal need not trip it; graders may carry several tagged tests per kind.)
+3. Adding a new `evaluate_*` function to `fsm/evaluators.py` without adding it to either the in-scope table or the exempt list makes the meta-test fail.
 4. `TestOutputJsonEvaluator` gains a `verdict == "no"` case and a case with the value exactly at an `lt`/`gt`/`le`/`ge` threshold; `TestLLMStructuredEvaluator` gains a `confidence == min_confidence` exact-boundary case. Each is tagged with the `grader_case` marker.
-5. A deliberately inverted comparison in any in-scope grader (e.g. flipping `>=` to `<` in `evaluate_output_numeric`) fails at least one existing tagged fail-or-boundary test. Verified once by hand during implementation and recorded in the Resolution.
-6. `python -m pytest scripts/tests/` passes.
+5. The meta-test passes when invoked in isolation (`python -m pytest scripts/tests/test_grader_coverage.py`) and under `-k test_grader_coverage`, i.e. it does not depend on the rest of the suite being collected.
+6. A deliberately inverted comparison in any in-scope grader (e.g. flipping `>=` to `<` in `evaluate_output_numeric`) fails at least one existing tagged fail-or-boundary test. Verified by running `mutmut` scoped to `fsm/evaluators.py` (the repo already carries `[tool.mutmut]` in `scripts/pyproject.toml`) and recording surviving mutants inside the eleven in-scope graders in the Resolution; a hand-inverted comparison is the fallback if mutmut is unavailable.
+7. `python -m pytest scripts/tests/` passes.
 
 ## Integration Map
 
@@ -81,8 +102,8 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - **Documentation citation discrepancy**: the existing citation `docs/generalized-fsm-loop.md:546-549` does not contain the "`passed` initializes to `True` and no check ever flips it" claim — that line range instead covers the `on_no`→`on_error` fallthrough rule and `cannot_judge` abstention documentation (BUG-3228/ENH-3185). The duplicated claim is confirmed only in `docs/guides/EVALUATION_GUIDE.md`, at both lines 95-97 and 546-549 within that single file. Before editing `generalized-fsm-loop.md` for this claim, its actual location (if any) needs re-locating; that file's `## Testing Strategy` section is confirmed real at line 1847.
 
 ### Files to Modify
-- `scripts/tests/test_grader_coverage.py` — **new**; the meta-test described in Design. Enumerates `evaluate_*` in `fsm/evaluators.py` via `inspect`, collects `grader_case` markers from the collected test session, and asserts pass/fail/boundary coverage per in-scope grader plus classification of every function.
-- `scripts/tests/conftest.py` — register the `grader_case` marker (`pytest_configure` → `config.addinivalue_line("markers", ...)`) so `--strict-markers` runs stay clean.
+- `scripts/tests/test_grader_coverage.py` — **new**; the meta-test described in Design. Enumerates `evaluate_*` in `fsm/evaluators.py` via `inspect`, AST-scans `scripts/tests/*.py` for `grader_case` marker decorators, and asserts per-grader required-kind coverage (from the in-scope table) plus classification of every function.
+- `scripts/pyproject.toml` — add `grader_case` to `[tool.pytest.ini_options] markers` (`:281`) so `--strict-markers` (already in `addopts`) accepts it. Do not register via `conftest.py` `pytest_configure`; the repo registers all markers in pyproject.
 - `scripts/tests/test_fsm_evaluators.py` — add the two missing cases: an `evaluate_output_json` fail-case and boundary-case (`TestOutputJsonEvaluator`, currently `test_fsm_evaluators.py:284-354`, only asserts `"yes"`/`"error"`), and an `evaluate_llm_structured` `confidence == min_confidence` exact-boundary case (`TestLLMStructuredEvaluator`, currently `test_fsm_evaluators.py:976-1798`, boundary tests only use a clearly-low confidence). Tag existing pass/fail/boundary tests for every in-scope grader with `grader_case`.
 - `scripts/tests/test_benchmark_fragment.py` — tag `TestEvaluateHarborScorerVerdicts` (`:28-74`) cases with `grader_case`; it lives outside `test_fsm_evaluators.py`.
 
@@ -100,11 +121,11 @@ _Struck by review 2026-09-14 (runtime-gate reading rejected)_: `_grade()`/`evalu
 - Repo-structure meta-tests that enumerate source artifacts and assert a coverage/companion invariant are the precedent for the gate shape — evidence: `scripts/tests/test_enh494_skill_companions.py` (SKILL.md line-limit + companion), `scripts/tests/test_policy_builder_node_gate.py` (external gate wrapped as pytest)
 
 ### Tests
-- `scripts/tests/test_fsm_evaluators.py` — direct tests for 9 of the 10 named graders (all but `evaluate_harbor_scorer`)
-- `scripts/tests/test_benchmark_fragment.py` — `TestEvaluateHarborScorerVerdicts` (`:28-74`), the tenth grader's direct tests, in a separate file from the rest
+- `scripts/tests/test_fsm_evaluators.py` — direct tests for 10 of the 11 in-scope graders (all but `evaluate_harbor_scorer`), including `TestComparatorEvaluator` (`:2464`) for `evaluate_comparator`
+- `scripts/tests/test_benchmark_fragment.py` — `TestEvaluateHarborScorerVerdicts` (`:28-74`), the eleventh grader's direct tests, in a separate file from the rest
 - `scripts/tests/test_cli_harness.py` — `TestGradeEvidenceChannels` (`:3682`) calls `_grade()` directly against synthetic `RunnerResult` fixtures with the LLM grader mocked at `little_loops.cli.harness.evaluate_llm_structured`; no existing test in this class exercises a deliberately-inverted grader or a test-presence/pass gate
 
-- `scripts/tests/test_grader_coverage.py` — **new** meta-test (see Design). Its own tests: (a) all in-scope graders covered on `main`; (b) a synthetic session with one marker removed fails naming grader + kind; (c) an unclassified `evaluate_*` name fails.
+- `scripts/tests/test_grader_coverage.py` — **new** meta-test (see Design). Its own tests: (a) all in-scope graders covered on `main`; (b) a synthetic test-source string with one required kind absent fails naming grader + kind; (c) an unclassified `evaluate_*` name fails; (d) the module passes when run in isolation (AC 5).
 - `scripts/tests/test_learning_tests_version_staleness.py` — pure boundary-predicate pattern (`is_record_stale`), the same synthetic-fixed-input/boundary-covering shape this issue's directive requires for graders
 - `scripts/tests/test_enh494_skill_companions.py` — precedent for a repo-invariant meta-test that enumerates source files and fails with a named offender
 
@@ -134,8 +155,9 @@ None. No `fsm/schema.py` or `fsm-loop-schema.json` field is added (see Design de
 
 - `_grade(runner_label, result: RunnerResult, args, *, expected_grade=None, side_effects=None) -> tuple[int, HarnessEvalOutcome]` (`scripts/little_loops/cli/harness.py:1224`)
 - `evaluate_llm_structured(output, prompt, model, max_output_chars=None) -> EvaluationResult` (`scripts/little_loops/fsm/evaluators.py:1067`)
-- Sibling in-scope graders sharing the same `(output, ...) -> EvaluationResult` shape: `evaluate_exit_code`, `evaluate_output_numeric`, `evaluate_output_json`, `evaluate_output_contains`, `evaluate_classify`, `evaluate_harbor_scorer`, `evaluate_mcp_result`, `evaluate_blind_comparator`, `evaluate_contract`, `evaluate_comparator` (all `scripts/little_loops/fsm/evaluators.py`). All already have deterministic pass/fail unit tests (see findings below); the gaps are two missing fail/boundary cases and the absence of any invariant enforcing the coverage. Full 17-function inventory with exemptions is in Design.
-- New marker: `@pytest.mark.grader_case(grader: str, kind: Literal["pass", "fail", "boundary"])` — registered in `scripts/tests/conftest.py`.
+- Sibling in-scope graders: `evaluate_exit_code`, `evaluate_output_numeric`, `evaluate_output_json`, `evaluate_output_contains`, `evaluate_classify`, `evaluate_harbor_scorer`, `evaluate_mcp_result`, `evaluate_contract`, `evaluate_comparator` return `EvaluationResult`; `evaluate_blind_comparator` (`evaluators.py:1184`) returns `dict[str, Any]`, and `evaluate_contract`/`evaluate_comparator` take `(config: EvaluateConfig, ...)` rather than a bare `output`. The marker is agnostic to signature shape. All already have deterministic pass/fail unit tests (see findings below); the gaps are two missing fail/boundary cases and the absence of any invariant enforcing the coverage. Full 17-function inventory with exemptions is in Design.
+- New marker: `@pytest.mark.grader_case(grader: str, kind: Literal["pass", "fail", "boundary"])` — registered in `scripts/pyproject.toml` `markers`.
+- Meta-test discovery: `ast.parse` over each `scripts/tests/*.py`, matching `Call` decorators whose func resolves to `pytest.mark.grader_case`, yielding `(grader, kind)` string pairs. No pytest session state is consulted.
 
 ### Call Path
 
@@ -158,15 +180,11 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 ## Implementation Steps
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
-
 1. `evaluate_output_json` (`fsm/evaluators.py:324`) has a test-covered fail case and a test-covered boundary case in `TestOutputJsonEvaluator` (`test_fsm_evaluators.py:284`) — today only `"yes"`/`"error"` outcomes are asserted there.
 2. `evaluate_llm_structured` (`fsm/evaluators.py:1067`) has a test asserting the exact-boundary case `confidence == min_confidence` in `TestLLMStructuredEvaluator` (`test_fsm_evaluators.py:976`) — today the nearby cases only use a clearly-low confidence (`0.4` vs. `min_confidence=0.7`).
-3. `scripts/tests/conftest.py` registers a `grader_case(grader, kind)` marker; every existing pass/fail/boundary test for the eleven in-scope graders in `test_fsm_evaluators.py` and `test_benchmark_fragment.py` is tagged.
-4. `scripts/tests/test_grader_coverage.py` exists: enumerates `evaluate_*` from `fsm/evaluators.py`, holds the explicit in-scope and exempt lists from Design, collects `grader_case` markers from the session (a session-scoped fixture or `pytest_collection_modifyitems` hook in `conftest.py`), and fails naming the grader and missing kind. Its own negative tests (missing kind, unclassified function) run against a synthetic marker set, not by mutating the real suite.
-5. Hand-verify AC 5 once: invert one comparison in `evaluate_output_numeric`, confirm a tagged test fails, revert, record in Resolution.
+3. `scripts/pyproject.toml` `markers` gains `grader_case(grader, kind)`; every existing pass/fail/boundary test for the eleven in-scope graders in `test_fsm_evaluators.py` and `test_benchmark_fragment.py` is tagged per the required-kinds table in Design.
+4. `scripts/tests/test_grader_coverage.py` exists: enumerates `evaluate_*` from `fsm/evaluators.py`, holds the in-scope required-kinds table and the exempt list from Design, AST-scans `scripts/tests/*.py` for `grader_case` decorators (never `session.items` or a collection hook), and fails naming the grader and missing kind. Its own negative tests (missing kind, unclassified function) run against a synthetic source string, not by mutating the real suite. Confirm it passes when run in isolation (AC 5).
+5. Verify AC 6: run `mutmut run` scoped to `little_loops/fsm/evaluators.py` from `scripts/`, list survivors inside in-scope graders, record in Resolution. Fallback: hand-invert one comparison in `evaluate_output_numeric`, confirm a tagged test fails, revert.
 6. Add the `## Testing Strategy` paragraph in `docs/generalized-fsm-loop.md` and the `CONTRIBUTING.md` line.
 7. `python -m pytest scripts/tests/` passes.
 
@@ -213,6 +231,16 @@ freshness `fresh`):
 
 Dependency hygiene: `blocked_by: ENH-3462` is satisfied (ENH-3462 is `done`); the
 `## Blocks` backlink on ENH-3462 was added 2026-09-14.
+
+_Review 2026-09-14 (manual, second pass):_ switched marker discovery from
+session collection to an AST scan (subset runs, `--lf`, and mutmut's `-n0`
+selections would otherwise fail the gate spuriously); replaced the blanket
+pass/fail/boundary requirement with a per-grader required-kinds table (only
+three graders have a numeric threshold; `classify`, `mcp_result`, and
+`blind_comparator` do not return `"yes"`/`"no"`); moved marker registration to
+`pyproject.toml` per repo convention; reworded AC 2 to "every tagged test of a
+kind"; made the inverted-comparison check durable via the existing `[tool.mutmut]`
+config; fixed the "9 of 10" count and the `-> EvaluationResult` shape claim.
 
 _Review 2026-09-14 (manual):_ replaced the runtime-gate reading with a pytest
 meta-test decision, corrected the false "none have unit tests" line, dropped the
