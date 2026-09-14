@@ -12,6 +12,12 @@ labels:
 size: Large
 parent: EPIC-3475
 epic: EPIC-3475
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 ## Summary
@@ -342,6 +348,7 @@ Corrected in this pass:
   `evaluate_llm_structured()`'s signature anywhere in this issue's scope.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T19:04:11 - `90921241-8f93-4ac8-825a-1666912c6844.jsonl`
 - review pass (manual) - 2026-09-14 - pre-implementation review: fixed snapshot placement (wraps invoke, not `_evaluate_and_report()`; dsl `task_args` copies new flags; D9 per-task); `--require-artifact` now requires created-or-modified (stale-artifact hole); `--expect-git-clean` → `--expect-no-git-changes` with pre-dirty content digests; `--evidence` additive (stdout always on); D3 composition rule reconciles AC1/AC2 (raw stdout under default declaration); `max_output_chars: int | None`; keep-last truncation; forbid-path dir semantics; ARCHITECTURE-017 amendment; ACs 1–5, 8–11 updated
 - review pass (manual) - 2026-09-14 - amended D3 per verify-issues finding: `evaluate_llm_structured()` gains additive `max_output_chars` param so `_grade()`'s composed multi-channel string isn't re-truncated (AC10 fix); applied across D3, Wiring "Not touched", Program Design, Impact/Risk, Scope Boundaries
 - `/ll:verify-issues` - 2026-09-14T18:46:52 - `2b263489-0fde-43e6-b776-33707f05f579.jsonl`
