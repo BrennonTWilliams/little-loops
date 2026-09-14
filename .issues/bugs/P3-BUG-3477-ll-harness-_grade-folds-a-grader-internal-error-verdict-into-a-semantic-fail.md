@@ -68,3 +68,7 @@ A grader-internal error is neither a pass nor a fail of the subject. `_grade()` 
 ## Status
 
 **Open** | Created: 2026-09-14 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-14T21:47:59 - `b8b46581-a38f-4aa7-a1ba-71f0319e7405.jsonl`
