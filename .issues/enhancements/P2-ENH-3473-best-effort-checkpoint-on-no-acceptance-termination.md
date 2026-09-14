@@ -1,5 +1,5 @@
 ---
-id: 3473
+id: ENH-3473
 title: 'Write a best_effort-tagged checkpoint when a loop ends with no acceptance, so no outer iteration produces zero artifacts'
 type: ENH
 priority: P2
@@ -15,6 +15,14 @@ depends_on: [ENH-3471]
 When a loop's budget ends with no acceptance (a qualifying no-acceptance `terminated_by`), nothing is written beyond the cap-hit itself — the attempt that came closest to the objective is discarded even though it was already paid for. This issue adds a `best_effort`-tagged checkpoint on that path, so every outer iteration produces exactly one artifact whether or not the run succeeded, matching the pattern already used ad hoc by `canvas-sketch-generator.yaml`'s `finalize` state.
 
 **Depends on ENH-3471**: "which `terminated_by` values qualify as no-acceptance" is only answerable once ENH-3471's named attempt-batch/decision-step vocabulary exists — implement this child after that one lands.
+
+## Current Behavior
+
+When a loop's budget ends with no acceptance (a qualifying no-acceptance `terminated_by`), nothing is written beyond the cap-hit itself — the attempt that came closest to the objective is discarded even though it was already paid for. `PersistentExecutor._save_state()` (`fsm/persistence.py:1129-1159`) only overwrites a single fixed per-instance state file on each `state_enter`/`loop_complete`/`baseline_complete` event; there is no per-iteration accumulation anywhere in `StatePersistence`, and no type representing a `best_effort`-tagged checkpoint artifact exists anywhere in the codebase.
+
+## Expected Behavior
+
+On a qualifying no-acceptance termination (per the `terminated_by` vocabulary ENH-3471 introduces), the executor writes exactly one `best_effort`-tagged checkpoint artifact (e.g. `iter_<N>_best_effort.json` with `metadata.best_effort=True`) holding the closest-to-objective attempt — so every outer iteration produces exactly one artifact whether or not the run succeeded, mirroring `canvas-sketch-generator.yaml`'s `finalize` pattern. Context-compaction failure (`hooks/pre_compact.py`, `session_store/lifecycle.py::compact_session()`) must stay hard-terminal and must NOT produce a best-effort checkpoint.
 
 ## Parent Issue
 
@@ -44,6 +52,14 @@ Closest existing analog: `scripts/little_loops/loops/canvas-sketch-generator.yam
 - **Which `terminated_by` values qualify for a "no acceptance" checkpoint** — not every value is a failure needing salvage (e.g. `handoff`/`user_stopped` are deliberate stops). Per the `general-task.yaml` `partial`-terminal precedent, whichever values qualify must route to a terminal distinct from both `done` and `failed`, since sub-loop routing treats `done` as `on_yes`. Depends on ENH-3471's new vocabulary being available.
 - **"Closest to the objective" selection metric** — no established comparison rule to reuse generically (see Design above); pick one and document it.
 
+### Signatures
+- `write_best_effort_checkpoint(run_dir: Path, iteration: int, result: ExecutionResult) -> Path` (new, `scripts/little_loops/fsm/persistence.py`) — writes `iter_<iteration>_best_effort.json` with `metadata.best_effort=True`; called only when `terminated_by` is in the no-acceptance set ENH-3471 defines.
+- `PersistentExecutor.run(self, clear_previous: bool = True) -> ExecutionResult` (existing, `scripts/little_loops/fsm/persistence.py:1212`) — gains a branch invoking `write_best_effort_checkpoint()` on a qualifying no-acceptance termination.
+- `map_final_status(...)` (existing, `scripts/little_loops/fsm/persistence.py:132-168`) — decide whether the new outcome needs its own bucket in the closed 5-value return contract, per Wiring below.
+
+### Call Path
+`PersistentExecutor.run()` (`fsm/persistence.py:1212`) → `write_best_effort_checkpoint()` (new) → `StatePersistence` write helper (existing, `fsm/persistence.py:502-523`) → `map_final_status()` (`fsm/persistence.py:132-168`) → `_derive_loop_outcome()` (`cli/logs.py:2037-2062`).
+
 ## Wiring
 
 - `scripts/little_loops/fsm/persistence.py::map_final_status()` (:132-168) — decide whether the no-acceptance/`best_effort` outcome needs its own bucket in the closed 5-value return contract (`completed`/`failed`/`interrupted`/`timed_out`/`awaiting_continuation`), or is acceptable in the existing `"failed"` catch-all; update the docstring's enumerated return values either way. Also called from `transport.py:1750` (OTel span attribute) and `session_store/writers.py:2891` (`loop_events.state`, BUG-3066).
@@ -68,6 +84,22 @@ Closest existing analog: `scripts/little_loops/loops/canvas-sketch-generator.yam
 - `test_ll_logs.py`'s `test_derive_outcome_workdir_vanished_with_error`/`_without_error` (:5137-5152) — closest structural precedent for "a named cause forced to a hard outcome, immune to other branches," to model the `_derive_loop_outcome` test after.
 - Search confirmed no existing test for "context-compaction failure stays hard-terminal" (`test_session_store_lifecycle.py::TestCompactSession`, `test_compaction.py`, `test_pre_compact.py` — none assert this boundary); a new test is needed with no direct existing template.
 
+## Scope Boundaries
+
+- **In scope**: The no-acceptance/`best_effort` checkpoint write path, the "closest attempt to objective" selection metric, and the Wiring section's five downstream updates.
+- **Out of scope**: `terminated_by` vocabulary itself (ENH-3471), context-compaction failure handling (must stay hard-terminal per the Design escape hatch), `PersistentExecutor._save_state()`'s existing single-file overwrite mechanism (not reused, not modified).
+
+## Impact
+
+- **Priority**: P2 - Matches frontmatter; blocked on ENH-3471's vocabulary landing first
+- **Effort**: Medium - New write path, a selection-metric decision, and five downstream wiring updates (`map_final_status`, `_WASTED_RUN_PREDICATE`, `_derive_loop_outcome`, `EXIT_CODES`/`_is_success`, docs/schema)
+- **Risk**: Medium - Touches shared outcome-classification code (`map_final_status`, `_derive_loop_outcome`) that other consumers (OTel spans, `loop_events.state`, fleet-review) already depend on; the Design section's context-compaction escape hatch is the sharpest correctness risk if missed
+- **Breaking Change**: No
+
+## Status
+
+**Open** | Created: 2026-09-13 | Priority: P2
+
 ---
 
 ## Scope Boundary
@@ -75,5 +107,6 @@ Closest existing analog: `scripts/little_loops/loops/canvas-sketch-generator.yam
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `_WASTED_RUN_PREDICATE` (usage.py:310-316) edit shares the same `IN (...)` membership list as ENH-3471's edit to the same predicate. Already sequenced via `depends_on: [ENH-3471]`, but implement this issue's edit as an additive diff against whatever shape ENH-3471 actually lands (not against the pre-3471 line numbers cited above), since both issues touch the same list.
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-14T19:19:10 - `b113a2f7-29c0-4877-96df-0ecdfe92bfb9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-13T21:28:46 - `23df08cc-836b-4f77-a1e2-bfb5aedb0f55.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T19:16:25 - `bd6d1308-41a1-42e0-b1ba-67bcf198d91f.jsonl`

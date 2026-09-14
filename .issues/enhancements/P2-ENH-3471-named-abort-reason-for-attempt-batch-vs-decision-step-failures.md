@@ -1,5 +1,5 @@
 ---
-id: 3471
+id: ENH-3471
 title: 'Named abort reason distinguishes attempt-batch vs decision-step failures instead of collapsing both to "error"'
 type: ENH
 priority: P2
@@ -12,6 +12,23 @@ parent: ENH-3468
 ## Summary
 
 An exception raised during an FSM run's action execution (attempt batch) or its `evaluate:`/routing step (decision step) still terminates through `FSMExecutor._finish()`, but today both collapse to the single generic `terminated_by="error"` value (`fsm/executor.py:~1027-1041`), with the attempt-batch/decision-step distinction existing only as "which function's frame raised" — no stored attribute. This issue gives that distinction a named, stored abort reason on the run, so downstream consumers (waste attribution, fleet-review, sub-loop routing) can tell the two failure classes apart instead of treating every exception identically.
+
+## Current Behavior
+
+An exception raised during an FSM run's action execution (attempt batch) or its `evaluate:`/routing step (decision step) both fall through the same `except Exception as exc: return self._finish("error", error=str(exc))` funnel (`fsm/executor.py:1040-1041`). Both cases land on the identical `terminated_by="error"` value — the attempt-batch/decision-step distinction exists only implicitly, as "which function's frame raised," with no stored attribute a downstream consumer can read.
+
+## Expected Behavior
+
+`FSMExecutor._finish()` threads a named, stored abort reason through the funnel so an attempt-batch failure and a decision-step failure produce distinct `terminated_by` values on the run's `ExecutionResult`. Downstream consumers (waste attribution in `history_reader/usage.py`, fleet-review, sub-loop routing in `refine-to-ready-issue.yaml`) read that value to tell the two failure classes apart instead of treating every exception identically.
+
+## Motivation
+
+Collapsing both failure classes to `"error"` erases information the executor already has (which stage raised) at the exact point it would be cheapest to capture it. Waste-attribution and sub-loop routing consumers currently can't distinguish "the action crashed" from "the router couldn't resolve a route" without re-deriving it from logs, which blocks more precise failure-class reporting in fleet-review and `confidence_check` routing (`refine-to-ready-issue.yaml:1043-1046`).
+
+## Scope Boundaries
+
+- **In scope**: naming and threading the new abort reason value(s) through `FSMExecutor._finish()`; re-sorting the 18 existing `test_fsm_executor.py` assertions per raise-site class; updating the waste-attribution predicate, the `refine-to-ready-issue.yaml` sub-loop routing arm, the `loop_complete` event schema/docs, and the `debug-loop-run`/`create-loop` skill references that key off literal `terminated_by == "error"` (all enumerated in Implementation Steps).
+- **Out of scope**: the checkpoint-artifact wiring for salvaging best-effort work, which belongs to the sibling child issue in the ENH-3468 decomposition that introduces that artifact; any other existing `terminated_by` vocabulary value (`timeout`, `interrupted`, `handoff`, etc.) is untouched.
 
 ## Parent Issue
 
@@ -52,10 +69,22 @@ Today's asymmetry, per parent's codebase research: `_run_action_or_route()` (`fs
 8. Update `skills/create-loop/reference.md` (~lines 783-785) sub-loop `Routing` section's closed `on_success`/`on_failure`/`on_error` classification to name the new value(s) so wizard-generated loops know what to expect.
 9. `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_builtin_loops.py -v` passes.
 
+## Impact
+
+- **Priority**: P2 - inherited from parent decomposition (ENH-3468); improves failure-class observability but blocks nothing critical on its own.
+- **Effort**: Medium - one funnel change in `_finish()`, but ripples through 18 test assertions, a waste-attribution predicate, a sub-loop routing arm, generated schemas, and five documentation files (Implementation Steps 1-8).
+- **Risk**: Low - `ExecutionResult.terminated_by` stays a free-form `str` field; this only adds new values to its existing vocabulary rather than changing the field's type or the executor's control flow.
+- **Breaking Change**: No - existing `terminated_by` values are unchanged; all known consumers that match on the literal `"error"` string are updated as part of this issue's own Implementation Steps.
+
 ## Tests
 
 - `scripts/tests/test_fsm_executor.py` — existing exception-to-`terminated_by` conversion tests (e.g. `test_no_valid_route_terminates_with_error`) construct `FSMLoop`/`StateConfig` directly and assert on `result.terminated_by`/`result.error`/`result.final_state`; new tests follow this same construction-and-assert shape.
 - `scripts/tests/test_history_reader_usage.py::TestWasteAttribution` — extend with a fixture for the new attempt-batch/decision-step values against `_WASTED_RUN_PREDICATE`.
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-14T19:18:19 - `e03a4d3e-6e32-492e-b751-6c3a912f41aa.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T19:16:24 - `bd6d1308-41a1-42e0-b1ba-67bcf198d91f.jsonl`
+
+## Status
+
+**Open** | Created: 2026-09-13 | Priority: P2
