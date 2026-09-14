@@ -57,7 +57,7 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 ### Files to Modify
 - `scripts/little_loops/session_store/schema.py` — bump `SCHEMA_VERSION` (currently 50) and add the migration entry.
 - `scripts/little_loops/session_store/writers.py` — `_insert_harness_event()` (:1109-1207) and `record_harness_event()` (:1210-1299).
-- `scripts/little_loops/cli/harness.py` — `_record_harness_event()` (:214-261), the assembly point on the dominant `record_attempt()` write path (6 of 7 call sites: :1762, :1896, :2016, :2135, :2299, :2382; `record_harness_event()` used only at :2276).
+- `scripts/little_loops/cli/harness.py` — `_record_harness_event()` (:214-261), the assembly point on the dominant `record_attempt()` write path, fed by 5 nested `_record()` call sites that currently extract only `.verdict`/`.abstained`/`.passed` from `outcome` (`cmd_skill::_record` :2139, `cmd_cmd::_record` :2273, `cmd_mcp::_record` :2393, `cmd_prompt::_record` :2512, `cmd_dsl` :2676/:2772; `record_harness_event()` used only at one of these).
 - `scripts/little_loops/history_reader/harness.py` — `HarnessEvent` dataclass (:53-98) and `_HARNESS_EVENT_COLUMNS` (:101-108).
 - `scripts/little_loops/session_store/schema_manifest.json` (`harness_events` entry, `:1089`).
 
@@ -70,8 +70,8 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 - v49/v50 plain `ALTER TABLE ADD COLUMN` (`session_store/schema.py`) — the applicable migration-mechanism precedent, since no `CHECK` constraint is contemplated on the new columns; the v44 full-table-rebuild pattern does not apply here.
 
 ### Tests
-- `scripts/tests/test_session_store_schema.py` — `TestHarnessEventsTable`, `TestHarnessEventsRunModelColumns` (~:1692), `TestHarnessEventsContentPinColumns` (~:2183), `TestHarnessEventsBaselineConditionColumns` (~:3332); the schema-manifest gate classes `test_schema_manifest_matches_checked_in_file` (:3152) and `test_manifest_schema_version_matches_live_schema_version` (:3169); a backfill test modeled on `test_v43_db_upgrades_preserving_existing_rows` (:2753-2787).
-- `scripts/tests/test_session_store_writers.py::TestRecordAttemptAndAdmitRetry` (:2492-2723) — the actual write-path test class for `record_attempt()`; extend this, not `TestRecordHarnessEvent`.
+- `scripts/tests/test_session_store_schema.py` — `TestHarnessEventsTable`, `TestSchemaV49HarnessRunModel` (:1691), `TestSchemaV39HarnessContentPin` (:2182), `TestSchemaV50BaselineConditions` (:3331); the schema-manifest gate classes `test_schema_manifest_matches_checked_in_file` (:3152) and `test_manifest_schema_version_matches_live_schema_version` (:3169); a backfill test modeled on `test_v43_db_upgrades_preserving_existing_rows` (:2753-2787).
+- `scripts/tests/test_cli_harness.py` — the CLI-integration layer where the v50 baseline-condition columns' write-path round-trip tests actually live (e.g. `:2958-2964`, asserting `row["conditions_fp"]`/`row["subject_model"]` after a CLI-level `measure` invocation); add the `channels_json`/`side_effects_json` round-trip assertion here, following that precedent — not `test_session_store_writers.py::TestRecordAttemptAndAdmitRetry`, which tests retry-admission mechanics only and carries no free-text/JSON column round-tripping today.
 - `scripts/tests/test_cli_doctor_install_checks.py::TestSchemaDrift` (:333-533) — extend alongside the schema-manifest gate.
 - `scripts/tests/test_history_reader_harness.py` — read-side counterpart to `history_reader/harness.py`.
 - `scripts/tests/test_ll_session.py` (`test_recent_kind_harness_outputs_row` / `test_search_kind_harness_matches_indexed_rows`, :1380-1409) — `ll-session recent/search --kind harness` CLI-surface consumer.
@@ -146,7 +146,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - **In scope**: persisting `outcome.channels` and side-effect check results to `harness_events`, plus the schema/manifest/DES/doctor/docs surfaces that follow from a new column.
 - **Out of scope**: any change to grading logic, CLI flags, or the in-memory `ChannelRecord`/`HarnessEvalOutcome` shape — those are ENH-3462's scope, already shipped by the time this issue starts. This issue makes existing computed evidence durable; it does not compute new evidence.
 - **Out of scope**: `FSMExecutor._evaluate()`'s identical single-channel gap (`fsm/executor.py`) — a separate issue, not persisted through `harness_events` at all.
-- **Blocked by**: ENH-3462 (the `channels`/side-effect data this issue persists doesn't exist until ENH-3462 ships).
+- **Blocked by**: none — ENH-3462 has landed; `ChannelRecord`/`HarnessEvalOutcome.channels` exist and are fully wired in `cli/harness.py` today (confirmed 2026-09-14), so the evidence this issue persists is already available.
 
 ## Related Key Documentation
 
@@ -168,6 +168,7 @@ _Added by `/ll:confidence-check` on 2026-09-14_
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-14T21:32:26 - `f4a1cb05-beaf-4c89-a67b-0a34555443d6.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:18:34 - `b80e42ca-40bb-4d8a-b6d8-3b9dab6f1bf1.jsonl`
 - `/ll:confidence-check` - 2026-09-14T18:58:05 - `cef18a0e-5855-4ab1-ba23-37a7d36518ff.jsonl`
 - `/ll:reconcile-issue` - 2026-09-14T18:55:40 - `6c2e05b8-05cf-4d8d-b2b6-1b2ad05e6c8f.jsonl`

@@ -168,11 +168,43 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **In scope**: deterministic unit tests for grading/scoring functions used by live-model probes, covering pass/fail/boundary cases; a check that these tests exist and pass before a grader is used against a live run.
 - **Out of scope**: n-run redundancy for verdict counting (ENH-3415, shipped); score-splitting (what gets scored); information-isolation between builder/validator roles — per this issue's Design section, none of these test the grader's own code.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-14:_
+
+Verdict: **VALID**. Spot-checked every concrete claim in Integration Map, Program
+Design, and Implementation Steps against current code (graph provider `codegraph`,
+freshness `fresh`):
+
+- Types/signatures (`EvaluationResult` `evaluators.py:56`, `HarnessEvalOutcome`
+  `harness.py:863`, `_grade()` `harness.py:1224`, `evaluate_llm_structured()`
+  `evaluators.py:1067`, `evaluate()` dispatcher `evaluators.py:1839`) all match.
+- Both documented coverage gaps confirmed live: `TestOutputJsonEvaluator`
+  (`test_fsm_evaluators.py:284-354`) asserts only `"yes"`/`"error"`, no `"no"` or
+  boundary case; `TestLLMStructuredEvaluator` (`:976-1798`) has no
+  `confidence == min_confidence` (0.7) exact-boundary case, only 0.4-vs-0.7.
+- The documentation-citation-discrepancy note is accurate:
+  `docs/generalized-fsm-loop.md:546-549` covers `on_blocked` routing, not the
+  "`passed` initializes to `True`" claim, which is confirmed at
+  `docs/guides/EVALUATION_GUIDE.md:95-97,546-549`.
+- Negative claim corroborated: no `requires_test`/`grader_test`/`test_required`/
+  `--require-grader-tests` hits anywhere under `scripts/little_loops/`.
+- `## Proposed Solution` is absent, so check B6 (`PROPOSAL_UNSOUND`) does not apply.
+- No active required decision-log rules to check against.
+- `ll-verify-evidence --json` reports clean (0 findings).
+
+Remaining: dependency hygiene, not a content defect — `blocked_by: ENH-3462` is
+satisfied (ENH-3462 is `done`), but ENH-3462 has no `## Blocks` section at all, so
+the backlink to ENH-3463 is missing (MISSING_BACKLINK). Left unfixed here since
+ENH-3462 is a separate, already-completed issue outside this command's scope for
+a single-issue invocation.
+
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-14T21:32:26 - `f4a1cb05-beaf-4c89-a67b-0a34555443d6.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:14:10 - `db66d56e-7abb-4271-a047-637a95835ae4.jsonl`
 - `/ll:wire-issue` - 2026-09-14T20:51:04 - `df520d06-750a-40b3-acb9-fb846e40ee7a.jsonl`
 - `/ll:refine-issue` - 2026-09-14T20:30:28 - `32822b8f-688a-416a-8c16-7d6cacd02e0d.jsonl`
