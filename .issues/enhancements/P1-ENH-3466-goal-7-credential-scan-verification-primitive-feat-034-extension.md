@@ -206,6 +206,16 @@ prior pass.
 - ENH-3469: Credential-pattern deterministic scanner in pii.py
 - ENH-3470: Wire credential scan into the FEAT-3182 EvidenceBundle
 
+### Not Covered by the Decomposition
+- The **longitudinal `history.db` leakage signal** (third consumer named in
+  Summary/Design) is in neither child. The sft-corpus emit gate is covered
+  by ENH-3469 (credentials flow through `detect_pii`/`redact_pii`). File a
+  follow-on for the `history.db` scan once ENH-3469 lands; it only needs
+  `scan_text` over `raw_events.parsed_json` values.
+- `credential_scan.scanned_at` was **dropped** in ENH-3470 (review
+  2026-09-13): it conflicts with the bundle's byte-identical invariant and
+  adds nothing deterministic; `version` + `rules_sha` carry comparability.
+
 ## Session Log
 - `/ll:issue-size-review` - 2026-09-13T17:50:41 - `d24791a3-28b5-4b07-851d-ac809549dbb5.jsonl`
 - `/ll:confidence-check` - 2026-09-13T17:47:07 - `af91c8c0-1ded-4070-974d-27b469b17351.jsonl`
