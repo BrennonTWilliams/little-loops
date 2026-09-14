@@ -373,6 +373,7 @@ Corrected in the prior pass (2026-09-14T18:46:52):
   `evaluate_llm_structured()`'s signature anywhere in this issue's scope.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T19:24:45 - `9423ac09-f097-44bf-831f-9f2ba243b4f9.jsonl`
 - `/ll:verify-issues` - 2026-09-14T19:19:41 - `708ccabe-e639-4624-a706-2da95f048b50.jsonl`
 - review pass (manual) - 2026-09-14 - second pre-implementation review: D5 git snapshot must not reuse `_git_dirty()` (its `--untracked-files=no` contradicts AC5); `--require-artifact` touched-check adds `st_mtime_ns` (sha256 alone false-fails byte-identical rewrites under `--samples`); `invoke` callable contract kept 2-tuple (`_run_sample_loop`/`_run_baseline_phase` untouched, snapshot/check inline in the loop); D2 `to_dict()` emits `chars` not `content`; new D10 `getattr` rule + AC14; cwd/run-from-project-root note; `evaluate_llm_structured` docstring update; two Program Design bullets marked superseded by D1/D2
 - `/ll:confidence-check` - 2026-09-14T19:04:11 - `90921241-8f93-4ac8-825a-1666912c6844.jsonl`
