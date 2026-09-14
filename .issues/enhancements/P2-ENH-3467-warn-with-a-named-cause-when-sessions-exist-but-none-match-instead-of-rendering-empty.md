@@ -10,11 +10,11 @@ discovered_date: '2026-09-13'
 labels:
 - observability
 size: Medium
-confidence_score: 90
-outcome_confidence: 48
-score_complexity: 10
-score_test_coverage: 18
-score_ambiguity: 10
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
 score_change_surface: 10
 ---
 
@@ -304,6 +304,7 @@ what was wrong and fixed, not an outstanding action item)
   anywhere in the codebase — the issue is not stale/already-resolved.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T20:26:43 - `cd2a749d-5503-4906-a5fa-bb6f41d833a5.jsonl`
 - `/ll:verify-issues` - 2026-09-14T20:22:41 - `0a15cdac-84ed-4f86-8df8-f76772ae2a8b.jsonl`
 - review (manual, pre-implementation) - 2026-09-14 - closed the open return-shape/taxonomy/visibility decisions as Program Design D1-D7; fixed stale loop-YAML citation; scoped in `_cmd_eval_export`, scoped out `--all`/`ctx_stats`; size Very Large → Medium; cleared stale `verify_verdict`
 - `/ll:confidence-check` - 2026-09-14T18:51:10 - `773a7d89-19ad-4a67-9526-f3658a21a035.jsonl`
