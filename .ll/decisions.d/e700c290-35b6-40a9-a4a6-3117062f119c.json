@@ -1,0 +1,11 @@
+{
+  "id": "6a47878f-4777-4e1b-b060-d1ad6cb7e17e",
+  "type": "decision",
+  "timestamp": "2026-09-14T17:11:14Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Third grammar/mode on the FEAT-2301/FEAT-2390 self-contained-HTML builder shell (policy-router, rubric, and now issue-lifecycle), scoped deliberately smaller than autodev.yaml; frontmatter fields (built-in + user-declared generic) are the rule dimensions; emit target (full FSM loop vs. constrained policy config) is an open design question for refinement, not resolved at capture time.",
+  "rule": "Captured: Web GUI for issue-lifecycle FSM loops driven by frontmatter rules",
+  "scope": "issue",
+  "issue": "FEAT-3474"
+}
