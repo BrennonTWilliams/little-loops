@@ -11,6 +11,12 @@ discovered_date: '2026-09-13'
 labels:
 - observability
 size: Very Large
+confidence_score: 90
+outcome_confidence: 48
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 ## Summary
@@ -76,7 +82,7 @@ _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
 - `scripts/little_loops/cli/messages.py:191` — `main_messages()` duplicates the identical message text via `logger.error(f"No sessions found for: {cwd}")`, but constructs `Logger(verbose=args.verbose)` (default `False`) — silenced by default, the sharpest existing instance of the issue's failure class.
 - `scripts/little_loops/cli/ctx_stats.py:413-415` — `_compute_cache_rate_from_jsonl` hits the same zero-handles case and returns `None` with no warning/error call at all.
-- `scripts/little_loops/loops/ll-logs-telemetry-digest.yaml:64-71` — greps stderr for the literal string `"No sessions found for:"` to route `FAILURES_NO_DATA` vs `FAILURES_ERROR` — automation depends on this exact text.
+- `.loops/ll-logs-telemetry-digest.yaml:68` — greps stderr for the literal string `"No sessions found for:"` (`if grep -q "No sessions found for:" "$ERR"; then`) to route `FAILURES_NO_DATA` vs `FAILURES_ERROR` — automation depends on this exact text.
 - `scripts/tests/test_bug_3216_telemetry_digest_invocations.py:177-189` — `test_scan_failures_no_data_grep_precedes_rc_check` locks the grep-vs-rc-check ordering against the loop YAML's own source text.
 
 **Conventions in Force**
@@ -182,8 +188,7 @@ _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
 1. Discovery reports which of "no sessions recorded anywhere for this cwd" vs "sessions exist but none matched this cwd" occurred; covered by a new/updated test in `scripts/tests/test_ll_logs.py` that exercises both branches distinctly (closest existing shape: `test_stale_worktree_path_emits_no_warning`, `scripts/tests/test_ll_logs.py:344-380`).
 2. The rejected-sessions case is visible on stderr for `ll-logs` without any `--verbose` flag (none exists today), and is no longer silenced by default for `ll-messages` (`scripts/little_loops/cli/messages.py:191`, whose `Logger(verbose=args.verbose)` defaults to `False`); covered by `scripts/tests/test_logger.py`-style `capsys` assertions.
-3. The literal string `"No sessions found for:"` that `scripts/little_loops/loops/ll-logs-telemetry-digest.yaml:64-71` greps for either stays intact or is updated together with `scripts/tests/test_bug_3216_telemetry_digest_invocations.py:177-189`; covered by that test continuing to pass.
-   > ⚠ Superseded — the path is `.loops/ll-logs-telemetry-digest.yaml` (a project-local loop, not under `scripts/little_loops/loops/`), and the grep is at line 68 (`if grep -q "No sessions found for:" "$ERR"; then`), not lines 64-71. See § Integration Map Codebase Research Findings.
+3. The literal string `"No sessions found for:"` that `.loops/ll-logs-telemetry-digest.yaml:68` greps for either stays intact or is updated together with `scripts/tests/test_bug_3216_telemetry_digest_invocations.py:177-189`; covered by that test continuing to pass.
 4. `python -m pytest scripts/tests/test_ll_logs.py scripts/tests/test_logger.py scripts/tests/test_bug_3216_telemetry_digest_invocations.py scripts/tests/test_session_discovery.py -v` passes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -207,7 +212,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-09-13 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-14_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 48/100 → LOW
+
+### Outcome Risk Factors
+- Breadth/depth: touches 5+ distinct sites across `logs.py` (three sub-paths), `sessions.py`, `user_messages.py`, `session.py`, and `messages.py`, with moderate cross-module coupling; the still-open return-shape decision (tuple/enum vs. boolean) would push several sites from local edits toward deeper, contract-changing ones if adopted.
+- Ambiguity: four design questions are explicitly left to implementer judgment — cause taxonomy, precedence among causes, match-closeness threshold, and escape-hatch/dismissal — expect iteration to settle these before the change lands.
+- Change surface: if the return-shape decision is taken, it cascades to 11+ mock/assertion sites (`test_cli_ctx_stats.py`, `test_cli_messages.py`, `test_cli.py`, the `enh3430_workspace_union` spike tests) — a broad blast radius specific to that path.
+- Test coverage: adjacent discovery/munging logic is tested, but none of the three target call sites has coverage for the exact new zero-handles/named-cause behavior yet — new tests are unwritten.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T18:51:10 - `773a7d89-19ad-4a67-9526-f3658a21a035.jsonl`
+- `/ll:reconcile-issue` - 2026-09-14T18:44:38 - `14a77021-cd98-4426-bab7-79ff2ffc015d.jsonl`
 - `/ll:refine-issue` - 2026-09-14T18:23:22 - `83d2895b-9b1c-4543-8457-386ded6cffca.jsonl`
 - `/ll:format-issue` - 2026-09-14T18:18:23 - `4b1da6cb-cda6-4875-933f-04e458d61037.jsonl`
 - `/ll:verify-issues` - 2026-09-13T18:24:25 - `c49d7797-7184-419e-a2e8-da9638c4b681.jsonl`

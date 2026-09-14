@@ -11,6 +11,8 @@ parent: EPIC-3475
 labels:
 - evals
 - reliability
+blocked_by:
+- ENH-3462
 ---
 
 # ENH-3476: Persist ll-harness widened evidence (channels + side effects) to harness_events
@@ -64,6 +66,25 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — an independent copy of the same migration table (:57-99); already stale ("Current schema version: 45" at :57 vs. code's 50 — fix this drift while touching the table, not just adding a row).
 - `docs/reference/EVENT-SCHEMA.md` § "CLI exit-code conventions" (:1795) — states *"Only `RunnerResult.timed_out` is persisted to `harness_events`; `RunnerResult.error` has no column."* — update once new fields are persisted.
 
+## Program Design
+
+### Types
+
+- `HarnessEvalOutcome.channels: list[ChannelRecord]` — already added in-memory by ENH-3462 (`cli/harness.py`); this issue does not change its shape, only serializes it.
+- `channels_json: str | None` — new `harness_events` column, JSON-serialized `list[ChannelRecord]` (mirrors the existing `semantic_evidence: str | None` free-text-JSON column precedent).
+- `side_effects_json: str | None` — new `harness_events` column, JSON-serialized per-side-effect pass/fail results.
+
+### Signatures
+
+- `_insert_harness_event(conn: sqlite3.Connection, *, ..., channels_json: str | None = None, side_effects_json: str | None = None) -> int` (`session_store/writers.py:1109`)
+- `record_harness_event(db_path: Path | str, *, ..., channels_json: str | None = None, side_effects_json: str | None = None) -> int` (`session_store/writers.py:1210`)
+- `_record_harness_event(*, ..., channels_json: str | None = None, side_effects_json: str | None = None) -> int | None` (`cli/harness.py:214`)
+- `HarnessEvent` (`history_reader/harness.py:53`) gains trailing-default fields `channels_json: str | None = None` and `side_effects_json: str | None = None`; `_HARNESS_EVENT_COLUMNS` (`:101`) appends both names.
+
+### Call Path
+
+`_record_harness_event` (`cli/harness.py:214`, sourcing `outcome.channels` from `HarnessEvalOutcome`) → `record_attempt` (`session_store/writers.py:1367`, the dominant 6-of-7 write path) → `_insert_harness_event` (`session_store/writers.py:1109`) → read back via `HarnessEvent` / `_HARNESS_EVENT_COLUMNS` (`history_reader/harness.py:53-108`).
+
 ## Implementation Steps
 
 1. Design the persisted shape for `outcome.channels` (JSON-serialized `ChannelRecord` list) and side-effect results; decide plain `ALTER TABLE` vs. full-table-rebuild based on whether a `CHECK` constraint is needed.
@@ -95,3 +116,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-14 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-14T18:46:16 - `6d894000-c098-410e-9d4d-4df5e3c75319.jsonl`
