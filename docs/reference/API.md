@@ -9678,6 +9678,10 @@ def detect_sessions(
     cwd: Path, host: str | None = None, *, include_agents: bool = False,
     limit: int | None = None, home: Path | None = None,
 ) -> list[SessionHandle]
+def explain_no_sessions(
+    cwd: Path, host: str | None = None, *, include_agents: bool = False,
+    home: Path | None = None,
+) -> tuple[NoSessionsCause, str]
 def iter_events(handle: SessionHandle) -> Iterator[SessionEvent]
 def parse_claude_transcript(path: Path) -> Iterator[SessionEvent]
 def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]
@@ -9696,6 +9700,20 @@ registered host's sessions for `cwd`, newest `updated_at` first; `limit`
 applies once, after that cross-host merge. Live `watch`/`stop` are
 deliberately absent (v1 ships the batch half only) — `SessionHandle` carries
 `path` so a future `watch` needs no signature change above it.
+
+**Zero-match diagnosis: `explain_no_sessions` (ENH-3467).** Call only after
+`detect_sessions()` has already returned `[]` — it classifies *why* by
+scanning the host's on-disk directory names (or, for Codex/other
+`list_workspaces`-only hosts, recorded workspace paths) for a resemblance to
+`cwd`, and returns a `(NoSessionsCause, str)` pair: the machine-readable
+cause plus a human-readable second line naming the likely reason
+(`ENCODING_MISMATCH`, `SUBDIRECTORY`, `MOVED_OR_RENAMED`, `PROJECT_DIR_EMPTY`,
+`UNKNOWN`, or `NONE_RECORDED` when nothing is recorded anywhere). `host=None`
+evaluates every registered host and returns the most specific cause across
+them, not whichever host happens to be checked first. `detect_sessions()`'s
+own signature and return shape are unchanged — this is an additive,
+failure-path-only helper. See CLI.md's "Zero-match stderr contract" for the
+two-line message every CLI call site prints.
 
 **Per-host payload rule (ENH-3420)**: payload is host-native where no
 normalizer to Claude shape exists (`claude-code`, `kimi-code` —

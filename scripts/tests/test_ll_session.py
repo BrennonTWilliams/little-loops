@@ -776,6 +776,59 @@ class TestBackfillSinceFlag:
         err = capsys.readouterr().err
         assert "ENH-3420" not in err
 
+    def test_backfill_since_codex_zero_handles_returns_1(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3467 D6: an incremental (--since) backfill with zero codex
+        handles prints the two-line named-cause message and returns 1
+        without calling backfill_incremental()."""
+        db = tmp_path / "session.db"
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "backfill", "--since", "2026-01-01", "--host", "codex"],
+        ):
+            with patch("little_loops.cli.session.detect_sessions", return_value=[]):
+                with patch(
+                    "little_loops.cli.session.explain_no_sessions",
+                    return_value=("none_recorded", "No sessions recorded for codex."),
+                ):
+                    with patch("little_loops.cli.session.backfill_incremental") as mock_inc:
+                        result = main_session()
+        assert result == 1
+        assert not mock_inc.called
+        err_lines = capsys.readouterr().err.splitlines()
+        assert err_lines[0].startswith("No sessions found for:")
+        assert err_lines[1] == "No sessions recorded for codex."
+
+    def test_backfill_full_codex_zero_handles_warns_and_continues(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3467 D6: a full (no --since) backfill with zero codex handles
+        prints the two-line named-cause message but still continues into
+        backfill() with handles=[] and exits 0 (issues/loops/commits still
+        ingest — this is a deliberate partial backfill, not a hard failure)."""
+        db = tmp_path / "session.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill", "--host", "codex"]):
+            with patch("little_loops.cli.session.detect_sessions", return_value=[]):
+                with patch(
+                    "little_loops.cli.session.explain_no_sessions",
+                    return_value=("none_recorded", "No sessions recorded for codex."),
+                ):
+                    with patch("little_loops.cli.session.backfill") as mock_backfill:
+                        mock_backfill.return_value = {
+                            "issues": 0,
+                            "loops": 0,
+                            "tools": 0,
+                            "messages": 0,
+                            "sessions": 0,
+                        }
+                        result = main_session()
+        assert result == 0
+        assert mock_backfill.call_args.kwargs["handles"] == []
+        err_lines = capsys.readouterr().err.splitlines()
+        assert err_lines[0].startswith("No sessions found for:")
+        assert err_lines[1] == "No sessions recorded for codex."
+
 
 class TestGrepExpandDescribe:
     """Tests for the grep, expand, and describe subcommands (FEAT-1712)."""

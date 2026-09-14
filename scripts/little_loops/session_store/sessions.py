@@ -38,6 +38,7 @@ import re
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -728,6 +729,234 @@ def _list_codex_workspaces(home: Path) -> list[Path]:
             if isinstance(cwd, str) and cwd:
                 cwds.add(cwd)
     return [Path(c) for c in cwds]
+
+
+class NoSessionsCause(str, Enum):
+    """Why :func:`detect_sessions` found nothing for a cwd (ENH-3467, D1).
+
+    Declared in the D2 per-host rule-check order (first match wins,
+    ``NONE_RECORDED`` checked first because it short-circuits every other
+    rule). The D5 cross-host union ranks specificity differently — see
+    ``_UNION_PRECEDENCE`` — because a bare "nothing recorded anywhere" on
+    one host must never mask a named cause found on another.
+    """
+
+    NONE_RECORDED = "none_recorded"
+    PROJECT_DIR_EMPTY = "project_dir_empty"
+    ENCODING_MISMATCH = "encoding_mismatch"
+    SUBDIRECTORY = "subdirectory"
+    MOVED_OR_RENAMED = "moved_or_renamed"
+    UNKNOWN = "unknown"
+
+
+_DISCOVER_HINT = "Run 'll-logs discover' to list workspaces with recorded sessions."
+
+# Most-specific-first ranking for D5's cross-host union — distinct from
+# NoSessionsCause's own declaration order, which encodes D2's per-host
+# check sequence instead. NONE_RECORDED ranks last: it must win the union
+# only when every host independently has nothing recorded at all.
+_UNION_PRECEDENCE = (
+    NoSessionsCause.PROJECT_DIR_EMPTY,
+    NoSessionsCause.ENCODING_MISMATCH,
+    NoSessionsCause.SUBDIRECTORY,
+    NoSessionsCause.MOVED_OR_RENAMED,
+    NoSessionsCause.UNKNOWN,
+    NoSessionsCause.NONE_RECORDED,
+)
+
+# Hosts whose on-disk layout keys a project directory off encode_project_path()
+# under their own "projects" root (mirrors list_workspaces()'s claude-code/
+# opencode/pi/qwen branches) — the D2 six-rule taxonomy applies to all of them.
+_ENCODED_DIR_HOSTS: dict[str, tuple[str, str]] = {
+    "claude-code": (".claude", "*.jsonl"),
+    "opencode": (".opencode", "*.jsonl"),
+    "pi": (".pi", "*.jsonl"),
+    "qwen": (".qwen", "chats/*.jsonl"),
+}
+
+
+def _explain_encoded_dir_host(
+    cwd: Path, host: str, home: Path, *, include_agents: bool
+) -> tuple[NoSessionsCause, str]:
+    """D2 rules 1-6 for a host that dash-encodes cwd into its own project dir."""
+    host_dir, session_glob = _ENCODED_DIR_HOSTS[host]
+    root = home / host_dir / "projects"
+    dir_names = {d.name: d for d in root.iterdir() if d.is_dir()} if root.is_dir() else {}
+    if not dir_names:
+        return (
+            NoSessionsCause.NONE_RECORDED,
+            f"No sessions recorded for any workspace under {root}. {_DISCOVER_HINT}",
+        )
+
+    own = {encode_project_path(s) for s in _cwd_spellings(cwd)}
+
+    # Rule 2: PROJECT_DIR_EMPTY
+    own_dir = next((dir_names[name] for name in own if name in dir_names), None)
+    if own_dir is not None:
+        matches = list(own_dir.glob(session_glob))
+        non_agent = [p for p in matches if not p.name.startswith("agent-")]
+        if not matches:
+            reason = "A session directory exists for this workspace but contains no session files."
+        elif not non_agent and not include_agents:
+            reason = (
+                "A session directory exists for this workspace but contains only "
+                "agent transcripts (excluded by the agent filter)."
+            )
+        else:
+            reason = (
+                "A session directory exists for this workspace but contains no "
+                "matching session files."
+            )
+        return (NoSessionsCause.PROJECT_DIR_EMPTY, f"{reason} {_DISCOVER_HINT}")
+
+    others = {name: d for name, d in dir_names.items() if name not in own}
+
+    # Rule 3: ENCODING_MISMATCH (the only rule that reads file contents)
+    cwd_spellings = set(_cwd_spellings(cwd))
+    for name, d in others.items():
+        recorded = _first_record_cwd(d, session_glob)
+        if recorded is not None and str(recorded) in cwd_spellings:
+            expected = " or ".join(sorted(own))
+            return (
+                NoSessionsCause.ENCODING_MISMATCH,
+                f"Directory {name} records sessions for this exact cwd but is not "
+                f"the expected encoding {expected}; the host's path encoding may "
+                f"have changed. {_DISCOVER_HINT}",
+            )
+
+    # Rule 4: SUBDIRECTORY (own is a segment-bounded child of an existing dir)
+    for name, d in others.items():
+        if any(e.startswith(name + "-") for e in own):
+            parent = _first_record_cwd(d, session_glob)
+            parent_str = str(parent) if parent is not None else name
+            return (
+                NoSessionsCause.SUBDIRECTORY,
+                f"Sessions exist for parent workspace {parent_str}; this was run "
+                f"from a subdirectory of it. Run from {parent_str} instead. "
+                f"{_DISCOVER_HINT}",
+            )
+
+    # Rule 5: MOVED_OR_RENAMED (same last path segment, different location)
+    suffix = "-" + encode_project_path(cwd.name)
+    for name, d in others.items():
+        if name.endswith(suffix):
+            moved = _first_record_cwd(d, session_glob)
+            moved_str = str(moved) if moved is not None else name
+            return (
+                NoSessionsCause.MOVED_OR_RENAMED,
+                f"Workspace {moved_str} looks like a moved or renamed copy of this "
+                f"directory (same name, different location). {_DISCOVER_HINT}",
+            )
+
+    # Rule 6: UNKNOWN
+    return (
+        NoSessionsCause.UNKNOWN,
+        f"Workspaces exist under {root} but none resemble this cwd. {_DISCOVER_HINT}",
+    )
+
+
+def _explain_codex(cwd: Path, home: Path) -> tuple[NoSessionsCause, str]:
+    """D2's Codex branch: rules 4-5 as plain ``Path`` comparisons; no per-project
+    directory or encoding step, so ``PROJECT_DIR_EMPTY``/``ENCODING_MISMATCH``
+    do not apply."""
+    workspaces = list_workspaces("codex", existing_only=False, home=home)
+    if not workspaces:
+        return (
+            NoSessionsCause.NONE_RECORDED,
+            f"No sessions recorded for any workspace under {home / '.codex'}. {_DISCOVER_HINT}",
+        )
+    cwd_resolved = cwd.resolve()
+    for ws in workspaces:
+        if ws == cwd_resolved or ws == cwd:
+            continue
+        try:
+            cwd_resolved.relative_to(ws)
+        except ValueError:
+            continue
+        return (
+            NoSessionsCause.SUBDIRECTORY,
+            f"Sessions exist for parent workspace {ws}; this was run from a "
+            f"subdirectory of it. Run from {ws} instead. {_DISCOVER_HINT}",
+        )
+    for ws in workspaces:
+        if ws.name == cwd.name and ws != cwd_resolved and ws != cwd:
+            return (
+                NoSessionsCause.MOVED_OR_RENAMED,
+                f"Workspace {ws} looks like a moved or renamed copy of this "
+                f"directory (same name, different location). {_DISCOVER_HINT}",
+            )
+    return (
+        NoSessionsCause.UNKNOWN,
+        f"Sessions exist for other workspaces under {home / '.codex'} but none "
+        f"resemble this cwd. {_DISCOVER_HINT}",
+    )
+
+
+def _explain_simple_host(host: str, home: Path) -> tuple[NoSessionsCause, str]:
+    """D2's gemini/kimi-code/omp branch: NONE_RECORDED or UNKNOWN only — none of
+    these hosts' ``list_workspaces()`` recovers a directory name to compare
+    against cwd (registry keys, workDir index, or a lossy encoding)."""
+    workspaces = list_workspaces(host, existing_only=False, home=home)
+    if not workspaces:
+        return (
+            NoSessionsCause.NONE_RECORDED,
+            f"No sessions recorded for any workspace on {host}. {_DISCOVER_HINT}",
+        )
+    return (
+        NoSessionsCause.UNKNOWN,
+        f"Sessions exist for other workspaces on {host} but none resemble this "
+        f"cwd. {_DISCOVER_HINT}",
+    )
+
+
+def _explain_no_sessions_one_host(
+    cwd: Path, host: str, *, include_agents: bool, home: Path
+) -> tuple[NoSessionsCause, str]:
+    if host in _ENCODED_DIR_HOSTS:
+        return _explain_encoded_dir_host(cwd, host, home, include_agents=include_agents)
+    if host == "codex":
+        return _explain_codex(cwd, home)
+    return _explain_simple_host(host, home)
+
+
+def explain_no_sessions(
+    cwd: Path,
+    host: str | None = None,
+    *,
+    include_agents: bool = False,
+    home: Path | None = None,
+) -> tuple[NoSessionsCause, str]:
+    """Classify why :func:`detect_sessions` found nothing for *cwd* (D1-D5).
+
+    Call only after ``detect_sessions()`` has already returned ``[]`` — this
+    pays the extra scan cost (up to one file read per sibling directory, for
+    the ``ENCODING_MISMATCH`` rule) solely on the failure path. ``host=None``
+    evaluates every registered host and returns the most specific cause
+    across them (D5); an explicit host evaluates that host only.
+    """
+    resolved_home = home if home is not None else Path.home()
+    if host is not None:
+        return _explain_no_sessions_one_host(
+            cwd, host, include_agents=include_agents, home=resolved_home
+        )
+
+    best: tuple[NoSessionsCause, str] | None = None
+    best_rank = len(_UNION_PRECEDENCE)
+    for one_host in _REGISTERED_HOSTS:
+        cause, reason = _explain_no_sessions_one_host(
+            cwd, one_host, include_agents=include_agents, home=resolved_home
+        )
+        rank = _UNION_PRECEDENCE.index(cause)
+        if rank < best_rank:
+            best = (cause, reason)
+            best_rank = rank
+    assert best is not None, "_REGISTERED_HOSTS is never empty"
+    if best[0] is NoSessionsCause.NONE_RECORDED:
+        return (
+            NoSessionsCause.NONE_RECORDED,
+            f"No sessions recorded for any workspace on any registered host. {_DISCOVER_HINT}",
+        )
+    return best
 
 
 def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:

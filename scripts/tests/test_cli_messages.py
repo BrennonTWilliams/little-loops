@@ -335,3 +335,34 @@ class TestMessagesExcludeAgentsIntegration:
         assert result == 0
         call_kwargs = mock_cmds.call_args.kwargs
         assert call_kwargs.get("include_agent_sessions") is False
+
+
+# ---------------------------------------------------------------------------
+# Zero-handles path: named-cause warning (ENH-3467, D3/D4)
+# ---------------------------------------------------------------------------
+
+_EXPLAIN_NO_SESSIONS_PATH = "little_loops.session_store.explain_no_sessions"
+
+
+class TestMessagesZeroHandlesNamesCause:
+    """This is the "sharper" instance ENH-3467's own research calls out:
+    main_messages() constructs Logger(verbose=args.verbose) (default False),
+    so logger.error() would be silenced by default — the two-line stderr
+    message must bypass Logger entirely (D4) and print unconditionally,
+    without --verbose."""
+
+    def test_zero_handles_prints_two_lines_without_verbose(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        cwd = Path("/mock/project")
+        with patch(_DETECT_SESSIONS_PATH, return_value=[]):
+            with patch(
+                _EXPLAIN_NO_SESSIONS_PATH,
+                return_value=("unknown", "Workspaces exist but none resemble this cwd."),
+            ):
+                with patch.object(sys, "argv", ["ll-messages", "--cwd", str(cwd)]):
+                    result = main_messages()
+        assert result == 1
+        err_lines = capsys.readouterr().err.splitlines()
+        assert err_lines[0] == f"No sessions found for: {cwd}"
+        assert err_lines[1] == "Workspaces exist but none resemble this cwd."

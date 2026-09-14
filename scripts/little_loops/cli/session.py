@@ -58,6 +58,7 @@ from little_loops.session_store import (
     compact,
     connect,
     detect_sessions,
+    explain_no_sessions,
     export_history,
     export_tables_help,
     host_layout_for,
@@ -692,6 +693,11 @@ def main_session() -> int:
                     # (ENH-3420/ENH-3422 D4) — Codex keys sessions by cwd, not a
                     # projects/ tree, so discovery goes through detect_sessions.
                     codex_handles = detect_sessions(Path.cwd(), "codex")
+                    if not codex_handles:
+                        _cause, reason = explain_no_sessions(Path.cwd(), "codex")
+                        print(f"No sessions found for: {Path.cwd()}", file=sys.stderr)
+                        print(reason, file=sys.stderr)
+                        return 1
                     inc_counts = backfill_incremental(
                         args.db,
                         handles=codex_handles,
@@ -703,9 +709,9 @@ def main_session() -> int:
                 else:
                     project_folder = get_project_folder(host=args.host)
                     if project_folder is None:
-                        logger.error(
-                            "No session project folder found; cannot discover JSONL files."
-                        )
+                        _cause, reason = explain_no_sessions(Path.cwd(), host=_backfill_host)
+                        print(f"No sessions found for: {Path.cwd()}", file=sys.stderr)
+                        print(reason, file=sys.stderr)
                         return 1
                     # session_glob already encodes any subdir (e.g. qwen's
                     # "chats/*.jsonl", kimi-code's "session_*/agents/main/wire.jsonl"
@@ -745,6 +751,10 @@ def main_session() -> int:
             # (ENH-3422 D4).
             if _backfill_host == "codex":
                 codex_handles = detect_sessions(Path.cwd(), "codex")
+                if not codex_handles:
+                    _cause, reason = explain_no_sessions(Path.cwd(), "codex")
+                    print(f"No sessions found for: {Path.cwd()}", file=sys.stderr)
+                    print(reason, file=sys.stderr)
                 counts = backfill(
                     args.db,
                     handles=codex_handles,
@@ -757,6 +767,10 @@ def main_session() -> int:
                 )
             else:
                 project_folder = get_project_folder(host=args.host)
+                if project_folder is None:
+                    _cause, reason = explain_no_sessions(Path.cwd(), host=_backfill_host)
+                    print(f"No sessions found for: {Path.cwd()}", file=sys.stderr)
+                    print(reason, file=sys.stderr)
                 # session_glob already encodes any subdir (D5); matches
                 # cli/backfill_worker.py.
                 full_jsonl_files: list[Path] | None = (

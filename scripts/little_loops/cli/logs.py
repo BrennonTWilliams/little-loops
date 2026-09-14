@@ -36,6 +36,7 @@ from little_loops.session_store import (
     SessionHandle,
     cli_event_context,
     detect_sessions,
+    explain_no_sessions,
     iter_events,
     list_workspaces,
     resolve_history_db,
@@ -579,7 +580,10 @@ def _detect_project_handles(
     """
     all_handles = detect_sessions(cwd_path, host, include_agents=True)
     if not all_handles:
-        logger.error(f"No sessions found for: {cwd_path}")
+        _cause, reason = explain_no_sessions(cwd_path, host=host, include_agents=True)
+        print(f"No sessions found for: {cwd_path}", file=sys.stderr)
+        print(reason, file=sys.stderr)
+        print("Or pass --project to point at the correct workspace.", file=sys.stderr)
         return None
     return [h for h in all_handles if not h.is_agent]
 
@@ -1940,7 +1944,9 @@ def _cmd_eval_export(args: argparse.Namespace) -> int:
     host = _resolve_host(getattr(args, "host", None))
     all_handles = detect_sessions(cwd_path, host, include_agents=True)
     if not all_handles:
+        _cause, reason = explain_no_sessions(cwd_path, host=host, include_agents=True)
         print(f"No sessions found for: {cwd_path}", file=sys.stderr)
+        print(reason, file=sys.stderr)
         return 1
     handles = [h for h in all_handles if not h.is_agent]
     db_path = resolve_history_db(cwd_path / ".ll" / "history.db")

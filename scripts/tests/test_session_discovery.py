@@ -1263,3 +1263,226 @@ class TestDetectSessionsStatRace:
         handles = ss.detect_sessions(cwd, "qwen", home=home)
 
         assert [h.session_id for h in handles] == ["survivor"]
+
+
+def _write_claude_session(project_dir: Path, name: str, cwd: str) -> None:
+    project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / name).write_text(json.dumps({"cwd": cwd}) + "\n")
+
+
+class TestExplainNoSessionsClaudeCodeTaxonomy:
+    """D2's six-rule taxonomy for encoded-directory hosts (ENH-3467)."""
+
+    def test_none_recorded_when_projects_root_missing(self, tmp_path):
+        cause, reason = ss.explain_no_sessions(tmp_path / "nowhere", "claude-code", home=tmp_path)
+        assert cause is ss.NoSessionsCause.NONE_RECORDED
+        assert "Run 'll-logs discover'" in reason
+
+    def test_none_recorded_when_projects_root_empty(self, tmp_path):
+        (tmp_path / ".claude" / "projects").mkdir(parents=True)
+        cause, _reason = ss.explain_no_sessions(tmp_path / "nowhere", "claude-code", home=tmp_path)
+        assert cause is ss.NoSessionsCause.NONE_RECORDED
+
+    def test_project_dir_empty_no_files_at_all(self, tmp_path):
+        from little_loops.user_messages import encode_project_path
+
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        own_dir = tmp_path / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))
+        own_dir.mkdir(parents=True)
+
+        cause, reason = ss.explain_no_sessions(cwd, "claude-code", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.PROJECT_DIR_EMPTY
+        assert "contains no session files" in reason
+
+    def test_project_dir_empty_agent_only_excluded(self, tmp_path):
+        from little_loops.user_messages import encode_project_path
+
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        own_dir = tmp_path / ".claude" / "projects" / encode_project_path(str(cwd.resolve()))
+        _write_claude_session(own_dir, "agent-sess.jsonl", str(cwd))
+
+        cause, reason = ss.explain_no_sessions(cwd, "claude-code", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.PROJECT_DIR_EMPTY
+        assert "agent transcripts" in reason
+
+    def test_encoding_mismatch_when_other_dir_records_exact_cwd(self, tmp_path):
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+        weird_dir = tmp_path / ".claude" / "projects" / "totally-different-name"
+        _write_claude_session(weird_dir, "sess.jsonl", str(cwd.resolve()))
+
+        cause, reason = ss.explain_no_sessions(cwd, "claude-code", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.ENCODING_MISMATCH
+        assert "totally-different-name" in reason
+
+    def test_subdirectory_when_parent_has_sessions(self, tmp_path):
+        from little_loops.user_messages import encode_project_path
+
+        parent = tmp_path / "a" / "b"
+        parent.mkdir(parents=True)
+        parent_dir = tmp_path / ".claude" / "projects" / encode_project_path(str(parent.resolve()))
+        _write_claude_session(parent_dir, "sess.jsonl", str(parent))
+        cwd = parent / "sub"
+        cwd.mkdir()
+
+        cause, reason = ss.explain_no_sessions(cwd, "claude-code", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.SUBDIRECTORY
+        assert str(parent.resolve()) in reason
+
+    def test_subdirectory_respects_segment_boundary_not_string_prefix(self, tmp_path):
+        """A directory named ``...-proj`` must not be treated as an ancestor of a
+        cwd named ``...-project-x`` — same string prefix, no path relationship."""
+        from little_loops.user_messages import encode_project_path
+
+        sibling = tmp_path / "proj"
+        sibling.mkdir()
+        sibling_dir = (
+            tmp_path / ".claude" / "projects" / encode_project_path(str(sibling.resolve()))
+        )
+        _write_claude_session(sibling_dir, "sess.jsonl", str(sibling))
+        cwd = tmp_path / "project-x"
+        cwd.mkdir()
+
+        cause, _reason = ss.explain_no_sessions(cwd, "claude-code", home=tmp_path)
+
+        assert cause is not ss.NoSessionsCause.SUBDIRECTORY
+
+    def test_moved_or_renamed_when_same_last_segment_different_location(self, tmp_path):
+        from little_loops.user_messages import encode_project_path
+
+        old_location = tmp_path / "old" / "little-loops"
+        old_location.mkdir(parents=True)
+        old_dir = (
+            tmp_path / ".claude" / "projects" / encode_project_path(str(old_location.resolve()))
+        )
+        _write_claude_session(old_dir, "sess.jsonl", str(old_location))
+        cwd = tmp_path / "new" / "little-loops"
+        cwd.mkdir(parents=True)
+
+        cause, reason = ss.explain_no_sessions(cwd, "claude-code", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.MOVED_OR_RENAMED
+        assert "little-loops" in reason
+
+    def test_unknown_when_workspaces_exist_but_none_resemble_cwd(self, tmp_path):
+        from little_loops.user_messages import encode_project_path
+
+        other = tmp_path / "totally" / "unrelated"
+        other.mkdir(parents=True)
+        other_dir = tmp_path / ".claude" / "projects" / encode_project_path(str(other.resolve()))
+        _write_claude_session(other_dir, "sess.jsonl", str(other))
+        cwd = tmp_path / "nothing" / "alike"
+        cwd.mkdir(parents=True)
+
+        cause, _reason = ss.explain_no_sessions(cwd, "claude-code", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.UNKNOWN
+
+
+class TestExplainNoSessionsCodex:
+    def test_none_recorded_when_no_workspaces(self, tmp_path):
+        cause, _reason = ss.explain_no_sessions(tmp_path / "proj", "codex", home=tmp_path)
+        assert cause is ss.NoSessionsCause.NONE_RECORDED
+
+    def test_subdirectory_via_path_ancestor(self, tmp_path):
+        _make_state_db(
+            tmp_path / ".codex" / "state_1.sqlite",
+            [("s1", "/x/rollout.jsonl", str(tmp_path / "a" / "b"), "u", "1", "1")],
+        )
+        (tmp_path / "a" / "b").mkdir(parents=True)
+        cwd = tmp_path / "a" / "b" / "sub"
+        cwd.mkdir()
+
+        cause, reason = ss.explain_no_sessions(cwd, "codex", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.SUBDIRECTORY
+        assert str(tmp_path / "a" / "b") in reason
+
+    def test_moved_or_renamed_via_same_name(self, tmp_path):
+        old = tmp_path / "old" / "myproj"
+        _make_state_db(
+            tmp_path / ".codex" / "state_1.sqlite",
+            [("s1", "/x/rollout.jsonl", str(old), "u", "1", "1")],
+        )
+        cwd = tmp_path / "new" / "myproj"
+        cwd.mkdir(parents=True)
+
+        cause, _reason = ss.explain_no_sessions(cwd, "codex", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.MOVED_OR_RENAMED
+
+    def test_unknown_when_no_resemblance(self, tmp_path):
+        _make_state_db(
+            tmp_path / ".codex" / "state_1.sqlite",
+            [("s1", "/x/rollout.jsonl", "/totally/unrelated", "u", "1", "1")],
+        )
+        cwd = tmp_path / "nothing" / "alike"
+        cwd.mkdir(parents=True)
+
+        cause, _reason = ss.explain_no_sessions(cwd, "codex", home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.UNKNOWN
+
+
+class TestExplainNoSessionsUnionAcrossHosts:
+    def test_most_specific_cause_wins_across_hosts(self, tmp_path):
+        """D5: claude-code has no resemblance (UNKNOWN) but codex has a named
+        cause (SUBDIRECTORY) — the union must surface the more specific one,
+        not whichever host is first in _REGISTERED_HOSTS."""
+        from little_loops.user_messages import encode_project_path
+
+        other = tmp_path / "totally" / "unrelated"
+        other.mkdir(parents=True)
+        other_dir = tmp_path / ".claude" / "projects" / encode_project_path(str(other.resolve()))
+        _write_claude_session(other_dir, "sess.jsonl", str(other))
+
+        parent = tmp_path / "a" / "b"
+        parent.mkdir(parents=True)
+        _make_state_db(
+            tmp_path / ".codex" / "state_1.sqlite",
+            [("s1", "/x/rollout.jsonl", str(parent), "u", "1", "1")],
+        )
+        cwd = parent / "sub"
+        cwd.mkdir()
+
+        cause, _reason = ss.explain_no_sessions(cwd, host=None, home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.SUBDIRECTORY
+
+    def test_none_recorded_only_when_every_host_has_nothing(self, tmp_path):
+        cwd = tmp_path / "proj"
+        cwd.mkdir()
+
+        cause, reason = ss.explain_no_sessions(cwd, host=None, home=tmp_path)
+
+        assert cause is ss.NoSessionsCause.NONE_RECORDED
+        assert "any registered host" in reason
+
+
+class TestExplainNoSessionsCostBound:
+    def test_encoding_mismatch_scan_stays_fast_with_many_empty_dirs(self, tmp_path):
+        """D2 cost note: the ENCODING_MISMATCH rule opens one file per sibling
+        directory on the failure path; must stay well under a second even
+        with several hundred unrelated, empty directories present."""
+        import time
+
+        projects_root = tmp_path / ".claude" / "projects"
+        projects_root.mkdir(parents=True)
+        for i in range(300):
+            (projects_root / f"-unrelated-dir-{i}").mkdir()
+
+        cwd = tmp_path / "project"
+        cwd.mkdir()
+
+        start = time.monotonic()
+        cause, _reason = ss.explain_no_sessions(cwd, "claude-code", home=tmp_path)
+        elapsed = time.monotonic() - start
+
+        assert cause is ss.NoSessionsCause.UNKNOWN
+        assert elapsed < 1.0

@@ -132,9 +132,11 @@ from little_loops.session_store.schema import (
 )
 from little_loops.session_store.sessions import _REGISTERED_HOSTS as REGISTERED_HOSTS
 from little_loops.session_store.sessions import (
+    NoSessionsCause,
     SessionEvent,
     SessionHandle,
     detect_sessions,
+    explain_no_sessions,
     iter_events,
     list_workspaces,
     parse_claude_transcript,
@@ -279,6 +281,8 @@ __all__ = [
     "SessionEvent",
     "list_workspaces",
     "detect_sessions",
+    "NoSessionsCause",
+    "explain_no_sessions",
     "iter_events",
     "parse_claude_transcript",
     "parse_codex_rollout",

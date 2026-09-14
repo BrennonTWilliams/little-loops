@@ -1291,8 +1291,9 @@ class TestSequences:
                     assert "to" in edge
                     assert "freq" in edge
 
-    def test_sequences_project_not_found_returns_1(self) -> None:
-        """sequences --project with no matching claude folder returns 1."""
+    def test_sequences_project_not_found_returns_1(self, capsys) -> None:
+        """sequences --project with no matching claude folder returns 1 and
+        names a cause on both stderr lines (ENH-3467, D3)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             home.mkdir(parents=True, exist_ok=True)
@@ -1307,6 +1308,9 @@ class TestSequences:
                 result = main_logs()
 
             assert result == 1
+            err_lines = capsys.readouterr().err.splitlines()
+            assert err_lines[0] == f"No sessions found for: {nonexistent}"
+            assert "Run 'll-logs discover'" in err_lines[1]
 
     def test_sequences_empty_project_no_matches(self, capsys) -> None:
         """sequences with no matching records exits 0 with empty output."""
@@ -1889,8 +1893,9 @@ class TestExtract:
             content = index_file.read_text()
             assert "# Logs Index" in content
 
-    def test_extract_project_not_found_returns_1(self) -> None:
-        """extract --project with no matching claude folder returns 1."""
+    def test_extract_project_not_found_returns_1(self, capsys) -> None:
+        """extract --project with no matching claude folder returns 1 and
+        names a cause on both stderr lines (ENH-3467, D3)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir) / "home"
             home.mkdir(parents=True, exist_ok=True)
@@ -1905,6 +1910,9 @@ class TestExtract:
                 result = main_logs()
 
             assert result == 1
+            err_lines = capsys.readouterr().err.splitlines()
+            assert err_lines[0] == f"No sessions found for: {nonexistent}"
+            assert "Run 'll-logs discover'" in err_lines[1]
 
     def test_extract_skips_agent_jsonl(self) -> None:
         """extract ignores agent-*.jsonl files when scanning for ll activity."""

@@ -3750,6 +3750,15 @@ ll-messages --sft-format alpaca --output data/sft/raw.jsonl
 ll-messages --host codex --stdout          # Codex user prompts only
 ```
 
+**Zero-match stderr contract (ENH-3467).** When session discovery finds nothing for the target cwd, `ll-messages`, `ll-logs` (`sequences`/`extract`/`scan-failures`/`eval-export`), and `ll-session backfill` all print exactly two lines to stderr — visible without `--verbose` — instead of silently returning empty output:
+
+```
+No sessions found for: <cwd>
+<reason>
+```
+
+Line 1 is byte-identical across every zero-match state (`FAILURES_NO_DATA` automation depends on it). Line 2 names the likely cause via `explain_no_sessions()` (see API.md): sessions exist but this cwd was run from a subdirectory of a recorded workspace, a recorded workspace looks like a moved/renamed copy, a workspace's recorded cwd doesn't match the expected on-disk encoding, the workspace's own session directory exists but is empty (or agent-only), nothing resembles this cwd at all, or nothing is recorded anywhere. This distinguishes "sessions exist but none matched" from genuine "no sessions recorded" — both used to render as the same silent/generic message. `ll-session backfill --since` returns 1 on a zero-match; a full `ll-session backfill` (no `--since`) prints the warning but still continues and exits 0, since issue/loop/commit ingestion doesn't depend on JSONL sources.
+
 ---
 
 ### ll-logs

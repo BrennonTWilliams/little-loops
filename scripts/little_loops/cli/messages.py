@@ -26,7 +26,7 @@ def main_messages() -> int:
         import json
         from datetime import datetime
 
-        from little_loops.session_store import detect_sessions
+        from little_loops.session_store import detect_sessions, explain_no_sessions
         from little_loops.user_messages import (
             CommandRecord,
             UserMessage,
@@ -188,7 +188,11 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
         handles = detect_sessions(cwd, host=host, include_agents=not args.exclude_agents)
 
         if not handles:
-            logger.error(f"No sessions found for: {cwd}")
+            _cause, reason = explain_no_sessions(
+                cwd, host=host, include_agents=not args.exclude_agents
+            )
+            print(f"No sessions found for: {cwd}", file=sys.stderr)
+            print(reason, file=sys.stderr)
             return 1
 
         if args.verbose:
