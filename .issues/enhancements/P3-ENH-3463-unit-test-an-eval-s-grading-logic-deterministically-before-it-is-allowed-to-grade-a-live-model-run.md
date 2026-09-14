@@ -9,6 +9,8 @@ discovered_date: '2026-09-13'
 labels: []
 blocked_by:
 - '3462'
+parent: EPIC-3475
+epic: EPIC-3475
 ---
 
 ## Summary

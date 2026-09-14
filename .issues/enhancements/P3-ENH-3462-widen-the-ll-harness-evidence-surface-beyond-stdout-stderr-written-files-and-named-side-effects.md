@@ -11,6 +11,8 @@ labels:
 - reliability
 verify_verdict: NON_VALID
 size: Very Large
+parent: EPIC-3475
+epic: EPIC-3475
 ---
 
 ## Summary
