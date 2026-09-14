@@ -11,11 +11,11 @@ labels:
 - observability
 size: Medium
 confidence_score: 100
-outcome_confidence: 74
-score_complexity: 14
+outcome_confidence: 77
+score_complexity: 15
 score_test_coverage: 25
 score_ambiguity: 25
-score_change_surface: 10
+score_change_surface: 12
 ---
 
 ## Summary
@@ -308,6 +308,7 @@ what was wrong and fixed, not an outstanding action item)
   anywhere in the codebase — the issue is not stale/already-resolved.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T20:36:49 - `4877780e-bc65-42c6-b39a-8216337c4aa4.jsonl`
 - review (manual, pre-implementation) - 2026-09-14 - D6 rewritten (full-mode backfill warns and continues; `--since` returns 1) after confirming `backfill()` ingests non-JSONL sources and `test_backfill_runs` asserts exit 0; added `PROJECT_DIR_EMPTY` cause + `include_agents` param; segment-boundary fix for `SUBDIRECTORY`; D5 most-specific-wins union; flag-free reason strings; ENCODING_MISMATCH cost note; removed stale Confidence Check Notes
 - `/ll:confidence-check` - 2026-09-14T20:26:43 - `cd2a749d-5503-4906-a5fa-bb6f41d833a5.jsonl`
 - `/ll:verify-issues` - 2026-09-14T20:22:41 - `0a15cdac-84ed-4f86-8df8-f76772ae2a8b.jsonl`
