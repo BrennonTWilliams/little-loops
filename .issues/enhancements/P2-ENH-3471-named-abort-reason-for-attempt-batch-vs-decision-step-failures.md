@@ -42,6 +42,14 @@ Today's asymmetry, per parent's codebase research: `_run_action_or_route()` (`fs
 
 **Open design choice (not settled by precedent)**: this codebase has two competing conventions for a typed "unit didn't produce its normal result" reason — `ConsultOutcome.skipped_reason: Literal[...] | None` (`advisor.py:316`) vs. `ExecutionResult.terminated_by: str` (free-form). Pick one explicitly for the new value(s) and note the choice in the PR; do not assume `Literal` is canonical just because it looks more typed.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- The codebase's established mechanism for distinguishing "which stage raised" at a shared exception funnel is a dedicated exception subclass caught by an earlier, more specific `except` clause ahead of the generic `except Exception` — e.g. `HeredocCollisionError(InterpolationError)` is checked before `InterpolationError`, which is checked before `Exception`, at the very funnel this issue targets (`fsm/executor.py:1027-1041`). No frame-inspection or stored-attribute mechanism exists in this codebase for this purpose.
+- Neither `_run_action_or_route()` (attempt-batch, `fsm/executor.py:3773-3801`) nor `_evaluate()`/`_route()`/`_resolve_route()` (decision-step, `fsm/executor.py:3076-3169`, `:3233`, `:3307`) wrap exceptions of their own beyond `_run_action_or_route()`'s local `on_error` reroute — an exception from either path reaches the same three `except` clauses in `run()` today.
+- On the open Literal-vs-str design choice: even where this codebase does use a `Literal[...]`-typed "why didn't this succeed" field (`ConsultOutcome.skipped_reason`, `advisor.py:306-337`), the value flattens back to plain `str` at its own persistence boundary — `AdvisorConsultRow.outcome` (`history_reader/events.py:212`) is untyped `str`, matching `ExecutionResult.terminated_by`'s existing convention. A third convention also exists: `FailureType(Enum)` (`issue_lifecycle.py:141-176`), consumed via `.value` and exposed to loop YAML as `${captured.<state>.failure_type}` (`fsm/executor.py:2691-2699`) — a separate, already-shipped classifier for "why did this action fail" (BUG-2826), orthogonal to `terminated_by`. All three conventions collapse to a bare string at the interpolation/YAML/persistence boundary; that boundary has no typed-vocabulary convention, only string equality/membership checks.
+
 ## Program Design
 
 ### Types
@@ -81,7 +89,14 @@ Today's asymmetry, per parent's codebase research: `_run_action_or_route()` (`fs
 - `scripts/tests/test_fsm_executor.py` — existing exception-to-`terminated_by` conversion tests (e.g. `test_no_valid_route_terminates_with_error`) construct `FSMLoop`/`StateConfig` directly and assert on `result.terminated_by`/`result.error`/`result.final_state`; new tests follow this same construction-and-assert shape.
 - `scripts/tests/test_history_reader_usage.py::TestWasteAttribution` — extend with a fixture for the new attempt-batch/decision-step values against `_WASTED_RUN_PREDICATE`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- Two established testing conventions exist for exception-to-reason mapping and neither supersedes the other: (a) one dedicated test method per raise-site scenario with full `FSMLoop`/`StateConfig` construction (the shape `test_fsm_executor.py`'s existing `terminated_by=="error"` assertions already use, e.g. `test_no_valid_route_terminates_with_error` at :2027, `test_exception_during_execution_returns_error_result` at :3532); (b) a single `@pytest.mark.parametrize("exc,expected_reason", [...])` method mapping exception instances to expected reason strings (`test_advisor.py::test_maps_each_exception_to_skipped_reason`, :475-503; `test_issue_lifecycle.py`'s `classify_failure()` parametrization, :963-1050). The new tests for this issue's abort-reason split should follow convention (a), matching the file's own existing `terminated_by` assertion shape.
+
 ## Session Log
+- `/ll:refine-issue` - 2026-09-14T19:32:05 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
 - `/ll:format-issue` - 2026-09-14T19:18:19 - `e03a4d3e-6e32-492e-b751-6c3a912f41aa.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T19:16:24 - `bd6d1308-41a1-42e0-b1ba-67bcf198d91f.jsonl`
 

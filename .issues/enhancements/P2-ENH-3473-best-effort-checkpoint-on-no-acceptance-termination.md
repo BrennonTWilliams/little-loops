@@ -40,6 +40,15 @@ Closest existing analog: `scripts/little_loops/loops/canvas-sketch-generator.yam
 
 **Escape hatch — must NOT apply this pattern to context-compaction failure**: `scripts/little_loops/hooks/pre_compact.py`, `session_store/lifecycle.py::compact_session()` (called from `cli/compact_session.py::main_compact_session()`, no surrounding try/except) must stay hard-terminal. Compaction's own internal LCM escalation already guarantees a leaf node is produced, so a `best_effort`-tagged partial result there would misrepresent a failure as salvaged.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- Confirmed via repo-wide search: no shared "best of N" / "closest attempt to objective" scoring utility exists in `fsm/`, `cli/`, or any shared module. Every hit for candidate names (`best_of_n`, `select_best`, `BestAttempt`, `rank`, `top_n`, `highest_scor*`) belongs to an unrelated domain (host-model tiers in `advisor.py:83`, issue-priority ranking in `queue_store.py:300`, skill-keyword matching in `cli/verify_triggers.py:225`, epic-title picking in `cli/issues/link_epics.py:231`) or is a bespoke loop-YAML state name (`select_best` in `interactive-component-generator.yaml:363`, `apo-beam.yaml:39`) with no backing Python utility.
+- Two disagreeing precedent conventions exist for "which iteration is closest to the objective," and this issue must pick one knowingly rather than assume either is canonical: (a) deterministic shell-side numeric comparison against a machine-written score file — `canvas-sketch-generator.yaml`'s `finalize` state (`sort -k2,2n -k1,1n scores.tsv | tail -1`, :344-363) and `vega-viz.yaml`'s incremental `record` state, which overwrites `best.html`/`best_score.txt` in place whenever a new score beats the stored best (:485-538, "the best result survives even if the loop ends by hitting max_iterations mid-cycle"); (b) LLM-narrated selection with no programmatic verification — `generator-evaluator.yaml`/`generator-evaluator-flux.yaml`'s `max_steps_summary` state, which hands the model a plain-text `.score_history` file and has it narrate the best iteration (:210-236, :335-359).
+- The codebase's established per-iteration artifact convention is a directory per iteration (`iter-N/`, tracked via an `.iter_counter`/`.iter` sentinel file — `canvas-sketch-generator.yaml:293-320`, `vega-viz.yaml:500-509`, documented generically in `loops/lib/common.yaml:243`) or a flat `*-iter-N.*` filename (`docs/guides/LOOPS_REFERENCE.md:1899`) — not a single `iter_<N>_*.json` file. No file anywhere in the repo follows the `iter_<N>_*.json` shape this issue's Signatures section proposes, and no `metadata.best_effort=True`-style tag exists on any written artifact today (confirmed by repo-wide search — the only `best_effort` hits are unrelated test names about best-effort DB writes).
+- Confirmed: no existing test covers "context-compaction failure stays hard-terminal" — `test_session_store_lifecycle.py::TestCompactSession`, `test_compaction.py`, `test_pre_compact.py` were searched directly with no match on this boundary. `session_store/lifecycle.py::compact_session()` (:679-710) wraps its call to `_compact_session_conn()` in a bare `try/finally` (only closing the connection) with no `except` clause, and `cli/compact_session.py::main_compact_session()` (:55-96) calls `compact_session(...)` with no surrounding try/except either — confirming the issue's claim that a compaction failure propagates as a raised exception rather than being converted into any kind of partial artifact.
+
 ## Program Design
 
 ### Types
@@ -68,6 +77,12 @@ Closest existing analog: `scripts/little_loops/loops/canvas-sketch-generator.yam
 - `scripts/little_loops/cli/loop/runner.py` — `EXIT_CODES: dict[str, int]` (:39-55), looked up via `EXIT_CODES.get(result.terminated_by, 1)` (:585): decide the exit code for the new outcome rather than relying on the default-1 fallback. `_is_success = result.terminated_by in ("terminal", "interrupted", "handoff") and not result.failure_terminal` (:511-513): relevant only if the new outcome arrives as `terminated_by="terminal"` with `failure_terminal=True` (the `general-task.yaml` precedent) rather than a new string — needs correct `failure_terminal` to avoid being miscolored green as success.
 - `skills/audit-loop-run/SKILL.md` (~line 293) — Step 6b verdict table's `partial` row is keyed on `terminated_by == "max_steps"` AND a `max_steps_summary` event (ENH-2575 precedent this issue's checkpoint models itself on). Add an analogous new row for the `best_effort` outcome, or it gets no verdict classification.
 - `scripts/little_loops/generate_schemas.py` (:615-634) and `docs/reference/EVENT-SCHEMA.md` / `docs/guides/LOOPS_GUIDE.md` `### terminated_by exit reasons` table — add the new value's row once ENH-3471 lands the enumeration-update mechanics; this child only needs to add its own row/value to what ENH-3471 leaves in place.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- `map_final_status()` has a fourth caller not previously enumerated here: `fsm/persistence.py:1184` inside `archive_run_only()` — the signal-handler-safe force-exit path (invoked from `cli/loop/signals.py`'s `_loop_signal_handler()`). Any new outcome bucket or value this issue adds to `map_final_status()`'s closed contract must also be sane for that path, which runs outside the normal `PersistentExecutor.run()` completion flow.
 
 ## Implementation Steps
 
@@ -107,6 +122,7 @@ Closest existing analog: `scripts/little_loops/loops/canvas-sketch-generator.yam
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `_WASTED_RUN_PREDICATE` (usage.py:310-316) edit shares the same `IN (...)` membership list as ENH-3471's edit to the same predicate. Already sequenced via `depends_on: [ENH-3471]`, but implement this issue's edit as an additive diff against whatever shape ENH-3471 actually lands (not against the pre-3471 line numbers cited above), since both issues touch the same list.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-14T19:32:06 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
 - `/ll:format-issue` - 2026-09-14T19:19:10 - `b113a2f7-29c0-4877-96df-0ecdfe92bfb9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-13T21:28:46 - `23df08cc-836b-4f77-a1e2-bfb5aedb0f55.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T19:16:25 - `bd6d1308-41a1-42e0-b1ba-67bcf198d91f.jsonl`

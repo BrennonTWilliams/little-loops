@@ -39,6 +39,14 @@ This codebase's convention for guarding a risky I/O/persistence call that "must 
 
 This is the applicable precedent for guarding `save_state()`/`archive_run()` in `PersistentExecutor.run()`'s unguarded `else` branch — log and continue, do not re-raise.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- Correction: `cli_event_context` is not defined in `session_store/db.py` — that file exists but is only 133 lines and contains no `except Exception`/`noqa` at all. `cli_event_context` is actually defined in `scripts/little_loops/session_store/writers.py:497-621`, and its two `except Exception as exc:` sites are at `writers.py:579` and `writers.py:609` (the line numbers cited happen to match; only the file path is incorrect). Neither of those two `except` clauses carries a `# noqa: BLE001` comment — confirmed by grepping that file. `cli_event_context` instead implements a distinct contract: it separately guards the enter/exit analytics writes (each independently `logger.warning`-logged) while explicitly re-raising the wrapped body's own exceptions via `except BaseException: exit_code = 1; raise`.
+- Additional `except Exception  # noqa: BLE001`-style guard sites beyond those cited, confirming the same convention: `worker_pool.py:456-459,920-923,1702-1706` use `with suppress(Exception):` (no logging) around `record_session_lifecycle_event`/`record_orchestration_run` calls; `cli/loop/signals.py:58-62`'s `_loop_signal_handler()` guards `PersistentExecutor.archive_run_only()` — the very same `save_state()`/`archive_run()` pair this issue targets — with a narrower `except OSError: pass` at the *call site* (outside `PersistentExecutor`), commented "a failed archive must not prevent exit." `FSMExecutor._finish()` (`fsm/executor.py:4292-4309`, `:4315-4336`) already guards its own analytics-sink writes (`record_loop_run_summary`, `record_usage_event`) with bare `except Exception: pass` (no log, no noqa) specifically so a sink failure at that point can't discard the already-computed run state — the same shape this issue's `else` branch fix follows.
+- Note: `BLE` (flake8-blind-except, the rule `# noqa: BLE001` comments reference) is not in this repo's enabled ruff rule set (`scripts/pyproject.toml` `[tool.ruff.lint]` `select = ["E", "F", "W", "I", "UP", "B", "C4"]`) — the `# noqa: BLE001` comments are documentation of intent, not lint-enforced.
+
 ## Program Design
 
 ### Signatures
@@ -59,6 +67,13 @@ This is the applicable precedent for guarding `save_state()`/`archive_run()` in 
 - `scripts/tests/test_fsm_persistence.py::test_run_saves_final_state` (:915) — closest existing structural template to extend from, though the new test targets the failure path rather than the happy path.
 - Inline `side_effect=RuntimeError(...)` patching convention already used in `test_fsm_executor.py` (`test_survives_db_failure_during_summary` ~:3693-3699, a same-shape test ~:3780-3786, `test_survives_write_failure` :3888-3898) is the pattern to mirror for asserting the run still completes normally despite the injected failure.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- Confirmed: no existing test in `test_fsm_persistence.py` patches `self.persistence.save_state`/`self.persistence.archive_run` with a `side_effect` from inside `PersistentExecutor.run()`'s final-state block (lines ~1250-1281) — only `test_drain_inbound_spoof_does_not_trigger_persistence_side_effects` (:928-968, a call-count integrity test, not failure-injection) touches persistence internals there.
+- Closest precedent for injecting a failure on a `PersistentExecutor`-shaped archive/save method and asserting the caller survives it: `test_cli_loop_background.py::test_second_signal_swallows_archive_oserror` (:156-172) — sets `mock_executor.archive_run_only.side_effect = OSError("disk full")` directly on a `MagicMock()` attribute, then asserts both survival (`SystemExit(1)` still raised) and `assert_called_once_with(...)`. `FSMExecutor._finish()`'s own sink-failure tests (`test_finish_survives_record_loop_run_summary_failure` :3679-3699, `test_finish_survives_record_usage_event_failure` :3764-3787, `test_survives_write_failure` :3888-3898) all `patch("<fully-qualified-target>", side_effect=RuntimeError("db unavailable"))` around the whole `executor.run()` call and assert on the returned `ExecutionResult` field proving normal completion (`result.terminated_by`/`result.final_state`) — the shape to mirror for this issue's new `PersistentExecutor`-level test, patching at the target's defining module path.
+
 ## Scope Boundaries
 
 - **In scope**: Guarding the `save_state()`/`archive_run()` calls in `PersistentExecutor.run()`'s unguarded `else` branch (`fsm/persistence.py:1279-1281`) with a broad catch-and-log per the precedent cited in Design; the accompanying regression test.
@@ -76,5 +91,6 @@ This is the applicable precedent for guarding `save_state()`/`archive_run()` in 
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-14T19:32:05 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
 - `/ll:format-issue` - 2026-09-14T19:18:27 - `e03a4d3e-6e32-492e-b751-6c3a912f41aa.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T19:16:25 - `bd6d1308-41a1-42e0-b1ba-67bcf198d91f.jsonl`
