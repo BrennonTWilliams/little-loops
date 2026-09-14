@@ -49,6 +49,14 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - A different, unrelated "frozen" concept already exists and should not be conflated: `ENH-1122` ("Frozen-Boundary Convention", status deferred) is a byte-region edit-mutation guard (`<!-- ll:frozen -->` markers restricting which lines `harness-optimize` may edit), not an evaluation-reference concept. ENH-3421's own issue text makes this same distinction explicitly.
 - The "epoch-bounded objective versioning" / "versioned evaluator prompts over golden sets" work this section contrasts itself against (as "keeping the measuring instrument honest") has no locatable implementation under those names either — zero repo-wide hits for `epoch-bounded`, `objective_version`, or a golden-set evaluator-hardening concept distinct from `test_adapt_golden_corpus.py`'s unrelated host-adapter snapshot fixtures.
 
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- Correction: `EvaluateConfig.auto_promote`'s dataclass default is `False` (`scripts/little_loops/fsm/schema.py:141`, `auto_promote: bool = False`), not `True`. This section's earlier "with the default `auto_promote: true`" language describes what happens when a loop author sets it true (the drift risk this issue flags), not the schema's own default value.
+- Verbatim rationale from `.ll/decisions.d/a2c57916-aa1c-48db-86ad-cf1c3964d62d.json` (ENH-3421, 2026-09-09, category: architecture), confirming the prior rejection of the design shape closest to this issue's own four-way-outcome proposal: "Direct precedent (ENH-3224 abstain_on_exit_3 field-threading), free MR-14 lint coverage via evaluate_config_known_fields(), and baseline_score already sits outside the iterate cycle so no new executor primitive is needed. Option B is not directly buildable as described: StateDef.evaluate is single-valued per state, forcing a second chained state with a disjoint route vocabulary and zero shipped precedent, plus stacks LLM cost onto an already LLM-heavy loop."
+- No structural test enforces "captured exactly once" for the `evaluate_comparator()`/`baseline_path`/`auto_promote` file-based mechanism, unlike `evaluate_convergence()`'s `reference` (which has `test_only_baseline_score_captures_baseline`, `test_harness_optimize.py:140-148`) — an asymmetry between the two existing "frozen reference" mechanisms worth noting if this issue's new mechanism is expected to carry the same structural guarantee.
+- Confirmed `BaselineDelta` (`cli/harness.py:1524-1538`) remains the sole comparison-result dataclass anywhere in the codebase; a repo-wide search for `beats_incumbent`/`beats_baseline`/`four.way`/`dual.outcome` finds zero code hits (only coincidental substring matches inside `.issues/*.md`) — no existing shape to extend for a four-way outcome.
+- Re-confirmed the `convergence_gate` fragment's consumer set is unchanged from the prior wiring pass: `rl-bandit.yaml` (direct `type: convergence`), `test-coverage-improvement.yaml`, `agent-eval-improve.yaml`, `rl-policy.yaml`, `rl-coding-agent.yaml` (all via `fragment: convergence_gate`).
+
 ## Integration Map
 
 ### Codebase Research Findings
@@ -67,6 +75,13 @@ Confirmed file paths and call sites for the two existing baseline/reference mech
 - `scripts/tests/test_history_reader_harness.py` `TestBaselineFor::*` (lines 530-653), `scripts/tests/test_cli_harness.py` `TestBaselineStoreBidirectional`/`TestBaselineDegrade` (`:3449`,`:3520`) — existing callers of `baseline_for()` a new frozen-record type must not break
 - `scripts/little_loops/loops/harness-optimize.yaml` `gate` state (`:191`) — the one shipped loop wired to ENH-3421's `reference` field; `rl-coding-agent.yaml` explicitly excluded by that issue despite the same rolling-`previous` shape
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.ll/decisions.d/a2c57916-aa1c-48db-86ad-cf1c3964d62d.json` — a decision record from ENH-3421 titled "Option A: frozen-reference field on `EvaluateConfig`/`evaluate_convergence()`", rejecting "Option B: wire `check_comparator` into `harness-optimize.yaml`'s `gate` state as a second required check" — direct prior art on the exact design tradeoff this issue revisits; confirms `rl-coding-agent.yaml`'s exclusion was a deliberate 2026-09-09 review decision (`.issues/enhancements/P3-ENH-3421-*.md:146,177,291,464,482,517,575,604,624`), not an oversight
+- `scripts/little_loops/loops/lib/common.yaml:151-164` (the `convergence_gate` fragment definition, documenting `evaluate.reference` as "a frozen baseline that must not advance across iterations"), and its consumers `rl-bandit.yaml` (direct `type: convergence`, not via fragment), `test-coverage-improvement.yaml`, `agent-eval-improve.yaml`, `rl-policy.yaml`, `rl-coding-agent.yaml` (all `fragment: convergence_gate`) — every loop reachable from the existing `evaluate_convergence()` reference mechanism, beyond `harness-optimize.yaml` alone
+- Confirmed `type: comparator` has zero hits in any shipped loop YAML under `scripts/little_loops/loops/` — `evaluate_comparator()`'s standing-file mechanism is not wired into any loop today, only documented in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` as a worked example
+- `scripts/little_loops/cli/loop/__init__.py` (`cmd_promote_baseline` import/registration/dispatch, lines 40,79,901,904,1119-1120), `scripts/tests/test_ll_loop_commands.py:7519-7589`, `test_ll_loop_execution.py:1853`, `test_ll_loop_integration.py:515`, `test_cli_loop_dispatch.py:510` — the `ll-loop promote-baseline` command surface for the other existing frozen mechanism, relevant if this issue's re-pinning UX is modeled on it
+- `scripts/tests/test_verify_evidence.py::TestBaselineKeying` (`:1104`), `scripts/tests/test_cli_loop_dispatch.py::test_baseline_forwarded` (`:803`) — additional test-side callers of `BaselineKey`/`baseline_for()` beyond `TestBaselineFor`
+
 ### Conventions in Force
 - A field that must stay frozen (never re-captured) is enforced structurally, checked by a dedicated test that scans every other state for the forbidden capture — evidence: `test_only_baseline_score_captures_baseline` (`test_harness_optimize.py:140-148`), asserting no state but `baseline_score` sets `capture: baseline`
 - A frozen reference fails *closed* on an unresolvable value while a rolling/incumbent reference fails *open* (absent means "first iteration, no check") — evidence: `evaluate_convergence()`'s handling of `reference` vs. `previous` (ENH-3421 Expected Behavior §4)
@@ -77,6 +92,12 @@ Confirmed file paths and call sites for the two existing baseline/reference mech
 - `scripts/tests/test_harness_optimize.py:125-156` — structural YAML-dict assertions for ENH-3421's frozen-reference wiring (`test_gate_has_convergence_evaluator`, `test_only_baseline_score_captures_baseline`, `test_trajectory_lines_include_baseline`)
 - `scripts/tests/test_cli_harness.py:3081-3239` (`TestBaselineCompare`) — end-to-end CLI tests for the existing delta/outcome shape (`test_delta_reported_with_provenance`, `test_delta_json_payload`, `test_delta_null_when_candidate_ungraded`)
 - `scripts/tests/test_history_reader_harness.py` (`TestBaselineFor`) — reader-layer tests, including `test_ignores_head_sha_and_cell_key` confirming the content-identity-keyed (not frozen) nature of the existing store
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_harness_optimize.py:140-148` (`test_only_baseline_score_captures_baseline`) — the exact "scan every other state for the forbidden capture" pattern (iterate `loop_data["states"]`, exclude the one legitimate capture site by name, assert total exclusion); an analogous test for a frozen-external-baseline capture key would follow this shape
+- `scripts/tests/test_fsm_validation_meta_rules.py:213-324` (`TestMetaLoopValidation`), specifically `test_mr2_does_not_fire_when_capture_referenced_in_reference` (`:274-304`, itself annotated "(ENH-3421)" as the precedent for extending MR-2's field allowlist) — a new evaluate field needs both an addition to `_has_baseline_reference`'s `candidates` list (`meta_rules.py:588-590`) and a mirrored `test_mr2_does_not_fire_when_capture_referenced_in_<new_field>` case
+- `scripts/tests/test_cli_harness.py:3204-3227,3189-3202,3229-3237` (`test_delta_json_payload`, `test_delta_reported_with_provenance`, `test_delta_null_when_candidate_ungraded`) — existing tests at risk if `BaselineDelta`'s single-reference shape changes to report a dual/four-way outcome; each asserts on the current flattened `payload["baseline"]` key set or the `"Delta:"`/`"Delta: n/a"` printed line
+- `scripts/little_loops/cli/harness.py:1802-1817` (`_compare_baseline_refusal`) and its indirect test coverage in `TestBaselineCompare` (`test_no_baseline_refused_before_any_invocation`, `test_partial_baseline_refused_before_any_invocation`, `test_conditions_fp_mismatch_refused_before_any_invocation`) — reusable fail-closed precedent; each test asserts a 3-4 part combination (exit code 2, zero subject invocations, a stderr substring, and for the no-baseline case zero rows written) that a frozen-baseline refusal check should follow
 
 ## Program Design
 
@@ -107,6 +128,29 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - MR-2's `_has_baseline_reference()` (`fsm/validation/meta_rules.py:581-596`) is a hand-maintained field allowlist (`[ev.previous, ev.source, ev.reference]` plus `ev.target` if string) that recognizes which `EvaluateConfig` fields count as "a captured baseline value is referenced" — not dynamic; a new frozen-baseline field would need to be added to this list by hand to be recognized by the lint rule, distinct from adding the field itself.
 - Existing fail-closed precedent directly reusable for a frozen-baseline refusal: `_compare_baseline_refusal()` (`cli/harness.py:1802-1817`) is a pre-run, zero-side-effect existence check (not staleness) that refuses with exit 2 before any subject invocation when no full-n baseline row set exists; ENH-3421's `reference` resolution is separately fail-closed on an unresolvable (but present) value, distinct from "value absent."
 
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- `evaluate_convergence()`'s reference-regression check (`fsm/evaluators.py:466-477`) runs before the target-reached branch: `regressed = current > reference if direction=="minimize" else current < reference`, folding a regression into the existing `"stall"` verdict with a `details["regressed_vs_reference"]=True` marker — confirmed there is no separate verdict string for "regressed vs. frozen reference" today.
+- The fail-open/fail-closed distinction is narrower than it first appears: no code in `evaluators.py` handles an explicitly *absent* `reference` differently from a resolved-but-non-regressing one — both simply skip the regression branch (`if reference is not None:`). The fail-closed behavior is scoped specifically to "a `reference` string is set but fails to interpolate to a float," which the dispatch site handles separately by returning verdict `"error"`.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (`check_comparator`/`type: comparator`/`baseline_path`/`auto_promote` worked example, lines 29,337-370,1137-1175) — narrates the "other" existing frozen mechanism this issue's Design says not to conflate with
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:305-314,454-458` — the "Frozen-reference guard (ENH-3421)" subsection and `promote-baseline`/comparator-baseline cross-references; the closest existing prose to a "four-way outcome" concept, likely extension point rather than replacement
+- `docs/reference/API.md` — verbatim-mirrors the full `EvaluateConfig` dataclass as a hand-maintained code block (`#### EvaluateConfig`, lines 6048-6104) including `reference`/`baseline_path`/`auto_promote`; does **not** currently document `BaselineDelta`/`BaselineResult`/`BaselineKey`/`baseline_for`/`BaselineConditions` at all
+- `docs/reference/CLI.md` — `--measure-baseline`/`--baseline-of`/`--compare-baseline` option-table rows (`:233-239`) and `ll-loop promote-baseline` full command doc (`:1418-1431`)
+- `docs/guides/EVALUATION_GUIDE.md:386,400-404` — worked `--compare-baseline` example plus refusal/bidirectional-store prose; needs a companion frozen-baseline paragraph, not a rewrite
+- `CHANGELOG.md` — carries one-line entries for both prior mechanisms (ENH-3435 line 70, ENH-3421 line 129); establishes the convention this issue's landing should follow
+- `scripts/tests/test_wiring_reference_docs.py` — a data-driven `(doc_file, required_string, issue_id)` gate asserting specific strings land in specific docs; any new doc string this issue adds is only durably enforced if a corresponding tuple is added here
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation/meta_rules.py:588-590` (MR-2's `_has_baseline_reference` `candidates` list) is hand-maintained and must be manually extended for a new frozen-baseline field — contrast with MR-14 (`_validate_evaluate_unknown_keys`, `fsm/validation/structural_rules.py:1796-1846`), which derives its known-fields set dynamically from `dataclasses.fields(EvaluateConfig)` via `evaluate_config_known_fields()` (`fsm/schema.py:270-278`) and needs no manual update
+- `scripts/little_loops/fsm/schema.py` `EvaluateConfig` (class from line 39) has three additional manual-touch sites beyond the field declaration itself if a new frozen-baseline field is added: the docstring `Attributes:` block (`reference`'s ENH-3421 entry at lines 74-79 is the template), a `to_dict`-style serializer (`result["reference"] = self.reference` pattern, `~186-187`), and a `from_dict`-style deserializer (`reference=data.get("reference")` pattern, `~247`)
+- No FSM-specific JSON Schema file exists (`fsm*.schema.json` repo-wide glob: zero hits) and `scripts/little_loops/config-schema.json` has zero hits for `EvaluateConfig`/`"reference"`/`"previous"` — schema validation for `EvaluateConfig` fields is enforced purely by the Python dataclass plus MR-2/MR-14, not a separate JSON Schema artifact
+
 ## Implementation Steps
 
 ### Codebase Research Findings
@@ -119,6 +163,17 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 4. The mechanism does not silently disable itself the way an unresolvable-but-present frozen value would (per `evaluate_convergence()`'s fail-closed precedent for `reference`) — an absent frozen baseline and an unresolvable one are handled, and the difference between them is intentional, not an oversight.
 5. Whichever of the two existing "frozen reference" shapes (ENH-3421's FSM-evaluator `reference` field vs. `evaluate_comparator`'s standing `.loops/baselines/` file) this issue's mechanism most resembles, the Scope Boundaries' three open decisions (what the frozen baseline is per loop, how/when it's re-pinned, what happens when the two comparisons disagree) are resolved before this integrates with `_run_compare_arm()`.
 6. `python -m pytest scripts/tests/test_cli_harness.py scripts/tests/test_history_reader_harness.py scripts/tests/test_harness_optimize.py -v` passes.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Read `.ll/decisions.d/a2c57916-aa1c-48db-86ad-cf1c3964d62d.json` and `.issues/enhancements/P3-ENH-3421-*.md`'s prior-art discussion before choosing a design — ENH-3421 explicitly rejected wiring `check_comparator` into `harness-optimize.yaml`'s `gate` state as a second required check, the design shape closest to this issue's own proposal
+- If the mechanism is added to `EvaluateConfig`, extend `_has_baseline_reference`'s hand-maintained `candidates` list (`meta_rules.py:588-590`) plus the docstring, `to_dict`, and `from_dict` sites on `EvaluateConfig` (`fsm/schema.py`) — MR-14 needs no update since it derives its field list dynamically
+- Update `docs/reference/API.md`'s `EvaluateConfig` verbatim mirror and add `BaselineDelta`/`BaselineResult`/`BaselineKey` documentation, which does not exist there today
+- Register any new doc strings in `scripts/tests/test_wiring_reference_docs.py` so the doc coupling is durably enforced
+- Update `test_delta_json_payload`, `test_delta_reported_with_provenance`, `test_delta_null_when_candidate_ungraded` (`test_cli_harness.py`) if `BaselineDelta`'s shape changes to a dual/four-way outcome
+- Add a `test_only_baseline_score_captures_<new-key>`-shaped scan test (mirroring `test_harness_optimize.py:140-148`) for whichever loop gains the frozen-external-baseline capture
 
 ## Impact
 
@@ -133,5 +188,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-14T21:18:34 - `b80e42ca-40bb-4d8a-b6d8-3b9dab6f1bf1.jsonl`
+- `/ll:wire-issue` - 2026-09-14T20:51:04 - `df520d06-750a-40b3-acb9-fb846e40ee7a.jsonl`
 - `/ll:refine-issue` - 2026-09-14T20:30:29 - `32822b8f-688a-416a-8c16-7d6cacd02e0d.jsonl`
 - `/ll:format-issue` - 2026-09-14T20:15:11 - `94434fad-8258-433c-9701-ead707bb03a6.jsonl`

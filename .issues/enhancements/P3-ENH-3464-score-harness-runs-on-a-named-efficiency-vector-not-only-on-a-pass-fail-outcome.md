@@ -46,6 +46,14 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 Confirmed file paths and call sites for wiring tokens/tool-calls onto `RunnerResult` and persisting them to `HarnessEvent`.
 
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- `ABResults.harness_pass_rate` (`scripts/little_loops/ab_writer.py:146`, on `class ABResults:` line 132) is a second, pre-existing precedent for a named scoring field carried on a run/comparison result — distinct from and already disambiguated against `history_reader.harness.harness_eval_pass_rate` in `docs/reference/API.md:9159`.
+- No mechanical single source of truth ties `HarnessEvent`'s dataclass fields, `_HARNESS_EVENT_COLUMNS`'s column-name string, and `record_harness_event()`'s kwargs together — all three are independently hand-maintained and must be updated in lockstep by hand for any new field (confirmed by direct read of `history_reader/harness.py:53-108` and `session_store/writers.py:1210-1241`).
+- `HarnessEventVariant(DESVariant)` (`scripts/little_loops/observability/schema.py:731-734`) carries only a `type: Literal["harness_event"]` discriminator field and no per-column fields at all — confirmed it needs no change for new `tokens`/`tool_calls` columns, same conclusion ENH-3476's research reached independently for `channels_json`/`side_effects_json`.
+- `run_claude_command()`'s `TokenUsage` dataclass (built on a `"result"`/`"turn.completed"` event, `subprocess_utils.py`) carries `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `model`, `is_batch` — the exact shape available if `on_usage`/`on_usage_detailed` were wired into `runner_spec.py`'s runners.
+- `_run_sample_loop()`, `_run_baseline_phase()`, and `_run_compare_arm()` (`cli/harness.py`) all consume the same `Callable[[], tuple[RunnerResult, int]]` contract from every `cmd_*` handler's `_invoke()` closure — widening what `_invoke()` returns to carry tokens/tool-calls would need to widen this shared tuple/callable contract across these three functions too, not just the four `cmd_*` handlers.
+
 ### Files to Modify
 - `scripts/little_loops/runner_spec.py` — `_run_skill()` currently calls `run_claude_command()` without `on_usage`/`on_usage_detailed`; `_run_cmd()`/`_run_mcp()`/`_run_prompt()` don't call `run_claude_command()` at all — wiring tokens onto `RunnerResult` starts here, not at `_grade()`
 - `scripts/little_loops/cli/harness.py` — `_grade()` (`:1224`) and each `cmd_*` call site's `duration_ms` threading pattern (computed via `time.monotonic()`, passed straight to `_record_harness_event`, bypassing `_grade()`) is the existing precedent for how a new quantity would flow
@@ -58,6 +66,15 @@ Confirmed file paths and call sites for wiring tokens/tool-calls onto `RunnerRes
 - `scripts/tests/test_history_reader_harness.py:327,370` (`TestAuthoritativeAttempts`) — existing readers of `authoritative_attempt`/`authoritative_attempts` that a new field must not break
 - `scripts/little_loops/cli/harness.py:1297` (`_compose_judge_evidence`), `evaluators.py:1298,1302` (`evaluate_llm_structured`), `fsm/verdicts.py:1309` (`is_abstention_verdict`) — existing callees inside `_grade()`, none of which currently read `RunnerResult.tool_trace` or any token field
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/queue_store.py:36`, `scripts/little_loops/cli/loop/run.py:135`, `scripts/little_loops/cli/action.py:218`, `scripts/little_loops/cli/queue.py:34,130,164,403,488,556` — importers of `runner_spec.py`'s `ActionSpec`/`RunnerType`/`RunnerResult`; would see new trailing `RunnerResult` fields
+- `scripts/little_loops/issue_manager.py`, `scripts/little_loops/fsm/runners.py` (`DefaultActionRunner`, a sibling FSM prompt-action runner with its own existing `on_usage`/`on_usage_detailed` wiring), `scripts/little_loops/fsm/executor.py:2387-2598,3698-3751` (ENH-2724 baseline-arm direct call), `scripts/little_loops/parallel/worker_pool.py:938-1238` — existing callers of `run_claude_command()`'s `on_usage`/`on_usage_detailed` callbacks, the pattern-to-model for wiring token capture into `runner_spec.py`'s runners
+- `scripts/tests/test_runner_spec.py` — confirmed **zero existing coverage** of `trace_mode`/`stream_callback`/`run_claude_command` in this file; `_run_skill()`'s two `run_claude_command()`-calling branches (`:196-248`) are untested today, and three `TestRunActionDispatch` tests (`test_skill_dispatch_matches_legacy_shape`, `test_prompt_dispatch_matches_legacy_shape`, `:151-188`) use dataclass `==` equality against a `RunnerResult(...)` literal missing later fields — a real break risk once new trailing fields (tokens/tool_calls) populate with non-`None` values on these dispatch paths
+- `scripts/little_loops/cli/session.py:11` — `ll-session recent --kind harness` renders rows generically (`", ".join(f"{k}={v}" ...)`), confirmed behavior-neutral; new fields surface automatically, no code change needed here
+- `scripts/little_loops/observability/schema.py:730-734` (`HarnessEventVariant`), `scripts/little_loops/session_store/__init__.py:56,59,177,181,270,276` (re-exports) — additional consumers of the `HarnessEvent`/`record_harness_event` shape
+- `scripts/tests/test_session_store_writers.py:2391-2723`, `scripts/tests/test_ll_session.py:1383-1400` — additional write-path/read-path tests beyond the three already-known
+- Confirmed **not coupled**: `scripts/little_loops/ab_writer.py`/`fsm/executor.py`'s `baseline_complete` A/B system already uses field names `harness_tokens`/`baseline_tokens`/`harness_duration_ms` but has zero import/call coupling to `history_reader.harness`/`session_store.writers` — a separate event shape; worth a documentation note flagging the naming-collision risk (`docs/reference/API.md` already flags `harness_eval_pass_rate` vs. `ab_writer.ABResults.harness_pass_rate` similarly) but no code coupling exists
+
 ### Conventions in Force
 - New `HarnessEvent` fields are always appended at the end, always `type | None = None`, with an inline comment citing the introducing issue — evidence: ENH-141/ENH-3407/ENH-3435 field blocks in `history_reader/harness.py:54-98`
 - Schema changes are fix-forward only — `ALTER TABLE ADD COLUMN` with no `DEFAULT`, pre-migration rows keep `NULL`, no backfill — evidence: v49/v50 migration comments in `session_store/schema.py:1346-1414`
@@ -68,6 +85,12 @@ Confirmed file paths and call sites for wiring tokens/tool-calls onto `RunnerRes
 - `scripts/tests/test_session_store_schema.py` — `TestSchemaV50BaselineConditions`-shaped triad (new-DB shape / upgrade-DB shape / NULL-on-old-rows) is the existing convention for a new migration
 - `scripts/tests/test_history_reader_harness.py` — round-trip coverage for new `HarnessEvent` fields through `record_harness_event`/readers, e.g. `test_harness_event_carries_id_and_v49_fields` (`:270-279`)
 - `scripts/tests/test_cli_harness.py` — `TestGradeEvidenceChannels` (`:3682`) is the closest existing test class exercising `_grade()` against synthetic `RunnerResult` fixtures
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_session_store_schema.py::TestSchemaV50BaselineConditions` (concrete 3-method template: `test_harness_events_gains_baseline_condition_columns`, `test_v49_db_upgrades_gains_baseline_condition_columns`, `test_baseline_match_index_exists`) — column-set assertions there use subset (`<=`), never exhaustive (`==`), against `PRAGMA table_info(harness_events)`; follow this convention, not exhaustive equality
+- `scripts/tests/test_issue_manager.py::TestRunClaudeCommand.test_forwards_on_usage_detailed` and `TestRunWithContinuation.test_high_cumulative_usage_does_not_write_sentinel` — the two `on_usage`/`on_usage_detailed` mocking sub-patterns (forward-by-identity vs. `side_effect` invoking the callback) to follow when wiring token capture into `runner_spec.py`'s runners; patch target is `little_loops.subprocess_utils.run_claude_command` (module-local import inside `_run_skill()`, confirmed via `scripts/tests/test_action.py`'s equivalent patch site), not a module-level import
+- `scripts/little_loops/cli/harness.py:832-872` (`ChannelRecord`/`HarnessEvalOutcome.channels`, ENH-3462) and its tests `scripts/tests/test_cli_harness.py::TestChannelRecordToDict`/`TestGradeEvidenceChannels` — precedent for "a field added, persistence tracked separately," including the `to_dict()`-vs-object test-class split
+- `scripts/tests/test_runner_spec.py::TestRunActionDispatch::test_skill_dispatch_matches_legacy_shape`, `::test_prompt_dispatch_matches_legacy_shape` (`:151-188`) — existing tests to update: both assert `result == RunnerResult(...)` by dataclass equality and will break once new trailing fields populate with non-`None` values on these dispatch paths
 
 ## Program Design
 
@@ -99,6 +122,22 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - The "tournament fitness function" (resource efficiency / advancement speed / composition) this section's own Design cites as precedent is prose-only — a repo-wide unfiltered search for `tournament`/`fitness function`/these dimension names returns zero code hits; it is an argument-by-analogy from issue text (echoed in ENH-3415), not a locatable codebase artifact.
 - Existing "reporting dimension, not a gate" precedent already in the codebase: `HarnessEvent.semantic_confidence` sits beside `semantic_passed` without deciding it, and `HarnessEvalOutcome.sample_pass_rate` (ENH-3415) is informational alongside the discrete verdict `_band_samples()` computes — both are the same non-gating shape this issue requires for the new efficiency dimensions.
 
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- Confirmed all four `ActionSpec(...)` construction sites in `cli/harness.py` (`cmd_skill`'s `_invoke()` at :2124, `cmd_cmd`'s at :2259, `cmd_mcp`'s at :2378, `cmd_prompt`'s `_run_prompt_action()` at :2462) never set a `"trace_mode"` key — pinpoints the exact four call sites that leave `RunnerResult.tool_trace` unreachable, confirming the earlier higher-level finding with per-site precision.
+- Wall-clock (`duration_ms`) is captured unconditionally regardless of run outcome — `time.monotonic()` wraps the `_invoke()` call itself, so a timeout or error still produces a `duration_ms` value. Any token/tool-call capture done via streaming callbacks needs to match this: a callback that only fires on a completed `"result"` event may never fire before a timeout kill, so a timed-out run's tokens/tool-calls field should be expected to land `None` even though `duration_ms` is non-`None` for the same row.
+- `_insert_harness_event()`'s three bool-typed kwargs (`semantic_passed`, `timed_out`, `dirty`) get explicit `None if x is None else int(x)` coercion; all other kwargs, including the numeric `duration_ms`, pass through with zero coercion — confirms the precedent for new `tokens`/`tool_calls` int fields is to pass through uncoerced, same as `duration_ms`.
+- No literal write-side `HarnessEvent`-shaped row dataclass exists — `record_harness_event()`/`_insert_harness_event()` write directly via raw `conn.execute()` with positional parameter tuples; `HarnessEvent` (the dataclass with fields) exists only on the read side, in `history_reader/harness.py:54`.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — the `HarnessEvent`/`recent_harness_events`/`harness_eval_pass_rate` section hand-transcribes the full field list and is already stale (missing the v50 `timeout_s`/`host_cli`/`subject_model`/`input_hash`/`conditions_fp` columns, pre-existing drift independent of this issue); needs the new `tokens`/`tool_calls` fields appended
+- `docs/reference/CLI.md` — the `--output json` payload field list and the N-sample redundancy per-sample entry field list, both under `### ll-harness`, need new rows if efficiency dimensions surface there
+- `docs/reference/EVENT-SCHEMA.md` — makes an explicit, load-bearing exhaustiveness claim ("Only `RunnerResult.timed_out` is persisted to `harness_events`; `RunnerResult.error` has no column") that becomes factually stale once tokens/tool_calls become newly-persisted `RunnerResult`-derived columns
+- `docs/ARCHITECTURE.md` — the History DB producer→consumer schema-migration table is the append point for a new migration row; the v50/ENH-3435 row is confirmed already missing from this table (a pre-existing gap this issue's migration would land into, not caused by it)
+- `docs/guides/EVALUATION_GUIDE.md` — the "Across runs" section illustratively lists persisted `harness_events` columns; the natural place to mention the new efficiency dimensions since it specifically explains what gets written per run
+
 ## Implementation Steps
 
 ### Codebase Research Findings
@@ -110,6 +149,16 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 3. A run that fails a semantic/exit-code check but has expensive efficiency numbers still fails for the same reason as today — `_grade()`'s exit-code path is untouched by the new fields.
 4. A run that passes with expensive efficiency numbers still passes — no new branch in `_grade()`, `_band_samples()`, or `evaluate()` reads the new fields to decide `passed`/`verdict`.
 5. `python -m pytest scripts/tests/test_history_reader_harness.py scripts/tests/test_session_store_schema.py scripts/tests/test_cli_harness.py -v` passes.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Wire `on_usage`/`on_usage_detailed` token capture into `runner_spec.py`'s `_run_skill`/`_run_cmd`/`_run_mcp`/`_run_prompt`, following the mocking pattern in `test_issue_manager.py::TestRunClaudeCommand`/`TestRunWithContinuation` and patching `little_loops.subprocess_utils.run_claude_command` at its module-local import site
+- Add direct test coverage for `_run_skill()`'s `trace_mode`/`stream_callback` branches (`runner_spec.py:196-248`) in `test_runner_spec.py`, currently untested
+- Update `test_runner_spec.py::TestRunActionDispatch::test_skill_dispatch_matches_legacy_shape`/`::test_prompt_dispatch_matches_legacy_shape` (`:151-188`) if new trailing `RunnerResult` fields populate with non-`None` values on these dispatch paths, since both assert dataclass `==` equality
+- Add the new `harness_events` migration to `docs/ARCHITECTURE.md`'s schema-migration table (also backfilling the missing v50/ENH-3435 row while there) and update `docs/reference/API.md`'s `HarnessEvent` field list (also backfilling the missing v50 fields)
+- Update `docs/reference/EVENT-SCHEMA.md`'s exhaustiveness claim about what `RunnerResult` fields are persisted to `harness_events`
 
 ## Impact
 
@@ -128,6 +177,8 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 **Open** | Created: 2026-09-13 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-14T21:18:34 - `b80e42ca-40bb-4d8a-b6d8-3b9dab6f1bf1.jsonl`
+- `/ll:wire-issue` - 2026-09-14T20:51:04 - `df520d06-750a-40b3-acb9-fb846e40ee7a.jsonl`
 - `/ll:refine-issue` - 2026-09-14T20:30:28 - `32822b8f-688a-416a-8c16-7d6cacd02e0d.jsonl`
 - `/ll:format-issue` - 2026-09-14T20:15:11 - `94434fad-8258-433c-9701-ead707bb03a6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-13T21:28:47 - `23df08cc-836b-4f77-a1e2-bfb5aedb0f55.jsonl`
