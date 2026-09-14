@@ -551,6 +551,17 @@ class TestPiiFlagPassthrough:
         assert result is not None
         assert "pii_detected" not in result  # no annotation when clean
 
+    def test_flag_adds_pii_detected_for_credential(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Summarize this text",
+            "output": "key is " + "AKIA" + "I" * 16,
+        }
+        result = apply_pii_action(example, "flag")
+        assert result is not None
+        assert result["pii_detected"] is True
+
     def test_flag_predicate_always_prints_1(self, tmp_path: Path) -> None:
         """The check_pii predicate prints 1 for flag action (pass-through)."""
         run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
@@ -651,6 +662,18 @@ class TestPiiRedact:
         assert result is not None
         assert result["output"] == "The answer is 42."
 
+    def test_redact_replaces_credential(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Rotate key",
+            "output": "key is " + "AKIA" + "I" * 16,
+        }
+        result = apply_pii_action(example, "redact")
+        assert result is not None
+        assert "[AWS_ACCESS_KEY]" in result["output"]
+        assert "AKIA" + "I" * 16 not in result["output"]
+
     def test_redact_predicate_prints_1_and_writes_redacted(self, tmp_path: Path) -> None:
         """The check_pii predicate prints 1 for redact action and writes redacted content."""
         run_dir = tmp_path / ".loops" / "runs" / "sft-corpus-test"
@@ -709,6 +732,16 @@ class TestPiiDiscard:
         result = apply_pii_action(example, "discard")
         assert result is not None
         assert result == example
+
+    def test_discard_returns_none_when_credential_present(self) -> None:
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "Rotate key",
+            "output": "key is " + "AKIA" + "I" * 16,
+        }
+        result = apply_pii_action(example, "discard")
+        assert result is None
 
     def test_discard_predicate_prints_0_when_pii_present(self, tmp_path: Path) -> None:
         """The check_pii predicate prints 0 when action=discard and PII is detected."""
@@ -1485,6 +1518,18 @@ class TestPiiDefaultBehavior:
 
         with pt.raises(ValueError, match="Invalid pii_action"):
             apply_pii_action({"instruction": "test"}, "delete")
+
+    def test_flag_is_default_passthrough_for_credential(self) -> None:
+        """Flag annotates credential-bearing examples but never rejects."""
+        from little_loops.pii import apply_pii_action
+
+        example = {
+            "instruction": "test",
+            "output": "key is " + "AKIA" + "I" * 16,
+        }
+        result = apply_pii_action(example, "flag")
+        assert result is not None
+        assert result.get("pii_detected") is True
 
     def test_check_pii_unknown_action_falls_through(self, tmp_path: Path) -> None:
         """When pii_action is an unknown value, predicate prints 1 (safe pass-through)."""

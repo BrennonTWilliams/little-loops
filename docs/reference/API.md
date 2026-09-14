@@ -8076,7 +8076,8 @@ print(f"BM25 normalized: {normalized:.3f}")
 
 ## little_loops.pii
 
-Regex-based PII detection and redaction utilities for SFT corpus filtering.
+Regex-based PII and credential detection/redaction utilities for SFT corpus
+filtering.
 
 ```python
 from little_loops.pii import detect_pii, redact_pii, apply_pii_action
@@ -8095,6 +8096,67 @@ Module-level dict mapping PII type names to their compiled regex patterns.
 | `"email"` | Standard email addresses |
 | `"phone"` | US phone numbers (with/without country code, parens, dashes, dots) |
 | `"ssn"` | Social Security Numbers (``NNN-NN-NNNN`` format) |
+
+### CredentialRule / CREDENTIAL_RULES
+
+```python
+@dataclass(frozen=True)
+class CredentialRule:
+    name: str
+    pattern: re.Pattern[str]
+    rationale: str
+
+CREDENTIAL_RULES: tuple[CredentialRule, ...]
+```
+
+Deterministic, non-LLM rule table for credential/API-key/token patterns.
+`detect_pii`/`redact_pii` consult this table alongside `PII_PATTERNS`.
+
+| `name` | Pattern covers |
+|--------|---------------|
+| `aws_access_key` | AWS long-term access key ID (`AKIA` + 16 alnum) |
+| `github_token` | GitHub PAT / OAuth / user-server / refresh token prefixes |
+| `anthropic_key` | Anthropic API / OAuth key prefix (`sk-ant-...`) |
+| `slack_token` | Slack bot/app/user token prefixes (`xox[baprs]-...`) |
+| `private_key_pem` | PEM private-key block header |
+| `jwt` | Three-segment base64url JWT |
+
+### CredentialFinding
+
+```python
+@dataclass(frozen=True)
+class CredentialFinding:
+    rule: str
+    line: int          # 1-based
+    fingerprint: str   # sha256(matched span)[:12]
+```
+
+Redacted by construction — no `excerpt` field, so a finding never re-leaks
+the matched secret into logs or evidence artifacts.
+
+### scan_text / scan_file
+
+```python
+def scan_text(text: str, rules: tuple[CredentialRule, ...] = CREDENTIAL_RULES) -> list[CredentialFinding]
+def scan_file(path: Path, rules: tuple[CredentialRule, ...] = CREDENTIAL_RULES) -> list[CredentialFinding]
+```
+
+`scan_text` is the primitive; `scan_file` is a thin wrapper that reads the
+file as text first. Findings are sorted by `(line, rule)` for deterministic
+output.
+
+### CREDENTIAL_SCANNER_VERSION / credential_rules_sha
+
+```python
+CREDENTIAL_SCANNER_VERSION: int
+
+def credential_rules_sha(rules: tuple[CredentialRule, ...] = CREDENTIAL_RULES) -> str
+```
+
+`CREDENTIAL_SCANNER_VERSION` bumps only when scan semantics change.
+`credential_rules_sha()` hashes each rule's `name`/`pattern`/`flags`
+(excluding `rationale`, so doc-string edits don't churn the pin) — stable
+across calls, sensitive to pattern changes.
 
 ### detect_pii
 
@@ -8160,6 +8222,10 @@ example = {"instruction": "Email john@example.com", "output": "OK"}
 apply_pii_action(example, "flag")     # -> {... "pii_detected": True}
 apply_pii_action(example, "redact")   # -> {"instruction": "Email [EMAIL]", ...}
 apply_pii_action(example, "discard")  # -> None
+
+from little_loops.pii import scan_text
+
+scan_text("key: AKIA" + "A" * 16)  # -> [CredentialFinding(rule="aws_access_key", line=1, fingerprint=...)]
 ```
 
 ---

@@ -1,10 +1,11 @@
 ---
-id: 3469
+id: ENH-3469
 title: Credential-pattern deterministic scanner in pii.py
 type: ENH
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-13'
+completed_at: '2026-09-14T17:24:36Z'
 parent: ENH-3466
 labels:
 - goal-7,security,verification
@@ -29,6 +30,37 @@ evidence-bundle integration calls; it must be independently testable and
 usable without any evidence-bundle wiring. It is a library primitive only —
 no CLI entry point, no exit-code convention, no suppression comment (see
 Design for why each is excluded).
+
+## Current Behavior
+
+`scripts/little_loops/pii.py` detects and redacts only email, phone, and SSN
+patterns (`PII_PATTERNS`, `detect_pii`, `redact_pii`, `apply_pii_action`).
+There is no deterministic scanner for credential-shaped strings (AWS keys,
+GitHub tokens, Anthropic keys, Slack tokens, PEM private-key blocks, JWTs),
+so the `sft-corpus.yaml` `check_pii` gate — and any other consumer of
+`detect_pii`/`redact_pii` — never flags, redacts, or discards
+credential-bearing content.
+
+## Expected Behavior
+
+`pii.py` gains a `CredentialRule` frozen-dataclass rule table
+(`CREDENTIAL_RULES`), a redacted `CredentialFinding` frozen dataclass (no
+`excerpt` field, per the no-leak rationale in Design), `scan_text`/`scan_file`
+functions, and a pinned `CREDENTIAL_SCANNER_VERSION`/`credential_rules_sha()`
+pair. `detect_pii` and `redact_pii` consult both `PII_PATTERNS` and
+`CREDENTIAL_RULES`, so the existing `sft-corpus.yaml` `check_pii` gate picks
+up credentials automatically with no further wiring changes.
+
+## Impact
+
+Unblocks ENH-3470 (the `EvidenceBundle` credential-scan integration), which
+requires this primitive to be independently testable before it can wire
+against it. Also changes `sft-corpus.yaml`'s `check_pii` gate behavior: a
+`redact` run now emits `[AWS_ACCESS_KEY]`-style placeholders and a `discard`
+run drops examples containing credentials — documented in
+`docs/reference/loops.md` and covered by new tests in
+`test_loops_sft_corpus.py`. No consumer outside `pii.py`'s two existing entry
+points (`detect_pii`, `redact_pii`) needs to change.
 
 ## Parent Issue
 
@@ -240,6 +272,13 @@ N/A — no new branching or classification logic beyond "does the rule's
   name / uppercased placeholder.
 - Smoke test per newly exported symbol in `test_extension.py`.
 
+## Scope Boundaries
+
+In scope: the standalone scanner primitive in `pii.py` (rule table, finding
+type, `scan_text`/`scan_file`, version pin) and extending `detect_pii`/
+`redact_pii` to consult it, plus the sibling test/doc updates listed in
+Integration Map. Out of scope: see `## Out of Scope` below.
+
 ## Out of Scope
 
 - Wiring into `EvidenceBundle` (ENH-3470).
@@ -247,6 +286,42 @@ N/A — no new branching or classification logic beyond "does the rule's
   not covered by either child; see ENH-3466 Resolution.
 - Suppression comments, a CLI, and a generic assignment-style rule (see
   Design › Explicitly excluded).
+
+## Status
+
+Done. Implemented per the Design/Program Design as specified.
+
+## Resolution
+
+Added `CredentialRule`, `CREDENTIAL_RULES` (6 rules: `aws_access_key`,
+`github_token`, `anthropic_key`, `slack_token`, `private_key_pem`, `jwt`),
+`CredentialFinding` (no `excerpt`), `scan_text`, `scan_file`,
+`CREDENTIAL_SCANNER_VERSION`, and `credential_rules_sha` to
+`scripts/little_loops/pii.py`, exactly per the issue's Design and Program
+Design sections. `detect_pii`/`redact_pii` now also consult
+`CREDENTIAL_RULES`, so the `sft-corpus.yaml` `check_pii` gate picks up
+credentials automatically. All new symbols exported from
+`scripts/little_loops/__init__.py`. TDD: tests written first in
+`scripts/tests/test_pii.py` (new classes `TestCredentialRules`,
+`TestScanText`, `TestScanFile`, `TestNoLeak`, `TestCredentialRulesSha`,
+`TestDetectPiiRedactPiiCredentials`), confirmed Red (`ImportError` — new
+symbols didn't exist), then Green after implementation. Sibling tests added
+to `test_extension.py` (6 smoke-import tests) and
+`test_loops_sft_corpus.py` (one credential case per `TestPii*` class).
+Fixtures assembled from fragments (`"AKIA" + "I"*16`, etc.) to avoid
+tripping the gitleaks pre-commit hook, per Design. Docs updated:
+`docs/reference/API.md` (`## little_loops.pii` section) and
+`docs/reference/loops.md` (`pii_action` predicate description).
+
+Full suite: `python -m pytest scripts/tests/` → 24267 passed, 51 skipped, 3
+failed. The 3 failures (`test_prose_dep_sweep_gate`,
+`TestCorpusHasNoMalformedDepIds`, `TestRepoGate::test_no_new_unverifiable_evidence`)
+are pre-existing issue-corpus consistency gates on unrelated issues
+(ENH-3470's bare-numeric `depends_on: 3469` vs. TYPE-NNN prose, ENH-3463/
+ENH-3464's similarly malformed `blocked_by`, and a stale evidence quote in
+ENH-3467) — none reference `pii.py`, `ENH-3469`, or any file this issue
+touched, and they predate this session's changes. `ruff check` and `mypy`
+clean on all touched files.
 
 ## Confidence Check Notes
 
@@ -261,6 +336,8 @@ call path citing `pii.py:26`/`pii.py:39` and `verify_private_refs.py:119`);
 verdict is resolved._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-14T17:23:41 - `c286af01-1fa9-40fd-bc0d-381da6bba313.jsonl`
+- `/ll:ready-issue` - 2026-09-14T17:06:24 - `e6ff9aed-893e-402b-a2dd-417c88258c41.jsonl`
 - `/ll:confidence-check` - 2026-09-14T16:52:57 - `b233366b-10ab-4e31-a82f-311f95b747f5.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T17:50:41 - `d24791a3-28b5-4b07-851d-ac809549dbb5.jsonl`
 - manual review - 2026-09-13 - resolved shape decision, fixed rule list, redacted finding, text-in API, version pinning, gitleaks fixture rule; removed suppression/CLI scope

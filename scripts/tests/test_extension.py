@@ -780,6 +780,42 @@ class TestNewProtocols:
 
         assert apply_pii_action is not None
 
+    def test_smoke_import_credential_rule(self) -> None:
+        """Importing CredentialRule from public API succeeds (no circular import)."""
+        from little_loops import CredentialRule  # noqa: F401 — import is the test
+
+        assert CredentialRule is not None
+
+    def test_smoke_import_credential_finding(self) -> None:
+        """Importing CredentialFinding from public API succeeds (no circular import)."""
+        from little_loops import CredentialFinding  # noqa: F401 — import is the test
+
+        assert CredentialFinding is not None
+
+    def test_smoke_import_credential_rules(self) -> None:
+        """Importing CREDENTIAL_RULES from public API succeeds (no circular import)."""
+        from little_loops import CREDENTIAL_RULES  # noqa: F401 — import is the test
+
+        assert CREDENTIAL_RULES is not None
+
+    def test_smoke_import_credential_scanner_version(self) -> None:
+        """Importing CREDENTIAL_SCANNER_VERSION from public API succeeds (no circular import)."""
+        from little_loops import CREDENTIAL_SCANNER_VERSION  # noqa: F401 — import is the test
+
+        assert CREDENTIAL_SCANNER_VERSION is not None
+
+    def test_smoke_import_credential_rules_sha(self) -> None:
+        """Importing credential_rules_sha from public API succeeds (no circular import)."""
+        from little_loops import credential_rules_sha  # noqa: F401 — import is the test
+
+        assert credential_rules_sha is not None
+
+    def test_smoke_import_scan_text(self) -> None:
+        """Importing scan_text from public API succeeds (no circular import)."""
+        from little_loops import scan_text  # noqa: F401 — import is the test
+
+        assert scan_text is not None
+
     def test_ll_hook_intent_extension_protocol_satisfied(self) -> None:
         """A class with provided_hook_intents() satisfies LLHookIntentExtension."""
         from little_loops.extension import LLHookIntentExtension

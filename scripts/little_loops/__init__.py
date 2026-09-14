@@ -61,7 +61,17 @@ from little_loops.observability import (
     vendor_for_runner,
 )
 from little_loops.output_parsing import parse_manage_issue_output, parse_ready_issue_output
-from little_loops.pii import apply_pii_action, detect_pii, redact_pii
+from little_loops.pii import (
+    CREDENTIAL_RULES,
+    CREDENTIAL_SCANNER_VERSION,
+    CredentialFinding,
+    CredentialRule,
+    apply_pii_action,
+    credential_rules_sha,
+    detect_pii,
+    redact_pii,
+    scan_text,
+)
 from little_loops.session_store import (
     SQLiteTransport,
     record_issue_snapshot,
@@ -177,4 +187,10 @@ __all__ = [
     "apply_pii_action",
     "detect_pii",
     "redact_pii",
+    "CREDENTIAL_RULES",
+    "CREDENTIAL_SCANNER_VERSION",
+    "CredentialFinding",
+    "CredentialRule",
+    "credential_rules_sha",
+    "scan_text",
 ]

@@ -465,7 +465,7 @@ The five predicate checks run sequentially. Each predicate is gated by its conte
 2. **`exclude_user_corrections`** — discards sessions where the user issued a correction
 3. **`min_tool_invocations`** — drops sessions with tool-call counts below the threshold
 4. **`require_file_modifications`** — drops sessions with zero file modifications
-5. **`pii_action`** — `flag` adds a `pii_detected` boolean; `redact` replaces PII spans with `[TYPE]` placeholders; `discard` drops the example entirely
+5. **`pii_action`** — `flag` adds a `pii_detected` boolean; `redact` replaces PII spans with `[TYPE]` placeholders; `discard` drops the example entirely. Covers email/phone/SSN and credential-shaped patterns (`[AWS_ACCESS_KEY]`, `[GITHUB_TOKEN]`, `[ANTHROPIC_KEY]`, `[SLACK_TOKEN]`, `[PRIVATE_KEY_PEM]`, `[JWT]`) via `little_loops.pii.CREDENTIAL_RULES`
 
 When a flag is `false`/`0` (or `pii_action` is not `discard` with detected PII), the check passes through.
 

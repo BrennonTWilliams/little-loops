@@ -2,9 +2,144 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
-from little_loops.pii import apply_pii_action, detect_pii, redact_pii
+from little_loops.pii import (
+    CREDENTIAL_RULES,
+    CREDENTIAL_SCANNER_VERSION,
+    CredentialFinding,
+    CredentialRule,
+    apply_pii_action,
+    credential_rules_sha,
+    detect_pii,
+    redact_pii,
+    scan_file,
+    scan_text,
+)
+
+# Fixtures assembled from fragments so this test file is not itself flagged
+# by the gitleaks pre-commit hook (mirrors verify_private_refs.py's _USER_SEG).
+_AWS_KEY = "AKIA" + "I" * 16
+_GITHUB_TOKEN = "gh" + "p_" + "a" * 36
+_ANTHROPIC_KEY = "sk-ant-" + "a" * 24
+_SLACK_TOKEN = "xoxb-" + "1234567890"
+_PEM_HEADER = "-----BEGIN RSA PRIVATE KEY-----"
+_JWT = "eyJ" + "a" * 10 + "." + "eyJ" + "a" * 10 + "." + "a" * 10
+
+_RULE_FIXTURES: dict[str, tuple[str, str]] = {
+    "aws_access_key": (_AWS_KEY, "AKIAI" + "I" * 10),  # near-miss: too short
+    "github_token": (_GITHUB_TOKEN, "gh" + "x_" + "a" * 36),  # wrong prefix letter
+    "anthropic_key": (_ANTHROPIC_KEY, "sk-not-ant-" + "a" * 24),
+    "slack_token": (_SLACK_TOKEN, "xox" + "z-" + "1234567890"),  # invalid slack prefix
+    "private_key_pem": (_PEM_HEADER, "-----BEGIN CERTIFICATE-----"),
+    "jwt": (_JWT, "notajwt.notajwt.notajwt"),
+}
+
+
+class TestCredentialRules:
+    """Tests for the CREDENTIAL_RULES table."""
+
+    def test_has_one_rule_per_expected_name(self) -> None:
+        names = {rule.name for rule in CREDENTIAL_RULES}
+        assert names == set(_RULE_FIXTURES)
+
+    def test_each_pattern_is_compiled_regex(self) -> None:
+        for rule in CREDENTIAL_RULES:
+            assert isinstance(rule.pattern, re.Pattern)
+
+    def test_each_rule_has_rationale(self) -> None:
+        for rule in CREDENTIAL_RULES:
+            assert rule.rationale
+
+
+class TestScanText:
+    """Tests for scan_text."""
+
+    @pytest.mark.parametrize("rule_name", sorted(_RULE_FIXTURES))
+    def test_detects_positive_fixture(self, rule_name: str) -> None:
+        positive, _ = _RULE_FIXTURES[rule_name]
+        findings = scan_text(f"leading text {positive} trailing text")
+        assert any(f.rule == rule_name for f in findings)
+
+    @pytest.mark.parametrize("rule_name", sorted(_RULE_FIXTURES))
+    def test_rejects_near_miss_fixture(self, rule_name: str) -> None:
+        _, near_miss = _RULE_FIXTURES[rule_name]
+        findings = scan_text(f"leading text {near_miss} trailing text")
+        assert not any(f.rule == rule_name for f in findings)
+
+    def test_no_findings_on_clean_text(self) -> None:
+        assert scan_text("nothing sensitive here") == []
+
+    def test_line_numbers_are_one_based(self) -> None:
+        text = f"line one\n{_AWS_KEY}\nline three"
+        findings = scan_text(text)
+        assert any(f.line == 2 for f in findings)
+
+    def test_multi_hit_line_yields_one_finding_per_rule(self) -> None:
+        text = f"{_AWS_KEY} and {_GITHUB_TOKEN}"
+        findings = scan_text(text)
+        rules_hit = {f.rule for f in findings if f.line == 1}
+        assert {"aws_access_key", "github_token"} <= rules_hit
+
+    def test_findings_sorted_by_line_then_rule(self) -> None:
+        text = f"{_GITHUB_TOKEN}\n{_AWS_KEY}"
+        findings = scan_text(text)
+        keys = [(f.line, f.rule) for f in findings]
+        assert keys == sorted(keys)
+
+
+class TestScanFile:
+    """Tests for scan_file."""
+
+    def test_scans_file_contents(self, tmp_path: pytest.TempPathFactory) -> None:
+        path = tmp_path / "sample.txt"  # type: ignore[attr-defined]
+        path.write_text(f"secret: {_AWS_KEY}\n")
+        findings = scan_file(path)
+        assert any(f.rule == "aws_access_key" for f in findings)
+
+
+class TestNoLeak:
+    """Findings must never carry the matched secret span."""
+
+    @pytest.mark.parametrize("rule_name", sorted(_RULE_FIXTURES))
+    def test_finding_does_not_contain_matched_span(self, rule_name: str) -> None:
+        positive, _ = _RULE_FIXTURES[rule_name]
+        findings = scan_text(positive)
+        assert findings, f"expected a finding for {rule_name}"
+        for finding in findings:
+            assert positive not in repr(finding)
+            for value in (finding.rule, str(finding.line), finding.fingerprint):
+                assert positive not in value
+
+    def test_credential_finding_has_no_excerpt_field(self) -> None:
+        field_names = {f.name for f in CredentialFinding.__dataclass_fields__.values()}
+        assert "excerpt" not in field_names
+
+
+class TestCredentialRulesSha:
+    """Tests for credential_rules_sha."""
+
+    def test_stable_across_calls(self) -> None:
+        assert credential_rules_sha() == credential_rules_sha()
+
+    def test_changes_when_pattern_changes(self) -> None:
+        base_sha = credential_rules_sha()
+        altered = (
+            CredentialRule(name="aws_access_key", pattern=re.compile(r"CHANGED"), rationale="x"),
+        )
+        assert credential_rules_sha(altered) != base_sha
+
+    def test_unchanged_when_only_rationale_changes(self) -> None:
+        rules = tuple(
+            CredentialRule(name=r.name, pattern=r.pattern, rationale="different text")
+            for r in CREDENTIAL_RULES
+        )
+        assert credential_rules_sha(rules) == credential_rules_sha(CREDENTIAL_RULES)
+
+    def test_version_is_pinned_int(self) -> None:
+        assert isinstance(CREDENTIAL_SCANNER_VERSION, int)
 
 
 class TestDetectPii:
@@ -78,6 +213,25 @@ class TestRedactPii:
         result = redact_pii("Hi john@example.com, your order is ready")
         assert "Hi" in result
         assert "your order is ready" in result
+
+
+class TestDetectPiiRedactPiiCredentials:
+    """detect_pii/redact_pii consult CREDENTIAL_RULES alongside PII_PATTERNS."""
+
+    def test_detect_pii_reports_credential_rule_name(self) -> None:
+        assert "aws_access_key" in detect_pii(f"key is {_AWS_KEY}")
+
+    def test_redact_pii_emits_uppercase_placeholder(self) -> None:
+        result = redact_pii(f"key is {_AWS_KEY}")
+        assert "[AWS_ACCESS_KEY]" in result
+        assert _AWS_KEY not in result
+
+    def test_existing_email_phone_ssn_detection_unchanged(self) -> None:
+        assert detect_pii("Contact john@example.com for help") == ["email"]
+
+    def test_existing_email_phone_ssn_redaction_unchanged(self) -> None:
+        result = redact_pii("Contact john@example.com for help")
+        assert result == "Contact [EMAIL] for help"
 
 
 class TestApplyPiiAction:
